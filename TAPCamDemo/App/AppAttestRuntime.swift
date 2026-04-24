@@ -13,6 +13,7 @@ enum AppAttestBackendMode: Hashable {
 }
 
 struct AppAttestRuntime {
+    let mode: AppAttestBackendMode?
     let client: any AppAttestClient
     let backendDescription: String
     #if DEBUG
@@ -21,16 +22,19 @@ struct AppAttestRuntime {
 
     #if DEBUG
     init(
+        mode: AppAttestBackendMode? = nil,
         client: any AppAttestClient,
         backendDescription: String,
         debugBackend: MockDebugAppAttestBackend? = nil
     ) {
+        self.mode = mode
         self.client = client
         self.backendDescription = backendDescription
         self.debugBackend = debugBackend
     }
     #else
-    init(client: any AppAttestClient, backendDescription: String) {
+    init(mode: AppAttestBackendMode? = nil, client: any AppAttestClient, backendDescription: String) {
+        self.mode = mode
         self.client = client
         self.backendDescription = backendDescription
     }
@@ -38,23 +42,48 @@ struct AppAttestRuntime {
 }
 
 enum AppAttestRuntimeFactory {
-    static func make(mode: AppAttestBackendMode = AppAttestRuntimeDefaults.mode) throws -> AppAttestRuntime {
+    #if DEBUG
+    static func make(
+        mode: AppAttestBackendMode = AppAttestRuntimeDefaults.mode,
+        progressHandler: (@MainActor @Sendable (String) async -> Void)? = nil
+    ) throws -> AppAttestRuntime {
         switch mode {
-        #if DEBUG
         case .mockDebug:
             let backend = MockDebugAppAttestBackend()
             return AppAttestRuntime(
+                mode: mode,
                 client: DefaultAppAttestClient(
                     backend: backend,
                     credentialStore: KeychainAppAttestCredentialStore(),
                     deviceService: DCAppAttestDeviceService(),
-                    environment: .development
+                    environment: .development,
+                    progressHandler: progressHandler
                 ),
                 backendDescription: "Mock Backend",
                 debugBackend: backend
             )
-        #endif
 
+        case .http(let baseURL):
+            let backend = try HTTPAppAttestBackend(baseURL: baseURL)
+            let client = DefaultAppAttestClient(
+                backend: backend,
+                credentialStore: KeychainAppAttestCredentialStore(),
+                deviceService: DCAppAttestDeviceService(),
+                environment: .production,
+                progressHandler: progressHandler
+            )
+
+            return AppAttestRuntime(
+                mode: mode,
+                client: client,
+                backendDescription: "HTTP Backend: \(baseURL.absoluteString)",
+                debugBackend: nil
+            )
+        }
+    }
+    #else
+    static func make(mode: AppAttestBackendMode = AppAttestRuntimeDefaults.mode) throws -> AppAttestRuntime {
+        switch mode {
         case .http(let baseURL):
             let backend = try HTTPAppAttestBackend(baseURL: baseURL)
             let client = DefaultAppAttestClient(
@@ -64,30 +93,26 @@ enum AppAttestRuntimeFactory {
                 environment: .production
             )
 
-            #if DEBUG
             return AppAttestRuntime(
-                client: client,
-                backendDescription: "HTTP Backend: \(baseURL.absoluteString)",
-                debugBackend: nil
-            )
-            #else
-            return AppAttestRuntime(
+                mode: mode,
                 client: client,
                 backendDescription: "HTTP Backend: \(baseURL.absoluteString)"
             )
-            #endif
         }
     }
+    #endif
 
     static func fallbackRuntime(error: Error) -> AppAttestRuntime {
         #if DEBUG
         AppAttestRuntime(
+            mode: nil,
             client: UnavailableAppAttestClient(error: error),
             backendDescription: "Configuration error: \(error.localizedDescription)",
             debugBackend: nil
         )
         #else
         AppAttestRuntime(
+            mode: nil,
             client: UnavailableAppAttestClient(error: error),
             backendDescription: "Configuration error: \(error.localizedDescription)"
         )

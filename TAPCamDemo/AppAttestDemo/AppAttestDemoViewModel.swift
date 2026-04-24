@@ -44,6 +44,7 @@ final class AppAttestDemoViewModel: ObservableObject {
 
     private var appAttest: any AppAttestClient
     private var activeOperationCount = 0
+    private let maxResultLineCount = 12
     #if DEBUG
     private var debugBackend: MockDebugAppAttestBackend?
     #endif
@@ -56,6 +57,18 @@ final class AppAttestDemoViewModel: ObservableObject {
         self.selectedBackendMode = runtime.debugBackend == nil ? .http : .mock
         #else
         self.selectedBackendMode = .http
+        #endif
+
+        #if DEBUG
+        if let mode = runtime.mode,
+           let runtimeWithProgress = try? AppAttestRuntimeFactory.make(
+            mode: mode,
+            progressHandler: { [weak self] message in
+                self?.appendProgress(message)
+            }
+           ) {
+            install(runtime: runtimeWithProgress)
+        }
         #endif
     }
 
@@ -86,7 +99,17 @@ final class AppAttestDemoViewModel: ObservableObject {
                 mode = .http(baseURL: baseURL)
             }
 
-            install(runtime: try AppAttestRuntimeFactory.make(mode: mode))
+            #if DEBUG
+            let runtime = try AppAttestRuntimeFactory.make(
+                mode: mode,
+                progressHandler: { [weak self] message in
+                    self?.appendProgress(message)
+                }
+            )
+            #else
+            let runtime = try AppAttestRuntimeFactory.make(mode: mode)
+            #endif
+            install(runtime: runtime)
             headersText = ""
             debugJSON = ""
             statusText = """
@@ -240,6 +263,19 @@ final class AppAttestDemoViewModel: ObservableObject {
         #endif
     }
 
+    private func setResult(_ text: String) {
+        statusText = text
+    }
+
+    #if DEBUG
+    private func appendProgress(_ message: String) {
+        let nextLine = "-> \(message)"
+        let lines = (statusText.split(separator: "\n", omittingEmptySubsequences: false).map(String.init) + [nextLine])
+            .suffix(maxResultLineCount)
+        statusText = lines.joined(separator: "\n")
+    }
+    #endif
+
     private func latestChallengeText() async throws -> String {
         #if DEBUG
         guard let debugBackend else {
@@ -259,7 +295,7 @@ final class AppAttestDemoViewModel: ObservableObject {
     private func runOperation(_ label: String, operation: @escaping () async throws -> Void) {
         activeOperationCount += 1
         isWorking = activeOperationCount > 0
-        statusText = "\(label)..."
+        setResult("\(label)...")
 
         Task {
             defer {
@@ -270,7 +306,7 @@ final class AppAttestDemoViewModel: ObservableObject {
             do {
                 try await operation()
             } catch {
-                statusText = "\(label) failed\n\(error.localizedDescription)"
+                setResult("\(label) failed\n\(error.localizedDescription)")
             }
         }
     }
