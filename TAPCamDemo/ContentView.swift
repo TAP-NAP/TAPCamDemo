@@ -8,17 +8,17 @@
 import SwiftUI
 
 struct ContentView: View {
-    var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
-        }
-        .padding()
-    }
-}
+    private let runtime: AppAttestRuntime
 
-#Preview {
-    ContentView()
+    init() {
+        do {
+            self.runtime = try AppAttestRuntimeFactory.make()
+        } catch {
+            self.runtime = AppAttestRuntimeFactory.fallbackRuntime(error: error)
+        }
+    }
+
+    var body: some View {
+        AppAttestDemoView(runtime: runtime)
+    }
 }
