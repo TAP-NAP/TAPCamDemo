@@ -45,3 +45,6 @@ GoogleService-Info.plist
 
 # AppCode
 .idea/
+
+# Codex local environment
+.codex/
