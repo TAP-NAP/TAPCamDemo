@@ -19,7 +19,27 @@ struct AppAttestDemoView: View {
         NavigationStack {
             Form {
                 Section("Backend") {
-                    LabeledContent("Mode", value: viewModel.backendDescription)
+                    Picker("Backend", selection: $viewModel.selectedBackendMode) {
+                        ForEach(AppAttestDemoBackendMode.allCases) { mode in
+                            Text(mode.title).tag(mode)
+                        }
+                    }
+
+                    if viewModel.shouldShowHTTPSettings {
+                        TextField("Base URL", text: $viewModel.httpBaseURL)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .keyboardType(.URL)
+                    }
+
+                    Button {
+                        viewModel.applyBackendSelection()
+                    } label: {
+                        Label("Use Selected Backend", systemImage: "arrow.triangle.2.circlepath")
+                    }
+                    .disabled(viewModel.isWorking)
+
+                    LabeledContent("Active", value: viewModel.backendDescription)
                 }
 
                 Section {
@@ -29,41 +49,41 @@ struct AppAttestDemoView: View {
                 } header: {
                     Text("1. Credential")
                 } footer: {
-                    Text("This name is caller-defined. AppAttestKit only uses it to find and reuse the saved keyId.")
+                    Text("credentialName is caller-defined. Challenge is issued by the selected backend when Prepare Credential or Register New Key runs.")
                 }
 
                 Section {
                     Button {
                         viewModel.prepareIfNeeded()
                     } label: {
-                        Label("Ensure Attested", systemImage: "checkmark.seal")
+                        Label("Prepare Credential", systemImage: "checkmark.seal")
                     }
                     .disabled(viewModel.isWorking)
 
                     Button {
                         viewModel.prepare()
                     } label: {
-                        Label("Force New Attestation", systemImage: "key")
+                        Label("Register New Key", systemImage: "key")
                     }
                     .disabled(viewModel.isWorking)
 
                     Button {
                         viewModel.refreshStatus()
                     } label: {
-                        Label("Check Credential", systemImage: "waveform.path.ecg")
+                        Label("Check Status", systemImage: "waveform.path.ecg")
                     }
                     .disabled(viewModel.isWorking)
 
                     Button(role: .destructive) {
                         viewModel.reset()
                     } label: {
-                        Label("Reset", systemImage: "trash")
+                        Label("Reset Local Credential", systemImage: "trash")
                     }
                     .disabled(viewModel.isWorking)
                 } header: {
                     Text("2. Attestation")
                 } footer: {
-                    Text("Ensure Attested registers an App Attest public key with the backend and saves the returned keyId under this credential name.")
+                    Text("Prepare Credential reuses a saved keyId when possible. Register New Key always creates and registers a fresh App Attest key.")
                 }
 
                 Section {
@@ -80,13 +100,13 @@ struct AppAttestDemoView: View {
                     Button {
                         viewModel.generateAssertion()
                     } label: {
-                        Label("Generate Assertion", systemImage: "signature")
+                        Label("Sign Protected Request", systemImage: "signature")
                     }
                     .disabled(viewModel.isWorking)
                 } header: {
                     Text("3. Assertion")
                 } footer: {
-                    Text("Generate Assertion is called only for one protected API request. The returned headers are attached by the caller.")
+                    Text("Sign Protected Request generates assertion headers for this one method, path, and body.")
                 }
 
                 Section("Result") {

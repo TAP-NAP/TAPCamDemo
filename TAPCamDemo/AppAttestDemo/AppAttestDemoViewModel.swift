@@ -6,25 +6,46 @@
 import Combine
 import Foundation
 
+enum AppAttestDemoBackendMode: String, CaseIterable, Identifiable {
+    #if DEBUG
+    case mock
+    #endif
+    case http
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        #if DEBUG
+        case .mock:
+            "Mock Backend"
+        #endif
+        case .http:
+            "HTTP Backend"
+        }
+    }
+}
+
 @MainActor
 final class AppAttestDemoViewModel: ObservableObject {
-    @Published var credentialName = "demo:nearbycommunity"
+    @Published var selectedBackendMode: AppAttestDemoBackendMode
+    @Published var httpBaseURL = "https://example.com"
+    @Published var credentialName = "installation_keyid"
     @Published var requestMethod = "POST"
     @Published var requestPath = "/api/protected/demo"
     @Published var requestBody = #"{"demo":true}"#
-    @Published var statusText = "Step 1: enter a credential name.\nStep 2: run Ensure Attested to register an App Attest key.\nStep 3: generate an assertion for one protected request."
+    @Published var statusText = "Step 1: enter a credential name.\nStep 2: prepare the credential.\nStep 3: sign one protected request."
     @Published var headersText = ""
     @Published var debugJSON = ""
     @Published var attestationObjectDocument: AppAttestCBORDocument?
     @Published var isAttestationExporterPresented = false
     @Published private(set) var isWorking = false
+    @Published private(set) var backendDescription: String
 
-    let backendDescription: String
-
-    private let appAttest: any AppAttestClient
+    private var appAttest: any AppAttestClient
     private var activeOperationCount = 0
     #if DEBUG
-    private let debugBackend: MockDebugAppAttestBackend?
+    private var debugBackend: MockDebugAppAttestBackend?
     #endif
 
     init(runtime: AppAttestRuntime) {
@@ -32,7 +53,14 @@ final class AppAttestDemoViewModel: ObservableObject {
         self.backendDescription = runtime.backendDescription
         #if DEBUG
         self.debugBackend = runtime.debugBackend
+        self.selectedBackendMode = runtime.debugBackend == nil ? .http : .mock
+        #else
+        self.selectedBackendMode = .http
         #endif
+    }
+
+    var shouldShowHTTPSettings: Bool {
+        selectedBackendMode == .http
     }
 
     var isDebugExportAvailable: Bool {
@@ -43,30 +71,60 @@ final class AppAttestDemoViewModel: ObservableObject {
         #endif
     }
 
+    func applyBackendSelection() {
+        do {
+            let mode: AppAttestBackendMode
+            switch selectedBackendMode {
+            #if DEBUG
+            case .mock:
+                mode = .mockDebug
+            #endif
+            case .http:
+                guard let baseURL = URL(string: httpBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+                    throw AppAttestError.invalidConfiguration("HTTP Backend URL is invalid.")
+                }
+                mode = .http(baseURL: baseURL)
+            }
+
+            install(runtime: try AppAttestRuntimeFactory.make(mode: mode))
+            headersText = ""
+            debugJSON = ""
+            statusText = """
+            Backend changed.
+            \(backendDescription)
+            """
+        } catch {
+            install(runtime: AppAttestRuntimeFactory.fallbackRuntime(error: error))
+            statusText = "Backend configuration failed\n\(error.localizedDescription)"
+        }
+    }
+
     func prepare() {
-        runOperation("Force new attestation") {
+        runOperation("Register new key") {
             let credential = try await self.appAttest.prepare(credentialName: self.cleanedCredentialName())
             self.statusText = """
-            Attestation registered a new key.
+            Registered a new App Attest key.
             credentialName: \(credential.credentialName)
             keyId: \(credential.keyId)
+            \(try await self.latestChallengeText())
             """
         }
     }
 
     func prepareIfNeeded() {
-        runOperation("Ensure attested") {
+        runOperation("Prepare credential") {
             let credential = try await self.appAttest.prepareIfNeeded(credentialName: self.cleanedCredentialName())
             self.statusText = """
-            Credential is attested and ready.
+            Credential is ready.
             credentialName: \(credential.credentialName)
             keyId: \(credential.keyId)
+            \(try await self.latestChallengeText())
             """
         }
     }
 
     func generateAssertion() {
-        runOperation("Generate assertion") {
+        runOperation("Sign protected request") {
             let request = AppAttestProtectedRequest(
                 method: self.requestMethod,
                 path: self.cleanedRequestPath(),
@@ -80,7 +138,7 @@ final class AppAttestDemoViewModel: ObservableObject {
             try envelope.applyHeaders(to: &urlRequest)
             self.headersText = Self.formatHeaders(urlRequest.allHTTPHeaderFields ?? [:])
             self.statusText = """
-            Assertion generated for one request.
+            Protected request headers are ready.
             credentialName: \(envelope.credentialName)
             challengeId: \(envelope.challengeId)
             """
@@ -88,7 +146,7 @@ final class AppAttestDemoViewModel: ObservableObject {
     }
 
     func refreshStatus() {
-        runOperation("Check credential") {
+        runOperation("Check status") {
             let name = try self.cleanedCredentialName()
             let status = try await self.appAttest.status(credentialName: name)
             self.statusText = """
@@ -100,13 +158,13 @@ final class AppAttestDemoViewModel: ObservableObject {
     }
 
     func reset() {
-        runOperation("Reset") {
+        runOperation("Reset local credential") {
             let name = try self.cleanedCredentialName()
             try await self.appAttest.reset(credentialName: name)
             self.statusText = """
             Local credential metadata was reset.
             credentialName: \(name)
-            Run Ensure Attested before generating assertions again.
+            Run Prepare Credential before signing requests again.
             """
             self.headersText = ""
         }
@@ -172,6 +230,30 @@ final class AppAttestDemoViewModel: ObservableObject {
         components.host = "example.com"
         components.path = path
         return components.url ?? URL(string: "https://example.com/")!
+    }
+
+    private func install(runtime: AppAttestRuntime) {
+        appAttest = runtime.client
+        backendDescription = runtime.backendDescription
+        #if DEBUG
+        debugBackend = runtime.debugBackend
+        #endif
+    }
+
+    private func latestChallengeText() async throws -> String {
+        #if DEBUG
+        guard let debugBackend else {
+            return "challenge: issued by HTTP Backend"
+        }
+        let challenge = try await debugBackend.latestChallenge()
+        let challengeString = String(data: challenge.challenge, encoding: .utf8) ?? challenge.challenge.appAttestBase64URL
+        return """
+        challengeId: \(challenge.challengeId)
+        challenge: \(challengeString)
+        """
+        #else
+        return "challenge: issued by HTTP Backend"
+        #endif
     }
 
     private func runOperation(_ label: String, operation: @escaping () async throws -> Void) {

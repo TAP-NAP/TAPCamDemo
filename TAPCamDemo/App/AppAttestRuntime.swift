@@ -50,7 +50,7 @@ enum AppAttestRuntimeFactory {
                     deviceService: DCAppAttestDeviceService(),
                     environment: .development
                 ),
-                backendDescription: "Mock debug backend",
+                backendDescription: "Mock Backend",
                 debugBackend: backend
             )
         #endif
@@ -67,13 +67,13 @@ enum AppAttestRuntimeFactory {
             #if DEBUG
             return AppAttestRuntime(
                 client: client,
-                backendDescription: "HTTP backend: \(baseURL.absoluteString)",
+                backendDescription: "HTTP Backend: \(baseURL.absoluteString)",
                 debugBackend: nil
             )
             #else
             return AppAttestRuntime(
                 client: client,
-                backendDescription: "HTTP backend: \(baseURL.absoluteString)"
+                backendDescription: "HTTP Backend: \(baseURL.absoluteString)"
             )
             #endif
         }

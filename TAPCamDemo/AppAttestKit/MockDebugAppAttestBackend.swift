@@ -100,13 +100,24 @@ public actor MockDebugAppAttestBackend: AppAttestBackend {
     public func latestAttestationObjectBase64URL() throws -> String {
         try latestAttestationObject().appAttestBase64URL
     }
+
+    /// Returns the most recent challenge issued by this mock backend.
+    public func latestChallenge() throws -> AppAttestDebugChallengeRecord {
+        guard let challenge = challenges.last else {
+            throw AppAttestDebugExportError.noChallenge
+        }
+        return challenge
+    }
 }
 
 public nonisolated enum AppAttestDebugExportError: Error, LocalizedError {
+    case noChallenge
     case noAttestationObject
 
     public var errorDescription: String? {
         switch self {
+        case .noChallenge:
+            return "No challenge has been generated yet. Run Prepare Credential first."
         case .noAttestationObject:
             return "No attestationObject has been generated yet. Run attestation first."
         }
@@ -258,7 +269,7 @@ public nonisolated struct AppAttestDebugAssertionRecord: Encodable, Hashable {
     }
 }
 
-private extension String {
+private nonisolated extension String {
     func chunkedForPEM() -> [String] {
         var chunks: [String] = []
         var index = startIndex
