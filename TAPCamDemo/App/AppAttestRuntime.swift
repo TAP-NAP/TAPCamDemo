@@ -5,18 +5,25 @@
 
 import Foundation
 
+enum AppAttestBackendMode: Hashable {
+    case http(baseURL: URL)
+    #if DEBUG
+    case mockDebug
+    #endif
+}
+
 struct AppAttestRuntime {
     let client: any AppAttestClient
     let backendDescription: String
     #if DEBUG
-    let debugBackend: LocalDebugAppAttestBackend?
+    let debugBackend: MockDebugAppAttestBackend?
     #endif
 
     #if DEBUG
     init(
         client: any AppAttestClient,
         backendDescription: String,
-        debugBackend: LocalDebugAppAttestBackend? = nil
+        debugBackend: MockDebugAppAttestBackend? = nil
     ) {
         self.client = client
         self.backendDescription = backendDescription
@@ -31,10 +38,11 @@ struct AppAttestRuntime {
 }
 
 enum AppAttestRuntimeFactory {
-    static func make(baseURL: URL = AppAttestRuntimeDefaults.baseURL) throws -> AppAttestRuntime {
+    static func make(mode: AppAttestBackendMode = AppAttestRuntimeDefaults.mode) throws -> AppAttestRuntime {
+        switch mode {
         #if DEBUG
-        if HTTPAppAttestBackend.isForbiddenReleaseHost(baseURL) {
-            let backend = LocalDebugAppAttestBackend()
+        case .mockDebug:
+            let backend = MockDebugAppAttestBackend()
             return AppAttestRuntime(
                 client: DefaultAppAttestClient(
                     backend: backend,
@@ -42,32 +50,33 @@ enum AppAttestRuntimeFactory {
                     deviceService: DCAppAttestDeviceService(),
                     environment: .development
                 ),
-                backendDescription: "Local debug backend",
+                backendDescription: "Mock debug backend",
                 debugBackend: backend
             )
+        #endif
+
+        case .http(let baseURL):
+            let backend = try HTTPAppAttestBackend(baseURL: baseURL)
+            let client = DefaultAppAttestClient(
+                backend: backend,
+                credentialStore: KeychainAppAttestCredentialStore(),
+                deviceService: DCAppAttestDeviceService(),
+                environment: .production
+            )
+
+            #if DEBUG
+            return AppAttestRuntime(
+                client: client,
+                backendDescription: "HTTP backend: \(baseURL.absoluteString)",
+                debugBackend: nil
+            )
+            #else
+            return AppAttestRuntime(
+                client: client,
+                backendDescription: "HTTP backend: \(baseURL.absoluteString)"
+            )
+            #endif
         }
-        #endif
-
-        let backend = try HTTPAppAttestBackend(baseURL: baseURL)
-        let client = DefaultAppAttestClient(
-            backend: backend,
-            credentialStore: KeychainAppAttestCredentialStore(),
-            deviceService: DCAppAttestDeviceService(),
-            environment: .production
-        )
-
-        #if DEBUG
-        return AppAttestRuntime(
-            client: client,
-            backendDescription: "HTTP backend: \(baseURL.absoluteString)",
-            debugBackend: nil
-        )
-        #else
-        return AppAttestRuntime(
-            client: client,
-            backendDescription: "HTTP backend: \(baseURL.absoluteString)"
-        )
-        #endif
     }
 
     static func fallbackRuntime(error: Error) -> AppAttestRuntime {
@@ -87,11 +96,11 @@ enum AppAttestRuntimeFactory {
 }
 
 enum AppAttestRuntimeDefaults {
-    static var baseURL: URL {
+    static var mode: AppAttestBackendMode {
         #if DEBUG
-        return URL(string: "http://localhost:8080")!
+        .mockDebug
         #else
-        return URL(string: "https://example.com")!
+        .http(baseURL: URL(string: "https://example.com")!)
         #endif
     }
 }
@@ -103,26 +112,26 @@ private actor UnavailableAppAttestClient: AppAttestClient {
         self.error = error
     }
 
-    func prepare(subject: AppAttestSubject) async throws -> AppAttestCredential {
+    func prepare(credentialName: String) async throws -> AppAttestCredential {
         throw error
     }
 
-    func prepareIfNeeded(subject: AppAttestSubject) async throws -> AppAttestCredential {
+    func prepareIfNeeded(credentialName: String) async throws -> AppAttestCredential {
         throw error
     }
 
     func generateAssertion(
-        subject: AppAttestSubject,
+        credentialName: String,
         request: AppAttestProtectedRequest
     ) async throws -> AppAttestAssertionEnvelope {
         throw error
     }
 
-    func status(subject: AppAttestSubject) async throws -> AppAttestCredentialStatus {
+    func status(credentialName: String) async throws -> AppAttestCredentialStatus {
         throw error
     }
 
-    func reset(subject: AppAttestSubject) async throws {
+    func reset(credentialName: String) async throws {
         throw error
     }
 }

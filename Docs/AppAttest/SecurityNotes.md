@@ -15,25 +15,38 @@ is trustworthy by itself.
 
 The backend must validate attestation and assertion results.
 
-## Why Keychain Is Used
+## Why Keychain Stores keyId
 
-The App Attest private key is not stored by this app. Apple keeps it inside the
+The App Attest private key is not stored by this app. Apple keeps it inside
 system-protected key material and gives the app a `keyId` handle.
 
 The Keychain store saves:
 
 ```text
-subject -> keyId / credentialId / status / environment / createdAt
+credentialName -> keyId / credentialId / status / environment / createdAt / updatedAt
 ```
 
-If `keyId` is lost, the app cannot use the previously registered key and must
-register a new one. Keychain is used because this metadata is security-sensitive
-credential state, not ordinary user preference data.
+`keyId` is required later by `DCAppAttestService.generateAssertion`. If it is
+lost after app restart, the app cannot use the previously registered key and
+must run attestation again. That would create unnecessary backend credential
+records and makes each app duplicate the same credential lifecycle code.
+
+Keychain stores only credential metadata. It does not store the App Attest
+private key.
+
+## Credential Names Are Not Trust Claims
+
+`credentialName` is caller-defined. The kit does not know whether it contains an
+install ID, user ID, tenant ID, or session ID. Prefer opaque backend IDs or
+hashed stable IDs instead of raw PII.
+
+The backend must decide whether a given credential name is allowed for the
+current authenticated account or business action.
 
 ## Challenge And Replay Protection
 
 Production challenges must come from the backend, be short lived, and be
-single-use. The backend must bind each challenge to its purpose and subject.
+single-use. The backend must bind each challenge to purpose and credential name.
 
 Assertions bind the challenge to method, path, query, body hash, and optional
 nonce so an assertion for one request cannot be replayed as another request.
@@ -44,7 +57,7 @@ nonce so an assertion for one request cannot be replayed as another request.
 `AppAttestError.unsupportedDevice`; the app and backend must decide whether to
 degrade, retry later, or block the action.
 
-## Local Debug Is Not Security
+## Mock Debug Is Not Security
 
-`LocalDebugAppAttestBackend` is for object generation and export only. It does
+`MockDebugAppAttestBackend` is for object generation and export only. It does
 not replace server validation and cannot appear in Release builds.

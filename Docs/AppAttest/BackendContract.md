@@ -30,8 +30,7 @@ Request:
 ```json
 {
   "purpose": "attestation",
-  "subjectType": "install",
-  "subjectId": "install-id"
+  "credentialName": "install:install-id"
 }
 ```
 
@@ -45,8 +44,8 @@ Response:
 }
 ```
 
-The server must bind every challenge to purpose, subject, expiry, and one-time
-use state.
+The server must bind every challenge to purpose, credential name, expiry, and
+one-time use state.
 
 ## Attestation Endpoint
 
@@ -56,8 +55,7 @@ Request:
 
 ```json
 {
-  "subjectType": "user",
-  "subjectId": "user-id",
+  "credentialName": "user:user-id",
   "keyId": "apple-key-id",
   "challengeId": "server-challenge-id",
   "attestationObject": "base64url-attestation-object"
@@ -81,8 +79,7 @@ challenge, public key, and initial sign counter before returning `accepted`.
 The caller applies assertion metadata only to APIs that need App Attest:
 
 ```text
-X-App-Attest-Subject-Type
-X-App-Attest-Subject-Id
+X-App-Attest-Credential-Name
 X-App-Attest-Key-Id
 X-App-Attest-Challenge-Id
 X-App-Attest-Assertion
@@ -90,5 +87,6 @@ X-App-Attest-Request-Binding
 ```
 
 The server verifies the assertion signature with the registered public key,
-checks the sign counter, confirms the challenge is valid and unused, and
-recomputes the request binding.
+checks the sign counter, confirms the challenge is valid and unused, confirms
+the credential name matches the registered key, and recomputes the request
+binding.

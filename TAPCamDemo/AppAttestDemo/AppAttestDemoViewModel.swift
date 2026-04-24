@@ -8,23 +8,23 @@ import Foundation
 
 @MainActor
 final class AppAttestDemoViewModel: ObservableObject {
-    @Published var subjectType = "demo"
-    @Published var subjectId = "caller-owned-subject-id"
+    @Published var credentialName = "demo:nearbycommunity"
     @Published var requestMethod = "POST"
     @Published var requestPath = "/api/protected/demo"
     @Published var requestBody = #"{"demo":true}"#
-    @Published var statusText = "Step 1: enter a backend credential scope.\nStep 2: run Ensure Attested to register an App Attest key.\nStep 3: generate an assertion for one protected request."
+    @Published var statusText = "Step 1: enter a credential name.\nStep 2: run Ensure Attested to register an App Attest key.\nStep 3: generate an assertion for one protected request."
     @Published var headersText = ""
     @Published var debugJSON = ""
     @Published var attestationObjectDocument: AppAttestCBORDocument?
     @Published var isAttestationExporterPresented = false
-    @Published var isWorking = false
+    @Published private(set) var isWorking = false
 
     let backendDescription: String
 
     private let appAttest: any AppAttestClient
+    private var activeOperationCount = 0
     #if DEBUG
-    private let debugBackend: LocalDebugAppAttestBackend?
+    private let debugBackend: MockDebugAppAttestBackend?
     #endif
 
     init(runtime: AppAttestRuntime) {
@@ -45,10 +45,10 @@ final class AppAttestDemoViewModel: ObservableObject {
 
     func prepare() {
         runOperation("Force new attestation") {
-            let credential = try await self.appAttest.prepare(subject: self.currentSubject())
+            let credential = try await self.appAttest.prepare(credentialName: self.cleanedCredentialName())
             self.statusText = """
             Attestation registered a new key.
-            subject: \(credential.subject.type):\(credential.subject.id)
+            credentialName: \(credential.credentialName)
             keyId: \(credential.keyId)
             """
         }
@@ -56,10 +56,10 @@ final class AppAttestDemoViewModel: ObservableObject {
 
     func prepareIfNeeded() {
         runOperation("Ensure attested") {
-            let credential = try await self.appAttest.prepareIfNeeded(subject: self.currentSubject())
+            let credential = try await self.appAttest.prepareIfNeeded(credentialName: self.cleanedCredentialName())
             self.statusText = """
-            Subject is attested and ready.
-            subject: \(credential.subject.type):\(credential.subject.id)
+            Credential is attested and ready.
+            credentialName: \(credential.credentialName)
             keyId: \(credential.keyId)
             """
         }
@@ -69,19 +69,19 @@ final class AppAttestDemoViewModel: ObservableObject {
         runOperation("Generate assertion") {
             let request = AppAttestProtectedRequest(
                 method: self.requestMethod,
-                path: self.requestPath,
+                path: self.cleanedRequestPath(),
                 body: Data(self.requestBody.utf8)
             )
             let envelope = try await self.appAttest.generateAssertion(
-                subject: self.currentSubject(),
+                credentialName: self.cleanedCredentialName(),
                 request: request
             )
-            var urlRequest = URLRequest(url: URL(string: "https://example.com\(self.requestPath)")!)
+            var urlRequest = URLRequest(url: self.demoURL(path: request.path))
             try envelope.applyHeaders(to: &urlRequest)
             self.headersText = Self.formatHeaders(urlRequest.allHTTPHeaderFields ?? [:])
             self.statusText = """
             Assertion generated for one request.
-            subject: \(envelope.subject.type):\(envelope.subject.id)
+            credentialName: \(envelope.credentialName)
             challengeId: \(envelope.challengeId)
             """
         }
@@ -89,10 +89,11 @@ final class AppAttestDemoViewModel: ObservableObject {
 
     func refreshStatus() {
         runOperation("Check credential") {
-            let status = try await self.appAttest.status(subject: self.currentSubject())
+            let name = try self.cleanedCredentialName()
+            let status = try await self.appAttest.status(credentialName: name)
             self.statusText = """
-            Credential status for selected subject:
-            subject: \(self.currentSubject().type):\(self.currentSubject().id)
+            Credential status:
+            credentialName: \(name)
             status: \(status.rawValue)
             """
         }
@@ -100,10 +101,11 @@ final class AppAttestDemoViewModel: ObservableObject {
 
     func reset() {
         runOperation("Reset") {
-            try await self.appAttest.reset(subject: self.currentSubject())
+            let name = try self.cleanedCredentialName()
+            try await self.appAttest.reset(credentialName: name)
             self.statusText = """
             Local credential metadata was reset.
-            subject: \(self.currentSubject().type):\(self.currentSubject().id)
+            credentialName: \(name)
             Run Ensure Attested before generating assertions again.
             """
             self.headersText = ""
@@ -113,7 +115,7 @@ final class AppAttestDemoViewModel: ObservableObject {
     func exportDebugJSON() {
         #if DEBUG
         guard let debugBackend else {
-            debugJSON = "No DEBUG local backend is active."
+            debugJSON = "No DEBUG mock backend is active."
             return
         }
 
@@ -135,7 +137,7 @@ final class AppAttestDemoViewModel: ObservableObject {
     func saveAttestationObject() {
         #if DEBUG
         guard let debugBackend else {
-            statusText = "No DEBUG local backend is active."
+            statusText = "No DEBUG mock backend is active."
             return
         }
 
@@ -148,21 +150,46 @@ final class AppAttestDemoViewModel: ObservableObject {
         #endif
     }
 
-    private func currentSubject() -> AppAttestSubject {
-        AppAttestSubject(type: subjectType, id: subjectId)
+    private func cleanedCredentialName() throws -> String {
+        let name = credentialName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else {
+            throw AppAttestError.invalidConfiguration("credentialName cannot be empty.")
+        }
+        return name
+    }
+
+    private func cleanedRequestPath() -> String {
+        let path = requestPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        if path.isEmpty {
+            return "/"
+        }
+        return path.hasPrefix("/") ? path : "/\(path)"
+    }
+
+    private func demoURL(path: String) -> URL {
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "example.com"
+        components.path = path
+        return components.url ?? URL(string: "https://example.com/")!
     }
 
     private func runOperation(_ label: String, operation: @escaping () async throws -> Void) {
-        isWorking = true
+        activeOperationCount += 1
+        isWorking = activeOperationCount > 0
         statusText = "\(label)..."
 
         Task {
+            defer {
+                activeOperationCount -= 1
+                isWorking = activeOperationCount > 0
+            }
+
             do {
                 try await operation()
             } catch {
                 statusText = "\(label) failed\n\(error.localizedDescription)"
             }
-            isWorking = false
         }
     }
 

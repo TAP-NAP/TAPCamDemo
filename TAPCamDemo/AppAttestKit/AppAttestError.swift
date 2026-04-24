@@ -16,8 +16,7 @@ public nonisolated enum AppAttestError: Error, Equatable, LocalizedError {
     case challengeRejected(String)
     case attestationRejected(String)
     case assertionRejected(String)
-    case credentialMissing(AppAttestSubject)
-    case credentialStale(AppAttestSubject)
+    case credentialMissing(String)
     case keychain(status: OSStatus)
     case releaseLocalBackendForbidden(String)
 
@@ -39,10 +38,8 @@ public nonisolated enum AppAttestError: Error, Equatable, LocalizedError {
             return "The App Attest registration was rejected: \(message)"
         case .assertionRejected(let message):
             return "The App Attest assertion was rejected: \(message)"
-        case .credentialMissing(let subject):
-            return "No App Attest credential exists for \(subject.type):\(subject.id)."
-        case .credentialStale(let subject):
-            return "The App Attest credential is stale for \(subject.type):\(subject.id)."
+        case .credentialMissing(let credentialName):
+            return "No App Attest credential exists for \(credentialName). Run prepareIfNeeded first."
         case .keychain(let status):
             return "Keychain operation failed with status \(status)."
         case .releaseLocalBackendForbidden(let message):

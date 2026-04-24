@@ -8,18 +8,7 @@ import Testing
 @testable import TAPCamDemo
 
 struct AppAttestKitTests {
-    @Test func subjectCodableKeepsTypeAndId() throws {
-        let subject = AppAttestSubject(type: "tenantUser", id: "tenant-1:user-2")
-        let data = try JSONEncoder.appAttestCanonical.encode(subject)
-        let decoded = try JSONDecoder.appAttestDefault.decode(AppAttestSubject.self, from: data)
-
-        #expect(decoded == subject)
-        #expect(decoded.type == "tenantUser")
-        #expect(decoded.id == "tenant-1:user-2")
-    }
-
     @Test func prepareStoresCredentialOnlyAfterBackendAccepts() async throws {
-        let subject = AppAttestSubject(type: "install", id: "install-1")
         let store = InMemoryCredentialStore()
         let backend = MockAppAttestBackend()
         let deviceService = MockAppAttestDeviceService()
@@ -30,10 +19,10 @@ struct AppAttestKitTests {
             environment: .development
         )
 
-        let credential = try await client.prepare(subject: subject)
-        let stored = try await store.credential(for: subject)
+        let credential = try await client.prepare(credentialName: "install:install-1")
+        let stored = try await store.credential(named: "install:install-1")
 
-        #expect(credential.subject == subject)
+        #expect(credential.credentialName == "install:install-1")
         #expect(stored?.keyId == "mock-key-id")
         #expect(await backend.challengeRequests.map(\.purpose) == [.attestation])
         #expect(await backend.registrationRequests.count == 1)
@@ -42,10 +31,9 @@ struct AppAttestKitTests {
     }
 
     @Test func prepareIfNeededReusesExistingCredential() async throws {
-        let subject = AppAttestSubject(type: "user", id: "user-1")
         let now = Date()
         let existing = AppAttestCredential(
-            subject: subject,
+            credentialName: "user:user-1",
             keyId: "existing-key",
             credentialId: "server-existing-key",
             status: .ready,
@@ -64,20 +52,18 @@ struct AppAttestKitTests {
             environment: .production
         )
 
-        let credential = try await client.prepareIfNeeded(subject: subject)
+        let credential = try await client.prepareIfNeeded(credentialName: "user:user-1")
 
         #expect(credential.keyId == "existing-key")
         #expect(await backend.challengeRequests.isEmpty)
     }
 
-    @Test func resetOnlyDeletesSelectedSubject() async throws {
-        let install = AppAttestSubject(type: "install", id: "install-1")
-        let user = AppAttestSubject(type: "user", id: "user-1")
+    @Test func resetOnlyDeletesSelectedCredentialName() async throws {
         let now = Date()
         let store = InMemoryCredentialStore()
         try await store.save(
             AppAttestCredential(
-                subject: install,
+                credentialName: "install:install-1",
                 keyId: "install-key",
                 credentialId: nil,
                 status: .ready,
@@ -88,7 +74,7 @@ struct AppAttestKitTests {
         )
         try await store.save(
             AppAttestCredential(
-                subject: user,
+                credentialName: "user:user-1",
                 keyId: "user-key",
                 credentialId: nil,
                 status: .ready,
@@ -105,19 +91,18 @@ struct AppAttestKitTests {
             environment: .development
         )
 
-        try await client.reset(subject: install)
+        try await client.reset(credentialName: "install:install-1")
 
-        #expect(try await store.credential(for: install) == nil)
-        #expect(try await store.credential(for: user)?.keyId == "user-key")
+        #expect(try await store.credential(named: "install:install-1") == nil)
+        #expect(try await store.credential(named: "user:user-1")?.keyId == "user-key")
     }
 
-    @Test func assertionUsesBackendChallengeAndRecordsEnvelope() async throws {
-        let subject = AppAttestSubject(type: "user", id: "user-1")
+    @Test func assertionUsesBackendChallengeAndCredentialNameHeader() async throws {
         let store = InMemoryCredentialStore()
         let now = Date()
         try await store.save(
             AppAttestCredential(
-                subject: subject,
+                credentialName: "user:user-1",
                 keyId: "stored-key",
                 credentialId: nil,
                 status: .ready,
@@ -137,7 +122,7 @@ struct AppAttestKitTests {
         )
 
         let envelope = try await client.generateAssertion(
-            subject: subject,
+            credentialName: "user:user-1",
             request: AppAttestProtectedRequest(
                 method: "POST",
                 path: "/api/protected",
@@ -145,10 +130,35 @@ struct AppAttestKitTests {
             )
         )
 
+        var urlRequest = URLRequest(url: URL(string: "https://example.com/api/protected")!)
+        try envelope.applyHeaders(to: &urlRequest)
+
         #expect(envelope.keyId == "stored-key")
+        #expect(urlRequest.value(forHTTPHeaderField: "X-App-Attest-Credential-Name") == "user:user-1")
+        #expect(urlRequest.value(forHTTPHeaderField: "X-App-Attest-Subject-Type") == nil)
+        #expect(urlRequest.value(forHTTPHeaderField: "X-App-Attest-Subject-Id") == nil)
         #expect(await backend.challengeRequests.map(\.purpose) == [.assertion])
         #expect(await backend.assertionRecords.count == 1)
         #expect(deviceService.assertedKeyId == "stored-key")
+    }
+
+    @Test func generateAssertionFailsWithoutPreparedCredential() async throws {
+        let client = DefaultAppAttestClient(
+            backend: MockAppAttestBackend(),
+            credentialStore: InMemoryCredentialStore(),
+            deviceService: MockAppAttestDeviceService(),
+            environment: .development
+        )
+
+        do {
+            _ = try await client.generateAssertion(
+                credentialName: "missing",
+                request: AppAttestProtectedRequest(method: "GET", path: "/protected")
+            )
+            Issue.record("Expected missing credential error.")
+        } catch AppAttestError.credentialMissing(let credentialName) {
+            #expect(credentialName == "missing")
+        }
     }
 
     @Test func requestBindingChangesWhenBodyChanges() throws {
@@ -175,15 +185,19 @@ struct AppAttestKitTests {
     }
 
     #if DEBUG
-    @Test func localDebugBackendExportsGeneratedObjects() async throws {
-        let backend = LocalDebugAppAttestBackend()
-        let subject = AppAttestSubject(type: "install", id: "install-1")
+    @Test func mockDebugBackendUsesFixedChallengeAndExportsGeneratedObjects() async throws {
+        let backend = MockDebugAppAttestBackend()
         let challenge = try await backend.requestChallenge(
-            AppAttestChallengeRequest(purpose: .attestation, subject: subject)
+            AppAttestChallengeRequest(purpose: .attestation, credentialName: "demo:nearbycommunity")
         )
+
+        #expect(challenge.challengeId == "nearbycommunity")
+        #expect(String(data: challenge.challenge, encoding: .utf8) == "nearbycommunity")
+        #expect(challenge.expiresAt == nil)
+
         _ = try await backend.registerAttestation(
             AppAttestRegistrationRequest(
-                subject: subject,
+                credentialName: "demo:nearbycommunity",
                 keyId: "debug-key",
                 challengeId: challenge.challengeId,
                 attestationObject: Data("attestation".utf8)
@@ -191,7 +205,7 @@ struct AppAttestKitTests {
         )
         await backend.recordAssertionResult(
             AppAttestAssertionRecord(
-                subject: subject,
+                credentialName: "demo:nearbycommunity",
                 keyId: "debug-key",
                 challengeId: challenge.challengeId,
                 assertionObject: Data("assertion".utf8),
@@ -208,23 +222,26 @@ struct AppAttestKitTests {
         #expect(json.contains("attestationObject"))
         #expect(json.contains("assertionObject"))
         #expect(json.contains("debug-key"))
+        #expect(json.contains("credentialName"))
+        #expect(!json.contains("subjectType"))
+        #expect(try await backend.latestAttestationObject() == Data("attestation".utf8))
     }
     #endif
 }
 
 private actor InMemoryCredentialStore: AppAttestCredentialStore {
-    private var credentials: [AppAttestSubject: AppAttestCredential] = [:]
+    private var credentials: [String: AppAttestCredential] = [:]
 
-    func credential(for subject: AppAttestSubject) async throws -> AppAttestCredential? {
-        credentials[subject]
+    func credential(named credentialName: String) async throws -> AppAttestCredential? {
+        credentials[credentialName]
     }
 
     func save(_ credential: AppAttestCredential) async throws {
-        credentials[credential.subject] = credential
+        credentials[credential.credentialName] = credential
     }
 
-    func delete(subject: AppAttestSubject) async throws {
-        credentials.removeValue(forKey: subject)
+    func delete(credentialName: String) async throws {
+        credentials.removeValue(forKey: credentialName)
     }
 }
 

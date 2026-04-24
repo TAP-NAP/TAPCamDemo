@@ -34,8 +34,13 @@ public nonisolated enum AppAttestServerCredentialStatus: String, Codable, Hashab
     case unknown
 }
 
+/// Locally stored metadata for a generated App Attest key.
+///
+/// `credentialName` is caller-defined. AppAttestKit only uses it to find and
+/// reuse the saved keyId; it does not interpret user, install, tenant, or
+/// session identity.
 public nonisolated struct AppAttestCredential: Codable, Hashable {
-    public let subject: AppAttestSubject
+    public let credentialName: String
     public let keyId: String
     public let credentialId: String?
     public let status: AppAttestCredentialStatus
@@ -44,7 +49,7 @@ public nonisolated struct AppAttestCredential: Codable, Hashable {
     public let updatedAt: Date
 
     public init(
-        subject: AppAttestSubject,
+        credentialName: String,
         keyId: String,
         credentialId: String?,
         status: AppAttestCredentialStatus,
@@ -52,7 +57,7 @@ public nonisolated struct AppAttestCredential: Codable, Hashable {
         createdAt: Date,
         updatedAt: Date
     ) {
-        self.subject = subject
+        self.credentialName = credentialName
         self.keyId = keyId
         self.credentialId = credentialId
         self.status = status
@@ -64,34 +69,11 @@ public nonisolated struct AppAttestCredential: Codable, Hashable {
 
 public nonisolated struct AppAttestChallengeRequest: Codable, Hashable {
     public let purpose: AppAttestPurpose
-    public let subject: AppAttestSubject
+    public let credentialName: String
 
-    public init(purpose: AppAttestPurpose, subject: AppAttestSubject) {
+    public init(purpose: AppAttestPurpose, credentialName: String) {
         self.purpose = purpose
-        self.subject = subject
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case purpose
-        case subjectType
-        case subjectId
-    }
-
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        let type = try container.decode(String.self, forKey: .subjectType)
-        let id = try container.decode(String.self, forKey: .subjectId)
-        self.init(
-            purpose: try container.decode(AppAttestPurpose.self, forKey: .purpose),
-            subject: AppAttestSubject(type: type, id: id)
-        )
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(purpose, forKey: .purpose)
-        try container.encode(subject.type, forKey: .subjectType)
-        try container.encode(subject.id, forKey: .subjectId)
+        self.credentialName = credentialName
     }
 }
 
@@ -131,26 +113,25 @@ public nonisolated struct AppAttestChallenge: Codable, Hashable {
 }
 
 public nonisolated struct AppAttestRegistrationRequest: Encodable, Hashable {
-    public let subject: AppAttestSubject
+    public let credentialName: String
     public let keyId: String
     public let challengeId: String
     public let attestationObject: Data
 
     public init(
-        subject: AppAttestSubject,
+        credentialName: String,
         keyId: String,
         challengeId: String,
         attestationObject: Data
     ) {
-        self.subject = subject
+        self.credentialName = credentialName
         self.keyId = keyId
         self.challengeId = challengeId
         self.attestationObject = attestationObject
     }
 
     private enum CodingKeys: String, CodingKey {
-        case subjectType
-        case subjectId
+        case credentialName
         case keyId
         case challengeId
         case attestationObject
@@ -158,8 +139,7 @@ public nonisolated struct AppAttestRegistrationRequest: Encodable, Hashable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(subject.type, forKey: .subjectType)
-        try container.encode(subject.id, forKey: .subjectId)
+        try container.encode(credentialName, forKey: .credentialName)
         try container.encode(keyId, forKey: .keyId)
         try container.encode(challengeId, forKey: .challengeId)
         try container.encode(attestationObject.appAttestBase64URL, forKey: .attestationObject)
@@ -177,11 +157,11 @@ public nonisolated struct AppAttestRegistrationResult: Codable, Hashable {
 }
 
 public nonisolated struct AppAttestCredentialStatusRequest: Codable, Hashable {
-    public let subject: AppAttestSubject
+    public let credentialName: String
     public let keyId: String?
 
-    public init(subject: AppAttestSubject, keyId: String?) {
-        self.subject = subject
+    public init(credentialName: String, keyId: String?) {
+        self.credentialName = credentialName
         self.keyId = keyId
     }
 }
@@ -250,8 +230,7 @@ public nonisolated struct AppAttestRequestBinding: Codable, Hashable {
     public let nonce: String?
 
     public func canonicalData() throws -> Data {
-        let encoder = JSONEncoder.appAttestCanonical
-        return try encoder.encode(self)
+        try JSONEncoder.appAttestCanonical.encode(self)
     }
 
     public func clientDataHash() throws -> Data {
@@ -264,20 +243,20 @@ public nonisolated struct AppAttestRequestBinding: Codable, Hashable {
 }
 
 public nonisolated struct AppAttestAssertionEnvelope: Encodable, Hashable {
-    public let subject: AppAttestSubject
+    public let credentialName: String
     public let keyId: String
     public let challengeId: String
     public let assertionObject: Data
     public let requestBinding: AppAttestRequestBinding
 
     public init(
-        subject: AppAttestSubject,
+        credentialName: String,
         keyId: String,
         challengeId: String,
         assertionObject: Data,
         requestBinding: AppAttestRequestBinding
     ) {
-        self.subject = subject
+        self.credentialName = credentialName
         self.keyId = keyId
         self.challengeId = challengeId
         self.assertionObject = assertionObject
@@ -285,8 +264,7 @@ public nonisolated struct AppAttestAssertionEnvelope: Encodable, Hashable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case subjectType
-        case subjectId
+        case credentialName
         case keyId
         case challengeId
         case assertionObject
@@ -295,8 +273,7 @@ public nonisolated struct AppAttestAssertionEnvelope: Encodable, Hashable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(subject.type, forKey: .subjectType)
-        try container.encode(subject.id, forKey: .subjectId)
+        try container.encode(credentialName, forKey: .credentialName)
         try container.encode(keyId, forKey: .keyId)
         try container.encode(challengeId, forKey: .challengeId)
         try container.encode(assertionObject.appAttestBase64URL, forKey: .assertionObject)
@@ -308,8 +285,7 @@ public nonisolated struct AppAttestAssertionEnvelope: Encodable, Hashable {
     /// The kit never intercepts requests automatically; callers opt in by
     /// applying this envelope only to APIs that should be protected.
     public func applyHeaders(to request: inout URLRequest) throws {
-        request.setValue(subject.type, forHTTPHeaderField: "X-App-Attest-Subject-Type")
-        request.setValue(subject.id, forHTTPHeaderField: "X-App-Attest-Subject-Id")
+        request.setValue(credentialName, forHTTPHeaderField: "X-App-Attest-Credential-Name")
         request.setValue(keyId, forHTTPHeaderField: "X-App-Attest-Key-Id")
         request.setValue(challengeId, forHTTPHeaderField: "X-App-Attest-Challenge-Id")
         request.setValue(assertionObject.appAttestBase64URL, forHTTPHeaderField: "X-App-Attest-Assertion")
@@ -318,7 +294,7 @@ public nonisolated struct AppAttestAssertionEnvelope: Encodable, Hashable {
 }
 
 public nonisolated struct AppAttestAssertionRecord: Encodable, Hashable {
-    public let subject: AppAttestSubject
+    public let credentialName: String
     public let keyId: String
     public let challengeId: String
     public let assertionObject: Data
@@ -326,14 +302,14 @@ public nonisolated struct AppAttestAssertionRecord: Encodable, Hashable {
     public let createdAt: Date
 
     public init(
-        subject: AppAttestSubject,
+        credentialName: String,
         keyId: String,
         challengeId: String,
         assertionObject: Data,
         requestBinding: AppAttestRequestBinding,
         createdAt: Date
     ) {
-        self.subject = subject
+        self.credentialName = credentialName
         self.keyId = keyId
         self.challengeId = challengeId
         self.assertionObject = assertionObject
@@ -342,7 +318,7 @@ public nonisolated struct AppAttestAssertionRecord: Encodable, Hashable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case subject
+        case credentialName
         case keyId
         case challengeId
         case assertionObject
@@ -352,7 +328,7 @@ public nonisolated struct AppAttestAssertionRecord: Encodable, Hashable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(subject, forKey: .subject)
+        try container.encode(credentialName, forKey: .credentialName)
         try container.encode(keyId, forKey: .keyId)
         try container.encode(challengeId, forKey: .challengeId)
         try container.encode(assertionObject.appAttestBase64URL, forKey: .assertionObject)

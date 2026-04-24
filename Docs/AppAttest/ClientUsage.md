@@ -2,43 +2,44 @@
 
 Source links:
 
-- [AppAttestSubject](../../TAPCamDemo/AppAttestKit/AppAttestSubject.swift)
 - [AppAttestClient protocol](../../TAPCamDemo/AppAttestKit/AppAttestProtocols.swift)
 - [DefaultAppAttestClient](../../TAPCamDemo/AppAttestKit/DefaultAppAttestClient.swift)
 - [AppAttestProtectedRequest and AppAttestAssertionEnvelope](../../TAPCamDemo/AppAttestKit/AppAttestModels.swift)
 - [TAPCamDemo view model example](../../TAPCamDemo/AppAttestDemo/AppAttestDemoViewModel.swift)
 
-## Create Subjects
+## Choose A Credential Name
 
 ```swift
-let installSubject = AppAttestSubject(type: "install", id: callerManagedInstallId)
-let userSubject = AppAttestSubject(type: "user", id: callerManagedUserId)
-let tenantSubject = AppAttestSubject(type: "tenantUser", id: "\(tenantId):\(userId)")
+let installCredentialName = "install:\(callerManagedInstallId)"
+let userCredentialName = "user:\(callerManagedUserId)"
+let tenantCredentialName = "tenant:\(tenantId):user:\(userId)"
 ```
 
-`AppAttestSubject` is a backend-defined credential scope, not something Apple
-attests. The kit does not create install IDs, read login state, know user IDs,
-or choose a strategy. Callers decide what `type` and `id` mean before calling
-AppAttestKit.
+`credentialName` is a caller-owned name for one App Attest credential. The kit
+does not know whether it represents an install, user, tenant, or session. See
+[CredentialNameGuide.md](CredentialNameGuide.md) for recommended patterns.
 
 ## Register A Key
 
 ```swift
-let credential = try await appAttest.prepare(subject: installSubject)
+let credential = try await appAttest.prepare(
+    credentialName: installCredentialName
+)
 ```
 
-`prepare(subject:)` always creates and asks Apple to attest a new App Attest
-key. The subject is sent to the backend so the backend can store that verified
-key under the caller-defined scope. The key is saved locally only after the
-backend accepts the attestation.
+`prepare(credentialName:)` always creates a new App Attest key, asks Apple to
+attest the public key, sends the attestation object to the backend, and saves
+`credentialName -> keyId` only after the backend accepts registration.
 
 ## Register Only If Needed
 
 ```swift
-let credential = try await appAttest.prepareIfNeeded(subject: userSubject)
+let credential = try await appAttest.prepareIfNeeded(
+    credentialName: userCredentialName
+)
 ```
 
-`prepareIfNeeded(subject:)` reuses a ready local credential. If no local
+`prepareIfNeeded(credentialName:)` reuses a ready local credential. If no local
 credential exists, it runs the full attestation flow.
 
 ## Generate Assertion For A Selected API
@@ -51,7 +52,7 @@ let request = AppAttestProtectedRequest(
 )
 
 let envelope = try await appAttest.generateAssertion(
-    subject: userSubject,
+    credentialName: userCredentialName,
     request: request
 )
 
@@ -60,13 +61,22 @@ try envelope.applyHeaders(to: &urlRequest)
 ```
 
 No request is protected unless the caller explicitly calls
-`generateAssertion(subject:request:)` and applies the returned envelope.
+`generateAssertion(credentialName:request:)` and applies the returned envelope.
 
-## Reset One Subject
+## Reset One Credential
 
 ```swift
-try await appAttest.reset(subject: tenantSubject)
+try await appAttest.reset(credentialName: tenantCredentialName)
 ```
 
-Reset deletes local credential metadata for that subject only. It does not reset
-other caller-defined subjects.
+Reset deletes local credential metadata for that credential name only. It does
+not reset other caller-defined credential names.
+
+## Demo Button Mapping
+
+- `Credential name`: the caller-defined name used to find a saved `keyId`.
+- `Ensure Attested`: calls `prepareIfNeeded(credentialName:)`.
+- `Force New Attestation`: calls `prepare(credentialName:)`.
+- `Check Credential`: calls `status(credentialName:)`.
+- `Generate Assertion`: calls `generateAssertion(credentialName:request:)` for the method/path/body shown in the form.
+- `Save Attestation CBOR`: exports the raw `attestationObject` returned by Apple.

@@ -1,31 +1,37 @@
-# Local DEBUG Backend
+# Mock DEBUG Backend
 
 Source links:
 
-- [LocalDebugAppAttestBackend](../../TAPCamDemo/AppAttestKit/LocalDebugAppAttestBackend.swift)
+- [MockDebugAppAttestBackend](../../TAPCamDemo/AppAttestKit/MockDebugAppAttestBackend.swift)
 - [AppAttestRuntimeFactory](../../TAPCamDemo/App/AppAttestRuntime.swift)
 - [Debug export UI](../../TAPCamDemo/AppAttestDemo/AppAttestDemoView.swift)
 
 ## Purpose
 
-`LocalDebugAppAttestBackend` exists for early client development when no server
-is available. It generates local challenges and exports the objects produced by
-the iOS App Attest APIs.
+`MockDebugAppAttestBackend` exists for early client development when no server
+is available. It uses the fixed challenge string `nearbycommunity` and exports
+the objects produced by the iOS App Attest APIs.
 
 It does not prove production security. Real validation must happen on a server.
 
 ## How It Is Selected
 
-In DEBUG builds, `AppAttestRuntimeFactory` treats localhost-like backend URLs as
-local debug mode:
+The mock backend is selected explicitly with:
 
 ```swift
-http://localhost:8080
-http://127.0.0.1:8080
-http://*.local
+try AppAttestRuntimeFactory.make(mode: .mockDebug)
 ```
 
-In Release builds, localhost-like HTTP backends are rejected.
+HTTP mode is selected explicitly with:
+
+```swift
+try AppAttestRuntimeFactory.make(
+    mode: .http(baseURL: URL(string: "https://api.example.com")!)
+)
+```
+
+The runtime no longer treats localhost-like URLs as mock mode. In Release
+builds, localhost-like HTTP backends are still rejected.
 
 ## Exported JSON
 
@@ -34,14 +40,13 @@ The debug export includes:
 - `challengeId`
 - `challenge`
 - `purpose`
-- `subject`
+- `credentialName`
 - `keyId`
 - `attestationObject`
 - `attestationCertificates`
 - `assertionObject`
 - `requestBinding`
 - `createdAt`
-- `expiresAt`
 
 These fields are base64url encoded where they contain binary data.
 
@@ -57,12 +62,12 @@ that field is present. Each certificate includes:
 - `derBase64URL`
 - `pem`
 
-`expiresAt` belongs to the locally generated challenge. It is intentionally
-short-lived and is not the certificate expiration date.
+The fixed mock challenge has no expiration date. Production challenges still
+must be short-lived and one-time-use on the server.
 
 ## Direct Attestation Object File Export
 
-The local backend also exposes the latest raw `attestationObject` directly:
+The mock backend exposes the latest raw `attestationObject` directly:
 
 - `latestAttestationObject()`
 - `latestAttestationObjectBase64URL()`
@@ -76,6 +81,6 @@ The saved file is the raw binary CBOR returned by
 
 ## Release Guard
 
-The local backend is compiled only under `#if DEBUG`. Release builds get an
+The mock backend is compiled only under `#if DEBUG`. Release builds get an
 unavailable shell with the same name so accidental references fail at compile
 time.

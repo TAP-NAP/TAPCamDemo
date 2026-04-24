@@ -25,13 +25,14 @@ public actor DefaultAppAttestClient: AppAttestClient {
         self.environment = environment
     }
 
-    public func prepare(subject: AppAttestSubject) async throws -> AppAttestCredential {
+    public func prepare(credentialName: String) async throws -> AppAttestCredential {
+        let credentialName = try Self.normalizedCredentialName(credentialName)
         guard deviceService.isSupported else {
             throw AppAttestError.unsupportedDevice
         }
 
         let challenge = try await backend.requestChallenge(
-            AppAttestChallengeRequest(purpose: .attestation, subject: subject)
+            AppAttestChallengeRequest(purpose: .attestation, credentialName: credentialName)
         )
         let keyId = try await deviceService.generateKey()
         let clientDataHash = Data(SHA256.hash(data: challenge.challenge))
@@ -39,7 +40,7 @@ public actor DefaultAppAttestClient: AppAttestClient {
 
         let result = try await backend.registerAttestation(
             AppAttestRegistrationRequest(
-                subject: subject,
+                credentialName: credentialName,
                 keyId: keyId,
                 challengeId: challenge.challengeId,
                 attestationObject: attestationObject
@@ -52,7 +53,7 @@ public actor DefaultAppAttestClient: AppAttestClient {
 
         let now = Date()
         let credential = AppAttestCredential(
-            subject: subject,
+            credentialName: credentialName,
             keyId: keyId,
             credentialId: result.credentialId,
             status: .ready,
@@ -65,29 +66,31 @@ public actor DefaultAppAttestClient: AppAttestClient {
         return credential
     }
 
-    public func prepareIfNeeded(subject: AppAttestSubject) async throws -> AppAttestCredential {
-        if let credential = try await credentialStore.credential(for: subject),
+    public func prepareIfNeeded(credentialName: String) async throws -> AppAttestCredential {
+        let credentialName = try Self.normalizedCredentialName(credentialName)
+        if let credential = try await credentialStore.credential(named: credentialName),
            credential.status == .ready {
             return credential
         }
 
-        return try await prepare(subject: subject)
+        return try await prepare(credentialName: credentialName)
     }
 
     public func generateAssertion(
-        subject: AppAttestSubject,
+        credentialName: String,
         request: AppAttestProtectedRequest
     ) async throws -> AppAttestAssertionEnvelope {
+        let credentialName = try Self.normalizedCredentialName(credentialName)
         guard deviceService.isSupported else {
             throw AppAttestError.unsupportedDevice
         }
 
-        guard let credential = try await credentialStore.credential(for: subject) else {
-            throw AppAttestError.credentialMissing(subject)
+        guard let credential = try await credentialStore.credential(named: credentialName) else {
+            throw AppAttestError.credentialMissing(credentialName)
         }
 
         let challenge = try await backend.requestChallenge(
-            AppAttestChallengeRequest(purpose: .assertion, subject: subject)
+            AppAttestChallengeRequest(purpose: .assertion, credentialName: credentialName)
         )
         let binding = request.binding(challenge: challenge.challenge)
         let assertionObject = try await deviceService.generateAssertion(
@@ -96,7 +99,7 @@ public actor DefaultAppAttestClient: AppAttestClient {
         )
 
         let envelope = AppAttestAssertionEnvelope(
-            subject: subject,
+            credentialName: credentialName,
             keyId: credential.keyId,
             challengeId: challenge.challengeId,
             assertionObject: assertionObject,
@@ -105,7 +108,7 @@ public actor DefaultAppAttestClient: AppAttestClient {
 
         await backend.recordAssertionResult(
             AppAttestAssertionRecord(
-                subject: subject,
+                credentialName: credentialName,
                 keyId: credential.keyId,
                 challengeId: challenge.challengeId,
                 assertionObject: assertionObject,
@@ -117,13 +120,14 @@ public actor DefaultAppAttestClient: AppAttestClient {
         return envelope
     }
 
-    public func status(subject: AppAttestSubject) async throws -> AppAttestCredentialStatus {
-        guard let credential = try await credentialStore.credential(for: subject) else {
+    public func status(credentialName: String) async throws -> AppAttestCredentialStatus {
+        let credentialName = try Self.normalizedCredentialName(credentialName)
+        guard let credential = try await credentialStore.credential(named: credentialName) else {
             return .notPrepared
         }
 
         let serverStatus = try await backend.credentialStatus(
-            AppAttestCredentialStatusRequest(subject: subject, keyId: credential.keyId)
+            AppAttestCredentialStatusRequest(credentialName: credentialName, keyId: credential.keyId)
         )
 
         switch serverStatus {
@@ -136,7 +140,16 @@ public actor DefaultAppAttestClient: AppAttestClient {
         }
     }
 
-    public func reset(subject: AppAttestSubject) async throws {
-        try await credentialStore.delete(subject: subject)
+    public func reset(credentialName: String) async throws {
+        let credentialName = try Self.normalizedCredentialName(credentialName)
+        try await credentialStore.delete(credentialName: credentialName)
+    }
+
+    private static func normalizedCredentialName(_ credentialName: String) throws -> String {
+        let trimmed = credentialName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw AppAttestError.invalidConfiguration("credentialName cannot be empty.")
+        }
+        return trimmed
     }
 }

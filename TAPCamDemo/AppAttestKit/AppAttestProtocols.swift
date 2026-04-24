@@ -7,23 +7,26 @@ import Foundation
 
 /// High-level App Attest API used by application code.
 public nonisolated protocol AppAttestClient {
-    /// Creates and registers a new App Attest key for the supplied subject.
-    func prepare(subject: AppAttestSubject) async throws -> AppAttestCredential
+    /// Creates and registers a new App Attest key for `credentialName`.
+    ///
+    /// `credentialName` is caller-defined. AppAttestKit only uses it to find
+    /// and reuse the keyId stored for that credential name.
+    func prepare(credentialName: String) async throws -> AppAttestCredential
 
     /// Returns an existing credential or creates one if no local credential exists.
-    func prepareIfNeeded(subject: AppAttestSubject) async throws -> AppAttestCredential
+    func prepareIfNeeded(credentialName: String) async throws -> AppAttestCredential
 
     /// Generates an assertion envelope for a caller-selected protected request.
     func generateAssertion(
-        subject: AppAttestSubject,
+        credentialName: String,
         request: AppAttestProtectedRequest
     ) async throws -> AppAttestAssertionEnvelope
 
     /// Returns local status, optionally refined by the configured backend.
-    func status(subject: AppAttestSubject) async throws -> AppAttestCredentialStatus
+    func status(credentialName: String) async throws -> AppAttestCredentialStatus
 
-    /// Deletes local credential metadata for a subject.
-    func reset(subject: AppAttestSubject) async throws
+    /// Deletes local credential metadata for `credentialName`.
+    func reset(credentialName: String) async throws
 }
 
 /// Server boundary for all App Attest communication.
@@ -44,9 +47,9 @@ public nonisolated extension AppAttestBackend {
 
 /// Local storage for App Attest key metadata.
 public nonisolated protocol AppAttestCredentialStore {
-    func credential(for subject: AppAttestSubject) async throws -> AppAttestCredential?
+    func credential(named credentialName: String) async throws -> AppAttestCredential?
     func save(_ credential: AppAttestCredential) async throws
-    func delete(subject: AppAttestSubject) async throws
+    func delete(credentialName: String) async throws
 }
 
 /// Thin wrapper over Apple's DCAppAttestService, kept injectable for tests.

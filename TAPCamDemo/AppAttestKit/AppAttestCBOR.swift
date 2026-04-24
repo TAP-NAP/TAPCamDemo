@@ -5,7 +5,7 @@
 
 import Foundation
 
-enum AppAttestCBORValue {
+nonisolated enum AppAttestCBORValue {
     case unsigned(UInt64)
     case negative(Int64)
     case bytes(Data)
@@ -16,7 +16,7 @@ enum AppAttestCBORValue {
     case null
 }
 
-struct AppAttestCBORDecoder {
+nonisolated struct AppAttestCBORDecoder {
     private let bytes: [UInt8]
     private var offset = 0
 
@@ -145,12 +145,12 @@ struct AppAttestCBORDecoder {
     }
 }
 
-struct AppAttestCBORPair {
+nonisolated struct AppAttestCBORPair {
     let key: AppAttestCBORValue
     let value: AppAttestCBORValue
 }
 
-extension Array where Element == AppAttestCBORPair {
+nonisolated extension Array where Element == AppAttestCBORPair {
     subscript(text key: String) -> AppAttestCBORValue? {
         first { pair in
             if case .text(key) = pair.key {
@@ -161,7 +161,7 @@ extension Array where Element == AppAttestCBORPair {
     }
 }
 
-enum AppAttestCBORError: Error, LocalizedError {
+nonisolated enum AppAttestCBORError: Error, LocalizedError {
     case truncatedData
     case invalidUTF8
     case integerOutOfRange

@@ -23,17 +23,13 @@ struct AppAttestDemoView: View {
                 }
 
                 Section {
-                    TextField("Subject type", text: $viewModel.subjectType)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-
-                    TextField("Subject id", text: $viewModel.subjectId)
+                    TextField("Credential name", text: $viewModel.credentialName)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                 } header: {
-                    Text("1. Backend Credential Scope")
+                    Text("1. Credential")
                 } footer: {
-                    Text("This is not attested by Apple. Your backend defines it so the client and server know which registered keyId to reuse.")
+                    Text("This name is caller-defined. AppAttestKit only uses it to find and reuse the saved keyId.")
                 }
 
                 Section {
@@ -67,7 +63,7 @@ struct AppAttestDemoView: View {
                 } header: {
                     Text("2. Attestation")
                 } footer: {
-                    Text("This step asks Apple to attest a newly generated App Attest public key, then registers that key with the backend under the selected scope.")
+                    Text("Ensure Attested registers an App Attest public key with the backend and saves the returned keyId under this credential name.")
                 }
 
                 Section {
@@ -90,7 +86,7 @@ struct AppAttestDemoView: View {
                 } header: {
                     Text("3. Assertion")
                 } footer: {
-                    Text("Generate Assertion is called only for a selected protected API request. The returned headers are what the caller attaches to that one request.")
+                    Text("Generate Assertion is called only for one protected API request. The returned headers are attached by the caller.")
                 }
 
                 Section("Result") {
@@ -126,7 +122,7 @@ struct AppAttestDemoView: View {
                         .disabled(viewModel.isWorking)
 
                         if !viewModel.debugJSON.isEmpty {
-                            Text("Collected local challenge, attestation, and assertion artifacts")
+                            Text("Collected mock challenge, attestation, and assertion artifacts")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                             Text(viewModel.debugJSON)

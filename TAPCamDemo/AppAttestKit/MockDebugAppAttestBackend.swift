@@ -1,48 +1,47 @@
 //
-//  LocalDebugAppAttestBackend.swift
+//  MockDebugAppAttestBackend.swift
 //  TAPCamDemo
 //
 
 import Foundation
-import Security
 
 #if DEBUG
-/// DEBUG-only backend that lets the app generate local challenges and export
+/// DEBUG-only backend that generates deterministic local challenges and exports
 /// App Attest objects when no server is available.
 ///
 /// This does not perform production-grade attestation or assertion validation.
-public actor LocalDebugAppAttestBackend: AppAttestBackend {
-    private var challenges: [String: AppAttestDebugChallengeRecord] = [:]
+public actor MockDebugAppAttestBackend: AppAttestBackend {
+    public static let fixedChallengeString = "nearbycommunity"
+
+    private var challenges: [AppAttestDebugChallengeRecord] = []
     private var registrations: [AppAttestDebugRegistrationRecord] = []
     private var assertions: [AppAttestDebugAssertionRecord] = []
 
     public init() {}
 
     public func requestChallenge(_ request: AppAttestChallengeRequest) async throws -> AppAttestChallenge {
-        let challengeId = UUID().uuidString
-        let challenge = try Self.randomData(byteCount: 32)
-        let expiresAt = Date().addingTimeInterval(300)
-
-        challenges[challengeId] = AppAttestDebugChallengeRecord(
-            challengeId: challengeId,
+        let challenge = Data(Self.fixedChallengeString.utf8)
+        let record = AppAttestDebugChallengeRecord(
+            challengeId: Self.fixedChallengeString,
             challenge: challenge,
             purpose: request.purpose,
-            subject: request.subject,
-            expiresAt: expiresAt,
+            credentialName: request.credentialName,
+            expiresAt: nil,
             createdAt: Date()
         )
+        challenges.append(record)
 
         return AppAttestChallenge(
-            challengeId: challengeId,
+            challengeId: Self.fixedChallengeString,
             challenge: challenge,
-            expiresAt: expiresAt
+            expiresAt: nil
         )
     }
 
     public func registerAttestation(_ request: AppAttestRegistrationRequest) async throws -> AppAttestRegistrationResult {
         registrations.append(
             AppAttestDebugRegistrationRecord(
-                subject: request.subject,
+                credentialName: request.credentialName,
                 keyId: request.keyId,
                 challengeId: request.challengeId,
                 attestationObject: request.attestationObject,
@@ -51,7 +50,7 @@ public actor LocalDebugAppAttestBackend: AppAttestBackend {
         )
 
         return AppAttestRegistrationResult(
-            credentialId: "local-debug-\(request.keyId)",
+            credentialId: "mock-debug-\(request.keyId)",
             status: .accepted
         )
     }
@@ -63,7 +62,7 @@ public actor LocalDebugAppAttestBackend: AppAttestBackend {
     public func recordAssertionResult(_ record: AppAttestAssertionRecord) async {
         assertions.append(
             AppAttestDebugAssertionRecord(
-                subject: record.subject,
+                credentialName: record.credentialName,
                 keyId: record.keyId,
                 challengeId: record.challengeId,
                 assertionObject: record.assertionObject,
@@ -76,7 +75,7 @@ public actor LocalDebugAppAttestBackend: AppAttestBackend {
     public func exportDebugData() throws -> Data {
         let export = AppAttestDebugExport(
             exportedAt: Date(),
-            challenges: challenges.values.sorted { $0.createdAt < $1.createdAt },
+            challenges: challenges,
             registrations: registrations,
             assertions: assertions
         )
@@ -100,15 +99,6 @@ public actor LocalDebugAppAttestBackend: AppAttestBackend {
     /// Returns the most recent raw attestation object as base64url.
     public func latestAttestationObjectBase64URL() throws -> String {
         try latestAttestationObject().appAttestBase64URL
-    }
-
-    private static func randomData(byteCount: Int) throws -> Data {
-        var bytes = [UInt8](repeating: 0, count: byteCount)
-        let status = SecRandomCopyBytes(kSecRandomDefault, byteCount, &bytes)
-        guard status == errSecSuccess else {
-            throw AppAttestError.keychain(status: status)
-        }
-        return Data(bytes)
     }
 }
 
@@ -134,15 +124,15 @@ public nonisolated struct AppAttestDebugChallengeRecord: Encodable, Hashable {
     public let challengeId: String
     public let challenge: Data
     public let purpose: AppAttestPurpose
-    public let subject: AppAttestSubject
-    public let expiresAt: Date
+    public let credentialName: String
+    public let expiresAt: Date?
     public let createdAt: Date
 
     private enum CodingKeys: String, CodingKey {
         case challengeId
         case challenge
         case purpose
-        case subject
+        case credentialName
         case expiresAt
         case createdAt
     }
@@ -152,21 +142,21 @@ public nonisolated struct AppAttestDebugChallengeRecord: Encodable, Hashable {
         try container.encode(challengeId, forKey: .challengeId)
         try container.encode(challenge.appAttestBase64URL, forKey: .challenge)
         try container.encode(purpose, forKey: .purpose)
-        try container.encode(subject, forKey: .subject)
-        try container.encode(expiresAt, forKey: .expiresAt)
+        try container.encode(credentialName, forKey: .credentialName)
+        try container.encodeIfPresent(expiresAt, forKey: .expiresAt)
         try container.encode(createdAt, forKey: .createdAt)
     }
 }
 
 public nonisolated struct AppAttestDebugRegistrationRecord: Encodable, Hashable {
-    public let subject: AppAttestSubject
+    public let credentialName: String
     public let keyId: String
     public let challengeId: String
     public let attestationObject: Data
     public let createdAt: Date
 
     private enum CodingKeys: String, CodingKey {
-        case subject
+        case credentialName
         case keyId
         case challengeId
         case attestationObject
@@ -177,7 +167,7 @@ public nonisolated struct AppAttestDebugRegistrationRecord: Encodable, Hashable 
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(subject, forKey: .subject)
+        try container.encode(credentialName, forKey: .credentialName)
         try container.encode(keyId, forKey: .keyId)
         try container.encode(challengeId, forKey: .challengeId)
         try container.encode(attestationObject.appAttestBase64URL, forKey: .attestationObject)
@@ -241,7 +231,7 @@ public nonisolated struct AppAttestDebugCertificate: Encodable, Hashable {
 }
 
 public nonisolated struct AppAttestDebugAssertionRecord: Encodable, Hashable {
-    public let subject: AppAttestSubject
+    public let credentialName: String
     public let keyId: String
     public let challengeId: String
     public let assertionObject: Data
@@ -249,7 +239,7 @@ public nonisolated struct AppAttestDebugAssertionRecord: Encodable, Hashable {
     public let createdAt: Date
 
     private enum CodingKeys: String, CodingKey {
-        case subject
+        case credentialName
         case keyId
         case challengeId
         case assertionObject
@@ -259,7 +249,7 @@ public nonisolated struct AppAttestDebugAssertionRecord: Encodable, Hashable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(subject, forKey: .subject)
+        try container.encode(credentialName, forKey: .credentialName)
         try container.encode(keyId, forKey: .keyId)
         try container.encode(challengeId, forKey: .challengeId)
         try container.encode(assertionObject.appAttestBase64URL, forKey: .assertionObject)
@@ -281,8 +271,8 @@ private extension String {
     }
 }
 #else
-@available(*, unavailable, message: "LocalDebugAppAttestBackend is DEBUG-only and cannot be used in Release builds.")
-public final class LocalDebugAppAttestBackend {
+@available(*, unavailable, message: "MockDebugAppAttestBackend is DEBUG-only and cannot be used in Release builds.")
+public final class MockDebugAppAttestBackend {
     public init() {}
 }
 #endif
