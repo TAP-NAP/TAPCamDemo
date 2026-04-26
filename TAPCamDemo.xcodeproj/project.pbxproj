@@ -400,11 +400,16 @@
 				DEVELOPMENT_TEAM = UD3269PSCB;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "TAPCamDemo captures photos with depth data from the camera.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "TAPCamDemo can attach capture location to the TAP depth HEIC metadata.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "TAPCamDemo saves depth HEIC captures into the TAPCamDepth photo album.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "TAPCamDemo creates and reuses the TAPCamDepth photo album for depth HEIC captures.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -432,11 +437,16 @@
 				DEVELOPMENT_TEAM = UD3269PSCB;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "TAPCamDemo captures photos with depth data from the camera.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "TAPCamDemo can attach capture location to the TAP depth HEIC metadata.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "TAPCamDemo saves depth HEIC captures into the TAPCamDepth photo album.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "TAPCamDemo creates and reuses the TAPCamDepth photo album for depth HEIC captures.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
