@@ -36,6 +36,8 @@ final class CameraController: NSObject, ObservableObject {
     @Published private(set) var selectedPhotoLensID = PhotoLensOption.oneX.id
     @Published private(set) var currentPosition: AVCaptureDevice.Position = .back
     @Published private(set) var currentCameraDisplayName = "Back camera"
+    @Published private(set) var availableDepthSources: [DepthSourceOption] = []
+    @Published private(set) var selectedDepthSourceID: String? = nil
 
     var canCapture: Bool {
         isDepthCaptureAvailable && !isCapturing
@@ -94,7 +96,13 @@ final class CameraController: NSObject, ObservableObject {
         } else if selectedPhotoLensID == PhotoLensOption.front.id {
             selectedPhotoLensID = PhotoLensOption.oneX.id
         }
+        selectedDepthSourceID = nil
         configureAndStartSession(position: nextPosition)
+    }
+
+    func selectDepthSource(_ source: DepthSourceOption) {
+        selectedDepthSourceID = source.id
+        configureAndStartSession(position: currentPosition)
     }
 
     func selectPhotoLens(_ lens: PhotoLensOption) {
@@ -159,6 +167,7 @@ final class CameraController: NSObject, ObservableObject {
         let session = session
         let photoOutput = photoOutput
         let selectedPhotoLensID = selectedPhotoLensID
+        let preferredDepthSourceID = selectedDepthSourceID
 
         sessionQueue.async { [weak self] in
             do {
@@ -166,7 +175,8 @@ final class CameraController: NSObject, ObservableObject {
                     session: session,
                     photoOutput: photoOutput,
                     position: position,
-                    selectedPhotoLensID: selectedPhotoLensID
+                    selectedPhotoLensID: selectedPhotoLensID,
+                    preferredDepthSourceID: preferredDepthSourceID
                 )
                 if !session.isRunning {
                     session.startRunning()
@@ -180,6 +190,8 @@ final class CameraController: NSObject, ObservableObject {
                     controller.selectedPhotoLensID = configuration.photoLens.id
                     controller.currentDevice = configuration.device
                     controller.currentPhotoLens = configuration.photoLens
+                    controller.availableDepthSources = configuration.availableDepthSources
+                    controller.selectedDepthSourceID = configuration.selectedDepthSourceID
                     controller.refreshPhotoLensOptions()
                     controller.isDepthCaptureAvailable = configuration.depthDeliverySupported
                     controller.statusMessage = configuration.depthDeliverySupported
@@ -200,7 +212,8 @@ final class CameraController: NSObject, ObservableObject {
         session: AVCaptureSession,
         photoOutput: AVCapturePhotoOutput,
         position: AVCaptureDevice.Position,
-        selectedPhotoLensID: String
+        selectedPhotoLensID: String,
+        preferredDepthSourceID: String? = nil
     ) throws -> SessionConfiguration {
         session.beginConfiguration()
         defer { session.commitConfiguration() }
@@ -209,12 +222,17 @@ final class CameraController: NSObject, ObservableObject {
         session.inputs.forEach { session.removeInput($0) }
 
         let requestedLens = PhotoLensOption.option(id: selectedPhotoLensID, position: position)
-        guard let selection = Self.bestCaptureSelection(position: position, photoLens: requestedLens) else {
+        let allSelections = allCaptureSelections(position: position, photoLens: requestedLens)
+
+        // Use preferred depth source if still available for this lens; otherwise fall back to the first.
+        guard let (chosenSource, captureSelection) = allSelections.first(where: {
+            $0.0.id == preferredDepthSourceID
+        }) ?? allSelections.first else {
             throw TAPDepthCaptureError.noDepthCameraAvailable
         }
-        let device = selection.device
+        let device = captureSelection.device
 
-        try configureDevice(device, selection: selection, photoLens: requestedLens)
+        try configureDevice(device, selection: captureSelection, photoLens: requestedLens)
 
         let input = try AVCaptureDeviceInput(device: device)
         guard session.canAddInput(input) else {
@@ -238,7 +256,9 @@ final class CameraController: NSObject, ObservableObject {
             depthDeliverySupported: photoOutput.isDepthDataDeliverySupported,
             cameraDisplayName: Self.cameraStatusText(photoLens: requestedLens, device: device),
             photoLens: requestedLens.resolved(with: device),
-            device: device
+            device: device,
+            availableDepthSources: allSelections.map { $0.0 },
+            selectedDepthSourceID: chosenSource.id
         )
     }
 
@@ -316,6 +336,15 @@ final class CameraController: NSObject, ObservableObject {
         position: AVCaptureDevice.Position,
         photoLens: PhotoLensOption
     ) -> CaptureDeviceSelection? {
+        allCaptureSelections(position: position, photoLens: photoLens).first?.1
+    }
+
+    /// Returns every depth-capable device (in discovery-session priority order) that supports
+    /// the requested photo lens zoom level. The caller can present these options to the user.
+    nonisolated private static func allCaptureSelections(
+        position: AVCaptureDevice.Position,
+        photoLens: PhotoLensOption
+    ) -> [(DepthSourceOption, CaptureDeviceSelection)] {
         let preferredTypes = position == .front ? frontCameraTypes : rearCameraTypes
         let devices = AVCaptureDevice.DiscoverySession(
             deviceTypes: preferredTypes,
@@ -323,17 +352,22 @@ final class CameraController: NSObject, ObservableObject {
             position: position
         ).devices
 
+        var results: [(DepthSourceOption, CaptureDeviceSelection)] = []
         for device in devices where device.supports(photoLens: photoLens) {
-            if let depthSelection = bestDepthFormatSelection(for: device) {
-                return CaptureDeviceSelection(
-                    device: device,
-                    videoFormat: depthSelection.videoFormat,
-                    depthFormat: depthSelection.depthFormat
+            if let depthFormatSelection = bestDepthFormatSelection(for: device) {
+                let option = DepthSourceOption(
+                    id: device.uniqueID,
+                    displayName: displayName(for: device)
                 )
+                let captureSelection = CaptureDeviceSelection(
+                    device: device,
+                    videoFormat: depthFormatSelection.videoFormat,
+                    depthFormat: depthFormatSelection.depthFormat
+                )
+                results.append((option, captureSelection))
             }
         }
-
-        return nil
+        return results
     }
 
     nonisolated private static var frontCameraTypes: [AVCaptureDevice.DeviceType] {
@@ -466,6 +500,17 @@ nonisolated struct PhotoLensOption: Identifiable, Equatable {
     }
 }
 
+/// UI model for a candidate depth-providing camera device.
+///
+/// For a given photo lens (zoom level) multiple physical or virtual camera devices may
+/// be able to provide depth data. This type lets the user see and choose among them.
+nonisolated struct DepthSourceOption: Identifiable, Equatable, Sendable {
+    /// `AVCaptureDevice.uniqueID` of the backing device.
+    let id: String
+    /// Human-readable label shown in the depth-source picker (e.g. "LiDAR depth", "Dual wide").
+    let displayName: String
+}
+
 extension AVCaptureDevice {
     nonisolated func supports(photoLens: PhotoLensOption) -> Bool {
         guard position == photoLens.position else {
@@ -486,6 +531,8 @@ private struct SessionConfiguration {
     let cameraDisplayName: String
     let photoLens: PhotoLensOption
     let device: AVCaptureDevice
+    let availableDepthSources: [DepthSourceOption]
+    let selectedDepthSourceID: String?
 }
 
 nonisolated private struct CaptureDeviceSelection {

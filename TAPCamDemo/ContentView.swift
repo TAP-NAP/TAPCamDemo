@@ -19,8 +19,9 @@ struct ContentView: View {
             VStack(spacing: 0) {
                 topStatusBar
                 Spacer()
-                VStack(spacing: 18) {
+                VStack(spacing: 12) {
                     rearPhotoLensPicker
+                    depthSourcePicker
                     bottomControls
                 }
             }
@@ -140,6 +141,42 @@ struct ContentView: View {
             .padding(.vertical, 8)
             .background(.black.opacity(0.48), in: Capsule())
             .padding(.horizontal, 18)
+        }
+    }
+
+    @ViewBuilder
+    private var depthSourcePicker: some View {
+        if camera.availableDepthSources.count > 1 {
+            VStack(spacing: 4) {
+                Text("DEPTH")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.55))
+
+                HStack(spacing: 8) {
+                    ForEach(camera.availableDepthSources) { source in
+                        Button {
+                            camera.selectDepthSource(source)
+                        } label: {
+                            Text(source.displayName)
+                                .font(.footnote.weight(.semibold))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.72)
+                                .frame(minWidth: 80)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 9)
+                                .background(source.id == camera.selectedDepthSourceID ? Color.white : Color.black.opacity(0.48))
+                                .foregroundStyle(source.id == camera.selectedDepthSourceID ? Color.black : Color.white)
+                                .clipShape(Capsule())
+                        }
+                        .accessibilityLabel("Use \(source.displayName) for depth")
+                    }
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(.black.opacity(0.48), in: Capsule())
+                .padding(.horizontal, 18)
+            }
         }
     }
 }
