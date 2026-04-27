@@ -7,9 +7,11 @@
 
 import AVFoundation
 import SwiftUI
+import UIKit
 
 struct ContentView: View {
     @StateObject private var camera = CameraController()
+    @State private var isShowingDepthAlbum = false
 
     var body: some View {
         ZStack {
@@ -31,6 +33,11 @@ struct ContentView: View {
         }
         .onDisappear {
             camera.stop()
+        }
+        .sheet(isPresented: $isShowingDepthAlbum) {
+            NavigationStack {
+                DepthAlbumPickerView()
+            }
         }
     }
 
@@ -66,15 +73,11 @@ struct ContentView: View {
     }
 
     private var bottomControls: some View {
-        HStack(spacing: 44) {
-            Button {
-                camera.switchCamera()
-            } label: {
-                Image(systemName: "arrow.triangle.2.circlepath.camera")
-                    .font(.system(size: 27, weight: .semibold))
-                    .frame(width: 58, height: 58)
-            }
-            .accessibilityLabel("Switch camera")
+        HStack {
+            recentPhotoButton
+                .frame(width: 78, height: 78)
+
+            Spacer()
 
             Button {
                 Task {
@@ -98,9 +101,22 @@ struct ContentView: View {
             }
             .disabled(!camera.canCapture)
             .accessibilityLabel("Capture depth photo")
+
+            Spacer()
+
+            Button {
+                camera.switchCamera()
+            } label: {
+                Image(systemName: "arrow.triangle.2.circlepath.camera")
+                    .font(.system(size: 27, weight: .semibold))
+                    .frame(width: 58, height: 58)
+            }
+            .accessibilityLabel("Switch camera")
+            .frame(width: 78, height: 78)
         }
         .buttonStyle(.plain)
         .foregroundStyle(.white)
+        .padding(.horizontal, 34)
         .padding(.bottom, 34)
         .frame(maxWidth: .infinity)
         .background(
@@ -111,6 +127,35 @@ struct ContentView: View {
             )
             .ignoresSafeArea(edges: .bottom)
         )
+    }
+
+    @ViewBuilder
+    private var recentPhotoButton: some View {
+        Button {
+            isShowingDepthAlbum = true
+        } label: {
+            if let thumbnail = camera.recentThumbnail {
+                Image(uiImage: thumbnail)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 58, height: 58)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(.white.opacity(0.8), lineWidth: 1.5)
+                    )
+            } else {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(.black.opacity(0.48))
+                        .frame(width: 58, height: 58)
+                    Image(systemName: "photo.on.rectangle")
+                        .font(.system(size: 24, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+            }
+        }
+        .accessibilityLabel("Open TAPCamDepth album")
     }
 
     @ViewBuilder

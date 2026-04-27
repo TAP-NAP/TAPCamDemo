@@ -16,6 +16,7 @@ flowchart LR
     G --> H
     H --> I["Photos album: TAPCamDepth"]
     I --> J["PHAssetResourceManager readback"]
+    J --> K["Independent Depth Analysis module"]
 ```
 
 Key code:
@@ -30,6 +31,8 @@ Key code:
 | Standard EXIF/GPS/TIFF merge | [TAPPhotoFileMetadataCustomizer](TAPCamDemo/TAPPhotoFileMetadataCustomizer.swift#L13) |
 | XMP injection and readback | [TAPDepthHEICWriter.swift](TAPCamDemo/TAPDepthHEICWriter.swift#L13) |
 | Photos album save and original bytes readback | [PhotoLibraryWriter.swift](TAPCamDemo/PhotoLibraryWriter.swift#L13) |
+| Analysis readback, visualization, geometry, and plane fitting | [TAPDepthAnalysis.swift](TAPCamDemo/TAPDepthAnalysis.swift#L14) |
+| Saved-image analysis UI | [DepthAnalysisView.swift](TAPCamDemo/DepthAnalysisView.swift#L14) |
 
 ## HEIC Layout
 
@@ -94,10 +97,13 @@ Important `schema` values are defined in [TAPDepthManifest.swift](TAPCamDemo/TAP
 | `payload.depth.*` | `AVCapturePhoto.depthData` / `AVDepthData` |
 | `payload.depth.source.*` | `AVCaptureDevice.DeviceType` classification from the resolved capture device |
 | `payload.depth.cameraCalibration.*` | `AVDepthData.cameraCalibrationData` |
+| `payload.alignment.depthToImage` | TAP interpretation rule for Apple auxiliary depth alignment |
 | `payload.location.*` | `CLLocationManager.requestLocation()` / `CLLocation`; nullable when permission or timeout fails |
 | `payload.software.*` | `Bundle.main` info dictionary |
 
 The depth pixels themselves are not duplicated in JSON. They remain in the HEIC auxiliary depth/disparity attachment and can be reconstructed as `AVDepthData`.
+
+`payload.depth.metricUnit`, `payload.depth.conversionPath`, `payload.depth.pixelFormat`, and `payload.alignment.depthToImage` exist for the analysis module. TAP treats a native depth attachment as meters. If the attachment is disparity, readers should convert it with `AVDepthData.converting(toDepthDataType: kCVPixelFormatType_DepthFloat32)` before measuring distances or fitting planes.
 
 `payload.photoLens` records user intent and resolution separately. `requestedLensID`, `requestedDisplayName`, and `requestedZoomFactor` describe the UI choice. `resolvedCaptureDeviceType`, `resolvedCaptureDeviceName`, and resolved active primary constituent fields describe what AVFoundation was using when the manifest was built. On virtual cameras, `activePrimaryConstituent` may change with zoom, focus, exposure, and system policy, so third-party tools should treat the requested lens as intent and the resolved fields as the observable capture state.
 
@@ -147,6 +153,35 @@ let depthData = try depthInfo.map { try AVDepthData(fromDictionaryRepresentation
 
 Inside this app, the same logic is wrapped by [TAPDepthHEICReader](TAPCamDemo/TAPDepthHEICWriter.swift#L83).
 
+## Depth Analysis Module
+
+Depth analysis is intentionally separate from capture. The camera screen only exposes a recent-photo thumbnail entry point; heatmaps, point reads, region statistics, point-cloud previews, and plane candidates live in the saved-image analysis page.
+
+The analysis pipeline is:
+
+```mermaid
+flowchart LR
+    A["TAP Depth HEIC bytes"] --> B["ImageIO primary CGImage"]
+    A --> C["ImageIO auxiliary depth/disparity"]
+    C --> D["AVDepthData"]
+    D --> E["DepthFloat32 meters"]
+    E --> F["Depth heatmap / valid mask"]
+    E --> G["Camera-coordinate point cloud"]
+    G --> H["Approximate plane fitting"]
+```
+
+Single-photo RGB-D analysis can estimate visible-surface depth and approximate coplanarity. It is not full 3D reconstruction: there is no stable world coordinate system, no hidden geometry behind visible objects, and no multi-frame mesh.
+
+For a depth pixel `(u, v)` with metric depth `Z`, the analysis module uses the pinhole model from `AVCameraCalibrationData.intrinsicMatrix`:
+
+```text
+X = (u - cx) / fx * Z
+Y = (v - cy) / fy * Z
+Z = depthMeters
+```
+
+The resulting point is in the capture camera's local coordinate system. `TAPPlaneEstimator` fits approximate planes from those camera-space points and reports normal, centroid, average residual, inlier ratio, depth range, and image-space bounds.
+
 ## Reading From Photos
 
 Photos may provide edited derivatives or thumbnails. For verification, always request the original `.photo` resource bytes:
@@ -189,4 +224,27 @@ The current implementation was build-checked with:
 xcodebuild -scheme TAPCamDemo -destination 'generic/platform=iOS' -derivedDataPath /tmp/TAPCamDemoDerivedData CODE_SIGNING_ALLOWED=NO build
 ```
 
+and test-build checked with:
+
+```sh
+xcodebuild -scheme TAPCamDemo -destination 'generic/platform=iOS' -derivedDataPath /tmp/TAPCamDemoDerivedData CODE_SIGNING_ALLOWED=NO build-for-testing
+```
+
 Depth capture still requires a physical iPhone/iPad with a depth-capable camera. The simulator cannot validate `AVCapturePhoto.depthData`.
+
+## Reference Docs
+
+- [AVCapturePhoto](https://developer.apple.com/documentation/avfoundation/avcapturephoto)
+- [AVDepthData](https://developer.apple.com/documentation/avfoundation/avdepthdata)
+- [AVCameraCalibrationData](https://developer.apple.com/documentation/avfoundation/avcameracalibrationdata)
+- [ARFrame.sceneDepth](https://developer.apple.com/documentation/arkit/arframe/scenedepth)
+- [ARDepthData](https://developer.apple.com/documentation/arkit/ardepthdata)
+- [ARPlaneAnchor](https://developer.apple.com/documentation/arkit/arplaneanchor)
+- [Displaying a point cloud using scene depth](https://developer.apple.com/documentation/ARKit/displaying-a-point-cloud-using-scene-depth)
+
+## TODO / Future Work
+
+- v1 does not add an ARKit capture mode.
+- If the product needs stable world coordinates, ARKit system plane detection, continuous tracking, mesh reconstruction, or multi-frame fusion, add a separate `AR Capture` module.
+- That future module should record `ARFrame.camera.transform`, `ARFrame.camera.intrinsics`, `sceneDepth` / `smoothedSceneDepth`, `confidenceMap`, `ARPlaneAnchor`, or mesh anchors.
+- AR capture output should be a new TAP capture profile and should not be mixed into the standard photo-depth HEIC camera UI.

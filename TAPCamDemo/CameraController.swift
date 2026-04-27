@@ -10,6 +10,7 @@ import Combine
 import CoreLocation
 import Foundation
 import Photos
+import UIKit
 
 /// Owns the complete capture pipeline:
 ///
@@ -36,6 +37,8 @@ final class CameraController: NSObject, ObservableObject {
     @Published private(set) var selectedPhotoLensID = PhotoLensOption.oneX.id
     @Published private(set) var currentPosition: AVCaptureDevice.Position = .back
     @Published private(set) var currentCameraDisplayName = "Back camera"
+    @Published private(set) var recentAssetID: String?
+    @Published private(set) var recentThumbnail: UIImage?
 
     var canCapture: Bool {
         isDepthCaptureAvailable && !isCapturing
@@ -65,10 +68,12 @@ final class CameraController: NSObject, ObservableObject {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
             configureAndStartSession(position: currentPosition)
+            loadRecentDepthAssetPreviewIfAvailable()
         case .notDetermined:
             let granted = await AVCaptureDevice.requestAccess(for: .video)
             if granted {
                 configureAndStartSession(position: currentPosition)
+                loadRecentDepthAssetPreviewIfAvailable()
             } else {
                 statusMessage = TAPDepthCaptureError.cameraAccessDenied.localizedDescription
             }
@@ -294,6 +299,7 @@ final class CameraController: NSObject, ObservableObject {
             isCapturing = false
             lastCaptureSummary = "Saved HEIC + depth + TAP manifest. Asset: \(assetID)"
             statusMessage = "Capture complete."
+            loadRecentDepthAssetPreview(assetID: assetID)
         } catch {
             isCapturing = false
             lastCaptureSummary = nil
@@ -305,6 +311,37 @@ final class CameraController: NSObject, ObservableObject {
         rearPhotoLensOptions = Self.supportedRearPhotoLensOptions()
         if currentPosition == .back, !rearPhotoLensOptions.contains(where: { $0.id == selectedPhotoLensID }) {
             selectedPhotoLensID = rearPhotoLensOptions.first?.id ?? PhotoLensOption.oneX.id
+        }
+    }
+
+    private func loadRecentDepthAssetPreviewIfAvailable() {
+        guard let asset = PhotoLibraryWriter.latestDepthAssetIfAuthorized() else {
+            return
+        }
+
+        loadRecentDepthAssetPreview(assetID: asset.localIdentifier)
+    }
+
+    private func loadRecentDepthAssetPreview(assetID: String) {
+        recentAssetID = assetID
+        guard let asset = PhotoLibraryWriter.asset(localIdentifier: assetID) else {
+            recentThumbnail = nil
+            return
+        }
+
+        let options = PHImageRequestOptions()
+        options.deliveryMode = .opportunistic
+        options.resizeMode = .fast
+        options.isNetworkAccessAllowed = true
+        PHImageManager.default().requestImage(
+            for: asset,
+            targetSize: CGSize(width: 144, height: 144),
+            contentMode: .aspectFill,
+            options: options
+        ) { [weak self] image, _ in
+            Task { @MainActor in
+                self?.recentThumbnail = image
+            }
         }
     }
 
