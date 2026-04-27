@@ -537,7 +537,6 @@ nonisolated struct CapabilityMatrix: @unchecked Sendable {
             }
             return lhs.equivalentFocalLength35mmMillimeters < rhs.equivalentFocalLength35mmMillimeters
         }
-        FOVDiagnostics.logFocalOptions(options)
         return options
     }
 

@@ -172,7 +172,6 @@ nonisolated enum RGBDepthPairingCoordinator {
                 embedsDepthDataInPhoto: depthEnabled
             )
         )
-        FOVDiagnostics.logCapturePlan(plan)
         return plan
     }
 }

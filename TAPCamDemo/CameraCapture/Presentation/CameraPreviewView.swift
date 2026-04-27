@@ -81,7 +81,6 @@ struct CameraPreviewView: UIViewRepresentable {
 
                 guard self.shouldPublish(rect) else { return }
                 self.lastPublishedRect = rect
-                FOVDiagnostics.logPreviewCropRect(rect)
                 self.onCropRectChanged(rect)
             }
         }

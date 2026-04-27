@@ -65,46 +65,21 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     ) throws -> SessionConfigurationResult {
         let plan = request.capturePlan
         let zoom = plan.zoom?.rawVideoZoomFactor ?? 1.0
-        FOVDiagnostics.logSessionConfigurePhase(
-            "start",
-            plan: plan,
-            session: session,
-            photoOutput: photoOutput
-        )
-        if let reuseBlocker = currentGraphReuseBlocker(
+
+        /*
+         Release FOV chips such as 24mm, 48mm, and 77mm usually resolve to raw
+         `videoZoomFactor` values on the same Apple-paired photo-depth graph.
+         When the active graph already matches the requested device, format, and
+         depth state, changing only zoom keeps the preview continuous and avoids
+         an input teardown that can briefly show the virtual camera's wide
+         baseline.
+         */
+        if canReuseCurrentGraph(
             session: session,
             photoOutput: photoOutput,
             plan: plan
         ) {
-            FOVDiagnostics.logSessionReuseDecision(
-                reuse: false,
-                reason: reuseBlocker,
-                plan: plan,
-                session: session,
-                photoOutput: photoOutput
-            )
-        } else {
-            FOVDiagnostics.logSessionReuseDecision(
-                reuse: true,
-                reason: "sameDeviceFormatAndDepthState",
-                plan: plan,
-                session: session,
-                photoOutput: photoOutput
-            )
-
-            /*
-             FOV chips are usually just raw zoom choices on the same depth-capable
-             virtual device and format. Reusing the current graph avoids a preview
-             teardown where AVFoundation can briefly show the virtual device's wide
-             baseline before the requested 77mm zoom is applied.
-             */
-            try applyZoom(zoom, to: plan.resolvedCaptureDevice, phase: "reuseZoomOnly")
-            FOVDiagnostics.logSessionConfigurePhase(
-                "reuseZoomOnly",
-                plan: plan,
-                session: session,
-                photoOutput: photoOutput
-            )
+            try applyZoom(zoom, to: plan.resolvedCaptureDevice)
             return makeConfigurationResult(
                 plan: plan,
                 photoOutput: photoOutput,
@@ -112,85 +87,12 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             )
         }
 
-        session.beginConfiguration()
-        do {
-            FOVDiagnostics.logSessionConfigurePhase(
-                "beginConfiguration",
-                plan: plan,
-                session: session,
-                photoOutput: photoOutput
-            )
-            session.sessionPreset = .photo
-            session.inputs.forEach { session.removeInput($0) }
-            FOVDiagnostics.logSessionConfigurePhase(
-                "inputsRemoved",
-                plan: plan,
-                session: session,
-                photoOutput: photoOutput
-            )
-
-            try configureDeviceFormat(plan.resolvedCaptureDevice, selection: plan.formatSelection)
-            FOVDiagnostics.logDeviceFormatApplied(
-                device: plan.resolvedCaptureDevice,
-                requestedFormat: plan.formatSelection?.videoFormat
-            )
-
-            /*
-             Include the target raw zoom in the configuration transaction. When
-             moving to or from the 77mm semantic FOV, some virtual cameras can
-             briefly present their wide baseline during commit if zoom is only
-             applied afterwards. We still re-apply after commit because several
-             formats reset zoom during graph changes.
-             */
-            try applyZoom(zoom, to: plan.resolvedCaptureDevice, phase: "preCommit")
-
-            let input = try AVCaptureDeviceInput(device: plan.resolvedCaptureDevice)
-            guard session.canAddInput(input) else {
-                throw TAPDepthCaptureError.unableToAddCameraInput
-            }
-            session.addInput(input)
-            FOVDiagnostics.logSessionConfigurePhase(
-                "inputAdded",
-                plan: plan,
-                session: session,
-                photoOutput: photoOutput
-            )
-
-            if !session.outputs.contains(photoOutput) {
-                guard session.canAddOutput(photoOutput) else {
-                    throw TAPDepthCaptureError.unableToAddPhotoOutput
-                }
-                session.addOutput(photoOutput)
-            }
-            FOVDiagnostics.logSessionConfigurePhase(
-                "outputReady",
-                plan: plan,
-                session: session,
-                photoOutput: photoOutput
-            )
-
-            photoOutput.maxPhotoQualityPrioritization = .quality
-            if plan.captureConfig.depthDataDeliveryEnabled && !photoOutput.isDepthDataDeliverySupported {
-                throw TAPDepthCaptureError.depthDeliveryUnsupported
-            }
-            photoOutput.isDepthDataDeliveryEnabled = plan.captureConfig.depthDataDeliveryEnabled
-            FOVDiagnostics.logSessionConfigurePhase(
-                "beforeCommit",
-                plan: plan,
-                session: session,
-                photoOutput: photoOutput
-            )
-            session.commitConfiguration()
-            FOVDiagnostics.logSessionConfigurePhase(
-                "afterCommit",
-                plan: plan,
-                session: session,
-                photoOutput: photoOutput
-            )
-        } catch {
-            session.commitConfiguration()
-            throw error
-        }
+        try rebuildSessionGraph(
+            session: session,
+            photoOutput: photoOutput,
+            plan: plan,
+            zoom: zoom
+        )
 
         /*
          Apply zoom after the session graph has committed and photo depth delivery
@@ -201,7 +103,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
          resolves to raw zoom `4.0` on a depth-safe virtual-camera format instead
          of the familiar UI shorthand of `2x`.
          */
-        try applyZoom(zoom, to: plan.resolvedCaptureDevice, phase: "postCommit")
+        try applyZoom(zoom, to: plan.resolvedCaptureDevice)
 
         return makeConfigurationResult(
             plan: plan,
@@ -210,51 +112,102 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         )
     }
 
-    private static func currentGraphReuseBlocker(
+    /// Rebuilds the AVFoundation graph for real source, format, or depth-state
+    /// changes. FOV-only changes should take the fast path above instead.
+    private static func rebuildSessionGraph(
+        session: AVCaptureSession,
+        photoOutput: AVCapturePhotoOutput,
+        plan: CaptureSourcePlan,
+        zoom: Double
+    ) throws {
+        session.beginConfiguration()
+        do {
+            session.sessionPreset = .photo
+            session.inputs.forEach { session.removeInput($0) }
+
+            try configureDeviceFormat(plan.resolvedCaptureDevice, selection: plan.formatSelection)
+
+            /*
+             Include the target raw zoom in the configuration transaction. When
+             moving to or from the 77mm semantic FOV, some virtual cameras can
+             briefly present their wide baseline during commit if zoom is only
+             applied afterwards. We still re-apply after commit because several
+             formats reset zoom during graph changes.
+             */
+            try applyZoom(zoom, to: plan.resolvedCaptureDevice)
+
+            let input = try AVCaptureDeviceInput(device: plan.resolvedCaptureDevice)
+            guard session.canAddInput(input) else {
+                throw TAPDepthCaptureError.unableToAddCameraInput
+            }
+            session.addInput(input)
+
+            if !session.outputs.contains(photoOutput) {
+                guard session.canAddOutput(photoOutput) else {
+                    throw TAPDepthCaptureError.unableToAddPhotoOutput
+                }
+                session.addOutput(photoOutput)
+            }
+
+            photoOutput.maxPhotoQualityPrioritization = .quality
+            if plan.captureConfig.depthDataDeliveryEnabled && !photoOutput.isDepthDataDeliverySupported {
+                throw TAPDepthCaptureError.depthDeliveryUnsupported
+            }
+            photoOutput.isDepthDataDeliveryEnabled = plan.captureConfig.depthDataDeliveryEnabled
+            session.commitConfiguration()
+        } catch {
+            session.commitConfiguration()
+            throw error
+        }
+    }
+
+    /// Returns true when the current SingleCam graph already represents the
+    /// requested photo-depth pipeline and only the raw zoom factor needs to move.
+    private static func canReuseCurrentGraph(
         session: AVCaptureSession,
         photoOutput: AVCapturePhotoOutput,
         plan: CaptureSourcePlan
-    ) -> String? {
+    ) -> Bool {
         guard session.sessionPreset == .photo else {
-            return "sessionPreset=\(session.sessionPreset.rawValue)"
+            return false
         }
 
         let deviceInputs = session.inputs.compactMap { input in
             (input as? AVCaptureDeviceInput)?.device
         }
         guard deviceInputs.count == 1 else {
-            return "inputCount=\(deviceInputs.count)"
+            return false
         }
 
         let activeDevice = deviceInputs[0]
         guard activeDevice.uniqueID == plan.resolvedCaptureDevice.uniqueID else {
-            return "deviceMismatch current=\(activeDevice.localizedName) requested=\(plan.resolvedCaptureDevice.localizedName)"
+            return false
         }
 
         if let requestedFormat = plan.formatSelection?.videoFormat,
-           !formatsRepresentSameDepthSafeVideoFormat(
+           !formatsHaveSamePhotoDepthPreviewSignature(
             activeDevice.activeFormat,
             requestedFormat
            ) {
-            return "formatMismatch"
+            return false
         }
 
         guard session.outputs.contains(photoOutput) else {
-            return "photoOutputMissing"
+            return false
         }
 
         guard photoOutput.isDepthDataDeliveryEnabled == plan.captureConfig.depthDataDeliveryEnabled else {
-            return "depthEnabledMismatch current=\(photoOutput.isDepthDataDeliveryEnabled) requested=\(plan.captureConfig.depthDataDeliveryEnabled)"
+            return false
         }
 
         if plan.captureConfig.depthDataDeliveryEnabled && !photoOutput.isDepthDataDeliverySupported {
-            return "depthUnsupported"
+            return false
         }
 
-        return nil
+        return true
     }
 
-    private static func formatsRepresentSameDepthSafeVideoFormat(
+    private static func formatsHaveSamePhotoDepthPreviewSignature(
         _ activeFormat: AVCaptureDevice.Format,
         _ requestedFormat: AVCaptureDevice.Format
     ) -> Bool {
@@ -350,19 +303,12 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         }
     }
 
-    private static func applyZoom(_ zoomFactor: Double, to device: AVCaptureDevice, phase: String) throws {
+    private static func applyZoom(_ zoomFactor: Double, to device: AVCaptureDevice) throws {
         try device.lockForConfiguration()
         defer { device.unlockForConfiguration() }
 
         let clampedZoom = min(max(CGFloat(zoomFactor), device.minAvailableVideoZoomFactor), device.maxAvailableVideoZoomFactor)
         device.videoZoomFactor = clampedZoom
-        FOVDiagnostics.logAppliedZoom(
-            phase: phase,
-            requestedZoom: zoomFactor,
-            clampedZoom: clampedZoom,
-            actualZoom: device.videoZoomFactor,
-            device: device
-        )
     }
 
     private static func portraitPreviewAspectRatio(for format: AVCaptureDevice.Format) -> Double {

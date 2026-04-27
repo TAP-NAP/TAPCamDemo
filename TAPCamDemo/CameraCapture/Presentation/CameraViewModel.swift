@@ -122,13 +122,11 @@ final class CameraViewModel: ObservableObject {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
             await configureDefaultSelection()
-            scheduleFOVCycleDiagnosticsIfRequested()
             loadRecentDepthAssetPreviewIfAvailable()
         case .notDetermined:
             let granted = await AVCaptureDevice.requestAccess(for: .video)
             if granted {
                 await configureDefaultSelection()
-                scheduleFOVCycleDiagnosticsIfRequested()
                 loadRecentDepthAssetPreviewIfAvailable()
             } else {
                 statusMessage = TAPDepthCaptureError.cameraAccessDenied.localizedDescription
@@ -162,7 +160,6 @@ final class CameraViewModel: ObservableObject {
         selectedRGBSourceID = option.rgbSource.id
         selectedZoomID = option.zoom.id
         selectedFocalLengthOptionID = option.id
-        FOVDiagnostics.logFocalSelection(option)
         await configureCurrentSelection()
     }
 
@@ -371,40 +368,6 @@ final class CameraViewModel: ObservableObject {
         await configureCurrentSelection()
     }
 
-    private func scheduleFOVCycleDiagnosticsIfRequested() {
-        #if DEBUG
-        guard ProcessInfo.processInfo.arguments.contains("--tapcam-cycle-fov-diagnostics") else {
-            return
-        }
-
-        FOVDiagnostics.logFOVCycleDiagnostic(event: "scheduled", targetLabel: nil)
-        Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
-            await self?.runFOVCycleDiagnostics()
-        }
-        #endif
-    }
-
-    #if DEBUG
-    private func runFOVCycleDiagnostics() async {
-        let targetLabels = ["77mm", "24mm", "77mm"]
-        FOVDiagnostics.logFOVCycleDiagnostic(event: "started", targetLabel: nil)
-
-        for targetLabel in targetLabels {
-            guard let option = focalLengthOptions.first(where: { $0.displayName == targetLabel }) else {
-                FOVDiagnostics.logFOVCycleDiagnostic(event: "missingOption", targetLabel: targetLabel)
-                continue
-            }
-
-            FOVDiagnostics.logFOVCycleDiagnostic(event: "select", targetLabel: targetLabel)
-            await selectFocalLengthOption(option)
-            try? await Task.sleep(nanoseconds: 900_000_000)
-        }
-
-        FOVDiagnostics.logFOVCycleDiagnostic(event: "finished", targetLabel: nil)
-    }
-    #endif
-
     private func configureCurrentSelection() async {
         #if DEBUG
         if isDebugDepthOverrideActive,
@@ -462,8 +425,6 @@ final class CameraViewModel: ObservableObject {
             : nil
         activeCameraDisplayName = "\(plan.requestedFocalLengthLabel.label) · \(depthProfile?.displayName ?? "No Depth")"
         statusMessage = statusText(for: plan)
-        let configureStartedAt = Date()
-        FOVDiagnostics.logSelectionConfigureStart(generation: generation, plan: plan)
 
         do {
             let result = try await sessionController.configure(SessionConfigurationRequest(capturePlan: plan))
@@ -477,11 +438,6 @@ final class CameraViewModel: ObservableObject {
             nativePreviewAspectRatio = result.nativePreviewAspectRatio
             isDepthCaptureReady = result.depthDeliverySupported && result.capturePlan.canCapturePhotoDepth
             statusMessage = statusText(for: result.capturePlan)
-            FOVDiagnostics.logSelectionConfigureResult(
-                generation: generation,
-                result: result,
-                duration: Date().timeIntervalSince(configureStartedAt)
-            )
         } catch {
             guard generation == configurationGeneration else {
                 return
@@ -491,12 +447,6 @@ final class CameraViewModel: ObservableObject {
             isDepthCaptureReady = false
             nativePreviewAspectRatio = 3.0 / 4.0
             statusMessage = error.localizedDescription
-            FOVDiagnostics.logSelectionConfigureFailure(
-                generation: generation,
-                plan: plan,
-                duration: Date().timeIntervalSince(configureStartedAt),
-                error: error
-            )
         }
     }
 
@@ -552,8 +502,6 @@ final class CameraViewModel: ObservableObject {
         debugFOVLabel = debugFOVText(for: plan)
         activeCameraDisplayName = "Debug · \(plan.depthSource?.displayName ?? "No Depth") · \(debugFOVLabel)"
         statusMessage = statusText(for: plan)
-        let configureStartedAt = Date()
-        FOVDiagnostics.logSelectionConfigureStart(generation: generation, plan: plan)
 
         do {
             let result = try await sessionController.configure(SessionConfigurationRequest(capturePlan: plan))
@@ -570,11 +518,6 @@ final class CameraViewModel: ObservableObject {
             nativePreviewAspectRatio = result.nativePreviewAspectRatio
             isDepthCaptureReady = result.depthDeliverySupported && result.capturePlan.canCapturePhotoDepth
             statusMessage = statusText(for: result.capturePlan)
-            FOVDiagnostics.logSelectionConfigureResult(
-                generation: generation,
-                result: result,
-                duration: Date().timeIntervalSince(configureStartedAt)
-            )
         } catch {
             guard generation == configurationGeneration else {
                 return
@@ -584,12 +527,6 @@ final class CameraViewModel: ObservableObject {
             isDepthCaptureReady = false
             nativePreviewAspectRatio = 3.0 / 4.0
             statusMessage = error.localizedDescription
-            FOVDiagnostics.logSelectionConfigureFailure(
-                generation: generation,
-                plan: plan,
-                duration: Date().timeIntervalSince(configureStartedAt),
-                error: error
-            )
         }
     }
     #endif
