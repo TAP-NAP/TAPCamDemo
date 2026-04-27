@@ -13,15 +13,11 @@ import Foundation
 
 /// Capture-session families represented by the v0.8 architecture.
 ///
-/// The current implementation runs still photo + depth through `.singleCam`:
-/// one AVFoundation capture pipeline produces the visible photo and Apple's
-/// paired `AVCapturePhoto.depthData`. `.streamingRGBDepth` and `.multiCam` are
-/// modeled so the capability matrix can report when a user request belongs to a
-/// future path instead of silently pretending it is supported today.
+/// The current implementation runs only still photo + depth through
+/// `.singleCam`: one AVFoundation capture pipeline produces the visible photo
+/// and Apple's paired `AVCapturePhoto.depthData`.
 nonisolated enum CaptureSessionMode: String, Codable, Sendable {
     case singleCam
-    case streamingRGBDepth
-    case multiCam
 }
 
 /// User-facing RGB source category.
@@ -543,8 +539,20 @@ nonisolated struct CapabilityMatrix: @unchecked Sendable {
 
     var defaultFocalLengthOption: FocalLengthOption? {
         let options = focalLengthOptions()
-        return options.first { $0.isEnabled && $0.displayName == "24mm" }
+        return bestOption(nearEquivalentMillimeters: 24, in: options)
             ?? options.first(where: \.isEnabled)
+    }
+
+    func bestOption(nearEquivalentMillimeters target: Double, in options: [FocalLengthOption]? = nil) -> FocalLengthOption? {
+        let candidates = (options ?? focalLengthOptions()).filter(\.isEnabled)
+        return candidates.min { lhs, rhs in
+            let lhsDistance = abs(lhs.equivalentFocalLength35mmMillimeters - target)
+            let rhsDistance = abs(rhs.equivalentFocalLength35mmMillimeters - target)
+            if abs(lhsDistance - rhsDistance) > 0.001 {
+                return lhsDistance < rhsDistance
+            }
+            return focalOptionPriority(lhs) > focalOptionPriority(rhs)
+        }
     }
 
     private func focalOptionPriority(_ option: FocalLengthOption) -> Int {

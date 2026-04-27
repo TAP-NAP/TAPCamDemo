@@ -68,39 +68,35 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         let zoom = plan.zoom?.actualVideoZoomFactor ?? plan.zoom?.requestedZoomFactor ?? 1.0
 
         session.beginConfiguration()
-        var didCommitConfiguration = false
-        defer {
-            if !didCommitConfiguration {
-                session.commitConfiguration()
+        do {
+            session.sessionPreset = .photo
+            session.inputs.forEach { session.removeInput($0) }
+
+            try configureDeviceFormat(plan.resolvedCaptureDevice, selection: plan.formatSelection)
+
+            let input = try AVCaptureDeviceInput(device: plan.resolvedCaptureDevice)
+            guard session.canAddInput(input) else {
+                throw TAPDepthCaptureError.unableToAddCameraInput
             }
-        }
+            session.addInput(input)
 
-        session.sessionPreset = .photo
-        session.inputs.forEach { session.removeInput($0) }
-
-        try configureDeviceFormat(plan.resolvedCaptureDevice, selection: plan.formatSelection)
-
-        let input = try AVCaptureDeviceInput(device: plan.resolvedCaptureDevice)
-        guard session.canAddInput(input) else {
-            throw TAPDepthCaptureError.unableToAddCameraInput
-        }
-        session.addInput(input)
-
-        if !session.outputs.contains(photoOutput) {
-            guard session.canAddOutput(photoOutput) else {
-                throw TAPDepthCaptureError.unableToAddPhotoOutput
+            if !session.outputs.contains(photoOutput) {
+                guard session.canAddOutput(photoOutput) else {
+                    throw TAPDepthCaptureError.unableToAddPhotoOutput
+                }
+                session.addOutput(photoOutput)
             }
-            session.addOutput(photoOutput)
-        }
 
-        photoOutput.maxPhotoQualityPrioritization = .quality
-        if plan.captureConfig.depthDataDeliveryEnabled && !photoOutput.isDepthDataDeliverySupported {
-            throw TAPDepthCaptureError.depthDeliveryUnsupported
+            photoOutput.maxPhotoQualityPrioritization = .quality
+            if plan.captureConfig.depthDataDeliveryEnabled && !photoOutput.isDepthDataDeliverySupported {
+                throw TAPDepthCaptureError.depthDeliveryUnsupported
+            }
+            photoOutput.isDepthDataDeliveryEnabled = plan.captureConfig.depthDataDeliveryEnabled
+            session.commitConfiguration()
+        } catch {
+            session.commitConfiguration()
+            throw error
         }
-        photoOutput.isDepthDataDeliveryEnabled = plan.captureConfig.depthDataDeliveryEnabled
-
-        session.commitConfiguration()
-        didCommitConfiguration = true
 
         /*
          Apply zoom after the session graph has committed and photo depth delivery

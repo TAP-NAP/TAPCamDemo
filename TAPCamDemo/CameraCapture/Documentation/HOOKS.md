@@ -1,23 +1,21 @@
-# Hooks
+# Future Hooks TODO
 
-Hooks run after physical packaging and before writing.
+The current SingleCam demo does not compile a runtime hook pipeline. It writes:
 
 ```text
 CapturePackage
       |
       v
-Packaging
+EmbeddedPhotoPackager
       |
       v
 PackagedCaptureArtifact
       |
       v
-Hook Pipeline
-      |
-      v
 Writer
 ```
 
-`ArtifactHookPipeline` is empty by default. v0.8 does not hash, sign,
-watermark, upload, or mutate metadata automatically. Future hooks can implement
-those behaviors without touching capture providers or session configuration.
+Hashing, signing, watermarking, upload, and post-package metadata mutation are
+future product work. When one of those features becomes real, add the smallest
+runtime hook surface needed for that feature instead of keeping an empty
+pipeline in the demo.

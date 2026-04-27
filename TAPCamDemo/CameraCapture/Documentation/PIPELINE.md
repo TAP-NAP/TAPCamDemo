@@ -42,7 +42,8 @@ AVCaptureDataOutputSynchronizer
 Synchronized RGB Frame + Depth Frame
 ```
 
-v0.8 documents this path and leaves provider interfaces for it. It is not run.
+This is future work only. The current codebase does not keep runtime provider
+interfaces for it.
 
 ## MultiCam
 

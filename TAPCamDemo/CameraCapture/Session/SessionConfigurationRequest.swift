@@ -16,9 +16,19 @@ import Foundation
 nonisolated enum RGBDepthPairingMode: String, Codable, Equatable, Sendable {
     case rgbOnly
     case rgbWithApplePairedDepth
-    case rgbWithExternalDepthProvider
     case requiresMultiCam
     case unsupported
+}
+
+/// How the depth-capable SingleCam pipeline was selected.
+///
+/// These raw values are written into the TAP manifest, so they intentionally
+/// keep the existing `auto`, `manual`, and `debugDepthOverride` strings while
+/// removing runtime string comparisons from the Swift code.
+nonisolated enum DepthSelectionMode: String, Codable, Equatable, Sendable {
+    case automatic = "auto"
+    case manual
+    case debugDepthOverride
 }
 
 /// Immutable capture configuration chosen before the session is mutated.
@@ -45,7 +55,7 @@ nonisolated struct CropPolicy: Equatable, Sendable {
 nonisolated struct CaptureSourcePlan: @unchecked Sendable {
     let rgbSource: CameraProfile
     let depthSource: DepthProfile?
-    let selectionMode: String
+    let selectionMode: DepthSelectionMode
     let pairingMode: RGBDepthPairingMode
     let compatibilityStatus: RGBDepthCompatibilityStatus
     let compatibilityReason: String?
@@ -66,7 +76,7 @@ nonisolated struct CaptureSourcePlan: @unchecked Sendable {
     }
 
     var requestedFocalLengthLabel: FocalLengthLabelResolver.Label {
-        if selectionMode == "debugDepthOverride" {
+        if selectionMode == .debugDepthOverride {
             return FocalLengthLabelResolver.debugZoomLabel(
                 for: rgbSource,
                 zoomFactor: zoom?.requestedZoomFactor ?? 1.0
@@ -89,7 +99,7 @@ nonisolated enum RGBDepthPairingCoordinator {
     static func makePlan(
         rgbSource: CameraProfile,
         depthSource: DepthProfile?,
-        selectionMode: String,
+        selectionMode: DepthSelectionMode,
         selectedZoomID: String?,
         selectedZoomFactor: Double? = nil,
         cropRectNormalized: CropRectNormalized
@@ -169,7 +179,7 @@ nonisolated struct SessionConfigurationRequest: @unchecked Sendable {
 /// AVFoundation device so readers can see where Apple paired depth came from.
 nonisolated struct CaptureSelectionContext: Codable, Equatable, Sendable {
     let sessionMode: String
-    let selectionMode: String
+    let selectionMode: DepthSelectionMode
     let pairingMode: String
     let compatibilityStatus: String
     let compatibilityReason: String?

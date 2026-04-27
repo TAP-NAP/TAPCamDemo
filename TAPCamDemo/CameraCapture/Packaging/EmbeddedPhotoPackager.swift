@@ -18,8 +18,6 @@ nonisolated struct EmbeddedPhotoPackager: CapturePackager {
     let strategy: PackagingStrategy = .embeddedPhoto
 
     func package(_ capturePackage: CapturePackage) async throws -> PackagedCaptureArtifact {
-        try ReleasePackagingPolicy.validate(strategy)
-
         let manifest = try TAPDepthManifestBuilder.makeManifest(capturePackage: capturePackage)
         let customizer = TAPPhotoFileMetadataCustomizer(
             capturedAt: capturePackage.sourceContext.capturedAt,

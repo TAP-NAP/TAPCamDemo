@@ -35,9 +35,6 @@ CapturePackageBuilder
 EmbeddedPhotoPackager
      |
      v
-ArtifactHookPipeline(hooks: [])
-     |
-     v
 PhotoLibraryCaptureArtifactWriter
 ```
 
@@ -80,11 +77,9 @@ reserved for future independent camera-input pairings and is documented in
 | Default photo provider | [AVFoundationSingleCamPhotoProvider.swift](TAPCamDemo/CameraCapture/CaptureSources/AVFoundationSingleCamPhotoProvider.swift) |
 | Pipeline and metrics | [CapturePipeline.swift](TAPCamDemo/CameraCapture/Pipeline/CapturePipeline.swift), [CaptureJobMetrics.swift](TAPCamDemo/CameraCapture/Diagnostics/CaptureJobMetrics.swift) |
 | Logical package | [CapturePackage.swift](TAPCamDemo/CameraCapture/Processing/CapturePackage.swift) |
-| Packaging policy | [CapturePackager.swift](TAPCamDemo/CameraCapture/Packaging/CapturePackager.swift) |
+| Packaging model | [CapturePackager.swift](TAPCamDemo/CameraCapture/Packaging/CapturePackager.swift) |
 | Embedded HEIC packager | [EmbeddedPhotoPackager.swift](TAPCamDemo/CameraCapture/Packaging/EmbeddedPhotoPackager.swift) |
 | TAP manifest schema | [TAPDepthManifest.swift](TAPCamDemo/CameraCapture/Packaging/EmbeddedPhoto/TAPDepthManifest.swift) |
-| External payload entry | [ExternalCapturePackageService.swift](TAPCamDemo/CameraCapture/Integration/ExternalCapturePackageService.swift) |
-| Hooks | [ArtifactHookPipeline.swift](TAPCamDemo/CameraCapture/Hooks/ArtifactHookPipeline.swift) |
 | Photos writer | [PhotoLibraryWriter.swift](TAPCamDemo/CameraCapture/Writers/PhotoLibraryWriter.swift) |
 | Analysis models and HEIC readback | [DepthAnalysisModels.swift](TAPCamDemo/DepthAnalysis/DepthAnalysisModels.swift), [DepthAnalysisReader.swift](TAPCamDemo/DepthAnalysis/DepthAnalysisReader.swift) |
 | Depth / mask / plane / cloud tools | [AnalysisTools](TAPCamDemo/DepthAnalysis/AnalysisTools) |

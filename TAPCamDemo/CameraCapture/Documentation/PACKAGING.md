@@ -4,8 +4,8 @@
 RGB source, depth source, pairing status, zoom, crop metadata, `AVCapturePhoto`,
 location, and diagnostics facts.
 
-`PackagedCaptureArtifact` is the physical output. In Release v0.8, the only
-allowed strategy is `EmbeddedPhotoPackager`.
+`PackagedCaptureArtifact` is the physical output. The only runtime strategy is
+`EmbeddedPhotoPackager`.
 
 ```text
 CapturePackage
@@ -20,5 +20,6 @@ Single Photo Artifact
 Local Photos Writer
 ```
 
-Release rejects sidecar JSON, debug bundles, independent depth files,
-independent metadata files, metrics files, and intermediate artifacts.
+Sidecar JSON, debug bundles, independent depth files, independent metadata
+files, metrics files, and intermediate artifacts are not implemented in runtime
+code.

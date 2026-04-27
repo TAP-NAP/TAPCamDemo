@@ -1,31 +1,19 @@
-# External Integration
+# Future External Integration TODO
 
-Apps that already own a camera session can integrate without adopting
-`CameraView`.
+The current demo does not expose a runtime external-session API. It owns the
+SingleCam `AVCaptureSession` and writes one embedded HEIC artifact.
 
 ```text
 Existing Camera App
         |
         v
-Existing AVCaptureSession / Capture Callback
+Future external payload validation
         |
         v
-ExternalCapturePayload
-        |
-        v
-ExternalCapturePackageService
-        |
-        v
-PackagingStrategy
-        |
-        v
-Hook Pipeline
-        |
-        v
-Writer / Diagnostics
+Future embedded photo packager
 ```
 
-`ExternalCapturePackageService` currently enforces policy and exposes the entry
-point. It does not fabricate Apple auxiliary depth for arbitrary external data.
-Future implementation must validate RGB/depth alignment and calibration before
-writing a release artifact.
+External integration was removed from runtime code because arbitrary RGB/depth
+bytes cannot safely be fabricated into Apple auxiliary depth without validating
+alignment, calibration, orientation, and release packaging rules. Add it later
+as its own vertical slice if a real host app needs it.

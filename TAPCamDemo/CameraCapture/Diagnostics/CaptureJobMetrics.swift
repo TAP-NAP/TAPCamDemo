@@ -15,12 +15,8 @@ import Foundation
 nonisolated struct CaptureJobMetrics: Identifiable, Equatable, Sendable {
     let id: UUID
     let captureDuration: TimeInterval?
-    let rgbCaptureDuration: TimeInterval?
-    let depthCaptureDuration: TimeInterval?
-    let rawCaptureDuration: TimeInterval?
     let packageBuildDuration: TimeInterval?
     let packagingDuration: TimeInterval?
-    let hookPipelineDuration: TimeInterval?
     let writeDuration: TimeInterval?
     let totalDuration: TimeInterval
     let queueWaitDuration: TimeInterval?

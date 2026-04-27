@@ -13,10 +13,12 @@ import Foundation
 /// but the queue refuses new work when too many captures are pending. This keeps
 /// memory pressure bounded without blocking the viewfinder for every write.
 actor CaptureJobQueue {
+    static let defaultMaximumPendingJobs = 3
+
     private var pendingJobCount = 0
     private let maximumPendingJobs: Int
 
-    init(maximumPendingJobs: Int = 3) {
+    init(maximumPendingJobs: Int = CaptureJobQueue.defaultMaximumPendingJobs) {
         self.maximumPendingJobs = maximumPendingJobs
     }
 
@@ -45,22 +47,19 @@ actor CaptureJobQueue {
 /// configuration; the active `SessionConfigurationResult` must already exist
 /// before a job reaches this type.
 nonisolated final class CapturePipeline: @unchecked Sendable {
-    private let registry: CaptureSourceRegistry
+    private let photoDepthProvider: any SingleCamPhotoCaptureProvider
     private let packager: any CapturePackager
-    private let hookPipeline: ArtifactHookPipeline
     private let writer: any CaptureArtifactWriter
     private let metricsStore: MetricsStore
 
     init(
-        registry: CaptureSourceRegistry,
+        photoDepthProvider: any SingleCamPhotoCaptureProvider,
         packager: any CapturePackager = EmbeddedPhotoPackager(),
-        hookPipeline: ArtifactHookPipeline = ArtifactHookPipeline(),
         writer: any CaptureArtifactWriter = PhotoLibraryCaptureArtifactWriter(),
         metricsStore: MetricsStore
     ) {
-        self.registry = registry
+        self.photoDepthProvider = photoDepthProvider
         self.packager = packager
-        self.hookPipeline = hookPipeline
         self.writer = writer
         self.metricsStore = metricsStore
     }
@@ -75,12 +74,11 @@ nonisolated final class CapturePipeline: @unchecked Sendable {
         var captureDuration: TimeInterval?
         var packageBuildDuration: TimeInterval?
         var packagingDuration: TimeInterval?
-        var hookPipelineDuration: TimeInterval?
         var writeDuration: TimeInterval?
 
         do {
             let captureStart = Date()
-            let captureResult = try await registry.singleCamPhotoProvider.capturePhotoDepth(job: job, context: context)
+            let captureResult = try await photoDepthProvider.capturePhotoDepth(job: job, context: context)
             captureDuration = Date().timeIntervalSince(captureStart)
 
             let packageBuildStart = Date()
@@ -95,24 +93,16 @@ nonisolated final class CapturePipeline: @unchecked Sendable {
             let artifact = try await packager.package(capturePackage)
             packagingDuration = Date().timeIntervalSince(packagingStart)
 
-            let hooksStart = Date()
-            let processedArtifact = try await hookPipeline.process(artifact)
-            hookPipelineDuration = Date().timeIntervalSince(hooksStart)
-
             let writeStart = Date()
-            let writeResult = try await writer.write(processedArtifact)
+            let writeResult = try await writer.write(artifact)
             writeDuration = Date().timeIntervalSince(writeStart)
 
             await metricsStore.record(metrics(
                 id: job.id,
                 context: context,
                 captureDuration: captureDuration,
-                rgbCaptureDuration: captureDuration,
-                depthCaptureDuration: captureDuration,
-                rawCaptureDuration: nil,
                 packageBuildDuration: packageBuildDuration,
                 packagingDuration: packagingDuration,
-                hookPipelineDuration: hookPipelineDuration,
                 writeDuration: writeDuration,
                 totalDuration: Date().timeIntervalSince(totalStart),
                 queueWaitDuration: queueWaitDuration,
@@ -127,12 +117,8 @@ nonisolated final class CapturePipeline: @unchecked Sendable {
                 id: job.id,
                 context: context,
                 captureDuration: captureDuration,
-                rgbCaptureDuration: captureDuration,
-                depthCaptureDuration: captureDuration,
-                rawCaptureDuration: nil,
                 packageBuildDuration: packageBuildDuration,
                 packagingDuration: packagingDuration,
-                hookPipelineDuration: hookPipelineDuration,
                 writeDuration: writeDuration,
                 totalDuration: Date().timeIntervalSince(totalStart),
                 queueWaitDuration: queueWaitDuration,
@@ -149,12 +135,8 @@ nonisolated final class CapturePipeline: @unchecked Sendable {
         id: UUID,
         context: CaptureSourceContext,
         captureDuration: TimeInterval?,
-        rgbCaptureDuration: TimeInterval?,
-        depthCaptureDuration: TimeInterval?,
-        rawCaptureDuration: TimeInterval?,
         packageBuildDuration: TimeInterval?,
         packagingDuration: TimeInterval?,
-        hookPipelineDuration: TimeInterval?,
         writeDuration: TimeInterval?,
         totalDuration: TimeInterval,
         queueWaitDuration: TimeInterval?,
@@ -166,12 +148,8 @@ nonisolated final class CapturePipeline: @unchecked Sendable {
         return CaptureJobMetrics(
             id: id,
             captureDuration: captureDuration,
-            rgbCaptureDuration: rgbCaptureDuration,
-            depthCaptureDuration: depthCaptureDuration,
-            rawCaptureDuration: rawCaptureDuration,
             packageBuildDuration: packageBuildDuration,
             packagingDuration: packagingDuration,
-            hookPipelineDuration: hookPipelineDuration,
             writeDuration: writeDuration,
             totalDuration: totalDuration,
             queueWaitDuration: queueWaitDuration,

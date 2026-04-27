@@ -7,12 +7,11 @@
 
 import Foundation
 
-/// One user shutter request as it travels through capture, packaging, hooks,
-/// writing, and diagnostics.
+/// One user shutter request as it travels through capture, packaging, writing,
+/// and diagnostics.
 ///
-/// The job is intentionally lightweight and stable. It lets diagnostics and
-/// future external providers correlate work without giving those providers
-/// permission to mutate the managed `AVCaptureSession` directly.
+/// The job is intentionally lightweight: it gives the SingleCam pipeline a
+/// stable identity without adding another abstraction over AVFoundation.
 nonisolated struct CaptureJob: Identifiable, Equatable, Sendable {
     let id: UUID
     let createdAt: Date
@@ -22,4 +21,3 @@ nonisolated struct CaptureJob: Identifiable, Equatable, Sendable {
         self.createdAt = createdAt
     }
 }
-

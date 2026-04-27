@@ -127,26 +127,14 @@ struct TAPCamDemoTests {
         #expect(FocalLengthLabelResolver.debugEquivalentMillimeters(baseMillimeters: 13, zoomFactor: 2) == 26)
     }
 
-    @Test func releasePolicyRejectsNonEmbeddedPackagingStrategies() throws {
-        try ReleasePackagingPolicy.validate(.embeddedPhoto)
+    @Test func runtimePackagingStrategyIsEmbeddedPhotoOnly() throws {
+        #expect(PackagingStrategy.embeddedPhoto.rawValue == "embeddedPhoto")
+    }
 
-        do {
-            try ReleasePackagingPolicy.validate(.sidecarJSON)
-            Issue.record("Release policy should reject sidecar JSON packaging.")
-        } catch TAPDepthCaptureError.releasePackagingStrategyRejected {
-            // Expected.
-        } catch {
-            Issue.record("Unexpected sidecar JSON error: \(error)")
-        }
-
-        do {
-            try ReleasePackagingPolicy.validate(.bundle)
-            Issue.record("Release policy should reject bundle packaging.")
-        } catch TAPDepthCaptureError.releasePackagingStrategyRejected {
-            // Expected.
-        } catch {
-            Issue.record("Unexpected bundle error: \(error)")
-        }
+    @Test func depthSelectionModeKeepsPublishedManifestRawValues() throws {
+        #expect(DepthSelectionMode.automatic.rawValue == "auto")
+        #expect(DepthSelectionMode.manual.rawValue == "manual")
+        #expect(DepthSelectionMode.debugDepthOverride.rawValue == "debugDepthOverride")
     }
 
     @Test func proofChangesDoNotAffectPayloadHashInput() throws {

@@ -443,7 +443,7 @@ nonisolated enum TAPDepthManifestBuilder {
 
     private static func makeDepthSourceSelection(_ selectionContext: CaptureSelectionContext) -> TAPDepthManifest.DepthSourceSelection {
         TAPDepthManifest.DepthSourceSelection(
-            selectionMode: selectionContext.selectionMode,
+            selectionMode: selectionContext.selectionMode.rawValue,
             requestedDepthSourceID: selectionContext.depthSourceID,
             requestedDepthSourceDisplayName: selectionContext.depthSourceDisplayName,
             requestedDepthSourceKind: selectionContext.depthSourceKind,
@@ -558,7 +558,7 @@ nonisolated enum TAPDepthManifestBuilder {
          `selectedZoom` as well as `actualVideoZoomFactor`.
         */
         return TAPDepthManifest.DepthBackendSelection(
-            selectionMode: selectionContext.selectionMode,
+            selectionMode: selectionContext.selectionMode.rawValue,
             requestedBackendID: selectionContext.depthSourceID,
             requestedBackendDisplayName: selectionContext.depthSourceDisplayName,
             resolvedBackendID: selectionContext.depthSourceID ?? selectionContext.resolvedCaptureDeviceID,
