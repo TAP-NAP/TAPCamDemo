@@ -31,8 +31,9 @@ Key code:
 | Standard EXIF/GPS/TIFF merge | [TAPPhotoFileMetadataCustomizer](TAPCamDemo/TAPPhotoFileMetadataCustomizer.swift#L13) |
 | XMP injection and readback | [TAPDepthHEICWriter.swift](TAPCamDemo/TAPDepthHEICWriter.swift#L13) |
 | Photos album save and original bytes readback | [PhotoLibraryWriter.swift](TAPCamDemo/PhotoLibraryWriter.swift#L13) |
-| Analysis readback, visualization, geometry, and plane fitting | [TAPDepthAnalysis.swift](TAPCamDemo/TAPDepthAnalysis.swift#L14) |
-| Saved-image analysis UI | [DepthAnalysisView.swift](TAPCamDemo/DepthAnalysisView.swift#L14) |
+| Analysis models and HEIC readback | [DepthAnalysisModels.swift](TAPCamDemo/DepthAnalysis/DepthAnalysisModels.swift#L14), [DepthAnalysisReader.swift](TAPCamDemo/DepthAnalysis/DepthAnalysisReader.swift#L14) |
+| Depth / mask / plane / cloud tools | [AnalysisTools](TAPCamDemo/DepthAnalysis/AnalysisTools) |
+| Saved-image album and analysis UI | [DepthAlbumPickerView.swift](TAPCamDemo/DepthAnalysis/DepthAlbumPickerView.swift#L14), [DepthAnalysisView.swift](TAPCamDemo/DepthAnalysis/DepthAnalysisView.swift#L14) |
 
 ## HEIC Layout
 
