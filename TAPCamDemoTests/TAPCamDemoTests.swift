@@ -22,7 +22,7 @@ struct TAPCamDemoTests {
         #expect(manifest.schema.xmpManifestPath == "tapdepth:Manifest")
     }
 
-    @Test func manifestJSONDocumentsV08SelectionAndNullableLocation() throws {
+    @Test func manifestJSONDocumentsSingleCamSelectionAndNullableLocation() throws {
         let manifest = TAPDepthManifest(payload: Self.samplePayload(location: nil))
         let json = try TAPDepthManifestEncoder.manifestJSON(manifest)
 
@@ -66,7 +66,6 @@ struct TAPCamDemoTests {
         #expect(DepthProfileKind.trueDepth.fixedOrder < DepthProfileKind.dualCameraDisparity.fixedOrder)
         #expect(DepthProfileKind.dualCameraDisparity.fixedOrder < DepthProfileKind.dualWideDisparity.fixedOrder)
         #expect(DepthProfileKind.dualWideDisparity.fixedOrder < DepthProfileKind.portraitSemanticDepth.fixedOrder)
-        #expect(DepthProfileKind.portraitSemanticDepth.fixedOrder < DepthProfileKind.fallbackNone.fixedOrder)
     }
 
     @Test func automaticPriorityPrefersApplePairedVirtualPhotoPipelines() throws {
@@ -152,17 +151,17 @@ struct TAPCamDemoTests {
                 targetEquivalentMillimeters: 48,
                 formatSelection: option.depthSource?.formatSelection
             )
-            #expect(abs(option.zoom.requestedZoomFactor - expectedRawZoom) < 0.001)
+            #expect(abs(option.zoom.rawVideoZoomFactor - expectedRawZoom) < 0.001)
 
             let lowerDepthSafeBound = option.depthSource?.formatSelection?.videoFormat.supportedVideoZoomRangesForDepthDataDelivery
                 .map { Double($0.lowerBound) }
                 .min() ?? 1
             if lowerDepthSafeBound > 1.0 {
-                #expect(option.zoom.requestedZoomFactor > 2.0)
+                #expect(option.zoom.rawVideoZoomFactor > 2.0)
             }
         }
-        #expect(!options.contains(where: { $0.displayName == "26mm" && $0.zoom.requestedZoomFactor == 2.0 }))
-        #expect(!options.contains(where: { $0.displayName == "154mm" && $0.zoom.requestedZoomFactor == 2.0 }))
+        #expect(!options.contains(where: { $0.displayName == "26mm" && $0.zoom.rawVideoZoomFactor == 2.0 }))
+        #expect(!options.contains(where: { $0.displayName == "154mm" && $0.zoom.rawVideoZoomFactor == 2.0 }))
     }
 
     @Test func pairingPlanKeepsCustomReleaseFOVZoomFactor() throws {
@@ -173,11 +172,11 @@ struct TAPCamDemoTests {
                 depthSource: option.depthSource,
                 selectionMode: .automatic,
                 selectedZoomID: option.zoom.id,
-                selectedZoomFactor: option.zoom.requestedZoomFactor,
+                selectedZoomFactor: option.zoom.rawVideoZoomFactor,
                 cropRectNormalized: .fullFrame
             )
 
-            #expect(abs((plan.zoom?.requestedZoomFactor ?? 0) - option.zoom.requestedZoomFactor) < 0.001)
+            #expect(abs((plan.zoom?.rawVideoZoomFactor ?? 0) - option.zoom.rawVideoZoomFactor) < 0.001)
         }
     }
 
@@ -191,7 +190,7 @@ struct TAPCamDemoTests {
         #expect(DepthSelectionMode.debugDepthOverride.rawValue == "debugDepthOverride")
     }
 
-    @Test func proofChangesDoNotAffectPayloadHashInput() throws {
+    @Test func proofChangesDoNotAffectPayloadBytes() throws {
         let payload = Self.samplePayload(location: Self.sampleLocation)
         let manifestWithoutProof = TAPDepthManifest(payload: payload)
         let manifestWithProof = TAPDepthManifest(
@@ -207,10 +206,10 @@ struct TAPCamDemoTests {
             ]
         )
 
-        let unsignedInput = try TAPDepthManifestEncoder.payloadDataForFutureProofing(manifestWithoutProof.payload)
-        let signedInput = try TAPDepthManifestEncoder.payloadDataForFutureProofing(manifestWithProof.payload)
+        let payloadBytesWithoutProofs = try TAPDepthManifestEncoder.payloadDataExcludingProofs(manifestWithoutProof.payload)
+        let payloadBytesWithProofs = try TAPDepthManifestEncoder.payloadDataExcludingProofs(manifestWithProof.payload)
 
-        #expect(unsignedInput == signedInput)
+        #expect(payloadBytesWithoutProofs == payloadBytesWithProofs)
     }
 
     @Test func projectorUsesCalibrationToProduceCameraCoordinates() throws {

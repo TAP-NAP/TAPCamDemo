@@ -41,7 +41,7 @@ actor CaptureJobQueue {
 }
 
 /// Coordinates SingleCam capture, logical package build, physical packaging,
-/// hook processing, writing, and diagnostics.
+/// Photos writing, and diagnostics.
 ///
 /// The pipeline owns orchestration only. It does not mutate AVFoundation session
 /// configuration; the active `SessionConfigurationResult` must already exist
@@ -159,7 +159,7 @@ nonisolated final class CapturePipeline: @unchecked Sendable {
             pairingMode: plan.pairingMode.rawValue,
             selectedRGBSource: plan.rgbSource.displayName,
             selectedDepthSource: plan.depthSource?.displayName,
-            currentZoomFactor: plan.zoom?.actualVideoZoomFactor,
+            currentZoomFactor: plan.zoom?.rawVideoZoomFactor,
             cropMode: plan.cropPolicy.mode,
             cropRectNormalized: plan.cropPolicy.cropRectNormalized
         )

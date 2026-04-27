@@ -12,7 +12,8 @@ import simd
 ///
 /// Coordinates are local to the capture camera. A single HEIC does not contain
 /// a stable world coordinate system, so this projector deliberately avoids
-/// naming results "world" points. Future AR capture can add world transforms.
+/// naming results "world" points. AR/world transforms belong outside this
+/// single-photo projection step.
 ///
 /// Cloud mode principle:
 /// A depth image is a 2D grid of distances. To preview a point cloud, the module

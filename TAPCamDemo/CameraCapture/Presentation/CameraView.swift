@@ -9,12 +9,12 @@
 import SwiftUI
 import UIKit
 
-/// Main v0.8 capture screen.
+/// Main SingleCam photo-depth capture screen.
 ///
-/// The view is intentionally thin: it renders `CameraProfile`, `DepthProfile`,
-/// `ZoomProfile`, and metrics supplied by `CameraViewModel`. AVFoundation
-/// details stay below the capability/session layers, which keeps the UI from
-/// re-implementing device compatibility rules.
+/// The view is intentionally thin: it renders FOV options, Debug depth override
+/// controls, Debug zoom profiles, and metrics supplied by `CameraViewModel`.
+/// AVFoundation details stay below the capability/session layers, which keeps
+/// the UI from re-implementing device compatibility rules.
 struct CameraView: View {
     @StateObject private var viewModel = CameraViewModel()
     @StateObject private var chromeOrientation = CameraChromeOrientationController()
@@ -542,7 +542,7 @@ private struct DebugZoomControlView: View {
         if let selectedZoomID {
             return zoom.id == selectedZoomID
         }
-        return abs(zoom.requestedZoomFactor - selectedZoomFactor) < 0.001
+        return zoom.matchesRawVideoZoomFactor(selectedZoomFactor)
     }
 
     private func clampedSliderValue(_ value: Double) -> Double {

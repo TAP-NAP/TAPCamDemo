@@ -17,8 +17,8 @@ AVCapturePhoto + AVCapturePhoto.depthData
 
 ## Safety Boundary
 
-Providers must not add/remove `AVCaptureSession` inputs, outputs, or
-connections. If a provider needs a session change, it must request it through
+The provider must not add/remove `AVCaptureSession` inputs, outputs, or
+connections. If it needs a session change, it must request it through
 `SessionConfigurationRequest`, which is serialized by
 `CaptureSessionController`.
 
@@ -33,10 +33,9 @@ has already been configured by [CaptureSessionController.swift](../Session/Captu
 | --- | --- |
 | `SingleCamPhotoCaptureProvider` | Implemented, returns paired `AVCapturePhoto` + `depthData` |
 
-## Removed Future Skeletons
+## Removed Skeletons
 
-The older v0.8 draft described separate RGB, depth, RAW, and external providers.
-Those are intentionally not present in runtime code because the accepted
-SingleCam product flow does not support freely recombining those outputs.
-Future MultiCam or external-session work should be introduced as a separate
-vertical slice after alignment and packaging rules are proven.
+There are no separate RGB, depth, RAW, registry, or external-session providers
+in runtime code. Those skeletons imply arbitrary RGB/depth composition, while
+the product currently relies on Apple's paired still-photo depth output from one
+`AVCapturePhoto`.

@@ -9,9 +9,8 @@ import Foundation
 
 /// Performance and status record for one capture job.
 ///
-/// Debug UI reads these values to show where time is spent. Additional future
-/// hook metrics, such as hashing or signing duration, can be appended without
-/// changing the core capture/package/write pipeline.
+/// Debug UI reads these values to show where time is spent across capture,
+/// package build, packaging, and Photos writing.
 nonisolated struct CaptureJobMetrics: Identifiable, Equatable, Sendable {
     let id: UUID
     let captureDuration: TimeInterval?

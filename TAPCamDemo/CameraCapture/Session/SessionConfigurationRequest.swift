@@ -8,11 +8,11 @@
 @preconcurrency import AVFoundation
 import Foundation
 
-/// Pairing modes produced by `RGBDepthPairingCoordinator`.
+/// Pairing modes surfaced by SingleCam capture planning.
 ///
-/// Only `rgbWithApplePairedDepth` is executable in v0.8 still-photo capture.
-/// Other values are kept in data so the UI and diagnostics can distinguish
-/// unsupported requests from future streaming or MultiCam paths.
+/// Only `rgbWithApplePairedDepth` is executable. Other values remain as
+/// diagnostics/manifest facts so unsupported hardware combinations are explicit
+/// instead of silently falling back to a different depth source.
 nonisolated enum RGBDepthPairingMode: String, Codable, Equatable, Sendable {
     case rgbOnly
     case rgbWithApplePairedDepth
@@ -76,7 +76,7 @@ nonisolated struct CaptureSourcePlan: @unchecked Sendable {
     }
 
     var requestedFocalLengthLabel: FocalLengthLabelResolver.Label {
-        let rawZoomFactor = zoom?.actualVideoZoomFactor ?? zoom?.requestedZoomFactor ?? 1.0
+        let rawZoomFactor = zoom?.rawVideoZoomFactor ?? 1.0
         let equivalentMillimeters = FocalLengthLabelResolver.equivalentMillimeters(
             for: rgbSource,
             rawVideoZoomFactor: rawZoomFactor,
@@ -100,8 +100,8 @@ nonisolated struct CaptureSourcePlan: @unchecked Sendable {
 /// Converts selected RGB/depth/zoom/crop state into a `CaptureSourcePlan`.
 ///
 /// The coordinator reads only capability-layer value types. It rejects unsafe
-/// combinations before capture and records future paths such as MultiCam without
-/// trying to run them in this v0.8 implementation.
+/// combinations before capture and records unsupported hardware boundaries
+/// without trying to run a second capture path.
 nonisolated enum RGBDepthPairingCoordinator {
     static func makePlan(
         rgbSource: CameraProfile,
@@ -117,8 +117,14 @@ nonisolated enum RGBDepthPairingCoordinator {
             selectedZoomID: selectedZoomID,
             selectedZoomFactor: selectedZoomFactor
         )
+        /*
+         Prefer the selected zoom ID when it names a profile, but keep the raw
+         Double as a first-class fallback. Release FOV options can resolve to
+         non-catalog raw zoom values such as 4.0; matching the Double here keeps
+         those labels from collapsing back to the first enabled depth-safe zoom.
+         */
         let selectedZoom = selectedZoomID.flatMap { id in zoomCapability.zoomProfiles.first(where: { $0.id == id }) }
-            ?? selectedZoomFactor.flatMap { zoom in zoomCapability.zoomProfiles.first(where: { abs($0.requestedZoomFactor - zoom) < 0.001 }) }
+            ?? selectedZoomFactor.flatMap { zoom in zoomCapability.zoomProfiles.first(where: { $0.matchesRawVideoZoomFactor(zoom) }) }
             ?? zoomCapability.zoomProfiles.first(where: \.isEnabled)
         let cropPolicy = CropPolicy(
             mode: "previewOnly",
@@ -173,15 +179,15 @@ nonisolated enum RGBDepthPairingCoordinator {
 
 /// Immutable request to configure the managed capture session.
 ///
-/// Providers and UI never add/remove inputs or outputs directly. The view model
-/// creates this request after pairing validation and hands it to
+/// UI and the photo provider never add/remove inputs or outputs directly. The
+/// view model creates this request after pairing validation and hands it to
 /// `CaptureSessionController`, which serializes all AVFoundation mutation on
 /// its session queue.
 nonisolated struct SessionConfigurationRequest: @unchecked Sendable {
     let capturePlan: CaptureSourcePlan
 }
 
-/// Stable metadata for the configured v0.8 capture path.
+/// Stable metadata for the configured SingleCam capture path.
 ///
 /// This value crosses the session boundary into capture/package/manifest code.
 /// It records both the user's requested source rows and the resolved
@@ -253,7 +259,7 @@ extension SessionConfigurationRequest {
             selectedEquivalentFocalLength35mmMillimeters: focalLabel.equivalentMillimeters,
             selectedZoomID: plan.zoom?.id,
             selectedZoomDisplayName: plan.zoom?.displayName,
-            selectedZoomFactor: plan.zoom?.actualVideoZoomFactor ?? plan.zoom?.requestedZoomFactor,
+            selectedZoomFactor: plan.zoom?.rawVideoZoomFactor,
             cropRectNormalized: plan.cropPolicy.cropRectNormalized,
             resolvedCaptureDeviceID: plan.resolvedCaptureDevice.uniqueID,
             resolvedCaptureDeviceType: plan.resolvedCaptureDevice.deviceType.rawValue,

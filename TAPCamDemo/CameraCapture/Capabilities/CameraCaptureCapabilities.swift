@@ -11,7 +11,7 @@ import CoreMedia
 import Darwin
 import Foundation
 
-/// Capture-session families represented by the v0.8 architecture.
+/// Capture-session family used by the SingleCam demo.
 ///
 /// The current implementation runs only still photo + depth through
 /// `.singleCam`: one AVFoundation capture pipeline produces the visible photo
@@ -64,7 +64,6 @@ nonisolated enum DepthProfileKind: String, Codable, CaseIterable, Sendable {
     case dualCameraDisparity
     case dualWideDisparity
     case portraitSemanticDepth
-    case fallbackNone
 
     var id: String { rawValue }
 
@@ -80,8 +79,6 @@ nonisolated enum DepthProfileKind: String, Codable, CaseIterable, Sendable {
             "Dual Wide Disparity"
         case .portraitSemanticDepth:
             "Portrait / Semantic Depth"
-        case .fallbackNone:
-            "None"
         }
     }
 
@@ -97,8 +94,6 @@ nonisolated enum DepthProfileKind: String, Codable, CaseIterable, Sendable {
             3
         case .portraitSemanticDepth:
             4
-        case .fallbackNone:
-            5
         }
     }
 
@@ -112,8 +107,6 @@ nonisolated enum DepthProfileKind: String, Codable, CaseIterable, Sendable {
             "camera.metering.matrix"
         case .portraitSemanticDepth:
             "viewfinder"
-        case .fallbackNone:
-            "nosign"
         }
     }
 }
@@ -123,32 +116,26 @@ nonisolated enum DepthProfileAvailability: String, Codable, Equatable, Sendable 
     case available
     case unavailable
     case unsupportedFormat
-    case releasePackagingUnsupported
 }
 
 /// Result of validating a selected RGB source against a depth row.
 ///
 /// Values are intentionally more specific than a boolean so UI, diagnostics,
-/// and future external integrations can explain why a row is grey without
-/// re-implementing AVFoundation rules in the presentation layer.
+/// and diagnostics can explain why a row is grey without re-implementing
+/// AVFoundation rules in the presentation layer.
 nonisolated enum RGBDepthCompatibilityStatus: String, Codable, Equatable, Sendable {
     case compatible
-    case incompatible
     case requiresMultiCam
     case unsupportedFormat
     case unsupportedZoom
-    case unsupportedSessionPreset
-    case depthDeliveryDisabled
     case releasePackagingUnsupported
-    case cropUnsupported
     case unavailable
-    case invalidSelected
 }
 
 /// A video/depth format pair that can produce `AVCapturePhoto.depthData`.
 ///
 /// The capability layer chooses a pair; the session controller applies it on
-/// the serial session queue. Keeping the pair as data prevents providers or UI
+/// the serial session queue. Keeping the pair as data prevents UI or capture code
 /// from mutating `activeFormat` directly.
 nonisolated struct PhotoDepthFormatSelection: @unchecked Sendable {
     let videoFormat: AVCaptureDevice.Format
@@ -177,12 +164,11 @@ nonisolated struct DepthProfile: Identifiable, @unchecked Sendable {
     let availability: DepthProfileAvailability
     let compatibility: RGBDepthCompatibilityStatus
     let disabledReason: String?
-    let isInvalidSelected: Bool
     let resolvedDevice: AVCaptureDevice?
     let formatSelection: PhotoDepthFormatSelection?
 
     var isSelectable: Bool {
-        availability == .available && compatibility == .compatible && !isInvalidSelected
+        availability == .available && compatibility == .compatible
     }
 }
 
@@ -214,15 +200,6 @@ nonisolated struct DebugDepthDeviceOption: Identifiable, @unchecked Sendable {
             && formatSelection != nil
     }
 
-    var depthProfile: DepthProfile? {
-        guard isSelectable,
-              let formatSelection else {
-            return nil
-        }
-
-        return depthProfile(formatSelection: formatSelection)
-    }
-
     func depthProfile(formatSelection: PhotoDepthFormatSelection) -> DepthProfile? {
         guard isSelectable,
               let device else {
@@ -238,35 +215,45 @@ nonisolated struct DebugDepthDeviceOption: Identifiable, @unchecked Sendable {
             availability: availability,
             compatibility: .compatible,
             disabledReason: nil,
-            isInvalidSelected: false,
             resolvedDevice: device,
             formatSelection: formatSelection
         )
     }
 }
 
-/// A fixed zoom choice for the active RGB-depth pairing.
+/// A raw zoom choice for the active RGB-depth pairing.
 ///
-/// The values `1x`, `2x`, and `3x` map to
-/// `AVCaptureDevice.videoZoomFactor` on the resolved capture device. They are
-/// not Apple Camera app focal labels and do not imply a guaranteed physical lens
-/// switch; the manifest records both requested and resolved session facts.
+/// Debug presents some of these as compact `0.5x/1x/2x/3x` chips. Release uses
+/// the same value type behind semantic FOV labels, so the important invariant is
+/// that `rawVideoZoomFactor` reaches `CaptureSessionController` unchanged.
 nonisolated struct ZoomProfile: Identifiable, Equatable, Sendable {
     let id: String
     let displayName: String
-    let requestedZoomFactor: Double
+    let rawVideoZoomFactor: Double
     let isEnabled: Bool
     let disabledReason: String?
-    let actualVideoZoomFactor: Double?
+
+    /// Raw zoom value requested from `AVCaptureDevice.videoZoomFactor`.
+    ///
+    /// Release FOV labels are semantic (`24mm`, `48mm`, `77mm`); this value is
+    /// the lower-level zoom number that must survive planning and reach the
+    /// session controller. On some depth-capable virtual formats, `48mm` is raw
+    /// `4.0` rather than the visually familiar `2x`.
+    var requestedZoomFactor: Double {
+        rawVideoZoomFactor
+    }
+
+    func matchesRawVideoZoomFactor(_ zoomFactor: Double) -> Bool {
+        abs(rawVideoZoomFactor - zoomFactor) < 0.001
+    }
 
     nonisolated static func enabled(_ zoom: Double) -> ZoomProfile {
         ZoomProfile(
             id: id(for: zoom),
             displayName: displayName(for: zoom),
-            requestedZoomFactor: zoom,
+            rawVideoZoomFactor: zoom,
             isEnabled: true,
-            disabledReason: nil,
-            actualVideoZoomFactor: zoom
+            disabledReason: nil
         )
     }
 
@@ -274,10 +261,9 @@ nonisolated struct ZoomProfile: Identifiable, Equatable, Sendable {
         ZoomProfile(
             id: id(for: zoom),
             displayName: displayName(for: zoom),
-            requestedZoomFactor: zoom,
+            rawVideoZoomFactor: zoom,
             isEnabled: false,
-            disabledReason: reason,
-            actualVideoZoomFactor: nil
+            disabledReason: reason
         )
     }
 
@@ -339,7 +325,7 @@ nonisolated struct FocalLengthOption: Identifiable, @unchecked Sendable {
 ///
 /// Values are in the metadata-output coordinate space used by
 /// `AVCaptureVideoPreviewLayer.metadataOutputRectConverted(fromLayerRect:)`.
-/// Release v0.8 records this only as metadata; it does not destructively crop
+/// Release records this only as metadata; it does not destructively crop
 /// the RGB image or the depth map.
 nonisolated struct CropRectNormalized: Codable, Equatable, Sendable {
     let x: Double
@@ -362,23 +348,6 @@ nonisolated struct CropRectNormalized: Codable, Equatable, Sendable {
         self.y = Double(min(max(standardized.origin.y, 0), 1))
         self.width = Double(min(max(standardized.width, 0), 1))
         self.height = Double(min(max(standardized.height, 0), 1))
-    }
-}
-
-/// Release crop policy for the current viewfinder.
-nonisolated struct CropCapability: Equatable, Sendable {
-    let previewCropAllowed: Bool
-    let finalCropAllowed: Bool
-    let releaseFinalCropAllowed: Bool
-    let cropRectNormalized: CropRectNormalized
-
-    static func previewOnly(_ rect: CropRectNormalized) -> CropCapability {
-        CropCapability(
-            previewCropAllowed: true,
-            finalCropAllowed: false,
-            releaseFinalCropAllowed: false,
-            cropRectNormalized: rect
-        )
     }
 }
 
@@ -408,7 +377,6 @@ nonisolated struct CapabilityMatrix: @unchecked Sendable {
 
     func depthProfiles(
         for rgbSource: CameraProfile,
-        selectedKind: DepthProfileKind?,
         preferredZoomFactor: Double? = nil
     ) -> [DepthProfile] {
         DepthProfileKind.allCases.map { kind in
@@ -420,8 +388,6 @@ nonisolated struct CapabilityMatrix: @unchecked Sendable {
                 candidate: candidate,
                 preferredZoomFactor: preferredZoomFactor
             )
-            let isInvalidSelected = selectedKind == kind && pairing.status != .compatible
-            let compatibility: RGBDepthCompatibilityStatus = isInvalidSelected ? .invalidSelected : pairing.status
 
             return DepthProfile(
                 id: kind.id,
@@ -430,9 +396,8 @@ nonisolated struct CapabilityMatrix: @unchecked Sendable {
                 iconName: kind.iconName,
                 fixedOrder: kind.fixedOrder,
                 availability: availability,
-                compatibility: compatibility,
+                compatibility: pairing.status,
                 disabledReason: pairing.reason,
-                isInvalidSelected: isInvalidSelected,
                 resolvedDevice: pairing.resolvedDevice,
                 formatSelection: pairing.formatSelection
             )
@@ -441,14 +406,13 @@ nonisolated struct CapabilityMatrix: @unchecked Sendable {
     }
 
     func bestCompatibleDepthProfile(for rgbSource: CameraProfile) -> DepthProfile? {
-        depthProfiles(for: rgbSource, selectedKind: nil)
+        depthProfiles(for: rgbSource)
             .first(where: \.isSelectable)
     }
 
     func bestCompatibleDepthProfile(for rgbSource: CameraProfile, preferredZoomFactor: Double) -> DepthProfile? {
         depthProfiles(
             for: rgbSource,
-            selectedKind: nil,
             preferredZoomFactor: preferredZoomFactor
         )
         .first(where: \.isSelectable)
@@ -456,7 +420,6 @@ nonisolated struct CapabilityMatrix: @unchecked Sendable {
 
     func debugDepthDeviceOptions() -> [DebugDepthDeviceOption] {
         DepthProfileKind.allCases
-            .filter { $0 != .fallbackNone }
             .map { kind in
             let candidate = depthCandidates.first(where: { $0.kind == kind })
             let availability = availability(for: kind, candidate: candidate)
@@ -526,9 +489,7 @@ nonisolated struct CapabilityMatrix: @unchecked Sendable {
                     selectedZoomID: nil,
                     selectedZoomFactor: requestedZoomFactor
                 )
-                guard let zoom = zoomCapability.zoomProfiles.first(where: {
-                    abs($0.requestedZoomFactor - requestedZoomFactor) < 0.001
-                }) else {
+                guard let zoom = zoomCapability.zoomProfiles.first(where: { $0.matchesRawVideoZoomFactor(requestedZoomFactor) }) else {
                     continue
                 }
                 let label = FocalLengthLabelResolver.label(
@@ -605,9 +566,6 @@ nonisolated struct CapabilityMatrix: @unchecked Sendable {
     }
 
     private func availability(for kind: DepthProfileKind, candidate: DepthDeviceCandidate?) -> DepthProfileAvailability {
-        guard kind != .fallbackNone else {
-            return .releasePackagingUnsupported
-        }
         guard let candidate else {
             return .unavailable
         }
@@ -627,8 +585,6 @@ nonisolated struct CapabilityMatrix: @unchecked Sendable {
             return "Depth device unavailable"
         case .unsupportedFormat:
             return "No depth-capable format"
-        case .releasePackagingUnsupported:
-            return "No depth override device"
         }
     }
 }
@@ -923,8 +879,7 @@ nonisolated enum CameraCapabilityResolver {
         )
 
         return DepthProfileKind.allCases.contains { kind in
-            guard kind != .fallbackNone,
-                  let candidate = depthCandidates.first(where: { $0.kind == kind }) else {
+            guard let candidate = depthCandidates.first(where: { $0.kind == kind }) else {
                 return false
             }
 
@@ -1071,13 +1026,12 @@ nonisolated enum CameraCapabilityResolver {
     }
 }
 
-/// Validates whether an RGB source and a depth row can form a legal v0.8 plan.
+/// Validates whether an RGB source and a depth row can form a legal SingleCam plan.
 ///
 /// This matrix is deliberately conservative. It only reports `.compatible` for
 /// Apple-paired single-pipeline configurations the app can actually run today.
-/// Other plausible hardware combinations are surfaced as `.requiresMultiCam`
-/// or unsupported states so the UI can grey them and diagnostics can explain
-/// the boundary.
+/// Other plausible hardware combinations are surfaced as unsupported states so
+/// the UI can grey them and diagnostics can explain the boundary.
 nonisolated enum RGBDepthCompatibilityMatrix {
     nonisolated struct Result: @unchecked Sendable {
         let status: RGBDepthCompatibilityStatus
@@ -1092,15 +1046,6 @@ nonisolated enum RGBDepthCompatibilityMatrix {
         candidate: DepthDeviceCandidate?,
         preferredZoomFactor: Double? = nil
     ) -> Result {
-        guard depthKind != .fallbackNone else {
-            return Result(
-                status: .releasePackagingUnsupported,
-                reason: "Release requires embedded depth",
-                resolvedDevice: nil,
-                formatSelection: nil
-            )
-        }
-
         guard let candidate else {
             return Result(
                 status: .unavailable,
@@ -1178,8 +1123,15 @@ nonisolated enum ZoomCapabilityResolver {
             allowsZoomOutsideDepthDeliveryRanges: allowsOutsideDepthRanges,
             requiresDepthSafeZoom: requiresDepthSafeZoom
         )
+        /*
+         The fixed Debug zoom chips are 0.5/1/2/3x, but Release FOV labels may
+         need a raw value outside that list. For example, if a depth-capable
+         virtual format exposes 24mm at raw 2.0, then the semantic 48mm slot
+         needs raw 4.0. Appending the selected factor here lets the plan carry
+         the exact value through validation and into `CaptureSessionController`.
+         */
         if let selectedZoomFactor,
-           profiles.contains(where: { abs($0.requestedZoomFactor - selectedZoomFactor) < 0.001 }) == false {
+           profiles.contains(where: { $0.matchesRawVideoZoomFactor(selectedZoomFactor) }) == false {
             profiles.append(
                 CameraCapabilityResolver.makeZoomProfile(
                     zoom: selectedZoomFactor,
@@ -1193,7 +1145,7 @@ nonisolated enum ZoomCapabilityResolver {
             profiles.sort { $0.requestedZoomFactor < $1.requestedZoomFactor }
         }
         let selected = selectedZoomID.flatMap { id in profiles.first(where: { $0.id == id && $0.isEnabled }) }
-            ?? selectedZoomFactor.flatMap { zoom in profiles.first(where: { abs($0.requestedZoomFactor - zoom) < 0.001 && $0.isEnabled }) }
+            ?? selectedZoomFactor.flatMap { zoom in profiles.first(where: { $0.matchesRawVideoZoomFactor(zoom) && $0.isEnabled }) }
             ?? profiles.first(where: \.isEnabled)
         let recommendedRange = videoFormat.systemRecommendedVideoZoomRange.map { Double($0.lowerBound)...Double($0.upperBound) }
         let isContinuous = depthRanges.contains { $0.lowerBound != $0.upperBound }
@@ -1201,7 +1153,7 @@ nonisolated enum ZoomCapabilityResolver {
 
         return ZoomCapability(
             available: profiles.contains(where: \.isEnabled),
-            currentZoomFactor: selected?.actualVideoZoomFactor,
+            currentZoomFactor: selected?.rawVideoZoomFactor,
             videoMaxZoomFactor: Double(videoFormat.videoMaxZoomFactor),
             minAvailableVideoZoomFactor: minimumZoom,
             maxAvailableVideoZoomFactor: maximumZoom,
@@ -1321,6 +1273,12 @@ nonisolated enum FocalLengthLabelResolver {
         targetEquivalentMillimeters: Double,
         formatSelection: PhotoDepthFormatSelection?
     ) -> Double {
+        /*
+         Release FOV math starts from the Wide-equivalent baseline, then converts
+         the requested 35mm label into the raw `videoZoomFactor` that AVFoundation
+         expects for the resolved format. The baseline may be the lower bound of
+         the depth-safe range rather than 1.0 on virtual photo-depth devices.
+         */
         let wideMillimeters = virtualWideEquivalentMillimeters(for: profile.device)
         let wideRawZoom = wideReferenceZoomFactor(for: profile, formatSelection: formatSelection)
         return max(0.01, wideRawZoom * targetEquivalentMillimeters / max(1, wideMillimeters))
@@ -1408,6 +1366,11 @@ nonisolated enum FocalLengthLabelResolver {
         let lowerDepthSafeBound = formatSelection.videoFormat.supportedVideoZoomRangesForDepthDataDelivery
             .map { Double($0.lowerBound) }
             .min() ?? 1.0
+        /*
+         Treat the lower depth-safe bound as the raw zoom where the Wide FOV
+         begins for this format. This is the core distinction between semantic
+         FOV labels and `AVCaptureDevice.videoZoomFactor`.
+         */
         return max(1.0, lowerDepthSafeBound)
     }
 

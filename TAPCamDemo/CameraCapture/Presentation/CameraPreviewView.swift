@@ -18,9 +18,9 @@ import SwiftUI
 /// lives in `CaptureSessionController`, packaging in `EmbeddedPhotoPackager`,
 /// and persistence in `PhotoLibraryCaptureArtifactWriter`.
 ///
-/// v0.8 also reports the normalized metadata rectangle for the currently
+/// The view also reports the normalized metadata rectangle for the currently
 /// visible preview bounds. This records "what the user saw" for downstream
-/// readers without destructively cropping the RGB image or depth map.
+/// readers without destructively cropping the image or depth map.
 struct CameraPreviewView: UIViewRepresentable {
     let session: AVCaptureSession
     let onCropRectChanged: (CGRect) -> Void
@@ -81,6 +81,7 @@ struct CameraPreviewView: UIViewRepresentable {
 
                 guard self.shouldPublish(rect) else { return }
                 self.lastPublishedRect = rect
+                FOVDiagnostics.logPreviewCropRect(rect)
                 self.onCropRectChanged(rect)
             }
         }

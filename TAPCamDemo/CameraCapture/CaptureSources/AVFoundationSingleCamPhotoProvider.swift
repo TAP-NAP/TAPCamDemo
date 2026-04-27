@@ -12,8 +12,8 @@ import Foundation
 ///
 /// This provider starts photo captures and receives delegate callbacks. It does
 /// not configure cameras, inputs, outputs, formats, or zooms. Those mutations
-/// are owned by `CaptureSessionController`, which lets external callers reuse
-/// the provider boundary without breaking the session lifecycle.
+/// are owned by `CaptureSessionController` so preview and capture stay on the
+/// same Apple-paired photo-depth pipeline.
 nonisolated final class AVFoundationSingleCamPhotoProvider: SingleCamPhotoCaptureProvider, @unchecked Sendable {
     private let sessionController: CaptureSessionController
     private let lockQueue = DispatchQueue(label: "tapcam.camera-capture.singlecam.provider")
