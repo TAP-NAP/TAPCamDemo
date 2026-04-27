@@ -16,8 +16,8 @@ nonisolated struct CaptureWriteResult: Equatable, Sendable {
 
 /// Persists a packaged capture artifact.
 ///
-/// Writers do not inspect hardware, mutate sessions, run hooks, or decide
-/// packaging strategy. Release uses a single-photo writer only.
+/// Writers do not inspect hardware, mutate sessions, or decide packaging
+/// strategy. The demo uses a single-photo writer only.
 protocol CaptureArtifactWriter: Sendable {
     func write(_ artifact: PackagedCaptureArtifact) async throws -> CaptureWriteResult
 }

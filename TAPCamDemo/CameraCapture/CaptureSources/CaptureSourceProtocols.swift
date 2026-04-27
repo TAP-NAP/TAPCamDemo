@@ -9,11 +9,11 @@
 import CoreLocation
 import Foundation
 
-/// Context passed to capture providers for one job.
+/// Context passed to the SingleCam photo provider for one job.
 ///
-/// Providers receive the already-configured SingleCam session facts. They may
-/// use outputs owned by `CaptureSessionController`, but they must not add or
-/// remove session inputs, outputs, or connections directly.
+/// The provider receives already-configured SingleCam session facts. It may use
+/// outputs owned by `CaptureSessionController`, but it must not add or remove
+/// session inputs, outputs, or connections directly.
 nonisolated struct CaptureSourceContext: @unchecked Sendable {
     let sessionConfiguration: SessionConfigurationResult
     let capturedAt: Date
@@ -36,9 +36,8 @@ nonisolated struct SingleCamPhotoCaptureResult: @unchecked Sendable {
 ///
 /// Apple's stable still-photo depth API returns the visual image, embedded-file
 /// bytes, `AVCapturePhoto.depthData`, and capture metadata from one
-/// `AVCapturePhotoOutput` callback. Modeling that as one provider avoids the
-/// false impression that this demo can freely combine independent RGB, RAW, and
-/// depth producers.
+/// `AVCapturePhotoOutput` callback. Modeling that as one unit keeps the code
+/// aligned with Apple's paired still-photo depth pipeline.
 protocol SingleCamPhotoCaptureProvider: Sendable {
     func capturePhotoDepth(job: CaptureJob, context: CaptureSourceContext) async throws -> SingleCamPhotoCaptureResult
 }

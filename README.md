@@ -1,6 +1,6 @@
-# TAPCamDemo Camera Capture v0.8
+# TAPCamDemo SingleCam Photo-Depth Demo
 
-TAPCamDemo is a reusable iOS camera-capture pipeline. v0.8 presents rear capture
+TAPCamDemo is an iOS SingleCam photo-depth demo. Release capture is presented
 as field-of-view choices such as `13mm`, `24mm`, `48mm`, and `77mm`; each
 choice resolves to a concrete RGB source, compatible Apple-paired depth source,
 and depth-safe zoom factor before capture. Front capture is entered through the
@@ -8,8 +8,9 @@ camera-switch button and hides the rear FOV selector. The app captures a
 standard photo-depth HEIC only when Apple can produce paired depth through one
 `AVCaptureSession + AVCapturePhotoOutput` pipeline.
 
-Current non-goals: hash, signing, watermarking, destructive final crop, running
-MultiCam capture, and running RGB/depth streaming synchronizer.
+Current non-goals: hash, signing, watermarking, destructive final crop,
+MultiCam capture, RGB/depth streaming synchronizer, RAW provider runtime,
+external session scaffolding, sidecar JSON, and debug bundles.
 
 ## Data Flow
 
@@ -59,9 +60,10 @@ AVCapturePhoto image + AVCapturePhoto.depthData
 HEIC primary image + Apple auxiliary depth + TAP XMP manifest
 ```
 
-The app does **not** run two independent sessions for RGB and depth. MultiCam is
-reserved for future independent camera-input pairings and is documented in
-[MULTICAM_TODO.md](TAPCamDemo/CameraCapture/Documentation/MULTICAM_TODO.md).
+The app does **not** run two independent sessions for RGB and depth. It also
+does not include a MultiCam runtime path; unsupported independent camera-input
+pairings are recorded as manifest/diagnostic facts instead of silently falling
+back to another capture source.
 
 ## Code Map
 
@@ -94,10 +96,10 @@ reserved for future independent camera-input pairings and is documented in
 | EXIF/GPS/TIFF | Compatibility metadata and short pointer | Compatibility mirror |
 | XMP `tapdepth:Manifest` | TAP JSON manifest at `tapdepth:Manifest` | Authoritative TAP metadata |
 
-`payload` is the future canonical signing input. `proofs` remains outside
-`payload` and is reserved for future hash/signature records.
+`payload` is encoded independently from `proofs`, so placeholder proof records
+do not affect the payload bytes. The app does not generate hashes or signatures.
 
-## Manifest v0.8 Additions
+## TAP Manifest Capture Nodes
 
 Important payload nodes:
 
@@ -112,9 +114,9 @@ Important payload nodes:
 | `alignment` | TAP interpretation rule for Apple auxiliary depth alignment |
 
 Legacy v1 fields such as `selectedDepthCamera`, `selectedZoom`, `photoLens`, and
-`depthBackend` are still emitted for older readers, but v0.8 readers should use
-the nodes above. `photoLens.requestedFocalLengthLabel` records the user-facing
-FOV label that drove the capture choice.
+`depthBackend` are still emitted for older readers, but current readers should
+prefer the nodes above. `photoLens.requestedFocalLengthLabel` records the
+user-facing FOV label that drove the capture choice.
 
 Depth analysis fields are also embedded in the same manifest:
 
@@ -135,8 +137,6 @@ Depth analysis fields are also embedded in the same manifest:
 - [ZOOM.md](TAPCamDemo/CameraCapture/Documentation/ZOOM.md)
 - [CROP.md](TAPCamDemo/CameraCapture/Documentation/CROP.md)
 - [PACKAGING.md](TAPCamDemo/CameraCapture/Documentation/PACKAGING.md)
-- [HOOKS.md](TAPCamDemo/CameraCapture/Documentation/HOOKS.md)
-- [EXTERNAL_INTEGRATION.md](TAPCamDemo/CameraCapture/Documentation/EXTERNAL_INTEGRATION.md)
 - [DEBUGGING.md](TAPCamDemo/CameraCapture/Documentation/DEBUGGING.md)
 
 ## Depth Analysis Module

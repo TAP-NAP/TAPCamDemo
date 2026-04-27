@@ -20,9 +20,9 @@ import simd
 /// - normal EXIF/GPS/TIFF fields mirror common metadata for generic tools,
 /// - this manifest is the only authoritative location for TAP-specific fields.
 ///
-/// Future hash/signature data belongs in `proofs`. The signed business payload is
-/// intentionally isolated under `payload` so a verifier can canonicalize exactly
-/// that subtree without chasing duplicate metadata in EXIF, GPS, or Photos.
+/// Proof data belongs in `proofs`. The business payload is intentionally
+/// isolated under `payload` so verification code can canonicalize exactly that
+/// subtree without chasing duplicate metadata in EXIF, GPS, or Photos.
 nonisolated struct TAPDepthManifest: Codable, Equatable {
     static let schemaIdentifier = "urn:tapnap:tapcam:depth-manifest:v1"
     static let mediaType = "application/vnd.tapnap.depth-manifest+json;version=1"
@@ -118,7 +118,7 @@ extension TAPDepthManifest {
         /// Synthesized `Codable` uses `encodeIfPresent` for optionals and would
         /// omit the field. The manifest is an interchange contract rather than
         /// an app-private cache, so keeping the key present makes parsers and
-        /// future canonicalization rules easier to implement.
+        /// canonicalization rules easier to implement.
         func encode(to encoder: Encoder) throws {
             var container = encoder.container(keyedBy: CodingKeys.self)
             try container.encode(id, forKey: .id)
@@ -472,7 +472,7 @@ nonisolated enum TAPDepthManifestBuilder {
         TAPDepthManifest.Zoom(
             requestedZoomID: plan.zoom?.id,
             requestedZoomFactor: plan.zoom?.requestedZoomFactor,
-            actualVideoZoomFactor: plan.zoom?.actualVideoZoomFactor,
+            actualVideoZoomFactor: plan.zoom?.rawVideoZoomFactor,
             depthSafeRanges: plan.zoomCapability.depthSafeZoomRanges.map {
                 TAPDepthManifest.ZoomRange(lowerBound: $0.lowerBound, upperBound: $0.upperBound)
             },
@@ -660,12 +660,12 @@ nonisolated enum TAPDepthManifestBuilder {
     }
 }
 
-/// Encodes manifests in one place so the app, tests, and future command-line
-/// readers use identical JSON options.
+/// Encodes manifests in one place so the app and tests use identical JSON
+/// options.
 ///
-/// The `payloadDataForFutureProofing` function deliberately excludes `proofs`.
-/// When hash/signature support is added, replace its encoder with a true RFC
-/// 8785 JSON Canonicalization Scheme implementation and keep this exclusion.
+/// `payloadDataExcludingProofs` deliberately excludes `proofs`. The app does not
+/// create hashes or signatures; this helper exists so schema tests can assert
+/// that placeholder proof records do not change the manifest payload bytes.
 nonisolated enum TAPDepthManifestEncoder {
     static func manifestJSON(_ manifest: TAPDepthManifest) throws -> String {
         let data = try encoder.encode(manifest)
@@ -675,7 +675,7 @@ nonisolated enum TAPDepthManifestEncoder {
         return json
     }
 
-    static func payloadDataForFutureProofing(_ payload: TAPDepthManifest.Payload) throws -> Data {
+    static func payloadDataExcludingProofs(_ payload: TAPDepthManifest.Payload) throws -> Data {
         try encoder.encode(payload)
     }
 
@@ -879,7 +879,6 @@ enum TAPDepthCaptureError: LocalizedError {
     case captureBackpressureLimitReached
     case incompatibleRGBDepthPairing
     case multicamRequired
-    case externalPayloadPackagingNotImplemented
 
     var errorDescription: String? {
         switch self {
@@ -928,9 +927,7 @@ enum TAPDepthCaptureError: LocalizedError {
         case .incompatibleRGBDepthPairing:
             "The selected RGB source and depth source cannot produce a supported paired capture."
         case .multicamRequired:
-            "This RGB and depth pairing requires MultiCam, which is documented but not implemented in v0.8."
-        case .externalPayloadPackagingNotImplemented:
-            "External payload packaging is registered as an integration point but is not implemented in this build."
+            "This RGB and depth pairing is outside the SingleCam photo-depth pipeline."
         }
     }
 }

@@ -6,6 +6,11 @@ not expose a separate zoom selector; it exposes FOV buttons such as `13mm`,
 needed to configure the resolved capture device. Debug tooling may still inspect
 the lower-level zoom profiles.
 
+The FOV label is semantic. The value that reaches AVFoundation is the raw
+`videoZoomFactor` recorded by `ZoomProfile.rawVideoZoomFactor`. On a depth-safe
+virtual format, `24mm` can begin at raw `2.0`, so `48mm` must travel through the
+plan as raw `4.0` rather than being inferred again from the label.
+
 ```text
 Selected FOV Option
         |

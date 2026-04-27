@@ -11,23 +11,19 @@ import Foundation
 import Photos
 import UIKit
 
-/// Observable state for the v0.8 camera screen.
+/// Observable state for the SingleCam photo-depth screen.
 ///
 /// This view model is the presentation boundary for
-/// `UI selection -> CapabilityMatrix -> RGBDepthPairingCoordinator ->
+/// `FOV/debug selection -> CapabilityMatrix -> RGBDepthPairingCoordinator ->
 /// CaptureSessionController -> CapturePipeline`. SwiftUI reads profiles and
 /// status values from here; it never inspects `AVCaptureDevice` directly.
 @MainActor
 final class CameraViewModel: ObservableObject {
     let sessionController: CaptureSessionController
 
-    @Published private(set) var rgbSourceProfiles: [CameraProfile]
     @Published private(set) var focalLengthOptions: [FocalLengthOption]
-    @Published private(set) var depthProfiles: [DepthProfile] = []
-    @Published private(set) var zoomProfiles: [ZoomProfile] = []
     @Published private(set) var selectedFocalLengthOptionID: String?
     @Published private(set) var selectedRGBSourceID: String?
-    @Published private(set) var selectedDepthProfileID: String?
     @Published private(set) var selectedZoomID: String?
     @Published private(set) var activeCameraDisplayName = "Preparing camera..."
     @Published private(set) var statusMessage = "Preparing capture session..."
@@ -110,7 +106,6 @@ final class CameraViewModel: ObservableObject {
     ) {
         self.capabilityMatrix = capabilityMatrix
         self.sessionController = sessionController
-        self.rgbSourceProfiles = capabilityMatrix.rgbSources
         self.focalLengthOptions = capabilityMatrix.focalLengthOptions()
         #if DEBUG
         self.debugDepthDeviceOptions = capabilityMatrix.debugDepthDeviceOptions()
@@ -127,11 +122,13 @@ final class CameraViewModel: ObservableObject {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
             await configureDefaultSelection()
+            scheduleFOVCycleDiagnosticsIfRequested()
             loadRecentDepthAssetPreviewIfAvailable()
         case .notDetermined:
             let granted = await AVCaptureDevice.requestAccess(for: .video)
             if granted {
                 await configureDefaultSelection()
+                scheduleFOVCycleDiagnosticsIfRequested()
                 loadRecentDepthAssetPreviewIfAvailable()
             } else {
                 statusMessage = TAPDepthCaptureError.cameraAccessDenied.localizedDescription
@@ -152,19 +149,6 @@ final class CameraViewModel: ObservableObject {
         previewCropRectNormalized = rect
     }
 
-    func selectRGBSource(_ profile: CameraProfile) async {
-        guard profile.isEnabled else {
-            statusMessage = profile.disabledReason ?? TAPDepthCaptureError.noDepthCameraAvailable.localizedDescription
-            return
-        }
-
-        #if DEBUG
-        clearDebugDepthOverrideState()
-        #endif
-        selectedRGBSourceID = profile.id
-        await configureCurrentSelection()
-    }
-
     func selectFocalLengthOption(_ option: FocalLengthOption) async {
         guard option.isEnabled else {
             statusMessage = option.disabledReason ?? TAPDepthCaptureError.noDepthCameraAvailable.localizedDescription
@@ -175,38 +159,10 @@ final class CameraViewModel: ObservableObject {
         clearDebugDepthOverrideState()
         #endif
         depthSelectionMode = .automatic
-        selectedDepthProfileID = nil
         selectedRGBSourceID = option.rgbSource.id
         selectedZoomID = option.zoom.id
         selectedFocalLengthOptionID = option.id
         FOVDiagnostics.logFocalSelection(option)
-        await configureCurrentSelection()
-    }
-
-    func selectDepthProfile(_ profile: DepthProfile) async {
-        guard profile.isSelectable else {
-            statusMessage = profile.disabledReason ?? TAPDepthCaptureError.incompatibleRGBDepthPairing.localizedDescription
-            return
-        }
-
-        #if DEBUG
-        clearDebugDepthOverrideState()
-        #endif
-        depthSelectionMode = .manual
-        selectedDepthProfileID = profile.id
-        await configureCurrentSelection()
-    }
-
-    func selectZoom(_ zoom: ZoomProfile) async {
-        guard zoom.isEnabled else {
-            statusMessage = zoom.disabledReason ?? TAPDepthCaptureError.unsupportedZoomFactor.localizedDescription
-            return
-        }
-
-        #if DEBUG
-        clearDebugDepthOverrideState()
-        #endif
-        selectedZoomID = zoom.id
         await configureCurrentSelection()
     }
 
@@ -250,18 +206,17 @@ final class CameraViewModel: ObservableObject {
             selectedZoomID: nil,
             selectedZoomFactor: initialZoomFactor
         )
-        let preferredZoom = zoomCapability.zoomProfiles.first { $0.isEnabled && abs($0.requestedZoomFactor - initialZoomFactor) < 0.001 }
+        let preferredZoom = zoomCapability.zoomProfiles.first { $0.isEnabled && $0.matchesRawVideoZoomFactor(initialZoomFactor) }
             ?? zoomCapability.zoomProfiles.first(where: \.isEnabled)
 
         isDebugDepthOverrideActive = true
         depthSelectionMode = .debugDepthOverride
         selectedRGBSourceID = rgbSource.id
-        selectedDepthProfileID = nil
         selectedZoomID = nil
         selectedFocalLengthOptionID = nil
         debugSelectedDepthDeviceID = option.id
         debugSelectedZoomID = preferredZoom?.id
-        debugSelectedZoomFactor = preferredZoom?.actualVideoZoomFactor ?? preferredZoom?.requestedZoomFactor ?? initialZoomFactor
+        debugSelectedZoomFactor = preferredZoom?.rawVideoZoomFactor ?? initialZoomFactor
         debugZoomCapability = zoomCapability
         debugZoomProfiles = zoomCapability.zoomProfiles
         await configureCurrentSelection()
@@ -275,9 +230,9 @@ final class CameraViewModel: ObservableObject {
 
         isDebugDepthOverrideActive = true
         let isFixedCandidate = CameraCapabilityResolver.candidateZoomFactors
-            .contains { abs($0 - zoom.requestedZoomFactor) < 0.001 }
+            .contains { abs($0 - zoom.rawVideoZoomFactor) < 0.001 }
         debugSelectedZoomID = isFixedCandidate ? zoom.id : nil
-        debugSelectedZoomFactor = zoom.actualVideoZoomFactor ?? zoom.requestedZoomFactor
+        debugSelectedZoomFactor = zoom.rawVideoZoomFactor
         await configureCurrentSelection()
     }
 
@@ -327,7 +282,6 @@ final class CameraViewModel: ObservableObject {
         }
 
         depthSelectionMode = .automatic
-        selectedDepthProfileID = nil
         await configureCurrentSelection()
     }
 
@@ -399,7 +353,6 @@ final class CameraViewModel: ObservableObject {
             if let frontSource = defaultRGBSource(position: .front) {
                 selectedRGBSourceID = frontSource.id
                 selectedFocalLengthOptionID = nil
-                selectedDepthProfileID = nil
                 selectedZoomID = nil
                 depthSelectionMode = .automatic
                 await configureCurrentSelection()
@@ -413,11 +366,44 @@ final class CameraViewModel: ObservableObject {
 
         selectedRGBSourceID = option.rgbSource.id
         selectedFocalLengthOptionID = option.id
-        selectedDepthProfileID = nil
         selectedZoomID = option.zoom.id
         depthSelectionMode = .automatic
         await configureCurrentSelection()
     }
+
+    private func scheduleFOVCycleDiagnosticsIfRequested() {
+        #if DEBUG
+        guard ProcessInfo.processInfo.arguments.contains("--tapcam-cycle-fov-diagnostics") else {
+            return
+        }
+
+        FOVDiagnostics.logFOVCycleDiagnostic(event: "scheduled", targetLabel: nil)
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            await self?.runFOVCycleDiagnostics()
+        }
+        #endif
+    }
+
+    #if DEBUG
+    private func runFOVCycleDiagnostics() async {
+        let targetLabels = ["77mm", "24mm", "77mm"]
+        FOVDiagnostics.logFOVCycleDiagnostic(event: "started", targetLabel: nil)
+
+        for targetLabel in targetLabels {
+            guard let option = focalLengthOptions.first(where: { $0.displayName == targetLabel }) else {
+                FOVDiagnostics.logFOVCycleDiagnostic(event: "missingOption", targetLabel: targetLabel)
+                continue
+            }
+
+            FOVDiagnostics.logFOVCycleDiagnostic(event: "select", targetLabel: targetLabel)
+            await selectFocalLengthOption(option)
+            try? await Task.sleep(nanoseconds: 900_000_000)
+        }
+
+        FOVDiagnostics.logFOVCycleDiagnostic(event: "finished", targetLabel: nil)
+    }
+    #endif
 
     private func configureCurrentSelection() async {
         #if DEBUG
@@ -437,14 +423,13 @@ final class CameraViewModel: ObservableObject {
         let selectedFocalLengthOption = selectedFocalLengthOptionID.flatMap { selectedID in
             currentFocalLengthOptions.first(where: { $0.id == selectedID })
         }
-        let preferredZoomFactor = selectedFocalLengthOption?.zoom.requestedZoomFactor
-        let depthRows = capabilityMatrix.depthProfiles(
-            for: rgbSource,
-            selectedKind: selectedDepthProfileID.flatMap(DepthProfileKind.init(rawValue:)),
-            preferredZoomFactor: preferredZoomFactor
-        )
+        let preferredZoomFactor = selectedFocalLengthOption?.zoom.rawVideoZoomFactor
         let depthProfile = selectedFocalLengthOption?.depthSource
-            ?? resolvedDepthProfile(from: depthRows, selectedDepthProfileID: selectedDepthProfileID)
+            ?? capabilityMatrix.depthProfiles(
+                for: rgbSource,
+                preferredZoomFactor: preferredZoomFactor
+            )
+            .first(where: \.isSelectable)
         /*
          Release FOV chips such as 48mm and 77mm are semantic framing choices,
          not always the same as the visible "2x/3x" zoom chips. Some Apple
@@ -466,21 +451,19 @@ final class CameraViewModel: ObservableObject {
         configurationGeneration += 1
         let generation = configurationGeneration
         isDepthCaptureReady = false
-        rgbSourceProfiles = capabilityMatrix.rgbSources
         focalLengthOptions = currentFocalLengthOptions
         #if DEBUG
         debugDepthDeviceOptions = capabilityMatrix.debugDepthDeviceOptions()
         #endif
-        depthProfiles = depthRows
         selectedRGBSourceID = rgbSource.id
-        selectedDepthProfileID = depthProfile?.id
-        zoomProfiles = plan.zoomCapability.zoomProfiles
         selectedZoomID = plan.zoom?.id
         selectedFocalLengthOptionID = rgbSource.device.position == .back
             ? focalLengthOptions.first { $0.rgbSource.id == rgbSource.id && $0.zoom.id == plan.zoom?.id }?.id
             : nil
         activeCameraDisplayName = "\(plan.requestedFocalLengthLabel.label) · \(depthProfile?.displayName ?? "No Depth")"
         statusMessage = statusText(for: plan)
+        let configureStartedAt = Date()
+        FOVDiagnostics.logSelectionConfigureStart(generation: generation, plan: plan)
 
         do {
             let result = try await sessionController.configure(SessionConfigurationRequest(capturePlan: plan))
@@ -494,6 +477,11 @@ final class CameraViewModel: ObservableObject {
             nativePreviewAspectRatio = result.nativePreviewAspectRatio
             isDepthCaptureReady = result.depthDeliverySupported && result.capturePlan.canCapturePhotoDepth
             statusMessage = statusText(for: result.capturePlan)
+            FOVDiagnostics.logSelectionConfigureResult(
+                generation: generation,
+                result: result,
+                duration: Date().timeIntervalSince(configureStartedAt)
+            )
         } catch {
             guard generation == configurationGeneration else {
                 return
@@ -503,6 +491,12 @@ final class CameraViewModel: ObservableObject {
             isDepthCaptureReady = false
             nativePreviewAspectRatio = 3.0 / 4.0
             statusMessage = error.localizedDescription
+            FOVDiagnostics.logSelectionConfigureFailure(
+                generation: generation,
+                plan: plan,
+                duration: Date().timeIntervalSince(configureStartedAt),
+                error: error
+            )
         }
     }
 
@@ -547,7 +541,6 @@ final class CameraViewModel: ObservableObject {
         configurationGeneration += 1
         let generation = configurationGeneration
         isDepthCaptureReady = false
-        rgbSourceProfiles = capabilityMatrix.rgbSources
         focalLengthOptions = capabilityMatrix.focalLengthOptions()
         debugDepthDeviceOptions = capabilityMatrix.debugDepthDeviceOptions()
         debugZoomCapability = plan.zoomCapability
@@ -555,10 +548,12 @@ final class CameraViewModel: ObservableObject {
         if debugSelectedZoomID != nil {
             debugSelectedZoomID = plan.zoom?.id
         }
-        debugSelectedZoomFactor = plan.zoom?.actualVideoZoomFactor ?? plan.zoom?.requestedZoomFactor ?? debugSelectedZoomFactor
+        debugSelectedZoomFactor = plan.zoom?.rawVideoZoomFactor ?? debugSelectedZoomFactor
         debugFOVLabel = debugFOVText(for: plan)
         activeCameraDisplayName = "Debug · \(plan.depthSource?.displayName ?? "No Depth") · \(debugFOVLabel)"
         statusMessage = statusText(for: plan)
+        let configureStartedAt = Date()
+        FOVDiagnostics.logSelectionConfigureStart(generation: generation, plan: plan)
 
         do {
             let result = try await sessionController.configure(SessionConfigurationRequest(capturePlan: plan))
@@ -575,6 +570,11 @@ final class CameraViewModel: ObservableObject {
             nativePreviewAspectRatio = result.nativePreviewAspectRatio
             isDepthCaptureReady = result.depthDeliverySupported && result.capturePlan.canCapturePhotoDepth
             statusMessage = statusText(for: result.capturePlan)
+            FOVDiagnostics.logSelectionConfigureResult(
+                generation: generation,
+                result: result,
+                duration: Date().timeIntervalSince(configureStartedAt)
+            )
         } catch {
             guard generation == configurationGeneration else {
                 return
@@ -584,24 +584,15 @@ final class CameraViewModel: ObservableObject {
             isDepthCaptureReady = false
             nativePreviewAspectRatio = 3.0 / 4.0
             statusMessage = error.localizedDescription
+            FOVDiagnostics.logSelectionConfigureFailure(
+                generation: generation,
+                plan: plan,
+                duration: Date().timeIntervalSince(configureStartedAt),
+                error: error
+            )
         }
     }
     #endif
-
-    private func resolvedDepthProfile(from rows: [DepthProfile], selectedDepthProfileID: String?) -> DepthProfile? {
-        if let selectedDepthProfileID,
-           let selected = rows.first(where: { $0.id == selectedDepthProfileID }) {
-            #if DEBUG
-            return selected
-            #else
-            if selected.isSelectable {
-                return selected
-            }
-            #endif
-        }
-
-        return rows.first(where: \.isSelectable)
-    }
 
     private func configurationForCurrentCapture(from active: SessionConfigurationResult) -> SessionConfigurationResult? {
         let plan = capturePlanForCurrentPreviewCrop(from: active.capturePlan)
@@ -617,7 +608,7 @@ final class CameraViewModel: ObservableObject {
 
     private func capturePlanForCurrentPreviewCrop(from activePlan: CaptureSourcePlan) -> CaptureSourcePlan {
         let activeZoom = activePlan.zoom
-        let activeZoomFactor = activeZoom?.actualVideoZoomFactor ?? activeZoom?.requestedZoomFactor
+        let activeZoomFactor = activeZoom?.rawVideoZoomFactor
         let usesFixedZoomCandidate = activeZoomFactor.map { zoom in
             CameraCapabilityResolver.candidateZoomFactors.contains { abs($0 - zoom) < 0.001 }
         } ?? false
@@ -635,7 +626,7 @@ final class CameraViewModel: ObservableObject {
     }
 
     private func defaultRGBSource(position: AVCaptureDevice.Position) -> CameraProfile? {
-        rgbSourceProfiles
+        capabilityMatrix.rgbSources
             .filter { $0.isEnabled && $0.device.position == position }
             .max { lhs, rhs in
                 CameraCapabilityResolver.automaticPriority(for: lhs.device.deviceType) < CameraCapabilityResolver.automaticPriority(for: rhs.device.deviceType)
@@ -690,8 +681,7 @@ final class CameraViewModel: ObservableObject {
 
     private func debugFOVText(for plan: CaptureSourcePlan, zoomFactor: Double? = nil) -> String {
         let resolvedZoomFactor = zoomFactor
-            ?? plan.zoom?.actualVideoZoomFactor
-            ?? plan.zoom?.requestedZoomFactor
+            ?? plan.zoom?.rawVideoZoomFactor
             ?? 1.0
         let equivalentMillimeters = FocalLengthLabelResolver.equivalentMillimeters(
             for: plan.rgbSource,

@@ -1,4 +1,4 @@
-# Pipeline
+# SingleCam Pipeline
 
 ## Still Photo + Depth
 
@@ -24,30 +24,27 @@ AVCapturePhoto
 Photo Data + Depth Data + Metadata
 ```
 
-This is the only running capture path in v0.8.
+This is the only running capture path. RGB image data, Apple auxiliary depth,
+and photo metadata come from the same `AVCapturePhotoOutput` request.
 
-## Streaming RGB + Depth Debug
+## Debug Override
 
 ```text
-AVCaptureSession
-        |
-        +--> AVCaptureVideoDataOutput
-        |
-        +--> AVCaptureDepthDataOutput
+Debug Depth Device
         |
         v
-AVCaptureDataOutputSynchronizer
+Single AVCaptureSession
         |
         v
-Synchronized RGB Frame + Depth Frame
+AVCapturePhotoOutput
+        |
+        v
+AVCapturePhoto + depthData
 ```
 
-This is future work only. The current codebase does not keep runtime provider
-interfaces for it.
+Debug selection is not a second camera layered on top of Release FOV. It
+switches preview and capture to the selected depth-capable device, then tests
+depth-safe zoom on that same SingleCam pipeline.
 
-## MultiCam
-
-MultiCam is reserved for multiple independent camera inputs. It must use
-`AVCaptureMultiCamSession`, check support, hardware cost, and system pressure,
-and prove RGB/depth alignment before Release can embed depth as authoritative
-HEIC auxiliary data.
+Streaming synchronizers, MultiCam, RAW, external-session capture, and sidecar
+outputs are not runtime paths in this demo.

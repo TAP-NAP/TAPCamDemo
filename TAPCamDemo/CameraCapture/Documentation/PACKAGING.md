@@ -21,5 +21,4 @@ Local Photos Writer
 ```
 
 Sidecar JSON, debug bundles, independent depth files, independent metadata
-files, metrics files, and intermediate artifacts are not implemented in runtime
-code.
+files, metrics files, and intermediate artifacts are absent from runtime code.

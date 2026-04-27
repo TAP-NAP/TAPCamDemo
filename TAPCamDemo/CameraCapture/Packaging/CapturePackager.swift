@@ -19,9 +19,8 @@ nonisolated enum PackagingStrategy: String, Codable, Sendable {
 
 /// Result of physically packaging a logical capture package.
 ///
-/// For v0.6 this is a single HEIC byte buffer with Apple auxiliary depth and
-/// TAP XMP manifest embedded in the file. Future Debug strategies can add more
-/// artifact kinds without changing capture providers.
+/// This is a single HEIC byte buffer with Apple auxiliary depth and TAP XMP
+/// manifest embedded in the file.
 nonisolated struct PackagedCaptureArtifact: Sendable {
     let packageID: UUID
     let strategy: PackagingStrategy

@@ -9,12 +9,12 @@
 import CoreLocation
 import Foundation
 
-/// Logical result of one v0.8 shutter press.
+/// Logical result of one SingleCam shutter press.
 ///
 /// This package owns normalized capture facts only: job identity, selected
 /// source context, the `AVCapturePhoto`, location, and capture settings. It
-/// does not decide how bytes are physically written, which hooks run, or where
-/// the result is persisted.
+/// does not decide how bytes are physically written or where the result is
+/// persisted.
 nonisolated struct CapturePackage: @unchecked Sendable {
     let job: CaptureJob
     let sourceContext: CaptureSourceContext
@@ -30,11 +30,11 @@ nonisolated struct CapturePackage: @unchecked Sendable {
     let photoQualityPrioritization: AVCapturePhotoOutput.QualityPrioritization
 }
 
-/// Builds `CapturePackage` from provider output.
+/// Builds `CapturePackage` from SingleCam photo output.
 ///
-/// Validation happens here before physical packaging. In SingleCam v0.6, a
-/// package without `AVCapturePhoto.depthData` is invalid because Release output
-/// must remain a single photo artifact with embedded auxiliary depth.
+/// Validation happens here before physical packaging. A package without
+/// `AVCapturePhoto.depthData` is invalid because output must remain a single
+/// photo artifact with embedded auxiliary depth.
 nonisolated enum CapturePackageBuilder {
     static func makePackage(
         job: CaptureJob,
