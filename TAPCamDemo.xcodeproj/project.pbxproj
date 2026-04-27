@@ -322,7 +322,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
@@ -380,7 +380,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
@@ -400,6 +400,10 @@
 				DEVELOPMENT_TEAM = UD3269PSCB;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "TAPCamDemo captures photos with depth data from the camera.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "TAPCamDemo can attach capture location to the TAP depth HEIC metadata.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "TAPCamDemo saves depth HEIC captures into the TAPCamDepth photo album.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "TAPCamDemo creates and reuses the TAPCamDepth photo album for depth HEIC captures.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -433,6 +437,10 @@
 				DEVELOPMENT_TEAM = UD3269PSCB;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "TAPCamDemo captures photos with depth data from the camera.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "TAPCamDemo can attach capture location to the TAP depth HEIC metadata.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "TAPCamDemo saves depth HEIC captures into the TAPCamDepth photo album.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "TAPCamDemo creates and reuses the TAPCamDepth photo album for depth HEIC captures.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -464,7 +472,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = UD3269PSCB;
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "TAP-NAP.TAPCamDemoTests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -486,7 +494,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = UD3269PSCB;
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "TAP-NAP.TAPCamDemoTests";
 				PRODUCT_NAME = "$(TARGET_NAME)";

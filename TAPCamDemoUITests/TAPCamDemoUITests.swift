@@ -34,6 +34,19 @@ final class TAPCamDemoUITests: XCTestCase {
     }
 
     @MainActor
+    func testFOVSelectorSelects48mm() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        let fortyEight = app.buttons["Use 48mm field of view"]
+        XCTAssertTrue(fortyEight.waitForExistence(timeout: 10), "48mm FOV button should be visible on a depth-capable rear camera.")
+        fortyEight.tap()
+
+        let active48mmStatus = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "48mm")).firstMatch
+        XCTAssertTrue(active48mmStatus.waitForExistence(timeout: 5), "Selecting 48mm should update the visible active camera status.")
+    }
+
+    @MainActor
     func testLaunchPerformance() throws {
         // This measures how long it takes to launch your application.
         measure(metrics: [XCTApplicationLaunchMetric()]) {
