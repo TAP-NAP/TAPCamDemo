@@ -64,15 +64,87 @@ extension TAPDepthManifest {
     nonisolated struct Payload: Codable, Equatable {
         let id: String
         let capturedAt: String
+        let sessionMode: String
+        let pairingMode: String
+        let alignmentStatus: String
         let sourceAPIs: SourceAPIs
         let capture: Capture
+        let rgbSource: RGBSource
+        let depthSource: DepthSourceSelection
+        let pairing: Pairing
+        let zoom: Zoom
+        let crop: Crop
+        let resolvedSession: ResolvedSession
+        let selectedDepthCamera: SelectedDepthCamera
+        let selectedZoom: SelectedZoom
         let photoLens: PhotoLens
+        let depthBackend: DepthBackendSelection
         let camera: Camera
         let photo: Photo
         let depth: Depth
         let alignment: Alignment
         let location: Location?
         let software: Software
+
+        enum CodingKeys: String, CodingKey {
+            case id
+            case capturedAt
+            case sessionMode
+            case pairingMode
+            case alignmentStatus
+            case sourceAPIs
+            case capture
+            case rgbSource
+            case depthSource
+            case pairing
+            case zoom
+            case crop
+            case resolvedSession
+            case selectedDepthCamera
+            case selectedZoom
+            case photoLens
+            case depthBackend
+            case camera
+            case photo
+            case depth
+            case alignment
+            case location
+            case software
+        }
+
+        /// Encodes the payload with an explicit `location: null` when no
+        /// location is available.
+        ///
+        /// Synthesized `Codable` uses `encodeIfPresent` for optionals and would
+        /// omit the field. The manifest is an interchange contract rather than
+        /// an app-private cache, so keeping the key present makes parsers and
+        /// future canonicalization rules easier to implement.
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(id, forKey: .id)
+            try container.encode(capturedAt, forKey: .capturedAt)
+            try container.encode(sessionMode, forKey: .sessionMode)
+            try container.encode(pairingMode, forKey: .pairingMode)
+            try container.encode(alignmentStatus, forKey: .alignmentStatus)
+            try container.encode(sourceAPIs, forKey: .sourceAPIs)
+            try container.encode(capture, forKey: .capture)
+            try container.encode(rgbSource, forKey: .rgbSource)
+            try container.encode(depthSource, forKey: .depthSource)
+            try container.encode(pairing, forKey: .pairing)
+            try container.encode(zoom, forKey: .zoom)
+            try container.encode(crop, forKey: .crop)
+            try container.encode(resolvedSession, forKey: .resolvedSession)
+            try container.encode(selectedDepthCamera, forKey: .selectedDepthCamera)
+            try container.encode(selectedZoom, forKey: .selectedZoom)
+            try container.encode(photoLens, forKey: .photoLens)
+            try container.encode(depthBackend, forKey: .depthBackend)
+            try container.encode(camera, forKey: .camera)
+            try container.encode(photo, forKey: .photo)
+            try container.encode(depth, forKey: .depth)
+            try container.encode(alignment, forKey: .alignment)
+            try container.encode(location, forKey: .location)
+            try container.encode(software, forKey: .software)
+        }
     }
 
     nonisolated struct SourceAPIs: Codable, Equatable {
@@ -98,6 +170,80 @@ extension TAPDepthManifest {
         let photoQualityPrioritization: String
     }
 
+    nonisolated struct SelectedDepthCamera: Codable, Equatable {
+        let id: String
+        let displayName: String
+        let deviceType: String
+        let deviceName: String
+        let position: String
+    }
+
+    nonisolated struct SelectedZoom: Codable, Equatable {
+        let id: String
+        let displayName: String
+        let zoomFactor: Double
+    }
+
+    nonisolated struct RGBSource: Codable, Equatable {
+        let id: String
+        let displayName: String
+        let deviceType: String
+        let deviceName: String
+        let position: String
+        let sourceKind: String
+        let requestedReferenceZoomFactor: Double
+    }
+
+    nonisolated struct DepthSourceSelection: Codable, Equatable {
+        let selectionMode: String
+        let requestedDepthSourceID: String?
+        let requestedDepthSourceDisplayName: String?
+        let requestedDepthSourceKind: String?
+        let compatibilityStatus: String
+        let compatibilityReason: String?
+        let resolvedDeviceID: String?
+        let resolvedDeviceType: String?
+        let resolvedDeviceName: String?
+    }
+
+    nonisolated struct Pairing: Codable, Equatable {
+        let mode: String
+        let status: String
+        let requiresMultiCam: Bool
+        let releaseAllowed: Bool
+        let alignmentStatus: String
+    }
+
+    nonisolated struct Zoom: Codable, Equatable {
+        let requestedZoomID: String?
+        let requestedZoomFactor: Double?
+        let actualVideoZoomFactor: Double?
+        let depthSafeRanges: [ZoomRange]
+        let isContinuous: Bool
+        let isDiscrete: Bool
+    }
+
+    nonisolated struct ZoomRange: Codable, Equatable {
+        let lowerBound: Double
+        let upperBound: Double
+    }
+
+    nonisolated struct Crop: Codable, Equatable {
+        let mode: String
+        let cropRectNormalized: CropRectNormalized
+        let destructiveFinalCropApplied: Bool
+        let sourceAPI: String
+    }
+
+    nonisolated struct ResolvedSession: Codable, Equatable {
+        let mode: String
+        let resolvedCaptureDeviceID: String
+        let resolvedCaptureDeviceType: String
+        let resolvedCaptureDeviceName: String
+        let activePrimaryConstituentDeviceType: String?
+        let activePrimaryConstituentDeviceName: String?
+    }
+
     nonisolated struct Camera: Codable, Equatable {
         let localizedName: String
         let uniqueID: String
@@ -116,12 +262,27 @@ extension TAPDepthManifest {
     nonisolated struct PhotoLens: Codable, Equatable {
         let requestedLensID: String
         let requestedDisplayName: String
+        let requestedFocalLengthLabel: String
+        let labelSource: String
         let requestedZoomFactor: Double
+        let requestedReferenceZoomFactor: Double
+        let requestedEquivalentFocalLength35mmMillimeters: Double?
         let position: String
         let resolvedCaptureDeviceType: String
         let resolvedCaptureDeviceName: String
         let resolvedActivePrimaryConstituentDeviceType: String?
         let resolvedActivePrimaryConstituentDeviceName: String?
+    }
+
+    nonisolated struct DepthBackendSelection: Codable, Equatable {
+        let selectionMode: String
+        let requestedBackendID: String?
+        let requestedBackendDisplayName: String?
+        let resolvedBackendID: String
+        let resolvedBackendDisplayName: String
+        let resolvedCaptureDeviceType: String
+        let resolvedCaptureDeviceName: String
+        let actualVideoZoomFactor: Double
     }
 
     nonisolated struct CameraFormat: Codable, Equatable {
@@ -210,15 +371,14 @@ extension TAPDepthManifest {
 /// file without depending on this app's runtime state.
 nonisolated enum TAPDepthManifestBuilder {
     static func makeManifest(
-        photo: AVCapturePhoto,
-        device: AVCaptureDevice,
-        photoLens: PhotoLensOption,
-        capturedAt: Date,
-        location: CLLocation?,
-        requestedCodec: AVVideoCodecType,
-        depthDataFiltered: Bool,
-        photoQualityPrioritization: AVCapturePhotoOutput.QualityPrioritization
+        capturePackage: CapturePackage
     ) throws -> TAPDepthManifest {
+        let photo = capturePackage.photo
+        let context = capturePackage.sourceContext
+        let device = context.sessionConfiguration.device
+        let selectionContext = context.sessionConfiguration.selectionContext
+        let plan = context.sessionConfiguration.capturePlan
+
         guard let depthData = photo.depthData else {
             throw TAPDepthCaptureError.missingDepthData
         }
@@ -227,17 +387,29 @@ nonisolated enum TAPDepthManifestBuilder {
         let resolvedDimensions = photo.resolvedSettings.photoDimensions
         let payload = TAPDepthManifest.Payload(
             id: captureID,
-            capturedAt: TAPDateFormatting.iso8601.string(from: capturedAt),
+            capturedAt: TAPDateFormatting.iso8601.string(from: context.capturedAt),
+            sessionMode: selectionContext.sessionMode,
+            pairingMode: selectionContext.pairingMode,
+            alignmentStatus: selectionContext.alignmentStatus,
             sourceAPIs: .avFoundationPhotoDepth,
             capture: TAPDepthManifest.Capture(
                 resolvedSettingsUniqueID: photo.resolvedSettings.uniqueID,
-                requestedCodec: requestedCodec.rawValue,
+                requestedCodec: capturePackage.requestedCodec.rawValue,
                 depthDataDeliveryEnabled: true,
                 embedsDepthDataInPhoto: true,
-                depthDataFiltered: depthDataFiltered,
-                photoQualityPrioritization: photoQualityPrioritization.tapDescription
+                depthDataFiltered: capturePackage.depthDataFiltered,
+                photoQualityPrioritization: capturePackage.photoQualityPrioritization.tapDescription
             ),
-            photoLens: makePhotoLens(photoLens, device: device),
+            rgbSource: makeRGBSource(selectionContext, plan: plan),
+            depthSource: makeDepthSourceSelection(selectionContext),
+            pairing: makePairing(selectionContext, plan: plan),
+            zoom: makeZoom(plan: plan),
+            crop: makeCrop(plan: plan),
+            resolvedSession: makeResolvedSession(selectionContext, device: device),
+            selectedDepthCamera: makeSelectedDepthCamera(selectionContext),
+            selectedZoom: makeSelectedZoom(selectionContext),
+            photoLens: makePhotoLens(selectionContext, plan: plan, device: device),
+            depthBackend: makeDepthBackend(selectionContext, device: device),
             camera: makeCamera(device: device),
             photo: TAPDepthManifest.Photo(
                 width: resolvedDimensions.width,
@@ -247,25 +419,153 @@ nonisolated enum TAPDepthManifestBuilder {
             ),
             depth: makeDepth(depthData: depthData, device: device),
             alignment: TAPDepthManifest.Alignment(depthToImage: "appleAuxiliaryDepthNative"),
-            location: location.map(makeLocation),
+            location: context.location.map(makeLocation),
             software: .current
         )
 
         return TAPDepthManifest(payload: payload)
     }
 
-    private static func makePhotoLens(_ photoLens: PhotoLensOption, device: AVCaptureDevice) -> TAPDepthManifest.PhotoLens {
+    private static func makeRGBSource(
+        _ selectionContext: CaptureSelectionContext,
+        plan: CaptureSourcePlan
+    ) -> TAPDepthManifest.RGBSource {
+        TAPDepthManifest.RGBSource(
+            id: selectionContext.rgbSourceID,
+            displayName: selectionContext.rgbSourceDisplayName,
+            deviceType: selectionContext.rgbSourceDeviceType,
+            deviceName: selectionContext.rgbSourceDeviceName,
+            position: selectionContext.rgbSourcePosition,
+            sourceKind: selectionContext.rgbSourceKind,
+            requestedReferenceZoomFactor: plan.rgbSource.referenceZoomFactor
+        )
+    }
+
+    private static func makeDepthSourceSelection(_ selectionContext: CaptureSelectionContext) -> TAPDepthManifest.DepthSourceSelection {
+        TAPDepthManifest.DepthSourceSelection(
+            selectionMode: selectionContext.selectionMode,
+            requestedDepthSourceID: selectionContext.depthSourceID,
+            requestedDepthSourceDisplayName: selectionContext.depthSourceDisplayName,
+            requestedDepthSourceKind: selectionContext.depthSourceKind,
+            compatibilityStatus: selectionContext.compatibilityStatus,
+            compatibilityReason: selectionContext.compatibilityReason,
+            resolvedDeviceID: selectionContext.resolvedCaptureDeviceID,
+            resolvedDeviceType: selectionContext.resolvedCaptureDeviceType,
+            resolvedDeviceName: selectionContext.resolvedCaptureDeviceName
+        )
+    }
+
+    private static func makePairing(
+        _ selectionContext: CaptureSelectionContext,
+        plan: CaptureSourcePlan
+    ) -> TAPDepthManifest.Pairing {
+        TAPDepthManifest.Pairing(
+            mode: selectionContext.pairingMode,
+            status: selectionContext.compatibilityStatus,
+            requiresMultiCam: plan.pairingMode == .requiresMultiCam,
+            releaseAllowed: plan.canCapturePhotoDepth,
+            alignmentStatus: selectionContext.alignmentStatus
+        )
+    }
+
+    private static func makeZoom(plan: CaptureSourcePlan) -> TAPDepthManifest.Zoom {
+        TAPDepthManifest.Zoom(
+            requestedZoomID: plan.zoom?.id,
+            requestedZoomFactor: plan.zoom?.requestedZoomFactor,
+            actualVideoZoomFactor: plan.zoom?.actualVideoZoomFactor,
+            depthSafeRanges: plan.zoomCapability.depthSafeZoomRanges.map {
+                TAPDepthManifest.ZoomRange(lowerBound: $0.lowerBound, upperBound: $0.upperBound)
+            },
+            isContinuous: plan.zoomCapability.isContinuous,
+            isDiscrete: plan.zoomCapability.isDiscrete
+        )
+    }
+
+    private static func makeCrop(plan: CaptureSourcePlan) -> TAPDepthManifest.Crop {
+        TAPDepthManifest.Crop(
+            mode: plan.cropPolicy.mode,
+            cropRectNormalized: plan.cropPolicy.cropRectNormalized,
+            destructiveFinalCropApplied: plan.cropPolicy.destructiveFinalCropApplied,
+            sourceAPI: "AVCaptureVideoPreviewLayer.metadataOutputRectConverted(fromLayerRect:)"
+        )
+    }
+
+    private static func makeResolvedSession(
+        _ selectionContext: CaptureSelectionContext,
+        device: AVCaptureDevice
+    ) -> TAPDepthManifest.ResolvedSession {
         let activePrimaryDevice = device.activePrimaryConstituent
+        return TAPDepthManifest.ResolvedSession(
+            mode: selectionContext.sessionMode,
+            resolvedCaptureDeviceID: selectionContext.resolvedCaptureDeviceID,
+            resolvedCaptureDeviceType: selectionContext.resolvedCaptureDeviceType,
+            resolvedCaptureDeviceName: selectionContext.resolvedCaptureDeviceName,
+            activePrimaryConstituentDeviceType: activePrimaryDevice?.deviceType.rawValue,
+            activePrimaryConstituentDeviceName: activePrimaryDevice?.localizedName
+        )
+    }
+
+    private static func makePhotoLens(
+        _ selectionContext: CaptureSelectionContext,
+        plan: CaptureSourcePlan,
+        device: AVCaptureDevice
+    ) -> TAPDepthManifest.PhotoLens {
+        let activePrimaryDevice = device.activePrimaryConstituent
+        let focalLabel = plan.requestedFocalLengthLabel
 
         return TAPDepthManifest.PhotoLens(
-            requestedLensID: photoLens.id,
-            requestedDisplayName: photoLens.displayName,
-            requestedZoomFactor: Double(photoLens.zoomFactor),
-            position: photoLens.position.tapDescription,
+            requestedLensID: selectionContext.rgbSourceID,
+            requestedDisplayName: selectionContext.rgbSourceDisplayName,
+            requestedFocalLengthLabel: focalLabel.label,
+            labelSource: focalLabel.source,
+            requestedZoomFactor: selectionContext.selectedZoomFactor ?? 1.0,
+            requestedReferenceZoomFactor: plan.rgbSource.referenceZoomFactor,
+            requestedEquivalentFocalLength35mmMillimeters: focalLabel.equivalentMillimeters,
+            position: selectionContext.rgbSourcePosition,
             resolvedCaptureDeviceType: device.deviceType.rawValue,
             resolvedCaptureDeviceName: device.localizedName,
             resolvedActivePrimaryConstituentDeviceType: activePrimaryDevice?.deviceType.rawValue,
             resolvedActivePrimaryConstituentDeviceName: activePrimaryDevice?.localizedName
+        )
+    }
+
+    private static func makeSelectedDepthCamera(_ selectionContext: CaptureSelectionContext) -> TAPDepthManifest.SelectedDepthCamera {
+        TAPDepthManifest.SelectedDepthCamera(
+            id: selectionContext.depthSourceID ?? "none",
+            displayName: selectionContext.depthSourceDisplayName ?? "None",
+            deviceType: selectionContext.resolvedCaptureDeviceType,
+            deviceName: selectionContext.resolvedCaptureDeviceName,
+            position: selectionContext.rgbSourcePosition
+        )
+    }
+
+    private static func makeSelectedZoom(_ selectionContext: CaptureSelectionContext) -> TAPDepthManifest.SelectedZoom {
+        TAPDepthManifest.SelectedZoom(
+            id: selectionContext.selectedZoomID ?? "zoom-unknown",
+            displayName: selectionContext.selectedZoomDisplayName ?? "unknown",
+            zoomFactor: selectionContext.selectedZoomFactor ?? 1.0
+        )
+    }
+
+    private static func makeDepthBackend(
+        _ selectionContext: CaptureSelectionContext,
+        device: AVCaptureDevice
+    ) -> TAPDepthManifest.DepthBackendSelection {
+        /*
+         This legacy section remains for readers that already understand the
+         v1 `depthBackend` field. In SingleCam mode, the resolved backend is
+         exactly the selected depth camera, and the selected zoom is recorded in
+         `selectedZoom` as well as `actualVideoZoomFactor`.
+        */
+        return TAPDepthManifest.DepthBackendSelection(
+            selectionMode: selectionContext.selectionMode,
+            requestedBackendID: selectionContext.depthSourceID,
+            requestedBackendDisplayName: selectionContext.depthSourceDisplayName,
+            resolvedBackendID: selectionContext.depthSourceID ?? selectionContext.resolvedCaptureDeviceID,
+            resolvedBackendDisplayName: selectionContext.depthSourceDisplayName ?? selectionContext.resolvedCaptureDeviceName,
+            resolvedCaptureDeviceType: device.deviceType.rawValue,
+            resolvedCaptureDeviceName: device.localizedName,
+            actualVideoZoomFactor: selectionContext.selectedZoomFactor ?? 1.0
         )
     }
 
@@ -561,6 +861,7 @@ enum TAPDepthCaptureError: LocalizedError {
     case unableToAddCameraInput
     case unableToAddPhotoOutput
     case depthDeliveryUnsupported
+    case unsupportedZoomFactor
     case missingDepthData
     case unableToCreatePhotoData
     case invalidUTF8Manifest
@@ -573,6 +874,12 @@ enum TAPDepthCaptureError: LocalizedError {
     case photoLibraryAccessDenied
     case albumCreationFailed
     case assetCreationFailed
+    case assetNotFound
+    case releasePackagingStrategyRejected
+    case captureBackpressureLimitReached
+    case incompatibleRGBDepthPairing
+    case multicamRequired
+    case externalPayloadPackagingNotImplemented
 
     var errorDescription: String? {
         switch self {
@@ -586,6 +893,8 @@ enum TAPDepthCaptureError: LocalizedError {
             "Unable to add AVCapturePhotoOutput to the capture session."
         case .depthDeliveryUnsupported:
             "The current session configuration does not support depth photo delivery."
+        case .unsupportedZoomFactor:
+            "The selected zoom factor does not support depth delivery on this camera."
         case .missingDepthData:
             "The captured photo did not include AVDepthData."
         case .unableToCreatePhotoData:
@@ -610,6 +919,18 @@ enum TAPDepthCaptureError: LocalizedError {
             "Unable to create or fetch the TAPCamDepth album."
         case .assetCreationFailed:
             "Unable to create a Photos asset from the depth HEIC."
+        case .assetNotFound:
+            "The selected Photos asset could not be found."
+        case .releasePackagingStrategyRejected:
+            "Release builds only support embedded single-photo artifacts."
+        case .captureBackpressureLimitReached:
+            "Too many capture jobs are already pending."
+        case .incompatibleRGBDepthPairing:
+            "The selected RGB source and depth source cannot produce a supported paired capture."
+        case .multicamRequired:
+            "This RGB and depth pairing requires MultiCam, which is documented but not implemented in v0.8."
+        case .externalPayloadPackagingNotImplemented:
+            "External payload packaging is registered as an integration point but is not implemented in this build."
         }
     }
 }

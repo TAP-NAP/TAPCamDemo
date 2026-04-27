@@ -15,7 +15,7 @@ import UniformTypeIdentifiers
 /// Photos is treated as storage for the finished file, not as the source of
 /// metadata truth. To parse a saved asset later, request the original `.photo`
 /// resource bytes with `PHAssetResourceManager` and then use `TAPDepthHEICReader`.
-enum PhotoLibraryWriter {
+nonisolated enum PhotoLibraryWriter {
     static let albumName = "TAPCamDepth"
 
     static func saveDepthHEIC(_ data: Data, capturedAt: Date, location: CLLocation?) async throws -> String {
@@ -49,6 +49,26 @@ enum PhotoLibraryWriter {
                 }
             )
         }
+    }
+
+    /// Reads original HEIC bytes by resolving the asset inside a detached task.
+    ///
+    /// `PHAssetResource.assetResources(for:)` can force Photos to fetch
+    /// original-metadata properties. Running that lookup on the main actor
+    /// produces the runtime warning:
+    /// "Missing prefetched properties for PHAssetOriginalMetadataProperties...
+    /// Fetching on demand on the main queue". The public Photos API does not
+    /// expose a `PHFetchOptions` property-set prefetch knob for this private
+    /// property set, so the practical fix is to keep original-resource
+    /// resolution off the main queue and hand the UI only the final bytes.
+    static func originalPhotoData(localIdentifier: String) async throws -> Data {
+        try await Task.detached(priority: .userInitiated) {
+            guard let asset = asset(localIdentifier: localIdentifier) else {
+                throw TAPDepthCaptureError.assetNotFound
+            }
+
+            return try await originalPhotoData(for: asset)
+        }.value
     }
 
     static func asset(localIdentifier: String) -> PHAsset? {

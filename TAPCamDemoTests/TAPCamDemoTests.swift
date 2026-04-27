@@ -22,7 +22,7 @@ struct TAPCamDemoTests {
         #expect(manifest.schema.xmpManifestPath == "tapdepth:Manifest")
     }
 
-    @Test func manifestJSONIsStableAndIncludesNullableLocation() throws {
+    @Test func manifestJSONDocumentsV08SelectionAndNullableLocation() throws {
         let manifest = TAPDepthManifest(payload: Self.samplePayload(location: nil))
         let json = try TAPDepthManifestEncoder.manifestJSON(manifest)
 
@@ -31,9 +31,23 @@ struct TAPCamDemoTests {
         #expect(json.contains("\"depthDataType\":\"hdep\""))
         #expect(json.contains("\"metricUnit\":\"meters\""))
         #expect(json.contains("\"depthToImage\":\"appleAuxiliaryDepthNative\""))
-        #expect(json.contains("\"photoLens\""))
-        #expect(json.contains("\"sensingMethod\":\"lidarDepthCamera\""))
-        #expect(json.contains("\"lidarParticipation\":\"explicit\""))
+        #expect(json.contains("\"sessionMode\":\"singleCam\""))
+        #expect(json.contains("\"pairingMode\":\"rgbWithApplePairedDepth\""))
+        #expect(json.contains("\"alignmentStatus\":\"sameCapturePipeline\""))
+        #expect(json.contains("\"rgbSource\""))
+        #expect(json.contains("\"depthSource\""))
+        #expect(json.contains("\"pairing\""))
+        #expect(json.contains("\"zoom\""))
+        #expect(json.contains("\"crop\""))
+        #expect(json.contains("\"resolvedSession\""))
+        #expect(json.contains("\"selectedDepthCamera\""))
+        #expect(json.contains("\"selectedZoom\""))
+        #expect(json.contains("\"displayName\":\"Wide\""))
+        #expect(json.contains("\"displayName\":\"2x\""))
+        #expect(json.contains("\"selectionMode\":\"auto\""))
+        #expect(json.contains("\"labelSource\":\"rgbSourceAndDepthSafeZoom\""))
+        #expect(json.contains("\"sensingMethod\":\"multiCameraStereoOrComputational\""))
+        #expect(json.contains("\"lidarParticipation\":\"notAsserted\""))
         #expect(json.contains("\"xmpManifestPath\":\"tapdepth:Manifest\""))
     }
 
@@ -45,6 +59,94 @@ struct TAPCamDemoTests {
         #expect(TAPDepthSourceClassifier.classification(forDeviceType: AVCaptureDevice.DeviceType.builtInTripleCamera.rawValue).sensingMethod == "multiCameraStereoOrComputational")
         #expect(TAPDepthSourceClassifier.classification(forDeviceType: AVCaptureDevice.DeviceType.builtInTripleCamera.rawValue).lidarParticipation == "notAsserted")
         #expect(TAPDepthSourceClassifier.classification(forDeviceType: AVCaptureDevice.DeviceType.builtInWideAngleCamera.rawValue).sensingMethod == "singleCameraComputationalOrUnknown")
+    }
+
+    @Test func depthRowsKeepFixedDebugOrdering() throws {
+        #expect(DepthProfileKind.lidarDepth.fixedOrder < DepthProfileKind.trueDepth.fixedOrder)
+        #expect(DepthProfileKind.trueDepth.fixedOrder < DepthProfileKind.dualCameraDisparity.fixedOrder)
+        #expect(DepthProfileKind.dualCameraDisparity.fixedOrder < DepthProfileKind.dualWideDisparity.fixedOrder)
+        #expect(DepthProfileKind.dualWideDisparity.fixedOrder < DepthProfileKind.portraitSemanticDepth.fixedOrder)
+        #expect(DepthProfileKind.portraitSemanticDepth.fixedOrder < DepthProfileKind.fallbackNone.fixedOrder)
+    }
+
+    @Test func automaticPriorityPrefersApplePairedVirtualPhotoPipelines() throws {
+        #expect(CameraCapabilityResolver.automaticPriority(for: .builtInTripleCamera) > CameraCapabilityResolver.automaticPriority(for: .builtInDualWideCamera))
+        #expect(CameraCapabilityResolver.automaticPriority(for: .builtInDualWideCamera) > CameraCapabilityResolver.automaticPriority(for: .builtInDualCamera))
+        #expect(CameraCapabilityResolver.automaticPriority(for: .builtInDualCamera) > CameraCapabilityResolver.automaticPriority(for: .builtInWideAngleCamera))
+        #expect(CameraCapabilityResolver.automaticPriority(for: .builtInLiDARDepthCamera) > CameraCapabilityResolver.automaticPriority(for: .builtInTrueDepthCamera))
+    }
+
+    @Test func zoomProfilesDisableUnsupportedDepthDeliveryRanges() throws {
+        let profiles = CameraCapabilityResolver.makeZoomProfiles(
+            candidateZooms: [1, 2, 3],
+            minimumZoom: 1,
+            maximumZoom: 3,
+            depthDeliveryRanges: [1.0...2.0],
+            allowsZoomOutsideDepthDeliveryRanges: false
+        )
+
+        #expect(profiles.map(\.displayName) == ["1x", "2x", "3x"])
+        #expect(profiles[0].isEnabled)
+        #expect(profiles[1].isEnabled)
+        #expect(!profiles[2].isEnabled)
+        #expect(profiles[2].disabledReason == "Outside depth zoom range")
+    }
+
+    @Test func zoomProfilesStillDisableZoomOutsideDepthSafeRangesWhenFormatAllowsPreviewZoom() throws {
+        let profiles = CameraCapabilityResolver.makeZoomProfiles(
+            candidateZooms: [1, 2, 3],
+            minimumZoom: 1,
+            maximumZoom: 3,
+            depthDeliveryRanges: [1.0...1.0],
+            allowsZoomOutsideDepthDeliveryRanges: true
+        )
+
+        #expect(profiles[0].isEnabled)
+        #expect(!profiles[1].isEnabled)
+        #expect(!profiles[2].isEnabled)
+        #expect(profiles[1].disabledReason == "Zoom would drop depth delivery")
+    }
+
+    @Test func zoomProfilesWithoutDepthPairingUseCameraZoomRange() throws {
+        let profiles = CameraCapabilityResolver.makeZoomProfiles(
+            candidateZooms: [1, 2, 3],
+            minimumZoom: 1,
+            maximumZoom: 3,
+            depthDeliveryRanges: [],
+            allowsZoomOutsideDepthDeliveryRanges: true,
+            requiresDepthSafeZoom: false
+        )
+
+        #expect(profiles.allSatisfy { $0.isEnabled })
+    }
+
+    @Test func debugZoomFOVUsesBaseEquivalentFocalLengthTimesVideoZoom() throws {
+        #expect(FocalLengthLabelResolver.debugEquivalentMillimeters(baseMillimeters: 24, zoomFactor: 1) == 24)
+        #expect(FocalLengthLabelResolver.debugEquivalentMillimeters(baseMillimeters: 24, zoomFactor: 2) == 48)
+        #expect(FocalLengthLabelResolver.debugEquivalentMillimeters(baseMillimeters: 24, zoomFactor: 3) == 72)
+        #expect(FocalLengthLabelResolver.debugEquivalentMillimeters(baseMillimeters: 13, zoomFactor: 2) == 26)
+    }
+
+    @Test func releasePolicyRejectsNonEmbeddedPackagingStrategies() throws {
+        try ReleasePackagingPolicy.validate(.embeddedPhoto)
+
+        do {
+            try ReleasePackagingPolicy.validate(.sidecarJSON)
+            Issue.record("Release policy should reject sidecar JSON packaging.")
+        } catch TAPDepthCaptureError.releasePackagingStrategyRejected {
+            // Expected.
+        } catch {
+            Issue.record("Unexpected sidecar JSON error: \(error)")
+        }
+
+        do {
+            try ReleasePackagingPolicy.validate(.bundle)
+            Issue.record("Release policy should reject bundle packaging.")
+        } catch TAPDepthCaptureError.releasePackagingStrategyRejected {
+            // Expected.
+        } catch {
+            Issue.record("Unexpected bundle error: \(error)")
+        }
     }
 
     @Test func proofChangesDoNotAffectPayloadHashInput() throws {
@@ -144,6 +246,9 @@ struct TAPCamDemoTests {
         TAPDepthManifest.Payload(
             id: "sample-capture",
             capturedAt: "2026-04-25T00:00:00.000Z",
+            sessionMode: "singleCam",
+            pairingMode: "rgbWithApplePairedDepth",
+            alignmentStatus: "sameCapturePipeline",
             sourceAPIs: .avFoundationPhotoDepth,
             capture: TAPDepthManifest.Capture(
                 resolvedSettingsUniqueID: 42,
@@ -153,24 +258,101 @@ struct TAPCamDemoTests {
                 depthDataFiltered: true,
                 photoQualityPrioritization: "quality"
             ),
-            photoLens: TAPDepthManifest.PhotoLens(
-                requestedLensID: "rear-1x",
-                requestedDisplayName: "1x",
-                requestedZoomFactor: 1.0,
+            rgbSource: TAPDepthManifest.RGBSource(
+                id: "com.apple.test-wide",
+                displayName: "Wide",
+                deviceType: "AVCaptureDeviceTypeBuiltInWideAngleCamera",
+                deviceName: "Back Wide Camera",
                 position: "back",
-                resolvedCaptureDeviceType: "AVCaptureDeviceTypeBuiltInLiDARDepthCamera",
-                resolvedCaptureDeviceName: "Back LiDAR Camera",
-                resolvedActivePrimaryConstituentDeviceType: nil,
-                resolvedActivePrimaryConstituentDeviceName: nil
+                sourceKind: "physical",
+                requestedReferenceZoomFactor: 1.0
+            ),
+            depthSource: TAPDepthManifest.DepthSourceSelection(
+                selectionMode: "auto",
+                requestedDepthSourceID: "portraitSemanticDepth",
+                requestedDepthSourceDisplayName: "Portrait Depth",
+                requestedDepthSourceKind: "portraitSemanticDepth",
+                compatibilityStatus: "compatible",
+                compatibilityReason: nil,
+                resolvedDeviceID: "com.apple.test-camera",
+                resolvedDeviceType: "AVCaptureDeviceTypeBuiltInTripleCamera",
+                resolvedDeviceName: "Back Triple Camera"
+            ),
+            pairing: TAPDepthManifest.Pairing(
+                mode: "rgbWithApplePairedDepth",
+                status: "compatible",
+                requiresMultiCam: false,
+                releaseAllowed: true,
+                alignmentStatus: "sameCapturePipeline"
+            ),
+            zoom: TAPDepthManifest.Zoom(
+                requestedZoomID: "zoom-2x",
+                requestedZoomFactor: 2.0,
+                actualVideoZoomFactor: 2.0,
+                depthSafeRanges: [
+                    TAPDepthManifest.ZoomRange(lowerBound: 1.0, upperBound: 3.0)
+                ],
+                isContinuous: true,
+                isDiscrete: false
+            ),
+            crop: TAPDepthManifest.Crop(
+                mode: "previewOnly",
+                cropRectNormalized: CropRectNormalized(x: 0, y: 0.125, width: 1, height: 0.75),
+                destructiveFinalCropApplied: false,
+                sourceAPI: "AVCaptureVideoPreviewLayer.metadataOutputRectConverted(fromLayerRect:)"
+            ),
+            resolvedSession: TAPDepthManifest.ResolvedSession(
+                mode: "singleCam",
+                resolvedCaptureDeviceID: "com.apple.test-camera",
+                resolvedCaptureDeviceType: "AVCaptureDeviceTypeBuiltInTripleCamera",
+                resolvedCaptureDeviceName: "Back Triple Camera",
+                activePrimaryConstituentDeviceType: "AVCaptureDeviceTypeBuiltInWideAngleCamera",
+                activePrimaryConstituentDeviceName: "Back Wide Camera"
+            ),
+            selectedDepthCamera: TAPDepthManifest.SelectedDepthCamera(
+                id: "portraitSemanticDepth",
+                displayName: "Portrait Depth",
+                deviceType: "AVCaptureDeviceTypeBuiltInTripleCamera",
+                deviceName: "Back Triple Camera",
+                position: "back"
+            ),
+            selectedZoom: TAPDepthManifest.SelectedZoom(
+                id: "zoom-2x",
+                displayName: "2x",
+                zoomFactor: 2.0
+            ),
+            photoLens: TAPDepthManifest.PhotoLens(
+                requestedLensID: "com.apple.test-wide",
+                requestedDisplayName: "Wide",
+                requestedFocalLengthLabel: "2x",
+                labelSource: "rgbSourceAndDepthSafeZoom",
+                requestedZoomFactor: 2.0,
+                requestedReferenceZoomFactor: 2.0,
+                requestedEquivalentFocalLength35mmMillimeters: nil,
+                position: "back",
+                resolvedCaptureDeviceType: "AVCaptureDeviceTypeBuiltInTripleCamera",
+                resolvedCaptureDeviceName: "Back Triple Camera",
+                resolvedActivePrimaryConstituentDeviceType: "AVCaptureDeviceTypeBuiltInWideAngleCamera",
+                resolvedActivePrimaryConstituentDeviceName: "Back Wide Camera"
+            ),
+            depthBackend: TAPDepthManifest.DepthBackendSelection(
+                selectionMode: "auto",
+                requestedBackendID: "portraitSemanticDepth",
+                requestedBackendDisplayName: "Portrait Depth",
+                resolvedBackendID: "portraitSemanticDepth",
+                resolvedBackendDisplayName: "Portrait Depth",
+                resolvedCaptureDeviceType: "AVCaptureDeviceTypeBuiltInTripleCamera",
+                resolvedCaptureDeviceName: "Back Triple Camera",
+                actualVideoZoomFactor: 2.0
             ),
             camera: TAPDepthManifest.Camera(
-                localizedName: "Back LiDAR Camera",
+                localizedName: "Back Triple Camera",
                 uniqueID: "com.apple.test-camera",
                 modelID: "iPhone",
-                deviceType: "AVCaptureDeviceTypeBuiltInLiDARDepthCamera",
+                deviceType: "AVCaptureDeviceTypeBuiltInTripleCamera",
                 position: "back",
-                activePrimaryConstituentDeviceType: nil,
-                activePrimaryConstituentDeviceName: nil,
+                activePrimaryConstituentDeviceType: "AVCaptureDeviceTypeBuiltInWideAngleCamera",
+                activePrimaryConstituentDeviceName: "Back Wide Camera",
                 activeFormat: TAPDepthManifest.CameraFormat(
                     mediaSubType: "420v",
                     width: 4032,
@@ -206,10 +388,10 @@ struct TAPCamDemoTests {
                 quality: "high",
                 isFiltered: true,
                 source: TAPDepthManifest.DepthSource(
-                    captureDeviceType: "AVCaptureDeviceTypeBuiltInLiDARDepthCamera",
-                    captureDeviceName: "Back LiDAR Camera",
-                    sensingMethod: "lidarDepthCamera",
-                    lidarParticipation: "explicit"
+                    captureDeviceType: "AVCaptureDeviceTypeBuiltInTripleCamera",
+                    captureDeviceName: "Back Triple Camera",
+                    sensingMethod: "multiCameraStereoOrComputational",
+                    lidarParticipation: "notAsserted"
                 ),
                 cameraCalibration: nil
             ),

@@ -149,11 +149,7 @@ final class DepthAnalysisViewModel: ObservableObject {
 
     func load(assetID: String) async {
         do {
-            guard let asset = PhotoLibraryWriter.asset(localIdentifier: assetID) else {
-                throw TAPDepthAnalysisError.assetNotFound
-            }
-
-            let data = try await PhotoLibraryWriter.originalPhotoData(for: asset)
+            let data = try await PhotoLibraryWriter.originalPhotoData(localIdentifier: assetID)
             let loadedInput = try TAPDepthMapReader.analysisInput(from: data)
             input = loadedInput
             errorMessage = nil

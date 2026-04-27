@@ -1,179 +1,163 @@
-# TAP Depth HEIC v1
+# TAPCamDemo Camera Capture v0.8
 
-TAPCamDemo captures a normal HEIC photo, keeps Apple's depth auxiliary data in the file, and embeds TAP-specific capture metadata as XMP. The result is a standards-compatible photo file with a documented extension, not an app-private sidecar format.
+TAPCamDemo is a reusable iOS camera-capture pipeline. v0.8 presents rear capture
+as field-of-view choices such as `13mm`, `24mm`, `48mm`, and `77mm`; each
+choice resolves to a concrete RGB source, compatible Apple-paired depth source,
+and depth-safe zoom factor before capture. Front capture is entered through the
+camera-switch button and hides the rear FOV selector. The app captures a
+standard photo-depth HEIC only when Apple can produce paired depth through one
+`AVCaptureSession + AVCapturePhotoOutput` pipeline.
 
-## Data Pipeline
+Current non-goals: hash, signing, watermarking, destructive final crop, running
+MultiCam capture, and running RGB/depth streaming synchronizer.
 
-```mermaid
-flowchart LR
-    A["Photo lens request: 0.5x / 1x / 2x / 3x / Front"] --> B["Resolved depth-capable AVCaptureDevice"]
-    B --> C["AVCaptureSession + AVCapturePhotoOutput"]
-    C --> D["AVCapturePhoto + AVDepthData"]
-    D --> E["HEIC primary image + auxiliary depth"]
-    D --> F["TAPDepthManifest payload.photoLens + payload.depth.source"]
-    F --> G["XMP tapdepth:Manifest"]
-    E --> H["Final TAP Depth HEIC"]
-    G --> H
-    H --> I["Photos album: TAPCamDepth"]
-    I --> J["PHAssetResourceManager readback"]
-    J --> K["Independent Depth Analysis module"]
+## Data Flow
+
+```text
+Presentation
+     |
+     v
+CameraViewModel
+     |
+     v
+CapabilityMatrix  <----  CameraCapabilityResolver
+     |                         ^
+     v                         |
+RGBDepthPairingCoordinator ---> Session / Device Layer
+     |
+     v
+CapturePipeline
+     |
+     v
+CapturePackageBuilder
+     |
+     v
+EmbeddedPhotoPackager
+     |
+     v
+ArtifactHookPipeline(hooks: [])
+     |
+     v
+PhotoLibraryCaptureArtifactWriter
 ```
 
-Key code:
+## Implemented Capture Path
 
-| Stage | Code |
+```text
+Selected FOV Option
+        |
+        v
+Resolved RGB Source + compatible Depth Source + depth-safe Zoom
+        |
+        v
+RGBDepthCompatibilityMatrix
+        |
+        v
+AVCaptureSession + AVCapturePhotoOutput
+        |
+        v
+AVCapturePhoto image + AVCapturePhoto.depthData
+        |
+        v
+HEIC primary image + Apple auxiliary depth + TAP XMP manifest
+```
+
+The app does **not** run two independent sessions for RGB and depth. MultiCam is
+reserved for future independent camera-input pairings and is documented in
+[MULTICAM_TODO.md](TAPCamDemo/CameraCapture/Documentation/MULTICAM_TODO.md).
+
+## Code Map
+
+| Responsibility | Code |
 | --- | --- |
-| Photo lens request and depth-capable camera selection | [CameraController.swift](TAPCamDemo/CameraController.swift#L14) |
-| `AVCapturePhotoSettings` depth capture flags | [makePhotoSettings](TAPCamDemo/CameraController.swift#L210) |
-| Photo delegate packaging path | [PhotoCaptureProcessor](TAPCamDemo/CameraController.swift#L335) |
-| Manifest schema and constants | [TAPDepthManifest](TAPCamDemo/TAPDepthManifest.swift#L14) |
-| Apple API -> manifest mapping | [TAPDepthManifestBuilder](TAPCamDemo/TAPDepthManifest.swift#L174) |
-| Standard EXIF/GPS/TIFF merge | [TAPPhotoFileMetadataCustomizer](TAPCamDemo/TAPPhotoFileMetadataCustomizer.swift#L13) |
-| XMP injection and readback | [TAPDepthHEICWriter.swift](TAPCamDemo/TAPDepthHEICWriter.swift#L13) |
-| Photos album save and original bytes readback | [PhotoLibraryWriter.swift](TAPCamDemo/PhotoLibraryWriter.swift#L13) |
-| Analysis models and HEIC readback | [DepthAnalysisModels.swift](TAPCamDemo/DepthAnalysis/DepthAnalysisModels.swift#L14), [DepthAnalysisReader.swift](TAPCamDemo/DepthAnalysis/DepthAnalysisReader.swift#L14) |
+| App entry | [TAPCamDemoApp.swift](TAPCamDemo/App/TAPCamDemoApp.swift) |
+| SwiftUI screen | [CameraView.swift](TAPCamDemo/CameraCapture/Presentation/CameraView.swift) |
+| UI state and actions | [CameraViewModel.swift](TAPCamDemo/CameraCapture/Presentation/CameraViewModel.swift) |
+| Preview + crop metadata bridge | [CameraPreviewView.swift](TAPCamDemo/CameraCapture/Presentation/CameraPreviewView.swift) |
+| FOV/RGB/depth/zoom/crop capabilities | [CameraCaptureCapabilities.swift](TAPCamDemo/CameraCapture/Capabilities/CameraCaptureCapabilities.swift) |
+| Pairing plan and session request | [SessionConfigurationRequest.swift](TAPCamDemo/CameraCapture/Session/SessionConfigurationRequest.swift) |
+| Session owner | [CaptureSessionController.swift](TAPCamDemo/CameraCapture/Session/CaptureSessionController.swift) |
+| Default photo provider | [AVFoundationSingleCamPhotoProvider.swift](TAPCamDemo/CameraCapture/CaptureSources/AVFoundationSingleCamPhotoProvider.swift) |
+| Pipeline and metrics | [CapturePipeline.swift](TAPCamDemo/CameraCapture/Pipeline/CapturePipeline.swift), [CaptureJobMetrics.swift](TAPCamDemo/CameraCapture/Diagnostics/CaptureJobMetrics.swift) |
+| Logical package | [CapturePackage.swift](TAPCamDemo/CameraCapture/Processing/CapturePackage.swift) |
+| Packaging policy | [CapturePackager.swift](TAPCamDemo/CameraCapture/Packaging/CapturePackager.swift) |
+| Embedded HEIC packager | [EmbeddedPhotoPackager.swift](TAPCamDemo/CameraCapture/Packaging/EmbeddedPhotoPackager.swift) |
+| TAP manifest schema | [TAPDepthManifest.swift](TAPCamDemo/CameraCapture/Packaging/EmbeddedPhoto/TAPDepthManifest.swift) |
+| External payload entry | [ExternalCapturePackageService.swift](TAPCamDemo/CameraCapture/Integration/ExternalCapturePackageService.swift) |
+| Hooks | [ArtifactHookPipeline.swift](TAPCamDemo/CameraCapture/Hooks/ArtifactHookPipeline.swift) |
+| Photos writer | [PhotoLibraryWriter.swift](TAPCamDemo/CameraCapture/Writers/PhotoLibraryWriter.swift) |
+| Analysis models and HEIC readback | [DepthAnalysisModels.swift](TAPCamDemo/DepthAnalysis/DepthAnalysisModels.swift), [DepthAnalysisReader.swift](TAPCamDemo/DepthAnalysis/DepthAnalysisReader.swift) |
 | Depth / mask / plane / cloud tools | [AnalysisTools](TAPCamDemo/DepthAnalysis/AnalysisTools) |
-| Saved-image album and analysis UI | [DepthAlbumPickerView.swift](TAPCamDemo/DepthAnalysis/DepthAlbumPickerView.swift#L14), [DepthAnalysisView.swift](TAPCamDemo/DepthAnalysis/DepthAnalysisView.swift#L14) |
+| Saved-image album and analysis UI | [DepthAlbumPickerView.swift](TAPCamDemo/DepthAnalysis/DepthAlbumPickerView.swift), [DepthAnalysisView.swift](TAPCamDemo/DepthAnalysis/DepthAnalysisView.swift) |
 
 ## HEIC Layout
 
-| Location | Contents | Authority |
+| HEIC location | Contents | Authority |
 | --- | --- | --- |
-| Primary image item | Visible HEIC image generated by `AVCapturePhoto.fileDataRepresentation(with:)` | Standard photo data |
-| Auxiliary data | Apple depth or disparity attachment, readable with `kCGImageAuxiliaryDataTypeDepth` or `kCGImageAuxiliaryDataTypeDisparity` | Authoritative depth map |
-| EXIF/GPS/TIFF | Generic capture date, GPS coordinates, device/lens hints, and a short pointer in EXIF `UserComment` | Compatibility mirror only |
-| XMP `tapdepth:Manifest` | UTF-8 JSON manifest at namespace `urn:tapnap:tapcam:depth:1.0`, prefix `tapdepth`, path `tapdepth:Manifest` | Authoritative TAP metadata |
+| Primary image item | Visible RGB image from `AVCapturePhoto.fileDataRepresentation(with:)` | Authoritative RGB image |
+| Auxiliary data | Apple depth/disparity attachment | Authoritative depth map |
+| EXIF/GPS/TIFF | Compatibility metadata and short pointer | Compatibility mirror |
+| XMP `tapdepth:Manifest` | TAP JSON manifest at `tapdepth:Manifest` | Authoritative TAP metadata |
 
-Do not parse TAP metadata from EXIF `UserComment`. It only contains:
+`payload` is the future canonical signing input. `proofs` remains outside
+`payload` and is reserved for future hash/signature records.
 
-```text
-TAPDepthHEIC/1; metadata=xmp:tapdepth:Manifest
-```
+## Manifest v0.8 Additions
 
-## Manifest Contract
+Important payload nodes:
 
-The manifest media type is:
-
-```text
-application/vnd.tapnap.depth-manifest+json;version=1
-```
-
-The JSON root is always:
-
-```json
-{
-  "schema": {},
-  "payload": {},
-  "proofs": []
-}
-```
-
-`schema` identifies the format and XMP location. `payload` contains all unsigned capture metadata. `proofs` is reserved for future hashes and digital signatures.
-
-Important `schema` values are defined in [TAPDepthManifest.swift](TAPCamDemo/TAPDepthManifest.swift#L25):
-
-| Field | Value |
+| Field | Meaning |
 | --- | --- |
-| `schema.id` | `urn:tapnap:tapcam:depth-manifest:v1` |
-| `schema.version` | `1` |
-| `schema.xmpNamespaceURI` | `urn:tapnap:tapcam:depth:1.0` |
-| `schema.xmpPrefix` | `tapdepth` |
-| `schema.xmpManifestPath` | `tapdepth:Manifest` |
+| `rgbSource` | Resolved visual source for the final RGB photo |
+| `depthSource` | Requested compatible depth row and resolved AVFoundation device |
+| `pairing` | Pairing mode, compatibility status, release allowance, alignment status |
+| `zoom` | Requested/actual zoom and depth-safe zoom ranges |
+| `crop` | Preview-only normalized crop metadata |
+| `resolvedSession` | Actual `AVCaptureDevice` used for the still photo-depth pipeline |
+| `alignment` | TAP interpretation rule for Apple auxiliary depth alignment |
 
-## Field Sources
+Legacy v1 fields such as `selectedDepthCamera`, `selectedZoom`, `photoLens`, and
+`depthBackend` are still emitted for older readers, but v0.8 readers should use
+the nodes above. `photoLens.requestedFocalLengthLabel` records the user-facing
+FOV label that drove the capture choice.
 
-| Manifest field | Apple source |
+Depth analysis fields are also embedded in the same manifest:
+
+| Field | Meaning |
 | --- | --- |
-| `payload.id` | App-generated UUID at capture processing time |
-| `payload.capturedAt` | App capture timestamp, ISO-8601 UTC |
-| `payload.capture.resolvedSettingsUniqueID` | `AVCapturePhoto.resolvedSettings.uniqueID` |
-| `payload.capture.requestedCodec` | `AVCapturePhotoSettings(format:)` using `AVVideoCodecType.hevc` when available |
-| `payload.capture.depthDataDeliveryEnabled` | `AVCapturePhotoSettings.isDepthDataDeliveryEnabled` |
-| `payload.capture.embedsDepthDataInPhoto` | `AVCapturePhotoSettings.embedsDepthDataInPhoto` |
-| `payload.capture.depthDataFiltered` | `AVCapturePhotoSettings.isDepthDataFiltered` |
-| `payload.photoLens.*` | Requested `PhotoLensOption`, resolved `AVCaptureDevice`, and `AVCaptureDevice.activePrimaryConstituent` |
-| `payload.camera.*` | `AVCaptureDevice`, `activeFormat`, `activeDepthDataFormat`, and `activePrimaryConstituent` |
-| `payload.camera.lensPosition` | `AVCaptureDevice.lensPosition`, a 0...1 lens actuator position, not physical focus distance |
-| `payload.camera.minimumFocusDistanceMillimeters` | `AVCaptureDevice.minimumFocusDistance` |
-| `payload.depth.*` | `AVCapturePhoto.depthData` / `AVDepthData` |
-| `payload.depth.source.*` | `AVCaptureDevice.DeviceType` classification from the resolved capture device |
-| `payload.depth.cameraCalibration.*` | `AVDepthData.cameraCalibrationData` |
-| `payload.alignment.depthToImage` | TAP interpretation rule for Apple auxiliary depth alignment |
-| `payload.location.*` | `CLLocationManager.requestLocation()` / `CLLocation`; nullable when permission or timeout fails |
-| `payload.software.*` | `Bundle.main` info dictionary |
+| `depth.metricUnit` | Unit after native/conversion interpretation, currently meters for metric analysis |
+| `depth.conversionPath` | Whether the data was native metric depth or converted from disparity |
+| `depth.pixelFormat` | Auxiliary depth/disparity pixel format code |
+| `alignment.depthToImage` | Alignment rule for matching Apple auxiliary depth to the primary image |
 
-The depth pixels themselves are not duplicated in JSON. They remain in the HEIC auxiliary depth/disparity attachment and can be reconstructed as `AVDepthData`.
+## Documents
 
-`payload.depth.metricUnit`, `payload.depth.conversionPath`, `payload.depth.pixelFormat`, and `payload.alignment.depthToImage` exist for the analysis module. TAP treats a native depth attachment as meters. If the attachment is disparity, readers should convert it with `AVDepthData.converting(toDepthDataType: kCVPixelFormatType_DepthFloat32)` before measuring distances or fitting planes.
-
-`payload.photoLens` records user intent and resolution separately. `requestedLensID`, `requestedDisplayName`, and `requestedZoomFactor` describe the UI choice. `resolvedCaptureDeviceType`, `resolvedCaptureDeviceName`, and resolved active primary constituent fields describe what AVFoundation was using when the manifest was built. On virtual cameras, `activePrimaryConstituent` may change with zoom, focus, exposure, and system policy, so third-party tools should treat the requested lens as intent and the resolved fields as the observable capture state.
-
-`payload.depth.source` intentionally avoids guessing private Apple fusion weights:
-
-| Capture device type | `sensingMethod` | `lidarParticipation` |
-| --- | --- | --- |
-| `builtInLiDARDepthCamera` | `lidarDepthCamera` | `explicit` |
-| `builtInTrueDepthCamera` | `trueDepthCamera` | `notApplicable` |
-| `builtInTripleCamera`, `builtInDualWideCamera`, `builtInDualCamera` | `multiCameraStereoOrComputational` | `notAsserted` |
-| `builtInWideAngleCamera`, `builtInUltraWideCamera`, `builtInTelephotoCamera` | `singleCameraComputationalOrUnknown` | `notAsserted` |
-
-## Writing Rules
-
-1. Convert the UI lens request (`0.5x`, `1x`, `2x`, `3x`, or front) into a `PhotoLensOption`.
-2. Resolve that option to a depth-capable `AVCaptureDevice`; prefer broad virtual rear cameras before LiDAR-only or single-camera fallbacks.
-3. Configure `activeFormat`, `activeDepthDataFormat`, and `videoZoomFactor` on the resolved device.
-4. Configure `AVCapturePhotoOutput.isDepthDataDeliveryEnabled = true` before starting the session.
-5. Capture with `AVCapturePhotoSettings.isDepthDataDeliveryEnabled = true` and `embedsDepthDataInPhoto = true`.
-6. Use `AVCapturePhoto.fileDataRepresentation(with:)` so Apple packages the primary image and depth attachment.
-7. Merge standard EXIF/GPS/TIFF fields with `AVCapturePhotoFileDataRepresentationCustomizer`.
-8. Inject `tapdepth:Manifest` with ImageIO `CGImageMetadataRegisterNamespaceForPrefix`, `CGImageMetadataSetValueWithPath`, and `CGImageDestinationCopyImageSource`.
-9. Verify the final bytes can read back the manifest before saving to Photos.
-
-## Reading From a HEIC File
-
-Third-party apps do not need TAPCamDemo to parse the file. Use ImageIO for XMP and auxiliary depth:
-
-```swift
-import AVFoundation
-import ImageIO
-
-let source = CGImageSourceCreateWithURL(fileURL as CFURL, nil)!
-let metadata = CGImageSourceCopyMetadataAtIndex(source, 0, nil)!
-let manifestJSON = CGImageMetadataCopyStringValueWithPath(
-    metadata,
-    nil,
-    "tapdepth:Manifest" as CFString
-)! as String
-
-let depthInfo =
-    CGImageSourceCopyAuxiliaryDataInfoAtIndex(source, 0, kCGImageAuxiliaryDataTypeDepth)
-    ?? CGImageSourceCopyAuxiliaryDataInfoAtIndex(source, 0, kCGImageAuxiliaryDataTypeDisparity)
-
-let depthData = try depthInfo.map { try AVDepthData(fromDictionaryRepresentation: $0 as! [AnyHashable: Any]) }
-```
-
-Inside this app, the same logic is wrapped by [TAPDepthHEICReader](TAPCamDemo/TAPDepthHEICWriter.swift#L83).
+- [ARCHITECTURE.md](TAPCamDemo/CameraCapture/Documentation/ARCHITECTURE.md)
+- [PIPELINE.md](TAPCamDemo/CameraCapture/Documentation/PIPELINE.md)
+- [APPLE_DEPTH_LIMITATIONS.md](TAPCamDemo/CameraCapture/Documentation/APPLE_DEPTH_LIMITATIONS.md)
+- [CAPTURE_SOURCES.md](TAPCamDemo/CameraCapture/Documentation/CAPTURE_SOURCES.md)
+- [RGB_DEPTH_PAIRING.md](TAPCamDemo/CameraCapture/Documentation/RGB_DEPTH_PAIRING.md)
+- [ZOOM.md](TAPCamDemo/CameraCapture/Documentation/ZOOM.md)
+- [CROP.md](TAPCamDemo/CameraCapture/Documentation/CROP.md)
+- [PACKAGING.md](TAPCamDemo/CameraCapture/Documentation/PACKAGING.md)
+- [HOOKS.md](TAPCamDemo/CameraCapture/Documentation/HOOKS.md)
+- [EXTERNAL_INTEGRATION.md](TAPCamDemo/CameraCapture/Documentation/EXTERNAL_INTEGRATION.md)
+- [DEBUGGING.md](TAPCamDemo/CameraCapture/Documentation/DEBUGGING.md)
 
 ## Depth Analysis Module
 
-Depth analysis is intentionally separate from capture. The camera screen only exposes a recent-photo thumbnail entry point; heatmaps, point reads, region statistics, point-cloud previews, and plane candidates live in the saved-image analysis page.
+Depth analysis is intentionally separate from capture. The camera pipeline
+produces standards-compatible HEIC + Apple auxiliary depth + TAP manifest; the
+analysis module reads saved photo bytes and builds heatmaps, valid masks,
+point-cloud previews, and approximate plane candidates.
 
-The analysis pipeline is:
+Single-photo RGB-D analysis can estimate visible-surface depth and approximate
+coplanarity. It is not full 3D reconstruction: there is no stable world
+coordinate system, no hidden geometry behind visible objects, and no multi-frame
+mesh.
 
-```mermaid
-flowchart LR
-    A["TAP Depth HEIC bytes"] --> B["ImageIO primary CGImage"]
-    A --> C["ImageIO auxiliary depth/disparity"]
-    C --> D["AVDepthData"]
-    D --> E["DepthFloat32 meters"]
-    E --> F["Depth heatmap / valid mask"]
-    E --> G["Camera-coordinate point cloud"]
-    G --> H["Approximate plane fitting"]
-```
-
-Single-photo RGB-D analysis can estimate visible-surface depth and approximate coplanarity. It is not full 3D reconstruction: there is no stable world coordinate system, no hidden geometry behind visible objects, and no multi-frame mesh.
-
-For a depth pixel `(u, v)` with metric depth `Z`, the analysis module uses the pinhole model from `AVCameraCalibrationData.intrinsicMatrix`:
+For a depth pixel `(u, v)` with metric depth `Z`, the analysis module uses the
+pinhole model from `AVCameraCalibrationData.intrinsicMatrix`:
 
 ```text
 X = (u - cx) / fx * Z
@@ -181,71 +165,17 @@ Y = (v - cy) / fy * Z
 Z = depthMeters
 ```
 
-The resulting point is in the capture camera's local coordinate system. `TAPPlaneEstimator` fits approximate planes from those camera-space points and reports normal, centroid, average residual, inlier ratio, depth range, and image-space bounds.
-
 ## Reading From Photos
 
-Photos may provide edited derivatives or thumbnails. For verification, always request the original `.photo` resource bytes:
+Photos may provide edited derivatives or thumbnails. For verification, always
+request original `.photo` resource bytes with `PHAssetResourceManager`, then
+parse them with ImageIO.
 
-```swift
-import Photos
+## Release Data Policy
 
-let resource = PHAssetResource.assetResources(for: asset).first { $0.type == .photo }!
-var data = Data()
+Release output is a single embedded photo artifact. Release builds must not
+write sidecar JSON, debug bundles, raw bundles, independent depth files,
+independent metadata files, metrics files, or intermediate capture artifacts.
 
-PHAssetResourceManager.default().requestData(
-    for: resource,
-    options: nil,
-    dataReceivedHandler: { data.append($0) },
-    completionHandler: { error in
-        // Parse data with ImageIO after completion.
-    }
-)
-```
-
-The app helper is [PhotoLibraryWriter.originalPhotoData(for:)](TAPCamDemo/PhotoLibraryWriter.swift#L27).
-
-## Hash And Signature Plan
-
-`proofs` is intentionally outside `payload`. Future signing should:
-
-1. Canonicalize only `payload`, not `schema` or `proofs`.
-2. Use RFC 8785 JSON Canonicalization Scheme before hashing/signing.
-3. Store each proof as an entry in `proofs[]` with `type`, `algorithm`, `keyID`, `createdAt`, and `value`.
-4. Avoid signing EXIF/GPS mirror fields as the authoritative business record.
-5. For full file-level authenticity, prefer C2PA/Content Credentials for the HEIF/BMFF container and let TAP manifest carry domain-specific capture claims.
-
-`TAPDepthManifestEncoder.payloadDataForFutureProofing` currently provides a stable sorted-key JSON payload for tests and plumbing, but it is not a complete RFC 8785 implementation. Replace that encoder before shipping cryptographic verification.
-
-## Validation
-
-The current implementation was build-checked with:
-
-```sh
-xcodebuild -scheme TAPCamDemo -destination 'generic/platform=iOS' -derivedDataPath /tmp/TAPCamDemoDerivedData CODE_SIGNING_ALLOWED=NO build
-```
-
-and test-build checked with:
-
-```sh
-xcodebuild -scheme TAPCamDemo -destination 'generic/platform=iOS' -derivedDataPath /tmp/TAPCamDemoDerivedData CODE_SIGNING_ALLOWED=NO build-for-testing
-```
-
-Depth capture still requires a physical iPhone/iPad with a depth-capable camera. The simulator cannot validate `AVCapturePhoto.depthData`.
-
-## Reference Docs
-
-- [AVCapturePhoto](https://developer.apple.com/documentation/avfoundation/avcapturephoto)
-- [AVDepthData](https://developer.apple.com/documentation/avfoundation/avdepthdata)
-- [AVCameraCalibrationData](https://developer.apple.com/documentation/avfoundation/avcameracalibrationdata)
-- [ARFrame.sceneDepth](https://developer.apple.com/documentation/arkit/arframe/scenedepth)
-- [ARDepthData](https://developer.apple.com/documentation/arkit/ardepthdata)
-- [ARPlaneAnchor](https://developer.apple.com/documentation/arkit/arplaneanchor)
-- [Displaying a point cloud using scene depth](https://developer.apple.com/documentation/ARKit/displaying-a-point-cloud-using-scene-depth)
-
-## TODO / Future Work
-
-- v1 does not add an ARKit capture mode.
-- If the product needs stable world coordinates, ARKit system plane detection, continuous tracking, mesh reconstruction, or multi-frame fusion, add a separate `AR Capture` module.
-- That future module should record `ARFrame.camera.transform`, `ARFrame.camera.intrinsics`, `sceneDepth` / `smoothedSceneDepth`, `confidenceMap`, `ARPlaneAnchor`, or mesh anchors.
-- AR capture output should be a new TAP capture profile and should not be mixed into the standard photo-depth HEIC camera UI.
+If a requested RGB/depth pair cannot be embedded as a valid Apple photo-depth
+HEIC, capture is rejected instead of silently generating another file.
