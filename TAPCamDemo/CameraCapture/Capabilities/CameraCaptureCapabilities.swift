@@ -408,12 +408,18 @@ nonisolated struct CapabilityMatrix: @unchecked Sendable {
 
     func depthProfiles(
         for rgbSource: CameraProfile,
-        selectedKind: DepthProfileKind?
+        selectedKind: DepthProfileKind?,
+        preferredZoomFactor: Double? = nil
     ) -> [DepthProfile] {
         DepthProfileKind.allCases.map { kind in
             let candidate = depthCandidates.first(where: { $0.kind == kind })
             let availability = availability(for: kind, candidate: candidate)
-            let pairing = RGBDepthCompatibilityMatrix.evaluate(rgbSource: rgbSource, depthKind: kind, candidate: candidate)
+            let pairing = RGBDepthCompatibilityMatrix.evaluate(
+                rgbSource: rgbSource,
+                depthKind: kind,
+                candidate: candidate,
+                preferredZoomFactor: preferredZoomFactor
+            )
             let isInvalidSelected = selectedKind == kind && pairing.status != .compatible
             let compatibility: RGBDepthCompatibilityStatus = isInvalidSelected ? .invalidSelected : pairing.status
 
@@ -437,6 +443,15 @@ nonisolated struct CapabilityMatrix: @unchecked Sendable {
     func bestCompatibleDepthProfile(for rgbSource: CameraProfile) -> DepthProfile? {
         depthProfiles(for: rgbSource, selectedKind: nil)
             .first(where: \.isSelectable)
+    }
+
+    func bestCompatibleDepthProfile(for rgbSource: CameraProfile, preferredZoomFactor: Double) -> DepthProfile? {
+        depthProfiles(
+            for: rgbSource,
+            selectedKind: nil,
+            preferredZoomFactor: preferredZoomFactor
+        )
+        .first(where: \.isSelectable)
     }
 
     func debugDepthDeviceOptions() -> [DebugDepthDeviceOption] {
@@ -484,16 +499,42 @@ nonisolated struct CapabilityMatrix: @unchecked Sendable {
                 continue
             }
 
-            let depthRows = depthProfiles(for: rgbSource, selectedKind: nil)
-            let depthSource = depthRows.first(where: \.isSelectable)
-            let zoomCapability = ZoomCapabilityResolver.resolve(
-                rgbSource: rgbSource,
-                depthProfile: depthSource,
-                selectedZoomID: nil
-            )
-
-            for zoom in zoomCapability.zoomProfiles {
-                let label = FocalLengthLabelResolver.label(for: rgbSource, zoomFactor: zoom.requestedZoomFactor)
+            for targetFOV in FocalLengthLabelResolver.releaseFOVTargets() {
+                /*
+                 Depth support is format-specific. A virtual device may expose
+                 one active format whose depth delivery is safe only at 2x/3x
+                 and another format that works at 1x. Release FOV options must
+                 therefore resolve the Apple-paired depth source for each target
+                 FOV instead of reusing the single "best" depth format selected
+                 during discovery. Otherwise the 24mm slot can be incorrectly
+                 filled by LiDAR while Triple/Dual Wide are marked unavailable
+                 at 1x, making 24mm and 48mm look visually too similar.
+                 */
+                let seedDepthSource = bestCompatibleDepthProfile(for: rgbSource)
+                let requestedZoomFactor = FocalLengthLabelResolver.releaseVideoZoomFactor(
+                    for: rgbSource,
+                    targetEquivalentMillimeters: targetFOV,
+                    formatSelection: seedDepthSource?.formatSelection
+                )
+                let depthSource = bestCompatibleDepthProfile(
+                    for: rgbSource,
+                    preferredZoomFactor: requestedZoomFactor
+                )
+                let zoomCapability = ZoomCapabilityResolver.resolve(
+                    rgbSource: rgbSource,
+                    depthProfile: depthSource,
+                    selectedZoomID: nil,
+                    selectedZoomFactor: requestedZoomFactor
+                )
+                guard let zoom = zoomCapability.zoomProfiles.first(where: {
+                    abs($0.requestedZoomFactor - requestedZoomFactor) < 0.001
+                }) else {
+                    continue
+                }
+                let label = FocalLengthLabelResolver.label(
+                    equivalentMillimeters: targetFOV,
+                    source: "\(rgbSource.focalLengthLabelSource)+releaseFOVTarget"
+                )
                 let isEnabled = rgbSource.isEnabled && depthSource?.isSelectable == true && zoom.isEnabled
                 let option = FocalLengthOption(
                     id: "\(rgbSource.id)-\(zoom.id)-\(label.label)",
@@ -526,7 +567,7 @@ nonisolated struct CapabilityMatrix: @unchecked Sendable {
             }
         }
 
-        return bestBySlot.values.sorted { lhs, rhs in
+        let options = bestBySlot.values.sorted { lhs, rhs in
             if lhs.rgbSource.device.position != rhs.rgbSource.device.position {
                 return lhs.rgbSource.device.position == .back
             }
@@ -535,6 +576,8 @@ nonisolated struct CapabilityMatrix: @unchecked Sendable {
             }
             return lhs.equivalentFocalLength35mmMillimeters < rhs.equivalentFocalLength35mmMillimeters
         }
+        FOVDiagnostics.logFocalOptions(options)
+        return options
     }
 
     var defaultFocalLengthOption: FocalLengthOption? {
@@ -558,8 +601,7 @@ nonisolated struct CapabilityMatrix: @unchecked Sendable {
     private func focalOptionPriority(_ option: FocalLengthOption) -> Int {
         let enabledScore = option.isEnabled ? 10_000 : 0
         let sourceScore = CameraCapabilityResolver.releaseDisplayPriority(for: option.rgbSource)
-        let zoomScore = option.zoom.requestedZoomFactor == 1.0 ? 100 : 0
-        return enabledScore + sourceScore + zoomScore
+        return enabledScore + sourceScore
     }
 
     private func availability(for kind: DepthProfileKind, candidate: DepthDeviceCandidate?) -> DepthProfileAvailability {
@@ -770,7 +812,8 @@ nonisolated enum CameraCapabilityResolver {
 
     static func bestDepthFormatSelection(
         for device: AVCaptureDevice,
-        preferredZoomFactor: Double? = nil
+        preferredZoomFactor: Double? = nil,
+        requiresPreferredZoomSupport: Bool = false
     ) -> PhotoDepthFormatSelection? {
         let selections = depthFormatSelections(for: device)
         let zoomCompatibleSelections = preferredZoomFactor.map { zoom in
@@ -778,6 +821,10 @@ nonisolated enum CameraCapabilityResolver {
                 depthFormatSelection(selection, supportsDepthSafeZoom: zoom)
             }
         } ?? []
+
+        guard !zoomCompatibleSelections.isEmpty || !requiresPreferredZoomSupport else {
+            return nil
+        }
 
         let selectable = zoomCompatibleSelections.isEmpty ? selections : zoomCompatibleSelections
 
@@ -1042,7 +1089,8 @@ nonisolated enum RGBDepthCompatibilityMatrix {
     static func evaluate(
         rgbSource: CameraProfile,
         depthKind: DepthProfileKind,
-        candidate: DepthDeviceCandidate?
+        candidate: DepthDeviceCandidate?,
+        preferredZoomFactor: Double? = nil
     ) -> Result {
         guard depthKind != .fallbackNone else {
             return Result(
@@ -1062,7 +1110,18 @@ nonisolated enum RGBDepthCompatibilityMatrix {
             )
         }
 
-        guard let formatSelection = candidate.formatSelection else {
+        let formatSelection: PhotoDepthFormatSelection?
+        if let preferredZoomFactor {
+            formatSelection = CameraCapabilityResolver.bestDepthFormatSelection(
+                for: candidate.device,
+                preferredZoomFactor: preferredZoomFactor,
+                requiresPreferredZoomSupport: true
+            )
+        } else {
+            formatSelection = candidate.formatSelection
+        }
+
+        guard let formatSelection else {
             return Result(
                 status: .unsupportedFormat,
                 reason: "No depth-capable format",
@@ -1209,18 +1268,25 @@ nonisolated enum FocalLengthLabelResolver {
 
     static func label(for profile: CameraProfile, zoomFactor: Double) -> Label {
         let millimeters = resolvedEquivalentMillimeters(for: profile, zoomFactor: zoomFactor)
+        return label(
+            equivalentMillimeters: millimeters,
+            source: "\(fovBaseLabelSource(for: profile))+depthSafeZoom"
+        )
+    }
+
+    static func label(equivalentMillimeters millimeters: Double, source: String) -> Label {
         return Label(
             label: formattedLabel(millimeters),
             numericLabel: formattedNumericLabel(millimeters),
             unitLabel: "mm",
             equivalentMillimeters: millimeters,
-            source: "\(profile.focalLengthLabelSource)+depthSafeZoom"
+            source: source
         )
     }
 
     static func debugZoomLabel(for profile: CameraProfile, zoomFactor: Double) -> Label {
-        let baseMillimeters = debugBaseEquivalentMillimeters(for: profile)
-        let millimeters = debugEquivalentMillimeters(
+        let baseMillimeters = fovBaseEquivalentMillimeters(for: profile)
+        let millimeters = equivalentMillimeters(
             baseMillimeters: baseMillimeters,
             zoomFactor: zoomFactor
         )
@@ -1229,31 +1295,92 @@ nonisolated enum FocalLengthLabelResolver {
             numericLabel: formattedNumericLabel(millimeters),
             unitLabel: "mm",
             equivalentMillimeters: millimeters,
-            source: "\(debugBaseLabelSource(for: profile))+videoZoomFactor"
+            source: "\(fovBaseLabelSource(for: profile))+videoZoomFactor"
         )
     }
 
     static func debugEquivalentMillimeters(baseMillimeters: Double, zoomFactor: Double) -> Double {
+        equivalentMillimeters(baseMillimeters: baseMillimeters, zoomFactor: zoomFactor)
+    }
+
+    static func equivalentMillimeters(baseMillimeters: Double, zoomFactor: Double) -> Double {
         max(1, baseMillimeters) * max(0.01, zoomFactor)
     }
 
-    private static func debugBaseEquivalentMillimeters(for profile: CameraProfile) -> Double {
+    static func releaseFOVTargets() -> [Double] {
+        let model = DeviceModelIdentifier.current
+        let wideType = AVCaptureDevice.DeviceType.builtInWideAngleCamera.rawValue
+        let teleType = AVCaptureDevice.DeviceType.builtInTelephotoCamera.rawValue
+        let wide = Double(modelCatalog[model]?[wideType] ?? 24)
+        let tele = Double(modelCatalog[model]?[teleType] ?? 77)
+        return uniqueSorted([13, wide, wide * 2, tele])
+    }
+
+    static func releaseVideoZoomFactor(
+        for profile: CameraProfile,
+        targetEquivalentMillimeters: Double,
+        formatSelection: PhotoDepthFormatSelection?
+    ) -> Double {
+        let wideMillimeters = virtualWideEquivalentMillimeters(for: profile.device)
+        let wideRawZoom = wideReferenceZoomFactor(for: profile, formatSelection: formatSelection)
+        return max(0.01, wideRawZoom * targetEquivalentMillimeters / max(1, wideMillimeters))
+    }
+
+    static func equivalentMillimeters(
+        for profile: CameraProfile,
+        rawVideoZoomFactor: Double,
+        formatSelection: PhotoDepthFormatSelection?
+    ) -> Double {
+        let wideMillimeters = virtualWideEquivalentMillimeters(for: profile.device)
+        let wideRawZoom = wideReferenceZoomFactor(for: profile, formatSelection: formatSelection)
+        return max(1, wideMillimeters) * max(0.01, rawVideoZoomFactor) / max(0.01, wideRawZoom)
+    }
+
+    static func usesWideBaselineForVirtualFOV(deviceTypeRawValue: String) -> Bool {
+        [
+            AVCaptureDevice.DeviceType.builtInTripleCamera.rawValue,
+            AVCaptureDevice.DeviceType.builtInDualWideCamera.rawValue,
+            AVCaptureDevice.DeviceType.builtInDualCamera.rawValue,
+            AVCaptureDevice.DeviceType.builtInLiDARDepthCamera.rawValue
+        ].contains(deviceTypeRawValue)
+    }
+
+    static func semanticZoomScore(equivalentMillimeters: Double, zoomFactor: Double) -> Int {
+        isSemanticFOVSlot(equivalentMillimeters: equivalentMillimeters, zoomFactor: zoomFactor) ? 1_000 : 0
+    }
+
+    static func isSemanticFOVSlot(equivalentMillimeters: Double, zoomFactor: Double) -> Bool {
+        let expectedZoom: Double
+        switch equivalentMillimeters {
+        case ..<18:
+            return zoomFactor <= 1.0
+        case 18..<36:
+            expectedZoom = 1.0
+        case 36..<62:
+            expectedZoom = 2.0
+        default:
+            expectedZoom = 3.0
+        }
+
+        return abs(zoomFactor - expectedZoom) < 0.01
+    }
+
+    private static func fovBaseEquivalentMillimeters(for profile: CameraProfile) -> Double {
         /*
-         Debug override exposes Apple depth-capable devices directly. For virtual
-         depth pipelines such as Dual, Dual Wide, Triple/Portrait, and LiDAR, the
-         human-facing 1x framing is the Wide camera baseline on current iPhones.
-         `nominalFocalLengthIn35mmFilm` can describe the active constituent or
-         format-specific state instead, which made a 1x Dual Wide/Portrait debug
-         capture appear as 13mm on some devices. Debug FOV labels therefore use
-         the model/catalog Wide equivalent for these virtual pipelines, then
-         multiply by the selected `videoZoomFactor`.
+         Release and Debug both expose human-facing FOV slots, not raw
+         `AVCaptureDevice` focal metadata. For Apple virtual depth pipelines
+         such as Dual, Dual Wide, Triple/Portrait, and LiDAR, the 1x FOV is the
+         Wide baseline on current iPhones. On iOS 26,
+         `nominalFocalLengthIn35mmFilm` may report an active-constituent or
+         format-specific value such as 48mm for a virtual device, which must not
+         make the Release `48mm` button point at the 1x preview. These pipelines
+         therefore share the same Wide baseline helper used by Debug zoom labels.
          */
-        switch profile.device.deviceType {
-        case .builtInTripleCamera,
-             .builtInDualWideCamera,
-             .builtInDualCamera,
-             .builtInLiDARDepthCamera:
+        if usesWideBaselineForVirtualFOV(deviceTypeRawValue: profile.deviceTypeRawValue) {
             return virtualWideEquivalentMillimeters(for: profile.device)
+        }
+
+        switch profile.device.deviceType {
         case .builtInTrueDepthCamera:
             return Double(catalogValue(for: profile.device) ?? fallbackValue(for: profile.device))
         default:
@@ -1263,16 +1390,25 @@ nonisolated enum FocalLengthLabelResolver {
         }
     }
 
-    private static func debugBaseLabelSource(for profile: CameraProfile) -> String {
-        switch profile.device.deviceType {
-        case .builtInTripleCamera,
-             .builtInDualWideCamera,
-             .builtInDualCamera,
-             .builtInLiDARDepthCamera:
-            return "debugVirtualWideBaseline"
-        default:
-            return profile.focalLengthLabelSource
+    private static func fovBaseLabelSource(for profile: CameraProfile) -> String {
+        usesWideBaselineForVirtualFOV(deviceTypeRawValue: profile.deviceTypeRawValue)
+            ? "virtualWideBaseline"
+            : profile.focalLengthLabelSource
+    }
+
+    private static func wideReferenceZoomFactor(
+        for profile: CameraProfile,
+        formatSelection: PhotoDepthFormatSelection?
+    ) -> Double {
+        guard usesWideBaselineForVirtualFOV(deviceTypeRawValue: profile.deviceTypeRawValue),
+              let formatSelection else {
+            return 1.0
         }
+
+        let lowerDepthSafeBound = formatSelection.videoFormat.supportedVideoZoomRangesForDepthDataDelivery
+            .map { Double($0.lowerBound) }
+            .min() ?? 1.0
+        return max(1.0, lowerDepthSafeBound)
     }
 
     private static func resolvedEquivalentMillimeters(for profile: CameraProfile, zoomFactor: Double) -> Double {
@@ -1280,23 +1416,26 @@ nonisolated enum FocalLengthLabelResolver {
             return profile.equivalentFocalLength35mmMillimeters ?? 23
         }
 
+        let baseMillimeters = fovBaseEquivalentMillimeters(for: profile)
+
         if zoomFactor <= 0.75 {
             return 13
         }
 
         if abs(zoomFactor - 1.0) < 0.01 {
-            return profile.equivalentFocalLength35mmMillimeters ?? 24
+            return baseMillimeters
         }
 
         if abs(zoomFactor - 2.0) < 0.01 {
-            return 48
+            return equivalentMillimeters(baseMillimeters: baseMillimeters, zoomFactor: 2.0)
         }
 
         if abs(zoomFactor - 3.0) < 0.01 {
-            return teleEquivalentMillimeters(for: profile) ?? 77
+            return teleEquivalentMillimeters(for: profile)
+                ?? equivalentMillimeters(baseMillimeters: baseMillimeters, zoomFactor: 3.0)
         }
 
-        return (profile.equivalentFocalLength35mmMillimeters ?? 24) * zoomFactor
+        return equivalentMillimeters(baseMillimeters: baseMillimeters, zoomFactor: zoomFactor)
     }
 
     private static func teleEquivalentMillimeters(for profile: CameraProfile) -> Double? {
@@ -1326,6 +1465,16 @@ nonisolated enum FocalLengthLabelResolver {
             return Double(wideValue)
         }
         return Double(fallbackValue(for: device))
+    }
+
+    private static func uniqueSorted(_ values: [Double]) -> [Double] {
+        values.reduce(into: [Double]()) { result, value in
+            guard !result.contains(where: { abs($0 - value) < 0.001 }) else {
+                return
+            }
+            result.append(value)
+        }
+        .sorted()
     }
 
     private static func fallbackValue(for device: AVCaptureDevice) -> Int {

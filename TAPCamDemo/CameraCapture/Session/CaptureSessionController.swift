@@ -173,6 +173,12 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
 
         let clampedZoom = min(max(CGFloat(zoomFactor), device.minAvailableVideoZoomFactor), device.maxAvailableVideoZoomFactor)
         device.videoZoomFactor = clampedZoom
+        FOVDiagnostics.logAppliedZoom(
+            requestedZoom: zoomFactor,
+            clampedZoom: clampedZoom,
+            actualZoom: device.videoZoomFactor,
+            device: device
+        )
     }
 
     private static func portraitPreviewAspectRatio(for format: AVCaptureDevice.Format) -> Double {

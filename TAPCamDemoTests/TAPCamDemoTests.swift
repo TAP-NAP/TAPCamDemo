@@ -127,6 +127,60 @@ struct TAPCamDemoTests {
         #expect(FocalLengthLabelResolver.debugEquivalentMillimeters(baseMillimeters: 13, zoomFactor: 2) == 26)
     }
 
+    @Test func virtualDepthPipelinesUseWideBaselineForFOVLabels() throws {
+        #expect(FocalLengthLabelResolver.usesWideBaselineForVirtualFOV(deviceTypeRawValue: AVCaptureDevice.DeviceType.builtInTripleCamera.rawValue))
+        #expect(FocalLengthLabelResolver.usesWideBaselineForVirtualFOV(deviceTypeRawValue: AVCaptureDevice.DeviceType.builtInDualWideCamera.rawValue))
+        #expect(FocalLengthLabelResolver.usesWideBaselineForVirtualFOV(deviceTypeRawValue: AVCaptureDevice.DeviceType.builtInDualCamera.rawValue))
+        #expect(FocalLengthLabelResolver.usesWideBaselineForVirtualFOV(deviceTypeRawValue: AVCaptureDevice.DeviceType.builtInLiDARDepthCamera.rawValue))
+        #expect(!FocalLengthLabelResolver.usesWideBaselineForVirtualFOV(deviceTypeRawValue: AVCaptureDevice.DeviceType.builtInWideAngleCamera.rawValue))
+        #expect(FocalLengthLabelResolver.equivalentMillimeters(baseMillimeters: 24, zoomFactor: 1) == 24)
+        #expect(FocalLengthLabelResolver.equivalentMillimeters(baseMillimeters: 24, zoomFactor: 2) == 48)
+        #expect(FocalLengthLabelResolver.isSemanticFOVSlot(equivalentMillimeters: 13, zoomFactor: 0.5))
+        #expect(FocalLengthLabelResolver.isSemanticFOVSlot(equivalentMillimeters: 13, zoomFactor: 1))
+        #expect(FocalLengthLabelResolver.isSemanticFOVSlot(equivalentMillimeters: 24, zoomFactor: 1))
+        #expect(FocalLengthLabelResolver.isSemanticFOVSlot(equivalentMillimeters: 48, zoomFactor: 2))
+        #expect(FocalLengthLabelResolver.isSemanticFOVSlot(equivalentMillimeters: 77, zoomFactor: 3))
+        #expect(!FocalLengthLabelResolver.isSemanticFOVSlot(equivalentMillimeters: 26, zoomFactor: 2))
+        #expect(!FocalLengthLabelResolver.isSemanticFOVSlot(equivalentMillimeters: 154, zoomFactor: 2))
+    }
+
+    @Test func discovered48mmFOVOptionUsesResolvedRawVideoZoomWhenAvailable() throws {
+        let options = CameraCapabilityResolver.discover().focalLengthOptions()
+        if let option = options.first(where: { $0.displayName == "48mm" && $0.isEnabled }) {
+            let expectedRawZoom = FocalLengthLabelResolver.releaseVideoZoomFactor(
+                for: option.rgbSource,
+                targetEquivalentMillimeters: 48,
+                formatSelection: option.depthSource?.formatSelection
+            )
+            #expect(abs(option.zoom.requestedZoomFactor - expectedRawZoom) < 0.001)
+
+            let lowerDepthSafeBound = option.depthSource?.formatSelection?.videoFormat.supportedVideoZoomRangesForDepthDataDelivery
+                .map { Double($0.lowerBound) }
+                .min() ?? 1
+            if lowerDepthSafeBound > 1.0 {
+                #expect(option.zoom.requestedZoomFactor > 2.0)
+            }
+        }
+        #expect(!options.contains(where: { $0.displayName == "26mm" && $0.zoom.requestedZoomFactor == 2.0 }))
+        #expect(!options.contains(where: { $0.displayName == "154mm" && $0.zoom.requestedZoomFactor == 2.0 }))
+    }
+
+    @Test func pairingPlanKeepsCustomReleaseFOVZoomFactor() throws {
+        let options = CameraCapabilityResolver.discover().focalLengthOptions()
+        if let option = options.first(where: { $0.displayName == "48mm" && $0.isEnabled }) {
+            let plan = RGBDepthPairingCoordinator.makePlan(
+                rgbSource: option.rgbSource,
+                depthSource: option.depthSource,
+                selectionMode: .automatic,
+                selectedZoomID: option.zoom.id,
+                selectedZoomFactor: option.zoom.requestedZoomFactor,
+                cropRectNormalized: .fullFrame
+            )
+
+            #expect(abs((plan.zoom?.requestedZoomFactor ?? 0) - option.zoom.requestedZoomFactor) < 0.001)
+        }
+    }
+
     @Test func runtimePackagingStrategyIsEmbeddedPhotoOnly() throws {
         #expect(PackagingStrategy.embeddedPhoto.rawValue == "embeddedPhoto")
     }

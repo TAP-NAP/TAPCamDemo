@@ -76,16 +76,23 @@ nonisolated struct CaptureSourcePlan: @unchecked Sendable {
     }
 
     var requestedFocalLengthLabel: FocalLengthLabelResolver.Label {
+        let rawZoomFactor = zoom?.actualVideoZoomFactor ?? zoom?.requestedZoomFactor ?? 1.0
+        let equivalentMillimeters = FocalLengthLabelResolver.equivalentMillimeters(
+            for: rgbSource,
+            rawVideoZoomFactor: rawZoomFactor,
+            formatSelection: formatSelection
+        )
+
         if selectionMode == .debugDepthOverride {
-            return FocalLengthLabelResolver.debugZoomLabel(
-                for: rgbSource,
-                zoomFactor: zoom?.requestedZoomFactor ?? 1.0
+            return FocalLengthLabelResolver.label(
+                equivalentMillimeters: equivalentMillimeters,
+                source: "\(rgbSource.focalLengthLabelSource)+debugRawVideoZoomFactor"
             )
         }
 
         return FocalLengthLabelResolver.label(
-            for: rgbSource,
-            zoomFactor: zoom?.requestedZoomFactor ?? 1.0
+            equivalentMillimeters: equivalentMillimeters,
+            source: "\(rgbSource.focalLengthLabelSource)+releaseRawVideoZoomFactor"
         )
     }
 }
@@ -139,7 +146,7 @@ nonisolated enum RGBDepthPairingCoordinator {
             : rgbSource.device
         let depthEnabled = mode == .rgbWithApplePairedDepth
 
-        return CaptureSourcePlan(
+        let plan = CaptureSourcePlan(
             rgbSource: rgbSource,
             depthSource: depthSource,
             selectionMode: selectionMode,
@@ -159,6 +166,8 @@ nonisolated enum RGBDepthPairingCoordinator {
                 embedsDepthDataInPhoto: depthEnabled
             )
         )
+        FOVDiagnostics.logCapturePlan(plan)
+        return plan
     }
 }
 

@@ -179,6 +179,7 @@ final class CameraViewModel: ObservableObject {
         selectedRGBSourceID = option.rgbSource.id
         selectedZoomID = option.zoom.id
         selectedFocalLengthOptionID = option.id
+        FOVDiagnostics.logFocalSelection(option)
         await configureCurrentSelection()
     }
 
@@ -432,16 +433,33 @@ final class CameraViewModel: ObservableObject {
             return
         }
 
+        let currentFocalLengthOptions = capabilityMatrix.focalLengthOptions()
+        let selectedFocalLengthOption = selectedFocalLengthOptionID.flatMap { selectedID in
+            currentFocalLengthOptions.first(where: { $0.id == selectedID })
+        }
+        let preferredZoomFactor = selectedFocalLengthOption?.zoom.requestedZoomFactor
         let depthRows = capabilityMatrix.depthProfiles(
             for: rgbSource,
-            selectedKind: selectedDepthProfileID.flatMap(DepthProfileKind.init(rawValue:))
+            selectedKind: selectedDepthProfileID.flatMap(DepthProfileKind.init(rawValue:)),
+            preferredZoomFactor: preferredZoomFactor
         )
-        let depthProfile = resolvedDepthProfile(from: depthRows, selectedDepthProfileID: selectedDepthProfileID)
+        let depthProfile = selectedFocalLengthOption?.depthSource
+            ?? resolvedDepthProfile(from: depthRows, selectedDepthProfileID: selectedDepthProfileID)
+        /*
+         Release FOV chips such as 48mm and 77mm are semantic framing choices,
+         not always the same as the visible "2x/3x" zoom chips. Some Apple
+         virtual depth formats expose their wide baseline at raw video zoom 2.0,
+         so the 48mm slot can require raw zoom 4.0. Passing the Double keeps
+         that non-standard factor alive when `ZoomCapabilityResolver` builds its
+         runtime profile list; passing only `zoom-4x` would be lossy and would
+         fall back to the first depth-safe zoom.
+         */
         let plan = RGBDepthPairingCoordinator.makePlan(
             rgbSource: rgbSource,
             depthSource: depthProfile,
             selectionMode: depthSelectionMode,
             selectedZoomID: selectedZoomID,
+            selectedZoomFactor: preferredZoomFactor,
             cropRectNormalized: previewCropRectNormalized
         )
 
@@ -449,7 +467,7 @@ final class CameraViewModel: ObservableObject {
         let generation = configurationGeneration
         isDepthCaptureReady = false
         rgbSourceProfiles = capabilityMatrix.rgbSources
-        focalLengthOptions = capabilityMatrix.focalLengthOptions()
+        focalLengthOptions = currentFocalLengthOptions
         #if DEBUG
         debugDepthDeviceOptions = capabilityMatrix.debugDepthDeviceOptions()
         #endif
@@ -675,9 +693,14 @@ final class CameraViewModel: ObservableObject {
             ?? plan.zoom?.actualVideoZoomFactor
             ?? plan.zoom?.requestedZoomFactor
             ?? 1.0
-        let label = FocalLengthLabelResolver.debugZoomLabel(
+        let equivalentMillimeters = FocalLengthLabelResolver.equivalentMillimeters(
             for: plan.rgbSource,
-            zoomFactor: resolvedZoomFactor
+            rawVideoZoomFactor: resolvedZoomFactor,
+            formatSelection: plan.formatSelection
+        )
+        let label = FocalLengthLabelResolver.label(
+            equivalentMillimeters: equivalentMillimeters,
+            source: "\(plan.rgbSource.focalLengthLabelSource)+debugRawVideoZoomFactor"
         ).label
         let zoom = formattedZoom(resolvedZoomFactor)
         return "\(label) · \(zoom)"
