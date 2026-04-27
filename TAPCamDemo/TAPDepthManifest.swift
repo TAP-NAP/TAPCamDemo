@@ -9,6 +9,7 @@
 import CoreLocation
 import CoreVideo
 import Foundation
+import ImageIO
 import simd
 
 /// Versioned metadata contract embedded into every TAP depth HEIC.
@@ -69,6 +70,7 @@ extension TAPDepthManifest {
         let camera: Camera
         let photo: Photo
         let depth: Depth
+        let alignment: Alignment
         let location: Location?
         let software: Software
     }
@@ -132,19 +134,28 @@ extension TAPDepthManifest {
     nonisolated struct Photo: Codable, Equatable {
         let width: Int32
         let height: Int32
+        let orientation: String
         let metadataKeys: [String]
     }
 
     nonisolated struct Depth: Codable, Equatable {
         let auxiliaryDataKind: String
         let depthDataType: String
+        let metricUnit: String
+        let conversionPath: String
         let width: Int
         let height: Int
+        let pixelFormat: String
+        let orientation: String
         let accuracy: String
         let quality: String
         let isFiltered: Bool
         let source: DepthSource
         let cameraCalibration: CameraCalibration?
+    }
+
+    nonisolated struct Alignment: Codable, Equatable {
+        let depthToImage: String
     }
 
     nonisolated struct DepthSource: Codable, Equatable {
@@ -231,9 +242,11 @@ nonisolated enum TAPDepthManifestBuilder {
             photo: TAPDepthManifest.Photo(
                 width: resolvedDimensions.width,
                 height: resolvedDimensions.height,
+                orientation: Self.orientationDescription(from: photo.metadata),
                 metadataKeys: photo.metadata.keys.sorted()
             ),
             depth: makeDepth(depthData: depthData, device: device),
+            alignment: TAPDepthManifest.Alignment(depthToImage: "appleAuxiliaryDepthNative"),
             location: location.map(makeLocation),
             software: .current
         )
@@ -281,14 +294,18 @@ nonisolated enum TAPDepthManifestBuilder {
         let pixelBuffer = depthData.depthDataMap
         let width = CVPixelBufferGetWidth(pixelBuffer)
         let height = CVPixelBufferGetHeight(pixelBuffer)
-        let auxiliaryKind = TAPDepthAuxiliaryKind(kind: depthData.depthDataType).rawValue
+        let auxiliaryKind = TAPDepthAuxiliaryKind(kind: depthData.depthDataType)
         let source = TAPDepthSourceClassifier.source(forDeviceType: device.deviceType.rawValue, localizedName: device.localizedName)
 
         return TAPDepthManifest.Depth(
-            auxiliaryDataKind: auxiliaryKind,
+            auxiliaryDataKind: auxiliaryKind.rawValue,
             depthDataType: TAPFourCharCode.string(from: depthData.depthDataType),
+            metricUnit: auxiliaryKind == .depth ? "meters" : "convertDisparityToDepthMeters",
+            conversionPath: auxiliaryKind == .depth ? "nativeDepthMeters" : "AVDepthData.converting(toDepthDataType: kCVPixelFormatType_DepthFloat32)",
             width: width,
             height: height,
+            pixelFormat: TAPFourCharCode.string(from: CVPixelBufferGetPixelFormatType(pixelBuffer)),
+            orientation: "appleAuxiliaryDepthNative",
             accuracy: depthData.depthDataAccuracy.tapDescription,
             quality: depthData.depthDataQuality.tapDescription,
             isFiltered: depthData.isDepthDataFiltered,
@@ -332,6 +349,14 @@ nonisolated enum TAPDepthManifestBuilder {
             verticalAccuracy: location.verticalAccuracy,
             timestamp: TAPDateFormatting.iso8601.string(from: location.timestamp)
         )
+    }
+
+    private static func orientationDescription(from metadata: [String: Any]) -> String {
+        if let orientation = metadata[kCGImagePropertyOrientation as String] as? Int {
+            return "cgImagePropertyOrientation:\(orientation)"
+        }
+
+        return "unspecified"
     }
 }
 

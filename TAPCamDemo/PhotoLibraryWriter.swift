@@ -51,6 +51,40 @@ enum PhotoLibraryWriter {
         }
     }
 
+    static func asset(localIdentifier: String) -> PHAsset? {
+        PHAsset.fetchAssets(withLocalIdentifiers: [localIdentifier], options: nil).firstObject
+    }
+
+    static func latestDepthAssetIfAuthorized() -> PHAsset? {
+        let current = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        guard current == .authorized || current == .limited,
+              let album = fetchAlbum() else {
+            return nil
+        }
+
+        let options = PHFetchOptions()
+        options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        options.fetchLimit = 1
+        return PHAsset.fetchAssets(in: album, options: options).firstObject
+    }
+
+    static func depthAlbumAssets() async throws -> [PHAsset] {
+        try await requestReadWriteAccess()
+        guard let album = fetchAlbum() else {
+            return []
+        }
+
+        let options = PHFetchOptions()
+        options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        let result = PHAsset.fetchAssets(in: album, options: options)
+        var assets: [PHAsset] = []
+        assets.reserveCapacity(result.count)
+        result.enumerateObjects { asset, _, _ in
+            assets.append(asset)
+        }
+        return assets
+    }
+
     private static func requestReadWriteAccess() async throws {
         let current = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         switch current {

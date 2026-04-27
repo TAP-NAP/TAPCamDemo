@@ -6,6 +6,7 @@
 //
 
 import AVFoundation
+import CoreGraphics
 import Foundation
 import Testing
 @testable import TAPCamDemo
@@ -28,6 +29,8 @@ struct TAPCamDemoTests {
         #expect(json.contains("\"location\":null"))
         #expect(json.contains("\"proofs\":[]"))
         #expect(json.contains("\"depthDataType\":\"hdep\""))
+        #expect(json.contains("\"metricUnit\":\"meters\""))
+        #expect(json.contains("\"depthToImage\":\"appleAuxiliaryDepthNative\""))
         #expect(json.contains("\"photoLens\""))
         #expect(json.contains("\"sensingMethod\":\"lidarDepthCamera\""))
         #expect(json.contains("\"lidarParticipation\":\"explicit\""))
@@ -64,6 +67,66 @@ struct TAPCamDemoTests {
         let signedInput = try TAPDepthManifestEncoder.payloadDataForFutureProofing(manifestWithProof.payload)
 
         #expect(unsignedInput == signedInput)
+    }
+
+    @Test func projectorUsesCalibrationToProduceCameraCoordinates() throws {
+        let depthMap = TAPMetricDepthMap(
+            width: 8,
+            height: 8,
+            samples: Array(repeating: 2.0, count: 64),
+            calibration: Self.sampleCalibration
+        )
+
+        let center = try #require(TAPDepthGeometryProjector.point(depthMap: depthMap, x: 4, y: 4))
+        let right = try #require(TAPDepthGeometryProjector.point(depthMap: depthMap, x: 5, y: 4))
+
+        #expect(abs(center.x) < 0.0001)
+        #expect(abs(center.y) < 0.0001)
+        #expect(abs(center.z - 2.0) < 0.0001)
+        #expect(abs(right.x - 0.02) < 0.0001)
+    }
+
+    @Test func planeEstimatorFindsSyntheticFlatDepthRegion() throws {
+        let depthMap = TAPMetricDepthMap(
+            width: 16,
+            height: 16,
+            samples: Array(repeating: 1.5, count: 256),
+            calibration: TAPDepthManifest.CameraCalibration(
+                intrinsicMatrixReferenceWidth: 16,
+                intrinsicMatrixReferenceHeight: 16,
+                pixelSizeMillimeters: 0.001,
+                lensDistortionLookupTablePresent: false,
+                inverseLensDistortionLookupTablePresent: false,
+                lensDistortionCenterX: 8,
+                lensDistortionCenterY: 8,
+                intrinsicMatrix: [120, 0, 0, 0, 120, 0, 8, 8, 1],
+                extrinsicMatrix: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0]
+            )
+        )
+
+        let plane = try #require(TAPPlaneEstimator.estimatePlane(depthMap: depthMap, region: CGRect(x: 0, y: 0, width: 16, height: 16)))
+
+        #expect(plane.averageResidualMeters < 0.001)
+        #expect(plane.inlierRatio > 0.95)
+        #expect(abs(abs(plane.normal.z) - 1) < 0.001)
+    }
+
+    @Test func orientationMapperRoundTripsRightRotatedSelectionRect() throws {
+        let nativeSize = CGSize(width: 4, height: 3)
+        let nativeRect = CGRect(x: 1, y: 0, width: 2, height: 1)
+        let displayedRect = TAPImageOrientationMapper.displayedRect(
+            fromNative: nativeRect,
+            nativeSize: nativeSize,
+            orientation: .right
+        )
+        let roundTripped = TAPImageOrientationMapper.nativeRect(
+            fromDisplayed: displayedRect,
+            nativeSize: nativeSize,
+            orientation: .right
+        )
+
+        #expect(roundTripped == nativeRect)
+        #expect(TAPImageOrientationMapper.displayedSize(nativeSize: nativeSize, orientation: .right) == CGSize(width: 3, height: 4))
     }
 
     private static var sampleLocation: TAPDepthManifest.Location {
@@ -127,13 +190,18 @@ struct TAPCamDemoTests {
             photo: TAPDepthManifest.Photo(
                 width: 4032,
                 height: 3024,
+                orientation: "cgImagePropertyOrientation:1",
                 metadataKeys: ["{Exif}", "{TIFF}"]
             ),
             depth: TAPDepthManifest.Depth(
                 auxiliaryDataKind: "depth",
                 depthDataType: "hdep",
+                metricUnit: "meters",
+                conversionPath: "nativeDepthMeters",
                 width: 256,
                 height: 192,
+                pixelFormat: "hdep",
+                orientation: "appleAuxiliaryDepthNative",
                 accuracy: "absolute",
                 quality: "high",
                 isFiltered: true,
@@ -145,6 +213,7 @@ struct TAPCamDemoTests {
                 ),
                 cameraCalibration: nil
             ),
+            alignment: TAPDepthManifest.Alignment(depthToImage: "appleAuxiliaryDepthNative"),
             location: location,
             software: TAPDepthManifest.Software(
                 appName: "TAPCamDemo",
@@ -152,6 +221,20 @@ struct TAPCamDemoTests {
                 version: "1.0",
                 build: "1"
             )
+        )
+    }
+
+    private static var sampleCalibration: TAPDepthManifest.CameraCalibration {
+        TAPDepthManifest.CameraCalibration(
+            intrinsicMatrixReferenceWidth: 8,
+            intrinsicMatrixReferenceHeight: 8,
+            pixelSizeMillimeters: 0.001,
+            lensDistortionLookupTablePresent: false,
+            inverseLensDistortionLookupTablePresent: false,
+            lensDistortionCenterX: 4,
+            lensDistortionCenterY: 4,
+            intrinsicMatrix: [100, 0, 0, 0, 100, 0, 4, 4, 1],
+            extrinsicMatrix: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0]
         )
     }
 }
