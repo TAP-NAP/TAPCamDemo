@@ -1,0 +1,364 @@
+//
+//  TAPDepthManifestSchema.swift
+//  TAPCamDemo
+//
+//  Created by Codex on 2026/4/25.
+//
+
+@preconcurrency import AVFoundation
+import CoreLocation
+import CoreVideo
+import Foundation
+import ImageIO
+import simd
+
+/// Versioned metadata contract embedded into every TAP depth HEIC.
+///
+/// The HEIC file itself remains standards-friendly:
+/// - the visible photo is the primary HEIC image item,
+/// - Apple depth/disparity data stays in the HEIC auxiliary data attachment,
+/// - normal EXIF/GPS/TIFF fields mirror common metadata for generic tools,
+/// - this manifest is the only authoritative location for TAP-specific fields.
+///
+/// Proof data belongs in `proofs`. The business payload is intentionally
+/// isolated under `payload` so verification code can canonicalize exactly that
+/// subtree without chasing duplicate metadata in EXIF, GPS, or Photos.
+nonisolated struct TAPDepthManifest: Codable, Equatable {
+    static let schemaIdentifier = "urn:tapnap:tapcam:depth-manifest:v1"
+    static let mediaType = "application/vnd.tapnap.depth-manifest+json;version=1"
+    static let xmpNamespaceURI = "urn:tapnap:tapcam:depth:1.0"
+    static let xmpPrefix = "tapdepth"
+    static let xmpManifestPath = "tapdepth:Manifest"
+    static let exifUserCommentPointer = "TAPDepthHEIC/1; metadata=xmp:tapdepth:Manifest"
+
+    let schema: Schema
+    let payload: Payload
+    let proofs: [Proof]
+
+    init(payload: Payload, proofs: [Proof] = []) {
+        self.schema = Schema()
+        self.payload = payload
+        self.proofs = proofs
+    }
+}
+
+extension TAPDepthManifest {
+    nonisolated struct Schema: Codable, Equatable {
+        let id: String
+        let version: Int
+        let mediaType: String
+        let xmpNamespaceURI: String
+        let xmpPrefix: String
+        let xmpManifestPath: String
+
+        nonisolated init() {
+            self.id = TAPDepthManifest.schemaIdentifier
+            self.version = 1
+            self.mediaType = TAPDepthManifest.mediaType
+            self.xmpNamespaceURI = TAPDepthManifest.xmpNamespaceURI
+            self.xmpPrefix = TAPDepthManifest.xmpPrefix
+            self.xmpManifestPath = TAPDepthManifest.xmpManifestPath
+        }
+    }
+
+    nonisolated struct Payload: Codable, Equatable {
+        let id: String
+        let capturedAt: String
+        let sessionMode: String
+        let pairingMode: String
+        let alignmentStatus: String
+        let sourceAPIs: SourceAPIs
+        let capture: Capture
+        let rgbSource: RGBSource
+        let depthSource: DepthSourceSelection
+        let pairing: Pairing
+        let zoom: Zoom
+        let crop: Crop
+        let resolvedSession: ResolvedSession
+        let selectedDepthCamera: SelectedDepthCamera
+        let selectedZoom: SelectedZoom
+        let photoLens: PhotoLens
+        let depthBackend: DepthBackendSelection
+        let camera: Camera
+        let photo: Photo
+        let depth: Depth
+        let alignment: Alignment
+        let location: Location?
+        let software: Software
+
+        enum CodingKeys: String, CodingKey {
+            case id
+            case capturedAt
+            case sessionMode
+            case pairingMode
+            case alignmentStatus
+            case sourceAPIs
+            case capture
+            case rgbSource
+            case depthSource
+            case pairing
+            case zoom
+            case crop
+            case resolvedSession
+            case selectedDepthCamera
+            case selectedZoom
+            case photoLens
+            case depthBackend
+            case camera
+            case photo
+            case depth
+            case alignment
+            case location
+            case software
+        }
+
+        /// Encodes the payload with an explicit `location: null` when no
+        /// location is available.
+        ///
+        /// Synthesized `Codable` uses `encodeIfPresent` for optionals and would
+        /// omit the field. The manifest is an interchange contract rather than
+        /// an app-private cache, so keeping the key present makes parsers and
+        /// canonicalization rules easier to implement.
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(id, forKey: .id)
+            try container.encode(capturedAt, forKey: .capturedAt)
+            try container.encode(sessionMode, forKey: .sessionMode)
+            try container.encode(pairingMode, forKey: .pairingMode)
+            try container.encode(alignmentStatus, forKey: .alignmentStatus)
+            try container.encode(sourceAPIs, forKey: .sourceAPIs)
+            try container.encode(capture, forKey: .capture)
+            try container.encode(rgbSource, forKey: .rgbSource)
+            try container.encode(depthSource, forKey: .depthSource)
+            try container.encode(pairing, forKey: .pairing)
+            try container.encode(zoom, forKey: .zoom)
+            try container.encode(crop, forKey: .crop)
+            try container.encode(resolvedSession, forKey: .resolvedSession)
+            try container.encode(selectedDepthCamera, forKey: .selectedDepthCamera)
+            try container.encode(selectedZoom, forKey: .selectedZoom)
+            try container.encode(photoLens, forKey: .photoLens)
+            try container.encode(depthBackend, forKey: .depthBackend)
+            try container.encode(camera, forKey: .camera)
+            try container.encode(photo, forKey: .photo)
+            try container.encode(depth, forKey: .depth)
+            try container.encode(alignment, forKey: .alignment)
+            try container.encode(location, forKey: .location)
+            try container.encode(software, forKey: .software)
+        }
+    }
+
+    nonisolated struct SourceAPIs: Codable, Equatable {
+        let photo: String
+        let depth: String
+        let camera: String
+        let location: String
+
+        nonisolated static let avFoundationPhotoDepth = SourceAPIs(
+            photo: "AVCapturePhotoOutput / AVCapturePhoto",
+            depth: "AVCapturePhoto.depthData / AVDepthData",
+            camera: "AVCaptureDevice / AVCaptureDevice.Format",
+            location: "CLLocationManager.requestLocation / CLLocation"
+        )
+    }
+
+    nonisolated struct Capture: Codable, Equatable {
+        let resolvedSettingsUniqueID: Int64
+        let requestedCodec: String
+        let depthDataDeliveryEnabled: Bool
+        let embedsDepthDataInPhoto: Bool
+        let depthDataFiltered: Bool
+        let photoQualityPrioritization: String
+    }
+
+    nonisolated struct SelectedDepthCamera: Codable, Equatable {
+        let id: String
+        let displayName: String
+        let deviceType: String
+        let deviceName: String
+        let position: String
+    }
+
+    nonisolated struct SelectedZoom: Codable, Equatable {
+        let id: String
+        let displayName: String
+        let zoomFactor: Double
+    }
+
+    nonisolated struct RGBSource: Codable, Equatable {
+        let id: String
+        let displayName: String
+        let deviceType: String
+        let deviceName: String
+        let position: String
+        let sourceKind: String
+        let requestedReferenceZoomFactor: Double
+    }
+
+    nonisolated struct DepthSourceSelection: Codable, Equatable {
+        let selectionMode: String
+        let requestedDepthSourceID: String?
+        let requestedDepthSourceDisplayName: String?
+        let requestedDepthSourceKind: String?
+        let compatibilityStatus: String
+        let compatibilityReason: String?
+        let resolvedDeviceID: String?
+        let resolvedDeviceType: String?
+        let resolvedDeviceName: String?
+    }
+
+    nonisolated struct Pairing: Codable, Equatable {
+        let mode: String
+        let status: String
+        let requiresMultiCam: Bool
+        let releaseAllowed: Bool
+        let alignmentStatus: String
+    }
+
+    nonisolated struct Zoom: Codable, Equatable {
+        let requestedZoomID: String?
+        let requestedZoomFactor: Double?
+        let actualVideoZoomFactor: Double?
+        let depthSafeRanges: [ZoomRange]
+        let isContinuous: Bool
+        let isDiscrete: Bool
+    }
+
+    nonisolated struct ZoomRange: Codable, Equatable {
+        let lowerBound: Double
+        let upperBound: Double
+    }
+
+    nonisolated struct Crop: Codable, Equatable {
+        let mode: String
+        let cropRectNormalized: CropRectNormalized
+        let destructiveFinalCropApplied: Bool
+        let sourceAPI: String
+    }
+
+    nonisolated struct ResolvedSession: Codable, Equatable {
+        let mode: String
+        let resolvedCaptureDeviceID: String
+        let resolvedCaptureDeviceType: String
+        let resolvedCaptureDeviceName: String
+        let activePrimaryConstituentDeviceType: String?
+        let activePrimaryConstituentDeviceName: String?
+    }
+
+    nonisolated struct Camera: Codable, Equatable {
+        let localizedName: String
+        let uniqueID: String
+        let modelID: String
+        let deviceType: String
+        let position: String
+        let activePrimaryConstituentDeviceType: String?
+        let activePrimaryConstituentDeviceName: String?
+        let activeFormat: CameraFormat
+        let activeDepthFormat: CameraFormat?
+        let lensPosition: Float?
+        let minimumFocusDistanceMillimeters: Int?
+        let nominalFocalLengthIn35mmFilmMillimeters: Float?
+    }
+
+    nonisolated struct PhotoLens: Codable, Equatable {
+        let requestedLensID: String
+        let requestedDisplayName: String
+        let requestedFocalLengthLabel: String
+        let labelSource: String
+        let requestedZoomFactor: Double
+        let requestedReferenceZoomFactor: Double
+        let requestedEquivalentFocalLength35mmMillimeters: Double?
+        let position: String
+        let resolvedCaptureDeviceType: String
+        let resolvedCaptureDeviceName: String
+        let resolvedActivePrimaryConstituentDeviceType: String?
+        let resolvedActivePrimaryConstituentDeviceName: String?
+    }
+
+    nonisolated struct DepthBackendSelection: Codable, Equatable {
+        let selectionMode: String
+        let requestedBackendID: String?
+        let requestedBackendDisplayName: String?
+        let resolvedBackendID: String
+        let resolvedBackendDisplayName: String
+        let resolvedCaptureDeviceType: String
+        let resolvedCaptureDeviceName: String
+        let actualVideoZoomFactor: Double
+    }
+
+    nonisolated struct CameraFormat: Codable, Equatable {
+        let mediaSubType: String
+        let width: Int32
+        let height: Int32
+        let maxFrameRate: Double?
+    }
+
+    nonisolated struct Photo: Codable, Equatable {
+        let width: Int32
+        let height: Int32
+        let orientation: String
+        let metadataKeys: [String]
+    }
+
+    nonisolated struct Depth: Codable, Equatable {
+        let auxiliaryDataKind: String
+        let depthDataType: String
+        let metricUnit: String
+        let conversionPath: String
+        let width: Int
+        let height: Int
+        let pixelFormat: String
+        let orientation: String
+        let accuracy: String
+        let quality: String
+        let isFiltered: Bool
+        let source: DepthSource
+        let cameraCalibration: CameraCalibration?
+    }
+
+    nonisolated struct Alignment: Codable, Equatable {
+        let depthToImage: String
+    }
+
+    nonisolated struct DepthSource: Codable, Equatable {
+        let captureDeviceType: String
+        let captureDeviceName: String
+        let sensingMethod: String
+        let lidarParticipation: String
+    }
+
+    nonisolated struct CameraCalibration: Codable, Equatable {
+        let intrinsicMatrixReferenceWidth: Double
+        let intrinsicMatrixReferenceHeight: Double
+        let pixelSizeMillimeters: Float
+        let lensDistortionLookupTablePresent: Bool
+        let inverseLensDistortionLookupTablePresent: Bool
+        let lensDistortionCenterX: Double
+        let lensDistortionCenterY: Double
+        let intrinsicMatrix: [Float]
+        let extrinsicMatrix: [Float]
+    }
+
+    nonisolated struct Location: Codable, Equatable {
+        let latitude: Double
+        let longitude: Double
+        let altitude: Double
+        let horizontalAccuracy: Double
+        let verticalAccuracy: Double
+        let timestamp: String
+    }
+
+    nonisolated struct Software: Codable, Equatable {
+        let appName: String
+        let bundleIdentifier: String
+        let version: String
+        let build: String
+    }
+
+    nonisolated struct Proof: Codable, Equatable {
+        let type: String
+        let algorithm: String
+        let keyID: String?
+        let createdAt: String?
+        let value: String?
+    }
+}

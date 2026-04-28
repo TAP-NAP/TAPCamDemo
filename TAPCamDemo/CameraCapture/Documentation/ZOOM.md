@@ -6,10 +6,11 @@ not expose a separate zoom selector; it exposes FOV buttons such as `13mm`,
 needed to configure the resolved capture device. Debug tooling may still inspect
 the lower-level zoom profiles.
 
-The FOV label is semantic. The value that reaches AVFoundation is the raw
-`videoZoomFactor` recorded by `ZoomProfile.rawVideoZoomFactor`. On a depth-safe
-virtual format, `24mm` can begin at raw `2.0`, so `48mm` must travel through the
-plan as raw `4.0` rather than being inferred again from the label.
+The FOV label and displayed zoom are semantic. The value that reaches
+AVFoundation is the raw `videoZoomFactor` recorded by
+`ZoomProfile.rawVideoZoomFactor`. On a depth-safe virtual format, `24mm` can
+begin at raw `2.0`, so `24mm` still displays as `1x` while `48mm` travels
+through the plan as raw `4.0`.
 
 ```text
 Selected FOV Option
@@ -31,9 +32,10 @@ FOV Option UI
 ```
 
 When a compatible depth source is resolved, candidate zoom factors such as
-`0.5x / 1x / 2x / 3x` become FOV labels only if they are inside the depth-safe
-range or the format explicitly supports zoom outside those ranges. Release
-filters out unsupported FOV options; Debug can keep them visible and disabled.
+`0.5x / 1x / 2x / 3x` are interpreted relative to the 24mm Wide FOV baseline.
+If that baseline is raw `2.0`, the visible `1x` chip requests raw `2.0`, the
+visible `2x` chip requests raw `4.0`, and so on. Release filters out unsupported
+FOV options; Debug can keep them visible and disabled.
 
 ## Debug Depth Override Zoom
 
@@ -51,6 +53,7 @@ The Debug zoom panel reads:
 - `videoMaxZoomFactor`
 
 Continuous ranges are shown with a slider and chips. Discrete depth zoom values
-are shown as chips; unsupported values stay disabled. Debug FOV labels multiply
-the selected depth device's base 35mm-equivalent focal length by
-`videoZoomFactor`, for example `24mm · 2x`.
+are shown as chips; unsupported values stay disabled. Debug FOV labels display
+both the resolved 35mm-equivalent FOV and the semantic zoom relative to 24mm,
+for example raw `2.0` on a Dual Wide or Portrait depth format can display as
+`24mm · 1x`.
