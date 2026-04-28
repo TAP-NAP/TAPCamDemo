@@ -1,7 +1,7 @@
 # SingleCam Architecture
 
 ```text
-Presentation
+UI
      |
      v
 CameraViewModel
@@ -10,19 +10,22 @@ CameraViewModel
 CapabilityMatrix  <----  CameraCapabilityResolver
      |                         ^
      v                         |
-CapturePipeline  ------>  CaptureSources  ------>  Session / Device Layer
+CaptureSourcePlan  ---->  Runtime
+                                      |
+                                      v
+                         CaptureSessionController
      |
      v
-CapturePackageBuilder
+CapturePipeline
      |
      v
-Packaging
+CapturePackage
      |
      v
-Writer
+Output
      |
      v
-Diagnostics / Metrics
+Support Metrics
 ```
 
 The demo has one runtime capture path: `AVCaptureSession + AVCapturePhotoOutput`.
@@ -35,10 +38,22 @@ already resolves to an Apple-paired photo-depth pipeline and a depth-safe raw
 `videoZoomFactor`. Debug can override to a depth-capable device to inspect
 format and zoom behavior, but it still uses the same SingleCam photo path.
 
-The capture provider produces one paired `AVCapturePhoto`. The package builder
-normalizes metadata, the embedded packager writes Apple auxiliary depth plus TAP
-manifest into one HEIC, and the writer saves that single artifact to Photos.
+The runtime provider produces one paired `AVCapturePhoto`. Output code keeps the
+logical `CapturePackage` separate from the embedded HEIC artifact, then writes
+Apple auxiliary depth plus the TAP manifest into one Photos asset.
 
-Key code: [CameraCaptureCapabilities.swift](../Capabilities/CameraCaptureCapabilities.swift),
-[CameraViewModel.swift](../Presentation/CameraViewModel.swift),
-[SessionConfigurationRequest.swift](../Session/SessionConfigurationRequest.swift).
+## Directory Roles
+
+| Directory | Role |
+| --- | --- |
+| `UI` | SwiftUI composition, preview bridge, release FOV controls, Debug controls, and view-model extensions. |
+| `Planning` | AVFoundation discovery models, compatibility checks, depth-safe zoom resolution, FOV labels, crop metadata, and immutable capture plans. |
+| `Runtime` | The single executable capture path: session graph owner, photo provider, capture jobs, and async pipeline orchestration. |
+| `Output` | Logical package, embedded HEIC packaging, TAP manifest schema/building/encoding, and Photos writing. |
+| `Support` | Shared errors, location lookup, and product-level capture metrics. |
+
+Key code: [CameraViewModel.swift](../UI/CameraViewModel.swift),
+[CapabilityMatrix.swift](../Planning/CapabilityMatrix.swift),
+[CapturePlan.swift](../Planning/CapturePlan.swift),
+[CaptureSessionController.swift](../Runtime/CaptureSessionController.swift),
+and [EmbeddedPhotoPackager.swift](../Output/EmbeddedPhotoPackager.swift).

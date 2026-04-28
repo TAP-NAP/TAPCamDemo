@@ -16,7 +16,7 @@ Resolved RGB Source + selected/automatic Depth Source
 RGBDepthCompatibilityMatrix
         |
         v
-RGBDepthPairingCoordinator
+CaptureSourcePlan.make(...)
         |
         v
 CaptureSourcePlan

@@ -147,6 +147,17 @@ struct TAPCamDemoTests {
         #expect(!FocalLengthLabelResolver.isSemanticFOVSlot(equivalentMillimeters: 154, zoomFactor: 2))
     }
 
+    @Test func debugZoomDisplayIsRelativeToWideFOVBaseline() throws {
+        #expect(FocalLengthLabelResolver.displayZoomFactor(rawVideoZoomFactor: 2, wideReferenceZoomFactor: 2) == 1)
+        #expect(FocalLengthLabelResolver.displayZoomFactor(rawVideoZoomFactor: 4, wideReferenceZoomFactor: 2) == 2)
+        #expect(FocalLengthLabelResolver.displayZoomFactor(rawVideoZoomFactor: 6, wideReferenceZoomFactor: 2) == 3)
+
+        let profile = ZoomProfile.enabled(2, displayZoomFactor: 1)
+        #expect(profile.id == "zoom-2x")
+        #expect(profile.displayName == "1x")
+        #expect(profile.rawVideoZoomFactor == 2)
+    }
+
     @Test func discovered48mmFOVOptionUsesResolvedRawVideoZoomWhenAvailable() throws {
         let options = CameraCapabilityResolver.discover().focalLengthOptions()
         if let option = options.first(where: { $0.displayName == "48mm" && $0.isEnabled }) {
@@ -171,7 +182,7 @@ struct TAPCamDemoTests {
     @Test func pairingPlanKeepsCustomReleaseFOVZoomFactor() throws {
         let options = CameraCapabilityResolver.discover().focalLengthOptions()
         if let option = options.first(where: { $0.displayName == "48mm" && $0.isEnabled }) {
-            let plan = RGBDepthPairingCoordinator.makePlan(
+            let plan = CaptureSourcePlan.make(
                 rgbSource: option.rgbSource,
                 depthSource: option.depthSource,
                 selectionMode: .automatic,

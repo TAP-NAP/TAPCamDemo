@@ -15,7 +15,7 @@ external session scaffolding, sidecar JSON, and debug bundles.
 ## Data Flow
 
 ```text
-Presentation
+UI
      |
      v
 CameraViewModel
@@ -24,19 +24,19 @@ CameraViewModel
 CapabilityMatrix  <----  CameraCapabilityResolver
      |                         ^
      v                         |
-RGBDepthPairingCoordinator ---> Session / Device Layer
+CaptureSourcePlan ---> Runtime Session Controller
      |
      v
 CapturePipeline
      |
      v
-CapturePackageBuilder
+CapturePackage
      |
      v
 EmbeddedPhotoPackager
      |
      v
-PhotoLibraryCaptureArtifactWriter
+PhotoLibraryWriter
 ```
 
 ## Implemented Capture Path
@@ -70,19 +70,19 @@ back to another capture source.
 | Responsibility | Code |
 | --- | --- |
 | App entry | [TAPCamDemoApp.swift](TAPCamDemo/App/TAPCamDemoApp.swift) |
-| SwiftUI screen | [CameraView.swift](TAPCamDemo/CameraCapture/Presentation/CameraView.swift) |
-| UI state and actions | [CameraViewModel.swift](TAPCamDemo/CameraCapture/Presentation/CameraViewModel.swift) |
-| Preview + crop metadata bridge | [CameraPreviewView.swift](TAPCamDemo/CameraCapture/Presentation/CameraPreviewView.swift) |
-| FOV/RGB/depth/zoom/crop capabilities | [CameraCaptureCapabilities.swift](TAPCamDemo/CameraCapture/Capabilities/CameraCaptureCapabilities.swift) |
-| Pairing plan and session request | [SessionConfigurationRequest.swift](TAPCamDemo/CameraCapture/Session/SessionConfigurationRequest.swift) |
-| Session owner | [CaptureSessionController.swift](TAPCamDemo/CameraCapture/Session/CaptureSessionController.swift) |
-| Default photo provider | [AVFoundationSingleCamPhotoProvider.swift](TAPCamDemo/CameraCapture/CaptureSources/AVFoundationSingleCamPhotoProvider.swift) |
-| Pipeline and metrics | [CapturePipeline.swift](TAPCamDemo/CameraCapture/Pipeline/CapturePipeline.swift), [CaptureJobMetrics.swift](TAPCamDemo/CameraCapture/Diagnostics/CaptureJobMetrics.swift) |
-| Logical package | [CapturePackage.swift](TAPCamDemo/CameraCapture/Processing/CapturePackage.swift) |
-| Packaging model | [CapturePackager.swift](TAPCamDemo/CameraCapture/Packaging/CapturePackager.swift) |
-| Embedded HEIC packager | [EmbeddedPhotoPackager.swift](TAPCamDemo/CameraCapture/Packaging/EmbeddedPhotoPackager.swift) |
-| TAP manifest schema | [TAPDepthManifest.swift](TAPCamDemo/CameraCapture/Packaging/EmbeddedPhoto/TAPDepthManifest.swift) |
-| Photos writer | [PhotoLibraryWriter.swift](TAPCamDemo/CameraCapture/Writers/PhotoLibraryWriter.swift) |
+| SwiftUI screen | [CameraView.swift](TAPCamDemo/CameraCapture/UI/CameraView.swift) |
+| UI state and actions | [CameraViewModel.swift](TAPCamDemo/CameraCapture/UI/CameraViewModel.swift), [selection](TAPCamDemo/CameraCapture/UI/CameraViewModel+Selection.swift), [capture](TAPCamDemo/CameraCapture/UI/CameraViewModel+Capture.swift), [debug](TAPCamDemo/CameraCapture/UI/CameraViewModel+Debug.swift) |
+| Preview + crop metadata bridge | [CameraPreviewView.swift](TAPCamDemo/CameraCapture/UI/CameraPreviewView.swift) |
+| FOV/RGB/depth/zoom/crop capabilities | [CapabilityMatrix.swift](TAPCamDemo/CameraCapture/Planning/CapabilityMatrix.swift), [CameraCapabilityResolver.swift](TAPCamDemo/CameraCapture/Planning/CameraCapabilityResolver.swift), [ZoomCapabilityResolver.swift](TAPCamDemo/CameraCapture/Planning/ZoomCapabilityResolver.swift) |
+| Pairing plan and session request | [CapturePlan.swift](TAPCamDemo/CameraCapture/Planning/CapturePlan.swift) |
+| Session owner | [CaptureSessionController.swift](TAPCamDemo/CameraCapture/Runtime/CaptureSessionController.swift) |
+| Default photo provider | [AVFoundationSingleCamPhotoProvider.swift](TAPCamDemo/CameraCapture/Runtime/AVFoundationSingleCamPhotoProvider.swift) |
+| Pipeline and metrics | [CapturePipeline.swift](TAPCamDemo/CameraCapture/Runtime/CapturePipeline.swift), [CaptureJobMetrics.swift](TAPCamDemo/CameraCapture/Support/CaptureJobMetrics.swift) |
+| Logical package | [CapturePackage.swift](TAPCamDemo/CameraCapture/Output/CapturePackage.swift) |
+| Packaging model | [CapturePackager.swift](TAPCamDemo/CameraCapture/Output/CapturePackager.swift) |
+| Embedded HEIC packager | [EmbeddedPhotoPackager.swift](TAPCamDemo/CameraCapture/Output/EmbeddedPhotoPackager.swift) |
+| TAP manifest schema | [TAPDepthManifestSchema.swift](TAPCamDemo/CameraCapture/Output/TAPDepthManifestSchema.swift) |
+| Photos writer | [PhotoLibraryWriter.swift](TAPCamDemo/CameraCapture/Output/PhotoLibraryWriter.swift) |
 | Analysis models and HEIC readback | [DepthAnalysisModels.swift](TAPCamDemo/DepthAnalysis/DepthAnalysisModels.swift), [DepthAnalysisReader.swift](TAPCamDemo/DepthAnalysis/DepthAnalysisReader.swift) |
 | Depth / mask / plane / cloud tools | [AnalysisTools](TAPCamDemo/DepthAnalysis/AnalysisTools) |
 | Saved-image album and analysis UI | [DepthAlbumPickerView.swift](TAPCamDemo/DepthAnalysis/DepthAlbumPickerView.swift), [DepthAnalysisView.swift](TAPCamDemo/DepthAnalysis/DepthAnalysisView.swift) |

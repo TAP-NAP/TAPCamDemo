@@ -73,7 +73,7 @@ No new capture-time data is required for this scope.
 | Camera intrinsics | TAP manifest calibration, with `AVDepthData.cameraCalibrationData` fallback in [`metricDepthMap`](../DepthAnalysisReader.swift#L97) | Back-project pixels into camera-space points | Intrinsics turn `(u, v, Z)` into `(X, Y, Z)`. |
 | Orientation / rotation metadata | `CGImagePropertyOrientation` in [`imageOrientation(from:)`](../DepthAnalysisReader.swift#L131) | Correct screen-to-depth mapping | Taps and overlays must land on the matching native depth pixels. |
 | Depth accuracy / quality | Manifest or `AVDepthData` metadata in [`analysisInput`](../DepthAnalysisReader.swift#L67) | Diagnostics in Plane Filter | Helps explain unreliable results when source depth quality is low. |
-| Calibration extrinsics | Stored in manifest from [`makeCalibration`](../../CameraCapture/Packaging/EmbeddedPhoto/TAPDepthManifest.swift#L617) | Future alignment diagnostics | Current photo-local fitting mostly needs intrinsics. |
+| Calibration extrinsics | Stored in manifest from [`makeCalibration`](../../CameraCapture/Output/TAPDepthManifestBuilder.swift#L274) | Future alignment diagnostics | Current photo-local fitting mostly needs intrinsics. |
 
 Data not used in this scope:
 
