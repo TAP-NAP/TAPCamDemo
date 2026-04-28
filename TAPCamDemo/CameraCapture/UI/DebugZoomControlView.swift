@@ -8,10 +8,10 @@
 #if DEBUG
 import SwiftUI
 
-/// Debug-only control for exercising depth-safe raw `videoZoomFactor` values.
+/// Debug-only control for exercising depth-safe zoom on one SingleCam pipeline.
 ///
-/// Release users see semantic FOV chips; this view exposes raw zoom only after
-/// the Debug override has selected a concrete depth-capable SingleCam pipeline.
+/// The chips display zoom relative to the 24mm Wide FOV baseline, while each
+/// `ZoomProfile` still carries the raw `videoZoomFactor` applied by Runtime.
 struct DebugZoomControlView: View {
     let zoomProfiles: [ZoomProfile]
     let selectedZoomID: String?

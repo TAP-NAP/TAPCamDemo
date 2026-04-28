@@ -246,20 +246,20 @@ nonisolated struct ZoomProfile: Identifiable, Equatable, Sendable {
         abs(rawVideoZoomFactor - zoomFactor) < 0.001
     }
 
-    nonisolated static func enabled(_ zoom: Double) -> ZoomProfile {
+    nonisolated static func enabled(_ zoom: Double, displayZoomFactor: Double? = nil) -> ZoomProfile {
         ZoomProfile(
             id: id(for: zoom),
-            displayName: displayName(for: zoom),
+            displayName: displayName(for: displayZoomFactor ?? zoom),
             rawVideoZoomFactor: zoom,
             isEnabled: true,
             disabledReason: nil
         )
     }
 
-    nonisolated static func disabled(_ zoom: Double, reason: String) -> ZoomProfile {
+    nonisolated static func disabled(_ zoom: Double, displayZoomFactor: Double? = nil, reason: String) -> ZoomProfile {
         ZoomProfile(
             id: id(for: zoom),
-            displayName: displayName(for: zoom),
+            displayName: displayName(for: displayZoomFactor ?? zoom),
             rawVideoZoomFactor: zoom,
             isEnabled: false,
             disabledReason: reason
@@ -267,6 +267,11 @@ nonisolated struct ZoomProfile: Identifiable, Equatable, Sendable {
     }
 
     private nonisolated static func id(for zoom: Double) -> String {
+        /*
+         IDs intentionally stay tied to the raw `videoZoomFactor`. Display names
+         can be semantic, such as raw 2.0 showing as 1x when that raw value is
+         the 24mm baseline for a virtual depth format.
+         */
         let safeValue = displayName(for: zoom).replacingOccurrences(of: ".", with: "_")
         return "zoom-\(safeValue)"
     }

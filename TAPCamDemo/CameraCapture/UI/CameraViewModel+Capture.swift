@@ -63,7 +63,7 @@ extension CameraViewModel {
                     self.recentMetrics = metrics
                     switch result {
                     case .success(let writeResult):
-                        self.statusMessage = "Saved \(writeResult.destinationDescription)"
+                        self.statusMessage = "Capture saved"
                         if let assetID = writeResult.assetLocalIdentifier {
                             self.loadRecentDepthAssetPreview(assetID: assetID)
                         }

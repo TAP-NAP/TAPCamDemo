@@ -136,6 +136,34 @@ nonisolated enum FocalLengthLabelResolver {
         return max(1, wideMillimeters) * max(0.01, rawVideoZoomFactor) / max(0.01, wideRawZoom)
     }
 
+    static func displayZoomFactor(
+        for profile: CameraProfile,
+        rawVideoZoomFactor: Double,
+        formatSelection: PhotoDepthFormatSelection?
+    ) -> Double {
+        displayZoomFactor(
+            rawVideoZoomFactor: rawVideoZoomFactor,
+            wideReferenceZoomFactor: wideReferenceZoomFactor(for: profile, formatSelection: formatSelection)
+        )
+    }
+
+    static func displayZoomFactor(rawVideoZoomFactor: Double, wideReferenceZoomFactor: Double) -> Double {
+        /*
+         User-facing zoom is relative to the 24mm Wide FOV baseline. On some
+         virtual photo-depth formats, AVFoundation's depth-safe Wide baseline is
+         raw 2.0, so raw 2.0 must display as 1x rather than 2x.
+         */
+        max(0.01, rawVideoZoomFactor) / max(0.01, wideReferenceZoomFactor)
+    }
+
+    static func rawVideoZoomFactor(
+        for profile: CameraProfile,
+        displayZoomFactor: Double,
+        formatSelection: PhotoDepthFormatSelection?
+    ) -> Double {
+        wideReferenceZoomFactor(for: profile, formatSelection: formatSelection) * max(0.01, displayZoomFactor)
+    }
+
     static func usesWideBaselineForVirtualFOV(deviceTypeRawValue: String) -> Bool {
         [
             AVCaptureDevice.DeviceType.builtInTripleCamera.rawValue,

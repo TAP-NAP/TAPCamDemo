@@ -40,13 +40,28 @@ nonisolated enum ZoomCapabilityResolver {
         let requiresDepthSafeZoom = depthProfile?.compatibility == .compatible
         let minimumZoom = Double(resolvedDevice.minAvailableVideoZoomFactor)
         let maximumZoom = Double(min(resolvedDevice.maxAvailableVideoZoomFactor, videoFormat.videoMaxZoomFactor))
-        var profiles = CameraCapabilityResolver.makeZoomProfiles(
-            minimumZoom: minimumZoom,
-            maximumZoom: maximumZoom,
-            depthDeliveryRanges: depthRanges,
-            allowsZoomOutsideDepthDeliveryRanges: allowsOutsideDepthRanges,
-            requiresDepthSafeZoom: requiresDepthSafeZoom
-        )
+        /*
+         The Debug chips are semantic zoom values relative to the 24mm Wide FOV,
+         not necessarily raw `AVCaptureDevice.videoZoomFactor` values. For a
+         virtual photo-depth format whose 24mm baseline is raw 2.0, the visible
+         1x chip therefore requests raw 2.0, 2x requests raw 4.0, and so on.
+         */
+        var profiles = CameraCapabilityResolver.candidateZoomFactors.map { displayZoomFactor in
+            let rawZoomFactor = FocalLengthLabelResolver.rawVideoZoomFactor(
+                for: rgbSource,
+                displayZoomFactor: displayZoomFactor,
+                formatSelection: depthProfile?.formatSelection
+            )
+            return CameraCapabilityResolver.makeZoomProfile(
+                zoom: rawZoomFactor,
+                displayZoomFactor: displayZoomFactor,
+                minimumZoom: minimumZoom,
+                maximumZoom: maximumZoom,
+                depthDeliveryRanges: depthRanges,
+                allowsZoomOutsideDepthDeliveryRanges: allowsOutsideDepthRanges,
+                requiresDepthSafeZoom: requiresDepthSafeZoom
+            )
+        }
         /*
          The fixed Debug zoom chips are 0.5/1/2/3x, but Release FOV labels may
          need a raw value outside that list. For example, if a depth-capable
@@ -59,6 +74,11 @@ nonisolated enum ZoomCapabilityResolver {
             profiles.append(
                 CameraCapabilityResolver.makeZoomProfile(
                     zoom: selectedZoomFactor,
+                    displayZoomFactor: FocalLengthLabelResolver.displayZoomFactor(
+                        for: rgbSource,
+                        rawVideoZoomFactor: selectedZoomFactor,
+                        formatSelection: depthProfile?.formatSelection
+                    ),
                     minimumZoom: minimumZoom,
                     maximumZoom: maximumZoom,
                     depthDeliveryRanges: depthRanges,

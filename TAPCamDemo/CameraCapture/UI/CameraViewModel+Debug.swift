@@ -241,7 +241,12 @@ extension CameraViewModel {
             equivalentMillimeters: equivalentMillimeters,
             source: "\(plan.rgbSource.focalLengthLabelSource)+debugRawVideoZoomFactor"
         ).label
-        let zoom = formattedZoom(resolvedZoomFactor)
+        let displayZoomFactor = FocalLengthLabelResolver.displayZoomFactor(
+            for: plan.rgbSource,
+            rawVideoZoomFactor: resolvedZoomFactor,
+            formatSelection: plan.formatSelection
+        )
+        let zoom = formattedZoom(displayZoomFactor)
         return "\(label) · \(zoom)"
     }
 

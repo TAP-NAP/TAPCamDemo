@@ -147,21 +147,24 @@ if candidate.device.uniqueID == rgbSource.device.uniqueID
 
 Zoom is format data, not a hardcoded lens rule. `ZoomCapabilityResolver` reads
 `supportedVideoZoomRangesForDepthDataDelivery` from the active candidate format
-and appends the selected raw FOV zoom when it isn't one of the fixed Debug
-chips.
+and converts visible zoom chips into raw `videoZoomFactor` values relative to
+the 24mm Wide FOV baseline.
 
 ```swift
-if let selectedZoomFactor,
-   profiles.contains(where: { $0.matchesRawVideoZoomFactor(selectedZoomFactor) }) == false {
-    profiles.append(
-        CameraCapabilityResolver.makeZoomProfile(
-            zoom: selectedZoomFactor,
-            minimumZoom: minimumZoom,
-            maximumZoom: maximumZoom,
-            depthDeliveryRanges: depthRanges,
-            allowsZoomOutsideDepthDeliveryRanges: allowsOutsideDepthRanges,
-            requiresDepthSafeZoom: requiresDepthSafeZoom
-        )
+var profiles = CameraCapabilityResolver.candidateZoomFactors.map { displayZoomFactor in
+    let rawZoomFactor = FocalLengthLabelResolver.rawVideoZoomFactor(
+        for: rgbSource,
+        displayZoomFactor: displayZoomFactor,
+        formatSelection: depthProfile?.formatSelection
+    )
+    return CameraCapabilityResolver.makeZoomProfile(
+        zoom: rawZoomFactor,
+        displayZoomFactor: displayZoomFactor,
+        minimumZoom: minimumZoom,
+        maximumZoom: maximumZoom,
+        depthDeliveryRanges: depthRanges,
+        allowsZoomOutsideDepthDeliveryRanges: allowsOutsideDepthRanges,
+        requiresDepthSafeZoom: requiresDepthSafeZoom
     )
 }
 ```
@@ -380,8 +383,8 @@ The fix is the current `selectedZoomFactor` thread:
 
 - UI passes the real raw zoom from `FocalLengthOption`.
   [View in Source](x-source-tag://ConfigureCurrentSelection)
-- `ZoomCapabilityResolver` appends that raw zoom when it is not one of the fixed
-  Debug chips.
+- `ZoomCapabilityResolver` keeps visible zoom labels relative to the 24mm
+  baseline while preserving the raw zoom that AVFoundation needs.
   [View in Source](x-source-tag://ResolveDepthSafeZoom)
 - `CaptureSourcePlan.make` uses the raw value as a first-class fallback when the
   selected zoom ID does not resolve.

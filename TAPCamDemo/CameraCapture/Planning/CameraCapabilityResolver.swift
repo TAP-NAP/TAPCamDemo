@@ -75,6 +75,7 @@ nonisolated enum CameraCapabilityResolver {
 
     static func makeZoomProfile(
         zoom: Double,
+        displayZoomFactor: Double? = nil,
         minimumZoom: Double,
         maximumZoom: Double,
         depthDeliveryRanges: [ClosedRange<Double>],
@@ -82,11 +83,11 @@ nonisolated enum CameraCapabilityResolver {
         requiresDepthSafeZoom: Bool = true
     ) -> ZoomProfile {
         guard zoom >= minimumZoom, zoom <= maximumZoom else {
-            return .disabled(zoom, reason: "Outside camera zoom range")
+            return .disabled(zoom, displayZoomFactor: displayZoomFactor, reason: "Outside camera zoom range")
         }
 
         guard requiresDepthSafeZoom else {
-            return .enabled(zoom)
+            return .enabled(zoom, displayZoomFactor: displayZoomFactor)
         }
 
         if depthDeliveryRanges.isEmpty {
@@ -97,20 +98,21 @@ nonisolated enum CameraCapabilityResolver {
              baseline; higher factors need an explicit runtime range.
              */
             return abs(zoom - 1.0) < 0.001
-                ? .enabled(zoom)
-                : .disabled(zoom, reason: "No depth-safe zoom range")
+                ? .enabled(zoom, displayZoomFactor: displayZoomFactor)
+                : .disabled(zoom, displayZoomFactor: displayZoomFactor, reason: "No depth-safe zoom range")
         }
 
         guard depthDeliveryRanges.contains(where: { $0.contains(zoom) }) else {
             return .disabled(
                 zoom,
+                displayZoomFactor: displayZoomFactor,
                 reason: allowsZoomOutsideDepthDeliveryRanges
                     ? "Zoom would drop depth delivery"
                     : "Outside depth zoom range"
             )
         }
 
-        return .enabled(zoom)
+        return .enabled(zoom, displayZoomFactor: displayZoomFactor)
     }
 
     static func displayName(for device: AVCaptureDevice) -> String {
