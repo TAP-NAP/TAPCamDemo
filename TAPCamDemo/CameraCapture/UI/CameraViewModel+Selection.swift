@@ -101,6 +101,10 @@ extension CameraViewModel {
     ///
     /// - Tag: ConfigureCurrentSelection
     func configureCurrentSelection() async {
+        guard !isPausedForAnalysis else {
+            return
+        }
+
         #if DEBUG
         if isDebugDepthOverrideActive,
            let plan = makeDebugDepthOverridePlan() {
@@ -161,7 +165,8 @@ extension CameraViewModel {
         do {
             let result = try await sessionController.configure(SessionConfigurationRequest(capturePlan: plan))
 
-            guard generation == configurationGeneration else {
+            guard generation == configurationGeneration, !isPausedForAnalysis else {
+                sessionController.stop()
                 return
             }
 

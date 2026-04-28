@@ -64,6 +64,8 @@ nonisolated enum TAPDepthMapReader {
             image: image,
             imageOrientation: imageOrientation,
             depthMap: metricDepth,
+            depthAccuracy: manifest?.payload.depth.accuracy ?? depthData.depthDataAccuracy.tapDescription,
+            depthQuality: manifest?.payload.depth.quality ?? depthData.depthDataQuality.tapDescription,
             heatmap: heatmap,
             validMask: validMask
         )
@@ -97,16 +99,65 @@ nonisolated enum TAPDepthMapReader {
             height: height,
             samples: samples,
             calibration: manifest?.payload.depth.cameraCalibration
+                ?? metricDepthData.cameraCalibrationData.map(cameraCalibration)
+        )
+    }
+
+    private static func cameraCalibration(_ calibration: AVCameraCalibrationData) -> TAPDepthManifest.CameraCalibration {
+        let intrinsic = calibration.intrinsicMatrix
+        let extrinsic = calibration.extrinsicMatrix
+        return TAPDepthManifest.CameraCalibration(
+            intrinsicMatrixReferenceWidth: calibration.intrinsicMatrixReferenceDimensions.width,
+            intrinsicMatrixReferenceHeight: calibration.intrinsicMatrixReferenceDimensions.height,
+            pixelSizeMillimeters: calibration.pixelSize,
+            lensDistortionLookupTablePresent: calibration.lensDistortionLookupTable != nil,
+            inverseLensDistortionLookupTablePresent: calibration.inverseLensDistortionLookupTable != nil,
+            lensDistortionCenterX: calibration.lensDistortionCenter.x,
+            lensDistortionCenterY: calibration.lensDistortionCenter.y,
+            intrinsicMatrix: [
+                intrinsic.columns.0.x, intrinsic.columns.0.y, intrinsic.columns.0.z,
+                intrinsic.columns.1.x, intrinsic.columns.1.y, intrinsic.columns.1.z,
+                intrinsic.columns.2.x, intrinsic.columns.2.y, intrinsic.columns.2.z
+            ],
+            extrinsicMatrix: [
+                extrinsic.columns.0.x, extrinsic.columns.0.y, extrinsic.columns.0.z,
+                extrinsic.columns.1.x, extrinsic.columns.1.y, extrinsic.columns.1.z,
+                extrinsic.columns.2.x, extrinsic.columns.2.y, extrinsic.columns.2.z,
+                extrinsic.columns.3.x, extrinsic.columns.3.y, extrinsic.columns.3.z
+            ]
         )
     }
 
     private static func imageOrientation(from source: CGImageSource) -> CGImagePropertyOrientation {
         guard let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-              let rawOrientation = properties[kCGImagePropertyOrientation] as? UInt32,
-              let orientation = CGImagePropertyOrientation(rawValue: rawOrientation) else {
+              let orientation = imageOrientation(from: properties) else {
             return .up
         }
 
         return orientation
+    }
+
+    static func imageOrientation(from properties: [CFString: Any]) -> CGImagePropertyOrientation? {
+        guard let rawValue = orientationRawValue(from: properties[kCGImagePropertyOrientation]) else {
+            return nil
+        }
+        return CGImagePropertyOrientation(rawValue: rawValue)
+    }
+
+    static func orientationRawValue(from value: Any?) -> UInt32? {
+        switch value {
+        case let value as UInt32:
+            return value
+        case let value as UInt:
+            return UInt32(exactly: value)
+        case let value as Int:
+            return UInt32(exactly: value)
+        case let value as Int32:
+            return UInt32(exactly: value)
+        case let value as NSNumber:
+            return UInt32(exactly: value.int64Value)
+        default:
+            return nil
+        }
     }
 }

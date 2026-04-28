@@ -30,6 +30,7 @@ final class CameraViewModel: ObservableObject {
     @Published var pendingJobCount = 0
     @Published var recentMetrics: [CaptureJobMetrics] = []
     @Published var isDepthCaptureReady = false
+    @Published var isPausedForAnalysis = false
     @Published var nativePreviewAspectRatio = 3.0 / 4.0
     @Published var previewCropRectNormalized = CropRectNormalized.fullFrame
     @Published var recentThumbnail: UIImage?
@@ -58,7 +59,7 @@ final class CameraViewModel: ObservableObject {
     }
 
     var canCapture: Bool {
-        isDepthCaptureReady && pendingJobCount < CaptureJobQueue.defaultMaximumPendingJobs
+        !isPausedForAnalysis && isDepthCaptureReady && pendingJobCount < CaptureJobQueue.defaultMaximumPendingJobs
     }
 
     var shouldShowFocalLengthSelector: Bool {
@@ -122,7 +123,40 @@ final class CameraViewModel: ObservableObject {
     }
 
     func stop() {
+        isPausedForAnalysis = false
         sessionController.stop()
+    }
+
+    func pauseForAnalysis() {
+        configurationGeneration += 1
+        isPausedForAnalysis = true
+        isDepthCaptureReady = false
+        activeSessionConfiguration = nil
+        statusMessage = "Camera paused for analysis."
+        sessionController.stop()
+    }
+
+    func resumeAfterAnalysis() async {
+        guard isPausedForAnalysis else {
+            return
+        }
+
+        isPausedForAnalysis = false
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            if selectedRGBSourceID == nil {
+                await configureDefaultSelection()
+            } else {
+                await configureCurrentSelection()
+            }
+            loadRecentDepthAssetPreviewIfAvailable()
+        case .notDetermined:
+            await start()
+        case .denied, .restricted:
+            statusMessage = TAPDepthCaptureError.cameraAccessDenied.localizedDescription
+        @unknown default:
+            statusMessage = TAPDepthCaptureError.cameraAccessDenied.localizedDescription
+        }
     }
 
     func updatePreviewCropRect(_ rect: CropRectNormalized) {

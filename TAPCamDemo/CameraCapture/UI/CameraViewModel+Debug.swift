@@ -154,6 +154,10 @@ extension CameraViewModel {
     }
 
     func configureDebugDepthOverride(_ plan: CaptureSourcePlan) async {
+        guard !isPausedForAnalysis else {
+            return
+        }
+
         configurationGeneration += 1
         let generation = configurationGeneration
         isDepthCaptureReady = false
@@ -172,7 +176,8 @@ extension CameraViewModel {
         do {
             let result = try await sessionController.configure(SessionConfigurationRequest(capturePlan: plan))
 
-            guard generation == configurationGeneration else {
+            guard generation == configurationGeneration, !isPausedForAnalysis else {
+                sessionController.stop()
                 return
             }
 

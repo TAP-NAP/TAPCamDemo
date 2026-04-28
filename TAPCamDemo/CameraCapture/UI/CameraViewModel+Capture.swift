@@ -16,6 +16,11 @@ import UIKit
 @MainActor
 extension CameraViewModel {
     func capture() async {
+        guard !isPausedForAnalysis else {
+            statusMessage = "Camera paused for analysis."
+            return
+        }
+
         guard let activeSessionConfiguration else {
             statusMessage = TAPDepthCaptureError.depthDeliveryUnsupported.localizedDescription
             return
@@ -114,4 +119,5 @@ extension CameraViewModel {
                 self?.recentThumbnail = image
             }
         }
-    }}
+    }
+}

@@ -307,7 +307,7 @@ nonisolated enum TAPDepthManifestBuilder {
     }
 
     private static func orientationDescription(from metadata: [String: Any]) -> String {
-        if let orientation = metadata[kCGImagePropertyOrientation as String] as? Int {
+        if let orientation = TAPDepthMapReader.orientationRawValue(from: metadata[kCGImagePropertyOrientation as String]) {
             return "cgImagePropertyOrientation:\(orientation)"
         }
 
