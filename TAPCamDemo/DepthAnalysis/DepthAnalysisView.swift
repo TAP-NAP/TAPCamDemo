@@ -21,6 +21,9 @@ struct DepthAnalysisView: View {
     @StateObject private var viewModel = DepthAnalysisViewModel()
     @State private var heatmapOpacity = 0.74
     @State private var panelDestination: AnalysisPanelDestination?
+    @State private var buttonHint: AnalysisButtonHint?
+    @State private var buttonHintToken = UUID()
+    @State private var helpSubject: AnalysisHelpSubject = .view(.rgb)
     @State private var isShowingSettings = false
 
     var body: some View {
@@ -106,7 +109,14 @@ struct DepthAnalysisView: View {
                 input,
                 overlayImage: input.heatmap.image,
                 overlayOpacity: heatmapOpacity,
-                planeOverlays: viewModel.filteredPlanes
+                planeRegion: viewModel.selectedPlaneRegion,
+                planeSeedPoint: viewModel.planeSeedPoint,
+                isSelectionEnabled: false,
+                isPointSelectionEnabled: true,
+                onPointSelected: { depthPoint in
+                    viewModel.selectPlaneSeed(depthPoint)
+                    panelDestination = .inspector(.planeFilter)
+                }
             )
         case .pointCloud:
             PointCloudPreview(
@@ -135,7 +145,12 @@ struct DepthAnalysisView: View {
         _ input: TAPDepthAnalysisInput,
         overlayImage: CGImage?,
         overlayOpacity: Double,
-        planeOverlays: [TAPDetectedPlane] = []
+        planeOverlays: [TAPDetectedPlane] = [],
+        planeRegion: TAPPlaneRegion? = nil,
+        planeSeedPoint: CGPoint? = nil,
+        isSelectionEnabled: Bool = true,
+        isPointSelectionEnabled: Bool = false,
+        onPointSelected: ((CGPoint) -> Void)? = nil
     ) -> some View {
         InteractiveDepthImage(
             image: input.image,
@@ -146,6 +161,10 @@ struct DepthAnalysisView: View {
             selection: $viewModel.selectionRect,
             interactionState: viewModel.interactionState,
             planeOverlays: planeOverlays,
+            planeRegion: planeRegion,
+            planeSeedPoint: planeSeedPoint,
+            isSelectionEnabled: isSelectionEnabled,
+            isPointSelectionEnabled: isPointSelectionEnabled,
             onSelectionBegan: { depthRect in
                 viewModel.beginSelection(depthRect)
             },
@@ -157,6 +176,9 @@ struct DepthAnalysisView: View {
             },
             onSelectionCleared: {
                 clearSelectionAndPanel()
+            },
+            onPointSelected: { depthPoint in
+                onPointSelected?(depthPoint)
             }
         )
     }
@@ -164,16 +186,37 @@ struct DepthAnalysisView: View {
     private func analysisControls(for input: TAPDepthAnalysisInput) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             if let destination = panelDestination {
-                AnalysisPanelLayer(destination: $panelDestination, maxHeight: UIScreen.main.bounds.height * 0.52) {
+                AnalysisPanelLayer(destination: $panelDestination, maxHeight: UIScreen.main.bounds.height * 0.32) {
                     panelContent(for: destination, input: input)
                 }
-                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                .transition(
+                    .asymmetric(
+                        insertion: .move(edge: .bottom).combined(with: .opacity),
+                        removal: .move(edge: .bottom).combined(with: .opacity)
+                    )
+                )
+                .zIndex(1)
             }
 
             AnalysisInspectorStrip(
                 panelDestination: $panelDestination,
                 viewMode: $viewModel.viewMode,
-                inspectors: inspectors(for: viewModel.viewMode)
+                inspectors: inspectors(for: viewModel.viewMode),
+                buttonHint: buttonHint,
+                onViewTapped: { viewMode in
+                    helpSubject = .view(viewMode)
+                    showButtonHint(.view(viewMode))
+                },
+                onInspectorTapped: { inspector in
+                    helpSubject = .inspector(inspector)
+                },
+                onHelpTapped: {
+                    if case .inspector(let inspector) = panelDestination {
+                        helpSubject = .inspector(inspector)
+                    } else {
+                        helpSubject = .view(viewModel.viewMode)
+                    }
+                }
             )
         }
         .frame(maxWidth: 560, alignment: .leading)
@@ -186,13 +229,30 @@ struct DepthAnalysisView: View {
         panelDestination = nil
     }
 
+    private func showButtonHint(_ hint: AnalysisButtonHint) {
+        let token = UUID()
+        buttonHintToken = token
+        withAnimation(.snappy(duration: 0.16)) {
+            buttonHint = hint
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            guard buttonHintToken == token else {
+                return
+            }
+            withAnimation(.snappy(duration: 0.16)) {
+                buttonHint = nil
+            }
+        }
+    }
+
     @ViewBuilder
     private func panelContent(for destination: AnalysisPanelDestination, input: TAPDepthAnalysisInput) -> some View {
         switch destination {
         case .inspector(let inspector):
             inspectorContent(for: inspector, input: input)
         case .help:
-            AnalysisHelpView()
+            AnalysisHelpView(subject: helpSubject)
         }
     }
 
@@ -219,9 +279,16 @@ struct DepthAnalysisView: View {
             )
         case .planeFilter:
             PlaneFilterInspectorContent(
-                detectedPlanes: viewModel.detectedPlanes,
-                filteredPlanes: viewModel.filteredPlanes,
-                confidenceThreshold: $viewModel.planeConfidenceThreshold
+                depthMap: input.depthMap,
+                depthAccuracy: input.depthAccuracy,
+                depthQuality: input.depthQuality,
+                selectedPlaneRegion: viewModel.selectedPlaneRegion,
+                planeSeedPoint: viewModel.planeSeedPoint,
+                errorMessage: viewModel.planeRegionErrorMessage,
+                strictness: Binding(
+                    get: { viewModel.planeGrowthStrictness },
+                    set: { viewModel.updatePlaneGrowthStrictness($0) }
+                )
             )
         case .cloudInfo:
             CloudInfoInspectorContent(
@@ -332,7 +399,7 @@ struct DepthAnalysisView: View {
         case .mask:
             [.measurements, .legend, .region]
         case .planes:
-            [.planeFilter, .measurements, .legend, .overlay, .region]
+            [.planeFilter, .legend, .overlay]
         case .pointCloud:
             [.cloudInfo, .measurements, .region]
         }
@@ -368,13 +435,11 @@ final class DepthAnalysisViewModel: ObservableObject {
     @Published var regionHeatmap: TAPDepthHeatmapVisualization?
     @Published var regionHeatmapErrorMessage: String?
     @Published var planeEstimate: TAPPlaneEstimate?
-    @Published var detectedPlanes: [TAPDetectedPlane] = []
-    @Published var planeConfidenceThreshold = 0.68
+    @Published var planeGrowthStrictness = 0.68
+    @Published var planeSeedPoint: CGPoint?
+    @Published var selectedPlaneRegion: TAPPlaneRegion?
+    @Published var planeRegionErrorMessage: String?
     @Published var errorMessage: String?
-
-    var filteredPlanes: [TAPDetectedPlane] {
-        TAPPlaneEstimator.filteredPlanes(detectedPlanes, minimumConfidence: planeConfidenceThreshold)
-    }
 
     var displayImage: CGImage {
         guard let input else {
@@ -411,7 +476,9 @@ final class DepthAnalysisViewModel: ObservableObject {
             let data = try await PhotoLibraryWriter.originalPhotoData(localIdentifier: assetID)
             let loadedInput = try TAPDepthMapReader.analysisInput(from: data)
             input = loadedInput
-            detectedPlanes = TAPPlaneEstimator.detectPlanes(depthMap: loadedInput.depthMap)
+            planeSeedPoint = nil
+            selectedPlaneRegion = nil
+            planeRegionErrorMessage = nil
             errorMessage = nil
             setInitialSelection(CGRect(x: 0, y: 0, width: loadedInput.depthMap.width, height: loadedInput.depthMap.height))
         } catch {
@@ -447,6 +514,29 @@ final class DepthAnalysisViewModel: ObservableObject {
         planeEstimate = nil
         regionHeatmap = nil
         regionHeatmapErrorMessage = nil
+        planeSeedPoint = nil
+        selectedPlaneRegion = nil
+        planeRegionErrorMessage = nil
+    }
+
+    func selectPlaneSeed(_ depthPoint: CGPoint) {
+        guard let input else {
+            return
+        }
+
+        let clamped = CGPoint(
+            x: min(max(depthPoint.x, 0), CGFloat(max(input.depthMap.width - 1, 0))),
+            y: min(max(depthPoint.y, 0), CGFloat(max(input.depthMap.height - 1, 0)))
+        )
+        planeSeedPoint = clamped
+        updateSeedPlaneRegion()
+    }
+
+    func updatePlaneGrowthStrictness(_ strictness: Double) {
+        planeGrowthStrictness = min(max(strictness, 0.35), 0.95)
+        if planeSeedPoint != nil {
+            updateSeedPlaneRegion()
+        }
     }
 
     private func setInitialSelection(_ depthRect: CGRect) {
@@ -483,6 +573,29 @@ final class DepthAnalysisViewModel: ObservableObject {
         } catch {
             regionHeatmap = nil
             regionHeatmapErrorMessage = "Not enough valid depth samples in this region."
+        }
+    }
+
+    private func updateSeedPlaneRegion() {
+        guard let input, let planeSeedPoint else {
+            selectedPlaneRegion = nil
+            planeRegionErrorMessage = nil
+            return
+        }
+
+        do {
+            selectedPlaneRegion = try TAPPlaneEstimator.growPlaneRegion(
+                depthMap: input.depthMap,
+                seed: planeSeedPoint,
+                strictness: planeGrowthStrictness
+            )
+            planeRegionErrorMessage = nil
+        } catch let error as TAPPlaneGrowthError {
+            selectedPlaneRegion = nil
+            planeRegionErrorMessage = error.localizedDescription
+        } catch {
+            selectedPlaneRegion = nil
+            planeRegionErrorMessage = "No stable plane region found from this point."
         }
     }
 
@@ -561,7 +674,7 @@ enum DepthAnalysisViewMode: String, CaseIterable, Identifiable {
         case .mask:
             "A coverage overlay showing which pixels have usable depth samples."
         case .planes:
-            "Detected visible planes with confidence filtering, plus selected-region plane metrics."
+            "Tap a surface point to grow and grid the connected camera-coordinate plane."
         case .pointCloud:
             "A local camera-coordinate point cloud preview made from valid depth pixels."
         }
@@ -576,7 +689,7 @@ enum DepthAnalysisViewMode: String, CaseIterable, Identifiable {
         case .mask:
             "Mask view highlights the pixels that contain finite positive depth samples. Green areas can contribute to statistics, plane fitting, and point projection; transparent areas are ignored."
         case .planes:
-            "Planes view scans the current depth map for local camera-coordinate regions whose points fit a flat surface, then outlines candidates above the confidence threshold. It is a single-photo diagnostic, not ARKit plane tracking or semantic room understanding."
+            "Planes view grows a connected plane from the surface point you tap, then divides that region into fit-confidence grid cells. Rectangular Region selection is disabled here so the view stays focused on plane analysis."
         case .pointCloud:
             "Cloud view projects valid depth pixels through camera intrinsics into a lightweight camera-coordinate point preview. It is a point cloud, not cloud storage, cloud compute, or a semantic word cloud."
         }
@@ -591,7 +704,7 @@ enum DepthAnalysisViewMode: String, CaseIterable, Identifiable {
         case .mask:
             "Green indicates valid depth coverage. Yellow outlines mark transitions between valid and invalid depth."
         case .planes:
-            "Plane outlines are colored by confidence. The slider filters detected flat regions without changing the saved HEIC or invoking ARKit plane tracking."
+            "Plane cells use stronger green for better local plane fit and warmer color for weaker fit; the bright edge marks the grown boundary."
         case .pointCloud:
             "Point colors map near-to-far depth in the same direction as the depth legend."
         }
@@ -607,12 +720,18 @@ private struct InteractiveDepthImage: View {
     @Binding var selection: CGRect?
     let interactionState: AnalysisInteractionState
     let planeOverlays: [TAPDetectedPlane]
+    let planeRegion: TAPPlaneRegion?
+    let planeSeedPoint: CGPoint?
+    let isSelectionEnabled: Bool
+    let isPointSelectionEnabled: Bool
     let onSelectionBegan: (CGRect) -> Void
     let onSelectionChanged: (CGRect) -> Void
     let onSelectionEnded: (CGRect) -> Void
     let onSelectionCleared: () -> Void
+    let onPointSelected: (CGPoint) -> Void
 
     @State private var dragStart: CGPoint?
+    @State private var lastClearDate = Date.distantPast
 
     var body: some View {
         GeometryReader { proxy in
@@ -649,10 +768,34 @@ private struct InteractiveDepthImage: View {
                         PlaneOverlayMarker(plane: plane)
                             .frame(width: rect.width, height: rect.height)
                             .position(x: rect.midX, y: rect.midY)
+                        }
+                }
+
+                if let planeRegion {
+                    PlaneRegionOverlay(
+                        region: planeRegion,
+                        depthSize: depthSize,
+                        orientation: orientation,
+                        imageFrame: imageFrame
+                    )
+
+                    let rect = viewRect(for: planeRegion.imageBounds, imageFrame: imageFrame)
+                    if rect.width > 8, rect.height > 8 {
+                        PlaneRegionBadge(region: planeRegion)
+                            .position(x: rect.minX + 44, y: max(rect.minY + 16, imageFrame.minY + 16))
                     }
                 }
 
-                if let selection {
+                if let planeSeedPoint {
+                    let seedRect = viewRect(
+                        for: CGRect(x: planeSeedPoint.x - 2, y: planeSeedPoint.y - 2, width: 4, height: 4),
+                        imageFrame: imageFrame
+                    )
+                    PlaneSeedMarker()
+                        .position(x: seedRect.midX, y: seedRect.midY)
+                }
+
+                if isSelectionEnabled, let selection {
                     let rect = viewRect(for: selection, imageFrame: imageFrame)
                     Rectangle()
                         .stroke(.white, lineWidth: 2)
@@ -665,6 +808,9 @@ private struct InteractiveDepthImage: View {
             .gesture(
                 DragGesture(minimumDistance: 4)
                     .onChanged { value in
+                        guard isSelectionEnabled else {
+                            return
+                        }
                         let isBeginning = dragStart == nil
                         if isBeginning {
                             dragStart = value.startLocation
@@ -685,6 +831,10 @@ private struct InteractiveDepthImage: View {
                         }
                     }
                     .onEnded { value in
+                        guard isSelectionEnabled else {
+                            dragStart = nil
+                            return
+                        }
                         let viewRect = CGRect(
                             x: min(dragStart?.x ?? value.location.x, value.location.x),
                             y: min(dragStart?.y ?? value.location.y, value.location.y),
@@ -701,7 +851,19 @@ private struct InteractiveDepthImage: View {
                 TapGesture(count: 2)
                     .onEnded {
                         dragStart = nil
+                        lastClearDate = Date()
                         onSelectionCleared()
+                    }
+            )
+            .simultaneousGesture(
+                SpatialTapGesture(count: 1)
+                    .onEnded { value in
+                        guard isPointSelectionEnabled,
+                              Date().timeIntervalSince(lastClearDate) > 0.25,
+                              let depthPoint = depthPoint(for: value.location, imageFrame: imageFrame) else {
+                            return
+                        }
+                        onPointSelected(depthPoint)
                     }
             )
         }
@@ -784,6 +946,131 @@ private struct InteractiveDepthImage: View {
             width: displayedRect.width / displayedDepthSize.width * imageFrame.width,
             height: displayedRect.height / displayedDepthSize.height * imageFrame.height
         )
+    }
+
+    private func depthPoint(for location: CGPoint, imageFrame: CGRect) -> CGPoint? {
+        guard imageFrame.contains(location), imageFrame.width > 0, imageFrame.height > 0 else {
+            return nil
+        }
+
+        let displayedDepthSize = TAPImageOrientationMapper.displayedSize(nativeSize: depthSize, orientation: orientation)
+        let displayedPointRect = CGRect(
+            x: (location.x - imageFrame.minX) / imageFrame.width * displayedDepthSize.width,
+            y: (location.y - imageFrame.minY) / imageFrame.height * displayedDepthSize.height,
+            width: 1,
+            height: 1
+        )
+        let nativeRect = TAPImageOrientationMapper.nativeRect(
+            fromDisplayed: displayedPointRect,
+            nativeSize: depthSize,
+            orientation: orientation
+        )
+        return CGPoint(
+            x: min(max(nativeRect.midX, 0), max(depthSize.width - 1, 0)),
+            y: min(max(nativeRect.midY, 0), max(depthSize.height - 1, 0))
+        )
+    }
+}
+
+private struct PlaneRegionOverlay: View {
+    let region: TAPPlaneRegion
+    let depthSize: CGSize
+    let orientation: CGImagePropertyOrientation
+    let imageFrame: CGRect
+
+    var body: some View {
+        Canvas { context, _ in
+            for cell in region.gridCells {
+                let rect = viewRect(for: cell.imageBounds).insetBy(dx: 0.8, dy: 0.8)
+                context.fill(Path(rect), with: .color(cellFillColor(cell)))
+                context.stroke(Path(rect), with: .color(cellEdgeColor(cell)), lineWidth: 1.15)
+            }
+
+            let stride = max(region.contourPoints.count / 2_500, 1)
+            for (index, point) in region.contourPoints.enumerated() where index.isMultiple(of: stride) {
+                let rect = viewRect(for: CGRect(x: point.x, y: point.y, width: 1, height: 1))
+                    .insetBy(dx: -1.2, dy: -1.2)
+                context.fill(Path(ellipseIn: rect), with: .color(edgeColor))
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityLabel("Selected plane region")
+    }
+
+    private func cellFillColor(_ cell: TAPPlaneGridCell) -> Color {
+        let confidence = min(max(cell.confidence, 0), 1)
+        return Color(
+            red: 1.0 - 0.26 * confidence,
+            green: 0.58 + 0.38 * confidence,
+            blue: 0.22 + 0.14 * confidence
+        )
+        .opacity(0.16 + 0.18 * confidence)
+    }
+
+    private func cellEdgeColor(_ cell: TAPPlaneGridCell) -> Color {
+        let confidence = min(max(cell.confidence, 0), 1)
+        return Color(
+            red: 1.0 - 0.30 * confidence,
+            green: 0.72 + 0.28 * confidence,
+            blue: 0.24 + 0.16 * confidence
+        )
+        .opacity(0.42 + 0.42 * confidence)
+    }
+
+    private var edgeColor: Color {
+        Color(red: 0.78, green: 1.0, blue: 0.42).opacity(0.92)
+    }
+
+    private func viewRect(for depthRect: CGRect) -> CGRect {
+        guard depthSize.width > 0, depthSize.height > 0 else {
+            return .zero
+        }
+
+        let displayedDepthSize = TAPImageOrientationMapper.displayedSize(nativeSize: depthSize, orientation: orientation)
+        let displayedRect = TAPImageOrientationMapper.displayedRect(
+            fromNative: depthRect,
+            nativeSize: depthSize,
+            orientation: orientation
+        )
+        return CGRect(
+            x: imageFrame.minX + displayedRect.minX / displayedDepthSize.width * imageFrame.width,
+            y: imageFrame.minY + displayedRect.minY / displayedDepthSize.height * imageFrame.height,
+            width: max(displayedRect.width / displayedDepthSize.width * imageFrame.width, 1),
+            height: max(displayedRect.height / displayedDepthSize.height * imageFrame.height, 1)
+        )
+    }
+}
+
+private struct PlaneRegionBadge: View {
+    let region: TAPPlaneRegion
+
+    var body: some View {
+        Text("\(Int((region.confidence * 100).rounded()))%")
+            .font(.caption2.monospacedDigit().weight(.bold))
+            .foregroundStyle(.black)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .background(Color(red: 0.78, green: 1.0, blue: 0.42), in: Capsule())
+            .shadow(color: .black.opacity(0.25), radius: 4, y: 2)
+            .accessibilityLabel("Selected plane region \(Int((region.confidence * 100).rounded())) percent confidence")
+    }
+}
+
+private struct PlaneSeedMarker: View {
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(.black.opacity(0.78), lineWidth: 5)
+                .frame(width: 18, height: 18)
+            Circle()
+                .stroke(Color(red: 0.78, green: 1.0, blue: 0.42), lineWidth: 3)
+                .frame(width: 18, height: 18)
+            Circle()
+                .fill(Color(red: 0.78, green: 1.0, blue: 0.42))
+                .frame(width: 5, height: 5)
+        }
+        .shadow(color: .black.opacity(0.32), radius: 4, y: 2)
+        .accessibilityLabel("Plane seed point")
     }
 }
 
@@ -905,90 +1192,225 @@ private struct AnalysisLoupe: View {
     }
 }
 
+private enum AnalysisButtonHint: Equatable {
+    case view(DepthAnalysisViewMode)
+    case inspector(AnalysisInspector)
+    case help
+
+    var title: String {
+        switch self {
+        case .view(let viewMode):
+            viewMode.title
+        case .inspector(let inspector):
+            inspector.title
+        case .help:
+            "Help"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .view(let viewMode):
+            viewMode.systemImage
+        case .inspector(let inspector):
+            inspector.systemImage
+        case .help:
+            "questionmark.circle"
+        }
+    }
+}
+
+private enum AnalysisHelpSubject: Equatable {
+    case view(DepthAnalysisViewMode)
+    case inspector(AnalysisInspector)
+
+    var title: String {
+        switch self {
+        case .view(let viewMode):
+            viewMode.title
+        case .inspector(let inspector):
+            inspector.title
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .view:
+            "View"
+        case .inspector:
+            "Inspector"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .view(let viewMode):
+            viewMode.systemImage
+        case .inspector(let inspector):
+            inspector.systemImage
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .view(let viewMode):
+            viewMode.detailedExplanation
+        case .inspector(let inspector):
+            inspector.detailedExplanation
+        }
+    }
+}
+
+private extension AnalysisInspector {
+    var detailedExplanation: String {
+        switch self {
+        case .measurements:
+            "Shows numeric depth measurements for the selected region, including median depth, range, valid samples, and any local plane estimate."
+        case .legend:
+            "Explains the current view's color mapping, such as near-to-far depth colors, valid-depth coverage, or point-cloud distance colors."
+        case .overlay:
+            "Controls the opacity of generated overlays on the main image, so you can compare the analysis layer against the RGB photo."
+        case .region:
+            "Shows measurements and previews for a completed rectangular selection. In Depth view, the selected crop is recolored using only local valid depth samples."
+        case .planeFilter:
+            "Controls seed-grown plane strictness and reports the selected plane region's cells, area, confidence, flatness, residual, and calibration diagnostics."
+        case .cloudInfo:
+            "Explains the local camera-coordinate point cloud preview and reports point counts and near-to-far color meaning."
+        }
+    }
+}
+
 private struct AnalysisInspectorStrip: View {
     @Binding var panelDestination: AnalysisPanelDestination?
     @Binding var viewMode: DepthAnalysisViewMode
     let inspectors: [AnalysisInspector]
+    let buttonHint: AnalysisButtonHint?
+    let onViewTapped: (DepthAnalysisViewMode) -> Void
+    let onInspectorTapped: (AnalysisInspector) -> Void
+    let onHelpTapped: () -> Void
+    @State private var viewScrollPosition: String? = DepthAnalysisViewMode.rgb.id
+    @State private var inspectorScrollPosition: String?
+
+    private static let helpScrollID = "analysis-help"
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            AnalysisStripRow(title: "Views") {
+            PinnedStripRow(
+                systemImage: "eye",
+                accessibilityLabel: "Views",
+                helpText: "Views",
+                scrollPosition: $viewScrollPosition
+            ) {
                 viewModeTabs
             }
 
-            AnalysisStripRow(title: "Inspectors") {
-                HStack(spacing: 6) {
-                    inspectorTabs
-                    helpButton
-                }
+            PinnedStripRow(
+                systemImage: "scope",
+                accessibilityLabel: "Inspectors",
+                helpText: "Inspectors",
+                scrollPosition: $inspectorScrollPosition
+            ) {
+                inspectorTabs
+                helpButton
             }
         }
         .font(.callout)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 8)
         .frame(maxWidth: 560, alignment: .leading)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(.white.opacity(0.18), lineWidth: 1)
         }
+        .overlay(alignment: .top) {
+            if let buttonHint {
+                AnalysisButtonBubble(hint: buttonHint)
+                    .offset(y: -38)
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+            }
+        }
+        .onAppear {
+            viewScrollPosition = viewMode.id
+            syncInspectorScrollPosition()
+        }
+        .onChange(of: viewMode) { _, newValue in
+            viewScrollPosition = newValue.id
+            syncInspectorScrollPosition()
+        }
+        .onChange(of: inspectors) { _, _ in
+            syncInspectorScrollPosition()
+        }
+        .onChange(of: panelDestination) { _, _ in
+            syncInspectorScrollPosition()
+        }
+        .animation(.snappy(duration: 0.18), value: buttonHint)
     }
 
     private var viewModeTabs: some View {
-        HStack(spacing: 6) {
-            ForEach(DepthAnalysisViewMode.allCases) { item in
-                Button {
-                    viewMode = item
-                } label: {
-                    tabLabel(title: item.title, systemImage: item.systemImage)
-                        .background(viewModeBackground(for: item), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(item.title)
-                .help(item.detailedExplanation)
+        ForEach(DepthAnalysisViewMode.allCases) { item in
+            Button {
+                onViewTapped(item)
+                viewScrollPosition = item.id
+                viewMode = item
+            } label: {
+                iconButton(
+                    systemImage: item.systemImage,
+                    isSelected: item == viewMode
+                )
             }
+            .id(item.id)
+            .buttonStyle(.plain)
+            .accessibilityLabel(item.title)
+            .help(item.detailedExplanation)
         }
     }
 
     private var inspectorTabs: some View {
-        HStack(spacing: 6) {
-            ForEach(inspectors) { inspector in
-                Button {
-                    toggle(.inspector(inspector))
-                } label: {
-                    tabLabel(title: inspector.title, systemImage: inspector.systemImage)
-                        .background(inspectorBackground(for: inspector), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .contentShape(Rectangle())
-                .accessibilityLabel(inspector.title)
-                .help(inspector.title)
+        ForEach(inspectors) { inspector in
+            Button {
+                onInspectorTapped(inspector)
+                inspectorScrollPosition = inspector.id
+                toggle(.inspector(inspector))
+            } label: {
+                iconButton(
+                    systemImage: inspector.systemImage,
+                    isSelected: panelDestination?.selectedInspector == inspector
+                )
             }
+            .id(inspector.id)
+            .buttonStyle(.plain)
+            .contentShape(Rectangle())
+            .accessibilityLabel(inspector.title)
+            .help(inspector.title)
         }
     }
 
     private var helpButton: some View {
         Button {
+            onHelpTapped()
+            inspectorScrollPosition = Self.helpScrollID
             toggle(.help)
         } label: {
-            tabLabel(title: "Help", systemImage: "questionmark.circle")
-                .background(helpBackground, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+            iconButton(
+                systemImage: "questionmark.circle",
+                isSelected: panelDestination == .help
+            )
         }
+        .id(Self.helpScrollID)
         .buttonStyle(.plain)
         .accessibilityLabel("Analysis Help")
         .help("Open Analysis Help.")
     }
 
-    private func tabLabel(title: String, systemImage: String) -> some View {
-        HStack(spacing: 5) {
-            Image(systemName: systemImage)
-                .font(.callout.weight(.semibold))
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .lineLimit(1)
-        }
-        .padding(.horizontal, 8)
-        .frame(minHeight: 32)
+    private func iconButton(systemImage: String, isSelected: Bool) -> some View {
+        Image(systemName: systemImage)
+            .font(.callout.weight(.semibold))
+            .symbolRenderingMode(.hierarchical)
+            .frame(width: 34, height: 32)
+            .foregroundStyle(.primary)
+            .background(iconBackground(isSelected: isSelected), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
     }
 
     private func toggle(_ destination: AnalysisPanelDestination) {
@@ -999,48 +1421,92 @@ private struct AnalysisInspectorStrip: View {
         }
     }
 
-    private func viewModeBackground(for item: DepthAnalysisViewMode) -> Color {
-        if item == viewMode {
+    private func iconBackground(isSelected: Bool) -> Color {
+        if isSelected {
             return Color.primary.opacity(0.16)
         }
         return Color.primary.opacity(0.06)
     }
 
-    private func inspectorBackground(for inspector: AnalysisInspector) -> Color {
-        if panelDestination?.selectedInspector == inspector {
-            return Color.primary.opacity(0.16)
+    private func syncInspectorScrollPosition() {
+        if case .inspector(let inspector) = panelDestination, inspectors.contains(inspector) {
+            inspectorScrollPosition = inspector.id
+        } else if panelDestination == .help {
+            inspectorScrollPosition = Self.helpScrollID
+        } else if inspectorScrollPosition == nil || !isValidInspectorScrollID(inspectorScrollPosition) {
+            inspectorScrollPosition = inspectors.first?.id ?? Self.helpScrollID
         }
-        return Color.primary.opacity(0.06)
     }
 
-    private var helpBackground: Color {
-        if panelDestination == .help {
-            return Color.primary.opacity(0.16)
+    private func isValidInspectorScrollID(_ id: String?) -> Bool {
+        guard let id else {
+            return false
         }
-        return Color.primary.opacity(0.06)
+        return id == Self.helpScrollID || inspectors.contains { $0.id == id }
     }
 }
 
-private struct AnalysisStripRow<Content: View>: View {
-    let title: String
+private struct PinnedStripRow<Content: View>: View {
+    let systemImage: String
+    let accessibilityLabel: String
+    let helpText: String
+    @Binding var scrollPosition: String?
     let content: Content
 
-    init(title: String, @ViewBuilder content: () -> Content) {
-        self.title = title
+    init(
+        systemImage: String,
+        accessibilityLabel: String,
+        helpText: String,
+        scrollPosition: Binding<String?>,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.systemImage = systemImage
+        self.accessibilityLabel = accessibilityLabel
+        self.helpText = helpText
+        _scrollPosition = scrollPosition
         self.content = content()
     }
 
     var body: some View {
-        HStack(spacing: 8) {
-            Text(title)
-                .font(.caption2.weight(.bold))
+        HStack(spacing: 7) {
+            Image(systemName: systemImage)
+                .font(.caption.weight(.bold))
                 .foregroundStyle(.secondary)
-                .frame(width: 68, alignment: .leading)
+                .frame(width: 22, height: 32)
+                .accessibilityLabel(accessibilityLabel)
+                .help(helpText)
 
             ScrollView(.horizontal, showsIndicators: false) {
-                content
+                HStack(spacing: 6) {
+                    content
+                }
+                .scrollTargetLayout()
             }
+            .scrollPosition(id: $scrollPosition, anchor: .center)
         }
+    }
+}
+
+private struct AnalysisButtonBubble: View {
+    let hint: AnalysisButtonHint
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: hint.systemImage)
+                .font(.caption.weight(.semibold))
+                .symbolRenderingMode(.hierarchical)
+            Text(hint.title)
+                .font(.caption.weight(.semibold))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(.thinMaterial, in: Capsule())
+        .overlay {
+            Capsule()
+                .stroke(.white.opacity(0.2), lineWidth: 1)
+            }
+        .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
+        .accessibilityHidden(true)
     }
 }
 
@@ -1048,6 +1514,8 @@ private struct AnalysisPanelLayer<Content: View>: View {
     @Binding var destination: AnalysisPanelDestination?
     let maxHeight: CGFloat
     let content: Content
+    @State private var measuredContentHeight: CGFloat = 0
+    @State private var measuredPanelHeight: CGFloat = 0
 
     init(destination: Binding<AnalysisPanelDestination?>, maxHeight: CGFloat, @ViewBuilder content: () -> Content) {
         _destination = destination
@@ -1058,6 +1526,11 @@ private struct AnalysisPanelLayer<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
+                Image(systemName: titleIcon)
+                    .font(.headline.weight(.semibold))
+                    .symbolRenderingMode(.hierarchical)
+                    .frame(width: 22, height: 22)
+                    .foregroundStyle(.secondary)
                 Text(title)
                     .font(.headline)
                 Spacer(minLength: 8)
@@ -1076,23 +1549,64 @@ private struct AnalysisPanelLayer<Content: View>: View {
 
             Divider()
 
-            ViewThatFits(in: .vertical) {
-                panelContent
-                ScrollView {
-                    panelContent
-                }
-            }
-            .frame(maxHeight: contentMaxHeight, alignment: .top)
+            adaptivePanelContent
         }
         .font(.callout)
         .padding(12)
         .frame(maxWidth: 560, alignment: .leading)
-        .frame(maxHeight: maxHeight, alignment: .top)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(.white.opacity(0.18), lineWidth: 1)
         }
+        .background {
+            GeometryReader { proxy in
+                Color.clear.preference(key: AnalysisPanelHeightKey.self, value: proxy.size.height)
+            }
+        }
+        .onPreferenceChange(AnalysisPanelContentHeightKey.self) { height in
+            var transaction = Transaction()
+            transaction.animation = nil
+            withTransaction(transaction) {
+                measuredContentHeight = height
+            }
+            logPanelLayout(contentHeight: height, panelHeight: measuredPanelHeight)
+        }
+        .onPreferenceChange(AnalysisPanelHeightKey.self) { height in
+            var transaction = Transaction()
+            transaction.animation = nil
+            withTransaction(transaction) {
+                measuredPanelHeight = height
+            }
+            logPanelLayout(contentHeight: measuredContentHeight, panelHeight: height)
+        }
+        .onChange(of: destination) { _, _ in
+            var transaction = Transaction()
+            transaction.animation = nil
+            withTransaction(transaction) {
+                measuredContentHeight = 0
+                measuredPanelHeight = 0
+            }
+        }
+    }
+
+    private var adaptivePanelContent: some View {
+        ScrollView(.vertical, showsIndicators: measuredContentHeight > contentMaxHeight + 1) {
+            measuredPanelContent
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .frame(height: contentViewportHeight, alignment: .top)
+        .clipped()
+    }
+
+    private var measuredPanelContent: some View {
+        panelContent
+            .fixedSize(horizontal: false, vertical: true)
+            .background {
+                GeometryReader { proxy in
+                    Color.clear.preference(key: AnalysisPanelContentHeightKey.self, value: proxy.size.height)
+                }
+            }
     }
 
     private var panelContent: some View {
@@ -1101,7 +1615,28 @@ private struct AnalysisPanelLayer<Content: View>: View {
     }
 
     private var contentMaxHeight: CGFloat {
-        max(120, maxHeight - 58)
+        max(72, maxHeight - 78)
+    }
+
+    private var contentViewportHeight: CGFloat {
+        guard measuredContentHeight > 0 else {
+            return 1
+        }
+        return min(measuredContentHeight, contentMaxHeight)
+    }
+
+    private func logPanelLayout(contentHeight: CGFloat, panelHeight: CGFloat) {
+        #if DEBUG
+        guard contentHeight > 0 || panelHeight > 0 else {
+            return
+        }
+        let isScrolling = contentHeight > contentMaxHeight + 1
+        print(
+            "[DepthAnalysisPanel] title=\(title) content=\(String(format: "%.1f", contentHeight)) " +
+            "panel=\(String(format: "%.1f", panelHeight)) contentMax=\(String(format: "%.1f", contentMaxHeight)) " +
+            "scroll=\(isScrolling)"
+        )
+        #endif
     }
 
     private var title: String {
@@ -1116,67 +1651,60 @@ private struct AnalysisPanelLayer<Content: View>: View {
             return "Analysis Help"
         }
     }
+
+    private var titleIcon: String {
+        guard let destination else {
+            return "scope"
+        }
+
+        switch destination {
+        case .inspector(let inspector):
+            return inspector.systemImage
+        case .help:
+            return "questionmark.circle"
+        }
+    }
+}
+
+private struct AnalysisPanelContentHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+private struct AnalysisPanelHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
 }
 
 private struct AnalysisHelpView: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HelpSection(title: "Views") {
-                HelpRow(title: "RGB", detail: "Original HEIC color image used as the visual reference for selecting regions.")
-                HelpRow(title: "Depth", detail: "False-color metric depth overlay. The legend maps near-to-far values in meters.")
-                HelpRow(title: "Mask", detail: "Valid depth coverage. Colored pixels can be used for statistics, plane fitting, and point projection.")
-                HelpRow(title: "Planes", detail: "Candidate flat regions found from depth samples in camera coordinates, filtered by confidence.")
-                HelpRow(title: "Cloud", detail: "Camera-coordinate point cloud preview. It is local point data, not cloud storage or cloud compute.")
-            }
-
-            HelpSection(title: "Inspectors") {
-                HelpRow(title: "Region Heatmap", detail: "A selected-region crop recolored using only valid depth samples inside that region.")
-                HelpRow(title: "Legend", detail: "Shows how the current view maps colors to depth, coverage, or point distance.")
-                HelpRow(title: "Overlay", detail: "Controls only the main image overlay. It does not change locally normalized region heatmaps.")
-                HelpRow(title: "Plane Filter", detail: "Filters detected plane candidates by confidence without changing the saved image.")
-                HelpRow(title: "Cloud Info", detail: "Shows point-cloud color meaning and selected point counts.")
-            }
-
-            HelpSection(title: "Measurements") {
-                HelpRow(title: "Median depth", detail: "The middle value after sorting selected valid depth samples from near to far. It is not an average.")
-                HelpRow(title: "Range", detail: "The nearest and farthest valid depth samples in the current selection.")
-                HelpRow(title: "Valid samples", detail: "The count and ratio of selected pixels that contain finite positive depth.")
-                HelpRow(title: "Plane residual", detail: "Average distance from inlier points to the fitted plane. Lower usually means flatter.")
-                HelpRow(title: "Plane inliers", detail: "Share of sampled points close enough to the fitted plane to count as part of it.")
-            }
-        }
-    }
-}
-
-private struct HelpSection<Content: View>: View {
-    let title: String
-    let content: Content
-
-    init(title: String, @ViewBuilder content: () -> Content) {
-        self.title = title
-        self.content = content()
-    }
+    let subject: AnalysisHelpSubject
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.secondary)
-            content
-        }
-    }
-}
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: subject.systemImage)
+                    .font(.title3.weight(.semibold))
+                    .symbolRenderingMode(.hierarchical)
+                    .frame(width: 30, height: 30)
+                    .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
 
-private struct HelpRow: View {
-    let title: String
-    let detail: String
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(subject.title)
+                        .font(.headline)
+                    Text(subject.subtitle)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+            }
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title)
-                .font(.callout.weight(.semibold))
-            Text(detail)
-                .font(.caption)
+            Text(subject.detail)
+                .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -1211,8 +1739,6 @@ private struct RegionInspectorContent: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             } else if let selection, interactionState.showsRegionInspector {
-                regionSummary
-
                 if let regionHeatmap {
                     HStack(alignment: .top, spacing: 12) {
                         AnalysisLoupe(
@@ -1238,6 +1764,8 @@ private struct RegionInspectorContent: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
+
+                regionSummary
             } else {
                 Label("No region selected.", systemImage: "viewfinder")
                     .font(.footnote)
@@ -1301,57 +1829,130 @@ private struct RegionInspectorContent: View {
 }
 
 private struct PlaneFilterInspectorContent: View {
-    let detectedPlanes: [TAPDetectedPlane]
-    let filteredPlanes: [TAPDetectedPlane]
-    @Binding var confidenceThreshold: Double
+    let depthMap: TAPMetricDepthMap
+    let depthAccuracy: String
+    let depthQuality: String
+    let selectedPlaneRegion: TAPPlaneRegion?
+    let planeSeedPoint: CGPoint?
+    let errorMessage: String?
+    @Binding var strictness: Double
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
-                Text("Planes")
+                Text("Plane region")
                     .font(.caption.weight(.semibold))
-                    .help("Planes are local depth regions whose sampled camera-coordinate points fit a flat surface with high confidence. This is a single-photo diagnostic, not ARKit plane tracking.")
+                    .help("Tap a surface point in Planes view. The analyzer grows a connected camera-coordinate plane region from that seed.")
                 Spacer(minLength: 8)
-                Text("\(filteredPlanes.count)/\(detectedPlanes.count)")
+                Text(statusText)
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
 
             HStack(spacing: 8) {
-                Text("Confidence")
+                Text("Strictness")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
-                Slider(value: $confidenceThreshold, in: 0.35...0.95)
+                    .help("Higher strictness keeps only pixels that fit the seed plane more tightly.")
+                Slider(value: $strictness, in: 0.35...0.95)
                     .tint(.primary)
-                Text("\(Int((confidenceThreshold * 100).rounded()))%")
+                Text("\(Int((strictness * 100).rounded()))%")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
                     .frame(width: 42, alignment: .trailing)
             }
 
-            if let best = filteredPlanes.first {
+            if let selectedPlaneRegion {
                 DepthMetricRow(
-                    title: "Best plane",
-                    value: "\(Int((best.confidence * 100).rounded()))% · \(best.sampleCount) samples",
-                    explanation: "The highest-confidence visible plane after applying the threshold."
+                    title: "Confidence",
+                    value: "\(Int((selectedPlaneRegion.confidence * 100).rounded()))%",
+                    explanation: "Combined score from flatness, inlier ratio, and selected plane size."
+                )
+                DepthMetricRow(
+                    title: "Plane cells",
+                    value: "\(selectedPlaneRegion.gridCells.count)",
+                    explanation: "Grid cells inside the grown region that contain enough pixels fitting the selected plane."
+                )
+                DepthMetricRow(
+                    title: "Area",
+                    value: areaText(selectedPlaneRegion.areaSquareMeters),
+                    explanation: "Approximate visible surface area in camera coordinates."
+                )
+                DepthMetricRow(
+                    title: "Flatness",
+                    value: "\(Int((selectedPlaneRegion.flatnessScore * 100).rounded()))%",
+                    explanation: "How tightly the grown region fits a single local plane. Higher is flatter."
                 )
                 DepthMetricRow(
                     title: "Residual",
-                    value: String(format: "%.3f m", best.estimate.averageResidualMeters),
-                    explanation: "Average distance from inlier points to the detected plane."
+                    value: String(format: "%.3f m", selectedPlaneRegion.estimate.averageResidualMeters),
+                    explanation: "Average distance from inlier points to the selected plane."
                 )
+                DepthMetricRow(
+                    title: "Inliers",
+                    value: "\(Int((selectedPlaneRegion.estimate.inlierRatio * 100).rounded()))% · \(selectedPlaneRegion.sampleCount)",
+                    explanation: "Share and count of grown points that match the fitted plane."
+                )
+                DepthMetricRow(
+                    title: "Normal",
+                    value: String(format: "[%.2f, %.2f, %.2f]", selectedPlaneRegion.estimate.normal.x, selectedPlaneRegion.estimate.normal.y, selectedPlaneRegion.estimate.normal.z),
+                    explanation: "Selected plane direction in local camera coordinates."
+                )
+            } else if let errorMessage {
+                Label(errorMessage, systemImage: "exclamationmark.triangle")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            } else if depthMap.calibration == nil {
+                Label("Camera calibration missing.", systemImage: "exclamationmark.triangle")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            } else if planeSeedPoint == nil {
+                Label("Tap a surface point to grow a plane region.", systemImage: "hand.tap")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             } else {
-                Label("No detected planes meet the current confidence threshold.", systemImage: "square.dashed")
+                Label("No stable plane region found from this point.", systemImage: "square.dashed")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
 
             HStack(spacing: 12) {
-                PlaneLegendSwatch(color: Color(red: 0.70, green: 0.95, blue: 0.30), text: "High")
-                PlaneLegendSwatch(color: Color(red: 0.98, green: 0.78, blue: 0.22), text: "Medium")
-                PlaneLegendSwatch(color: Color(red: 1.0, green: 0.48, blue: 0.28), text: "Low")
+                PlaneLegendSwatch(color: Color(red: 0.74, green: 0.96, blue: 0.36), text: "High-fit cell")
+                PlaneLegendSwatch(color: Color(red: 1.0, green: 0.62, blue: 0.24), text: "Lower-fit cell")
             }
+
+            Divider()
+
+            DepthMetricRow(
+                title: "Depth size",
+                value: "\(depthMap.width)x\(depthMap.height)",
+                explanation: "Native auxiliary depth-map resolution used for camera-coordinate plane fitting."
+            )
+            DepthMetricRow(
+                title: "Calibration",
+                value: depthMap.calibration == nil ? "Missing" : "Available",
+                explanation: "Camera intrinsics used to project depth pixels into local camera coordinates."
+            )
+            DepthMetricRow(
+                title: "Depth quality",
+                value: "\(depthAccuracy) / \(depthQuality)",
+                explanation: "Apple depth accuracy and quality metadata for this captured photo."
+            )
         }
+    }
+
+    private var statusText: String {
+        if let selectedPlaneRegion {
+            return "\(selectedPlaneRegion.gridCells.count) cells"
+        }
+        return "No seed"
+    }
+
+    private func areaText(_ area: Double) -> String {
+        if area < 0.01 {
+            return String(format: "%.1f sq cm", area * 10_000)
+        }
+        return String(format: "%.3f sq m", area)
     }
 }
 

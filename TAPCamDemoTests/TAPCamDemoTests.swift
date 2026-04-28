@@ -11,6 +11,7 @@ import CoreLocation
 import Foundation
 import ImageIO
 import Photos
+import simd
 import Testing
 @testable import TAPCamDemo
 
@@ -283,6 +284,147 @@ struct TAPCamDemoTests {
         #expect(TAPPlaneEstimator.filteredPlanes(planes, minimumConfidence: 1.01).isEmpty)
     }
 
+    @Test func seedPlaneGrowthFindsLargeTiltedPlaneRegion() throws {
+        let depthMap = Self.syntheticPlaneDepthMap(width: 32, height: 32)
+
+        let region = try TAPPlaneEstimator.growPlaneRegion(
+            depthMap: depthMap,
+            seed: CGPoint(x: 16, y: 16),
+            strictness: 0.68
+        )
+
+        #expect(region.sampleCount > 700)
+        #expect(region.confidence > 0.82)
+        #expect(region.flatnessScore > 0.90)
+        #expect(region.areaSquareMeters > 0)
+        #expect(!region.pixelRuns.isEmpty)
+        #expect(!region.gridCells.isEmpty)
+        #expect(region.gridCells.allSatisfy { $0.confidence >= 0 && $0.confidence <= 1 })
+        #expect(!region.contourPoints.isEmpty)
+    }
+
+    @Test func seedPlaneGrowthFindsContinuousPlanesAcrossTiltAngles() throws {
+        let width = 56
+        let height = 44
+        let cases: [(normal: SIMD3<Float>, seed: CGPoint)] = [
+            (simd_normalize(SIMD3<Float>(-0.20, 0.00, 0.98)), CGPoint(x: 28, y: 22)),
+            (simd_normalize(SIMD3<Float>(-0.72, 0.02, 0.70)), CGPoint(x: 22, y: 22)),
+            (simd_normalize(SIMD3<Float>(0.74, -0.24, 0.63)), CGPoint(x: 34, y: 20)),
+            (simd_normalize(SIMD3<Float>(-0.86, 0.18, 0.48)), CGPoint(x: 20, y: 24))
+        ]
+
+        for testCase in cases {
+            let depthMap = Self.syntheticObliqueWallDepthMap(
+                width: width,
+                height: height,
+                normal: testCase.normal
+            )
+
+            let region = try TAPPlaneEstimator.growPlaneRegion(
+                depthMap: depthMap,
+                seed: testCase.seed,
+                strictness: 0.68
+            )
+
+            #expect(region.sampleCount > Int(Double(width * height) * 0.70))
+            #expect(region.confidence > 0.80)
+            #expect(region.flatnessScore > 0.88)
+            #expect(region.imageBounds.width > CGFloat(width) * 0.65)
+            #expect(region.imageBounds.height > CGFloat(height) * 0.65)
+        }
+    }
+
+    @Test func seedPlaneGrowthKeepsNoisyObliqueWallConnected() throws {
+        let depthMap = Self.syntheticNoisyObliqueWallDepthMap(width: 52, height: 42)
+
+        let region = try TAPPlaneEstimator.growPlaneRegion(
+            depthMap: depthMap,
+            seed: CGPoint(x: 24, y: 21),
+            strictness: 0.55
+        )
+
+        #expect(region.sampleCount > 1_100)
+        #expect(region.gridCells.count > 8)
+        #expect(region.confidence > 0.62)
+    }
+
+    @Test func seedPlaneGrowthDoesNotLeakAcrossObliqueWallBoundary() throws {
+        let depthMap = Self.syntheticSplitPlaneDepthMap(width: 48, height: 40)
+
+        let region = try TAPPlaneEstimator.growPlaneRegion(
+            depthMap: depthMap,
+            seed: CGPoint(x: 14, y: 20),
+            strictness: 0.62
+        )
+
+        #expect(region.sampleCount > 650)
+        #expect(region.imageBounds.maxX < 30)
+    }
+
+    @Test func seedPlaneGrowthShrinksOnCurvedDepthWhenStrictnessIncreases() throws {
+        let depthMap = Self.syntheticCurvedDepthMap(width: 36, height: 36)
+
+        let loose = try TAPPlaneEstimator.growPlaneRegion(
+            depthMap: depthMap,
+            seed: CGPoint(x: 18, y: 18),
+            strictness: 0.35
+        )
+        let strict = try TAPPlaneEstimator.growPlaneRegion(
+            depthMap: depthMap,
+            seed: CGPoint(x: 18, y: 18),
+            strictness: 0.95
+        )
+
+        #expect(strict.sampleCount <= loose.sampleCount)
+        #expect(strict.flatnessScore <= loose.flatnessScore || strict.sampleCount < loose.sampleCount)
+    }
+
+    @Test func seedPlaneGrowthRejectsInvalidSeed() throws {
+        var samples = Array(repeating: Float(1.4), count: 16 * 16)
+        samples[8 + 8 * 16] = 0
+        let depthMap = TAPMetricDepthMap(
+            width: 16,
+            height: 16,
+            samples: samples,
+            calibration: Self.calibration(width: 16, height: 16)
+        )
+
+        do {
+            _ = try TAPPlaneEstimator.growPlaneRegion(
+                depthMap: depthMap,
+                seed: CGPoint(x: 8, y: 8),
+                strictness: 0.68
+            )
+            #expect(Bool(false), "Expected invalid seed to throw.")
+        } catch TAPPlaneGrowthError.invalidSeed {
+            #expect(Bool(true))
+        } catch {
+            #expect(Bool(false), "Unexpected error: \(error)")
+        }
+    }
+
+    @Test func seedPlaneGrowthReportsMissingCameraCalibration() throws {
+        let depthMap = TAPMetricDepthMap(
+            width: 16,
+            height: 16,
+            samples: Array(repeating: Float(1.4), count: 16 * 16),
+            calibration: nil
+        )
+
+        do {
+            _ = try TAPPlaneEstimator.growPlaneRegion(
+                depthMap: depthMap,
+                seed: CGPoint(x: 8, y: 8),
+                strictness: 0.68
+            )
+            #expect(Bool(false), "Expected missing calibration to throw.")
+        } catch TAPPlaneGrowthError.cameraCalibrationMissing {
+            #expect(Bool(true))
+        } catch {
+            #expect(Bool(false), "Unexpected error: \(error)")
+        }
+    }
+
     @Test func orientationMapperRoundTripsRightRotatedSelectionRect() throws {
         let nativeSize = CGSize(width: 4, height: 3)
         let nativeRect = CGRect(x: 1, y: 0, width: 2, height: 1)
@@ -465,6 +607,30 @@ struct TAPCamDemoTests {
             depthRangeMeters: 1...2,
             imageBounds: CGRect(x: 1, y: 1, width: 4, height: 4)
         )
+        viewModel.planeSeedPoint = CGPoint(x: 3, y: 3)
+        viewModel.selectedPlaneRegion = TAPPlaneRegion(
+            seedPixel: CGPoint(x: 3, y: 3),
+            estimate: viewModel.planeEstimate!,
+            pixelRuns: [TAPPlanePixelRun(y: 3, xStart: 3, xEndExclusive: 5)],
+            gridCells: [
+                TAPPlaneGridCell(
+                    row: 0,
+                    column: 0,
+                    imageBounds: CGRect(x: 3, y: 3, width: 2, height: 1),
+                    coverage: 1,
+                    averageResidualMeters: 0.01,
+                    confidence: 0.8,
+                    sampleCount: 2
+                )
+            ],
+            contourPoints: [CGPoint(x: 3, y: 3)],
+            imageBounds: CGRect(x: 3, y: 3, width: 2, height: 1),
+            confidence: 0.8,
+            flatnessScore: 0.9,
+            sampleCount: 2,
+            areaSquareMeters: 0.01
+        )
+        viewModel.planeRegionErrorMessage = "stale plane"
         viewModel.regionHeatmapErrorMessage = "stale"
 
         viewModel.clearSelection()
@@ -475,6 +641,9 @@ struct TAPCamDemoTests {
         #expect(viewModel.planeEstimate == nil)
         #expect(viewModel.regionHeatmap == nil)
         #expect(viewModel.regionHeatmapErrorMessage == nil)
+        #expect(viewModel.planeSeedPoint == nil)
+        #expect(viewModel.selectedPlaneRegion == nil)
+        #expect(viewModel.planeRegionErrorMessage == nil)
     }
 
     @Test func analysisViewModesAndInspectorsExposeLabelsAndIcons() throws {
@@ -496,6 +665,126 @@ struct TAPCamDemoTests {
         #expect(DepthAnalyzerAuthorizationStatusText.photos(.denied) == "Denied")
         #expect(DepthAnalyzerAuthorizationStatusText.location(.authorizedWhenInUse) == "While using app")
         #expect(DepthAnalyzerAuthorizationStatusText.location(.restricted) == "Restricted")
+    }
+
+    private static func syntheticPlaneDepthMap(width: Int, height: Int) -> TAPMetricDepthMap {
+        let calibration = Self.calibration(width: width, height: height)
+        let normal = simd_normalize(SIMD3<Float>(-0.18, 0.08, 1.0))
+        return TAPMetricDepthMap(
+            width: width,
+            height: height,
+            samples: depthSamples(width: width, height: height, normal: normal, planeD: -1.55, calibration: calibration),
+            calibration: calibration
+        )
+    }
+
+    private static func syntheticCurvedDepthMap(width: Int, height: Int) -> TAPMetricDepthMap {
+        let calibration = Self.calibration(width: width, height: height)
+        let normal = simd_normalize(SIMD3<Float>(-0.10, 0.04, 1.0))
+        var samples = depthSamples(width: width, height: height, normal: normal, planeD: -1.45, calibration: calibration)
+        let centerX = Float(width - 1) / 2
+        let centerY = Float(height - 1) / 2
+
+        for y in 0..<height {
+            for x in 0..<width {
+                let dx = Float(x) - centerX
+                let dy = Float(y) - centerY
+                samples[x + y * width] += (dx * dx + dy * dy) * 0.00022
+            }
+        }
+
+        return TAPMetricDepthMap(width: width, height: height, samples: samples, calibration: calibration)
+    }
+
+    private static func syntheticObliqueWallDepthMap(
+        width: Int,
+        height: Int,
+        normal: SIMD3<Float> = simd_normalize(SIMD3<Float>(-0.72, 0.02, 0.70))
+    ) -> TAPMetricDepthMap {
+        let calibration = Self.calibration(width: width, height: height)
+        return TAPMetricDepthMap(
+            width: width,
+            height: height,
+            samples: depthSamples(width: width, height: height, normal: normal, planeD: -1.55, calibration: calibration),
+            calibration: calibration
+        )
+    }
+
+    private static func syntheticNoisyObliqueWallDepthMap(width: Int, height: Int) -> TAPMetricDepthMap {
+        let calibration = Self.calibration(width: width, height: height)
+        let normal = simd_normalize(SIMD3<Float>(-0.70, 0.03, 0.71))
+        var samples = depthSamples(width: width, height: height, normal: normal, planeD: -1.60, calibration: calibration)
+
+        for y in 0..<height {
+            for x in 0..<width {
+                let index = x + y * width
+                if (x + y * 3).isMultiple(of: 23) {
+                    samples[index] = 0
+                } else {
+                    let deterministicNoise = Float(((x * 17 + y * 29) % 11) - 5) * 0.0012
+                    samples[index] += deterministicNoise
+                }
+            }
+        }
+
+        return TAPMetricDepthMap(width: width, height: height, samples: samples, calibration: calibration)
+    }
+
+    private static func syntheticSplitPlaneDepthMap(width: Int, height: Int) -> TAPMetricDepthMap {
+        let calibration = Self.calibration(width: width, height: height)
+        let leftNormal = simd_normalize(SIMD3<Float>(-0.72, 0.02, 0.70))
+        let rightNormal = simd_normalize(SIMD3<Float>(0.18, -0.04, 1.0))
+        let left = depthSamples(width: width, height: height, normal: leftNormal, planeD: -1.52, calibration: calibration)
+        let right = depthSamples(width: width, height: height, normal: rightNormal, planeD: -2.25, calibration: calibration)
+        var samples = left
+
+        for y in 0..<height {
+            for x in width / 2..<width {
+                samples[x + y * width] = right[x + y * width]
+            }
+        }
+
+        return TAPMetricDepthMap(width: width, height: height, samples: samples, calibration: calibration)
+    }
+
+    private static func depthSamples(
+        width: Int,
+        height: Int,
+        normal: SIMD3<Float>,
+        planeD: Float,
+        calibration: TAPDepthManifest.CameraCalibration
+    ) -> [Float] {
+        let intrinsics = TAPCameraIntrinsics(calibration: calibration, depthWidth: width, depthHeight: height)!
+        var samples: [Float] = []
+        samples.reserveCapacity(width * height)
+
+        for y in 0..<height {
+            for x in 0..<width {
+                let ray = SIMD3<Float>(
+                    (Float(x) - intrinsics.cx) / intrinsics.fx,
+                    (Float(y) - intrinsics.cy) / intrinsics.fy,
+                    1
+                )
+                let denominator = simd_dot(normal, ray)
+                samples.append(-planeD / denominator)
+            }
+        }
+
+        return samples
+    }
+
+    private static func calibration(width: Int, height: Int) -> TAPDepthManifest.CameraCalibration {
+        TAPDepthManifest.CameraCalibration(
+            intrinsicMatrixReferenceWidth: Double(width),
+            intrinsicMatrixReferenceHeight: Double(height),
+            pixelSizeMillimeters: 0.001,
+            lensDistortionLookupTablePresent: false,
+            inverseLensDistortionLookupTablePresent: false,
+            lensDistortionCenterX: Double(width) / 2,
+            lensDistortionCenterY: Double(height) / 2,
+            intrinsicMatrix: [140, 0, 0, 0, 140, 0, Float(width) / 2, Float(height) / 2, 1],
+            extrinsicMatrix: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0]
+        )
     }
 
     private static var sampleLocation: TAPDepthManifest.Location {
