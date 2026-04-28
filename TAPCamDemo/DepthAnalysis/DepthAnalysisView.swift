@@ -21,6 +21,9 @@ struct DepthAnalysisView: View {
     @StateObject private var viewModel = DepthAnalysisViewModel()
     @State private var heatmapOpacity = 0.74
     @State private var panelDestination: AnalysisPanelDestination?
+    @State private var buttonHint: AnalysisButtonHint?
+    @State private var buttonHintToken = UUID()
+    @State private var helpSubject: AnalysisHelpSubject = .view(.rgb)
     @State private var isShowingSettings = false
 
     var body: some View {
@@ -183,16 +186,37 @@ struct DepthAnalysisView: View {
     private func analysisControls(for input: TAPDepthAnalysisInput) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             if let destination = panelDestination {
-                AnalysisPanelLayer(destination: $panelDestination, maxHeight: UIScreen.main.bounds.height * 0.52) {
+                AnalysisPanelLayer(destination: $panelDestination, maxHeight: UIScreen.main.bounds.height * 0.32) {
                     panelContent(for: destination, input: input)
                 }
-                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                .transition(
+                    .asymmetric(
+                        insertion: .move(edge: .bottom).combined(with: .opacity),
+                        removal: .move(edge: .bottom).combined(with: .opacity)
+                    )
+                )
+                .zIndex(1)
             }
 
             AnalysisInspectorStrip(
                 panelDestination: $panelDestination,
                 viewMode: $viewModel.viewMode,
-                inspectors: inspectors(for: viewModel.viewMode)
+                inspectors: inspectors(for: viewModel.viewMode),
+                buttonHint: buttonHint,
+                onViewTapped: { viewMode in
+                    helpSubject = .view(viewMode)
+                    showButtonHint(.view(viewMode))
+                },
+                onInspectorTapped: { inspector in
+                    helpSubject = .inspector(inspector)
+                },
+                onHelpTapped: {
+                    if case .inspector(let inspector) = panelDestination {
+                        helpSubject = .inspector(inspector)
+                    } else {
+                        helpSubject = .view(viewModel.viewMode)
+                    }
+                }
             )
         }
         .frame(maxWidth: 560, alignment: .leading)
@@ -205,13 +229,30 @@ struct DepthAnalysisView: View {
         panelDestination = nil
     }
 
+    private func showButtonHint(_ hint: AnalysisButtonHint) {
+        let token = UUID()
+        buttonHintToken = token
+        withAnimation(.snappy(duration: 0.16)) {
+            buttonHint = hint
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            guard buttonHintToken == token else {
+                return
+            }
+            withAnimation(.snappy(duration: 0.16)) {
+                buttonHint = nil
+            }
+        }
+    }
+
     @ViewBuilder
     private func panelContent(for destination: AnalysisPanelDestination, input: TAPDepthAnalysisInput) -> some View {
         switch destination {
         case .inspector(let inspector):
             inspectorContent(for: inspector, input: input)
         case .help:
-            AnalysisHelpView()
+            AnalysisHelpView(subject: helpSubject)
         }
     }
 
@@ -1151,90 +1192,225 @@ private struct AnalysisLoupe: View {
     }
 }
 
+private enum AnalysisButtonHint: Equatable {
+    case view(DepthAnalysisViewMode)
+    case inspector(AnalysisInspector)
+    case help
+
+    var title: String {
+        switch self {
+        case .view(let viewMode):
+            viewMode.title
+        case .inspector(let inspector):
+            inspector.title
+        case .help:
+            "Help"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .view(let viewMode):
+            viewMode.systemImage
+        case .inspector(let inspector):
+            inspector.systemImage
+        case .help:
+            "questionmark.circle"
+        }
+    }
+}
+
+private enum AnalysisHelpSubject: Equatable {
+    case view(DepthAnalysisViewMode)
+    case inspector(AnalysisInspector)
+
+    var title: String {
+        switch self {
+        case .view(let viewMode):
+            viewMode.title
+        case .inspector(let inspector):
+            inspector.title
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .view:
+            "View"
+        case .inspector:
+            "Inspector"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .view(let viewMode):
+            viewMode.systemImage
+        case .inspector(let inspector):
+            inspector.systemImage
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .view(let viewMode):
+            viewMode.detailedExplanation
+        case .inspector(let inspector):
+            inspector.detailedExplanation
+        }
+    }
+}
+
+private extension AnalysisInspector {
+    var detailedExplanation: String {
+        switch self {
+        case .measurements:
+            "Shows numeric depth measurements for the selected region, including median depth, range, valid samples, and any local plane estimate."
+        case .legend:
+            "Explains the current view's color mapping, such as near-to-far depth colors, valid-depth coverage, or point-cloud distance colors."
+        case .overlay:
+            "Controls the opacity of generated overlays on the main image, so you can compare the analysis layer against the RGB photo."
+        case .region:
+            "Shows measurements and previews for a completed rectangular selection. In Depth view, the selected crop is recolored using only local valid depth samples."
+        case .planeFilter:
+            "Controls seed-grown plane strictness and reports the selected plane region's cells, area, confidence, flatness, residual, and calibration diagnostics."
+        case .cloudInfo:
+            "Explains the local camera-coordinate point cloud preview and reports point counts and near-to-far color meaning."
+        }
+    }
+}
+
 private struct AnalysisInspectorStrip: View {
     @Binding var panelDestination: AnalysisPanelDestination?
     @Binding var viewMode: DepthAnalysisViewMode
     let inspectors: [AnalysisInspector]
+    let buttonHint: AnalysisButtonHint?
+    let onViewTapped: (DepthAnalysisViewMode) -> Void
+    let onInspectorTapped: (AnalysisInspector) -> Void
+    let onHelpTapped: () -> Void
+    @State private var viewScrollPosition: String? = DepthAnalysisViewMode.rgb.id
+    @State private var inspectorScrollPosition: String?
+
+    private static let helpScrollID = "analysis-help"
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            AnalysisStripRow(title: "Views") {
+            PinnedStripRow(
+                systemImage: "eye",
+                accessibilityLabel: "Views",
+                helpText: "Views",
+                scrollPosition: $viewScrollPosition
+            ) {
                 viewModeTabs
             }
 
-            AnalysisStripRow(title: "Inspectors") {
-                HStack(spacing: 6) {
-                    inspectorTabs
-                    helpButton
-                }
+            PinnedStripRow(
+                systemImage: "scope",
+                accessibilityLabel: "Inspectors",
+                helpText: "Inspectors",
+                scrollPosition: $inspectorScrollPosition
+            ) {
+                inspectorTabs
+                helpButton
             }
         }
         .font(.callout)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 8)
         .frame(maxWidth: 560, alignment: .leading)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(.white.opacity(0.18), lineWidth: 1)
         }
+        .overlay(alignment: .top) {
+            if let buttonHint {
+                AnalysisButtonBubble(hint: buttonHint)
+                    .offset(y: -38)
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+            }
+        }
+        .onAppear {
+            viewScrollPosition = viewMode.id
+            syncInspectorScrollPosition()
+        }
+        .onChange(of: viewMode) { _, newValue in
+            viewScrollPosition = newValue.id
+            syncInspectorScrollPosition()
+        }
+        .onChange(of: inspectors) { _, _ in
+            syncInspectorScrollPosition()
+        }
+        .onChange(of: panelDestination) { _, _ in
+            syncInspectorScrollPosition()
+        }
+        .animation(.snappy(duration: 0.18), value: buttonHint)
     }
 
     private var viewModeTabs: some View {
-        HStack(spacing: 6) {
-            ForEach(DepthAnalysisViewMode.allCases) { item in
-                Button {
-                    viewMode = item
-                } label: {
-                    tabLabel(title: item.title, systemImage: item.systemImage)
-                        .background(viewModeBackground(for: item), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(item.title)
-                .help(item.detailedExplanation)
+        ForEach(DepthAnalysisViewMode.allCases) { item in
+            Button {
+                onViewTapped(item)
+                viewScrollPosition = item.id
+                viewMode = item
+            } label: {
+                iconButton(
+                    systemImage: item.systemImage,
+                    isSelected: item == viewMode
+                )
             }
+            .id(item.id)
+            .buttonStyle(.plain)
+            .accessibilityLabel(item.title)
+            .help(item.detailedExplanation)
         }
     }
 
     private var inspectorTabs: some View {
-        HStack(spacing: 6) {
-            ForEach(inspectors) { inspector in
-                Button {
-                    toggle(.inspector(inspector))
-                } label: {
-                    tabLabel(title: inspector.title, systemImage: inspector.systemImage)
-                        .background(inspectorBackground(for: inspector), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .contentShape(Rectangle())
-                .accessibilityLabel(inspector.title)
-                .help(inspector.title)
+        ForEach(inspectors) { inspector in
+            Button {
+                onInspectorTapped(inspector)
+                inspectorScrollPosition = inspector.id
+                toggle(.inspector(inspector))
+            } label: {
+                iconButton(
+                    systemImage: inspector.systemImage,
+                    isSelected: panelDestination?.selectedInspector == inspector
+                )
             }
+            .id(inspector.id)
+            .buttonStyle(.plain)
+            .contentShape(Rectangle())
+            .accessibilityLabel(inspector.title)
+            .help(inspector.title)
         }
     }
 
     private var helpButton: some View {
         Button {
+            onHelpTapped()
+            inspectorScrollPosition = Self.helpScrollID
             toggle(.help)
         } label: {
-            tabLabel(title: "Help", systemImage: "questionmark.circle")
-                .background(helpBackground, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+            iconButton(
+                systemImage: "questionmark.circle",
+                isSelected: panelDestination == .help
+            )
         }
+        .id(Self.helpScrollID)
         .buttonStyle(.plain)
         .accessibilityLabel("Analysis Help")
         .help("Open Analysis Help.")
     }
 
-    private func tabLabel(title: String, systemImage: String) -> some View {
-        HStack(spacing: 5) {
-            Image(systemName: systemImage)
-                .font(.callout.weight(.semibold))
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .lineLimit(1)
-        }
-        .padding(.horizontal, 8)
-        .frame(minHeight: 32)
+    private func iconButton(systemImage: String, isSelected: Bool) -> some View {
+        Image(systemName: systemImage)
+            .font(.callout.weight(.semibold))
+            .symbolRenderingMode(.hierarchical)
+            .frame(width: 34, height: 32)
+            .foregroundStyle(.primary)
+            .background(iconBackground(isSelected: isSelected), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
     }
 
     private func toggle(_ destination: AnalysisPanelDestination) {
@@ -1245,48 +1421,92 @@ private struct AnalysisInspectorStrip: View {
         }
     }
 
-    private func viewModeBackground(for item: DepthAnalysisViewMode) -> Color {
-        if item == viewMode {
+    private func iconBackground(isSelected: Bool) -> Color {
+        if isSelected {
             return Color.primary.opacity(0.16)
         }
         return Color.primary.opacity(0.06)
     }
 
-    private func inspectorBackground(for inspector: AnalysisInspector) -> Color {
-        if panelDestination?.selectedInspector == inspector {
-            return Color.primary.opacity(0.16)
+    private func syncInspectorScrollPosition() {
+        if case .inspector(let inspector) = panelDestination, inspectors.contains(inspector) {
+            inspectorScrollPosition = inspector.id
+        } else if panelDestination == .help {
+            inspectorScrollPosition = Self.helpScrollID
+        } else if inspectorScrollPosition == nil || !isValidInspectorScrollID(inspectorScrollPosition) {
+            inspectorScrollPosition = inspectors.first?.id ?? Self.helpScrollID
         }
-        return Color.primary.opacity(0.06)
     }
 
-    private var helpBackground: Color {
-        if panelDestination == .help {
-            return Color.primary.opacity(0.16)
+    private func isValidInspectorScrollID(_ id: String?) -> Bool {
+        guard let id else {
+            return false
         }
-        return Color.primary.opacity(0.06)
+        return id == Self.helpScrollID || inspectors.contains { $0.id == id }
     }
 }
 
-private struct AnalysisStripRow<Content: View>: View {
-    let title: String
+private struct PinnedStripRow<Content: View>: View {
+    let systemImage: String
+    let accessibilityLabel: String
+    let helpText: String
+    @Binding var scrollPosition: String?
     let content: Content
 
-    init(title: String, @ViewBuilder content: () -> Content) {
-        self.title = title
+    init(
+        systemImage: String,
+        accessibilityLabel: String,
+        helpText: String,
+        scrollPosition: Binding<String?>,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.systemImage = systemImage
+        self.accessibilityLabel = accessibilityLabel
+        self.helpText = helpText
+        _scrollPosition = scrollPosition
         self.content = content()
     }
 
     var body: some View {
-        HStack(spacing: 8) {
-            Text(title)
-                .font(.caption2.weight(.bold))
+        HStack(spacing: 7) {
+            Image(systemName: systemImage)
+                .font(.caption.weight(.bold))
                 .foregroundStyle(.secondary)
-                .frame(width: 68, alignment: .leading)
+                .frame(width: 22, height: 32)
+                .accessibilityLabel(accessibilityLabel)
+                .help(helpText)
 
             ScrollView(.horizontal, showsIndicators: false) {
-                content
+                HStack(spacing: 6) {
+                    content
+                }
+                .scrollTargetLayout()
             }
+            .scrollPosition(id: $scrollPosition, anchor: .center)
         }
+    }
+}
+
+private struct AnalysisButtonBubble: View {
+    let hint: AnalysisButtonHint
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: hint.systemImage)
+                .font(.caption.weight(.semibold))
+                .symbolRenderingMode(.hierarchical)
+            Text(hint.title)
+                .font(.caption.weight(.semibold))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(.thinMaterial, in: Capsule())
+        .overlay {
+            Capsule()
+                .stroke(.white.opacity(0.2), lineWidth: 1)
+            }
+        .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
+        .accessibilityHidden(true)
     }
 }
 
@@ -1294,6 +1514,8 @@ private struct AnalysisPanelLayer<Content: View>: View {
     @Binding var destination: AnalysisPanelDestination?
     let maxHeight: CGFloat
     let content: Content
+    @State private var measuredContentHeight: CGFloat = 0
+    @State private var measuredPanelHeight: CGFloat = 0
 
     init(destination: Binding<AnalysisPanelDestination?>, maxHeight: CGFloat, @ViewBuilder content: () -> Content) {
         _destination = destination
@@ -1304,6 +1526,11 @@ private struct AnalysisPanelLayer<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
+                Image(systemName: titleIcon)
+                    .font(.headline.weight(.semibold))
+                    .symbolRenderingMode(.hierarchical)
+                    .frame(width: 22, height: 22)
+                    .foregroundStyle(.secondary)
                 Text(title)
                     .font(.headline)
                 Spacer(minLength: 8)
@@ -1322,23 +1549,64 @@ private struct AnalysisPanelLayer<Content: View>: View {
 
             Divider()
 
-            ViewThatFits(in: .vertical) {
-                panelContent
-                ScrollView {
-                    panelContent
-                }
-            }
-            .frame(maxHeight: contentMaxHeight, alignment: .top)
+            adaptivePanelContent
         }
         .font(.callout)
         .padding(12)
         .frame(maxWidth: 560, alignment: .leading)
-        .frame(maxHeight: maxHeight, alignment: .top)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(.white.opacity(0.18), lineWidth: 1)
         }
+        .background {
+            GeometryReader { proxy in
+                Color.clear.preference(key: AnalysisPanelHeightKey.self, value: proxy.size.height)
+            }
+        }
+        .onPreferenceChange(AnalysisPanelContentHeightKey.self) { height in
+            var transaction = Transaction()
+            transaction.animation = nil
+            withTransaction(transaction) {
+                measuredContentHeight = height
+            }
+            logPanelLayout(contentHeight: height, panelHeight: measuredPanelHeight)
+        }
+        .onPreferenceChange(AnalysisPanelHeightKey.self) { height in
+            var transaction = Transaction()
+            transaction.animation = nil
+            withTransaction(transaction) {
+                measuredPanelHeight = height
+            }
+            logPanelLayout(contentHeight: measuredContentHeight, panelHeight: height)
+        }
+        .onChange(of: destination) { _, _ in
+            var transaction = Transaction()
+            transaction.animation = nil
+            withTransaction(transaction) {
+                measuredContentHeight = 0
+                measuredPanelHeight = 0
+            }
+        }
+    }
+
+    private var adaptivePanelContent: some View {
+        ScrollView(.vertical, showsIndicators: measuredContentHeight > contentMaxHeight + 1) {
+            measuredPanelContent
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .frame(height: contentViewportHeight, alignment: .top)
+        .clipped()
+    }
+
+    private var measuredPanelContent: some View {
+        panelContent
+            .fixedSize(horizontal: false, vertical: true)
+            .background {
+                GeometryReader { proxy in
+                    Color.clear.preference(key: AnalysisPanelContentHeightKey.self, value: proxy.size.height)
+                }
+            }
     }
 
     private var panelContent: some View {
@@ -1347,7 +1615,28 @@ private struct AnalysisPanelLayer<Content: View>: View {
     }
 
     private var contentMaxHeight: CGFloat {
-        max(120, maxHeight - 58)
+        max(72, maxHeight - 78)
+    }
+
+    private var contentViewportHeight: CGFloat {
+        guard measuredContentHeight > 0 else {
+            return 1
+        }
+        return min(measuredContentHeight, contentMaxHeight)
+    }
+
+    private func logPanelLayout(contentHeight: CGFloat, panelHeight: CGFloat) {
+        #if DEBUG
+        guard contentHeight > 0 || panelHeight > 0 else {
+            return
+        }
+        let isScrolling = contentHeight > contentMaxHeight + 1
+        print(
+            "[DepthAnalysisPanel] title=\(title) content=\(String(format: "%.1f", contentHeight)) " +
+            "panel=\(String(format: "%.1f", panelHeight)) contentMax=\(String(format: "%.1f", contentMaxHeight)) " +
+            "scroll=\(isScrolling)"
+        )
+        #endif
     }
 
     private var title: String {
@@ -1362,67 +1651,60 @@ private struct AnalysisPanelLayer<Content: View>: View {
             return "Analysis Help"
         }
     }
+
+    private var titleIcon: String {
+        guard let destination else {
+            return "scope"
+        }
+
+        switch destination {
+        case .inspector(let inspector):
+            return inspector.systemImage
+        case .help:
+            return "questionmark.circle"
+        }
+    }
+}
+
+private struct AnalysisPanelContentHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+private struct AnalysisPanelHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
 }
 
 private struct AnalysisHelpView: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HelpSection(title: "Views") {
-                HelpRow(title: "RGB", detail: "Original HEIC color image used as the visual reference for selecting regions.")
-                HelpRow(title: "Depth", detail: "False-color metric depth overlay. The legend maps near-to-far values in meters.")
-                HelpRow(title: "Mask", detail: "Valid depth coverage. Colored pixels can be used for statistics, plane fitting, and point projection.")
-                HelpRow(title: "Planes", detail: "Tap a surface point to grow the connected plane around that seed. The result is shown as local fit-confidence grid cells.")
-                HelpRow(title: "Cloud", detail: "Camera-coordinate point cloud preview. It is local point data, not cloud storage or cloud compute.")
-            }
-
-            HelpSection(title: "Inspectors") {
-                HelpRow(title: "Region Heatmap", detail: "A selected-region crop recolored using only valid depth samples inside that region.")
-                HelpRow(title: "Legend", detail: "Shows how the current view maps colors to depth, coverage, or point distance.")
-                HelpRow(title: "Overlay", detail: "Controls only the main image overlay. It does not change locally normalized region heatmaps.")
-                HelpRow(title: "Plane Filter", detail: "Controls seed growth strictness and reports the selected plane cells, area, flatness, and residual.")
-                HelpRow(title: "Cloud Info", detail: "Shows point-cloud color meaning and selected point counts.")
-            }
-
-            HelpSection(title: "Measurements") {
-                HelpRow(title: "Median depth", detail: "The middle value after sorting selected valid depth samples from near to far. It is not an average.")
-                HelpRow(title: "Range", detail: "The nearest and farthest valid depth samples in the current selection.")
-                HelpRow(title: "Valid samples", detail: "The count and ratio of selected pixels that contain finite positive depth.")
-                HelpRow(title: "Plane residual", detail: "Average distance from inlier points to the fitted plane. Lower usually means flatter.")
-                HelpRow(title: "Plane inliers", detail: "Share of sampled points close enough to the fitted plane to count as part of it.")
-            }
-        }
-    }
-}
-
-private struct HelpSection<Content: View>: View {
-    let title: String
-    let content: Content
-
-    init(title: String, @ViewBuilder content: () -> Content) {
-        self.title = title
-        self.content = content()
-    }
+    let subject: AnalysisHelpSubject
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.secondary)
-            content
-        }
-    }
-}
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: subject.systemImage)
+                    .font(.title3.weight(.semibold))
+                    .symbolRenderingMode(.hierarchical)
+                    .frame(width: 30, height: 30)
+                    .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
 
-private struct HelpRow: View {
-    let title: String
-    let detail: String
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(subject.title)
+                        .font(.headline)
+                    Text(subject.subtitle)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+            }
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title)
-                .font(.callout.weight(.semibold))
-            Text(detail)
-                .font(.caption)
+            Text(subject.detail)
+                .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -1457,8 +1739,6 @@ private struct RegionInspectorContent: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             } else if let selection, interactionState.showsRegionInspector {
-                regionSummary
-
                 if let regionHeatmap {
                     HStack(alignment: .top, spacing: 12) {
                         AnalysisLoupe(
@@ -1484,6 +1764,8 @@ private struct RegionInspectorContent: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
+
+                regionSummary
             } else {
                 Label("No region selected.", systemImage: "viewfinder")
                     .font(.footnote)
