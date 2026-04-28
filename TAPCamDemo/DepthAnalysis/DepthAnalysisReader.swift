@@ -102,11 +102,34 @@ nonisolated enum TAPDepthMapReader {
 
     private static func imageOrientation(from source: CGImageSource) -> CGImagePropertyOrientation {
         guard let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-              let rawOrientation = properties[kCGImagePropertyOrientation] as? UInt32,
-              let orientation = CGImagePropertyOrientation(rawValue: rawOrientation) else {
+              let orientation = imageOrientation(from: properties) else {
             return .up
         }
 
         return orientation
+    }
+
+    static func imageOrientation(from properties: [CFString: Any]) -> CGImagePropertyOrientation? {
+        guard let rawValue = orientationRawValue(from: properties[kCGImagePropertyOrientation]) else {
+            return nil
+        }
+        return CGImagePropertyOrientation(rawValue: rawValue)
+    }
+
+    static func orientationRawValue(from value: Any?) -> UInt32? {
+        switch value {
+        case let value as UInt32:
+            return value
+        case let value as UInt:
+            return UInt32(exactly: value)
+        case let value as Int:
+            return UInt32(exactly: value)
+        case let value as Int32:
+            return UInt32(exactly: value)
+        case let value as NSNumber:
+            return UInt32(exactly: value.int64Value)
+        default:
+            return nil
+        }
     }
 }

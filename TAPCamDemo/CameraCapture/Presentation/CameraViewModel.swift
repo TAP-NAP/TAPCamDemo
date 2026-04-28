@@ -30,6 +30,7 @@ final class CameraViewModel: ObservableObject {
     @Published private(set) var pendingJobCount = 0
     @Published private(set) var recentMetrics: [CaptureJobMetrics] = []
     @Published private(set) var isDepthCaptureReady = false
+    @Published private(set) var isPausedForAnalysis = false
     @Published private(set) var nativePreviewAspectRatio = 3.0 / 4.0
     @Published private(set) var previewCropRectNormalized = CropRectNormalized.fullFrame
     @Published private(set) var recentThumbnail: UIImage?
@@ -58,7 +59,7 @@ final class CameraViewModel: ObservableObject {
     }
 
     var canCapture: Bool {
-        isDepthCaptureReady && pendingJobCount < CaptureJobQueue.defaultMaximumPendingJobs
+        !isPausedForAnalysis && isDepthCaptureReady && pendingJobCount < CaptureJobQueue.defaultMaximumPendingJobs
     }
 
     var shouldShowFocalLengthSelector: Bool {
@@ -141,7 +142,40 @@ final class CameraViewModel: ObservableObject {
     }
 
     func stop() {
+        isPausedForAnalysis = false
         sessionController.stop()
+    }
+
+    func pauseForAnalysis() {
+        configurationGeneration += 1
+        isPausedForAnalysis = true
+        isDepthCaptureReady = false
+        activeSessionConfiguration = nil
+        statusMessage = "Camera paused for analysis."
+        sessionController.stop()
+    }
+
+    func resumeAfterAnalysis() async {
+        guard isPausedForAnalysis else {
+            return
+        }
+
+        isPausedForAnalysis = false
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            if selectedRGBSourceID == nil {
+                await configureDefaultSelection()
+            } else {
+                await configureCurrentSelection()
+            }
+            loadRecentDepthAssetPreviewIfAvailable()
+        case .notDetermined:
+            await start()
+        case .denied, .restricted:
+            statusMessage = TAPDepthCaptureError.cameraAccessDenied.localizedDescription
+        @unknown default:
+            statusMessage = TAPDepthCaptureError.cameraAccessDenied.localizedDescription
+        }
     }
 
     func updatePreviewCropRect(_ rect: CropRectNormalized) {
@@ -406,6 +440,10 @@ final class CameraViewModel: ObservableObject {
     #endif
 
     private func configureCurrentSelection() async {
+        guard !isPausedForAnalysis else {
+            return
+        }
+
         #if DEBUG
         if isDebugDepthOverrideActive,
            let plan = makeDebugDepthOverridePlan() {
@@ -468,7 +506,8 @@ final class CameraViewModel: ObservableObject {
         do {
             let result = try await sessionController.configure(SessionConfigurationRequest(capturePlan: plan))
 
-            guard generation == configurationGeneration else {
+            guard generation == configurationGeneration, !isPausedForAnalysis else {
+                sessionController.stop()
                 return
             }
 
@@ -538,6 +577,10 @@ final class CameraViewModel: ObservableObject {
     }
 
     private func configureDebugDepthOverride(_ plan: CaptureSourcePlan) async {
+        guard !isPausedForAnalysis else {
+            return
+        }
+
         configurationGeneration += 1
         let generation = configurationGeneration
         isDepthCaptureReady = false
@@ -558,7 +601,8 @@ final class CameraViewModel: ObservableObject {
         do {
             let result = try await sessionController.configure(SessionConfigurationRequest(capturePlan: plan))
 
-            guard generation == configurationGeneration else {
+            guard generation == configurationGeneration, !isPausedForAnalysis else {
+                sessionController.stop()
                 return
             }
 

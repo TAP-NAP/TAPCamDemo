@@ -15,6 +15,7 @@ import UIKit
 /// This keeps the camera surface clean: the lower-left camera control opens the
 /// album, and only this saved-image flow exposes selection and analysis tools.
 struct DepthAlbumPickerView: View {
+    @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel = DepthAlbumPickerViewModel()
 
     private let columns = [
@@ -48,7 +49,18 @@ struct DepthAlbumPickerView: View {
         }
         .navigationTitle(PhotoLibraryWriter.albumName)
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    dismiss()
+                } label: {
+                    Label("Camera", systemImage: "chevron.left")
+                }
+                .accessibilityLabel("Return to camera")
+                .help("Close the analyzer and return to the camera.")
+            }
+
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     Task {

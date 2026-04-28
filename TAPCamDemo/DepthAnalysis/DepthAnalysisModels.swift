@@ -15,15 +15,56 @@ import simd
 /// The capture module stores Apple's auxiliary depth/disparity attachment as
 /// the source of truth. Analysis starts by converting that attachment into a
 /// dense Float32 depth map whose samples are meters from the camera. The RGB
-/// image, XMP manifest, and calibration are kept beside it so downstream tools
+/// image, XMP manifest, and calibration are kept beside it so downstream inspectors
 /// do not need to reach back into Photos or ImageIO.
 nonisolated struct TAPDepthAnalysisInput {
     let manifest: TAPDepthManifest?
     let image: CGImage
     let imageOrientation: CGImagePropertyOrientation
     let depthMap: TAPMetricDepthMap
-    let heatmap: CGImage
-    let validMask: CGImage
+    let heatmap: TAPDepthHeatmapVisualization
+    let validMask: TAPDepthMaskVisualization
+}
+
+nonisolated struct TAPRGBAColor: Equatable {
+    let red: UInt8
+    let green: UInt8
+    let blue: UInt8
+    let alpha: UInt8
+
+    var bytes: [UInt8] {
+        [red, green, blue, alpha]
+    }
+}
+
+nonisolated struct TAPDepthLegendStop: Equatable, Identifiable {
+    let position: Double
+    let label: String
+    let color: TAPRGBAColor
+
+    var id: String {
+        "\(position)-\(label)"
+    }
+}
+
+nonisolated enum TAPDepthHeatmapRangeScope: Equatable {
+    case global
+    case region
+}
+
+nonisolated struct TAPDepthHeatmapVisualization {
+    let image: CGImage
+    let rangeMeters: ClosedRange<Float>
+    let legendStops: [TAPDepthLegendStop]
+    let rangeScope: TAPDepthHeatmapRangeScope
+}
+
+nonisolated struct TAPDepthMaskVisualization {
+    let image: CGImage
+    let validSampleCount: Int
+    let totalSampleCount: Int
+    let validRatio: Double
+    let legendStops: [TAPDepthLegendStop]
 }
 
 /// A row-major metric depth map. Invalid, zero, infinite, or NaN samples are
@@ -70,6 +111,84 @@ nonisolated struct TAPPlaneEstimate: Equatable {
     let inlierRatio: Double
     let depthRangeMeters: ClosedRange<Float>
     let imageBounds: CGRect
+}
+
+nonisolated struct TAPDetectedPlane: Equatable, Identifiable {
+    let id: String
+    let estimate: TAPPlaneEstimate
+    let confidence: Double
+    let sampleCount: Int
+
+    var imageBounds: CGRect {
+        estimate.imageBounds
+    }
+}
+
+enum AnalysisPanelDestination: Equatable {
+    case inspector(AnalysisInspector)
+    case help
+
+    var selectedInspector: AnalysisInspector? {
+        guard case .inspector(let inspector) = self else {
+            return nil
+        }
+        return inspector
+    }
+}
+
+enum AnalysisInspector: String, CaseIterable, Identifiable, Equatable {
+    case measurements
+    case legend
+    case overlay
+    case region
+    case planeFilter
+    case cloudInfo
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .measurements:
+            "Measurements"
+        case .legend:
+            "Legend"
+        case .overlay:
+            "Overlay"
+        case .region:
+            "Region"
+        case .planeFilter:
+            "Plane Filter"
+        case .cloudInfo:
+            "Cloud Info"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .measurements:
+            "chart.bar.xaxis"
+        case .legend:
+            "paintpalette"
+        case .overlay:
+            "slider.horizontal.3"
+        case .region:
+            "viewfinder"
+        case .planeFilter:
+            "square.3.layers.3d"
+        case .cloudInfo:
+            "point.3.connected.trianglepath.dotted"
+        }
+    }
+}
+
+enum AnalysisInteractionState: Equatable {
+    case idle
+    case drawingSelection
+    case regionSelected
+
+    var showsRegionInspector: Bool {
+        self == .regionSelected
+    }
 }
 
 enum TAPDepthAnalysisError: LocalizedError {

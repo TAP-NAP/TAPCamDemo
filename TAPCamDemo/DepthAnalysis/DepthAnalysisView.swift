@@ -6,6 +6,7 @@
 //
 
 import Combine
+import Foundation
 import ImageIO
 import Photos
 import SwiftUI
@@ -18,85 +19,323 @@ import SwiftUI
 struct DepthAnalysisView: View {
     let assetID: String
     @StateObject private var viewModel = DepthAnalysisViewModel()
+    @State private var heatmapOpacity = 0.74
+    @State private var panelDestination: AnalysisPanelDestination?
+    @State private var isShowingSettings = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            modePicker
-
-            Group {
-                if let input = viewModel.input {
-                    analysisContent(input)
-                } else if let errorMessage = viewModel.errorMessage {
-                    ContentUnavailableView("Unable to analyze image", systemImage: "exclamationmark.triangle", description: Text(errorMessage))
-                } else {
-                    ProgressView("Loading depth image...")
-                }
+        Group {
+            if let input = viewModel.input {
+                analysisContent(input)
+            } else if let errorMessage = viewModel.errorMessage {
+                ContentUnavailableView("Unable to analyze image", systemImage: "exclamationmark.triangle", description: Text(errorMessage))
+            } else {
+                ProgressView("Loading depth image...")
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            bottomPanel
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay {
+            if panelDestination != nil {
+                Color.black.opacity(0.001)
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture(count: 2) {
+                        clearSelectionAndPanel()
+                    }
+                    .onTapGesture {
+                        panelDestination = nil
+                    }
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if let input = viewModel.input {
+                analysisControls(for: input)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 12)
+            }
         }
         .navigationTitle("Depth Analysis")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    isShowingSettings = true
+                } label: {
+                    Image(systemName: "gearshape")
+                }
+                .accessibilityLabel("Analyzer settings")
+                .help("View permissions, authorization, and authentication status.")
+            }
+        }
+        .sheet(isPresented: $isShowingSettings) {
+            DepthAnalyzerSettingsView()
+        }
+        .onChange(of: viewModel.viewMode) { _, viewMode in
+            if case .inspector(let inspector) = panelDestination, !inspectors(for: viewMode).contains(inspector) {
+                panelDestination = nil
+            }
+        }
         .task {
             await viewModel.load(assetID: assetID)
         }
     }
 
-    private var modePicker: some View {
-        Picker("Analysis mode", selection: $viewModel.mode) {
-            ForEach(DepthAnalysisMode.allCases) { mode in
-                Label(mode.title, systemImage: mode.systemImage)
-                    .tag(mode)
-            }
+    @ViewBuilder
+    private func analysisContent(_ input: TAPDepthAnalysisInput) -> some View {
+        switch viewModel.viewMode {
+        case .rgb:
+            depthImageStage(
+                input,
+                overlayImage: nil,
+                overlayOpacity: 0
+            )
+        case .heatmap:
+            depthImageStage(
+                input,
+                overlayImage: input.heatmap.image,
+                overlayOpacity: heatmapOpacity
+            )
+        case .mask:
+            depthImageStage(
+                input,
+                overlayImage: input.validMask.image,
+                overlayOpacity: 1
+            )
+        case .planes:
+            depthImageStage(
+                input,
+                overlayImage: input.heatmap.image,
+                overlayOpacity: heatmapOpacity,
+                planeOverlays: viewModel.filteredPlanes
+            )
+        case .pointCloud:
+            PointCloudPreview(
+                depthMap: input.depthMap,
+                orientation: input.imageOrientation,
+                selection: $viewModel.selectionRect,
+                interactionState: viewModel.interactionState,
+                onSelectionBegan: { depthRect in
+                    viewModel.beginSelection(depthRect)
+                },
+                onSelectionChanged: { depthRect in
+                    viewModel.previewSelection(depthRect)
+                },
+                onSelectionEnded: { depthRect in
+                    viewModel.finishSelection(depthRect)
+                },
+                onSelectionCleared: {
+                    clearSelectionAndPanel()
+                }
+            )
+            .background(Color.black)
         }
-        .pickerStyle(.segmented)
-        .padding(12)
-        .background(Color(uiColor: .systemBackground))
+    }
+
+    private func depthImageStage(
+        _ input: TAPDepthAnalysisInput,
+        overlayImage: CGImage?,
+        overlayOpacity: Double,
+        planeOverlays: [TAPDetectedPlane] = []
+    ) -> some View {
+        InteractiveDepthImage(
+            image: input.image,
+            overlayImage: overlayImage,
+            overlayOpacity: overlayOpacity,
+            orientation: input.imageOrientation,
+            depthSize: CGSize(width: input.depthMap.width, height: input.depthMap.height),
+            selection: $viewModel.selectionRect,
+            interactionState: viewModel.interactionState,
+            planeOverlays: planeOverlays,
+            onSelectionBegan: { depthRect in
+                viewModel.beginSelection(depthRect)
+            },
+            onSelectionChanged: { depthRect in
+                viewModel.previewSelection(depthRect)
+            },
+            onSelectionEnded: { depthRect in
+                viewModel.finishSelection(depthRect)
+            },
+            onSelectionCleared: {
+                clearSelectionAndPanel()
+            }
+        )
+    }
+
+    private func analysisControls(for input: TAPDepthAnalysisInput) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let destination = panelDestination {
+                AnalysisPanelLayer(destination: $panelDestination, maxHeight: UIScreen.main.bounds.height * 0.52) {
+                    panelContent(for: destination, input: input)
+                }
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
+
+            AnalysisInspectorStrip(
+                panelDestination: $panelDestination,
+                viewMode: $viewModel.viewMode,
+                inspectors: inspectors(for: viewModel.viewMode)
+            )
+        }
+        .frame(maxWidth: 560, alignment: .leading)
+        .animation(.snappy(duration: 0.18), value: panelDestination)
+        .animation(.snappy(duration: 0.18), value: viewModel.viewMode)
+    }
+
+    private func clearSelectionAndPanel() {
+        viewModel.clearSelection()
+        panelDestination = nil
     }
 
     @ViewBuilder
-    private func analysisContent(_ input: TAPDepthAnalysisInput) -> some View {
-        switch viewModel.mode {
-        case .pointCloud:
-            PointCloudPreview(depthMap: input.depthMap)
-                .padding()
-        default:
-            InteractiveDepthImage(
-                image: viewModel.displayImage,
-                orientation: input.imageOrientation,
-                depthSize: CGSize(width: input.depthMap.width, height: input.depthMap.height),
-                selection: $viewModel.selectionRect
-            ) { depthRect in
-                viewModel.updateSelection(depthRect)
-            }
+    private func panelContent(for destination: AnalysisPanelDestination, input: TAPDepthAnalysisInput) -> some View {
+        switch destination {
+        case .inspector(let inspector):
+            inspectorContent(for: inspector, input: input)
+        case .help:
+            AnalysisHelpView()
         }
     }
 
-    private var bottomPanel: some View {
+    @ViewBuilder
+    private func inspectorContent(for inspector: AnalysisInspector, input: TAPDepthAnalysisInput) -> some View {
+        switch inspector {
+        case .measurements:
+            measurementsContent
+        case .legend:
+            legendContent(for: input)
+        case .overlay:
+            OverlayInspectorContent(opacity: $heatmapOpacity)
+        case .region:
+            RegionInspectorContent(
+                image: input.image,
+                orientation: input.imageOrientation,
+                depthSize: CGSize(width: input.depthMap.width, height: input.depthMap.height),
+                selection: viewModel.selectionRect,
+                interactionState: viewModel.interactionState,
+                stats: viewModel.regionStats,
+                planeEstimate: viewModel.planeEstimate,
+                regionHeatmap: viewModel.regionHeatmap,
+                heatmapErrorMessage: viewModel.regionHeatmapErrorMessage
+            )
+        case .planeFilter:
+            PlaneFilterInspectorContent(
+                detectedPlanes: viewModel.detectedPlanes,
+                filteredPlanes: viewModel.filteredPlanes,
+                confidenceThreshold: $viewModel.planeConfidenceThreshold
+            )
+        case .cloudInfo:
+            CloudInfoInspectorContent(
+                depthMap: input.depthMap,
+                orientation: input.imageOrientation,
+                selection: viewModel.selectionRect,
+                interactionState: viewModel.interactionState
+            )
+        }
+    }
+
+    private var measurementsContent: some View {
         VStack(alignment: .leading, spacing: 8) {
             if let stats = viewModel.regionStats {
-                DepthMetricRow(title: "Median", value: stats.medianDepthMeters.map { String(format: "%.2f m", $0) } ?? "No valid depth")
-                DepthMetricRow(title: "Range", value: rangeText(stats))
-                DepthMetricRow(title: "Valid samples", value: "\(stats.validSampleCount)/\(stats.totalSampleCount) · \(Int((stats.validRatio * 100).rounded()))%")
+                DepthMetricRow(
+                    title: "Median depth",
+                    value: stats.medianDepthMeters.map { String(format: "%.2f m", $0) } ?? "No valid depth",
+                    explanation: "Sort the selected valid depth samples from near to far; this is the value in the middle. It is less sensitive to isolated noisy pixels than an average."
+                )
+                DepthMetricRow(
+                    title: "Range",
+                    value: rangeText(stats),
+                    explanation: "The nearest and farthest valid metric depth samples found inside the selection."
+                )
+                DepthMetricRow(
+                    title: "Valid samples",
+                    value: "\(stats.validSampleCount)/\(stats.totalSampleCount) · \(Int((stats.validRatio * 100).rounded()))%",
+                    explanation: "How many pixels in the selected region contain finite positive depth. Plane fitting and point projection ignore invalid samples."
+                )
+            } else {
+                Text(viewModel.interactionState == .drawingSelection ? "Selecting region..." : "No region selected.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
 
             if let plane = viewModel.planeEstimate {
                 Divider()
-                DepthMetricRow(title: "Plane residual", value: String(format: "%.3f m", plane.averageResidualMeters))
-                DepthMetricRow(title: "Plane inliers", value: "\(Int((plane.inlierRatio * 100).rounded()))%")
-                DepthMetricRow(title: "Plane normal", value: String(format: "[%.2f, %.2f, %.2f]", plane.normal.x, plane.normal.y, plane.normal.z))
-            } else if viewModel.input != nil {
+                DepthMetricRow(
+                    title: "Plane residual",
+                    value: String(format: "%.3f m", plane.averageResidualMeters),
+                    explanation: "Average distance from inlier points to the fitted plane. Smaller values usually mean the selected surface is flatter."
+                )
+                DepthMetricRow(
+                    title: "Plane inliers",
+                    value: "\(Int((plane.inlierRatio * 100).rounded()))%",
+                    explanation: "The share of sampled points close enough to the fitted plane to count as inliers."
+                )
+                DepthMetricRow(
+                    title: "Plane normal",
+                    value: String(format: "[%.2f, %.2f, %.2f]", plane.normal.x, plane.normal.y, plane.normal.z),
+                    explanation: "The fitted plane direction in local camera coordinates. It is useful for comparing orientation, not for world tracking."
+                )
+            } else {
                 Divider()
-                Text("Select a textured planar region to estimate whether its valid depth samples are approximately coplanar.")
+                Text("No local plane estimate.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
         }
-        .font(.callout)
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.thinMaterial)
+    }
+
+    @ViewBuilder
+    private func legendContent(for input: TAPDepthAnalysisInput) -> some View {
+        switch viewModel.viewMode {
+        case .rgb:
+            Text("No generated legend.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        case .heatmap, .planes:
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Text("Global depth legend")
+                        .font(.caption.weight(.semibold))
+                        .help(viewModel.viewMode.legendDescription)
+                    Spacer(minLength: 8)
+                    Text(globalHeatmapRangeText(input.heatmap))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+                DepthLegendView(stops: input.heatmap.legendStops)
+            }
+        case .mask:
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Mask legend")
+                    .font(.caption.weight(.semibold))
+                    .help(viewModel.viewMode.legendDescription)
+                SwatchLegendView(stops: input.validMask.legendStops)
+                Text("\(Int((input.validMask.validRatio * 100).rounded()))% valid depth coverage")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+        case .pointCloud:
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Cloud legend")
+                    .font(.caption.weight(.semibold))
+                    .help(viewModel.viewMode.legendDescription)
+                DepthLegendView(stops: cloudLegendStops)
+            }
+        }
+    }
+
+    private func inspectors(for viewMode: DepthAnalysisViewMode) -> [AnalysisInspector] {
+        switch viewMode {
+        case .rgb:
+            [.measurements, .region]
+        case .heatmap:
+            [.measurements, .legend, .overlay, .region]
+        case .mask:
+            [.measurements, .legend, .region]
+        case .planes:
+            [.planeFilter, .measurements, .legend, .overlay, .region]
+        case .pointCloud:
+            [.cloudInfo, .measurements, .region]
+        }
     }
 
     private func rangeText(_ stats: TAPDepthRegionStats) -> String {
@@ -106,44 +345,64 @@ struct DepthAnalysisView: View {
 
         return String(format: "%.2f...%.2f m", minimum, maximum)
     }
+
+    private func globalHeatmapRangeText(_ heatmap: TAPDepthHeatmapVisualization) -> String {
+        String(format: "%.2f...%.2f m", heatmap.rangeMeters.lowerBound, heatmap.rangeMeters.upperBound)
+    }
+
+    private var cloudLegendStops: [TAPDepthLegendStop] {
+        [
+            TAPDepthLegendStop(position: 0, label: "Near points", color: TAPDepthHeatmapRenderer.viridisColor(normalized: 0)),
+            TAPDepthLegendStop(position: 1, label: "Far points", color: TAPDepthHeatmapRenderer.viridisColor(normalized: 1))
+        ]
+    }
 }
 
 @MainActor
 final class DepthAnalysisViewModel: ObservableObject {
     @Published var input: TAPDepthAnalysisInput?
-    @Published var mode: DepthAnalysisMode = .rgb
+    @Published var viewMode: DepthAnalysisViewMode = .rgb
     @Published var selectionRect: CGRect?
+    @Published var interactionState: AnalysisInteractionState = .idle
     @Published var regionStats: TAPDepthRegionStats?
+    @Published var regionHeatmap: TAPDepthHeatmapVisualization?
+    @Published var regionHeatmapErrorMessage: String?
     @Published var planeEstimate: TAPPlaneEstimate?
+    @Published var detectedPlanes: [TAPDetectedPlane] = []
+    @Published var planeConfidenceThreshold = 0.68
     @Published var errorMessage: String?
+
+    var filteredPlanes: [TAPDetectedPlane] {
+        TAPPlaneEstimator.filteredPlanes(detectedPlanes, minimumConfidence: planeConfidenceThreshold)
+    }
 
     var displayImage: CGImage {
         guard let input else {
             preconditionFailure("DepthAnalysisView requests a display image only after input loads.")
         }
 
-        // UI mode contract:
+        // UI view mode contract:
         // - RGB shows the HEIC primary image from ImageIO.
-        // - Depth shows `TAPDepthHeatmapRenderer.heatmap`, a false-color
+        // - Depth overlays `TAPDepthHeatmapRenderer.heatmap`, a false-color
         //   view of metric depth samples. It is visual only; measurements use
         //   `TAPMetricDepthMap.samples`.
-        // - Mask shows `TAPDepthMaskRenderer.validMask`, where white
-        //   means a finite positive depth sample exists.
+        // - Mask overlays `TAPDepthMaskRenderer.validMask`, where transparent
+        //   areas are invalid and colored regions have finite positive depth.
         // - Planes reuses the heatmap as the backdrop while the bottom panel
         //   reports `TAPPlaneEstimator` results for the selected depth region.
         // - Cloud is handled by `PointCloudPreview`, so this fallback is never
         //   measured from directly.
-        switch mode {
+        switch viewMode {
         case .rgb:
             return input.image
         case .heatmap:
-            return input.heatmap
+            return input.heatmap.image
         case .mask:
-            return input.validMask
+            return input.validMask.image
         case .planes:
-            return input.heatmap
+            return input.heatmap.image
         case .pointCloud:
-            return input.heatmap
+            return input.heatmap.image
         }
     }
 
@@ -152,14 +411,59 @@ final class DepthAnalysisViewModel: ObservableObject {
             let data = try await PhotoLibraryWriter.originalPhotoData(localIdentifier: assetID)
             let loadedInput = try TAPDepthMapReader.analysisInput(from: data)
             input = loadedInput
+            detectedPlanes = TAPPlaneEstimator.detectPlanes(depthMap: loadedInput.depthMap)
             errorMessage = nil
-            updateSelection(CGRect(x: 0, y: 0, width: loadedInput.depthMap.width, height: loadedInput.depthMap.height))
+            setInitialSelection(CGRect(x: 0, y: 0, width: loadedInput.depthMap.width, height: loadedInput.depthMap.height))
         } catch {
             self.errorMessage = error.localizedDescription
         }
     }
 
-    func updateSelection(_ depthRect: CGRect) {
+    func beginSelection(_ depthRect: CGRect) {
+        selectionRect = clampedSelection(depthRect)
+        interactionState = .drawingSelection
+        regionStats = nil
+        planeEstimate = nil
+        regionHeatmap = nil
+        regionHeatmapErrorMessage = nil
+    }
+
+    func previewSelection(_ depthRect: CGRect) {
+        selectionRect = clampedSelection(depthRect)
+        interactionState = .drawingSelection
+    }
+
+    func finishSelection(_ depthRect: CGRect) {
+        let rect = clampedSelection(depthRect)
+        selectionRect = rect
+        interactionState = .regionSelected
+        updateRegionProducts(rect)
+    }
+
+    func clearSelection() {
+        selectionRect = nil
+        interactionState = .idle
+        regionStats = nil
+        planeEstimate = nil
+        regionHeatmap = nil
+        regionHeatmapErrorMessage = nil
+    }
+
+    private func setInitialSelection(_ depthRect: CGRect) {
+        let rect = clampedSelection(depthRect)
+        selectionRect = rect
+        interactionState = .idle
+        updateMetricsAndPlane(rect)
+        regionHeatmap = nil
+        regionHeatmapErrorMessage = nil
+    }
+
+    private func updateRegionProducts(_ depthRect: CGRect) {
+        updateMetricsAndPlane(depthRect)
+        updateRegionHeatmap(depthRect)
+    }
+
+    private func updateMetricsAndPlane(_ depthRect: CGRect) {
         guard let input else {
             return
         }
@@ -167,9 +471,36 @@ final class DepthAnalysisViewModel: ObservableObject {
         regionStats = TAPDepthGeometryProjector.stats(for: input.depthMap, in: depthRect)
         planeEstimate = TAPPlaneEstimator.estimatePlane(depthMap: input.depthMap, region: depthRect)
     }
+
+    private func updateRegionHeatmap(_ depthRect: CGRect) {
+        guard let input else {
+            return
+        }
+
+        do {
+            regionHeatmap = try TAPDepthHeatmapRenderer.heatmap(for: input.depthMap, region: depthRect)
+            regionHeatmapErrorMessage = nil
+        } catch {
+            regionHeatmap = nil
+            regionHeatmapErrorMessage = "Not enough valid depth samples in this region."
+        }
+    }
+
+    private func clampedSelection(_ rect: CGRect) -> CGRect {
+        guard let input else {
+            return rect
+        }
+
+        let fullRect = CGRect(x: 0, y: 0, width: input.depthMap.width, height: input.depthMap.height)
+        let clamped = rect.intersection(fullRect)
+        if clamped.isNull || clamped.width <= 0 || clamped.height <= 0 {
+            return CGRect(x: 0, y: 0, width: min(1, input.depthMap.width), height: min(1, input.depthMap.height))
+        }
+        return clamped
+    }
 }
 
-enum DepthAnalysisMode: String, CaseIterable, Identifiable {
+enum DepthAnalysisViewMode: String, CaseIterable, Identifiable {
     /// Normal color image. Source: ImageIO primary HEIC image item.
     case rgb
 
@@ -178,7 +509,7 @@ enum DepthAnalysisMode: String, CaseIterable, Identifiable {
     case heatmap
 
     /// Valid-depth coverage image. Source: the same metric depth map; finite
-    /// positive samples are white, missing/invalid samples are black.
+    /// positive samples are colored, missing/invalid samples are transparent.
     case mask
 
     /// Region plane analysis. Source: selected metric depth samples plus
@@ -220,14 +551,66 @@ enum DepthAnalysisMode: String, CaseIterable, Identifiable {
             "point.3.connected.trianglepath.dotted"
         }
     }
+
+    var shortExplanation: String {
+        switch self {
+        case .rgb:
+            "The original color photo stored in the TAP depth HEIC."
+        case .heatmap:
+            "A false-color overlay where color represents metric depth in meters."
+        case .mask:
+            "A coverage overlay showing which pixels have usable depth samples."
+        case .planes:
+            "Detected visible planes with confidence filtering, plus selected-region plane metrics."
+        case .pointCloud:
+            "A local camera-coordinate point cloud preview made from valid depth pixels."
+        }
+    }
+
+    var detailedExplanation: String {
+        switch self {
+        case .rgb:
+            "RGB view shows the primary HEIC image. It is the visual reference used to choose regions, but the depth measurements still come from the auxiliary depth map embedded beside it."
+        case .heatmap:
+            "Depth view overlays metric depth as a false-color heatmap. Near pixels use the low end of the legend and far pixels use the high end. Transparent pixels do not contain valid depth."
+        case .mask:
+            "Mask view highlights the pixels that contain finite positive depth samples. Green areas can contribute to statistics, plane fitting, and point projection; transparent areas are ignored."
+        case .planes:
+            "Planes view scans the current depth map for local camera-coordinate regions whose points fit a flat surface, then outlines candidates above the confidence threshold. It is a single-photo diagnostic, not ARKit plane tracking or semantic room understanding."
+        case .pointCloud:
+            "Cloud view projects valid depth pixels through camera intrinsics into a lightweight camera-coordinate point preview. It is a point cloud, not cloud storage, cloud compute, or a semantic word cloud."
+        }
+    }
+
+    var legendDescription: String {
+        switch self {
+        case .rgb:
+            "RGB has no color legend because it shows the original photo."
+        case .heatmap:
+            "The legend maps the current depth range from near to far. Adjust opacity to compare the heatmap against the RGB image."
+        case .mask:
+            "Green indicates valid depth coverage. Yellow outlines mark transitions between valid and invalid depth."
+        case .planes:
+            "Plane outlines are colored by confidence. The slider filters detected flat regions without changing the saved HEIC or invoking ARKit plane tracking."
+        case .pointCloud:
+            "Point colors map near-to-far depth in the same direction as the depth legend."
+        }
+    }
 }
 
 private struct InteractiveDepthImage: View {
     let image: CGImage
+    let overlayImage: CGImage?
+    let overlayOpacity: Double
     let orientation: CGImagePropertyOrientation
     let depthSize: CGSize
     @Binding var selection: CGRect?
+    let interactionState: AnalysisInteractionState
+    let planeOverlays: [TAPDetectedPlane]
+    let onSelectionBegan: (CGRect) -> Void
     let onSelectionChanged: (CGRect) -> Void
+    let onSelectionEnded: (CGRect) -> Void
+    let onSelectionCleared: () -> Void
 
     @State private var dragStart: CGPoint?
 
@@ -248,22 +631,42 @@ private struct InteractiveDepthImage: View {
                 Image(decorative: image, scale: 1, orientation: orientation.swiftUIImageOrientation)
                     .resizable()
                     .interpolation(.none)
-                    .scaledToFit()
+                    .frame(width: imageFrame.width, height: imageFrame.height)
+                    .position(x: imageFrame.midX, y: imageFrame.midY)
+
+                if let overlayImage {
+                    Image(decorative: overlayImage, scale: 1, orientation: orientation.swiftUIImageOrientation)
+                        .resizable()
+                        .interpolation(.none)
+                        .frame(width: imageFrame.width, height: imageFrame.height)
+                        .position(x: imageFrame.midX, y: imageFrame.midY)
+                        .opacity(overlayOpacity)
+                }
+
+                ForEach(planeOverlays) { plane in
+                    let rect = viewRect(for: plane.imageBounds, imageFrame: imageFrame)
+                    if rect.width > 8, rect.height > 8 {
+                        PlaneOverlayMarker(plane: plane)
+                            .frame(width: rect.width, height: rect.height)
+                            .position(x: rect.midX, y: rect.midY)
+                    }
+                }
 
                 if let selection {
                     let rect = viewRect(for: selection, imageFrame: imageFrame)
                     Rectangle()
                         .stroke(.white, lineWidth: 2)
-                        .background(Rectangle().fill(.white.opacity(0.12)))
+                        .background(Rectangle().fill(selectionFill))
                         .frame(width: rect.width, height: rect.height)
                         .position(x: rect.midX, y: rect.midY)
                 }
             }
             .contentShape(Rectangle())
             .gesture(
-                DragGesture(minimumDistance: 0)
+                DragGesture(minimumDistance: 4)
                     .onChanged { value in
-                        if dragStart == nil {
+                        let isBeginning = dragStart == nil
+                        if isBeginning {
                             dragStart = value.startLocation
                         }
                         let viewRect = CGRect(
@@ -275,12 +678,41 @@ private struct InteractiveDepthImage: View {
 
                         let depthRect = depthRect(for: viewRect, imageFrame: imageFrame)
                         selection = depthRect
-                        onSelectionChanged(depthRect)
+                        if isBeginning {
+                            onSelectionBegan(depthRect)
+                        } else {
+                            onSelectionChanged(depthRect)
+                        }
                     }
-                    .onEnded { _ in
+                    .onEnded { value in
+                        let viewRect = CGRect(
+                            x: min(dragStart?.x ?? value.location.x, value.location.x),
+                            y: min(dragStart?.y ?? value.location.y, value.location.y),
+                            width: abs(value.location.x - (dragStart?.x ?? value.location.x)),
+                            height: abs(value.location.y - (dragStart?.y ?? value.location.y))
+                        ).insetBy(dx: -14, dy: -14)
+                        let depthRect = depthRect(for: viewRect, imageFrame: imageFrame)
+                        selection = depthRect
+                        onSelectionEnded(depthRect)
                         dragStart = nil
                     }
             )
+            .simultaneousGesture(
+                TapGesture(count: 2)
+                    .onEnded {
+                        dragStart = nil
+                        onSelectionCleared()
+                    }
+            )
+        }
+    }
+
+    private var selectionFill: Color {
+        switch interactionState {
+        case .drawingSelection:
+            .white.opacity(0.08)
+        case .idle, .regionSelected:
+            .white.opacity(0.14)
         }
     }
 
@@ -291,9 +723,10 @@ private struct InteractiveDepthImage: View {
 
         let scale = min(containerSize.width / imageSize.width, containerSize.height / imageSize.height)
         let size = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
+        let verticalBias: CGFloat = 0.38
         return CGRect(
             x: (containerSize.width - size.width) / 2,
-            y: (containerSize.height - size.height) / 2,
+            y: (containerSize.height - size.height) * verticalBias,
             width: size.width,
             height: size.height
         )
@@ -354,17 +787,737 @@ private struct InteractiveDepthImage: View {
     }
 }
 
+private struct PlaneOverlayMarker: View {
+    let plane: TAPDetectedPlane
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .stroke(markerColor, lineWidth: 2)
+                .background(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(markerColor.opacity(0.13))
+                )
+
+            Text("\(Int((plane.confidence * 100).rounded()))%")
+                .font(.caption2.monospacedDigit().weight(.bold))
+                .foregroundStyle(.black)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(markerColor, in: Capsule())
+                .padding(5)
+        }
+        .accessibilityLabel("Detected plane \(Int((plane.confidence * 100).rounded())) percent confidence")
+    }
+
+    private var markerColor: Color {
+        if plane.confidence >= 0.82 {
+            return Color(red: 0.70, green: 0.95, blue: 0.30)
+        }
+        if plane.confidence >= 0.68 {
+            return Color(red: 0.98, green: 0.78, blue: 0.22)
+        }
+        return Color(red: 1.0, green: 0.48, blue: 0.28)
+    }
+}
+
+private struct AnalysisLoupe: View {
+    let image: CGImage
+    let overlayImage: CGImage?
+    let overlayOpacity: Double
+    let orientation: CGImagePropertyOrientation
+    let depthSize: CGSize
+    let selection: CGRect
+    var title = "Loupe"
+    var previewSize = CGSize(width: 136, height: 136)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title)
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.white.opacity(0.88))
+
+            ZStack {
+                Color.black
+                magnifiedImage(image, opacity: 1)
+
+                if let overlayImage {
+                    magnifiedImage(overlayImage, opacity: overlayOpacity)
+                }
+            }
+            .frame(width: previewSize.width, height: previewSize.height)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(.white.opacity(0.24), lineWidth: 1)
+            }
+        }
+        .padding(8)
+        .background(.black.opacity(0.58), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .accessibilityLabel("Selected area loupe")
+    }
+
+    private func magnifiedImage(_ image: CGImage, opacity: Double) -> some View {
+        GeometryReader { proxy in
+            let normalizedCenter = normalizedSelectionCenter()
+            let zoom = zoomScale()
+
+            Image(decorative: image, scale: 1, orientation: orientation.swiftUIImageOrientation)
+                .resizable()
+                .interpolation(.none)
+                .scaledToFit()
+                .scaleEffect(zoom)
+                .offset(
+                    x: (0.5 - normalizedCenter.x) * proxy.size.width * zoom,
+                    y: (0.5 - normalizedCenter.y) * proxy.size.height * zoom
+                )
+                .opacity(opacity)
+                .frame(width: proxy.size.width, height: proxy.size.height)
+        }
+        .clipped()
+    }
+
+    private func normalizedSelectionCenter() -> CGPoint {
+        let displayedDepthSize = TAPImageOrientationMapper.displayedSize(nativeSize: depthSize, orientation: orientation)
+        guard displayedDepthSize.width > 0, displayedDepthSize.height > 0 else {
+            return CGPoint(x: 0.5, y: 0.5)
+        }
+
+        let displayedRect = TAPImageOrientationMapper.displayedRect(
+            fromNative: selection,
+            nativeSize: depthSize,
+            orientation: orientation
+        )
+        return CGPoint(
+            x: min(max(displayedRect.midX / displayedDepthSize.width, 0), 1),
+            y: min(max(displayedRect.midY / displayedDepthSize.height, 0), 1)
+        )
+    }
+
+    private func zoomScale() -> CGFloat {
+        guard selection.width > 0, selection.height > 0 else {
+            return 2.4
+        }
+
+        let widthRatio = depthSize.width / selection.width
+        let heightRatio = depthSize.height / selection.height
+        return min(max(min(widthRatio, heightRatio), 2.2), 5.2)
+    }
+}
+
+private struct AnalysisInspectorStrip: View {
+    @Binding var panelDestination: AnalysisPanelDestination?
+    @Binding var viewMode: DepthAnalysisViewMode
+    let inspectors: [AnalysisInspector]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            AnalysisStripRow(title: "Views") {
+                viewModeTabs
+            }
+
+            AnalysisStripRow(title: "Inspectors") {
+                HStack(spacing: 6) {
+                    inspectorTabs
+                    helpButton
+                }
+            }
+        }
+        .font(.callout)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 10)
+        .frame(maxWidth: 560, alignment: .leading)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(.white.opacity(0.18), lineWidth: 1)
+        }
+    }
+
+    private var viewModeTabs: some View {
+        HStack(spacing: 6) {
+            ForEach(DepthAnalysisViewMode.allCases) { item in
+                Button {
+                    viewMode = item
+                } label: {
+                    tabLabel(title: item.title, systemImage: item.systemImage)
+                        .background(viewModeBackground(for: item), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(item.title)
+                .help(item.detailedExplanation)
+            }
+        }
+    }
+
+    private var inspectorTabs: some View {
+        HStack(spacing: 6) {
+            ForEach(inspectors) { inspector in
+                Button {
+                    toggle(.inspector(inspector))
+                } label: {
+                    tabLabel(title: inspector.title, systemImage: inspector.systemImage)
+                        .background(inspectorBackground(for: inspector), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+                .accessibilityLabel(inspector.title)
+                .help(inspector.title)
+            }
+        }
+    }
+
+    private var helpButton: some View {
+        Button {
+            toggle(.help)
+        } label: {
+            tabLabel(title: "Help", systemImage: "questionmark.circle")
+                .background(helpBackground, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Analysis Help")
+        .help("Open Analysis Help.")
+    }
+
+    private func tabLabel(title: String, systemImage: String) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: systemImage)
+                .font(.callout.weight(.semibold))
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 8)
+        .frame(minHeight: 32)
+    }
+
+    private func toggle(_ destination: AnalysisPanelDestination) {
+        if panelDestination == destination {
+            panelDestination = nil
+        } else {
+            panelDestination = destination
+        }
+    }
+
+    private func viewModeBackground(for item: DepthAnalysisViewMode) -> Color {
+        if item == viewMode {
+            return Color.primary.opacity(0.16)
+        }
+        return Color.primary.opacity(0.06)
+    }
+
+    private func inspectorBackground(for inspector: AnalysisInspector) -> Color {
+        if panelDestination?.selectedInspector == inspector {
+            return Color.primary.opacity(0.16)
+        }
+        return Color.primary.opacity(0.06)
+    }
+
+    private var helpBackground: Color {
+        if panelDestination == .help {
+            return Color.primary.opacity(0.16)
+        }
+        return Color.primary.opacity(0.06)
+    }
+}
+
+private struct AnalysisStripRow<Content: View>: View {
+    let title: String
+    let content: Content
+
+    init(title: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.content = content()
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(title)
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.secondary)
+                .frame(width: 68, alignment: .leading)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                content
+            }
+        }
+    }
+}
+
+private struct AnalysisPanelLayer<Content: View>: View {
+    @Binding var destination: AnalysisPanelDestination?
+    let maxHeight: CGFloat
+    let content: Content
+
+    init(destination: Binding<AnalysisPanelDestination?>, maxHeight: CGFloat, @ViewBuilder content: () -> Content) {
+        _destination = destination
+        self.maxHeight = maxHeight
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Text(title)
+                    .font(.headline)
+                Spacer(minLength: 8)
+                Button {
+                    destination = nil
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 32, height: 32)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close analysis panel")
+                .help("Close this analysis panel.")
+            }
+
+            Divider()
+
+            ViewThatFits(in: .vertical) {
+                panelContent
+                ScrollView {
+                    panelContent
+                }
+            }
+            .frame(maxHeight: contentMaxHeight, alignment: .top)
+        }
+        .font(.callout)
+        .padding(12)
+        .frame(maxWidth: 560, alignment: .leading)
+        .frame(maxHeight: maxHeight, alignment: .top)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(.white.opacity(0.18), lineWidth: 1)
+        }
+    }
+
+    private var panelContent: some View {
+        content
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var contentMaxHeight: CGFloat {
+        max(120, maxHeight - 58)
+    }
+
+    private var title: String {
+        guard let destination else {
+            return "Analysis"
+        }
+
+        switch destination {
+        case .inspector(let inspector):
+            return inspector.title
+        case .help:
+            return "Analysis Help"
+        }
+    }
+}
+
+private struct AnalysisHelpView: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HelpSection(title: "Views") {
+                HelpRow(title: "RGB", detail: "Original HEIC color image used as the visual reference for selecting regions.")
+                HelpRow(title: "Depth", detail: "False-color metric depth overlay. The legend maps near-to-far values in meters.")
+                HelpRow(title: "Mask", detail: "Valid depth coverage. Colored pixels can be used for statistics, plane fitting, and point projection.")
+                HelpRow(title: "Planes", detail: "Candidate flat regions found from depth samples in camera coordinates, filtered by confidence.")
+                HelpRow(title: "Cloud", detail: "Camera-coordinate point cloud preview. It is local point data, not cloud storage or cloud compute.")
+            }
+
+            HelpSection(title: "Inspectors") {
+                HelpRow(title: "Region Heatmap", detail: "A selected-region crop recolored using only valid depth samples inside that region.")
+                HelpRow(title: "Legend", detail: "Shows how the current view maps colors to depth, coverage, or point distance.")
+                HelpRow(title: "Overlay", detail: "Controls only the main image overlay. It does not change locally normalized region heatmaps.")
+                HelpRow(title: "Plane Filter", detail: "Filters detected plane candidates by confidence without changing the saved image.")
+                HelpRow(title: "Cloud Info", detail: "Shows point-cloud color meaning and selected point counts.")
+            }
+
+            HelpSection(title: "Measurements") {
+                HelpRow(title: "Median depth", detail: "The middle value after sorting selected valid depth samples from near to far. It is not an average.")
+                HelpRow(title: "Range", detail: "The nearest and farthest valid depth samples in the current selection.")
+                HelpRow(title: "Valid samples", detail: "The count and ratio of selected pixels that contain finite positive depth.")
+                HelpRow(title: "Plane residual", detail: "Average distance from inlier points to the fitted plane. Lower usually means flatter.")
+                HelpRow(title: "Plane inliers", detail: "Share of sampled points close enough to the fitted plane to count as part of it.")
+            }
+        }
+    }
+}
+
+private struct HelpSection<Content: View>: View {
+    let title: String
+    let content: Content
+
+    init(title: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.secondary)
+            content
+        }
+    }
+}
+
+private struct HelpRow: View {
+    let title: String
+    let detail: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.callout.weight(.semibold))
+            Text(detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+private struct RegionInspectorContent: View {
+    let image: CGImage
+    let orientation: CGImagePropertyOrientation
+    let depthSize: CGSize
+    let selection: CGRect?
+    let interactionState: AnalysisInteractionState
+    let stats: TAPDepthRegionStats?
+    let planeEstimate: TAPPlaneEstimate?
+    let regionHeatmap: TAPDepthHeatmapVisualization?
+    let heatmapErrorMessage: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Text("Region")
+                    .font(.caption.weight(.semibold))
+                    .help("Drag on the image to choose a region. The region heatmap uses only the selected valid depth samples to recalculate its color range.")
+                Spacer(minLength: 8)
+                Text(stateText)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+
+            if interactionState == .drawingSelection {
+                Label("Selecting region...", systemImage: "hand.draw")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            } else if let selection, interactionState.showsRegionInspector {
+                regionSummary
+
+                if let regionHeatmap {
+                    HStack(alignment: .top, spacing: 12) {
+                        AnalysisLoupe(
+                            image: image,
+                            overlayImage: regionHeatmap.image,
+                            overlayOpacity: 0.92,
+                            orientation: orientation,
+                            depthSize: depthSize,
+                            selection: selection,
+                            title: "Local heatmap",
+                            previewSize: CGSize(width: 154, height: 154)
+                        )
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(localRangeText(regionHeatmap))
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                            DepthLegendView(stops: regionHeatmap.legendStops)
+                        }
+                    }
+                } else {
+                    Label(heatmapErrorMessage ?? "Not enough valid depth samples in this region.", systemImage: "exclamationmark.triangle")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Label("No region selected.", systemImage: "viewfinder")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var regionSummary: some View {
+        if let stats {
+            VStack(alignment: .leading, spacing: 7) {
+                DepthMetricRow(
+                    title: "Median depth",
+                    value: stats.medianDepthMeters.map { String(format: "%.2f m", $0) } ?? "No valid depth",
+                    explanation: "Sort the selected valid depth samples from near to far; this is the value in the middle."
+                )
+                DepthMetricRow(
+                    title: "Range",
+                    value: rangeText(stats),
+                    explanation: "The selected region's nearest and farthest valid depth samples."
+                )
+                DepthMetricRow(
+                    title: "Valid samples",
+                    value: "\(stats.validSampleCount)/\(stats.totalSampleCount) · \(Int((stats.validRatio * 100).rounded()))%",
+                    explanation: "How many selected pixels contain finite positive depth."
+                )
+
+                if let planeEstimate {
+                    DepthMetricRow(
+                        title: "Plane inliers",
+                        value: "\(Int((planeEstimate.inlierRatio * 100).rounded()))%",
+                        explanation: "The share of selected depth points that match the fitted local plane."
+                    )
+                }
+            }
+        }
+    }
+
+    private var stateText: String {
+        switch interactionState {
+        case .idle:
+            "No local region"
+        case .drawingSelection:
+            "Selecting"
+        case .regionSelected:
+            "Selected"
+        }
+    }
+
+    private func rangeText(_ stats: TAPDepthRegionStats) -> String {
+        guard let minimum = stats.minimumDepthMeters, let maximum = stats.maximumDepthMeters else {
+            return "No valid depth"
+        }
+        return String(format: "%.2f...%.2f m", minimum, maximum)
+    }
+
+    private func localRangeText(_ heatmap: TAPDepthHeatmapVisualization) -> String {
+        String(format: "Local range %.2f...%.2f m", heatmap.rangeMeters.lowerBound, heatmap.rangeMeters.upperBound)
+    }
+}
+
+private struct PlaneFilterInspectorContent: View {
+    let detectedPlanes: [TAPDetectedPlane]
+    let filteredPlanes: [TAPDetectedPlane]
+    @Binding var confidenceThreshold: Double
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Text("Planes")
+                    .font(.caption.weight(.semibold))
+                    .help("Planes are local depth regions whose sampled camera-coordinate points fit a flat surface with high confidence. This is a single-photo diagnostic, not ARKit plane tracking.")
+                Spacer(minLength: 8)
+                Text("\(filteredPlanes.count)/\(detectedPlanes.count)")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack(spacing: 8) {
+                Text("Confidence")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Slider(value: $confidenceThreshold, in: 0.35...0.95)
+                    .tint(.primary)
+                Text("\(Int((confidenceThreshold * 100).rounded()))%")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .frame(width: 42, alignment: .trailing)
+            }
+
+            if let best = filteredPlanes.first {
+                DepthMetricRow(
+                    title: "Best plane",
+                    value: "\(Int((best.confidence * 100).rounded()))% · \(best.sampleCount) samples",
+                    explanation: "The highest-confidence visible plane after applying the threshold."
+                )
+                DepthMetricRow(
+                    title: "Residual",
+                    value: String(format: "%.3f m", best.estimate.averageResidualMeters),
+                    explanation: "Average distance from inlier points to the detected plane."
+                )
+            } else {
+                Label("No detected planes meet the current confidence threshold.", systemImage: "square.dashed")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack(spacing: 12) {
+                PlaneLegendSwatch(color: Color(red: 0.70, green: 0.95, blue: 0.30), text: "High")
+                PlaneLegendSwatch(color: Color(red: 0.98, green: 0.78, blue: 0.22), text: "Medium")
+                PlaneLegendSwatch(color: Color(red: 1.0, green: 0.48, blue: 0.28), text: "Low")
+            }
+        }
+    }
+}
+
+private struct PlaneLegendSwatch: View {
+    let color: Color
+    let text: String
+
+    var body: some View {
+        HStack(spacing: 5) {
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .fill(color)
+                .frame(width: 18, height: 12)
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+private struct OverlayInspectorContent: View {
+    @Binding var opacity: Double
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text("Overlay opacity")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .help("Opacity controls the global overlay on the main image. It does not change local region heatmap colors.")
+            Slider(value: $opacity, in: 0.2...1.0)
+                .tint(.primary)
+            Text("\(Int((opacity * 100).rounded()))%")
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(width: 42, alignment: .trailing)
+        }
+    }
+}
+
+private struct CloudInfoInspectorContent: View {
+    let depthMap: TAPMetricDepthMap
+    let orientation: CGImagePropertyOrientation
+    let selection: CGRect?
+    let interactionState: AnalysisInteractionState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Cloud")
+                .font(.caption.weight(.semibold))
+                .help("This is a local camera-coordinate point cloud preview. It is not cloud storage, cloud compute, or a semantic word cloud.")
+            DepthLegendView(stops: [
+                TAPDepthLegendStop(position: 0, label: "Near points", color: TAPDepthHeatmapRenderer.viridisColor(normalized: 0)),
+                TAPDepthLegendStop(position: 1, label: "Far points", color: TAPDepthHeatmapRenderer.viridisColor(normalized: 1))
+            ])
+            Text("\(sampleCount(in: fullRegion)) sampled points")
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+
+            if let selection, interactionState.showsRegionInspector {
+                Divider()
+                HStack(alignment: .top, spacing: 12) {
+                    PointCloudRegionPreview(
+                        depthMap: depthMap,
+                        orientation: orientation,
+                        selection: selection,
+                        previewSize: CGSize(width: 154, height: 154)
+                    )
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("\(sampleCount(in: selection)) selected points")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+    }
+
+    private var fullRegion: CGRect {
+        CGRect(x: 0, y: 0, width: depthMap.width, height: depthMap.height)
+    }
+
+    private func sampleCount(in region: CGRect) -> Int {
+        TAPDepthGeometryProjector.sampledPoints(from: depthMap, in: region, maxCount: 900).count
+    }
+}
+
+struct DepthLegendView: View {
+    let stops: [TAPDepthLegendStop]
+
+    var body: some View {
+        VStack(spacing: 5) {
+            LinearGradient(
+                stops: stops.map { Gradient.Stop(color: $0.color.swiftUIColor, location: $0.position) },
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            .frame(height: 9)
+            .clipShape(Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(.primary.opacity(0.14), lineWidth: 1)
+            }
+
+            HStack {
+                Text(stops.first?.label ?? "Near")
+                Spacer(minLength: 8)
+                Text(stops.last?.label ?? "Far")
+            }
+            .font(.caption2.monospacedDigit())
+            .foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct SwatchLegendView: View {
+    let stops: [TAPDepthLegendStop]
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ForEach(stops) { stop in
+                HStack(spacing: 5) {
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .fill(stop.color.swiftUIColor)
+                        .frame(width: 18, height: 12)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                .stroke(.primary.opacity(0.16), lineWidth: 1)
+                        }
+
+                    Text(stop.label)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
 private struct DepthMetricRow: View {
     let title: String
     let value: String
+    let explanation: String
 
     var body: some View {
-        HStack {
+        HStack(spacing: 8) {
             Text(title)
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
+                .help(explanation)
             Spacer()
             Text(value)
                 .fontDesign(.monospaced)
         }
+    }
+}
+
+private extension TAPRGBAColor {
+    var swiftUIColor: Color {
+        Color(
+            red: Double(red) / 255.0,
+            green: Double(green) / 255.0,
+            blue: Double(blue) / 255.0,
+            opacity: Double(alpha) / 255.0
+        )
     }
 }

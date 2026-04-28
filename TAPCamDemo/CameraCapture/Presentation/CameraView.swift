@@ -25,14 +25,13 @@ struct CameraView: View {
     #endif
 
     var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-
-            VStack(spacing: 10) {
-                previewStage
-                Spacer(minLength: 8)
-                bottomControls
-            }
+        NavigationStack {
+            cameraSurface
+                .toolbar(.hidden, for: .navigationBar)
+                .navigationDestination(isPresented: $isShowingDepthAlbum) {
+                    DepthAlbumPickerView()
+                        .toolbar(.visible, for: .navigationBar)
+                }
         }
         .task {
             await viewModel.start()
@@ -44,9 +43,22 @@ struct CameraView: View {
             chromeOrientation.stop()
             viewModel.stop()
         }
-        .sheet(isPresented: $isShowingDepthAlbum) {
-            NavigationStack {
-                DepthAlbumPickerView()
+        .onChange(of: isShowingDepthAlbum) { _, isPresented in
+            guard !isPresented else { return }
+            Task {
+                await viewModel.resumeAfterAnalysis()
+            }
+        }
+    }
+
+    private var cameraSurface: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            VStack(spacing: 10) {
+                previewStage
+                Spacer(minLength: 8)
+                bottomControls
             }
         }
     }
@@ -289,6 +301,7 @@ struct CameraView: View {
     @ViewBuilder
     private var recentPhotoButton: some View {
         Button {
+            viewModel.pauseForAnalysis()
             isShowingDepthAlbum = true
         } label: {
             if let thumbnail = viewModel.recentThumbnail {

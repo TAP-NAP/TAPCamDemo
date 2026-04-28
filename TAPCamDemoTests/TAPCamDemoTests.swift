@@ -7,7 +7,10 @@
 
 import AVFoundation
 import CoreGraphics
+import CoreLocation
 import Foundation
+import ImageIO
+import Photos
 import Testing
 @testable import TAPCamDemo
 
@@ -254,6 +257,32 @@ struct TAPCamDemoTests {
         #expect(abs(abs(plane.normal.z) - 1) < 0.001)
     }
 
+    @Test func planeDetectorFindsAndFiltersHighConfidenceFlatRegions() throws {
+        let depthMap = TAPMetricDepthMap(
+            width: 16,
+            height: 16,
+            samples: Array(repeating: 1.5, count: 256),
+            calibration: TAPDepthManifest.CameraCalibration(
+                intrinsicMatrixReferenceWidth: 16,
+                intrinsicMatrixReferenceHeight: 16,
+                pixelSizeMillimeters: 0.001,
+                lensDistortionLookupTablePresent: false,
+                inverseLensDistortionLookupTablePresent: false,
+                lensDistortionCenterX: 8,
+                lensDistortionCenterY: 8,
+                intrinsicMatrix: [120, 0, 0, 0, 120, 0, 8, 8, 1],
+                extrinsicMatrix: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0]
+            )
+        )
+
+        let planes = TAPPlaneEstimator.detectPlanes(depthMap: depthMap)
+
+        #expect(!planes.isEmpty)
+        #expect(planes.first?.confidence ?? 0 > 0.95)
+        #expect(TAPPlaneEstimator.filteredPlanes(planes, minimumConfidence: 0.95).count == planes.count)
+        #expect(TAPPlaneEstimator.filteredPlanes(planes, minimumConfidence: 1.01).isEmpty)
+    }
+
     @Test func orientationMapperRoundTripsRightRotatedSelectionRect() throws {
         let nativeSize = CGSize(width: 4, height: 3)
         let nativeRect = CGRect(x: 1, y: 0, width: 2, height: 1)
@@ -270,6 +299,203 @@ struct TAPCamDemoTests {
 
         #expect(roundTripped == nativeRect)
         #expect(TAPImageOrientationMapper.displayedSize(nativeSize: nativeSize, orientation: .right) == CGSize(width: 3, height: 4))
+    }
+
+    @Test func imageOrientationReaderAcceptsImageIONumericMetadataTypes() throws {
+        let intProperties: [CFString: Any] = [
+            kCGImagePropertyOrientation: Int(CGImagePropertyOrientation.right.rawValue)
+        ]
+        let numberProperties: [CFString: Any] = [
+            kCGImagePropertyOrientation: NSNumber(value: CGImagePropertyOrientation.left.rawValue)
+        ]
+
+        #expect(TAPDepthMapReader.imageOrientation(from: intProperties) == .right)
+        #expect(TAPDepthMapReader.imageOrientation(from: numberProperties) == .left)
+    }
+
+    @Test func heatmapVisualizationPublishesRangeLegendAndDistinctColors() throws {
+        let depthMap = TAPMetricDepthMap(
+            width: 3,
+            height: 1,
+            samples: [0, 1.0, 3.0],
+            calibration: nil
+        )
+
+        let heatmap = try TAPDepthHeatmapRenderer.heatmap(for: depthMap)
+        #expect(abs(heatmap.rangeMeters.lowerBound - 1.0) < 0.0001)
+        #expect(abs(heatmap.rangeMeters.upperBound - 3.0) < 0.0001)
+        #expect(heatmap.legendStops.count == 5)
+        #expect(heatmap.legendStops.first?.label.contains("Near") == true)
+        #expect(heatmap.legendStops.last?.label.contains("Far") == true)
+
+        let near = TAPDepthHeatmapRenderer.viridisColor(normalized: 0)
+        let middle = TAPDepthHeatmapRenderer.viridisColor(normalized: 0.5)
+        let far = TAPDepthHeatmapRenderer.viridisColor(normalized: 1)
+        #expect(near != middle)
+        #expect(middle != far)
+        #expect(near != far)
+
+        let pixels = TAPDepthHeatmapRenderer.heatmapPixels(for: depthMap, rangeMeters: heatmap.rangeMeters)
+        #expect(pixels[3] == 0)
+        #expect(pixels[7] == 255)
+    }
+
+    @Test func regionHeatmapUsesSelectedSamplesForRangeAndMasksOutsideRegion() throws {
+        let depthMap = TAPMetricDepthMap(
+            width: 4,
+            height: 1,
+            samples: [1.0, 2.0, 8.0, 9.0],
+            calibration: nil
+        )
+
+        let globalHeatmap = try TAPDepthHeatmapRenderer.heatmap(for: depthMap)
+        let regionHeatmap = try TAPDepthHeatmapRenderer.heatmap(
+            for: depthMap,
+            region: CGRect(x: 2, y: 0, width: 2, height: 1)
+        )
+        let regionPixels = TAPDepthHeatmapRenderer.heatmapPixels(
+            for: depthMap,
+            rangeMeters: regionHeatmap.rangeMeters,
+            visibleRegion: CGRect(x: 2, y: 0, width: 2, height: 1)
+        )
+
+        #expect(globalHeatmap.rangeScope == .global)
+        #expect(regionHeatmap.rangeScope == .region)
+        #expect(abs(globalHeatmap.rangeMeters.lowerBound - 1.0) < 0.0001)
+        #expect(abs(globalHeatmap.rangeMeters.upperBound - 9.0) < 0.0001)
+        #expect(abs(regionHeatmap.rangeMeters.lowerBound - 8.0) < 0.0001)
+        #expect(abs(regionHeatmap.rangeMeters.upperBound - 9.0) < 0.0001)
+        #expect(regionHeatmap.legendStops.count == 5)
+        #expect(regionPixels[3] == 0)
+        #expect(regionPixels[7] == 0)
+        #expect(regionPixels[11] == 255)
+        #expect(regionPixels[15] == 255)
+    }
+
+    @Test func regionHeatmapRejectsInvalidOnlySelection() throws {
+        let depthMap = TAPMetricDepthMap(
+            width: 3,
+            height: 1,
+            samples: [0, .nan, 2.0],
+            calibration: nil
+        )
+
+        do {
+            _ = try TAPDepthHeatmapRenderer.heatmap(
+                for: depthMap,
+                region: CGRect(x: 0, y: 0, width: 2, height: 1)
+            )
+            #expect(Bool(false), "Expected invalid-only region to throw.")
+        } catch TAPDepthAnalysisError.noValidDepthSamples {
+            #expect(Bool(true))
+        } catch {
+            #expect(Bool(false), "Unexpected error: \(error)")
+        }
+    }
+
+    @Test func maskOverlayUsesTransparencyAndBoundaryColorInsteadOfPureWhite() throws {
+        let fullValid = TAPMetricDepthMap(
+            width: 3,
+            height: 3,
+            samples: Array(repeating: 1.0, count: 9),
+            calibration: nil
+        )
+
+        let pixels = TAPDepthMaskRenderer.overlayPixels(for: fullValid)
+        let centerOffset = (1 + 1 * fullValid.width) * 4
+        let cornerOffset = 0
+        #expect(pixels[centerOffset + 3] == TAPDepthMaskRenderer.validFillColor.alpha)
+        #expect(pixels[cornerOffset + 3] == TAPDepthMaskRenderer.boundaryColor.alpha)
+        #expect(Array(pixels[centerOffset..<(centerOffset + 3)]) != [255, 255, 255])
+
+        let mixed = TAPMetricDepthMap(
+            width: 1,
+            height: 2,
+            samples: [1.0, 0],
+            calibration: nil
+        )
+        let mixedPixels = TAPDepthMaskRenderer.overlayPixels(for: mixed)
+        #expect(mixedPixels[3] == TAPDepthMaskRenderer.boundaryColor.alpha)
+        #expect(mixedPixels[7] == 0)
+
+        let mask = try TAPDepthMaskRenderer.validMask(for: mixed)
+        #expect(mask.validSampleCount == 1)
+        #expect(mask.totalSampleCount == 2)
+        #expect(mask.validRatio == 0.5)
+        #expect(mask.legendStops.map(\.label) == ["Valid depth", "Valid/invalid edge"])
+    }
+
+    @Test func analysisViewModesAllPublishUserFacingExplanations() throws {
+        for viewMode in DepthAnalysisViewMode.allCases {
+            #expect(!viewMode.shortExplanation.isEmpty)
+            #expect(!viewMode.detailedExplanation.isEmpty)
+            #expect(!viewMode.legendDescription.isEmpty)
+        }
+    }
+
+    @Test func analysisInteractionStateSeparatesDrawingFromRegionInspection() throws {
+        #expect(!AnalysisInteractionState.idle.showsRegionInspector)
+        #expect(!AnalysisInteractionState.drawingSelection.showsRegionInspector)
+        #expect(AnalysisInteractionState.regionSelected.showsRegionInspector)
+    }
+
+    @Test func analysisPanelDestinationKeepsInspectorAndHelpSeparate() throws {
+        #expect(AnalysisPanelDestination.inspector(.region).selectedInspector == .region)
+        #expect(AnalysisPanelDestination.inspector(.measurements).selectedInspector == .measurements)
+        #expect(AnalysisPanelDestination.help.selectedInspector == nil)
+    }
+
+    @Test @MainActor func depthAnalysisViewModelClearSelectionRemovesDerivedRegionProducts() throws {
+        let viewModel = DepthAnalysisViewModel()
+        viewModel.selectionRect = CGRect(x: 1, y: 1, width: 4, height: 4)
+        viewModel.interactionState = .regionSelected
+        viewModel.regionStats = TAPDepthRegionStats(
+            validSampleCount: 3,
+            totalSampleCount: 4,
+            minimumDepthMeters: 1,
+            maximumDepthMeters: 2,
+            medianDepthMeters: 1.5,
+            validRatio: 0.75
+        )
+        viewModel.planeEstimate = TAPPlaneEstimate(
+            normal: SIMD3<Float>(0, 0, 1),
+            centroid: SIMD3<Float>(0, 0, 1),
+            averageResidualMeters: 0.01,
+            inlierRatio: 0.9,
+            depthRangeMeters: 1...2,
+            imageBounds: CGRect(x: 1, y: 1, width: 4, height: 4)
+        )
+        viewModel.regionHeatmapErrorMessage = "stale"
+
+        viewModel.clearSelection()
+
+        #expect(viewModel.selectionRect == nil)
+        #expect(viewModel.interactionState == .idle)
+        #expect(viewModel.regionStats == nil)
+        #expect(viewModel.planeEstimate == nil)
+        #expect(viewModel.regionHeatmap == nil)
+        #expect(viewModel.regionHeatmapErrorMessage == nil)
+    }
+
+    @Test func analysisViewModesAndInspectorsExposeLabelsAndIcons() throws {
+        for viewMode in DepthAnalysisViewMode.allCases {
+            #expect(!viewMode.title.isEmpty)
+            #expect(!viewMode.systemImage.isEmpty)
+        }
+
+        for inspector in AnalysisInspector.allCases {
+            #expect(!inspector.title.isEmpty)
+            #expect(!inspector.systemImage.isEmpty)
+        }
+    }
+
+    @Test func analyzerAuthorizationStatusTextIsPassiveAndDeterministic() throws {
+        #expect(DepthAnalyzerAuthorizationStatusText.camera(.authorized) == "Authorized")
+        #expect(DepthAnalyzerAuthorizationStatusText.camera(.notDetermined) == "Not requested")
+        #expect(DepthAnalyzerAuthorizationStatusText.photos(.limited) == "Limited")
+        #expect(DepthAnalyzerAuthorizationStatusText.photos(.denied) == "Denied")
+        #expect(DepthAnalyzerAuthorizationStatusText.location(.authorizedWhenInUse) == "While using app")
+        #expect(DepthAnalyzerAuthorizationStatusText.location(.restricted) == "Restricted")
     }
 
     private static var sampleLocation: TAPDepthManifest.Location {
