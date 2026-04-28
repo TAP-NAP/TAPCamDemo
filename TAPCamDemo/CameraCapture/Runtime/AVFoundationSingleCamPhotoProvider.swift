@@ -23,6 +23,12 @@ nonisolated final class AVFoundationSingleCamPhotoProvider: SingleCamPhotoCaptur
         self.sessionController = sessionController
     }
 
+    /// Captures one Apple-paired photo-depth result from the configured session.
+    ///
+    /// The returned `AVCapturePhoto` contains the visible image, metadata, and
+    /// `depthData` from the same `AVCapturePhotoOutput` request.
+    ///
+    /// - Tag: CaptureSingleCamPhotoDepth
     func capturePhotoDepth(job: CaptureJob, context: CaptureSourceContext) async throws -> SingleCamPhotoCaptureResult {
         let settings = makePhotoSettings(photoOutput: sessionController.photoOutput)
         let requestedCodec: AVVideoCodecType = sessionController.photoOutput.availablePhotoCodecTypes.contains(.hevc) ? .hevc : .jpeg

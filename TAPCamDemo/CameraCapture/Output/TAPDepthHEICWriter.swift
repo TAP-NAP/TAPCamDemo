@@ -17,6 +17,12 @@ import UniformTypeIdentifiers
 /// Apple auxiliary depth/disparity attachment must survive byte-for-byte as
 /// much as ImageIO allows, while only metadata is merged.
 nonisolated enum TAPDepthHEICWriter {
+    /// Injects the TAP manifest while preserving the source HEIC image items.
+    ///
+    /// The copy path avoids a full pixel decode/re-encode so Apple auxiliary
+    /// depth/disparity attachments survive the output packaging step.
+    ///
+    /// - Tag: InjectTAPManifestIntoHEIC
     static func injectingManifest(_ manifest: TAPDepthManifest, into heicData: Data) throws -> Data {
         let manifestJSON = try TAPDepthManifestEncoder.manifestJSON(manifest)
 

@@ -167,7 +167,7 @@ struct TAPCamDemoTests {
     @Test func pairingPlanKeepsCustomReleaseFOVZoomFactor() throws {
         let options = CameraCapabilityResolver.discover().focalLengthOptions()
         if let option = options.first(where: { $0.displayName == "48mm" && $0.isEnabled }) {
-            let plan = RGBDepthPairingCoordinator.makePlan(
+            let plan = CaptureSourcePlan.make(
                 rgbSource: option.rgbSource,
                 depthSource: option.depthSource,
                 selectionMode: .automatic,

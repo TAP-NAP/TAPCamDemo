@@ -1,11 +1,14 @@
 //
-//  SessionConfigurationRequest.swift
+//  CapturePlan.swift
 //  TAPCamDemo
 //
 //  Created by Codex on 2026/4/27.
 //
 
 @preconcurrency import AVFoundation
+import CoreGraphics
+import CoreMedia
+import Darwin
 import Foundation
 
 /// Pairing modes surfaced by SingleCam capture planning.
@@ -95,15 +98,14 @@ nonisolated struct CaptureSourcePlan: @unchecked Sendable {
             source: "\(rgbSource.focalLengthLabelSource)+releaseRawVideoZoomFactor"
         )
     }
-}
 
-/// Converts selected RGB/depth/zoom/crop state into a `CaptureSourcePlan`.
-///
-/// The coordinator reads only capability-layer value types. It rejects unsafe
-/// combinations before capture and records unsupported hardware boundaries
-/// without trying to run a second capture path.
-nonisolated enum RGBDepthPairingCoordinator {
-    static func makePlan(
+    /// Creates the immutable plan that Runtime is allowed to execute.
+    ///
+    /// The raw `selectedZoomFactor` is a first-class input so semantic FOV chips
+    /// such as `48mm` do not collapse back to a generic `2x`/`3x` zoom ID.
+    ///
+    /// - Tag: MakeCaptureSourcePlan
+    static func make(
         rgbSource: CameraProfile,
         depthSource: DepthProfile?,
         selectionMode: DepthSelectionMode,
@@ -152,7 +154,7 @@ nonisolated enum RGBDepthPairingCoordinator {
             : rgbSource.device
         let depthEnabled = mode == .rgbWithApplePairedDepth
 
-        let plan = CaptureSourcePlan(
+        return CaptureSourcePlan(
             rgbSource: rgbSource,
             depthSource: depthSource,
             selectionMode: selectionMode,
@@ -172,7 +174,6 @@ nonisolated enum RGBDepthPairingCoordinator {
                 embedsDepthDataInPhoto: depthEnabled
             )
         )
-        return plan
     }
 }
 

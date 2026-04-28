@@ -24,6 +24,9 @@ protocol CaptureArtifactWriter: Sendable {
 
 /// Release-safe writer that saves the final single HEIC into Photos.
 nonisolated struct PhotoLibraryCaptureArtifactWriter: CaptureArtifactWriter {
+    /// Persists one packaged artifact and returns the Photos asset identifier.
+    ///
+    /// - Tag: WritePackagedArtifactToPhotos
     func write(_ artifact: PackagedCaptureArtifact) async throws -> CaptureWriteResult {
         let assetID = try await PhotoLibraryWriter.saveDepthHEIC(
             artifact.photoData,

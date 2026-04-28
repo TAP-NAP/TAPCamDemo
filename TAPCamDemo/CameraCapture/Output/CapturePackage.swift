@@ -36,6 +36,12 @@ nonisolated struct CapturePackage: @unchecked Sendable {
 /// `AVCapturePhoto.depthData` is invalid because output must remain a single
 /// photo artifact with embedded auxiliary depth.
 nonisolated enum CapturePackageBuilder {
+    /// Normalizes one `AVCapturePhoto` result into the app's logical package.
+    ///
+    /// Packaging and writing are deliberately outside this step, so manifest
+    /// construction can read stable source, zoom, crop, and capture facts.
+    ///
+    /// - Tag: BuildCapturePackage
     static func makePackage(
         job: CaptureJob,
         context: CaptureSourceContext,

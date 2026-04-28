@@ -18,6 +18,12 @@ import UniformTypeIdentifiers
 nonisolated enum PhotoLibraryWriter {
     static let albumName = "TAPCamDepth"
 
+    /// Saves final embedded HEIC bytes to the TAPCamDepth Photos album.
+    ///
+    /// This writer receives a completed artifact; it does not inspect cameras,
+    /// choose packaging policy, or mutate capture session state.
+    ///
+    /// - Tag: SaveDepthHEICToPhotos
     static func saveDepthHEIC(_ data: Data, capturedAt: Date, location: CLLocation?) async throws -> String {
         try await requestReadWriteAccess()
         let album = try await fetchOrCreateAlbum()

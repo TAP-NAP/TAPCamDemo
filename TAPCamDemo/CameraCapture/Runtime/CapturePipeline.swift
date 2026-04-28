@@ -64,6 +64,12 @@ nonisolated final class CapturePipeline: @unchecked Sendable {
         self.metricsStore = metricsStore
     }
 
+    /// Runs the asynchronous capture-package-write job after the shutter tap.
+    ///
+    /// The preview remains live while this pipeline captures, builds the logical
+    /// package, embeds the HEIC manifest, writes to Photos, and records metrics.
+    ///
+    /// - Tag: RunSingleCamCapturePipeline
     func runSingleCamJob(
         job: CaptureJob,
         context: CaptureSourceContext,

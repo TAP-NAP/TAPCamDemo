@@ -17,6 +17,12 @@ import Foundation
 nonisolated struct EmbeddedPhotoPackager: CapturePackager {
     let strategy: PackagingStrategy = .embeddedPhoto
 
+    /// Converts a logical package into the single Release HEIC artifact.
+    ///
+    /// Apple auxiliary depth remains in the HEIC, and TAP-specific metadata is
+    /// injected into XMP without emitting sidecar files.
+    ///
+    /// - Tag: PackageEmbeddedDepthHEIC
     func package(_ capturePackage: CapturePackage) async throws -> PackagedCaptureArtifact {
         let manifest = try TAPDepthManifestBuilder.makeManifest(capturePackage: capturePackage)
         let customizer = TAPPhotoFileMetadataCustomizer(

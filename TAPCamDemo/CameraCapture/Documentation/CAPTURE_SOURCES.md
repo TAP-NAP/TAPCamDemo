@@ -23,9 +23,9 @@ connections. If it needs a session change, it must request it through
 `CaptureSessionController`.
 
 The current executable provider is
-[AVFoundationSingleCamPhotoProvider.swift](../CaptureSources/AVFoundationSingleCamPhotoProvider.swift).
+[AVFoundationSingleCamPhotoProvider.swift](../Runtime/AVFoundationSingleCamPhotoProvider.swift).
 It calls `AVCapturePhotoOutput.capturePhoto(with:delegate:)` after the session
-has already been configured by [CaptureSessionController.swift](../Session/CaptureSessionController.swift).
+has already been configured by [CaptureSessionController.swift](../Runtime/CaptureSessionController.swift).
 
 ## Provider Status
 

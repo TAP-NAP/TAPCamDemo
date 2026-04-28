@@ -20,6 +20,12 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
 
     private let sessionQueue = DispatchQueue(label: "tapcam.camera-capture.singlecam.session")
 
+    /// Applies a planned SingleCam photo-depth configuration.
+    ///
+    /// All AVFoundation graph mutation is serialized here. FOV-only changes can
+    /// reuse the current graph and apply only raw zoom.
+    ///
+    /// - Tag: ConfigureSingleCamSession
     func configure(_ request: SessionConfigurationRequest) async throws -> SessionConfigurationResult {
         try await withCheckedThrowingContinuation { continuation in
             sessionQueue.async { [session, photoOutput] in
@@ -163,6 +169,8 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
 
     /// Returns true when the current SingleCam graph already represents the
     /// requested photo-depth pipeline and only the raw zoom factor needs to move.
+    ///
+    /// - Tag: ReuseSingleCamGraph
     private static func canReuseCurrentGraph(
         session: AVCaptureSession,
         photoOutput: AVCapturePhotoOutput,

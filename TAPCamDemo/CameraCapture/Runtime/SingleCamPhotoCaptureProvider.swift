@@ -1,5 +1,5 @@
 //
-//  CaptureSourceProtocols.swift
+//  SingleCamPhotoCaptureProvider.swift
 //  TAPCamDemo
 //
 //  Created by Codex on 2026/4/27.
