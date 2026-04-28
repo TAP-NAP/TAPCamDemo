@@ -22,6 +22,8 @@ nonisolated struct TAPDepthAnalysisInput {
     let image: CGImage
     let imageOrientation: CGImagePropertyOrientation
     let depthMap: TAPMetricDepthMap
+    let depthAccuracy: String
+    let depthQuality: String
     let heatmap: TAPDepthHeatmapVisualization
     let validMask: TAPDepthMaskVisualization
 }
@@ -121,6 +123,89 @@ nonisolated struct TAPDetectedPlane: Equatable, Identifiable {
 
     var imageBounds: CGRect {
         estimate.imageBounds
+    }
+}
+
+nonisolated struct TAPPlanePixelRun: Equatable, Identifiable {
+    let y: Int
+    let xStart: Int
+    let xEndExclusive: Int
+
+    var id: String {
+        "\(y)-\(xStart)-\(xEndExclusive)"
+    }
+
+    var width: Int {
+        max(xEndExclusive - xStart, 0)
+    }
+}
+
+nonisolated struct TAPPlaneGridCell: Equatable, Identifiable {
+    let row: Int
+    let column: Int
+    let imageBounds: CGRect
+    let coverage: Double
+    let averageResidualMeters: Float
+    let confidence: Double
+    let sampleCount: Int
+
+    var id: String {
+        "\(row)-\(column)"
+    }
+}
+
+nonisolated struct TAPPlaneRegion: Equatable {
+    let seedPixel: CGPoint
+    let estimate: TAPPlaneEstimate
+    let pixelRuns: [TAPPlanePixelRun]
+    let gridCells: [TAPPlaneGridCell]
+    let contourPoints: [CGPoint]
+    let imageBounds: CGRect
+    let confidence: Double
+    let flatnessScore: Double
+    let sampleCount: Int
+    let areaSquareMeters: Double
+}
+
+nonisolated struct TAPPlaneGrowthParameters: Equatable {
+    let strictness: Double
+    let residualThresholdMeters: Float
+    let normalAngleThresholdDegrees: Float
+    let seedWindowRadiusPixels: Int
+    let minimumSeedSamples: Int
+    let minimumRegionSamples: Int
+    let maximumVisitedPixels: Int
+
+    init(strictness: Double) {
+        let clamped = min(max(strictness, 0.35), 0.95)
+        let normalized = (clamped - 0.35) / 0.60
+        self.strictness = clamped
+        self.residualThresholdMeters = Float(0.060 - normalized * 0.040)
+        self.normalAngleThresholdDegrees = Float(30.0 - normalized * 18.0)
+        self.seedWindowRadiusPixels = 5
+        self.minimumSeedSamples = 12
+        self.minimumRegionSamples = 24
+        self.maximumVisitedPixels = 180_000
+    }
+}
+
+enum TAPPlaneGrowthError: LocalizedError, Equatable {
+    case invalidSeed
+    case cameraCalibrationMissing
+    case notEnoughNearbySamples
+    case noPlaneRegion
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidSeed:
+            "No valid depth at this point."
+        case .cameraCalibrationMissing:
+            "Camera calibration missing."
+        case .notEnoughNearbySamples:
+            "Not enough nearby depth samples."
+        case .noPlaneRegion:
+            "No stable plane region found from this point."
+        }
     }
 }
 
