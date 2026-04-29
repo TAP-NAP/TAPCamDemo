@@ -18,9 +18,10 @@ struct DepthAlbumPickerView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel = DepthAlbumPickerViewModel()
 
-    private let columns = [
-        GridItem(.adaptive(minimum: 104), spacing: 3)
-    ]
+    private let columns = Array(
+        repeating: GridItem(.flexible(minimum: 0), spacing: 3),
+        count: 5
+    )
 
     var body: some View {
         ScrollView {
@@ -101,12 +102,10 @@ final class DepthAlbumPickerViewModel: ObservableObject {
 struct DepthAlbumAsset: Identifiable, Equatable {
     let id: String
     let asset: PHAsset
-    let creationDate: Date?
 
     init(asset: PHAsset) {
         self.id = asset.localIdentifier
         self.asset = asset
-        self.creationDate = asset.creationDate
     }
 }
 
@@ -131,17 +130,6 @@ private struct DepthAlbumAssetCell: View {
                     .font(.title2)
                     .foregroundStyle(.secondary)
             }
-
-            if let creationDate = asset.creationDate {
-                Text(creationDate.formatted(date: .numeric, time: .shortened))
-                    .font(.caption2.weight(.semibold))
-                    .lineLimit(1)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 4)
-                    .foregroundStyle(.white)
-                    .background(.black.opacity(0.55), in: Capsule())
-                    .padding(6)
-            }
         }
         .aspectRatio(1, contentMode: .fit)
         .clipped()
@@ -152,19 +140,32 @@ private struct DepthAlbumAssetCell: View {
     }
 
     private func loadThumbnail() async {
-        let image = await withCheckedContinuation { continuation in
+        let image: UIImage? = await withCheckedContinuation { continuation in
             var didResume = false
             let options = PHImageRequestOptions()
-            options.deliveryMode = .opportunistic
-            options.resizeMode = .fast
+            options.deliveryMode = .highQualityFormat
+            options.resizeMode = .exact
             options.isNetworkAccessAllowed = true
             PHImageManager.default().requestImage(
                 for: asset.asset,
-                targetSize: CGSize(width: 260, height: 260),
+                targetSize: CGSize(width: 720, height: 720),
                 contentMode: .aspectFill,
                 options: options
-            ) { image, _ in
-                guard !didResume else { return }
+            ) { image, info in
+                guard !didResume else {
+                    return
+                }
+
+                if info?[PHImageCancelledKey] as? Bool == true || info?[PHImageErrorKey] != nil {
+                    didResume = true
+                    continuation.resume(returning: nil)
+                    return
+                }
+
+                guard info?[PHImageResultIsDegradedKey] as? Bool != true else {
+                    return
+                }
+
                 didResume = true
                 continuation.resume(returning: image)
             }

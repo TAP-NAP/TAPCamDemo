@@ -85,59 +85,68 @@ struct DepthAnalysisView: View {
 
     @ViewBuilder
     private func analysisContent(_ input: TAPDepthAnalysisInput) -> some View {
-        switch viewModel.viewMode {
-        case .rgb:
-            depthImageStage(
-                input,
-                overlayImage: nil,
-                overlayOpacity: 0
-            )
-        case .heatmap:
-            depthImageStage(
-                input,
-                overlayImage: input.heatmap.image,
-                overlayOpacity: heatmapOpacity
-            )
-        case .mask:
-            depthImageStage(
-                input,
-                overlayImage: input.validMask.image,
-                overlayOpacity: 1
-            )
-        case .planes:
-            depthImageStage(
-                input,
-                overlayImage: input.heatmap.image,
-                overlayOpacity: heatmapOpacity,
-                planeRegion: viewModel.selectedPlaneRegion,
-                planeSeedPoint: viewModel.planeSeedPoint,
-                isSelectionEnabled: false,
-                isPointSelectionEnabled: true,
-                onPointSelected: { depthPoint in
-                    viewModel.selectPlaneSeed(depthPoint)
-                    panelDestination = .inspector(.planeFilter)
-                }
-            )
-        case .pointCloud:
-            PointCloudPreview(
-                depthMap: input.depthMap,
-                orientation: input.imageOrientation,
-                selection: $viewModel.selectionRect,
-                interactionState: viewModel.interactionState,
-                onSelectionBegan: { depthRect in
-                    viewModel.beginSelection(depthRect)
-                },
-                onSelectionChanged: { depthRect in
-                    viewModel.previewSelection(depthRect)
-                },
-                onSelectionEnded: { depthRect in
-                    viewModel.finishSelection(depthRect)
-                },
-                onSelectionCleared: {
-                    clearSelectionAndPanel()
-                }
-            )
-            .background(Color.black)
+        ZStack(alignment: .top) {
+            switch viewModel.viewMode {
+            case .rgb:
+                depthImageStage(
+                    input,
+                    overlayImage: nil,
+                    overlayOpacity: 0
+                )
+            case .heatmap:
+                depthImageStage(
+                    input,
+                    overlayImage: input.heatmap.image,
+                    overlayOpacity: heatmapOpacity
+                )
+            case .mask:
+                depthImageStage(
+                    input,
+                    overlayImage: input.validMask.image,
+                    overlayOpacity: 1
+                )
+            case .planes:
+                depthImageStage(
+                    input,
+                    overlayImage: input.heatmap.image,
+                    overlayOpacity: heatmapOpacity,
+                    planeRegion: viewModel.selectedPlaneRegion,
+                    planeSeedPoint: viewModel.planeSeedPoint,
+                    isSelectionEnabled: false,
+                    isPointSelectionEnabled: true,
+                    onPointSelected: { depthPoint in
+                        viewModel.selectPlaneSeed(depthPoint)
+                        panelDestination = .inspector(.planeFilter)
+                    }
+                )
+            case .pointCloud:
+                PointCloudPreview(
+                    depthMap: input.depthMap,
+                    orientation: input.imageOrientation,
+                    selection: $viewModel.selectionRect,
+                    interactionState: viewModel.interactionState,
+                    onSelectionBegan: { depthRect in
+                        viewModel.beginSelection(depthRect)
+                    },
+                    onSelectionChanged: { depthRect in
+                        viewModel.previewSelection(depthRect)
+                    },
+                    onSelectionEnded: { depthRect in
+                        viewModel.finishSelection(depthRect)
+                    },
+                    onSelectionCleared: {
+                        clearSelectionAndPanel()
+                    }
+                )
+                .background(Color.black)
+            }
+
+            if let summary = CaptureMetadataSummary(input: input) {
+                CaptureMetadataHUD(summary: summary)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 8)
+                    .allowsHitTesting(false)
+            }
         }
     }
 
@@ -655,9 +664,9 @@ enum DepthAnalysisViewMode: String, CaseIterable, Identifiable {
         case .rgb:
             "photo"
         case .heatmap:
-            "thermometer.medium"
+            "ruler"
         case .mask:
-            "square.dashed"
+            "checkerboard.rectangle"
         case .planes:
             "square.3.layers.3d"
         case .pointCloud:
@@ -708,6 +717,120 @@ enum DepthAnalysisViewMode: String, CaseIterable, Identifiable {
         case .pointCloud:
             "Point colors map near-to-far depth in the same direction as the depth legend."
         }
+    }
+}
+
+private struct CaptureMetadataSummary: Equatable {
+    let title: String
+    let detail: String
+    let accessibilityText: String
+
+    init?(input: TAPDepthAnalysisInput) {
+        guard let payload = input.manifest?.payload else {
+            return nil
+        }
+
+        let focalLabel = payload.photoLens.requestedFocalLengthLabel
+        let captureDevice = Self.captureDeviceText(payload)
+        let rgbSource = payload.rgbSource.displayName
+        let depthSource = Self.depthSourceText(payload)
+        let depthMethod = Self.depthMethodText(payload.depth.source)
+        let zoom = Self.zoomText(payload)
+
+        self.title = "\(focalLabel) · \(captureDevice)"
+        self.detail = [
+            "RGB \(rgbSource)",
+            "Depth \(depthSource)",
+            depthMethod,
+            "Zoom \(zoom)"
+        ].joined(separator: " · ")
+        self.accessibilityText = "\(title). \(detail)."
+    }
+
+    private static func captureDeviceText(_ payload: TAPDepthManifest.Payload) -> String {
+        let resolvedDevice = payload.photoLens.resolvedCaptureDeviceName
+        guard let activeDevice = payload.photoLens.resolvedActivePrimaryConstituentDeviceName,
+              activeDevice != resolvedDevice else {
+            return resolvedDevice
+        }
+
+        return "\(resolvedDevice) / \(activeDevice)"
+    }
+
+    private static func depthSourceText(_ payload: TAPDepthManifest.Payload) -> String {
+        let selectedDepth = payload.selectedDepthCamera.displayName
+        if selectedDepth != "None" {
+            return selectedDepth
+        }
+
+        return payload.depth.source.captureDeviceName
+    }
+
+    private static func depthMethodText(_ source: TAPDepthManifest.DepthSource) -> String {
+        let method: String
+        switch source.sensingMethod {
+        case "lidarDepthCamera":
+            method = "LiDAR"
+        case "trueDepthCamera":
+            method = "TrueDepth"
+        case "multiCameraStereoOrComputational":
+            method = "stereo/computational"
+        case "singleCameraComputationalOrUnknown":
+            method = "single/computational"
+        default:
+            method = source.sensingMethod
+        }
+
+        switch source.lidarParticipation {
+        case "explicit":
+            return "\(method) · LiDAR explicit"
+        case "notAsserted":
+            return "\(method) · LiDAR not asserted"
+        default:
+            return method
+        }
+    }
+
+    private static func zoomText(_ payload: TAPDepthManifest.Payload) -> String {
+        let zoom = payload.zoom.actualVideoZoomFactor
+            ?? payload.zoom.requestedZoomFactor
+            ?? payload.selectedZoom.zoomFactor
+        return String(format: "%.2fx", zoom)
+    }
+}
+
+private struct CaptureMetadataHUD: View {
+    let summary: CaptureMetadataSummary
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "camera.aperture")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.primary)
+                .frame(width: 18, height: 18)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(summary.title)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+
+                Text(summary.detail)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: 560, alignment: .leading)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(.white.opacity(0.16), lineWidth: 1)
+        }
+        .accessibilityLabel(summary.accessibilityText)
     }
 }
 

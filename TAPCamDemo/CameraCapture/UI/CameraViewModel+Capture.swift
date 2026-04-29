@@ -105,16 +105,31 @@ extension CameraViewModel {
         }
 
         let options = PHImageRequestOptions()
-        options.deliveryMode = .fastFormat
-        options.resizeMode = .fast
+        options.deliveryMode = .highQualityFormat
+        options.resizeMode = .exact
         options.isNetworkAccessAllowed = true
 
+        var didReceiveFinalImage = false
         PHImageManager.default().requestImage(
             for: asset,
-            targetSize: CGSize(width: 144, height: 144),
+            targetSize: CGSize(width: 256, height: 256),
             contentMode: .aspectFill,
             options: options
-        ) { [weak self] image, _ in
+        ) { [weak self] image, info in
+            guard !didReceiveFinalImage else {
+                return
+            }
+
+            if info?[PHImageCancelledKey] as? Bool == true || info?[PHImageErrorKey] != nil {
+                didReceiveFinalImage = true
+                return
+            }
+
+            guard info?[PHImageResultIsDegradedKey] as? Bool != true else {
+                return
+            }
+
+            didReceiveFinalImage = true
             Task { @MainActor in
                 self?.recentThumbnail = image
             }

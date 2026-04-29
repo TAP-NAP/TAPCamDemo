@@ -6,6 +6,7 @@
 //
 
 @preconcurrency import AVFoundation
+import CoreGraphics
 import Foundation
 
 /// Owns the managed SingleCam `AVCaptureSession` and its mutation queue.
@@ -57,9 +58,16 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
 
     func capturePhoto(
         settings: AVCapturePhotoSettings,
-        delegate: AVCapturePhotoCaptureDelegate
+        delegate: AVCapturePhotoCaptureDelegate,
+        videoRotationAngle: CGFloat?
     ) {
         sessionQueue.async { [photoOutput] in
+            if let videoRotationAngle,
+               let connection = photoOutput.connection(with: .video),
+               connection.isVideoRotationAngleSupported(videoRotationAngle) {
+                connection.videoRotationAngle = videoRotationAngle
+            }
+
             photoOutput.capturePhoto(with: settings, delegate: delegate)
         }
     }

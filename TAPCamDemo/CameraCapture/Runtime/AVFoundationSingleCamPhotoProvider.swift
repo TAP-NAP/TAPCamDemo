@@ -6,6 +6,7 @@
 //
 
 @preconcurrency import AVFoundation
+import CoreGraphics
 import Foundation
 
 /// Default SingleCam provider backed by `AVCapturePhotoOutput`.
@@ -32,6 +33,9 @@ nonisolated final class AVFoundationSingleCamPhotoProvider: SingleCamPhotoCaptur
     func capturePhotoDepth(job: CaptureJob, context: CaptureSourceContext) async throws -> SingleCamPhotoCaptureResult {
         let settings = makePhotoSettings(photoOutput: sessionController.photoOutput)
         let requestedCodec: AVVideoCodecType = sessionController.photoOutput.availablePhotoCodecTypes.contains(.hevc) ? .hevc : .jpeg
+        let videoRotationAngle = Self.videoRotationAngleForHorizonLevelCapture(
+            device: context.sessionConfiguration.device
+        )
 
         return try await withCheckedThrowingContinuation { continuation in
             let delegate = SingleCamPhotoCaptureDelegate { [weak self] result in
@@ -51,8 +55,18 @@ nonisolated final class AVFoundationSingleCamPhotoProvider: SingleCamPhotoCaptur
             }
 
             storeDelegate(delegate, uniqueID: settings.uniqueID)
-            sessionController.capturePhoto(settings: settings, delegate: delegate)
+            sessionController.capturePhoto(
+                settings: settings,
+                delegate: delegate,
+                videoRotationAngle: videoRotationAngle
+            )
         }
+    }
+
+    @MainActor
+    private static func videoRotationAngleForHorizonLevelCapture(device: AVCaptureDevice) -> CGFloat? {
+        let rotationCoordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: nil)
+        return rotationCoordinator.videoRotationAngleForHorizonLevelCapture
     }
 
     private func makePhotoSettings(photoOutput: AVCapturePhotoOutput) -> AVCapturePhotoSettings {
