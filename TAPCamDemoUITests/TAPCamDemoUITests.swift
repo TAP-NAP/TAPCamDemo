@@ -10,34 +10,33 @@ import XCTest
 final class TAPCamDemoUITests: XCTestCase {
 
     override func setUpWithError() throws {
-        // Put setup code here. This method is called before the invocation of each test method in the class.
-
-        // In UI tests it is usually best to stop immediately when a failure occurs.
         continueAfterFailure = false
-
-        // In UI tests it’s important to set the initial state - such as interface orientation - required for your tests before they run. The setUp method is a good place to do this.
-    }
-
-    override func tearDownWithError() throws {
-        // Put teardown code here. This method is called after the invocation of each test method in the class.
     }
 
     @MainActor
-    func testExample() throws {
-        // UI tests must launch the application that they test.
+    func testFOVSelectorSelects48mm() throws {
+        try skipWhenRunningOnSimulator()
+
         let app = XCUIApplication()
         app.launch()
 
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
-        // XCUIAutomation Documentation
-        // https://developer.apple.com/documentation/xcuiautomation
+        let fortyEight = app.buttons["Use 48mm field of view"]
+        XCTAssertTrue(fortyEight.waitForExistence(timeout: 10), "48mm FOV button should be visible on a depth-capable rear camera.")
+        fortyEight.tap()
+
+        let active48mmStatus = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "48mm")).firstMatch
+        XCTAssertTrue(active48mmStatus.waitForExistence(timeout: 5), "Selecting 48mm should update the visible active camera status.")
     }
 
-    @MainActor
-    func testLaunchPerformance() throws {
-        // This measures how long it takes to launch your application.
-        measure(metrics: [XCTApplicationLaunchMetric()]) {
-            XCUIApplication().launch()
+    private func skipWhenRunningOnSimulator() throws {
+        /*
+         This test verifies the real FOV selector against hardware discovery.
+         The iOS simulator has no depth-capable camera, so it can compile the UI
+         target but cannot prove the 48mm depth-safe zoom path. Real-device
+         validation should still run this test during attended acceptance.
+         */
+        if ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] != nil {
+            throw XCTSkip("48mm FOV selection requires a depth-capable physical camera.")
         }
     }
 }
