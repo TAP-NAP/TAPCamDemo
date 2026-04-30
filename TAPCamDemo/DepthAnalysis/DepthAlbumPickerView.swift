@@ -6,6 +6,7 @@
 //
 
 import Combine
+import CryptoKit
 import Photos
 import SwiftUI
 import UIKit
@@ -102,10 +103,12 @@ final class DepthAlbumPickerViewModel: ObservableObject {
 struct DepthAlbumAsset: Identifiable, Equatable {
     let id: String
     let asset: PHAsset
+    let thumbnailCacheKey: String
 
     init(asset: PHAsset) {
         self.id = asset.localIdentifier
         self.asset = asset
+        self.thumbnailCacheKey = DepthAlbumThumbnailCacheKey.make(for: asset)
     }
 }
 
@@ -140,6 +143,18 @@ private struct DepthAlbumAssetCell: View {
     }
 
     private func loadThumbnail() async {
+        if let cachedThumbnail = DepthAlbumThumbnailMemoryCache.shared.image(for: asset.thumbnailCacheKey) {
+            thumbnail = cachedThumbnail
+            return
+        }
+
+        if let cachedData = await DepthAlbumThumbnailDiskCache.shared.data(for: asset.thumbnailCacheKey),
+           let cachedThumbnail = UIImage(data: cachedData) {
+            DepthAlbumThumbnailMemoryCache.shared.insert(cachedThumbnail, for: asset.thumbnailCacheKey)
+            thumbnail = cachedThumbnail
+            return
+        }
+
         let image: UIImage? = await withCheckedContinuation { continuation in
             var didResume = false
             let options = PHImageRequestOptions()
@@ -171,6 +186,90 @@ private struct DepthAlbumAssetCell: View {
             }
         }
 
+        guard !Task.isCancelled, let image else {
+            return
+        }
+
+        DepthAlbumThumbnailMemoryCache.shared.insert(image, for: asset.thumbnailCacheKey)
         thumbnail = image
+
+        if let data = image.jpegData(compressionQuality: 0.88) {
+            await DepthAlbumThumbnailDiskCache.shared.store(data, for: asset.thumbnailCacheKey)
+        }
+    }
+}
+
+private enum DepthAlbumThumbnailCacheKey {
+    static func make(for asset: PHAsset) -> String {
+        let versionDate = asset.modificationDate ?? asset.creationDate ?? .distantPast
+        let source = [
+            asset.localIdentifier,
+            "\(asset.pixelWidth)x\(asset.pixelHeight)",
+            String(versionDate.timeIntervalSince1970)
+        ].joined(separator: "|")
+
+        let digest = SHA256.hash(data: Data(source.utf8))
+        return digest.map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+@MainActor
+private final class DepthAlbumThumbnailMemoryCache {
+    static let shared = DepthAlbumThumbnailMemoryCache()
+
+    private let cache = NSCache<NSString, UIImage>()
+
+    private init() {
+        cache.countLimit = 700
+        cache.totalCostLimit = 120 * 1024 * 1024
+    }
+
+    func image(for key: String) -> UIImage? {
+        cache.object(forKey: key as NSString)
+    }
+
+    func insert(_ image: UIImage, for key: String) {
+        cache.setObject(image, forKey: key as NSString, cost: imageCost(image))
+    }
+
+    private func imageCost(_ image: UIImage) -> Int {
+        guard let cgImage = image.cgImage else {
+            return 0
+        }
+        return cgImage.bytesPerRow * cgImage.height
+    }
+}
+
+private actor DepthAlbumThumbnailDiskCache {
+    static let shared = DepthAlbumThumbnailDiskCache()
+
+    private let directoryURL: URL
+    private let fileManager = FileManager.default
+
+    private init() {
+        let rootURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        self.directoryURL = rootURL.appendingPathComponent("DepthAlbumThumbnails", isDirectory: true)
+    }
+
+    func data(for key: String) -> Data? {
+        ensureDirectoryExists()
+        return try? Data(contentsOf: fileURL(for: key), options: .mappedIfSafe)
+    }
+
+    func store(_ data: Data, for key: String) {
+        ensureDirectoryExists()
+        try? data.write(to: fileURL(for: key), options: [.atomic])
+    }
+
+    private func fileURL(for key: String) -> URL {
+        directoryURL.appendingPathComponent(key).appendingPathExtension("jpg")
+    }
+
+    private func ensureDirectoryExists() {
+        guard !fileManager.fileExists(atPath: directoryURL.path) else {
+            return
+        }
+        try? fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
     }
 }
