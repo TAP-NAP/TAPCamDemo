@@ -3,12 +3,13 @@
 //  TAPCamDemo
 //
 
+import AppAttestKit
 import Combine
 import Foundation
 
 enum AppAttestDemoBackendMode: String, CaseIterable, Identifiable {
     #if DEBUG
-    case mock
+    case localDebug
     #endif
     case http
 
@@ -17,8 +18,8 @@ enum AppAttestDemoBackendMode: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         #if DEBUG
-        case .mock:
-            "Mock Backend"
+        case .localDebug:
+            "Local Debug Backend"
         #endif
         case .http:
             "HTTP Backend"
@@ -46,7 +47,7 @@ final class AppAttestDemoViewModel: ObservableObject {
     private var activeOperationCount = 0
     private let maxResultLineCount = 12
     #if DEBUG
-    private var debugBackend: MockDebugAppAttestBackend?
+    private var debugBackend: LocalDebugAppAttestBackend?
     #endif
 
     init(runtime: AppAttestRuntime) {
@@ -54,7 +55,7 @@ final class AppAttestDemoViewModel: ObservableObject {
         self.backendDescription = runtime.backendDescription
         #if DEBUG
         self.debugBackend = runtime.debugBackend
-        self.selectedBackendMode = runtime.debugBackend == nil ? .http : .mock
+        self.selectedBackendMode = runtime.debugBackend == nil ? .http : .localDebug
         #else
         self.selectedBackendMode = .http
         #endif
@@ -89,8 +90,8 @@ final class AppAttestDemoViewModel: ObservableObject {
             let mode: AppAttestBackendMode
             switch selectedBackendMode {
             #if DEBUG
-            case .mock:
-                mode = .mockDebug
+            case .localDebug:
+                mode = .localDebug(challenge: AppAttestRuntimeDefaults.localDebugChallenge)
             #endif
             case .http:
                 guard let baseURL = URL(string: httpBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)) else {
@@ -196,7 +197,7 @@ final class AppAttestDemoViewModel: ObservableObject {
     func exportDebugJSON() {
         #if DEBUG
         guard let debugBackend else {
-            debugJSON = "No DEBUG mock backend is active."
+            debugJSON = "No local debug backend is active."
             return
         }
 
@@ -218,7 +219,7 @@ final class AppAttestDemoViewModel: ObservableObject {
     func saveAttestationObject() {
         #if DEBUG
         guard let debugBackend else {
-            statusText = "No DEBUG mock backend is active."
+            statusText = "No local debug backend is active."
             return
         }
 

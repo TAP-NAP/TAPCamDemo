@@ -132,7 +132,7 @@ struct AppAttestDemoView: View {
                         .disabled(viewModel.isWorking)
 
                         if !viewModel.debugJSON.isEmpty {
-                            Text("Collected mock challenge, attestation, and assertion artifacts")
+                            Text("Collected local debug challenge, attestation, and assertion artifacts")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                             Text(viewModel.debugJSON)

@@ -1,25 +1,28 @@
-# Mock DEBUG Backend
+# Local DEBUG Backend
 
 Source links:
 
-- [MockDebugAppAttestBackend](../../TAPCamDemo/AppAttestKit/MockDebugAppAttestBackend.swift)
+- [LocalDebugAppAttestBackend](https://github.com/TAP-NAP/AppAttestKit/blob/main/Sources/AppAttestKit/LocalDebugAppAttestBackend.swift)
 - [AppAttestRuntimeFactory](../../TAPCamDemo/App/AppAttestRuntime.swift)
 - [Debug export UI](../../TAPCamDemo/AppAttestDemo/AppAttestDemoView.swift)
 
 ## Purpose
 
-`MockDebugAppAttestBackend` exists for early client development when no server
-is available. It uses the fixed challenge string `nearbycommunity` and exports
+`LocalDebugAppAttestBackend` exists for early client development when no server
+is available. TAPCamDemo configures it with the fixed challenge string
+`TapTapNapNap123123` for both attestation and assertion challenges, and exports
 the objects produced by the iOS App Attest APIs.
 
 It does not prove production security. Real validation must happen on a server.
 
 ## How It Is Selected
 
-The mock backend is selected explicitly with:
+The local debug backend is selected explicitly with:
 
 ```swift
-try AppAttestRuntimeFactory.make(mode: .mockDebug)
+try AppAttestRuntimeFactory.make(
+    mode: .localDebug(challenge: "TapTapNapNap123123")
+)
 ```
 
 HTTP mode is selected explicitly with:
@@ -30,7 +33,7 @@ try AppAttestRuntimeFactory.make(
 )
 ```
 
-The runtime no longer treats localhost-like URLs as mock mode. In Release
+The runtime no longer treats localhost-like URLs as local debug mode. In Release
 builds, localhost-like HTTP backends are still rejected.
 
 ## Exported JSON
@@ -62,12 +65,12 @@ that field is present. Each certificate includes:
 - `derBase64URL`
 - `pem`
 
-The fixed mock challenge has no expiration date. Production challenges still
-must be short-lived and one-time-use on the server.
+The fixed local debug challenge uses the package's debug lifetime. Production
+challenges still must be short-lived and one-time-use on the server.
 
 ## Direct Attestation Object File Export
 
-The mock backend exposes the latest raw `attestationObject` directly:
+The local debug backend exposes the latest raw `attestationObject` directly:
 
 - `latestAttestationObject()`
 - `latestAttestationObjectBase64URL()`
@@ -81,6 +84,5 @@ The saved file is the raw binary CBOR returned by
 
 ## Release Guard
 
-The mock backend is compiled only under `#if DEBUG`. Release builds get an
-unavailable shell with the same name so accidental references fail at compile
-time.
+The local debug backend is compiled only under `#if DEBUG`, so accidental
+Release references fail at compile time.

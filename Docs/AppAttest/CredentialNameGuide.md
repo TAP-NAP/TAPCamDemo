@@ -2,8 +2,8 @@
 
 Source links:
 
-- [AppAttestClient protocol](../../TAPCamDemo/AppAttestKit/AppAttestProtocols.swift)
-- [Keychain credential store](../../TAPCamDemo/AppAttestKit/KeychainAppAttestCredentialStore.swift)
+- [AppAttestClient protocol](https://github.com/TAP-NAP/AppAttestKit/blob/main/Sources/AppAttestKit/AppAttestProtocols.swift)
+- [Keychain credential store](https://github.com/TAP-NAP/AppAttestKit/blob/main/Sources/AppAttestKit/KeychainAppAttestCredentialStore.swift)
 - [TAPCamDemo demo view model](../../TAPCamDemo/AppAttestDemo/AppAttestDemoViewModel.swift)
 
 ## What It Is

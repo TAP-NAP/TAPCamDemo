@@ -2,10 +2,10 @@
 
 Source links:
 
-- [DefaultAppAttestClient](../../TAPCamDemo/AppAttestKit/DefaultAppAttestClient.swift)
-- [Keychain credential store](../../TAPCamDemo/AppAttestKit/KeychainAppAttestCredentialStore.swift)
-- [Error model](../../TAPCamDemo/AppAttestKit/AppAttestError.swift)
-- [HTTP release localhost guard](../../TAPCamDemo/AppAttestKit/HTTPAppAttestBackend.swift)
+- [DefaultAppAttestClient](https://github.com/TAP-NAP/AppAttestKit/blob/main/Sources/AppAttestKit/DefaultAppAttestClient.swift)
+- [Keychain credential store](https://github.com/TAP-NAP/AppAttestKit/blob/main/Sources/AppAttestKit/KeychainAppAttestCredentialStore.swift)
+- [Error model](https://github.com/TAP-NAP/AppAttestKit/blob/main/Sources/AppAttestKit/AppAttestError.swift)
+- [HTTP release localhost guard](https://github.com/TAP-NAP/AppAttestKit/blob/main/Sources/AppAttestKit/HTTPAppAttestBackend.swift)
 
 ## What The Client Can Trust
 
@@ -57,7 +57,7 @@ nonce so an assertion for one request cannot be replayed as another request.
 `AppAttestError.unsupportedDevice`; the app and backend must decide whether to
 degrade, retry later, or block the action.
 
-## Mock Debug Is Not Security
+## Local Debug Is Not Security
 
-`MockDebugAppAttestBackend` is for object generation and export only. It does
+`LocalDebugAppAttestBackend` is for object generation and export only. It does
 not replace server validation and cannot appear in Release builds.

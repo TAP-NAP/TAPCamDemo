@@ -2,9 +2,9 @@
 
 Source links:
 
-- [AppAttestClient protocol](../../TAPCamDemo/AppAttestKit/AppAttestProtocols.swift)
-- [DefaultAppAttestClient](../../TAPCamDemo/AppAttestKit/DefaultAppAttestClient.swift)
-- [AppAttestProtectedRequest and AppAttestAssertionEnvelope](../../TAPCamDemo/AppAttestKit/AppAttestModels.swift)
+- [AppAttestClient protocol](https://github.com/TAP-NAP/AppAttestKit/blob/main/Sources/AppAttestKit/AppAttestProtocols.swift)
+- [DefaultAppAttestClient](https://github.com/TAP-NAP/AppAttestKit/blob/main/Sources/AppAttestKit/DefaultAppAttestClient.swift)
+- [AppAttestProtectedRequest and AppAttestAssertionEnvelope](https://github.com/TAP-NAP/AppAttestKit/blob/main/Sources/AppAttestKit/AppAttestModels.swift)
 - [TAPCamDemo view model example](../../TAPCamDemo/AppAttestDemo/AppAttestDemoViewModel.swift)
 
 ## Choose A Credential Name

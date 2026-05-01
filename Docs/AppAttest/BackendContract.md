@@ -2,9 +2,9 @@
 
 Source links:
 
-- [AppAttestBackend](../../TAPCamDemo/AppAttestKit/AppAttestProtocols.swift)
-- [HTTPAppAttestBackend](../../TAPCamDemo/AppAttestKit/HTTPAppAttestBackend.swift)
-- [App Attest request/response models](../../TAPCamDemo/AppAttestKit/AppAttestModels.swift)
+- [AppAttestBackend](https://github.com/TAP-NAP/AppAttestKit/blob/main/Sources/AppAttestKit/AppAttestProtocols.swift)
+- [HTTPAppAttestBackend](https://github.com/TAP-NAP/AppAttestKit/blob/main/Sources/AppAttestKit/HTTPAppAttestBackend.swift)
+- [App Attest request/response models](https://github.com/TAP-NAP/AppAttestKit/blob/main/Sources/AppAttestKit/AppAttestModels.swift)
 
 ## Backend Boundary
 

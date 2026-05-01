@@ -4,11 +4,12 @@
 //
 
 import Foundation
+import AppAttestKit
 
 enum AppAttestBackendMode: Hashable {
     case http(baseURL: URL)
     #if DEBUG
-    case mockDebug
+    case localDebug(challenge: String)
     #endif
 }
 
@@ -17,7 +18,7 @@ struct AppAttestRuntime {
     let client: any AppAttestClient
     let backendDescription: String
     #if DEBUG
-    let debugBackend: MockDebugAppAttestBackend?
+    let debugBackend: LocalDebugAppAttestBackend?
     #endif
 
     #if DEBUG
@@ -25,7 +26,7 @@ struct AppAttestRuntime {
         mode: AppAttestBackendMode? = nil,
         client: any AppAttestClient,
         backendDescription: String,
-        debugBackend: MockDebugAppAttestBackend? = nil
+        debugBackend: LocalDebugAppAttestBackend? = nil
     ) {
         self.mode = mode
         self.client = client
@@ -48,8 +49,8 @@ enum AppAttestRuntimeFactory {
         progressHandler: (@MainActor @Sendable (String) async -> Void)? = nil
     ) throws -> AppAttestRuntime {
         switch mode {
-        case .mockDebug:
-            let backend = MockDebugAppAttestBackend()
+        case .localDebug(let challenge):
+            let backend = LocalDebugAppAttestBackend(challengeString: challenge)
             return AppAttestRuntime(
                 mode: mode,
                 client: DefaultAppAttestClient(
@@ -59,7 +60,7 @@ enum AppAttestRuntimeFactory {
                     environment: .development,
                     progressHandler: progressHandler
                 ),
-                backendDescription: "Mock Backend",
+                backendDescription: "Local Debug Backend: \(challenge)",
                 debugBackend: backend
             )
 
@@ -121,9 +122,11 @@ enum AppAttestRuntimeFactory {
 }
 
 enum AppAttestRuntimeDefaults {
+    static let localDebugChallenge = "TapTapNapNap123123"
+
     static var mode: AppAttestBackendMode {
         #if DEBUG
-        .mockDebug
+        .localDebug(challenge: localDebugChallenge)
         #else
         .http(baseURL: URL(string: "https://example.com")!)
         #endif

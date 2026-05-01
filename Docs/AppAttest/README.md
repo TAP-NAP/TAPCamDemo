@@ -1,16 +1,16 @@
 # TAPCamDemo App Attest
 
-This folder documents the reusable App Attest implementation used by TAPCamDemo.
-Links point to source files so they can be opened directly from Xcode or a Git
-browser.
+This folder documents TAPCamDemo's App Attest integration. The reusable client
+implementation now comes from the upstream
+[TAP-NAP/AppAttestKit](https://github.com/TAP-NAP/AppAttestKit) Swift Package.
 
 ## Code Boundaries
 
-- [AppAttestKit](../../TAPCamDemo/AppAttestKit/AppAttestProtocols.swift) contains reusable protocols and core flows.
-- [DefaultAppAttestClient](../../TAPCamDemo/AppAttestKit/DefaultAppAttestClient.swift) owns attestation, assertion, and credential metadata persistence.
-- [KeychainAppAttestCredentialStore](../../TAPCamDemo/AppAttestKit/KeychainAppAttestCredentialStore.swift) stores `credentialName -> keyId` metadata.
-- [HTTPAppAttestBackend](../../TAPCamDemo/AppAttestKit/HTTPAppAttestBackend.swift) is the production HTTP backend adapter.
-- [MockDebugAppAttestBackend](../../TAPCamDemo/AppAttestKit/MockDebugAppAttestBackend.swift) is DEBUG-only fixed-challenge object export support.
+- [AppAttestKit](https://github.com/TAP-NAP/AppAttestKit/tree/main/Sources/AppAttestKit) contains reusable protocols and core flows.
+- [DefaultAppAttestClient](https://github.com/TAP-NAP/AppAttestKit/blob/main/Sources/AppAttestKit/DefaultAppAttestClient.swift) owns attestation, assertion, and credential metadata persistence.
+- [KeychainAppAttestCredentialStore](https://github.com/TAP-NAP/AppAttestKit/blob/main/Sources/AppAttestKit/KeychainAppAttestCredentialStore.swift) stores `credentialName -> keyId` metadata.
+- [HTTPAppAttestBackend](https://github.com/TAP-NAP/AppAttestKit/blob/main/Sources/AppAttestKit/HTTPAppAttestBackend.swift) is the production HTTP backend adapter.
+- [LocalDebugAppAttestBackend](https://github.com/TAP-NAP/AppAttestKit/blob/main/Sources/AppAttestKit/LocalDebugAppAttestBackend.swift) is DEBUG-only fixed-challenge object export support.
 - [AppAttestDemo](../../TAPCamDemo/AppAttestDemo/AppAttestDemoView.swift) is TAPCamDemo's UI usage example, not reusable core logic.
 - [AppAttestRuntime](../../TAPCamDemo/App/AppAttestRuntime.swift) wires TAPCamDemo to an explicit backend mode.
 
@@ -38,5 +38,5 @@ use it:
 - [ClientUsage.md](ClientUsage.md): client API and call examples.
 - [CredentialNameGuide.md](CredentialNameGuide.md): recommended caller-owned credential names.
 - [BackendContract.md](BackendContract.md): HTTP contract and server duties.
-- [LocalDebug.md](LocalDebug.md): no-server mock debugging and export format.
+- [LocalDebug.md](LocalDebug.md): no-server local debugging and export format.
 - [SecurityNotes.md](SecurityNotes.md): safety boundaries and non-goals.
