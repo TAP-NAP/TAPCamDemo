@@ -13,9 +13,23 @@ import SwiftUI
 struct DepthAnalyzerSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     private let snapshot: DepthAnalyzerAuthorizationSnapshot
+    @Binding private var appAttestBackendSelection: AppAttestBackendSelection
+    @Binding private var appAttestHTTPBaseURL: String
+    private let appAttestBackendDescription: String
+    private let onApplyAppAttestBackend: () -> Void
 
-    init(snapshot: DepthAnalyzerAuthorizationSnapshot = .current()) {
+    init(
+        snapshot: DepthAnalyzerAuthorizationSnapshot = .current(),
+        appAttestBackendSelection: Binding<AppAttestBackendSelection>,
+        appAttestHTTPBaseURL: Binding<String>,
+        appAttestBackendDescription: String,
+        onApplyAppAttestBackend: @escaping () -> Void
+    ) {
         self.snapshot = snapshot
+        self._appAttestBackendSelection = appAttestBackendSelection
+        self._appAttestHTTPBaseURL = appAttestHTTPBaseURL
+        self.appAttestBackendDescription = appAttestBackendDescription
+        self.onApplyAppAttestBackend = onApplyAppAttestBackend
     }
 
     var body: some View {
@@ -39,12 +53,27 @@ struct DepthAnalyzerSettingsView: View {
                     )
                 }
 
-                Section("Authentication") {
-                    DepthAnalyzerStatusRow(
-                        title: "Analysis account",
-                        value: "Not configured",
-                        systemImage: "person.crop.circle.badge.questionmark"
-                    )
+                Section("App Attest Backend") {
+                    Picker("Backend", selection: $appAttestBackendSelection) {
+                        ForEach(AppAttestBackendSelection.allCases) { mode in
+                            Text(mode.title).tag(mode)
+                        }
+                    }
+
+                    if appAttestBackendSelection.showsHTTPSettings {
+                        TextField("Base URL", text: $appAttestHTTPBaseURL)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .keyboardType(.URL)
+                    }
+
+                    Button {
+                        onApplyAppAttestBackend()
+                    } label: {
+                        Label("Use Selected Backend", systemImage: "arrow.triangle.2.circlepath")
+                    }
+
+                    LabeledContent("Active", value: appAttestBackendDescription)
                 }
             }
             .navigationTitle("Analyzer Settings")

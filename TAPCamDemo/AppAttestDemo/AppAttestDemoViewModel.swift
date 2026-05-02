@@ -7,30 +7,8 @@ import AppAttestKit
 import Combine
 import Foundation
 
-enum AppAttestDemoBackendMode: String, CaseIterable, Identifiable {
-    #if DEBUG
-    case localDebug
-    #endif
-    case http
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        #if DEBUG
-        case .localDebug:
-            "Local Debug Backend"
-        #endif
-        case .http:
-            "HTTP Backend"
-        }
-    }
-}
-
 @MainActor
 final class AppAttestDemoViewModel: ObservableObject {
-    @Published var selectedBackendMode: AppAttestDemoBackendMode
-    @Published var httpBaseURL = "https://example.com"
     @Published var credentialName = "installation_keyid"
     @Published var requestMethod = "POST"
     @Published var requestPath = "/api/protected/demo"
@@ -53,11 +31,15 @@ final class AppAttestDemoViewModel: ObservableObject {
     init(runtime: AppAttestRuntime) {
         self.appAttest = runtime.client
         self.backendDescription = runtime.backendDescription
+        self.statusText = """
+        Active backend:
+        \(runtime.backendDescription)
+        Step 1: enter a credential name.
+        Step 2: prepare the credential.
+        Step 3: sign one protected request.
+        """
         #if DEBUG
         self.debugBackend = runtime.debugBackend
-        self.selectedBackendMode = runtime.debugBackend == nil ? .http : .localDebug
-        #else
-        self.selectedBackendMode = .http
         #endif
 
         #if DEBUG
@@ -73,54 +55,12 @@ final class AppAttestDemoViewModel: ObservableObject {
         #endif
     }
 
-    var shouldShowHTTPSettings: Bool {
-        selectedBackendMode == .http
-    }
-
     var isDebugExportAvailable: Bool {
         #if DEBUG
         return debugBackend != nil
         #else
         return false
         #endif
-    }
-
-    func applyBackendSelection() {
-        do {
-            let mode: AppAttestBackendMode
-            switch selectedBackendMode {
-            #if DEBUG
-            case .localDebug:
-                mode = .localDebug(challenge: AppAttestRuntimeDefaults.localDebugChallenge)
-            #endif
-            case .http:
-                guard let baseURL = URL(string: httpBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)) else {
-                    throw AppAttestError.invalidConfiguration("HTTP Backend URL is invalid.")
-                }
-                mode = .http(baseURL: baseURL)
-            }
-
-            #if DEBUG
-            let runtime = try AppAttestRuntimeFactory.make(
-                mode: mode,
-                progressHandler: { [weak self] message in
-                    self?.appendProgress(message)
-                }
-            )
-            #else
-            let runtime = try AppAttestRuntimeFactory.make(mode: mode)
-            #endif
-            install(runtime: runtime)
-            headersText = ""
-            debugJSON = ""
-            statusText = """
-            Backend changed.
-            \(backendDescription)
-            """
-        } catch {
-            install(runtime: AppAttestRuntimeFactory.fallbackRuntime(error: error))
-            statusText = "Backend configuration failed\n\(error.localizedDescription)"
-        }
     }
 
     func prepare() {

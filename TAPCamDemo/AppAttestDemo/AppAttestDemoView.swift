@@ -23,30 +23,6 @@ struct AppAttestDemoView: View {
             )
 
             Form {
-                Section("Backend") {
-                    Picker("Backend", selection: $viewModel.selectedBackendMode) {
-                        ForEach(AppAttestDemoBackendMode.allCases) { mode in
-                            Text(mode.title).tag(mode)
-                        }
-                    }
-
-                    if viewModel.shouldShowHTTPSettings {
-                        TextField("Base URL", text: $viewModel.httpBaseURL)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .keyboardType(.URL)
-                    }
-
-                    Button {
-                        viewModel.applyBackendSelection()
-                    } label: {
-                        Label("Use Selected Backend", systemImage: "arrow.triangle.2.circlepath")
-                    }
-                    .disabled(viewModel.isWorking)
-
-                    LabeledContent("Active", value: viewModel.backendDescription)
-                }
-
                 Section {
                     TextField("Credential name", text: $viewModel.credentialName)
                         .textInputAutocapitalization(.never)

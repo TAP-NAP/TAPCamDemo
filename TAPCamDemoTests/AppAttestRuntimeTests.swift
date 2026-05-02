@@ -28,5 +28,31 @@ struct AppAttestRuntimeTests {
         #expect(assertionChallenge?.challengeId == "TapTapNapNap123123")
         #expect(String(data: assertionChallenge?.challenge ?? Data(), encoding: .utf8) == "TapTapNapNap123123")
     }
+
+    @Test func backendSelectionBuildsDefaultLocalDebugMode() throws {
+        let mode = try AppAttestRuntimeDefaults.mode(
+            selection: .localDebug,
+            httpBaseURLText: "https://api.example.com"
+        )
+
+        guard case .localDebug(let challenge) = mode else {
+            Issue.record("Expected local debug backend mode.")
+            return
+        }
+        #expect(challenge == "TapTapNapNap123123")
+    }
     #endif
+
+    @Test func backendSelectionBuildsHTTPMode() throws {
+        let mode = try AppAttestRuntimeDefaults.mode(
+            selection: .http,
+            httpBaseURLText: " https://api.example.com "
+        )
+
+        guard case .http(let baseURL) = mode else {
+            Issue.record("Expected HTTP backend mode.")
+            return
+        }
+        #expect(baseURL.absoluteString == "https://api.example.com")
+    }
 }

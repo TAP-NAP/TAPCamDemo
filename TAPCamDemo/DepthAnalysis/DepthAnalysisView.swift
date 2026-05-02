@@ -18,8 +18,10 @@ import SwiftUI
 /// the module boundary so the capture UI remains a camera.
 struct DepthAnalysisView: View {
     let assetID: String
-    private let appAttestRuntime: AppAttestRuntime
     @StateObject private var viewModel = DepthAnalysisViewModel()
+    @State private var appAttestRuntime: AppAttestRuntime
+    @State private var appAttestBackendSelection: AppAttestBackendSelection
+    @State private var appAttestHTTPBaseURL: String
     @State private var heatmapOpacity = 0.74
     @State private var panelDestination: AnalysisPanelDestination?
     @State private var buttonHint: AnalysisButtonHint?
@@ -30,7 +32,9 @@ struct DepthAnalysisView: View {
 
     init(assetID: String, appAttestRuntime: AppAttestRuntime = Self.makeAppAttestRuntime()) {
         self.assetID = assetID
-        self.appAttestRuntime = appAttestRuntime
+        self._appAttestRuntime = State(initialValue: appAttestRuntime)
+        self._appAttestBackendSelection = State(initialValue: AppAttestBackendSelection(mode: appAttestRuntime.mode))
+        self._appAttestHTTPBaseURL = State(initialValue: AppAttestRuntimeDefaults.httpBaseURLText(for: appAttestRuntime.mode))
     }
 
     var body: some View {
@@ -78,7 +82,12 @@ struct DepthAnalysisView: View {
             }
         }
         .sheet(isPresented: $isShowingSettings) {
-            DepthAnalyzerSettingsView()
+            DepthAnalyzerSettingsView(
+                appAttestBackendSelection: $appAttestBackendSelection,
+                appAttestHTTPBaseURL: $appAttestHTTPBaseURL,
+                appAttestBackendDescription: appAttestRuntime.backendDescription,
+                onApplyAppAttestBackend: applyAppAttestBackendSelection
+            )
         }
         .sheet(isPresented: $isShowingAppAttest) {
             NavigationStack {
@@ -257,11 +266,23 @@ struct DepthAnalysisView: View {
         .animation(.snappy(duration: 0.18), value: viewModel.viewMode)
     }
 
-    private static func makeAppAttestRuntime() -> AppAttestRuntime {
+    private static func makeAppAttestRuntime(mode: AppAttestBackendMode = AppAttestRuntimeDefaults.mode) -> AppAttestRuntime {
         do {
-            return try AppAttestRuntimeFactory.make()
+            return try AppAttestRuntimeFactory.make(mode: mode)
         } catch {
             return AppAttestRuntimeFactory.fallbackRuntime(error: error)
+        }
+    }
+
+    private func applyAppAttestBackendSelection() {
+        do {
+            let mode = try AppAttestRuntimeDefaults.mode(
+                selection: appAttestBackendSelection,
+                httpBaseURLText: appAttestHTTPBaseURL
+            )
+            appAttestRuntime = Self.makeAppAttestRuntime(mode: mode)
+        } catch {
+            appAttestRuntime = AppAttestRuntimeFactory.fallbackRuntime(error: error)
         }
     }
 

@@ -13,6 +13,41 @@ enum AppAttestBackendMode: Hashable {
     #endif
 }
 
+enum AppAttestBackendSelection: String, CaseIterable, Identifiable {
+    #if DEBUG
+    case localDebug
+    #endif
+    case http
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        #if DEBUG
+        case .localDebug:
+            "Local Debug Backend"
+        #endif
+        case .http:
+            "HTTP Backend"
+        }
+    }
+
+    var showsHTTPSettings: Bool {
+        self == .http
+    }
+
+    init(mode: AppAttestBackendMode?) {
+        switch mode {
+        #if DEBUG
+        case .some(.localDebug(_)):
+            self = .localDebug
+        #endif
+        case .some(.http(_)), .none:
+            self = .http
+        }
+    }
+}
+
 struct AppAttestRuntime {
     let mode: AppAttestBackendMode?
     let client: any AppAttestClient
@@ -123,13 +158,39 @@ enum AppAttestRuntimeFactory {
 
 enum AppAttestRuntimeDefaults {
     static let localDebugChallenge = "TapTapNapNap123123"
+    static let httpBaseURLText = "https://example.com"
 
     static var mode: AppAttestBackendMode {
         #if DEBUG
         .localDebug(challenge: localDebugChallenge)
         #else
-        .http(baseURL: URL(string: "https://example.com")!)
+        .http(baseURL: URL(string: httpBaseURLText)!)
         #endif
+    }
+
+    static func httpBaseURLText(for mode: AppAttestBackendMode?) -> String {
+        if case .http(let baseURL) = mode {
+            return baseURL.absoluteString
+        }
+        return httpBaseURLText
+    }
+
+    static func mode(
+        selection: AppAttestBackendSelection,
+        httpBaseURLText: String
+    ) throws -> AppAttestBackendMode {
+        switch selection {
+        #if DEBUG
+        case .localDebug:
+            return .localDebug(challenge: localDebugChallenge)
+        #endif
+        case .http:
+            let trimmedBaseURL = httpBaseURLText.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let baseURL = URL(string: trimmedBaseURL) else {
+                throw AppAttestError.invalidConfiguration("HTTP Backend URL is invalid.")
+            }
+            return .http(baseURL: baseURL)
+        }
     }
 }
 
