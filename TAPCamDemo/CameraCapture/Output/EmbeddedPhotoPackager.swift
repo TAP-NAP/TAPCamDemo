@@ -23,8 +23,11 @@ nonisolated struct EmbeddedPhotoPackager: CapturePackager {
     /// injected into XMP without emitting sidecar files.
     ///
     /// - Tag: PackageEmbeddedDepthHEIC
-    func package(_ capturePackage: CapturePackage) async throws -> PackagedCaptureArtifact {
-        let manifest = try TAPDepthManifestBuilder.makeManifest(capturePackage: capturePackage)
+    func package(
+        _ capturePackage: CapturePackage,
+        assertionSigner: (any CaptureAssertionSigning)?
+    ) async throws -> PackagedCaptureArtifact {
+        let unsignedManifest = try TAPDepthManifestBuilder.makeManifest(capturePackage: capturePackage)
         let customizer = TAPPhotoFileMetadataCustomizer(
             capturedAt: capturePackage.sourceContext.capturedAt,
             location: capturePackage.sourceContext.location,
@@ -35,14 +38,59 @@ nonisolated struct EmbeddedPhotoPackager: CapturePackager {
             throw TAPDepthCaptureError.unableToCreatePhotoData
         }
 
-        let finalHEICData = try TAPDepthHEICWriter.injectingManifest(manifest, into: baseHEICData)
+        let signingResult = await Self.manifestByApplyingCaptureAssertion(
+            to: unsignedManifest,
+            baseHEICData: baseHEICData,
+            depthData: capturePackage.photo.depthData,
+            capturedAt: capturePackage.sourceContext.capturedAt,
+            assertionSigner: assertionSigner
+        )
+        let finalHEICData = try TAPDepthHEICWriter.injectingManifest(signingResult.manifest, into: baseHEICData)
+
         return PackagedCaptureArtifact(
             packageID: capturePackage.job.id,
             strategy: strategy,
             photoData: finalHEICData,
-            manifest: manifest,
+            manifest: signingResult.manifest,
+            signatureStatus: signingResult.status,
             capturedAt: capturePackage.sourceContext.capturedAt,
             location: capturePackage.sourceContext.location
         )
+    }
+
+    static func manifestByApplyingCaptureAssertion(
+        to manifest: TAPDepthManifest,
+        baseHEICData: Data,
+        depthData: AVDepthData?,
+        capturedAt: Date,
+        assertionSigner: (any CaptureAssertionSigning)?
+    ) async -> (manifest: TAPDepthManifest, status: CaptureSignatureStatus) {
+        guard let assertionSigner else {
+            return (manifest, .unsigned(reason: "App Attest signer unavailable."))
+        }
+
+        do {
+            guard let depthData else {
+                throw TAPDepthCaptureError.missingDepthData
+            }
+
+            let contentDigest = try CaptureContentDigest.make(
+                manifest: manifest,
+                baseHEICData: baseHEICData,
+                depthData: depthData,
+                capturedAt: capturedAt
+            )
+            let assertionProof = try await assertionSigner.sign(
+                contentDigest: contentDigest,
+                capturedAt: capturedAt
+            )
+
+            return (
+                TAPDepthManifest(payload: manifest.payload, proofs: [assertionProof.proof]),
+                .signed(keyID: assertionProof.keyID)
+            )
+        } catch {
+            return (manifest, .unsigned(reason: error.localizedDescription))
+        }
     }
 }

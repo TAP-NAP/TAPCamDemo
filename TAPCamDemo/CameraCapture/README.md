@@ -237,8 +237,8 @@ settings.photoQualityPrioritization = .quality
 ## Run the Async Pipeline
 
 After the shutter tap, the pipeline captures, builds the logical package,
-packages the HEIC, writes it to Photos, and records metrics. The preview remains
-attached to the running session while this happens.
+packages and signs the HEIC, writes it to Photos, and records metrics. The
+preview remains attached to the running session while this happens.
 
 ```swift
 let captureResult = try await photoDepthProvider.capturePhotoDepth(job: job, context: context)
@@ -247,7 +247,10 @@ let capturePackage = try CapturePackageBuilder.makePackage(
     context: context,
     captureResult: captureResult
 )
-let artifact = try await packager.package(capturePackage)
+let artifact = try await packager.package(
+    capturePackage,
+    assertionSigner: assertionSigner
+)
 let writeResult = try await writer.write(artifact)
 ```
 
@@ -270,18 +273,25 @@ guard captureResult.photo.depthData != nil else {
 ## Package an Embedded HEIC
 
 `EmbeddedPhotoPackager` is the Release-safe physical packaging strategy. It uses
-Apple's `fileDataRepresentation(with:)`, builds the TAP manifest, and injects
-that manifest into the HEIC XMP metadata.
+Apple's `fileDataRepresentation(with:)`, builds the TAP manifest, tries to add
+an App Attest proof, and injects the resulting manifest into the HEIC XMP
+metadata before Photos sees the file.
 
 ```swift
 let manifest = try TAPDepthManifestBuilder.makeManifest(capturePackage: capturePackage)
 guard let baseHEICData = capturePackage.photo.fileDataRepresentation(with: customizer) else {
     throw TAPDepthCaptureError.unableToCreatePhotoData
 }
-let finalHEICData = try TAPDepthHEICWriter.injectingManifest(manifest, into: baseHEICData)
+let signingResult = await EmbeddedPhotoPackager.manifestByApplyingCaptureAssertion(...)
+let finalHEICData = try TAPDepthHEICWriter.injectingManifest(signingResult.manifest, into: baseHEICData)
 ```
 
 [View in Source](x-source-tag://PackageEmbeddedDepthHEIC)
+
+The proof lives in `manifest.proofs[0]` with `type: "appAttestAssertion"`.
+Its value is base64url canonical JSON containing the signed RGB/depth/metadata
+digest package and the AppAttestKit assertion envelope. See
+[PACKAGING.md](Documentation/PACKAGING.md) for the verification format.
 
 ## Build and Inject the TAP Manifest
 

@@ -17,6 +17,12 @@ nonisolated enum PackagingStrategy: String, Codable, Sendable {
     case embeddedPhoto
 }
 
+/// Whether a packaged capture contains an App Attest proof.
+nonisolated enum CaptureSignatureStatus: Equatable, Sendable {
+    case signed(keyID: String)
+    case unsigned(reason: String)
+}
+
 /// Result of physically packaging a logical capture package.
 ///
 /// This is a single HEIC byte buffer with Apple auxiliary depth and TAP XMP
@@ -26,6 +32,7 @@ nonisolated struct PackagedCaptureArtifact: Sendable {
     let strategy: PackagingStrategy
     let photoData: Data
     let manifest: TAPDepthManifest
+    let signatureStatus: CaptureSignatureStatus
     let capturedAt: Date
     let location: CLLocation?
 }
@@ -33,5 +40,8 @@ nonisolated struct PackagedCaptureArtifact: Sendable {
 /// Converts a logical `CapturePackage` into a physical artifact.
 protocol CapturePackager: Sendable {
     var strategy: PackagingStrategy { get }
-    func package(_ capturePackage: CapturePackage) async throws -> PackagedCaptureArtifact
+    func package(
+        _ capturePackage: CapturePackage,
+        assertionSigner: (any CaptureAssertionSigning)?
+    ) async throws -> PackagedCaptureArtifact
 }

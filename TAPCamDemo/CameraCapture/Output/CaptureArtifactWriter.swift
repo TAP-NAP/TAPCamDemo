@@ -12,6 +12,7 @@ nonisolated struct CaptureWriteResult: Equatable, Sendable {
     let artifactID: UUID
     let destinationDescription: String
     let assetLocalIdentifier: String?
+    let signatureStatus: CaptureSignatureStatus
 }
 
 /// Persists a packaged capture artifact.
@@ -37,7 +38,8 @@ nonisolated struct PhotoLibraryCaptureArtifactWriter: CaptureArtifactWriter {
         return CaptureWriteResult(
             artifactID: artifact.packageID,
             destinationDescription: "Photos asset: \(assetID)",
-            assetLocalIdentifier: assetID
+            assetLocalIdentifier: assetID,
+            signatureStatus: artifact.signatureStatus
         )
     }
 }

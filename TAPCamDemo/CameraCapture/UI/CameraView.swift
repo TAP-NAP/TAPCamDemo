@@ -237,7 +237,8 @@ struct CameraView: View {
             Spacer()
 
             Button {
-                Task { await viewModel.capture() }
+                let appAttestClient = appAttestController.runtime.client
+                Task { await viewModel.capture(appAttestClient: appAttestClient) }
             } label: {
                 ZStack {
                     Circle()

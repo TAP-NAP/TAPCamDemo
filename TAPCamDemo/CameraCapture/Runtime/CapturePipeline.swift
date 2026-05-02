@@ -73,6 +73,7 @@ nonisolated final class CapturePipeline: @unchecked Sendable {
     func runSingleCamJob(
         job: CaptureJob,
         context: CaptureSourceContext,
+        assertionSigner: (any CaptureAssertionSigning)?,
         pendingJobCount: Int,
         queueWaitDuration: TimeInterval?
     ) async -> Result<CaptureWriteResult, Error> {
@@ -96,7 +97,10 @@ nonisolated final class CapturePipeline: @unchecked Sendable {
             packageBuildDuration = Date().timeIntervalSince(packageBuildStart)
 
             let packagingStart = Date()
-            let artifact = try await packager.package(capturePackage)
+            let artifact = try await packager.package(
+                capturePackage,
+                assertionSigner: assertionSigner
+            )
             packagingDuration = Date().timeIntervalSince(packagingStart)
 
             let writeStart = Date()
