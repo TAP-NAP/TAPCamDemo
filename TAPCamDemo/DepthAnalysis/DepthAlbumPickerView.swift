@@ -18,6 +18,11 @@ import UIKit
 struct DepthAlbumPickerView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel = DepthAlbumPickerViewModel()
+    @ObservedObject private var appAttestController: AppAttestRuntimeController
+
+    init(appAttestController: AppAttestRuntimeController) {
+        self.appAttestController = appAttestController
+    }
 
     private let columns = Array(
         repeating: GridItem(.flexible(minimum: 0), spacing: 3),
@@ -39,7 +44,10 @@ struct DepthAlbumPickerView: View {
                 LazyVGrid(columns: columns, spacing: 3) {
                     ForEach(viewModel.assets) { asset in
                         NavigationLink {
-                            DepthAnalysisView(assetID: asset.id)
+                            DepthAnalysisView(
+                                assetID: asset.id,
+                                appAttestController: appAttestController
+                            )
                         } label: {
                             DepthAlbumAssetCell(asset: asset)
                         }

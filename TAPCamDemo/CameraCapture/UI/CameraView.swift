@@ -20,6 +20,7 @@ import UIKit
 struct CameraView: View {
     @StateObject private var viewModel = CameraViewModel()
     @StateObject private var chromeOrientation = CameraChromeOrientationController()
+    @StateObject private var appAttestController = AppAttestRuntimeController()
     @State private var isShowingDepthAlbum = false
     #if DEBUG
     @State private var isDepthSelectorExpanded = false
@@ -31,12 +32,15 @@ struct CameraView: View {
             cameraSurface
                 .toolbar(.hidden, for: .navigationBar)
                 .navigationDestination(isPresented: $isShowingDepthAlbum) {
-                    DepthAlbumPickerView()
+                    DepthAlbumPickerView(appAttestController: appAttestController)
                         .toolbar(.visible, for: .navigationBar)
                 }
         }
         .task {
             await viewModel.start()
+        }
+        .task {
+            await appAttestController.preparePhotoCredentialAfterFirstInstallLaunch()
         }
         .onAppear {
             chromeOrientation.start()

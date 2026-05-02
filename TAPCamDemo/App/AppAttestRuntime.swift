@@ -157,6 +157,7 @@ enum AppAttestRuntimeFactory {
 }
 
 enum AppAttestRuntimeDefaults {
+    static let photoCredentialName = "photo_keyid"
     static let localDebugChallenge = "TapTapNapNap123123"
     static let httpBaseURLText = "https://example.com"
 

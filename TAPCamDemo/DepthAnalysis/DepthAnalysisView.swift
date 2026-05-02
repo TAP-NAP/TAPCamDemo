@@ -19,22 +19,20 @@ import SwiftUI
 struct DepthAnalysisView: View {
     let assetID: String
     @StateObject private var viewModel = DepthAnalysisViewModel()
-    @State private var appAttestRuntime: AppAttestRuntime
-    @State private var appAttestBackendSelection: AppAttestBackendSelection
-    @State private var appAttestHTTPBaseURL: String
+    @ObservedObject private var appAttestController: AppAttestRuntimeController
     @State private var heatmapOpacity = 0.74
     @State private var panelDestination: AnalysisPanelDestination?
     @State private var buttonHint: AnalysisButtonHint?
     @State private var buttonHintToken = UUID()
     @State private var helpSubject: AnalysisHelpSubject = .view(.rgb)
     @State private var isShowingSettings = false
-    @State private var isShowingAppAttest = false
 
-    init(assetID: String, appAttestRuntime: AppAttestRuntime = Self.makeAppAttestRuntime()) {
+    init(
+        assetID: String,
+        appAttestController: AppAttestRuntimeController? = nil
+    ) {
         self.assetID = assetID
-        self._appAttestRuntime = State(initialValue: appAttestRuntime)
-        self._appAttestBackendSelection = State(initialValue: AppAttestBackendSelection(mode: appAttestRuntime.mode))
-        self._appAttestHTTPBaseURL = State(initialValue: AppAttestRuntimeDefaults.httpBaseURLText(for: appAttestRuntime.mode))
+        self.appAttestController = appAttestController ?? AppAttestRuntimeController()
     }
 
     var body: some View {
@@ -82,24 +80,7 @@ struct DepthAnalysisView: View {
             }
         }
         .sheet(isPresented: $isShowingSettings) {
-            DepthAnalyzerSettingsView(
-                appAttestBackendSelection: $appAttestBackendSelection,
-                appAttestHTTPBaseURL: $appAttestHTTPBaseURL,
-                appAttestBackendDescription: appAttestRuntime.backendDescription,
-                onApplyAppAttestBackend: applyAppAttestBackendSelection
-            )
-        }
-        .sheet(isPresented: $isShowingAppAttest) {
-            NavigationStack {
-                AppAttestDemoView(runtime: appAttestRuntime)
-                    .toolbar {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            Button("Done") {
-                                isShowingAppAttest = false
-                            }
-                        }
-                    }
-            }
+            DepthAnalyzerSettingsView(appAttestController: appAttestController)
         }
         .onChange(of: viewModel.viewMode) { _, viewMode in
             if case .inspector(let inspector) = panelDestination, !inspectors(for: viewMode).contains(inspector) {
@@ -240,14 +221,9 @@ struct DepthAnalysisView: View {
                 viewMode: $viewModel.viewMode,
                 inspectors: inspectors(for: viewModel.viewMode),
                 buttonHint: buttonHint,
-                isAppAttestPresented: isShowingAppAttest,
                 onViewTapped: { viewMode in
                     helpSubject = .view(viewMode)
                     showButtonHint(.view(viewMode))
-                },
-                onAppAttestTapped: {
-                    showButtonHint(.appAttest)
-                    isShowingAppAttest = true
                 },
                 onInspectorTapped: { inspector in
                     helpSubject = .inspector(inspector)
@@ -264,26 +240,6 @@ struct DepthAnalysisView: View {
         .frame(maxWidth: 560, alignment: .leading)
         .animation(.snappy(duration: 0.18), value: panelDestination)
         .animation(.snappy(duration: 0.18), value: viewModel.viewMode)
-    }
-
-    private static func makeAppAttestRuntime(mode: AppAttestBackendMode = AppAttestRuntimeDefaults.mode) -> AppAttestRuntime {
-        do {
-            return try AppAttestRuntimeFactory.make(mode: mode)
-        } catch {
-            return AppAttestRuntimeFactory.fallbackRuntime(error: error)
-        }
-    }
-
-    private func applyAppAttestBackendSelection() {
-        do {
-            let mode = try AppAttestRuntimeDefaults.mode(
-                selection: appAttestBackendSelection,
-                httpBaseURLText: appAttestHTTPBaseURL
-            )
-            appAttestRuntime = Self.makeAppAttestRuntime(mode: mode)
-        } catch {
-            appAttestRuntime = AppAttestRuntimeFactory.fallbackRuntime(error: error)
-        }
     }
 
     private func clearSelectionAndPanel() {
@@ -1371,7 +1327,6 @@ private struct AnalysisLoupe: View {
 private enum AnalysisButtonHint: Equatable {
     case view(DepthAnalysisViewMode)
     case inspector(AnalysisInspector)
-    case appAttest
     case help
 
     var title: String {
@@ -1380,8 +1335,6 @@ private enum AnalysisButtonHint: Equatable {
             viewMode.title
         case .inspector(let inspector):
             inspector.title
-        case .appAttest:
-            "App Attest"
         case .help:
             "Help"
         }
@@ -1393,8 +1346,6 @@ private enum AnalysisButtonHint: Equatable {
             viewMode.systemImage
         case .inspector(let inspector):
             inspector.systemImage
-        case .appAttest:
-            "checkmark.shield"
         case .help:
             "questionmark.circle"
         }
@@ -1466,9 +1417,7 @@ private struct AnalysisInspectorStrip: View {
     @Binding var viewMode: DepthAnalysisViewMode
     let inspectors: [AnalysisInspector]
     let buttonHint: AnalysisButtonHint?
-    let isAppAttestPresented: Bool
     let onViewTapped: (DepthAnalysisViewMode) -> Void
-    let onAppAttestTapped: () -> Void
     let onInspectorTapped: (AnalysisInspector) -> Void
     let onHelpTapped: () -> Void
     @State private var viewScrollPosition: String? = DepthAnalysisViewMode.rgb.id
@@ -1485,7 +1434,6 @@ private struct AnalysisInspectorStrip: View {
                 scrollPosition: $viewScrollPosition
             ) {
                 viewModeTabs
-                appAttestButton
             }
 
             PinnedStripRow(
@@ -1548,22 +1496,6 @@ private struct AnalysisInspectorStrip: View {
             .accessibilityLabel(item.title)
             .help(item.detailedExplanation)
         }
-    }
-
-    private var appAttestButton: some View {
-        Button {
-            viewScrollPosition = Self.appAttestScrollID
-            onAppAttestTapped()
-        } label: {
-            iconButton(
-                systemImage: "checkmark.shield",
-                isSelected: isAppAttestPresented
-            )
-        }
-        .id(Self.appAttestScrollID)
-        .buttonStyle(.plain)
-        .accessibilityLabel("App Attest")
-        .help("Open App Attest.")
     }
 
     private var inspectorTabs: some View {
@@ -1644,8 +1576,6 @@ private struct AnalysisInspectorStrip: View {
         }
         return id == Self.helpScrollID || inspectors.contains { $0.id == id }
     }
-
-    private static let appAttestScrollID = "app-attest"
 }
 
 private struct PinnedStripRow<Content: View>: View {

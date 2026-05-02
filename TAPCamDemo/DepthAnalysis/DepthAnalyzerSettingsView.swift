@@ -9,27 +9,21 @@
 import CoreLocation
 import Photos
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct DepthAnalyzerSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     private let snapshot: DepthAnalyzerAuthorizationSnapshot
-    @Binding private var appAttestBackendSelection: AppAttestBackendSelection
-    @Binding private var appAttestHTTPBaseURL: String
-    private let appAttestBackendDescription: String
-    private let onApplyAppAttestBackend: () -> Void
+    @ObservedObject private var appAttestController: AppAttestRuntimeController
+    @State private var attestationObjectDocument: AppAttestCBORDocument?
+    @State private var isAttestationExporterPresented = false
 
     init(
         snapshot: DepthAnalyzerAuthorizationSnapshot = .current(),
-        appAttestBackendSelection: Binding<AppAttestBackendSelection>,
-        appAttestHTTPBaseURL: Binding<String>,
-        appAttestBackendDescription: String,
-        onApplyAppAttestBackend: @escaping () -> Void
+        appAttestController: AppAttestRuntimeController
     ) {
         self.snapshot = snapshot
-        self._appAttestBackendSelection = appAttestBackendSelection
-        self._appAttestHTTPBaseURL = appAttestHTTPBaseURL
-        self.appAttestBackendDescription = appAttestBackendDescription
-        self.onApplyAppAttestBackend = onApplyAppAttestBackend
+        self.appAttestController = appAttestController
     }
 
     var body: some View {
@@ -54,26 +48,58 @@ struct DepthAnalyzerSettingsView: View {
                 }
 
                 Section("App Attest Backend") {
-                    Picker("Backend", selection: $appAttestBackendSelection) {
+                    Picker("Backend", selection: $appAttestController.backendSelection) {
                         ForEach(AppAttestBackendSelection.allCases) { mode in
                             Text(mode.title).tag(mode)
                         }
                     }
 
-                    if appAttestBackendSelection.showsHTTPSettings {
-                        TextField("Base URL", text: $appAttestHTTPBaseURL)
+                    if appAttestController.backendSelection.showsHTTPSettings {
+                        TextField("Base URL", text: $appAttestController.httpBaseURL)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .keyboardType(.URL)
                     }
 
                     Button {
-                        onApplyAppAttestBackend()
+                        appAttestController.applyBackendSelection()
                     } label: {
                         Label("Use Selected Backend", systemImage: "arrow.triangle.2.circlepath")
                     }
+                    .disabled(appAttestController.isWorking)
 
-                    LabeledContent("Active", value: appAttestBackendDescription)
+                    LabeledContent("Active", value: appAttestController.runtime.backendDescription)
+                }
+
+                Section("App Attest Credential") {
+                    LabeledContent("Credential", value: AppAttestRuntimeDefaults.photoCredentialName)
+
+                    Button {
+                        Task {
+                            await appAttestController.prepareCredential()
+                        }
+                    } label: {
+                        Label("Prepare Credential", systemImage: "checkmark.seal")
+                    }
+                    .disabled(appAttestController.isWorking)
+
+                    Button(role: .destructive) {
+                        Task {
+                            await appAttestController.resetLocalCredential()
+                        }
+                    } label: {
+                        Label("Reset Local Credential", systemImage: "trash")
+                    }
+                    .disabled(appAttestController.isWorking)
+
+                    Button {
+                        exportAttestationCBOR()
+                    } label: {
+                        Label("Export Attestation CBOR", systemImage: "square.and.arrow.down")
+                    }
+                    .disabled(appAttestController.isWorking)
+
+                    LabeledContent("Status", value: appAttestController.credentialStatusText)
                 }
             }
             .navigationTitle("Analyzer Settings")
@@ -85,6 +111,24 @@ struct DepthAnalyzerSettingsView: View {
                     }
                 }
             }
+        }
+        .fileExporter(
+            isPresented: $isAttestationExporterPresented,
+            document: attestationObjectDocument,
+            contentType: .data,
+            defaultFilename: "attestationObject.cbor"
+        ) { result in
+            appAttestController.handleAttestationExportResult(result)
+        }
+    }
+
+    private func exportAttestationCBOR() {
+        Task {
+            guard let data = await appAttestController.attestationObjectForExport() else {
+                return
+            }
+            attestationObjectDocument = AppAttestCBORDocument(data: data)
+            isAttestationExporterPresented = true
         }
     }
 }
