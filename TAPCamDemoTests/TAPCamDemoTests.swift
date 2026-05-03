@@ -648,10 +648,9 @@ struct TAPCamDemoTests {
         #expect(AnalysisInteractionState.regionSelected.showsRegionInspector)
     }
 
-    @Test func analysisPanelDestinationKeepsInspectorAndHelpSeparate() throws {
+    @Test func analysisPanelDestinationSelectsInspectorsOnly() throws {
         #expect(AnalysisPanelDestination.inspector(.region).selectedInspector == .region)
         #expect(AnalysisPanelDestination.inspector(.measurements).selectedInspector == .measurements)
-        #expect(AnalysisPanelDestination.help.selectedInspector == nil)
     }
 
     @Test @MainActor func depthAnalysisViewModelClearSelectionRemovesDerivedRegionProducts() throws {
