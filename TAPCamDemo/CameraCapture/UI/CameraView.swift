@@ -22,6 +22,7 @@ struct CameraView: View {
     @StateObject private var chromeOrientation = CameraChromeOrientationController()
     @StateObject private var appAttestController = AppAttestRuntimeController()
     @State private var isShowingDepthAlbum = false
+    @State private var isShowingSettings = false
     #if DEBUG
     @State private var isDepthSelectorExpanded = false
     @State private var isPerformanceExpanded = false
@@ -32,9 +33,12 @@ struct CameraView: View {
             cameraSurface
                 .toolbar(.hidden, for: .navigationBar)
                 .navigationDestination(isPresented: $isShowingDepthAlbum) {
-                    DepthAlbumPickerView(appAttestController: appAttestController)
+                    DepthAlbumPickerView()
                         .toolbar(.visible, for: .navigationBar)
                 }
+        }
+        .sheet(isPresented: $isShowingSettings) {
+            DepthAnalyzerSettingsView(appAttestController: appAttestController)
         }
         .task {
             await viewModel.start()
@@ -64,6 +68,7 @@ struct CameraView: View {
             VStack(spacing: 10) {
                 previewStage
                 Spacer(minLength: 8)
+                cameraSettingsRow
                 bottomControls
             }
         }
@@ -227,6 +232,31 @@ struct CameraView: View {
         }
     }
     #endif
+
+    private var cameraSettingsRow: some View {
+        HStack {
+            Spacer()
+
+            Button {
+                isShowingSettings = true
+            } label: {
+                ZStack {
+                    Circle()
+                        .fill(.white.opacity(0.12))
+
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 21, weight: .semibold))
+                        .rotationEffect(chromeOrientation.angle)
+                }
+                .frame(width: 46, height: 46)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Settings")
+            .help("Open camera and analysis settings.")
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 34)
+    }
 
     private var bottomControls: some View {
         HStack {

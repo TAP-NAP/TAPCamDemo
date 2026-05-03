@@ -19,20 +19,17 @@ import SwiftUI
 struct DepthAnalysisView: View {
     let assetID: String
     @StateObject private var viewModel = DepthAnalysisViewModel()
-    @ObservedObject private var appAttestController: AppAttestRuntimeController
     @State private var heatmapOpacity = 0.74
     @State private var panelDestination: AnalysisPanelDestination?
     @State private var buttonHint: AnalysisButtonHint?
     @State private var buttonHintToken = UUID()
-    @State private var isShowingInlineHelp = false
-    @State private var isShowingSettings = false
+    @AppStorage(DepthAnalyzerPreferences.showsAnalysisHelpKey)
+    private var isShowingInlineHelp = DepthAnalyzerPreferences.defaultShowsAnalysisHelp
 
     init(
-        assetID: String,
-        appAttestController: AppAttestRuntimeController? = nil
+        assetID: String
     ) {
         self.assetID = assetID
-        self.appAttestController = appAttestController ?? AppAttestRuntimeController()
     }
 
     var body: some View {
@@ -66,22 +63,8 @@ struct DepthAnalysisView: View {
                     .padding(.bottom, 12)
             }
         }
-        .navigationTitle("Depth Analysis")
+        .navigationTitle("Analysis")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    isShowingSettings = true
-                } label: {
-                    Image(systemName: "gearshape")
-                }
-                .accessibilityLabel("Analyzer settings")
-                .help("View permissions, authorization, and authentication status.")
-            }
-        }
-        .sheet(isPresented: $isShowingSettings) {
-            DepthAnalyzerSettingsView(appAttestController: appAttestController)
-        }
         .onChange(of: viewModel.viewMode) { _, viewMode in
             if let inspector = panelDestination?.selectedInspector, !inspectors(for: viewMode).contains(inspector) {
                 panelDestination = nil
@@ -141,7 +124,7 @@ struct DepthAnalysisView: View {
                         viewModel.previewSelection(depthRect)
                     },
                     onSelectionEnded: { depthRect in
-                        viewModel.finishSelection(depthRect)
+                        finishRegionSelection(depthRect)
                     },
                     onSelectionCleared: {
                         clearSelectionAndPanel()
@@ -150,12 +133,14 @@ struct DepthAnalysisView: View {
                 .background(Color.black)
             }
 
+            #if DEBUG
             if let summary = CaptureMetadataSummary(input: input) {
                 CaptureMetadataHUD(summary: summary)
                     .padding(.horizontal, 12)
                     .padding(.top, 8)
                     .allowsHitTesting(false)
             }
+            #endif
         }
     }
 
@@ -190,7 +175,7 @@ struct DepthAnalysisView: View {
                 viewModel.previewSelection(depthRect)
             },
             onSelectionEnded: { depthRect in
-                viewModel.finishSelection(depthRect)
+                finishRegionSelection(depthRect)
             },
             onSelectionCleared: {
                 clearSelectionAndPanel()
@@ -218,7 +203,6 @@ struct DepthAnalysisView: View {
 
             AnalysisInspectorStrip(
                 panelDestination: $panelDestination,
-                isShowingInlineHelp: $isShowingInlineHelp,
                 viewMode: $viewModel.viewMode,
                 inspectors: inspectors(for: viewModel.viewMode),
                 buttonHint: buttonHint,
@@ -236,6 +220,13 @@ struct DepthAnalysisView: View {
     private func clearSelectionAndPanel() {
         viewModel.clearSelection()
         panelDestination = nil
+    }
+
+    private func finishRegionSelection(_ depthRect: CGRect) {
+        viewModel.finishSelection(depthRect)
+        if inspectors(for: viewModel.viewMode).contains(.region) {
+            panelDestination = .inspector(.region)
+        }
     }
 
     private func showButtonHint(_ hint: AnalysisButtonHint) {
@@ -520,11 +511,8 @@ final class DepthAnalysisViewModel: ObservableObject {
             let data = try await PhotoLibraryWriter.originalPhotoData(localIdentifier: assetID)
             let loadedInput = try TAPDepthMapReader.analysisInput(from: data)
             input = loadedInput
-            planeSeedPoint = nil
-            selectedPlaneRegion = nil
-            planeRegionErrorMessage = nil
+            clearSelection()
             errorMessage = nil
-            setInitialSelection(CGRect(x: 0, y: 0, width: loadedInput.depthMap.width, height: loadedInput.depthMap.height))
         } catch {
             self.errorMessage = error.localizedDescription
         }
@@ -581,15 +569,6 @@ final class DepthAnalysisViewModel: ObservableObject {
         if planeSeedPoint != nil {
             updateSeedPlaneRegion()
         }
-    }
-
-    private func setInitialSelection(_ depthRect: CGRect) {
-        let rect = clampedSelection(depthRect)
-        selectionRect = rect
-        interactionState = .idle
-        updateMetricsAndPlane(rect)
-        regionHeatmap = nil
-        regionHeatmapErrorMessage = nil
     }
 
     private func updateRegionProducts(_ depthRect: CGRect) {
@@ -678,6 +657,10 @@ enum DepthAnalysisViewMode: String, CaseIterable, Identifiable {
     case pointCloud
 
     var id: String { rawValue }
+
+    var isDebugOnlyAnalysisButton: Bool {
+        self == .heatmap || self == .mask
+    }
 
     var title: String {
         switch self {
@@ -1394,7 +1377,6 @@ private extension AnalysisInspector {
 
 private struct AnalysisInspectorStrip: View {
     @Binding var panelDestination: AnalysisPanelDestination?
-    @Binding var isShowingInlineHelp: Bool
     @Binding var viewMode: DepthAnalysisViewMode
     let inspectors: [AnalysisInspector]
     let buttonHint: AnalysisButtonHint?
@@ -1402,7 +1384,13 @@ private struct AnalysisInspectorStrip: View {
     @State private var viewScrollPosition: String? = DepthAnalysisViewMode.rgb.id
     @State private var inspectorScrollPosition: String?
 
-    private static let helpScrollID = "analysis-help"
+    private static var visibleViewModes: [DepthAnalysisViewMode] {
+        #if DEBUG
+        return DepthAnalysisViewMode.allCases
+        #else
+        return DepthAnalysisViewMode.allCases.filter { !$0.isDebugOnlyAnalysisButton }
+        #endif
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -1422,7 +1410,6 @@ private struct AnalysisInspectorStrip: View {
                 scrollPosition: $inspectorScrollPosition
             ) {
                 inspectorTabs
-                helpButton
             }
         }
         .font(.callout)
@@ -1455,17 +1442,11 @@ private struct AnalysisInspectorStrip: View {
         .onChange(of: panelDestination) { _, _ in
             syncInspectorScrollPosition()
         }
-        .onChange(of: isShowingInlineHelp) { _, isShowingInlineHelp in
-            if isShowingInlineHelp {
-                inspectorScrollPosition = Self.helpScrollID
-            }
-        }
         .animation(.snappy(duration: 0.18), value: buttonHint)
-        .animation(.snappy(duration: 0.18), value: isShowingInlineHelp)
     }
 
     private var viewModeTabs: some View {
-        ForEach(DepthAnalysisViewMode.allCases) { item in
+        ForEach(Self.visibleViewModes) { item in
             Button {
                 onViewTapped(item)
                 viewScrollPosition = item.id
@@ -1473,7 +1454,8 @@ private struct AnalysisInspectorStrip: View {
             } label: {
                 iconButton(
                     systemImage: item.systemImage,
-                    isSelected: item == viewMode
+                    isSelected: item == viewMode,
+                    isDebugHighlighted: item.isDebugOnlyAnalysisButton
                 )
             }
             .id(item.id)
@@ -1502,29 +1484,16 @@ private struct AnalysisInspectorStrip: View {
         }
     }
 
-    private var helpButton: some View {
-        Button {
-            inspectorScrollPosition = Self.helpScrollID
-            isShowingInlineHelp.toggle()
-        } label: {
-            iconButton(
-                systemImage: "questionmark.circle",
-                isSelected: isShowingInlineHelp
-            )
-        }
-        .id(Self.helpScrollID)
-        .buttonStyle(.plain)
-        .accessibilityLabel(isShowingInlineHelp ? "Hide analysis help" : "Show analysis help")
-        .help(isShowingInlineHelp ? "Hide inline help." : "Show inline help for analysis panels.")
-    }
-
-    private func iconButton(systemImage: String, isSelected: Bool) -> some View {
+    private func iconButton(systemImage: String, isSelected: Bool, isDebugHighlighted: Bool = false) -> some View {
         Image(systemName: systemImage)
             .font(.callout.weight(.semibold))
             .symbolRenderingMode(.hierarchical)
             .frame(width: 34, height: 32)
             .foregroundStyle(.primary)
-            .background(iconBackground(isSelected: isSelected), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .background(
+                iconBackground(isSelected: isSelected, isDebugHighlighted: isDebugHighlighted),
+                in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+            )
             .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
     }
 
@@ -1536,7 +1505,10 @@ private struct AnalysisInspectorStrip: View {
         }
     }
 
-    private func iconBackground(isSelected: Bool) -> Color {
+    private func iconBackground(isSelected: Bool, isDebugHighlighted: Bool = false) -> Color {
+        if isDebugHighlighted {
+            return Color.yellow.opacity(isSelected ? 0.82 : 0.44)
+        }
         if isSelected {
             return Color.primary.opacity(0.16)
         }
@@ -1547,7 +1519,7 @@ private struct AnalysisInspectorStrip: View {
         if let inspector = panelDestination?.selectedInspector, inspectors.contains(inspector) {
             inspectorScrollPosition = inspector.id
         } else if inspectorScrollPosition == nil || !isValidInspectorScrollID(inspectorScrollPosition) {
-            inspectorScrollPosition = inspectors.first?.id ?? Self.helpScrollID
+            inspectorScrollPosition = inspectors.first?.id
         }
     }
 
@@ -1555,7 +1527,7 @@ private struct AnalysisInspectorStrip: View {
         guard let id else {
             return false
         }
-        return id == Self.helpScrollID || inspectors.contains { $0.id == id }
+        return inspectors.contains { $0.id == id }
     }
 }
 

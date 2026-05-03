@@ -18,11 +18,6 @@ import UIKit
 struct DepthAlbumPickerView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel = DepthAlbumPickerViewModel()
-    @ObservedObject private var appAttestController: AppAttestRuntimeController
-
-    init(appAttestController: AppAttestRuntimeController) {
-        self.appAttestController = appAttestController
-    }
 
     private let columns = Array(
         repeating: GridItem(.flexible(minimum: 0), spacing: 3),
@@ -44,10 +39,7 @@ struct DepthAlbumPickerView: View {
                 LazyVGrid(columns: columns, spacing: 3) {
                     ForEach(viewModel.assets) { asset in
                         NavigationLink {
-                            DepthAnalysisView(
-                                assetID: asset.id,
-                                appAttestController: appAttestController
-                            )
+                            DepthAnalysisView(assetID: asset.id)
                         } label: {
                             DepthAlbumAssetCell(asset: asset)
                         }
@@ -69,17 +61,6 @@ struct DepthAlbumPickerView: View {
                 }
                 .accessibilityLabel("Return to camera")
                 .help("Close the analyzer and return to the camera.")
-            }
-
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    Task {
-                        await viewModel.load()
-                    }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .accessibilityLabel("Reload album")
             }
         }
         .task {

@@ -642,6 +642,19 @@ struct TAPCamDemoTests {
         }
     }
 
+    @Test func analysisDepthAndMaskViewModeButtonsAreDebugOnly() throws {
+        #expect(DepthAnalysisViewMode.heatmap.isDebugOnlyAnalysisButton)
+        #expect(DepthAnalysisViewMode.mask.isDebugOnlyAnalysisButton)
+        #expect(!DepthAnalysisViewMode.rgb.isDebugOnlyAnalysisButton)
+        #expect(!DepthAnalysisViewMode.planes.isDebugOnlyAnalysisButton)
+        #expect(!DepthAnalysisViewMode.pointCloud.isDebugOnlyAnalysisButton)
+    }
+
+    @Test func analyzerHelpPreferenceDefaultsToEnabled() throws {
+        #expect(DepthAnalyzerPreferences.defaultShowsAnalysisHelp)
+        #expect(!DepthAnalyzerPreferences.showsAnalysisHelpKey.isEmpty)
+    }
+
     @Test func analysisInteractionStateSeparatesDrawingFromRegionInspection() throws {
         #expect(!AnalysisInteractionState.idle.showsRegionInspector)
         #expect(!AnalysisInteractionState.drawingSelection.showsRegionInspector)
@@ -651,6 +664,33 @@ struct TAPCamDemoTests {
     @Test func analysisPanelDestinationSelectsInspectorsOnly() throws {
         #expect(AnalysisPanelDestination.inspector(.region).selectedInspector == .region)
         #expect(AnalysisPanelDestination.inspector(.measurements).selectedInspector == .measurements)
+    }
+
+    @Test @MainActor func depthAnalysisViewModelBuildsRegionProductsOnlyAfterExplicitSelection() throws {
+        let viewModel = DepthAnalysisViewModel()
+        let depthMap = TAPMetricDepthMap(
+            width: 4,
+            height: 4,
+            samples: (1...16).map(Float.init),
+            calibration: nil
+        )
+        viewModel.input = try Self.analysisInput(depthMap: depthMap)
+
+        #expect(viewModel.selectionRect == nil)
+        #expect(viewModel.interactionState == .idle)
+        #expect(viewModel.regionStats == nil)
+        #expect(viewModel.regionHeatmap == nil)
+
+        let explicitRegion = CGRect(x: 1, y: 1, width: 2, height: 2)
+        viewModel.finishSelection(explicitRegion)
+
+        #expect(viewModel.selectionRect == explicitRegion)
+        #expect(viewModel.interactionState == .regionSelected)
+        #expect(viewModel.regionStats?.validSampleCount == 4)
+        #expect(viewModel.regionStats?.totalSampleCount == 4)
+        #expect(viewModel.regionStats?.minimumDepthMeters == 6)
+        #expect(viewModel.regionStats?.maximumDepthMeters == 11)
+        #expect(viewModel.regionHeatmap?.rangeScope == .region)
     }
 
     @Test @MainActor func depthAnalysisViewModelClearSelectionRemovesDerivedRegionProducts() throws {
@@ -741,6 +781,26 @@ struct TAPCamDemoTests {
             height: height,
             samples: depthSamples(width: width, height: height, normal: normal, planeD: -1.55, calibration: calibration),
             calibration: calibration
+        )
+    }
+
+    private static func analysisInput(depthMap: TAPMetricDepthMap) throws -> TAPDepthAnalysisInput {
+        let rgbaPixel = [UInt8(20), UInt8(20), UInt8(20), UInt8(255)]
+        let image = try TAPDepthRGBAImageRenderer.image(
+            pixels: Array(repeating: rgbaPixel, count: depthMap.samples.count).flatMap { $0 },
+            width: depthMap.width,
+            height: depthMap.height
+        )
+
+        return TAPDepthAnalysisInput(
+            manifest: nil,
+            image: image,
+            imageOrientation: .up,
+            depthMap: depthMap,
+            depthAccuracy: "unknown",
+            depthQuality: "unknown",
+            heatmap: try TAPDepthHeatmapRenderer.heatmap(for: depthMap),
+            validMask: try TAPDepthMaskRenderer.validMask(for: depthMap)
         )
     }
 

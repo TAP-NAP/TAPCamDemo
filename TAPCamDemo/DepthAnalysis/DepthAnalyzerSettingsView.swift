@@ -11,10 +11,17 @@ import Photos
 import SwiftUI
 import UniformTypeIdentifiers
 
+enum DepthAnalyzerPreferences {
+    static let showsAnalysisHelpKey = "DepthAnalyzerShowsAnalysisHelp"
+    static let defaultShowsAnalysisHelp = true
+}
+
 struct DepthAnalyzerSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     private let snapshot: DepthAnalyzerAuthorizationSnapshot
     @ObservedObject private var appAttestController: AppAttestRuntimeController
+    @AppStorage(DepthAnalyzerPreferences.showsAnalysisHelpKey)
+    private var showsAnalysisHelp = DepthAnalyzerPreferences.defaultShowsAnalysisHelp
     @State private var attestationObjectDocument: AppAttestCBORDocument?
     @State private var isAttestationExporterPresented = false
 
@@ -29,6 +36,12 @@ struct DepthAnalyzerSettingsView: View {
     var body: some View {
         NavigationStack {
             List {
+                Section("Analysis") {
+                    Toggle(isOn: $showsAnalysisHelp) {
+                        Label("Help", systemImage: "questionmark.circle")
+                    }
+                }
+
                 Section("Permissions") {
                     DepthAnalyzerStatusRow(
                         title: "Camera",
@@ -82,7 +95,7 @@ struct DepthAnalyzerSettingsView: View {
                     LabeledContent("Status", value: appAttestController.credentialStatusText)
                 }
             }
-            .navigationTitle("Analyzer Settings")
+            .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
