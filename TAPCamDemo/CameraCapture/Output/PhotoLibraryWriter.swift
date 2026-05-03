@@ -96,19 +96,21 @@ nonisolated enum PhotoLibraryWriter {
 
     static func depthAlbumAssets() async throws -> [PHAsset] {
         try await requestReadWriteAccess()
-        guard let album = fetchAlbum() else {
-            return []
-        }
+        return await Task.detached(priority: .userInitiated) {
+            guard let album = fetchAlbum() else {
+                return []
+            }
 
-        let options = PHFetchOptions()
-        options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-        let result = PHAsset.fetchAssets(in: album, options: options)
-        var assets: [PHAsset] = []
-        assets.reserveCapacity(result.count)
-        result.enumerateObjects { asset, _, _ in
-            assets.append(asset)
-        }
-        return assets
+            let options = PHFetchOptions()
+            options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+            let result = PHAsset.fetchAssets(in: album, options: options)
+            var assets: [PHAsset] = []
+            assets.reserveCapacity(result.count)
+            result.enumerateObjects { asset, _, _ in
+                assets.append(asset)
+            }
+            return assets
+        }.value
     }
 
     private static func requestReadWriteAccess() async throws {

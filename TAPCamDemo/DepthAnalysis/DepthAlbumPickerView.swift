@@ -92,12 +92,13 @@ final class DepthAlbumPickerViewModel: ObservableObject {
 struct DepthAlbumAsset: Identifiable, Equatable {
     let id: String
     let asset: PHAsset
-    let thumbnailCacheKey: String
+    var thumbnailCacheKey: String {
+        DepthAlbumThumbnailCacheKey.make(for: asset)
+    }
 
     init(asset: PHAsset) {
         self.id = asset.localIdentifier
         self.asset = asset
-        self.thumbnailCacheKey = DepthAlbumThumbnailCacheKey.make(for: asset)
     }
 }
 
@@ -132,14 +133,15 @@ private struct DepthAlbumAssetCell: View {
     }
 
     private func loadThumbnail() async {
-        if let cachedThumbnail = DepthAlbumThumbnailMemoryCache.shared.image(for: asset.thumbnailCacheKey) {
+        let cacheKey = asset.thumbnailCacheKey
+        if let cachedThumbnail = DepthAlbumThumbnailMemoryCache.shared.image(for: cacheKey) {
             thumbnail = cachedThumbnail
             return
         }
 
-        if let cachedData = await DepthAlbumThumbnailDiskCache.shared.data(for: asset.thumbnailCacheKey),
+        if let cachedData = await DepthAlbumThumbnailDiskCache.shared.data(for: cacheKey),
            let cachedThumbnail = UIImage(data: cachedData) {
-            DepthAlbumThumbnailMemoryCache.shared.insert(cachedThumbnail, for: asset.thumbnailCacheKey)
+            DepthAlbumThumbnailMemoryCache.shared.insert(cachedThumbnail, for: cacheKey)
             thumbnail = cachedThumbnail
             return
         }
@@ -147,12 +149,12 @@ private struct DepthAlbumAssetCell: View {
         let image: UIImage? = await withCheckedContinuation { continuation in
             var didResume = false
             let options = PHImageRequestOptions()
-            options.deliveryMode = .highQualityFormat
-            options.resizeMode = .exact
-            options.isNetworkAccessAllowed = true
+            options.deliveryMode = .fastFormat
+            options.resizeMode = .fast
+            options.isNetworkAccessAllowed = false
             PHImageManager.default().requestImage(
                 for: asset.asset,
-                targetSize: CGSize(width: 720, height: 720),
+                targetSize: CGSize(width: 320, height: 320),
                 contentMode: .aspectFill,
                 options: options
             ) { image, info in
@@ -166,7 +168,7 @@ private struct DepthAlbumAssetCell: View {
                     return
                 }
 
-                guard info?[PHImageResultIsDegradedKey] as? Bool != true else {
+                guard image != nil else {
                     return
                 }
 
@@ -179,19 +181,22 @@ private struct DepthAlbumAssetCell: View {
             return
         }
 
-        DepthAlbumThumbnailMemoryCache.shared.insert(image, for: asset.thumbnailCacheKey)
+        DepthAlbumThumbnailMemoryCache.shared.insert(image, for: cacheKey)
         thumbnail = image
 
         if let data = image.jpegData(compressionQuality: 0.88) {
-            await DepthAlbumThumbnailDiskCache.shared.store(data, for: asset.thumbnailCacheKey)
+            await DepthAlbumThumbnailDiskCache.shared.store(data, for: cacheKey)
         }
     }
 }
 
 private enum DepthAlbumThumbnailCacheKey {
+    private static let version = "grid-v2-320"
+
     static func make(for asset: PHAsset) -> String {
         let versionDate = asset.modificationDate ?? asset.creationDate ?? .distantPast
         let source = [
+            version,
             asset.localIdentifier,
             "\(asset.pixelWidth)x\(asset.pixelHeight)",
             String(versionDate.timeIntervalSince1970)
