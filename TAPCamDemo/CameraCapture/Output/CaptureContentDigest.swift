@@ -47,12 +47,43 @@ nonisolated struct CaptureContentDigest: Codable, Equatable, Sendable {
         depthData: AVDepthData,
         capturedAt: Date
     ) throws -> CaptureContentDigest {
-        CaptureContentDigest(
-            captureID: manifest.payload.id,
-            capturedAt: TAPDateFormatting.iso8601.string(from: capturedAt),
-            rgb: try rgbComponent(from: baseHEICData),
-            depth: try depthComponent(from: depthData),
-            metadata: try metadataComponent(from: manifest.payload)
+        try makeWithMetrics(
+            manifest: manifest,
+            baseHEICData: baseHEICData,
+            depthData: depthData,
+            capturedAt: capturedAt
+        ).digest
+    }
+
+    static func makeWithMetrics(
+        manifest: TAPDepthManifest,
+        baseHEICData: Data,
+        depthData: AVDepthData,
+        capturedAt: Date
+    ) throws -> CaptureContentDigestBuildResult {
+        var metrics = CaptureContentDigestMetrics()
+
+        let rgbStart = Date()
+        let rgb = try rgbComponent(from: baseHEICData)
+        metrics.rgbDigestDuration = Date().timeIntervalSince(rgbStart)
+
+        let depthStart = Date()
+        let depth = try depthComponent(from: depthData)
+        metrics.depthDigestDuration = Date().timeIntervalSince(depthStart)
+
+        let metadataStart = Date()
+        let metadata = try metadataComponent(from: manifest.payload)
+        metrics.metadataDigestDuration = Date().timeIntervalSince(metadataStart)
+
+        return CaptureContentDigestBuildResult(
+            digest: CaptureContentDigest(
+                captureID: manifest.payload.id,
+                capturedAt: TAPDateFormatting.iso8601.string(from: capturedAt),
+                rgb: rgb,
+                depth: depth,
+                metadata: metadata
+            ),
+            metrics: metrics
         )
     }
 
@@ -115,7 +146,11 @@ nonisolated struct CaptureContentDigest: Codable, Equatable, Sendable {
             mediaType: "image/heic-primary-rgba8",
             width: width,
             height: height,
-            value: sha256Base64URL(Data(pixels))
+            value: pixels.withUnsafeBytes { bytes in
+                sha256Base64URL { hasher in
+                    hasher.update(bufferPointer: bytes)
+                }
+            }
         )
     }
 
@@ -135,18 +170,20 @@ nonisolated struct CaptureContentDigest: Codable, Equatable, Sendable {
         }
 
         let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
-        var canonicalDepth = Data()
-        canonicalDepth.reserveCapacity(width * height * MemoryLayout<UInt32>.size)
+        var canonicalRow = [UInt8](repeating: 0, count: width * MemoryLayout<UInt32>.size)
+        let digestValue = sha256Base64URL { hasher in
+            for y in 0..<height {
+                let row = baseAddress
+                    .advanced(by: y * bytesPerRow)
+                    .assumingMemoryBound(to: Float32.self)
 
-        for y in 0..<height {
-            let row = baseAddress
-                .advanced(by: y * bytesPerRow)
-                .assumingMemoryBound(to: Float32.self)
+                canonicalRow.withUnsafeMutableBytes { rowBytes in
+                    let words = rowBytes.bindMemory(to: UInt32.self)
+                    for x in 0..<width {
+                        words[x] = row[x].bitPattern.littleEndian
+                    }
 
-            for x in 0..<width {
-                var bitPattern = row[x].bitPattern.littleEndian
-                withUnsafeBytes(of: &bitPattern) { bytes in
-                    canonicalDepth.append(contentsOf: bytes)
+                    hasher.update(bufferPointer: UnsafeRawBufferPointer(rowBytes))
                 }
             }
         }
@@ -155,7 +192,7 @@ nonisolated struct CaptureContentDigest: Codable, Equatable, Sendable {
             mediaType: "application/vnd.tapnap.depth-float32",
             width: width,
             height: height,
-            value: sha256Base64URL(canonicalDepth)
+            value: digestValue
         )
     }
 
@@ -170,8 +207,27 @@ nonisolated struct CaptureContentDigest: Codable, Equatable, Sendable {
     }
 
     private static func sha256Base64URL(_ data: Data) -> String {
-        Data(SHA256.hash(data: data)).appAttestBase64URL
+        sha256Base64URL { hasher in
+            hasher.update(data: data)
+        }
     }
+
+    private static func sha256Base64URL(_ update: (inout SHA256) -> Void) -> String {
+        var hasher = SHA256()
+        update(&hasher)
+        return Data(hasher.finalize()).appAttestBase64URL
+    }
+}
+
+nonisolated struct CaptureContentDigestBuildResult: Sendable {
+    let digest: CaptureContentDigest
+    let metrics: CaptureContentDigestMetrics
+}
+
+nonisolated struct CaptureContentDigestMetrics: Equatable, Sendable {
+    var rgbDigestDuration: TimeInterval?
+    var depthDigestDuration: TimeInterval?
+    var metadataDigestDuration: TimeInterval?
 }
 
 nonisolated extension JSONEncoder {

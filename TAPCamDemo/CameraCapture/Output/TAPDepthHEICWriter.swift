@@ -24,6 +24,15 @@ nonisolated enum TAPDepthHEICWriter {
     ///
     /// - Tag: InjectTAPManifestIntoHEIC
     static func injectingManifest(_ manifest: TAPDepthManifest, into heicData: Data) throws -> Data {
+        try injectingManifestWithMetrics(manifest, into: heicData).data
+    }
+
+    /// Injects the TAP manifest and returns timing for XMP write and readback.
+    static func injectingManifestWithMetrics(
+        _ manifest: TAPDepthManifest,
+        into heicData: Data
+    ) throws -> TAPDepthHEICWriteResult {
+        let injectStart = Date()
         let manifestJSON = try TAPDepthManifestEncoder.manifestJSON(manifest)
 
         guard let source = CGImageSourceCreateWithData(heicData as CFData, nil) else {
@@ -71,12 +80,28 @@ nonisolated enum TAPDepthHEICWriter {
         }
 
         let finalData = output as Data
-        guard try TAPDepthHEICReader.manifestJSON(from: finalData) == manifestJSON else {
+        let xmpInjectDuration = Date().timeIntervalSince(injectStart)
+
+        let verifyStart = Date()
+        let verifiedManifestJSON = try TAPDepthHEICReader.manifestJSON(from: finalData)
+        let xmpVerifyDuration = Date().timeIntervalSince(verifyStart)
+
+        guard verifiedManifestJSON == manifestJSON else {
             throw TAPDepthCaptureError.xmpManifestMissing
         }
 
-        return finalData
+        return TAPDepthHEICWriteResult(
+            data: finalData,
+            xmpInjectDuration: xmpInjectDuration,
+            xmpVerifyDuration: xmpVerifyDuration
+        )
     }
+}
+
+nonisolated struct TAPDepthHEICWriteResult: Sendable {
+    let data: Data
+    let xmpInjectDuration: TimeInterval
+    let xmpVerifyDuration: TimeInterval
 }
 
 /// Minimal readback API for third-party tools and app-side verification.

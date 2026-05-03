@@ -83,6 +83,23 @@ The final HEIC bytes themselves are not signed directly because writing the
 proof changes the HEIC. Signing the content digest avoids that circular
 dependency while still binding the RGB image, depth data, and TAP metadata.
 
+Implementation note: the app feeds canonical RGB and depth bytes into
+CryptoKit's SHA-256 incrementally instead of first materializing additional
+full-size `Data` buffers. This preserves the digest contract above while
+reducing memory copies during packaging.
+
+Debug metrics break the embedded packaging step into manifest build, base HEIC
+materialization, RGB/depth/metadata digest calculation, App Attest assertion,
+XMP injection, and XMP readback verification. These timings are diagnostics
+only; they are not written into the saved HEIC.
+
+Future optimization candidate: evaluate whether `AVCapturePhoto`'
+`cgImageRepresentation()` can produce the same canonical RGBA8 digest as
+decoding the flattened base HEIC. This is intentionally not a production path
+yet because the signed digest must remain reproducible from the saved HEIC, and
+changing the digest source could alter that verification contract or affect the
+camera pipeline.
+
 ## Verification
 
 To verify a signed TAP depth HEIC:

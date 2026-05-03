@@ -300,6 +300,13 @@ The proof lives in `manifest.proofs[0]` with `type: "appAttestAssertion"`.
 Its value is base64url canonical JSON containing the signed RGB/depth/metadata
 digest package and the AppAttestKit assertion envelope. See
 [PACKAGING.md](Documentation/PACKAGING.md) for the verification format.
+RGB and depth digest bytes are streamed into CryptoKit SHA-256 to avoid extra
+full-image `Data` copies. A possible future optimization is to compare
+`AVCapturePhoto.cgImageRepresentation()` against the saved-HEIC decode path, but
+the production signer keeps hashing from the flattened base HEIC so third-party
+verification can reproduce the RGB digest from the saved artifact.
+Debug metrics split this packaging work into manifest, base HEIC, digest,
+App Attest, XMP injection, and XMP verification timings.
 
 ## Build and Inject the TAP Manifest
 

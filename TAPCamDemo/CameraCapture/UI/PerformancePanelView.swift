@@ -63,10 +63,28 @@ struct PerformancePanelView: View {
             metricRow("capture", metric.captureDuration)
             metricRow("package", metric.packageBuildDuration)
             metricRow("embed", metric.packagingDuration)
+            if let packagingMetrics = metric.packagingMetrics, packagingMetrics.hasRecordedValue {
+                packagingTimingRows(for: packagingMetrics)
+            }
             metricRow("storage", metric.writeDuration)
             metricRow("total", metric.totalDuration)
         }
         .font(.caption2.monospacedDigit())
+    }
+
+    @ViewBuilder
+    private func packagingTimingRows(for metrics: CapturePackagingMetrics) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            metricRow("manifestBuild", metrics.manifestBuildDuration, isSubmetric: true)
+            metricRow("baseHEIC", metrics.baseHEICDuration, isSubmetric: true)
+            metricRow("rgbDigest", metrics.rgbDigestDuration, isSubmetric: true)
+            metricRow("depthDigest", metrics.depthDigestDuration, isSubmetric: true)
+            metricRow("metadataDigest", metrics.metadataDigestDuration, isSubmetric: true)
+            metricRow("appAttest", metrics.appAttestDuration, isSubmetric: true)
+            metricRow("xmpInject", metrics.xmpInjectDuration, isSubmetric: true)
+            metricRow("xmpVerify", metrics.xmpVerifyDuration, isSubmetric: true)
+        }
+        .padding(.leading, 8)
     }
 
     @ViewBuilder
@@ -97,18 +115,23 @@ struct PerformancePanelView: View {
         }
     }
 
-    private func metricRow(_ title: String, _ value: TimeInterval?) -> some View {
+    private func metricRow(
+        _ title: String,
+        _ value: TimeInterval?,
+        isSubmetric: Bool = false
+    ) -> some View {
         HStack(spacing: 8) {
             Text(title)
-                .foregroundStyle(.white.opacity(0.62))
-                .frame(width: 54, alignment: .leading)
+                .foregroundStyle(.white.opacity(isSubmetric ? 0.52 : 0.62))
+                .frame(width: isSubmetric ? 92 : 54, alignment: .leading)
 
             Text(format(value))
-                .fontWeight(.semibold)
+                .fontWeight(isSubmetric ? .regular : .semibold)
 
             Spacer(minLength: 0)
         }
         .lineLimit(1)
+        .minimumScaleFactor(0.72)
     }
 
     private func metricRow(_ title: String, _ value: TimeInterval) -> some View {

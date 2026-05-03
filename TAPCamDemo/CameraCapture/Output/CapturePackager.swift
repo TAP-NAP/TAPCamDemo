@@ -26,13 +26,15 @@ nonisolated enum CaptureSignatureStatus: Equatable, Sendable {
 /// Result of physically packaging a logical capture package.
 ///
 /// This is a single HEIC byte buffer with Apple auxiliary depth and TAP XMP
-/// manifest embedded in the file.
+/// manifest embedded in the file. Packaging metrics are diagnostics only and
+/// are not persisted into the photo artifact.
 nonisolated struct PackagedCaptureArtifact: Sendable {
     let packageID: UUID
     let strategy: PackagingStrategy
     let photoData: Data
     let manifest: TAPDepthManifest
     let signatureStatus: CaptureSignatureStatus
+    let packagingMetrics: CapturePackagingMetrics
     let capturedAt: Date
     let location: CLLocation?
 }

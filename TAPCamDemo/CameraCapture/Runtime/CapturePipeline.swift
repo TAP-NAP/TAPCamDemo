@@ -81,6 +81,7 @@ nonisolated final class CapturePipeline: @unchecked Sendable {
         var captureDuration: TimeInterval?
         var packageBuildDuration: TimeInterval?
         var packagingDuration: TimeInterval?
+        var packagingMetrics: CapturePackagingMetrics?
         var writeDuration: TimeInterval?
 
         do {
@@ -102,6 +103,7 @@ nonisolated final class CapturePipeline: @unchecked Sendable {
                 assertionSigner: assertionSigner
             )
             packagingDuration = Date().timeIntervalSince(packagingStart)
+            packagingMetrics = artifact.packagingMetrics
 
             let writeStart = Date()
             let writeResult = try await writer.write(artifact)
@@ -113,6 +115,7 @@ nonisolated final class CapturePipeline: @unchecked Sendable {
                 captureDuration: captureDuration,
                 packageBuildDuration: packageBuildDuration,
                 packagingDuration: packagingDuration,
+                packagingMetrics: packagingMetrics,
                 writeDuration: writeDuration,
                 totalDuration: Date().timeIntervalSince(totalStart),
                 queueWaitDuration: queueWaitDuration,
@@ -129,6 +132,7 @@ nonisolated final class CapturePipeline: @unchecked Sendable {
                 captureDuration: captureDuration,
                 packageBuildDuration: packageBuildDuration,
                 packagingDuration: packagingDuration,
+                packagingMetrics: packagingMetrics,
                 writeDuration: writeDuration,
                 totalDuration: Date().timeIntervalSince(totalStart),
                 queueWaitDuration: queueWaitDuration,
@@ -147,6 +151,7 @@ nonisolated final class CapturePipeline: @unchecked Sendable {
         captureDuration: TimeInterval?,
         packageBuildDuration: TimeInterval?,
         packagingDuration: TimeInterval?,
+        packagingMetrics: CapturePackagingMetrics?,
         writeDuration: TimeInterval?,
         totalDuration: TimeInterval,
         queueWaitDuration: TimeInterval?,
@@ -160,6 +165,7 @@ nonisolated final class CapturePipeline: @unchecked Sendable {
             captureDuration: captureDuration,
             packageBuildDuration: packageBuildDuration,
             packagingDuration: packagingDuration,
+            packagingMetrics: packagingMetrics,
             writeDuration: writeDuration,
             totalDuration: totalDuration,
             queueWaitDuration: queueWaitDuration,
