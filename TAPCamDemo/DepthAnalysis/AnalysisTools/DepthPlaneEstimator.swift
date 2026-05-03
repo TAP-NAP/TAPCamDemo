@@ -41,6 +41,11 @@ nonisolated enum TAPPlaneEstimator {
         let residualThresholdMeters: Float
     }
 
+    private struct PlaneGrowthMask {
+        let accepted: [Bool]
+        let acceptedPixels: [(x: Int, y: Int)]
+    }
+
     private struct SymmetricMatrix3 {
         var m00: Double = 0
         var m01: Double = 0
@@ -135,7 +140,9 @@ nonisolated enum TAPPlaneEstimator {
     static func growPlaneRegion(
         depthMap: TAPMetricDepthMap,
         seed: CGPoint,
-        strictness: Double
+        strictness: Double,
+        geometryCache: TAPDepthGeometryCache? = nil,
+        shouldCancel: () -> Bool = { false }
     ) throws -> TAPPlaneRegion {
         let parameters = TAPPlaneGrowthParameters(strictness: strictness)
         guard depthMap.width > 0, depthMap.height > 0 else {
@@ -147,26 +154,46 @@ nonisolated enum TAPPlaneEstimator {
 
         let seedX = min(max(Int(seed.x.rounded(.down)), 0), depthMap.width - 1)
         let seedY = min(max(Int(seed.y.rounded(.down)), 0), depthMap.height - 1)
-        guard depthMap.sample(x: seedX, y: seedY) != nil else {
+        let preparedGeometryCache: TAPDepthGeometryCache
+        if let geometryCache, geometryCache.matches(depthMap: depthMap) {
+            preparedGeometryCache = geometryCache
+        } else if let builtCache = try TAPDepthGeometryProjector.geometryCache(
+            for: depthMap,
+            shouldCancel: shouldCancel
+        ) {
+            preparedGeometryCache = builtCache
+        } else {
+            throw TAPPlaneGrowthError.cameraCalibrationMissing
+        }
+
+        try checkCancellation(shouldCancel)
+        guard preparedGeometryCache.point(x: seedX, y: seedY) != nil else {
             throw TAPPlaneGrowthError.invalidSeed
         }
-        guard let initialPlane = seedPlane(
+        guard let initialPlane = try seedPlane(
             depthMap: depthMap,
             seedX: seedX,
             seedY: seedY,
-            parameters: parameters
+            parameters: parameters,
+            geometryCache: preparedGeometryCache,
+            shouldCancel: shouldCancel
         ) else {
             throw TAPPlaneGrowthError.notEnoughNearbySamples
         }
 
-        let firstAccepted = growMask(
+        let firstAccepted = try growMask(
             depthMap: depthMap,
             seedX: seedX,
             seedY: seedY,
             plane: initialPlane,
-            parameters: parameters
+            parameters: parameters,
+            geometryCache: preparedGeometryCache,
+            shouldCancel: shouldCancel
         )
-        let firstSamples = planeSamples(from: depthMap, accepted: firstAccepted)
+        let firstSamples = planeSamples(
+            from: firstAccepted.acceptedPixels,
+            geometryCache: preparedGeometryCache
+        )
         guard firstSamples.count >= parameters.minimumRegionSamples,
               let firstEstimate = estimatePlane(
                 from: firstSamples,
@@ -181,14 +208,19 @@ nonisolated enum TAPPlaneEstimator {
             baseResidualThresholdMeters: initialPlane.residualThresholdMeters,
             parameters: parameters
         )
-        let secondAccepted = growMask(
+        let secondAccepted = try growMask(
             depthMap: depthMap,
             seedX: seedX,
             seedY: seedY,
             plane: refitPlane,
-            parameters: parameters
+            parameters: parameters,
+            geometryCache: preparedGeometryCache,
+            shouldCancel: shouldCancel
         )
-        let secondSamples = planeSamples(from: depthMap, accepted: secondAccepted)
+        let secondSamples = planeSamples(
+            from: secondAccepted.acceptedPixels,
+            geometryCache: preparedGeometryCache
+        )
         let useSecondPass = secondSamples.count >= parameters.minimumRegionSamples
         let accepted = useSecondPass ? secondAccepted : firstAccepted
         let acceptedSamples = useSecondPass ? secondSamples : firstSamples
@@ -203,18 +235,29 @@ nonisolated enum TAPPlaneEstimator {
             throw TAPPlaneGrowthError.noPlaneRegion
         }
 
-        let imagePoints = acceptedSamples.map(\.imagePoint)
-        let bounds = imageBounds(for: imagePoints)
-        let runs = pixelRuns(from: accepted, width: depthMap.width, height: depthMap.height)
+        try checkCancellation(shouldCancel)
+        let bounds = imageBounds(for: accepted.acceptedPixels)
+        let runs = pixelRuns(
+            from: accepted.accepted,
+            width: depthMap.width,
+            height: depthMap.height,
+            imageBounds: bounds
+        )
         let finalPlane = (normal: estimate.normal, d: -simd_dot(estimate.normal, estimate.centroid))
         let gridCells = planeGridCells(
-            from: accepted,
+            from: accepted.accepted,
             depthMap: depthMap,
             plane: finalPlane,
             imageBounds: bounds,
-            residualThresholdMeters: residualThreshold
+            residualThresholdMeters: residualThreshold,
+            geometryCache: preparedGeometryCache
         )
-        let contour = contourPoints(from: accepted, width: depthMap.width, height: depthMap.height)
+        let contour = contourPoints(
+            from: accepted.accepted,
+            acceptedPixels: accepted.acceptedPixels,
+            width: depthMap.width,
+            height: depthMap.height
+        )
         let flatness = flatnessScore(
             estimate: estimate,
             residualThresholdMeters: residualThreshold
@@ -515,8 +558,10 @@ nonisolated enum TAPPlaneEstimator {
         depthMap: TAPMetricDepthMap,
         seedX: Int,
         seedY: Int,
-        parameters: TAPPlaneGrowthParameters
-    ) -> PlaneModel? {
+        parameters: TAPPlaneGrowthParameters,
+        geometryCache: TAPDepthGeometryCache,
+        shouldCancel: () -> Bool
+    ) throws -> PlaneModel? {
         let radii = [
             parameters.seedWindowRadiusPixels,
             parameters.seedWindowRadiusPixels + 4,
@@ -527,6 +572,7 @@ nonisolated enum TAPPlaneEstimator {
         var bestScore = Float.greatestFiniteMagnitude
 
         for radius in radii {
+            try checkCancellation(shouldCancel)
             let region = CGRect(
                 x: seedX - radius,
                 y: seedY - radius,
@@ -536,7 +582,8 @@ nonisolated enum TAPPlaneEstimator {
             let samples = TAPDepthGeometryProjector.sampledPoints(
                 from: depthMap,
                 in: region,
-                maxCount: 600
+                maxCount: 600,
+                geometryCache: geometryCache
             )
             guard samples.count >= parameters.minimumSeedSamples else {
                 continue
@@ -571,6 +618,7 @@ nonisolated enum TAPPlaneEstimator {
         }
 
         for radius in radii {
+            try checkCancellation(shouldCancel)
             let region = CGRect(
                 x: seedX - radius,
                 y: seedY - radius,
@@ -580,7 +628,8 @@ nonisolated enum TAPPlaneEstimator {
             let samples = TAPDepthGeometryProjector.sampledPoints(
                 from: depthMap,
                 in: region,
-                maxCount: 600
+                maxCount: 600,
+                geometryCache: geometryCache
             )
             guard samples.count >= parameters.minimumSeedSamples,
                   let estimate = ransacPlaneEstimate(
@@ -666,13 +715,16 @@ nonisolated enum TAPPlaneEstimator {
         seedX: Int,
         seedY: Int,
         plane: PlaneModel,
-        parameters: TAPPlaneGrowthParameters
-    ) -> [Bool] {
+        parameters: TAPPlaneGrowthParameters,
+        geometryCache: TAPDepthGeometryCache,
+        shouldCancel: () -> Bool
+    ) throws -> PlaneGrowthMask {
         let width = depthMap.width
         let height = depthMap.height
         var visited = Array(repeating: false, count: width * height)
         var accepted = Array(repeating: false, count: width * height)
         var queue: [(x: Int, y: Int)] = [(seedX, seedY)]
+        var acceptedPixels: [(x: Int, y: Int)] = [(seedX, seedY)]
         var head = 0
         var visitedCount = 0
 
@@ -680,31 +732,46 @@ nonisolated enum TAPPlaneEstimator {
         accepted[index(x: seedX, y: seedY, width: width)] = true
 
         while head < queue.count, visitedCount < parameters.maximumVisitedPixels {
+            if visitedCount.isMultiple(of: 512) {
+                try checkCancellation(shouldCancel)
+            }
+
             let current = queue[head]
             head += 1
             visitedCount += 1
 
-            for neighbor in neighbors(x: current.x, y: current.y, width: width, height: height) {
-                let neighborIndex = index(x: neighbor.x, y: neighbor.y, width: width)
-                guard !visited[neighborIndex] else {
-                    continue
-                }
-                visited[neighborIndex] = true
+            for offsetY in -1...1 {
+                for offsetX in -1...1 where offsetX != 0 || offsetY != 0 {
+                    let neighborX = current.x + offsetX
+                    let neighborY = current.y + offsetY
+                    guard neighborX >= 0, neighborY >= 0, neighborX < width, neighborY < height else {
+                        continue
+                    }
 
-                if acceptsPixel(
-                    depthMap: depthMap,
-                    x: neighbor.x,
-                    y: neighbor.y,
-                    plane: plane,
-                    parameters: parameters
-                ) {
-                    accepted[neighborIndex] = true
-                    queue.append(neighbor)
+                    let neighborIndex = index(x: neighborX, y: neighborY, width: width)
+                    guard !visited[neighborIndex] else {
+                        continue
+                    }
+                    visited[neighborIndex] = true
+
+                    if acceptsPixel(
+                        depthMap: depthMap,
+                        x: neighborX,
+                        y: neighborY,
+                        plane: plane,
+                        parameters: parameters,
+                        geometryCache: geometryCache
+                    ) {
+                        accepted[neighborIndex] = true
+                        let neighbor = (x: neighborX, y: neighborY)
+                        acceptedPixels.append(neighbor)
+                        queue.append(neighbor)
+                    }
                 }
             }
         }
 
-        return accepted
+        return PlaneGrowthMask(accepted: accepted, acceptedPixels: acceptedPixels)
     }
 
     private static func acceptsPixel(
@@ -712,10 +779,10 @@ nonisolated enum TAPPlaneEstimator {
         x: Int,
         y: Int,
         plane: PlaneModel,
-        parameters: TAPPlaneGrowthParameters
+        parameters: TAPPlaneGrowthParameters,
+        geometryCache: TAPDepthGeometryCache
     ) -> Bool {
-        guard depthMap.sample(x: x, y: y) != nil,
-              let point = TAPDepthGeometryProjector.point(depthMap: depthMap, x: x, y: y) else {
+        guard let point = geometryCache.point(x: x, y: y) else {
             return false
         }
 
@@ -727,7 +794,8 @@ nonisolated enum TAPPlaneEstimator {
         var effectiveThreshold = plane.residualThresholdMeters
 
         if parameters.strictness > 0.82,
-           let localNormal = localNormal(depthMap: depthMap, x: x, y: y, radius: 2) {
+           let localNormal = geometryCache.localNormal(x: x, y: y, radius: 2)
+                ?? localNormal(depthMap: depthMap, x: x, y: y, radius: 2, geometryCache: geometryCache) {
             let cosine = min(max(abs(simd_dot(localNormal, plane.normal)), 0), 1)
             let anglePenalty = 1 - cosine
             let strictnessScale = Float((parameters.strictness - 0.82) / 0.13)
@@ -737,12 +805,18 @@ nonisolated enum TAPPlaneEstimator {
         return pointResidual <= effectiveThreshold
     }
 
-    private static func localNormal(depthMap: TAPMetricDepthMap, x: Int, y: Int, radius: Int) -> SIMD3<Float>? {
+    private static func localNormal(
+        depthMap: TAPMetricDepthMap,
+        x: Int,
+        y: Int,
+        radius: Int,
+        geometryCache: TAPDepthGeometryCache
+    ) -> SIMD3<Float>? {
         guard x >= radius, y >= radius, x < depthMap.width - radius, y < depthMap.height - radius,
-              let left = TAPDepthGeometryProjector.point(depthMap: depthMap, x: x - radius, y: y),
-              let right = TAPDepthGeometryProjector.point(depthMap: depthMap, x: x + radius, y: y),
-              let up = TAPDepthGeometryProjector.point(depthMap: depthMap, x: x, y: y - radius),
-              let down = TAPDepthGeometryProjector.point(depthMap: depthMap, x: x, y: y + radius) else {
+              let left = geometryCache.point(x: x - radius, y: y),
+              let right = geometryCache.point(x: x + radius, y: y),
+              let up = geometryCache.point(x: x, y: y - radius),
+              let down = geometryCache.point(x: x, y: y + radius) else {
             return nil
         }
 
@@ -757,35 +831,43 @@ nonisolated enum TAPPlaneEstimator {
     }
 
     private static func planeSamples(
-        from depthMap: TAPMetricDepthMap,
-        accepted: [Bool]
+        from acceptedPixels: [(x: Int, y: Int)],
+        geometryCache: TAPDepthGeometryCache
     ) -> [(point: TAPPoint3D, imagePoint: CGPoint)] {
         var samples: [(TAPPoint3D, CGPoint)] = []
-        samples.reserveCapacity(accepted.filter { $0 }.count)
+        samples.reserveCapacity(acceptedPixels.count)
 
-        for y in 0..<depthMap.height {
-            for x in 0..<depthMap.width {
-                let pixelIndex = index(x: x, y: y, width: depthMap.width)
-                guard accepted[pixelIndex],
-                      let point = TAPDepthGeometryProjector.point(depthMap: depthMap, x: x, y: y) else {
-                    continue
-                }
-                samples.append((point, CGPoint(x: x, y: y)))
+        for pixel in acceptedPixels {
+            if let point = geometryCache.point(x: pixel.x, y: pixel.y) {
+                samples.append((point, CGPoint(x: pixel.x, y: pixel.y)))
             }
         }
 
         return samples
     }
 
-    private static func pixelRuns(from accepted: [Bool], width: Int, height: Int) -> [TAPPlanePixelRun] {
+    private static func pixelRuns(
+        from accepted: [Bool],
+        width: Int,
+        height: Int,
+        imageBounds: CGRect
+    ) -> [TAPPlanePixelRun] {
+        let minX = max(Int(floor(imageBounds.minX)), 0)
+        let minY = max(Int(floor(imageBounds.minY)), 0)
+        let maxX = min(Int(ceil(imageBounds.maxX)) + 1, width)
+        let maxY = min(Int(ceil(imageBounds.maxY)) + 1, height)
+        guard minX < maxX, minY < maxY else {
+            return []
+        }
+
         var runs: [TAPPlanePixelRun] = []
-        for y in 0..<height {
-            var x = 0
-            while x < width {
+        for y in minY..<maxY {
+            var x = minX
+            while x < maxX {
                 let pixelIndex = index(x: x, y: y, width: width)
                 if accepted[pixelIndex] {
                     let start = x
-                    while x < width, accepted[index(x: x, y: y, width: width)] {
+                    while x < maxX, accepted[index(x: x, y: y, width: width)] {
                         x += 1
                     }
                     runs.append(TAPPlanePixelRun(y: y, xStart: start, xEndExclusive: x))
@@ -797,15 +879,18 @@ nonisolated enum TAPPlaneEstimator {
         return runs
     }
 
-    private static func contourPoints(from accepted: [Bool], width: Int, height: Int) -> [CGPoint] {
+    private static func contourPoints(
+        from accepted: [Bool],
+        acceptedPixels: [(x: Int, y: Int)],
+        width: Int,
+        height: Int
+    ) -> [CGPoint] {
         var points: [CGPoint] = []
-        for y in 0..<height {
-            for x in 0..<width {
-                let pixelIndex = index(x: x, y: y, width: width)
-                guard accepted[pixelIndex], isBoundaryPixel(x: x, y: y, accepted: accepted, width: width, height: height) else {
-                    continue
-                }
-                points.append(CGPoint(x: x, y: y))
+        points.reserveCapacity(min(acceptedPixels.count, 3_000))
+
+        for pixel in acceptedPixels {
+            if isBoundaryPixel(x: pixel.x, y: pixel.y, accepted: accepted, width: width, height: height) {
+                points.append(CGPoint(x: pixel.x, y: pixel.y))
             }
         }
         return points
@@ -816,7 +901,8 @@ nonisolated enum TAPPlaneEstimator {
         depthMap: TAPMetricDepthMap,
         plane: (normal: SIMD3<Float>, d: Float),
         imageBounds: CGRect,
-        residualThresholdMeters: Float
+        residualThresholdMeters: Float,
+        geometryCache: TAPDepthGeometryCache
     ) -> [TAPPlaneGridCell] {
         guard imageBounds.width > 0, imageBounds.height > 0 else {
             return []
@@ -850,7 +936,7 @@ nonisolated enum TAPPlaneEstimator {
                     for sampleX in x..<xEnd {
                         let pixelIndex = index(x: sampleX, y: sampleY, width: depthMap.width)
                         guard accepted[pixelIndex],
-                              let point = TAPDepthGeometryProjector.point(depthMap: depthMap, x: sampleX, y: sampleY) else {
+                              let point = geometryCache.point(x: sampleX, y: sampleY) else {
                             continue
                         }
 
@@ -889,12 +975,16 @@ nonisolated enum TAPPlaneEstimator {
     }
 
     private static func isBoundaryPixel(x: Int, y: Int, accepted: [Bool], width: Int, height: Int) -> Bool {
-        for neighbor in neighborsIncludingOutside(x: x, y: y) {
-            guard neighbor.x >= 0, neighbor.y >= 0, neighbor.x < width, neighbor.y < height else {
-                return true
-            }
-            if !accepted[index(x: neighbor.x, y: neighbor.y, width: width)] {
-                return true
+        for offsetY in -1...1 {
+            for offsetX in -1...1 where offsetX != 0 || offsetY != 0 {
+                let neighborX = x + offsetX
+                let neighborY = y + offsetY
+                guard neighborX >= 0, neighborY >= 0, neighborX < width, neighborY < height else {
+                    return true
+                }
+                if !accepted[index(x: neighborX, y: neighborY, width: width)] {
+                    return true
+                }
             }
         }
         return false
@@ -958,34 +1048,6 @@ nonisolated enum TAPPlaneEstimator {
         y * width + x
     }
 
-    private static func neighbors(x: Int, y: Int, width: Int, height: Int) -> [(x: Int, y: Int)] {
-        [
-            (x - 1, y),
-            (x + 1, y),
-            (x, y - 1),
-            (x, y + 1),
-            (x - 1, y - 1),
-            (x + 1, y - 1),
-            (x - 1, y + 1),
-            (x + 1, y + 1)
-        ].filter { neighbor in
-            neighbor.x >= 0 && neighbor.y >= 0 && neighbor.x < width && neighbor.y < height
-        }
-    }
-
-    private static func neighborsIncludingOutside(x: Int, y: Int) -> [(x: Int, y: Int)] {
-        [
-            (x - 1, y),
-            (x + 1, y),
-            (x, y - 1),
-            (x, y + 1),
-            (x - 1, y - 1),
-            (x + 1, y - 1),
-            (x - 1, y + 1),
-            (x + 1, y + 1)
-        ]
-    }
-
     private static func plane(from a: SIMD3<Float>, _ b: SIMD3<Float>, _ c: SIMD3<Float>) -> (normal: SIMD3<Float>, d: Float)? {
         let normal = simd_cross(b - a, c - a)
         let length = simd_length(normal)
@@ -999,6 +1061,12 @@ nonisolated enum TAPPlaneEstimator {
 
     private static func residual(point: SIMD3<Float>, normal: SIMD3<Float>, d: Float) -> Float {
         abs(simd_dot(normal, point) + d)
+    }
+
+    private static func checkCancellation(_ shouldCancel: () -> Bool) throws {
+        if shouldCancel() {
+            throw CancellationError()
+        }
     }
 
     private static func imageBounds(for points: [CGPoint]) -> CGRect {
@@ -1015,6 +1083,25 @@ nonisolated enum TAPPlaneEstimator {
             minY = min(minY, point.y)
             maxX = max(maxX, point.x)
             maxY = max(maxY, point.y)
+        }
+
+        return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+    }
+
+    private static func imageBounds(for pixels: [(x: Int, y: Int)]) -> CGRect {
+        guard let first = pixels.first else {
+            return .zero
+        }
+
+        var minX = first.x
+        var minY = first.y
+        var maxX = first.x
+        var maxY = first.y
+        for pixel in pixels.dropFirst() {
+            minX = min(minX, pixel.x)
+            minY = min(minY, pixel.y)
+            maxX = max(maxX, pixel.x)
+            maxY = max(maxY, pixel.y)
         }
 
         return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)

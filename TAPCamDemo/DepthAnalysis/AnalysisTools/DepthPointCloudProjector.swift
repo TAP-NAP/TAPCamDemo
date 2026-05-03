@@ -47,15 +47,113 @@ nonisolated enum TAPDepthGeometryProjector {
             return nil
         }
 
+        return point(depth: depth, x: x, y: y, intrinsics: intrinsics)
+    }
+
+    static func geometryCache(
+        for depthMap: TAPMetricDepthMap,
+        shouldCancel: () -> Bool = { false }
+    ) throws -> TAPDepthGeometryCache? {
+        guard let intrinsics = TAPCameraIntrinsics(
+            calibration: depthMap.calibration,
+            depthWidth: depthMap.width,
+            depthHeight: depthMap.height
+        ) else {
+            return nil
+        }
+
+        let pixelCount = max(depthMap.width * depthMap.height, 0)
+        var points = Array<TAPPoint3D?>(repeating: nil, count: pixelCount)
+        var validPointCount = 0
+
+        for y in 0..<depthMap.height {
+            if shouldCancel() {
+                throw CancellationError()
+            }
+
+            for x in 0..<depthMap.width {
+                guard let depth = depthMap.sample(x: x, y: y) else {
+                    continue
+                }
+
+                points[depthMap.index(x: x, y: y)] = point(
+                    depth: depth,
+                    x: x,
+                    y: y,
+                    intrinsics: intrinsics
+                )
+                validPointCount += 1
+            }
+        }
+
+        let localNormalRadius = 2
+        var localNormals = Array<SIMD3<Float>?>(repeating: nil, count: pixelCount)
+        if depthMap.width > localNormalRadius * 2, depthMap.height > localNormalRadius * 2 {
+            for y in localNormalRadius..<(depthMap.height - localNormalRadius) {
+                if shouldCancel() {
+                    throw CancellationError()
+                }
+
+                for x in localNormalRadius..<(depthMap.width - localNormalRadius) {
+                    localNormals[depthMap.index(x: x, y: y)] = localNormal(
+                        points: points,
+                        width: depthMap.width,
+                        height: depthMap.height,
+                        x: x,
+                        y: y,
+                        radius: localNormalRadius
+                    )
+                }
+            }
+        }
+
+        return TAPDepthGeometryCache(
+            width: depthMap.width,
+            height: depthMap.height,
+            points: points,
+            localNormalRadius: localNormalRadius,
+            localNormals: localNormals,
+            validPointCount: validPointCount
+        )
+    }
+
+    private static func point(depth: Float, x: Int, y: Int, intrinsics: TAPCameraIntrinsics) -> TAPPoint3D {
         let cameraX = (Float(x) - intrinsics.cx) / intrinsics.fx * depth
         let cameraY = (Float(y) - intrinsics.cy) / intrinsics.fy * depth
         return TAPPoint3D(x: cameraX, y: cameraY, z: depth)
     }
 
+    private static func localNormal(
+        points: [TAPPoint3D?],
+        width: Int,
+        height: Int,
+        x: Int,
+        y: Int,
+        radius: Int
+    ) -> SIMD3<Float>? {
+        guard x >= radius, y >= radius, x < width - radius, y < height - radius,
+              let left = points[y * width + x - radius],
+              let right = points[y * width + x + radius],
+              let up = points[(y - radius) * width + x],
+              let down = points[(y + radius) * width + x] else {
+            return nil
+        }
+
+        let dx = SIMD3(right.x - left.x, right.y - left.y, right.z - left.z)
+        let dy = SIMD3(down.x - up.x, down.y - up.y, down.z - up.z)
+        let normal = simd_cross(dx, dy)
+        let length = simd_length(normal)
+        guard length > 0.000001 else {
+            return nil
+        }
+        return normal / length
+    }
+
     static func sampledPoints(
         from depthMap: TAPMetricDepthMap,
         in region: CGRect,
-        maxCount: Int = 1_200
+        maxCount: Int = 1_200,
+        geometryCache: TAPDepthGeometryCache? = nil
     ) -> [(point: TAPPoint3D, imagePoint: CGPoint)] {
         guard maxCount > 0 else {
             return []
@@ -64,11 +162,14 @@ nonisolated enum TAPDepthGeometryProjector {
         let bounds = pixelBounds(region, width: depthMap.width, height: depthMap.height)
         let area = max(bounds.width * bounds.height, 1)
         let step = max(Int(sqrt(Double(area) / Double(maxCount))), 1)
+        let usableGeometryCache = geometryCache?.matches(depthMap: depthMap) == true ? geometryCache : nil
         var result: [(TAPPoint3D, CGPoint)] = []
 
         for y in stride(from: bounds.minY, to: bounds.maxY, by: step) {
             for x in stride(from: bounds.minX, to: bounds.maxX, by: step) {
-                if let point = point(depthMap: depthMap, x: x, y: y) {
+                let projectedPoint = usableGeometryCache?.point(x: x, y: y)
+                    ?? point(depthMap: depthMap, x: x, y: y)
+                if let point = projectedPoint {
                     result.append((point, CGPoint(x: x, y: y)))
                 }
             }
@@ -109,6 +210,35 @@ nonisolated enum TAPDepthGeometryProjector {
         let maxX = min(max(Int(region.maxX.rounded(.up)), minX), width)
         let maxY = min(max(Int(region.maxY.rounded(.up)), minY), height)
         return (minX, minY, maxX, maxY, maxX - minX, maxY - minY)
+    }
+}
+
+nonisolated struct TAPDepthGeometryCache {
+    let width: Int
+    let height: Int
+    fileprivate let points: [TAPPoint3D?]
+    fileprivate let localNormalRadius: Int
+    fileprivate let localNormals: [SIMD3<Float>?]
+    let validPointCount: Int
+
+    func matches(depthMap: TAPMetricDepthMap) -> Bool {
+        width == depthMap.width && height == depthMap.height
+    }
+
+    func point(x: Int, y: Int) -> TAPPoint3D? {
+        guard x >= 0, y >= 0, x < width, y < height else {
+            return nil
+        }
+
+        return points[y * width + x]
+    }
+
+    func localNormal(x: Int, y: Int, radius: Int) -> SIMD3<Float>? {
+        guard radius == localNormalRadius, x >= 0, y >= 0, x < width, y < height else {
+            return nil
+        }
+
+        return localNormals[y * width + x]
     }
 }
 

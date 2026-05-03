@@ -288,6 +288,7 @@ struct DepthAnalysisView: View {
                 depthQuality: input.depthQuality,
                 selectedPlaneRegion: viewModel.selectedPlaneRegion,
                 planeSeedPoint: viewModel.planeSeedPoint,
+                isDetecting: viewModel.planeRegionIsLoading,
                 errorMessage: viewModel.planeRegionErrorMessage,
                 strictness: Binding(
                     get: { viewModel.planeGrowthStrictness },
@@ -473,8 +474,15 @@ final class DepthAnalysisViewModel: ObservableObject {
     @Published var planeGrowthStrictness = 0.68
     @Published var planeSeedPoint: CGPoint?
     @Published var selectedPlaneRegion: TAPPlaneRegion?
+    @Published var planeRegionIsLoading = false
     @Published var planeRegionErrorMessage: String?
     @Published var errorMessage: String?
+
+    private var planeRegionTask: Task<Void, Never>?
+    private var planeRegionRequestID = UUID()
+    private var planeGeometryCache: TAPDepthGeometryCache?
+    private var planeGeometryTask: Task<Void, Never>?
+    private var planeGeometryRequestID = UUID()
 
     var displayImage: CGImage {
         guard let input else {
@@ -507,11 +515,19 @@ final class DepthAnalysisViewModel: ObservableObject {
     }
 
     func load(assetID: String) async {
+        planeRegionTask?.cancel()
+        planeGeometryTask?.cancel()
+        planeRegionRequestID = UUID()
+        planeGeometryRequestID = UUID()
+        planeGeometryCache = nil
+        planeRegionIsLoading = false
+
         do {
             let data = try await PhotoLibraryWriter.originalPhotoData(localIdentifier: assetID)
             let loadedInput = try TAPDepthMapReader.analysisInput(from: data)
             input = loadedInput
             clearSelection()
+            prewarmPlaneGeometry(for: loadedInput.depthMap)
             errorMessage = nil
         } catch {
             self.errorMessage = error.localizedDescription
@@ -540,6 +556,9 @@ final class DepthAnalysisViewModel: ObservableObject {
     }
 
     func clearSelection() {
+        planeRegionTask?.cancel()
+        planeRegionTask = nil
+        planeRegionRequestID = UUID()
         selectionRect = nil
         interactionState = .idle
         regionStats = nil
@@ -548,6 +567,7 @@ final class DepthAnalysisViewModel: ObservableObject {
         regionHeatmapErrorMessage = nil
         planeSeedPoint = nil
         selectedPlaneRegion = nil
+        planeRegionIsLoading = false
         planeRegionErrorMessage = nil
     }
 
@@ -567,7 +587,7 @@ final class DepthAnalysisViewModel: ObservableObject {
     func updatePlaneGrowthStrictness(_ strictness: Double) {
         planeGrowthStrictness = min(max(strictness, 0.35), 0.95)
         if planeSeedPoint != nil {
-            updateSeedPlaneRegion()
+            updateSeedPlaneRegion(debounceNanoseconds: 120_000_000)
         }
     }
 
@@ -599,27 +619,134 @@ final class DepthAnalysisViewModel: ObservableObject {
         }
     }
 
-    private func updateSeedPlaneRegion() {
+    private func updateSeedPlaneRegion(debounceNanoseconds: UInt64 = 0) {
         guard let input, let planeSeedPoint else {
+            planeRegionTask?.cancel()
+            planeRegionTask = nil
+            planeRegionRequestID = UUID()
             selectedPlaneRegion = nil
+            planeRegionIsLoading = false
             planeRegionErrorMessage = nil
             return
         }
 
-        do {
-            selectedPlaneRegion = try TAPPlaneEstimator.growPlaneRegion(
-                depthMap: input.depthMap,
-                seed: planeSeedPoint,
-                strictness: planeGrowthStrictness
-            )
+        let requestID = UUID()
+        let depthMap = input.depthMap
+        let strictness = planeGrowthStrictness
+        let geometryCache = planeGeometryCache
+        let geometryCacheRequestID: UUID?
+        planeRegionTask?.cancel()
+        planeRegionRequestID = requestID
+        if geometryCache == nil {
+            planeGeometryTask?.cancel()
+            planeGeometryTask = nil
+            planeGeometryRequestID = UUID()
+            geometryCacheRequestID = planeGeometryRequestID
+        } else {
+            geometryCacheRequestID = nil
+        }
+        selectedPlaneRegion = nil
+        planeRegionIsLoading = true
+        planeRegionErrorMessage = nil
+
+        planeRegionTask = Task.detached(priority: .userInitiated) { [weak self] in
+            do {
+                if debounceNanoseconds > 0 {
+                    try await Task.sleep(nanoseconds: debounceNanoseconds)
+                }
+
+                let preparedGeometryCache: TAPDepthGeometryCache?
+                if let geometryCache {
+                    preparedGeometryCache = geometryCache
+                } else {
+                    let builtCache = try TAPDepthGeometryProjector.geometryCache(
+                        for: depthMap,
+                        shouldCancel: { Task.isCancelled }
+                    )
+                    try Task.checkCancellation()
+                    if let builtCache, let geometryCacheRequestID {
+                        await self?.finishPlaneGeometryPrewarm(geometryCacheRequestID, cache: builtCache)
+                    }
+                    preparedGeometryCache = builtCache
+                }
+
+                let region = try TAPPlaneEstimator.growPlaneRegion(
+                    depthMap: depthMap,
+                    seed: planeSeedPoint,
+                    strictness: strictness,
+                    geometryCache: preparedGeometryCache,
+                    shouldCancel: { Task.isCancelled }
+                )
+                try Task.checkCancellation()
+                await self?.finishPlaneRegionRequest(requestID, result: .success(region))
+            } catch is CancellationError {
+                await self?.finishCancelledPlaneRegionRequest(requestID)
+            } catch let error as TAPPlaneGrowthError {
+                await self?.finishPlaneRegionRequest(requestID, result: .failure(error))
+            } catch {
+                await self?.finishPlaneRegionRequest(requestID, result: .failure(error))
+            }
+        }
+    }
+
+    private func prewarmPlaneGeometry(for depthMap: TAPMetricDepthMap) {
+        let requestID = UUID()
+        planeGeometryTask?.cancel()
+        planeGeometryRequestID = requestID
+        planeGeometryCache = nil
+
+        planeGeometryTask = Task.detached(priority: .utility) { [weak self] in
+            do {
+                let cache = try TAPDepthGeometryProjector.geometryCache(
+                    for: depthMap,
+                    shouldCancel: { Task.isCancelled }
+                )
+                try Task.checkCancellation()
+                await self?.finishPlaneGeometryPrewarm(requestID, cache: cache)
+            } catch is CancellationError {
+                await self?.finishPlaneGeometryPrewarm(requestID, cache: nil)
+            } catch {
+                await self?.finishPlaneGeometryPrewarm(requestID, cache: nil)
+            }
+        }
+    }
+
+    private func finishPlaneGeometryPrewarm(_ requestID: UUID, cache: TAPDepthGeometryCache?) {
+        guard planeGeometryRequestID == requestID else {
+            return
+        }
+
+        planeGeometryTask = nil
+        planeGeometryCache = cache
+    }
+
+    private func finishPlaneRegionRequest(_ requestID: UUID, result: Result<TAPPlaneRegion, Error>) {
+        guard planeRegionRequestID == requestID else {
+            return
+        }
+
+        planeRegionTask = nil
+        planeRegionIsLoading = false
+        switch result {
+        case .success(let region):
+            selectedPlaneRegion = region
             planeRegionErrorMessage = nil
-        } catch let error as TAPPlaneGrowthError {
+        case .failure(let error as TAPPlaneGrowthError):
             selectedPlaneRegion = nil
             planeRegionErrorMessage = error.localizedDescription
-        } catch {
+        case .failure:
             selectedPlaneRegion = nil
             planeRegionErrorMessage = "No stable plane region found from this point."
         }
+    }
+
+    private func finishCancelledPlaneRegionRequest(_ requestID: UUID) {
+        guard planeRegionRequestID == requestID else {
+            return
+        }
+
+        planeRegionTask = nil
+        planeRegionIsLoading = false
     }
 
     private func clampedSelection(_ rect: CGRect) -> CGRect {
@@ -1916,6 +2043,7 @@ private struct PlaneFilterInspectorContent: View {
     let depthQuality: String
     let selectedPlaneRegion: TAPPlaneRegion?
     let planeSeedPoint: CGPoint?
+    let isDetecting: Bool
     let errorMessage: String?
     @Binding var strictness: Double
     let showsInlineHelp: Bool
@@ -1951,7 +2079,18 @@ private struct PlaneFilterInspectorContent: View {
                 InlineHelpText("Higher strictness keeps only pixels that fit the seed plane more tightly.")
             }
 
-            if let selectedPlaneRegion {
+            if isDetecting {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Detecting plane region...")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                if showsInlineHelp {
+                    InlineHelpText("You can tap another surface point while this runs; the analyzer keeps the newest point.")
+                }
+            } else if let selectedPlaneRegion {
                 DepthMetricRow(
                     title: "Confidence",
                     value: "\(Int((selectedPlaneRegion.confidence * 100).rounded()))%",
@@ -2056,6 +2195,9 @@ private struct PlaneFilterInspectorContent: View {
     }
 
     private var statusText: String {
+        if isDetecting {
+            return "Detecting"
+        }
         if let selectedPlaneRegion {
             return "\(selectedPlaneRegion.gridCells.count) cells"
         }
