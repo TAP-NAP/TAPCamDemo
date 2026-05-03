@@ -169,7 +169,7 @@ struct DepthAnalyzerSettingsView: View {
     }
 
     private static let keyIDHelpText = "KeyID identifies the App Attest key that this app prepared on this device. " +
-        "The app uses it later to ask Apple for assertions, and the backend uses it to match those assertions to the registered credential."
+        "The app uses that key to generate request assertions, and the backend uses the KeyID to find the registered credential for verification."
 
     #if DEBUG
     private func exportAttestationCBOR() {

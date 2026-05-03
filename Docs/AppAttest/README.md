@@ -28,8 +28,10 @@ details row below the status shows only the prepared App Attest `keyId`.
 
 When Help is enabled in Settings, the user-facing `keyId` explanation appears
 inline directly below the App Attest `Status` row. It explains that `keyId`
-identifies the prepared App Attest key and is used later to generate and verify
-assertions for the registered credential.
+identifies the prepared App Attest key. The app uses that key to generate
+request assertions, and the backend uses the `keyId` to find the registered
+credential for verification. Assertions are not requested from Apple for each
+protected request.
 
 ## Boundary Rule
 
