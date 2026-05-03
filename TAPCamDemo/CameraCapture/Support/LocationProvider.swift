@@ -27,10 +27,6 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
     }
 
     func requestOneShotLocation(timeout: TimeInterval = 2.0) async -> CLLocation? {
-        guard CLLocationManager.locationServicesEnabled() else {
-            return nil
-        }
-
         if continuation != nil {
             finish(with: nil)
         }
@@ -44,33 +40,16 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
                 }
             }
 
-            switch manager.authorizationStatus {
-            case .authorizedAlways, .authorizedWhenInUse:
-                manager.requestLocation()
-            case .notDetermined:
-                manager.requestWhenInUseAuthorization()
-            case .denied, .restricted:
-                finish(with: nil)
-            @unknown default:
-                finish(with: nil)
-            }
+            requestLocationForCurrentAuthorizationStatus(shouldRequestAuthorization: true)
         }
     }
 
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         Task { @MainActor [weak self] in
             guard let self else { return }
+            guard continuation != nil else { return }
 
-            switch manager.authorizationStatus {
-            case .authorizedAlways, .authorizedWhenInUse:
-                manager.requestLocation()
-            case .denied, .restricted:
-                finish(with: nil)
-            case .notDetermined:
-                break
-            @unknown default:
-                finish(with: nil)
-            }
+            requestLocationForCurrentAuthorizationStatus(shouldRequestAuthorization: false)
         }
     }
 
@@ -91,5 +70,20 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
         timeoutTask = nil
         continuation?.resume(returning: location)
         continuation = nil
+    }
+
+    private func requestLocationForCurrentAuthorizationStatus(shouldRequestAuthorization: Bool) {
+        switch manager.authorizationStatus {
+        case .authorizedAlways, .authorizedWhenInUse:
+            manager.requestLocation()
+        case .notDetermined:
+            if shouldRequestAuthorization {
+                manager.requestWhenInUseAuthorization()
+            }
+        case .denied, .restricted:
+            finish(with: nil)
+        @unknown default:
+            finish(with: nil)
+        }
     }
 }
