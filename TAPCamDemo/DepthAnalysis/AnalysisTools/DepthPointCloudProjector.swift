@@ -26,12 +26,17 @@ import simd
 ///
 /// This is enough to compare visible surfaces in the photo, but it is not a
 /// mesh, not a world-space reconstruction, and not ARKit plane tracking.
+/// Plane Filter uses the same projection math, but repeated seed taps should not
+/// reproject the whole depth image. `geometryCache(for:)` builds per-image
+/// camera-space points and local normals once so tap-time growth can reuse them.
 ///
 /// Data dependencies:
 /// - `TAPMetricDepthMap.samples` for `Z`.
 /// - `TAPDepthManifest.CameraCalibration.intrinsicMatrix` for `fx/fy/cx/cy`.
 /// - `intrinsicMatrixReferenceDimensions` to scale intrinsics into the depth
 ///   map's actual pixel resolution.
+/// - `TAPDepthGeometryCache` when the caller can share projected points across
+///   multiple Planes seed selections.
 ///
 /// Reference docs:
 /// - https://developer.apple.com/documentation/avfoundation/avcameracalibrationdata/intrinsicmatrix
@@ -50,6 +55,11 @@ nonisolated enum TAPDepthGeometryProjector {
         return point(depth: depth, x: x, y: y, intrinsics: intrinsics)
     }
 
+    /// Builds reusable geometry for one loaded depth map.
+    ///
+    /// The work is intentionally cancellation-aware because the view model can
+    /// prewarm this at utility priority, then abandon it when the user switches
+    /// photos or taps before prewarm finishes.
     static func geometryCache(
         for depthMap: TAPMetricDepthMap,
         shouldCancel: () -> Bool = { false }
@@ -213,6 +223,11 @@ nonisolated enum TAPDepthGeometryProjector {
     }
 }
 
+/// Per-depth-map geometry shared across repeated Planes seed taps.
+///
+/// It stores camera-space points for valid depth samples plus radius-specific
+/// local normals used by high-strictness acceptance. The cache is image-local:
+/// callers must use `matches(depthMap:)` before reusing it.
 nonisolated struct TAPDepthGeometryCache {
     let width: Int
     let height: Int

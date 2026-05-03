@@ -13,10 +13,11 @@ import simd
 /// capture mode and are intentionally outside this module.
 ///
 /// Planes mode principle:
-/// The selected image region is sampled into camera-space points, then a small
-/// deterministic RANSAC-style loop proposes candidate planes from point triples.
-/// The best plane is the one with the most points whose perpendicular distance
-/// is below `residualThresholdMeters`. The output describes approximate
+/// Rectangular region analysis samples a selected image region into camera-space
+/// points, then fits an approximate plane. Plane Filter uses the seed-grown path:
+/// a tapped depth pixel validates an optional prewarmed geometry cache, fits a
+/// seed-local weighted plane, grows a connected mask with point-to-plane
+/// residuals, refits, and grows one more pass. Both paths describe approximate
 /// coplanarity: normal, centroid, average residual, inlier ratio, depth range,
 /// and image-space bounds.
 ///
@@ -26,9 +27,12 @@ import simd
 ///   no world transform, and no system-level semantic plane classification.
 ///
 /// Data dependencies:
-/// - `TAPDepthGeometryProjector.sampledPoints` for camera-space points.
+/// - `TAPDepthGeometryProjector.sampledPoints` for region samples.
+/// - `TAPDepthGeometryCache` for tap-time reuse of projected points and local
+///   normals during seed-grown panel detection.
 /// - `simd_cross`, `simd_dot`, and `simd_length` for plane equations and point
 ///   residuals.
+/// - A cancellation closure for asynchronous Planes taps and cache prewarming.
 ///
 /// Reference docs:
 /// - https://developer.apple.com/documentation/accelerate/simd
@@ -43,6 +47,8 @@ nonisolated enum TAPPlaneEstimator {
 
     private struct PlaneGrowthMask {
         let accepted: [Bool]
+        /// Accepted pixels are retained separately so later samples, contours,
+        /// and bounds do not need to scan the full depth map again.
         let acceptedPixels: [(x: Int, y: Int)]
     }
 
@@ -137,6 +143,12 @@ nonisolated enum TAPPlaneEstimator {
         return estimatePlane(from: samples, residualThresholdMeters: residualThresholdMeters)
     }
 
+    /// Grows the Plane Filter region from a tapped seed.
+    ///
+    /// Callers should pass a prewarmed `TAPDepthGeometryCache` when available.
+    /// If the cache is missing or stale, this method builds one before growth.
+    /// `shouldCancel` is checked during cache construction, seed fitting, and
+    /// BFS so stale taps do not keep doing invisible work.
     static func growPlaneRegion(
         depthMap: TAPMetricDepthMap,
         seed: CGPoint,

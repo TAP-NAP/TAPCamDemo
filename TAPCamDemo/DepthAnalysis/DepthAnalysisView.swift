@@ -480,6 +480,8 @@ final class DepthAnalysisViewModel: ObservableObject {
 
     private var planeRegionTask: Task<Void, Never>?
     private var planeRegionRequestID = UUID()
+    // Image-level geometry shared by Planes taps. It is prewarmed after load and
+    // can also be built by the first tap if prewarm has not finished yet.
     private var planeGeometryCache: TAPDepthGeometryCache?
     private var planeGeometryTask: Task<Void, Never>?
     private var planeGeometryRequestID = UUID()
@@ -496,8 +498,9 @@ final class DepthAnalysisViewModel: ObservableObject {
         //   `TAPMetricDepthMap.samples`.
         // - Mask overlays `TAPDepthMaskRenderer.validMask`, where transparent
         //   areas are invalid and colored regions have finite positive depth.
-        // - Planes reuses the heatmap as the backdrop while the bottom panel
-        //   reports `TAPPlaneEstimator` results for the selected depth region.
+        // - Planes reuses the heatmap as the backdrop while a background Plane
+        //   Filter task grows a seed-selected region using the prewarmed
+        //   geometry cache when available.
         // - Cloud is handled by `PointCloudPreview`, so this fallback is never
         //   measured from directly.
         switch viewMode {
@@ -638,6 +641,8 @@ final class DepthAnalysisViewModel: ObservableObject {
         planeRegionTask?.cancel()
         planeRegionRequestID = requestID
         if geometryCache == nil {
+            // The tap now owns cache construction; cancel utility prewarm so the
+            // same camera-space points are not computed twice.
             planeGeometryTask?.cancel()
             planeGeometryTask = nil
             planeGeometryRequestID = UUID()
@@ -695,6 +700,8 @@ final class DepthAnalysisViewModel: ObservableObject {
         planeGeometryRequestID = requestID
         planeGeometryCache = nil
 
+        // This shifts the image-level projection/normal work out of the first
+        // tap whenever the user pauses briefly after choosing a photo.
         planeGeometryTask = Task.detached(priority: .utility) { [weak self] in
             do {
                 let cache = try TAPDepthGeometryProjector.geometryCache(
