@@ -10,8 +10,6 @@ import Foundation
 @MainActor
 final class AppAttestRuntimeController: ObservableObject {
     @Published private(set) var runtime: AppAttestRuntime
-    @Published var backendSelection: AppAttestBackendSelection
-    @Published var httpBaseURL: String
     @Published private(set) var credentialStatusText = "Not prepared"
     @Published private(set) var isWorking = false
 
@@ -24,41 +22,21 @@ final class AppAttestRuntimeController: ObservableObject {
         userDefaults: UserDefaults = .standard,
         attestationObjectStore: any AppAttestAttestationObjectStoring = AppAttestAttestationObjectStore()
     ) {
-        let resolvedRuntime = runtime ?? Self.makeRuntime(mode: AppAttestRuntimeDefaults.mode)
+        let resolvedRuntime = runtime ?? Self.makeRuntime()
         self.runtime = resolvedRuntime
-        self.backendSelection = AppAttestBackendSelection(mode: resolvedRuntime.mode)
-        self.httpBaseURL = AppAttestRuntimeDefaults.httpBaseURLText(for: resolvedRuntime.mode)
         self.userDefaults = userDefaults
         self.attestationObjectStore = attestationObjectStore
     }
 
     func preparePhotoCredentialAfterFirstInstallLaunch() async {
         let didAutoPrepare = userDefaults.bool(forKey: Self.didAutoPreparePhotoCredentialKey)
-        #if DEBUG
         let shouldRefreshMissingDebugAttestationObject = runtime.debugBackend != nil && (try? attestationObjectStore.load()) == nil
-        #else
-        let shouldRefreshMissingDebugAttestationObject = false
-        #endif
 
         guard !didAutoPrepare || shouldRefreshMissingDebugAttestationObject else {
             return
         }
 
         await prepareCredential(markAutoPrepared: true)
-    }
-
-    func applyBackendSelection() {
-        do {
-            let mode = try AppAttestRuntimeDefaults.mode(
-                selection: backendSelection,
-                httpBaseURLText: httpBaseURL
-            )
-            runtime = Self.makeRuntime(mode: mode)
-            credentialStatusText = "Backend changed. Prepare \(AppAttestRuntimeDefaults.photoCredentialName) before signing requests."
-        } catch {
-            runtime = AppAttestRuntimeFactory.fallbackRuntime(error: error)
-            credentialStatusText = "Backend configuration failed: \(error.localizedDescription)"
-        }
     }
 
     func prepareCredential() async {
@@ -99,7 +77,6 @@ final class AppAttestRuntimeController: ObservableObject {
                 return storedData
             }
 
-            #if DEBUG
             guard let debugBackend = runtime.debugBackend else {
                 throw AppAttestError.invalidConfiguration("Attestation CBOR export requires Local Debug Backend.")
             }
@@ -108,9 +85,6 @@ final class AppAttestRuntimeController: ObservableObject {
             try attestationObjectStore.save(data)
             credentialStatusText = "Stored attestationObject.cbor is ready to export."
             return data
-            #else
-            throw AppAttestError.invalidConfiguration("No stored attestationObject.cbor. Run Prepare Credential first.")
-            #endif
         } catch {
             credentialStatusText = "Export Attestation CBOR failed: \(error.localizedDescription)"
             return nil
@@ -142,7 +116,6 @@ final class AppAttestRuntimeController: ObservableObject {
     }
 
     private func storeLatestAttestationObjectIfAvailable() async throws -> Bool {
-        #if DEBUG
         guard let debugBackend = runtime.debugBackend else {
             return false
         }
@@ -150,9 +123,6 @@ final class AppAttestRuntimeController: ObservableObject {
         let data = try await debugBackend.latestAttestationObject()
         try attestationObjectStore.save(data)
         return true
-        #else
-        return false
-        #endif
     }
 
     private func performCredentialOperation(
@@ -179,9 +149,9 @@ final class AppAttestRuntimeController: ObservableObject {
         isWorking = activeOperationCount > 0
     }
 
-    private static func makeRuntime(mode: AppAttestBackendMode) -> AppAttestRuntime {
+    private static func makeRuntime() -> AppAttestRuntime {
         do {
-            return try AppAttestRuntimeFactory.make(mode: mode)
+            return try AppAttestRuntimeFactory.make()
         } catch {
             return AppAttestRuntimeFactory.fallbackRuntime(error: error)
         }

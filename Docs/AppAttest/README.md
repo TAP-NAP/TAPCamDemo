@@ -10,9 +10,9 @@ implementation now comes from the upstream
 - [DefaultAppAttestClient](https://github.com/TAP-NAP/AppAttestKit/blob/main/Sources/AppAttestKit/DefaultAppAttestClient.swift) owns attestation, assertion, and credential metadata persistence.
 - [KeychainAppAttestCredentialStore](https://github.com/TAP-NAP/AppAttestKit/blob/main/Sources/AppAttestKit/KeychainAppAttestCredentialStore.swift) stores `credentialName -> keyId` metadata.
 - [HTTPAppAttestBackend](https://github.com/TAP-NAP/AppAttestKit/blob/main/Sources/AppAttestKit/HTTPAppAttestBackend.swift) is the production HTTP backend adapter.
-- [LocalDebugAppAttestBackend](https://github.com/TAP-NAP/AppAttestKit/blob/main/Sources/AppAttestKit/LocalDebugAppAttestBackend.swift) is DEBUG-only fixed-challenge object export support.
-- [AppAttestDemo](../../TAPCamDemo/AppAttestDemo/AppAttestDemoView.swift) is TAPCamDemo's UI usage example, not reusable core logic.
-- [AppAttestRuntime](../../TAPCamDemo/App/AppAttestRuntime.swift) wires TAPCamDemo to an explicit backend mode.
+- [LocalDebugAppAttestBackend](https://github.com/TAP-NAP/AppAttestKit/blob/main/Sources/AppAttestKit/LocalDebugAppAttestBackend.swift) is fixed-challenge object export support for local development.
+- [DepthAnalyzerSettingsView](../../TAPCamDemo/DepthAnalysis/DepthAnalyzerSettingsView.swift) is TAPCamDemo's UI usage example, not reusable core logic.
+- [AppAttestRuntime](../../TAPCamDemo/App/AppAttestRuntime.swift) wires TAPCamDemo to the backend selected by build-time `APP_ATTEST_*` configuration.
 
 ## Boundary Rule
 

@@ -46,7 +46,9 @@ struct AppAttestRuntimeTests {
 
     #if DEBUG
     @Test @MainActor func debugRuntimeUsesLocalDebugBackendWithSharedChallenge() async throws {
-        let runtime = try AppAttestRuntimeFactory.make()
+        let runtime = try AppAttestRuntimeFactory.make(
+            mode: .localDebug(challenge: AppAttestRuntimeDefaults.localDebugChallenge)
+        )
 
         #expect(runtime.backendDescription == "Local Debug Backend: TapTapNapNap123123")
         #expect(runtime.debugBackend != nil)
@@ -63,11 +65,13 @@ struct AppAttestRuntimeTests {
         #expect(assertionChallenge?.challengeId == "TapTapNapNap123123")
         #expect(String(data: assertionChallenge?.challenge ?? Data(), encoding: .utf8) == "TapTapNapNap123123")
     }
+    #endif
 
-    @Test func backendSelectionBuildsDefaultLocalDebugMode() throws {
-        let mode = try AppAttestRuntimeDefaults.mode(
-            selection: .localDebug,
-            httpBaseURLText: "https://api.example.com"
+    @Test func backendConfigurationParsesDefaultLocalDebugMode() throws {
+        let mode = try AppAttestBackendConfiguration.parse(
+            mode: "localDebug",
+            backendURL: nil,
+            localChallenge: nil
         )
 
         guard case .localDebug(let challenge) = mode else {
@@ -76,12 +80,12 @@ struct AppAttestRuntimeTests {
         }
         #expect(challenge == "TapTapNapNap123123")
     }
-    #endif
 
-    @Test func backendSelectionBuildsHTTPMode() throws {
-        let mode = try AppAttestRuntimeDefaults.mode(
-            selection: .http,
-            httpBaseURLText: " https://api.example.com "
+    @Test func backendConfigurationParsesHTTPMode() throws {
+        let mode = try AppAttestBackendConfiguration.parse(
+            mode: "http",
+            backendURL: "https://api.example.com",
+            localChallenge: nil
         )
 
         guard case .http(let baseURL) = mode else {
@@ -89,6 +93,26 @@ struct AppAttestRuntimeTests {
             return
         }
         #expect(baseURL.absoluteString == "https://api.example.com")
+    }
+
+    @Test func backendConfigurationRejectsHTTPModeWithoutURL() {
+        #expect(throws: (any Error).self) {
+            try AppAttestBackendConfiguration.parse(
+                mode: "http",
+                backendURL: nil,
+                localChallenge: nil
+            )
+        }
+    }
+
+    @Test func backendConfigurationRejectsShortLocalDebugChallenge() {
+        #expect(throws: (any Error).self) {
+            try AppAttestBackendConfiguration.parse(
+                mode: "localDebug",
+                backendURL: nil,
+                localChallenge: "short"
+            )
+        }
     }
 
 }

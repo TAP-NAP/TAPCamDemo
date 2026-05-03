@@ -4,7 +4,7 @@ Source links:
 
 - [LocalDebugAppAttestBackend](https://github.com/TAP-NAP/AppAttestKit/blob/main/Sources/AppAttestKit/LocalDebugAppAttestBackend.swift)
 - [AppAttestRuntimeFactory](../../TAPCamDemo/App/AppAttestRuntime.swift)
-- [Debug export UI](../../TAPCamDemo/AppAttestDemo/AppAttestDemoView.swift)
+- [Debug export UI](../../TAPCamDemo/DepthAnalysis/DepthAnalyzerSettingsView.swift)
 
 ## Purpose
 
@@ -17,7 +17,18 @@ It does not prove production security. Real validation must happen on a server.
 
 ## How It Is Selected
 
-The local debug backend is selected explicitly with:
+TAPCamDemo selects the backend at launch from build settings expanded into
+`Info.plist`:
+
+```text
+APP_ATTEST_BACKEND_MODE=localDebug
+APP_ATTEST_LOCAL_CHALLENGE=TapTapNapNap123123
+
+APP_ATTEST_BACKEND_MODE=http
+APP_ATTEST_BACKEND_URL=https://api.example.com
+```
+
+The same mode can be exercised directly in tests with:
 
 ```swift
 try AppAttestRuntimeFactory.make(
@@ -33,8 +44,9 @@ try AppAttestRuntimeFactory.make(
 )
 ```
 
-The runtime no longer treats localhost-like URLs as local debug mode. In Release
-builds, localhost-like HTTP backends are still rejected.
+The settings UI only shows the active backend. It no longer changes backend
+mode at runtime. In Release builds, localhost-like HTTP backends are still
+rejected.
 
 ## Exported JSON
 
@@ -84,5 +96,6 @@ The saved file is the raw binary CBOR returned by
 
 ## Release Guard
 
-The local debug backend is compiled only under `#if DEBUG`, so accidental
-Release references fail at compile time.
+`LocalDebugAppAttestBackend` is available to support explicit Release local QA,
+but Release defaults to HTTP configuration. Do not ship Release local debug
+mode as a production trust decision.

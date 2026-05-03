@@ -6,6 +6,11 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		F2A0A0032FA0000000000003 /* AppAttestKit in Frameworks */ = {isa = PBXBuildFile; productRef = F2A0A0022FA0000000000002 /* AppAttestKit */; };
+		F2A0A0052FA0000000000005 /* AppAttestKit in Frameworks */ = {isa = PBXBuildFile; productRef = F2A0A0042FA0000000000004 /* AppAttestKit */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		F2F5FDFD2F9B321100F5071A /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -22,11 +27,6 @@
 			remoteInfo = TAPCamDemo;
 		};
 /* End PBXContainerItemProxy section */
-
-/* Begin PBXBuildFile section */
-		F2A0A0032FA0000000000003 /* AppAttestKit in Frameworks */ = {isa = PBXBuildFile; productRef = F2A0A0022FA0000000000002 /* AppAttestKit */; };
-		F2A0A0052FA0000000000005 /* AppAttestKit in Frameworks */ = {isa = PBXBuildFile; productRef = F2A0A0042FA0000000000004 /* AppAttestKit */; };
-/* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		F2F5FDEF2F9B320F00F5071A /* TAPCamDemo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TAPCamDemo.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -405,22 +405,17 @@
 		F2F5FE112F9B321100F5071A /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				APP_ATTEST_BACKEND_MODE = localDebug;
+				APP_ATTEST_BACKEND_URL = "https://example.com";
+				APP_ATTEST_LOCAL_CHALLENGE = TapTapNapNap123123;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = UD3269PSCB;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSCameraUsageDescription = "TAPCamDemo captures photos with depth data from the camera.";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "TAPCamDemo can attach capture location to the TAP depth HEIC metadata.";
-				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "TAPCamDemo saves depth HEIC captures into the TAPCamDepth photo album.";
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "TAPCamDemo creates and reuses the TAPCamDepth photo album for depth HEIC captures.";
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "TAPCamDemo-Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -442,22 +437,17 @@
 		F2F5FE122F9B321100F5071A /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				APP_ATTEST_BACKEND_MODE = http;
+				APP_ATTEST_BACKEND_URL = "";
+				APP_ATTEST_LOCAL_CHALLENGE = TapTapNapNap123123;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = UD3269PSCB;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSCameraUsageDescription = "TAPCamDemo captures photos with depth data from the camera.";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "TAPCamDemo can attach capture location to the TAP depth HEIC metadata.";
-				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "TAPCamDemo saves depth HEIC captures into the TAPCamDepth photo album.";
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "TAPCamDemo creates and reuses the TAPCamDepth photo album for depth HEIC captures.";
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "TAPCamDemo-Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

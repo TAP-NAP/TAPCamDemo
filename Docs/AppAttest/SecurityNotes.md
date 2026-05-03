@@ -60,4 +60,5 @@ degrade, retry later, or block the action.
 ## Local Debug Is Not Security
 
 `LocalDebugAppAttestBackend` is for object generation and export only. It does
-not replace server validation and cannot appear in Release builds.
+not replace server validation. Release builds may use it only for explicit local
+QA, never as a production trust decision.

@@ -48,26 +48,6 @@ struct DepthAnalyzerSettingsView: View {
                 }
 
                 Section("App Attest Backend") {
-                    Picker("Backend", selection: $appAttestController.backendSelection) {
-                        ForEach(AppAttestBackendSelection.allCases) { mode in
-                            Text(mode.title).tag(mode)
-                        }
-                    }
-
-                    if appAttestController.backendSelection.showsHTTPSettings {
-                        TextField("Base URL", text: $appAttestController.httpBaseURL)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .keyboardType(.URL)
-                    }
-
-                    Button {
-                        appAttestController.applyBackendSelection()
-                    } label: {
-                        Label("Use Selected Backend", systemImage: "arrow.triangle.2.circlepath")
-                    }
-                    .disabled(appAttestController.isWorking)
-
                     LabeledContent("Active", value: appAttestController.runtime.backendDescription)
                 }
 
