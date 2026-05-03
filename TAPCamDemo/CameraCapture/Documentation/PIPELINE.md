@@ -15,6 +15,9 @@ AVCapturePhotoOutput
 Depth Delivery Enabled
         |
         v
+Prepared Photo Settings
+        |
+        v
 capturePhoto(with:delegate:)
         |
         v
@@ -26,6 +29,20 @@ Photo Data + Depth Data + Metadata
 
 This is the only running capture path. RGB image data, Apple auxiliary depth,
 and photo metadata come from the same `AVCapturePhotoOutput` request.
+
+## Shutter Latency
+
+The camera starts and configures the SingleCam session before the shutter is
+enabled. After each successful session configuration, Runtime calls
+`setPreparedPhotoSettingsArray` with the same HEIC + depth settings used for the
+actual still capture. This is an AVFoundation latency hint only; capture remains
+valid if preparation is delayed or declined.
+
+The shutter control starts capture on touch-down rather than waiting for the
+default SwiftUI button release action. Location is not awaited on the shutter
+path: the view model uses a recent cached `CLLocation` if available and kicks
+off a best-effort background refresh for later captures. If no recent location
+exists, the manifest and Photos asset are saved without location metadata.
 
 ## Debug Override
 

@@ -37,8 +37,8 @@ can compile the module and run unit tests, but it doesn't provide the physical
 depth-capable camera pipeline needed for live capture.
 
 Start with [CameraView](x-source-tag://CameraCaptureRootView). It composes the
-preview, Release FOV selector, Debug depth override controls, shutter button,
-and recent-photo entry point. It delegates all camera decisions to
+preview, Release FOV selector, Debug depth override controls, touch-down shutter
+control, and recent-photo entry point. It delegates all camera decisions to
 `CameraViewModel`.
 
 ```swift
@@ -219,11 +219,17 @@ and depth-delivery state.
 
 [View in Source](x-source-tag://ReuseSingleCamGraph)
 
+After each successful configuration, Runtime prewarms `AVCapturePhotoOutput`
+with the same HEIC + depth photo settings used for capture. This asks
+AVFoundation to allocate still-photo resources before the user presses the
+shutter, while preserving the same SingleCam path if preparation is incomplete.
+
 ## Capture the Photo and Depth Data
 
 The provider captures through `AVCapturePhotoOutput`. It doesn't configure the
 session; it only starts the photo request and forwards the produced
-`AVCapturePhoto`.
+`AVCapturePhoto`. The same settings factory is used for prewarm and capture so
+the prepared path matches the real depth HEIC request.
 
 ```swift
 settings.isDepthDataDeliveryEnabled = true
@@ -236,9 +242,11 @@ settings.photoQualityPrioritization = .quality
 
 ## Run the Async Pipeline
 
-After the shutter tap, the pipeline captures, builds the logical package,
-packages and signs the HEIC, writes it to Photos, and records metrics. The
-preview remains attached to the running session while this happens.
+On shutter touch-down, the view model queues a job, uses any recent cached
+location metadata, starts a background location refresh for future captures, and
+runs the pipeline. The pipeline captures, builds the logical package, packages
+and signs the HEIC, writes it to Photos, and records metrics. The preview
+remains attached to the running session while this happens.
 
 ```swift
 let captureResult = try await photoDepthProvider.capturePhotoDepth(job: job, context: context)

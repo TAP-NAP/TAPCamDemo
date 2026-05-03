@@ -31,7 +31,7 @@ nonisolated final class AVFoundationSingleCamPhotoProvider: SingleCamPhotoCaptur
     ///
     /// - Tag: CaptureSingleCamPhotoDepth
     func capturePhotoDepth(job: CaptureJob, context: CaptureSourceContext) async throws -> SingleCamPhotoCaptureResult {
-        let settings = makePhotoSettings(photoOutput: sessionController.photoOutput)
+        let settings = SingleCamPhotoSettingsFactory.make(photoOutput: sessionController.photoOutput)
         let requestedCodec: AVVideoCodecType = sessionController.photoOutput.availablePhotoCodecTypes.contains(.hevc) ? .hevc : .jpeg
         let videoRotationAngle = Self.videoRotationAngleForHorizonLevelCapture(
             device: context.sessionConfiguration.device
@@ -69,7 +69,25 @@ nonisolated final class AVFoundationSingleCamPhotoProvider: SingleCamPhotoCaptur
         return rotationCoordinator.videoRotationAngleForHorizonLevelCapture
     }
 
-    private func makePhotoSettings(photoOutput: AVCapturePhotoOutput) -> AVCapturePhotoSettings {
+    private func storeDelegate(_ delegate: SingleCamPhotoCaptureDelegate, uniqueID: Int64) {
+        lockQueue.sync {
+            inFlightDelegates[uniqueID] = delegate
+        }
+    }
+
+    private func removeDelegate(uniqueID: Int64) {
+        lockQueue.async {
+            self.inFlightDelegates[uniqueID] = nil
+        }
+    }
+}
+
+/// Creates the single still-photo settings shape used by both prewarming and
+/// actual capture. Keeping these settings identical makes
+/// `setPreparedPhotoSettingsArray` representative of the requested HEIC + depth
+/// capture instead of warming a cheaper default path.
+nonisolated enum SingleCamPhotoSettingsFactory {
+    static func make(photoOutput: AVCapturePhotoOutput) -> AVCapturePhotoSettings {
         let settings: AVCapturePhotoSettings
         if photoOutput.availablePhotoCodecTypes.contains(.hevc) {
             settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.hevc])
@@ -82,18 +100,6 @@ nonisolated final class AVFoundationSingleCamPhotoProvider: SingleCamPhotoCaptur
         settings.isDepthDataFiltered = true
         settings.photoQualityPrioritization = .quality
         return settings
-    }
-
-    private func storeDelegate(_ delegate: SingleCamPhotoCaptureDelegate, uniqueID: Int64) {
-        lockQueue.sync {
-            inFlightDelegates[uniqueID] = delegate
-        }
-    }
-
-    private func removeDelegate(uniqueID: Int64) {
-        lockQueue.async {
-            self.inFlightDelegates[uniqueID] = nil
-        }
     }
 }
 

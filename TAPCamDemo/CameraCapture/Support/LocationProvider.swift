@@ -8,17 +8,19 @@
 import CoreLocation
 import Foundation
 
-/// Best-effort one-shot location provider for capture metadata.
+/// Best-effort cached location provider for capture metadata.
 ///
-/// Location is optional by design: lack of permission or a timeout should never
-/// convert a valid depth photo into a failed capture. The manifest records
-/// `location: null` in that case, and the HEIC still contains all camera/depth
-/// data needed by downstream tooling.
+/// Location is optional by design and deliberately stays out of the shutter's
+/// critical path. The camera uses a recent cached value if one exists, then
+/// refreshes the cache in the background for future captures. The manifest
+/// records `location: null` when no recent value is available, and the HEIC
+/// still contains all camera/depth data needed by downstream tooling.
 @MainActor
 final class LocationProvider: NSObject, CLLocationManagerDelegate {
     private let manager = CLLocationManager()
     private var continuation: CheckedContinuation<CLLocation?, Never>?
     private var timeoutTask: Task<Void, Never>?
+    private var cachedLocation: CLLocation?
 
     override init() {
         super.init()
@@ -44,10 +46,32 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
         }
     }
 
+    /// Returns a recent cached location without starting or waiting for Core
+    /// Location work. This keeps a shutter press from waiting on GPS permission,
+    /// radio state, or the timeout used by the legacy one-shot helper.
+    func cachedCaptureLocation(maxAge: TimeInterval = 300) -> CLLocation? {
+        guard let cachedLocation,
+              abs(cachedLocation.timestamp.timeIntervalSinceNow) <= maxAge else {
+            return nil
+        }
+
+        return cachedLocation
+    }
+
+    /// Starts a one-shot Core Location refresh without awaiting the result.
+    /// Existing callers can request permission on a user gesture, but the current
+    /// capture uses only the cache that was already available at shutter time.
+    func warmLocationCache(shouldRequestAuthorization: Bool = false) {
+        guard continuation == nil else {
+            return
+        }
+
+        requestLocationForCurrentAuthorizationStatus(shouldRequestAuthorization: shouldRequestAuthorization)
+    }
+
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         Task { @MainActor [weak self] in
             guard let self else { return }
-            guard continuation != nil else { return }
 
             requestLocationForCurrentAuthorizationStatus(shouldRequestAuthorization: false)
         }
@@ -66,6 +90,10 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
     }
 
     private func finish(with location: CLLocation?) {
+        if let location {
+            cachedLocation = location
+        }
+
         timeoutTask?.cancel()
         timeoutTask = nil
         continuation?.resume(returning: location)

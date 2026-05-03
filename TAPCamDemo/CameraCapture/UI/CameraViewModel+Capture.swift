@@ -46,7 +46,8 @@ extension CameraViewModel {
             pendingJobCount = pendingCount
             statusMessage = "Capture queued..."
 
-            let location = await locationProvider.requestOneShotLocation()
+            let location = locationProvider.cachedCaptureLocation()
+            locationProvider.warmLocationCache(shouldRequestAuthorization: true)
             let context = CaptureSourceContext(
                 sessionConfiguration: captureConfiguration,
                 capturedAt: job.createdAt,

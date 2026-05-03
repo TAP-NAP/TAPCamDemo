@@ -38,9 +38,12 @@ already resolves to an Apple-paired photo-depth pipeline and a depth-safe raw
 `videoZoomFactor`. Debug can override to a depth-capable device to inspect
 format and zoom behavior, but it still uses the same SingleCam photo path.
 
-The runtime provider produces one paired `AVCapturePhoto`. Output code keeps the
-logical `CapturePackage` separate from the embedded HEIC artifact, then writes
-Apple auxiliary depth plus the TAP manifest into one Photos asset.
+The runtime provider produces one paired `AVCapturePhoto`. Runtime prewarms the
+photo output with the same HEIC + depth settings it later captures, and the UI
+starts shutter work on touch-down. Output code keeps the logical
+`CapturePackage` separate from the embedded HEIC artifact, then writes Apple
+auxiliary depth plus the TAP manifest into one Photos asset. Location metadata is
+best-effort cached support data; capture never waits on Core Location.
 
 ## Directory Roles
 
@@ -50,7 +53,7 @@ Apple auxiliary depth plus the TAP manifest into one Photos asset.
 | `Planning` | AVFoundation discovery models, compatibility checks, depth-safe zoom resolution, FOV labels, crop metadata, and immutable capture plans. |
 | `Runtime` | The single executable capture path: session graph owner, photo provider, capture jobs, and async pipeline orchestration. |
 | `Output` | Logical package, embedded HEIC packaging, TAP manifest schema/building/encoding, and Photos writing. |
-| `Support` | Shared errors, location lookup, and product-level capture metrics. |
+| `Support` | Shared errors, cached location refresh, and product-level capture metrics. |
 
 Key code: [CameraViewModel.swift](../UI/CameraViewModel.swift),
 [CapabilityMatrix.swift](../Planning/CapabilityMatrix.swift),

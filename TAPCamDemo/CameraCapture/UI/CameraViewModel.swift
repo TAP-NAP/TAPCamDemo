@@ -106,11 +106,13 @@ final class CameraViewModel: ObservableObject {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
             await configureDefaultSelection()
+            locationProvider.warmLocationCache()
             loadRecentDepthAssetPreviewIfAvailable()
         case .notDetermined:
             let granted = await AVCaptureDevice.requestAccess(for: .video)
             if granted {
                 await configureDefaultSelection()
+                locationProvider.warmLocationCache()
                 loadRecentDepthAssetPreviewIfAvailable()
             } else {
                 statusMessage = TAPDepthCaptureError.cameraAccessDenied.localizedDescription
@@ -149,6 +151,7 @@ final class CameraViewModel: ObservableObject {
             } else {
                 await configureCurrentSelection()
             }
+            locationProvider.warmLocationCache()
             loadRecentDepthAssetPreviewIfAvailable()
         case .notDetermined:
             await start()

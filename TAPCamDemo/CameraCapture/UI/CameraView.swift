@@ -23,6 +23,7 @@ struct CameraView: View {
     @StateObject private var appAttestController = AppAttestRuntimeController()
     @State private var isShowingDepthAlbum = false
     @State private var isShowingSettings = false
+    @State private var isShutterTouchActive = false
     #if DEBUG
     @State private var isDepthSelectorExpanded = false
     @State private var isPerformanceExpanded = false
@@ -266,29 +267,7 @@ struct CameraView: View {
 
             Spacer()
 
-            Button {
-                let appAttestClient = appAttestController.runtime.client
-                Task { await viewModel.capture(appAttestClient: appAttestClient) }
-            } label: {
-                ZStack {
-                    Circle()
-                        .strokeBorder(.white, lineWidth: 4)
-                        .frame(width: 78, height: 78)
-
-                    Circle()
-                        .fill(viewModel.canCapture ? Color.white : Color.gray)
-                        .frame(width: 62, height: 62)
-
-                    if viewModel.pendingJobCount > 0 {
-                        Text("\(viewModel.pendingJobCount)")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(.black)
-                            .rotationEffect(chromeOrientation.angle)
-                    }
-                }
-            }
-            .disabled(!viewModel.canCapture)
-            .accessibilityLabel("Capture depth photo")
+            shutterControl
 
             Spacer()
 
@@ -308,6 +287,54 @@ struct CameraView: View {
         .padding(.horizontal, 34)
         .padding(.bottom, 34)
         .frame(maxWidth: .infinity)
+    }
+
+    private var shutterControl: some View {
+        ZStack {
+            Circle()
+                .strokeBorder(.white, lineWidth: 4)
+                .frame(width: 78, height: 78)
+
+            Circle()
+                .fill(viewModel.canCapture ? Color.white : Color.gray)
+                .frame(width: 62, height: 62)
+
+            if viewModel.pendingJobCount > 0 {
+                Text("\(viewModel.pendingJobCount)")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.black)
+                    .rotationEffect(chromeOrientation.angle)
+            }
+        }
+        .frame(width: 78, height: 78)
+        .scaleEffect(isShutterTouchActive && viewModel.canCapture ? 0.96 : 1)
+        .contentShape(Circle())
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    guard !isShutterTouchActive else { return }
+                    isShutterTouchActive = true
+                    triggerShutter()
+                }
+                .onEnded { _ in
+                    isShutterTouchActive = false
+                }
+        )
+        .accessibilityElement()
+        .accessibilityLabel("Capture depth photo")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction {
+            triggerShutter()
+        }
+    }
+
+    private func triggerShutter() {
+        guard viewModel.canCapture else {
+            return
+        }
+
+        let appAttestClient = appAttestController.runtime.client
+        Task { await viewModel.capture(appAttestClient: appAttestClient) }
     }
 
     @ViewBuilder

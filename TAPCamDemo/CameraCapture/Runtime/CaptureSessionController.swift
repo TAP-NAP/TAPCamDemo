@@ -41,6 +41,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                         session.startRunning()
                     }
 
+                    Self.prewarmPhotoOutput(photoOutput)
                     continuation.resume(returning: result)
                 } catch {
                     continuation.resume(throwing: error)
@@ -50,8 +51,9 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     }
 
     func stop() {
-        sessionQueue.async { [session] in
+        sessionQueue.async { [session, photoOutput] in
             guard session.isRunning else { return }
+            photoOutput.setPreparedPhotoSettingsArray([], completionHandler: nil)
             session.stopRunning()
         }
     }
@@ -271,6 +273,16 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             device: plan.resolvedCaptureDevice,
             selectionContext: request.selectionContext
         )
+    }
+
+    private static func prewarmPhotoOutput(_ photoOutput: AVCapturePhotoOutput) {
+        let settings = SingleCamPhotoSettingsFactory.make(photoOutput: photoOutput)
+        /*
+         Prewarming is a latency hint, not a capture precondition. Capture still
+         proceeds normally if AVFoundation delays or declines resource
+         preparation for the current photo-depth settings.
+         */
+        photoOutput.setPreparedPhotoSettingsArray([settings], completionHandler: nil)
     }
 
     private static func configureDeviceFormat(

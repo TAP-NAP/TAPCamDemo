@@ -65,6 +65,12 @@ does not include a MultiCam runtime path; unsupported independent camera-input
 pairings are recorded as manifest/diagnostic facts instead of silently falling
 back to another capture source.
 
+The camera keeps the SingleCam session configured before the shutter is enabled,
+prewarms `AVCapturePhotoOutput` with the depth HEIC settings used for capture,
+and starts shutter work on touch-down. Location metadata is best-effort: capture
+uses a recent cached `CLLocation` when available and refreshes location in the
+background instead of waiting on Core Location during the shutter path.
+
 ## Code Map
 
 | Responsibility | Code |
