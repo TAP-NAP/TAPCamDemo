@@ -214,7 +214,6 @@ struct DepthAnalysisView: View {
         .frame(maxWidth: 560, alignment: .leading)
         .animation(.snappy(duration: 0.18), value: panelDestination)
         .animation(.snappy(duration: 0.18), value: viewModel.viewMode)
-        .animation(.snappy(duration: 0.18), value: isShowingInlineHelp)
     }
 
     private func clearSelectionAndPanel() {
@@ -977,7 +976,7 @@ private struct CaptureMetadataHUD: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .frame(maxWidth: 560, alignment: .leading)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(.yellow.opacity(0.50), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(.white.opacity(0.16), lineWidth: 1)
