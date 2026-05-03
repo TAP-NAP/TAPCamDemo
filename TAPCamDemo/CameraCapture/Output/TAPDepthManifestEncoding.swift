@@ -15,9 +15,9 @@ import simd
 /// Encodes manifests in one place so the app and tests use identical JSON
 /// options.
 ///
-/// `payloadDataExcludingProofs` deliberately excludes `proofs`. The app does not
-/// create hashes or signatures; this helper exists so schema tests can assert
-/// that placeholder proof records do not change the manifest payload bytes.
+/// `payloadDataExcludingProofs` deliberately excludes `proofs`. App Attest
+/// assertions bind the payload bytes before proof insertion, so adding or
+/// replacing a proof cannot change the metadata bytes being signed.
 nonisolated enum TAPDepthManifestEncoder {
     static func manifestJSON(_ manifest: TAPDepthManifest) throws -> String {
         let data = try encoder.encode(manifest)

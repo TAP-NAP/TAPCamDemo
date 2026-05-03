@@ -1,6 +1,7 @@
 # Xcode
 build/
 DerivedData/
+DerivedDataRelease/
 TAPCamDemo.xcodeproj/xcuserdata/
 TAPCamDemo.xcodeproj/project.xcworkspace/xcuserdata/
 *.xcworkspace/xcuserdata/
@@ -45,3 +46,6 @@ GoogleService-Info.plist
 
 # AppCode
 .idea/
+
+# Codex local environment
+.codex/

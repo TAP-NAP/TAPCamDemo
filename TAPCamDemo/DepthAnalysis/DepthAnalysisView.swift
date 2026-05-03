@@ -19,12 +19,21 @@ import SwiftUI
 struct DepthAnalysisView: View {
     let assetID: String
     @StateObject private var viewModel = DepthAnalysisViewModel()
+    @ObservedObject private var appAttestController: AppAttestRuntimeController
     @State private var heatmapOpacity = 0.74
     @State private var panelDestination: AnalysisPanelDestination?
     @State private var buttonHint: AnalysisButtonHint?
     @State private var buttonHintToken = UUID()
     @State private var helpSubject: AnalysisHelpSubject = .view(.rgb)
     @State private var isShowingSettings = false
+
+    init(
+        assetID: String,
+        appAttestController: AppAttestRuntimeController? = nil
+    ) {
+        self.assetID = assetID
+        self.appAttestController = appAttestController ?? AppAttestRuntimeController()
+    }
 
     var body: some View {
         Group {
@@ -71,7 +80,7 @@ struct DepthAnalysisView: View {
             }
         }
         .sheet(isPresented: $isShowingSettings) {
-            DepthAnalyzerSettingsView()
+            DepthAnalyzerSettingsView(appAttestController: appAttestController)
         }
         .onChange(of: viewModel.viewMode) { _, viewMode in
             if case .inspector(let inspector) = panelDestination, !inspectors(for: viewMode).contains(inspector) {

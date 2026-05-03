@@ -5,6 +5,7 @@
 //  Created by Codex on 2026/4/27.
 //
 
+import AppAttestKit
 import Foundation
 import Photos
 import UIKit
@@ -15,7 +16,7 @@ import UIKit
 /// writes it in the background, and the preview stays attached to the session.
 @MainActor
 extension CameraViewModel {
-    func capture() async {
+    func capture(appAttestClient: (any AppAttestClient)? = nil) async {
         guard !isPausedForAnalysis else {
             statusMessage = "Camera paused for analysis."
             return
@@ -52,11 +53,13 @@ extension CameraViewModel {
                 location: location
             )
             let queueWaitDuration = Date().timeIntervalSince(queueEnteredAt)
+            let assertionSigner = appAttestClient.map(AppAttestCaptureAssertionSigner.init(client:))
 
             Task { [pipeline, jobQueue, metricsStore] in
                 let result = await pipeline.runSingleCamJob(
                     job: job,
                     context: context,
+                    assertionSigner: assertionSigner,
                     pendingJobCount: pendingCount,
                     queueWaitDuration: queueWaitDuration
                 )
@@ -68,7 +71,7 @@ extension CameraViewModel {
                     self.recentMetrics = metrics
                     switch result {
                     case .success(let writeResult):
-                        self.statusMessage = "Capture saved"
+                        self.statusMessage = writeResult.signatureStatus.captureStatusMessage
                         if let assetID = writeResult.assetLocalIdentifier {
                             self.loadRecentDepthAssetPreview(assetID: assetID)
                         }
@@ -133,6 +136,17 @@ extension CameraViewModel {
             Task { @MainActor in
                 self?.recentThumbnail = image
             }
+        }
+    }
+}
+
+private extension CaptureSignatureStatus {
+    var captureStatusMessage: String {
+        switch self {
+        case .signed:
+            "Capture saved"
+        case .unsigned:
+            "Capture saved unsigned"
         }
     }
 }

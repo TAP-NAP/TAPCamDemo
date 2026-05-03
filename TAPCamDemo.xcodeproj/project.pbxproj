@@ -23,6 +23,11 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXBuildFile section */
+		F2A0A0032FA0000000000003 /* AppAttestKit in Frameworks */ = {isa = PBXBuildFile; productRef = F2A0A0022FA0000000000002 /* AppAttestKit */; };
+		F2A0A0052FA0000000000005 /* AppAttestKit in Frameworks */ = {isa = PBXBuildFile; productRef = F2A0A0042FA0000000000004 /* AppAttestKit */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		F2F5FDEF2F9B320F00F5071A /* TAPCamDemo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TAPCamDemo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F2F5FDFC2F9B321100F5071A /* TAPCamDemoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TAPCamDemoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -52,6 +57,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F2A0A0032FA0000000000003 /* AppAttestKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -59,6 +65,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F2A0A0052FA0000000000005 /* AppAttestKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -112,6 +119,7 @@
 			);
 			name = TAPCamDemo;
 			packageProductDependencies = (
+				F2A0A0022FA0000000000002 /* AppAttestKit */,
 			);
 			productName = TAPCamDemo;
 			productReference = F2F5FDEF2F9B320F00F5071A /* TAPCamDemo.app */;
@@ -135,6 +143,7 @@
 			);
 			name = TAPCamDemoTests;
 			packageProductDependencies = (
+				F2A0A0042FA0000000000004 /* AppAttestKit */,
 			);
 			productName = TAPCamDemoTests;
 			productReference = F2F5FDFC2F9B321100F5071A /* TAPCamDemoTests.xctest */;
@@ -195,6 +204,9 @@
 			);
 			mainGroup = F2F5FDE62F9B320F00F5071A;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				F2A0A0012FA0000000000001 /* XCRemoteSwiftPackageReference "AppAttestKit" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = F2F5FDF02F9B320F00F5071A /* Products */;
 			projectDirPath = "";
@@ -588,6 +600,30 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		F2A0A0012FA0000000000001 /* XCRemoteSwiftPackageReference "AppAttestKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/TAP-NAP/AppAttestKit.git";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		F2A0A0022FA0000000000002 /* AppAttestKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F2A0A0012FA0000000000001 /* XCRemoteSwiftPackageReference "AppAttestKit" */;
+			productName = AppAttestKit;
+		};
+		F2A0A0042FA0000000000004 /* AppAttestKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F2A0A0012FA0000000000001 /* XCRemoteSwiftPackageReference "AppAttestKit" */;
+			productName = AppAttestKit;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = F2F5FDE72F9B320F00F5071A /* Project object */;
 }

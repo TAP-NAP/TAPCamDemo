@@ -5,9 +5,11 @@
 //  Created by Harold on 2026/4/24.
 //
 
+import AppAttestKit
 import AVFoundation
 import CoreGraphics
 import CoreLocation
+import CryptoKit
 import Foundation
 import ImageIO
 import Photos
@@ -225,6 +227,60 @@ struct TAPCamDemoTests {
         let payloadBytesWithProofs = try TAPDepthManifestEncoder.payloadDataExcludingProofs(manifestWithProof.payload)
 
         #expect(payloadBytesWithoutProofs == payloadBytesWithProofs)
+    }
+
+    @Test func captureContentDigestCanonicalJSONIsStable() throws {
+        let digest = Self.sampleContentDigest()
+        let first = try digest.canonicalJSONData()
+        let second = try digest.canonicalJSONData()
+        let decoded = try JSONDecoder().decode(CaptureContentDigest.self, from: first)
+        let json = try #require(String(data: first, encoding: .utf8))
+
+        #expect(first == second)
+        #expect(decoded == digest)
+        #expect(json.contains("\"captureID\":\"sample-capture\""))
+        #expect(json.contains("\"schemaID\":\"urn:tapnap:tapcam:capture-content-digest:v1\""))
+    }
+
+    @Test func appAttestCaptureAssertionSignerBuildsProofValue() async throws {
+        let digest = Self.sampleContentDigest()
+        let signer = AppAttestCaptureAssertionSigner(client: SucceedingAssertionAppAttestClient())
+        let capturedAt = Date(timeIntervalSince1970: 0)
+        let assertionProof = try await signer.sign(contentDigest: digest, capturedAt: capturedAt)
+
+        let proof = assertionProof.proof
+        #expect(assertionProof.keyID == "test-key-id")
+        #expect(proof.type == "appAttestAssertion")
+        #expect(proof.algorithm == "AppAttestKit.AppAttestAssertionEnvelope.v1")
+        #expect(proof.keyID == "test-key-id")
+        #expect(proof.createdAt == "1970-01-01T00:00:00.000Z")
+
+        let encodedValue = try #require(proof.value)
+        let proofValueData = try AppAttestBase64URL.decode(encodedValue, field: "proof.value")
+        let proofValue = try JSONDecoder().decode(CaptureAssertionProofValue.self, from: proofValueData)
+        let expectedBodyHash = Data(SHA256.hash(data: try digest.canonicalJSONData())).appAttestBase64URL
+
+        #expect(proofValue.contentDigest == digest)
+        #expect(proofValue.assertionEnvelope.credentialName == AppAttestRuntimeDefaults.photoCredentialName)
+        #expect(proofValue.assertionEnvelope.keyId == "test-key-id")
+        #expect(proofValue.assertionEnvelope.requestBinding.method == "POST")
+        #expect(proofValue.assertionEnvelope.requestBinding.path == "/tapcam/captures/sample-capture/assertion")
+        #expect(proofValue.assertionEnvelope.requestBinding.nonce == "sample-capture")
+        #expect(proofValue.assertionEnvelope.requestBinding.bodySHA256 == expectedBodyHash)
+    }
+
+    @Test func unsignedCaptureManifestKeepsProofsEmptyWhenSignerIsMissing() async throws {
+        let manifest = TAPDepthManifest(payload: Self.samplePayload(location: nil))
+        let result = await EmbeddedPhotoPackager.manifestByApplyingCaptureAssertion(
+            to: manifest,
+            baseHEICData: Data(),
+            depthData: nil,
+            capturedAt: Date(timeIntervalSince1970: 0),
+            assertionSigner: nil
+        )
+
+        #expect(result.manifest.proofs.isEmpty)
+        #expect(result.status == .unsigned(reason: "App Attest signer unavailable."))
     }
 
     @Test func projectorUsesCalibrationToProduceCameraCoordinates() throws {
@@ -973,6 +1029,31 @@ struct TAPCamDemoTests {
         )
     }
 
+    private static func sampleContentDigest() -> CaptureContentDigest {
+        CaptureContentDigest(
+            captureID: "sample-capture",
+            capturedAt: "2026-04-25T00:00:00.000Z",
+            rgb: CaptureContentDigest.Component(
+                mediaType: "image/heic-primary-rgba8",
+                width: 2,
+                height: 2,
+                value: "rgb-digest"
+            ),
+            depth: CaptureContentDigest.Component(
+                mediaType: "application/vnd.tapnap.depth-float32",
+                width: 2,
+                height: 2,
+                value: "depth-digest"
+            ),
+            metadata: CaptureContentDigest.Component(
+                mediaType: "application/vnd.tapnap.depth-manifest.payload+json;version=1",
+                width: nil,
+                height: nil,
+                value: "metadata-digest"
+            )
+        )
+    }
+
     private static var sampleCalibration: TAPDepthManifest.CameraCalibration {
         TAPDepthManifest.CameraCalibration(
             intrinsicMatrixReferenceWidth: 8,
@@ -985,5 +1066,57 @@ struct TAPCamDemoTests {
             intrinsicMatrix: [100, 0, 0, 0, 100, 0, 4, 4, 1],
             extrinsicMatrix: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0]
         )
+    }
+}
+
+private enum CaptureAssertionTestError: Error {
+    case unused
+}
+
+private actor SucceedingAssertionAppAttestClient: AppAttestClient {
+    func prepare(credentialName: String) async throws -> AppAttestCredential {
+        throw CaptureAssertionTestError.unused
+    }
+
+    func prepareIfNeeded(credentialName: String) async throws -> AppAttestCredential {
+        throw CaptureAssertionTestError.unused
+    }
+
+    func generateAssertion(
+        credentialName: String,
+        request: AppAttestProtectedRequest
+    ) async throws -> AppAttestAssertionEnvelope {
+        let bodySHA256 = Data(SHA256.hash(data: request.body ?? Data())).appAttestBase64URL
+        let challengeSHA256 = Data(SHA256.hash(data: Data("test-challenge".utf8))).appAttestBase64URL
+        let bindingJSON = """
+        {
+          "bodySHA256": "\(bodySHA256)",
+          "challengeSHA256": "\(challengeSHA256)",
+          "method": "\(request.method.uppercased())",
+          "nonce": "\(request.nonce ?? "")",
+          "path": "\(request.path)",
+          "query": []
+        }
+        """
+        let requestBinding = try JSONDecoder().decode(
+            AppAttestRequestBinding.self,
+            from: Data(bindingJSON.utf8)
+        )
+
+        return AppAttestAssertionEnvelope(
+            credentialName: credentialName,
+            keyId: "test-key-id",
+            challengeId: "test-challenge",
+            assertionObject: Data([0xA1, 0x01]),
+            requestBinding: requestBinding
+        )
+    }
+
+    func status(credentialName: String) async throws -> AppAttestCredentialStatus {
+        throw CaptureAssertionTestError.unused
+    }
+
+    func reset(credentialName: String) async throws {
+        throw CaptureAssertionTestError.unused
     }
 }
