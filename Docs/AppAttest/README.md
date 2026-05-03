@@ -14,6 +14,23 @@ implementation now comes from the upstream
 - [DepthAnalyzerSettingsView](../../TAPCamDemo/DepthAnalysis/DepthAnalyzerSettingsView.swift) is TAPCamDemo's UI usage example, not reusable core logic.
 - [AppAttestRuntime](../../TAPCamDemo/App/AppAttestRuntime.swift) wires TAPCamDemo to the backend selected by build-time `APP_ATTEST_*` configuration.
 
+## Settings UI
+
+Release settings show only the App Attest `Status` row. Debug builds also show
+backend, credential, prepare, reset, and export controls, and those debug-only
+rows use a yellow background so they are easy to distinguish from Release UI.
+
+When the status is `Not prepared`, tapping that status row asks
+`AppAttestRuntimeController` to reset the local credential artifacts and then
+run `prepare(credentialName:)` for `photo_keyid`. The status row shows a spinner
+while preparation is in progress, then changes to `Ready`. Once ready, the
+details row below the status shows only the prepared App Attest `keyId`.
+
+When Help is enabled in Settings, the user-facing `keyId` explanation appears
+inline directly below the App Attest `Status` row. It explains that `keyId`
+identifies the prepared App Attest key and is used later to generate and verify
+assertions for the registered credential.
+
 ## Boundary Rule
 
 `AppAttestKit` accepts only `credentialName: String` from the caller. It does

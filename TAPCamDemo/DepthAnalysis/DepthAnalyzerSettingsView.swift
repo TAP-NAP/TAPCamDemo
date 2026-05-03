@@ -22,8 +22,10 @@ struct DepthAnalyzerSettingsView: View {
     @ObservedObject private var appAttestController: AppAttestRuntimeController
     @AppStorage(DepthAnalyzerPreferences.showsAnalysisHelpKey)
     private var showsAnalysisHelp = DepthAnalyzerPreferences.defaultShowsAnalysisHelp
+    #if DEBUG
     @State private var attestationObjectDocument: AppAttestCBORDocument?
     @State private var isAttestationExporterPresented = false
+    #endif
 
     init(
         snapshot: DepthAnalyzerAuthorizationSnapshot = .current(),
@@ -60,12 +62,26 @@ struct DepthAnalyzerSettingsView: View {
                     )
                 }
 
+                Section("App Attest") {
+                    appAttestStatusRow
+                    if showsAnalysisHelp {
+                        AppAttestKeyIDHelpView(message: Self.keyIDHelpText)
+                    }
+                    if let keyID = appAttestController.credentialKeyIdText {
+                        AppAttestKeyIDInfoView(keyID: keyID)
+                    }
+                }
+
+                #if DEBUG
+                // Debug-only App Attest controls are hidden from Release and highlighted here.
                 Section("App Attest Backend") {
                     LabeledContent("Active", value: appAttestController.runtime.backendDescription)
+                        .listRowBackground(Self.debugOnlyAppAttestBackground)
                 }
 
                 Section("App Attest Credential") {
                     LabeledContent("Credential", value: AppAttestRuntimeDefaults.photoCredentialName)
+                        .listRowBackground(Self.debugOnlyAppAttestBackground)
 
                     Button {
                         Task {
@@ -75,6 +91,7 @@ struct DepthAnalyzerSettingsView: View {
                         Label("Prepare Credential", systemImage: "checkmark.seal")
                     }
                     .disabled(appAttestController.isWorking)
+                    .listRowBackground(Self.debugOnlyAppAttestBackground)
 
                     Button(role: .destructive) {
                         Task {
@@ -84,6 +101,7 @@ struct DepthAnalyzerSettingsView: View {
                         Label("Reset Local Credential", systemImage: "trash")
                     }
                     .disabled(appAttestController.isWorking)
+                    .listRowBackground(Self.debugOnlyAppAttestBackground)
 
                     Button {
                         exportAttestationCBOR()
@@ -91,9 +109,9 @@ struct DepthAnalyzerSettingsView: View {
                         Label("Export Attestation CBOR", systemImage: "square.and.arrow.down")
                     }
                     .disabled(appAttestController.isWorking)
-
-                    LabeledContent("Status", value: appAttestController.credentialStatusText)
+                    .listRowBackground(Self.debugOnlyAppAttestBackground)
                 }
+                #endif
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
@@ -105,6 +123,7 @@ struct DepthAnalyzerSettingsView: View {
                 }
             }
         }
+        #if DEBUG
         .fileExporter(
             isPresented: $isAttestationExporterPresented,
             document: attestationObjectDocument,
@@ -113,8 +132,46 @@ struct DepthAnalyzerSettingsView: View {
         ) { result in
             appAttestController.handleAttestationExportResult(result)
         }
+        #endif
     }
 
+    private var appAttestStatusRow: some View {
+        LabeledContent {
+            appAttestStatusValue
+        } label: {
+            Text("Status")
+        }
+    }
+
+    @ViewBuilder
+    private var appAttestStatusValue: some View {
+        if appAttestController.isPreparingCredential {
+            ProgressView()
+                .controlSize(.small)
+                .frame(width: 24, height: 24)
+                .accessibilityLabel("Preparing App Attest credential")
+        } else if appAttestController.canResetAndPrepareCredential {
+            Button {
+                Task {
+                    await appAttestController.resetAndPrepareCredential()
+                }
+            } label: {
+                Text(appAttestController.credentialStatusText)
+                    .multilineTextAlignment(.trailing)
+            }
+            .buttonStyle(.borderless)
+            .accessibilityHint("Resets and prepares the App Attest credential.")
+        } else {
+            Text(appAttestController.credentialStatusText)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.trailing)
+        }
+    }
+
+    private static let keyIDHelpText = "KeyID identifies the App Attest key that this app prepared on this device. " +
+        "The app uses it later to ask Apple for assertions, and the backend uses it to match those assertions to the registered credential."
+
+    #if DEBUG
     private func exportAttestationCBOR() {
         Task {
             guard let data = await appAttestController.attestationObjectForExport() else {
@@ -123,6 +180,36 @@ struct DepthAnalyzerSettingsView: View {
             attestationObjectDocument = AppAttestCBORDocument(data: data)
             isAttestationExporterPresented = true
         }
+    }
+
+    private static let debugOnlyAppAttestBackground = Color.yellow.opacity(0.30)
+    #endif
+}
+
+// Help stays inline under Status so Release users can read it in context.
+private struct AppAttestKeyIDHelpView: View {
+    let message: String
+
+    var body: some View {
+        Text(message)
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityLabel("KeyID help. \(message)")
+    }
+}
+
+// Keep this detail row to the keyId only; status belongs in the row above.
+private struct AppAttestKeyIDInfoView: View {
+    let keyID: String
+
+    var body: some View {
+        Text(keyID)
+            .font(.footnote.monospaced())
+            .foregroundStyle(.secondary)
+            .textSelection(.enabled)
+            .multilineTextAlignment(.leading)
+            .accessibilityLabel("KeyID \(keyID)")
     }
 }
 

@@ -44,9 +44,14 @@ try AppAttestRuntimeFactory.make(
 )
 ```
 
-The settings UI only shows the active backend. It no longer changes backend
-mode at runtime. In Release builds, localhost-like HTTP backends are still
-rejected.
+Release settings show only App Attest status. Debug settings also show the
+active backend and local debug controls; those debug-only rows use a yellow
+background and are compiled out of Release UI. The settings UI no longer changes
+backend mode at runtime. In Release builds, localhost-like HTTP backends are
+still rejected. While preparation runs, the status row shows a spinner. After
+preparation succeeds, the status row shows `Ready` and the details row below it
+shows only the App Attest `keyId`. When Help is enabled, the `keyId` explanation
+appears inline directly below the status row.
 
 ## Exported JSON
 
@@ -87,7 +92,7 @@ The local debug backend exposes the latest raw `attestationObject` directly:
 - `latestAttestationObject()`
 - `latestAttestationObjectBase64URL()`
 
-The demo UI has a separate `Save Attestation CBOR` button. It uses
+The debug settings UI has a separate `Export Attestation CBOR` button. It uses
 `latestAttestationObject()` and opens the system file exporter so you can choose
 where to save `attestationObject.cbor`.
 

@@ -10,12 +10,18 @@ import Foundation
 @MainActor
 final class AppAttestRuntimeController: ObservableObject {
     @Published private(set) var runtime: AppAttestRuntime
-    @Published private(set) var credentialStatusText = "Not prepared"
+    @Published private(set) var credentialStatusText = AppAttestRuntimeController.notPreparedStatusText
+    @Published private(set) var credentialKeyIdText: String?
+    @Published private(set) var isPreparingCredential = false
     @Published private(set) var isWorking = false
 
     private let userDefaults: UserDefaults
     private let attestationObjectStore: any AppAttestAttestationObjectStoring
     private var activeOperationCount = 0
+
+    var canResetAndPrepareCredential: Bool {
+        credentialStatusText == Self.notPreparedStatusText && !isWorking
+    }
 
     init(
         runtime: AppAttestRuntime? = nil,
@@ -36,27 +42,24 @@ final class AppAttestRuntimeController: ObservableObject {
             return
         }
 
-        await prepareCredential(markAutoPrepared: true)
+        await performCredentialOperation("Prepare credential", showsPreparationProgress: true) {
+            try await self.prepareCredential(markAutoPrepared: true)
+        }
     }
 
     func prepareCredential() async {
-        await prepareCredential(markAutoPrepared: false)
+        await performCredentialOperation("Prepare credential", showsPreparationProgress: true) {
+            try await self.prepareCredential(markAutoPrepared: false)
+        }
     }
 
     func resetLocalCredential() async {
         beginOperation()
         defer { endOperation() }
 
-        var resetError: Error?
         do {
-            try await self.runtime.client.reset(credentialName: AppAttestRuntimeDefaults.photoCredentialName)
-        } catch {
-            resetError = error
-        }
-
-        do {
-            try attestationObjectStore.delete()
-            self.userDefaults.set(false, forKey: Self.didAutoPreparePhotoCredentialKey)
+            let resetError = try await resetLocalCredentialArtifacts()
+            credentialKeyIdText = nil
             if let resetError {
                 self.credentialStatusText = "Cleared stored attestationObject.cbor. Reset \(AppAttestRuntimeDefaults.photoCredentialName) failed: \(resetError.localizedDescription)"
             } else {
@@ -65,6 +68,26 @@ final class AppAttestRuntimeController: ObservableObject {
         } catch {
             self.credentialStatusText = "Reset \(AppAttestRuntimeDefaults.photoCredentialName) failed while clearing stored attestationObject.cbor: \(error.localizedDescription)"
         }
+    }
+
+    func resetAndPrepareCredential() async {
+        await performCredentialOperation("Reset and prepare credential", showsPreparationProgress: true) {
+            _ = try await self.resetLocalCredentialArtifacts()
+            try await self.prepareCredential(markAutoPrepared: true)
+        }
+    }
+
+    private func resetLocalCredentialArtifacts() async throws -> Error? {
+        var resetError: Error?
+        do {
+            try await self.runtime.client.reset(credentialName: AppAttestRuntimeDefaults.photoCredentialName)
+        } catch {
+            resetError = error
+        }
+
+        try attestationObjectStore.delete()
+        self.userDefaults.set(false, forKey: Self.didAutoPreparePhotoCredentialKey)
+        return resetError
     }
 
     func attestationObjectForExport() async -> Data? {
@@ -100,19 +123,14 @@ final class AppAttestRuntimeController: ObservableObject {
         }
     }
 
-    private func prepareCredential(markAutoPrepared: Bool) async {
-        await performCredentialOperation("Prepare credential") {
-            let credential = try await self.runtime.client.prepare(credentialName: AppAttestRuntimeDefaults.photoCredentialName)
-            let didStoreAttestationObject = try await self.storeLatestAttestationObjectIfAvailable()
-            if markAutoPrepared {
-                self.userDefaults.set(true, forKey: Self.didAutoPreparePhotoCredentialKey)
-            }
-            self.credentialStatusText = """
-            Ready: \(credential.credentialName)
-            keyId: \(credential.keyId)
-            attestationObject.cbor: \(didStoreAttestationObject ? "Stored" : "Not available")
-            """
+    private func prepareCredential(markAutoPrepared: Bool) async throws {
+        let credential = try await self.runtime.client.prepare(credentialName: AppAttestRuntimeDefaults.photoCredentialName)
+        _ = try await self.storeLatestAttestationObjectIfAvailable()
+        if markAutoPrepared {
+            self.userDefaults.set(true, forKey: Self.didAutoPreparePhotoCredentialKey)
         }
+        self.credentialStatusText = Self.readyStatusText
+        self.credentialKeyIdText = credential.keyId
     }
 
     private func storeLatestAttestationObjectIfAvailable() async throws -> Bool {
@@ -127,14 +145,25 @@ final class AppAttestRuntimeController: ObservableObject {
 
     private func performCredentialOperation(
         _ label: String,
+        showsPreparationProgress: Bool = false,
         operation: @MainActor @escaping () async throws -> Void
     ) async {
         beginOperation()
-        defer { endOperation() }
+        if showsPreparationProgress {
+            isPreparingCredential = true
+            credentialKeyIdText = nil
+        }
+        defer {
+            if showsPreparationProgress {
+                isPreparingCredential = false
+            }
+            endOperation()
+        }
 
         do {
             try await operation()
         } catch {
+            credentialKeyIdText = nil
             credentialStatusText = "\(label) failed: \(error.localizedDescription)"
         }
     }
@@ -158,4 +187,6 @@ final class AppAttestRuntimeController: ObservableObject {
     }
 
     private static let didAutoPreparePhotoCredentialKey = "TAPCamDemo.AppAttest.didAutoPreparePhotoCredential"
+    private static let notPreparedStatusText = "Not prepared"
+    private static let readyStatusText = "Ready"
 }

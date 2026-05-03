@@ -44,6 +44,48 @@ struct AppAttestRuntimeTests {
         #expect(controller.credentialStatusText.contains("Cleared stored attestationObject.cbor"))
     }
 
+    @Test @MainActor func resetAndPrepareCredentialResetsThenPreparesWhenNotPrepared() async throws {
+        let storedAttestationObject = Data([0xA1, 0x01, 0x02])
+        let temporaryDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TAPCamDemoTests.AppAttest.\(UUID().uuidString)", isDirectory: true)
+        let attestationObjectStore = AppAttestAttestationObjectStore(baseDirectoryURL: temporaryDirectory)
+        try attestationObjectStore.save(storedAttestationObject)
+        defer {
+            try? FileManager.default.removeItem(at: temporaryDirectory)
+        }
+
+        let client = ResetAndPrepareAppAttestClient()
+        let runtime = AppAttestRuntime(
+            client: client,
+            backendDescription: "Reset And Prepare Backend"
+        )
+        let suiteName = "TAPCamDemoTests.AppAttest.\(UUID().uuidString)"
+        let userDefaults = try #require(UserDefaults(suiteName: suiteName))
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let controller = AppAttestRuntimeController(
+            runtime: runtime,
+            userDefaults: userDefaults,
+            attestationObjectStore: attestationObjectStore
+        )
+
+        #expect(controller.canResetAndPrepareCredential)
+
+        await controller.resetAndPrepareCredential()
+
+        #expect(await client.operations() == [
+            "reset:\(AppAttestRuntimeDefaults.photoCredentialName)",
+            "prepare:\(AppAttestRuntimeDefaults.photoCredentialName)"
+        ])
+        #expect((try? attestationObjectStore.load()) == nil)
+        #expect(controller.credentialStatusText == "Ready")
+        #expect(controller.credentialKeyIdText == "prepared-key-id")
+        #expect(!controller.isPreparingCredential)
+        #expect(!controller.canResetAndPrepareCredential)
+    }
+
     #if DEBUG
     @Test @MainActor func debugRuntimeUsesLocalDebugBackendWithSharedChallenge() async throws {
         let runtime = try AppAttestRuntimeFactory.make(
@@ -144,5 +186,45 @@ private actor ResetFailingAppAttestClient: AppAttestClient {
 
     func reset(credentialName: String) async throws {
         throw AppAttestRuntimeTestError.resetFailed
+    }
+}
+
+private actor ResetAndPrepareAppAttestClient: AppAttestClient {
+    private var operationLog: [String] = []
+
+    func operations() -> [String] {
+        operationLog
+    }
+
+    func prepare(credentialName: String) async throws -> AppAttestCredential {
+        operationLog.append("prepare:\(credentialName)")
+        return AppAttestCredential(
+            credentialName: credentialName,
+            keyId: "prepared-key-id",
+            credentialId: nil,
+            status: .ready,
+            environment: .development,
+            createdAt: Date(timeIntervalSince1970: 0),
+            updatedAt: Date(timeIntervalSince1970: 0)
+        )
+    }
+
+    func prepareIfNeeded(credentialName: String) async throws -> AppAttestCredential {
+        throw AppAttestRuntimeTestError.unused
+    }
+
+    func generateAssertion(
+        credentialName: String,
+        request: AppAttestProtectedRequest
+    ) async throws -> AppAttestAssertionEnvelope {
+        throw AppAttestRuntimeTestError.unused
+    }
+
+    func status(credentialName: String) async throws -> AppAttestCredentialStatus {
+        throw AppAttestRuntimeTestError.unused
+    }
+
+    func reset(credentialName: String) async throws {
+        operationLog.append("reset:\(credentialName)")
     }
 }

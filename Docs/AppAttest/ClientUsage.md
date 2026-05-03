@@ -73,11 +73,21 @@ try await appAttest.reset(credentialName: tenantCredentialName)
 Reset deletes local credential metadata for that credential name only. It does
 not reset other caller-defined credential names.
 
-## Demo Button Mapping
+## TAPCamDemo Settings Mapping
 
-- `Credential name`: the caller-defined name used to find a saved `keyId`.
-- `Ensure Attested`: calls `prepareIfNeeded(credentialName:)`.
-- `Force New Attestation`: calls `prepare(credentialName:)`.
-- `Check Credential`: calls `status(credentialName:)`.
-- `Generate Assertion`: calls `generateAssertion(credentialName:request:)` for the method/path/body shown in the form.
-- `Save Attestation CBOR`: exports the raw `attestationObject` returned by Apple.
+- Release shows only App Attest `Status`.
+- Debug shows the backend, credential name, prepare, reset, and CBOR export rows.
+  These debug-only rows use a yellow background.
+- `Prepare Credential` calls `prepare(credentialName:)`.
+- `Reset Local Credential` calls `reset(credentialName:)` and clears the stored
+  debug `attestationObject.cbor`.
+- `Export Attestation CBOR` exports the raw `attestationObject` returned by
+  Apple when the local debug backend is active.
+- Tapping `Not prepared` on the status row runs reset and then
+  `prepare(credentialName:)`. The status row shows a spinner while this is
+  running, then shows `Ready`.
+- After preparation succeeds, the settings detail row shows only the App Attest
+  `keyId`; credential name and debug CBOR availability stay out of the Release
+  status details.
+- Enabling Help in Settings shows the `keyId` explanation inline below the App
+  Attest `Status` row.
