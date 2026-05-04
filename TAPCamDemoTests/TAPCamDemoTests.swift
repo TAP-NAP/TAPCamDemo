@@ -655,6 +655,10 @@ struct TAPCamDemoTests {
         #expect(!DepthAnalyzerPreferences.showsAnalysisHelpKey.isEmpty)
     }
 
+    @Test func appAppearanceIsLockedToDarkMode() throws {
+        #expect(Bundle.main.object(forInfoDictionaryKey: "UIUserInterfaceStyle") as? String == "Dark")
+    }
+
     @Test func shutterHapticsPreferenceDefaultsToEnabled() throws {
         #expect(CameraFeedbackPreferences.defaultShutterHapticsEnabled)
         #expect(!CameraFeedbackPreferences.shutterHapticsEnabledKey.isEmpty)

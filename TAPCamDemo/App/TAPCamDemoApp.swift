@@ -30,6 +30,7 @@ struct TAPCamDemoApp: App {
     var body: some Scene {
         WindowGroup {
             StartupGateView()
+                .preferredColorScheme(.dark)
         }
     }
 }
