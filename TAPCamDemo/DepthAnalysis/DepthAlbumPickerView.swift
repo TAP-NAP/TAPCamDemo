@@ -17,37 +17,29 @@ import UIKit
 /// album, and only this saved-image flow exposes selection and analysis tools.
 struct DepthAlbumPickerView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.displayScale) private var displayScale
     @StateObject private var viewModel = DepthAlbumPickerViewModel()
 
-    private let columns = Array(
-        repeating: GridItem(.flexible(minimum: 0), spacing: 3),
-        count: 5
-    )
+    private static let columnCount = 5
+    private static let gridSpacing: CGFloat = 3
+    private static let gridPadding: CGFloat = 3
+    private static let maximumThumbnailPixelLength = 320
+
+    private var columns: [GridItem] {
+        Array(
+            repeating: GridItem(.flexible(minimum: 0), spacing: Self.gridSpacing),
+            count: Self.columnCount
+        )
+    }
 
     var body: some View {
-        ScrollView {
-            if viewModel.isLoading {
-                ProgressView("Loading TAPCamDepth...")
-                    .frame(maxWidth: .infinity, minHeight: 260)
-            } else if let errorMessage = viewModel.errorMessage {
-                ContentUnavailableView("Unable to load album", systemImage: "photo.on.rectangle.angled", description: Text(errorMessage))
-                    .frame(minHeight: 320)
-            } else if viewModel.assets.isEmpty {
-                ContentUnavailableView("No depth photos yet", systemImage: "photo.stack", description: Text("Capture a TAP depth photo first, then return here to analyze it."))
-                    .frame(minHeight: 320)
-            } else {
-                LazyVGrid(columns: columns, spacing: 3) {
-                    ForEach(viewModel.assets) { asset in
-                        NavigationLink {
-                            DepthAnalysisView(assetID: asset.id)
-                        } label: {
-                            DepthAlbumAssetCell(asset: asset)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(3)
-            }
+        GeometryReader { geometry in
+            albumContent(
+                thumbnailPixelLength: Self.thumbnailPixelLength(
+                    containerWidth: geometry.size.width,
+                    displayScale: displayScale
+                )
+            )
         }
         .navigationTitle(PhotoLibraryWriter.albumName)
         .navigationBarTitleDisplayMode(.inline)
@@ -66,6 +58,45 @@ struct DepthAlbumPickerView: View {
         .task {
             await viewModel.load()
         }
+    }
+
+    @ViewBuilder
+    private func albumContent(thumbnailPixelLength: Int) -> some View {
+        ScrollView {
+            if viewModel.isLoading {
+                ProgressView("Loading TAPCamDepth...")
+                    .frame(maxWidth: .infinity, minHeight: 260)
+            } else if let errorMessage = viewModel.errorMessage {
+                ContentUnavailableView("Unable to load album", systemImage: "photo.on.rectangle.angled", description: Text(errorMessage))
+                    .frame(minHeight: 320)
+            } else if viewModel.assets.isEmpty {
+                ContentUnavailableView("No depth photos yet", systemImage: "photo.stack", description: Text("Capture a TAP depth photo first, then return here to analyze it."))
+                    .frame(minHeight: 320)
+            } else {
+                LazyVGrid(columns: columns, spacing: Self.gridSpacing) {
+                    ForEach(viewModel.assets) { asset in
+                        NavigationLink {
+                            DepthAnalysisView(assetID: asset.id)
+                        } label: {
+                            DepthAlbumAssetCell(
+                                asset: asset,
+                                thumbnailPixelLength: thumbnailPixelLength
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(Self.gridPadding)
+            }
+        }
+    }
+
+    private static func thumbnailPixelLength(containerWidth: CGFloat, displayScale: CGFloat) -> Int {
+        let spacingWidth = gridSpacing * CGFloat(columnCount - 1)
+        let availableGridWidth = max(containerWidth - (gridPadding * 2) - spacingWidth, 1)
+        let cellPointLength = max(availableGridWidth / CGFloat(columnCount), 1)
+        let targetPixelLength = Int(ceil(cellPointLength * displayScale))
+        return min(max(targetPixelLength, 1), maximumThumbnailPixelLength)
     }
 }
 
@@ -92,8 +123,9 @@ final class DepthAlbumPickerViewModel: ObservableObject {
 struct DepthAlbumAsset: Identifiable, Equatable {
     let id: String
     let asset: PHAsset
-    var thumbnailCacheKey: String {
-        DepthAlbumThumbnailCacheKey.make(for: asset)
+
+    func thumbnailCacheKey(pixelLength: Int) -> String {
+        DepthAlbumThumbnailCacheKey.make(for: asset, pixelLength: pixelLength)
     }
 
     init(asset: PHAsset) {
@@ -104,6 +136,7 @@ struct DepthAlbumAsset: Identifiable, Equatable {
 
 private struct DepthAlbumAssetCell: View {
     let asset: DepthAlbumAsset
+    let thumbnailPixelLength: Int
     @State private var thumbnail: UIImage?
 
     var body: some View {
@@ -126,35 +159,96 @@ private struct DepthAlbumAssetCell: View {
         }
         .aspectRatio(1, contentMode: .fit)
         .clipped()
-        .task(id: asset.id) {
+        .task(id: thumbnailTaskID) {
             await loadThumbnail()
         }
         .accessibilityLabel("Open depth photo")
     }
 
+    private var thumbnailTaskID: String {
+        "\(asset.id)|\(thumbnailPixelLength)"
+    }
+
     private func loadThumbnail() async {
-        let cacheKey = asset.thumbnailCacheKey
+        let cacheKey = asset.thumbnailCacheKey(pixelLength: thumbnailPixelLength)
         if let cachedThumbnail = DepthAlbumThumbnailMemoryCache.shared.image(for: cacheKey) {
             thumbnail = cachedThumbnail
             return
         }
 
-        if let cachedData = await DepthAlbumThumbnailDiskCache.shared.data(for: cacheKey),
-           let cachedThumbnail = UIImage(data: cachedData) {
-            DepthAlbumThumbnailMemoryCache.shared.insert(cachedThumbnail, for: cacheKey)
-            thumbnail = cachedThumbnail
+        guard let data = await DepthAlbumThumbnailLoader.shared.data(
+            for: asset.asset,
+            cacheKey: cacheKey,
+            pixelLength: thumbnailPixelLength
+        ),
+              !Task.isCancelled,
+              let image = UIImage(data: data) else {
             return
         }
 
-        let image: UIImage? = await withCheckedContinuation { continuation in
+        DepthAlbumThumbnailMemoryCache.shared.insert(image, for: cacheKey)
+        thumbnail = image
+    }
+}
+
+private enum DepthAlbumThumbnailCacheKey {
+    private static let version = "grid-v3-opaque-jpeg"
+
+    static func make(for asset: PHAsset, pixelLength: Int) -> String {
+        let versionDate = asset.modificationDate ?? asset.creationDate ?? .distantPast
+        let source = [
+            version,
+            asset.localIdentifier,
+            "\(pixelLength)px",
+            "\(asset.pixelWidth)x\(asset.pixelHeight)",
+            String(versionDate.timeIntervalSince1970)
+        ].joined(separator: "|")
+
+        let digest = SHA256.hash(data: Data(source.utf8))
+        return digest.map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+private actor DepthAlbumThumbnailLoader {
+    static let shared = DepthAlbumThumbnailLoader()
+
+    private var inFlight: [String: Task<Data?, Never>] = [:]
+
+    func data(for asset: PHAsset, cacheKey: String, pixelLength: Int) async -> Data? {
+        if let task = inFlight[cacheKey] {
+            return await task.value
+        }
+
+        let task = Task<Data?, Never>.detached(priority: .utility) {
+            if let cachedData = await DepthAlbumThumbnailDiskCache.shared.data(for: cacheKey) {
+                return cachedData
+            }
+
+            guard let image = await Self.requestImage(for: asset, pixelLength: pixelLength),
+                  let data = DepthAlbumThumbnailJPEGRenderer.data(from: image, pixelLength: pixelLength) else {
+                return nil
+            }
+
+            await DepthAlbumThumbnailDiskCache.shared.store(data, for: cacheKey)
+            return data
+        }
+
+        inFlight[cacheKey] = task
+        let data = await task.value
+        inFlight[cacheKey] = nil
+        return data
+    }
+
+    private nonisolated static func requestImage(for asset: PHAsset, pixelLength: Int) async -> UIImage? {
+        await withCheckedContinuation { continuation in
             var didResume = false
             let options = PHImageRequestOptions()
             options.deliveryMode = .fastFormat
             options.resizeMode = .fast
             options.isNetworkAccessAllowed = false
             PHImageManager.default().requestImage(
-                for: asset.asset,
-                targetSize: CGSize(width: 320, height: 320),
+                for: asset,
+                targetSize: CGSize(width: pixelLength, height: pixelLength),
                 contentMode: .aspectFill,
                 options: options
             ) { image, info in
@@ -168,7 +262,11 @@ private struct DepthAlbumAssetCell: View {
                     return
                 }
 
-                guard image != nil else {
+                guard let image else {
+                    if info?[PHImageResultIsDegradedKey] as? Bool != true {
+                        didResume = true
+                        continuation.resume(returning: nil)
+                    }
                     return
                 }
 
@@ -176,34 +274,40 @@ private struct DepthAlbumAssetCell: View {
                 continuation.resume(returning: image)
             }
         }
-
-        guard !Task.isCancelled, let image else {
-            return
-        }
-
-        DepthAlbumThumbnailMemoryCache.shared.insert(image, for: cacheKey)
-        thumbnail = image
-
-        if let data = image.jpegData(compressionQuality: 0.88) {
-            await DepthAlbumThumbnailDiskCache.shared.store(data, for: cacheKey)
-        }
     }
 }
 
-private enum DepthAlbumThumbnailCacheKey {
-    private static let version = "grid-v2-320"
+nonisolated private enum DepthAlbumThumbnailJPEGRenderer {
+    private static let compressionQuality: CGFloat = 0.78
 
-    static func make(for asset: PHAsset) -> String {
-        let versionDate = asset.modificationDate ?? asset.creationDate ?? .distantPast
-        let source = [
-            version,
-            asset.localIdentifier,
-            "\(asset.pixelWidth)x\(asset.pixelHeight)",
-            String(versionDate.timeIntervalSince1970)
-        ].joined(separator: "|")
+    static func data(from image: UIImage, pixelLength: Int) -> Data? {
+        let pixelLength = max(pixelLength, 1)
+        let canvas = CGRect(x: 0, y: 0, width: pixelLength, height: pixelLength)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
 
-        let digest = SHA256.hash(data: Data(source.utf8))
-        return digest.map { String(format: "%02x", $0) }.joined()
+        return UIGraphicsImageRenderer(size: canvas.size, format: format)
+            .jpegData(withCompressionQuality: compressionQuality) { context in
+                context.cgContext.setFillColor(UIColor.black.cgColor)
+                context.cgContext.fill(canvas)
+                image.draw(in: aspectFillRect(imageSize: image.size, targetSize: canvas.size))
+            }
+    }
+
+    private static func aspectFillRect(imageSize: CGSize, targetSize: CGSize) -> CGRect {
+        guard imageSize.width > 0, imageSize.height > 0 else {
+            return CGRect(origin: .zero, size: targetSize)
+        }
+
+        let scale = max(targetSize.width / imageSize.width, targetSize.height / imageSize.height)
+        let scaledSize = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
+        return CGRect(
+            x: (targetSize.width - scaledSize.width) / 2,
+            y: (targetSize.height - scaledSize.height) / 2,
+            width: scaledSize.width,
+            height: scaledSize.height
+        )
     }
 }
 
