@@ -29,7 +29,7 @@ struct TAPCamDemoApp: App {
 
     var body: some Scene {
         WindowGroup {
-            CameraView()
+            StartupGateView()
         }
     }
 }

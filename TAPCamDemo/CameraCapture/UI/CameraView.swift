@@ -18,9 +18,10 @@ import UIKit
 ///
 /// - Tag: CameraCaptureRootView
 struct CameraView: View {
-    @StateObject private var viewModel = CameraViewModel()
-    @StateObject private var chromeOrientation = CameraChromeOrientationController()
-    @StateObject private var appAttestController = AppAttestRuntimeController()
+    private let startsAutomatically: Bool
+    @StateObject private var viewModel: CameraViewModel
+    @StateObject private var chromeOrientation: CameraChromeOrientationController
+    @StateObject private var appAttestController: AppAttestRuntimeController
     @State private var isShowingDepthAlbum = false
     @State private var isShowingSettings = false
     @State private var isShutterTouchActive = false
@@ -28,6 +29,25 @@ struct CameraView: View {
     @State private var isDepthSelectorExpanded = false
     @State private var isPerformanceExpanded = false
     #endif
+
+    init(
+        viewModel: CameraViewModel? = nil,
+        appAttestController: AppAttestRuntimeController? = nil,
+        startsAutomatically: Bool = true
+    ) {
+        self.startsAutomatically = startsAutomatically
+        if let viewModel {
+            _viewModel = StateObject(wrappedValue: viewModel)
+        } else {
+            _viewModel = StateObject(wrappedValue: CameraViewModel())
+        }
+        _chromeOrientation = StateObject(wrappedValue: CameraChromeOrientationController())
+        if let appAttestController {
+            _appAttestController = StateObject(wrappedValue: appAttestController)
+        } else {
+            _appAttestController = StateObject(wrappedValue: AppAttestRuntimeController())
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -42,9 +62,15 @@ struct CameraView: View {
             DepthAnalyzerSettingsView(appAttestController: appAttestController)
         }
         .task {
+            guard startsAutomatically else {
+                return
+            }
             await viewModel.start()
         }
         .task {
+            guard startsAutomatically else {
+                return
+            }
             await appAttestController.preparePhotoCredentialAfterFirstInstallLaunch()
         }
         .onAppear {

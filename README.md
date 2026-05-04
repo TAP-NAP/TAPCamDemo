@@ -135,6 +135,7 @@ Depth analysis fields are also embedded in the same manifest:
 
 ## Documents
 
+- [First Launch Startup Flow](Docs/Startup/FirstLaunch.md)
 - [ARCHITECTURE.md](TAPCamDemo/CameraCapture/Documentation/ARCHITECTURE.md)
 - [PIPELINE.md](TAPCamDemo/CameraCapture/Documentation/PIPELINE.md)
 - [APPLE_DEPTH_LIMITATIONS.md](TAPCamDemo/CameraCapture/Documentation/APPLE_DEPTH_LIMITATIONS.md)

@@ -124,8 +124,8 @@ final class AppAttestRuntimeController: ObservableObject {
     }
 
     private func prepareCredential(markAutoPrepared: Bool) async throws {
-        let credential = try await self.runtime.client.prepare(credentialName: AppAttestRuntimeDefaults.photoCredentialName)
-        _ = try await self.storeLatestAttestationObjectIfAvailable()
+        let credential = try await runtime.client.prepare(credentialName: AppAttestRuntimeDefaults.photoCredentialName)
+        _ = try await storeLatestAttestationObjectIfAvailable()
         if markAutoPrepared {
             self.userDefaults.set(true, forKey: Self.didAutoPreparePhotoCredentialKey)
         }
