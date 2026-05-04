@@ -18,9 +18,9 @@ import UIKit
 ///
 /// - Tag: CameraCaptureRootView
 struct CameraView: View {
-    @StateObject private var viewModel = CameraViewModel()
-    @StateObject private var chromeOrientation = CameraChromeOrientationController()
-    @StateObject private var appAttestController = AppAttestRuntimeController()
+    @StateObject private var viewModel: CameraViewModel
+    @StateObject private var chromeOrientation: CameraChromeOrientationController
+    @StateObject private var appAttestController: AppAttestRuntimeController
     @State private var isShowingDepthAlbum = false
     @State private var isShowingSettings = false
     @State private var isShutterTouchActive = false
@@ -28,6 +28,20 @@ struct CameraView: View {
     @State private var isDepthSelectorExpanded = false
     @State private var isPerformanceExpanded = false
     #endif
+
+    init() {
+        StartupTrace.mark("CameraView.init begin")
+        _viewModel = StateObject(wrappedValue: StartupTrace.measure("CameraViewModel.init") {
+            CameraViewModel()
+        })
+        _chromeOrientation = StateObject(wrappedValue: StartupTrace.measure("CameraChromeOrientationController.init") {
+            CameraChromeOrientationController()
+        })
+        _appAttestController = StateObject(wrappedValue: StartupTrace.measure("AppAttestRuntimeController.init") {
+            AppAttestRuntimeController()
+        })
+        StartupTrace.mark("CameraView.init end")
+    }
 
     var body: some View {
         NavigationStack {
@@ -42,15 +56,21 @@ struct CameraView: View {
             DepthAnalyzerSettingsView(appAttestController: appAttestController)
         }
         .task {
-            await viewModel.start()
+            await StartupTrace.measureAsync("CameraView.task viewModel.start") {
+                await viewModel.start()
+            }
         }
         .task {
-            await appAttestController.preparePhotoCredentialAfterFirstInstallLaunch()
+            await StartupTrace.measureAsync("CameraView.task appAttest prepare") {
+                await appAttestController.preparePhotoCredentialAfterFirstInstallLaunch()
+            }
         }
         .onAppear {
+            StartupTrace.mark("CameraView.onAppear")
             chromeOrientation.start()
         }
         .onDisappear {
+            StartupTrace.mark("CameraView.onDisappear")
             chromeOrientation.stop()
             viewModel.stop()
         }

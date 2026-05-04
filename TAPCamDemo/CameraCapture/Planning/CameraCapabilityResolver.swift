@@ -25,32 +25,37 @@ nonisolated enum CameraCapabilityResolver {
     ///
     /// - Tag: DiscoverCameraCapabilities
     static func discover() -> CapabilityMatrix {
-        let allDevices = uniqueDevices(
-            discoverDevices(position: .back, deviceTypes: rgbDeviceTypes)
-            + discoverDevices(position: .front, deviceTypes: rgbDeviceTypes)
-        )
+        StartupTrace.measure("CameraCapabilityResolver.discover") {
+            let allDevices = uniqueDevices(
+                discoverDevices(position: .back, deviceTypes: rgbDeviceTypes)
+                + discoverDevices(position: .front, deviceTypes: rgbDeviceTypes)
+            )
+            StartupTrace.mark("CameraCapabilityResolver.discover devices rgb=\(allDevices.count)")
 
-        let depthCandidates = depthCandidateDeviceTypes.compactMap { kind, deviceType, position -> DepthDeviceCandidate? in
-            discoverDevices(position: position, deviceTypes: [deviceType]).first.map { device in
-                DepthDeviceCandidate(
-                    kind: kind,
-                    device: device,
-                    formatSelection: bestDepthFormatSelection(for: device)
-                )
-            }
-        }
-
-        let discoveredSources = allDevices
-            .map { makeCameraProfile(device: $0, depthCandidates: depthCandidates) }
-            .sorted { lhs, rhs in
-                if lhs.fixedOrder == rhs.fixedOrder {
-                    return lhs.displayName < rhs.displayName
+            let depthCandidates = depthCandidateDeviceTypes.compactMap { kind, deviceType, position -> DepthDeviceCandidate? in
+                discoverDevices(position: position, deviceTypes: [deviceType]).first.map { device in
+                    DepthDeviceCandidate(
+                        kind: kind,
+                        device: device,
+                        formatSelection: bestDepthFormatSelection(for: device)
+                    )
                 }
-                return lhs.fixedOrder < rhs.fixedOrder
             }
-        let rgbSources = releaseFilteredRGBSources(from: discoveredSources)
+            StartupTrace.mark("CameraCapabilityResolver.discover depthCandidates=\(depthCandidates.count)")
 
-        return CapabilityMatrix(rgbSources: rgbSources, depthCandidates: depthCandidates)
+            let discoveredSources = allDevices
+                .map { makeCameraProfile(device: $0, depthCandidates: depthCandidates) }
+                .sorted { lhs, rhs in
+                    if lhs.fixedOrder == rhs.fixedOrder {
+                        return lhs.displayName < rhs.displayName
+                    }
+                    return lhs.fixedOrder < rhs.fixedOrder
+                }
+            let rgbSources = releaseFilteredRGBSources(from: discoveredSources)
+            StartupTrace.mark("CameraCapabilityResolver.discover rgbSources=\(rgbSources.count)")
+
+            return CapabilityMatrix(rgbSources: rgbSources, depthCandidates: depthCandidates)
+        }
     }
 
     static func makeZoomProfiles(

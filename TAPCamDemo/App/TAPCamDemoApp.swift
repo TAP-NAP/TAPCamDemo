@@ -27,9 +27,14 @@ final class TAPCamAppDelegate: NSObject, UIApplicationDelegate {
 struct TAPCamDemoApp: App {
     @UIApplicationDelegateAdaptor(TAPCamAppDelegate.self) private var appDelegate
 
+    init() {
+        StartupTrace.mark("TAPCamDemoApp.init")
+    }
+
     var body: some Scene {
         WindowGroup {
             CameraView()
+                .preferredColorScheme(.dark)
         }
     }
 }

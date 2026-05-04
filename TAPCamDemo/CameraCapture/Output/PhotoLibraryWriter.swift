@@ -82,16 +82,18 @@ nonisolated enum PhotoLibraryWriter {
     }
 
     static func latestDepthAssetIfAuthorized() -> PHAsset? {
-        let current = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-        guard current == .authorized || current == .limited,
-              let album = fetchAlbum() else {
-            return nil
-        }
+        StartupTrace.measure("PhotoLibraryWriter.latestDepthAssetIfAuthorized") {
+            let current = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+            guard current == .authorized || current == .limited,
+                  let album = fetchAlbum() else {
+                return nil
+            }
 
-        let options = PHFetchOptions()
-        options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-        options.fetchLimit = 1
-        return PHAsset.fetchAssets(in: album, options: options).firstObject
+            let options = PHFetchOptions()
+            options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+            options.fetchLimit = 1
+            return PHAsset.fetchAssets(in: album, options: options).firstObject
+        }
     }
 
     static func depthAlbumAssets() async throws -> [PHAsset] {

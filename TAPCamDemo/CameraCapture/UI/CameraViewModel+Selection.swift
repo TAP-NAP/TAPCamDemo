@@ -72,6 +72,11 @@ extension CameraViewModel {
     }
 
     func configureDefaultSelection() async {
+        StartupTrace.mark("CameraViewModel.configureDefaultSelection begin")
+        defer {
+            StartupTrace.mark("CameraViewModel.configureDefaultSelection end")
+        }
+
         guard let option = capabilityMatrix.defaultFocalLengthOption else {
             if let frontSource = defaultRGBSource(position: .front) {
                 selectedRGBSourceID = frontSource.id
@@ -101,6 +106,11 @@ extension CameraViewModel {
     ///
     /// - Tag: ConfigureCurrentSelection
     func configureCurrentSelection() async {
+        StartupTrace.mark("CameraViewModel.configureCurrentSelection begin")
+        defer {
+            StartupTrace.mark("CameraViewModel.configureCurrentSelection end")
+        }
+
         guard !isPausedForAnalysis else {
             return
         }
@@ -163,7 +173,9 @@ extension CameraViewModel {
         statusMessage = statusText(for: plan)
 
         do {
-            let result = try await sessionController.configure(SessionConfigurationRequest(capturePlan: plan))
+            let result = try await StartupTrace.measureAsync("CaptureSessionController.configure await") {
+                try await sessionController.configure(SessionConfigurationRequest(capturePlan: plan))
+            }
 
             guard generation == configurationGeneration, !isPausedForAnalysis else {
                 sessionController.stop()

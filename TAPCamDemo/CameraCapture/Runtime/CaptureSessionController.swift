@@ -29,21 +29,31 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     /// - Tag: ConfigureSingleCamSession
     func configure(_ request: SessionConfigurationRequest) async throws -> SessionConfigurationResult {
         try await withCheckedThrowingContinuation { continuation in
+            StartupTrace.mark("CaptureSessionController.configure enqueue")
             sessionQueue.async { [session, photoOutput] in
+                StartupTrace.mark("CaptureSessionController.configure sessionQueue begin")
                 do {
-                    let result = try Self.configureSession(
-                        session: session,
-                        photoOutput: photoOutput,
-                        request: request
-                    )
-
-                    if !session.isRunning {
-                        session.startRunning()
+                    let result = try StartupTrace.measure("CaptureSessionController.configureSession") {
+                        try Self.configureSession(
+                            session: session,
+                            photoOutput: photoOutput,
+                            request: request
+                        )
                     }
 
-                    Self.prewarmPhotoOutput(photoOutput)
+                    if !session.isRunning {
+                        StartupTrace.mark("AVCaptureSession.startRunning begin")
+                        session.startRunning()
+                        StartupTrace.mark("AVCaptureSession.startRunning end")
+                    }
+
+                    StartupTrace.measure("AVCapturePhotoOutput.prewarm") {
+                        Self.prewarmPhotoOutput(photoOutput)
+                    }
+                    StartupTrace.mark("CaptureSessionController.configure sessionQueue end")
                     continuation.resume(returning: result)
                 } catch {
+                    StartupTrace.mark("CaptureSessionController.configure failed \(error.localizedDescription)")
                     continuation.resume(throwing: error)
                 }
             }
@@ -51,10 +61,13 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     }
 
     func stop() {
+        StartupTrace.mark("CaptureSessionController.stop enqueue")
         sessionQueue.async { [session, photoOutput] in
             guard session.isRunning else { return }
+            StartupTrace.mark("AVCaptureSession.stopRunning begin")
             photoOutput.setPreparedPhotoSettingsArray([], completionHandler: nil)
             session.stopRunning()
+            StartupTrace.mark("AVCaptureSession.stopRunning end")
         }
     }
 
