@@ -68,8 +68,9 @@ back to another capture source.
 The camera keeps the SingleCam session configured before the shutter is enabled,
 prewarms `AVCapturePhotoOutput` with the depth HEIC settings used for capture,
 and starts shutter work on touch-down. Location metadata is best-effort: capture
-uses a recent cached `CLLocation` when available and refreshes location in the
-background instead of waiting on Core Location during the shutter path.
+uses a recent cached `CLLocation` when available and refreshes location only
+when location access has already been granted, instead of waiting on Core
+Location or prompting during the shutter path.
 
 ## Code Map
 

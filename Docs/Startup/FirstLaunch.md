@@ -43,6 +43,9 @@ flowchart TD
   created.
 - The welcome page asks for required network, camera, and photo library access.
   Location is optional and can be skipped.
+- If location is skipped or still not authorized after first launch, later
+  captures do not request location permission. They use any already cached
+  authorized location or save without location metadata.
 - The network row currently performs a lightweight HTTP preflight before App
   Attest is allowed to run.
 - After required access is complete, the loading view creates a

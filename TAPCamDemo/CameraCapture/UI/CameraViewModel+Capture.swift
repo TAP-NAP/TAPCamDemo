@@ -47,7 +47,7 @@ extension CameraViewModel {
             statusMessage = "Capture queued..."
 
             let location = locationProvider.cachedCaptureLocation()
-            locationProvider.warmLocationCache(shouldRequestAuthorization: true)
+            locationProvider.warmLocationCache()
             let context = CaptureSourceContext(
                 sessionConfiguration: captureConfiguration,
                 capturedAt: job.createdAt,
