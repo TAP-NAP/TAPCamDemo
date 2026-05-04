@@ -58,13 +58,11 @@ extension CameraViewModel {
                 suppressesShutterSound: suppressesShutterSound
             )
             let queueWaitDuration = Date().timeIntervalSince(queueEnteredAt)
-            let assertionSigner = appAttestClient.map(AppAttestCaptureAssertionSigner.init(client:))
-
             Task { [pipeline, jobQueue, metricsStore] in
                 let result = await pipeline.runSingleCamJob(
                     job: job,
                     context: context,
-                    assertionSigner: assertionSigner,
+                    assertionSigner: nil,
                     pendingJobCount: pendingCount,
                     queueWaitDuration: queueWaitDuration
                 )
@@ -77,7 +75,14 @@ extension CameraViewModel {
                     switch result {
                     case .success(let writeResult):
                         self.statusMessage = writeResult.signatureStatus.captureStatusMessage
-                        if let assetID = writeResult.assetLocalIdentifier {
+                        if let pendingCaptureID = writeResult.pendingCaptureID {
+                            Task {
+                                await self.loadRecentPendingCapturePreview(captureID: pendingCaptureID)
+                                if let appAttestClient {
+                                    await self.processPendingCaptures(appAttestClient: appAttestClient)
+                                }
+                            }
+                        } else if let assetID = writeResult.assetLocalIdentifier {
                             self.loadRecentDepthAssetPreview(assetID: assetID)
                         }
                     case .failure(let error):
@@ -95,12 +100,36 @@ extension CameraViewModel {
     /// access. The camera remains usable even when the user has not granted photo
     /// library read access; in that case the album button simply shows its generic
     /// placeholder until a new capture succeeds.
-    func loadRecentDepthAssetPreviewIfAvailable() {
+    func loadRecentTAPLibraryPreviewIfAvailable() async {
+        if let latestPending = try? await pendingCaptureStore.visiblePendingRecords().first,
+           await loadRecentPendingCapturePreview(captureID: latestPending.captureID) {
+            return
+        }
+
         guard let asset = PhotoLibraryWriter.latestDepthAssetIfAuthorized() else {
             return
         }
 
         loadRecentDepthAssetPreview(assetID: asset.localIdentifier)
+    }
+
+    @discardableResult
+    func loadRecentPendingCapturePreview(captureID: String) async -> Bool {
+        guard let data = try? await pendingCaptureStore.thumbnailData(captureID: captureID),
+              let image = UIImage(data: data) else {
+            return false
+        }
+
+        recentThumbnail = image
+        return true
+    }
+
+    func processPendingCaptures(appAttestClient: any AppAttestClient) async {
+        await pendingCaptureProcessor.processPendingCaptures(
+            store: pendingCaptureStore,
+            appAttestClient: appAttestClient
+        )
+        await loadRecentTAPLibraryPreviewIfAvailable()
     }
 
     /// Updates the camera chrome's recent-photo entry point after a successful
@@ -148,6 +177,8 @@ extension CameraViewModel {
 private extension CaptureSignatureStatus {
     var captureStatusMessage: String {
         switch self {
+        case .pending:
+            "Capture queued for signing"
         case .signed:
             "Capture saved"
         case .unsigned:

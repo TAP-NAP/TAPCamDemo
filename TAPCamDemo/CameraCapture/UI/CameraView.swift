@@ -26,6 +26,7 @@ enum CameraFeedbackPreferences {
 /// - Tag: CameraCaptureRootView
 struct CameraView: View {
     private let startsAutomatically: Bool
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var viewModel: CameraViewModel
     @StateObject private var chromeOrientation: CameraChromeOrientationController
     @StateObject private var appAttestController: AppAttestRuntimeController
@@ -82,10 +83,10 @@ struct CameraView: View {
             await viewModel.start()
         }
         .task {
-            guard startsAutomatically else {
-                return
+            if startsAutomatically {
+                await appAttestController.preparePhotoCredentialAfterFirstInstallLaunch()
             }
-            await appAttestController.preparePhotoCredentialAfterFirstInstallLaunch()
+            await viewModel.processPendingCaptures(appAttestClient: appAttestController.runtime.client)
         }
         .onAppear {
             chromeOrientation.start()
@@ -98,6 +99,14 @@ struct CameraView: View {
             guard !isPresented else { return }
             Task {
                 await viewModel.resumeAfterAnalysis()
+                await viewModel.processPendingCaptures(appAttestClient: appAttestController.runtime.client)
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task {
+                await viewModel.loadRecentTAPLibraryPreviewIfAvailable()
+                await viewModel.processPendingCaptures(appAttestClient: appAttestController.runtime.client)
             }
         }
     }
@@ -338,13 +347,6 @@ struct CameraView: View {
             Circle()
                 .fill(viewModel.canCapture ? Color.white : Color.gray)
                 .frame(width: 62, height: 62)
-
-            if viewModel.pendingJobCount > 0 {
-                Text("\(viewModel.pendingJobCount)")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.black)
-                    .rotationEffect(chromeOrientation.angle)
-            }
         }
         .frame(width: 78, height: 78)
         .scaleEffect(isShutterTouchActive && viewModel.canCapture ? 0.96 : 1)
@@ -395,32 +397,58 @@ struct CameraView: View {
 
     @ViewBuilder
     private var recentPhotoButton: some View {
+        let isCaptureWriteInProgress = viewModel.isCaptureWriteInProgress
+
         Button {
+            guard !isCaptureWriteInProgress else {
+                return
+            }
             viewModel.pauseForAnalysis()
             isShowingDepthAlbum = true
         } label: {
-            if let thumbnail = viewModel.recentThumbnail {
-                Image(uiImage: thumbnail)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 58, height: 58)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(.white.opacity(0.80), lineWidth: 1.5)
-                    }
-            } else {
-                ZStack {
+            ZStack {
+                recentPhotoThumbnail
+                    .opacity(isCaptureWriteInProgress ? 0.42 : 1)
+
+                if isCaptureWriteInProgress {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(.black.opacity(0.48))
+                        .fill(.black.opacity(0.36))
                         .frame(width: 58, height: 58)
 
-                    Image(systemName: "photo.on.rectangle")
-                        .font(.system(size: 24, weight: .semibold))
-                        .foregroundStyle(.white)
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(.white)
                 }
             }
         }
-        .accessibilityLabel("Open TAPCamDepth album")
+        .disabled(isCaptureWriteInProgress)
+        .accessibilityLabel(isCaptureWriteInProgress ? "Finishing capture write" : "Open TAPCamDepth album")
+        .help(isCaptureWriteInProgress ? "TAP Library will be available after the current capture finishes writing." : "Open TAPCamDepth album.")
+        .animation(.easeInOut(duration: 0.18), value: isCaptureWriteInProgress)
+    }
+
+    @ViewBuilder
+    private var recentPhotoThumbnail: some View {
+        if let thumbnail = viewModel.recentThumbnail {
+            Image(uiImage: thumbnail)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 58, height: 58)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(.white.opacity(0.80), lineWidth: 1.5)
+                }
+        } else {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(.black.opacity(0.48))
+                    .frame(width: 58, height: 58)
+
+                Image(systemName: "photo.on.rectangle")
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+        }
     }
 }

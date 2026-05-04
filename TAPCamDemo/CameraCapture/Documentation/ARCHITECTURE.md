@@ -41,9 +41,17 @@ format and zoom behavior, but it still uses the same SingleCam photo path.
 The runtime provider produces one paired `AVCapturePhoto`. Runtime prewarms the
 photo output with the same HEIC + depth settings it later captures, and the UI
 starts shutter work on touch-down. Output code keeps the logical
-`CapturePackage` separate from the embedded HEIC artifact, then writes Apple
-auxiliary depth plus the TAP manifest into one Photos asset. Location metadata is
-best-effort cached support data; capture never waits on Core Location.
+`CapturePackage` separate from the embedded HEIC artifact, then stages Apple
+auxiliary depth plus an unsigned TAP manifest in the TAP Library pending store.
+The async TAP Library worker later signs the staged HEIC and exports it into the
+TAPCamDepth Photos album. Location metadata is best-effort cached support data;
+capture never waits on Core Location.
+
+The camera UI distinguishes foreground capture writes from background
+attestation. TAP Library is blocked only while queued shutter jobs are still
+being captured, packaged, and written into the pending store. After a pending
+record exists, Library remains available even if that record is still waiting
+for network, signing, or exporting.
 
 ## Directory Roles
 
@@ -52,7 +60,7 @@ best-effort cached support data; capture never waits on Core Location.
 | `UI` | SwiftUI composition, preview bridge, release FOV controls, Debug controls, and view-model extensions. |
 | `Planning` | AVFoundation discovery models, compatibility checks, depth-safe zoom resolution, FOV labels, crop metadata, and immutable capture plans. |
 | `Runtime` | The single executable capture path: session graph owner, photo provider, capture jobs, and async pipeline orchestration. |
-| `Output` | Logical package, embedded HEIC packaging, TAP manifest schema/building/encoding, and Photos writing. |
+| `Output` | Logical package, embedded HEIC packaging, TAP manifest schema/building/encoding, and Photos export helpers. |
 | `Support` | Shared errors, cached location refresh, and product-level capture metrics. |
 
 Key code: [CameraViewModel.swift](../UI/CameraViewModel.swift),

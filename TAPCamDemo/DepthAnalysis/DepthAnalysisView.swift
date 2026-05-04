@@ -11,13 +11,29 @@ import ImageIO
 import Photos
 import SwiftUI
 
+enum DepthAnalysisSource: Hashable {
+    case photosAsset(String)
+    case pendingCapture(String)
+}
+
+private enum DepthAnalysisLoadError: LocalizedError {
+    case pendingCaptureTemporarilyUnavailable
+
+    var errorDescription: String? {
+        switch self {
+        case .pendingCaptureTemporarilyUnavailable:
+            "Temporarily not available. Return to TAP Library; it will refresh automatically."
+        }
+    }
+}
+
 /// Independent browser/analysis surface for saved TAP Depth HEIC files.
 ///
 /// The camera view links here through a thumbnail only. All depth heatmaps,
 /// point-cloud previews, pixel reads, and plane fitting live on this side of
 /// the module boundary so the capture UI remains a camera.
 struct DepthAnalysisView: View {
-    let assetID: String
+    let source: DepthAnalysisSource
     @StateObject private var viewModel = DepthAnalysisViewModel()
     @State private var heatmapOpacity = 0.74
     @State private var panelDestination: AnalysisPanelDestination?
@@ -29,7 +45,13 @@ struct DepthAnalysisView: View {
     init(
         assetID: String
     ) {
-        self.assetID = assetID
+        self.source = .photosAsset(assetID)
+    }
+
+    init(
+        pendingCaptureID: String
+    ) {
+        self.source = .pendingCapture(pendingCaptureID)
     }
 
     var body: some View {
@@ -37,7 +59,11 @@ struct DepthAnalysisView: View {
             if let input = viewModel.input {
                 analysisContent(input)
             } else if let errorMessage = viewModel.errorMessage {
-                ContentUnavailableView("Unable to analyze image", systemImage: "exclamationmark.triangle", description: Text(errorMessage))
+                ContentUnavailableView(
+                    viewModel.errorTitle,
+                    systemImage: viewModel.errorSystemImage,
+                    description: Text(errorMessage)
+                )
             } else {
                 ProgressView("Loading depth image...")
             }
@@ -71,7 +97,7 @@ struct DepthAnalysisView: View {
             }
         }
         .task {
-            await viewModel.load(assetID: assetID)
+            await viewModel.load(source: source)
         }
     }
 
@@ -477,6 +503,8 @@ final class DepthAnalysisViewModel: ObservableObject {
     @Published var planeRegionIsLoading = false
     @Published var planeRegionErrorMessage: String?
     @Published var errorMessage: String?
+    @Published var errorTitle = "Unable to analyze image"
+    @Published var errorSystemImage = "exclamationmark.triangle"
 
     private var planeRegionTask: Task<Void, Never>?
     private var planeRegionRequestID = UUID()
@@ -517,7 +545,7 @@ final class DepthAnalysisViewModel: ObservableObject {
         }
     }
 
-    func load(assetID: String) async {
+    func load(source: DepthAnalysisSource) async {
         planeRegionTask?.cancel()
         planeGeometryTask?.cancel()
         planeRegionRequestID = UUID()
@@ -526,15 +554,54 @@ final class DepthAnalysisViewModel: ObservableObject {
         planeRegionIsLoading = false
 
         do {
-            let data = try await PhotoLibraryWriter.originalPhotoData(localIdentifier: assetID)
+            let data = try await heicData(for: source)
             let loadedInput = try TAPDepthMapReader.analysisInput(from: data)
             input = loadedInput
             clearSelection()
             prewarmPlaneGeometry(for: loadedInput.depthMap)
-            errorMessage = nil
+            clearLoadError()
         } catch {
-            self.errorMessage = error.localizedDescription
+            applyLoadError(error)
         }
+    }
+
+    private func heicData(for source: DepthAnalysisSource) async throws -> Data {
+        switch source {
+        case .photosAsset(let assetID):
+            return try await PhotoLibraryWriter.originalPhotoData(localIdentifier: assetID)
+        case .pendingCapture(let captureID):
+            return try await pendingCaptureHEICData(captureID: captureID)
+        }
+    }
+
+    private func pendingCaptureHEICData(captureID: String) async throws -> Data {
+        do {
+            return try await TAPPendingCaptureStore.shared.bestAvailableHEICData(captureID: captureID)
+        } catch {
+            Self.postLibraryRefresh()
+            throw DepthAnalysisLoadError.pendingCaptureTemporarilyUnavailable
+        }
+    }
+
+    private func clearLoadError() {
+        errorMessage = nil
+        errorTitle = "Unable to analyze image"
+        errorSystemImage = "exclamationmark.triangle"
+    }
+
+    private func applyLoadError(_ error: Error) {
+        if error is DepthAnalysisLoadError {
+            errorTitle = "Image unavailable"
+            errorSystemImage = "photo.badge.exclamationmark"
+        } else {
+            errorTitle = "Unable to analyze image"
+            errorSystemImage = "exclamationmark.triangle"
+        }
+        errorMessage = error.localizedDescription
+    }
+
+    private nonisolated static func postLibraryRefresh() {
+        NotificationCenter.default.post(name: .tapLibraryDidChange, object: nil)
     }
 
     func beginSelection(_ depthRect: CGRect) {

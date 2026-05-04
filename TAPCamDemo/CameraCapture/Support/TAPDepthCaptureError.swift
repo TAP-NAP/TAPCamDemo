@@ -31,6 +31,7 @@ enum TAPDepthCaptureError: LocalizedError {
     case albumCreationFailed
     case assetCreationFailed
     case assetNotFound
+    case pendingCaptureDataMissing
     case releasePackagingStrategyRejected
     case captureBackpressureLimitReached
     case incompatibleRGBDepthPairing
@@ -76,6 +77,8 @@ enum TAPDepthCaptureError: LocalizedError {
             "Unable to create a Photos asset from the depth HEIC."
         case .assetNotFound:
             "The selected Photos asset could not be found."
+        case .pendingCaptureDataMissing:
+            "The pending TAP capture no longer has its staged HEIC data."
         case .releasePackagingStrategyRejected:
             "Release builds only support embedded single-photo artifacts."
         case .captureBackpressureLimitReached:

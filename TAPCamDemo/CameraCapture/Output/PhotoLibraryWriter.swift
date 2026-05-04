@@ -113,6 +113,19 @@ nonisolated enum PhotoLibraryWriter {
         }.value
     }
 
+    static func depthAssetIdentifier(captureID: String) async throws -> String? {
+        let assets = try await depthAlbumAssets()
+        for asset in assets {
+            guard let data = try? await originalPhotoData(for: asset),
+                  let manifest = try? TAPDepthHEICReader.decodedManifest(from: data),
+                  manifest.payload.id == captureID else {
+                continue
+            }
+            return asset.localIdentifier
+        }
+        return nil
+    }
+
     private static func requestReadWriteAccess() async throws {
         let current = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         switch current {

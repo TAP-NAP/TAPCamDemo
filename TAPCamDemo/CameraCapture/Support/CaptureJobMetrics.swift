@@ -10,7 +10,7 @@ import Foundation
 /// Performance and status record for one capture job.
 ///
 /// Debug UI reads these values to show where time is spent across capture,
-/// package build, embedded HEIC packaging, and Photos writing.
+/// package build, embedded HEIC packaging, and pending-store writing.
 nonisolated struct CaptureJobMetrics: Identifiable, Equatable, Sendable {
     let id: UUID
     let captureDuration: TimeInterval?
@@ -34,8 +34,9 @@ nonisolated struct CaptureJobMetrics: Identifiable, Equatable, Sendable {
 /// Fine-grained timings for the embedded HEIC packaging step.
 ///
 /// These fields break down `CaptureJobMetrics.packagingDuration` so Debug can
-/// show whether time is spent in HEIC materialization, digest work, App Attest,
-/// or XMP metadata insertion.
+/// show whether time is spent in HEIC materialization or XMP metadata insertion.
+/// Digest and App Attest timings are retained for direct-signer diagnostics, but
+/// the camera path now performs that work in the async pending processor.
 nonisolated struct CapturePackagingMetrics: Equatable, Sendable {
     var manifestBuildDuration: TimeInterval?
     var baseHEICDuration: TimeInterval?

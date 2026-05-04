@@ -19,6 +19,7 @@ nonisolated enum PackagingStrategy: String, Codable, Sendable {
 
 /// Whether a packaged capture contains an App Attest proof.
 nonisolated enum CaptureSignatureStatus: Equatable, Sendable {
+    case pending(reason: String)
     case signed(keyID: String)
     case unsigned(reason: String)
 }

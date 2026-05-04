@@ -11,7 +11,7 @@ import Photos
 import SwiftUI
 import UIKit
 
-/// Browses the app-owned TAPCamDepth Photos album before analysis starts.
+/// Browses pending TAP captures and the app-owned TAPCamDepth Photos album.
 ///
 /// This keeps the camera surface clean: the lower-left camera control opens the
 /// album, and only this saved-image flow exposes selection and analysis tools.
@@ -41,7 +41,7 @@ struct DepthAlbumPickerView: View {
                 )
             )
         }
-        .navigationTitle(PhotoLibraryWriter.albumName)
+        .navigationTitle("TAP Library")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
         .toolbar {
@@ -58,6 +58,9 @@ struct DepthAlbumPickerView: View {
         .task {
             await viewModel.load()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .tapLibraryDidChange).receive(on: RunLoop.main)) { _ in
+            viewModel.scheduleRefresh()
+        }
     }
 
     @ViewBuilder
@@ -69,17 +72,22 @@ struct DepthAlbumPickerView: View {
             } else if let errorMessage = viewModel.errorMessage {
                 ContentUnavailableView("Unable to load album", systemImage: "photo.on.rectangle.angled", description: Text(errorMessage))
                     .frame(minHeight: 320)
-            } else if viewModel.assets.isEmpty {
+            } else if viewModel.items.isEmpty {
                 ContentUnavailableView("No depth photos yet", systemImage: "photo.stack", description: Text("Capture a TAP depth photo first, then return here to analyze it."))
                     .frame(minHeight: 320)
             } else {
                 LazyVGrid(columns: columns, spacing: Self.gridSpacing) {
-                    ForEach(viewModel.assets) { asset in
+                    ForEach(viewModel.items) { item in
                         NavigationLink {
-                            DepthAnalysisView(assetID: asset.id)
+                            switch item.source {
+                            case .photos(let asset):
+                                DepthAnalysisView(assetID: asset.localIdentifier)
+                            case .pending(let record):
+                                DepthAnalysisView(pendingCaptureID: record.captureID)
+                            }
                         } label: {
-                            DepthAlbumAssetCell(
-                                asset: asset,
+                            TAPLibraryItemCell(
+                                item: item,
                                 thumbnailPixelLength: thumbnailPixelLength
                             )
                         }
@@ -102,40 +110,99 @@ struct DepthAlbumPickerView: View {
 
 @MainActor
 final class DepthAlbumPickerViewModel: ObservableObject {
-    @Published private(set) var assets: [DepthAlbumAsset] = []
+    @Published private(set) var items: [TAPLibraryItem] = []
     @Published private(set) var isLoading = false
     @Published private(set) var errorMessage: String?
 
-    func load() async {
-        isLoading = true
-        defer { isLoading = false }
+    private var refreshTask: Task<Void, Never>?
+
+    deinit {
+        refreshTask?.cancel()
+    }
+
+    func load(showLoadingIndicator: Bool = true) async {
+        if showLoadingIndicator {
+            isLoading = true
+        }
+        defer {
+            if showLoadingIndicator {
+                isLoading = false
+            }
+        }
 
         do {
-            assets = try await PhotoLibraryWriter.depthAlbumAssets().map(DepthAlbumAsset.init(asset:))
-            errorMessage = nil
+            let pendingRecords = try await TAPPendingCaptureStore.shared.visiblePendingRecords()
+            let photoAssets: [PHAsset]
+            do {
+                photoAssets = try await PhotoLibraryWriter.depthAlbumAssets()
+                errorMessage = nil
+            } catch {
+                photoAssets = []
+                errorMessage = pendingRecords.isEmpty ? error.localizedDescription : nil
+            }
+            items = TAPLibraryItem.merged(pendingRecords: pendingRecords, photoAssets: photoAssets)
         } catch {
-            assets = []
+            items = []
             errorMessage = error.localizedDescription
+        }
+    }
+
+    func scheduleRefresh() {
+        refreshTask?.cancel()
+        refreshTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            guard !Task.isCancelled else {
+                return
+            }
+            await self?.load(showLoadingIndicator: false)
         }
     }
 }
 
-struct DepthAlbumAsset: Identifiable, Equatable {
-    let id: String
-    let asset: PHAsset
-
-    func thumbnailCacheKey(pixelLength: Int) -> String {
-        DepthAlbumThumbnailCacheKey.make(for: asset, pixelLength: pixelLength)
+struct TAPLibraryItem: Identifiable {
+    enum Source {
+        case pending(TAPPendingCaptureRecord)
+        case photos(PHAsset)
     }
 
-    init(asset: PHAsset) {
-        self.id = asset.localIdentifier
-        self.asset = asset
+    let id: String
+    let source: Source
+    let capturedAt: Date
+
+    func thumbnailCacheKey(pixelLength: Int) -> String {
+        switch source {
+        case .photos(let asset):
+            DepthAlbumThumbnailCacheKey.make(for: asset, pixelLength: pixelLength)
+        case .pending(let record):
+            "pending|\(record.captureID)|\(pixelLength)"
+        }
+    }
+
+    static func merged(pendingRecords: [TAPPendingCaptureRecord], photoAssets: [PHAsset]) -> [TAPLibraryItem] {
+        let pendingItems = pendingRecords
+            .filter(\.isVisiblePendingItem)
+            .map { record in
+                TAPLibraryItem(
+                    id: "pending:\(record.captureID)",
+                    source: .pending(record),
+                    capturedAt: record.capturedAt
+                )
+            }
+
+        let photoItems = photoAssets.map { asset in
+            TAPLibraryItem(
+                id: "photos:\(asset.localIdentifier)",
+                source: .photos(asset),
+                capturedAt: asset.creationDate ?? .distantPast
+            )
+        }
+
+        return (pendingItems + photoItems).sorted { $0.capturedAt > $1.capturedAt }
     }
 }
 
-private struct DepthAlbumAssetCell: View {
-    let asset: DepthAlbumAsset
+private struct TAPLibraryItemCell: View {
+    let item: TAPLibraryItem
     let thumbnailPixelLength: Int
     @State private var thumbnail: UIImage?
 
@@ -156,31 +223,39 @@ private struct DepthAlbumAssetCell: View {
                     .font(.title2)
                     .foregroundStyle(.secondary)
             }
+
+            if let badge = item.pendingBadge {
+                Text(badge)
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.black)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 3)
+                    .background(.yellow, in: Capsule())
+                    .padding(5)
+            }
         }
         .aspectRatio(1, contentMode: .fit)
         .clipped()
         .task(id: thumbnailTaskID) {
             await loadThumbnail()
         }
-        .accessibilityLabel("Open depth photo")
+        .accessibilityLabel(item.accessibilityLabel)
     }
 
     private var thumbnailTaskID: String {
-        "\(asset.id)|\(thumbnailPixelLength)"
+        "\(item.id)|\(thumbnailPixelLength)"
     }
 
     private func loadThumbnail() async {
-        let cacheKey = asset.thumbnailCacheKey(pixelLength: thumbnailPixelLength)
+        let cacheKey = item.thumbnailCacheKey(pixelLength: thumbnailPixelLength)
         if let cachedThumbnail = DepthAlbumThumbnailMemoryCache.shared.image(for: cacheKey) {
             thumbnail = cachedThumbnail
             return
         }
 
-        guard let data = await DepthAlbumThumbnailLoader.shared.data(
-            for: asset.asset,
-            cacheKey: cacheKey,
-            pixelLength: thumbnailPixelLength
-        ),
+        guard let data = await thumbnailData(cacheKey: cacheKey),
               !Task.isCancelled,
               let image = UIImage(data: data) else {
             return
@@ -188,6 +263,53 @@ private struct DepthAlbumAssetCell: View {
 
         DepthAlbumThumbnailMemoryCache.shared.insert(image, for: cacheKey)
         thumbnail = image
+    }
+
+    private func thumbnailData(cacheKey: String) async -> Data? {
+        switch item.source {
+        case .photos(let asset):
+            return await DepthAlbumThumbnailLoader.shared.data(
+                for: asset,
+                cacheKey: cacheKey,
+                pixelLength: thumbnailPixelLength
+            )
+        case .pending(let record):
+            return try? await TAPPendingCaptureStore.shared.thumbnailData(captureID: record.captureID)
+        }
+    }
+}
+
+private extension TAPLibraryItem {
+    var pendingBadge: String? {
+        guard case .pending(let record) = source else {
+            return nil
+        }
+
+        switch record.status {
+        case .pending:
+            return "PENDING"
+        case .waitingNetwork:
+            return "WAIT"
+        case .signing:
+            return "SIGN"
+        case .signed:
+            return "SIGNED"
+        case .exporting:
+            return "SAVE"
+        case .failedRetryable:
+            return "RETRY"
+        case .exported:
+            return nil
+        }
+    }
+
+    var accessibilityLabel: String {
+        switch source {
+        case .photos:
+            return "Open saved depth photo"
+        case .pending(let record):
+            return "Open pending depth photo, \(record.status.rawValue)"
+        }
     }
 }
 

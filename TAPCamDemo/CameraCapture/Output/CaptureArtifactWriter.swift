@@ -12,6 +12,7 @@ nonisolated struct CaptureWriteResult: Equatable, Sendable {
     let artifactID: UUID
     let destinationDescription: String
     let assetLocalIdentifier: String?
+    let pendingCaptureID: String?
     let signatureStatus: CaptureSignatureStatus
 }
 
@@ -23,7 +24,10 @@ protocol CaptureArtifactWriter: Sendable {
     func write(_ artifact: PackagedCaptureArtifact) async throws -> CaptureWriteResult
 }
 
-/// Release-safe writer that saves the final single HEIC into Photos.
+/// Direct Photos writer retained for flows that already have a final HEIC.
+///
+/// The camera UI now uses `TAPPendingCaptureArtifactWriter` so capture writes
+/// finish at the app-private pending store before async signing/export.
 nonisolated struct PhotoLibraryCaptureArtifactWriter: CaptureArtifactWriter {
     /// Persists one packaged artifact and returns the Photos asset identifier.
     ///
@@ -39,6 +43,7 @@ nonisolated struct PhotoLibraryCaptureArtifactWriter: CaptureArtifactWriter {
             artifactID: artifact.packageID,
             destinationDescription: "Photos asset: \(assetID)",
             assetLocalIdentifier: assetID,
+            pendingCaptureID: nil,
             signatureStatus: artifact.signatureStatus
         )
     }

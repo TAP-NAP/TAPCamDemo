@@ -7,23 +7,25 @@ Debug UI adds overlays that are not compiled into Release:
 - active capture status and failure reason.
 
 The panel prioritizes timing: queue wait, capture, package build, embedded HEIC
-packaging, Photos storage write, and total duration. Queue wait no longer
+packaging, pending-store write, and total duration. Queue wait no longer
 includes waiting for Core Location; the shutter uses cached location metadata
 and refreshes location in the background.
 
-When packaging succeeds, Debug expands the `embed` row into:
+When foreground packaging succeeds, Debug expands the `embed` row into the
+submetrics recorded by the shutter-time packager:
 
 - `manifestBuild`: TAP manifest construction from capture facts.
 - `baseHEIC`: `AVCapturePhoto.fileDataRepresentation(with:)`.
-- `rgbDigest`: primary HEIC decode to canonical RGBA8 plus SHA-256.
-- `depthDigest`: `AVDepthData` conversion to `DepthFloat32` plus SHA-256.
-- `metadataDigest`: canonical manifest payload JSON plus SHA-256.
-- `appAttest`: App Attest assertion generation.
 - `xmpInject`: ImageIO HEIC copy path with TAP XMP metadata merged.
 - `xmpVerify`: readback check that the TAP XMP manifest survived insertion.
 
-The panel intentionally does not show Photos asset identifiers; those remain an
-output implementation detail.
+Digest and App Attest work now happens later in the async pending processor, so
+it is not represented by the foreground capture job's `embed` timing.
+
+The panel intentionally does not show pending capture identifiers or Photos
+asset identifiers; those remain output implementation details. The camera's
+TAP Library entry point shows progress while the foreground capture-write queue
+is nonempty, but it is not a signing/export progress indicator.
 
 If a depth row is grey, read `RGBDepthCompatibilityMatrix` output and the latest
 `CaptureJobMetrics.failureReason`.

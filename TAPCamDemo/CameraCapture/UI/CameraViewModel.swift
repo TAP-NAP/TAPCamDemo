@@ -49,6 +49,8 @@ final class CameraViewModel: ObservableObject {
     let locationProvider = LocationProvider()
     let jobQueue = CaptureJobQueue()
     let metricsStore = MetricsStore()
+    let pendingCaptureStore: TAPPendingCaptureStore
+    let pendingCaptureProcessor: TAPPendingCaptureProcessor
     let pipeline: CapturePipeline
     var activeSessionConfiguration: SessionConfigurationResult?
     var configurationGeneration = 0
@@ -64,6 +66,10 @@ final class CameraViewModel: ObservableObject {
 
     var canCapture: Bool {
         !isPausedForAnalysis && isDepthCaptureReady && pendingJobCount < CaptureJobQueue.defaultMaximumPendingJobs
+    }
+
+    var isCaptureWriteInProgress: Bool {
+        pendingJobCount > 0
     }
 
     var shouldShowFocalLengthSelector: Bool {
@@ -90,10 +96,14 @@ final class CameraViewModel: ObservableObject {
 
     init(
         capabilityMatrix: CapabilityMatrix = CameraCapabilityResolver.discover(),
-        sessionController: CaptureSessionController = CaptureSessionController()
+        sessionController: CaptureSessionController = CaptureSessionController(),
+        pendingCaptureStore: TAPPendingCaptureStore = .shared,
+        pendingCaptureProcessor: TAPPendingCaptureProcessor = .shared
     ) {
         self.capabilityMatrix = capabilityMatrix
         self.sessionController = sessionController
+        self.pendingCaptureStore = pendingCaptureStore
+        self.pendingCaptureProcessor = pendingCaptureProcessor
         self.focalLengthOptions = capabilityMatrix.focalLengthOptions()
         #if DEBUG
         self.debugDepthDeviceOptions = capabilityMatrix.debugDepthDeviceOptions()
@@ -102,6 +112,7 @@ final class CameraViewModel: ObservableObject {
         let provider = AVFoundationSingleCamPhotoProvider(sessionController: sessionController)
         self.pipeline = CapturePipeline(
             photoDepthProvider: provider,
+            writer: TAPPendingCaptureArtifactWriter(store: pendingCaptureStore),
             metricsStore: metricsStore
         )
     }
@@ -111,13 +122,13 @@ final class CameraViewModel: ObservableObject {
         case .authorized:
             await configureDefaultSelection()
             locationProvider.warmLocationCache()
-            loadRecentDepthAssetPreviewIfAvailable()
+            await loadRecentTAPLibraryPreviewIfAvailable()
         case .notDetermined:
             let granted = await AVCaptureDevice.requestAccess(for: .video)
             if granted {
                 await configureDefaultSelection()
                 locationProvider.warmLocationCache()
-                loadRecentDepthAssetPreviewIfAvailable()
+                await loadRecentTAPLibraryPreviewIfAvailable()
             } else {
                 statusMessage = TAPDepthCaptureError.cameraAccessDenied.localizedDescription
             }
@@ -156,7 +167,7 @@ final class CameraViewModel: ObservableObject {
                 await configureCurrentSelection()
             }
             locationProvider.warmLocationCache()
-            loadRecentDepthAssetPreviewIfAvailable()
+            await loadRecentTAPLibraryPreviewIfAvailable()
         case .notDetermined:
             await start()
         case .denied, .restricted:

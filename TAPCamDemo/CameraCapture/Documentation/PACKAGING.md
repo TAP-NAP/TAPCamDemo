@@ -5,7 +5,7 @@ RGB source, depth source, pairing status, zoom, crop metadata, `AVCapturePhoto`,
 location, and diagnostics facts.
 
 `PackagedCaptureArtifact` is the physical output. The only runtime strategy is
-`EmbeddedPhotoPackager`.
+`EmbeddedPhotoPackager`, and runtime export is intentionally split from capture.
 
 ```text
 CapturePackage
@@ -14,10 +14,16 @@ CapturePackage
 EmbeddedPhotoPackager only
       |
       v
-Signed or Unsigned Single Photo Artifact
+Unsigned Single Photo Artifact
       |
       v
-Local Photos Writer
+TAP Library Pending Store
+      |
+      v
+Async App Attest Signer
+      |
+      v
+Signed HEIC Export to TAPCamDepth Photos Album
 ```
 
 Sidecar JSON, debug bundles, independent depth files, independent metadata
@@ -25,15 +31,44 @@ files, metrics files, and intermediate artifacts are absent from runtime code.
 
 ## Signed Embedded HEIC
 
-Each saved capture is still one HEIC file. The primary HEIC image stores the RGB
-photo, Apple's auxiliary depth/disparity attachment stores depth, and TAP's
+Each exported capture is still one HEIC file. The primary HEIC image stores the
+RGB photo, Apple's auxiliary depth/disparity attachment stores depth, and TAP's
 manifest is stored in XMP at `tapdepth:Manifest`.
 
-Before the HEIC is saved to Photos, `EmbeddedPhotoPackager` tries to create an
-App Attest assertion over a canonical content digest. If assertion generation
-succeeds, the proof is inserted into `manifest.proofs[0]` and the manifest is
-injected into the HEIC. If assertion generation fails, the photo is still saved
-with `proofs: []`; the app does not retry or backfill signatures for that photo.
+At shutter time, `EmbeddedPhotoPackager` creates an unsigned HEIC with
+`proofs: []`. The app writes that file to the app-private TAP Library pending
+store first, not directly to Photos. A background worker later reads the pending
+HEIC, recomputes the canonical content digest, creates the App Attest assertion,
+inserts the proof into `manifest.proofs[0]`, and exports the signed HEIC into
+the TAPCamDepth Photos album.
+
+If the device is locked, protected data is unavailable, the network is down, or
+App Attest fails transiently, the capture remains in the pending store as
+`pending`, `waitingNetwork`, or `failedRetryable`. The app does not automatically
+export unsigned captures to Photos.
+
+The pending store status model is:
+
+- `pending`
+- `waitingNetwork`
+- `signing`
+- `signed`
+- `exporting`
+- `exported`
+- `failedRetryable`
+
+After a signed HEIC is exported successfully, Photos becomes the user-visible
+source. The worker records the Photos `assetLocalIdentifier` and removes the
+large staged HEIC files in the background.
+
+Camera UI gating is intentionally narrower than the pending-store state model.
+The TAP Library button is disabled only while the foreground capture-write
+queue is still turning shutter requests into staged pending records. Once a
+capture has landed in the pending store, TAP Library can open and show that
+record even if the async worker has not signed or exported it yet. In other
+words, `waitingNetwork`, `signing`, `signed`, `exporting`, and
+`failedRetryable` are Library-visible states, not reasons to block Library
+entry.
 
 The App Attest credential name is fixed by the app as `photo_keyid`. The proof's
 `keyID` is the actual key id returned by AppAttestKit in the assertion envelope.
@@ -88,10 +123,11 @@ CryptoKit's SHA-256 incrementally instead of first materializing additional
 full-size `Data` buffers. This preserves the digest contract above while
 reducing memory copies during packaging.
 
-Debug metrics break the embedded packaging step into manifest build, base HEIC
-materialization, RGB/depth/metadata digest calculation, App Attest assertion,
-XMP injection, and XMP readback verification. These timings are diagnostics
-only; they are not written into the saved HEIC.
+Foreground capture metrics break embedded packaging into manifest build,
+base HEIC materialization, XMP injection, and XMP readback verification. The
+RGB/depth/metadata digest and App Attest assertion now belong to the async
+pending processor, not the shutter-time capture-write job. These timings are
+diagnostics only; they are not written into the saved HEIC.
 
 Future optimization candidate: evaluate whether `AVCapturePhoto`'
 `cgImageRepresentation()` can produce the same canonical RGBA8 digest as
@@ -99,6 +135,40 @@ decoding the flattened base HEIC. This is intentionally not a production path
 yet because the signed digest must remain reproducible from the saved HEIC, and
 changing the digest source could alter that verification contract or affect the
 camera pipeline.
+
+## TAP Library Pending Store
+
+The pending store is app-private storage for current HEIC depth photo captures
+that have not yet completed signing and Photos export. TAP Library merges these
+internal records with the current TAPCamDepth Photos album at display time.
+Pending, signing, and exporting records show status badges. Once export
+succeeds, the item is shown from Photos; if the user deletes the Photos asset,
+the next library refresh naturally removes it from the visible list.
+
+If a pending record's staged HEIC is temporarily unavailable during analysis,
+the analysis screen shows a calm "temporarily not available" message and asks
+the Library to refresh. It does not surface low-level file-system messages such
+as "No such file" to the user.
+
+Startup and foreground recovery reconcile partially completed work:
+
+- `signing` records are eligible for signing again because the app may have
+  been killed while a worker was in flight.
+- `exporting` records are matched by manifest `captureID` before another export
+  is attempted.
+- `exported` records have staged large files cleaned up again if a previous
+  cleanup was interrupted.
+
+## Important Future TODO
+
+P1, intentionally not implemented in this slice: design the file format and
+manifest abstraction before adding JPEG, video, Live Photo, or multi-camera
+capture formats.
+
+Future work should introduce a focused design for `CaptureFormatProfile`,
+format-agnostic semantic manifests, container adapters, and resource roles with
+UTType bundles. The current implementation stays HEIC-depth-photo-only so the
+asynchronous signing pipeline can land without speculative format abstraction.
 
 ## Verification
 

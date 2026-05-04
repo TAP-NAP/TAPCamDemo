@@ -283,6 +283,57 @@ struct TAPCamDemoTests {
         #expect(result.status == .unsigned(reason: "App Attest signer unavailable."))
     }
 
+    @Test func pendingCaptureStorePersistsLedgerAcrossInstances() async throws {
+        let rootURL = try Self.makeTemporaryDirectory()
+        let store = TAPPendingCaptureStore(rootURL: rootURL)
+        let artifact = Self.samplePendingArtifact(photoData: Data("unsigned".utf8))
+
+        let record = try await store.ingest(artifact)
+
+        #expect(record.captureID == "sample-capture")
+        #expect(record.status == .pending)
+        #expect(try await store.unsignedHEICData(captureID: record.captureID) == Data("unsigned".utf8))
+
+        let reloadedStore = TAPPendingCaptureStore(rootURL: rootURL)
+        let reloadedRecords = try await reloadedStore.visiblePendingRecords()
+
+        #expect(reloadedRecords.map(\.captureID) == ["sample-capture"])
+        #expect(reloadedRecords.first?.status == .pending)
+    }
+
+    @Test func pendingCaptureStoreTracksSigningExportAndCleanup() async throws {
+        let rootURL = try Self.makeTemporaryDirectory()
+        let store = TAPPendingCaptureStore(rootURL: rootURL)
+        let artifact = Self.samplePendingArtifact(photoData: Data("unsigned".utf8))
+        let record = try await store.ingest(artifact)
+
+        _ = try await store.updateStatus(captureID: record.captureID, status: .waitingNetwork, failureReason: "offline", incrementsRetryCount: true)
+        let waitingRecord = try await store.readRecord(captureID: record.captureID)
+        #expect(waitingRecord.status == .waitingNetwork)
+        #expect(waitingRecord.retryCount == 1)
+
+        _ = try await store.storeSignedHEIC(Data("signed".utf8), captureID: record.captureID)
+        #expect(try await store.signedHEICData(captureID: record.captureID) == Data("signed".utf8))
+
+        _ = try await store.markExported(captureID: record.captureID, assetLocalIdentifier: "asset-id")
+        let exportedRecord = try await store.readRecord(captureID: record.captureID)
+        #expect(exportedRecord.status == .exported)
+        #expect(exportedRecord.assetLocalIdentifier == "asset-id")
+        #expect(try await store.visiblePendingRecords().isEmpty)
+    }
+
+    @Test func pendingCaptureStoreRetriesInterruptedSigningRecords() async throws {
+        let rootURL = try Self.makeTemporaryDirectory()
+        let store = TAPPendingCaptureStore(rootURL: rootURL)
+        let artifact = Self.samplePendingArtifact(photoData: Data("unsigned".utf8))
+        let record = try await store.ingest(artifact)
+
+        _ = try await store.updateStatus(captureID: record.captureID, status: .signing)
+
+        let candidateIDs = try await store.processingCandidates().map(\.captureID)
+        #expect(candidateIDs == [record.captureID])
+    }
+
     @Test func projectorUsesCalibrationToProduceCameraCoordinates() throws {
         let depthMap = TAPMetricDepthMap(
             width: 8,
@@ -936,6 +987,32 @@ struct TAPCamDemoTests {
             lensDistortionCenterY: Double(height) / 2,
             intrinsicMatrix: [140, 0, 0, 0, 140, 0, Float(width) / 2, Float(height) / 2, 1],
             extrinsicMatrix: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0]
+        )
+    }
+
+    private static func makeTemporaryDirectory() throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TAPCamDemoTests.\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
+    private static func samplePendingArtifact(photoData: Data) -> PackagedCaptureArtifact {
+        PackagedCaptureArtifact(
+            packageID: UUID(uuidString: "00000000-0000-0000-0000-000000000123")!,
+            strategy: .embeddedPhoto,
+            photoData: photoData,
+            manifest: TAPDepthManifest(payload: samplePayload(location: sampleLocation)),
+            signatureStatus: .unsigned(reason: "test"),
+            packagingMetrics: CapturePackagingMetrics(),
+            capturedAt: Date(timeIntervalSince1970: 0),
+            location: CLLocation(
+                coordinate: CLLocationCoordinate2D(latitude: 31.2304, longitude: 121.4737),
+                altitude: 12,
+                horizontalAccuracy: 5,
+                verticalAccuracy: 8,
+                timestamp: Date(timeIntervalSince1970: 0)
+            )
         )
     }
 

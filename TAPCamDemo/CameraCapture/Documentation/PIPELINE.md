@@ -42,7 +42,15 @@ The shutter control starts capture on touch-down rather than waiting for the
 default SwiftUI button release action. Location is not awaited on the shutter
 path: the view model uses a recent cached `CLLocation` if available and kicks
 off a best-effort background refresh for later captures. If no recent location
-exists, the manifest and Photos asset are saved without location metadata.
+exists, the manifest and staged HEIC are saved without location metadata.
+
+Foreground shutter work ends when the unsigned HEIC has been written into the
+app-private TAP Library pending store. While this capture-write queue is
+nonempty, the TAP Library entry point is disabled and shows progress so entering
+Library cannot stop the camera session before queued captures have landed on
+disk. This gate does not cover App Attest signing or Photos export: once a
+pending record exists, Library can open and display its pending/signing/exporting
+status while the asynchronous worker continues.
 
 ## Debug Override
 

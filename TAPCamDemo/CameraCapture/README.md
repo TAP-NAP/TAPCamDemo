@@ -7,8 +7,9 @@ Capture one Apple-paired photo-depth HEIC from a semantic field-of-view choice.
 `CameraCapture` is the camera module for TAPCamDemo. Release UI lets the user
 choose a field of view such as `24mm`, `48mm`, or `77mm`; Planning resolves that
 choice into one compatible Apple photo-depth pipeline; Runtime captures one
-`AVCapturePhoto`; Output embeds Apple auxiliary depth plus the TAP manifest into
-one HEIC and saves it to Photos.
+`AVCapturePhoto`; Output embeds Apple auxiliary depth plus an unsigned TAP
+manifest into one HEIC and stages it in the app-private TAP Library pending
+store. A separate TAP Library worker later signs and exports the HEIC to Photos.
 
 ```text
 UI
@@ -242,11 +243,12 @@ settings.photoQualityPrioritization = .quality
 
 ## Run the Async Pipeline
 
-On shutter touch-down, the view model queues a job, uses any recent cached
-location metadata, starts a background location refresh for future captures, and
-runs the pipeline. The pipeline captures, builds the logical package, packages
-and signs the HEIC, writes it to Photos, and records metrics. The preview
-remains attached to the running session while this happens.
+On shutter touch-down, the view model queues a foreground capture-write job,
+uses any recent cached location metadata, starts a background location refresh
+for future captures, and runs the pipeline. The pipeline captures, builds the
+logical package, packages an unsigned HEIC, stages it in the TAP Library pending
+store, and records metrics. The preview remains attached to the running session
+while this happens.
 
 ```swift
 let captureResult = try await photoDepthProvider.capturePhotoDepth(job: job, context: context)
@@ -257,12 +259,17 @@ let capturePackage = try CapturePackageBuilder.makePackage(
 )
 let artifact = try await packager.package(
     capturePackage,
-    assertionSigner: assertionSigner
+    assertionSigner: nil
 )
 let writeResult = try await writer.write(artifact)
 ```
 
 [View in Source](x-source-tag://RunSingleCamCapturePipeline)
+
+The TAP Library entry point is disabled only while this foreground
+capture-write queue is nonempty. Once a capture has been written into the
+pending store, the user can enter TAP Library even if that item is still
+`pending`, `waitingNetwork`, `signing`, `signed`, or `exporting`.
 
 ## Build the Logical Package
 
@@ -281,32 +288,32 @@ guard captureResult.photo.depthData != nil else {
 ## Package an Embedded HEIC
 
 `EmbeddedPhotoPackager` is the Release-safe physical packaging strategy. It uses
-Apple's `fileDataRepresentation(with:)`, builds the TAP manifest, tries to add
-an App Attest proof, and injects the resulting manifest into the HEIC XMP
-metadata before Photos sees the file.
+Apple's `fileDataRepresentation(with:)`, builds the TAP manifest with
+`proofs: []`, and injects that unsigned manifest into the HEIC XMP metadata
+before the file enters the pending store.
 
 ```swift
 let manifest = try TAPDepthManifestBuilder.makeManifest(capturePackage: capturePackage)
 guard let baseHEICData = capturePackage.photo.fileDataRepresentation(with: customizer) else {
     throw TAPDepthCaptureError.unableToCreatePhotoData
 }
-let signingResult = await EmbeddedPhotoPackager.manifestByApplyingCaptureAssertion(...)
-let finalHEICData = try TAPDepthHEICWriter.injectingManifest(signingResult.manifest, into: baseHEICData)
+let finalHEICData = try TAPDepthHEICWriter.injectingManifest(manifest, into: baseHEICData)
 ```
 
 [View in Source](x-source-tag://PackageEmbeddedDepthHEIC)
 
-The proof lives in `manifest.proofs[0]` with `type: "appAttestAssertion"`.
-Its value is base64url canonical JSON containing the signed RGB/depth/metadata
-digest package and the AppAttestKit assertion envelope. See
-[PACKAGING.md](Documentation/PACKAGING.md) for the verification format.
-RGB and depth digest bytes are streamed into CryptoKit SHA-256 to avoid extra
-full-image `Data` copies. A possible future optimization is to compare
-`AVCapturePhoto.cgImageRepresentation()` against the saved-HEIC decode path, but
-the production signer keeps hashing from the flattened base HEIC so third-party
-verification can reproduce the RGB digest from the saved artifact.
-Debug metrics split this packaging work into manifest, base HEIC, digest,
-App Attest, XMP injection, and XMP verification timings.
+The proof is added later by `TAPPendingCaptureProcessor`. It reads the staged
+HEIC, recomputes the RGB/depth/metadata digest, obtains an App Attest assertion,
+injects `manifest.proofs[0]`, then exports the signed HEIC into the
+`TAPCamDepth` Photos album. See [PACKAGING.md](Documentation/PACKAGING.md) for
+the verification format. RGB and depth digest bytes are streamed into CryptoKit
+SHA-256 to avoid extra full-image `Data` copies. A possible future optimization
+is to compare `AVCapturePhoto.cgImageRepresentation()` against the saved-HEIC
+decode path, but the production signer keeps hashing from the flattened base
+HEIC so third-party verification can reproduce the RGB digest from the saved
+artifact. Debug metrics split this packaging work into manifest, base HEIC,
+XMP injection, and XMP verification timings. Digest and App Attest work now
+belongs to the async pending processor, not the shutter-time capture-write job.
 
 ## Build and Inject the TAP Manifest
 
@@ -349,21 +356,22 @@ guard CGImageDestinationCopyImageSource(destination, source, options as CFDictio
 
 [View in Source](x-source-tag://InjectTAPManifestIntoHEIC)
 
-## Save to Photos
+## Stage Pending and Export to Photos
 
 The writer receives a completed `PackagedCaptureArtifact`; it doesn't inspect
-hardware, choose pairing, or decide packaging. It saves the single embedded HEIC
-to the `TAPCamDepth` album and returns the asset identifier.
+hardware, choose pairing, or decide packaging. The camera path uses
+`TAPPendingCaptureArtifactWriter`, which saves the unsigned HEIC and thumbnail
+in the app-private pending store and returns a pending capture identifier.
 
 ```swift
-let assetID = try await PhotoLibraryWriter.saveDepthHEIC(
-    artifact.photoData,
-    capturedAt: artifact.capturedAt,
-    location: artifact.location
-)
+let record = try await store.ingest(artifact)
 ```
 
-[View in Source](x-source-tag://WritePackagedArtifactToPhotos)
+[View in Source](x-source-tag://WritePackagedArtifactToPendingStore)
+
+The async pending processor is responsible for App Attest signing and the final
+`PhotoLibraryWriter.saveDepthHEIC(...)` call. Photos becomes the user-visible
+source only after that export succeeds.
 
 ## Debug Override
 
@@ -453,5 +461,5 @@ when you need a deeper read than the code guide above:
 | [ZOOM.md](Documentation/ZOOM.md) | Raw `videoZoomFactor`, semantic FOV labels, and depth-safe zoom ranges. |
 | [CROP.md](Documentation/CROP.md) | Preview crop metadata versus destructive final crop. |
 | [CAPTURE_SOURCES.md](Documentation/CAPTURE_SOURCES.md) | Why the demo has a single photo-depth provider seam instead of RGB/Depth/RAW provider stacks. |
-| [PACKAGING.md](Documentation/PACKAGING.md) | The difference between logical packages, embedded HEIC packaging, TAP manifest injection, and Photos writing. |
+| [PACKAGING.md](Documentation/PACKAGING.md) | The difference between logical packages, embedded HEIC packaging, pending storage, async signing, and Photos export. |
 | [DEBUGGING.md](Documentation/DEBUGGING.md) | Debug panels, metrics, queue state, and what remains after temporary FOV diagnostics were removed. |
