@@ -53,8 +53,6 @@ final class CameraViewModel: ObservableObject {
     var activeSessionConfiguration: SessionConfigurationResult?
     var configurationGeneration = 0
     var depthSelectionMode: DepthSelectionMode = .automatic
-    private var hasStarted = false
-    private var isStartInProgress = false
 
     var session: AVCaptureSession {
         sessionController.session
@@ -62,10 +60,6 @@ final class CameraViewModel: ObservableObject {
 
     var canCapture: Bool {
         !isPausedForAnalysis && isDepthCaptureReady && pendingJobCount < CaptureJobQueue.defaultMaximumPendingJobs
-    }
-
-    var isStoragePressureHigh: Bool {
-        pendingJobCount >= CaptureJobQueue.defaultMaximumPendingJobs
     }
 
     var shouldShowFocalLengthSelector: Bool {
@@ -109,25 +103,14 @@ final class CameraViewModel: ObservableObject {
     }
 
     func start() async {
-        guard !hasStarted && !isStartInProgress else {
-            return
-        }
-
-        isStartInProgress = true
-        defer {
-            isStartInProgress = false
-        }
-
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
-            hasStarted = true
             await configureDefaultSelection()
             locationProvider.warmLocationCache()
             loadRecentDepthAssetPreviewIfAvailable()
         case .notDetermined:
             let granted = await AVCaptureDevice.requestAccess(for: .video)
             if granted {
-                hasStarted = true
                 await configureDefaultSelection()
                 locationProvider.warmLocationCache()
                 loadRecentDepthAssetPreviewIfAvailable()
@@ -142,7 +125,6 @@ final class CameraViewModel: ObservableObject {
     }
 
     func stop() {
-        hasStarted = false
         isPausedForAnalysis = false
         sessionController.stop()
     }

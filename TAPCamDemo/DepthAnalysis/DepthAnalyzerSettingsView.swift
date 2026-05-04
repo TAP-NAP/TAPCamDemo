@@ -14,43 +14,32 @@ import UniformTypeIdentifiers
 enum DepthAnalyzerPreferences {
     static let showsAnalysisHelpKey = "DepthAnalyzerShowsAnalysisHelp"
     static let defaultShowsAnalysisHelp = true
-
-    static func showsAnalysisHelp(userDefaults: UserDefaults = .standard) -> Bool {
-        guard userDefaults.object(forKey: showsAnalysisHelpKey) != nil else {
-            return defaultShowsAnalysisHelp
-        }
-        return userDefaults.bool(forKey: showsAnalysisHelpKey)
-    }
 }
 
 struct DepthAnalyzerSettingsView: View {
     @Environment(\.dismiss) private var dismiss
+    private let snapshot: DepthAnalyzerAuthorizationSnapshot
     @ObservedObject private var appAttestController: AppAttestRuntimeController
-    @State private var snapshot: DepthAnalyzerAuthorizationSnapshot
-    @State private var showsAnalysisHelp: Bool
-    @State private var helpPreferenceWriteTask: Task<Void, Never>?
-    private let userDefaults: UserDefaults
+    @AppStorage(DepthAnalyzerPreferences.showsAnalysisHelpKey)
+    private var showsAnalysisHelp = DepthAnalyzerPreferences.defaultShowsAnalysisHelp
     #if DEBUG
     @State private var attestationObjectDocument: AppAttestCBORDocument?
     @State private var isAttestationExporterPresented = false
     #endif
 
     init(
-        snapshot: DepthAnalyzerAuthorizationSnapshot? = nil,
-        appAttestController: AppAttestRuntimeController,
-        userDefaults: UserDefaults = .standard
+        snapshot: DepthAnalyzerAuthorizationSnapshot = .current(),
+        appAttestController: AppAttestRuntimeController
     ) {
+        self.snapshot = snapshot
         self.appAttestController = appAttestController
-        self.userDefaults = userDefaults
-        _snapshot = State(initialValue: snapshot ?? .checking)
-        _showsAnalysisHelp = State(initialValue: DepthAnalyzerPreferences.showsAnalysisHelp(userDefaults: userDefaults))
     }
 
     var body: some View {
         NavigationStack {
             List {
                 Section("Analysis") {
-                    Toggle(isOn: showsAnalysisHelpBinding) {
+                    Toggle(isOn: $showsAnalysisHelp) {
                         Label("Help", systemImage: "questionmark.circle")
                     }
                 }
@@ -133,13 +122,6 @@ struct DepthAnalyzerSettingsView: View {
                     }
                 }
             }
-            .task {
-                await refreshAuthorizationSnapshotIfNeeded()
-            }
-            .onDisappear {
-                helpPreferenceWriteTask?.cancel()
-                userDefaults.set(showsAnalysisHelp, forKey: DepthAnalyzerPreferences.showsAnalysisHelpKey)
-            }
         }
         #if DEBUG
         .fileExporter(
@@ -151,36 +133,6 @@ struct DepthAnalyzerSettingsView: View {
             appAttestController.handleAttestationExportResult(result)
         }
         #endif
-    }
-
-    private var showsAnalysisHelpBinding: Binding<Bool> {
-        Binding(
-            get: { showsAnalysisHelp },
-            set: { newValue in
-                showsAnalysisHelp = newValue
-                scheduleHelpPreferenceWrite(newValue)
-            }
-        )
-    }
-
-    private func scheduleHelpPreferenceWrite(_ newValue: Bool) {
-        helpPreferenceWriteTask?.cancel()
-        helpPreferenceWriteTask = Task { @MainActor in
-            await Task.yield()
-            guard !Task.isCancelled else {
-                return
-            }
-            userDefaults.set(newValue, forKey: DepthAnalyzerPreferences.showsAnalysisHelpKey)
-        }
-    }
-
-    private func refreshAuthorizationSnapshotIfNeeded() async {
-        guard snapshot == .checking else {
-            return
-        }
-
-        await Task.yield()
-        snapshot = .current()
     }
 
     private var appAttestStatusRow: some View {
@@ -290,13 +242,6 @@ nonisolated struct DepthAnalyzerAuthorizationSnapshot: Equatable {
     let photos: String
     let location: String
 
-    static let checking = DepthAnalyzerAuthorizationSnapshot(
-        camera: "Checking...",
-        photos: "Checking...",
-        location: "Checking..."
-    )
-
-    @MainActor
     static func current() -> DepthAnalyzerAuthorizationSnapshot {
         DepthAnalyzerAuthorizationSnapshot(
             camera: DepthAnalyzerAuthorizationStatusText.camera(AVCaptureDevice.authorizationStatus(for: .video)),

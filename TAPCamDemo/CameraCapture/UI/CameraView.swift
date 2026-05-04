@@ -18,33 +18,16 @@ import UIKit
 ///
 /// - Tag: CameraCaptureRootView
 struct CameraView: View {
-    @StateObject private var viewModel: CameraViewModel
+    @StateObject private var viewModel = CameraViewModel()
     @StateObject private var chromeOrientation = CameraChromeOrientationController()
-    @StateObject private var appAttestController: AppAttestRuntimeController
+    @StateObject private var appAttestController = AppAttestRuntimeController()
     @State private var isShowingDepthAlbum = false
     @State private var isShowingSettings = false
     @State private var isShutterTouchActive = false
-    private let autoPreparesAppAttest: Bool
     #if DEBUG
     @State private var isDepthSelectorExpanded = false
     @State private var isPerformanceExpanded = false
     #endif
-
-    init(autoPreparesAppAttest: Bool = true) {
-        self.autoPreparesAppAttest = autoPreparesAppAttest
-        _viewModel = StateObject(wrappedValue: CameraViewModel())
-        _appAttestController = StateObject(wrappedValue: AppAttestRuntimeController())
-    }
-
-    init(
-        viewModel: CameraViewModel,
-        appAttestController: AppAttestRuntimeController,
-        autoPreparesAppAttest: Bool = true
-    ) {
-        self.autoPreparesAppAttest = autoPreparesAppAttest
-        _viewModel = StateObject(wrappedValue: viewModel)
-        _appAttestController = StateObject(wrappedValue: appAttestController)
-    }
 
     var body: some View {
         NavigationStack {
@@ -62,10 +45,6 @@ struct CameraView: View {
             await viewModel.start()
         }
         .task {
-            guard autoPreparesAppAttest else {
-                return
-            }
-
             await appAttestController.preparePhotoCredentialAfterFirstInstallLaunch()
         }
         .onAppear {
@@ -320,11 +299,11 @@ struct CameraView: View {
                 .fill(viewModel.canCapture ? Color.white : Color.gray)
                 .frame(width: 62, height: 62)
 
-            if viewModel.isStoragePressureHigh {
-                ProgressView()
-                    .progressViewStyle(.circular)
-                    .tint(.white)
-                    .scaleEffect(0.78)
+            if viewModel.pendingJobCount > 0 {
+                Text("\(viewModel.pendingJobCount)")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.black)
+                    .rotationEffect(chromeOrientation.angle)
             }
         }
         .frame(width: 78, height: 78)

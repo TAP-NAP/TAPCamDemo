@@ -437,7 +437,7 @@
 		F2F5FE122F9B321100F5071A /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				APP_ATTEST_BACKEND_MODE = localDebug;
+				APP_ATTEST_BACKEND_MODE = http;
 				APP_ATTEST_BACKEND_URL = "";
 				APP_ATTEST_LOCAL_CHALLENGE = TapTapNapNap123123;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
