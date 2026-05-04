@@ -35,14 +35,8 @@ final class AppAttestRuntimeController: ObservableObject {
     }
 
     func preparePhotoCredentialAfterFirstInstallLaunch() async {
-        StartupTrace.mark("AppAttest.preparePhotoCredentialAfterFirstInstallLaunch begin")
-        defer {
-            StartupTrace.mark("AppAttest.preparePhotoCredentialAfterFirstInstallLaunch end")
-        }
-
         let didAutoPrepare = userDefaults.bool(forKey: Self.didAutoPreparePhotoCredentialKey)
         let shouldRefreshMissingDebugAttestationObject = runtime.debugBackend != nil && (try? attestationObjectStore.load()) == nil
-        StartupTrace.mark("AppAttest autoPrepared=\(didAutoPrepare) refreshMissingDebugObject=\(shouldRefreshMissingDebugAttestationObject)")
 
         guard !didAutoPrepare || shouldRefreshMissingDebugAttestationObject else {
             return
@@ -130,12 +124,8 @@ final class AppAttestRuntimeController: ObservableObject {
     }
 
     private func prepareCredential(markAutoPrepared: Bool) async throws {
-        let credential = try await StartupTrace.measureAsync("AppAttest.client.prepare") {
-            try await self.runtime.client.prepare(credentialName: AppAttestRuntimeDefaults.photoCredentialName)
-        }
-        _ = try await StartupTrace.measureAsync("AppAttest.storeLatestAttestationObjectIfAvailable") {
-            try await self.storeLatestAttestationObjectIfAvailable()
-        }
+        let credential = try await self.runtime.client.prepare(credentialName: AppAttestRuntimeDefaults.photoCredentialName)
+        _ = try await self.storeLatestAttestationObjectIfAvailable()
         if markAutoPrepared {
             self.userDefaults.set(true, forKey: Self.didAutoPreparePhotoCredentialKey)
         }

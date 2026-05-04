@@ -116,97 +116,94 @@ nonisolated struct CapabilityMatrix: @unchecked Sendable {
     ///
     /// - Tag: BuildReleaseFOVOptions
     func focalLengthOptions() -> [FocalLengthOption] {
-        StartupTrace.measure("CapabilityMatrix.focalLengthOptions") {
-            var bestBySlot: [String: FocalLengthOption] = [:]
+        var bestBySlot: [String: FocalLengthOption] = [:]
 
-            for rgbSource in rgbSources {
+        for rgbSource in rgbSources {
+            /*
+             FOV buttons are a rear-camera composition control. Front capture is
+             entered through the dedicated camera-switch button so the selector
+             does not mix "front camera" with rear 35mm-equivalent focal slots.
+             */
+            guard rgbSource.device.position == .back else {
+                continue
+            }
+
+            for targetFOV in FocalLengthLabelResolver.releaseFOVTargets() {
                 /*
-                 FOV buttons are a rear-camera composition control. Front capture is
-                 entered through the dedicated camera-switch button so the selector
-                 does not mix "front camera" with rear 35mm-equivalent focal slots.
+                 Depth support is format-specific. A virtual device may expose
+                 one active format whose depth delivery is safe only at 2x/3x
+                 and another format that works at 1x. Release FOV options must
+                 therefore resolve the Apple-paired depth source for each target
+                 FOV instead of reusing the single "best" depth format selected
+                 during discovery. Otherwise the 24mm slot can be incorrectly
+                 filled by LiDAR while Triple/Dual Wide are marked unavailable
+                 at 1x, making 24mm and 48mm look visually too similar.
                  */
-                guard rgbSource.device.position == .back else {
+                let seedDepthSource = bestCompatibleDepthProfile(for: rgbSource)
+                let requestedZoomFactor = FocalLengthLabelResolver.releaseVideoZoomFactor(
+                    for: rgbSource,
+                    targetEquivalentMillimeters: targetFOV,
+                    formatSelection: seedDepthSource?.formatSelection
+                )
+                let depthSource = bestCompatibleDepthProfile(
+                    for: rgbSource,
+                    preferredZoomFactor: requestedZoomFactor
+                )
+                let zoomCapability = ZoomCapabilityResolver.resolve(
+                    rgbSource: rgbSource,
+                    depthProfile: depthSource,
+                    selectedZoomID: nil,
+                    selectedZoomFactor: requestedZoomFactor
+                )
+                guard let zoom = zoomCapability.zoomProfiles.first(where: { $0.matchesRawVideoZoomFactor(requestedZoomFactor) }) else {
                     continue
                 }
+                let label = FocalLengthLabelResolver.label(
+                    equivalentMillimeters: targetFOV,
+                    source: "\(rgbSource.focalLengthLabelSource)+releaseFOVTarget"
+                )
+                let isEnabled = rgbSource.isEnabled && depthSource?.isSelectable == true && zoom.isEnabled
+                let option = FocalLengthOption(
+                    id: "\(rgbSource.id)-\(zoom.id)-\(label.label)",
+                    displayName: label.label,
+                    numericLabel: label.numericLabel,
+                    unitLabel: label.unitLabel,
+                    equivalentFocalLength35mmMillimeters: label.equivalentMillimeters ?? 0,
+                    labelSource: label.source,
+                    rgbSource: rgbSource,
+                    depthSource: depthSource,
+                    zoom: zoom,
+                    isEnabled: isEnabled,
+                    disabledReason: isEnabled
+                        ? nil
+                        : zoom.disabledReason ?? depthSource?.disabledReason ?? rgbSource.disabledReason ?? "Depth capture unavailable"
+                )
 
-                for targetFOV in FocalLengthLabelResolver.releaseFOVTargets() {
-                    /*
-                     Depth support is format-specific. A virtual device may expose
-                     one active format whose depth delivery is safe only at 2x/3x
-                     and another format that works at 1x. Release FOV options must
-                     therefore resolve the Apple-paired depth source for each target
-                     FOV instead of reusing the single "best" depth format selected
-                     during discovery. Otherwise the 24mm slot can be incorrectly
-                     filled by LiDAR while Triple/Dual Wide are marked unavailable
-                     at 1x, making 24mm and 48mm look visually too similar.
-                     */
-                    let seedDepthSource = bestCompatibleDepthProfile(for: rgbSource)
-                    let requestedZoomFactor = FocalLengthLabelResolver.releaseVideoZoomFactor(
-                        for: rgbSource,
-                        targetEquivalentMillimeters: targetFOV,
-                        formatSelection: seedDepthSource?.formatSelection
-                    )
-                    let depthSource = bestCompatibleDepthProfile(
-                        for: rgbSource,
-                        preferredZoomFactor: requestedZoomFactor
-                    )
-                    let zoomCapability = ZoomCapabilityResolver.resolve(
-                        rgbSource: rgbSource,
-                        depthProfile: depthSource,
-                        selectedZoomID: nil,
-                        selectedZoomFactor: requestedZoomFactor
-                    )
-                    guard let zoom = zoomCapability.zoomProfiles.first(where: { $0.matchesRawVideoZoomFactor(requestedZoomFactor) }) else {
-                        continue
-                    }
-                    let label = FocalLengthLabelResolver.label(
-                        equivalentMillimeters: targetFOV,
-                        source: "\(rgbSource.focalLengthLabelSource)+releaseFOVTarget"
-                    )
-                    let isEnabled = rgbSource.isEnabled && depthSource?.isSelectable == true && zoom.isEnabled
-                    let option = FocalLengthOption(
-                        id: "\(rgbSource.id)-\(zoom.id)-\(label.label)",
-                        displayName: label.label,
-                        numericLabel: label.numericLabel,
-                        unitLabel: label.unitLabel,
-                        equivalentFocalLength35mmMillimeters: label.equivalentMillimeters ?? 0,
-                        labelSource: label.source,
-                        rgbSource: rgbSource,
-                        depthSource: depthSource,
-                        zoom: zoom,
-                        isEnabled: isEnabled,
-                        disabledReason: isEnabled
-                            ? nil
-                            : zoom.disabledReason ?? depthSource?.disabledReason ?? rgbSource.disabledReason ?? "Depth capture unavailable"
-                    )
-
-                    #if !DEBUG
-                    guard option.isEnabled else {
-                        continue
-                    }
-                    #endif
-
-                    let slotKey = "\(rgbSource.positionDescription)-\(option.displayName)"
-                    if let existing = bestBySlot[slotKey],
-                       focalOptionPriority(existing) >= focalOptionPriority(option) {
-                        continue
-                    }
-                    bestBySlot[slotKey] = option
+                #if !DEBUG
+                guard option.isEnabled else {
+                    continue
                 }
+                #endif
+
+                let slotKey = "\(rgbSource.positionDescription)-\(option.displayName)"
+                if let existing = bestBySlot[slotKey],
+                   focalOptionPriority(existing) >= focalOptionPriority(option) {
+                    continue
+                }
+                bestBySlot[slotKey] = option
             }
-
-            let options = bestBySlot.values.sorted { lhs, rhs in
-                if lhs.rgbSource.device.position != rhs.rgbSource.device.position {
-                    return lhs.rgbSource.device.position == .back
-                }
-                if lhs.equivalentFocalLength35mmMillimeters == rhs.equivalentFocalLength35mmMillimeters {
-                    return focalOptionPriority(lhs) > focalOptionPriority(rhs)
-                }
-                return lhs.equivalentFocalLength35mmMillimeters < rhs.equivalentFocalLength35mmMillimeters
-            }
-            StartupTrace.mark("CapabilityMatrix.focalLengthOptions count=\(options.count)")
-            return options
         }
+
+        let options = bestBySlot.values.sorted { lhs, rhs in
+            if lhs.rgbSource.device.position != rhs.rgbSource.device.position {
+                return lhs.rgbSource.device.position == .back
+            }
+            if lhs.equivalentFocalLength35mmMillimeters == rhs.equivalentFocalLength35mmMillimeters {
+                return focalOptionPriority(lhs) > focalOptionPriority(rhs)
+            }
+            return lhs.equivalentFocalLength35mmMillimeters < rhs.equivalentFocalLength35mmMillimeters
+        }
+        return options
     }
 
     var defaultFocalLengthOption: FocalLengthOption? {

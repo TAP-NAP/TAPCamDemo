@@ -103,36 +103,17 @@ final class CameraViewModel: ObservableObject {
     }
 
     func start() async {
-        StartupTrace.mark("CameraViewModel.start begin")
-        defer {
-            StartupTrace.mark("CameraViewModel.start end")
-        }
-
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
-            await StartupTrace.measureAsync("CameraViewModel.configureDefaultSelection authorized") {
-                await configureDefaultSelection()
-            }
-            StartupTrace.measure("LocationProvider.warmLocationCache") {
-                locationProvider.warmLocationCache()
-            }
-            StartupTrace.measure("CameraViewModel.loadRecentDepthAssetPreviewIfAvailable") {
-                loadRecentDepthAssetPreviewIfAvailable()
-            }
+            await configureDefaultSelection()
+            locationProvider.warmLocationCache()
+            loadRecentDepthAssetPreviewIfAvailable()
         case .notDetermined:
-            let granted = await StartupTrace.measureAsync("AVCaptureDevice.requestAccess video") {
-                await AVCaptureDevice.requestAccess(for: .video)
-            }
+            let granted = await AVCaptureDevice.requestAccess(for: .video)
             if granted {
-                await StartupTrace.measureAsync("CameraViewModel.configureDefaultSelection after authorization") {
-                    await configureDefaultSelection()
-                }
-                StartupTrace.measure("LocationProvider.warmLocationCache") {
-                    locationProvider.warmLocationCache()
-                }
-                StartupTrace.measure("CameraViewModel.loadRecentDepthAssetPreviewIfAvailable") {
-                    loadRecentDepthAssetPreviewIfAvailable()
-                }
+                await configureDefaultSelection()
+                locationProvider.warmLocationCache()
+                loadRecentDepthAssetPreviewIfAvailable()
             } else {
                 statusMessage = TAPDepthCaptureError.cameraAccessDenied.localizedDescription
             }
@@ -144,7 +125,6 @@ final class CameraViewModel: ObservableObject {
     }
 
     func stop() {
-        StartupTrace.mark("CameraViewModel.stop")
         isPausedForAnalysis = false
         sessionController.stop()
     }
