@@ -27,7 +27,7 @@ struct WelcomePermissionsView: View {
                             title: "Network Access",
                             message: "Used for first-run security setup and device verification.",
                             status: coordinator.networkStatus,
-                            actionTitle: "Allow Network"
+                            actionTitle: "Allow"
                         ) {
                             Task { await coordinator.requestNetworkAccess() }
                         }
@@ -37,7 +37,7 @@ struct WelcomePermissionsView: View {
                             title: "Camera Access",
                             message: "Used to capture photos with depth data.",
                             status: coordinator.cameraStatus,
-                            actionTitle: "Allow Camera"
+                            actionTitle: "Allow"
                         ) {
                             Task { await coordinator.requestCameraAccess() }
                         }
@@ -45,9 +45,9 @@ struct WelcomePermissionsView: View {
                         PermissionChecklistRow(
                             iconName: "photo.on.rectangle",
                             title: "Photo Library Access",
-                            message: "Used to save and read TAPCamDepth photos.",
+                            message: "Used to save and read photos.",
                             status: coordinator.photoLibraryStatus,
-                            actionTitle: "Allow Photos"
+                            actionTitle: "Allow"
                         ) {
                             Task { await coordinator.requestPhotoLibraryAccess() }
                         }
@@ -57,7 +57,7 @@ struct WelcomePermissionsView: View {
                             title: "Location Access",
                             message: "Optional. Used to write capture location into photo metadata.",
                             status: coordinator.locationStatus,
-                            actionTitle: "Allow Location",
+                            actionTitle: "Allow",
                             secondaryActionTitle: "Skip"
                         ) {
                             Task { await coordinator.requestLocationAccess() }
