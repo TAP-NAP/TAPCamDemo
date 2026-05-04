@@ -91,12 +91,6 @@ struct DepthAnalysisView: View {
                     overlayImage: input.heatmap.image,
                     overlayOpacity: heatmapOpacity
                 )
-            case .contours:
-                depthImageStage(
-                    input,
-                    overlayImage: (viewModel.contourVisualization ?? input.contours).image,
-                    overlayOpacity: heatmapOpacity
-                )
             case .mask:
                 depthImageStage(
                     input,
@@ -273,17 +267,7 @@ struct DepthAnalysisView: View {
         case .legend:
             legendContent(for: input, showsInlineHelp: showsInlineHelp)
         case .overlay:
-            OverlayInspectorContent(
-                opacity: $heatmapOpacity,
-                viewMode: viewModel.viewMode,
-                contourLineCount: Binding(
-                    get: { viewModel.contourLineCount },
-                    set: { viewModel.updateContourLineCount($0) }
-                ),
-                contourVisualization: viewModel.contourVisualization ?? input.contours,
-                contourErrorMessage: viewModel.contourErrorMessage,
-                showsInlineHelp: showsInlineHelp
-            )
+            OverlayInspectorContent(opacity: $heatmapOpacity, showsInlineHelp: showsInlineHelp)
         case .region:
             RegionInspectorContent(
                 image: input.image,
@@ -413,26 +397,6 @@ struct DepthAnalysisView: View {
                 }
                 DepthLegendView(stops: input.heatmap.legendStops)
             }
-        case .contours:
-            let contours = viewModel.contourVisualization ?? input.contours
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 6) {
-                    Text("Contour legend")
-                        .font(.caption.weight(.semibold))
-                        .help(viewModel.viewMode.legendDescription)
-                    Spacer(minLength: 8)
-                    Text(globalContourRangeText(contours))
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
-                if showsInlineHelp {
-                    InlineHelpText(viewModel.viewMode.legendDescription)
-                }
-                SwatchLegendView(stops: contours.legendStops)
-                Text("\(contours.lineCount) lines · \(String(format: "%.2f m", contours.contourIntervalMeters)) spacing")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-            }
         case .mask:
             VStack(alignment: .leading, spacing: 8) {
                 Text("Mask legend")
@@ -468,8 +432,6 @@ struct DepthAnalysisView: View {
             [.measurements, .region]
         case .heatmap:
             [.measurements, .legend, .overlay, .region]
-        case .contours:
-            [.measurements, .legend, .overlay, .region]
         case .mask:
             [.measurements, .legend, .region]
         case .planes:
@@ -491,10 +453,6 @@ struct DepthAnalysisView: View {
         String(format: "%.2f...%.2f m", heatmap.rangeMeters.lowerBound, heatmap.rangeMeters.upperBound)
     }
 
-    private func globalContourRangeText(_ contours: TAPDepthContourVisualization) -> String {
-        String(format: "%.2f...%.2f m", contours.rangeMeters.lowerBound, contours.rangeMeters.upperBound)
-    }
-
     private var cloudLegendStops: [TAPDepthLegendStop] {
         [
             TAPDepthLegendStop(position: 0, label: "Near points", color: TAPDepthHeatmapRenderer.viridisColor(normalized: 0)),
@@ -512,9 +470,6 @@ final class DepthAnalysisViewModel: ObservableObject {
     @Published var regionStats: TAPDepthRegionStats?
     @Published var regionHeatmap: TAPDepthHeatmapVisualization?
     @Published var regionHeatmapErrorMessage: String?
-    @Published var contourLineCount = Double(TAPDepthContourRenderer.defaultLineCount)
-    @Published var contourVisualization: TAPDepthContourVisualization?
-    @Published var contourErrorMessage: String?
     @Published var planeEstimate: TAPPlaneEstimate?
     @Published var planeGrowthStrictness = 0.68
     @Published var planeSeedPoint: CGPoint?
@@ -525,8 +480,6 @@ final class DepthAnalysisViewModel: ObservableObject {
 
     private var planeRegionTask: Task<Void, Never>?
     private var planeRegionRequestID = UUID()
-    private var contourTask: Task<Void, Never>?
-    private var contourRequestID = UUID()
     // Image-level geometry shared by Planes taps. It is prewarmed after load and
     // can also be built by the first tap if prewarm has not finished yet.
     private var planeGeometryCache: TAPDepthGeometryCache?
@@ -545,8 +498,6 @@ final class DepthAnalysisViewModel: ObservableObject {
         //   `TAPMetricDepthMap.samples`.
         // - Mask overlays `TAPDepthMaskRenderer.validMask`, where transparent
         //   areas are invalid and colored regions have finite positive depth.
-        // - Contours overlays meter-labeled isolines generated from neighboring
-        //   valid depth pixels that cross the current global contour levels.
         // - Planes reuses the heatmap as the backdrop while a background Plane
         //   Filter task grows a seed-selected region using the prewarmed
         //   geometry cache when available.
@@ -557,8 +508,6 @@ final class DepthAnalysisViewModel: ObservableObject {
             return input.image
         case .heatmap:
             return input.heatmap.image
-        case .contours:
-            return (contourVisualization ?? input.contours).image
         case .mask:
             return input.validMask.image
         case .planes:
@@ -571,27 +520,20 @@ final class DepthAnalysisViewModel: ObservableObject {
     func load(assetID: String) async {
         planeRegionTask?.cancel()
         planeGeometryTask?.cancel()
-        contourTask?.cancel()
         planeRegionRequestID = UUID()
         planeGeometryRequestID = UUID()
-        contourRequestID = UUID()
         planeGeometryCache = nil
         planeRegionIsLoading = false
-        contourVisualization = nil
-        contourErrorMessage = nil
-        contourLineCount = Double(TAPDepthContourRenderer.defaultLineCount)
 
         do {
             let data = try await PhotoLibraryWriter.originalPhotoData(localIdentifier: assetID)
             let loadedInput = try TAPDepthMapReader.analysisInput(from: data)
             input = loadedInput
-            contourVisualization = loadedInput.contours
             clearSelection()
             prewarmPlaneGeometry(for: loadedInput.depthMap)
             errorMessage = nil
         } catch {
             self.errorMessage = error.localizedDescription
-            contourVisualization = nil
         }
     }
 
@@ -652,48 +594,9 @@ final class DepthAnalysisViewModel: ObservableObject {
         }
     }
 
-    func updateContourLineCount(_ lineCount: Double) {
-        let rounded = Double(Int(lineCount.rounded()))
-        let clamped = min(
-            max(rounded, Double(TAPDepthContourRenderer.minimumLineCount)),
-            Double(TAPDepthContourRenderer.maximumLineCount)
-        )
-        guard contourLineCount != clamped else {
-            return
-        }
-
-        contourLineCount = clamped
-        updateContourVisualization()
-    }
-
     private func updateRegionProducts(_ depthRect: CGRect) {
         updateMetricsAndPlane(depthRect)
         updateRegionHeatmap(depthRect)
-    }
-
-    private func updateContourVisualization() {
-        guard let input else {
-            return
-        }
-
-        let requestID = UUID()
-        let depthMap = input.depthMap
-        let lineCount = Int(contourLineCount.rounded())
-        contourTask?.cancel()
-        contourRequestID = requestID
-        contourErrorMessage = nil
-
-        contourTask = Task.detached(priority: .userInitiated) { [weak self] in
-            do {
-                let contours = try TAPDepthContourRenderer.contours(for: depthMap, lineCount: lineCount)
-                try Task.checkCancellation()
-                await self?.finishContourRequest(requestID, result: .success(contours))
-            } catch is CancellationError {
-                await self?.finishCancelledContourRequest(requestID)
-            } catch {
-                await self?.finishContourRequest(requestID, result: .failure(error))
-            }
-        }
     }
 
     private func updateMetricsAndPlane(_ depthRect: CGRect) {
@@ -853,29 +756,6 @@ final class DepthAnalysisViewModel: ObservableObject {
         planeRegionIsLoading = false
     }
 
-    private func finishContourRequest(_ requestID: UUID, result: Result<TAPDepthContourVisualization, Error>) {
-        guard contourRequestID == requestID else {
-            return
-        }
-
-        contourTask = nil
-        switch result {
-        case .success(let contours):
-            contourVisualization = contours
-            contourErrorMessage = nil
-        case .failure:
-            contourErrorMessage = "Unable to render contour lines for this depth map."
-        }
-    }
-
-    private func finishCancelledContourRequest(_ requestID: UUID) {
-        guard contourRequestID == requestID else {
-            return
-        }
-
-        contourTask = nil
-    }
-
     private func clampedSelection(_ rect: CGRect) -> CGRect {
         guard let input else {
             return rect
@@ -898,10 +778,6 @@ enum DepthAnalysisViewMode: String, CaseIterable, Identifiable {
     /// as `AVDepthData`, converted to Float32 metric depth, then colorized.
     case heatmap
 
-    /// Meter-labeled depth contour overlay. Source: neighboring valid depth
-    /// pixels that cross automatically generated global meter levels.
-    case contours
-
     /// Valid-depth coverage image. Source: the same metric depth map; finite
     /// positive samples are colored, missing/invalid samples are transparent.
     case mask
@@ -917,7 +793,7 @@ enum DepthAnalysisViewMode: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 
     var isDebugOnlyAnalysisButton: Bool {
-        self == .heatmap || self == .contours || self == .mask
+        self == .heatmap || self == .mask
     }
 
     var title: String {
@@ -926,8 +802,6 @@ enum DepthAnalysisViewMode: String, CaseIterable, Identifiable {
             "RGB"
         case .heatmap:
             "Depth"
-        case .contours:
-            "Contours"
         case .mask:
             "Mask"
         case .planes:
@@ -943,8 +817,6 @@ enum DepthAnalysisViewMode: String, CaseIterable, Identifiable {
             "photo"
         case .heatmap:
             "ruler"
-        case .contours:
-            "map"
         case .mask:
             "checkerboard.rectangle"
         case .planes:
@@ -960,8 +832,6 @@ enum DepthAnalysisViewMode: String, CaseIterable, Identifiable {
             "The original color photo stored in the TAP depth HEIC."
         case .heatmap:
             "A false-color overlay where color represents metric depth in meters."
-        case .contours:
-            "A meter-labeled isoline overlay showing equal-depth boundaries."
         case .mask:
             "A coverage overlay showing which pixels have usable depth samples."
         case .planes:
@@ -977,8 +847,6 @@ enum DepthAnalysisViewMode: String, CaseIterable, Identifiable {
             "RGB view shows the primary HEIC image. It is the visual reference used to choose regions, but the depth measurements still come from the auxiliary depth map embedded beside it."
         case .heatmap:
             "Depth view overlays metric depth as a false-color heatmap. Near pixels use the low end of the legend and far pixels use the high end. Transparent pixels do not contain valid depth."
-        case .contours:
-            "Contours view overlays equal-depth lines on the RGB image. Each label is the metric distance for that line, and the density slider controls how many global depth levels are drawn."
         case .mask:
             "Mask view highlights the pixels that contain finite positive depth samples. Green areas can contribute to statistics, plane fitting, and point projection; transparent areas are ignored."
         case .planes:
@@ -994,8 +862,6 @@ enum DepthAnalysisViewMode: String, CaseIterable, Identifiable {
             "RGB has no color legend because it shows the original photo."
         case .heatmap:
             "The legend maps the current depth range from near to far. Adjust opacity to compare the heatmap against the RGB image."
-        case .contours:
-            "Contour lines mark equal metric depth over the current global depth range. Increase density for more levels or lower it when labels feel crowded."
         case .mask:
             "Green indicates valid depth coverage. Yellow outlines mark transitions between valid and invalid depth."
         case .planes:
@@ -2376,10 +2242,6 @@ private struct PlaneLegendSwatch: View {
 
 private struct OverlayInspectorContent: View {
     @Binding var opacity: Double
-    let viewMode: DepthAnalysisViewMode
-    let contourLineCount: Binding<Double>
-    let contourVisualization: TAPDepthContourVisualization?
-    let contourErrorMessage: String?
     let showsInlineHelp: Bool
 
     var body: some View {
@@ -2398,40 +2260,6 @@ private struct OverlayInspectorContent: View {
             }
             if showsInlineHelp {
                 InlineHelpText("Opacity controls the global overlay on the main image. It does not change local region heatmap colors.")
-            }
-
-            if viewMode == .contours {
-                Divider()
-                HStack(spacing: 8) {
-                    Text("Contour density")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .help("Density controls how many global meter contour levels are rendered.")
-                    Slider(
-                        value: contourLineCount,
-                        in: Double(TAPDepthContourRenderer.minimumLineCount)...Double(TAPDepthContourRenderer.maximumLineCount),
-                        step: 1
-                    )
-                    .tint(.primary)
-                    Text("\(Int(contourLineCount.wrappedValue.rounded()))")
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                        .frame(width: 28, alignment: .trailing)
-                }
-
-                if let contourVisualization {
-                    Text("\(contourVisualization.lineCount) lines · \(String(format: "%.2f m", contourVisualization.contourIntervalMeters)) spacing")
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                } else if let contourErrorMessage {
-                    Label(contourErrorMessage, systemImage: "exclamationmark.triangle")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-
-                if showsInlineHelp {
-                    InlineHelpText("Density recalculates equal-depth levels from the full valid depth range. The labels on the overlay remain meter values from the raw depth map.")
-                }
             }
         }
     }

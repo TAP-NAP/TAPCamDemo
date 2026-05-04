@@ -26,7 +26,6 @@ nonisolated struct TAPDepthAnalysisInput {
     let depthQuality: String
     let heatmap: TAPDepthHeatmapVisualization
     let validMask: TAPDepthMaskVisualization
-    let contours: TAPDepthContourVisualization
 }
 
 nonisolated struct TAPRGBAColor: Equatable {
@@ -67,25 +66,6 @@ nonisolated struct TAPDepthMaskVisualization {
     let validSampleCount: Int
     let totalSampleCount: Int
     let validRatio: Double
-    let legendStops: [TAPDepthLegendStop]
-}
-
-nonisolated struct TAPDepthContourLevel: Equatable, Identifiable {
-    let depthMeters: Float
-    let label: String
-    let position: Double
-
-    var id: String {
-        "\(depthMeters)-\(label)"
-    }
-}
-
-nonisolated struct TAPDepthContourVisualization {
-    let image: CGImage
-    let rangeMeters: ClosedRange<Float>
-    let contourIntervalMeters: Float
-    let lineCount: Int
-    let levels: [TAPDepthContourLevel]
     let legendStops: [TAPDepthLegendStop]
 }
 

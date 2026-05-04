@@ -634,73 +634,6 @@ struct TAPCamDemoTests {
         #expect(mask.legendStops.map(\.label) == ["Valid depth", "Valid/invalid edge"])
     }
 
-    @Test func contourVisualizationPublishesMeterLevelsAndLegendMetadata() throws {
-        let depthMap = TAPMetricDepthMap(
-            width: 6,
-            height: 6,
-            samples: (0..<36).map { index in Float(index % 6 + 1) },
-            calibration: nil
-        )
-
-        let contours = try TAPDepthContourRenderer.contours(for: depthMap)
-
-        #expect(contours.lineCount == TAPDepthContourRenderer.defaultLineCount)
-        #expect(contours.levels.count == TAPDepthContourRenderer.defaultLineCount)
-        #expect(abs(contours.rangeMeters.lowerBound - 1.0) < 0.0001)
-        #expect(abs(contours.rangeMeters.upperBound - 6.0) < 0.0001)
-        #expect(contours.levels.allSatisfy { $0.label.hasSuffix(" m") })
-        #expect(contours.levels.map(\.depthMeters) == contours.levels.map(\.depthMeters).sorted())
-        #expect(contours.legendStops.count == 3)
-        #expect(contours.legendStops[1].label.contains("\(TAPDepthContourRenderer.defaultLineCount) lines"))
-    }
-
-    @Test func contourRendererIgnoresInvalidSamplesAndDrawsTransparentInvalidAreas() throws {
-        let depthMap = TAPMetricDepthMap(
-            width: 20,
-            height: 20,
-            samples: (0..<400).map { index in
-                let x = index % 20
-                let y = index / 20
-                if x == 0 || y == 0 {
-                    return 0
-                }
-                return 1 + Float(x + y) / 10
-            },
-            calibration: nil
-        )
-
-        let pixels = try TAPDepthContourRenderer.contourPixels(for: depthMap, lineCount: 8)
-        let invalidOffset = 0
-        let visiblePixelCount = pixels.stridingAlphaCount
-
-        #expect(pixels[invalidOffset + 3] == 0)
-        #expect(visiblePixelCount > 0)
-    }
-
-    @Test func contourDensityIncreaseAddsOrKeepsVisiblePixels() throws {
-        let depthMap = TAPMetricDepthMap(
-            width: 40,
-            height: 40,
-            samples: (0..<1600).map { index in
-                let x = index % 40
-                let y = index / 40
-                return 1 + Float(x + y) / 20
-            },
-            calibration: nil
-        )
-
-        let sparsePixels = try TAPDepthContourRenderer.contourPixels(
-            for: depthMap,
-            lineCount: TAPDepthContourRenderer.minimumLineCount
-        )
-        let densePixels = try TAPDepthContourRenderer.contourPixels(
-            for: depthMap,
-            lineCount: TAPDepthContourRenderer.maximumLineCount
-        )
-
-        #expect(densePixels.stridingAlphaCount >= sparsePixels.stridingAlphaCount)
-    }
-
     @Test func analysisViewModesAllPublishUserFacingExplanations() throws {
         for viewMode in DepthAnalysisViewMode.allCases {
             #expect(!viewMode.shortExplanation.isEmpty)
@@ -709,9 +642,8 @@ struct TAPCamDemoTests {
         }
     }
 
-    @Test func diagnosticAnalysisViewModeButtonsAreDebugOnly() throws {
+    @Test func analysisDepthAndMaskViewModeButtonsAreDebugOnly() throws {
         #expect(DepthAnalysisViewMode.heatmap.isDebugOnlyAnalysisButton)
-        #expect(DepthAnalysisViewMode.contours.isDebugOnlyAnalysisButton)
         #expect(DepthAnalysisViewMode.mask.isDebugOnlyAnalysisButton)
         #expect(!DepthAnalysisViewMode.rgb.isDebugOnlyAnalysisButton)
         #expect(!DepthAnalysisViewMode.planes.isDebugOnlyAnalysisButton)
@@ -894,8 +826,7 @@ struct TAPCamDemoTests {
             depthAccuracy: "unknown",
             depthQuality: "unknown",
             heatmap: try TAPDepthHeatmapRenderer.heatmap(for: depthMap),
-            validMask: try TAPDepthMaskRenderer.validMask(for: depthMap),
-            contours: try TAPDepthContourRenderer.contours(for: depthMap)
+            validMask: try TAPDepthMaskRenderer.validMask(for: depthMap)
         )
     }
 
@@ -1225,14 +1156,6 @@ struct TAPCamDemoTests {
 
 private enum CaptureAssertionTestError: Error {
     case unused
-}
-
-private extension Array where Element == UInt8 {
-    var stridingAlphaCount: Int {
-        stride(from: 3, to: count, by: 4).reduce(0) { partialResult, offset in
-            partialResult + (self[offset] > 0 ? 1 : 0)
-        }
-    }
 }
 
 private actor SucceedingAssertionAppAttestClient: AppAttestClient {
