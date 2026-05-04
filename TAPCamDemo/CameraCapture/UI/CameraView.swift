@@ -9,6 +9,13 @@
 import SwiftUI
 import UIKit
 
+enum CameraFeedbackPreferences {
+    static let shutterHapticsEnabledKey = "CameraShutterHapticsEnabled"
+    static let defaultShutterHapticsEnabled = true
+    static let shutterSoundEnabledKey = "CameraShutterSoundEnabled"
+    static let defaultShutterSoundEnabled = true
+}
+
 /// Main SingleCam photo-depth capture screen.
 ///
 /// The view is intentionally thin: it renders FOV options, Debug depth override
@@ -25,6 +32,10 @@ struct CameraView: View {
     @State private var isShowingDepthAlbum = false
     @State private var isShowingSettings = false
     @State private var isShutterTouchActive = false
+    @AppStorage(CameraFeedbackPreferences.shutterHapticsEnabledKey)
+    private var isShutterHapticsEnabled = CameraFeedbackPreferences.defaultShutterHapticsEnabled
+    @AppStorage(CameraFeedbackPreferences.shutterSoundEnabledKey)
+    private var isShutterSoundEnabled = CameraFeedbackPreferences.defaultShutterSoundEnabled
     #if DEBUG
     @State private var isDepthSelectorExpanded = false
     @State private var isPerformanceExpanded = false
@@ -59,7 +70,10 @@ struct CameraView: View {
                 }
         }
         .sheet(isPresented: $isShowingSettings) {
-            DepthAnalyzerSettingsView(appAttestController: appAttestController)
+            DepthAnalyzerSettingsView(
+                appAttestController: appAttestController,
+                shutterSoundSuppressionSupported: viewModel.isShutterSoundSuppressionSupported
+            )
         }
         .task {
             guard startsAutomatically else {
@@ -359,8 +373,24 @@ struct CameraView: View {
             return
         }
 
+        performShutterHaptic()
         let appAttestClient = appAttestController.runtime.client
-        Task { await viewModel.capture(appAttestClient: appAttestClient) }
+        Task {
+            await viewModel.capture(
+                appAttestClient: appAttestClient,
+                suppressesShutterSound: !isShutterSoundEnabled
+            )
+        }
+    }
+
+    private func performShutterHaptic() {
+        guard isShutterHapticsEnabled else {
+            return
+        }
+
+        let generator = UIImpactFeedbackGenerator(style: .medium)
+        generator.prepare()
+        generator.impactOccurred()
     }
 
     @ViewBuilder

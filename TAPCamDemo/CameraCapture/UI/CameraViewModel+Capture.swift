@@ -16,7 +16,10 @@ import UIKit
 /// writes it in the background, and the preview stays attached to the session.
 @MainActor
 extension CameraViewModel {
-    func capture(appAttestClient: (any AppAttestClient)? = nil) async {
+    func capture(
+        appAttestClient: (any AppAttestClient)? = nil,
+        suppressesShutterSound: Bool = false
+    ) async {
         guard !isPausedForAnalysis else {
             statusMessage = "Camera paused for analysis."
             return
@@ -51,7 +54,8 @@ extension CameraViewModel {
             let context = CaptureSourceContext(
                 sessionConfiguration: captureConfiguration,
                 capturedAt: job.createdAt,
-                location: location
+                location: location,
+                suppressesShutterSound: suppressesShutterSound
             )
             let queueWaitDuration = Date().timeIntervalSince(queueEnteredAt)
             let assertionSigner = appAttestClient.map(AppAttestCaptureAssertionSigner.init(client:))

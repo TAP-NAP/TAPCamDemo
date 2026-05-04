@@ -655,6 +655,28 @@ struct TAPCamDemoTests {
         #expect(!DepthAnalyzerPreferences.showsAnalysisHelpKey.isEmpty)
     }
 
+    @Test func shutterHapticsPreferenceDefaultsToEnabled() throws {
+        #expect(CameraFeedbackPreferences.defaultShutterHapticsEnabled)
+        #expect(!CameraFeedbackPreferences.shutterHapticsEnabledKey.isEmpty)
+    }
+
+    @Test func shutterSoundPreferenceDefaultsToEnabled() throws {
+        #expect(CameraFeedbackPreferences.defaultShutterSoundEnabled)
+        #expect(!CameraFeedbackPreferences.shutterSoundEnabledKey.isEmpty)
+    }
+
+    @Test func photoSettingsSuppressShutterSoundOnlyWhenRequestedAndSupported() throws {
+        let photoOutput = AVCapturePhotoOutput()
+        let defaultSettings = SingleCamPhotoSettingsFactory.make(photoOutput: photoOutput)
+        let quietSettings = SingleCamPhotoSettingsFactory.make(
+            photoOutput: photoOutput,
+            suppressesShutterSound: true
+        )
+
+        #expect(!defaultSettings.isShutterSoundSuppressionEnabled)
+        #expect(quietSettings.isShutterSoundSuppressionEnabled == photoOutput.isShutterSoundSuppressionSupported)
+    }
+
     @Test func analysisInteractionStateSeparatesDrawingFromRegionInspection() throws {
         #expect(!AnalysisInteractionState.idle.showsRegionInspector)
         #expect(!AnalysisInteractionState.drawingSelection.showsRegionInspector)

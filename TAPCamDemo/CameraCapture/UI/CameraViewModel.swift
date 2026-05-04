@@ -58,6 +58,10 @@ final class CameraViewModel: ObservableObject {
         sessionController.session
     }
 
+    var isShutterSoundSuppressionSupported: Bool {
+        sessionController.isShutterSoundSuppressionSupported
+    }
+
     var canCapture: Bool {
         !isPausedForAnalysis && isDepthCaptureReady && pendingJobCount < CaptureJobQueue.defaultMaximumPendingJobs
     }

@@ -31,7 +31,10 @@ nonisolated final class AVFoundationSingleCamPhotoProvider: SingleCamPhotoCaptur
     ///
     /// - Tag: CaptureSingleCamPhotoDepth
     func capturePhotoDepth(job: CaptureJob, context: CaptureSourceContext) async throws -> SingleCamPhotoCaptureResult {
-        let settings = SingleCamPhotoSettingsFactory.make(photoOutput: sessionController.photoOutput)
+        let settings = SingleCamPhotoSettingsFactory.make(
+            photoOutput: sessionController.photoOutput,
+            suppressesShutterSound: context.suppressesShutterSound
+        )
         let requestedCodec: AVVideoCodecType = sessionController.photoOutput.availablePhotoCodecTypes.contains(.hevc) ? .hevc : .jpeg
         let videoRotationAngle = Self.videoRotationAngleForHorizonLevelCapture(
             device: context.sessionConfiguration.device
@@ -87,7 +90,10 @@ nonisolated final class AVFoundationSingleCamPhotoProvider: SingleCamPhotoCaptur
 /// `setPreparedPhotoSettingsArray` representative of the requested HEIC + depth
 /// capture instead of warming a cheaper default path.
 nonisolated enum SingleCamPhotoSettingsFactory {
-    static func make(photoOutput: AVCapturePhotoOutput) -> AVCapturePhotoSettings {
+    static func make(
+        photoOutput: AVCapturePhotoOutput,
+        suppressesShutterSound: Bool = false
+    ) -> AVCapturePhotoSettings {
         let settings: AVCapturePhotoSettings
         if photoOutput.availablePhotoCodecTypes.contains(.hevc) {
             settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.hevc])
@@ -99,6 +105,9 @@ nonisolated enum SingleCamPhotoSettingsFactory {
         settings.embedsDepthDataInPhoto = true
         settings.isDepthDataFiltered = true
         settings.photoQualityPrioritization = .quality
+        if suppressesShutterSound && photoOutput.isShutterSoundSuppressionSupported {
+            settings.isShutterSoundSuppressionEnabled = true
+        }
         return settings
     }
 }

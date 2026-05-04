@@ -18,6 +18,7 @@ nonisolated struct CaptureSourceContext: @unchecked Sendable {
     let sessionConfiguration: SessionConfigurationResult
     let capturedAt: Date
     let location: CLLocation?
+    let suppressesShutterSound: Bool
 }
 
 /// Result of a SingleCam photo-depth capture.

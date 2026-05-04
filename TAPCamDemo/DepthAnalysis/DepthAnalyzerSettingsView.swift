@@ -19,9 +19,14 @@ enum DepthAnalyzerPreferences {
 struct DepthAnalyzerSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     private let snapshot: DepthAnalyzerAuthorizationSnapshot
+    private let shutterSoundSuppressionSupported: Bool
     @ObservedObject private var appAttestController: AppAttestRuntimeController
     @AppStorage(DepthAnalyzerPreferences.showsAnalysisHelpKey)
     private var showsAnalysisHelp = DepthAnalyzerPreferences.defaultShowsAnalysisHelp
+    @AppStorage(CameraFeedbackPreferences.shutterHapticsEnabledKey)
+    private var shutterHapticsEnabled = CameraFeedbackPreferences.defaultShutterHapticsEnabled
+    @AppStorage(CameraFeedbackPreferences.shutterSoundEnabledKey)
+    private var shutterSoundEnabled = CameraFeedbackPreferences.defaultShutterSoundEnabled
     #if DEBUG
     @State private var attestationObjectDocument: AppAttestCBORDocument?
     @State private var isAttestationExporterPresented = false
@@ -29,15 +34,35 @@ struct DepthAnalyzerSettingsView: View {
 
     init(
         snapshot: DepthAnalyzerAuthorizationSnapshot = .current(),
-        appAttestController: AppAttestRuntimeController
+        appAttestController: AppAttestRuntimeController,
+        shutterSoundSuppressionSupported: Bool = true
     ) {
         self.snapshot = snapshot
         self.appAttestController = appAttestController
+        self.shutterSoundSuppressionSupported = shutterSoundSuppressionSupported
     }
 
     var body: some View {
         NavigationStack {
             List {
+                Section("Capture") {
+                    Toggle(isOn: $shutterSoundEnabled) {
+                        Label("Shutter Sound", systemImage: "speaker.wave.2")
+                    }
+                    .disabled(!shutterSoundSuppressionSupported)
+
+                    Toggle(isOn: $shutterHapticsEnabled) {
+                        Label("Shutter Haptics", systemImage: "iphone.radiowaves.left.and.right")
+                    }
+
+                    if !shutterSoundSuppressionSupported {
+                        Text("Shutter sound cannot be disabled on this device or in this region.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
                 Section("Analysis") {
                     Toggle(isOn: $showsAnalysisHelp) {
                         Label("Help", systemImage: "questionmark.circle")

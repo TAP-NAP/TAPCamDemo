@@ -21,6 +21,10 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
 
     private let sessionQueue = DispatchQueue(label: "tapcam.camera-capture.singlecam.session")
 
+    var isShutterSoundSuppressionSupported: Bool {
+        photoOutput.isShutterSoundSuppressionSupported
+    }
+
     /// Applies a planned SingleCam photo-depth configuration.
     ///
     /// All AVFoundation graph mutation is serialized here. FOV-only changes can
@@ -278,8 +282,9 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     private static func prewarmPhotoOutput(_ photoOutput: AVCapturePhotoOutput) {
         let settings = SingleCamPhotoSettingsFactory.make(photoOutput: photoOutput)
         /*
-         Prewarming is a latency hint, not a capture precondition. Capture still
-         proceeds normally if AVFoundation delays or declines resource
+         Prewarming is a latency hint, not a capture precondition. It does not
+         need per-tap feedback preferences such as shutter sound suppression,
+         and capture still proceeds normally if AVFoundation delays or declines
          preparation for the current photo-depth settings.
          */
         photoOutput.setPreparedPhotoSettingsArray([settings], completionHandler: nil)

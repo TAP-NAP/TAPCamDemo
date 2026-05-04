@@ -951,6 +951,11 @@ private struct CaptureMetadataSummary: Equatable {
     }
 }
 
+private enum AnalysisDebugHighlight {
+    static let restingBackground = Color.yellow.opacity(0.44)
+    static let selectedBackground = Color.yellow.opacity(0.82)
+}
+
 private struct CaptureMetadataHUD: View {
     let summary: CaptureMetadataSummary
 
@@ -977,7 +982,7 @@ private struct CaptureMetadataHUD: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .frame(maxWidth: 560, alignment: .leading)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(AnalysisDebugHighlight.restingBackground, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(.white.opacity(0.16), lineWidth: 1)
@@ -1641,7 +1646,7 @@ private struct AnalysisInspectorStrip: View {
 
     private func iconBackground(isSelected: Bool, isDebugHighlighted: Bool = false) -> Color {
         if isDebugHighlighted {
-            return Color.yellow.opacity(isSelected ? 0.82 : 0.44)
+            return isSelected ? AnalysisDebugHighlight.selectedBackground : AnalysisDebugHighlight.restingBackground
         }
         if isSelected {
             return Color.primary.opacity(0.16)
