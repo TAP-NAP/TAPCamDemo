@@ -27,6 +27,7 @@ import ImageIO
 /// Functions enabled by this reader:
 /// - Depth: colorized depth heatmap for visual inspection.
 /// - Mask: valid/invalid depth coverage map.
+/// - Contours: transparent metric-depth isolines over the RGB image.
 /// - Planes: region statistics and plane fitting from metric depth samples.
 /// - Cloud: camera-coordinate point preview using calibration intrinsics.
 ///
@@ -58,6 +59,7 @@ nonisolated enum TAPDepthMapReader {
         let metricDepth = try metricDepthMap(from: depthData, manifest: manifest)
         let heatmap = try TAPDepthHeatmapRenderer.heatmap(for: metricDepth)
         let validMask = try TAPDepthMaskRenderer.validMask(for: metricDepth)
+        let contours = try TAPDepthContourRenderer.contours(for: metricDepth)
 
         return TAPDepthAnalysisInput(
             manifest: manifest,
@@ -67,7 +69,8 @@ nonisolated enum TAPDepthMapReader {
             depthAccuracy: manifest?.payload.depth.accuracy ?? depthData.depthDataAccuracy.tapDescription,
             depthQuality: manifest?.payload.depth.quality ?? depthData.depthDataQuality.tapDescription,
             heatmap: heatmap,
-            validMask: validMask
+            validMask: validMask,
+            contours: contours
         )
     }
 
