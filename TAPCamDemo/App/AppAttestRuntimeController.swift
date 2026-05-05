@@ -38,12 +38,15 @@ final class AppAttestRuntimeController: ObservableObject {
         let didAutoPrepare = userDefaults.bool(forKey: Self.didAutoPreparePhotoCredentialKey)
         let shouldRefreshMissingDebugAttestationObject = runtime.debugBackend != nil && (try? attestationObjectStore.load()) == nil
 
-        guard !didAutoPrepare || shouldRefreshMissingDebugAttestationObject else {
-            return
-        }
-
-        await performCredentialOperation("Prepare credential", showsPreparationProgress: true) {
-            try await self.prepareCredential(markAutoPrepared: true)
+        await performCredentialOperation(
+            "Prepare credential",
+            showsPreparationProgress: !didAutoPrepare || shouldRefreshMissingDebugAttestationObject
+        ) {
+            if shouldRefreshMissingDebugAttestationObject {
+                try await self.prepareCredential(markAutoPrepared: true)
+            } else {
+                try await self.prepareCredentialIfNeeded(markAutoPrepared: true)
+            }
         }
     }
 
@@ -126,6 +129,15 @@ final class AppAttestRuntimeController: ObservableObject {
     private func prepareCredential(markAutoPrepared: Bool) async throws {
         let credential = try await runtime.client.prepare(credentialName: AppAttestRuntimeDefaults.photoCredentialName)
         _ = try await storeLatestAttestationObjectIfAvailable()
+        if markAutoPrepared {
+            self.userDefaults.set(true, forKey: Self.didAutoPreparePhotoCredentialKey)
+        }
+        self.credentialStatusText = Self.readyStatusText
+        self.credentialKeyIdText = credential.keyId
+    }
+
+    private func prepareCredentialIfNeeded(markAutoPrepared: Bool) async throws {
+        let credential = try await runtime.client.prepareIfNeeded(credentialName: AppAttestRuntimeDefaults.photoCredentialName)
         if markAutoPrepared {
             self.userDefaults.set(true, forKey: Self.didAutoPreparePhotoCredentialKey)
         }

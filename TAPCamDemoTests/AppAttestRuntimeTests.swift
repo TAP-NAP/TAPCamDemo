@@ -86,6 +86,33 @@ struct AppAttestRuntimeTests {
         #expect(!controller.canResetAndPrepareCredential)
     }
 
+    @Test @MainActor func startupRechecksPhotoCredentialWhenAutoPrepareWasPreviouslyMarkedDone() async throws {
+        let client = PrepareIfNeededAppAttestClient()
+        let runtime = AppAttestRuntime(
+            client: client,
+            backendDescription: "Prepare If Needed Backend"
+        )
+        let suiteName = "TAPCamDemoTests.AppAttest.\(UUID().uuidString)"
+        let userDefaults = try #require(UserDefaults(suiteName: suiteName))
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+        userDefaults.set(true, forKey: "TAPCamDemo.AppAttest.didAutoPreparePhotoCredential")
+
+        let controller = AppAttestRuntimeController(
+            runtime: runtime,
+            userDefaults: userDefaults
+        )
+
+        await controller.preparePhotoCredentialAfterFirstInstallLaunch()
+
+        #expect(await client.operations() == [
+            "prepareIfNeeded:\(AppAttestRuntimeDefaults.photoCredentialName)"
+        ])
+        #expect(controller.credentialStatusText == "Ready")
+        #expect(controller.credentialKeyIdText == "prepared-if-needed-key-id")
+    }
+
     #if DEBUG
     @Test @MainActor func debugRuntimeUsesLocalDebugBackendWithSharedChallenge() async throws {
         let runtime = try AppAttestRuntimeFactory.make(
@@ -226,5 +253,45 @@ private actor ResetAndPrepareAppAttestClient: AppAttestClient {
 
     func reset(credentialName: String) async throws {
         operationLog.append("reset:\(credentialName)")
+    }
+}
+
+private actor PrepareIfNeededAppAttestClient: AppAttestClient {
+    private var operationLog: [String] = []
+
+    func operations() -> [String] {
+        operationLog
+    }
+
+    func prepare(credentialName: String) async throws -> AppAttestCredential {
+        throw AppAttestRuntimeTestError.unused
+    }
+
+    func prepareIfNeeded(credentialName: String) async throws -> AppAttestCredential {
+        operationLog.append("prepareIfNeeded:\(credentialName)")
+        return AppAttestCredential(
+            credentialName: credentialName,
+            keyId: "prepared-if-needed-key-id",
+            credentialId: nil,
+            status: .ready,
+            environment: .development,
+            createdAt: Date(timeIntervalSince1970: 0),
+            updatedAt: Date(timeIntervalSince1970: 0)
+        )
+    }
+
+    func generateAssertion(
+        credentialName: String,
+        request: AppAttestProtectedRequest
+    ) async throws -> AppAttestAssertionEnvelope {
+        throw AppAttestRuntimeTestError.unused
+    }
+
+    func status(credentialName: String) async throws -> AppAttestCredentialStatus {
+        throw AppAttestRuntimeTestError.unused
+    }
+
+    func reset(credentialName: String) async throws {
+        throw AppAttestRuntimeTestError.unused
     }
 }
