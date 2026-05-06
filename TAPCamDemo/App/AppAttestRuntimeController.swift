@@ -36,23 +36,29 @@ final class AppAttestRuntimeController: ObservableObject {
 
     func preparePhotoCredentialAfterFirstInstallLaunch() async {
         let didAutoPrepare = userDefaults.bool(forKey: Self.didAutoPreparePhotoCredentialKey)
-        let shouldRefreshMissingDebugAttestationObject = runtime.debugBackend != nil && (try? attestationObjectStore.load()) == nil
+        let storedHealthCheckToken = userDefaults.string(forKey: Self.credentialHealthCheckTokenKey)
+        let currentHealthCheckToken = Self.currentCredentialHealthCheckToken(runtime: runtime)
+        let shouldRunHealthCheck = !didAutoPrepare || storedHealthCheckToken != currentHealthCheckToken
+        let isMissingDebugAttestationObject = runtime.debugBackend != nil && (try? attestationObjectStore.load()) == nil
 
         await performCredentialOperation(
             "Prepare credential",
-            showsPreparationProgress: !didAutoPrepare || shouldRefreshMissingDebugAttestationObject
+            showsPreparationProgress: shouldRunHealthCheck || isMissingDebugAttestationObject
         ) {
-            if shouldRefreshMissingDebugAttestationObject {
-                try await self.prepareCredential(markAutoPrepared: true)
+            if shouldRunHealthCheck {
+                try await self.prepareAndValidateCredential(
+                    markAutoPrepared: true,
+                    healthCheckToken: currentHealthCheckToken
+                )
             } else {
-                try await self.prepareCredentialIfNeeded(markAutoPrepared: true)
+                try await self.prepareCredentialIfNeeded(markAutoPrepared: false)
             }
         }
     }
 
-    func prepareCredential() async {
+    func prepareCredentialIfNeeded() async {
         await performCredentialOperation("Prepare credential", showsPreparationProgress: true) {
-            try await self.prepareCredential(markAutoPrepared: false)
+            try await self.prepareCredentialIfNeeded(markAutoPrepared: false)
         }
     }
 
@@ -90,6 +96,7 @@ final class AppAttestRuntimeController: ObservableObject {
 
         try attestationObjectStore.delete()
         self.userDefaults.set(false, forKey: Self.didAutoPreparePhotoCredentialKey)
+        self.userDefaults.removeObject(forKey: Self.credentialHealthCheckTokenKey)
         return resetError
     }
 
@@ -126,33 +133,96 @@ final class AppAttestRuntimeController: ObservableObject {
         }
     }
 
-    private func prepareCredential(markAutoPrepared: Bool) async throws {
+    @discardableResult
+    private func prepareCredential(markAutoPrepared: Bool) async throws -> AppAttestCredential {
         let credential = try await runtime.client.prepare(credentialName: AppAttestRuntimeDefaults.photoCredentialName)
-        _ = try await storeLatestAttestationObjectIfAvailable()
+        _ = await storeLatestAttestationObjectIfAvailable()
         if markAutoPrepared {
             self.userDefaults.set(true, forKey: Self.didAutoPreparePhotoCredentialKey)
         }
         self.credentialStatusText = Self.readyStatusText
         self.credentialKeyIdText = credential.keyId
+        return credential
     }
 
-    private func prepareCredentialIfNeeded(markAutoPrepared: Bool) async throws {
+    @discardableResult
+    private func prepareCredentialIfNeeded(markAutoPrepared: Bool) async throws -> AppAttestCredential {
         let credential = try await runtime.client.prepareIfNeeded(credentialName: AppAttestRuntimeDefaults.photoCredentialName)
+        _ = await storeLatestAttestationObjectIfAvailable()
         if markAutoPrepared {
             self.userDefaults.set(true, forKey: Self.didAutoPreparePhotoCredentialKey)
         }
         self.credentialStatusText = Self.readyStatusText
         self.credentialKeyIdText = credential.keyId
+        return credential
     }
 
-    private func storeLatestAttestationObjectIfAvailable() async throws -> Bool {
+    private func prepareAndValidateCredential(
+        markAutoPrepared: Bool,
+        healthCheckToken: String
+    ) async throws {
+        _ = try await prepareCredentialIfNeeded(markAutoPrepared: markAutoPrepared)
+        do {
+            try await validateCredentialCanGenerateAssertion()
+        } catch where Self.isInvalidSystemAppAttestKey(error) {
+            if let resetError = try await resetLocalCredentialArtifacts() {
+                throw resetError
+            }
+
+            _ = try await prepareCredentialIfNeeded(markAutoPrepared: markAutoPrepared)
+            try await validateCredentialCanGenerateAssertion()
+        }
+        self.userDefaults.set(healthCheckToken, forKey: Self.credentialHealthCheckTokenKey)
+    }
+
+    private func validateCredentialCanGenerateAssertion() async throws {
+        let request = AppAttestProtectedRequest(
+            method: "POST",
+            path: "/tapcam/app-attest/credential-health",
+            body: Self.credentialHealthCheckBody,
+            nonce: Self.credentialHealthCheckNonce
+        )
+        _ = try await runtime.client.generateAssertion(
+            credentialName: AppAttestRuntimeDefaults.photoCredentialName,
+            request: request
+        )
+    }
+
+    private static func isInvalidSystemAppAttestKey(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        return nsError.domain == "com.apple.devicecheck.error" && nsError.code == 3
+    }
+
+    private static func currentCredentialHealthCheckToken(
+        runtime: AppAttestRuntime,
+        bundle: Bundle = .main
+    ) -> String {
+        let bundleIdentifier = bundle.bundleIdentifier ?? "unknown.bundle"
+        let version = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown-version"
+        let build = bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown-build"
+        let installedBundlePath = bundle.bundleURL.standardizedFileURL.path
+        return [
+            bundleIdentifier,
+            version,
+            build,
+            installedBundlePath,
+            runtime.backendDescription,
+            AppAttestRuntimeDefaults.photoCredentialName
+        ].joined(separator: "|")
+    }
+
+    private func storeLatestAttestationObjectIfAvailable() async -> Bool {
         guard let debugBackend = runtime.debugBackend else {
             return false
         }
 
-        let data = try await debugBackend.latestAttestationObject()
-        try attestationObjectStore.save(data)
-        return true
+        do {
+            let data = try await debugBackend.latestAttestationObject()
+            try attestationObjectStore.save(data)
+            return true
+        } catch {
+            return false
+        }
     }
 
     private func performCredentialOperation(
@@ -199,6 +269,13 @@ final class AppAttestRuntimeController: ObservableObject {
     }
 
     private static let didAutoPreparePhotoCredentialKey = "TAPCamDemo.AppAttest.didAutoPreparePhotoCredential"
+    private static let credentialHealthCheckTokenKey = "TAPCamDemo.AppAttest.credentialHealthCheckToken"
     private static let notPreparedStatusText = "Not prepared"
     private static let readyStatusText = "Ready"
+    private static let credentialHealthCheckNonce = "tapcam-app-attest-credential-health"
+    private static let credentialHealthCheckBody = Data(
+        """
+        {"schemaID":"urn:tapnap:tapcam:app-attest-credential-health:v1"}
+        """.utf8
+    )
 }

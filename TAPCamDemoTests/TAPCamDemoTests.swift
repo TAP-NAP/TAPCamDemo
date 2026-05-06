@@ -244,7 +244,8 @@ struct TAPCamDemoTests {
 
     @Test func appAttestCaptureAssertionSignerBuildsProofValue() async throws {
         let digest = Self.sampleContentDigest()
-        let signer = AppAttestCaptureAssertionSigner(client: SucceedingAssertionAppAttestClient())
+        let client = SucceedingAssertionAppAttestClient()
+        let signer = AppAttestCaptureAssertionSigner(client: client)
         let capturedAt = Date(timeIntervalSince1970: 0)
         let assertionProof = try await signer.sign(contentDigest: digest, capturedAt: capturedAt)
 
@@ -267,6 +268,10 @@ struct TAPCamDemoTests {
         #expect(proofValue.assertionEnvelope.requestBinding.path == "/tapcam/captures/sample-capture/assertion")
         #expect(proofValue.assertionEnvelope.requestBinding.nonce == "sample-capture")
         #expect(proofValue.assertionEnvelope.requestBinding.bodySHA256 == expectedBodyHash)
+        #expect(await client.operations() == [
+            "prepareIfNeeded:\(AppAttestRuntimeDefaults.photoCredentialName)",
+            "generateAssertion:\(AppAttestRuntimeDefaults.photoCredentialName)"
+        ])
     }
 
     @Test func unsignedCaptureManifestKeepsProofsEmptyWhenSignerIsMissing() async throws {
@@ -1236,18 +1241,34 @@ private enum CaptureAssertionTestError: Error {
 }
 
 private actor SucceedingAssertionAppAttestClient: AppAttestClient {
+    private var operationLog: [String] = []
+
+    func operations() -> [String] {
+        operationLog
+    }
+
     func prepare(credentialName: String) async throws -> AppAttestCredential {
         throw CaptureAssertionTestError.unused
     }
 
     func prepareIfNeeded(credentialName: String) async throws -> AppAttestCredential {
-        throw CaptureAssertionTestError.unused
+        operationLog.append("prepareIfNeeded:\(credentialName)")
+        return AppAttestCredential(
+            credentialName: credentialName,
+            keyId: "test-key-id",
+            credentialId: nil,
+            status: .ready,
+            environment: .development,
+            createdAt: Date(timeIntervalSince1970: 0),
+            updatedAt: Date(timeIntervalSince1970: 0)
+        )
     }
 
     func generateAssertion(
         credentialName: String,
         request: AppAttestProtectedRequest
     ) async throws -> AppAttestAssertionEnvelope {
+        operationLog.append("generateAssertion:\(credentialName)")
         let bodySHA256 = Data(SHA256.hash(data: request.body ?? Data())).appAttestBase64URL
         let challengeSHA256 = Data(SHA256.hash(data: Data("test-challenge".utf8))).appAttestBase64URL
         let bindingJSON = """

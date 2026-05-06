@@ -37,6 +37,9 @@ nonisolated struct AppAttestCaptureAssertionSigner: CaptureAssertionSigning {
             nonce: contentDigest.captureID
         )
 
+        _ = try await client.prepareIfNeeded(
+            credentialName: AppAttestRuntimeDefaults.photoCredentialName
+        )
         let envelope = try await client.generateAssertion(
             credentialName: AppAttestRuntimeDefaults.photoCredentialName,
             request: request

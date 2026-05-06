@@ -86,7 +86,7 @@ struct CameraView: View {
             if startsAutomatically {
                 await appAttestController.preparePhotoCredentialAfterFirstInstallLaunch()
             }
-            await viewModel.processPendingCaptures(appAttestClient: appAttestController.runtime.client)
+            await processPendingCaptures()
         }
         .onAppear {
             chromeOrientation.start()
@@ -99,14 +99,14 @@ struct CameraView: View {
             guard !isPresented else { return }
             Task {
                 await viewModel.resumeAfterAnalysis()
-                await viewModel.processPendingCaptures(appAttestClient: appAttestController.runtime.client)
+                await processPendingCaptures()
             }
         }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
             Task {
                 await viewModel.loadRecentTAPLibraryPreviewIfAvailable()
-                await viewModel.processPendingCaptures(appAttestClient: appAttestController.runtime.client)
+                await processPendingCaptures()
             }
         }
     }
@@ -383,6 +383,14 @@ struct CameraView: View {
                 suppressesShutterSound: !isShutterSoundEnabled
             )
         }
+    }
+
+    private func processPendingCaptures() async {
+        guard !appAttestController.isPreparingCredential else {
+            return
+        }
+
+        await viewModel.processPendingCaptures(appAttestClient: appAttestController.runtime.client)
     }
 
     private func performShutterHaptic() {

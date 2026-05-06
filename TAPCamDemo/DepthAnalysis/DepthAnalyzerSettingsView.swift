@@ -110,7 +110,7 @@ struct DepthAnalyzerSettingsView: View {
 
                     Button {
                         Task {
-                            await appAttestController.prepareCredential()
+                            await appAttestController.prepareCredentialIfNeeded()
                         }
                     } label: {
                         Label("Prepare Credential", systemImage: "checkmark.seal")
