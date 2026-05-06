@@ -49,7 +49,6 @@ nonisolated struct EmbeddedPhotoPackager: CapturePackager {
             to: unsignedManifest,
             baseHEICData: baseHEICData,
             depthData: capturePackage.photo.depthData,
-            capturedAt: capturePackage.sourceContext.capturedAt,
             assertionSigner: assertionSigner
         )
         packagingMetrics.rgbDigestDuration = signingResult.metrics.rgbDigestDuration
@@ -77,7 +76,6 @@ nonisolated struct EmbeddedPhotoPackager: CapturePackager {
         to manifest: TAPDepthManifest,
         baseHEICData: Data,
         depthData: AVDepthData?,
-        capturedAt: Date,
         assertionSigner: (any CaptureAssertionSigning)?
     ) async -> (manifest: TAPDepthManifest, status: CaptureSignatureStatus, metrics: CapturePackagingMetrics) {
         var metrics = CapturePackagingMetrics()
@@ -94,8 +92,7 @@ nonisolated struct EmbeddedPhotoPackager: CapturePackager {
             let digestResult = try CaptureContentDigest.makeWithMetrics(
                 manifest: manifest,
                 baseHEICData: baseHEICData,
-                depthData: depthData,
-                capturedAt: capturedAt
+                depthData: depthData
             )
             metrics.rgbDigestDuration = digestResult.metrics.rgbDigestDuration
             metrics.depthDigestDuration = digestResult.metrics.depthDigestDuration
@@ -105,8 +102,7 @@ nonisolated struct EmbeddedPhotoPackager: CapturePackager {
             let assertionProof: CaptureAssertionProof
             do {
                 assertionProof = try await assertionSigner.sign(
-                    contentDigest: digestResult.digest,
-                    capturedAt: capturedAt
+                    contentDigest: digestResult.digest
                 )
                 metrics.appAttestDuration = Date().timeIntervalSince(appAttestStart)
             } catch {

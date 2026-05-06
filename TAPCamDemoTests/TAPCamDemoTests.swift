@@ -246,15 +246,14 @@ struct TAPCamDemoTests {
         let digest = Self.sampleContentDigest()
         let client = SucceedingAssertionAppAttestClient()
         let signer = AppAttestCaptureAssertionSigner(client: client)
-        let capturedAt = Date(timeIntervalSince1970: 0)
-        let assertionProof = try await signer.sign(contentDigest: digest, capturedAt: capturedAt)
+        let assertionProof = try await signer.sign(contentDigest: digest)
 
         let proof = assertionProof.proof
         #expect(assertionProof.keyID == "test-key-id")
         #expect(proof.type == "appAttestAssertion")
         #expect(proof.algorithm == "AppAttestKit.AppAttestAssertionEnvelope.v1")
         #expect(proof.keyID == "test-key-id")
-        #expect(proof.createdAt == "1970-01-01T00:00:00.000Z")
+        #expect(proof.createdAt == digest.capturedAt)
 
         let encodedValue = try #require(proof.value)
         let proofValueData = try AppAttestBase64URL.decode(encodedValue, field: "proof.value")
@@ -280,7 +279,6 @@ struct TAPCamDemoTests {
             to: manifest,
             baseHEICData: Data(),
             depthData: nil,
-            capturedAt: Date(timeIntervalSince1970: 0),
             assertionSigner: nil
         )
 
@@ -1199,7 +1197,7 @@ struct TAPCamDemoTests {
     private static func sampleContentDigest() -> CaptureContentDigest {
         CaptureContentDigest(
             captureID: "sample-capture",
-            capturedAt: "2026-04-25T00:00:00.000Z",
+            capturedAt: "2026-04-25T00:00:00.123Z",
             rgb: CaptureContentDigest.Component(
                 mediaType: "image/heic-primary-rgba8",
                 width: 2,

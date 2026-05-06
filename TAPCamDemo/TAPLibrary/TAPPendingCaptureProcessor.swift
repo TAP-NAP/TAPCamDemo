@@ -116,10 +116,9 @@ actor TAPPendingCaptureProcessor {
         let digest = try CaptureContentDigest.make(
             manifest: manifest,
             baseHEICData: unsignedData,
-            depthData: depthData,
-            capturedAt: record.capturedAt
+            depthData: depthData
         )
-        let assertionProof = try await signer.sign(contentDigest: digest, capturedAt: record.capturedAt)
+        let assertionProof = try await signer.sign(contentDigest: digest)
         let signedManifest = TAPDepthManifest(payload: manifest.payload, proofs: [assertionProof.proof])
         let signedData = try TAPDepthHEICWriter.injectingManifest(signedManifest, into: unsignedData)
         return try await store.storeSignedHEIC(signedData, captureID: record.captureID)

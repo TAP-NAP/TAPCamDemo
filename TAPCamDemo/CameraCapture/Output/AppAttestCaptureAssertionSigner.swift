@@ -8,8 +8,7 @@ import Foundation
 
 nonisolated protocol CaptureAssertionSigning: Sendable {
     func sign(
-        contentDigest: CaptureContentDigest,
-        capturedAt: Date
+        contentDigest: CaptureContentDigest
     ) async throws -> CaptureAssertionProof
 }
 
@@ -26,8 +25,7 @@ nonisolated struct AppAttestCaptureAssertionSigner: CaptureAssertionSigning {
     }
 
     func sign(
-        contentDigest: CaptureContentDigest,
-        capturedAt: Date
+        contentDigest: CaptureContentDigest
     ) async throws -> CaptureAssertionProof {
         let body = try contentDigest.canonicalJSONData()
         let request = AppAttestProtectedRequest(
@@ -54,7 +52,7 @@ nonisolated struct AppAttestCaptureAssertionSigner: CaptureAssertionSigning {
             type: "appAttestAssertion",
             algorithm: "AppAttestKit.AppAttestAssertionEnvelope.v1",
             keyID: envelope.keyId,
-            createdAt: TAPDateFormatting.iso8601.string(from: capturedAt),
+            createdAt: contentDigest.capturedAt,
             value: proofData.appAttestBase64URL
         )
 

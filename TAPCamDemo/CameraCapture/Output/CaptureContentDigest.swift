@@ -44,22 +44,19 @@ nonisolated struct CaptureContentDigest: Codable, Equatable, Sendable {
     static func make(
         manifest: TAPDepthManifest,
         baseHEICData: Data,
-        depthData: AVDepthData,
-        capturedAt: Date
+        depthData: AVDepthData
     ) throws -> CaptureContentDigest {
         try makeWithMetrics(
             manifest: manifest,
             baseHEICData: baseHEICData,
-            depthData: depthData,
-            capturedAt: capturedAt
+            depthData: depthData
         ).digest
     }
 
     static func makeWithMetrics(
         manifest: TAPDepthManifest,
         baseHEICData: Data,
-        depthData: AVDepthData,
-        capturedAt: Date
+        depthData: AVDepthData
     ) throws -> CaptureContentDigestBuildResult {
         var metrics = CaptureContentDigestMetrics()
 
@@ -78,7 +75,7 @@ nonisolated struct CaptureContentDigest: Codable, Equatable, Sendable {
         return CaptureContentDigestBuildResult(
             digest: CaptureContentDigest(
                 captureID: manifest.payload.id,
-                capturedAt: TAPDateFormatting.iso8601.string(from: capturedAt),
+                capturedAt: manifest.payload.capturedAt,
                 rgb: rgb,
                 depth: depth,
                 metadata: metadata
