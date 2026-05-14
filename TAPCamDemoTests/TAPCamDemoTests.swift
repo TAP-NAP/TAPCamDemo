@@ -301,7 +301,7 @@ struct TAPCamDemoTests {
         #if targetEnvironment(simulator)
         return
         #else
-        let rawBaseURL = try #require(environment["TAPCAM_CAPTURE_SIGNATURE_VERIFY_BASE_URL"])
+        let rawBaseURL = try #require(environment["APP_ATTEST_BACKEND_URL"])
         let baseURL = try AppAttestBackendConfiguration.parse(backendURL: rawBaseURL)
         let runtime = try AppAttestRuntimeFactory.make(baseURL: baseURL)
         let signer = AppAttestCaptureAssertionSigner(client: runtime.client)
