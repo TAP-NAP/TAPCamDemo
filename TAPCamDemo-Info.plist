@@ -2,12 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>APP_ATTEST_BACKEND_MODE</key>
-	<string>$(APP_ATTEST_BACKEND_MODE)</string>
 	<key>APP_ATTEST_BACKEND_URL</key>
 	<string>$(APP_ATTEST_BACKEND_URL)</string>
-	<key>APP_ATTEST_LOCAL_CHALLENGE</key>
-	<string>$(APP_ATTEST_LOCAL_CHALLENGE)</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleExecutable</key>

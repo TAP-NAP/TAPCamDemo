@@ -91,9 +91,14 @@ struct StartupGateView: View {
         let appAttestController = AppAttestRuntimeController()
 
         async let cameraStart: Void = viewModel.start()
-        async let appAttestPrepare: Void = appAttestController.preparePhotoCredentialAfterFirstInstallLaunch()
+        async let appAttestPrepare: Bool = appAttestController.preparePhotoCredentialAfterFirstInstallLaunch()
 
-        _ = await (cameraStart, appAttestPrepare)
+        let (_, isAppAttestReady) = await (cameraStart, appAttestPrepare)
+        guard isAppAttestReady else {
+            didStartPreparing = false
+            phase = .welcome
+            return
+        }
 
         preparedViewModel = viewModel
         preparedAppAttestController = appAttestController

@@ -6,7 +6,6 @@
 import AVFoundation
 import Combine
 import CoreLocation
-import CoreTelephony
 import Foundation
 import Photos
 
@@ -207,23 +206,14 @@ final class StartupPermissionCoordinator: NSObject, ObservableObject, CLLocation
 
 private enum NetworkPermissionPreflight {
     static func currentPermissionStatus() -> StartupPermissionStatus? {
-        CTCellularData().restrictedState == .notRestricted ? .granted : nil
+        nil
     }
 
     static func requestAccessBeforeAppAttest() async -> StartupPermissionStatus {
-        let cellularData = CTCellularData()
-        if cellularData.restrictedState == .notRestricted {
-            return .granted
-        }
-
         let maxAttempts = 30
         for _ in 1...maxAttempts {
             let requestSucceeded = await queryNetworkAvailability()
             if requestSucceeded {
-                return .granted
-            }
-
-            if cellularData.restrictedState == .notRestricted {
                 return .granted
             }
 
@@ -243,23 +233,20 @@ private enum NetworkPermissionPreflight {
 
         do {
             let (_, response) = try await URLSession.shared.data(for: request)
-            if response is HTTPURLResponse {
-                return true
+            guard let httpResponse = response as? HTTPURLResponse else {
+                return false
             }
-
-            return false
+            return (200..<300).contains(httpResponse.statusCode)
         } catch {
             return false
         }
     }
 
     private static func preflightURL() -> URL? {
-        if let mode = try? AppAttestBackendConfiguration.mode() {
-            if case .http(let baseURL) = mode {
-                return baseURL
-            }
+        if let baseURL = try? AppAttestBackendConfiguration.baseURL() {
+            return baseURL.appendingPathComponent("healthz", isDirectory: false)
         }
 
-        return URL(string: "https://www.apple.com/library/test/success.html")
+        return nil
     }
 }

@@ -1,8 +1,8 @@
 # First Launch Startup Flow
 
-This document records the current first-install startup flow, the known issues
-that must be fixed next, and the recommended trace points if startup logging is
-temporarily reintroduced.
+This document records the current first-install startup flow, remaining cleanup
+ideas, and the recommended trace points if startup logging is temporarily
+reintroduced.
 
 ## Current Flow
 
@@ -46,7 +46,8 @@ flowchart TD
 - If location is skipped or still not authorized after first launch, later
   captures do not request location permission. They use any already cached
   authorized location or save without location metadata.
-- The network row currently performs a lightweight HTTP preflight before App
+- The network row performs a lightweight HTTPS preflight against the configured
+  App Attest server `/healthz` endpoint before App
   Attest is allowed to run.
 - After required access is complete, the loading view creates a
   `CameraViewModel` and an `AppAttestRuntimeController`.
@@ -59,18 +60,6 @@ flowchart TD
   should remain unchanged by startup-flow work.
 
 ## TODO
-
-- **P1: Use real network availability as the only success signal.**
-  The network checklist item must not be marked complete only because
-  `CTCellularData.restrictedState == .notRestricted`. The completion condition
-  should be a successful lightweight network query. `CTCellularData` can remain
-  diagnostic context, but it should not grant the network item by itself.
-
-- **P1: Do not mark first launch complete when App Attest preparation fails.**
-  `preparePhotoCredentialAfterFirstInstallLaunch()` currently reports failures
-  through UI state instead of returning failure to `StartupGateView`. The gate
-  should only set `didCompleteFirstInstallPermissions` after App Attest and
-  camera preparation have both succeeded.
 
 - **P2: Add a wall-clock timeout for network preflight.**
   The current retry loop can run much longer than intended because each attempt
@@ -114,6 +103,10 @@ guarded and removed after diagnosis.
 ## Cleanup State
 
 - The first-launch welcome gate is the current startup flow.
+- Network permission success now requires a successful HTTPS `/healthz` query
+  against the configured App Attest server.
+- First-launch completion is only marked after camera warmup and App Attest
+  warmup both succeed.
 - The previous direct-root startup path is only retained for returning users
   through `CameraView()`.
 - Temporary `StartupTrace` instrumentation has been removed from production

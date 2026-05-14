@@ -9,16 +9,15 @@ implementation now comes from the upstream
 - [AppAttestKit](https://github.com/TAP-NAP/AppAttestKit/tree/main/Sources/AppAttestKit) contains reusable protocols and core flows.
 - [DefaultAppAttestClient](https://github.com/TAP-NAP/AppAttestKit/blob/main/Sources/AppAttestKit/DefaultAppAttestClient.swift) owns attestation, assertion, and credential metadata persistence.
 - [KeychainAppAttestCredentialStore](https://github.com/TAP-NAP/AppAttestKit/blob/main/Sources/AppAttestKit/KeychainAppAttestCredentialStore.swift) stores `credentialName -> keyId` metadata.
-- [HTTPAppAttestBackend](https://github.com/TAP-NAP/AppAttestKit/blob/main/Sources/AppAttestKit/HTTPAppAttestBackend.swift) is the production HTTP backend adapter.
-- [LocalDebugAppAttestBackend](https://github.com/TAP-NAP/AppAttestKit/blob/main/Sources/AppAttestKit/LocalDebugAppAttestBackend.swift) is fixed-challenge object export support for local development.
+- [HTTPAppAttestBackend](https://github.com/TAP-NAP/AppAttestKit/blob/main/Sources/AppAttestKit/HTTPAppAttestBackend.swift) is the only TAPCamDemo backend adapter.
 - [DepthAnalyzerSettingsView](../../TAPCamDemo/DepthAnalysis/DepthAnalyzerSettingsView.swift) is TAPCamDemo's UI usage example, not reusable core logic.
-- [AppAttestRuntime](../../TAPCamDemo/App/AppAttestRuntime.swift) wires TAPCamDemo to the backend selected by build-time `APP_ATTEST_*` configuration.
+- [AppAttestRuntime](../../TAPCamDemo/App/AppAttestRuntime.swift) wires TAPCamDemo to the HTTPS backend selected by build-time `APP_ATTEST_BACKEND_URL`.
 
 ## Settings UI
 
 Release settings show only the App Attest `Status` row. Debug builds also show
-backend, credential, prepare, reset, and export controls, and those debug-only
-rows use a yellow background so they are easy to distinguish from Release UI.
+backend, credential, prepare, and reset controls, and those debug-only rows use
+a yellow background so they are easy to distinguish from Release UI.
 
 When the status is `Not prepared`, tapping that status row asks
 `AppAttestRuntimeController` to reset the local credential artifacts and then
@@ -52,10 +51,21 @@ use it:
 - Call `generateAssertion(credentialName:request:)` only for selected protected APIs.
 - Do not call the kit for APIs that do not need App Attest protection.
 
+## Runtime Backend Selection
+
+TAPCamDemo does not include a local App Attest backend path. The runtime reads
+only `APP_ATTEST_BACKEND_URL`, which must be an HTTPS base URL without an
+endpoint path.
+
+- Debug builds use `https://dev.tapnap.net` and `.development` App Attest metadata.
+- Release and TestFlight builds use `https://www.tapnap.net` and `.production`
+  App Attest metadata.
+- Bare IP addresses, localhost, cleartext HTTP, and endpoint URLs such as
+  `/healthz` are rejected by configuration parsing.
+
 ## Primary Documents
 
 - [ClientUsage.md](ClientUsage.md): client API and call examples.
 - [CredentialNameGuide.md](CredentialNameGuide.md): recommended caller-owned credential names.
 - [BackendContract.md](BackendContract.md): HTTP contract and server duties.
-- [LocalDebug.md](LocalDebug.md): no-server local debugging and export format.
 - [SecurityNotes.md](SecurityNotes.md): safety boundaries and non-goals.

@@ -76,18 +76,32 @@ not reset other caller-defined credential names.
 ## TAPCamDemo Settings Mapping
 
 - Release shows only App Attest `Status`.
-- Debug shows the backend, credential name, prepare, reset, and CBOR export rows.
-  These debug-only rows use a yellow background.
+- Debug shows the backend, credential name, prepare, and reset rows. These
+  debug-only rows use a yellow background.
 - `Prepare Credential` calls `prepare(credentialName:)`.
-- `Reset Local Credential` calls `reset(credentialName:)` and clears the stored
-  debug `attestationObject.cbor`.
-- `Export Attestation CBOR` exports the raw `attestationObject` returned by
-  Apple when the local debug backend is active.
+- `Reset Local Credential` calls `reset(credentialName:)` and clears the local
+  `photo_keyid` health token metadata.
 - Tapping `Not prepared` on the status row runs reset and then
   `prepare(credentialName:)`. The status row shows a spinner while this is
   running, then shows `Ready`.
 - After preparation succeeds, the settings detail row shows only the App Attest
-  `keyId`; credential name and debug CBOR availability stay out of the Release
-  status details.
+  `keyId`; credential name stays out of the Release status details.
 - Enabling Help in Settings shows the `keyId` explanation inline below the App
   Attest `Status` row.
+
+## TAPCamDemo Backend Configuration
+
+TAPCamDemo reads only `APP_ATTEST_BACKEND_URL`.
+
+- Debug: `https://dev.tapnap.net`
+- Release/TestFlight: `https://www.tapnap.net`
+
+The value must be an HTTPS base URL. Do not include `/healthz`, App Attest
+endpoint paths, a bare IP address, localhost, or cleartext HTTP.
+
+The first-launch warmup stores a local health token that binds the bundle id,
+version/build, backend URL, App Attest environment, and `photo_keyid`
+credential name. If any of those inputs change, the app resets the local
+`photo_keyid` metadata and calls `prepare(credentialName:)` so the current
+server receives a fresh registration. If the token still matches, the app may
+reuse the local credential through `prepareIfNeeded(credentialName:)`.

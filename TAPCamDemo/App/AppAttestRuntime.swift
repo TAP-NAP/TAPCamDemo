@@ -6,178 +6,143 @@
 import Foundation
 import AppAttestKit
 
-enum AppAttestBackendMode: Hashable {
-    case http(baseURL: URL)
-    case localDebug(challenge: String)
-}
-
 enum AppAttestBackendConfiguration {
-    private static let modeKey = "APP_ATTEST_BACKEND_MODE"
     private static let backendURLKey = "APP_ATTEST_BACKEND_URL"
-    private static let localChallengeKey = "APP_ATTEST_LOCAL_CHALLENGE"
 
-    static func mode(from bundle: Bundle = .main) throws -> AppAttestBackendMode {
-        try parse(
-            mode: bundle.appAttestConfigurationValue(for: modeKey),
-            backendURL: bundle.appAttestConfigurationValue(for: backendURLKey),
-            localChallenge: bundle.appAttestConfigurationValue(for: localChallengeKey)
-        )
+    static func baseURL(from bundle: Bundle = .main) throws -> URL {
+        try parse(backendURL: bundle.appAttestConfigurationValue(for: backendURLKey))
     }
 
-    static func parse(
-        mode rawMode: String?,
-        backendURL rawBackendURL: String?,
-        localChallenge rawLocalChallenge: String?
-    ) throws -> AppAttestBackendMode {
-        guard let rawMode, !rawMode.isEmpty else {
-            throw AppAttestError.invalidConfiguration("Set APP_ATTEST_BACKEND_MODE to http or localDebug.")
+    static func parse(backendURL rawBackendURL: String?) throws -> URL {
+        guard let rawBackendURL else {
+            throw AppAttestError.invalidConfiguration("Set APP_ATTEST_BACKEND_URL to an https App Attest server URL.")
         }
 
-        switch rawMode {
-        case "http":
-            guard let rawBackendURL else {
-                throw AppAttestError.invalidConfiguration(
-                    "Set APP_ATTEST_BACKEND_URL when APP_ATTEST_BACKEND_MODE is http."
-                )
-            }
-            guard let url = URL(string: rawBackendURL),
-                  url.scheme?.lowercased() == "https" else {
-                throw AppAttestError.invalidConfiguration("APP_ATTEST_BACKEND_URL must be an https URL.")
-            }
-            return .http(baseURL: url)
+        guard let components = URLComponents(string: rawBackendURL),
+              components.scheme?.lowercased() == "https",
+              let host = components.host,
+              !host.isEmpty,
+              !isUnsupportedHost(host),
+              components.path.isEmpty || components.path == "/",
+              components.query == nil,
+              components.fragment == nil,
+              let url = components.url else {
+            throw AppAttestError.invalidConfiguration("APP_ATTEST_BACKEND_URL must be an https base URL with a domain host.")
+        }
 
-        case "localDebug":
-            let challenge = rawLocalChallenge ?? AppAttestRuntimeDefaults.localDebugChallenge
-            guard Data(challenge.utf8).count >= 16 else {
-                throw AppAttestError.invalidConfiguration(
-                    "APP_ATTEST_LOCAL_CHALLENGE must be at least 16 bytes."
-                )
-            }
-            return .localDebug(challenge: challenge)
+        return url
+    }
 
-        default:
-            throw AppAttestError.invalidConfiguration("APP_ATTEST_BACKEND_MODE must be http or localDebug.")
+    private static func isUnsupportedHost(_ host: String) -> Bool {
+        let lowercasedHost = host.lowercased()
+        if lowercasedHost == "localhost" {
+            return true
+        }
+
+        if lowercasedHost.contains(":") {
+            return true
+        }
+
+        let segments = lowercasedHost.split(separator: ".")
+        guard segments.count == 4 else {
+            return false
+        }
+
+        return segments.allSatisfy { segment in
+            guard let value = Int(segment), (0...255).contains(value) else {
+                return false
+            }
+            return true
         }
     }
 }
 
 struct AppAttestRuntime {
-    let mode: AppAttestBackendMode?
     let client: any AppAttestClient
+    let backendURL: URL?
+    let environment: AppAttestEnvironment?
     let backendDescription: String
-    let debugBackend: LocalDebugAppAttestBackend?
 
     init(
-        mode: AppAttestBackendMode? = nil,
         client: any AppAttestClient,
-        backendDescription: String,
-        debugBackend: LocalDebugAppAttestBackend? = nil
+        backendURL: URL? = nil,
+        environment: AppAttestEnvironment? = nil,
+        backendDescription: String
     ) {
-        self.mode = mode
         self.client = client
+        self.backendURL = backendURL
+        self.environment = environment
         self.backendDescription = backendDescription
-        self.debugBackend = debugBackend
     }
 }
 
 enum AppAttestRuntimeFactory {
     #if DEBUG
+    static let configuredEnvironment: AppAttestEnvironment = .development
+    #else
+    static let configuredEnvironment: AppAttestEnvironment = .production
+    #endif
+
+    #if DEBUG
     static func make(
         progressHandler: (@MainActor @Sendable (String) async -> Void)? = nil
     ) throws -> AppAttestRuntime {
-        try make(mode: AppAttestBackendConfiguration.mode(), progressHandler: progressHandler)
+        try make(baseURL: AppAttestBackendConfiguration.baseURL(), progressHandler: progressHandler)
     }
 
     static func make(
-        mode: AppAttestBackendMode,
+        baseURL: URL,
         progressHandler: (@MainActor @Sendable (String) async -> Void)? = nil
     ) throws -> AppAttestRuntime {
-        switch mode {
-        case .localDebug(let challenge):
-            let backend = LocalDebugAppAttestBackend(challengeString: challenge)
-            return AppAttestRuntime(
-                mode: mode,
-                client: DefaultAppAttestClient(
-                    backend: backend,
-                    credentialStore: KeychainAppAttestCredentialStore(),
-                    deviceService: DCAppAttestDeviceService(),
-                    environment: .development,
-                    progressHandler: progressHandler
-                ),
-                backendDescription: "Local Debug Backend: \(challenge)",
-                debugBackend: backend
-            )
+        let backend = try HTTPAppAttestBackend(baseURL: baseURL)
+        let client = DefaultAppAttestClient(
+            backend: backend,
+            credentialStore: KeychainAppAttestCredentialStore(),
+            deviceService: DCAppAttestDeviceService(),
+            environment: configuredEnvironment,
+            progressHandler: progressHandler
+        )
 
-        case .http(let baseURL):
-            let backend = try HTTPAppAttestBackend(baseURL: baseURL)
-            let client = DefaultAppAttestClient(
-                backend: backend,
-                credentialStore: KeychainAppAttestCredentialStore(),
-                deviceService: DCAppAttestDeviceService(),
-                environment: .production,
-                progressHandler: progressHandler
-            )
-
-            return AppAttestRuntime(
-                mode: mode,
-                client: client,
-                backendDescription: "HTTP Backend: \(baseURL.absoluteString)",
-                debugBackend: nil
-            )
-        }
+        return AppAttestRuntime(
+            client: client,
+            backendURL: baseURL,
+            environment: configuredEnvironment,
+            backendDescription: "HTTP Backend: \(baseURL.absoluteString)"
+        )
     }
     #else
     static func make() throws -> AppAttestRuntime {
-        try make(mode: AppAttestBackendConfiguration.mode())
+        try make(baseURL: AppAttestBackendConfiguration.baseURL())
     }
 
-    static func make(mode: AppAttestBackendMode) throws -> AppAttestRuntime {
-        switch mode {
-        case .localDebug(let challenge):
-            let backend = LocalDebugAppAttestBackend(challengeString: challenge)
-            return AppAttestRuntime(
-                mode: mode,
-                client: DefaultAppAttestClient(
-                    backend: backend,
-                    credentialStore: KeychainAppAttestCredentialStore(),
-                    deviceService: DCAppAttestDeviceService(),
-                    environment: .development
-                ),
-                backendDescription: "Local Debug Backend: \(challenge)",
-                debugBackend: backend
-            )
+    static func make(baseURL: URL) throws -> AppAttestRuntime {
+        let backend = try HTTPAppAttestBackend(baseURL: baseURL)
+        let client = DefaultAppAttestClient(
+            backend: backend,
+            credentialStore: KeychainAppAttestCredentialStore(),
+            deviceService: DCAppAttestDeviceService(),
+            environment: configuredEnvironment
+        )
 
-        case .http(let baseURL):
-            let backend = try HTTPAppAttestBackend(baseURL: baseURL)
-            let client = DefaultAppAttestClient(
-                backend: backend,
-                credentialStore: KeychainAppAttestCredentialStore(),
-                deviceService: DCAppAttestDeviceService(),
-                environment: .production
-            )
-
-            return AppAttestRuntime(
-                mode: mode,
-                client: client,
-                backendDescription: "HTTP Backend: \(baseURL.absoluteString)"
-            )
-        }
+        return AppAttestRuntime(
+            client: client,
+            backendURL: baseURL,
+            environment: configuredEnvironment,
+            backendDescription: "HTTP Backend: \(baseURL.absoluteString)"
+        )
     }
     #endif
 
     static func fallbackRuntime(error: Error) -> AppAttestRuntime {
         AppAttestRuntime(
-            mode: nil,
             client: UnavailableAppAttestClient(error: error),
-            backendDescription: "Configuration error: \(error.localizedDescription)",
-            debugBackend: nil
+            backendDescription: "Configuration error: \(error.localizedDescription)"
         )
     }
 }
 
 enum AppAttestRuntimeDefaults {
     static let photoCredentialName = "photo_keyid"
-    static let localDebugChallenge = "TapTapNapNap123123"
 }
 
 private actor UnavailableAppAttestClient: AppAttestClient {

@@ -9,7 +9,6 @@
 import CoreLocation
 import Photos
 import SwiftUI
-import UniformTypeIdentifiers
 
 enum DepthAnalyzerPreferences {
     static let showsAnalysisHelpKey = "DepthAnalyzerShowsAnalysisHelp"
@@ -27,10 +26,6 @@ struct DepthAnalyzerSettingsView: View {
     private var shutterHapticsEnabled = CameraFeedbackPreferences.defaultShutterHapticsEnabled
     @AppStorage(CameraFeedbackPreferences.shutterSoundEnabledKey)
     private var shutterSoundEnabled = CameraFeedbackPreferences.defaultShutterSoundEnabled
-    #if DEBUG
-    @State private var attestationObjectDocument: AppAttestCBORDocument?
-    @State private var isAttestationExporterPresented = false
-    #endif
 
     init(
         snapshot: DepthAnalyzerAuthorizationSnapshot = .current(),
@@ -128,13 +123,6 @@ struct DepthAnalyzerSettingsView: View {
                     .disabled(appAttestController.isWorking)
                     .listRowBackground(Self.debugOnlyAppAttestBackground)
 
-                    Button {
-                        exportAttestationCBOR()
-                    } label: {
-                        Label("Export Attestation CBOR", systemImage: "square.and.arrow.down")
-                    }
-                    .disabled(appAttestController.isWorking)
-                    .listRowBackground(Self.debugOnlyAppAttestBackground)
                 }
                 #endif
             }
@@ -148,16 +136,6 @@ struct DepthAnalyzerSettingsView: View {
                 }
             }
         }
-        #if DEBUG
-        .fileExporter(
-            isPresented: $isAttestationExporterPresented,
-            document: attestationObjectDocument,
-            contentType: .data,
-            defaultFilename: "attestationObject.cbor"
-        ) { result in
-            appAttestController.handleAttestationExportResult(result)
-        }
-        #endif
     }
 
     private var appAttestStatusRow: some View {
@@ -197,16 +175,6 @@ struct DepthAnalyzerSettingsView: View {
         "The app uses that key to generate request assertions, and the backend uses the KeyID to find the registered credential for verification."
 
     #if DEBUG
-    private func exportAttestationCBOR() {
-        Task {
-            guard let data = await appAttestController.attestationObjectForExport() else {
-                return
-            }
-            attestationObjectDocument = AppAttestCBORDocument(data: data)
-            isAttestationExporterPresented = true
-        }
-    }
-
     private static let debugOnlyAppAttestBackground = Color.yellow.opacity(0.30)
     #endif
 }

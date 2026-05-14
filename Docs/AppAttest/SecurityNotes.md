@@ -5,7 +5,7 @@ Source links:
 - [DefaultAppAttestClient](https://github.com/TAP-NAP/AppAttestKit/blob/main/Sources/AppAttestKit/DefaultAppAttestClient.swift)
 - [Keychain credential store](https://github.com/TAP-NAP/AppAttestKit/blob/main/Sources/AppAttestKit/KeychainAppAttestCredentialStore.swift)
 - [Error model](https://github.com/TAP-NAP/AppAttestKit/blob/main/Sources/AppAttestKit/AppAttestError.swift)
-- [HTTP release localhost guard](https://github.com/TAP-NAP/AppAttestKit/blob/main/Sources/AppAttestKit/HTTPAppAttestBackend.swift)
+- [HTTP backend adapter](https://github.com/TAP-NAP/AppAttestKit/blob/main/Sources/AppAttestKit/HTTPAppAttestBackend.swift)
 
 ## What The Client Can Trust
 
@@ -13,7 +13,10 @@ The client can call Apple App Attest APIs and generate local key handles,
 attestation objects, and assertion objects. It cannot decide that an attestation
 is trustworthy by itself.
 
-The backend must validate attestation and assertion results.
+The backend must validate attestation results before accepting registration.
+The current TAPCamDemo mainline also sends assertion challenges and lets the
+client generate assertion envelopes; backend assertion verification is a
+server-side rollout step, not a client-side trust shortcut.
 
 ## Why Keychain Stores keyId
 
@@ -57,8 +60,10 @@ nonce so an assertion for one request cannot be replayed as another request.
 `AppAttestError.unsupportedDevice`; the app and backend must decide whether to
 degrade, retry later, or block the action.
 
-## Local Debug Is Not Security
+## Server Backend Only
 
-`LocalDebugAppAttestBackend` is for object generation and export only. It does
-not replace server validation. Release builds may use it only for explicit local
-QA, never as a production trust decision.
+TAPCamDemo only connects to HTTPS App Attest server base URLs. Debug builds use
+the development server and development App Attest metadata; Release and
+TestFlight builds use the production server and production metadata. Local
+debug backends, bare IP URLs, localhost URLs, cleartext HTTP, and endpoint paths
+are not supported runtime configuration.

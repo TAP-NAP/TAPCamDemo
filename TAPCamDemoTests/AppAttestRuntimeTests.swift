@@ -14,16 +14,57 @@ struct AppAttestRuntimeTests {
         #expect(AppAttestRuntimeDefaults.photoCredentialName == "photo_keyid")
     }
 
-    @Test @MainActor func resetLocalCredentialClearsStoredAttestationObjectWhenResetFails() async throws {
-        let storedAttestationObject = Data([0xA1, 0x01, 0x02])
-        let temporaryDirectory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("TAPCamDemoTests.AppAttest.\(UUID().uuidString)", isDirectory: true)
-        let attestationObjectStore = AppAttestAttestationObjectStore(baseDirectoryURL: temporaryDirectory)
-        try attestationObjectStore.save(storedAttestationObject)
-        defer {
-            try? FileManager.default.removeItem(at: temporaryDirectory)
-        }
+    @Test func backendConfigurationParsesHTTPSURL() throws {
+        let baseURL = try AppAttestBackendConfiguration.parse(
+            backendURL: "https://www.tapnap.net"
+        )
 
+        #expect(baseURL.absoluteString == "https://www.tapnap.net")
+    }
+
+    @Test func backendConfigurationParsesDebugHTTPSURL() throws {
+        let baseURL = try AppAttestBackendConfiguration.parse(
+            backendURL: "https://dev.tapnap.net"
+        )
+
+        #expect(baseURL.absoluteString == "https://dev.tapnap.net")
+    }
+
+    @Test func backendConfigurationRejectsMissingURL() {
+        #expect(throws: (any Error).self) {
+            try AppAttestBackendConfiguration.parse(backendURL: nil)
+        }
+    }
+
+    @Test func backendConfigurationRejectsNonHTTPSURL() {
+        #expect(throws: (any Error).self) {
+            try AppAttestBackendConfiguration.parse(
+                backendURL: "http://example.com"
+            )
+        }
+    }
+
+    @Test func backendConfigurationRejectsEndpointPath() {
+        #expect(throws: (any Error).self) {
+            try AppAttestBackendConfiguration.parse(
+                backendURL: "https://www.tapnap.net/healthz"
+            )
+        }
+    }
+
+    #if DEBUG
+    @Test func debugRuntimeUsesDevelopmentEnvironment() throws {
+        let runtime = try AppAttestRuntimeFactory.make(
+            baseURL: try #require(URL(string: "https://dev.tapnap.net"))
+        )
+
+        #expect(runtime.backendURL?.absoluteString == "https://dev.tapnap.net")
+        #expect(runtime.environment == .development)
+        #expect(runtime.backendDescription == "HTTP Backend: https://dev.tapnap.net")
+    }
+    #endif
+
+    @Test @MainActor func resetLocalCredentialReportsResetFailure() async throws {
         let runtime = AppAttestRuntime(
             client: ResetFailingAppAttestClient(),
             backendDescription: "Reset Failing Backend"
@@ -36,25 +77,14 @@ struct AppAttestRuntimeTests {
 
         let controller = AppAttestRuntimeController(
             runtime: runtime,
-            userDefaults: userDefaults,
-            attestationObjectStore: attestationObjectStore
+            userDefaults: userDefaults
         )
         await controller.resetLocalCredential()
 
-        #expect((try? attestationObjectStore.load()) == nil)
-        #expect(controller.credentialStatusText.contains("Cleared stored attestationObject.cbor"))
+        #expect(controller.credentialStatusText.contains("Reset photo_keyid failed"))
     }
 
     @Test @MainActor func resetAndPrepareCredentialResetsThenPreparesWhenNotPrepared() async throws {
-        let storedAttestationObject = Data([0xA1, 0x01, 0x02])
-        let temporaryDirectory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("TAPCamDemoTests.AppAttest.\(UUID().uuidString)", isDirectory: true)
-        let attestationObjectStore = AppAttestAttestationObjectStore(baseDirectoryURL: temporaryDirectory)
-        try attestationObjectStore.save(storedAttestationObject)
-        defer {
-            try? FileManager.default.removeItem(at: temporaryDirectory)
-        }
-
         let client = RecordingAppAttestClient(prepareKeyID: "prepared-key-id")
         let runtime = AppAttestRuntime(
             client: client,
@@ -68,8 +98,7 @@ struct AppAttestRuntimeTests {
 
         let controller = AppAttestRuntimeController(
             runtime: runtime,
-            userDefaults: userDefaults,
-            attestationObjectStore: attestationObjectStore
+            userDefaults: userDefaults
         )
 
         #expect(controller.canResetAndPrepareCredential)
@@ -80,21 +109,22 @@ struct AppAttestRuntimeTests {
             "reset:\(AppAttestRuntimeDefaults.photoCredentialName)",
             "prepare:\(AppAttestRuntimeDefaults.photoCredentialName)"
         ])
-        #expect((try? attestationObjectStore.load()) == nil)
         #expect(controller.credentialStatusText == "Ready")
         #expect(controller.credentialKeyIdText == "prepared-key-id")
         #expect(!controller.isPreparingCredential)
         #expect(!controller.canResetAndPrepareCredential)
     }
 
-    @Test @MainActor func startupRechecksPhotoCredentialWhenAutoPrepareWasPreviouslyMarkedDone() async throws {
+    @Test @MainActor func startupRegistersFreshCredentialWhenHealthTokenChanges() async throws {
         let client = RecordingAppAttestClient(
-            prepareIfNeededKeyID: "healthy-key-id",
+            prepareKeyID: "server-registered-key-id",
             assertionMode: .healthy
         )
         let runtime = AppAttestRuntime(
             client: client,
-            backendDescription: "Health Checking Backend"
+            backendURL: try #require(URL(string: "https://www.tapnap.net")),
+            environment: .production,
+            backendDescription: "HTTP Backend: https://www.tapnap.net"
         )
         let suiteName = "TAPCamDemoTests.AppAttest.\(UUID().uuidString)"
         let userDefaults = try #require(UserDefaults(suiteName: suiteName))
@@ -102,20 +132,85 @@ struct AppAttestRuntimeTests {
             userDefaults.removePersistentDomain(forName: suiteName)
         }
         userDefaults.set(true, forKey: "TAPCamDemo.AppAttest.didAutoPreparePhotoCredential")
+        userDefaults.set("stale-token", forKey: "TAPCamDemo.AppAttest.credentialHealthCheckToken")
 
         let controller = AppAttestRuntimeController(
             runtime: runtime,
             userDefaults: userDefaults
         )
 
-        await controller.preparePhotoCredentialAfterFirstInstallLaunch()
+        let didPrepare = await controller.preparePhotoCredentialAfterFirstInstallLaunch()
 
+        #expect(didPrepare)
         #expect(await client.operations() == [
-            "prepareIfNeeded:\(AppAttestRuntimeDefaults.photoCredentialName)",
+            "reset:\(AppAttestRuntimeDefaults.photoCredentialName)",
+            "prepare:\(AppAttestRuntimeDefaults.photoCredentialName)",
             "generateAssertion:\(AppAttestRuntimeDefaults.photoCredentialName):/tapcam/app-attest/credential-health"
         ])
         #expect(controller.credentialStatusText == "Ready")
-        #expect(controller.credentialKeyIdText == "healthy-key-id")
+        #expect(controller.credentialKeyIdText == "server-registered-key-id")
+    }
+
+    @Test @MainActor func startupReusesCredentialWhenHealthTokenMatches() async throws {
+        let client = RecordingAppAttestClient(
+            prepareIfNeededKeyID: "existing-key-id"
+        )
+        let runtime = AppAttestRuntime(
+            client: client,
+            backendURL: try #require(URL(string: "https://www.tapnap.net")),
+            environment: .production,
+            backendDescription: "HTTP Backend: https://www.tapnap.net"
+        )
+        let suiteName = "TAPCamDemoTests.AppAttest.\(UUID().uuidString)"
+        let userDefaults = try #require(UserDefaults(suiteName: suiteName))
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+        let token = AppAttestRuntimeController.currentCredentialHealthCheckToken(runtime: runtime)
+        userDefaults.set(true, forKey: "TAPCamDemo.AppAttest.didAutoPreparePhotoCredential")
+        userDefaults.set(token, forKey: "TAPCamDemo.AppAttest.credentialHealthCheckToken")
+
+        let controller = AppAttestRuntimeController(
+            runtime: runtime,
+            userDefaults: userDefaults
+        )
+
+        let didPrepare = await controller.preparePhotoCredentialAfterFirstInstallLaunch()
+
+        #expect(didPrepare)
+        #expect(await client.operations() == [
+            "prepareIfNeeded:\(AppAttestRuntimeDefaults.photoCredentialName)"
+        ])
+        #expect(controller.credentialStatusText == "Ready")
+        #expect(controller.credentialKeyIdText == "existing-key-id")
+    }
+
+    @Test @MainActor func startupReportsFailureWhenFreshPrepareFails() async throws {
+        let client = RecordingAppAttestClient()
+        let runtime = AppAttestRuntime(
+            client: client,
+            backendURL: try #require(URL(string: "https://www.tapnap.net")),
+            environment: .production,
+            backendDescription: "HTTP Backend: https://www.tapnap.net"
+        )
+        let suiteName = "TAPCamDemoTests.AppAttest.\(UUID().uuidString)"
+        let userDefaults = try #require(UserDefaults(suiteName: suiteName))
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let controller = AppAttestRuntimeController(
+            runtime: runtime,
+            userDefaults: userDefaults
+        )
+
+        let didPrepare = await controller.preparePhotoCredentialAfterFirstInstallLaunch()
+
+        #expect(!didPrepare)
+        #expect(await client.operations() == [
+            "reset:\(AppAttestRuntimeDefaults.photoCredentialName)"
+        ])
+        #expect(controller.credentialStatusText.contains("Prepare credential failed"))
     }
 
     @Test @MainActor func manualPrepareUsesPrepareIfNeededToAvoidKeyRotation() async throws {
@@ -145,111 +240,6 @@ struct AppAttestRuntimeTests {
         #expect(controller.credentialStatusText == "Ready")
         #expect(controller.credentialKeyIdText == "prepared-if-needed-key-id")
     }
-
-    @Test @MainActor func startupHealthCheckResetsAndPreparesWhenSavedKeyIsInvalid() async throws {
-        let client = RecordingAppAttestClient(
-            prepareIfNeededKeyID: "healthy-key-id",
-            assertionMode: .invalidUntilReset
-        )
-        let runtime = AppAttestRuntime(
-            client: client,
-            backendDescription: "Invalid Then Healthy Backend"
-        )
-        let suiteName = "TAPCamDemoTests.AppAttest.\(UUID().uuidString)"
-        let userDefaults = try #require(UserDefaults(suiteName: suiteName))
-        defer {
-            userDefaults.removePersistentDomain(forName: suiteName)
-        }
-
-        let controller = AppAttestRuntimeController(
-            runtime: runtime,
-            userDefaults: userDefaults
-        )
-
-        await controller.preparePhotoCredentialAfterFirstInstallLaunch()
-
-        #expect(await client.operations() == [
-            "prepareIfNeeded:\(AppAttestRuntimeDefaults.photoCredentialName)",
-            "generateAssertion:\(AppAttestRuntimeDefaults.photoCredentialName):/tapcam/app-attest/credential-health",
-            "reset:\(AppAttestRuntimeDefaults.photoCredentialName)",
-            "prepareIfNeeded:\(AppAttestRuntimeDefaults.photoCredentialName)",
-            "generateAssertion:\(AppAttestRuntimeDefaults.photoCredentialName):/tapcam/app-attest/credential-health"
-        ])
-        #expect(controller.credentialStatusText == "Ready")
-        #expect(controller.credentialKeyIdText == "healthy-key-id")
-    }
-
-    #if DEBUG
-    @Test @MainActor func debugRuntimeUsesLocalDebugBackendWithSharedChallenge() async throws {
-        let runtime = try AppAttestRuntimeFactory.make(
-            mode: .localDebug(challenge: AppAttestRuntimeDefaults.localDebugChallenge)
-        )
-
-        #expect(runtime.backendDescription == "Local Debug Backend: TapTapNapNap123123")
-        #expect(runtime.debugBackend != nil)
-
-        let attestationChallenge = try await runtime.debugBackend?.requestChallenge(
-            AppAttestChallengeRequest(purpose: .attestation, credentialName: "demo-attestation")
-        )
-        let assertionChallenge = try await runtime.debugBackend?.requestChallenge(
-            AppAttestChallengeRequest(purpose: .assertion, credentialName: "demo-assertion")
-        )
-
-        #expect(attestationChallenge?.challengeId == "TapTapNapNap123123")
-        #expect(String(data: attestationChallenge?.challenge ?? Data(), encoding: .utf8) == "TapTapNapNap123123")
-        #expect(assertionChallenge?.challengeId == "TapTapNapNap123123")
-        #expect(String(data: assertionChallenge?.challenge ?? Data(), encoding: .utf8) == "TapTapNapNap123123")
-    }
-    #endif
-
-    @Test func backendConfigurationParsesDefaultLocalDebugMode() throws {
-        let mode = try AppAttestBackendConfiguration.parse(
-            mode: "localDebug",
-            backendURL: nil,
-            localChallenge: nil
-        )
-
-        guard case .localDebug(let challenge) = mode else {
-            Issue.record("Expected local debug backend mode.")
-            return
-        }
-        #expect(challenge == "TapTapNapNap123123")
-    }
-
-    @Test func backendConfigurationParsesHTTPMode() throws {
-        let mode = try AppAttestBackendConfiguration.parse(
-            mode: "http",
-            backendURL: "https://api.example.com",
-            localChallenge: nil
-        )
-
-        guard case .http(let baseURL) = mode else {
-            Issue.record("Expected HTTP backend mode.")
-            return
-        }
-        #expect(baseURL.absoluteString == "https://api.example.com")
-    }
-
-    @Test func backendConfigurationRejectsHTTPModeWithoutURL() {
-        #expect(throws: (any Error).self) {
-            try AppAttestBackendConfiguration.parse(
-                mode: "http",
-                backendURL: nil,
-                localChallenge: nil
-            )
-        }
-    }
-
-    @Test func backendConfigurationRejectsShortLocalDebugChallenge() {
-        #expect(throws: (any Error).self) {
-            try AppAttestBackendConfiguration.parse(
-                mode: "localDebug",
-                backendURL: nil,
-                localChallenge: "short"
-            )
-        }
-    }
-
 }
 
 private enum AppAttestRuntimeTestError: Error {
@@ -286,14 +276,13 @@ private actor RecordingAppAttestClient: AppAttestClient {
     enum AssertionMode {
         case unused
         case healthy
-        case invalidUntilReset
     }
 
     private let prepareKeyID: String?
     private let prepareIfNeededKeyID: String?
     private let assertionMode: AssertionMode
     private var operationLog: [String] = []
-    private var didReset = false
+    private var currentKeyID: String?
 
     init(
         prepareKeyID: String? = nil,
@@ -314,6 +303,7 @@ private actor RecordingAppAttestClient: AppAttestClient {
             throw AppAttestRuntimeTestError.unused
         }
         operationLog.append("prepare:\(credentialName)")
+        currentKeyID = prepareKeyID
         return credential(credentialName: credentialName, keyID: prepareKeyID)
     }
 
@@ -322,10 +312,8 @@ private actor RecordingAppAttestClient: AppAttestClient {
             throw AppAttestRuntimeTestError.unused
         }
         operationLog.append("prepareIfNeeded:\(credentialName)")
-        let keyID = assertionMode == .invalidUntilReset && !didReset
-            ? "stale-key-id"
-            : prepareIfNeededKeyID
-        return credential(credentialName: credentialName, keyID: keyID)
+        currentKeyID = prepareIfNeededKeyID
+        return credential(credentialName: credentialName, keyID: prepareIfNeededKeyID)
     }
 
     func generateAssertion(
@@ -334,17 +322,14 @@ private actor RecordingAppAttestClient: AppAttestClient {
     ) async throws -> AppAttestAssertionEnvelope {
         operationLog.append("generateAssertion:\(credentialName):\(request.path)")
 
-        if assertionMode == .invalidUntilReset && !didReset {
-            throw NSError(domain: "com.apple.devicecheck.error", code: 3)
-        }
-        guard assertionMode != .unused,
-              let prepareIfNeededKeyID else {
+        guard assertionMode == .healthy,
+              let currentKeyID else {
             throw AppAttestRuntimeTestError.unused
         }
 
         return try makeTestAssertionEnvelope(
             credentialName: credentialName,
-            keyId: prepareIfNeededKeyID,
+            keyId: currentKeyID,
             request: request
         )
     }
@@ -355,7 +340,7 @@ private actor RecordingAppAttestClient: AppAttestClient {
 
     func reset(credentialName: String) async throws {
         operationLog.append("reset:\(credentialName)")
-        didReset = true
+        currentKeyID = nil
     }
 
     private func credential(credentialName: String, keyID: String) -> AppAttestCredential {
