@@ -245,32 +245,99 @@ struct TAPCamDemoTests {
     @Test func appAttestCaptureAssertionSignerBuildsProofValue() async throws {
         let digest = Self.sampleContentDigest()
         let client = SucceedingAssertionAppAttestClient()
-        let signer = AppAttestCaptureAssertionSigner(client: client)
+        let deviceService = RecordingCaptureAssertionDeviceService()
+        let signer = AppAttestCaptureAssertionSigner(client: client, deviceService: deviceService)
         let assertionProof = try await signer.sign(contentDigest: digest)
 
         let proof = assertionProof.proof
         #expect(assertionProof.keyID == "test-key-id")
         #expect(proof.type == "appAttestAssertion")
-        #expect(proof.algorithm == "AppAttestKit.AppAttestAssertionEnvelope.v1")
+        #expect(proof.algorithm == "TAPCam.AppAttestCaptureSignature.v1")
         #expect(proof.keyID == "test-key-id")
         #expect(proof.createdAt == digest.capturedAt)
 
         let encodedValue = try #require(proof.value)
         let proofValueData = try AppAttestBase64URL.decode(encodedValue, field: "proof.value")
         let proofValue = try JSONDecoder().decode(CaptureAssertionProofValue.self, from: proofValueData)
+        let proofValueJSON = try #require(String(data: proofValueData, encoding: .utf8))
         let expectedBodyHash = Data(SHA256.hash(data: try digest.canonicalJSONData())).appAttestBase64URL
+        let expectedSigningBinding = CaptureSigningBinding(
+            bodySHA256: expectedBodyHash,
+            captureID: "sample-capture"
+        )
+        let signingBindingData = try expectedSigningBinding.canonicalJSONData()
+        let signingBindingJSON = try #require(String(data: signingBindingData, encoding: .utf8))
+        let expectedClientDataHash = Data(SHA256.hash(data: signingBindingData))
 
         #expect(proofValue.contentDigest == digest)
-        #expect(proofValue.assertionEnvelope.credentialName == AppAttestRuntimeDefaults.photoCredentialName)
-        #expect(proofValue.assertionEnvelope.keyId == "test-key-id")
-        #expect(proofValue.assertionEnvelope.requestBinding.method == "POST")
-        #expect(proofValue.assertionEnvelope.requestBinding.path == "/tapcam/captures/sample-capture/assertion")
-        #expect(proofValue.assertionEnvelope.requestBinding.nonce == "sample-capture")
-        #expect(proofValue.assertionEnvelope.requestBinding.bodySHA256 == expectedBodyHash)
+        #expect(proofValue.keyId == "test-key-id")
+        #expect(proofValue.assertionObject == Data([0xA1, 0x01]).appAttestBase64URL)
+        #expect(proofValue.signingBinding == expectedSigningBinding)
+        #expect(
+            signingBindingJSON == #"{"bodySHA256":"\#(expectedBodyHash)","captureID":"sample-capture","operation":"tapcam.capture.sign","schemaID":"urn:tapnap:tapcam:app-attest-capture-signing:v1"}"#
+        )
+        #expect(!proofValueJSON.contains("challengeId"))
+        #expect(!proofValueJSON.contains("requestBinding"))
+        #expect(!proofValueJSON.contains("challengeSHA256"))
         #expect(await client.operations() == [
-            "prepareIfNeeded:\(AppAttestRuntimeDefaults.photoCredentialName)",
-            "generateAssertion:\(AppAttestRuntimeDefaults.photoCredentialName)"
+            "prepareIfNeeded:\(AppAttestRuntimeDefaults.photoCredentialName)"
         ])
+
+        let assertionCalls = await deviceService.generateAssertionCalls()
+        #expect(assertionCalls == [
+            CaptureAssertionDeviceServiceCall(
+                keyId: "test-key-id",
+                clientDataHash: expectedClientDataHash
+            )
+        ])
+    }
+
+    @Test func appAttestCaptureSignatureVerifyEndpointAcceptsDetachedProofWhenEnabled() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["TAPCAM_CAPTURE_SIGNATURE_VERIFY_TEST"] == "1" else {
+            return
+        }
+
+        #if targetEnvironment(simulator)
+        return
+        #else
+        let rawBaseURL = try #require(environment["TAPCAM_CAPTURE_SIGNATURE_VERIFY_BASE_URL"])
+        let baseURL = try AppAttestBackendConfiguration.parse(backendURL: rawBaseURL)
+        let runtime = try AppAttestRuntimeFactory.make(baseURL: baseURL)
+        let signer = AppAttestCaptureAssertionSigner(client: runtime.client)
+        let assertionProof = try await signer.sign(contentDigest: Self.sampleContentDigest())
+        let encodedValue = try #require(assertionProof.proof.value)
+        let proofValueData = try AppAttestBase64URL.decode(encodedValue, field: "proof.value")
+        let proofValue = try JSONDecoder().decode(CaptureAssertionProofValue.self, from: proofValueData)
+        let expectedSigningBindingSHA256 = Data(
+            SHA256.hash(data: try proofValue.signingBinding.canonicalJSONData())
+        ).appAttestBase64URL
+
+        var request = URLRequest(url: baseURL
+            .appendingPathComponent("tapcam")
+            .appendingPathComponent("capture-signatures")
+            .appendingPathComponent("verify"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.httpBody = try JSONEncoder.tapCaptureCanonical.encode(
+            CaptureSignatureVerifyPayload(
+                keyId: proofValue.keyId,
+                assertionObject: proofValue.assertionObject,
+                signingBinding: proofValue.signingBinding
+            )
+        )
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let httpResponse = try #require(response as? HTTPURLResponse)
+        #expect((200..<300).contains(httpResponse.statusCode))
+
+        let result = try JSONDecoder().decode(CaptureSignatureVerifyResult.self, from: data)
+        #expect(result.status == "valid")
+        #expect(result.keyId == proofValue.keyId)
+        #expect(result.signingBindingSHA256 == expectedSigningBindingSHA256)
+        #expect(result.reason == nil)
+        #endif
     }
 
     @Test func unsignedCaptureManifestKeepsProofsEmptyWhenSignerIsMissing() async throws {
@@ -1266,31 +1333,7 @@ private actor SucceedingAssertionAppAttestClient: AppAttestClient {
         credentialName: String,
         request: AppAttestProtectedRequest
     ) async throws -> AppAttestAssertionEnvelope {
-        operationLog.append("generateAssertion:\(credentialName)")
-        let bodySHA256 = Data(SHA256.hash(data: request.body ?? Data())).appAttestBase64URL
-        let challengeSHA256 = Data(SHA256.hash(data: Data("test-challenge".utf8))).appAttestBase64URL
-        let bindingJSON = """
-        {
-          "bodySHA256": "\(bodySHA256)",
-          "challengeSHA256": "\(challengeSHA256)",
-          "method": "\(request.method.uppercased())",
-          "nonce": "\(request.nonce ?? "")",
-          "path": "\(request.path)",
-          "query": []
-        }
-        """
-        let requestBinding = try JSONDecoder().decode(
-            AppAttestRequestBinding.self,
-            from: Data(bindingJSON.utf8)
-        )
-
-        return AppAttestAssertionEnvelope(
-            credentialName: credentialName,
-            keyId: "test-key-id",
-            challengeId: "test-challenge",
-            assertionObject: Data([0xA1, 0x01]),
-            requestBinding: requestBinding
-        )
+        throw CaptureAssertionTestError.unused
     }
 
     func status(credentialName: String) async throws -> AppAttestCredentialStatus {
@@ -1299,5 +1342,46 @@ private actor SucceedingAssertionAppAttestClient: AppAttestClient {
 
     func reset(credentialName: String) async throws {
         throw CaptureAssertionTestError.unused
+    }
+}
+
+private struct CaptureAssertionDeviceServiceCall: Equatable, Sendable {
+    let keyId: String
+    let clientDataHash: Data
+}
+
+private struct CaptureSignatureVerifyPayload: Encodable {
+    let keyId: String
+    let assertionObject: String
+    let signingBinding: CaptureSigningBinding
+}
+
+private struct CaptureSignatureVerifyResult: Decodable {
+    let status: String
+    let keyId: String
+    let signingBindingSHA256: String
+    let reason: String?
+}
+
+private actor RecordingCaptureAssertionDeviceService: AppAttestDeviceService {
+    nonisolated let isSupported = true
+
+    private var calls: [CaptureAssertionDeviceServiceCall] = []
+
+    func generateAssertionCalls() -> [CaptureAssertionDeviceServiceCall] {
+        calls
+    }
+
+    func generateKey() async throws -> String {
+        throw CaptureAssertionTestError.unused
+    }
+
+    func attestKey(_ keyId: String, clientDataHash: Data) async throws -> Data {
+        throw CaptureAssertionTestError.unused
+    }
+
+    func generateAssertion(_ keyId: String, clientDataHash: Data) async throws -> Data {
+        calls.append(CaptureAssertionDeviceServiceCall(keyId: keyId, clientDataHash: clientDataHash))
+        return Data([0xA1, 0x01])
     }
 }

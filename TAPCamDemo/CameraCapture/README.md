@@ -303,17 +303,18 @@ let finalHEICData = try TAPDepthHEICWriter.injectingManifest(manifest, into: bas
 [View in Source](x-source-tag://PackageEmbeddedDepthHEIC)
 
 The proof is added later by `TAPPendingCaptureProcessor`. It reads the staged
-HEIC, recomputes the RGB/depth/metadata digest, obtains an App Attest assertion,
-injects `manifest.proofs[0]`, then exports the signed HEIC into the
-`TAPCamDepth` Photos album. See [PACKAGING.md](Documentation/PACKAGING.md) for
-the verification format. RGB and depth digest bytes are streamed into CryptoKit
-SHA-256 to avoid extra full-image `Data` copies. A possible future optimization
-is to compare `AVCapturePhoto.cgImageRepresentation()` against the saved-HEIC
-decode path, but the production signer keeps hashing from the flattened base
-HEIC so third-party verification can reproduce the RGB digest from the saved
-artifact. Debug metrics split this packaging work into manifest, base HEIC,
-XMP injection, and XMP verification timings. Digest and App Attest work now
-belongs to the async pending processor, not the shutter-time capture-write job.
+HEIC, recomputes the RGB/depth/metadata digest, creates a detached App Attest
+capture signature, injects `manifest.proofs[0]`, then exports the signed HEIC
+into the `TAPCamDepth` Photos album. See
+[PACKAGING.md](Documentation/PACKAGING.md) for the verification format. RGB and
+depth digest bytes are streamed into CryptoKit SHA-256 to avoid extra full-image
+`Data` copies. A possible future optimization is to compare
+`AVCapturePhoto.cgImageRepresentation()` against the saved-HEIC decode path,
+but the production signer keeps hashing from the flattened base HEIC so
+third-party verification can reproduce the RGB digest from the saved artifact.
+Debug metrics split this packaging work into manifest, base HEIC, XMP
+injection, and XMP verification timings. Digest and App Attest work now belongs
+to the async pending processor, not the shutter-time capture-write job.
 
 ## Build and Inject the TAP Manifest
 

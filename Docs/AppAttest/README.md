@@ -51,6 +51,12 @@ use it:
 - Call `generateAssertion(credentialName:request:)` only for selected protected APIs.
 - Do not call the kit for APIs that do not need App Attest protection.
 
+TAPCam HEIC capture signing is a narrower app-specific path: the app reuses the
+registered `photo_keyid` credential, builds a capture `signingBinding`, and
+writes the App Attest assertion into the HEIC proof. It does not use
+`generateAssertion(credentialName:request:)` because capture signing is not an
+online protected API request and does not use an assertion challenge.
+
 ## Runtime Backend Selection
 
 TAPCamDemo does not include a local App Attest backend path. The runtime reads

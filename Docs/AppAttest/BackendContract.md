@@ -90,3 +90,41 @@ The server verifies the assertion signature with the registered public key,
 checks the sign counter, confirms the challenge is valid and unused, confirms
 the credential name matches the registered key, and recomputes the request
 binding.
+
+## TAPCam Capture Signature Verification
+
+TAPCam HEIC capture signing is not sent automatically after capture. The proof
+is embedded in the HEIC manifest so a later verifier can submit the signature
+materials to the server:
+
+`POST /tapcam/capture-signatures/verify`
+
+Request:
+
+```json
+{
+  "keyId": "apple-key-id",
+  "assertionObject": "base64url-assertion-object",
+  "signingBinding": {
+    "bodySHA256": "base64url-sha256-content-digest",
+    "captureID": "capture-id",
+    "operation": "tapcam.capture.sign",
+    "schemaID": "urn:tapnap:tapcam:app-attest-capture-signing:v1"
+  }
+}
+```
+
+Valid response:
+
+```json
+{
+  "status": "valid",
+  "keyId": "canonical-key-id",
+  "signingBindingSHA256": "base64url-sha256-signing-binding"
+}
+```
+
+Invalid semantic verification returns HTTP 200 with `status: "invalid"` and a
+machine-readable `reason`. This endpoint verifies that a registered active
+`keyId` signed the submitted `signingBinding`; it does not upload or re-hash
+the original HEIC, RGB image, depth data, or `contentDigest`.

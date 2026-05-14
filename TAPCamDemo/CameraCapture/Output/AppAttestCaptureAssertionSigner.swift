@@ -4,6 +4,7 @@
 //
 
 import AppAttestKit
+import CryptoKit
 import Foundation
 
 nonisolated protocol CaptureAssertionSigning: Sendable {
@@ -19,82 +20,95 @@ nonisolated struct CaptureAssertionProof: Equatable, Sendable {
 
 nonisolated struct AppAttestCaptureAssertionSigner: CaptureAssertionSigning {
     private let client: any AppAttestClient
+    private let deviceService: any AppAttestDeviceService
 
-    init(client: any AppAttestClient) {
+    init(
+        client: any AppAttestClient,
+        deviceService: any AppAttestDeviceService = DCAppAttestDeviceService()
+    ) {
         self.client = client
+        self.deviceService = deviceService
     }
 
     func sign(
         contentDigest: CaptureContentDigest
     ) async throws -> CaptureAssertionProof {
-        let body = try contentDigest.canonicalJSONData()
-        let request = AppAttestProtectedRequest(
-            method: "POST",
-            path: "/tapcam/captures/\(contentDigest.captureID)/assertion",
-            body: body,
-            nonce: contentDigest.captureID
-        )
+        guard deviceService.isSupported else {
+            throw AppAttestError.unsupportedDevice
+        }
 
-        _ = try await client.prepareIfNeeded(
+        let credential = try await client.prepareIfNeeded(
             credentialName: AppAttestRuntimeDefaults.photoCredentialName
         )
-        let envelope = try await client.generateAssertion(
-            credentialName: AppAttestRuntimeDefaults.photoCredentialName,
-            request: request
+        let signingBinding = try CaptureSigningBinding(contentDigest: contentDigest)
+        let assertionObject = try await deviceService.generateAssertion(
+            credential.keyId,
+            clientDataHash: try signingBinding.clientDataHash()
         )
 
         let proofValue = CaptureAssertionProofValue(
             contentDigest: contentDigest,
-            assertionEnvelope: StoredAppAttestAssertionEnvelope(envelope)
+            keyId: credential.keyId,
+            assertionObject: assertionObject.appAttestBase64URL,
+            signingBinding: signingBinding
         )
         let proofData = try proofValue.canonicalJSONData()
         let proof = TAPDepthManifest.Proof(
             type: "appAttestAssertion",
-            algorithm: "AppAttestKit.AppAttestAssertionEnvelope.v1",
-            keyID: envelope.keyId,
+            algorithm: "TAPCam.AppAttestCaptureSignature.v1",
+            keyID: credential.keyId,
             createdAt: contentDigest.capturedAt,
             value: proofData.appAttestBase64URL
         )
 
-        return CaptureAssertionProof(proof: proof, keyID: envelope.keyId)
+        return CaptureAssertionProof(proof: proof, keyID: credential.keyId)
     }
 }
 
 nonisolated struct CaptureAssertionProofValue: Codable, Equatable, Sendable {
     let contentDigest: CaptureContentDigest
-    let assertionEnvelope: StoredAppAttestAssertionEnvelope
+    let keyId: String
+    let assertionObject: String
+    let signingBinding: CaptureSigningBinding
 
     func canonicalJSONData() throws -> Data {
         try JSONEncoder.tapCaptureCanonical.encode(self)
     }
 }
 
-nonisolated struct StoredAppAttestAssertionEnvelope: Codable, Equatable, Sendable {
-    let credentialName: String
-    let keyId: String
-    let challengeId: String
-    let assertionObject: String
-    let requestBinding: AppAttestRequestBinding
+nonisolated struct CaptureSigningBinding: Codable, Equatable, Sendable {
+    static let schemaIdentifier = "urn:tapnap:tapcam:app-attest-capture-signing:v1"
+    static let operationIdentifier = "tapcam.capture.sign"
+
+    let bodySHA256: String
+    let captureID: String
+    let operation: String
+    let schemaID: String
 
     init(
-        credentialName: String,
-        keyId: String,
-        challengeId: String,
-        assertionObject: String,
-        requestBinding: AppAttestRequestBinding
+        bodySHA256: String,
+        captureID: String,
+        operation: String = CaptureSigningBinding.operationIdentifier,
+        schemaID: String = CaptureSigningBinding.schemaIdentifier
     ) {
-        self.credentialName = credentialName
-        self.keyId = keyId
-        self.challengeId = challengeId
-        self.assertionObject = assertionObject
-        self.requestBinding = requestBinding
+        self.bodySHA256 = bodySHA256
+        self.captureID = captureID
+        self.operation = operation
+        self.schemaID = schemaID
     }
 
-    init(_ envelope: AppAttestAssertionEnvelope) {
-        self.credentialName = envelope.credentialName
-        self.keyId = envelope.keyId
-        self.challengeId = envelope.challengeId
-        self.assertionObject = envelope.assertionObject.appAttestBase64URL
-        self.requestBinding = envelope.requestBinding
+    init(contentDigest: CaptureContentDigest) throws {
+        self.init(
+            bodySHA256: Data(SHA256.hash(data: try contentDigest.canonicalJSONData())).appAttestBase64URL,
+            captureID: contentDigest.captureID
+        )
+    }
+
+    func canonicalJSONData() throws -> Data {
+        try JSONEncoder.tapCaptureCanonical.encode(self)
+    }
+
+    func clientDataHash() throws -> Data {
+        Data(SHA256.hash(data: try canonicalJSONData()))
     }
 }

@@ -14,9 +14,10 @@ attestation objects, and assertion objects. It cannot decide that an attestation
 is trustworthy by itself.
 
 The backend must validate attestation results before accepting registration.
-The current TAPCamDemo mainline also sends assertion challenges and lets the
-client generate assertion envelopes; backend assertion verification is a
-server-side rollout step, not a client-side trust shortcut.
+TAPCam HEIC capture signing uses the registered `photo_keyid` key to sign a
+capture `signingBinding` and stores the resulting assertion in the HEIC proof.
+The client still does not get to decide that the assertion is trustworthy; a
+verifier must check the signature with the registered backend credential.
 
 ## Why Keychain Stores keyId
 
@@ -49,10 +50,17 @@ current authenticated account or business action.
 ## Challenge And Replay Protection
 
 Production challenges must come from the backend, be short lived, and be
-single-use. The backend must bind each challenge to purpose and credential name.
+single-use for attestation and online protected request flows. The backend must
+bind each challenge to purpose and credential name.
 
-Assertions bind the challenge to method, path, query, body hash, and optional
-nonce so an assertion for one request cannot be replayed as another request.
+Online request assertions bind the challenge to method, path, query, body hash,
+and optional nonce so an assertion for one request cannot be replayed as
+another request.
+
+TAPCam HEIC capture signing does not use an assertion challenge because the
+business claim is offline file signing, not server freshness. Its assertion
+binds `schemaID`, `operation`, `captureID`, and `bodySHA256` through the
+canonical `signingBinding`.
 
 ## Unsupported Devices
 

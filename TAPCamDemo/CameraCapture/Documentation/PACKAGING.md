@@ -71,7 +71,7 @@ words, `waitingNetwork`, `signing`, `signed`, `exporting`, and
 entry.
 
 The App Attest credential name is fixed by the app as `photo_keyid`. The proof's
-`keyID` is the actual key id returned by AppAttestKit in the assertion envelope.
+`keyID` is the actual key id returned by the registered App Attest credential.
 
 ## Proof Format
 
@@ -80,28 +80,35 @@ The proof record uses the existing manifest proof shape:
 ```json
 {
   "type": "appAttestAssertion",
-  "algorithm": "AppAttestKit.AppAttestAssertionEnvelope.v1",
+  "algorithm": "TAPCam.AppAttestCaptureSignature.v1",
   "keyID": "<App Attest key id>",
   "createdAt": "<ISO-8601 capture time>",
   "value": "<base64url canonical JSON>"
 }
 ```
 
-Decoding `value` yields canonical JSON with two fields:
+Decoding `value` yields canonical JSON with four fields:
 
 - `contentDigest`: the signed digest package.
-- `assertionEnvelope`: the AppAttestKit assertion envelope, including
-  `credentialName`, `keyId`, `challengeId`, `assertionObject`, and
-  `requestBinding`.
+- `keyId`: the App Attest credential id used to verify the signature.
+- `assertionObject`: the App Attest assertion object, base64url no padding.
+- `signingBinding`: the TAPCam capture signing binding submitted to App Attest.
 
-The protected request bound into the assertion uses:
+The signing binding is canonical JSON with these fields:
 
-```text
-method = POST
-path = /tapcam/captures/{captureID}/assertion
-body = canonical contentDigest JSON
-nonce = {captureID}
+```json
+{
+  "bodySHA256": "<SHA-256 over canonical contentDigest JSON>",
+  "captureID": "<captureID>",
+  "operation": "tapcam.capture.sign",
+  "schemaID": "urn:tapnap:tapcam:app-attest-capture-signing:v1"
+}
 ```
+
+The app computes `clientDataHash` as `SHA256(canonical signingBinding JSON)` and
+passes that hash directly to `DCAppAttestService.generateAssertion`. Capture
+signing does not request an assertion challenge and does not use
+`challengeId`, `requestBinding`, or `challengeSHA256`.
 
 ## Content Digest
 
@@ -180,7 +187,9 @@ To verify a signed TAP depth HEIC:
 4. Recompute the RGB, depth, and metadata digests using the rules above.
 5. Compare the recomputed digest package with `proof.value.contentDigest`.
 6. Encode that digest package canonically and verify that its SHA-256 matches
-   `assertionEnvelope.requestBinding.bodySHA256`.
-7. Verify the App Attest assertion object using the registered attestation for
-   `assertionEnvelope.keyId`, the challenge identified by `challengeId`, and
-   the `requestBinding` client data hash.
+   `signingBinding.bodySHA256`.
+7. Submit `keyId`, `assertionObject`, and `signingBinding` to
+   `/tapcam/capture-signatures/verify`, or perform the equivalent App Attest
+   assertion verification locally with the registered public key.
+8. Treat the capture proof as valid only if the image/depth digest check and
+   App Attest signature check both pass.
