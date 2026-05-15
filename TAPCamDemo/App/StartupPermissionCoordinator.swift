@@ -9,7 +9,7 @@ import CoreLocation
 import Foundation
 import Photos
 
-enum StartupPermissionStatus: Equatable {
+nonisolated enum StartupPermissionStatus: Equatable {
     case idle
     case requesting
     case granted
@@ -177,7 +177,7 @@ final class StartupPermissionCoordinator: NSObject, ObservableObject, CLLocation
         photoLibraryStatus(from: PHPhotoLibrary.authorizationStatus(for: .readWrite))
     }
 
-    private static func photoLibraryStatus(from status: PHAuthorizationStatus) -> StartupPermissionStatus {
+    nonisolated static func photoLibraryStatus(from status: PHAuthorizationStatus) -> StartupPermissionStatus {
         switch status {
         case .authorized, .limited:
             .granted

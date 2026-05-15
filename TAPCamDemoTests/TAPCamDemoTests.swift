@@ -293,6 +293,22 @@ struct TAPCamDemoTests {
         ])
     }
 
+    @Test func appAttestCaptureAssertionSignerStopsWhenPrepareIfNeededFails() async throws {
+        let digest = Self.sampleContentDigest()
+        let client = FailingPrepareIfNeededAppAttestClient()
+        let deviceService = RecordingCaptureAssertionDeviceService()
+        let signer = AppAttestCaptureAssertionSigner(client: client, deviceService: deviceService)
+
+        await #expect(throws: (any Error).self) {
+            try await signer.sign(contentDigest: digest)
+        }
+
+        #expect(await client.operations() == [
+            "prepareIfNeeded:\(AppAttestRuntimeDefaults.photoCredentialName)"
+        ])
+        #expect(await deviceService.generateAssertionCalls().isEmpty)
+    }
+
     @Test func appAttestCaptureSignatureVerifyEndpointAcceptsDetachedProofWhenEnabled() async throws {
         let environment = ProcessInfo.processInfo.environment
         guard environment["TAPCAM_CAPTURE_SIGNATURE_VERIFY_TEST"] == "1" else {
@@ -1351,6 +1367,38 @@ private actor SucceedingAssertionAppAttestClient: AppAttestClient {
             createdAt: Date(timeIntervalSince1970: 0),
             updatedAt: Date(timeIntervalSince1970: 0)
         )
+    }
+
+    func generateAssertion(
+        credentialName: String,
+        request: AppAttestProtectedRequest
+    ) async throws -> AppAttestAssertionEnvelope {
+        throw CaptureAssertionTestError.unused
+    }
+
+    func status(credentialName: String) async throws -> AppAttestCredentialStatus {
+        throw CaptureAssertionTestError.unused
+    }
+
+    func reset(credentialName: String) async throws {
+        throw CaptureAssertionTestError.unused
+    }
+}
+
+private actor FailingPrepareIfNeededAppAttestClient: AppAttestClient {
+    private var operationLog: [String] = []
+
+    func operations() -> [String] {
+        operationLog
+    }
+
+    func prepare(credentialName: String) async throws -> AppAttestCredential {
+        throw CaptureAssertionTestError.unused
+    }
+
+    func prepareIfNeeded(credentialName: String) async throws -> AppAttestCredential {
+        operationLog.append("prepareIfNeeded:\(credentialName)")
+        throw CaptureAssertionTestError.unused
     }
 
     func generateAssertion(

@@ -16,19 +16,30 @@ final class AppAttestRuntimeController: ObservableObject {
     @Published private(set) var isWorking = false
 
     private let userDefaults: UserDefaults
+    private let credentialOperationTimeout: Duration
     private var activeOperationCount = 0
 
+    var isPhotoCredentialReady: Bool {
+        credentialStatusText == Self.readyStatusText && credentialKeyIdText != nil
+    }
+
     var canResetAndPrepareCredential: Bool {
-        credentialStatusText == Self.notPreparedStatusText && !isWorking
+        !isPhotoCredentialReady && !isWorking
+    }
+
+    var credentialPreparationActionTitle: String {
+        credentialStatusText == Self.notPreparedStatusText ? "Prepare" : "Retry"
     }
 
     init(
         runtime: AppAttestRuntime? = nil,
-        userDefaults: UserDefaults = .standard
+        userDefaults: UserDefaults = .standard,
+        credentialOperationTimeout: Duration = AppAttestOperationTimeout.defaultDuration
     ) {
         let resolvedRuntime = runtime ?? Self.makeRuntime()
         self.runtime = resolvedRuntime
         self.userDefaults = userDefaults
+        self.credentialOperationTimeout = credentialOperationTimeout
     }
 
     @discardableResult
@@ -162,7 +173,7 @@ final class AppAttestRuntimeController: ObservableObject {
     private func performCredentialOperation(
         _ label: String,
         showsPreparationProgress: Bool = false,
-        operation: @MainActor @escaping () async throws -> Void
+        operation: @MainActor @Sendable @escaping () async throws -> Void
     ) async -> Bool {
         beginOperation()
         if showsPreparationProgress {
@@ -177,7 +188,12 @@ final class AppAttestRuntimeController: ObservableObject {
         }
 
         do {
-            try await operation()
+            try await AppAttestOperationTimeout.run(
+                operationDescription: label,
+                timeout: credentialOperationTimeout
+            ) {
+                try await operation()
+            }
             return true
         } catch {
             credentialKeyIdText = nil

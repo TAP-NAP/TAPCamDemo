@@ -10,103 +10,23 @@ struct StartupGateView: View {
     private var didCompleteFirstInstallPermissions = false
 
     @StateObject private var permissionCoordinator = StartupPermissionCoordinator()
-    @State private var phase: StartupGatePhase = .welcome
-    @State private var didStartPreparing = false
-    @State private var preparedViewModel: CameraViewModel?
-    @State private var preparedAppAttestController: AppAttestRuntimeController?
 
     var body: some View {
         Group {
             if didCompleteFirstInstallPermissions {
-                cameraView
+                CameraView()
             } else {
-                switch phase {
-                case .welcome:
-                    WelcomePermissionsView(coordinator: permissionCoordinator) {
-                        beginPreparingIfReady()
-                    }
-                case .preparing:
-                    startupLoadingView
-                        .task {
-                            await prepareFirstInstall()
-                        }
+                WelcomePermissionsView(coordinator: permissionCoordinator) {
+                    completeFirstInstallPermissionsIfReady()
                 }
             }
         }
     }
 
-    @ViewBuilder
-    private var cameraView: some View {
-        if let preparedViewModel,
-           let preparedAppAttestController {
-            CameraView(
-                viewModel: preparedViewModel,
-                appAttestController: preparedAppAttestController,
-                startsAutomatically: false
-            )
-        } else {
-            CameraView()
-        }
-    }
-
-    private var startupLoadingView: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-
-            VStack(spacing: 16) {
-                ProgressView()
-                    .tint(.white)
-                    .scaleEffect(1.15)
-
-                Text("First launch needs a little time to finish setup. Please wait.")
-                    .font(.headline)
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 28)
-            }
-        }
-    }
-
-    private func beginPreparingIfReady() {
+    private func completeFirstInstallPermissionsIfReady() {
         guard permissionCoordinator.hasRequiredPermissions else {
             return
         }
-        phase = .preparing
-    }
-
-    @MainActor
-    private func prepareFirstInstall() async {
-        guard !didStartPreparing else {
-            return
-        }
-
-        guard permissionCoordinator.hasRequiredPermissions else {
-            phase = .welcome
-            return
-        }
-
-        didStartPreparing = true
-
-        let viewModel = CameraViewModel()
-        let appAttestController = AppAttestRuntimeController()
-
-        async let cameraStart: Void = viewModel.start()
-        async let appAttestPrepare: Bool = appAttestController.preparePhotoCredentialAfterFirstInstallLaunch()
-
-        let (_, isAppAttestReady) = await (cameraStart, appAttestPrepare)
-        guard isAppAttestReady else {
-            didStartPreparing = false
-            phase = .welcome
-            return
-        }
-
-        preparedViewModel = viewModel
-        preparedAppAttestController = appAttestController
         didCompleteFirstInstallPermissions = true
     }
-}
-
-private enum StartupGatePhase {
-    case welcome
-    case preparing
 }

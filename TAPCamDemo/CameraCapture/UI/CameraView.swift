@@ -109,6 +109,15 @@ struct CameraView: View {
                 await processPendingCaptures()
             }
         }
+        .onChange(of: appAttestController.isPreparingCredential) { wasPreparing, isPreparing in
+            guard wasPreparing, !isPreparing else {
+                return
+            }
+
+            Task {
+                await processPendingCaptures()
+            }
+        }
     }
 
     private var cameraSurface: some View {

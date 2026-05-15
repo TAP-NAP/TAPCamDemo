@@ -21,13 +21,16 @@ nonisolated struct CaptureAssertionProof: Equatable, Sendable {
 nonisolated struct AppAttestCaptureAssertionSigner: CaptureAssertionSigning {
     private let client: any AppAttestClient
     private let deviceService: any AppAttestDeviceService
+    private let operationTimeout: Duration
 
     init(
         client: any AppAttestClient,
-        deviceService: any AppAttestDeviceService = DCAppAttestDeviceService()
+        deviceService: any AppAttestDeviceService = DCAppAttestDeviceService(),
+        operationTimeout: Duration = AppAttestOperationTimeout.defaultDuration
     ) {
         self.client = client
         self.deviceService = deviceService
+        self.operationTimeout = operationTimeout
     }
 
     func sign(
@@ -37,14 +40,24 @@ nonisolated struct AppAttestCaptureAssertionSigner: CaptureAssertionSigning {
             throw AppAttestError.unsupportedDevice
         }
 
-        let credential = try await client.prepareIfNeeded(
-            credentialName: AppAttestRuntimeDefaults.photoCredentialName
-        )
+        let credential = try await AppAttestOperationTimeout.run(
+            operationDescription: "Prepare App Attest capture credential",
+            timeout: operationTimeout
+        ) {
+            try await client.prepareIfNeeded(
+                credentialName: AppAttestRuntimeDefaults.photoCredentialName
+            )
+        }
         let signingBinding = try CaptureSigningBinding(contentDigest: contentDigest)
-        let assertionObject = try await deviceService.generateAssertion(
-            credential.keyId,
-            clientDataHash: try signingBinding.clientDataHash()
-        )
+        let assertionObject = try await AppAttestOperationTimeout.run(
+            operationDescription: "Generate App Attest capture assertion",
+            timeout: operationTimeout
+        ) {
+            try await deviceService.generateAssertion(
+                credential.keyId,
+                clientDataHash: try signingBinding.clientDataHash()
+            )
+        }
 
         let proofValue = CaptureAssertionProofValue(
             contentDigest: contentDigest,

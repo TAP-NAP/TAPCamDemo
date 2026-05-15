@@ -30,6 +30,8 @@
 	<string>TAPCamDemo saves depth HEIC captures into the TAPCamDepth photo album.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>TAPCamDemo creates and reuses the TAPCamDepth photo album for depth HEIC captures.</string>
+	<key>PHPhotoLibraryPreventAutomaticLimitedAccessAlert</key>
+	<true/>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

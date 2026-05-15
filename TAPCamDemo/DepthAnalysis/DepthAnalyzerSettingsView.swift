@@ -154,16 +154,22 @@ struct DepthAnalyzerSettingsView: View {
                 .frame(width: 24, height: 24)
                 .accessibilityLabel("Preparing App Attest credential")
         } else if appAttestController.canResetAndPrepareCredential {
-            Button {
-                Task {
-                    await appAttestController.resetAndPrepareCredential()
-                }
-            } label: {
+            VStack(alignment: .trailing, spacing: 6) {
                 Text(appAttestController.credentialStatusText)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
                     .multilineTextAlignment(.trailing)
+
+                Button {
+                    Task {
+                        await appAttestController.resetAndPrepareCredential()
+                    }
+                } label: {
+                    Text(appAttestController.credentialPreparationActionTitle)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityHint("Resets and prepares the App Attest credential.")
             }
-            .buttonStyle(.borderless)
-            .accessibilityHint("Resets and prepares the App Attest credential.")
         } else {
             Text(appAttestController.credentialStatusText)
                 .foregroundStyle(.secondary)

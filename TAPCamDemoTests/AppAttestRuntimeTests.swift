@@ -211,6 +211,32 @@ struct AppAttestRuntimeTests {
             "reset:\(AppAttestRuntimeDefaults.photoCredentialName)"
         ])
         #expect(controller.credentialStatusText.contains("Prepare credential failed"))
+        #expect(controller.canResetAndPrepareCredential)
+    }
+
+    @Test @MainActor func prepareTimeoutResetsWorkingStateAndAllowsRetry() async throws {
+        let runtime = AppAttestRuntime(
+            client: HangingPrepareAppAttestClient(),
+            backendDescription: "Hanging Prepare Backend"
+        )
+        let suiteName = "TAPCamDemoTests.AppAttest.\(UUID().uuidString)"
+        let userDefaults = try #require(UserDefaults(suiteName: suiteName))
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let controller = AppAttestRuntimeController(
+            runtime: runtime,
+            userDefaults: userDefaults,
+            credentialOperationTimeout: .milliseconds(10)
+        )
+
+        await controller.resetAndPrepareCredential()
+
+        #expect(controller.credentialStatusText.contains("timed out"))
+        #expect(!controller.isPreparingCredential)
+        #expect(!controller.isWorking)
+        #expect(controller.canResetAndPrepareCredential)
     }
 
     @Test @MainActor func manualPrepareUsesPrepareIfNeededToAvoidKeyRotation() async throws {
@@ -270,6 +296,30 @@ private actor ResetFailingAppAttestClient: AppAttestClient {
     func reset(credentialName: String) async throws {
         throw AppAttestRuntimeTestError.resetFailed
     }
+}
+
+private actor HangingPrepareAppAttestClient: AppAttestClient {
+    func prepare(credentialName: String) async throws -> AppAttestCredential {
+        try await Task.sleep(for: .seconds(60))
+        throw AppAttestRuntimeTestError.unused
+    }
+
+    func prepareIfNeeded(credentialName: String) async throws -> AppAttestCredential {
+        throw AppAttestRuntimeTestError.unused
+    }
+
+    func generateAssertion(
+        credentialName: String,
+        request: AppAttestProtectedRequest
+    ) async throws -> AppAttestAssertionEnvelope {
+        throw AppAttestRuntimeTestError.unused
+    }
+
+    func status(credentialName: String) async throws -> AppAttestCredentialStatus {
+        throw AppAttestRuntimeTestError.unused
+    }
+
+    func reset(credentialName: String) async throws {}
 }
 
 private actor RecordingAppAttestClient: AppAttestClient {
