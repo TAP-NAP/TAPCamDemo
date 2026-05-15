@@ -161,6 +161,12 @@ actor TAPPendingCaptureStore {
         try allRecords().filter(\.isVisiblePendingItem)
     }
 
+    func exportedRecords() throws -> [TAPPendingCaptureRecord] {
+        try allRecords().filter { record in
+            record.status == .exported && record.assetLocalIdentifier != nil
+        }
+    }
+
     func processingCandidates() throws -> [TAPPendingCaptureRecord] {
         try allRecords()
             .filter { record in

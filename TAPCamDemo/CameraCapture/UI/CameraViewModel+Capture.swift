@@ -96,13 +96,11 @@ extension CameraViewModel {
         }
     }
 
-    /// Loads the latest saved TAPCamDepth thumbnail without prompting for Photos
-    /// access. The camera remains usable even when the user has not granted photo
-    /// library read access; in that case the album button simply shows its generic
-    /// placeholder until a new capture succeeds.
+    /// Loads the latest TAP Library thumbnail without prompting for Photos
+    /// access. Exported captures keep their small app-private thumbnail so the
+    /// camera affordance is stable even when Photos is in limited-library mode.
     func loadRecentTAPLibraryPreviewIfAvailable() async {
-        if let latestPending = try? await pendingCaptureStore.visiblePendingRecords().first,
-           await loadRecentPendingCapturePreview(captureID: latestPending.captureID) {
+        if await loadRecentStoredCapturePreviewIfAvailable() {
             return
         }
 
@@ -122,6 +120,29 @@ extension CameraViewModel {
 
         recentThumbnail = image
         return true
+    }
+
+    private func loadRecentStoredCapturePreviewIfAvailable() async -> Bool {
+        guard let records = try? await pendingCaptureStore.allRecords() else {
+            return false
+        }
+
+        for record in records where recordCanBeDisplayedInTAPLibrary(record) {
+            if await loadRecentPendingCapturePreview(captureID: record.captureID) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private func recordCanBeDisplayedInTAPLibrary(_ record: TAPPendingCaptureRecord) -> Bool {
+        guard record.status == .exported else {
+            return true
+        }
+        guard let assetID = record.assetLocalIdentifier else {
+            return false
+        }
+        return PhotoLibraryWriter.asset(localIdentifier: assetID) != nil
     }
 
     func processPendingCaptures(appAttestClient: any AppAttestClient) async {

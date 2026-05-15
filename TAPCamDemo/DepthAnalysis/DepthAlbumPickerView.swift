@@ -82,6 +82,8 @@ struct DepthAlbumPickerView: View {
                             switch item.source {
                             case .photos(let asset):
                                 DepthAnalysisView(assetID: asset.localIdentifier)
+                            case .ownedPhoto(_, let asset):
+                                DepthAnalysisView(assetID: asset.localIdentifier)
                             case .pending(let record):
                                 DepthAnalysisView(pendingCaptureID: record.captureID)
                             }
@@ -132,15 +134,24 @@ final class DepthAlbumPickerViewModel: ObservableObject {
 
         do {
             let pendingRecords = try await TAPPendingCaptureStore.shared.visiblePendingRecords()
+            let exportedRecords = try await TAPPendingCaptureStore.shared.exportedRecords()
             let photoAssets: [PHAsset]
+            let photoAssetsError: Error?
             do {
                 photoAssets = try await PhotoLibraryWriter.depthAlbumAssets()
-                errorMessage = nil
+                photoAssetsError = nil
             } catch {
                 photoAssets = []
-                errorMessage = pendingRecords.isEmpty ? error.localizedDescription : nil
+                photoAssetsError = error
             }
-            items = TAPLibraryItem.merged(pendingRecords: pendingRecords, photoAssets: photoAssets)
+            items = TAPLibraryItem.merged(
+                pendingRecords: pendingRecords,
+                exportedRecords: exportedRecords,
+                photoAssets: photoAssets
+            )
+            errorMessage = photoAssetsError.flatMap { error in
+                items.isEmpty ? error.localizedDescription : nil
+            }
         } catch {
             items = []
             errorMessage = error.localizedDescription
@@ -162,6 +173,7 @@ final class DepthAlbumPickerViewModel: ObservableObject {
 struct TAPLibraryItem: Identifiable {
     enum Source {
         case pending(TAPPendingCaptureRecord)
+        case ownedPhoto(TAPPendingCaptureRecord, PHAsset)
         case photos(PHAsset)
     }
 
@@ -173,12 +185,18 @@ struct TAPLibraryItem: Identifiable {
         switch source {
         case .photos(let asset):
             DepthAlbumThumbnailCacheKey.make(for: asset, pixelLength: pixelLength)
+        case .ownedPhoto(let record, _):
+            "owned|\(record.captureID)|\(pixelLength)"
         case .pending(let record):
             "pending|\(record.captureID)|\(pixelLength)"
         }
     }
 
-    static func merged(pendingRecords: [TAPPendingCaptureRecord], photoAssets: [PHAsset]) -> [TAPLibraryItem] {
+    static func merged(
+        pendingRecords: [TAPPendingCaptureRecord],
+        exportedRecords: [TAPPendingCaptureRecord],
+        photoAssets: [PHAsset]
+    ) -> [TAPLibraryItem] {
         let pendingItems = pendingRecords
             .filter(\.isVisiblePendingItem)
             .map { record in
@@ -189,15 +207,40 @@ struct TAPLibraryItem: Identifiable {
                 )
             }
 
-        let photoItems = photoAssets.map { asset in
-            TAPLibraryItem(
-                id: "photos:\(asset.localIdentifier)",
-                source: .photos(asset),
-                capturedAt: asset.creationDate ?? .distantPast
+        let ownedPhotoItems = exportedRecords.compactMap { record -> TAPLibraryItem? in
+            guard let assetID = record.assetLocalIdentifier,
+                  let asset = PhotoLibraryWriter.asset(localIdentifier: assetID) else {
+                return nil
+            }
+
+            return TAPLibraryItem(
+                id: "owned:\(asset.localIdentifier)",
+                source: .ownedPhoto(record, asset),
+                capturedAt: asset.creationDate ?? record.capturedAt
             )
         }
+        let ownedAssetIDs = Set(ownedPhotoItems.compactMap(\.assetLocalIdentifier))
 
-        return (pendingItems + photoItems).sorted { $0.capturedAt > $1.capturedAt }
+        let photoItems = photoAssets
+            .filter { !ownedAssetIDs.contains($0.localIdentifier) }
+            .map { asset in
+                TAPLibraryItem(
+                    id: "photos:\(asset.localIdentifier)",
+                    source: .photos(asset),
+                    capturedAt: asset.creationDate ?? .distantPast
+                )
+            }
+
+        return (pendingItems + ownedPhotoItems + photoItems).sorted { $0.capturedAt > $1.capturedAt }
+    }
+
+    private var assetLocalIdentifier: String? {
+        switch source {
+        case .photos(let asset), .ownedPhoto(_, let asset):
+            asset.localIdentifier
+        case .pending:
+            nil
+        }
     }
 }
 
@@ -273,6 +316,15 @@ private struct TAPLibraryItemCell: View {
                 cacheKey: cacheKey,
                 pixelLength: thumbnailPixelLength
             )
+        case .ownedPhoto(let record, let asset):
+            if let data = try? await TAPPendingCaptureStore.shared.thumbnailData(captureID: record.captureID) {
+                return data
+            }
+            return await DepthAlbumThumbnailLoader.shared.data(
+                for: asset,
+                cacheKey: cacheKey,
+                pixelLength: thumbnailPixelLength
+            )
         case .pending(let record):
             return try? await TAPPendingCaptureStore.shared.thumbnailData(captureID: record.captureID)
         }
@@ -305,7 +357,7 @@ private extension TAPLibraryItem {
 
     var accessibilityLabel: String {
         switch source {
-        case .photos:
+        case .photos, .ownedPhoto:
             return "Open saved depth photo"
         case .pending(let record):
             return "Open pending depth photo, \(record.status.rawValue)"

@@ -15,6 +15,7 @@ import ImageIO
 import Photos
 import simd
 import Testing
+import UIKit
 @testable import TAPCamDemo
 
 struct TAPCamDemoTests {
@@ -390,6 +391,20 @@ struct TAPCamDemoTests {
         #expect(exportedRecord.status == .exported)
         #expect(exportedRecord.assetLocalIdentifier == "asset-id")
         #expect(try await store.visiblePendingRecords().isEmpty)
+    }
+
+    @Test func pendingCaptureStoreKeepsExportedThumbnailIndex() async throws {
+        let rootURL = try Self.makeTemporaryDirectory()
+        let store = TAPPendingCaptureStore(rootURL: rootURL)
+        let artifact = Self.samplePendingArtifact(photoData: Self.sampleThumbnailSourceData())
+        let record = try await store.ingest(artifact)
+        let initialThumbnail = try #require(try await store.thumbnailData(captureID: record.captureID))
+
+        _ = try await store.markExported(captureID: record.captureID, assetLocalIdentifier: "asset-id")
+
+        #expect(try await store.visiblePendingRecords().isEmpty)
+        #expect(try await store.exportedRecords().map(\.assetLocalIdentifier) == ["asset-id"])
+        #expect(try #require(try await store.thumbnailData(captureID: record.captureID)) == initialThumbnail)
     }
 
     @Test func pendingCaptureStoreRetriesInterruptedSigningRecords() async throws {
@@ -1084,6 +1099,15 @@ struct TAPCamDemoTests {
                 timestamp: Date(timeIntervalSince1970: 0)
             )
         )
+    }
+
+    private static func sampleThumbnailSourceData() -> Data {
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 16, height: 16))
+        return renderer.jpegData(withCompressionQuality: 0.9) { context in
+            let rect = CGRect(x: 0, y: 0, width: 16, height: 16)
+            context.cgContext.setFillColor(UIColor.systemTeal.cgColor)
+            context.cgContext.fill(rect)
+        }
     }
 
     private static var sampleLocation: TAPDepthManifest.Location {

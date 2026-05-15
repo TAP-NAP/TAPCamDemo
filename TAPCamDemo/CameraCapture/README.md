@@ -371,8 +371,9 @@ let record = try await store.ingest(artifact)
 [View in Source](x-source-tag://WritePackagedArtifactToPendingStore)
 
 The async pending processor is responsible for App Attest signing and the final
-`PhotoLibraryWriter.saveDepthHEIC(...)` call. Photos becomes the user-visible
-source only after that export succeeds.
+`PhotoLibraryWriter.saveDepthHEIC(...)` call. The pending store keeps the small
+thumbnail and exported asset identifier after cleanup so TAP Library can list
+TAPCam-created assets even when Photos is in limited-library mode.
 
 ## Debug Override
 

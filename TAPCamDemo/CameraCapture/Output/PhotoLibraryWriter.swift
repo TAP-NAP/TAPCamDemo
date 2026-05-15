@@ -18,15 +18,19 @@ import UniformTypeIdentifiers
 nonisolated enum PhotoLibraryWriter {
     static let albumName = "TAPCamDepth"
 
-    /// Saves final embedded HEIC bytes to the TAPCamDepth Photos album.
+    /// Saves final embedded HEIC bytes to Photos.
     ///
     /// This writer receives a completed artifact; it does not inspect cameras,
-    /// choose packaging policy, or mutate capture session state.
+    /// choose packaging policy, or mutate capture session state. Full Photos
+    /// access also adds the asset to the TAPCamDepth album; limited access saves
+    /// the app-created asset directly and relies on its returned local identifier.
     ///
     /// - Tag: SaveDepthHEICToPhotos
     static func saveDepthHEIC(_ data: Data, capturedAt: Date, location: CLLocation?) async throws -> String {
-        try await requestReadWriteAccess()
-        let album = try await fetchOrCreateAlbum()
+        let authorizationStatus = try await requestReadWriteAccess()
+        let album: PHAssetCollection? = authorizationStatus == .authorized
+            ? try await fetchOrCreateAlbum()
+            : nil
         return try await createAsset(data: data, capturedAt: capturedAt, location: location, album: album)
     }
 
@@ -126,15 +130,16 @@ nonisolated enum PhotoLibraryWriter {
         return nil
     }
 
-    private static func requestReadWriteAccess() async throws {
+    @discardableResult
+    private static func requestReadWriteAccess() async throws -> PHAuthorizationStatus {
         let current = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         switch current {
         case .authorized, .limited:
-            return
+            return current
         case .notDetermined:
             let requested = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
             if requested == .authorized || requested == .limited {
-                return
+                return requested
             }
             throw TAPDepthCaptureError.photoLibraryAccessDenied
         case .denied, .restricted:
@@ -171,7 +176,7 @@ nonisolated enum PhotoLibraryWriter {
         data: Data,
         capturedAt: Date,
         location: CLLocation?,
-        album: PHAssetCollection
+        album: PHAssetCollection?
     ) async throws -> String {
         var placeholder: PHObjectPlaceholder?
 
@@ -186,7 +191,8 @@ nonisolated enum PhotoLibraryWriter {
 
             placeholder = creationRequest.placeholderForCreatedAsset
 
-            if let albumChangeRequest = PHAssetCollectionChangeRequest(for: album),
+            if let album,
+               let albumChangeRequest = PHAssetCollectionChangeRequest(for: album),
                let placeholder {
                 albumChangeRequest.addAssets([placeholder] as NSArray)
             }
