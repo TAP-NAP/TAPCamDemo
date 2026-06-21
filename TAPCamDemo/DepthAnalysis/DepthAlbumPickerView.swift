@@ -18,6 +18,10 @@ struct DepthAlbumPickerView: View {
     @Environment(\.displayScale) private var displayScale
     @ObservedObject private var routeStore: CameraRouteStore
     @StateObject private var viewModel = DepthAlbumPickerViewModel()
+    @State private var albumScrollPosition = ScrollPosition(idType: String.self)
+    @State private var latestObservedScrollOffsetY: CGFloat = 0
+    @State private var pendingReturnScrollOffsetY: CGFloat?
+    @State private var didApplyInitialAnchorRestore = false
 
     private static let columnCount = 5
     private static let gridSpacing: CGFloat = 3
@@ -101,7 +105,7 @@ struct DepthAlbumPickerView: View {
                             .buttonStyle(.plain)
                             .id(item.id)
                             .simultaneousGesture(TapGesture().onEnded {
-                                routeStore.openDepthAlbumItem(item.routeAnchor)
+                                openAlbumItem(item)
                             })
                             .onAppear {
                                 routeStore.recordVisibleDepthAlbumItem(item.routeAnchor)
@@ -110,6 +114,12 @@ struct DepthAlbumPickerView: View {
                     }
                     .padding(Self.gridPadding)
                 }
+            }
+            .scrollPosition($albumScrollPosition)
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                max(0, geometry.contentOffset.y)
+            } action: { _, newOffsetY in
+                latestObservedScrollOffsetY = newOffsetY
             }
             .onChange(of: viewModel.items.map(\.id)) { _, _ in
                 restoreAlbumScrollPosition(scrollProxy)
@@ -120,14 +130,39 @@ struct DepthAlbumPickerView: View {
         }
     }
 
+    private func openAlbumItem(_ item: TAPLibraryItem) {
+        pendingReturnScrollOffsetY = latestObservedScrollOffsetY
+        routeStore.openDepthAlbumItem(item.routeAnchor)
+    }
+
     private func restoreAlbumScrollPosition(_ scrollProxy: ScrollViewProxy) {
+        if restorePendingReturnScrollPosition() {
+            return
+        }
+
+        guard !didApplyInitialAnchorRestore else {
+            return
+        }
+
         guard let anchorID = routeStore.validDepthAlbumRestoreAnchorID(
             availableItems: viewModel.items.map(\.routeAnchor)
         ) else {
             return
         }
 
+        didApplyInitialAnchorRestore = true
         scrollProxy.scrollTo(anchorID, anchor: .center)
+    }
+
+    private func restorePendingReturnScrollPosition() -> Bool {
+        guard let offsetY = pendingReturnScrollOffsetY else {
+            return false
+        }
+
+        didApplyInitialAnchorRestore = true
+        pendingReturnScrollOffsetY = nil
+        albumScrollPosition.scrollTo(y: offsetY)
+        return true
     }
 
     private static func thumbnailPixelLength(containerWidth: CGFloat, displayScale: CGFloat) -> Int {

@@ -232,6 +232,11 @@ identity. On restore, `DepthAlbumPickerView` builds anchors from the current
 visible item list, and `CameraRouteStore` resolves the persisted token only when
 a current item matches.
 
+Precise scroll offset is intentionally not part of this durable context. The TAP
+Library picker keeps exact in-session vertical offset in view-local state only so
+returning from an analysis page can land where the user left off without writing
+that UI coordinate to disk.
+
 Pending-to-owned migration is handled by the capture token: a
 `pending:<captureID>` anchor can resolve to `owned:<assetLocalIdentifier>` after
 export because the owned item still carries the same pending record `captureID`.

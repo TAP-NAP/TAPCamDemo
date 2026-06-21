@@ -70,7 +70,8 @@ If this module is new to you, read it in this order:
    Photos thumbnail requests, JPEG normalization, in-memory cache lookup, and
    protected disk-cache writes for the TAP Library grid.
 7. [DepthAlbumPickerView.swift](DepthAlbumPickerView.swift) owns the TAP Library
-   grid UI, scroll restoration, item selection, and navigation into analysis.
+   grid UI, in-session precise scroll return, item selection, and navigation
+   into analysis.
 8. [DepthAnalysisRegionSelectionState.swift](DepthAnalysisRegionSelectionState.swift)
    owns rectangular region selection, clamping, region stats, local heatmap
    generation, and local plane estimate generation. It receives only a loaded
@@ -302,9 +303,10 @@ list for attended device or UI checks that code reading alone cannot prove.
 
 1. Open TAP Library from the camera screen and confirm the grid can show pending
    records, exported pending records, and app-owned Photos assets.
-2. Read [DepthAlbumPickerView.swift](DepthAlbumPickerView.swift) for route
-   restoration, item selection, and navigation to analysis. Pending items open
-   with `pendingCaptureID`; owned and Photos-only items open with `assetID`.
+2. Read [DepthAlbumPickerView.swift](DepthAlbumPickerView.swift) for in-session
+   precise scroll return, fallback route restoration, item selection, and
+   navigation to analysis. Pending items open with `pendingCaptureID`; owned and
+   Photos-only items open with `assetID`.
 3. Open an item and verify RGB, Planes, and Point Cloud modes remain available.
    Heatmap and Valid Mask are still debug-only buttons.
 4. In RGB/Heatmap/Mask modes, use rectangular selection to inspect a region.
@@ -315,11 +317,11 @@ list for attended device or UI checks that code reading alone cannot prove.
    capture/output pipeline.
 
 Photos limited-access behavior, deletion while the app is backgrounded, and
-TAP Library UI restoration still need attended real-device or UI-regression
-evidence. The model tests cover source routing, rectangular region products,
-Planes selection state, async plane-region request coordination, plane-region
-detector behavior, merge rules, and partial failure behavior, not those
-platform flows.
+TAP Library rendered scroll restoration still need attended real-device or
+UI-regression evidence. The model tests cover source routing, rectangular region
+products, Planes selection state, async plane-region request coordination,
+plane-region detector behavior, merge rules, partial failure behavior, and pure
+route-policy boundaries, not those platform flows.
 
 ## Data Flow
 

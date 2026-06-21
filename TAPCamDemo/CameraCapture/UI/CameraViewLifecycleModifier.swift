@@ -16,6 +16,9 @@ struct CameraViewLifecycleModifier: ViewModifier {
     @ObservedObject private var routeStore: CameraRouteStore
     @ObservedObject private var chromeOrientation: CameraChromeOrientationController
     @ObservedObject private var appAttestController: AppAttestRuntimeController
+    @AppStorage(CameraRoutePreferences.forceCameraOnForegroundAfterDelayKey)
+    private var forceCameraOnForegroundAfterDelay = CameraRoutePreferences.defaultForceCameraOnForegroundAfterDelay
+    @State private var backgroundedAt: Date?
 
     private let startsAutomatically: Bool
     private let lifecycleCoordinator: CaptureLifecycleCoordinator
@@ -86,13 +89,36 @@ struct CameraViewLifecycleModifier: ViewModifier {
     }
 
     private func scenePhaseDidChange(_ phase: ScenePhase) {
+        let shouldForceCameraRouteOnForeground = foregroundRouteRestorePolicy(for: phase)
         Task {
             await lifecycleCoordinator.scenePhaseDidChange(
                 phase,
+                shouldForceCameraRouteOnForeground: shouldForceCameraRouteOnForeground,
                 routeStore: routeStore,
                 viewModel: viewModel,
                 appAttestController: appAttestController
             )
+        }
+    }
+
+    private func foregroundRouteRestorePolicy(for phase: ScenePhase) -> Bool {
+        switch phase {
+        case .active:
+            defer {
+                backgroundedAt = nil
+            }
+            let elapsedTime = backgroundedAt.map { Date().timeIntervalSince($0) }
+            return CaptureLifecycleCoordinator.shouldForceCameraRouteOnForeground(
+                isEnabled: forceCameraOnForegroundAfterDelay,
+                backgroundElapsedTime: elapsedTime
+            )
+        case .inactive, .background:
+            if backgroundedAt == nil {
+                backgroundedAt = Date()
+            }
+            return false
+        @unknown default:
+            return false
         }
     }
 

@@ -111,11 +111,15 @@ nonisolated final class CaptureLifecycleCoordinator {
     @MainActor
     func scenePhaseDidChange(
         _ phase: ScenePhase,
+        shouldForceCameraRouteOnForeground: Bool,
         routeStore: CameraRouteStore,
         viewModel: CameraViewModel,
         appAttestController: AppAttestRuntimeController
     ) async {
-        for action in Self.scenePhaseActions(for: phase) {
+        for action in Self.scenePhaseActions(
+            for: phase,
+            shouldForceCameraRouteOnForeground: shouldForceCameraRouteOnForeground
+        ) {
             switch action {
             case .restoreCameraRoute:
                 routeStore.restoreCameraOnForeground()
@@ -195,11 +199,19 @@ nonisolated final class CaptureLifecycleCoordinator {
     }
 
     nonisolated static func scenePhaseActions(
-        for phase: ScenePhase
+        for phase: ScenePhase,
+        shouldForceCameraRouteOnForeground: Bool = false
     ) -> [LifecycleAction] {
-        phase == .active
-            ? [.restoreCameraRoute, .loadRecentTAPLibraryPreview, .retryPendingCaptures]
-            : []
+        guard phase == .active else {
+            return []
+        }
+
+        var actions: [LifecycleAction] = []
+        if shouldForceCameraRouteOnForeground {
+            actions.append(.restoreCameraRoute)
+        }
+        actions.append(contentsOf: [.loadRecentTAPLibraryPreview, .retryPendingCaptures])
+        return actions
     }
 
     nonisolated static func credentialPreparationActions(
@@ -215,8 +227,25 @@ nonisolated final class CaptureLifecycleCoordinator {
         isCredentialPreparationActive ? [] : [.retryPendingCaptures]
     }
 
-    nonisolated static func shouldRestoreCamera(for phase: ScenePhase) -> Bool {
-        scenePhaseActions(for: phase).contains(.restoreCameraRoute)
+    nonisolated static func shouldForceCameraRouteOnForeground(
+        isEnabled: Bool,
+        backgroundElapsedTime: TimeInterval?
+    ) -> Bool {
+        guard isEnabled,
+              let backgroundElapsedTime else {
+            return false
+        }
+        return backgroundElapsedTime > CameraRoutePreferences.foregroundCameraReturnDelay
+    }
+
+    nonisolated static func shouldRestoreCamera(
+        for phase: ScenePhase,
+        shouldForceCameraRouteOnForeground: Bool = false
+    ) -> Bool {
+        scenePhaseActions(
+            for: phase,
+            shouldForceCameraRouteOnForeground: shouldForceCameraRouteOnForeground
+        ).contains(.restoreCameraRoute)
     }
 
     nonisolated static func shouldResumeCameraAfterDepthAlbumPresentationChange(

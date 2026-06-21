@@ -33,6 +33,13 @@ struct TAPCameraCapturePresentationTests {
         #expect(CaptureLifecycleCoordinator.depthAlbumPresentationActions(isPresented: true) == [])
 
         #expect(CaptureLifecycleCoordinator.scenePhaseActions(for: .active) == [
+            .loadRecentTAPLibraryPreview,
+            .retryPendingCaptures
+        ])
+        #expect(CaptureLifecycleCoordinator.scenePhaseActions(
+            for: .active,
+            shouldForceCameraRouteOnForeground: true
+        ) == [
             .restoreCameraRoute,
             .loadRecentTAPLibraryPreview,
             .retryPendingCaptures
@@ -56,7 +63,11 @@ struct TAPCameraCapturePresentationTests {
         #expect(CaptureLifecycleCoordinator.pendingCaptureRetryActions(isCredentialPreparationActive: false) == [.retryPendingCaptures])
         #expect(CaptureLifecycleCoordinator.pendingCaptureRetryActions(isCredentialPreparationActive: true) == [])
 
-        #expect(CaptureLifecycleCoordinator.shouldRestoreCamera(for: .active))
+        #expect(!CaptureLifecycleCoordinator.shouldRestoreCamera(for: .active))
+        #expect(CaptureLifecycleCoordinator.shouldRestoreCamera(
+            for: .active,
+            shouldForceCameraRouteOnForeground: true
+        ))
         #expect(!CaptureLifecycleCoordinator.shouldRestoreCamera(for: .inactive))
         #expect(!CaptureLifecycleCoordinator.shouldRestoreCamera(for: .background))
 
@@ -88,6 +99,31 @@ struct TAPCameraCapturePresentationTests {
     @Test func shutterSoundPreferenceDefaultsToEnabled() throws {
         #expect(CameraFeedbackPreferences.defaultShutterSoundEnabled)
         #expect(!CameraFeedbackPreferences.shutterSoundEnabledKey.isEmpty)
+    }
+
+    @Test func cameraRouteForegroundPreferenceDefaultsToDisabled() throws {
+        #expect(!CameraRoutePreferences.defaultForceCameraOnForegroundAfterDelay)
+        #expect(!CameraRoutePreferences.forceCameraOnForegroundAfterDelayKey.isEmpty)
+        #expect(CameraRoutePreferences.foregroundCameraReturnDelay == 10)
+    }
+
+    @Test func foregroundCameraRouteRestoreRequiresEnabledPreferenceAndElapsedDelay() throws {
+        #expect(!CaptureLifecycleCoordinator.shouldForceCameraRouteOnForeground(
+            isEnabled: false,
+            backgroundElapsedTime: 11
+        ))
+        #expect(!CaptureLifecycleCoordinator.shouldForceCameraRouteOnForeground(
+            isEnabled: true,
+            backgroundElapsedTime: nil
+        ))
+        #expect(!CaptureLifecycleCoordinator.shouldForceCameraRouteOnForeground(
+            isEnabled: true,
+            backgroundElapsedTime: 10
+        ))
+        #expect(CaptureLifecycleCoordinator.shouldForceCameraRouteOnForeground(
+            isEnabled: true,
+            backgroundElapsedTime: 10.001
+        ))
     }
 
     @Test func cameraCaptureControlsStateLocksLibraryWhileCaptureWrites() throws {

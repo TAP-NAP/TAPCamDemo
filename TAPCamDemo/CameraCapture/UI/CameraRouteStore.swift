@@ -6,6 +6,12 @@
 import Combine
 import Foundation
 
+enum CameraRoutePreferences {
+    static let forceCameraOnForegroundAfterDelayKey = "CameraRouteForceCameraOnForegroundAfterDelay"
+    static let defaultForceCameraOnForegroundAfterDelay = false
+    static let foregroundCameraReturnDelay: TimeInterval = 10
+}
+
 /// Owns the camera module's in-memory navigation state.
 ///
 /// `CameraView` still owns the visible `NavigationStack`, but this store makes

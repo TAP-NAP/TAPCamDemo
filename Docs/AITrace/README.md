@@ -10,15 +10,18 @@ open follow-ups.
 
 ## Read First
 
-1. [2026-06-21-assert-verification-panel-sync.md](2026-06-21-assert-verification-panel-sync.md)
+1. [2026-06-21-tap-library-scroll-memory.md](2026-06-21-tap-library-scroll-memory.md)
+   records the current TAP Library scroll-memory plan, the foreground-return
+   preference decision, and the plan-specific score rubric for this user journey.
+2. [2026-06-21-assert-verification-panel-sync.md](2026-06-21-assert-verification-panel-sync.md)
    records the current `assert` branch verification-panel sync goal, how AI work
    is being traced, and which validation evidence is still pending.
-2. [2026-06-21-refactor-trace.md](2026-06-21-refactor-trace.md) records the
+3. [2026-06-21-refactor-trace.md](2026-06-21-refactor-trace.md) records the
    current readability/security refactor goal, iteration history, AI tool use,
    validation status, and next-round candidates.
-3. [../ProjectScorecard.md](../ProjectScorecard.md) defines the score formula,
+4. [../ProjectScorecard.md](../ProjectScorecard.md) defines the score formula,
    strict gaps, current score, and from-scratch reading order.
-4. [../FutureCameraSpecs.md](../FutureCameraSpecs.md) explains the refactor
+5. [../FutureCameraSpecs.md](../FutureCameraSpecs.md) explains the refactor
    boundary status before future camera features are added.
 
 ## What To Record

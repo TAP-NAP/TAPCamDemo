@@ -174,6 +174,35 @@ struct TAPLibraryRouteTests {
         }
     }
 
+    @Test @MainActor func cameraRouteAlbumStateDoesNotOwnPreciseScrollOffset() throws {
+        let albumStateNames = TAPCamDemoTestSourceInspection.reflectedNames(in: CameraRouteStore.AlbumState())
+            .joined(separator: " ")
+
+        #expect(!albumStateNames.localizedCaseInsensitiveContains("precise"))
+        #expect(!albumStateNames.localizedCaseInsensitiveContains("offset"))
+    }
+
+    @Test func depthAlbumPickerOwnsPreciseScrollOffsetLocally() throws {
+        let pickerSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAlbumPickerView.swift"
+        )
+        let routeStoreSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraRouteStore.swift"
+        )
+        let contextStoreSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraRouteContextStore.swift"
+        )
+
+        #expect(pickerSource.contains("ScrollPosition(idType: String.self)"))
+        #expect(pickerSource.contains("onScrollGeometryChange"))
+        #expect(pickerSource.contains("pendingReturnScrollOffsetY"))
+        #expect(pickerSource.contains("albumScrollPosition.scrollTo(y: offsetY)"))
+        #expect(!routeStoreSource.contains("pendingReturnScrollOffsetY"))
+        #expect(!routeStoreSource.contains("latestObservedScrollOffsetY"))
+        #expect(!contextStoreSource.contains("ScrollPosition"))
+        #expect(!contextStoreSource.contains("contentOffset"))
+    }
+
     @Test func depthAlbumThumbnailCacheKeyDoesNotExposePhotoIdentifier() throws {
         let photoIdentifier = "photos-library://asset/private-local-id"
         let cacheKey = DepthAlbumThumbnailCacheKey.make(

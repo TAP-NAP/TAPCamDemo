@@ -26,7 +26,7 @@ scaffolding, sidecar JSON, and debug bundles.
 | Tests and automation | [TAPCamDemoTests/README.md](TAPCamDemoTests/README.md) | Start with the test README for the automation gate, focused output/provenance suites, manual-control suites, TAP Library suites, and evidence limits. |
 | Source tree module index | [TAPCamDemo/README.md](TAPCamDemo/README.md) | [TAPCamDemo](TAPCamDemo) |
 | Dated project score and reading order | [Docs/ProjectScorecard.md](Docs/ProjectScorecard.md) | [Docs](Docs) |
-| AI collaboration trace | [Docs/AITrace/README.md](Docs/AITrace/README.md) | [Docs/AITrace/2026-06-21-assert-verification-panel-sync.md](Docs/AITrace/2026-06-21-assert-verification-panel-sync.md) |
+| AI collaboration trace | [Docs/AITrace/README.md](Docs/AITrace/README.md) | [Docs/AITrace/2026-06-21-tap-library-scroll-memory.md](Docs/AITrace/2026-06-21-tap-library-scroll-memory.md) |
 
 ## Architecture
 
@@ -49,20 +49,21 @@ flowchart TD
 
 ## Current Goal And Score Standard
 
-Current branch goal for this AI-assisted pass: selectively sync the `assert`
-branch's App Attest capture-signature verification panel into the current
-branch, while preserving the current Release HEIC-depth plus App Attest behavior
-and the readability/security boundaries already documented here. This is a
-bounded integration pass, not a broad branch merge and not a new camera capture
-feature.
+Current AI-assisted goal: implement TAP Library in-session scroll memory and
+optional foreground return to Camera without creating a second route system.
+`DepthAlbumPickerView` owns the exact return offset for analysis-page back
+navigation; `CameraRouteStore` and `CameraRouteContextStore` keep their existing
+route and tokenized item-anchor fallback responsibilities.
 
-Use [Docs/ProjectScorecard.md](Docs/ProjectScorecard.md) as the scoring-standard
-document. It contains the score formula, current score, strict gaps, and
-from-scratch reading order. Use
-[Docs/AITrace/2026-06-21-assert-verification-panel-sync.md](Docs/AITrace/2026-06-21-assert-verification-panel-sync.md)
-for the current goal trace, and [Docs/AITrace/README.md](Docs/AITrace/README.md)
-for the folder rules covering AI-assisted iterations, security/iOS reviews,
-subagents, validation steps, and change traceability.
+Use [Docs/AITrace/2026-06-21-tap-library-scroll-memory.md](Docs/AITrace/2026-06-21-tap-library-scroll-memory.md)
+as the plan-specific scoring-standard document. It contains the 10-point rubric,
+current plan score, validation commands, remaining evidence, and AI
+collaboration trace for this user journey. Use
+[Docs/ProjectScorecard.md](Docs/ProjectScorecard.md) only for the broader
+project score formula and from-scratch reading order. Use
+[Docs/AITrace/README.md](Docs/AITrace/README.md) for the folder rules covering
+AI-assisted iterations, security/iOS reviews, subagents, validation steps, and
+change traceability.
 
 Start with [Docs/FutureCameraSpecs.md](Docs/FutureCameraSpecs.md) for the
 refactor boundary status.

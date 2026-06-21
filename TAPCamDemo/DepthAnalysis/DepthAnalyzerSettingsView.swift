@@ -26,6 +26,8 @@ struct DepthAnalyzerSettingsView: View {
     private var shutterHapticsEnabled = CameraFeedbackPreferences.defaultShutterHapticsEnabled
     @AppStorage(CameraFeedbackPreferences.shutterSoundEnabledKey)
     private var shutterSoundEnabled = CameraFeedbackPreferences.defaultShutterSoundEnabled
+    @AppStorage(CameraRoutePreferences.forceCameraOnForegroundAfterDelayKey)
+    private var forceCameraOnForegroundAfterDelay = CameraRoutePreferences.defaultForceCameraOnForegroundAfterDelay
 
     init(
         snapshot: DepthAnalyzerAuthorizationSnapshot = .current(),
@@ -61,6 +63,12 @@ struct DepthAnalyzerSettingsView: View {
                 Section("Analysis") {
                     Toggle(isOn: $showsAnalysisHelp) {
                         Label("Help", systemImage: "questionmark.circle")
+                    }
+                }
+
+                Section("Navigation") {
+                    Toggle(isOn: $forceCameraOnForegroundAfterDelay) {
+                        Label("Return to Camera After Background", systemImage: "camera.viewfinder")
                     }
                 }
 
