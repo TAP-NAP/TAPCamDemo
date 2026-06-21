@@ -182,7 +182,7 @@ struct TAPLibraryRouteTests {
         #expect(!albumStateNames.localizedCaseInsensitiveContains("offset"))
     }
 
-    @Test func depthAlbumPickerOwnsPreciseScrollOffsetLocally() throws {
+    @Test func depthAlbumPickerOwnsReturnScrollBookmarkLocally() throws {
         let pickerSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/DepthAnalysis/DepthAlbumPickerView.swift"
         )
@@ -194,17 +194,22 @@ struct TAPLibraryRouteTests {
         )
 
         #expect(pickerSource.contains("ScrollPosition(idType: String.self)"))
-        #expect(pickerSource.contains("onScrollGeometryChange"))
-        #expect(pickerSource.contains("pendingReturnScrollOffsetY"))
-        #expect(pickerSource.contains("returnScrollCorrectionRowCount: CGFloat = 2"))
-        #expect(pickerSource.contains("returnScrollOffsetY("))
+        #expect(pickerSource.contains("onGeometryChange"))
+        #expect(pickerSource.contains("DepthAlbumReturnScrollBookmark"))
+        #expect(pickerSource.contains("pendingReturnScrollBookmark"))
+        #expect(pickerSource.contains("itemViewportYByID"))
+        #expect(pickerSource.contains("returnScrollBookmarkItemIndex"))
         #expect(pickerSource.contains("albumScrollPosition.scrollTo(y: offsetY)"))
         #expect(pickerSource.contains("loadIfNeeded()"))
         #expect(pickerSource.contains("selectedAnalysisRoute"))
         #expect(pickerSource.contains("handleAnalysisPresentationChange"))
-        #expect(pickerSource.contains("schedulePreciseReturnScrollRestore(clearAfterDelay: true)"))
+        #expect(pickerSource.contains("scheduleReturnScrollRestore(clearAfterDelay: true)"))
         #expect(!pickerSource.contains("ScrollViewReader"))
         #expect(!pickerSource.contains("validDepthAlbumRestoreAnchorID"))
+        #expect(!pickerSource.contains("latestObservedScrollOffsetY"))
+        #expect(!pickerSource.contains("pendingReturnScrollOffsetY"))
+        #expect(!pickerSource.contains("returnScrollCorrectionRowCount"))
+        #expect(!pickerSource.contains("contentOffset.y"))
         #expect(!pickerSource.contains("NavigationLink {"))
         #expect(!routeStoreSource.contains("pendingReturnScrollOffsetY"))
         #expect(!routeStoreSource.contains("latestObservedScrollOffsetY"))
@@ -212,10 +217,65 @@ struct TAPLibraryRouteTests {
         #expect(!contextStoreSource.contains("contentOffset"))
     }
 
-    @Test @MainActor func depthAlbumPickerReturnScrollOffsetAppliesTwoRowCorrection() throws {
-        #expect(DepthAlbumPickerView.returnScrollOffsetY(currentOffsetY: 500, rowStride: 80) == 660)
-        #expect(DepthAlbumPickerView.returnScrollOffsetY(currentOffsetY: 100, rowStride: 80) == 260)
-        #expect(DepthAlbumPickerView.returnScrollOffsetY(currentOffsetY: 100, rowStride: -80) == 100)
+    @Test @MainActor func depthAlbumPickerReturnScrollBookmarkRestoresClickedItemViewportPosition() throws {
+        let records = (0..<8).map { index in
+            TAPCamDemoTestFixtures.samplePendingRecord(
+                captureID: "capture-\(index)",
+                capturedAt: Date(timeIntervalSince1970: Double(100 - index))
+            )
+        }
+        let items = TAPLibraryItem.merged(
+            pendingRecords: records,
+            exportedRecords: [],
+            photoAssets: [],
+            exportedAssetResolver: { _ in nil }
+        )
+        #expect(items.count == 8)
+        let clickedItem = items[6]
+        let bookmark = DepthAlbumReturnScrollBookmark(
+            itemID: clickedItem.id,
+            routeAnchor: clickedItem.routeAnchor,
+            itemViewportY: 23
+        )
+
+        #expect(DepthAlbumPickerView.returnScrollBookmarkItemIndex(bookmark: bookmark, items: items) == 6)
+        #expect(DepthAlbumPickerView.returnScrollOffsetY(bookmark: bookmark, items: items, rowStride: 80) == 60)
+        #expect(DepthAlbumPickerView.returnScrollOffsetY(itemIndex: 0, itemViewportY: 20, rowStride: 80) == 0)
+    }
+
+    @Test @MainActor func depthAlbumPickerReturnScrollBookmarkMatchesPendingItemAfterOwnedExport() throws {
+        let pendingRecord = TAPCamDemoTestFixtures.samplePendingRecord(
+            captureID: "capture-migrated",
+            capturedAt: Date(timeIntervalSince1970: 100)
+        )
+        let pendingItem = try #require(TAPLibraryItem.merged(
+            pendingRecords: [pendingRecord],
+            exportedRecords: [],
+            photoAssets: [],
+            exportedAssetResolver: { _ in nil }
+        ).first)
+        let bookmark = DepthAlbumReturnScrollBookmark(
+            itemID: pendingItem.id,
+            routeAnchor: pendingItem.routeAnchor,
+            itemViewportY: 16
+        )
+        let exportedRecord = TAPCamDemoTestFixtures.samplePendingRecord(
+            captureID: "capture-migrated",
+            capturedAt: Date(timeIntervalSince1970: 100),
+            status: .exported,
+            assetLocalIdentifier: "asset-migrated"
+        )
+        let ownedAsset = DepthAlbumPhotoAsset(localIdentifier: "asset-migrated")
+        let currentItems = TAPLibraryItem.merged(
+            pendingRecords: [],
+            exportedRecords: [exportedRecord],
+            photoAssets: [ownedAsset],
+            exportedAssetResolver: { $0 == ownedAsset.localIdentifier ? ownedAsset : nil }
+        )
+
+        #expect(currentItems.map(\.id) == ["owned:asset-migrated"])
+        #expect(DepthAlbumPickerView.returnScrollBookmarkItemIndex(bookmark: bookmark, items: currentItems) == 0)
+        #expect(DepthAlbumPickerView.returnScrollOffsetY(bookmark: bookmark, items: [], rowStride: 80) == nil)
     }
 
     @Test func depthAlbumThumbnailCacheKeyDoesNotExposePhotoIdentifier() throws {

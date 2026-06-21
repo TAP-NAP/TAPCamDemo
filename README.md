@@ -53,9 +53,9 @@ Current AI-assisted goal: implement TAP Library in-session scroll memory,
 cached return-to-library browsing, optional foreground return to Camera, and
 signed-export queue cleanup without creating a second route system.
 `DepthAlbumPickerView` starts each fresh TAP Library entry at the top, owns the
-two-row return-offset correction and cached album snapshot for analysis-page
-back navigation; `CameraRouteStore` and `CameraRouteContextStore` keep route
-and tokenized item-anchor context without driving fresh-entry scroll position.
+clicked-item return bookmark and cached album snapshot for analysis-page back
+navigation; `CameraRouteStore` and `CameraRouteContextStore` keep route and
+tokenized item-anchor context without driving fresh-entry scroll position.
 TAP Library queue policy now prioritizes already signed/exporting work and keeps
 normal signed first export away from a full Photos asset scan.
 

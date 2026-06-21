@@ -32,6 +32,8 @@ Each trace file should answer these questions:
 - Which user constraints shaped the work?
 - Which AI plugins, skills, or subagents were used, and for what scoped job?
 - Which files changed, and what decision does each change support?
+- Which scoring rubric applies, what the score is after the change, and why it
+  changed or stayed the same?
 - Which validation commands ran?
 - What remains intentionally unfinished?
 

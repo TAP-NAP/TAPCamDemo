@@ -19,8 +19,9 @@ struct DepthAlbumPickerView: View {
     @ObservedObject private var routeStore: CameraRouteStore
     @StateObject private var viewModel = DepthAlbumPickerViewModel()
     @State private var albumScrollPosition = ScrollPosition(idType: String.self)
-    @State private var latestObservedScrollOffsetY: CGFloat = 0
-    @State private var pendingReturnScrollOffsetY: CGFloat?
+    @State private var itemViewportYByID: [String: CGFloat] = [:]
+    @State private var pendingReturnScrollBookmark: DepthAlbumReturnScrollBookmark?
+    @State private var latestReturnScrollRowStride: CGFloat = 0
     @State private var selectedAnalysisRoute: DepthAlbumAnalysisRoute?
     @State private var isAnalysisPresented = false
     @State private var returnScrollRestoreToken = UUID()
@@ -29,7 +30,7 @@ struct DepthAlbumPickerView: View {
     private static let gridSpacing: CGFloat = 3
     private static let gridPadding: CGFloat = 3
     private static let maximumThumbnailPixelLength = 320
-    private static let returnScrollCorrectionRowCount: CGFloat = 2
+    private static let scrollViewportCoordinateSpaceName = "DepthAlbumPickerScrollViewport"
 
     private var columns: [GridItem] {
         Array(
@@ -107,6 +108,11 @@ struct DepthAlbumPickerView: View {
                         }
                         .buttonStyle(.plain)
                         .id(item.id)
+                        .onGeometryChange(for: CGFloat.self) { geometry in
+                            geometry.frame(in: .named(Self.scrollViewportCoordinateSpaceName)).minY
+                        } action: { _, newViewportY in
+                            itemViewportYByID[item.id] = newViewportY
+                        }
                         .onAppear {
                             routeStore.recordVisibleDepthAlbumItem(item.routeAnchor)
                         }
@@ -116,16 +122,19 @@ struct DepthAlbumPickerView: View {
             }
         }
         .scrollPosition($albumScrollPosition)
-        .onScrollGeometryChange(for: CGFloat.self) { geometry in
-            max(0, geometry.contentOffset.y)
-        } action: { _, newOffsetY in
-            latestObservedScrollOffsetY = newOffsetY
-        }
+        .coordinateSpace(name: Self.scrollViewportCoordinateSpaceName)
         .onChange(of: viewModel.items.map(\.id)) { _, _ in
-            restorePendingReturnScrollPosition(clearAfterDelay: false)
+            pruneTrackedItemViewportPositions()
+            restorePendingReturnScrollPosition(
+                rowStride: returnScrollRowStride,
+                clearAfterDelay: false
+            )
         }
         .onAppear {
-            restorePendingReturnScrollPosition(clearAfterDelay: false)
+            restorePendingReturnScrollPosition(
+                rowStride: returnScrollRowStride,
+                clearAfterDelay: false
+            )
         }
     }
 
@@ -144,9 +153,11 @@ struct DepthAlbumPickerView: View {
     }
 
     private func openAlbumItem(_ item: TAPLibraryItem, returnScrollRowStride: CGFloat) {
-        pendingReturnScrollOffsetY = Self.returnScrollOffsetY(
-            currentOffsetY: latestObservedScrollOffsetY,
-            rowStride: returnScrollRowStride
+        latestReturnScrollRowStride = returnScrollRowStride
+        pendingReturnScrollBookmark = DepthAlbumReturnScrollBookmark(
+            itemID: item.id,
+            routeAnchor: item.routeAnchor,
+            itemViewportY: itemViewportYByID[item.id] ?? 0
         )
         returnScrollRestoreToken = UUID()
         selectedAnalysisRoute = DepthAlbumAnalysisRoute(item: item)
@@ -160,29 +171,44 @@ struct DepthAlbumPickerView: View {
         }
 
         selectedAnalysisRoute = nil
-        schedulePreciseReturnScrollRestore(clearAfterDelay: true)
+        scheduleReturnScrollRestore(clearAfterDelay: true)
     }
 
-    private func restorePendingReturnScrollPosition(clearAfterDelay: Bool) {
-        guard pendingReturnScrollOffsetY != nil,
+    private func restorePendingReturnScrollPosition(rowStride: CGFloat, clearAfterDelay: Bool) {
+        guard pendingReturnScrollBookmark != nil,
               !isAnalysisPresented else {
             return
         }
 
-        schedulePreciseReturnScrollRestore(clearAfterDelay: clearAfterDelay)
+        scheduleReturnScrollRestore(
+            rowStride: rowStride,
+            clearAfterDelay: clearAfterDelay
+        )
     }
 
-    private func schedulePreciseReturnScrollRestore(clearAfterDelay: Bool) {
-        guard let offsetY = pendingReturnScrollOffsetY else {
+    private func scheduleReturnScrollRestore(clearAfterDelay: Bool) {
+        scheduleReturnScrollRestore(
+            rowStride: latestReturnScrollRowStride,
+            clearAfterDelay: clearAfterDelay
+        )
+    }
+
+    private func scheduleReturnScrollRestore(rowStride: CGFloat, clearAfterDelay: Bool) {
+        guard let bookmark = pendingReturnScrollBookmark else {
             return
         }
 
         let token = returnScrollRestoreToken
         Task { @MainActor in
             await Task.yield()
-            guard pendingReturnScrollOffsetY == offsetY,
+            guard pendingReturnScrollBookmark == bookmark,
                   returnScrollRestoreToken == token,
-                  !isAnalysisPresented else {
+                  !isAnalysisPresented,
+                  let offsetY = Self.returnScrollOffsetY(
+                    bookmark: bookmark,
+                    items: viewModel.items,
+                    rowStride: rowStride
+                  ) else {
                 return
             }
 
@@ -193,17 +219,76 @@ struct DepthAlbumPickerView: View {
             }
 
             try? await Task.sleep(nanoseconds: 300_000_000)
-            guard pendingReturnScrollOffsetY == offsetY,
+            guard pendingReturnScrollBookmark == bookmark,
                   returnScrollRestoreToken == token,
                   !isAnalysisPresented else {
                 return
             }
-            pendingReturnScrollOffsetY = nil
+            pendingReturnScrollBookmark = nil
         }
     }
 
-    static func returnScrollOffsetY(currentOffsetY: CGFloat, rowStride: CGFloat) -> CGFloat {
-        max(0, currentOffsetY + (max(rowStride, 0) * returnScrollCorrectionRowCount))
+    private func pruneTrackedItemViewportPositions() {
+        let currentItemIDs = Set(viewModel.items.map(\.id))
+        itemViewportYByID = itemViewportYByID.filter { currentItemIDs.contains($0.key) }
+    }
+
+    static func returnScrollOffsetY(
+        bookmark: DepthAlbumReturnScrollBookmark,
+        items: [TAPLibraryItem],
+        rowStride: CGFloat
+    ) -> CGFloat? {
+        guard let itemIndex = returnScrollBookmarkItemIndex(bookmark: bookmark, items: items) else {
+            return nil
+        }
+
+        return returnScrollOffsetY(
+            itemIndex: itemIndex,
+            itemViewportY: bookmark.itemViewportY,
+            rowStride: rowStride
+        )
+    }
+
+    static func returnScrollBookmarkItemIndex(
+        bookmark: DepthAlbumReturnScrollBookmark,
+        items: [TAPLibraryItem]
+    ) -> Int? {
+        if let exactIndex = items.firstIndex(where: { $0.id == bookmark.itemID }) {
+            return exactIndex
+        }
+
+        return items.firstIndex { item in
+            routeAnchorsMatch(item.routeAnchor, bookmark.routeAnchor)
+        }
+    }
+
+    static func returnScrollOffsetY(itemIndex: Int, itemViewportY: CGFloat, rowStride: CGFloat) -> CGFloat {
+        let rowIndex = max(0, itemIndex) / columnCount
+        let itemContentY = gridPadding + (CGFloat(rowIndex) * max(rowStride, 0))
+        return max(0, itemContentY - itemViewportY)
+    }
+
+    private static func routeAnchorsMatch(
+        _ currentAnchor: CameraRouteAlbumAnchor,
+        _ bookmarkedAnchor: CameraRouteAlbumAnchor
+    ) -> Bool {
+        if currentAnchor.itemID == bookmarkedAnchor.itemID {
+            return true
+        }
+
+        if let currentCaptureID = currentAnchor.captureID,
+           let bookmarkedCaptureID = bookmarkedAnchor.captureID,
+           currentCaptureID == bookmarkedCaptureID {
+            return true
+        }
+
+        if let currentAssetID = currentAnchor.assetLocalIdentifier,
+           let bookmarkedAssetID = bookmarkedAnchor.assetLocalIdentifier,
+           currentAssetID == bookmarkedAssetID {
+            return true
+        }
+
+        return false
     }
 
     private static func gridRowStride(containerWidth: CGFloat) -> CGFloat {
@@ -221,6 +306,12 @@ struct DepthAlbumPickerView: View {
         let targetPixelLength = Int(ceil(cellPointLength * displayScale))
         return min(max(targetPixelLength, 1), maximumThumbnailPixelLength)
     }
+}
+
+nonisolated struct DepthAlbumReturnScrollBookmark: Equatable, Sendable {
+    let itemID: String
+    let routeAnchor: CameraRouteAlbumAnchor
+    let itemViewportY: CGFloat
 }
 
 private struct DepthAlbumAnalysisRoute: Hashable {

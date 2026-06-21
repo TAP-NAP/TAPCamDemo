@@ -242,8 +242,9 @@ reposition the grid; they start at the top.
 
 Precise scroll offset is intentionally not part of this durable context. The TAP
 Library picker keeps an in-session vertical offset in view-local state only so
-returning from an analysis page can land near where the user left off, with a
-two-row correction for the observed return drift, without writing that UI
+returning from an analysis page can land near where the user left off. The
+return bookmark stores the clicked item's identity and viewport position, then
+computes the target offset from the current item list without writing that UI
 coordinate to disk.
 
 Pending-to-owned migration is handled by the capture token: a
@@ -262,7 +263,7 @@ Capture proof and export-gate behavior is covered by the provenance focused
 tests listed below:
 
 - `TAPLibraryRouteTests.swift` covers route anchors, top-start TAP Library
-  picker boundaries, two-row return-scroll correction, pending-to-owned anchor
+  picker boundaries, clicked-item return bookmarks, pending-to-owned anchor
   resolution, item merge/dedupe/sort behavior, thumbnail cache-key privacy, and
   fixed-length HMAC route-context tokens.
 - `TAPLibraryStorageTests.swift` covers record identity, persisted location,

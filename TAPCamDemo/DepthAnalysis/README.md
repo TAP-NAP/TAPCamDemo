@@ -71,8 +71,7 @@ If this module is new to you, read it in this order:
    protected disk-cache writes for the TAP Library grid.
 7. [DepthAlbumPickerView.swift](DepthAlbumPickerView.swift) owns the TAP Library
    grid UI, fresh-entry top start, cached first album load, in-session
-   two-row corrected scroll return, item selection, and navigation into
-   analysis.
+   clicked-item scroll return, item selection, and navigation into analysis.
 8. [DepthAnalysisRegionSelectionState.swift](DepthAnalysisRegionSelectionState.swift)
    owns rectangular region selection, clamping, region stats, local heatmap
    generation, and local plane estimate generation. It receives only a loaded
@@ -305,8 +304,8 @@ list for attended device or UI checks that code reading alone cannot prove.
 1. Open TAP Library from the camera screen and confirm the grid can show pending
    records, exported pending records, and app-owned Photos assets.
 2. Read [DepthAlbumPickerView.swift](DepthAlbumPickerView.swift) for fresh-entry
-   top start, in-session two-row corrected scroll return, cached album snapshot
-   reuse, item selection, and navigation to analysis. Pending items open with
+   top start, in-session clicked-item scroll return, cached album snapshot reuse,
+   item selection, and navigation to analysis. Pending items open with
    `pendingCaptureID`; owned and Photos-only items open with `assetID`.
 3. Open an item and verify RGB, Planes, and Point Cloud modes remain available.
    Heatmap and Valid Mask are still debug-only buttons.
