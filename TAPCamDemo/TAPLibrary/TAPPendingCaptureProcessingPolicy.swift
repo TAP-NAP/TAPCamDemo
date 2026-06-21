@@ -35,9 +35,9 @@ nonisolated extension TAPPendingCaptureRecord {
 
     var processingPriority: Int? {
         switch status {
-        case .pending, .signing:
-            return 0
         case .signed, .exporting:
+            return 0
+        case .pending, .signing:
             return 1
         case .failedRetryable, .waitingNetwork:
             return 2
@@ -48,5 +48,9 @@ nonisolated extension TAPPendingCaptureRecord {
 
     var isProcessingCandidate: Bool {
         processingPriority != nil
+    }
+
+    var shouldAttemptExistingAssetRecoveryBeforeExport: Bool {
+        status == .exporting
     }
 }

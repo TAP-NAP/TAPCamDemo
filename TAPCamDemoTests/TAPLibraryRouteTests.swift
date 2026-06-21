@@ -196,11 +196,26 @@ struct TAPLibraryRouteTests {
         #expect(pickerSource.contains("ScrollPosition(idType: String.self)"))
         #expect(pickerSource.contains("onScrollGeometryChange"))
         #expect(pickerSource.contains("pendingReturnScrollOffsetY"))
+        #expect(pickerSource.contains("returnScrollCorrectionRowCount: CGFloat = 2"))
+        #expect(pickerSource.contains("returnScrollOffsetY("))
         #expect(pickerSource.contains("albumScrollPosition.scrollTo(y: offsetY)"))
+        #expect(pickerSource.contains("loadIfNeeded()"))
+        #expect(pickerSource.contains("selectedAnalysisRoute"))
+        #expect(pickerSource.contains("handleAnalysisPresentationChange"))
+        #expect(pickerSource.contains("schedulePreciseReturnScrollRestore(clearAfterDelay: true)"))
+        #expect(!pickerSource.contains("ScrollViewReader"))
+        #expect(!pickerSource.contains("validDepthAlbumRestoreAnchorID"))
+        #expect(!pickerSource.contains("NavigationLink {"))
         #expect(!routeStoreSource.contains("pendingReturnScrollOffsetY"))
         #expect(!routeStoreSource.contains("latestObservedScrollOffsetY"))
         #expect(!contextStoreSource.contains("ScrollPosition"))
         #expect(!contextStoreSource.contains("contentOffset"))
+    }
+
+    @Test @MainActor func depthAlbumPickerReturnScrollOffsetAppliesTwoRowCorrection() throws {
+        #expect(DepthAlbumPickerView.returnScrollOffsetY(currentOffsetY: 500, rowStride: 80) == 660)
+        #expect(DepthAlbumPickerView.returnScrollOffsetY(currentOffsetY: 100, rowStride: 80) == 260)
+        #expect(DepthAlbumPickerView.returnScrollOffsetY(currentOffsetY: 100, rowStride: -80) == 100)
     }
 
     @Test func depthAlbumThumbnailCacheKeyDoesNotExposePhotoIdentifier() throws {
@@ -371,6 +386,76 @@ struct TAPLibraryRouteTests {
         await viewModel.load()
         #expect(viewModel.items.map(\.id) == ["pending:pending-offline"])
         #expect(viewModel.errorMessage == nil)
+    }
+
+    @Test @MainActor func depthAlbumPickerLoadIfNeededReusesCachedSnapshot() async throws {
+        let pendingRecord = TAPCamDemoTestFixtures.samplePendingRecord(
+            captureID: "cached-pending",
+            capturedAt: Date(timeIntervalSince1970: 100)
+        )
+        var loadCount = 0
+        let provider = DepthAlbumItemProvider(
+            pendingRecordsLoader: {
+                loadCount += 1
+                return [pendingRecord]
+            },
+            exportedRecordsLoader: { [] },
+            photoAssetsLoader: { [] },
+            exportedAssetResolver: { _ in nil }
+        )
+        let viewModel = DepthAlbumPickerViewModel(itemProvider: provider)
+
+        await viewModel.loadIfNeeded()
+        await viewModel.loadIfNeeded()
+
+        #expect(loadCount == 1)
+        #expect(viewModel.items.map(\.id) == ["pending:cached-pending"])
+
+        await viewModel.load(showLoadingIndicator: false)
+
+        #expect(loadCount == 2)
+    }
+
+    @Test @MainActor func depthAlbumPickerLoadIfNeededCachesEmptySnapshot() async throws {
+        var loadCount = 0
+        let provider = DepthAlbumItemProvider(
+            pendingRecordsLoader: {
+                loadCount += 1
+                return []
+            },
+            exportedRecordsLoader: { [] },
+            photoAssetsLoader: { [] },
+            exportedAssetResolver: { _ in nil }
+        )
+        let viewModel = DepthAlbumPickerViewModel(itemProvider: provider)
+
+        await viewModel.loadIfNeeded()
+        await viewModel.loadIfNeeded()
+
+        #expect(loadCount == 1)
+        #expect(viewModel.items.isEmpty)
+        #expect(viewModel.errorMessage == nil)
+    }
+
+    @Test @MainActor func depthAlbumPickerLoadIfNeededCachesFailedSnapshotAttempt() async throws {
+        var loadCount = 0
+        let provider = DepthAlbumItemProvider(
+            pendingRecordsLoader: {
+                loadCount += 1
+                throw DepthAlbumItemProviderTestError.photosUnavailable
+            },
+            exportedRecordsLoader: { [] },
+            photoAssetsLoader: { [] },
+            exportedAssetResolver: { _ in nil }
+        )
+        let viewModel = DepthAlbumPickerViewModel(itemProvider: provider)
+
+        await viewModel.loadIfNeeded()
+        await viewModel.loadIfNeeded()
+
+        #expect(loadCount == 1)
+        #expect(viewModel.items.isEmpty)
+        #expect(viewModel.errorMessage == "Unable to load TAP Library. Check Photos access and try again.")
     }
 
     @Test @MainActor func depthAlbumPickerShowsPhotosErrorOnlyWhenNoItemsSurvive() async throws {

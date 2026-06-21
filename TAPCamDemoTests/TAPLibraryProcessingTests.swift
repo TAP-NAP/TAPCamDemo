@@ -147,8 +147,8 @@ struct TAPLibraryProcessingTests {
             retryRecord.captureID
         ])
         #expect(await exporter.exportedCaptureIDs() == [
-            pendingRecord.captureID,
             signedRecord.captureID,
+            pendingRecord.captureID,
             retryRecord.captureID
         ])
         #expect(try await store.readRecord(captureID: pendingRecord.captureID).status == .exported)
@@ -175,6 +175,53 @@ struct TAPLibraryProcessingTests {
         #expect(failedRecord.status == .waitingNetwork)
         #expect(failedRecord.retryCount == 1)
         #expect(failedRecord.failureReason == "Network unavailable. Capture will retry.")
+    }
+
+    @Test func photoLibraryPendingCaptureExporterSkipsExistingAssetLookupForSignedFirstExport() async throws {
+        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        let store = TAPPendingCaptureStore(rootURL: rootURL)
+        let record = try await store.ingest(TAPCamDemoTestFixtures.samplePendingArtifact(
+            photoData: Data("unsigned".utf8),
+            captureID: "signed-first-export"
+        ))
+        let signedRecord = try await store.storeSignedHEIC(
+            Data("signed-first-export-data".utf8),
+            captureID: record.captureID
+        )
+        let actions = RecordingPhotoLibraryExportActions()
+        let exporter = PhotoLibraryPendingCaptureExporter(actions: actions.actions())
+
+        try await exporter.export(signedRecord, store: store)
+
+        #expect(await actions.existingLookupCaptureIDs().isEmpty)
+        #expect(await actions.savedCaptureIDs() == [signedRecord.captureID])
+        let exportedRecord = try await store.readRecord(captureID: signedRecord.captureID)
+        #expect(exportedRecord.status == .exported)
+        #expect(exportedRecord.assetLocalIdentifier == "saved-\(signedRecord.captureID)")
+    }
+
+    @Test func photoLibraryPendingCaptureExporterUsesExistingAssetLookupOnlyForExportingRecovery() async throws {
+        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        let store = TAPPendingCaptureStore(rootURL: rootURL)
+        let record = try await store.ingest(TAPCamDemoTestFixtures.samplePendingArtifact(
+            photoData: Data("unsigned".utf8),
+            captureID: "exporting-recovery"
+        ))
+        _ = try await store.storeSignedHEIC(
+            Data("exporting-recovery-data".utf8),
+            captureID: record.captureID
+        )
+        let exportingRecord = try await store.updateStatus(captureID: record.captureID, status: .exporting)
+        let actions = RecordingPhotoLibraryExportActions()
+        let exporter = PhotoLibraryPendingCaptureExporter(actions: actions.actions(existingAssetID: "existing-asset"))
+
+        try await exporter.export(exportingRecord, store: store)
+
+        #expect(await actions.existingLookupCaptureIDs() == [exportingRecord.captureID])
+        #expect(await actions.savedCaptureIDs().isEmpty)
+        let exportedRecord = try await store.readRecord(captureID: exportingRecord.captureID)
+        #expect(exportedRecord.status == .exported)
+        #expect(exportedRecord.assetLocalIdentifier == "existing-asset")
     }
 
     @Test func pendingCaptureRetryClassifierMapsTypedNetworkErrorsToWaitingNetwork() throws {
@@ -416,6 +463,40 @@ private actor RecordingPendingCaptureExporter: TAPPendingCaptureExporting {
             captureID: record.captureID,
             assetLocalIdentifier: "asset-\(record.captureID)"
         )
+    }
+}
+
+private actor RecordingPhotoLibraryExportActions {
+    private var existingLookupIDs: [String] = []
+    private var savedIDs: [String] = []
+
+    nonisolated func actions(existingAssetID: String? = nil) -> PhotoLibraryPendingCaptureExportActions {
+        PhotoLibraryPendingCaptureExportActions(
+            existingAssetIdentifier: { captureID in
+                await self.recordExistingLookup(captureID)
+                return existingAssetID
+            },
+            saveValidatedSignedHEIC: { _, record in
+                await self.recordSave(record.captureID)
+                return "saved-\(record.captureID)"
+            }
+        )
+    }
+
+    func existingLookupCaptureIDs() -> [String] {
+        existingLookupIDs
+    }
+
+    func savedCaptureIDs() -> [String] {
+        savedIDs
+    }
+
+    private func recordExistingLookup(_ captureID: String) {
+        existingLookupIDs.append(captureID)
+    }
+
+    private func recordSave(_ captureID: String) {
+        savedIDs.append(captureID)
     }
 }
 

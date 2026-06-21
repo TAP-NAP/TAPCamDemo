@@ -222,12 +222,43 @@ private struct AppAttestPendingCaptureSigner: TAPPendingCaptureSigning {
     }
 }
 
-private struct PhotoLibraryPendingCaptureExporter: TAPPendingCaptureExporting {
-    private let provenanceWriter = TAPCaptureProvenanceWriter()
+nonisolated struct PhotoLibraryPendingCaptureExportActions: Sendable {
+    let existingAssetIdentifier: @Sendable (String) async throws -> String?
+    let saveValidatedSignedHEIC: @Sendable (Data, TAPPendingCaptureRecord) async throws -> String
+
+    static func live(
+        provenanceWriter: TAPCaptureProvenanceWriter = TAPCaptureProvenanceWriter()
+    ) -> Self {
+        Self(
+            existingAssetIdentifier: { captureID in
+                try await PhotoLibraryWriter.depthAssetIdentifier(captureID: captureID)
+            },
+            saveValidatedSignedHEIC: { signedData, record in
+                let validatedHEIC = try provenanceWriter.validateSignedExportHEIC(
+                    signedData,
+                    expectedCaptureID: record.captureID
+                )
+                return try await PhotoLibraryWriter.saveDepthHEIC(
+                    validatedHEIC,
+                    capturedAt: record.capturedAt,
+                    location: record.location?.clLocation
+                )
+            }
+        )
+    }
+}
+
+struct PhotoLibraryPendingCaptureExporter: TAPPendingCaptureExporting {
+    private let actions: PhotoLibraryPendingCaptureExportActions
+
+    init(actions: PhotoLibraryPendingCaptureExportActions = .live()) {
+        self.actions = actions
+    }
 
     func export(_ record: TAPPendingCaptureRecord, store: TAPPendingCaptureStore) async throws {
         TAPDiagnostics.pendingCapture.info("export start captureID=\(record.captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public)")
-        if let existingAssetID = try? await PhotoLibraryWriter.depthAssetIdentifier(captureID: record.captureID) {
+        if record.shouldAttemptExistingAssetRecoveryBeforeExport,
+           let existingAssetID = try? await actions.existingAssetIdentifier(record.captureID) {
             _ = try await store.markExported(captureID: record.captureID, assetLocalIdentifier: existingAssetID)
             TAPDiagnostics.pendingCapture.info("export skipped existing asset captureID=\(record.captureID, privacy: .private) assetID=\(existingAssetID, privacy: .private)")
             return
@@ -237,16 +268,8 @@ private struct PhotoLibraryPendingCaptureExporter: TAPPendingCaptureExporting {
         TAPDiagnostics.pendingCapture.info("export status updated captureID=\(record.captureID, privacy: .private) status=\(TAPPendingCaptureStatus.exporting.rawValue, privacy: .public)")
         let signedData = try await store.signedHEICData(captureID: record.captureID)
         TAPDiagnostics.pendingCapture.info("export signed data loaded captureID=\(record.captureID, privacy: .private) bytes=\(signedData.count, privacy: .public)")
-        let validatedHEIC = try provenanceWriter.validateSignedExportHEIC(
-            signedData,
-            expectedCaptureID: record.captureID
-        )
-        TAPDiagnostics.pendingCapture.info("export validation passed captureID=\(record.captureID, privacy: .private) proofCount=\(validatedHEIC.manifest.proofs.count, privacy: .public)")
-        let assetID = try await PhotoLibraryWriter.saveDepthHEIC(
-            validatedHEIC,
-            capturedAt: record.capturedAt,
-            location: record.location?.clLocation
-        )
+        let assetID = try await actions.saveValidatedSignedHEIC(signedData, record)
+        TAPDiagnostics.pendingCapture.info("export validation and save passed captureID=\(record.captureID, privacy: .private)")
         _ = try await store.markExported(captureID: record.captureID, assetLocalIdentifier: assetID)
         TAPDiagnostics.pendingCapture.info("export success captureID=\(record.captureID, privacy: .private) assetID=\(assetID, privacy: .private)")
     }

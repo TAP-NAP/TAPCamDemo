@@ -21,12 +21,15 @@ struct DepthAlbumPickerView: View {
     @State private var albumScrollPosition = ScrollPosition(idType: String.self)
     @State private var latestObservedScrollOffsetY: CGFloat = 0
     @State private var pendingReturnScrollOffsetY: CGFloat?
-    @State private var didApplyInitialAnchorRestore = false
+    @State private var selectedAnalysisRoute: DepthAlbumAnalysisRoute?
+    @State private var isAnalysisPresented = false
+    @State private var returnScrollRestoreToken = UUID()
 
     private static let columnCount = 5
     private static let gridSpacing: CGFloat = 3
     private static let gridPadding: CGFloat = 3
     private static let maximumThumbnailPixelLength = 320
+    private static let returnScrollCorrectionRowCount: CGFloat = 2
 
     private var columns: [GridItem] {
         Array(
@@ -41,11 +44,13 @@ struct DepthAlbumPickerView: View {
 
     var body: some View {
         GeometryReader { geometry in
+            let containerWidth = geometry.size.width
             albumContent(
                 thumbnailPixelLength: Self.thumbnailPixelLength(
-                    containerWidth: geometry.size.width,
+                    containerWidth: containerWidth,
                     displayScale: displayScale
-                )
+                ),
+                returnScrollRowStride: Self.gridRowStride(containerWidth: containerWidth)
             )
         }
         .navigationTitle("TAP Library")
@@ -64,113 +69,172 @@ struct DepthAlbumPickerView: View {
             }
         }
         .task {
-            await viewModel.load()
+            await viewModel.loadIfNeeded()
         }
         .onReceive(NotificationCenter.default.publisher(for: .tapLibraryDidChange).receive(on: RunLoop.main)) { _ in
             viewModel.scheduleRefresh()
         }
+        .navigationDestination(isPresented: $isAnalysisPresented) {
+            analysisDestination()
+        }
+        .onChange(of: isAnalysisPresented) { _, isPresented in
+            handleAnalysisPresentationChange(isPresented: isPresented)
+        }
     }
 
     @ViewBuilder
-    private func albumContent(thumbnailPixelLength: Int) -> some View {
-        ScrollViewReader { scrollProxy in
-            ScrollView {
-                if viewModel.isLoading {
-                    ProgressView("Loading TAPCamDepth...")
-                        .frame(maxWidth: .infinity, minHeight: 260)
-                } else if let errorMessage = viewModel.errorMessage {
-                    ContentUnavailableView("Unable to load album", systemImage: "photo.on.rectangle.angled", description: Text(errorMessage))
-                        .frame(minHeight: 320)
-                } else if viewModel.items.isEmpty {
-                    ContentUnavailableView("No depth photos yet", systemImage: "photo.stack", description: Text("Capture a TAP depth photo first, then return here to analyze it."))
-                        .frame(minHeight: 320)
-                } else {
-                    LazyVGrid(columns: columns, spacing: Self.gridSpacing) {
-                        ForEach(viewModel.items) { item in
-                            NavigationLink {
-                                switch item.source {
-                                case .photos(let asset):
-                                    DepthAnalysisView(assetID: asset.localIdentifier)
-                                case .ownedPhoto(_, let asset):
-                                    DepthAnalysisView(assetID: asset.localIdentifier)
-                                case .pending(let record):
-                                    DepthAnalysisView(pendingCaptureID: record.captureID)
-                                }
-                            } label: {
-                                TAPLibraryItemCell(
-                                    item: item,
-                                    thumbnailPixelLength: thumbnailPixelLength
-                                )
-                            }
-                            .buttonStyle(.plain)
-                            .id(item.id)
-                            .simultaneousGesture(TapGesture().onEnded {
-                                openAlbumItem(item)
-                            })
-                            .onAppear {
-                                routeStore.recordVisibleDepthAlbumItem(item.routeAnchor)
-                            }
+    private func albumContent(thumbnailPixelLength: Int, returnScrollRowStride: CGFloat) -> some View {
+        ScrollView {
+            if viewModel.isLoading {
+                ProgressView("Loading TAPCamDepth...")
+                    .frame(maxWidth: .infinity, minHeight: 260)
+            } else if let errorMessage = viewModel.errorMessage {
+                ContentUnavailableView("Unable to load album", systemImage: "photo.on.rectangle.angled", description: Text(errorMessage))
+                    .frame(minHeight: 320)
+            } else if viewModel.items.isEmpty {
+                ContentUnavailableView("No depth photos yet", systemImage: "photo.stack", description: Text("Capture a TAP depth photo first, then return here to analyze it."))
+                    .frame(minHeight: 320)
+            } else {
+                LazyVGrid(columns: columns, spacing: Self.gridSpacing) {
+                    ForEach(viewModel.items) { item in
+                        Button {
+                            openAlbumItem(item, returnScrollRowStride: returnScrollRowStride)
+                        } label: {
+                            TAPLibraryItemCell(
+                                item: item,
+                                thumbnailPixelLength: thumbnailPixelLength
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .id(item.id)
+                        .onAppear {
+                            routeStore.recordVisibleDepthAlbumItem(item.routeAnchor)
                         }
                     }
-                    .padding(Self.gridPadding)
                 }
+                .padding(Self.gridPadding)
             }
-            .scrollPosition($albumScrollPosition)
-            .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                max(0, geometry.contentOffset.y)
-            } action: { _, newOffsetY in
-                latestObservedScrollOffsetY = newOffsetY
-            }
-            .onChange(of: viewModel.items.map(\.id)) { _, _ in
-                restoreAlbumScrollPosition(scrollProxy)
-            }
-            .onAppear {
-                restoreAlbumScrollPosition(scrollProxy)
-            }
+        }
+        .scrollPosition($albumScrollPosition)
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            max(0, geometry.contentOffset.y)
+        } action: { _, newOffsetY in
+            latestObservedScrollOffsetY = newOffsetY
+        }
+        .onChange(of: viewModel.items.map(\.id)) { _, _ in
+            restorePendingReturnScrollPosition(clearAfterDelay: false)
+        }
+        .onAppear {
+            restorePendingReturnScrollPosition(clearAfterDelay: false)
         }
     }
 
-    private func openAlbumItem(_ item: TAPLibraryItem) {
-        pendingReturnScrollOffsetY = latestObservedScrollOffsetY
+    @ViewBuilder
+    private func analysisDestination() -> some View {
+        if let selectedAnalysisRoute {
+            switch selectedAnalysisRoute.source {
+            case .photosAsset(let assetID):
+                DepthAnalysisView(assetID: assetID)
+            case .pendingCapture(let captureID):
+                DepthAnalysisView(pendingCaptureID: captureID)
+            }
+        } else {
+            EmptyView()
+        }
+    }
+
+    private func openAlbumItem(_ item: TAPLibraryItem, returnScrollRowStride: CGFloat) {
+        pendingReturnScrollOffsetY = Self.returnScrollOffsetY(
+            currentOffsetY: latestObservedScrollOffsetY,
+            rowStride: returnScrollRowStride
+        )
+        returnScrollRestoreToken = UUID()
+        selectedAnalysisRoute = DepthAlbumAnalysisRoute(item: item)
         routeStore.openDepthAlbumItem(item.routeAnchor)
+        isAnalysisPresented = true
     }
 
-    private func restoreAlbumScrollPosition(_ scrollProxy: ScrollViewProxy) {
-        if restorePendingReturnScrollPosition() {
+    private func handleAnalysisPresentationChange(isPresented: Bool) {
+        guard !isPresented else {
             return
         }
 
-        guard !didApplyInitialAnchorRestore else {
-            return
-        }
-
-        guard let anchorID = routeStore.validDepthAlbumRestoreAnchorID(
-            availableItems: viewModel.items.map(\.routeAnchor)
-        ) else {
-            return
-        }
-
-        didApplyInitialAnchorRestore = true
-        scrollProxy.scrollTo(anchorID, anchor: .center)
+        selectedAnalysisRoute = nil
+        schedulePreciseReturnScrollRestore(clearAfterDelay: true)
     }
 
-    private func restorePendingReturnScrollPosition() -> Bool {
+    private func restorePendingReturnScrollPosition(clearAfterDelay: Bool) {
+        guard pendingReturnScrollOffsetY != nil,
+              !isAnalysisPresented else {
+            return
+        }
+
+        schedulePreciseReturnScrollRestore(clearAfterDelay: clearAfterDelay)
+    }
+
+    private func schedulePreciseReturnScrollRestore(clearAfterDelay: Bool) {
         guard let offsetY = pendingReturnScrollOffsetY else {
-            return false
+            return
         }
 
-        didApplyInitialAnchorRestore = true
-        pendingReturnScrollOffsetY = nil
-        albumScrollPosition.scrollTo(y: offsetY)
-        return true
+        let token = returnScrollRestoreToken
+        Task { @MainActor in
+            await Task.yield()
+            guard pendingReturnScrollOffsetY == offsetY,
+                  returnScrollRestoreToken == token,
+                  !isAnalysisPresented else {
+                return
+            }
+
+            albumScrollPosition.scrollTo(y: offsetY)
+
+            guard clearAfterDelay else {
+                return
+            }
+
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            guard pendingReturnScrollOffsetY == offsetY,
+                  returnScrollRestoreToken == token,
+                  !isAnalysisPresented else {
+                return
+            }
+            pendingReturnScrollOffsetY = nil
+        }
+    }
+
+    static func returnScrollOffsetY(currentOffsetY: CGFloat, rowStride: CGFloat) -> CGFloat {
+        max(0, currentOffsetY + (max(rowStride, 0) * returnScrollCorrectionRowCount))
+    }
+
+    private static func gridRowStride(containerWidth: CGFloat) -> CGFloat {
+        gridCellPointLength(containerWidth: containerWidth) + gridSpacing
+    }
+
+    private static func gridCellPointLength(containerWidth: CGFloat) -> CGFloat {
+        let spacingWidth = gridSpacing * CGFloat(columnCount - 1)
+        let availableGridWidth = max(containerWidth - (gridPadding * 2) - spacingWidth, 1)
+        return max(availableGridWidth / CGFloat(columnCount), 1)
     }
 
     private static func thumbnailPixelLength(containerWidth: CGFloat, displayScale: CGFloat) -> Int {
-        let spacingWidth = gridSpacing * CGFloat(columnCount - 1)
-        let availableGridWidth = max(containerWidth - (gridPadding * 2) - spacingWidth, 1)
-        let cellPointLength = max(availableGridWidth / CGFloat(columnCount), 1)
+        let cellPointLength = gridCellPointLength(containerWidth: containerWidth)
         let targetPixelLength = Int(ceil(cellPointLength * displayScale))
         return min(max(targetPixelLength, 1), maximumThumbnailPixelLength)
+    }
+}
+
+private struct DepthAlbumAnalysisRoute: Hashable {
+    let itemID: String
+    let source: DepthAnalysisSource
+
+    init(item: TAPLibraryItem) {
+        itemID = item.id
+        switch item.source {
+        case .photos(let asset), .ownedPhoto(_, let asset):
+            source = .photosAsset(asset.localIdentifier)
+        case .pending(let record):
+            source = .pendingCapture(record.captureID)
+        }
     }
 }
 
@@ -182,6 +246,7 @@ final class DepthAlbumPickerViewModel: ObservableObject {
 
     private let itemProvider: DepthAlbumItemProvider
     private var refreshTask: Task<Void, Never>?
+    private var hasLoadedSnapshot = false
 
     init(itemProvider: DepthAlbumItemProvider? = nil) {
         self.itemProvider = itemProvider ?? DepthAlbumItemProvider()
@@ -196,6 +261,7 @@ final class DepthAlbumPickerViewModel: ObservableObject {
             isLoading = true
         }
         defer {
+            hasLoadedSnapshot = true
             if showLoadingIndicator {
                 isLoading = false
             }
@@ -211,6 +277,15 @@ final class DepthAlbumPickerViewModel: ObservableObject {
             items = []
             errorMessage = DepthAnalysisErrorPresentation.albumLoadErrorMessage(for: error)
         }
+    }
+
+    func loadIfNeeded() async {
+        guard !hasLoadedSnapshot,
+              !isLoading else {
+            return
+        }
+
+        await load()
     }
 
     func scheduleRefresh() {

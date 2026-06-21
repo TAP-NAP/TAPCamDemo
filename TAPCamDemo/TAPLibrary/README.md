@@ -73,12 +73,15 @@ stateDiagram-v2
 Candidate priority is defined by
 [TAPPendingCaptureProcessingPolicy.swift](TAPPendingCaptureProcessingPolicy.swift):
 
-1. `pending` and `signing`
-2. `signed` and `exporting`
+1. `signed` and `exporting`
+2. `pending` and `signing`
 3. `failedRetryable` and `waitingNetwork`
 
 The same policy also decides whether a candidate should sign then export, export
 an existing signed HEIC, or be skipped.
+Already signed/exporting work is first because those records have already paid
+the App Attest signing cost and should reach Photos before newer pending records
+start another signing pass.
 
 The worker tracks already-visited capture IDs during one run so a failing item
 does not spin forever inside the same pass.
@@ -140,6 +143,10 @@ without App Attest hardware, network, or Photos side effects.
   envelope, proof digest binding, and Apple auxiliary depth/disparity. The
   validator returns `ValidatedTAPDepthHEIC`, which is the type accepted by the
   Photos writer.
+- Normal `.signed` first export goes straight to final validation and Photos
+  save; it does not scan every existing TAPCamDepth Photos asset first.
+  Existing-asset recovery via `depthAssetIdentifier` is reserved for `.exporting`
+  records, where the app may be resuming after an interrupted Photos save.
 - `thumbnail.jpg` is kept for TAP Library listing.
 - `assetLocalIdentifier` is kept after export so saved TAP photos remain
   discoverable even when Photos access is limited.
@@ -228,19 +235,21 @@ do not return it.
 These raw identifiers can reveal recent photo or pending-capture activity, so
 they are not written into durable route context. `CameraRouteContextStore`
 persists protected HMAC tokens derived from the current item, capture, and asset
-identity. On restore, `DepthAlbumPickerView` builds anchors from the current
-visible item list, and `CameraRouteStore` resolves the persisted token only when
-a current item matches.
+identity. When route context needs validation, the current visible item list can
+provide anchors and `CameraRouteStore` resolves the persisted token only when a
+current item matches. Current TAP Library fresh entries do not use that token to
+reposition the grid; they start at the top.
 
 Precise scroll offset is intentionally not part of this durable context. The TAP
-Library picker keeps exact in-session vertical offset in view-local state only so
-returning from an analysis page can land where the user left off without writing
-that UI coordinate to disk.
+Library picker keeps an in-session vertical offset in view-local state only so
+returning from an analysis page can land near where the user left off, with a
+two-row correction for the observed return drift, without writing that UI
+coordinate to disk.
 
 Pending-to-owned migration is handled by the capture token: a
 `pending:<captureID>` anchor can resolve to `owned:<assetLocalIdentifier>` after
 export because the owned item still carries the same pending record `captureID`.
-Route context must remain a scroll-restore hint only; it must not trigger HEIC
+Route context must remain item context only; it must not trigger HEIC
 reads, signing, export, retry, Photos fetches, or automatic analysis navigation.
 
 ## Tests
@@ -252,9 +261,10 @@ and [TAPLibraryProcessingTests.swift](../../TAPCamDemoTests/TAPLibraryProcessing
 Capture proof and export-gate behavior is covered by the provenance focused
 tests listed below:
 
-- `TAPLibraryRouteTests.swift` covers camera-to-library route restore anchors,
-  pending-to-owned anchor resolution, item merge/dedupe/sort behavior,
-  thumbnail cache-key privacy, and fixed-length HMAC route-context tokens.
+- `TAPLibraryRouteTests.swift` covers route anchors, top-start TAP Library
+  picker boundaries, two-row return-scroll correction, pending-to-owned anchor
+  resolution, item merge/dedupe/sort behavior, thumbnail cache-key privacy, and
+  fixed-length HMAC route-context tokens.
 - `TAPLibraryStorageTests.swift` covers record identity, persisted location,
   visible-pending state, bundle path and exact fixed artifact filename
   allow-list validation,

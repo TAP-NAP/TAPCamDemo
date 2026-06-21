@@ -49,11 +49,15 @@ flowchart TD
 
 ## Current Goal And Score Standard
 
-Current AI-assisted goal: implement TAP Library in-session scroll memory and
-optional foreground return to Camera without creating a second route system.
-`DepthAlbumPickerView` owns the exact return offset for analysis-page back
-navigation; `CameraRouteStore` and `CameraRouteContextStore` keep their existing
-route and tokenized item-anchor fallback responsibilities.
+Current AI-assisted goal: implement TAP Library in-session scroll memory,
+cached return-to-library browsing, optional foreground return to Camera, and
+signed-export queue cleanup without creating a second route system.
+`DepthAlbumPickerView` starts each fresh TAP Library entry at the top, owns the
+two-row return-offset correction and cached album snapshot for analysis-page
+back navigation; `CameraRouteStore` and `CameraRouteContextStore` keep route
+and tokenized item-anchor context without driving fresh-entry scroll position.
+TAP Library queue policy now prioritizes already signed/exporting work and keeps
+normal signed first export away from a full Photos asset scan.
 
 Use [Docs/AITrace/2026-06-21-tap-library-scroll-memory.md](Docs/AITrace/2026-06-21-tap-library-scroll-memory.md)
 as the plan-specific scoring-standard document. It contains the 10-point rubric,

@@ -486,12 +486,19 @@ struct TAPLibraryStorageTests {
         let pendingRecord = try await store.ingest(TAPCamDemoTestFixtures.samplePendingArtifact(photoData: Data("unsigned".utf8)))
 
         #expect(pendingRecord.processingRoute == .signThenExport)
-        #expect(pendingRecord.processingPriority == 0)
+        #expect(pendingRecord.processingPriority == 1)
         #expect(pendingRecord.isProcessingCandidate)
+        #expect(!pendingRecord.shouldAttemptExistingAssetRecoveryBeforeExport)
 
         let signedRecord = try await store.storeSignedHEIC(Data("signed".utf8), captureID: pendingRecord.captureID)
         #expect(signedRecord.processingRoute == .exportSigned)
-        #expect(signedRecord.processingPriority == 1)
+        #expect(signedRecord.processingPriority == 0)
+        #expect(!signedRecord.shouldAttemptExistingAssetRecoveryBeforeExport)
+
+        let exportingRecord = try await store.updateStatus(captureID: pendingRecord.captureID, status: .exporting)
+        #expect(exportingRecord.processingRoute == .exportSigned)
+        #expect(exportingRecord.processingPriority == 0)
+        #expect(exportingRecord.shouldAttemptExistingAssetRecoveryBeforeExport)
 
         let retryWithSignedFile = try await store.updateStatus(
             captureID: pendingRecord.captureID,
@@ -501,6 +508,7 @@ struct TAPLibraryStorageTests {
         )
         #expect(retryWithSignedFile.processingRoute == .exportSigned)
         #expect(retryWithSignedFile.processingPriority == 2)
+        #expect(!retryWithSignedFile.shouldAttemptExistingAssetRecoveryBeforeExport)
 
         let exportedRecord = try await store.markExported(captureID: pendingRecord.captureID, assetLocalIdentifier: "asset-id")
         #expect(exportedRecord.processingRoute == .skip)
@@ -535,7 +543,7 @@ struct TAPLibraryStorageTests {
         #expect(candidateIDs == [record.captureID])
     }
 
-    @Test func pendingCaptureStorePrioritizesFreshSigningWorkBeforeExportAndRetryBacklog() async throws {
+    @Test func pendingCaptureStorePrioritizesSignedExportBeforeFreshSigningAndRetryBacklog() async throws {
         let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
         let store = TAPPendingCaptureStore(rootURL: rootURL)
 
@@ -566,11 +574,11 @@ struct TAPLibraryStorageTests {
 
         let candidates = try await store.processingCandidates()
         #expect(candidates.map(\.captureID) == [
-            pendingRecord.captureID,
             signedRecord.captureID,
+            pendingRecord.captureID,
             retryRecord.captureID
         ])
-        #expect(candidates.map(\.status) == [.pending, .signed, .waitingNetwork])
+        #expect(candidates.map(\.status) == [.signed, .pending, .waitingNetwork])
     }
 
     @Test func pendingCaptureStoreReturnsNextProcessingCandidateWithExclusions() async throws {
@@ -603,14 +611,14 @@ struct TAPLibraryStorageTests {
         )
 
         let firstCandidate = try await store.nextProcessingCandidate()
-        #expect(firstCandidate?.captureID == pendingRecord.captureID)
+        #expect(firstCandidate?.captureID == signedRecord.captureID)
 
-        let secondCandidate = try await store.nextProcessingCandidate(excludingCaptureIDs: [pendingRecord.captureID])
-        #expect(secondCandidate?.captureID == signedRecord.captureID)
+        let secondCandidate = try await store.nextProcessingCandidate(excludingCaptureIDs: [signedRecord.captureID])
+        #expect(secondCandidate?.captureID == pendingRecord.captureID)
 
         let thirdCandidate = try await store.nextProcessingCandidate(excludingCaptureIDs: [
-            pendingRecord.captureID,
-            signedRecord.captureID
+            signedRecord.captureID,
+            pendingRecord.captureID
         ])
         #expect(thirdCandidate?.captureID == retryRecord.captureID)
     }

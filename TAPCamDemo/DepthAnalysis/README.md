@@ -70,8 +70,9 @@ If this module is new to you, read it in this order:
    Photos thumbnail requests, JPEG normalization, in-memory cache lookup, and
    protected disk-cache writes for the TAP Library grid.
 7. [DepthAlbumPickerView.swift](DepthAlbumPickerView.swift) owns the TAP Library
-   grid UI, in-session precise scroll return, item selection, and navigation
-   into analysis.
+   grid UI, fresh-entry top start, cached first album load, in-session
+   two-row corrected scroll return, item selection, and navigation into
+   analysis.
 8. [DepthAnalysisRegionSelectionState.swift](DepthAnalysisRegionSelectionState.swift)
    owns rectangular region selection, clamping, region stats, local heatmap
    generation, and local plane estimate generation. It receives only a loaded
@@ -303,10 +304,10 @@ list for attended device or UI checks that code reading alone cannot prove.
 
 1. Open TAP Library from the camera screen and confirm the grid can show pending
    records, exported pending records, and app-owned Photos assets.
-2. Read [DepthAlbumPickerView.swift](DepthAlbumPickerView.swift) for in-session
-   precise scroll return, fallback route restoration, item selection, and
-   navigation to analysis. Pending items open with `pendingCaptureID`; owned and
-   Photos-only items open with `assetID`.
+2. Read [DepthAlbumPickerView.swift](DepthAlbumPickerView.swift) for fresh-entry
+   top start, in-session two-row corrected scroll return, cached album snapshot
+   reuse, item selection, and navigation to analysis. Pending items open with
+   `pendingCaptureID`; owned and Photos-only items open with `assetID`.
 3. Open an item and verify RGB, Planes, and Point Cloud modes remain available.
    Heatmap and Valid Mask are still debug-only buttons.
 4. In RGB/Heatmap/Mask modes, use rectangular selection to inspect a region.
@@ -397,6 +398,12 @@ pending records, exported records, and app-owned Photos assets, then creates one
 current in-memory item list. Raw Photos and pending identifiers remain private
 inputs for opening the selected item and deriving route-restore tokens; the
 durable route context stores HMAC tokens, not those raw identifiers.
+
+[DepthAlbumPickerView.swift](DepthAlbumPickerView.swift) keeps that loaded item
+list in its `DepthAlbumPickerViewModel` while the picker is still alive. Back
+navigation from `DepthAnalysisView` uses the cached snapshot instead of
+re-fetching Photos and pending records; explicit TAP Library change
+notifications still schedule a silent refresh.
 
 Analysis input loading is split from the analysis state model.
 [DepthAnalysisInputLoader.swift](DepthAnalysisInputLoader.swift) resolves
