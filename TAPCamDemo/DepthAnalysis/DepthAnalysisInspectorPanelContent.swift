@@ -40,6 +40,8 @@ struct AnalysisInspectorPanelContent: View {
                 }
                 inspectorContent(for: inspector)
             }
+        case .signatureVerification:
+            EmptyView()
         }
     }
 

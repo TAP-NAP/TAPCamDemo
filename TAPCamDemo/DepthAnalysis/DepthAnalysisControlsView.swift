@@ -18,6 +18,7 @@ struct DepthAnalysisControlsView<PanelContent: View>: View {
     let buttonHint: AnalysisButtonHint?
     let maxPanelHeight: CGFloat
     let onViewTapped: (DepthAnalysisViewMode) -> Void
+    let onVerifySignatureTapped: () -> Void
     let panelContent: (AnalysisPanelDestination) -> PanelContent
 
     var body: some View {
@@ -40,7 +41,8 @@ struct DepthAnalysisControlsView<PanelContent: View>: View {
                 viewMode: $viewMode,
                 inspectors: viewMode.inspectors,
                 buttonHint: buttonHint,
-                onViewTapped: onViewTapped
+                onViewTapped: onViewTapped,
+                onVerifySignatureTapped: onVerifySignatureTapped
             )
         }
         .frame(maxWidth: 560, alignment: .leading)

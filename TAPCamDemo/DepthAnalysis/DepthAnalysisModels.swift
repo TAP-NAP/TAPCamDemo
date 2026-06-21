@@ -215,11 +215,14 @@ enum TAPPlaneGrowthError: LocalizedError, Equatable {
 
 enum AnalysisPanelDestination: Equatable {
     case inspector(AnalysisInspector)
+    case signatureVerification
 
     var selectedInspector: AnalysisInspector? {
         switch self {
         case .inspector(let inspector):
             return inspector
+        case .signatureVerification:
+            return nil
         }
     }
 }

@@ -128,6 +128,7 @@ struct TAPDepthAnalysisPresentationTests {
     @Test func analysisPanelDestinationSelectsInspectorsOnly() throws {
         #expect(AnalysisPanelDestination.inspector(.region).selectedInspector == .region)
         #expect(AnalysisPanelDestination.inspector(.measurements).selectedInspector == .measurements)
+        #expect(AnalysisPanelDestination.signatureVerification.selectedInspector == nil)
     }
 
     @Test func depthRegionStatsPresentationFormatsValidRegionStats() throws {

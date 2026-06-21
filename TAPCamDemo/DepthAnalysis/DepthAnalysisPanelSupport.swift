@@ -15,6 +15,7 @@ enum AnalysisDebugHighlight {
 enum AnalysisButtonHint: Equatable {
     case view(DepthAnalysisViewMode)
     case inspector(AnalysisInspector)
+    case signatureVerification
 
     var title: String {
         switch self {
@@ -22,6 +23,8 @@ enum AnalysisButtonHint: Equatable {
             viewMode.title
         case .inspector(let inspector):
             inspector.title
+        case .signatureVerification:
+            "Verify"
         }
     }
 
@@ -31,6 +34,8 @@ enum AnalysisButtonHint: Equatable {
             viewMode.systemImage
         case .inspector(let inspector):
             inspector.systemImage
+        case .signatureVerification:
+            "checkmark.shield"
         }
     }
 }

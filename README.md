@@ -26,7 +26,7 @@ scaffolding, sidecar JSON, and debug bundles.
 | Tests and automation | [TAPCamDemoTests/README.md](TAPCamDemoTests/README.md) | Start with the test README for the automation gate, focused output/provenance suites, manual-control suites, TAP Library suites, and evidence limits. |
 | Source tree module index | [TAPCamDemo/README.md](TAPCamDemo/README.md) | [TAPCamDemo](TAPCamDemo) |
 | Dated project score and reading order | [Docs/ProjectScorecard.md](Docs/ProjectScorecard.md) | [Docs](Docs) |
-| AI collaboration trace | [Docs/AITrace/README.md](Docs/AITrace/README.md) | [Docs/AITrace/2026-06-21-refactor-trace.md](Docs/AITrace/2026-06-21-refactor-trace.md) |
+| AI collaboration trace | [Docs/AITrace/README.md](Docs/AITrace/README.md) | [Docs/AITrace/2026-06-21-assert-verification-panel-sync.md](Docs/AITrace/2026-06-21-assert-verification-panel-sync.md) |
 
 ## Architecture
 
@@ -47,20 +47,22 @@ flowchart TD
     click Attest "Docs/AppAttest/README.md"
 ```
 
-## Current Refactor Priority
+## Current Goal And Score Standard
 
-The current AI-assisted refactor goal is to make the project readable from zero
-prior context, preserve the current Release HEIC-depth plus App Attest behavior,
-and prepare small extension seams for future image format, quality,
-camera-control, security, and documentation work. It is not adding new
-user-visible camera features.
+Current branch goal for this AI-assisted pass: selectively sync the `assert`
+branch's App Attest capture-signature verification panel into the current
+branch, while preserving the current Release HEIC-depth plus App Attest behavior
+and the readability/security boundaries already documented here. This is a
+bounded integration pass, not a broad branch merge and not a new camera capture
+feature.
 
 Use [Docs/ProjectScorecard.md](Docs/ProjectScorecard.md) as the scoring-standard
 document. It contains the score formula, current score, strict gaps, and
 from-scratch reading order. Use
-[Docs/AITrace/README.md](Docs/AITrace/README.md) to trace how AI-assisted
-iterations, security/iOS reviews, subagents, and validation steps affected this
-checkout.
+[Docs/AITrace/2026-06-21-assert-verification-panel-sync.md](Docs/AITrace/2026-06-21-assert-verification-panel-sync.md)
+for the current goal trace, and [Docs/AITrace/README.md](Docs/AITrace/README.md)
+for the folder rules covering AI-assisted iterations, security/iOS reviews,
+subagents, validation steps, and change traceability.
 
 Start with [Docs/FutureCameraSpecs.md](Docs/FutureCameraSpecs.md) for the
 refactor boundary status.

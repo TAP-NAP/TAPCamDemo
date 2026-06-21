@@ -118,8 +118,8 @@ CameraCapture UI readability review path:
 DepthAnalysis readability review path:
 
 1. Start with this scorecard snapshot to confirm this is saved/pending HEIC
-   analysis readability work, not a change to live capture, export, or App
-   Attest proof validation.
+   analysis and saved-photo proof-verification presentation work, not a change
+   to live capture, export, or App Attest proof creation.
 2. Read [../TAPCamDemo/DepthAnalysis/README.md](../TAPCamDemo/DepthAnalysis/README.md)
    for the module code map, data flow, and manual acceptance path.
 3. Read [../TAPCamDemo/DepthAnalysis/DepthAnalysisModels.swift](../TAPCamDemo/DepthAnalysis/DepthAnalysisModels.swift)
@@ -165,28 +165,33 @@ DepthAnalysis readability review path:
    after the view model; it is now the source entry and screen shell for
    loading/error state, view-model lifetime, mode-switch side effects, panel
    destination routing, and top-level callbacks.
-19. Read [../TAPCamDemo/DepthAnalysis/DepthAnalysisStageView.swift](../TAPCamDemo/DepthAnalysis/DepthAnalysisStageView.swift)
+19. Read [../TAPCamDemo/DepthAnalysis/AppAttestSignatureVerification.swift](../TAPCamDemo/DepthAnalysis/AppAttestSignatureVerification.swift)
+   and [../TAPCamDemo/DepthAnalysis/AppAttestSignatureVerificationPanel.swift](../TAPCamDemo/DepthAnalysis/AppAttestSignatureVerificationPanel.swift)
+   for the saved-photo App Attest verification route. The service owns Photos
+   HEIC loading, local signed-export validation reuse, backend submission, and
+   public-safe report text; the panel renders only fixed status steps.
+20. Read [../TAPCamDemo/DepthAnalysis/DepthAnalysisStageView.swift](../TAPCamDemo/DepthAnalysis/DepthAnalysisStageView.swift)
    for the central RGB, heatmap, mask, planes, and point-cloud stage. It
    receives display-ready local analysis values, not sources, manifests,
    proofs, identifiers, Photos handles, pending store handles, geometry caches,
    or export state.
-20. Read [../TAPCamDemo/DepthAnalysis/DepthAnalysisControlsView.swift](../TAPCamDemo/DepthAnalysis/DepthAnalysisControlsView.swift)
+21. Read [../TAPCamDemo/DepthAnalysis/DepthAnalysisControlsView.swift](../TAPCamDemo/DepthAnalysis/DepthAnalysisControlsView.swift)
    for bottom mode controls, inspector strip wiring, panel presentation,
    animation, and button-hint routing.
-21. Read [../TAPCamDemo/DepthAnalysis/DepthAnalysisInspectorPanelContent.swift](../TAPCamDemo/DepthAnalysis/DepthAnalysisInspectorPanelContent.swift)
+22. Read [../TAPCamDemo/DepthAnalysis/DepthAnalysisInspectorPanelContent.swift](../TAPCamDemo/DepthAnalysis/DepthAnalysisInspectorPanelContent.swift)
    for the field-level adapter that feeds concrete inspector bodies.
-22. Read [../TAPCamDemo/DepthAnalysis/DepthAnalysisMetadataHUD.swift](../TAPCamDemo/DepthAnalysis/DepthAnalysisMetadataHUD.swift)
+23. Read [../TAPCamDemo/DepthAnalysis/DepthAnalysisMetadataHUD.swift](../TAPCamDemo/DepthAnalysis/DepthAnalysisMetadataHUD.swift)
    for the capture metadata summary and DEBUG-only HUD. It summarizes optional
    manifest payload fields and replaces suspicious free-form display strings
    with fixed fallback labels instead of exposing proofs, App Attest key IDs,
    Photos IDs, pending IDs, paths, URLs, tokens, or export state.
-23. Read [../TAPCamDemo/DepthAnalysis/DepthAnalysisPanelSupport.swift](../TAPCamDemo/DepthAnalysis/DepthAnalysisPanelSupport.swift),
+24. Read [../TAPCamDemo/DepthAnalysis/DepthAnalysisPanelSupport.swift](../TAPCamDemo/DepthAnalysis/DepthAnalysisPanelSupport.swift),
    [../TAPCamDemo/DepthAnalysis/DepthAnalysisInspectorStrip.swift](../TAPCamDemo/DepthAnalysis/DepthAnalysisInspectorStrip.swift),
    and [../TAPCamDemo/DepthAnalysis/DepthAnalysisPanelLayer.swift](../TAPCamDemo/DepthAnalysis/DepthAnalysisPanelLayer.swift)
    for shared panel support, bottom mode/inspector controls, and adaptive panel
    sizing. `AnalysisPanelLayoutMetrics` is the pure height policy; it does not
    replace rendered UI/layout evidence.
-24. Read [../TAPCamDemo/DepthAnalysis/DepthAnalysisInspectors.swift](../TAPCamDemo/DepthAnalysis/DepthAnalysisInspectors.swift)
+25. Read [../TAPCamDemo/DepthAnalysis/DepthAnalysisInspectors.swift](../TAPCamDemo/DepthAnalysis/DepthAnalysisInspectors.swift)
    for shared inspector primitives and `DepthRegionStatsPresentation`, the
    shared visible text boundary for rectangular Measurements and Region stats.
 25. Read [../TAPCamDemoTests/TAPDepthAnalysisInputTests.swift](../TAPCamDemoTests/TAPDepthAnalysisInputTests.swift)
@@ -474,33 +479,26 @@ Overall score: **8.7 / 10**.
 This score is intentionally strict and uses the weighting model above.
 The app has a credible depth plus App Attest capture core, but it is not yet
 close to a professional camera feature set.
-The latest score holds steady after extracting CameraCapture presentation,
-camera status presentation, DepthAnalysis input/source/load, DepthAnalysis
-selection-state bridge, DepthAnalysis plane geometry/request coordination,
-DepthAnalysis presentation, and manual-control intent/presentation/summary/
-command-plan/boundary/Runtime tests into focused review suites. It also holds
-after splitting provenance coverage into manifest-encoding, content-digest,
-App Attest assertion signer, writer-signing, and signed-export validator suites.
-The latest output-profile pass keeps the score steady while moving resolved
-Runtime output validation into its own `CaptureOutputProfileResolution` entry
-and making `CapturePhotoQualityPolicy` explicit that `.quality` is not a byte
-size or compression-ratio guarantee. It also moves Release manifest output-fact
-checks into `CaptureOutputManifestPolicy`, so the final signed-export gate reads
-as container/schema/id -> manifest policy -> exactly-one proof -> auxiliary
-depth/digest validation instead of burying every Release comparison inline. It
-also adds `Docs/AITrace` so the AI-assisted goal, user constraints, subagent
-reviews, iteration history, and validation commands are reviewable from the root
-README. The final naming pass also makes camera lifecycle maintenance read as
-pending-capture signing credential warmup plus pending retry, while foreground
-capture still stages an unsigned HEIC and keeps signing/export in TAP Library.
-That improves the reading path and reduces future coverage drift, but it does
-not add visible controls, rendered UI automation, real-device Photos/App Attest
-evidence, or real-device manual-write evidence.
+The latest score holds steady after selectively syncing the `assert` branch's
+verification-panel work into the current DepthAnalysis architecture. The new
+saved-photo verification route is split into a service/report model and a
+SwiftUI panel: the service reuses the final signed-export validator before
+submitting the stored App Attest signing material to the configured backend, and
+the panel renders fixed public-safe status steps instead of raw backend URLs,
+request/response JSON, key IDs, assertion objects, capture IDs, digest values,
+Photos asset IDs, or pending capture IDs. Focused privacy tests, OSLog privacy
+tests, and the full Simulator test suite passed. The score does not rise because
+the new evidence is still local/unit/Simulator evidence; real Photos asset
+verification, real backend acceptance, rendered panel layout, and real-device
+App Attest evidence remain missing.
 
 ## Current Strengths
 
 - Depth capture is treated as required data, not as a best-effort side effect.
 - App Attest proofing is on the pending export path and failures stay queued.
+- Saved Photos analysis now has an App Attest capture-signature verification
+  route that reuses local signed-export validation before backend verification
+  and keeps visible verification text public-safe.
 - `TAPPendingCaptureWorkerReadiness` makes protected-data readiness explicit
   before the pending worker reads private HEIC bundles, manifests, proofs,
   Photos export identifiers, or queue records.
@@ -741,7 +739,8 @@ evidence, or real-device manual-write evidence.
   design assumption.
 - App Attest entitlement setup is visible and build-checked, but still needs
   attended real-device validation against the Apple Developer account and
-  backend.
+  backend. The saved-photo verification panel also needs real Photos asset and
+  backend acceptance evidence.
 - The signed export validator has negative unit coverage for missing, invalid,
   and multiple proof records, but still needs a positive real-depth HEIC fixture
   and attended Photos/App Attest evidence on a physical device.
@@ -776,7 +775,8 @@ boundaries before adding user-visible controls:
    presentation privacy boundaries.
 3. Output export evidence: add a positive real-depth HEIC fixture and attended
    Photos/App Attest acceptance notes for the final signed-export gate.
-4. App Attest hardening: real-device entitlement/backend acceptance validation.
+4. App Attest hardening: real-device entitlement/backend acceptance validation,
+   including the saved-photo verification panel path.
 5. Protected-data UI policy and real-device validation on top of
    `TAPPendingCaptureWorkerReadiness` and `CaptureLifecycleCoordinator`.
 6. UI regression and real-device evidence for TAP Library route restoration.

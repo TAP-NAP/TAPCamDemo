@@ -13,21 +13,25 @@ struct AnalysisInspectorStrip: View {
     let inspectors: [AnalysisInspector]
     let buttonHint: AnalysisButtonHint?
     let onViewTapped: (DepthAnalysisViewMode) -> Void
+    let onVerifySignatureTapped: () -> Void
     @State private var viewScrollPosition: String? = DepthAnalysisViewMode.rgb.id
     @State private var inspectorScrollPosition: String?
+    private static let verifyScrollID = "analysis-signature-verification"
 
     init(
         panelDestination: Binding<AnalysisPanelDestination?>,
         viewMode: Binding<DepthAnalysisViewMode>,
         inspectors: [AnalysisInspector],
         buttonHint: AnalysisButtonHint?,
-        onViewTapped: @escaping (DepthAnalysisViewMode) -> Void
+        onViewTapped: @escaping (DepthAnalysisViewMode) -> Void,
+        onVerifySignatureTapped: @escaping () -> Void
     ) {
         _panelDestination = panelDestination
         _viewMode = viewMode
         self.inspectors = inspectors
         self.buttonHint = buttonHint
         self.onViewTapped = onViewTapped
+        self.onVerifySignatureTapped = onVerifySignatureTapped
     }
 
     private static var visibleViewModes: [DepthAnalysisViewMode] {
@@ -75,7 +79,7 @@ struct AnalysisInspectorStrip: View {
             }
         }
         .onAppear {
-            viewScrollPosition = viewMode.id
+            syncViewScrollPosition()
             syncInspectorScrollPosition()
         }
         .onChange(of: viewMode) { _, newValue in
@@ -86,11 +90,13 @@ struct AnalysisInspectorStrip: View {
             syncInspectorScrollPosition()
         }
         .onChange(of: panelDestination) { _, _ in
+            syncViewScrollPosition()
             syncInspectorScrollPosition()
         }
         .animation(.snappy(duration: 0.18), value: buttonHint)
     }
 
+    @ViewBuilder
     private var viewModeTabs: some View {
         ForEach(Self.visibleViewModes) { item in
             Button {
@@ -109,8 +115,11 @@ struct AnalysisInspectorStrip: View {
             .accessibilityLabel(item.title)
             .help(item.detailedExplanation)
         }
+
+        verifyButton
     }
 
+    @ViewBuilder
     private var inspectorTabs: some View {
         ForEach(inspectors) { inspector in
             Button {
@@ -128,6 +137,23 @@ struct AnalysisInspectorStrip: View {
             .accessibilityLabel(inspector.title)
             .help(inspector.title)
         }
+    }
+
+    private var verifyButton: some View {
+        Button {
+            viewScrollPosition = Self.verifyScrollID
+            onVerifySignatureTapped()
+        } label: {
+            iconButton(
+                systemImage: "checkmark.shield",
+                isSelected: panelDestination == .signatureVerification
+            )
+        }
+        .id(Self.verifyScrollID)
+        .buttonStyle(.plain)
+        .contentShape(Rectangle())
+        .accessibilityLabel("Verify signature")
+        .help("Verify the saved photo's App Attest proof.")
     }
 
     private func iconButton(systemImage: String, isSelected: Bool, isDebugHighlighted: Bool = false) -> some View {
@@ -159,6 +185,14 @@ struct AnalysisInspectorStrip: View {
             return Color.primary.opacity(0.16)
         }
         return Color.primary.opacity(0.06)
+    }
+
+    private func syncViewScrollPosition() {
+        if panelDestination == .signatureVerification {
+            viewScrollPosition = Self.verifyScrollID
+        } else {
+            viewScrollPosition = viewMode.id
+        }
     }
 
     private func syncInspectorScrollPosition() {

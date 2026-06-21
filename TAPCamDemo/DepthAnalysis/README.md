@@ -17,6 +17,8 @@ point cloud.
 | Main analysis screen source entry, loading/error shell, view-model lifetime, and route callbacks | [DepthAnalysisView.swift](DepthAnalysisView.swift) |
 | Central visual stage for RGB, heatmap, mask, planes, point cloud, region gestures, and plane seed taps | [DepthAnalysisStageView.swift](DepthAnalysisStageView.swift) |
 | Bottom mode controls, inspector strip, and adaptive panel presentation | [DepthAnalysisControlsView.swift](DepthAnalysisControlsView.swift) |
+| App Attest capture-signature verification service and public-safe report model | [AppAttestSignatureVerification.swift](AppAttestSignatureVerification.swift) |
+| App Attest capture-signature verification panel | [AppAttestSignatureVerificationPanel.swift](AppAttestSignatureVerificationPanel.swift) |
 | Field-level panel content adapter for concrete inspector bodies | [DepthAnalysisInspectorPanelContent.swift](DepthAnalysisInspectorPanelContent.swift) |
 | Analysis view-mode model, labels, icons, debug-only mode flag, and explanations | [DepthAnalysisViewMode.swift](DepthAnalysisViewMode.swift) |
 | Public-safe capture metadata summary model and debug-only HUD from manifest payload summary fields | [DepthAnalysisMetadataHUD.swift](DepthAnalysisMetadataHUD.swift) |
@@ -113,6 +115,15 @@ If this module is new to you, read it in this order:
 17. [DepthAnalysisControlsView.swift](DepthAnalysisControlsView.swift) owns the
    bottom mode controls, inspector strip, panel presentation, panel animation,
    and button-hint routing.
+   For the Verify Signature route, then read
+   [AppAttestSignatureVerification.swift](AppAttestSignatureVerification.swift)
+   for Photos HEIC loading, local signed-export validation reuse, backend verify
+   submission, and public-safe report text, followed by
+   [AppAttestSignatureVerificationPanel.swift](AppAttestSignatureVerificationPanel.swift)
+   for the SwiftUI panel. The panel shows fixed status steps only; it does not
+   render raw backend URLs, raw request/response JSON, App Attest key IDs,
+   assertion objects, capture IDs, digest values, Photos asset IDs, or pending
+   capture IDs.
 18. [DepthAnalysisInspectorPanelContent.swift](DepthAnalysisInspectorPanelContent.swift)
    adapts field-level image/depth/stats/selection values into concrete
    inspector bodies. Read it before changing which data an inspector is allowed
@@ -156,6 +167,8 @@ Presentation/privacy model tests live in
 [../../TAPCamDemoTests/TAPDepthAnalysisPresentationTests.swift](../../TAPCamDemoTests/TAPDepthAnalysisPresentationTests.swift);
 fixed error-copy and hostile sink guards live in
 [../../TAPCamDemoTests/DepthAnalysisErrorPresentationTests.swift](../../TAPCamDemoTests/DepthAnalysisErrorPresentationTests.swift).
+Signature-verification presentation and service privacy tests live in
+[../../TAPCamDemoTests/TAPAppAttestSignatureVerificationTests.swift](../../TAPCamDemoTests/TAPAppAttestSignatureVerificationTests.swift).
 Selection-state and ViewModel selection-bridge tests live in
 [../../TAPCamDemoTests/TAPDepthAnalysisSelectionTests.swift](../../TAPCamDemoTests/TAPDepthAnalysisSelectionTests.swift).
 Plane geometry, detector, and request-coordinator tests live in
@@ -165,6 +178,7 @@ Plane geometry, detector, and request-coordinator tests live in
 | --- | --- | --- | --- | --- |
 | DEBUG metadata HUD | A loaded analysis input has a manifest payload and the stage is built in DEBUG | [DepthAnalysisMetadataHUD.swift](DepthAnalysisMetadataHUD.swift) | `TAPDepthAnalysisPresentationTests`: `captureMetadataSummaryRequiresPayload`, `captureMetadataSummaryPublishesExpectedPublicText`, `captureMetadataSummaryOmitsIdentifiersAndLocation`, `captureMetadataSummaryFallsBackForSensitiveManifestDisplayFields`, `captureMetadataSummaryFallsBackForDepthSourceDeviceName` | Visual HUD layout still needs UI regression evidence |
 | Inspector panel adapter | A bottom inspector route is selected | [DepthAnalysisInspectorPanelContent.swift](DepthAnalysisInspectorPanelContent.swift) | `TAPDepthAnalysisPresentationTests`: `analysisViewModesPublishInspectorRoutes`, `analysisPanelDestinationSelectsInspectorsOnly` | Inspector body layout still needs UI regression evidence |
+| Signature verification panel | The shield verify button is selected from a saved Photos asset, or from a pending item before export | [AppAttestSignatureVerification.swift](AppAttestSignatureVerification.swift), [AppAttestSignatureVerificationPanel.swift](AppAttestSignatureVerificationPanel.swift), [DepthAnalysisView.swift](DepthAnalysisView.swift), [DepthAnalysisInspectorStrip.swift](DepthAnalysisInspectorStrip.swift) | `TAPAppAttestSignatureVerificationTests`: public backend summary, success/failure visible-text redaction, and panel raw-section source guard. `TAPDepthAnalysisPresentationTests`: panel destination keeps verification separate from inspector selection. | Real backend acceptance, real Photos asset verification, and rendered panel layout still need attended evidence |
 | Adaptive panel height metrics | A panel's measured content height changes | [DepthAnalysisPanelLayer.swift](DepthAnalysisPanelLayer.swift) | `analysisPanelLayoutMetricsUsesOnePointViewportBeforeMeasurement`, `analysisPanelLayoutMetricsFitsShortMeasuredContentWithoutScrolling`, `analysisPanelLayoutMetricsCapsOverflowingContentAndEnablesScrolling`, `analysisPanelLayoutMetricsKeepsMinimumContentHeightForSmallPanels` | Pure metrics only; rendered SwiftUI panel layout and screenshot evidence still need UI regression coverage |
 | Inspector visible errors | Region heatmap or Plane selection fails | [DepthAnalysisErrorPresentation.swift](DepthAnalysisErrorPresentation.swift), [DepthAnalysisInspectorPanelContent.swift](DepthAnalysisInspectorPanelContent.swift) | `depthAnalysisInspectorErrorMessageKeepsRegionHeatmapCopyPublicSafe`, `depthAnalysisInspectorErrorMessageKeepsPlaneSelectionCopyPublicSafe`, `depthAnalysisInspectorViewsDoNotAcceptRawErrorStringSinks` | Real-device unified-log evidence remains separate |
 | Measurements and Region inspectors | A rectangular region is selected outside Planes mode | [DepthAnalysisInspectors.swift](DepthAnalysisInspectors.swift), [DepthAnalysisMeasurementsInspectorContent.swift](DepthAnalysisMeasurementsInspectorContent.swift), [DepthAnalysisRegionInspectorContent.swift](DepthAnalysisRegionInspectorContent.swift) | `TAPDepthAnalysisSelectionTests` covers region clamping, stats, local heatmap, local plane estimate, and ViewModel selection bridge. `TAPDepthAnalysisPresentationTests` covers shared region-stats presentation text. `DepthAnalysisErrorPresentationTests` covers typed public-safe local-heatmap failure text. | Visual measurement rows and loupe layout still need UI evidence |

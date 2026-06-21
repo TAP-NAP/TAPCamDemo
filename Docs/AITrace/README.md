@@ -10,12 +10,15 @@ open follow-ups.
 
 ## Read First
 
-1. [2026-06-21-refactor-trace.md](2026-06-21-refactor-trace.md) records the
+1. [2026-06-21-assert-verification-panel-sync.md](2026-06-21-assert-verification-panel-sync.md)
+   records the current `assert` branch verification-panel sync goal, how AI work
+   is being traced, and which validation evidence is still pending.
+2. [2026-06-21-refactor-trace.md](2026-06-21-refactor-trace.md) records the
    current readability/security refactor goal, iteration history, AI tool use,
    validation status, and next-round candidates.
-2. [../ProjectScorecard.md](../ProjectScorecard.md) defines the score formula,
+3. [../ProjectScorecard.md](../ProjectScorecard.md) defines the score formula,
    strict gaps, current score, and from-scratch reading order.
-3. [../FutureCameraSpecs.md](../FutureCameraSpecs.md) explains the refactor
+4. [../FutureCameraSpecs.md](../FutureCameraSpecs.md) explains the refactor
    boundary status before future camera features are added.
 
 ## What To Record

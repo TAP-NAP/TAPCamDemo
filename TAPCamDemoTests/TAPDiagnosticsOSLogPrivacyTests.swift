@@ -191,6 +191,7 @@ struct TAPDiagnosticsOSLogPrivacyTests {
             "TAPCamDemo/CameraCapture/Output/AppAttestCaptureAssertionSigner.swift",
             "TAPCamDemo/CameraCapture/Output/PhotoLibraryWriter.swift",
             "TAPCamDemo/CameraCapture/UI/CameraViewModel+Capture.swift",
+            "TAPCamDemo/DepthAnalysis/AppAttestSignatureVerification.swift",
             "TAPCamDemo/TAPLibrary/TAPPendingCaptureProcessor.swift",
             "TAPCamDemo/TAPLibrary/TAPPendingCaptureStore.swift"
         ]

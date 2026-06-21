@@ -16,23 +16,29 @@ import SwiftUI
 struct DepthAnalysisView: View {
     let source: DepthAnalysisSource
     @StateObject private var viewModel = DepthAnalysisViewModel()
+    @StateObject private var appAttestController: AppAttestRuntimeController
     @State private var heatmapOpacity = 0.74
     @State private var panelDestination: AnalysisPanelDestination?
     @State private var buttonHint: AnalysisButtonHint?
     @State private var buttonHintToken = UUID()
+    @State private var signatureVerificationRunID = UUID()
     @AppStorage(DepthAnalyzerPreferences.showsAnalysisHelpKey)
     private var isShowingInlineHelp = DepthAnalyzerPreferences.defaultShowsAnalysisHelp
 
     init(
-        assetID: String
+        assetID: String,
+        appAttestController: AppAttestRuntimeController? = nil
     ) {
         self.source = .photosAsset(assetID)
+        _appAttestController = StateObject(wrappedValue: appAttestController ?? AppAttestRuntimeController())
     }
 
     init(
-        pendingCaptureID: String
+        pendingCaptureID: String,
+        appAttestController: AppAttestRuntimeController? = nil
     ) {
         self.source = .pendingCapture(pendingCaptureID)
+        _appAttestController = StateObject(wrappedValue: appAttestController ?? AppAttestRuntimeController())
     }
 
     var body: some View {
@@ -125,28 +131,56 @@ struct DepthAnalysisView: View {
             onViewTapped: { viewMode in
                 showButtonHint(.view(viewMode))
             },
+            onVerifySignatureTapped: toggleSignatureVerification,
             panelContent: { destination in
-                AnalysisInspectorPanelContent(
-                    destination: destination,
-                    viewMode: viewModel.viewMode,
-                    image: input.image,
-                    imageOrientation: input.imageOrientation,
-                    depthMap: input.depthMap,
-                    depthAccuracy: input.depthAccuracy,
-                    depthQuality: input.depthQuality,
-                    heatmap: input.heatmap,
-                    validMask: input.validMask,
-                    regionSelection: viewModel.regionSelection,
-                    planeSelection: viewModel.planeSelection,
-                    heatmapOpacity: $heatmapOpacity,
-                    showsInlineHelp: isShowingInlineHelp,
-                    onPlaneStrictnessChanged: { strictness in
-                        viewModel.updatePlaneGrowthStrictness(strictness)
-                    }
-                )
+                panelContent(for: destination, input: input)
             }
         )
         .animation(.snappy(duration: 0.18), value: isShowingInlineHelp)
+    }
+
+    @ViewBuilder
+    private func panelContent(
+        for destination: AnalysisPanelDestination,
+        input: TAPDepthAnalysisInput
+    ) -> some View {
+        switch destination {
+        case .inspector:
+            AnalysisInspectorPanelContent(
+                destination: destination,
+                viewMode: viewModel.viewMode,
+                image: input.image,
+                imageOrientation: input.imageOrientation,
+                depthMap: input.depthMap,
+                depthAccuracy: input.depthAccuracy,
+                depthQuality: input.depthQuality,
+                heatmap: input.heatmap,
+                validMask: input.validMask,
+                regionSelection: viewModel.regionSelection,
+                planeSelection: viewModel.planeSelection,
+                heatmapOpacity: $heatmapOpacity,
+                showsInlineHelp: isShowingInlineHelp,
+                onPlaneStrictnessChanged: { strictness in
+                    viewModel.updatePlaneGrowthStrictness(strictness)
+                }
+            )
+        case .signatureVerification:
+            signatureVerificationPanel()
+        }
+    }
+
+    @ViewBuilder
+    private func signatureVerificationPanel() -> some View {
+        switch source {
+        case .photosAsset(let assetID):
+            AppAttestSignatureVerificationPanel(
+                assetID: assetID,
+                appAttestController: appAttestController,
+                runID: signatureVerificationRunID
+            )
+        case .pendingCapture:
+            SignatureVerificationUnavailablePanel()
+        }
     }
 
     private func clearSelectionAndPanel() {
@@ -158,6 +192,16 @@ struct DepthAnalysisView: View {
         viewModel.finishSelection(depthRect)
         if viewModel.viewMode.inspectors.contains(.region) {
             panelDestination = .inspector(.region)
+        }
+    }
+
+    private func toggleSignatureVerification() {
+        if panelDestination == .signatureVerification {
+            panelDestination = nil
+        } else {
+            signatureVerificationRunID = UUID()
+            panelDestination = .signatureVerification
+            showButtonHint(.signatureVerification)
         }
     }
 
