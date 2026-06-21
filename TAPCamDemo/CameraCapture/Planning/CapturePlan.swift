@@ -185,6 +185,15 @@ nonisolated struct CaptureSourcePlan: @unchecked Sendable {
 /// its session queue.
 nonisolated struct SessionConfigurationRequest: @unchecked Sendable {
     let capturePlan: CaptureSourcePlan
+    let outputProfile: CaptureOutputProfile
+
+    init(
+        capturePlan: CaptureSourcePlan,
+        outputProfile: CaptureOutputProfile = CaptureOutputProfileCatalog.releaseDefaultProfile
+    ) {
+        self.capturePlan = capturePlan
+        self.outputProfile = outputProfile
+    }
 }
 
 /// Stable metadata for the configured SingleCam capture path.
@@ -230,7 +239,10 @@ nonisolated struct SessionConfigurationResult: @unchecked Sendable {
     let cameraDisplayName: String
     let nativePreviewAspectRatio: Double
     let capturePlan: CaptureSourcePlan
+    let outputProfile: CaptureOutputProfile
+    let resolvedOutput: ResolvedCaptureOutputProfile
     let device: AVCaptureDevice
+    let controlCapabilities: CameraControlCapabilitySnapshot
     let selectionContext: CaptureSelectionContext
 }
 

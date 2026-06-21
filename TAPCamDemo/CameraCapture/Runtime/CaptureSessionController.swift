@@ -21,6 +21,10 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
 
     private let sessionQueue = DispatchQueue(label: "tapcam.camera-capture.singlecam.session")
 
+    init() {
+        CameraControlService.registerSessionQueue(sessionQueue)
+    }
+
     var isShutterSoundSuppressionSupported: Bool {
         photoOutput.isShutterSoundSuppressionSupported
     }
@@ -45,7 +49,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                         session.startRunning()
                     }
 
-                    Self.prewarmPhotoOutput(photoOutput)
+                    Self.prewarmPhotoOutput(photoOutput, resolvedOutput: result.resolvedOutput)
                     continuation.resume(returning: result)
                 } catch {
                     continuation.resume(throwing: error)
@@ -85,6 +89,14 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     ) throws -> SessionConfigurationResult {
         let plan = request.capturePlan
         let zoom = plan.zoom?.rawVideoZoomFactor ?? 1.0
+        let resolvedOutput = try SingleCamPhotoSettingsFactory.resolvedOutput(
+            photoOutput: photoOutput,
+            outputProfile: request.outputProfile
+        )
+        try resolvedOutput.validateCapturePlanDepthConfiguration(
+            depthDataDeliveryEnabled: plan.captureConfig.depthDataDeliveryEnabled,
+            embedsDepthDataInPhoto: plan.captureConfig.embedsDepthDataInPhoto
+        )
 
         /*
          Release FOV chips such as 24mm, 48mm, and 77mm usually resolve to raw
@@ -97,13 +109,15 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         if canReuseCurrentGraph(
             session: session,
             photoOutput: photoOutput,
-            plan: plan
+            plan: plan,
+            resolvedOutput: resolvedOutput
         ) {
-            try applyZoom(zoom, to: plan.resolvedCaptureDevice)
+            try CameraControlService.applyZoom(zoom, to: plan.resolvedCaptureDevice)
             return makeConfigurationResult(
                 plan: plan,
                 photoOutput: photoOutput,
-                request: request
+                request: request,
+                resolvedOutput: resolvedOutput
             )
         }
 
@@ -111,6 +125,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             session: session,
             photoOutput: photoOutput,
             plan: plan,
+            resolvedOutput: resolvedOutput,
             zoom: zoom
         )
 
@@ -123,12 +138,13 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
          resolves to raw zoom `4.0` on a depth-safe virtual-camera format instead
          of the familiar UI shorthand of `2x`.
          */
-        try applyZoom(zoom, to: plan.resolvedCaptureDevice)
+        try CameraControlService.applyZoom(zoom, to: plan.resolvedCaptureDevice)
 
         return makeConfigurationResult(
             plan: plan,
             photoOutput: photoOutput,
-            request: request
+            request: request,
+            resolvedOutput: resolvedOutput
         )
     }
 
@@ -138,6 +154,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         session: AVCaptureSession,
         photoOutput: AVCapturePhotoOutput,
         plan: CaptureSourcePlan,
+        resolvedOutput: ResolvedCaptureOutputProfile,
         zoom: Double
     ) throws {
         session.beginConfiguration()
@@ -145,7 +162,10 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             session.sessionPreset = .photo
             session.inputs.forEach { session.removeInput($0) }
 
-            try configureDeviceFormat(plan.resolvedCaptureDevice, selection: plan.formatSelection)
+            try CameraControlService.configureBaselineControls(
+                for: plan.resolvedCaptureDevice,
+                formatSelection: plan.formatSelection
+            )
 
             /*
              Include the target raw zoom in the configuration transaction. When
@@ -154,7 +174,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
              applied afterwards. We still re-apply after commit because several
              formats reset zoom during graph changes.
              */
-            try applyZoom(zoom, to: plan.resolvedCaptureDevice)
+            try CameraControlService.applyZoom(zoom, to: plan.resolvedCaptureDevice)
 
             let input = try AVCaptureDeviceInput(device: plan.resolvedCaptureDevice)
             guard session.canAddInput(input) else {
@@ -169,11 +189,15 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                 session.addOutput(photoOutput)
             }
 
-            photoOutput.maxPhotoQualityPrioritization = .quality
-            if plan.captureConfig.depthDataDeliveryEnabled && !photoOutput.isDepthDataDeliverySupported {
-                throw TAPDepthCaptureError.depthDeliveryUnsupported
-            }
-            photoOutput.isDepthDataDeliveryEnabled = plan.captureConfig.depthDataDeliveryEnabled
+            photoOutput.maxPhotoQualityPrioritization = resolvedOutput.maxPhotoQualityPrioritization
+            try resolvedOutput.validatePhotoOutputCapabilities(
+                CapturePhotoOutputCapabilitySnapshot(photoOutput: photoOutput)
+            )
+            photoOutput.isDepthDataDeliveryEnabled = resolvedOutput.depthDataDeliveryEnabled
+            try resolvedOutput.validatePhotoOutputCapabilities(
+                CapturePhotoOutputCapabilitySnapshot(photoOutput: photoOutput),
+                requireConfiguredState: true
+            )
             session.commitConfiguration()
         } catch {
             session.commitConfiguration()
@@ -188,7 +212,8 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     private static func canReuseCurrentGraph(
         session: AVCaptureSession,
         photoOutput: AVCapturePhotoOutput,
-        plan: CaptureSourcePlan
+        plan: CaptureSourcePlan,
+        resolvedOutput: ResolvedCaptureOutputProfile
     ) -> Bool {
         guard session.sessionPreset == .photo else {
             return false
@@ -218,11 +243,14 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             return false
         }
 
-        guard photoOutput.isDepthDataDeliveryEnabled == plan.captureConfig.depthDataDeliveryEnabled else {
+        guard photoOutput.isDepthDataDeliveryEnabled == resolvedOutput.depthDataDeliveryEnabled else {
             return false
         }
 
-        if plan.captureConfig.depthDataDeliveryEnabled && !photoOutput.isDepthDataDeliverySupported {
+        guard (try? resolvedOutput.validatePhotoOutputCapabilities(
+            CapturePhotoOutputCapabilitySnapshot(photoOutput: photoOutput),
+            requireConfiguredState: true
+        )) != nil else {
             return false
         }
 
@@ -264,23 +292,33 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     private static func makeConfigurationResult(
         plan: CaptureSourcePlan,
         photoOutput: AVCapturePhotoOutput,
-        request: SessionConfigurationRequest
+        request: SessionConfigurationRequest,
+        resolvedOutput: ResolvedCaptureOutputProfile
     ) -> SessionConfigurationResult {
         let focalLabel = plan.requestedFocalLengthLabel.label
         let nativePreviewAspectRatio = portraitPreviewAspectRatio(for: plan.resolvedCaptureDevice.activeFormat)
 
         return SessionConfigurationResult(
-            depthDeliverySupported: plan.captureConfig.depthDataDeliveryEnabled && photoOutput.isDepthDataDeliverySupported,
+            depthDeliverySupported: resolvedOutput.depthDataDeliveryEnabled && photoOutput.isDepthDataDeliverySupported,
             cameraDisplayName: "\(focalLabel) · \(plan.depthSource?.displayName ?? "No Depth")",
             nativePreviewAspectRatio: nativePreviewAspectRatio,
             capturePlan: plan,
+            outputProfile: request.outputProfile,
+            resolvedOutput: resolvedOutput,
             device: plan.resolvedCaptureDevice,
+            controlCapabilities: CameraControlCapabilitySnapshot.make(device: plan.resolvedCaptureDevice),
             selectionContext: request.selectionContext
         )
     }
 
-    private static func prewarmPhotoOutput(_ photoOutput: AVCapturePhotoOutput) {
-        let settings = SingleCamPhotoSettingsFactory.make(photoOutput: photoOutput)
+    private static func prewarmPhotoOutput(
+        _ photoOutput: AVCapturePhotoOutput,
+        resolvedOutput: ResolvedCaptureOutputProfile
+    ) {
+        let settings = SingleCamPhotoSettingsFactory.make(
+            photoOutput: photoOutput,
+            resolvedOutput: resolvedOutput
+        )
         /*
          Prewarming is a latency hint, not a capture precondition. It does not
          need per-tap feedback preferences such as shutter sound suppression,
@@ -288,60 +326,6 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
          preparation for the current photo-depth settings.
          */
         photoOutput.setPreparedPhotoSettingsArray([settings], completionHandler: nil)
-    }
-
-    private static func configureDeviceFormat(
-        _ device: AVCaptureDevice,
-        selection: PhotoDepthFormatSelection?
-    ) throws {
-        try device.lockForConfiguration()
-        defer { device.unlockForConfiguration() }
-
-        if let selection {
-            /*
-             SingleCam deliberately does not call `setActiveDepthDataFormat`.
-
-             Apple's still-photo depth path only requires a depth-capable camera
-             input plus `AVCapturePhotoOutput.isDepthDataDeliveryEnabled`. The
-             explicit `activeDepthDataFormat` setter is useful when an app needs a
-             specific depth-vs-disparity pixel format, but it raises an uncaught
-             Objective-C exception for some virtual-camera/format transitions even
-             when the format was discovered earlier from `supportedDepthDataFormats`.
-
-             Because an Obj-C exception bypasses Swift `throw`/`catch`, the safe
-             release behavior is to configure the selected depth-capable video
-             format, then let `AVCapturePhotoOutput.isDepthDataDeliverySupported`
-             tell us whether Apple's photo-depth pipeline is valid for the current
-             session. The manifest still records the requested format selection and
-             the actual `device.activeDepthDataFormat` if AVFoundation exposes one.
-             */
-            device.activeFormat = selection.videoFormat
-        }
-
-        if device.isFocusModeSupported(.continuousAutoFocus) {
-            device.focusMode = .continuousAutoFocus
-        }
-
-        if device.activePrimaryConstituentDeviceSwitchingBehavior != .unsupported {
-            /*
-             Debug zoom exploration needs AVFoundation to freely select the
-             appropriate constituent device inside a virtual camera. Keeping the
-             default/explicit `.auto` behavior avoids artificial restrictions
-             that can make Dual Wide or Triple previews appear stuck at 1x.
-             */
-            device.setPrimaryConstituentDeviceSwitchingBehavior(
-                .auto,
-                restrictedSwitchingBehaviorConditions: []
-            )
-        }
-    }
-
-    private static func applyZoom(_ zoomFactor: Double, to device: AVCaptureDevice) throws {
-        try device.lockForConfiguration()
-        defer { device.unlockForConfiguration() }
-
-        let clampedZoom = min(max(CGFloat(zoomFactor), device.minAvailableVideoZoomFactor), device.maxAvailableVideoZoomFactor)
-        device.videoZoomFactor = clampedZoom
     }
 
     private static func portraitPreviewAspectRatio(for format: AVCaptureDevice.Format) -> Double {

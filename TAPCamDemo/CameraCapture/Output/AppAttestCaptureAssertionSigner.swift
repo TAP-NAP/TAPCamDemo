@@ -6,6 +6,7 @@
 import AppAttestKit
 import CryptoKit
 import Foundation
+import OSLog
 
 nonisolated protocol CaptureAssertionSigning: Sendable {
     func sign(
@@ -37,9 +38,12 @@ nonisolated struct AppAttestCaptureAssertionSigner: CaptureAssertionSigning {
         contentDigest: CaptureContentDigest
     ) async throws -> CaptureAssertionProof {
         guard deviceService.isSupported else {
+            TAPDiagnostics.appAttest.error("capture assertion unsupported captureID=\(contentDigest.captureID, privacy: .private)")
             throw AppAttestError.unsupportedDevice
         }
 
+        let operationID = UUID().uuidString
+        TAPDiagnostics.appAttest.info("capture assertion sign start operationID=\(operationID, privacy: .public) captureID=\(contentDigest.captureID, privacy: .private)")
         let credential = try await AppAttestOperationTimeout.run(
             operationDescription: "Prepare App Attest capture credential",
             timeout: operationTimeout
@@ -49,13 +53,15 @@ nonisolated struct AppAttestCaptureAssertionSigner: CaptureAssertionSigning {
             )
         }
         let signingBinding = try CaptureSigningBinding(contentDigest: contentDigest)
+        let clientDataHash = try signingBinding.clientDataHash()
+        TAPDiagnostics.appAttest.info("capture assertion credential ready operationID=\(operationID, privacy: .public) captureID=\(contentDigest.captureID, privacy: .private) keyID=\(Self.keyIDSummary(credential.keyId), privacy: .private)")
         let assertionObject = try await AppAttestOperationTimeout.run(
             operationDescription: "Generate App Attest capture assertion",
             timeout: operationTimeout
         ) {
             try await deviceService.generateAssertion(
                 credential.keyId,
-                clientDataHash: try signingBinding.clientDataHash()
+                clientDataHash: clientDataHash
             )
         }
 
@@ -74,7 +80,15 @@ nonisolated struct AppAttestCaptureAssertionSigner: CaptureAssertionSigning {
             value: proofData.appAttestBase64URL
         )
 
+        TAPDiagnostics.appAttest.info("capture assertion sign success operationID=\(operationID, privacy: .public) captureID=\(contentDigest.captureID, privacy: .private) keyID=\(Self.keyIDSummary(credential.keyId), privacy: .private) proofBytes=\(proofData.count, privacy: .public)")
         return CaptureAssertionProof(proof: proof, keyID: credential.keyId)
+    }
+
+    private static func keyIDSummary(_ keyID: String) -> String {
+        guard keyID.count > 8 else {
+            return keyID
+        }
+        return "\(keyID.prefix(8))...len\(keyID.count)"
     }
 }
 

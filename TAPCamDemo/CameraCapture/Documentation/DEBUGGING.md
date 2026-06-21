@@ -27,5 +27,13 @@ asset identifiers; those remain output implementation details. The camera's
 TAP Library entry point shows progress while the foreground capture-write queue
 is nonempty, but it is not a signing/export progress indicator.
 
+`CaptureJobMetrics.failureReason` is also a public-safe presentation string.
+`CapturePipeline` records it through
+`CameraCaptureStatusPresentation.failureReason(for:)`, so the Debug panel does
+not render raw `localizedDescription`, capture IDs, manifest IDs, Photos asset
+IDs, failing URLs, paths, App Attest key IDs, proofs, or associated error
+reasons. Detailed error facts stay in structured diagnostics such as
+`TAPDiagnostics.describe`.
+
 If a depth row is grey, read `RGBDepthCompatibilityMatrix` output and the latest
 `CaptureJobMetrics.failureReason`.

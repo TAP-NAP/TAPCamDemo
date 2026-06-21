@@ -40,7 +40,10 @@ extension CameraViewModel {
         guard option.isSelectable,
               let rgbSource = option.rgbSource,
               let device = option.device else {
-            statusMessage = option.disabledReason ?? TAPDepthCaptureError.noDepthCameraAvailable.localizedDescription
+            statusMessage = option.disabledReason ?? CameraCaptureStatusPresentation.message(
+                for: TAPDepthCaptureError.noDepthCameraAvailable,
+                context: .debugConfiguration
+            )
             return
         }
 
@@ -58,7 +61,10 @@ extension CameraViewModel {
 
         guard let initialFormatSelection,
               let depthProfile = option.depthProfile(formatSelection: initialFormatSelection) else {
-            statusMessage = option.disabledReason ?? TAPDepthCaptureError.noDepthCameraAvailable.localizedDescription
+            statusMessage = option.disabledReason ?? CameraCaptureStatusPresentation.message(
+                for: TAPDepthCaptureError.noDepthCameraAvailable,
+                context: .debugConfiguration
+            )
             return
         }
 
@@ -93,7 +99,10 @@ extension CameraViewModel {
 
     func selectDebugZoom(_ zoom: ZoomProfile) async {
         guard zoom.isEnabled else {
-            statusMessage = zoom.disabledReason ?? TAPDepthCaptureError.unsupportedZoomFactor.localizedDescription
+            statusMessage = zoom.disabledReason ?? CameraCaptureStatusPresentation.message(
+                for: TAPDepthCaptureError.unsupportedZoomFactor,
+                context: .debugConfiguration
+            )
             return
         }
 
@@ -107,7 +116,10 @@ extension CameraViewModel {
 
     func selectDebugZoomFactor(_ zoomFactor: Double) async {
         guard let capability = debugZoomCapability else {
-            statusMessage = TAPDepthCaptureError.unsupportedZoomFactor.localizedDescription
+            statusMessage = CameraCaptureStatusPresentation.message(
+                for: TAPDepthCaptureError.unsupportedZoomFactor,
+                context: .debugConfiguration
+            )
             return
         }
 
@@ -197,7 +209,7 @@ extension CameraViewModel {
             activeSessionConfiguration = nil
             isDepthCaptureReady = false
             nativePreviewAspectRatio = 3.0 / 4.0
-            statusMessage = error.localizedDescription
+            statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .debugConfiguration)
         }
     }
     func clearDebugDepthOverrideState() {

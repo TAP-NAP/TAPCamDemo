@@ -1,100 +1,161 @@
-# TAPCamDemo SingleCam Photo-Depth Demo
+# TAPCamDemo
 
-TAPCamDemo is an iOS SingleCam photo-depth demo. Release capture is presented
-as field-of-view choices such as `13mm`, `24mm`, `48mm`, and `77mm`; each
-choice resolves to a concrete RGB source, compatible Apple-paired depth source,
-and depth-safe zoom factor before capture. Front capture is entered through the
-camera-switch button and hides the rear FOV selector. The app captures a
-standard photo-depth HEIC only when Apple can produce paired depth through one
-`AVCaptureSession + AVCapturePhotoOutput` pipeline.
+TAPCamDemo is an iOS SingleCam photo-depth capture app. Release capture exposes
+field-of-view choices such as `13mm`, `24mm`, `48mm`, and `77mm`; each choice is
+resolved into one Apple-compatible RGB source, depth source, and depth-safe raw
+`AVCaptureDevice.videoZoomFactor` before capture.
 
-Current non-goals: hash, signing, watermarking, destructive final crop,
-MultiCam capture, RGB/depth streaming synchronizer, RAW provider runtime,
-external session scaffolding, sidecar JSON, and debug bundles.
+The release artifact is one standard HEIC with the primary RGB image, Apple
+auxiliary depth/disparity, and a TAP XMP manifest. Capture first writes an
+unsigned HEIC into the app-private TAP Library queue. A serial queue worker then
+adds the App Attest capture proof and exports the signed HEIC to Photos.
 
-## Data Flow
+Current non-goals: watermarking, destructive final crop, MultiCam capture,
+RGB/depth streaming synchronizer, RAW provider runtime, external session
+scaffolding, sidecar JSON, and debug bundles.
 
-```text
-UI
-     |
-     v
-CameraViewModel
-     |
-     v
-CapabilityMatrix  <----  CameraCapabilityResolver
-     |                         ^
-     v                         |
-CaptureSourcePlan ---> Runtime Session Controller
-     |
-     v
-CapturePipeline
-     |
-     v
-CapturePackage
-     |
-     v
-EmbeddedPhotoPackager
-     |
-     v
-PhotoLibraryWriter
+## Quick Links
+
+| Area | README | Primary code |
+| --- | --- | --- |
+| App startup and App Attest runtime | [TAPCamDemo/App/README.md](TAPCamDemo/App/README.md) | [TAPCamDemoApp.swift](TAPCamDemo/App/TAPCamDemoApp.swift) |
+| SingleCam capture pipeline | [TAPCamDemo/CameraCapture/README.md](TAPCamDemo/CameraCapture/README.md) | [CameraView.swift](TAPCamDemo/CameraCapture/UI/CameraView.swift), [CameraViewModel.swift](TAPCamDemo/CameraCapture/UI/CameraViewModel.swift) |
+| Pending TAP Library queue | [TAPCamDemo/TAPLibrary/README.md](TAPCamDemo/TAPLibrary/README.md) | [TAPPendingCaptureStore.swift](TAPCamDemo/TAPLibrary/TAPPendingCaptureStore.swift), [TAPPendingCaptureProcessor.swift](TAPCamDemo/TAPLibrary/TAPPendingCaptureProcessor.swift) |
+| Saved HEIC depth analysis | [TAPCamDemo/DepthAnalysis/README.md](TAPCamDemo/DepthAnalysis/README.md) | [DepthAnalysisView.swift](TAPCamDemo/DepthAnalysis/DepthAnalysisView.swift), [DepthAnalysisReader.swift](TAPCamDemo/DepthAnalysis/DepthAnalysisReader.swift) |
+| App Attest contract docs | [Docs/AppAttest/README.md](Docs/AppAttest/README.md) | [AppAttestRuntime.swift](TAPCamDemo/App/AppAttestRuntime.swift), [AppAttestCaptureAssertionSigner.swift](TAPCamDemo/CameraCapture/Output/AppAttestCaptureAssertionSigner.swift) |
+| Tests and automation | [TAPCamDemoTests/README.md](TAPCamDemoTests/README.md) | Start with the test README for the automation gate, focused output/provenance suites, manual-control suites, TAP Library suites, and evidence limits. |
+| Source tree module index | [TAPCamDemo/README.md](TAPCamDemo/README.md) | [TAPCamDemo](TAPCamDemo) |
+| Dated project score and reading order | [Docs/ProjectScorecard.md](Docs/ProjectScorecard.md) | [Docs](Docs) |
+| AI collaboration trace | [Docs/AITrace/README.md](Docs/AITrace/README.md) | [Docs/AITrace/2026-06-21-refactor-trace.md](Docs/AITrace/2026-06-21-refactor-trace.md) |
+
+## Architecture
+
+```mermaid
+flowchart TD
+    App["App startup\nTAPCamDemo/App"] --> Camera["Camera capture\nTAPCamDemo/CameraCapture"]
+    Camera --> Queue["Pending queue\nTAPCamDemo/TAPLibrary"]
+    Queue --> Photos["Photos album\nTAPCamDepth"]
+    Photos --> Analysis["Depth analysis\nTAPCamDemo/DepthAnalysis"]
+    Queue --> Analysis
+    App --> Attest["App Attest runtime\nDocs/AppAttest"]
+    Attest --> Queue
+
+    click App "TAPCamDemo/App/README.md"
+    click Camera "TAPCamDemo/CameraCapture/README.md"
+    click Queue "TAPCamDemo/TAPLibrary/README.md"
+    click Analysis "TAPCamDemo/DepthAnalysis/README.md"
+    click Attest "Docs/AppAttest/README.md"
 ```
 
-## Implemented Capture Path
+## Current Refactor Priority
 
-```text
-Selected FOV Option
-        |
-        v
-Resolved RGB Source + compatible Depth Source + depth-safe Zoom
-        |
-        v
-RGBDepthCompatibilityMatrix
-        |
-        v
-AVCaptureSession + AVCapturePhotoOutput
-        |
-        v
-AVCapturePhoto image + AVCapturePhoto.depthData
-        |
-        v
-HEIC primary image + Apple auxiliary depth + TAP XMP manifest
+The current AI-assisted refactor goal is to make the project readable from zero
+prior context, preserve the current Release HEIC-depth plus App Attest behavior,
+and prepare small extension seams for future image format, quality,
+camera-control, security, and documentation work. It is not adding new
+user-visible camera features.
+
+Use [Docs/ProjectScorecard.md](Docs/ProjectScorecard.md) as the scoring-standard
+document. It contains the score formula, current score, strict gaps, and
+from-scratch reading order. Use
+[Docs/AITrace/README.md](Docs/AITrace/README.md) to trace how AI-assisted
+iterations, security/iOS reviews, subagents, and validation steps affected this
+checkout.
+
+Start with [Docs/FutureCameraSpecs.md](Docs/FutureCameraSpecs.md) for the
+refactor boundary status.
+The first code-level entry for future image format or quality work is the
+app-level quality policy plus Output contract in
+[TAPCamDemo/CameraCapture/Output/README.md](TAPCamDemo/CameraCapture/Output/README.md).
+`CapturePhotoQualityPolicy`, `CaptureOutputProfileSelectionIntent`,
+`CaptureOutputProfileSelectionPresentation`, and `CaptureOutputProfile` are
+internal policy, selection, presentation, and validation models, not
+user-visible controls. Release still captures one HEIC with embedded depth and a
+TAP manifest.
+Pending worker readiness is also an internal strategy model; it decides whether
+protected data permits reading private pending artifacts and does not add UI or
+change Release output.
+
+## Capture Flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant UI as CameraView
+    participant VM as CameraViewModel
+    participant Plan as Planning
+    participant Runtime as CaptureSessionController
+    participant Pipeline as CapturePipeline
+    participant Store as TAPPendingCaptureStore
+    participant Worker as TAPPendingCaptureProcessor
+    participant Photos as PhotoLibraryWriter
+
+    User->>UI: Select FOV and press shutter
+    UI->>VM: capture()
+    VM->>Plan: Resolve RGB, depth, zoom, crop
+    Plan-->>VM: CaptureSourcePlan
+    VM->>Runtime: Configure SingleCam session
+    Runtime-->>VM: Prepared AVCapturePhotoOutput
+    VM->>Pipeline: Capture and package
+    Pipeline->>Store: Ingest unsigned HEIC
+    Store-->>VM: Pending capture ID
+    VM->>Worker: Process pending captures
+    Worker->>Worker: Add App Attest capture proof
+    Worker->>Worker: Validate signed HEIC export bytes
+    Worker->>Photos: Export signed HEIC
 ```
 
-The app does **not** run two independent sessions for RGB and depth. It also
-does not include a MultiCam runtime path; unsupported independent camera-input
-pairings are recorded as manifest/diagnostic facts instead of silently falling
-back to another capture source.
+## Module Responsibilities
 
-The camera keeps the SingleCam session configured before the shutter is enabled,
-prewarms `AVCapturePhotoOutput` with the depth HEIC settings used for capture,
-and starts shutter work on touch-down. Location metadata is best-effort: capture
-uses a recent cached `CLLocation` when available and refreshes location only
-when location access has already been granted, instead of waiting on Core
-Location or prompting during the shutter path.
+### App
 
-## Code Map
+[TAPCamDemo/App](TAPCamDemo/App) owns the app root, first-install permission
+gate, App Attest runtime creation, and shared diagnostics categories. It does
+not own camera configuration or capture packaging.
 
-| Responsibility | Code |
-| --- | --- |
-| App entry | [TAPCamDemoApp.swift](TAPCamDemo/App/TAPCamDemoApp.swift) |
-| SwiftUI screen | [CameraView.swift](TAPCamDemo/CameraCapture/UI/CameraView.swift) |
-| UI state and actions | [CameraViewModel.swift](TAPCamDemo/CameraCapture/UI/CameraViewModel.swift), [selection](TAPCamDemo/CameraCapture/UI/CameraViewModel+Selection.swift), [capture](TAPCamDemo/CameraCapture/UI/CameraViewModel+Capture.swift), [debug](TAPCamDemo/CameraCapture/UI/CameraViewModel+Debug.swift) |
-| Preview + crop metadata bridge | [CameraPreviewView.swift](TAPCamDemo/CameraCapture/UI/CameraPreviewView.swift) |
-| FOV/RGB/depth/zoom/crop capabilities | [CapabilityMatrix.swift](TAPCamDemo/CameraCapture/Planning/CapabilityMatrix.swift), [CameraCapabilityResolver.swift](TAPCamDemo/CameraCapture/Planning/CameraCapabilityResolver.swift), [ZoomCapabilityResolver.swift](TAPCamDemo/CameraCapture/Planning/ZoomCapabilityResolver.swift) |
-| Pairing plan and session request | [CapturePlan.swift](TAPCamDemo/CameraCapture/Planning/CapturePlan.swift) |
-| Session owner | [CaptureSessionController.swift](TAPCamDemo/CameraCapture/Runtime/CaptureSessionController.swift) |
-| Default photo provider | [AVFoundationSingleCamPhotoProvider.swift](TAPCamDemo/CameraCapture/Runtime/AVFoundationSingleCamPhotoProvider.swift) |
-| Pipeline and metrics | [CapturePipeline.swift](TAPCamDemo/CameraCapture/Runtime/CapturePipeline.swift), [CaptureJobMetrics.swift](TAPCamDemo/CameraCapture/Support/CaptureJobMetrics.swift) |
-| Logical package | [CapturePackage.swift](TAPCamDemo/CameraCapture/Output/CapturePackage.swift) |
-| Packaging model | [CapturePackager.swift](TAPCamDemo/CameraCapture/Output/CapturePackager.swift) |
-| Embedded HEIC packager | [EmbeddedPhotoPackager.swift](TAPCamDemo/CameraCapture/Output/EmbeddedPhotoPackager.swift) |
-| TAP manifest schema | [TAPDepthManifestSchema.swift](TAPCamDemo/CameraCapture/Output/TAPDepthManifestSchema.swift) |
-| Photos writer | [PhotoLibraryWriter.swift](TAPCamDemo/CameraCapture/Output/PhotoLibraryWriter.swift) |
-| Analysis models and HEIC readback | [DepthAnalysisModels.swift](TAPCamDemo/DepthAnalysis/DepthAnalysisModels.swift), [DepthAnalysisReader.swift](TAPCamDemo/DepthAnalysis/DepthAnalysisReader.swift) |
-| Depth / mask / plane / cloud tools | [AnalysisTools](TAPCamDemo/DepthAnalysis/AnalysisTools) |
-| Saved-image album and analysis UI | [DepthAlbumPickerView.swift](TAPCamDemo/DepthAnalysis/DepthAlbumPickerView.swift), [DepthAnalysisView.swift](TAPCamDemo/DepthAnalysis/DepthAnalysisView.swift) |
+Start with [TAPCamDemo/App/README.md](TAPCamDemo/App/README.md).
 
-## HEIC Layout
+### CameraCapture
+
+[TAPCamDemo/CameraCapture](TAPCamDemo/CameraCapture) owns all camera UI,
+planning, AVFoundation runtime configuration, logical packaging, and the
+unsigned HEIC handoff into TAP Library. It is the only module that touches
+`AVCaptureSession`.
+
+Start with [TAPCamDemo/CameraCapture/README.md](TAPCamDemo/CameraCapture/README.md).
+
+### TAPLibrary
+
+[TAPCamDemo/TAPLibrary](TAPCamDemo/TAPLibrary) owns app-private pending capture
+storage, queue states, retry ordering, App Attest proof injection, Photos
+export, and cleanup of large exported files. It keeps queue work serial so real
+device signing/export cannot overlap itself.
+
+Start with [TAPCamDemo/TAPLibrary/README.md](TAPCamDemo/TAPLibrary/README.md).
+
+### DepthAnalysis
+
+[TAPCamDemo/DepthAnalysis](TAPCamDemo/DepthAnalysis) reads validated saved or
+pending TAP HEIC inputs and presents RGB, heatmap, mask, point-cloud, and
+plane-filter views. The local analysis reader bounds HEIC size, primary-image
+dimensions, depth-map pixel count, sample layout, and projection calibration
+before rendering or geometry tools allocate per-pixel products. It is
+deliberately separate from live capture.
+
+Start with [TAPCamDemo/DepthAnalysis/README.md](TAPCamDemo/DepthAnalysis/README.md).
+For presentation and privacy review, start with its Inspector/HUD Presentation
+Map before scanning the SwiftUI files.
+
+## HEIC Contract
+
+```mermaid
+flowchart LR
+    HEIC["TAP HEIC"] --> RGB["Primary image\nvisible RGB"]
+    HEIC --> Aux["Apple auxiliary depth/disparity"]
+    HEIC --> XMP["XMP tapdepth:Manifest"]
+    XMP --> Payload["payload\ncapture facts"]
+    XMP --> Proofs["proofs\nApp Attest capture proof"]
+```
 
 | HEIC location | Contents | Authority |
 | --- | --- | --- |
@@ -103,76 +164,63 @@ Location or prompting during the shutter path.
 | EXIF/GPS/TIFF | Compatibility metadata and short pointer | Compatibility mirror |
 | XMP `tapdepth:Manifest` | TAP JSON manifest at `tapdepth:Manifest` | Authoritative TAP metadata |
 
-`payload` is encoded independently from `proofs`, so placeholder proof records
-do not affect the payload bytes. The app does not generate hashes or signatures.
+`payload` is encoded independently from `proofs`, so App Attest proof records
+do not affect the payload bytes being signed. Current readers should prefer
+`payload.rgbSource`, `payload.depthSource`, `payload.pairing`, `payload.zoom`,
+`payload.crop`, `payload.resolvedSession`, and `payload.alignment`.
 
-## TAP Manifest Capture Nodes
+Before a signed TAP HEIC is saved to Photos, the queue re-reads the final file
+bytes and validates the HEIC source type, manifest id, App Attest proof shape,
+proof digest binding, and Apple auxiliary depth/disparity. This keeps queue
+status or filenames from acting as trust signals by themselves.
 
-Important payload nodes:
+DepthAnalysis input validation is a local reader safety boundary, not the final
+export trust gate. App Attest proof validation and signed Photos export
+authority remain in the capture/output queue.
 
-| Field | Meaning |
-| --- | --- |
-| `rgbSource` | Resolved visual source for the final RGB photo |
-| `depthSource` | Requested compatible depth row and resolved AVFoundation device |
-| `pairing` | Pairing mode, compatibility status, release allowance, alignment status |
-| `zoom` | Requested/actual zoom and depth-safe zoom ranges |
-| `crop` | Preview-only normalized crop metadata |
-| `resolvedSession` | Actual `AVCaptureDevice` used for the still photo-depth pipeline |
-| `alignment` | TAP interpretation rule for Apple auxiliary depth alignment |
+## Validation
 
-Legacy v1 fields such as `selectedDepthCamera`, `selectedZoom`, `photoLens`, and
-`depthBackend` are still emitted for older readers, but current readers should
-prefer the nodes above. `photoLens.requestedFocalLengthLabel` records the
-user-facing FOV label that drove the capture choice.
+The shared `TAPCamDemo` scheme is the default automation entry point and only
+includes `TAPCamDemoTests`. The old UI test target was removed because it only
+proved a depth-capable physical-device FOV flow and skipped on Simulator.
+The scheme sets `TAPCAM_XCTEST_HOST=1` so app-hosted unit tests do not enter
+the first-launch permission and camera startup flow.
 
-Depth analysis fields are also embedded in the same manifest:
+For AI/CI compilation verification, use:
 
-| Field | Meaning |
-| --- | --- |
-| `depth.metricUnit` | Unit after native/conversion interpretation, currently meters for metric analysis |
-| `depth.conversionPath` | Whether the data was native metric depth or converted from disparity |
-| `depth.pixelFormat` | Auxiliary depth/disparity pixel format code |
-| `alignment.depthToImage` | Alignment rule for matching Apple auxiliary depth to the primary image |
-
-## Documents
-
-- [First Launch Startup Flow](Docs/Startup/FirstLaunch.md)
-- [ARCHITECTURE.md](TAPCamDemo/CameraCapture/Documentation/ARCHITECTURE.md)
-- [PIPELINE.md](TAPCamDemo/CameraCapture/Documentation/PIPELINE.md)
-- [APPLE_DEPTH_LIMITATIONS.md](TAPCamDemo/CameraCapture/Documentation/APPLE_DEPTH_LIMITATIONS.md)
-- [CAPTURE_SOURCES.md](TAPCamDemo/CameraCapture/Documentation/CAPTURE_SOURCES.md)
-- [RGB_DEPTH_PAIRING.md](TAPCamDemo/CameraCapture/Documentation/RGB_DEPTH_PAIRING.md)
-- [ZOOM.md](TAPCamDemo/CameraCapture/Documentation/ZOOM.md)
-- [CROP.md](TAPCamDemo/CameraCapture/Documentation/CROP.md)
-- [PACKAGING.md](TAPCamDemo/CameraCapture/Documentation/PACKAGING.md)
-- [DEBUGGING.md](TAPCamDemo/CameraCapture/Documentation/DEBUGGING.md)
-
-## Depth Analysis Module
-
-Depth analysis is intentionally separate from capture. The camera pipeline
-produces standards-compatible HEIC + Apple auxiliary depth + TAP manifest; the
-analysis module reads saved photo bytes and builds heatmaps, valid masks,
-point-cloud previews, and approximate plane candidates.
-
-Single-photo RGB-D analysis can estimate visible-surface depth and approximate
-coplanarity. It is not full 3D reconstruction: there is no stable world
-coordinate system, no hidden geometry behind visible objects, and no multi-frame
-mesh.
-
-For a depth pixel `(u, v)` with metric depth `Z`, the analysis module uses the
-pinhole model from `AVCameraCalibrationData.intrinsicMatrix`:
-
-```text
-X = (u - cx) / fx * Z
-Y = (v - cy) / fy * Z
-Z = depthMeters
+```bash
+xcodebuild build-for-testing -project TAPCamDemo.xcodeproj -scheme TAPCamDemo -destination 'platform=iOS Simulator,OS=26.5,name=iPhone 17'
 ```
 
-## Reading From Photos
+For execution, use a simulator that is already booted and pass its UDID
+explicitly. This avoids Xcode creating a temporary clone from a shutdown
+destination during test launch.
 
-Photos may provide edited derivatives or thumbnails. For verification, always
-request original `.photo` resource bytes with `PHAssetResourceManager`, then
-parse them with ImageIO.
+```bash
+xcrun simctl list devices booted
+xcodebuild test -project TAPCamDemo.xcodeproj -scheme TAPCamDemo -destination 'id=<BOOTED_SIMULATOR_UDID>'
+```
+
+After `build-for-testing`, `test-without-building` can use the same
+`-destination 'id=<BOOTED_SIMULATOR_UDID>'` form. Running by device name can
+still depend on CoreSimulator boot and migration state. Real-device camera/App
+Attest acceptance remains an attended validation path, not a default unit-test
+target.
+
+## Supporting Documents
+
+| Document | Purpose |
+| --- | --- |
+| [Docs/README.md](Docs/README.md) | Cross-module documentation index. |
+| [Docs/ProjectScorecard.md](Docs/ProjectScorecard.md) | Dated score, strict gaps, score formula, and from-scratch reading order. |
+| [Docs/FutureCameraSpecs.md](Docs/FutureCameraSpecs.md) | Current refactor-first boundary status and future camera capability specs. |
+| [Docs/AITrace/README.md](Docs/AITrace/README.md) | AI collaboration trace for goals, user constraints, subagent/plugin use, iteration history, and validation status. |
+| [Docs/Startup/FirstLaunch.md](Docs/Startup/FirstLaunch.md) | Current first-install startup flow and trace points. |
+| [Docs/AppAttest/README.md](Docs/AppAttest/README.md) | App Attest client/backend boundary and capture proof notes. |
+| [TAPCamDemo/CameraCapture/Documentation/ARCHITECTURE.md](TAPCamDemo/CameraCapture/Documentation/ARCHITECTURE.md) | Camera module dependency direction. |
+| [TAPCamDemo/CameraCapture/Documentation/PIPELINE.md](TAPCamDemo/CameraCapture/Documentation/PIPELINE.md) | Single executable capture path. |
+| [TAPCamDemo/CameraCapture/Documentation/PACKAGING.md](TAPCamDemo/CameraCapture/Documentation/PACKAGING.md) | Embedded HEIC packaging and manifest details. |
+| [TAPCamDemo/DepthAnalysis/Documentation/PlanesTechnicalDesign.md](TAPCamDemo/DepthAnalysis/Documentation/PlanesTechnicalDesign.md) | Plane-filter geometry design. |
 
 ## Release Data Policy
 

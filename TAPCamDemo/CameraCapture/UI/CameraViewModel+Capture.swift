@@ -7,6 +7,7 @@
 
 import AppAttestKit
 import Foundation
+import OSLog
 import Photos
 import UIKit
 
@@ -17,7 +18,7 @@ import UIKit
 @MainActor
 extension CameraViewModel {
     func capture(
-        appAttestClient: (any AppAttestClient)? = nil,
+        pendingCaptureWorkerClient: (any AppAttestClient)? = nil,
         suppressesShutterSound: Bool = false
     ) async {
         guard !isPausedForAnalysis else {
@@ -26,28 +27,43 @@ extension CameraViewModel {
         }
 
         guard let activeSessionConfiguration else {
-            statusMessage = TAPDepthCaptureError.depthDeliveryUnsupported.localizedDescription
+            statusMessage = CameraCaptureStatusPresentation.message(
+                for: TAPDepthCaptureError.depthDeliveryUnsupported,
+                context: .capture
+            )
             return
         }
 
-        guard let captureConfiguration = configurationForCurrentCapture(from: activeSessionConfiguration),
+        let captureConfiguration = PreCaptureConfigurationBuilder.configuration(
+            from: activeSessionConfiguration,
+            previewCropRectNormalized: previewCropRectNormalized
+        )
+        guard captureConfiguration.depthDeliverySupported,
               captureConfiguration.capturePlan.canCapturePhotoDepth else {
-            statusMessage = TAPDepthCaptureError.incompatibleRGBDepthPairing.localizedDescription
+            statusMessage = CameraCaptureStatusPresentation.message(
+                for: TAPDepthCaptureError.incompatibleRGBDepthPairing,
+                context: .capture
+            )
             return
         }
 
         guard pendingJobCount < CaptureJobQueue.defaultMaximumPendingJobs else {
-            statusMessage = TAPDepthCaptureError.captureBackpressureLimitReached.localizedDescription
+            statusMessage = CameraCaptureStatusPresentation.message(
+                for: TAPDepthCaptureError.captureBackpressureLimitReached,
+                context: .capture
+            )
             return
         }
 
         let queueEnteredAt = Date()
         let job = CaptureJob()
+        TAPDiagnostics.pendingCapture.info("capture requested jobID=\(job.id.uuidString, privacy: .public) suppressesShutterSound=\(suppressesShutterSound, privacy: .public)")
 
         do {
             let pendingCount = try await jobQueue.beginJob()
             pendingJobCount = pendingCount
             statusMessage = "Capture queued..."
+            TAPDiagnostics.pendingCapture.info("capture queued jobID=\(job.id.uuidString, privacy: .public) pendingJobCount=\(pendingCount, privacy: .public)")
 
             let location = locationProvider.cachedCaptureLocation()
             locationProvider.warmLocationCache()
@@ -62,6 +78,9 @@ extension CameraViewModel {
                 let result = await pipeline.runSingleCamJob(
                     job: job,
                     context: context,
+                    // Foreground capture stages an unsigned HEIC first. App
+                    // Attest signing/export retry starts only after the pending
+                    // artifact has been written.
                     assertionSigner: nil,
                     pendingJobCount: pendingCount,
                     queueWaitDuration: queueWaitDuration
@@ -74,24 +93,27 @@ extension CameraViewModel {
                     self.recentMetrics = metrics
                     switch result {
                     case .success(let writeResult):
+                        TAPDiagnostics.pendingCapture.info("capture pipeline success jobID=\(job.id.uuidString, privacy: .public) pendingCaptureIDPresent=\(writeResult.pendingCaptureID != nil, privacy: .public) assetIDPresent=\(writeResult.assetLocalIdentifier != nil, privacy: .public) remainingJobs=\(remaining, privacy: .public)")
                         self.statusMessage = writeResult.signatureStatus.captureStatusMessage
                         if let pendingCaptureID = writeResult.pendingCaptureID {
                             Task {
                                 await self.loadRecentPendingCapturePreview(captureID: pendingCaptureID)
-                                if let appAttestClient {
-                                    await self.processPendingCaptures(appAttestClient: appAttestClient)
+                                if let pendingCaptureWorkerClient {
+                                    await self.retryPendingCaptures(pendingCaptureWorkerClient: pendingCaptureWorkerClient)
                                 }
                             }
                         } else if let assetID = writeResult.assetLocalIdentifier {
                             self.loadRecentDepthAssetPreview(assetID: assetID)
                         }
                     case .failure(let error):
-                        self.statusMessage = error.localizedDescription
+                        TAPDiagnostics.pendingCapture.error("capture pipeline failed jobID=\(job.id.uuidString, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
+                        self.statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .capture)
                     }
                 }
             }
         } catch {
-            statusMessage = error.localizedDescription
+            TAPDiagnostics.pendingCapture.error("capture queue failed jobID=\(job.id.uuidString, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
+            statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .capture)
             pendingJobCount = await jobQueue.pendingCount()
         }
     }
@@ -145,12 +167,14 @@ extension CameraViewModel {
         return PhotoLibraryWriter.asset(localIdentifier: assetID) != nil
     }
 
-    func processPendingCaptures(appAttestClient: any AppAttestClient) async {
+    func retryPendingCaptures(pendingCaptureWorkerClient: any AppAttestClient) async {
+        TAPDiagnostics.pendingCapture.info("viewModel retryPendingCaptures start")
         await pendingCaptureProcessor.processPendingCaptures(
             store: pendingCaptureStore,
-            appAttestClient: appAttestClient
+            appAttestClient: pendingCaptureWorkerClient
         )
         await loadRecentTAPLibraryPreviewIfAvailable()
+        TAPDiagnostics.pendingCapture.info("viewModel retryPendingCaptures finish")
     }
 
     /// Updates the camera chrome's recent-photo entry point after a successful

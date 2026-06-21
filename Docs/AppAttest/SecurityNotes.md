@@ -19,6 +19,11 @@ capture `signingBinding` and stores the resulting assertion in the HEIC proof.
 The client still does not get to decide that the assertion is trustworthy; a
 verifier must check the signature with the registered backend credential.
 
+The app also revalidates the final signed HEIC before Photos export. That check
+does not prove server trust, but it does ensure the exported file still contains
+the expected HEIC container, manifest id, App Attest proof envelope, digest
+binding, and auxiliary depth.
+
 ## Why Keychain Stores keyId
 
 The App Attest private key is not stored by this app. Apple keeps it inside
@@ -46,6 +51,20 @@ hashed stable IDs instead of raw PII.
 
 The backend must decide whether a given credential name is allowed for the
 current authenticated account or business action.
+
+Credential names and key ids are diagnostic-sensitive even when they are not
+trust claims. TAPCamDemo's current `photo_keyid` is fixed and non-PII, but any
+future credential name that contains user, tenant, install, or session identity
+must remain private in logs. Public error summaries should use
+`TAPDiagnostics.describe` rather than raw localized errors, URLs, or backend
+payloads.
+
+The same boundary applies to user-visible text. Settings must use
+`AppAttestCredentialPresentation` for generic failure status and redacted key ID
+summaries and `AppAttestRuntime.backendPublicSummary` for backend status; full
+key IDs, localized errors, failing URLs, paths, backend URLs, backend text, and
+raw diagnostic payloads should not appear in visible text or accessibility
+labels.
 
 ## Challenge And Replay Protection
 

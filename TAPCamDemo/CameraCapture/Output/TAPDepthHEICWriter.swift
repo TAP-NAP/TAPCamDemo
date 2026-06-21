@@ -130,6 +130,21 @@ nonisolated enum TAPDepthHEICReader {
         return try JSONDecoder().decode(TAPDepthManifest.self, from: data)
     }
 
+    static func containerTypeIdentifier(from heicData: Data) throws -> String {
+        guard let source = CGImageSourceCreateWithData(heicData as CFData, nil),
+              let type = CGImageSourceGetType(source) else {
+            throw TAPDepthCaptureError.imageSourceCreationFailed
+        }
+        return type as String
+    }
+
+    static func validateHEICContainer(_ heicData: Data) throws {
+        let type = try containerTypeIdentifier(from: heicData)
+        guard type == UTType.heic.identifier || type == UTType.heif.identifier else {
+            throw TAPDepthCaptureError.invalidHEICContainerType(type)
+        }
+    }
+
     static func depthAuxiliaryInfo(from heicData: Data) -> [AnyHashable: Any]? {
         auxiliaryInfo(from: heicData, type: kCGImageAuxiliaryDataTypeDepth)
     }

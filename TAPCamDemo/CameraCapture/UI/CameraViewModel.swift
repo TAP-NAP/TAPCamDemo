@@ -130,12 +130,21 @@ final class CameraViewModel: ObservableObject {
                 locationProvider.warmLocationCache()
                 await loadRecentTAPLibraryPreviewIfAvailable()
             } else {
-                statusMessage = TAPDepthCaptureError.cameraAccessDenied.localizedDescription
+                statusMessage = CameraCaptureStatusPresentation.message(
+                    for: TAPDepthCaptureError.cameraAccessDenied,
+                    context: .configuration
+                )
             }
         case .denied, .restricted:
-            statusMessage = TAPDepthCaptureError.cameraAccessDenied.localizedDescription
+            statusMessage = CameraCaptureStatusPresentation.message(
+                for: TAPDepthCaptureError.cameraAccessDenied,
+                context: .configuration
+            )
         @unknown default:
-            statusMessage = TAPDepthCaptureError.cameraAccessDenied.localizedDescription
+            statusMessage = CameraCaptureStatusPresentation.message(
+                for: TAPDepthCaptureError.cameraAccessDenied,
+                context: .configuration
+            )
         }
     }
 
@@ -171,9 +180,15 @@ final class CameraViewModel: ObservableObject {
         case .notDetermined:
             await start()
         case .denied, .restricted:
-            statusMessage = TAPDepthCaptureError.cameraAccessDenied.localizedDescription
+            statusMessage = CameraCaptureStatusPresentation.message(
+                for: TAPDepthCaptureError.cameraAccessDenied,
+                context: .configuration
+            )
         @unknown default:
-            statusMessage = TAPDepthCaptureError.cameraAccessDenied.localizedDescription
+            statusMessage = CameraCaptureStatusPresentation.message(
+                for: TAPDepthCaptureError.cameraAccessDenied,
+                context: .configuration
+            )
         }
     }
 

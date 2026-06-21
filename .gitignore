@@ -14,6 +14,7 @@ xcuserdata/
 .build/
 .swiftpm/
 Package.resolved
+!TAPCamDemo.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
 
 # CocoaPods
 Pods/

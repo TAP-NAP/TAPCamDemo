@@ -20,6 +20,10 @@ let tenantCredentialName = "tenant:\(tenantId):user:\(userId)"
 does not know whether it represents an install, user, tenant, or session. See
 [CredentialNameGuide.md](CredentialNameGuide.md) for recommended patterns.
 
+Caller responsibility: if a credential name contains user, tenant, install, or
+session identity, treat it as sensitive in logs even when the credential name is
+not itself a trust claim.
+
 ## Register A Key
 
 ```swift
@@ -100,8 +104,9 @@ not reset other caller-defined credential names.
 - Tapping `Not prepared` on the status row runs reset and then
   `prepare(credentialName:)`. The status row shows a spinner while this is
   running, then shows `Ready`.
-- After preparation succeeds, the settings detail row shows only the App Attest
-  `keyId`; credential name stays out of the Release status details.
+- After preparation succeeds, the settings detail row shows only a redacted App
+  Attest key ID summary; credential name and the full `keyId` stay out of the
+  Release status details and accessibility labels.
 - Enabling Help in Settings shows the `keyId` explanation inline below the App
   Attest `Status` row.
 

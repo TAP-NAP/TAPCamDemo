@@ -29,8 +29,26 @@ struct TAPCamDemoApp: App {
 
     var body: some Scene {
         WindowGroup {
-            StartupGateView()
-                .preferredColorScheme(.dark)
+            if ProcessInfo.processInfo.isXCTestHost {
+                XCTestHostView()
+            } else {
+                StartupGateView()
+                    .preferredColorScheme(.dark)
+            }
         }
+    }
+}
+
+private struct XCTestHostView: View {
+    var body: some View {
+        Color.black
+    }
+}
+
+private extension ProcessInfo {
+    var isXCTestHost: Bool {
+        environment["TAPCAM_XCTEST_HOST"] == "1"
+            || environment["XCTestConfigurationFilePath"] != nil
+            || environment["XCTestBundlePath"] != nil
     }
 }

@@ -1,0 +1,55 @@
+//
+//  TAPCamDemoTestSourceInspection.swift
+//  TAPCamDemoTests
+//
+
+import Foundation
+
+enum TAPCamDemoTestSourceInspection {
+    static func source(relativePath: String) throws -> String {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let fileURL = root.appendingPathComponent(relativePath)
+        return try String(contentsOf: fileURL, encoding: .utf8)
+    }
+
+    static func swiftSourceRelativePaths(under relativeDirectory: String) throws -> [String] {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let directoryURL = root.appendingPathComponent(relativeDirectory, isDirectory: true)
+        let files = try FileManager.default.contentsOfDirectory(
+            at: directoryURL,
+            includingPropertiesForKeys: nil
+        )
+        return files
+            .filter { $0.pathExtension == "swift" }
+            .map { "\(relativeDirectory)/\($0.lastPathComponent)" }
+            .sorted()
+    }
+
+    static func reflectedNames(in value: Any, depth: Int = 0) -> [String] {
+        guard depth < 6 else {
+            return []
+        }
+
+        let mirror = Mirror(reflecting: value)
+        var names = [String(reflecting: type(of: value))]
+        for child in mirror.children {
+            if let label = child.label {
+                names.append(label)
+            }
+            names.append(contentsOf: reflectedNames(in: child.value, depth: depth + 1))
+        }
+        return names
+    }
+
+    static func substring(in source: String, from start: String, to end: String) -> String? {
+        guard let startRange = source.range(of: start),
+              let endRange = source[startRange.lowerBound...].range(of: end) else {
+            return nil
+        }
+        return String(source[startRange.lowerBound..<endRange.lowerBound])
+    }
+}

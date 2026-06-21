@@ -6,11 +6,12 @@
 import AppAttestKit
 import Combine
 import Foundation
+import OSLog
 
 @MainActor
 final class AppAttestRuntimeController: ObservableObject {
     @Published private(set) var runtime: AppAttestRuntime
-    @Published private(set) var credentialStatusText = AppAttestRuntimeController.notPreparedStatusText
+    @Published private(set) var credentialStatusText = AppAttestCredentialPresentation.notPreparedStatusText
     @Published private(set) var credentialKeyIdText: String?
     @Published private(set) var isPreparingCredential = false
     @Published private(set) var isWorking = false
@@ -20,7 +21,7 @@ final class AppAttestRuntimeController: ObservableObject {
     private var activeOperationCount = 0
 
     var isPhotoCredentialReady: Bool {
-        credentialStatusText == Self.readyStatusText && credentialKeyIdText != nil
+        credentialStatusText == AppAttestCredentialPresentation.readyStatusText && credentialKeyIdText != nil
     }
 
     var canResetAndPrepareCredential: Bool {
@@ -28,7 +29,11 @@ final class AppAttestRuntimeController: ObservableObject {
     }
 
     var credentialPreparationActionTitle: String {
-        credentialStatusText == Self.notPreparedStatusText ? "Prepare" : "Retry"
+        credentialStatusText == AppAttestCredentialPresentation.notPreparedStatusText ? "Prepare" : "Retry"
+    }
+
+    var credentialKeyIDPresentation: AppAttestCredentialKeyIDPresentation? {
+        credentialKeyIdText.map(AppAttestCredentialKeyIDPresentation.init(keyID:))
     }
 
     init(
@@ -43,7 +48,7 @@ final class AppAttestRuntimeController: ObservableObject {
     }
 
     @discardableResult
-    func preparePhotoCredentialAfterFirstInstallLaunch() async -> Bool {
+    func warmPendingCaptureSigningCredential() async -> Bool {
         let didAutoPrepare = userDefaults.bool(forKey: Self.didAutoPreparePhotoCredentialKey)
         let storedHealthCheckToken = userDefaults.string(forKey: Self.credentialHealthCheckTokenKey)
         let currentHealthCheckToken = Self.currentCredentialHealthCheckToken(runtime: runtime)
@@ -78,9 +83,10 @@ final class AppAttestRuntimeController: ObservableObject {
         do {
             try await resetLocalCredentialMetadata()
             credentialKeyIdText = nil
-            self.credentialStatusText = "Reset \(AppAttestRuntimeDefaults.photoCredentialName)."
+            self.credentialStatusText = AppAttestCredentialPresentation.resetStatusText
         } catch {
-            self.credentialStatusText = "Reset \(AppAttestRuntimeDefaults.photoCredentialName) failed: \(error.localizedDescription)"
+            self.credentialStatusText = AppAttestCredentialPresentation.failureStatusText(label: "Reset local credential")
+            TAPDiagnostics.appAttest.error("credential reset failed error=\(TAPDiagnostics.describe(error), privacy: .public)")
         }
     }
 
@@ -103,7 +109,7 @@ final class AppAttestRuntimeController: ObservableObject {
         if markAutoPrepared {
             self.userDefaults.set(true, forKey: Self.didAutoPreparePhotoCredentialKey)
         }
-        self.credentialStatusText = Self.readyStatusText
+        self.credentialStatusText = AppAttestCredentialPresentation.readyStatusText
         self.credentialKeyIdText = credential.keyId
         return credential
     }
@@ -114,7 +120,7 @@ final class AppAttestRuntimeController: ObservableObject {
         if markAutoPrepared {
             self.userDefaults.set(true, forKey: Self.didAutoPreparePhotoCredentialKey)
         }
-        self.credentialStatusText = Self.readyStatusText
+        self.credentialStatusText = AppAttestCredentialPresentation.readyStatusText
         self.credentialKeyIdText = credential.keyId
         return credential
     }
@@ -175,6 +181,8 @@ final class AppAttestRuntimeController: ObservableObject {
         showsPreparationProgress: Bool = false,
         operation: @MainActor @Sendable @escaping () async throws -> Void
     ) async -> Bool {
+        let operationID = UUID().uuidString
+        TAPDiagnostics.appAttest.info("credential operation start operationID=\(operationID, privacy: .public) label=\(label, privacy: .public) backend=\(self.runtime.backendPublicSummary, privacy: .public)")
         beginOperation()
         if showsPreparationProgress {
             isPreparingCredential = true
@@ -194,10 +202,12 @@ final class AppAttestRuntimeController: ObservableObject {
             ) {
                 try await operation()
             }
+            TAPDiagnostics.appAttest.info("credential operation success operationID=\(operationID, privacy: .public) label=\(label, privacy: .public)")
             return true
         } catch {
             credentialKeyIdText = nil
-            credentialStatusText = "\(label) failed: \(error.localizedDescription)"
+            credentialStatusText = AppAttestCredentialPresentation.failureStatusText(label: label)
+            TAPDiagnostics.appAttest.error("credential operation failed operationID=\(operationID, privacy: .public) label=\(label, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
             return false
         }
     }
@@ -222,8 +232,6 @@ final class AppAttestRuntimeController: ObservableObject {
 
     private static let didAutoPreparePhotoCredentialKey = "TAPCamDemo.AppAttest.didAutoPreparePhotoCredential"
     private static let credentialHealthCheckTokenKey = "TAPCamDemo.AppAttest.credentialHealthCheckToken"
-    private static let notPreparedStatusText = "Not prepared"
-    private static let readyStatusText = "Ready"
     private static let credentialHealthCheckNonce = "tapcam-app-attest-credential-health"
     private static let credentialHealthCheckBody = Data(
         """

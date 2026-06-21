@@ -23,6 +23,9 @@ TAP Library Pending Store
 Async App Attest Signer
       |
       v
+Final Signed-Export Validator
+      |
+      v
 Signed HEIC Export to TAPCamDepth Photos Album
 ```
 
@@ -39,13 +42,22 @@ At shutter time, `EmbeddedPhotoPackager` creates an unsigned HEIC with
 `proofs: []`. The app writes that file to the app-private TAP Library pending
 store first, not directly to Photos. A background worker later reads the pending
 HEIC, recomputes the canonical content digest, creates the App Attest assertion,
-inserts the proof into `manifest.proofs[0]`, and exports the signed HEIC into
-the TAPCamDepth Photos album.
+inserts the proof into `manifest.proofs[0]`, validates the final signed bytes,
+and exports the signed HEIC into the TAPCamDepth Photos album.
+
+The final validator is `TAPCaptureProvenanceWriter.validateSignedExportHEIC`.
+It opens the exact bytes that will be exported, then checks the HEIC source
+type, manifest schema and `payload.id`, exactly one App Attest proof, proof
+value/digest/signing binding, and Apple auxiliary depth/disparity. Queue status
+and `signed.heic` filenames are not trust claims by themselves.
 
 If the device is locked, protected data is unavailable, the network is down, or
 App Attest fails transiently, the capture remains in the pending store as
 `pending`, `waitingNetwork`, or `failedRetryable`. The app does not automatically
 export unsigned captures to Photos.
+When protected data is unavailable, `TAPPendingCaptureWorkerReadiness` stops the
+worker before signing, validation, export, retry mutation, or failure-reason
+updates.
 
 The pending store status model is:
 
@@ -161,8 +173,10 @@ Startup and foreground recovery reconcile partially completed work:
 
 - `signing` records are eligible for signing again because the app may have
   been killed while a worker was in flight.
-- `exporting` records are matched by manifest `captureID` before another export
-  is attempted.
+- Signing validates that the queue record `captureID` still matches the staged
+  HEIC's embedded TAP manifest `payload.id` before App Attest is called.
+- `exporting` records are matched by final signed-export validation before
+  another Photos export is attempted.
 - `exported` records have staged large files cleaned up again if a previous
   cleanup was interrupted.
 
@@ -181,15 +195,17 @@ asynchronous signing pipeline can land without speculative format abstraction.
 
 To verify a signed TAP depth HEIC:
 
-1. Read the original HEIC resource and parse XMP `tapdepth:Manifest`.
-2. Read `manifest.proofs[0]` and require `type == "appAttestAssertion"`.
-3. Base64url-decode `proof.value` and parse the canonical proof JSON.
-4. Recompute the RGB, depth, and metadata digests using the rules above.
-5. Compare the recomputed digest package with `proof.value.contentDigest`.
-6. Encode that digest package canonically and verify that its SHA-256 matches
+1. Read the original HEIC resource and require an actual HEIC container type.
+2. Parse XMP `tapdepth:Manifest` and verify the expected `payload.id`.
+3. Read exactly one `manifest.proofs[0]` and require
+   `type == "appAttestAssertion"`.
+4. Base64url-decode `proof.value` and parse the canonical proof JSON.
+5. Recompute the RGB, depth, and metadata digests using the rules above.
+6. Compare the recomputed digest package with `proof.value.contentDigest`.
+7. Encode that digest package canonically and verify that its SHA-256 matches
    `signingBinding.bodySHA256`.
-7. Submit `keyId`, `assertionObject`, and `signingBinding` to
+8. Submit `keyId`, `assertionObject`, and `signingBinding` to
    `/tapcam/capture-signatures/verify`, or perform the equivalent App Attest
    assertion verification locally with the registered public key.
-8. Treat the capture proof as valid only if the image/depth digest check and
+9. Treat the capture proof as valid only if the image/depth digest check and
    App Attest signature check both pass.

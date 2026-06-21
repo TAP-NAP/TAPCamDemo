@@ -7,15 +7,31 @@
 
 import SwiftUI
 
+/// Display-only FOV chip state for the preview stage.
+///
+/// The token is an opaque UI value resolved by `CameraView`; this type does not
+/// carry camera profiles, depth profiles, raw device identifiers, or zoom plans.
+struct CameraFocalLengthDisplayOption: Identifiable, Equatable, Sendable {
+    let selectionToken: String
+    let displayName: String
+    let numericLabel: String
+    let unitLabel: String
+    let isSelected: Bool
+    let isEnabled: Bool
+
+    var id: String {
+        selectionToken
+    }
+}
+
 /// Compact release FOV selector rendered over the bottom of the preview.
 ///
-/// The view receives already-planned `FocalLengthOption` values; it does not
-/// inspect camera devices or infer depth compatibility on its own.
+/// The view receives display-only options; it does not inspect camera devices,
+/// receive raw camera identifiers, or infer depth compatibility on its own.
 struct FocalLengthSelectorView: View {
-    let options: [FocalLengthOption]
-    let selectedID: String?
+    let options: [CameraFocalLengthDisplayOption]
     let contentRotation: Angle
-    let select: (FocalLengthOption) -> Void
+    let select: (CameraFocalLengthDisplayOption) -> Void
 
     var body: some View {
         let selectorWidth = min(contentWidth, maximumVisibleWidth)
@@ -73,17 +89,17 @@ struct FocalLengthSelectorView: View {
         232
     }
 
-    private func background(for option: FocalLengthOption) -> Color {
+    private func background(for option: CameraFocalLengthDisplayOption) -> Color {
         if !option.isEnabled {
             return .white.opacity(0.08)
         }
-        return option.id == selectedID ? .white.opacity(0.92) : .white.opacity(0.18)
+        return option.isSelected ? .white.opacity(0.92) : .white.opacity(0.18)
     }
 
-    private func foreground(for option: FocalLengthOption) -> Color {
+    private func foreground(for option: CameraFocalLengthDisplayOption) -> Color {
         if !option.isEnabled {
             return .white.opacity(0.36)
         }
-        return option.id == selectedID ? .black : .white
+        return option.isSelected ? .black : .white
     }
 }

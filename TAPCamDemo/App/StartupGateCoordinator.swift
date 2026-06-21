@@ -1,5 +1,5 @@
 //
-//  StartupPermissionCoordinator.swift
+//  StartupGateCoordinator.swift
 //  TAPCamDemo
 //
 
@@ -9,52 +9,86 @@ import CoreLocation
 import Foundation
 import Photos
 
-nonisolated enum StartupPermissionStatus: Equatable {
-    case idle
-    case requesting
-    case granted
-    case denied
-    case skipped
-}
-
-enum StartupGateDefaults {
-    static let didCompleteFirstInstallPermissionsKey = "TAPCamDemo.StartupGate.didCompleteFirstInstallPermissions"
+nonisolated protocol StartupSecurityPreflightChecking: Sendable {
+    func currentRequirementStatus() -> StartupGateRequirementStatus?
+    func performRequiredPreflight() async -> StartupGateRequirementStatus
 }
 
 @MainActor
-final class StartupPermissionCoordinator: NSObject, ObservableObject, CLLocationManagerDelegate {
-    @Published private(set) var networkStatus: StartupPermissionStatus = .idle
-    @Published private(set) var cameraStatus: StartupPermissionStatus = .idle
-    @Published private(set) var photoLibraryStatus: StartupPermissionStatus = .idle
-    @Published private(set) var locationStatus: StartupPermissionStatus = .idle
+final class StartupGateCoordinator: NSObject, ObservableObject, CLLocationManagerDelegate {
+    @Published private(set) var securityPreflightStatus: StartupGateRequirementStatus = .idle
+    @Published private(set) var cameraStatus: StartupGateRequirementStatus = .idle
+    @Published private(set) var photoLibraryStatus: StartupGateRequirementStatus = .idle
+    @Published private(set) var locationStatus: StartupGateRequirementStatus = .idle
 
     private let locationManager = CLLocationManager()
+    private let securityPreflight: any StartupSecurityPreflightChecking
     private var locationAuthorizationContinuation: CheckedContinuation<CLAuthorizationStatus, Never>?
 
-    override init() {
+    init(securityPreflight: any StartupSecurityPreflightChecking = StartupBackendSecurityPreflight()) {
+        self.securityPreflight = securityPreflight
         super.init()
         locationManager.delegate = self
         refreshAuthorizationStatuses()
     }
 
-    var hasRequiredPermissions: Bool {
-        networkStatus == .granted
-            && cameraStatus == .granted
-            && photoLibraryStatus == .granted
+    var hasCompletedRequiredStartupChecks: Bool {
+        statusSnapshot.hasCompletedRequiredStartupChecks
     }
 
-    var hasBlockingDenial: Bool {
-        networkStatus == .denied
-            || cameraStatus == .denied
-            || photoLibraryStatus == .denied
+    var hasBlockingStartupFailure: Bool {
+        statusSnapshot.hasBlockingStartupFailure
+    }
+
+    var hasSecurityPreflightFailure: Bool {
+        statusSnapshot.hasSecurityPreflightFailure
+    }
+
+    var hasSettingsResolvablePermissionFailure: Bool {
+        statusSnapshot.hasSettingsResolvablePermissionFailure
+    }
+
+    var statusSnapshot: StartupGateStatusSnapshot {
+        StartupGateStatusSnapshot(
+            securityPreflight: securityPreflightStatus,
+            camera: cameraStatus,
+            photoLibrary: photoLibraryStatus,
+            location: locationStatus
+        )
+    }
+
+    nonisolated static func hasCompletedRequiredStartupChecks(
+        securityPreflightStatus: StartupGateRequirementStatus,
+        cameraStatus: StartupGateRequirementStatus,
+        photoLibraryStatus: StartupGateRequirementStatus
+    ) -> Bool {
+        StartupGateStatusSnapshot(
+            securityPreflight: securityPreflightStatus,
+            camera: cameraStatus,
+            photoLibrary: photoLibraryStatus,
+            location: .idle
+        ).hasCompletedRequiredStartupChecks
+    }
+
+    nonisolated static func hasBlockingStartupFailure(
+        securityPreflightStatus: StartupGateRequirementStatus,
+        cameraStatus: StartupGateRequirementStatus,
+        photoLibraryStatus: StartupGateRequirementStatus
+    ) -> Bool {
+        StartupGateStatusSnapshot(
+            securityPreflight: securityPreflightStatus,
+            camera: cameraStatus,
+            photoLibrary: photoLibraryStatus,
+            location: .idle
+        ).hasBlockingStartupFailure
     }
 
     func refreshAuthorizationStatuses() {
-        if networkStatus == .denied {
-            Task { await requestNetworkAccess() }
-        } else if networkStatus != .requesting,
-           let status = NetworkPermissionPreflight.currentPermissionStatus() {
-            networkStatus = status
+        if securityPreflightStatus == .denied {
+            Task { await requestSecurityPreflight() }
+        } else if securityPreflightStatus != .requesting,
+                  let status = securityPreflight.currentRequirementStatus() {
+            securityPreflightStatus = status
         }
 
         if cameraStatus != .requesting {
@@ -70,14 +104,14 @@ final class StartupPermissionCoordinator: NSObject, ObservableObject, CLLocation
         }
     }
 
-    func requestNetworkAccess() async {
-        guard networkStatus != .requesting else {
+    func requestSecurityPreflight() async {
+        guard securityPreflightStatus != .requesting else {
             return
         }
 
-        networkStatus = .requesting
-        let status = await NetworkPermissionPreflight.requestAccessBeforeAppAttest()
-        networkStatus = status
+        securityPreflightStatus = .requesting
+        let status = await securityPreflight.performRequiredPreflight()
+        securityPreflightStatus = status
     }
 
     func requestCameraAccess() async {
@@ -160,7 +194,7 @@ final class StartupPermissionCoordinator: NSObject, ObservableObject, CLLocation
         }
     }
 
-    private static func cameraStatus() -> StartupPermissionStatus {
+    private static func cameraStatus() -> StartupGateRequirementStatus {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
             .granted
@@ -173,11 +207,11 @@ final class StartupPermissionCoordinator: NSObject, ObservableObject, CLLocation
         }
     }
 
-    private static func photoLibraryStatus() -> StartupPermissionStatus {
+    private static func photoLibraryStatus() -> StartupGateRequirementStatus {
         photoLibraryStatus(from: PHPhotoLibrary.authorizationStatus(for: .readWrite))
     }
 
-    nonisolated static func photoLibraryStatus(from status: PHAuthorizationStatus) -> StartupPermissionStatus {
+    nonisolated static func photoLibraryStatus(from status: PHAuthorizationStatus) -> StartupGateRequirementStatus {
         switch status {
         case .authorized, .limited:
             .granted
@@ -190,7 +224,7 @@ final class StartupPermissionCoordinator: NSObject, ObservableObject, CLLocation
         }
     }
 
-    private static func locationStatus(from status: CLAuthorizationStatus) -> StartupPermissionStatus {
+    private static func locationStatus(from status: CLAuthorizationStatus) -> StartupGateRequirementStatus {
         switch status {
         case .authorizedAlways, .authorizedWhenInUse:
             .granted
@@ -201,52 +235,5 @@ final class StartupPermissionCoordinator: NSObject, ObservableObject, CLLocation
         @unknown default:
             .denied
         }
-    }
-}
-
-private enum NetworkPermissionPreflight {
-    static func currentPermissionStatus() -> StartupPermissionStatus? {
-        nil
-    }
-
-    static func requestAccessBeforeAppAttest() async -> StartupPermissionStatus {
-        let maxAttempts = 30
-        for _ in 1...maxAttempts {
-            let requestSucceeded = await queryNetworkAvailability()
-            if requestSucceeded {
-                return .granted
-            }
-
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
-        }
-
-        return .denied
-    }
-
-    private static func queryNetworkAvailability() async -> Bool {
-        guard let url = preflightURL() else {
-            return false
-        }
-
-        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 8)
-        request.httpMethod = "GET"
-
-        do {
-            let (_, response) = try await URLSession.shared.data(for: request)
-            guard let httpResponse = response as? HTTPURLResponse else {
-                return false
-            }
-            return (200..<300).contains(httpResponse.statusCode)
-        } catch {
-            return false
-        }
-    }
-
-    private static func preflightURL() -> URL? {
-        if let baseURL = try? AppAttestBackendConfiguration.baseURL() {
-            return baseURL.appendingPathComponent("healthz", isDirectory: false)
-        }
-
-        return nil
     }
 }

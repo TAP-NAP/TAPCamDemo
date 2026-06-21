@@ -12,7 +12,7 @@ import Foundation
 /// Logical result of one SingleCam shutter press.
 ///
 /// This package owns normalized capture facts only: job identity, selected
-/// source context, the `AVCapturePhoto`, location, and capture settings. It
+/// source context, the resolved Runtime output, and the `AVCapturePhoto`. It
 /// does not decide how bytes are physically written or where the result is
 /// persisted.
 nonisolated struct CapturePackage: @unchecked Sendable {
@@ -24,10 +24,8 @@ nonisolated struct CapturePackage: @unchecked Sendable {
     let pairingStatus: RGBDepthCompatibilityStatus
     let zoomCapabilitySnapshot: ZoomCapability
     let cropRectNormalized: CropRectNormalized
+    let resolvedOutput: ResolvedCaptureOutputProfile
     let photo: AVCapturePhoto
-    let requestedCodec: AVVideoCodecType
-    let depthDataFiltered: Bool
-    let photoQualityPrioritization: AVCapturePhotoOutput.QualityPrioritization
 }
 
 /// Builds `CapturePackage` from SingleCam photo output.
@@ -47,7 +45,14 @@ nonisolated enum CapturePackageBuilder {
         context: CaptureSourceContext,
         captureResult: SingleCamPhotoCaptureResult
     ) throws -> CapturePackage {
-        guard captureResult.photo.depthData != nil else {
+        let resolvedOutput = context.sessionConfiguration.resolvedOutput
+        try resolvedOutput.validateForEmbeddedPhotoDepthPackaging()
+        try resolvedOutput.validateCapturePlanDepthConfiguration(
+            depthDataDeliveryEnabled: context.sessionConfiguration.capturePlan.captureConfig.depthDataDeliveryEnabled,
+            embedsDepthDataInPhoto: context.sessionConfiguration.capturePlan.captureConfig.embedsDepthDataInPhoto
+        )
+
+        guard !resolvedOutput.requiresDepthData || captureResult.photo.depthData != nil else {
             throw TAPDepthCaptureError.missingDepthData
         }
 
@@ -61,10 +66,8 @@ nonisolated enum CapturePackageBuilder {
             pairingStatus: plan.compatibilityStatus,
             zoomCapabilitySnapshot: plan.zoomCapability,
             cropRectNormalized: plan.cropPolicy.cropRectNormalized,
-            photo: captureResult.photo,
-            requestedCodec: captureResult.requestedCodec,
-            depthDataFiltered: captureResult.depthDataFiltered,
-            photoQualityPrioritization: captureResult.photoQualityPrioritization
+            resolvedOutput: resolvedOutput,
+            photo: captureResult.photo
         )
     }
 }

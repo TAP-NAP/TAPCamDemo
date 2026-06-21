@@ -31,11 +31,12 @@ nonisolated final class AVFoundationSingleCamPhotoProvider: SingleCamPhotoCaptur
     ///
     /// - Tag: CaptureSingleCamPhotoDepth
     func capturePhotoDepth(job: CaptureJob, context: CaptureSourceContext) async throws -> SingleCamPhotoCaptureResult {
+        let resolvedOutput = context.sessionConfiguration.resolvedOutput
         let settings = SingleCamPhotoSettingsFactory.make(
             photoOutput: sessionController.photoOutput,
+            resolvedOutput: resolvedOutput,
             suppressesShutterSound: context.suppressesShutterSound
         )
-        let requestedCodec: AVVideoCodecType = sessionController.photoOutput.availablePhotoCodecTypes.contains(.hevc) ? .hevc : .jpeg
         let videoRotationAngle = Self.videoRotationAngleForHorizonLevelCapture(
             device: context.sessionConfiguration.device
         )
@@ -47,10 +48,7 @@ nonisolated final class AVFoundationSingleCamPhotoProvider: SingleCamPhotoCaptur
                 switch result {
                 case .success(let photo):
                     continuation.resume(returning: SingleCamPhotoCaptureResult(
-                        photo: photo,
-                        requestedCodec: requestedCodec,
-                        depthDataFiltered: settings.isDepthDataFiltered,
-                        photoQualityPrioritization: settings.photoQualityPrioritization
+                        photo: photo
                     ))
                 case .failure(let error):
                     continuation.resume(throwing: error)
@@ -92,23 +90,34 @@ nonisolated final class AVFoundationSingleCamPhotoProvider: SingleCamPhotoCaptur
 nonisolated enum SingleCamPhotoSettingsFactory {
     static func make(
         photoOutput: AVCapturePhotoOutput,
+        resolvedOutput: ResolvedCaptureOutputProfile,
         suppressesShutterSound: Bool = false
     ) -> AVCapturePhotoSettings {
         let settings: AVCapturePhotoSettings
-        if photoOutput.availablePhotoCodecTypes.contains(.hevc) {
-            settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.hevc])
-        } else {
-            settings = AVCapturePhotoSettings()
+        switch resolvedOutput.codec {
+        case .hevc:
+            settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: resolvedOutput.codec.avVideoCodecType])
+        case .jpeg:
+            settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: resolvedOutput.codec.avVideoCodecType])
         }
 
-        settings.isDepthDataDeliveryEnabled = true
-        settings.embedsDepthDataInPhoto = true
-        settings.isDepthDataFiltered = true
-        settings.photoQualityPrioritization = .quality
+        settings.isDepthDataDeliveryEnabled = resolvedOutput.depthDataDeliveryEnabled
+        settings.embedsDepthDataInPhoto = resolvedOutput.embedsDepthDataInPhoto
+        settings.isDepthDataFiltered = resolvedOutput.depthDataFiltered
+        settings.photoQualityPrioritization = resolvedOutput.photoQualityPrioritization
         if suppressesShutterSound && photoOutput.isShutterSoundSuppressionSupported {
             settings.isShutterSoundSuppressionEnabled = true
         }
         return settings
+    }
+
+    static func resolvedOutput(
+        photoOutput: AVCapturePhotoOutput,
+        outputProfile: CaptureOutputProfile = CaptureOutputProfileCatalog.releaseDefaultProfile
+    ) throws -> ResolvedCaptureOutputProfile {
+        try outputProfile.resolvedPhotoOutput(
+            availablePhotoCodecTypes: photoOutput.availablePhotoCodecTypes
+        )
     }
 }
 

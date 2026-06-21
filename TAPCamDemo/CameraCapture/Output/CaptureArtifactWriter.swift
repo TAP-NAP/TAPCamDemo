@@ -10,7 +10,9 @@ import Foundation
 /// Result of persisting one packaged artifact.
 nonisolated struct CaptureWriteResult: Equatable, Sendable {
     let artifactID: UUID
-    let destinationDescription: String
+    /// Public-safe destination label. Raw Photos and pending identifiers live in
+    /// the dedicated private identifier fields below.
+    let publicDestinationSummary: String
     let assetLocalIdentifier: String?
     let pendingCaptureID: String?
     let signatureStatus: CaptureSignatureStatus
@@ -33,15 +35,19 @@ nonisolated struct PhotoLibraryCaptureArtifactWriter: CaptureArtifactWriter {
     ///
     /// - Tag: WritePackagedArtifactToPhotos
     func write(_ artifact: PackagedCaptureArtifact) async throws -> CaptureWriteResult {
-        let assetID = try await PhotoLibraryWriter.saveDepthHEIC(
+        let validatedHEIC = try TAPCaptureProvenanceWriter().validateSignedExportHEIC(
             artifact.photoData,
+            expectedCaptureID: artifact.manifest.payload.id
+        )
+        let assetID = try await PhotoLibraryWriter.saveDepthHEIC(
+            validatedHEIC,
             capturedAt: artifact.capturedAt,
             location: artifact.location
         )
 
         return CaptureWriteResult(
             artifactID: artifact.packageID,
-            destinationDescription: "Photos asset: \(assetID)",
+            publicDestinationSummary: "Photos asset",
             assetLocalIdentifier: assetID,
             pendingCaptureID: nil,
             signatureStatus: artifact.signatureStatus

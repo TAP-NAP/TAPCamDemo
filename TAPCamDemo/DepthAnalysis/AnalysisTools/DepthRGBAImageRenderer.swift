@@ -16,6 +16,12 @@ import Foundation
 /// stays in `TAPMetricDepthMap.samples`.
 nonisolated enum TAPDepthRGBAImageRenderer {
     static func image(pixels: [UInt8], width: Int, height: Int) throws -> CGImage {
+        try TAPDepthAnalysisInputValidation.validateRGBAImageLayout(
+            width: width,
+            height: height,
+            byteCount: pixels.count
+        )
+
         let data = Data(pixels)
         guard let provider = CGDataProvider(data: data as CFData),
               let image = CGImage(

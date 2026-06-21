@@ -138,7 +138,7 @@ nonisolated final class CapturePipeline: @unchecked Sendable {
                 queueWaitDuration: queueWaitDuration,
                 pendingJobCount: pendingJobCount,
                 status: .failed,
-                failureReason: error.localizedDescription
+                failureReason: CameraCaptureStatusPresentation.failureReason(for: error)
             ))
 
             return .failure(error)

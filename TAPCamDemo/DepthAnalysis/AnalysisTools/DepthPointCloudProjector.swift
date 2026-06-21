@@ -47,7 +47,8 @@ nonisolated enum TAPDepthGeometryProjector {
         x: Int,
         y: Int
     ) -> TAPPoint3D? {
-        guard let depth = depthMap.sample(x: x, y: y),
+        guard TAPDepthAnalysisInputValidation.isValidDepthMapLayout(depthMap),
+              let depth = depthMap.sample(x: x, y: y),
               let intrinsics = TAPCameraIntrinsics(calibration: depthMap.calibration, depthWidth: depthMap.width, depthHeight: depthMap.height) else {
             return nil
         }
@@ -64,6 +65,7 @@ nonisolated enum TAPDepthGeometryProjector {
         for depthMap: TAPMetricDepthMap,
         shouldCancel: () -> Bool = { false }
     ) throws -> TAPDepthGeometryCache? {
+        let pixelCount = try TAPDepthAnalysisInputValidation.validatedDepthPixelCount(for: depthMap)
         guard let intrinsics = TAPCameraIntrinsics(
             calibration: depthMap.calibration,
             depthWidth: depthMap.width,
@@ -72,7 +74,6 @@ nonisolated enum TAPDepthGeometryProjector {
             return nil
         }
 
-        let pixelCount = max(depthMap.width * depthMap.height, 0)
         var points = Array<TAPPoint3D?>(repeating: nil, count: pixelCount)
         var validPointCount = 0
 
@@ -165,7 +166,9 @@ nonisolated enum TAPDepthGeometryProjector {
         maxCount: Int = 1_200,
         geometryCache: TAPDepthGeometryCache? = nil
     ) -> [(point: TAPPoint3D, imagePoint: CGPoint)] {
-        guard maxCount > 0 else {
+        guard maxCount > 0,
+              TAPDepthAnalysisInputValidation.isValidDepthMapLayout(depthMap),
+              TAPDepthAnalysisInputValidation.isFiniteRegion(region) else {
             return []
         }
 
@@ -189,6 +192,18 @@ nonisolated enum TAPDepthGeometryProjector {
     }
 
     static func stats(for depthMap: TAPMetricDepthMap, in region: CGRect) -> TAPDepthRegionStats {
+        guard TAPDepthAnalysisInputValidation.isValidDepthMapLayout(depthMap),
+              TAPDepthAnalysisInputValidation.isFiniteRegion(region) else {
+            return TAPDepthRegionStats(
+                validSampleCount: 0,
+                totalSampleCount: 0,
+                minimumDepthMeters: nil,
+                maximumDepthMeters: nil,
+                medianDepthMeters: nil,
+                validRatio: 0
+            )
+        }
+
         let bounds = pixelBounds(region, width: depthMap.width, height: depthMap.height)
         var values: [Float] = []
         values.reserveCapacity(max(bounds.width * bounds.height, 0))
@@ -215,6 +230,10 @@ nonisolated enum TAPDepthGeometryProjector {
     }
 
     private static func pixelBounds(_ region: CGRect, width: Int, height: Int) -> (minX: Int, minY: Int, maxX: Int, maxY: Int, width: Int, height: Int) {
+        guard width >= 0, height >= 0, TAPDepthAnalysisInputValidation.isFiniteRegion(region) else {
+            return (0, 0, 0, 0, 0, 0)
+        }
+
         let minX = min(max(Int(region.minX.rounded(.down)), 0), width)
         let minY = min(max(Int(region.minY.rounded(.down)), 0), height)
         let maxX = min(max(Int(region.maxX.rounded(.up)), minX), width)
@@ -237,7 +256,11 @@ nonisolated struct TAPDepthGeometryCache {
     let validPointCount: Int
 
     func matches(depthMap: TAPMetricDepthMap) -> Bool {
-        width == depthMap.width && height == depthMap.height
+        width == depthMap.width
+            && height == depthMap.height
+            && TAPDepthAnalysisInputValidation.isValidDepthMapLayout(depthMap)
+            && points.count == depthMap.samples.count
+            && localNormals.count == depthMap.samples.count
     }
 
     func point(x: Int, y: Int) -> TAPPoint3D? {
@@ -245,15 +268,24 @@ nonisolated struct TAPDepthGeometryCache {
             return nil
         }
 
-        return points[y * width + x]
+        let sampleIndex = y * width + x
+        guard sampleIndex < points.count else {
+            return nil
+        }
+        return points[sampleIndex]
     }
 
     func localNormal(x: Int, y: Int, radius: Int) -> SIMD3<Float>? {
-        guard radius == localNormalRadius, x >= 0, y >= 0, x < width, y < height else {
+        guard radius == localNormalRadius,
+              x >= 0, y >= 0, x < width, y < height else {
             return nil
         }
 
-        return localNormals[y * width + x]
+        let sampleIndex = y * width + x
+        guard sampleIndex < localNormals.count else {
+            return nil
+        }
+        return localNormals[sampleIndex]
     }
 }
 
@@ -264,18 +296,16 @@ nonisolated struct TAPCameraIntrinsics: Equatable {
     let cy: Float
 
     init?(calibration: TAPDepthManifest.CameraCalibration?, depthWidth: Int, depthHeight: Int) {
-        guard let calibration,
-              calibration.intrinsicMatrix.count == 9,
-              calibration.intrinsicMatrixReferenceWidth > 0,
-              calibration.intrinsicMatrixReferenceHeight > 0 else {
+        guard let intrinsics = TAPDepthAnalysisInputValidation.scaledIntrinsics(
+            calibration: calibration,
+            depthWidth: depthWidth,
+            depthHeight: depthHeight
+        ) else {
             return nil
         }
-
-        let scaleX = Float(Double(depthWidth) / calibration.intrinsicMatrixReferenceWidth)
-        let scaleY = Float(Double(depthHeight) / calibration.intrinsicMatrixReferenceHeight)
-        self.fx = calibration.intrinsicMatrix[0] * scaleX
-        self.fy = calibration.intrinsicMatrix[4] * scaleY
-        self.cx = calibration.intrinsicMatrix[6] * scaleX
-        self.cy = calibration.intrinsicMatrix[7] * scaleY
+        self.fx = intrinsics.fx
+        self.fy = intrinsics.fy
+        self.cx = intrinsics.cx
+        self.cy = intrinsics.cy
     }
 }

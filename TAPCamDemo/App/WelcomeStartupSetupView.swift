@@ -1,13 +1,13 @@
 //
-//  WelcomePermissionsView.swift
+//  WelcomeStartupSetupView.swift
 //  TAPCamDemo
 //
 
 import SwiftUI
 import UIKit
 
-struct WelcomePermissionsView: View {
-    @ObservedObject var coordinator: StartupPermissionCoordinator
+struct WelcomeStartupSetupView: View {
+    @ObservedObject var coordinator: StartupGateCoordinator
     let onContinue: () -> Void
 
     @Environment(\.openURL) private var openURL
@@ -22,17 +22,17 @@ struct WelcomePermissionsView: View {
                     header
 
                     VStack(spacing: 10) {
-                        PermissionChecklistRow(
-                            iconName: "network",
-                            title: "Network Access",
-                            message: "Used for first-run security setup and device verification.",
-                            status: coordinator.networkStatus,
-                            actionTitle: "Allow"
+                        StartupRequirementRow(
+                            iconName: "lock.shield",
+                            title: "Security Check",
+                            message: "Checks the App Attest backend before first camera setup.",
+                            status: coordinator.securityPreflightStatus,
+                            actionTitle: "Check"
                         ) {
-                            Task { await coordinator.requestNetworkAccess() }
+                            Task { await coordinator.requestSecurityPreflight() }
                         }
 
-                        PermissionChecklistRow(
+                        StartupRequirementRow(
                             iconName: "camera",
                             title: "Camera Access",
                             message: "Used to capture photos with depth data.",
@@ -42,7 +42,7 @@ struct WelcomePermissionsView: View {
                             Task { await coordinator.requestCameraAccess() }
                         }
 
-                        PermissionChecklistRow(
+                        StartupRequirementRow(
                             iconName: "photo.on.rectangle",
                             title: "Photo Library Access",
                             message: "Used to save and read photos.",
@@ -52,7 +52,7 @@ struct WelcomePermissionsView: View {
                             Task { await coordinator.requestPhotoLibraryAccess() }
                         }
 
-                        PermissionChecklistRow(
+                        StartupRequirementRow(
                             iconName: "location",
                             title: "Location Access",
                             message: "Optional. Used to write capture location into photo metadata.",
@@ -88,7 +88,7 @@ struct WelcomePermissionsView: View {
                 .font(.largeTitle.weight(.bold))
                 .foregroundStyle(.white)
 
-            Text("First launch needs required permissions before camera setup can continue.")
+            Text("First launch needs required setup checks before camera setup can continue.")
                 .font(.callout)
                 .foregroundStyle(.white.opacity(0.72))
                 .fixedSize(horizontal: false, vertical: true)
@@ -97,7 +97,7 @@ struct WelcomePermissionsView: View {
 
     @ViewBuilder
     private var footer: some View {
-        if coordinator.hasRequiredPermissions {
+        if coordinator.hasCompletedRequiredStartupChecks {
             Button {
                 onContinue()
             } label: {
@@ -111,8 +111,25 @@ struct WelcomePermissionsView: View {
             .foregroundStyle(.black)
         } else {
             VStack(alignment: .leading, spacing: 10) {
-                if coordinator.hasBlockingDenial {
-                    Text("Enable the required permissions in Settings, then return to continue.")
+                if coordinator.hasSecurityPreflightFailure {
+                    Text("Security check failed. Check connectivity, then run it again.")
+                        .font(.footnote)
+                        .foregroundStyle(.yellow)
+
+                    Button {
+                        Task { await coordinator.requestSecurityPreflight() }
+                    } label: {
+                        Label("Retry Security Check", systemImage: "arrow.clockwise")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.white)
+                }
+
+                if coordinator.hasSettingsResolvablePermissionFailure {
+                    Text("Enable required camera or photo library access in Settings, then return.")
                         .font(.footnote)
                         .foregroundStyle(.yellow)
 
@@ -126,8 +143,10 @@ struct WelcomePermissionsView: View {
                     }
                     .buttonStyle(.bordered)
                     .tint(.white)
-                } else {
-                    Text("Finish network, camera, and photo library access first. Location is optional.")
+                }
+
+                if !coordinator.hasBlockingStartupFailure {
+                    Text("Finish security check, camera, and photo library access first. Location is optional.")
                         .font(.footnote)
                         .foregroundStyle(.white.opacity(0.64))
                 }
@@ -143,11 +162,11 @@ struct WelcomePermissionsView: View {
     }
 }
 
-private struct PermissionChecklistRow: View {
+private struct StartupRequirementRow: View {
     let iconName: String
     let title: String
     let message: String
-    let status: StartupPermissionStatus
+    let status: StartupGateRequirementStatus
     let actionTitle: String
     var secondaryActionTitle: String? = nil
     let primaryAction: () -> Void
@@ -206,7 +225,7 @@ private struct PermissionChecklistRow: View {
             Image(systemName: "exclamationmark.circle.fill")
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(.yellow)
-                .accessibilityLabel("Needs Settings")
+                .accessibilityLabel("Needs Attention")
         case .idle:
             VStack(spacing: 7) {
                 Button(actionTitle) {

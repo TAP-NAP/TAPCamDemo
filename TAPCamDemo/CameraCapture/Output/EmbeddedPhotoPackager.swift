@@ -16,6 +16,11 @@ import Foundation
 /// by the app in Release.
 nonisolated struct EmbeddedPhotoPackager: CapturePackager {
     let strategy: PackagingStrategy = .embeddedPhoto
+    private let provenanceWriter: TAPCaptureProvenanceWriter
+
+    init(provenanceWriter: TAPCaptureProvenanceWriter = TAPCaptureProvenanceWriter()) {
+        self.provenanceWriter = provenanceWriter
+    }
 
     /// Converts a logical package into the single Release HEIC artifact.
     ///
@@ -27,6 +32,8 @@ nonisolated struct EmbeddedPhotoPackager: CapturePackager {
         _ capturePackage: CapturePackage,
         assertionSigner: (any CaptureAssertionSigning)?
     ) async throws -> PackagedCaptureArtifact {
+        try capturePackage.resolvedOutput.validateForEmbeddedPhotoDepthPackaging()
+
         var packagingMetrics = CapturePackagingMetrics()
 
         let manifestBuildStart = Date()
@@ -45,7 +52,7 @@ nonisolated struct EmbeddedPhotoPackager: CapturePackager {
         }
         packagingMetrics.baseHEICDuration = Date().timeIntervalSince(baseHEICStart)
 
-        let signingResult = await Self.manifestByApplyingCaptureAssertion(
+        let signingResult = await provenanceWriter.manifestByApplyingCaptureAssertion(
             to: unsignedManifest,
             baseHEICData: baseHEICData,
             depthData: capturePackage.photo.depthData,
@@ -56,7 +63,7 @@ nonisolated struct EmbeddedPhotoPackager: CapturePackager {
         packagingMetrics.metadataDigestDuration = signingResult.metrics.metadataDigestDuration
         packagingMetrics.appAttestDuration = signingResult.metrics.appAttestDuration
 
-        let writeResult = try TAPDepthHEICWriter.injectingManifestWithMetrics(signingResult.manifest, into: baseHEICData)
+        let writeResult = try provenanceWriter.writeManifest(signingResult.manifest, into: baseHEICData)
         packagingMetrics.xmpInjectDuration = writeResult.xmpInjectDuration
         packagingMetrics.xmpVerifyDuration = writeResult.xmpVerifyDuration
 
@@ -70,53 +77,5 @@ nonisolated struct EmbeddedPhotoPackager: CapturePackager {
             capturedAt: capturePackage.sourceContext.capturedAt,
             location: capturePackage.sourceContext.location
         )
-    }
-
-    static func manifestByApplyingCaptureAssertion(
-        to manifest: TAPDepthManifest,
-        baseHEICData: Data,
-        depthData: AVDepthData?,
-        assertionSigner: (any CaptureAssertionSigning)?
-    ) async -> (manifest: TAPDepthManifest, status: CaptureSignatureStatus, metrics: CapturePackagingMetrics) {
-        var metrics = CapturePackagingMetrics()
-
-        guard let assertionSigner else {
-            return (manifest, .unsigned(reason: "App Attest signer unavailable."), metrics)
-        }
-
-        do {
-            guard let depthData else {
-                throw TAPDepthCaptureError.missingDepthData
-            }
-
-            let digestResult = try CaptureContentDigest.makeWithMetrics(
-                manifest: manifest,
-                baseHEICData: baseHEICData,
-                depthData: depthData
-            )
-            metrics.rgbDigestDuration = digestResult.metrics.rgbDigestDuration
-            metrics.depthDigestDuration = digestResult.metrics.depthDigestDuration
-            metrics.metadataDigestDuration = digestResult.metrics.metadataDigestDuration
-
-            let appAttestStart = Date()
-            let assertionProof: CaptureAssertionProof
-            do {
-                assertionProof = try await assertionSigner.sign(
-                    contentDigest: digestResult.digest
-                )
-                metrics.appAttestDuration = Date().timeIntervalSince(appAttestStart)
-            } catch {
-                metrics.appAttestDuration = Date().timeIntervalSince(appAttestStart)
-                throw error
-            }
-
-            return (
-                TAPDepthManifest(payload: manifest.payload, proofs: [assertionProof.proof]),
-                .signed(keyID: assertionProof.keyID),
-                metrics
-            )
-        } catch {
-            return (manifest, .unsigned(reason: error.localizedDescription), metrics)
-        }
     }
 }

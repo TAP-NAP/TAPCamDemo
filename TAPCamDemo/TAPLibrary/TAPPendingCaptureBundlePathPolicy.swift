@@ -1,0 +1,84 @@
+//
+//  TAPPendingCaptureBundlePathPolicy.swift
+//  TAPCamDemo
+//
+
+import Foundation
+
+/// Validates app-private pending bundle paths before the store touches disk.
+///
+/// Normal captures use UUID-like manifest IDs, but this policy keeps future
+/// import, repair, migration, or test paths from turning a persisted identifier
+/// or filename into an arbitrary filesystem path.
+nonisolated enum TAPPendingCaptureBundlePathPolicy {
+    static let recordsDirectoryName = "Pending"
+    static let recordFilename = "bundle.json"
+    static let unsignedHEICFilename = "unsigned.heic"
+    static let signedHEICFilename = "signed.heic"
+    static let thumbnailFilename = "thumbnail.jpg"
+
+    static func bundleURL(rootURL: URL, captureID: String) throws -> URL {
+        rootURL.appendingPathComponent(try validatedCaptureID(captureID), isDirectory: true)
+    }
+
+    static func recordURL(bundleURL: URL) -> URL {
+        bundleURL.appendingPathComponent(recordFilename)
+    }
+
+    static func artifactURL(rootURL: URL, captureID: String, filename: String) throws -> URL {
+        try bundleURL(rootURL: rootURL, captureID: captureID)
+            .appendingPathComponent(validatedArtifactFilename(filename))
+    }
+
+    static func validateRecord(_ record: TAPPendingCaptureRecord, expectedCaptureID: String? = nil) throws {
+        let validatedID = try validatedCaptureID(record.captureID)
+        if let expectedCaptureID, validatedID != expectedCaptureID {
+            throw TAPDepthCaptureError.invalidPendingCaptureBundlePath("record captureID must match bundle directory")
+        }
+
+        try validateOptionalArtifactFilename(record.unsignedHEICFilename)
+        try validateOptionalArtifactFilename(record.signedHEICFilename)
+        try validateOptionalArtifactFilename(record.thumbnailFilename)
+    }
+
+    private static func validatedCaptureID(_ captureID: String) throws -> String {
+        guard (1...128).contains(captureID.count) else {
+            throw TAPDepthCaptureError.invalidPendingCaptureBundlePath("captureID must be 1...128 characters")
+        }
+
+        guard captureID != ".", captureID != ".." else {
+            throw TAPDepthCaptureError.invalidPendingCaptureBundlePath("captureID must be a file name")
+        }
+
+        guard !captureID.hasPrefix(".") else {
+            throw TAPDepthCaptureError.invalidPendingCaptureBundlePath("captureID must not start with a dot")
+        }
+
+        let allowedScalars = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.")
+        guard captureID.unicodeScalars.allSatisfy(allowedScalars.contains) else {
+            throw TAPDepthCaptureError.invalidPendingCaptureBundlePath("captureID must contain only ASCII letters, numbers, hyphen, underscore, or dot")
+        }
+
+        return captureID
+    }
+
+    private static func validateOptionalArtifactFilename(_ filename: String?) throws {
+        guard let filename else {
+            return
+        }
+        _ = try validatedArtifactFilename(filename)
+    }
+
+    private static func validatedArtifactFilename(_ filename: String) throws -> String {
+        guard artifactFilenames.contains(filename) else {
+            throw TAPDepthCaptureError.invalidPendingCaptureBundlePath("pending artifact filename must be a known bundle resource")
+        }
+        return filename
+    }
+
+    private static let artifactFilenames: Set<String> = [
+        unsignedHEICFilename,
+        signedHEICFilename,
+        thumbnailFilename
+    ]
+}

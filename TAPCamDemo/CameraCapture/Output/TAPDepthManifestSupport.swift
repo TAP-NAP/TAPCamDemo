@@ -140,21 +140,6 @@ extension AVCaptureDevice.Position {
     }
 }
 
-extension AVCapturePhotoOutput.QualityPrioritization {
-    nonisolated var tapDescription: String {
-        switch self {
-        case .speed:
-            "speed"
-        case .balanced:
-            "balanced"
-        case .quality:
-            "quality"
-        @unknown default:
-            "unknown"
-        }
-    }
-}
-
 extension AVDepthData.Accuracy {
     nonisolated var tapDescription: String {
         switch self {

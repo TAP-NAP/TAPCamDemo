@@ -26,6 +26,7 @@ import Foundation
 /// - https://developer.apple.com/documentation/coregraphics/cgimage
 nonisolated enum TAPDepthHeatmapRenderer {
     static func heatmap(for depthMap: TAPMetricDepthMap) throws -> TAPDepthHeatmapVisualization {
+        _ = try TAPDepthAnalysisInputValidation.validatedDepthPixelCount(for: depthMap)
         let validSamples = depthMap.samples.filter { $0.isFinite && $0 > 0 }
         guard let minDepth = validSamples.min(), let maxDepth = validSamples.max() else {
             throw TAPDepthAnalysisError.noValidDepthSamples
@@ -44,6 +45,7 @@ nonisolated enum TAPDepthHeatmapRenderer {
     }
 
     static func heatmap(for depthMap: TAPMetricDepthMap, region: CGRect) throws -> TAPDepthHeatmapVisualization {
+        _ = try TAPDepthAnalysisInputValidation.validatedDepthPixelCount(for: depthMap)
         let bounds = pixelBounds(region, width: depthMap.width, height: depthMap.height)
         var validSamples: [Float] = []
         validSamples.reserveCapacity(max(bounds.width * bounds.height, 0))
@@ -85,6 +87,10 @@ nonisolated enum TAPDepthHeatmapRenderer {
         rangeMeters: ClosedRange<Float>,
         visibleRegion: CGRect?
     ) -> [UInt8] {
+        guard TAPDepthAnalysisInputValidation.isValidDepthMapLayout(depthMap) else {
+            return []
+        }
+
         let range = max(rangeMeters.upperBound - rangeMeters.lowerBound, 0.001)
         let bounds = visibleRegion.map { pixelBounds($0, width: depthMap.width, height: depthMap.height) }
         var pixels: [UInt8] = []
@@ -98,8 +104,8 @@ nonisolated enum TAPDepthHeatmapRenderer {
                     continue
                 }
 
-                let value = depthMap.samples[depthMap.index(x: x, y: y)]
-                guard value.isFinite && value > 0 else {
+                let value = depthMap.sample(x: x, y: y)
+                guard let value else {
                     pixels.append(contentsOf: [0, 0, 0, 0])
                     continue
                 }
@@ -117,6 +123,10 @@ nonisolated enum TAPDepthHeatmapRenderer {
         rangeMeters: ClosedRange<Float>,
         region: CGRect
     ) -> (pixels: [UInt8], width: Int, height: Int) {
+        guard TAPDepthAnalysisInputValidation.isValidDepthMapLayout(depthMap) else {
+            return ([], 0, 0)
+        }
+
         let bounds = pixelBounds(region, width: depthMap.width, height: depthMap.height)
         let range = max(rangeMeters.upperBound - rangeMeters.lowerBound, 0.001)
         var pixels: [UInt8] = []
@@ -124,8 +134,7 @@ nonisolated enum TAPDepthHeatmapRenderer {
 
         for y in bounds.minY..<bounds.maxY {
             for x in bounds.minX..<bounds.maxX {
-                let value = depthMap.samples[depthMap.index(x: x, y: y)]
-                guard value.isFinite && value > 0 else {
+                guard let value = depthMap.sample(x: x, y: y) else {
                     pixels.append(contentsOf: [0, 0, 0, 0])
                     continue
                 }
@@ -189,6 +198,10 @@ nonisolated enum TAPDepthHeatmapRenderer {
     }
 
     private static func pixelBounds(_ region: CGRect, width: Int, height: Int) -> (minX: Int, minY: Int, maxX: Int, maxY: Int, width: Int, height: Int) {
+        guard width >= 0, height >= 0, TAPDepthAnalysisInputValidation.isFiniteRegion(region) else {
+            return (0, 0, 0, 0, 0, 0)
+        }
+
         let minX = min(max(Int(region.minX.rounded(.down)), 0), width)
         let minY = min(max(Int(region.minY.rounded(.down)), 0), height)
         let maxX = min(max(Int(region.maxX.rounded(.up)), minX), width)

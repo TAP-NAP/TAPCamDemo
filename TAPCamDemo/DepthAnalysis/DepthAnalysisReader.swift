@@ -44,8 +44,19 @@ import ImageIO
 /// - https://developer.apple.com/documentation/avfoundation/avcameracalibrationdata
 nonisolated enum TAPDepthMapReader {
     static func analysisInput(from heicData: Data) throws -> TAPDepthAnalysisInput {
+        try TAPDepthAnalysisInputValidation.validateHEICByteCount(heicData.count)
+        try TAPDepthHEICReader.validateHEICContainer(heicData)
+
         guard let source = CGImageSourceCreateWithData(heicData as CFData, nil),
-              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+              let primaryImageDimensions = primaryImageDimensions(from: source) else {
+            throw TAPDepthAnalysisError.missingPrimaryImage
+        }
+        try TAPDepthAnalysisInputValidation.validatePrimaryImageDimensions(
+            width: primaryImageDimensions.width,
+            height: primaryImageDimensions.height
+        )
+
+        guard let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
             throw TAPDepthAnalysisError.missingPrimaryImage
         }
         let imageOrientation = imageOrientation(from: source)
@@ -84,8 +95,18 @@ nonisolated enum TAPDepthMapReader {
         let width = CVPixelBufferGetWidth(pixelBuffer)
         let height = CVPixelBufferGetHeight(pixelBuffer)
         let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
+        let pixelCount = try TAPDepthAnalysisInputValidation.validatedDepthPixelCount(
+            width: width,
+            height: height
+        )
+        guard CVPixelBufferGetPixelFormatType(pixelBuffer) == kCVPixelFormatType_DepthFloat32,
+              width <= Int.max / MemoryLayout<Float>.stride,
+              bytesPerRow >= width * MemoryLayout<Float>.stride else {
+            throw TAPDepthAnalysisError.unreadableDepthMap
+        }
+
         var samples = [Float]()
-        samples.reserveCapacity(width * height)
+        samples.reserveCapacity(pixelCount)
 
         for y in 0..<height {
             let row = baseAddress.advanced(by: y * bytesPerRow).assumingMemoryBound(to: Float.self)
@@ -94,12 +115,26 @@ nonisolated enum TAPDepthMapReader {
             }
         }
 
+        try TAPDepthAnalysisInputValidation.validateDepthMapLayout(
+            width: width,
+            height: height,
+            sampleCount: samples.count
+        )
+        try TAPDepthAnalysisInputValidation.validateMinimumValidDepthSample(samples)
+
+        let fallbackCalibration = metricDepthData.cameraCalibrationData.map(cameraCalibration)
+        let calibration = TAPDepthAnalysisInputValidation.preferredCameraCalibration(
+            manifestCalibration: manifest?.payload.depth.cameraCalibration,
+            fallbackCalibration: fallbackCalibration,
+            depthWidth: width,
+            depthHeight: height
+        )
+
         return TAPMetricDepthMap(
             width: width,
             height: height,
             samples: samples,
-            calibration: manifest?.payload.depth.cameraCalibration
-                ?? metricDepthData.cameraCalibrationData.map(cameraCalibration)
+            calibration: calibration
         )
     }
 
@@ -126,6 +161,15 @@ nonisolated enum TAPDepthMapReader {
                 extrinsic.columns.3.x, extrinsic.columns.3.y, extrinsic.columns.3.z
             ]
         )
+    }
+
+    private static func primaryImageDimensions(from source: CGImageSource) -> (width: Int, height: Int)? {
+        guard let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = integerValue(from: properties[kCGImagePropertyPixelWidth]),
+              let height = integerValue(from: properties[kCGImagePropertyPixelHeight]) else {
+            return nil
+        }
+        return (width, height)
     }
 
     private static func imageOrientation(from source: CGImageSource) -> CGImagePropertyOrientation {
@@ -156,6 +200,27 @@ nonisolated enum TAPDepthMapReader {
             return UInt32(exactly: value)
         case let value as NSNumber:
             return UInt32(exactly: value.int64Value)
+        default:
+            return nil
+        }
+    }
+
+    private static func integerValue(from value: Any?) -> Int? {
+        switch value {
+        case let value as Int:
+            return value
+        case let value as Int32:
+            return Int(value)
+        case let value as Int64:
+            return Int(exactly: value)
+        case let value as UInt:
+            return Int(exactly: value)
+        case let value as UInt32:
+            return Int(exactly: value)
+        case let value as UInt64:
+            return Int(exactly: value)
+        case let value as NSNumber:
+            return Int(exactly: value.int64Value)
         default:
             return nil
         }

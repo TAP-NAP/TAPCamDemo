@@ -82,20 +82,22 @@ struct DepthAnalyzerSettingsView: View {
                     )
                 }
 
-                Section("App Attest") {
-                    appAttestStatusRow
-                    if showsAnalysisHelp {
-                        AppAttestKeyIDHelpView(message: Self.keyIDHelpText)
+                DepthAnalyzerAppAttestSection(
+                    statusText: appAttestController.credentialStatusText,
+                    keyID: appAttestController.credentialKeyIDPresentation,
+                    isPreparingCredential: appAttestController.isPreparingCredential,
+                    canResetAndPrepareCredential: appAttestController.canResetAndPrepareCredential,
+                    actionTitle: appAttestController.credentialPreparationActionTitle,
+                    showsHelp: showsAnalysisHelp,
+                    onPrepare: {
+                        await appAttestController.resetAndPrepareCredential()
                     }
-                    if let keyID = appAttestController.credentialKeyIdText {
-                        AppAttestKeyIDInfoView(keyID: keyID)
-                    }
-                }
+                )
 
                 #if DEBUG
                 // Debug-only App Attest controls are hidden from Release and highlighted here.
                 Section("App Attest Backend") {
-                    LabeledContent("Active", value: appAttestController.runtime.backendDescription)
+                    LabeledContent("Active", value: appAttestController.runtime.backendPublicSummary)
                         .listRowBackground(Self.debugOnlyAppAttestBackground)
                 }
 
@@ -138,78 +140,9 @@ struct DepthAnalyzerSettingsView: View {
         }
     }
 
-    private var appAttestStatusRow: some View {
-        LabeledContent {
-            appAttestStatusValue
-        } label: {
-            Text("Status")
-        }
-    }
-
-    @ViewBuilder
-    private var appAttestStatusValue: some View {
-        if appAttestController.isPreparingCredential {
-            ProgressView()
-                .controlSize(.small)
-                .frame(width: 24, height: 24)
-                .accessibilityLabel("Preparing App Attest credential")
-        } else if appAttestController.canResetAndPrepareCredential {
-            VStack(alignment: .trailing, spacing: 6) {
-                Text(appAttestController.credentialStatusText)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.trailing)
-
-                Button {
-                    Task {
-                        await appAttestController.resetAndPrepareCredential()
-                    }
-                } label: {
-                    Text(appAttestController.credentialPreparationActionTitle)
-                }
-                .buttonStyle(.borderless)
-                .accessibilityHint("Resets and prepares the App Attest credential.")
-            }
-        } else {
-            Text(appAttestController.credentialStatusText)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.trailing)
-        }
-    }
-
-    private static let keyIDHelpText = "KeyID identifies the App Attest key that this app prepared on this device. " +
-        "The app uses that key to generate request assertions, and the backend uses the KeyID to find the registered credential for verification."
-
     #if DEBUG
     private static let debugOnlyAppAttestBackground = Color.yellow.opacity(0.30)
     #endif
-}
-
-// Help stays inline under Status so Release users can read it in context.
-private struct AppAttestKeyIDHelpView: View {
-    let message: String
-
-    var body: some View {
-        Text(message)
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-            .accessibilityLabel("KeyID help. \(message)")
-    }
-}
-
-// Keep this detail row to the keyId only; status belongs in the row above.
-private struct AppAttestKeyIDInfoView: View {
-    let keyID: String
-
-    var body: some View {
-        Text(keyID)
-            .font(.footnote.monospaced())
-            .foregroundStyle(.secondary)
-            .textSelection(.enabled)
-            .multilineTextAlignment(.leading)
-            .accessibilityLabel("KeyID \(keyID)")
-    }
 }
 
 private struct DepthAnalyzerStatusRow: View {

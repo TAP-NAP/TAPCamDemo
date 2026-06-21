@@ -7,6 +7,7 @@
 
 import CoreLocation
 import Foundation
+import OSLog
 import Photos
 import UniformTypeIdentifiers
 
@@ -18,27 +19,39 @@ import UniformTypeIdentifiers
 nonisolated enum PhotoLibraryWriter {
     static let albumName = "TAPCamDepth"
 
-    /// Saves final embedded HEIC bytes to Photos.
+    /// Saves a validated TAP depth HEIC to Photos.
     ///
-    /// This writer receives a completed artifact; it does not inspect cameras,
-    /// choose packaging policy, or mutate capture session state. Full Photos
-    /// access also adds the asset to the TAPCamDepth album; limited access saves
-    /// the app-created asset directly and relies on its returned local identifier.
+    /// This writer receives a completed, provenance-checked artifact; it does
+    /// not inspect cameras, choose packaging policy, or mutate capture session
+    /// state. Full Photos access also adds the asset to the TAPCamDepth album;
+    /// limited access saves the app-created asset directly and relies on its
+    /// returned local identifier.
     ///
     /// - Tag: SaveDepthHEICToPhotos
-    static func saveDepthHEIC(_ data: Data, capturedAt: Date, location: CLLocation?) async throws -> String {
+    static func saveDepthHEIC(
+        _ validatedHEIC: ValidatedTAPDepthHEIC,
+        capturedAt: Date,
+        location: CLLocation?
+    ) async throws -> String {
+        let data = validatedHEIC.data
+        TAPDiagnostics.photoLibrary.info("saveDepthHEIC start bytes=\(data.count, privacy: .public) hasLocation=\(location != nil, privacy: .public)")
         let authorizationStatus = try await requestReadWriteAccess()
+        TAPDiagnostics.photoLibrary.info("saveDepthHEIC authorization status=\(String(describing: authorizationStatus), privacy: .public)")
         let album: PHAssetCollection? = authorizationStatus == .authorized
             ? try await fetchOrCreateAlbum()
             : nil
-        return try await createAsset(data: data, capturedAt: capturedAt, location: location, album: album)
+        let assetID = try await createAsset(data: data, capturedAt: capturedAt, location: location, album: album)
+        TAPDiagnostics.photoLibrary.info("saveDepthHEIC success assetID=\(assetID, privacy: .private)")
+        return assetID
     }
 
     static func originalPhotoData(for asset: PHAsset) async throws -> Data {
         guard let resource = PHAssetResource.assetResources(for: asset).first(where: { $0.type == .photo }) else {
+            TAPDiagnostics.photoLibrary.error("originalPhotoData missing photo resource assetID=\(asset.localIdentifier, privacy: .private)")
             throw TAPDepthCaptureError.assetCreationFailed
         }
 
+        TAPDiagnostics.photoLibrary.info("originalPhotoData request start assetID=\(asset.localIdentifier, privacy: .private)")
         return try await withCheckedThrowingContinuation { continuation in
             var result = Data()
             let options = PHAssetResourceRequestOptions()
@@ -52,8 +65,10 @@ nonisolated enum PhotoLibraryWriter {
                 },
                 completionHandler: { error in
                     if let error {
+                        TAPDiagnostics.photoLibrary.error("originalPhotoData request failed assetID=\(asset.localIdentifier, privacy: .private) error=\(TAPDiagnostics.describe(error), privacy: .public)")
                         continuation.resume(throwing: error)
                     } else {
+                        TAPDiagnostics.photoLibrary.info("originalPhotoData request success assetID=\(asset.localIdentifier, privacy: .private) bytes=\(result.count, privacy: .public)")
                         continuation.resume(returning: result)
                     }
                 }
@@ -100,9 +115,9 @@ nonisolated enum PhotoLibraryWriter {
 
     static func depthAlbumAssets() async throws -> [PHAsset] {
         try await requestReadWriteAccess()
-        return await Task.detached(priority: .userInitiated) {
+        let assets: [PHAsset] = await Task.detached(priority: .userInitiated) {
             guard let album = fetchAlbum() else {
-                return []
+                return [PHAsset]()
             }
 
             let options = PHFetchOptions()
@@ -115,29 +130,39 @@ nonisolated enum PhotoLibraryWriter {
             }
             return assets
         }.value
+        TAPDiagnostics.photoLibrary.info("depthAlbumAssets fetched count=\(assets.count, privacy: .public)")
+        return assets
     }
 
     static func depthAssetIdentifier(captureID: String) async throws -> String? {
+        TAPDiagnostics.photoLibrary.info("depthAssetIdentifier lookup start captureID=\(captureID, privacy: .private)")
         let assets = try await depthAlbumAssets()
+        let provenanceWriter = TAPCaptureProvenanceWriter()
         for asset in assets {
             guard let data = try? await originalPhotoData(for: asset),
-                  let manifest = try? TAPDepthHEICReader.decodedManifest(from: data),
-                  manifest.payload.id == captureID else {
+                  (try? provenanceWriter.validateSignedExportHEIC(
+                    data,
+                    expectedCaptureID: captureID
+                  )) != nil else {
                 continue
             }
+            TAPDiagnostics.photoLibrary.info("depthAssetIdentifier found captureID=\(captureID, privacy: .private) assetID=\(asset.localIdentifier, privacy: .private)")
             return asset.localIdentifier
         }
+        TAPDiagnostics.photoLibrary.info("depthAssetIdentifier not found captureID=\(captureID, privacy: .private) scannedCount=\(assets.count, privacy: .public)")
         return nil
     }
 
     @discardableResult
     private static func requestReadWriteAccess() async throws -> PHAuthorizationStatus {
         let current = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        TAPDiagnostics.photoLibrary.info("requestReadWriteAccess current=\(String(describing: current), privacy: .public)")
         switch current {
         case .authorized, .limited:
             return current
         case .notDetermined:
             let requested = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+            TAPDiagnostics.photoLibrary.info("requestReadWriteAccess requested=\(String(describing: requested), privacy: .public)")
             if requested == .authorized || requested == .limited {
                 return requested
             }
@@ -151,9 +176,11 @@ nonisolated enum PhotoLibraryWriter {
 
     private static func fetchOrCreateAlbum() async throws -> PHAssetCollection {
         if let existing = fetchAlbum() {
+            TAPDiagnostics.photoLibrary.info("fetchOrCreateAlbum existing name=\(albumName, privacy: .public)")
             return existing
         }
 
+        TAPDiagnostics.photoLibrary.info("fetchOrCreateAlbum create name=\(albumName, privacy: .public)")
         var placeholder: PHObjectPlaceholder?
         try await PHPhotoLibrary.shared().performChanges {
             let request = PHAssetCollectionChangeRequest.creationRequestForAssetCollection(withTitle: albumName)
@@ -169,6 +196,7 @@ nonisolated enum PhotoLibraryWriter {
             throw TAPDepthCaptureError.albumCreationFailed
         }
 
+        TAPDiagnostics.photoLibrary.info("fetchOrCreateAlbum created name=\(albumName, privacy: .public)")
         return album
     }
 
@@ -180,6 +208,7 @@ nonisolated enum PhotoLibraryWriter {
     ) async throws -> String {
         var placeholder: PHObjectPlaceholder?
 
+        TAPDiagnostics.photoLibrary.info("createAsset start bytes=\(data.count, privacy: .public) album=\(album != nil, privacy: .public)")
         try await PHPhotoLibrary.shared().performChanges {
             let creationRequest = PHAssetCreationRequest.forAsset()
             creationRequest.creationDate = capturedAt
@@ -202,6 +231,7 @@ nonisolated enum PhotoLibraryWriter {
             throw TAPDepthCaptureError.assetCreationFailed
         }
 
+        TAPDiagnostics.photoLibrary.info("createAsset success assetID=\(localIdentifier, privacy: .private)")
         return localIdentifier
     }
 

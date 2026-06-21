@@ -1,0 +1,14 @@
+{
+  "originHash" : "99620f725b1205ab62111a1e0988ae54d0b864e47fad37e1838cb655d1b6c124",
+  "pins" : [
+    {
+      "identity" : "appattestkit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/TAP-NAP/AppAttestKit.git",
+      "state" : {
+        "revision" : "cca2e79c6fdb054503bab9899c98460e9e3d0b38"
+      }
+    }
+  ],
+  "version" : 3
+}

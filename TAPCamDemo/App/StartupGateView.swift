@@ -6,27 +6,27 @@
 import SwiftUI
 
 struct StartupGateView: View {
-    @AppStorage(StartupGateDefaults.didCompleteFirstInstallPermissionsKey)
-    private var didCompleteFirstInstallPermissions = false
+    @AppStorage(StartupGateDefaults.didCompleteFirstInstallSetupKey)
+    private var didCompleteFirstInstallSetup = false
 
-    @StateObject private var permissionCoordinator = StartupPermissionCoordinator()
+    @StateObject private var startupCoordinator = StartupGateCoordinator()
 
     var body: some View {
         Group {
-            if didCompleteFirstInstallPermissions {
+            if didCompleteFirstInstallSetup {
                 CameraView()
             } else {
-                WelcomePermissionsView(coordinator: permissionCoordinator) {
-                    completeFirstInstallPermissionsIfReady()
+                WelcomeStartupSetupView(coordinator: startupCoordinator) {
+                    completeFirstInstallSetupIfReady()
                 }
             }
         }
     }
 
-    private func completeFirstInstallPermissionsIfReady() {
-        guard permissionCoordinator.hasRequiredPermissions else {
+    private func completeFirstInstallSetupIfReady() {
+        guard startupCoordinator.hasCompletedRequiredStartupChecks else {
             return
         }
-        didCompleteFirstInstallPermissions = true
+        didCompleteFirstInstallSetup = true
     }
 }

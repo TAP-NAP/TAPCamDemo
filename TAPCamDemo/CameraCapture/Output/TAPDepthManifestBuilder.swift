@@ -33,6 +33,7 @@ nonisolated enum TAPDepthManifestBuilder {
         let device = context.sessionConfiguration.device
         let selectionContext = context.sessionConfiguration.selectionContext
         let plan = context.sessionConfiguration.capturePlan
+        let resolvedOutput = capturePackage.resolvedOutput
 
         guard let depthData = photo.depthData else {
             throw TAPDepthCaptureError.missingDepthData
@@ -49,11 +50,11 @@ nonisolated enum TAPDepthManifestBuilder {
             sourceAPIs: .avFoundationPhotoDepth,
             capture: TAPDepthManifest.Capture(
                 resolvedSettingsUniqueID: photo.resolvedSettings.uniqueID,
-                requestedCodec: capturePackage.requestedCodec.rawValue,
-                depthDataDeliveryEnabled: true,
-                embedsDepthDataInPhoto: true,
-                depthDataFiltered: capturePackage.depthDataFiltered,
-                photoQualityPrioritization: capturePackage.photoQualityPrioritization.tapDescription
+                requestedCodec: resolvedOutput.requestedCodec.rawValue,
+                depthDataDeliveryEnabled: resolvedOutput.depthDataDeliveryEnabled,
+                embedsDepthDataInPhoto: resolvedOutput.embedsDepthDataInPhoto,
+                depthDataFiltered: resolvedOutput.depthDataFiltered,
+                photoQualityPrioritization: resolvedOutput.photoQualityPolicy.requested.manifestDescription
             ),
             rgbSource: makeRGBSource(selectionContext, plan: plan),
             depthSource: makeDepthSourceSelection(selectionContext),

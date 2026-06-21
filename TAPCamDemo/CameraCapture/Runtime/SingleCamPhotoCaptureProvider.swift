@@ -28,9 +28,6 @@ nonisolated struct CaptureSourceContext: @unchecked Sendable {
 /// map remain Apple's paired output from one `AVCapturePhotoOutput` request.
 nonisolated struct SingleCamPhotoCaptureResult: @unchecked Sendable {
     let photo: AVCapturePhoto
-    let requestedCodec: AVVideoCodecType
-    let depthDataFiltered: Bool
-    let photoQualityPrioritization: AVCapturePhotoOutput.QualityPrioritization
 }
 
 /// Produces one paired SingleCam photo-depth result.
