@@ -1,4 +1,4 @@
-# TAPCamDemo SingleCam Photo-Depth Demo
+# TAPCamDemo
 
 TAPCamDemo is an iOS SingleCam photo-depth demo. Release capture is presented
 as field-of-view choices such as `13mm`, `24mm`, `48mm`, and `77mm`; each
