@@ -54,26 +54,28 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    Unsigned["unsigned HEIC/JPG\nproofs: []"] --> Digest["CaptureContentDigest"]
+    Unsigned["unsigned HEIC/JPG\nempty proof slot"] --> Digest["CaptureContentDigest"]
     Digest --> Assertion["AppAttestCaptureAssertionSigner"]
     Assertion --> Proof["CaptureAssertionProof"]
     Proof --> Provenance["TAPCaptureProvenanceWriter"]
     Unsigned --> Provenance
-    Provenance --> Writer["TAPDepthPhotoFileWriter"]
-    Writer --> Signed["signed HEIC/JPG\nproofs[0]"]
+    Provenance --> Slot["TAPProofSlot.writeProofEnvelope"]
+    Slot --> Signed["signed HEIC/JPG\nproof slot"]
     Signed --> Validator["validateSignedExportPhoto"]
     Validator --> Photos["PhotoLibraryWriter.saveDepthPhoto"]
 ```
 
 The shutter-time packager emits `proofs: []`. The pending queue later asks
 `TAPCaptureProvenanceWriter` to read the unsigned TAP depth photo file, validate
-that the queue record `captureID` matches `manifest.payload.id`, recompute the
-container-specific RGB/depth/metadata digest, create the App Attest capture
-proof, inject `manifest.proofs[0]`, and return the signed TAP depth photo file
-for export.
+that the queue record `captureID` matches `manifest.payload.id`, ensure the
+fixed proof slot exists, recompute the C2PA-aligned content binding over the
+photo bytes excluding that slot, create the App Attest capture proof, write the
+proof envelope into the slot, and return the signed TAP depth photo file for
+export.
 
-If shutter-time proof creation is unavailable or fails, the packager keeps
-`proofs: []` and returns a fixed public `unsigned` reason. It does not place raw
+The shutter-time packager does not create a proof. It keeps `proofs: []` and
+returns a fixed public `unsigned` reason while the app-private pending worker
+owns proof creation, validation, and export retry. It does not place raw
 `localizedDescription`, paths, identifiers, App Attest key IDs, proofs, or photo
 bytes into signature status.
 
@@ -81,8 +83,9 @@ Immediately before export, the same provenance boundary re-reads the final
 signed bytes with `validateSignedExportPhoto`. This is not a user-visible
 feature. It is a fail-closed guard that checks the actual HEIC or JPG container
 type, manifest schema and `payload.id`, Release output facts through
-`CaptureOutputManifestPolicy`, exactly one App Attest proof, proof
-value/digest/signing binding, and Apple auxiliary depth/disparity before
+`CaptureOutputManifestPolicy`, no proof bodies in the manifest, exactly one
+fixed proof slot, proof value/digest/signing binding, and Apple auxiliary
+depth/disparity presence before
 `PhotoLibraryWriter.saveDepthPhoto` can ask Photos for access. The Photos writer
 accepts `ValidatedTAPDepthPhoto`, not arbitrary `Data`, so call sites must pass
 through this final gate first.
@@ -187,8 +190,10 @@ depth, an embedded TAP manifest, and an App Attest proof record. Future RAW,
 Live Photo, video, sidecar, or C2PA work should extend this model before new
 packagers or Photos writers are added. The App Attest proof resource is
 required before export, but it is not itself an input to the App Attest content
-digest; the digest covers the current primary photo, auxiliary depth, and
-manifest payload facts.
+binding; the binding covers the current photo file bytes excluding the fixed
+proof slot, plus canonical manifest payload facts. Embedded auxiliary depth is
+therefore bound as format-native bytes in the photo file, while later metric
+depth conversion remains a consumer-side interpretation step.
 
 `PhotoLibraryWriter` receives only a `ValidatedTAPDepthPhoto`. It stages those
 final bytes as a temporary `.heic` or `.jpg` file and gives Photos that file URL
@@ -241,7 +246,7 @@ JPG import saved the asset but the Photos round-trip original lost
 - `validateSignedExportPhoto` is the final export gate for signed TAP depth
   artifacts. Queue status and filenames are scheduling hints; the signed bytes
   themselves must pass container, manifest schema/id, Release output facts,
-  proof, digest binding, and auxiliary depth validation before Photos save.
+  proof-slot, digest binding, and auxiliary depth validation before Photos save.
 
 ## Future Profile Rules
 

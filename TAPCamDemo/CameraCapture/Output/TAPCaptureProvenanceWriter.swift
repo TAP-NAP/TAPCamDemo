@@ -19,12 +19,24 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
         _ manifest: TAPDepthManifest,
         into photoData: Data
     ) throws -> TAPDepthPhotoFileWriteResult {
-        try TAPDepthPhotoFileWriter.injectingManifestWithMetrics(manifest, into: photoData)
+        let writeResult = try TAPDepthPhotoFileWriter.injectingManifestWithMetrics(manifest, into: photoData)
+        let fileContainer = try TAPDepthPhotoFileReader.fileContainer(from: writeResult.data)
+        let slottedData = try TAPProofSlot.ensuringEmptySlot(
+            in: writeResult.data,
+            fileContainer: fileContainer
+        )
+        return TAPDepthPhotoFileWriteResult(
+            data: slottedData,
+            xmpInjectDuration: writeResult.xmpInjectDuration,
+            xmpVerifyDuration: writeResult.xmpVerifyDuration
+        )
     }
 
-    /// Shutter-time helper: attempts to add an App Attest proof, but returns an
-    /// unsigned manifest when signing is unavailable. Use this only where an
-    /// unsigned pending artifact is an acceptable output.
+    /// Shutter-time helper: returns an unsigned manifest for pending storage.
+    ///
+    /// The fixed proof slot is reserved when the manifest is written into the
+    /// photo. Actual App Attest proof creation and slot filling happen only in
+    /// `signedPhotoData`, after the pending worker re-opens the saved bytes.
     func manifestByApplyingCaptureAssertion(
         to manifest: TAPDepthManifest,
         baseHEICData: Data,
@@ -32,53 +44,16 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
         depthData: AVDepthData?,
         assertionSigner: (any CaptureAssertionSigning)?
     ) async -> TAPCaptureProvenanceManifestResult {
-        var metrics = CapturePackagingMetrics()
+        _ = baseHEICData
+        _ = fileContainer
+        _ = depthData
+        _ = assertionSigner
 
-        guard let assertionSigner else {
-            return TAPCaptureProvenanceManifestResult(
-                manifest: manifest,
-                status: .unsigned(reason: Self.unsignedFallbackReason),
-                metrics: metrics
-            )
-        }
-
-        do {
-            guard let depthData else {
-                throw TAPDepthCaptureError.missingDepthData
-            }
-
-            let digestResult = try CaptureContentDigest.makeWithMetrics(
-                manifest: manifest,
-                basePhotoData: baseHEICData,
-                fileContainer: fileContainer,
-                depthData: depthData
-            )
-            metrics.rgbDigestDuration = digestResult.metrics.rgbDigestDuration
-            metrics.depthDigestDuration = digestResult.metrics.depthDigestDuration
-            metrics.metadataDigestDuration = digestResult.metrics.metadataDigestDuration
-
-            let appAttestStart = Date()
-            let assertionProof: CaptureAssertionProof
-            do {
-                assertionProof = try await assertionSigner.sign(contentDigest: digestResult.digest)
-                metrics.appAttestDuration = Date().timeIntervalSince(appAttestStart)
-            } catch {
-                metrics.appAttestDuration = Date().timeIntervalSince(appAttestStart)
-                throw error
-            }
-
-            return TAPCaptureProvenanceManifestResult(
-                manifest: manifest.applying(proof: assertionProof.proof),
-                status: .signed(keyID: assertionProof.keyID),
-                metrics: metrics
-            )
-        } catch {
-            return TAPCaptureProvenanceManifestResult(
-                manifest: manifest,
-                status: .unsigned(reason: Self.unsignedFallbackReason),
-                metrics: metrics
-            )
-        }
+        return TAPCaptureProvenanceManifestResult(
+            manifest: manifest,
+            status: .unsigned(reason: Self.unsignedFallbackReason),
+            metrics: CapturePackagingMetrics()
+        )
     }
 
     /// Pending-queue helper: returns a signed TAP depth photo file or throws.
@@ -95,33 +70,42 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
             throw TAPDepthCaptureError.invalidHEICContainerType(fileContainer.uniformTypeIdentifier)
         }
 
-        let manifest = try TAPDepthPhotoFileReader.decodedManifest(from: unsignedPhotoData)
+        let unsignedPhotoDataWithSlot = try TAPProofSlot.ensuringEmptySlot(
+            in: unsignedPhotoData,
+            fileContainer: fileContainer
+        )
+        let manifest = try TAPDepthPhotoFileReader.decodedManifest(from: unsignedPhotoDataWithSlot)
         try validateManifestSchema(manifest)
         try validateManifestID(manifest.payload.id, expectedCaptureID: expectedCaptureID)
         try CaptureOutputManifestPolicy(profile: expectedProfile).validate(manifest.payload.capture)
+        try validateManifestCarriesNoProofBody(manifest)
 
-        guard let depthData = try TAPDepthPhotoFileReader.depthData(from: unsignedPhotoData) else {
+        guard let depthData = try TAPDepthPhotoFileReader.depthData(from: unsignedPhotoDataWithSlot) else {
             throw TAPDepthCaptureError.missingDepthData
         }
 
         let digest = try CaptureContentDigest.make(
             manifest: manifest,
-            basePhotoData: unsignedPhotoData,
+            basePhotoData: unsignedPhotoDataWithSlot,
             fileContainer: fileContainer,
             depthData: depthData
         )
         let assertionProof = try await assertionSigner.sign(contentDigest: digest)
-        let signedManifest = manifest.applying(proof: assertionProof.proof)
-        let writeResult = try writeManifest(signedManifest, into: unsignedPhotoData)
+        let proofEnvelope = try JSONEncoder.tapCaptureCanonical.encode(assertionProof.proof)
+        let signedPhotoData = try TAPProofSlot.writeProofEnvelope(
+            proofEnvelope,
+            into: unsignedPhotoDataWithSlot,
+            fileContainer: fileContainer
+        )
         _ = try validateSignedExportPhoto(
-            writeResult.data,
+            signedPhotoData,
             expectedCaptureID: expectedCaptureID,
             expectedProfile: expectedProfile
         )
 
         return TAPCaptureProvenanceSignedPhotoResult(
-            data: writeResult.data,
-            manifest: signedManifest,
+            data: signedPhotoData,
+            manifest: manifest,
             keyID: assertionProof.keyID,
             fileContainer: fileContainer
         )
@@ -165,14 +149,12 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
         try validateManifestSchema(manifest)
         try validateManifestID(manifest.payload.id, expectedCaptureID: expectedCaptureID)
         try CaptureOutputManifestPolicy(profile: expectedProfile).validate(manifest.payload.capture)
+        try validateManifestCarriesNoProofBody(manifest)
 
-        guard let proof = manifest.proofs.first else {
-            throw TAPDepthCaptureError.pendingCaptureProofMissing
-        }
-        guard manifest.proofs.count == 1 else {
-            throw TAPDepthCaptureError.pendingCaptureProofInvalid("expected exactly one capture proof")
-        }
-
+        let proof = try decodedCaptureProof(
+            from: signedPhotoData,
+            fileContainer: expectedProfile.fileContainer
+        )
         let proofValue = try decodedCaptureProofValue(proof, expectedCaptureID: expectedCaptureID)
 
         guard let depthData = try TAPDepthPhotoFileReader.depthData(from: signedPhotoData) else {
@@ -215,6 +197,23 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
         guard manifest.schema == TAPDepthManifest.Schema() else {
             throw TAPDepthCaptureError.invalidTAPManifest("unexpected schema metadata")
         }
+    }
+
+    private func validateManifestCarriesNoProofBody(_ manifest: TAPDepthManifest) throws {
+        guard manifest.proofs.isEmpty else {
+            throw TAPDepthCaptureError.pendingCaptureProofInvalid("manifest proofs must not carry capture proof bodies")
+        }
+    }
+
+    private func decodedCaptureProof(
+        from photoData: Data,
+        fileContainer: CapturePhotoFileContainer
+    ) throws -> TAPDepthManifest.Proof {
+        let proofData = try TAPProofSlot.proofEnvelopeData(
+            from: photoData,
+            fileContainer: fileContainer
+        )
+        return try JSONDecoder().decode(TAPDepthManifest.Proof.self, from: proofData)
     }
 
     private func decodedCaptureProofValue(
@@ -321,11 +320,5 @@ nonisolated struct ValidatedTAPDepthHEIC: Sendable {
     init(data: Data, manifest: TAPDepthManifest) {
         self.data = data
         self.manifest = manifest
-    }
-}
-
-private extension TAPDepthManifest {
-    nonisolated func applying(proof: TAPDepthManifest.Proof) -> TAPDepthManifest {
-        TAPDepthManifest(payload: payload, proofs: [proof])
     }
 }

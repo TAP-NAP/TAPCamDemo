@@ -124,7 +124,10 @@ nonisolated struct AppAttestCaptureSignatureVerifier: Sendable {
                 expectedCaptureID: manifest.payload.id,
                 expectedProfile: expectedProfile
             )
-            let proof = try captureProof(from: validatedPhoto.manifest)
+            let proof = try captureProof(
+                from: validatedPhoto.data,
+                fileContainer: validatedPhoto.fileContainer
+            )
             let proofValue = try decodeProofValue(proof)
             let request = CaptureSignatureVerificationRequest(
                 keyId: proofValue.keyId,
@@ -153,11 +156,15 @@ nonisolated struct AppAttestCaptureSignatureVerifier: Sendable {
     }
 
     private static func captureProof(
-        from manifest: TAPDepthManifest
+        from photoData: Data,
+        fileContainer: CapturePhotoFileContainer
     ) throws -> TAPDepthManifest.Proof {
-        guard manifest.proofs.count == 1,
-              let proof = manifest.proofs.first,
-              proof.type == "appAttestAssertion",
+        let proofData = try TAPProofSlot.proofEnvelopeData(
+            from: photoData,
+            fileContainer: fileContainer
+        )
+        let proof = try JSONDecoder().decode(TAPDepthManifest.Proof.self, from: proofData)
+        guard proof.type == "appAttestAssertion",
               proof.algorithm == "TAPCam.AppAttestCaptureSignature.v1" else {
             throw AppAttestSignatureVerificationFailure(
                 title: "App Attest proof",

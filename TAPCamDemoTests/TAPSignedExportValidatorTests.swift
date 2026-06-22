@@ -69,7 +69,8 @@ struct TAPSignedExportValidatorTests {
         #expect(validatorSource.contains("validateManifestSchema"))
         #expect(validatorSource.contains("validateManifestID"))
         #expect(validatorSource.contains("CaptureOutputManifestPolicy(profile: expectedProfile).validate"))
-        #expect(validatorSource.contains("manifest.proofs.count == 1"))
+        #expect(validatorSource.contains("validateManifestCarriesNoProofBody"))
+        #expect(validatorSource.contains("decodedCaptureProof"))
         #expect(validatorSource.contains("TAPDepthPhotoFileReader.depthData"))
         #expect(validatorSource.contains("CaptureContentDigest.make"))
         #expect(validatorSource.contains("validateCaptureProof"))
@@ -152,7 +153,7 @@ struct TAPSignedExportValidatorTests {
         }
     }
 
-    @Test func signedExportValidatorRejectsMultipleManifestProofsBeforePhotosSave() throws {
+    @Test func signedExportValidatorRejectsManifestProofBodiesBeforePhotosSave() throws {
         let signedManifest = try TAPCaptureProvenanceTestFixtures.sampleSignedManifest()
         let proof = try #require(signedManifest.proofs.first)
         let futureProof = TAPDepthManifest.Proof(
@@ -173,9 +174,9 @@ struct TAPSignedExportValidatorTests {
                 payload: signedManifest.payload,
                 proofs: proofSet
             )
-            let signedHEICData = try TAPCaptureProvenanceTestFixtures.sampleSignedHEICData(
-                manifest: manifestWithMultipleProofs,
-                hasDepth: true
+            let signedHEICData = try TAPDepthHEICWriter.injectingManifest(
+                manifestWithMultipleProofs,
+                into: TAPCaptureProvenanceTestFixtures.sampleHEICSourceData()
             )
 
             do {
@@ -183,9 +184,9 @@ struct TAPSignedExportValidatorTests {
                     signedHEICData,
                     expectedCaptureID: "sample-capture"
                 )
-                Issue.record("Expected final export validation to reject multiple proof records.")
+                Issue.record("Expected final export validation to reject manifest proof bodies.")
             } catch TAPDepthCaptureError.pendingCaptureProofInvalid(let reason) {
-                #expect(reason.contains("exactly one capture proof"))
+                #expect(reason.contains("manifest proofs"))
             } catch {
                 Issue.record("Unexpected final export validation error: \(error)")
             }

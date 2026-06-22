@@ -49,33 +49,34 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-    Unsigned["unsigned HEIC/JPG"] --> Reader["Read TAP manifest and auxiliary depth"]
+    Unsigned["unsigned HEIC/JPG"] --> Reader["Read TAP manifest, proof slot, and auxiliary depth presence"]
     Reader --> Digest["CaptureContentDigest"]
     Digest --> Signer["AppAttestCaptureAssertionSigner"]
     Signer --> Proof["CaptureAssertionProof"]
-    Proof --> Inject["Inject manifest.proofs[0]"]
+    Proof --> Inject["Write fixed proof slot"]
     Inject --> Signed["signed HEIC/JPG"]
     Signed --> Validate["Validate signed export bytes"]
 
     click Reader "../../TAPCamDemo/DepthAnalysis/DepthAnalysisReader.swift"
     click Digest "../../TAPCamDemo/CameraCapture/Output/CaptureContentDigest.swift"
     click Signer "../../TAPCamDemo/CameraCapture/Output/AppAttestCaptureAssertionSigner.swift"
-    click Inject "../../TAPCamDemo/CameraCapture/Output/TAPDepthHEICWriter.swift"
+    click Inject "../../TAPCamDemo/CameraCapture/Output/CaptureContentDigest.swift"
     click Validate "../../TAPCamDemo/CameraCapture/Output/TAPCaptureProvenanceWriter.swift"
 ```
 
 Capture signing reuses the registered `photo_keyid` credential. It builds a
-capture `signingBinding` and writes an App Attest assertion into the TAP photo
-proof.
+capture `signingBinding` over a C2PA-aligned content binding and writes an App
+Attest assertion into the TAP proof slot.
 It does not use `generateAssertion(credentialName:request:)` because capture
 signing is not an online protected API request and does not use an assertion
 challenge.
 
 Before Photos export, `TAPCaptureProvenanceWriter.validateSignedExportPhoto`
 re-reads the signed file and validates the proof envelope, proof digest binding,
-manifest id, selected HEIC/JPG source type, and auxiliary depth. This keeps App
-Attest proof presence tied to the file bytes that are actually leaving the
-private queue.
+manifest id, selected HEIC/JPG source type, and auxiliary depth presence. The
+content binding hashes the exact file bytes that are leaving the private queue
+except for the fixed proof slot, so validation does not depend on CoreGraphics,
+AVDepthData conversion output, browser canvas pixels, or libheif decode output.
 
 ## Runtime Backend Selection
 

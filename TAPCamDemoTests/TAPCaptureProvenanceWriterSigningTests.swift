@@ -23,11 +23,12 @@ struct TAPCaptureProvenanceWriterSigningTests {
 
     @Test func unsignedCaptureManifestUsesFixedReasonWhenProofCannotBeCreated() async throws {
         let manifest = TAPDepthManifest(payload: TAPCamDemoTestFixtures.samplePayload(location: nil))
+        let signer = CountingCaptureAssertionSigner()
         let result = await TAPCaptureProvenanceWriter().manifestByApplyingCaptureAssertion(
             to: manifest,
             baseHEICData: Data("not-heic".utf8),
             depthData: nil,
-            assertionSigner: CountingCaptureAssertionSigner()
+            assertionSigner: signer
         )
         let reason = try #require(result.unsignedReason)
 
@@ -35,6 +36,7 @@ struct TAPCaptureProvenanceWriterSigningTests {
         #expect(reason == "App Attest proof unavailable during capture.")
         #expect(!reason.contains("AVDepthData"))
         #expect(!reason.localizedCaseInsensitiveContains("localizedDescription"))
+        #expect(await signer.signCallCount() == 0)
     }
 
     @Test func pendingSigningRejectsManifestIDMismatchBeforeSignerCall() async throws {
@@ -44,7 +46,7 @@ struct TAPCaptureProvenanceWriterSigningTests {
         ))
         let unsignedData = try TAPDepthHEICWriter.injectingManifest(
             embeddedManifest,
-            into: TAPCamDemoTestFixtures.sampleThumbnailSourceData()
+            into: TAPCaptureProvenanceTestFixtures.sampleHEICSourceData()
         )
         let signer = CountingCaptureAssertionSigner()
 

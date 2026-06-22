@@ -167,6 +167,10 @@ struct TAPDeviceCaptureArtifactAuditTests {
         let fileContainer = try TAPDepthPhotoFileReader.fileContainer(from: photoData)
         let manifest = try TAPDepthPhotoFileReader.decodedManifest(from: photoData)
         let depthData = try #require(try TAPDepthPhotoFileReader.depthData(from: photoData))
+        let proofEnvelope = try TAPProofSlot.proofEnvelopeData(
+            from: photoData,
+            fileContainer: fileContainer
+        )
         let imageDimensions = try Self.primaryImageDimensions(from: photoData)
         let depthPixelBuffer = depthData.depthDataMap
         let depthWidth = CVPixelBufferGetWidth(depthPixelBuffer)
@@ -179,7 +183,8 @@ struct TAPDeviceCaptureArtifactAuditTests {
         #expect(max(imageDimensions.width, imageDimensions.height) >= 3_000)
         #expect(depthWidth > 0)
         #expect(depthHeight > 0)
-        #expect(!manifest.proofs.isEmpty)
+        #expect(manifest.proofs.isEmpty)
+        #expect(!proofEnvelope.isEmpty)
         try CaptureOutputManifestPolicy(profile: record.outputProfile).validate(manifest.payload.capture)
         #expect(
             Self.dimensionsMatchImage(
@@ -200,7 +205,8 @@ struct TAPDeviceCaptureArtifactAuditTests {
             manifestHeight: Int(manifest.payload.photo.height),
             depthWidth: depthWidth,
             depthHeight: depthHeight,
-            proofCount: manifest.proofs.count
+            proofSlotByteCount: TAPProofSlot.payloadByteCount,
+            proofEnvelopeByteCount: proofEnvelope.count
         )
     }
 
@@ -325,7 +331,8 @@ private struct DeviceCaptureArtifactAuditReport: Codable, Equatable {
         let manifestHeight: Int
         let depthWidth: Int
         let depthHeight: Int
-        let proofCount: Int
+        let proofSlotByteCount: Int
+        let proofEnvelopeByteCount: Int
     }
 
     let recordsAvailable: Int

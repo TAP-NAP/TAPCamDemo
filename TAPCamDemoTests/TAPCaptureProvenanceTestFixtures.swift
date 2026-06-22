@@ -15,24 +15,10 @@ import UniformTypeIdentifiers
 enum TAPCaptureProvenanceTestFixtures {
     static func sampleSignedManifest(id: String = "sample-capture") throws -> TAPDepthManifest {
         let capturedAt = "2026-04-25T00:00:00.000Z"
-        let digest = sampleContentDigest(captureID: id, capturedAt: capturedAt)
-        let proofValue = CaptureAssertionProofValue(
-            contentDigest: digest,
-            keyId: "test-key-id",
-            assertionObject: Data([0xA1, 0x01]).appAttestBase64URL,
-            signingBinding: try CaptureSigningBinding(contentDigest: digest)
-        )
-        let proofData = try proofValue.canonicalJSONData()
         return TAPDepthManifest(
             payload: TAPCamDemoTestFixtures.samplePayload(id: id, capturedAt: capturedAt, location: nil),
             proofs: [
-                TAPDepthManifest.Proof(
-                    type: "appAttestAssertion",
-                    algorithm: "TAPCam.AppAttestCaptureSignature.v1",
-                    keyID: "test-key-id",
-                    createdAt: capturedAt,
-                    value: proofData.appAttestBase64URL
-                )
+                try sampleCaptureProof(captureID: id, capturedAt: capturedAt)
             ]
         )
     }
@@ -42,7 +28,17 @@ enum TAPCaptureProvenanceTestFixtures {
         hasDepth: Bool
     ) throws -> Data {
         let sourceHEIC = try sampleHEICSourceData()
-        let signedHEIC = try TAPDepthHEICWriter.injectingManifest(manifest, into: sourceHEIC)
+        let manifestWithoutProofBody = TAPDepthManifest(payload: manifest.payload)
+        let unsignedHEIC = try TAPDepthHEICWriter.injectingManifest(manifestWithoutProofBody, into: sourceHEIC)
+        var signedHEIC = try TAPProofSlot.ensuringEmptySlot(in: unsignedHEIC, fileContainer: .heic)
+        if let proof = manifest.proofs.first {
+            let proofEnvelope = try JSONEncoder.tapCaptureCanonical.encode(proof)
+            signedHEIC = try TAPProofSlot.writeProofEnvelope(
+                proofEnvelope,
+                into: signedHEIC,
+                fileContainer: .heic
+            )
+        }
         if hasDepth {
             /*
              This fixture intentionally has no Apple auxiliary depth plane.
@@ -81,6 +77,27 @@ enum TAPCaptureProvenanceTestFixtures {
         return output as Data
     }
 
+    static func sampleCaptureProof(
+        captureID: String = "sample-capture",
+        capturedAt: String = "2026-04-25T00:00:00.123Z"
+    ) throws -> TAPDepthManifest.Proof {
+        let digest = sampleContentDigest(captureID: captureID, capturedAt: capturedAt)
+        let proofValue = CaptureAssertionProofValue(
+            contentDigest: digest,
+            keyId: "test-key-id",
+            assertionObject: Data([0xA1, 0x01]).appAttestBase64URL,
+            signingBinding: try CaptureSigningBinding(contentDigest: digest)
+        )
+        let proofData = try proofValue.canonicalJSONData()
+        return TAPDepthManifest.Proof(
+            type: "appAttestAssertion",
+            algorithm: "TAPCam.AppAttestCaptureSignature.v1",
+            keyID: "test-key-id",
+            createdAt: capturedAt,
+            value: proofData.appAttestBase64URL
+        )
+    }
+
     static func sampleContentDigest(
         captureID: String = "sample-capture",
         capturedAt: String = "2026-04-25T00:00:00.123Z"
@@ -88,23 +105,34 @@ enum TAPCaptureProvenanceTestFixtures {
         CaptureContentDigest(
             captureID: captureID,
             capturedAt: capturedAt,
-            rgb: CaptureContentDigest.Component(
-                mediaType: "image/heic-primary-rgba8",
-                width: 2,
-                height: 2,
-                value: "rgb-digest"
+            assetHash: CaptureContentDigest.AssetHash(
+                fileContainer: .heic,
+                byteCount: 128,
+                slot: TAPProofSlot.Location(
+                    kind: .bmffUUIDBox,
+                    containerRange: 64..<(64 + 16),
+                    payloadRange: 72..<(72 + TAPProofSlot.payloadByteCount)
+                ),
+                value: "asset-digest"
             ),
-            depth: CaptureContentDigest.Component(
-                mediaType: "application/vnd.tapnap.depth-float32",
-                width: 2,
-                height: 2,
-                value: "depth-digest"
-            ),
-            metadata: CaptureContentDigest.Component(
+            metadataHash: CaptureContentDigest.MetadataHash(
+                kind: "canonical-json",
                 mediaType: "application/vnd.tapnap.depth-manifest.payload+json;version=1",
-                width: nil,
-                height: nil,
+                algorithm: "SHA-256",
                 value: "metadata-digest"
+            ),
+            proofSlot: CaptureContentDigest.ProofSlot(
+                TAPProofSlot.Location(
+                    kind: .bmffUUIDBox,
+                    containerRange: 64..<(64 + 16),
+                    payloadRange: 72..<(72 + TAPProofSlot.payloadByteCount)
+                )
+            ),
+            depthResource: CaptureContentDigest.DepthResource(
+                presence: "required",
+                binding: "covered-by-assetHash",
+                interpretation: "not-part-of-base-signature",
+                platformPresenceCheck: "AVDepthData-readback"
             )
         )
     }
