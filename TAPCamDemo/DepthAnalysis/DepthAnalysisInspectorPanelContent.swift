@@ -12,7 +12,7 @@ import SwiftUI
 /// Field-level content for the bottom analysis inspector panel.
 ///
 /// This view intentionally receives only loaded image/depth fields and local
-/// selection state. Source identifiers, HEIC bytes, manifests, proofs, App
+/// selection state. Source identifiers, photo bytes, manifests, proofs, App
 /// Attest key IDs, Photos handles, pending-store handles, and export state stay
 /// outside the inspector UI boundary.
 struct AnalysisInspectorPanelContent: View {

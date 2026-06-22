@@ -26,8 +26,10 @@ struct DepthAnalyzerSettingsView: View {
     private var shutterHapticsEnabled = CameraFeedbackPreferences.defaultShutterHapticsEnabled
     @AppStorage(CameraFeedbackPreferences.shutterSoundEnabledKey)
     private var shutterSoundEnabled = CameraFeedbackPreferences.defaultShutterSoundEnabled
-    @AppStorage(CameraRoutePreferences.forceCameraOnForegroundAfterDelayKey)
-    private var forceCameraOnForegroundAfterDelay = CameraRoutePreferences.defaultForceCameraOnForegroundAfterDelay
+    @AppStorage(CameraOutputFormatPreference.storageKey)
+    private var outputFormatRawValue = CameraOutputFormatPreference.defaultValue.rawValue
+    @AppStorage(CameraRoutePreferences.returnToCameraOnForegroundKey)
+    private var returnToCameraOnForeground = CameraRoutePreferences.defaultReturnToCameraOnForeground
 
     init(
         snapshot: DepthAnalyzerAuthorizationSnapshot = .current(),
@@ -43,6 +45,12 @@ struct DepthAnalyzerSettingsView: View {
         NavigationStack {
             List {
                 Section("Capture") {
+                    Picker("Photo Format", selection: $outputFormatRawValue) {
+                        ForEach(CameraOutputFormatPreference.allCases) { format in
+                            Text(format.title).tag(format.rawValue)
+                        }
+                    }
+
                     Toggle(isOn: $shutterSoundEnabled) {
                         Label("Shutter Sound", systemImage: "speaker.wave.2")
                     }
@@ -67,7 +75,7 @@ struct DepthAnalyzerSettingsView: View {
                 }
 
                 Section("Navigation") {
-                    Toggle(isOn: $forceCameraOnForegroundAfterDelay) {
+                    Toggle(isOn: $returnToCameraOnForeground) {
                         Label("Return to Camera After Background", systemImage: "camera.viewfinder")
                     }
                 }

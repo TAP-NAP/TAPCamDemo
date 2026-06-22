@@ -175,7 +175,24 @@ extension CameraViewModel {
         statusMessage = statusText(for: plan)
 
         do {
-            let result = try await sessionController.configure(SessionConfigurationRequest(capturePlan: plan))
+            let outputFormatPreference = CameraOutputFormatPreference.resolved(
+                rawValue: UserDefaults.standard.string(forKey: CameraOutputFormatPreference.storageKey)
+                    ?? CameraOutputFormatPreference.defaultValue.rawValue
+            )
+            let outputResolution = outputFormatPreference.selectionIntent.resolved()
+            guard let outputProfile = outputResolution.selectedProfile, outputResolution.isExecutable else {
+                let presentation = CaptureOutputProfileSelectionPresentation(resolution: outputResolution)
+                activeSessionConfiguration = nil
+                isDepthCaptureReady = false
+                nativePreviewAspectRatio = 3.0 / 4.0
+                statusMessage = "\(presentation.title) · \(presentation.detail)"
+                return
+            }
+
+            let result = try await sessionController.configure(SessionConfigurationRequest(
+                capturePlan: plan,
+                outputProfile: outputProfile
+            ))
 
             guard generation == configurationGeneration, !isPausedForAnalysis else {
                 sessionController.stop()

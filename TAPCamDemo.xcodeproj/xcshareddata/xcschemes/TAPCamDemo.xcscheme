@@ -57,6 +57,16 @@
                ReferencedContainer = "container:TAPCamDemo.xcodeproj">
             </BuildableReference>
          </TestableReference>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "F2B001062FA8000000000106"
+               BuildableName = "TAPCamDemoUITests.xctest"
+               BlueprintName = "TAPCamDemoUITests"
+               ReferencedContainer = "container:TAPCamDemo.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
    </TestAction>
    <LaunchAction

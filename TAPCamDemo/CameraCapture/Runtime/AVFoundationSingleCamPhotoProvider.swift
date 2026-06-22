@@ -8,6 +8,7 @@
 @preconcurrency import AVFoundation
 import CoreGraphics
 import Foundation
+import OSLog
 
 /// Default SingleCam provider backed by `AVCapturePhotoOutput`.
 ///
@@ -47,6 +48,8 @@ nonisolated final class AVFoundationSingleCamPhotoProvider: SingleCamPhotoCaptur
 
                 switch result {
                 case .success(let photo):
+                    let actualDimensions = CapturePhotoDimensions(photo.resolvedSettings.photoDimensions)
+                    TAPDiagnostics.cameraCapture.info("photo capture processed profile=\(resolvedOutput.profileID, privacy: .public) container=\(resolvedOutput.fileContainer.rawValue, privacy: .public) actualDimensions=\(actualDimensions.debugDescription, privacy: .public)")
                     continuation.resume(returning: SingleCamPhotoCaptureResult(
                         photo: photo
                     ))
@@ -85,26 +88,35 @@ nonisolated final class AVFoundationSingleCamPhotoProvider: SingleCamPhotoCaptur
 
 /// Creates the single still-photo settings shape used by both prewarming and
 /// actual capture. Keeping these settings identical makes
-/// `setPreparedPhotoSettingsArray` representative of the requested HEIC + depth
-/// capture instead of warming a cheaper default path.
+/// `setPreparedPhotoSettingsArray` representative of the requested container,
+/// codec, depth, quality, and dimensions instead of warming a cheaper default.
 nonisolated enum SingleCamPhotoSettingsFactory {
     static func make(
         photoOutput: AVCapturePhotoOutput,
         resolvedOutput: ResolvedCaptureOutputProfile,
         suppressesShutterSound: Bool = false
     ) -> AVCapturePhotoSettings {
-        let settings: AVCapturePhotoSettings
-        switch resolvedOutput.codec {
-        case .hevc:
-            settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: resolvedOutput.codec.avVideoCodecType])
-        case .jpeg:
-            settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: resolvedOutput.codec.avVideoCodecType])
-        }
+        let processedFormat: [String: Any] = [
+            AVVideoCodecKey: resolvedOutput.codec.avVideoCodecType,
+            AVVideoCompressionPropertiesKey: [
+                AVVideoQualityKey: resolvedOutput.compressionQuality
+            ]
+        ]
+        let settings = AVCapturePhotoSettings(
+            rawPixelFormatType: 0,
+            rawFileType: nil,
+            processedFormat: processedFormat,
+            processedFileType: resolvedOutput.processedFileType
+        )
 
         settings.isDepthDataDeliveryEnabled = resolvedOutput.depthDataDeliveryEnabled
         settings.embedsDepthDataInPhoto = resolvedOutput.embedsDepthDataInPhoto
         settings.isDepthDataFiltered = resolvedOutput.depthDataFiltered
         settings.photoQualityPrioritization = resolvedOutput.photoQualityPrioritization
+        if let maxPhotoDimensions = resolvedOutput.maxPhotoDimensions {
+            settings.maxPhotoDimensions = maxPhotoDimensions.cmVideoDimensions
+        }
+        TAPDiagnostics.cameraCapture.info("photo settings prepared profile=\(resolvedOutput.profileID, privacy: .public) container=\(resolvedOutput.fileContainer.rawValue, privacy: .public) fileType=\(resolvedOutput.processedFileType.rawValue, privacy: .public) codec=\(resolvedOutput.requestedCodec.rawValue, privacy: .public) selectedDimensions=\(resolvedOutput.maxPhotoDimensions?.debugDescription ?? "none", privacy: .public)")
         if suppressesShutterSound && photoOutput.isShutterSoundSuppressionSupported {
             settings.isShutterSoundSuppressionEnabled = true
         }
@@ -113,10 +125,16 @@ nonisolated enum SingleCamPhotoSettingsFactory {
 
     static func resolvedOutput(
         photoOutput: AVCapturePhotoOutput,
+        activeFormat: AVCaptureDevice.Format? = nil,
+        assumesDepthDeliverySupported: Bool = true,
         outputProfile: CaptureOutputProfile = CaptureOutputProfileCatalog.releaseDefaultProfile
     ) throws -> ResolvedCaptureOutputProfile {
         try outputProfile.resolvedPhotoOutput(
-            availablePhotoCodecTypes: photoOutput.availablePhotoCodecTypes
+            capabilities: CapturePhotoOutputCapabilitySnapshot(
+                photoOutput: photoOutput,
+                activeFormat: activeFormat,
+                assumesDepthDeliverySupported: assumesDepthDeliverySupported
+            )
         )
     }
 }

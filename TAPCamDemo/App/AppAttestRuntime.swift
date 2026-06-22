@@ -11,6 +11,7 @@ nonisolated enum TAPDiagnostics {
     private static let subsystem = Bundle.main.bundleIdentifier ?? "TAPCamDemo"
 
     static let appAttest = Logger(subsystem: subsystem, category: "AppAttest")
+    static let cameraCapture = Logger(subsystem: subsystem, category: "CameraCapture")
     static let pendingCapture = Logger(subsystem: subsystem, category: "PendingCapture")
     static let securityPreflight = Logger(subsystem: subsystem, category: "SecurityPreflight")
     static let photoLibrary = Logger(subsystem: subsystem, category: "PhotoLibrary")

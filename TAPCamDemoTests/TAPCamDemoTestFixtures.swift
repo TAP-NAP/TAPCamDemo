@@ -330,6 +330,7 @@ enum TAPCamDemoTestFixtures {
 
     static func samplePendingArtifact(
         photoData: Data,
+        fileContainer: CapturePhotoFileContainer = .heic,
         captureID: String = "sample-capture",
         capturedAt: Date = Date(timeIntervalSince1970: 0)
     ) -> PackagedCaptureArtifact {
@@ -337,6 +338,7 @@ enum TAPCamDemoTestFixtures {
             packageID: UUID(uuidString: "00000000-0000-0000-0000-000000000123")!,
             strategy: .embeddedPhoto,
             photoData: photoData,
+            fileContainer: fileContainer,
             manifest: TAPDepthManifest(payload: samplePayload(
                 id: captureID,
                 capturedAt: TAPDateFormatting.iso8601.string(from: capturedAt),

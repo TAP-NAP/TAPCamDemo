@@ -9,7 +9,7 @@ import Foundation
 
 /// User-facing errors for the SingleCam photo-depth capture flow.
 ///
-/// These cases are shared by planning, runtime capture, embedded HEIC output,
+/// These cases are shared by planning, runtime capture, embedded photo output,
 /// and Photos writing so the UI can display one coherent status surface.
 enum TAPDepthCaptureError: LocalizedError {
     case cameraAccessDenied
@@ -71,35 +71,35 @@ enum TAPDepthCaptureError: LocalizedError {
         case .captureOutputCodecUnsupported(let reason):
             "The configured photo output does not support the requested capture codec: \(reason)"
         case .unableToCreatePhotoData:
-            "AVCapturePhoto could not produce HEIC data."
+            "AVCapturePhoto could not produce photo data."
         case .invalidUTF8Manifest:
             "The TAP manifest could not be encoded as UTF-8 JSON."
         case .invalidTAPManifest(let reason):
             "The TAP manifest is not valid: \(reason)"
         case .imageSourceCreationFailed:
-            "ImageIO could not open the generated HEIC data."
+            "ImageIO could not open the generated photo data."
         case .imageDestinationCreationFailed:
-            "ImageIO could not create a HEIC destination."
+            "ImageIO could not create a photo destination."
         case .xmpNamespaceRegistrationFailed(let reason):
             "ImageIO could not register the TAP XMP namespace: \(reason)"
         case .xmpManifestWriteFailed:
             "ImageIO could not write tapdepth:Manifest into XMP metadata."
         case .imageCopyFailed(let reason):
-            "ImageIO could not copy the HEIC source while injecting metadata: \(reason)"
+            "ImageIO could not copy the photo source while injecting metadata: \(reason)"
         case .xmpManifestMissing:
-            "The generated HEIC does not contain tapdepth:Manifest after writeback."
+            "The generated photo file does not contain tapdepth:Manifest after writeback."
         case .invalidHEICContainerType(let actual):
-            "The pending TAP capture is not an HEIC container: \(actual)."
+            "The pending TAP capture is not a supported TAP depth photo container: \(actual)."
         case .photoLibraryAccessDenied:
             "Photo library access is required to save into the TAPCamDepth album."
         case .albumCreationFailed:
             "Unable to create or fetch the TAPCamDepth album."
         case .assetCreationFailed:
-            "Unable to create a Photos asset from the depth HEIC."
+            "Unable to create a Photos asset from the depth photo file."
         case .assetNotFound:
             "The selected Photos asset could not be found."
         case .pendingCaptureDataMissing:
-            "The pending TAP capture no longer has its staged HEIC data."
+            "The pending TAP capture no longer has its staged photo data."
         case .invalidPendingCaptureBundlePath(let reason):
             "The pending TAP capture bundle path is not valid: \(reason)."
         case .pendingCaptureManifestIDMismatch(let expected, let actual):

@@ -49,12 +49,12 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-    Unsigned["unsigned.heic"] --> Reader["Read TAP manifest and auxiliary depth"]
+    Unsigned["unsigned HEIC/JPG"] --> Reader["Read TAP manifest and auxiliary depth"]
     Reader --> Digest["CaptureContentDigest"]
     Digest --> Signer["AppAttestCaptureAssertionSigner"]
     Signer --> Proof["CaptureAssertionProof"]
     Proof --> Inject["Inject manifest.proofs[0]"]
-    Inject --> Signed["signed.heic"]
+    Inject --> Signed["signed HEIC/JPG"]
     Signed --> Validate["Validate signed export bytes"]
 
     click Reader "../../TAPCamDemo/DepthAnalysis/DepthAnalysisReader.swift"
@@ -65,15 +65,17 @@ flowchart TD
 ```
 
 Capture signing reuses the registered `photo_keyid` credential. It builds a
-capture `signingBinding` and writes an App Attest assertion into the HEIC proof.
+capture `signingBinding` and writes an App Attest assertion into the TAP photo
+proof.
 It does not use `generateAssertion(credentialName:request:)` because capture
 signing is not an online protected API request and does not use an assertion
 challenge.
 
-Before Photos export, `TAPCaptureProvenanceWriter.validateSignedExportHEIC`
+Before Photos export, `TAPCaptureProvenanceWriter.validateSignedExportPhoto`
 re-reads the signed file and validates the proof envelope, proof digest binding,
-manifest id, HEIC source type, and auxiliary depth. This keeps App Attest proof
-presence tied to the file bytes that are actually leaving the private queue.
+manifest id, selected HEIC/JPG source type, and auxiliary depth. This keeps App
+Attest proof presence tied to the file bytes that are actually leaving the
+private queue.
 
 ## Runtime Backend Selection
 

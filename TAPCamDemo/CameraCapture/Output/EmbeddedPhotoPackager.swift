@@ -7,10 +7,11 @@
 
 @preconcurrency import AVFoundation
 import Foundation
+import OSLog
 
 /// Default Release-safe packager.
 ///
-/// It preserves Apple's HEIC photo-depth output using
+/// It preserves Apple's photo-depth output using
 /// `AVCapturePhoto.fileDataRepresentation(with:)`, then injects TAP's XMP
 /// manifest without creating sidecars. This is the only packaging strategy used
 /// by the app in Release.
@@ -22,17 +23,18 @@ nonisolated struct EmbeddedPhotoPackager: CapturePackager {
         self.provenanceWriter = provenanceWriter
     }
 
-    /// Converts a logical package into the single Release HEIC artifact.
+    /// Converts a logical package into the single Release depth-photo artifact.
     ///
-    /// Apple auxiliary depth remains in the HEIC, and TAP-specific metadata is
+    /// Apple auxiliary depth remains in the photo file, and TAP-specific metadata is
     /// injected into XMP without emitting sidecar files.
     ///
-    /// - Tag: PackageEmbeddedDepthHEIC
+    /// - Tag: PackageEmbeddedDepthPhoto
     func package(
         _ capturePackage: CapturePackage,
         assertionSigner: (any CaptureAssertionSigning)?
     ) async throws -> PackagedCaptureArtifact {
         try capturePackage.resolvedOutput.validateForEmbeddedPhotoDepthPackaging()
+        let fileContainer = capturePackage.resolvedOutput.fileContainer
 
         var packagingMetrics = CapturePackagingMetrics()
 
@@ -46,15 +48,17 @@ nonisolated struct EmbeddedPhotoPackager: CapturePackager {
             device: capturePackage.sourceContext.sessionConfiguration.device
         )
 
-        let baseHEICStart = Date()
-        guard let baseHEICData = capturePackage.photo.fileDataRepresentation(with: customizer) else {
+        let basePhotoStart = Date()
+        guard let basePhotoData = capturePackage.photo.fileDataRepresentation(with: customizer) else {
             throw TAPDepthCaptureError.unableToCreatePhotoData
         }
-        packagingMetrics.baseHEICDuration = Date().timeIntervalSince(baseHEICStart)
+        packagingMetrics.baseHEICDuration = Date().timeIntervalSince(basePhotoStart)
+        TAPDiagnostics.cameraCapture.info("base photo materialized profile=\(capturePackage.resolvedOutput.profileID, privacy: .public) container=\(fileContainer.rawValue, privacy: .public) selectedDimensions=\(capturePackage.resolvedOutput.maxPhotoDimensions?.debugDescription ?? "none", privacy: .public) bytes=\(basePhotoData.count, privacy: .public)")
 
         let signingResult = await provenanceWriter.manifestByApplyingCaptureAssertion(
             to: unsignedManifest,
-            baseHEICData: baseHEICData,
+            baseHEICData: basePhotoData,
+            fileContainer: fileContainer,
             depthData: capturePackage.photo.depthData,
             assertionSigner: assertionSigner
         )
@@ -63,14 +67,16 @@ nonisolated struct EmbeddedPhotoPackager: CapturePackager {
         packagingMetrics.metadataDigestDuration = signingResult.metrics.metadataDigestDuration
         packagingMetrics.appAttestDuration = signingResult.metrics.appAttestDuration
 
-        let writeResult = try provenanceWriter.writeManifest(signingResult.manifest, into: baseHEICData)
+        let writeResult = try provenanceWriter.writeManifest(signingResult.manifest, into: basePhotoData)
         packagingMetrics.xmpInjectDuration = writeResult.xmpInjectDuration
         packagingMetrics.xmpVerifyDuration = writeResult.xmpVerifyDuration
+        TAPDiagnostics.cameraCapture.info("unsigned photo packaged profile=\(capturePackage.resolvedOutput.profileID, privacy: .public) container=\(fileContainer.rawValue, privacy: .public) selectedDimensions=\(capturePackage.resolvedOutput.maxPhotoDimensions?.debugDescription ?? "none", privacy: .public) bytes=\(writeResult.data.count, privacy: .public)")
 
         return PackagedCaptureArtifact(
             packageID: capturePackage.job.id,
             strategy: strategy,
             photoData: writeResult.data,
+            fileContainer: fileContainer,
             manifest: signingResult.manifest,
             signatureStatus: signingResult.status,
             packagingMetrics: packagingMetrics,

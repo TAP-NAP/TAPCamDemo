@@ -14,15 +14,16 @@ attestation objects, and assertion objects. It cannot decide that an attestation
 is trustworthy by itself.
 
 The backend must validate attestation results before accepting registration.
-TAPCam HEIC capture signing uses the registered `photo_keyid` key to sign a
-capture `signingBinding` and stores the resulting assertion in the HEIC proof.
+TAPCam photo capture signing uses the registered `photo_keyid` key to sign a
+capture `signingBinding` and stores the resulting assertion in the TAP photo
+proof.
 The client still does not get to decide that the assertion is trustworthy; a
 verifier must check the signature with the registered backend credential.
 
-The app also revalidates the final signed HEIC before Photos export. That check
-does not prove server trust, but it does ensure the exported file still contains
-the expected HEIC container, manifest id, App Attest proof envelope, digest
-binding, and auxiliary depth.
+The app also revalidates the final signed HEIC or JPG before Photos export.
+That check does not prove server trust, but it does ensure the exported file
+still contains the expected container, manifest id, App Attest proof envelope,
+digest binding, and auxiliary depth.
 
 ## Why Keychain Stores keyId
 
@@ -76,7 +77,7 @@ Online request assertions bind the challenge to method, path, query, body hash,
 and optional nonce so an assertion for one request cannot be replayed as
 another request.
 
-TAPCam HEIC capture signing does not use an assertion challenge because the
+TAPCam photo capture signing does not use an assertion challenge because the
 business claim is offline file signing, not server freshness. Its assertion
 binds `schemaID`, `operation`, `captureID`, and `bodySHA256` through the
 canonical `signingBinding`.

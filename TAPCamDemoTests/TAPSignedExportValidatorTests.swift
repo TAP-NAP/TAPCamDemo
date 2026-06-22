@@ -9,7 +9,7 @@ import Testing
 @testable import TAPCamDemo
 
 struct TAPSignedExportValidatorTests {
-    @Test func signedExportValidatorRejectsNonHEICContainerBeforePhotosSave() throws {
+    @Test func signedExportValidatorRejectsWrongContainerBeforePhotosSave() throws {
         let signedData = try TAPDepthHEICWriter.injectingManifest(
             try TAPCaptureProvenanceTestFixtures.sampleSignedManifest(),
             into: TAPCamDemoTestFixtures.sampleThumbnailSourceData()
@@ -28,7 +28,7 @@ struct TAPSignedExportValidatorTests {
         }
     }
 
-    @Test func validatedTAPDepthHEICRejectsRawJPEGBeforePhotosWriterCanBeCalled() throws {
+    @Test func validatedTAPDepthPhotoRejectsRawContainerBeforePhotosWriterCanBeCalled() throws {
         do {
             _ = try TAPCaptureProvenanceWriter().validateSignedExportHEIC(
                 TAPCamDemoTestFixtures.sampleThumbnailSourceData(),
@@ -54,7 +54,7 @@ struct TAPSignedExportValidatorTests {
         )
         let validatorSource = try #require(TAPCamDemoTestSourceInspection.substring(
             in: provenanceSource,
-            from: "func validateSignedExportHEIC",
+            from: "func validateSignedExportPhoto",
             to: "private func validateManifestSchema"
         ))
 
@@ -64,16 +64,16 @@ struct TAPSignedExportValidatorTests {
             .tapManifest,
             .appAttestCaptureProof
         ])
-        #expect(validatorSource.contains("TAPDepthHEICReader.validateHEICContainer"))
+        #expect(validatorSource.contains("TAPDepthPhotoFileReader.validateContainer"))
         #expect(validatorSource.contains("decodedManifest"))
         #expect(validatorSource.contains("validateManifestSchema"))
         #expect(validatorSource.contains("validateManifestID"))
-        #expect(validatorSource.contains("CaptureOutputManifestPolicy.releasePhotoDepthHEIC.validate"))
+        #expect(validatorSource.contains("CaptureOutputManifestPolicy(profile: expectedProfile).validate"))
         #expect(validatorSource.contains("manifest.proofs.count == 1"))
-        #expect(validatorSource.contains("TAPDepthHEICReader.depthData"))
+        #expect(validatorSource.contains("TAPDepthPhotoFileReader.depthData"))
         #expect(validatorSource.contains("CaptureContentDigest.make"))
         #expect(validatorSource.contains("validateCaptureProof"))
-        #expect(validatorSource.contains("ValidatedTAPDepthHEIC"))
+        #expect(validatorSource.contains("ValidatedTAPDepthPhoto"))
     }
 
     @Test func captureOutputManifestPolicyRejectsReleaseFactDrift() throws {

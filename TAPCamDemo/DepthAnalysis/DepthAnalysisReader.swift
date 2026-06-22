@@ -11,14 +11,14 @@ import CoreVideo
 import Foundation
 import ImageIO
 
-/// Reads a TAP Depth HEIC or any Apple depth HEIC into analysis-ready objects.
+/// Reads a TAP depth HEIC/JPG into analysis-ready objects.
 ///
 /// This type belongs to the analysis module: it does not know about live camera
 /// configuration, lens selection, or UI state. It accepts final file bytes and
 /// reconstructs everything from the persisted image container.
 ///
 /// Principle:
-/// - RGB pixels come from the primary HEIC image item via ImageIO.
+/// - RGB pixels come from the primary image item via ImageIO.
 /// - Depth pixels come from Apple's auxiliary depth/disparity attachment and
 ///   are rebuilt as `AVDepthData`.
 /// - Disparity is normalized into metric depth with
@@ -32,7 +32,7 @@ import ImageIO
 ///
 /// Data dependencies:
 /// - `CGImageSourceCreateImageAtIndex` for the visible RGB image.
-/// - `CGImageSourceCopyAuxiliaryDataInfoAtIndex` inside `TAPDepthHEICReader`
+/// - `CGImageSourceCopyAuxiliaryDataInfoAtIndex` inside `TAPDepthPhotoFileReader`
 ///   for `kCGImageAuxiliaryDataTypeDepth` / `kCGImageAuxiliaryDataTypeDisparity`.
 /// - `AVDepthData.depthDataMap` for the `CVPixelBuffer` depth samples.
 /// - `AVDepthData.cameraCalibrationData`, mirrored into the TAP manifest, for
@@ -43,11 +43,12 @@ import ImageIO
 /// - https://developer.apple.com/documentation/avfoundation/avdepthdata
 /// - https://developer.apple.com/documentation/avfoundation/avcameracalibrationdata
 nonisolated enum TAPDepthMapReader {
-    static func analysisInput(from heicData: Data) throws -> TAPDepthAnalysisInput {
-        try TAPDepthAnalysisInputValidation.validateHEICByteCount(heicData.count)
-        try TAPDepthHEICReader.validateHEICContainer(heicData)
+    static func analysisInput(from photoData: Data) throws -> TAPDepthAnalysisInput {
+        try TAPDepthAnalysisInputValidation.validateHEICByteCount(photoData.count)
+        _ = try TAPDepthPhotoFileReader.validateSupportedContainer(photoData)
+        let manifest = try TAPDepthPhotoFileReader.decodedManifest(from: photoData)
 
-        guard let source = CGImageSourceCreateWithData(heicData as CFData, nil),
+        guard let source = CGImageSourceCreateWithData(photoData as CFData, nil),
               let primaryImageDimensions = primaryImageDimensions(from: source) else {
             throw TAPDepthAnalysisError.missingPrimaryImage
         }
@@ -61,11 +62,10 @@ nonisolated enum TAPDepthMapReader {
         }
         let imageOrientation = imageOrientation(from: source)
 
-        guard let depthData = try TAPDepthHEICReader.depthData(from: heicData) else {
+        guard let depthData = try TAPDepthPhotoFileReader.depthData(from: photoData) else {
             throw TAPDepthAnalysisError.missingDepthData
         }
 
-        let manifest = try? TAPDepthHEICReader.decodedManifest(from: heicData)
         let metricDepth = try metricDepthMap(from: depthData, manifest: manifest)
         let heatmap = try TAPDepthHeatmapRenderer.heatmap(for: metricDepth)
         let validMask = try TAPDepthMaskRenderer.validMask(for: metricDepth)
@@ -75,8 +75,8 @@ nonisolated enum TAPDepthMapReader {
             image: image,
             imageOrientation: imageOrientation,
             depthMap: metricDepth,
-            depthAccuracy: manifest?.payload.depth.accuracy ?? depthData.depthDataAccuracy.tapDescription,
-            depthQuality: manifest?.payload.depth.quality ?? depthData.depthDataQuality.tapDescription,
+            depthAccuracy: manifest.payload.depth.accuracy,
+            depthQuality: manifest.payload.depth.quality,
             heatmap: heatmap,
             validMask: validMask
         )

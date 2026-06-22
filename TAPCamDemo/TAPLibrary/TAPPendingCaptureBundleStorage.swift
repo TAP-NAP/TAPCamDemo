@@ -72,12 +72,20 @@ nonisolated struct TAPPendingCaptureBundleStorage {
         }
     }
 
-    func writeUnsignedHEIC(_ data: Data, to bundleURL: URL) throws {
+    func writeUnsignedPhoto(
+        _ data: Data,
+        fileContainer: CapturePhotoFileContainer,
+        to bundleURL: URL
+    ) throws {
         try storagePolicy.write(
             data,
-            to: bundleURL.appendingPathComponent(TAPPendingCaptureBundlePathPolicy.unsignedHEICFilename),
+            to: bundleURL.appendingPathComponent(fileContainer.unsignedFilename),
             fileManager: fileManager
         )
+    }
+
+    func writeUnsignedHEIC(_ data: Data, to bundleURL: URL) throws {
+        try writeUnsignedPhoto(data, fileContainer: .heic, to: bundleURL)
     }
 
     func writeThumbnail(_ data: Data, to bundleURL: URL) throws {
@@ -88,16 +96,24 @@ nonisolated struct TAPPendingCaptureBundleStorage {
         )
     }
 
-    func writeSignedHEIC(_ data: Data, captureID: String) throws {
+    func writeSignedPhoto(
+        _ data: Data,
+        fileContainer: CapturePhotoFileContainer,
+        captureID: String
+    ) throws {
         try storagePolicy.write(
             data,
             to: TAPPendingCaptureBundlePathPolicy.artifactURL(
                 rootURL: rootURL,
                 captureID: captureID,
-                filename: TAPPendingCaptureBundlePathPolicy.signedHEICFilename
+                filename: fileContainer.signedFilename
             ),
             fileManager: fileManager
         )
+    }
+
+    func writeSignedHEIC(_ data: Data, captureID: String) throws {
+        try writeSignedPhoto(data, fileContainer: .heic, captureID: captureID)
     }
 
     func readRecord(captureID: String) throws -> TAPPendingCaptureRecord {
@@ -129,14 +145,14 @@ nonisolated struct TAPPendingCaptureBundleStorage {
         return record
     }
 
-    func heicData(filename: String, captureID: String) throws -> Data {
-        guard let data = try heicDataIfPresent(filename: filename, captureID: captureID) else {
+    func photoData(filename: String, captureID: String) throws -> Data {
+        guard let data = try photoDataIfPresent(filename: filename, captureID: captureID) else {
             throw TAPDepthCaptureError.pendingCaptureDataMissing
         }
         return data
     }
 
-    func heicDataIfPresent(filename: String, captureID: String) throws -> Data? {
+    func photoDataIfPresent(filename: String, captureID: String) throws -> Data? {
         let url = try TAPPendingCaptureBundlePathPolicy.artifactURL(
             rootURL: rootURL,
             captureID: captureID,
@@ -146,6 +162,14 @@ nonisolated struct TAPPendingCaptureBundleStorage {
             return nil
         }
         return try Data(contentsOf: url)
+    }
+
+    func heicData(filename: String, captureID: String) throws -> Data {
+        try photoData(filename: filename, captureID: captureID)
+    }
+
+    func heicDataIfPresent(filename: String, captureID: String) throws -> Data? {
+        try photoDataIfPresent(filename: filename, captureID: captureID)
     }
 
     func thumbnailData(filename: String, captureID: String) throws -> Data? {
@@ -171,7 +195,7 @@ nonisolated struct TAPPendingCaptureBundleStorage {
     }
 
     func cleanupLargeFiles(for record: TAPPendingCaptureRecord) throws {
-        for filename in [record.unsignedHEICFilename, record.signedHEICFilename].compactMap({ $0 }) {
+        for filename in [record.unsignedPhotoFilename, record.signedPhotoFilename].compactMap({ $0 }) {
             let url = try TAPPendingCaptureBundlePathPolicy.artifactURL(
                 rootURL: rootURL,
                 captureID: record.captureID,

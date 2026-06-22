@@ -14,7 +14,10 @@ nonisolated struct CaptureOutputProfileCatalog: Equatable, Sendable {
     static let releaseDefaultProfile = CaptureOutputProfile.releasePhotoDepthHEIC
     static let release = CaptureOutputProfileCatalog(
         defaultProfileID: releaseDefaultProfile.id,
-        profiles: [releaseDefaultProfile]
+        profiles: [
+            releaseDefaultProfile,
+            .releasePhotoDepthJPEG
+        ]
     )
 
     let defaultProfileID: String

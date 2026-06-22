@@ -14,7 +14,6 @@ import UIKit
 /// This keeps the camera surface clean: the lower-left camera control opens the
 /// album, and only this saved-image flow exposes selection and analysis tools.
 struct DepthAlbumPickerView: View {
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.displayScale) private var displayScale
     @ObservedObject private var routeStore: CameraRouteStore
     @StateObject private var viewModel = DepthAlbumPickerViewModel()
@@ -60,8 +59,7 @@ struct DepthAlbumPickerView: View {
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button {
-                    routeStore.returnToCamera()
-                    dismiss()
+                    returnToCameraWithoutAnimation()
                 } label: {
                     Label("Camera", systemImage: "chevron.left")
                 }
@@ -135,6 +133,15 @@ struct DepthAlbumPickerView: View {
                 rowStride: returnScrollRowStride,
                 clearAfterDelay: false
             )
+        }
+    }
+
+    private func returnToCameraWithoutAnimation() {
+        var transaction = Transaction()
+        transaction.animation = nil
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            routeStore.returnToCamera()
         }
     }
 

@@ -10,18 +10,25 @@ open follow-ups.
 
 ## Read First
 
-1. [2026-06-21-tap-library-scroll-memory.md](2026-06-21-tap-library-scroll-memory.md)
+1. [2026-06-22-multi-format-photo-implementation.md](2026-06-22-multi-format-photo-implementation.md)
+   records the implementation for HEIC/JPG TAP depth photo output, max photo
+   dimensions, Settings preference, storage/provenance/analysis generalization,
+   validation status, and the plan-specific score.
+2. [2026-06-22-multi-format-photo-research.md](2026-06-22-multi-format-photo-research.md)
+   records the research for HEIC/JPEG output support, max photo dimensions, and
+   how selected-camera capabilities should shape the implementation plan.
+3. [2026-06-21-tap-library-scroll-memory.md](2026-06-21-tap-library-scroll-memory.md)
    records the current TAP Library scroll-memory plan, the foreground-return
    preference decision, and the plan-specific score rubric for this user journey.
-2. [2026-06-21-assert-verification-panel-sync.md](2026-06-21-assert-verification-panel-sync.md)
+4. [2026-06-21-assert-verification-panel-sync.md](2026-06-21-assert-verification-panel-sync.md)
    records the current `assert` branch verification-panel sync goal, how AI work
    is being traced, and which validation evidence is still pending.
-3. [2026-06-21-refactor-trace.md](2026-06-21-refactor-trace.md) records the
+5. [2026-06-21-refactor-trace.md](2026-06-21-refactor-trace.md) records the
    current readability/security refactor goal, iteration history, AI tool use,
    validation status, and next-round candidates.
-4. [../ProjectScorecard.md](../ProjectScorecard.md) defines the score formula,
+6. [../ProjectScorecard.md](../ProjectScorecard.md) defines the score formula,
    strict gaps, current score, and from-scratch reading order.
-5. [../FutureCameraSpecs.md](../FutureCameraSpecs.md) explains the refactor
+7. [../FutureCameraSpecs.md](../FutureCameraSpecs.md) explains the refactor
    boundary status before future camera features are added.
 
 ## What To Record
@@ -38,6 +45,6 @@ Each trace file should answer these questions:
 - What remains intentionally unfinished?
 
 Do not record secrets, raw App Attest key IDs, raw capture IDs, Photos asset
-identifiers, backend payloads, HEIC bytes, private paths outside this checkout,
+identifiers, backend payloads, photo bytes, private paths outside this checkout,
 or unreviewed model reasoning. Keep the trace focused on auditable engineering
 decisions.

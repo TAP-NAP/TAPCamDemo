@@ -9,7 +9,7 @@ photo-capture `CaptureSourcePlan` produced by Planning. Manual-control writes
 use a separate `CameraManualControlCommandPlan` produced by Planning and
 validated again by `CameraControlService` before any device write.
 
-Output format and quality policy comes from
+Output file format, codec, dimensions, and quality policy come from
 [`CapturePhotoQualityPolicy`](../Output/CapturePhotoQualityPolicy.swift),
 [`CaptureOutputProfileCatalog`](../Output/CaptureOutputProfileCatalog.swift),
 [`CaptureOutputProfileSelectionIntent`](../Output/CaptureOutputProfileSelectionIntent.swift),
@@ -68,24 +68,27 @@ sequenceDiagram
     Pipeline->>Provider: capturePhotoDepth()
     Provider-->>Pipeline: AVCapturePhoto + depthData
     Pipeline->>Output: package(CapturePackage)
-    Output->>Store: ingest unsigned HEIC
+    Output->>Store: ingest unsigned HEIC/JPG
 ```
 
 ## Session Rules
 
 - [CaptureSessionController.swift](CaptureSessionController.swift) is the only
   type that mutates `AVCaptureSession`.
-- FOV-only changes should reuse the current graph when device, format, output,
-  depth state, and requested plan are already compatible.
+- FOV-only changes should reuse the current graph when device, format, output
+  file container, resolved still-photo dimensions, depth state, and requested
+  plan are already compatible.
 - Prewarm and capture use the same configured `ResolvedCaptureOutputProfile` so
   prepared resources match the real output request.
-- Codec availability, depth-delivery support, configured depth-delivery state,
-  and already-configured maximum photo quality are checked through
-  `CapturePhotoOutputCapabilitySnapshot` and
-  `ResolvedCaptureOutputProfile.validatePhotoOutputCapabilities`. Runtime still
-  owns the actual AVFoundation writes and reads the snapshot from the live
-  `AVCapturePhotoOutput` on the session queue.
-- UI must not write codec, depth, or quality values directly into
+- File-type availability, per-file-type codec support, active-format still-photo
+  dimensions, depth-delivery support, configured depth-delivery state,
+  configured `AVCapturePhotoOutput.maxPhotoDimensions`, and already-configured
+  maximum photo quality are checked through `CapturePhotoOutputCapabilitySnapshot`
+  and `ResolvedCaptureOutputProfile.validatePhotoOutputCapabilities`. Runtime
+  still owns the actual AVFoundation writes and reads the snapshot from the
+  live `AVCapturePhotoOutput` on the session queue.
+- UI must not write file type, codec, depth, dimensions, or quality values
+  directly into
   `AVCapturePhotoSettings`; it should request a profile, and Runtime should
   consume the resolved output request.
 - Provider, package, packager, and manifest code must not reinterpret raw

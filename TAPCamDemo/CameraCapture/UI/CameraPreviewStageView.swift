@@ -13,7 +13,7 @@ import SwiftUI
 /// The stage can render an `AVCaptureSession` because it owns the preview layer
 /// bridge. It does not receive capture pipelines, writers, pending stores, App
 /// Attest clients, camera/depth profiles, raw device identifiers, Photos
-/// identifiers, HEIC bytes, manifests, or proofs.
+/// identifiers, photo bytes, manifests, or proofs.
 struct CameraPreviewStageState {
     let nativePreviewAspectRatio: Double
     let focalLengthOptions: [CameraFocalLengthDisplayOption]

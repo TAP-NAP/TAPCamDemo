@@ -8,6 +8,7 @@
 @preconcurrency import AVFoundation
 import CoreGraphics
 import Foundation
+import OSLog
 
 /// Owns the managed SingleCam `AVCaptureSession` and its mutation queue.
 ///
@@ -91,6 +92,8 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         let zoom = plan.zoom?.rawVideoZoomFactor ?? 1.0
         let resolvedOutput = try SingleCamPhotoSettingsFactory.resolvedOutput(
             photoOutput: photoOutput,
+            activeFormat: targetActiveFormat(for: plan),
+            assumesDepthDeliverySupported: true,
             outputProfile: request.outputProfile
         )
         try resolvedOutput.validateCapturePlanDepthConfiguration(
@@ -113,6 +116,11 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             resolvedOutput: resolvedOutput
         ) {
             try CameraControlService.applyZoom(zoom, to: plan.resolvedCaptureDevice)
+            let capabilities = CapturePhotoOutputCapabilitySnapshot(
+                photoOutput: photoOutput,
+                activeFormat: plan.resolvedCaptureDevice.activeFormat
+            )
+            logConfiguredOutput(resolvedOutput, capabilities: capabilities)
             return makeConfigurationResult(
                 plan: plan,
                 photoOutput: photoOutput,
@@ -190,12 +198,23 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             }
 
             photoOutput.maxPhotoQualityPrioritization = resolvedOutput.maxPhotoQualityPrioritization
-            try resolvedOutput.validatePhotoOutputCapabilities(
-                CapturePhotoOutputCapabilitySnapshot(photoOutput: photoOutput)
+            if let maxPhotoDimensions = resolvedOutput.maxPhotoDimensions {
+                photoOutput.maxPhotoDimensions = maxPhotoDimensions.cmVideoDimensions
+            }
+            let availableCapabilities = CapturePhotoOutputCapabilitySnapshot(
+                photoOutput: photoOutput,
+                activeFormat: plan.resolvedCaptureDevice.activeFormat
             )
+            logAvailableOutput(resolvedOutput, capabilities: availableCapabilities)
+            try resolvedOutput.validatePhotoOutputCapabilities(availableCapabilities)
             photoOutput.isDepthDataDeliveryEnabled = resolvedOutput.depthDataDeliveryEnabled
+            let configuredCapabilities = CapturePhotoOutputCapabilitySnapshot(
+                photoOutput: photoOutput,
+                activeFormat: plan.resolvedCaptureDevice.activeFormat
+            )
+            logConfiguredOutput(resolvedOutput, capabilities: configuredCapabilities)
             try resolvedOutput.validatePhotoOutputCapabilities(
-                CapturePhotoOutputCapabilitySnapshot(photoOutput: photoOutput),
+                configuredCapabilities,
                 requireConfiguredState: true
             )
             session.commitConfiguration()
@@ -203,6 +222,36 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             session.commitConfiguration()
             throw error
         }
+    }
+
+    private static func logAvailableOutput(
+        _ resolvedOutput: ResolvedCaptureOutputProfile,
+        capabilities: CapturePhotoOutputCapabilitySnapshot
+    ) {
+        TAPDiagnostics.cameraCapture.info("capture output capabilities profile=\(resolvedOutput.profileID, privacy: .public) container=\(resolvedOutput.fileContainer.rawValue, privacy: .public) fileType=\(resolvedOutput.processedFileType.rawValue, privacy: .public) codec=\(resolvedOutput.requestedCodec.rawValue, privacy: .public) selectedDimensions=\(dimensionsDescription(resolvedOutput.maxPhotoDimensions), privacy: .public) availableFileTypes=\(fileTypesDescription(capabilities), privacy: .public) availableCodecs=\(codecsDescription(capabilities), privacy: .public) supportedDimensions=\(dimensionsDescription(capabilities.supportedMaxPhotoDimensions), privacy: .public)")
+    }
+
+    private static func logConfiguredOutput(
+        _ resolvedOutput: ResolvedCaptureOutputProfile,
+        capabilities: CapturePhotoOutputCapabilitySnapshot
+    ) {
+        TAPDiagnostics.cameraCapture.info("capture output configured profile=\(resolvedOutput.profileID, privacy: .public) container=\(resolvedOutput.fileContainer.rawValue, privacy: .public) fileType=\(resolvedOutput.processedFileType.rawValue, privacy: .public) codec=\(resolvedOutput.requestedCodec.rawValue, privacy: .public) selectedDimensions=\(dimensionsDescription(resolvedOutput.maxPhotoDimensions), privacy: .public) configuredDimensions=\(dimensionsDescription(capabilities.configuredMaxPhotoDimensions), privacy: .public)")
+    }
+
+    private static func fileTypesDescription(_ capabilities: CapturePhotoOutputCapabilitySnapshot) -> String {
+        capabilities.availablePhotoFileTypeIdentifiers.sorted().joined(separator: "|")
+    }
+
+    private static func codecsDescription(_ capabilities: CapturePhotoOutputCapabilitySnapshot) -> String {
+        capabilities.availablePhotoCodecTypes.map(\.rawValue).sorted().joined(separator: "|")
+    }
+
+    private static func dimensionsDescription(_ dimensions: [CapturePhotoDimensions]) -> String {
+        dimensions.map(\.debugDescription).sorted().joined(separator: "|")
+    }
+
+    private static func dimensionsDescription(_ dimensions: CapturePhotoDimensions?) -> String {
+        dimensions?.debugDescription ?? "none"
     }
 
     /// Returns true when the current SingleCam graph already represents the
@@ -248,7 +297,10 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         }
 
         guard (try? resolvedOutput.validatePhotoOutputCapabilities(
-            CapturePhotoOutputCapabilitySnapshot(photoOutput: photoOutput),
+            CapturePhotoOutputCapabilitySnapshot(
+                photoOutput: photoOutput,
+                activeFormat: activeDevice.activeFormat
+            ),
             requireConfiguredState: true
         )) != nil else {
             return false
@@ -287,6 +339,10 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             && activeDimensions.height == requestedDimensions.height
             && abs(Double(activeFormat.videoFieldOfView - requestedFormat.videoFieldOfView)) < 0.01
             && abs(Double(activeFormat.videoMaxZoomFactor - requestedFormat.videoMaxZoomFactor)) < 0.01
+    }
+
+    private static func targetActiveFormat(for plan: CaptureSourcePlan) -> AVCaptureDevice.Format {
+        plan.formatSelection?.videoFormat ?? plan.resolvedCaptureDevice.activeFormat
     }
 
     private static func makeConfigurationResult(

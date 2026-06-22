@@ -13,7 +13,7 @@ import SwiftUI
 ///
 /// `DepthAnalysisView` owns loading and source routing. This stage receives only
 /// display-ready image/depth fields, local selection bindings, and callbacks for
-/// user gestures. It does not receive source identifiers, HEIC bytes, manifests,
+/// user gestures. It does not receive source identifiers, photo bytes, manifests,
 /// proofs, App Attest key IDs, Photos handles, pending-store handles, geometry
 /// caches, or export state.
 struct DepthAnalysisStageView: View {

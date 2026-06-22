@@ -39,7 +39,7 @@ struct CameraCaptureControlsState {
 /// Bottom camera chrome: settings, TAP Library entry, shutter, and camera switch.
 ///
 /// The view receives only presentation fields and action closures. It does not
-/// receive App Attest clients, capture IDs, Photos asset IDs, HEIC bytes,
+/// receive App Attest clients, capture IDs, Photos asset IDs, photo bytes,
 /// manifests, proofs, pending-store handles, or output profile objects.
 struct CameraCaptureControlsView: View {
     let state: CameraCaptureControlsState
@@ -135,6 +135,7 @@ struct CameraCaptureControlsView: View {
         )
         .accessibilityElement()
         .accessibilityLabel("Capture depth photo")
+        .accessibilityIdentifier("camera.capture.shutter")
         .accessibilityAddTraits(.isButton)
         .accessibilityAction {
             onCapture()

@@ -3,11 +3,25 @@
 //  TAPCamDemoTests
 //
 
+import Foundation
 import SwiftUI
 import Testing
 @testable import TAPCamDemo
 
 struct TAPCameraCapturePresentationTests {
+    @Test func cameraUISmokeTestAnchorsStayExplicit() throws {
+        let appSource = try TAPCamDemoTestSourceInspection.source(relativePath: "TAPCamDemo/App/TAPCamDemoApp.swift")
+        let controlsSource = try TAPCamDemoTestSourceInspection.source(relativePath: "TAPCamDemo/CameraCapture/UI/CameraCaptureControlsView.swift")
+        let overlaySource = try TAPCamDemoTestSourceInspection.source(relativePath: "TAPCamDemo/CameraCapture/UI/CameraPreviewDebugOverlayView.swift")
+        let uiTestSource = try TAPCamDemoTestSourceInspection.source(relativePath: "TAPCamDemoUITests/ShutterCaptureSmokeTests.swift")
+
+        #expect(appSource.contains("TAPCAM_UI_TEST_REAL_APP"))
+        #expect(controlsSource.contains(#".accessibilityIdentifier("camera.capture.shutter")"#))
+        #expect(overlaySource.contains(#".accessibilityIdentifier("camera.capture.status")"#))
+        #expect(uiTestSource.contains(#"app.launchEnvironment["TAPCAM_UI_TEST_REAL_APP"] = "1""#))
+        #expect(uiTestSource.contains(#"app.buttons["camera.capture.shutter"]"#))
+    }
+
     @Test func captureLifecycleCoordinatorKeepsPendingSigningWarmupAndRetryPoliciesExplicit() {
         #expect(CaptureLifecycleCoordinator.initialCameraActions(startsAutomatically: true) == [.startCamera])
         #expect(CaptureLifecycleCoordinator.initialCameraActions(startsAutomatically: false) == [])
@@ -38,7 +52,7 @@ struct TAPCameraCapturePresentationTests {
         ])
         #expect(CaptureLifecycleCoordinator.scenePhaseActions(
             for: .active,
-            shouldForceCameraRouteOnForeground: true
+            shouldReturnToCameraOnForeground: true
         ) == [
             .restoreCameraRoute,
             .loadRecentTAPLibraryPreview,
@@ -66,7 +80,7 @@ struct TAPCameraCapturePresentationTests {
         #expect(!CaptureLifecycleCoordinator.shouldRestoreCamera(for: .active))
         #expect(CaptureLifecycleCoordinator.shouldRestoreCamera(
             for: .active,
-            shouldForceCameraRouteOnForeground: true
+            shouldReturnToCameraOnForeground: true
         ))
         #expect(!CaptureLifecycleCoordinator.shouldRestoreCamera(for: .inactive))
         #expect(!CaptureLifecycleCoordinator.shouldRestoreCamera(for: .background))
@@ -102,28 +116,56 @@ struct TAPCameraCapturePresentationTests {
     }
 
     @Test func cameraRouteForegroundPreferenceDefaultsToDisabled() throws {
-        #expect(!CameraRoutePreferences.defaultForceCameraOnForegroundAfterDelay)
-        #expect(!CameraRoutePreferences.forceCameraOnForegroundAfterDelayKey.isEmpty)
-        #expect(CameraRoutePreferences.foregroundCameraReturnDelay == 10)
+        let suiteName = "TAPCameraCapturePresentationTests-\(UUID().uuidString)"
+        let userDefaults = try #require(UserDefaults(suiteName: suiteName))
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+
+        #expect(!CameraRoutePreferences.defaultReturnToCameraOnForeground)
+        #expect(!CameraRoutePreferences.returnToCameraOnForegroundKey.isEmpty)
+        #expect(!CameraRoutePreferences.returnToCameraOnForeground(in: userDefaults))
+
+        userDefaults.set(true, forKey: CameraRoutePreferences.returnToCameraOnForegroundKey)
+
+        #expect(CameraRoutePreferences.returnToCameraOnForeground(in: userDefaults))
     }
 
-    @Test func foregroundCameraRouteRestoreRequiresEnabledPreferenceAndElapsedDelay() throws {
-        #expect(!CaptureLifecycleCoordinator.shouldForceCameraRouteOnForeground(
-            isEnabled: false,
-            backgroundElapsedTime: 11
+    @Test @MainActor func foregroundCameraRouteRestoreRequiresEnabledPreferenceAndPriorInactivePhase() throws {
+        let coordinator = CaptureLifecycleCoordinator()
+
+        #expect(!coordinator.foregroundRouteRestorePolicy(
+            for: .active,
+            returnsToCameraOnForeground: true
         ))
-        #expect(!CaptureLifecycleCoordinator.shouldForceCameraRouteOnForeground(
-            isEnabled: true,
-            backgroundElapsedTime: nil
+        #expect(!coordinator.foregroundRouteRestorePolicy(
+            for: .inactive,
+            returnsToCameraOnForeground: true
         ))
-        #expect(!CaptureLifecycleCoordinator.shouldForceCameraRouteOnForeground(
-            isEnabled: true,
-            backgroundElapsedTime: 10
+        #expect(coordinator.foregroundRouteRestorePolicy(
+            for: .active,
+            returnsToCameraOnForeground: true
         ))
-        #expect(CaptureLifecycleCoordinator.shouldForceCameraRouteOnForeground(
-            isEnabled: true,
-            backgroundElapsedTime: 10.001
+
+        #expect(!coordinator.foregroundRouteRestorePolicy(
+            for: .background,
+            returnsToCameraOnForeground: false
         ))
+        #expect(!coordinator.foregroundRouteRestorePolicy(
+            for: .active,
+            returnsToCameraOnForeground: false
+        ))
+    }
+
+    @Test func foregroundCameraRouteRestoreDisablesNavigationAnimation() throws {
+        let source = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CaptureLifecycleCoordinator.swift"
+        )
+
+        #expect(source.contains("restoreCameraRouteWithoutAnimation"))
+        #expect(source.contains("transaction.animation = nil"))
+        #expect(source.contains("transaction.disablesAnimations = true"))
+        #expect(source.contains("withTransaction(transaction)"))
     }
 
     @Test func cameraCaptureControlsStateLocksLibraryWhileCaptureWrites() throws {

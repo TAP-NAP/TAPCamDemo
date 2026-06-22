@@ -119,6 +119,10 @@ The app target also sets `APP_ATTEST_ENVIRONMENT` to `development` for Debug and
   endpoint paths, query strings, and fragments.
 - Tests use `TAPCAM_XCTEST_HOST=1` to avoid entering permission and camera
   startup flows in app-hosted unit tests.
+- UI smoke tests that intentionally exercise the real camera app set
+  `TAPCAM_UI_TEST_REAL_APP=1`. That override keeps app-hosted unit tests fast
+  while allowing `TAPCamDemoUITests` to launch `StartupGateView` and the real
+  capture UI.
 
 ## Related Documents
 

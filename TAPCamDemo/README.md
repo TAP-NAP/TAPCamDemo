@@ -9,7 +9,7 @@ The iOS app target compiles all Swift files under this tree.
 flowchart TD
     App["App\nstartup + App Attest runtime"] --> Camera["CameraCapture\nlive SingleCam capture"]
     Camera --> Library["TAPLibrary\npending queue + export"]
-    Library --> Analysis["DepthAnalysis\nsaved HEIC inspection"]
+    Library --> Analysis["DepthAnalysis\nsaved TAP depth photo inspection"]
     App --> Library
 
     click App "App/README.md"
@@ -21,9 +21,9 @@ flowchart TD
 | Module | README | Owns |
 | --- | --- | --- |
 | App | [App/README.md](App/README.md) | App root, first-install permissions, App Attest runtime, diagnostics. |
-| CameraCapture | [CameraCapture/README.md](CameraCapture/README.md) | UI, planning, AVFoundation runtime, logical package, unsigned HEIC handoff. |
+| CameraCapture | [CameraCapture/README.md](CameraCapture/README.md) | UI, planning, AVFoundation runtime, logical package, unsigned HEIC/JPG handoff. |
 | TAPLibrary | [TAPLibrary/README.md](TAPLibrary/README.md) | Pending records, serial signing/export queue, retry states, cleanup. |
-| DepthAnalysis | [DepthAnalysis/README.md](DepthAnalysis/README.md) | HEIC/depth readback, heatmap, mask, planes, point cloud, saved capture inspection. |
+| DepthAnalysis | [DepthAnalysis/README.md](DepthAnalysis/README.md) | HEIC/JPG depth readback, heatmap, mask, planes, point cloud, saved capture inspection. |
 
 ## Boundary Rules
 

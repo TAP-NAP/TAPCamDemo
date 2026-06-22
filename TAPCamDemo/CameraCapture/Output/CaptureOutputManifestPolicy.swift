@@ -16,6 +16,9 @@ nonisolated struct CaptureOutputManifestPolicy: Equatable, Sendable {
     static let releasePhotoDepthHEIC = CaptureOutputManifestPolicy(
         profile: .releasePhotoDepthHEIC
     )
+    static let releasePhotoDepthJPEG = CaptureOutputManifestPolicy(
+        profile: .releasePhotoDepthJPEG
+    )
 
     let requestedCodec: String
     let depthDataDeliveryEnabled: Bool
@@ -77,7 +80,7 @@ nonisolated enum CaptureOutputManifestPolicyViolation: String, Equatable, Sendab
     var readerDescription: String {
         switch self {
         case .requestedCodec:
-            "requestedCodec must be HEVC"
+            "requestedCodec must match the reviewed output profile"
         case .depthDataDeliveryEnabled:
             "depthDataDeliveryEnabled must match Release"
         case .embedsDepthDataInPhoto:

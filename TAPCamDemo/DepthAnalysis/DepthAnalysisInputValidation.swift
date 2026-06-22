@@ -10,12 +10,12 @@ import Foundation
 
 /// Fail-closed input limits shared by the local depth-analysis reader and tools.
 ///
-/// The analysis surface accepts saved or pending HEIC bytes. Before those bytes
+/// The analysis surface accepts saved or pending TAP depth photo bytes. Before those bytes
 /// fan out into RGB rendering, dense Float32 samples, masks, point clouds, and
 /// plane-growth caches, this type keeps the cheap structural checks in one
 /// place: file size, depth-map dimensions, sample count, and camera intrinsics.
 nonisolated enum TAPDepthAnalysisInputValidation {
-    /// A TAP depth HEIC is expected to be a still image with Apple auxiliary
+    /// A TAP depth photo is expected to be a still image with Apple auxiliary
     /// depth. Larger inputs should be rejected before ImageIO and AVDepthData
     /// work expand them into decoded images and Float32 sample arrays.
     static let maximumHEICByteCount = 64 * 1024 * 1024

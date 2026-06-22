@@ -1,9 +1,9 @@
 # CameraCapture Output
 
 `CameraCapture/Output` converts a successful photo-depth capture into the TAP
-HEIC contract. It builds the logical package, constructs the TAP manifest,
-embeds that manifest into the Apple HEIC, and hands the unsigned artifact to
-TAP Library for signing and export.
+depth photo contract. It builds the logical package, constructs the TAP
+manifest, embeds that manifest into an Apple HEIC or JPG photo-depth file, and
+hands the unsigned artifact to TAP Library for signing and export.
 
 Output does not talk to Photos directly and does not own retry behavior.
 
@@ -20,12 +20,12 @@ Output does not talk to Photos directly and does not own retry behavior.
 | Manifest output-facts policy | [CaptureOutputManifestPolicy.swift](CaptureOutputManifestPolicy.swift) |
 | Logical capture result | [CapturePackage.swift](CapturePackage.swift) |
 | Packager protocol and artifact model | [CapturePackager.swift](CapturePackager.swift) |
-| Embedded HEIC packaging | [EmbeddedPhotoPackager.swift](EmbeddedPhotoPackager.swift) |
+| Embedded photo-depth packaging | [EmbeddedPhotoPackager.swift](EmbeddedPhotoPackager.swift) |
 | TAP provenance write and export-validation boundary | [TAPCaptureProvenanceWriter.swift](TAPCaptureProvenanceWriter.swift) |
 | TAP manifest schema | [TAPDepthManifestSchema.swift](TAPDepthManifestSchema.swift) |
 | Manifest construction | [TAPDepthManifestBuilder.swift](TAPDepthManifestBuilder.swift) |
 | Manifest encoding/support | [TAPDepthManifestEncoding.swift](TAPDepthManifestEncoding.swift), [TAPDepthManifestSupport.swift](TAPDepthManifestSupport.swift) |
-| HEIC XMP injection | [TAPDepthHEICWriter.swift](TAPDepthHEICWriter.swift) |
+| TAP depth photo XMP injection and HEIC compatibility wrappers | [TAPDepthHEICWriter.swift](TAPDepthHEICWriter.swift) |
 | Photo metadata customization | [TAPPhotoFileMetadataCustomizer.swift](TAPPhotoFileMetadataCustomizer.swift) |
 | App Attest capture digest and signer | [CaptureContentDigest.swift](CaptureContentDigest.swift), [AppAttestCaptureAssertionSigner.swift](AppAttestCaptureAssertionSigner.swift) |
 | Photos writer used by TAP Library | [PhotoLibraryWriter.swift](PhotoLibraryWriter.swift) |
@@ -36,11 +36,11 @@ Output does not talk to Photos directly and does not own retry behavior.
 flowchart TD
     Result["SingleCamPhotoCaptureResult"] --> Package["CapturePackage"]
     Package --> Manifest["TAPDepthManifestBuilder"]
-    Package --> BaseHEIC["AVCapturePhoto.fileDataRepresentation"]
+    Package --> BasePhoto["AVCapturePhoto.fileDataRepresentation"]
     Manifest --> Provenance["TAPCaptureProvenanceWriter.writeManifest"]
-    BaseHEIC --> Provenance
-    Provenance --> Writer["TAPDepthHEICWriter"]
-    Writer --> Artifact["PackagedCaptureArtifact\nunsigned HEIC"]
+    BasePhoto --> Provenance
+    Provenance --> Writer["TAPDepthPhotoFileWriter"]
+    Writer --> Artifact["PackagedCaptureArtifact\nunsigned HEIC/JPG"]
     Artifact --> Pending["TAPPendingCaptureArtifactWriter"]
 
     click Package "CapturePackage.swift"
@@ -54,39 +54,40 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    Unsigned["unsigned HEIC\nproofs: []"] --> Digest["CaptureContentDigest"]
+    Unsigned["unsigned HEIC/JPG\nproofs: []"] --> Digest["CaptureContentDigest"]
     Digest --> Assertion["AppAttestCaptureAssertionSigner"]
     Assertion --> Proof["CaptureAssertionProof"]
     Proof --> Provenance["TAPCaptureProvenanceWriter"]
     Unsigned --> Provenance
-    Provenance --> Writer["TAPDepthHEICWriter"]
-    Writer --> Signed["signed HEIC\nproofs[0]"]
-    Signed --> Validator["validateSignedExportHEIC"]
-    Validator --> Photos["PhotoLibraryWriter.saveDepthHEIC"]
+    Provenance --> Writer["TAPDepthPhotoFileWriter"]
+    Writer --> Signed["signed HEIC/JPG\nproofs[0]"]
+    Signed --> Validator["validateSignedExportPhoto"]
+    Validator --> Photos["PhotoLibraryWriter.saveDepthPhoto"]
 ```
 
 The shutter-time packager emits `proofs: []`. The pending queue later asks
-`TAPCaptureProvenanceWriter` to read the unsigned HEIC, validate that the queue
-record `captureID` matches `manifest.payload.id`, recompute the RGB/depth/metadata
-digest, create the App Attest capture proof, inject `manifest.proofs[0]`, and
-return the signed HEIC for export.
+`TAPCaptureProvenanceWriter` to read the unsigned TAP depth photo file, validate
+that the queue record `captureID` matches `manifest.payload.id`, recompute the
+container-specific RGB/depth/metadata digest, create the App Attest capture
+proof, inject `manifest.proofs[0]`, and return the signed TAP depth photo file
+for export.
 
 If shutter-time proof creation is unavailable or fails, the packager keeps
 `proofs: []` and returns a fixed public `unsigned` reason. It does not place raw
-`localizedDescription`, paths, identifiers, App Attest key IDs, proofs, or HEIC
+`localizedDescription`, paths, identifiers, App Attest key IDs, proofs, or photo
 bytes into signature status.
 
 Immediately before export, the same provenance boundary re-reads the final
-signed bytes with `validateSignedExportHEIC`. This is not a user-visible
-feature. It is a fail-closed guard that checks the actual HEIC container type,
-manifest schema and `payload.id`, Release output facts through
+signed bytes with `validateSignedExportPhoto`. This is not a user-visible
+feature. It is a fail-closed guard that checks the actual HEIC or JPG container
+type, manifest schema and `payload.id`, Release output facts through
 `CaptureOutputManifestPolicy`, exactly one App Attest proof, proof
 value/digest/signing binding, and Apple auxiliary depth/disparity before
-`PhotoLibraryWriter.saveDepthHEIC` can ask Photos for access. The Photos writer
-accepts `ValidatedTAPDepthHEIC`, not arbitrary `Data`, so call sites must pass
+`PhotoLibraryWriter.saveDepthPhoto` can ask Photos for access. The Photos writer
+accepts `ValidatedTAPDepthPhoto`, not arbitrary `Data`, so call sites must pass
 through this final gate first.
 
-`ValidatedTAPDepthHEIC` has no module-wide public construction path; the
+`ValidatedTAPDepthPhoto` has no module-wide public construction path; the
 provenance writer is the only production file that can mint that trusted wrapper.
 
 ## Output Profile Contract
@@ -94,8 +95,8 @@ provenance writer is the only production file that can mint that trusted wrapper
 Read the output contract in this order:
 
 1. [CaptureOutputProfileCatalog.swift](CaptureOutputProfileCatalog.swift)
-   names the executable profile catalog. Release currently has one default
-   profile and no alternates.
+   names the executable profile catalog. Release currently has reviewed HEIC
+   and JPG photo-depth profiles; the default remains HEIC.
 2. [CaptureOutputProfileSelectionIntent.swift](CaptureOutputProfileSelectionIntent.swift)
    is the pure future request boundary for choosing a profile from that
    catalog. It fails closed when the catalog is invalid, the requested profile
@@ -105,8 +106,8 @@ Read the output contract in this order:
    strings when a requested profile is missing or invalid.
 3. [CapturePhotoQualityPolicy.swift](CapturePhotoQualityPolicy.swift) names the
    app-level quality policy before it resolves to AVFoundation settings.
-4. [CaptureOutputProfile.swift](CaptureOutputProfile.swift) names the only
-   current Release profile: `releasePhotoDepthHEIC`.
+4. [CaptureOutputProfile.swift](CaptureOutputProfile.swift) names the current
+   Release profiles: `releasePhotoDepthHEIC` and `releasePhotoDepthJPEG`.
 5. [CaptureOutputResourcePlan.swift](CaptureOutputResourcePlan.swift) names the
    logical resources in the reviewed output contract. The current Release plan
    requires the primary photo, Apple auxiliary depth, TAP manifest, and App
@@ -148,10 +149,12 @@ Read the output contract in this order:
    [TAPSignedExportValidatorTests.swift](../../../TAPCamDemoTests/TAPSignedExportValidatorTests.swift)
    covers the final signed-export validation before Photos.
 
-`CaptureOutputProfile` is internal output policy, not a user-facing format or
-quality feature. The current app still saves one TAP photo-depth HEIC. There is
-no JPEG export option, quality slider, RAW output, Live Photo output, or extra
-saved artifact in this refactor.
+`CaptureOutputProfile` is internal output policy, not a raw UI setting. The
+visible Settings picker resolves to a reviewed catalog profile before Runtime
+sees it. The current app saves one TAP photo-depth artifact per capture, either
+HEIC or JPG. There is no hidden container fallback, quality slider, RAW output,
+Live Photo output, 24 MP deferred delivery, or extra saved artifact in this
+change.
 
 `CaptureOutputProfileSelectionIntent` is also internal policy. It does not add
 an output setting, persist a preference, write a manifest field, or bypass
@@ -161,16 +164,18 @@ Future visible status text should use `CaptureOutputProfileSelectionPresentation
 so raw catalog/profile identifiers do not leak into UI labels.
 
 `ResolvedCaptureOutputProfile` is the Runtime handoff value. It is created by
-resolving a validated `CaptureOutputProfile` against current photo codec
-availability. Runtime then validates that resolved request against a
+resolving a validated `CaptureOutputProfile` against current photo file-type,
+per-file-type codec, depth, quality, and active-format dimension availability.
+Runtime then validates that resolved request against a
 `CapturePhotoOutputCapabilitySnapshot` from the live `AVCapturePhotoOutput` when
-configuring or reusing the graph. That snapshot keeps codec availability,
-depth-delivery support, configured depth-delivery state, and configured maximum
-quality checks in one place while Runtime still owns the actual AVFoundation
-writes. `CaptureSessionController` stores the resolved value in
+configuring or reusing the graph. That snapshot keeps file type, codec,
+depth-delivery support, configured depth-delivery state, configured maximum
+quality, active-format supported dimensions, and configured output dimensions in
+one place while Runtime still owns the actual AVFoundation writes.
+`CaptureSessionController` stores the resolved value in
 `SessionConfigurationResult`; provider, package, packager, and manifest code
 then consume it instead of re-reading raw profile fields or writing AVFoundation
-format, depth, or quality settings directly.
+format, depth, quality, or dimension settings directly.
 
 `CaptureOutputResourcePlan` is the resource-level companion to the resolved
 profile. It explains what kind of resources must exist for the current Release
@@ -185,12 +190,22 @@ required before export, but it is not itself an input to the App Attest content
 digest; the digest covers the current primary photo, auxiliary depth, and
 manifest payload facts.
 
+`PhotoLibraryWriter` receives only a `ValidatedTAPDepthPhoto`. It stages those
+final bytes as a temporary `.heic` or `.jpg` file and gives Photos that file URL
+with the matching UTType. Do not switch this back to `addResource(with:data:)`
+without repeating the physical-device JPG audit: on iPhone 15 Pro, data-based
+JPG import saved the asset but the Photos round-trip original lost
+`tapdepth:Manifest`.
+
 ## Profile Fields
 
 | Field | Current Release Meaning |
 | --- | --- |
-| `container` | `embeddedPhotoDepthHEIC`; one Apple HEIC with auxiliary depth and TAP XMP. |
-| `codecPreference` | `[.hevc]`; JPEG fallback is a contract violation for this profile. |
+| `container` | `embeddedPhotoDepthHEIC` or `embeddedPhotoDepthJPEG`; one Apple photo file with auxiliary depth and TAP XMP. |
+| `fileContainer` | `.heic` maps to `AVFileType.heic` and `UTType.heic`; `.jpeg` maps to `AVFileType.jpg` and `UTType.jpeg`. |
+| `codecPreference` | HEIC uses `[.hevc]`; JPG uses `[.jpeg]`. Cross-container codec fallback is a contract violation. |
+| `photoDimensionsPolicy` | `.largestStandardSupported`; Runtime chooses the largest supported non-deferred still-photo dimensions for the active camera format and writes them to output and per-shot settings. |
+| `compressionQuality` | `1.0`; passed through `AVVideoQualityKey` in processed photo settings. It is still not a file-size guarantee. |
 | `requiresDepthData` | `true`; depth is required, not best effort. |
 | `depthDataDeliveryEnabled` | `true`; Runtime must request depth delivery from `AVCapturePhotoOutput`. |
 | `embedsDepthDataInPhoto` | `true`; Apple auxiliary depth must remain inside the photo artifact. |
@@ -199,46 +214,50 @@ manifest payload facts.
 
 ## Contract Rules
 
-- Release output is one embedded HEIC, not sidecar JSON or debug bundles.
-- The current release output policy is `CaptureOutputProfile.releasePhotoDepthHEIC`:
-  HEVC only, embedded depth enabled, filtered depth enabled, required depth, and
-  `CapturePhotoQualityPolicy.releaseQuality`.
+- Release output is one embedded TAP depth photo file, not sidecar JSON or
+  debug bundles.
+- The current release output policies are
+  `CaptureOutputProfile.releasePhotoDepthHEIC` and
+  `CaptureOutputProfile.releasePhotoDepthJPEG`. Both require embedded depth,
+  filtered depth, required depth, `CapturePhotoQualityPolicy.releaseQuality`,
+  and a matching reviewed file container/codec pair.
 - `CapturePhotoQualityPolicy` names quality intent before Runtime maps it to
   `AVCapturePhotoOutput.QualityPrioritization`. It is still internal policy,
   not a visible quality setting. The current Release policy preserves the
   reviewed depth contract but does not guarantee final byte size, compression
   ratio, resolution, or visual quality.
-- JPEG fallback is deliberately rejected for the Release HEIC profile. Future
-  JPEG/RAW/Live Photo/video work needs a separate profile, validation rule,
-  manifest story, and packaging path before UI can request it.
+- JPG is a first-class TAP depth photo profile, not a HEIC fallback. If the
+  selected camera cannot satisfy the selected file type, codec, depth, quality,
+  or dimensions, camera status is blocked and the shutter must stay unavailable.
 - The TAP manifest schema keys and enum raw values are external contract.
-- HEIC metadata injection must preserve the primary image and Apple auxiliary
-  depth attachments without a pixel decode/re-encode step.
+- TAP photo metadata injection must preserve the primary image and Apple
+  auxiliary depth attachments without a pixel decode/re-encode step.
 - Capture signing is offline file proofing, not a normal protected API request.
 - Packagers and TAP Library workers should use `TAPCaptureProvenanceWriter`
   instead of directly constructing proof-bearing manifests.
 - `manifestByApplyingCaptureAssertion` is the non-throwing shutter-time path;
-  `signedHEICData` is the throwing pending-signing path and requires the
+  `signedPhotoData` is the throwing pending-signing path and requires the
   expected queue `captureID`.
-- `validateSignedExportHEIC` is the final export gate for signed TAP depth
+- `validateSignedExportPhoto` is the final export gate for signed TAP depth
   artifacts. Queue status and filenames are scheduling hints; the signed bytes
   themselves must pass container, manifest schema/id, Release output facts,
   proof, digest binding, and auxiliary depth validation before Photos save.
 
 ## Future Profile Rules
 
-- Do not turn `releasePhotoDepthHEIC` into a multi-format fallback profile.
-- Add a new catalog profile for a new JPEG, RAW, Live Photo, video, or
-  alternative HEIC-depth path.
+- Do not turn `releasePhotoDepthHEIC` or `releasePhotoDepthJPEG` into
+  multi-format fallback profiles.
+- Add a new catalog profile for RAW, Live Photo, video, 24 MP deferred delivery,
+  or an alternative HEIC/JPG-depth path.
 - Add validation rules for every new invalid combination before UI can request
   it.
 - Add or update the resource plan so readers can tell whether App Attest signs
-  one HEIC, multiple resources, RAW bytes, Live Photo resources, video
-  resources, C2PA assertions, or some combination.
+  one TAP depth photo file, multiple resources, RAW bytes, Live Photo resources,
+  video resources, C2PA assertions, or some combination.
 - Explain whether the TAP manifest schema changes.
-- Explain what App Attest signs: one HEIC, multiple resources, RAW bytes, Live
-  Photo resources, or video resources.
+- Explain what App Attest signs: one TAP depth photo file, multiple resources,
+  RAW bytes, Live Photo resources, or video resources.
 - Explain whether `PhotoLibraryWriter` and Depth Analysis read the artifact or
   reject it.
-- Keep `validateSignedExportHEIC` as the Photos gate for the current signed TAP
-  depth HEIC path. Do not export unsigned HEICs or bare `Data`.
+- Keep `validateSignedExportPhoto` as the Photos gate for signed TAP depth photo
+  paths. Do not export unsigned photo files or bare `Data`.

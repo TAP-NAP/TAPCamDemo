@@ -15,6 +15,8 @@ nonisolated enum TAPPendingCaptureBundlePathPolicy {
     static let recordFilename = "bundle.json"
     static let unsignedHEICFilename = "unsigned.heic"
     static let signedHEICFilename = "signed.heic"
+    static let unsignedJPEGFilename = "unsigned.jpg"
+    static let signedJPEGFilename = "signed.jpg"
     static let thumbnailFilename = "thumbnail.jpg"
 
     static func bundleURL(rootURL: URL, captureID: String) throws -> URL {
@@ -36,8 +38,8 @@ nonisolated enum TAPPendingCaptureBundlePathPolicy {
             throw TAPDepthCaptureError.invalidPendingCaptureBundlePath("record captureID must match bundle directory")
         }
 
-        try validateOptionalArtifactFilename(record.unsignedHEICFilename)
-        try validateOptionalArtifactFilename(record.signedHEICFilename)
+        try validateOptionalArtifactFilename(record.unsignedPhotoFilename)
+        try validateOptionalArtifactFilename(record.signedPhotoFilename)
         try validateOptionalArtifactFilename(record.thumbnailFilename)
     }
 
@@ -79,6 +81,8 @@ nonisolated enum TAPPendingCaptureBundlePathPolicy {
     private static let artifactFilenames: Set<String> = [
         unsignedHEICFilename,
         signedHEICFilename,
+        unsignedJPEGFilename,
+        signedJPEGFilename,
         thumbnailFilename
     ]
 }

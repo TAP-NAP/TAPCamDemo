@@ -23,7 +23,7 @@ nonisolated protocol TAPPendingCaptureExporting: Sendable {
     ) async throws
 }
 
-/// Serial background processor for staged TAP depth HEIC captures.
+/// Serial background processor for staged TAP depth photo captures.
 ///
 /// The worker only reads bundle state from `TAPPendingCaptureStore`; it does not
 /// depend on the current camera UI selection. This is the important split that
@@ -99,7 +99,7 @@ actor TAPPendingCaptureProcessor {
 
         var processedCaptureIDs = Set<String>()
         while let candidate = await nextProcessingCandidate(store: store, excludingCaptureIDs: processedCaptureIDs) {
-            TAPDiagnostics.pendingCapture.info("worker candidate workerID=\(workerID, privacy: .public) captureID=\(candidate.captureID, privacy: .private) status=\(candidate.status.rawValue, privacy: .public) retryCount=\(candidate.retryCount, privacy: .public) signedHEIC=\(candidate.signedHEICFilename != nil, privacy: .public)")
+            TAPDiagnostics.pendingCapture.info("worker candidate workerID=\(workerID, privacy: .public) captureID=\(candidate.captureID, privacy: .private) status=\(candidate.status.rawValue, privacy: .public) retryCount=\(candidate.retryCount, privacy: .public) container=\(candidate.photoFileContainer.rawValue, privacy: .public) signedPhoto=\(candidate.signedPhotoFilename != nil, privacy: .public)")
             processedCaptureIDs.insert(candidate.captureID)
             await process(candidate, store: store, signer: signer, exporter: exporter)
         }
@@ -157,10 +157,10 @@ actor TAPPendingCaptureProcessor {
                 try await exporter.export(signedRecord, store: store)
 
             case .exportSigned:
-                if record.signedHEICFilename != nil,
+                if record.signedPhotoFilename != nil,
                    record.status != .signed,
                    record.status != .exporting {
-                    TAPDiagnostics.pendingCapture.info("process route export existing signedHEIC captureID=\(record.captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public)")
+                    TAPDiagnostics.pendingCapture.info("process route export existing signedPhoto captureID=\(record.captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public)")
                 } else {
                     TAPDiagnostics.pendingCapture.info("process route export captureID=\(record.captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public)")
                 }
@@ -208,23 +208,42 @@ private struct AppAttestPendingCaptureSigner: TAPPendingCaptureSigning {
         _ = try await store.updateStatus(captureID: record.captureID, status: .signing)
         TAPDiagnostics.pendingCapture.info("sign status updated captureID=\(record.captureID, privacy: .private) status=\(TAPPendingCaptureStatus.signing.rawValue, privacy: .public)")
 
-        let unsignedData = try await store.unsignedHEICData(captureID: record.captureID)
+        let unsignedData = try await store.unsignedPhotoData(captureID: record.captureID)
         TAPDiagnostics.pendingCapture.info("sign unsigned data loaded captureID=\(record.captureID, privacy: .private) bytes=\(unsignedData.count, privacy: .public)")
-        let signedHEIC = try await provenanceWriter.signedHEICData(
+        let signedPhoto = try await provenanceWriter.signedPhotoData(
             from: unsignedData,
             expectedCaptureID: record.captureID,
+            expectedProfile: record.outputProfile,
             assertionSigner: signer
         )
-        TAPDiagnostics.pendingCapture.info("sign provenance ready captureID=\(record.captureID, privacy: .private) manifestID=\(signedHEIC.manifest.payload.id, privacy: .private) keyID=\(signedHEIC.keyID, privacy: .private)")
-        let signedRecord = try await store.storeSignedHEIC(signedHEIC.data, captureID: record.captureID)
-        TAPDiagnostics.pendingCapture.info("sign success captureID=\(record.captureID, privacy: .private) signedBytes=\(signedHEIC.data.count, privacy: .public)")
+        TAPDiagnostics.pendingCapture.info("sign provenance ready captureID=\(record.captureID, privacy: .private) container=\(signedPhoto.fileContainer.rawValue, privacy: .public) manifestID=\(signedPhoto.manifest.payload.id, privacy: .private) keyID=\(signedPhoto.keyID, privacy: .private)")
+        let signedRecord = try await store.storeSignedPhoto(signedPhoto.data, captureID: record.captureID)
+        TAPDiagnostics.pendingCapture.info("sign success captureID=\(record.captureID, privacy: .private) signedBytes=\(signedPhoto.data.count, privacy: .public)")
         return signedRecord
     }
 }
 
 nonisolated struct PhotoLibraryPendingCaptureExportActions: Sendable {
     let existingAssetIdentifier: @Sendable (String) async throws -> String?
-    let saveValidatedSignedHEIC: @Sendable (Data, TAPPendingCaptureRecord) async throws -> String
+    let saveValidatedSignedPhoto: @Sendable (Data, TAPPendingCaptureRecord) async throws -> String
+
+    init(
+        existingAssetIdentifier: @escaping @Sendable (String) async throws -> String?,
+        saveValidatedSignedPhoto: @escaping @Sendable (Data, TAPPendingCaptureRecord) async throws -> String
+    ) {
+        self.existingAssetIdentifier = existingAssetIdentifier
+        self.saveValidatedSignedPhoto = saveValidatedSignedPhoto
+    }
+
+    init(
+        existingAssetIdentifier: @escaping @Sendable (String) async throws -> String?,
+        saveValidatedSignedHEIC: @escaping @Sendable (Data, TAPPendingCaptureRecord) async throws -> String
+    ) {
+        self.init(
+            existingAssetIdentifier: existingAssetIdentifier,
+            saveValidatedSignedPhoto: saveValidatedSignedHEIC
+        )
+    }
 
     static func live(
         provenanceWriter: TAPCaptureProvenanceWriter = TAPCaptureProvenanceWriter()
@@ -233,13 +252,14 @@ nonisolated struct PhotoLibraryPendingCaptureExportActions: Sendable {
             existingAssetIdentifier: { captureID in
                 try await PhotoLibraryWriter.depthAssetIdentifier(captureID: captureID)
             },
-            saveValidatedSignedHEIC: { signedData, record in
-                let validatedHEIC = try provenanceWriter.validateSignedExportHEIC(
+            saveValidatedSignedPhoto: { signedData, record in
+                let validatedPhoto = try provenanceWriter.validateSignedExportPhoto(
                     signedData,
-                    expectedCaptureID: record.captureID
+                    expectedCaptureID: record.captureID,
+                    expectedProfile: record.outputProfile
                 )
-                return try await PhotoLibraryWriter.saveDepthHEIC(
-                    validatedHEIC,
+                return try await PhotoLibraryWriter.saveDepthPhoto(
+                    validatedPhoto,
                     capturedAt: record.capturedAt,
                     location: record.location?.clLocation
                 )
@@ -266,9 +286,9 @@ struct PhotoLibraryPendingCaptureExporter: TAPPendingCaptureExporting {
 
         _ = try await store.updateStatus(captureID: record.captureID, status: .exporting)
         TAPDiagnostics.pendingCapture.info("export status updated captureID=\(record.captureID, privacy: .private) status=\(TAPPendingCaptureStatus.exporting.rawValue, privacy: .public)")
-        let signedData = try await store.signedHEICData(captureID: record.captureID)
+        let signedData = try await store.signedPhotoData(captureID: record.captureID)
         TAPDiagnostics.pendingCapture.info("export signed data loaded captureID=\(record.captureID, privacy: .private) bytes=\(signedData.count, privacy: .public)")
-        let assetID = try await actions.saveValidatedSignedHEIC(signedData, record)
+        let assetID = try await actions.saveValidatedSignedPhoto(signedData, record)
         TAPDiagnostics.pendingCapture.info("export validation and save passed captureID=\(record.captureID, privacy: .private)")
         _ = try await store.markExported(captureID: record.captureID, assetLocalIdentifier: assetID)
         TAPDiagnostics.pendingCapture.info("export success captureID=\(record.captureID, privacy: .private) assetID=\(assetID, privacy: .private)")

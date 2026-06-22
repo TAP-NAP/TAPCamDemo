@@ -1,17 +1,18 @@
 # DepthAnalysis Module
 
 `TAPCamDemo/DepthAnalysis` is an independent reader and inspection surface for
-saved or pending TAP HEIC files. It does not configure the live camera and does
-not mutate capture output. It reads original HEIC bytes, reconstructs metric
-depth, and renders analysis views for RGB, heatmap, valid mask, planes, and
-point cloud.
+saved or pending TAP depth photo files. It does not configure the live camera
+and does not mutate capture output. It reads original HEIC or JPG bytes,
+requires the TAP manifest plus Apple auxiliary depth, reconstructs metric depth,
+and renders analysis views for RGB, heatmap, valid mask, planes, and point
+cloud.
 
 ## Code Map
 
 | Responsibility | Code |
 | --- | --- |
 | Photos album browser | [DepthAlbumPickerView.swift](DepthAlbumPickerView.swift) |
-| Analysis HEIC source loading and decode handoff | [DepthAnalysisInputLoader.swift](DepthAnalysisInputLoader.swift) |
+| Analysis photo source loading and decode handoff | [DepthAnalysisInputLoader.swift](DepthAnalysisInputLoader.swift) |
 | Public-safe analysis, album, and Planes error copy | [DepthAnalysisErrorPresentation.swift](DepthAnalysisErrorPresentation.swift) |
 | TAP Library item loading, pending/exported/Photos merge, route anchors, and item cache keys | [DepthAlbumItemProvider.swift](DepthAlbumItemProvider.swift) |
 | Main analysis screen source entry, loading/error shell, view-model lifetime, and route callbacks | [DepthAnalysisView.swift](DepthAnalysisView.swift) |
@@ -40,8 +41,8 @@ point cloud.
 | Region inspector and selected-area local heatmap loupe | [DepthAnalysisRegionInspectorContent.swift](DepthAnalysisRegionInspectorContent.swift) |
 | Plane filter inspector, strictness binding, and plane metrics | [DepthAnalysisPlaneFilterInspectorContent.swift](DepthAnalysisPlaneFilterInspectorContent.swift) |
 | Overlay opacity and point-cloud info inspectors | [DepthAnalysisOverlayCloudInspectors.swift](DepthAnalysisOverlayCloudInspectors.swift) |
-| HEIC, auxiliary depth, manifest, and calibration reader | [DepthAnalysisReader.swift](DepthAnalysisReader.swift) |
-| HEIC byte budget, depth-map shape budget, sample-count, and calibration validation | [DepthAnalysisInputValidation.swift](DepthAnalysisInputValidation.swift) |
+| TAP depth photo, auxiliary depth, manifest, and calibration reader | [DepthAnalysisReader.swift](DepthAnalysisReader.swift) |
+| Photo byte budget, depth-map shape budget, sample-count, and calibration validation | [DepthAnalysisInputValidation.swift](DepthAnalysisInputValidation.swift) |
 | Analysis input and metric depth models | [DepthAnalysisModels.swift](DepthAnalysisModels.swift) |
 | Orientation mapping | [DepthOrientationMapper.swift](DepthOrientationMapper.swift) |
 | Settings shell and authorization status surface | [DepthAnalyzerSettingsView.swift](DepthAnalyzerSettingsView.swift) |
@@ -55,13 +56,13 @@ If this module is new to you, read it in this order:
 1. [DepthAnalysisModels.swift](DepthAnalysisModels.swift) defines the shared
    input, depth map, region, and plane model types.
 2. [DepthAnalysisInputValidation.swift](DepthAnalysisInputValidation.swift)
-   defines the fail-closed input contract for HEIC byte count, primary-image
+   defines the fail-closed input contract for photo byte count, primary-image
    dimensions, depth-map pixel budget, sample count, and usable calibration
    intrinsics.
-3. [DepthAnalysisReader.swift](DepthAnalysisReader.swift) turns original HEIC
-   bytes into those model types.
+3. [DepthAnalysisReader.swift](DepthAnalysisReader.swift) turns original HEIC or
+   JPG bytes into those model types.
 4. [DepthAnalysisInputLoader.swift](DepthAnalysisInputLoader.swift) owns the
-   `DepthAnalysisSource` routing from Photos or pending capture to HEIC bytes,
+   `DepthAnalysisSource` routing from Photos or pending capture to photo bytes,
    then hands those bytes to the reader.
 5. [DepthAlbumItemProvider.swift](DepthAlbumItemProvider.swift) owns TAP Library
    item loading, pending/exported/Photos merge rules, duplicate suppression,
@@ -118,8 +119,8 @@ If this module is new to you, read it in this order:
    and button-hint routing.
    For the Verify Signature route, then read
    [AppAttestSignatureVerification.swift](AppAttestSignatureVerification.swift)
-   for Photos HEIC loading, local signed-export validation reuse, backend verify
-   submission, and public-safe report text, followed by
+   for Photos photo loading, local signed-export validation reuse, backend
+   verify submission, and public-safe report text, followed by
    [AppAttestSignatureVerificationPanel.swift](AppAttestSignatureVerificationPanel.swift)
    for the SwiftUI panel. The panel shows fixed status steps only; it does not
    render raw backend URLs, raw request/response JSON, App Attest key IDs,
@@ -195,18 +196,18 @@ list for attended device or UI checks that code reading alone cannot prove.
 
 1. Read [DepthAnalysisModels.swift](DepthAnalysisModels.swift) and
    [DepthAnalysisReader.swift](DepthAnalysisReader.swift) first. They define
-   the analysis input and show how original HEIC bytes become image, depth,
+   the analysis input and show how original photo bytes become image, depth,
    manifest, heatmap, and mask values.
 2. Read [DepthAnalysisInputValidation.swift](DepthAnalysisInputValidation.swift)
-   for the input contract. It is the single place that names the HEIC byte
+   for the input contract. It is the single place that names the photo byte
    budget, primary-image dimension budget, depth-map pixel budget, sample-count
    invariant, finite positive sample requirement, and usable calibration
    intrinsics. Invalid or missing calibration still permits RGB, Heatmap, and
    Valid Mask analysis; Planes and Point Cloud require usable intrinsics.
 3. Read [DepthAnalysisInputLoader.swift](DepthAnalysisInputLoader.swift) for the
-   source-to-HEIC boundary. Photos items load original Photos data; pending
-   items load the best available local HEIC and map missing pending artifacts to
-   a generic temporary-unavailable analysis error.
+   source-to-photo boundary. Photos items load original Photos data; pending
+   items load the best available local signed or unsigned photo artifact and map
+   missing pending artifacts to a generic temporary-unavailable analysis error.
    [../../TAPCamDemoTests/TAPDepthAnalysisInputTests.swift](../../TAPCamDemoTests/TAPDepthAnalysisInputTests.swift)
    is the focused test entry for input validation, reader input rejection,
    Photos/pending source routing, and the `DepthAnalysisViewModel.load(source:)`
@@ -239,7 +240,7 @@ list for attended device or UI checks that code reading alone cannot prove.
    seed-selection state, and `DepthAnalysisViewModel.finishSelection` /
    `clearSelection` bridging. It does not prove real gestures, SwiftUI layout,
    Photos limited-access behavior, App Attest/backend acceptance, or positive
-   real HEIC acceptance.
+   real HEIC/JPG acceptance.
 9. Read [DepthAnalysisPlaneRegionDetector.swift](DepthAnalysisPlaneRegionDetector.swift)
    for the plane-region calculation boundary. It accepts an already-loaded
    depth map, reuses or builds image-local geometry, and calls the plane
@@ -248,7 +249,7 @@ list for attended device or UI checks that code reading alone cannot prove.
 10. Read [DepthAnalysisPlaneRegionRequestCoordinator.swift](DepthAnalysisPlaneRegionRequestCoordinator.swift)
    for async Planes request ownership. It owns task cancellation, request IDs,
    strictness debounce, geometry prewarm scheduling, and image-local
-   geometry-cache reuse. It does not hold sources, manifests, HEIC bytes,
+   geometry-cache reuse. It does not hold sources, manifests, photo bytes,
    proofs, App Attest key IDs, Photos handles, pending store handles, or export
    state.
    [../../TAPCamDemoTests/TAPDepthAnalysisPlaneRegionTests.swift](../../TAPCamDemoTests/TAPDepthAnalysisPlaneRegionTests.swift)
@@ -312,9 +313,9 @@ list for attended device or UI checks that code reading alone cannot prove.
 4. In RGB/Heatmap/Mask modes, use rectangular selection to inspect a region.
    In Planes mode, tap a seed point; rectangular selection is intentionally
    disabled there so plane growth and region measurement stay separate.
-5. Treat this module as a local reader. It may read pending or saved TAP HEIC
-   files, but App Attest proof validation and final export trust remain in the
-   capture/output pipeline.
+5. Treat this module as a local reader. It may read pending or saved TAP HEIC or
+   JPG photo files, but App Attest proof validation and final export trust
+   remain in the capture/output pipeline.
 
 Photos limited-access behavior, deletion while the app is backgrounded, and
 TAP Library rendered scroll restoration still need attended real-device or
@@ -328,7 +329,7 @@ route-policy boundaries, not those platform flows.
 ```mermaid
 flowchart TD
     Source{"Source"} --> Photos["Photos original .photo resource"]
-    Source --> Pending["TAPPendingCaptureStore.bestAvailableHEICData"]
+    Source --> Pending["TAPPendingCaptureStore.bestAvailablePhotoData"]
     Photos --> Validation["TAPDepthAnalysisInputValidation"]
     Pending --> Validation
     Validation --> Reader["TAPDepthMapReader.analysisInput"]
@@ -369,7 +370,7 @@ flowchart TD
 ```mermaid
 stateDiagram-v2
     [*] --> loading
-    loading --> rgb: HEIC decoded
+    loading --> rgb: TAP photo decoded
     loading --> error: missing or unreadable depth
     rgb --> heatmap
     heatmap --> mask
@@ -383,8 +384,8 @@ stateDiagram-v2
 
 The UI keeps analysis separate from capture. `DepthAnalysisView` can open a
 Photos asset or a pending capture ID. Pending capture reads use the best
-available local HEIC, preferring `signed.heic` and falling back to
-`unsigned.heic`.
+available local photo artifact, preferring the signed container-specific file
+and falling back to the unsigned container-specific file.
 
 `DepthAnalysisView` is intentionally a shell now. `DepthAnalysisStageView`
 receives display-ready local analysis values for the central stage, while
@@ -406,14 +407,14 @@ notifications still schedule a silent refresh.
 
 Analysis input loading is split from the analysis state model.
 [DepthAnalysisInputLoader.swift](DepthAnalysisInputLoader.swift) resolves
-`DepthAnalysisSource` to HEIC bytes and calls `TAPDepthMapReader.analysisInput`.
+`DepthAnalysisSource` to photo bytes and calls `TAPDepthMapReader.analysisInput`.
 Pending capture read failures trigger a TAP Library refresh and use a generic
 temporary-unavailable message rather than exposing raw capture identifiers or
 storage details to the UI.
 [../../TAPCamDemoTests/TAPDepthAnalysisInputTests.swift](../../TAPCamDemoTests/TAPDepthAnalysisInputTests.swift)
 proves this local reader safety boundary with Simulator tests. It does not
 prove final Photos export trust, backend App Attest acceptance, positive real
-HEIC fixture acceptance, or Photos limited-access behavior.
+HEIC/JPG fixture acceptance, or Photos limited-access behavior.
 
 Plane-region calculation is split from the analysis state model.
 [DepthAnalysisPlaneRegionDetector.swift](DepthAnalysisPlaneRegionDetector.swift)
@@ -427,7 +428,7 @@ analysis work.
 proves this local geometry, detector, and request-coordinator boundary. It does
 not prove Photos or pending-source loading, App Attest proof creation, backend
 verification, final Photos export, real gestures, rendered SwiftUI layout, or
-positive real HEIC acceptance.
+positive real HEIC/JPG acceptance.
 
 Rectangular region analysis is split from the view model.
 [DepthAnalysisRegionSelectionState.swift](DepthAnalysisRegionSelectionState.swift)
@@ -441,9 +442,9 @@ finish/clear bridge. It does not replace the focused plane-region suite,
 renderer checks, or rendered UI evidence.
 
 This loader is not a provenance or export gate. It may decode unsigned pending
-HEIC bytes for local analysis, and the reader may expose a decoded TAP manifest,
-but that does not mean the image has a verified App Attest proof. Final export
-trust stays in the capture/output pipeline.
+photo bytes for local analysis, and the reader may expose a decoded TAP
+manifest, but that does not mean the image has a verified App Attest proof.
+Final export trust stays in the capture/output pipeline.
 
 Album thumbnail rendering keeps an in-memory cache plus a disk cache under the
 app Caches directory. [DepthAlbumThumbnailPipeline.swift](DepthAlbumThumbnailPipeline.swift)

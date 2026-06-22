@@ -58,7 +58,7 @@ struct TAPDepthAnalysisInputTests {
             try TAPDepthAnalysisInputValidation.validateHEICByteCount(
                 TAPDepthAnalysisInputValidation.maximumHEICByteCount + 1
             )
-            Issue.record("Expected oversized HEIC bytes to fail validation.")
+            Issue.record("Expected oversized photo bytes to fail validation.")
         } catch TAPDepthAnalysisError.analysisInputTooLarge {
             #expect(Bool(true))
         } catch {
@@ -90,10 +90,10 @@ struct TAPDepthAnalysisInputTests {
         }
     }
 
-    @Test func depthAnalysisReaderRejectsNonHEICInputBeforeAnalysisDecode() throws {
+    @Test func depthAnalysisReaderRejectsUnsupportedInputBeforeAnalysisDecode() throws {
         do {
             _ = try TAPDepthMapReader.analysisInput(from: Data("not a heic file".utf8))
-            Issue.record("Expected non-HEIC input to fail before analysis decode.")
+            Issue.record("Expected unsupported input to fail before analysis decode.")
         } catch {
             #expect(Bool(true))
         }

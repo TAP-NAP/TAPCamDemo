@@ -6,11 +6,11 @@
 import Foundation
 import OSLog
 
-/// App-private staging store for unsigned/signed TAP depth HEIC files.
+/// App-private staging store for unsigned/signed TAP depth photo files.
 ///
-/// This store is intentionally HEIC-only for this implementation slice. Future
-/// multi-format resource bundles should be designed separately; see the P1 TODO
-/// in `PACKAGING.md`.
+/// Each pending bundle stores one fixed container chosen at capture time. HEIC
+/// and JPG share the same queue semantics; only their artifact filenames and
+/// Photos UTType differ.
 actor TAPPendingCaptureStore {
     static let shared = TAPPendingCaptureStore()
 
@@ -40,7 +40,11 @@ actor TAPPendingCaptureStore {
         let temporaryURL = storage.temporaryBundleURL()
         try storage.createFreshTemporaryBundle(at: temporaryURL)
 
-        try storage.writeUnsignedHEIC(artifact.photoData, to: temporaryURL)
+        try storage.writeUnsignedPhoto(
+            artifact.photoData,
+            fileContainer: artifact.fileContainer,
+            to: temporaryURL
+        )
 
         let thumbnailFilename: String?
         if let thumbnailData = TAPPendingCaptureThumbnailRenderer.thumbnailData(from: artifact.photoData) {
@@ -58,8 +62,9 @@ actor TAPPendingCaptureStore {
             createdAt: now,
             updatedAt: now,
             status: .pending,
-            unsignedHEICFilename: TAPPendingCaptureBundlePathPolicy.unsignedHEICFilename,
-            signedHEICFilename: nil,
+            photoFileContainer: artifact.fileContainer,
+            unsignedPhotoFilename: artifact.fileContainer.unsignedFilename,
+            signedPhotoFilename: nil,
             thumbnailFilename: thumbnailFilename,
             assetLocalIdentifier: nil,
             failureReason: nil,
@@ -115,35 +120,47 @@ actor TAPPendingCaptureStore {
         try storage.readRecord(captureID: captureID)
     }
 
-    func unsignedHEICData(captureID: String) throws -> Data {
+    func unsignedPhotoData(captureID: String) throws -> Data {
         let record = try readRecord(captureID: captureID)
-        guard let filename = record.unsignedHEICFilename else {
+        guard let filename = record.unsignedPhotoFilename else {
             throw TAPDepthCaptureError.pendingCaptureDataMissing
         }
-        return try storage.heicData(filename: filename, captureID: captureID)
+        return try storage.photoData(filename: filename, captureID: captureID)
+    }
+
+    func unsignedHEICData(captureID: String) throws -> Data {
+        try unsignedPhotoData(captureID: captureID)
+    }
+
+    func signedPhotoData(captureID: String) throws -> Data {
+        let record = try readRecord(captureID: captureID)
+        guard let filename = record.signedPhotoFilename else {
+            throw TAPDepthCaptureError.pendingCaptureDataMissing
+        }
+        return try storage.photoData(filename: filename, captureID: captureID)
     }
 
     func signedHEICData(captureID: String) throws -> Data {
-        let record = try readRecord(captureID: captureID)
-        guard let filename = record.signedHEICFilename else {
-            throw TAPDepthCaptureError.pendingCaptureDataMissing
-        }
-        return try storage.heicData(filename: filename, captureID: captureID)
+        try signedPhotoData(captureID: captureID)
     }
 
-    func bestAvailableHEICData(captureID: String) throws -> Data {
+    func bestAvailablePhotoData(captureID: String) throws -> Data {
         let record = try readRecord(captureID: captureID)
-        if let filename = record.signedHEICFilename {
-            if let data = try storage.heicDataIfPresent(filename: filename, captureID: captureID) {
+        if let filename = record.signedPhotoFilename {
+            if let data = try storage.photoDataIfPresent(filename: filename, captureID: captureID) {
                 return data
             }
         }
-        if let filename = record.unsignedHEICFilename {
-            if let data = try storage.heicDataIfPresent(filename: filename, captureID: captureID) {
+        if let filename = record.unsignedPhotoFilename {
+            if let data = try storage.photoDataIfPresent(filename: filename, captureID: captureID) {
                 return data
             }
         }
         throw TAPDepthCaptureError.pendingCaptureDataMissing
+    }
+
+    func bestAvailableHEICData(captureID: String) throws -> Data {
+        try bestAvailablePhotoData(captureID: captureID)
     }
 
     func thumbnailData(captureID: String) throws -> Data? {
@@ -208,17 +225,21 @@ actor TAPPendingCaptureStore {
         return normalizedCount
     }
 
-    func storeSignedHEIC(_ data: Data, captureID: String) throws -> TAPPendingCaptureRecord {
+    func storeSignedPhoto(_ data: Data, captureID: String) throws -> TAPPendingCaptureRecord {
         var record = try readRecord(captureID: captureID)
-        try storage.writeSignedHEIC(data, captureID: captureID)
-        record.signedHEICFilename = TAPPendingCaptureBundlePathPolicy.signedHEICFilename
+        try storage.writeSignedPhoto(data, fileContainer: record.photoFileContainer, captureID: captureID)
+        record.signedPhotoFilename = record.photoFileContainer.signedFilename
         record.status = .signed
         record.failureReason = nil
         record.updatedAt = Date()
         try storage.writeRecord(record)
         Self.postLibraryDidChange()
-        TAPDiagnostics.pendingCapture.info("store signedHEIC stored captureID=\(captureID, privacy: .private) bytes=\(data.count, privacy: .public) status=\(record.status.rawValue, privacy: .public)")
+        TAPDiagnostics.pendingCapture.info("store signedPhoto stored captureID=\(captureID, privacy: .private) container=\(record.photoFileContainer.rawValue, privacy: .public) bytes=\(data.count, privacy: .public) status=\(record.status.rawValue, privacy: .public)")
         return record
+    }
+
+    func storeSignedHEIC(_ data: Data, captureID: String) throws -> TAPPendingCaptureRecord {
+        try storeSignedPhoto(data, captureID: captureID)
     }
 
     func markExported(captureID: String, assetLocalIdentifier: String) throws -> TAPPendingCaptureRecord {

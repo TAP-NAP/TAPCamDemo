@@ -28,7 +28,7 @@ Read in this order when auditing the project from scratch:
 6. [../TAPCamDemo/TAPLibrary/README.md](../TAPCamDemo/TAPLibrary/README.md) for
    pending capture signing, export, retry, and cleanup.
 7. [../TAPCamDemo/DepthAnalysis/README.md](../TAPCamDemo/DepthAnalysis/README.md)
-   for saved HEIC and depth inspection.
+   for saved or pending TAP HEIC/JPG depth photo inspection.
 8. [../TAPCamDemoTests/README.md](../TAPCamDemoTests/README.md) for test coverage
    and automation boundaries.
 
@@ -111,13 +111,13 @@ CameraCapture UI readability review path:
    for the bottom camera chrome. It receives field-level presentation state and
    closures only; it should not receive the view model, route store, App Attest
    controller/client, pending store, capture pipeline, output profile, raw
-   identifiers, HEIC bytes, manifests, proofs, or key IDs.
+   identifiers, photo bytes, manifests, proofs, or key IDs.
 12. Read [../TAPCamDemoTests/README.md](../TAPCamDemoTests/README.md) for the
    CameraCapture UI focused tests and their UI/real-device limits.
 
 DepthAnalysis readability review path:
 
-1. Start with this scorecard snapshot to confirm this is saved/pending HEIC
+1. Start with this scorecard snapshot to confirm this is saved/pending TAP photo
    analysis and saved-photo proof-verification presentation work, not a change
    to live capture, export, or App Attest proof creation.
 2. Read [../TAPCamDemo/DepthAnalysis/README.md](../TAPCamDemo/DepthAnalysis/README.md)
@@ -125,12 +125,12 @@ DepthAnalysis readability review path:
 3. Read [../TAPCamDemo/DepthAnalysis/DepthAnalysisModels.swift](../TAPCamDemo/DepthAnalysis/DepthAnalysisModels.swift)
    for the analysis input, metric depth, region, and plane value types.
 4. Read [../TAPCamDemo/DepthAnalysis/DepthAnalysisInputValidation.swift](../TAPCamDemo/DepthAnalysis/DepthAnalysisInputValidation.swift)
-   for the HEIC byte, primary-image dimension, depth pixel, sample-count, and
+   for the photo byte, primary-image dimension, depth pixel, sample-count, and
    usable-calibration contract.
 5. Read [../TAPCamDemo/DepthAnalysis/DepthAnalysisReader.swift](../TAPCamDemo/DepthAnalysis/DepthAnalysisReader.swift)
-   for the HEIC, auxiliary depth, manifest, and calibration decoding path.
+   for the HEIC/JPG, auxiliary depth, manifest, and calibration decoding path.
 6. Read [../TAPCamDemo/DepthAnalysis/DepthAnalysisInputLoader.swift](../TAPCamDemo/DepthAnalysis/DepthAnalysisInputLoader.swift)
-   for the source-to-HEIC boundary. It routes Photos and pending captures to
+   for the source-to-photo boundary. It routes Photos and pending captures to
    bytes, then hands those bytes to the depth reader.
 7. Read [../TAPCamDemo/DepthAnalysis/DepthAnalysisErrorPresentation.swift](../TAPCamDemo/DepthAnalysis/DepthAnalysisErrorPresentation.swift)
    for fixed public-safe album and analysis load-error copy.
@@ -168,7 +168,7 @@ DepthAnalysis readability review path:
 19. Read [../TAPCamDemo/DepthAnalysis/AppAttestSignatureVerification.swift](../TAPCamDemo/DepthAnalysis/AppAttestSignatureVerification.swift)
    and [../TAPCamDemo/DepthAnalysis/AppAttestSignatureVerificationPanel.swift](../TAPCamDemo/DepthAnalysis/AppAttestSignatureVerificationPanel.swift)
    for the saved-photo App Attest verification route. The service owns Photos
-   HEIC loading, local signed-export validation reuse, backend submission, and
+   photo loading, local signed-export validation reuse, backend submission, and
    public-safe report text; the panel renders only fixed status steps.
 20. Read [../TAPCamDemo/DepthAnalysis/DepthAnalysisStageView.swift](../TAPCamDemo/DepthAnalysis/DepthAnalysisStageView.swift)
    for the central RGB, heatmap, mask, planes, and point-cloud stage. It
@@ -203,14 +203,14 @@ DepthAnalysis readability review path:
    `DepthAnalysisViewModel.finishSelection` / `clearSelection` bridging. This
    suite proves local state and bridge behavior only; it does not prove real
    gestures, rendered SwiftUI layout, Photos limited access, App Attest/backend
-   acceptance, or real HEIC acceptance.
+   acceptance, or real HEIC/JPG acceptance.
 27. Read [../TAPCamDemoTests/TAPDepthAnalysisPlaneRegionTests.swift](../TAPCamDemoTests/TAPDepthAnalysisPlaneRegionTests.swift)
    for already-loaded `TAPMetricDepthMap` geometry, camera intrinsics
    guardrails, seed-plane growth, detector cache build/reuse, and async request
    cache/freshness behavior. This suite proves local model behavior only; it
    does not prove Photos or pending-source loading, App Attest proof creation,
    backend verification, final Photos export, real gestures, rendered SwiftUI
-   layout, or positive real HEIC acceptance.
+   layout, or positive real HEIC/JPG acceptance.
 28. Read [../TAPCamDemoTests/TAPDepthAnalysisPresentationTests.swift](../TAPCamDemoTests/TAPDepthAnalysisPresentationTests.swift)
    for metadata HUD privacy, view-mode labels/routes, panel destinations,
    shared region-stats text, help defaults, interaction flags, and passive
@@ -240,8 +240,8 @@ Durable TAP Library route context review path:
 TAP Library queue storage review path:
 
 1. Start with this scorecard snapshot to confirm this is a queue readability
-   and local-storage boundary refactor, not a new output format or Photos
-   export feature.
+   and local-storage boundary review path for the current HEIC/JPG photo
+   artifact formats, not a RAW/Live Photo/video export feature.
 2. Read [../TAPCamDemo/TAPLibrary/README.md](../TAPCamDemo/TAPLibrary/README.md)
    for the queue flow, state machine, storage rules, and test index.
 3. Read [../TAPCamDemo/TAPLibrary/TAPPendingCaptureRecord.swift](../TAPCamDemo/TAPLibrary/TAPPendingCaptureRecord.swift)
@@ -251,7 +251,7 @@ TAP Library queue storage review path:
    validation.
 5. Read [../TAPCamDemo/TAPLibrary/TAPPendingCaptureBundleStorage.swift](../TAPCamDemo/TAPLibrary/TAPPendingCaptureBundleStorage.swift)
    for root directory creation, temporary bundle commits, `bundle.json` IO,
-   HEIC/thumbnail reads and writes, and cleanup.
+   photo artifact/thumbnail reads and writes, and cleanup.
 6. Read [../TAPCamDemo/TAPLibrary/TAPPendingCaptureStore.swift](../TAPCamDemo/TAPLibrary/TAPPendingCaptureStore.swift)
    for queue API semantics, actor serialization, state transitions, failure
    reason normalization, notifications, and diagnostics.
@@ -273,15 +273,16 @@ TAP Library queue storage review path:
 
 Capture output profile and quality review path:
 
-1. Start with this scorecard snapshot to confirm this is a format/quality
-   contract readability refactor, not a new JPEG/RAW/quality UI feature.
+1. Start with this scorecard snapshot to confirm this is the reviewed HEIC/JPG
+   format-selection and quality-contract path, not a RAW/Live Photo/video or
+   visible quality-slider feature.
 2. Read [../TAPCamDemo/CameraCapture/Output/README.md](../TAPCamDemo/CameraCapture/Output/README.md)
    for the Output Profile Contract reading order.
 3. Read [../TAPCamDemo/CameraCapture/Output/CapturePhotoQualityPolicy.swift](../TAPCamDemo/CameraCapture/Output/CapturePhotoQualityPolicy.swift)
    for app-level quality naming before AVFoundation settings.
 4. Read [../TAPCamDemo/CameraCapture/Output/CaptureOutputProfile.swift](../TAPCamDemo/CameraCapture/Output/CaptureOutputProfile.swift)
-   for the current Release HEIC-depth profile contract and contract-violation
-   checks.
+   for the current Release HEIC/JPG depth profile contracts and
+   contract-violation checks.
 5. Read [../TAPCamDemo/CameraCapture/Output/CaptureOutputProfileCatalog.swift](../TAPCamDemo/CameraCapture/Output/CaptureOutputProfileCatalog.swift)
    and [../TAPCamDemo/CameraCapture/Output/CaptureOutputProfileSelectionIntent.swift](../TAPCamDemo/CameraCapture/Output/CaptureOutputProfileSelectionIntent.swift)
    for the executable catalog, fail-closed future UI request boundary, and
@@ -305,7 +306,7 @@ Capture provenance and final export review path:
    for App Attest assertion creation.
 5. Read [../TAPCamDemo/CameraCapture/Output/TAPCaptureProvenanceWriter.swift](../TAPCamDemo/CameraCapture/Output/TAPCaptureProvenanceWriter.swift)
    for proof injection, pending signing, final signed-export validation, and
-   `ValidatedTAPDepthHEIC` construction.
+   `ValidatedTAPDepthPhoto` construction.
 6. Read [../TAPCamDemoTests/TAPCaptureManifestEncodingTests.swift](../TAPCamDemoTests/TAPCaptureManifestEncodingTests.swift)
    and [../TAPCamDemoTests/TAPCaptureContentDigestTests.swift](../TAPCamDemoTests/TAPCaptureContentDigestTests.swift)
    for payload/proof separation and canonical digest stability.
@@ -397,15 +398,16 @@ Diagnostic and UI presentation privacy review path:
 
 Output format and quality review path:
 
-1. Start with this scorecard snapshot to confirm this is an output-contract
-   refactor, not a JPEG/RAW/quality-slider feature.
+1. Start with this scorecard snapshot to confirm this is the current HEIC/JPG
+   output-contract implementation path, not a RAW/Live Photo/video or
+   quality-slider feature.
 2. Read [FutureCameraSpecs.md](FutureCameraSpecs.md) for the rule that future
    format and quality work must start with a profile, validator, manifest, and
    packaging story before UI.
 3. Read [../TAPCamDemo/CameraCapture/README.md](../TAPCamDemo/CameraCapture/README.md)
    for the handoff from Planning to Runtime to Output.
 4. Read [../TAPCamDemo/CameraCapture/Output/README.md](../TAPCamDemo/CameraCapture/Output/README.md)
-   for the executable Release HEIC-depth contract.
+   for the executable Release HEIC/JPG depth contract.
 5. Read [../TAPCamDemo/CameraCapture/Output/CapturePhotoQualityPolicy.swift](../TAPCamDemo/CameraCapture/Output/CapturePhotoQualityPolicy.swift)
    for the app-level quality policy before it resolves to AVFoundation values.
 6. Read [../TAPCamDemo/CameraCapture/Output/CaptureOutputProfileCatalog.swift](../TAPCamDemo/CameraCapture/Output/CaptureOutputProfileCatalog.swift)
@@ -414,7 +416,7 @@ Output format and quality review path:
    for the pure future request boundary that selects a catalog profile without
    creating one.
 8. Read [../TAPCamDemo/CameraCapture/Output/CaptureOutputProfile.swift](../TAPCamDemo/CameraCapture/Output/CaptureOutputProfile.swift)
-   for the current HEVC-depth profile and contract rules.
+   for the current HEIC/JPG depth profiles and contract rules.
 9. Read [../TAPCamDemo/CameraCapture/Output/CaptureOutputProfileResolution.swift](../TAPCamDemo/CameraCapture/Output/CaptureOutputProfileResolution.swift)
    for the resolved Runtime output token and photo-output capability snapshot.
 10. Read [../TAPCamDemo/CameraCapture/Output/CaptureOutputManifestPolicy.swift](../TAPCamDemo/CameraCapture/Output/CaptureOutputManifestPolicy.swift)
@@ -458,7 +460,7 @@ Manual camera control model and test review path:
 
 ## Snapshot
 
-Date: 2026-06-21
+Date: 2026-06-22
 
 Score formula for this goal: Professional camera capabilities 10%, core depth
 plus App Attest 20%, extensibility 20%, security 25%, readability 15%, docs
@@ -467,30 +469,30 @@ average.
 
 | Area | Score | Strict read |
 | --- | ---: | --- |
-| Professional camera capabilities | 3.6 / 10 | FOV chips, front/back switch, touch-down shutter, debug zoom/depth, default foreground return to camera, best-effort durable TAP Library scroll/return context, a read-only manual-control capability snapshot, a pure manual-control intent model, and an internal queue-guarded manual-control application boundary exist. User-facing EV, ISO, shutter, focus, white-balance, aperture controls, guides, video, Live Photo, RAW/ProRAW, lock-screen launch, durable album filters, and UI regression coverage are still missing. |
-| Core depth plus App Attest capture | 7.5 / 10 | Capture requires depth data, keeps Apple HEIC depth embedding, rejects JPEG fallback for the Release HEIC profile, stages unsigned private artifacts, signs queued output with App Attest before Photos export, revalidates the signed HEIC before Photos, and exposes App Attest entitlements in the checkout. Real-device/backend acceptance still needs stronger evidence. |
-| Extensibility | 10.0 / 10 | `CapturePhotoQualityPolicy`, `CaptureOutputProfileCatalog`, `CaptureOutputProfileSelectionIntent`, `CaptureOutputProfileSelectionPresentation`, `CaptureOutputProfile`, `ResolvedCaptureOutputProfile`, `CapturePhotoOutputCapabilitySnapshot`, `CaptureOutputResourcePlan`, capture planning, `PreCaptureConfigurationBuilder`, `CameraControlCapabilitySnapshot`, `CameraManualControlIntent`, `CameraManualControlResolutionPresentation`, `CameraManualControlSummary`, `CameraManualControlCommandPlan`, `CameraControlService`, provenance writer, pending record model, pending bundle path policy, pending bundle storage, pending store, pending artifact writer, pending processing policy, worker readiness, retry classifier, pending failure-reason presentation, startup gate policy, startup security preflight retry policy, backend preflight execution boundary, diagnostic/UI presentation privacy, App Attest credential presentation, CameraCapture status presentation, CameraCapture screen shell, CameraCapture preview stage, CameraCapture Debug overlay, CameraCapture controls view, DepthAnalysis input loader, DepthAnalysis input validation, DepthAnalysis error presentation, DepthAnalysis rectangular region-selection state, DepthAnalysis plane-selection state, DepthAnalysis plane-region detector, DepthAnalysis plane-region request coordinator, Planes estimator facade, plane fitting helpers, seed/BFS growth helpers, region output-product helpers, DepthAnalysis item provider, DepthAnalysis thumbnail pipeline, DepthAnalysis view-mode model, stage view, controls view, panel content adapter, debug metadata HUD, panel support, inspector strip, adaptive panel layer, pure panel height metrics, shared region-stats presentation, inspector content files, `CameraRouteStore`, `CameraRouteContextStore`, `CaptureLifecycleCoordinator`, and module READMEs give future work clear seams. Output quality policy/profile catalog/selection/presentation/resolved execution token/photo-output capability snapshot/contract violations, resource-plan validation through the resolved embedded HEIC-depth packaging gate, final export validation, tokenized route context, worker readiness, startup preflight policy, App Attest UI presentation, CameraCapture public-safe status presentation, TAP Library queue record/path-policy/bundle-storage/store/adapter/helper boundaries, public-safe persisted failure reasons, CameraCapture field-level controls state, pre-capture crop snapshot, CameraCapture preview-stage state, display-only FOV chips, display-only Debug depth/zoom rows, DepthAnalysis source routing, input byte/pixel/sample/calibration contracts, fixed album/analyzer/Planes error presentation, rectangular selection products, Planes seed/strictness presentation state, async plane request freshness/cache reuse, plane geometry building/seed-region calculation, view-mode labels/debug flags, per-mode inspector route lists, panel support, pure adaptive panel metrics, shared region-stats presentation, inspector field-level inputs, merge/dedupe/partial-failure rules, cache-key privacy, thumbnail protection, manual-control intent resolution, public-safe presentation, field-row summary, Runtime command plan, and queue-guarded Runtime command application now make future JPEG/RAW/quality, route-state, protected-data, diagnostics, startup security, App Attest status UI, camera status UI, pending queue UI, analysis-reader, region-analysis, plane-analysis, camera chrome, preview overlays, stage/control/panel UI, and manual-control work explicit. Manual-control SwiftUI controls, persistence, durable album filters, protected-data UI policy, and rendered UI/layout regression evidence are still not extracted. Multi-resource output modeling now has a pure resource-plan boundary, but real RAW/Live Photo/video/C2PA packagers, validators, and readers are still absent. |
-| Security | 9.2 / 10 | Startup security preflight remains strict, signed export does not silently fall back to unsigned, digests cover RGB/depth/metadata, local artifacts have a shared protection policy, AppAttestKit is pinned to a reviewed revision, App Attest entitlements are visible, the Release output profile rejects non-HEVC HEIC drift, output profile selection presentation redacts raw catalog/profile ids before future UI text, provider/package/manifest paths consume one resolved output execution token, the final Photos gate re-reads signed bytes, revalidates Release output facts, and is source-guarded against the current required resource plan before Photos save, `ValidatedTAPDepthHEIC` is minted only by the provenance writer, and focused provenance tests now cover digest stability, App Attest assertion shape, pending-signing identity, single-proof enforcement, and export-gate rejection paths. Durable route context stores fixed-length HMAC tokens instead of raw Photos or capture identifiers, the pending worker has an explicit protected-data readiness gate before private artifact reads and legacy failure-reason reconciliation, pending bundle paths validate ASCII capture IDs, reject hidden bundle names, keep the current artifact filename allow-list exact, and reject `bundle.json` records whose capture ID does not match the bundle directory, pending bundle storage routes record/artifact IO through the path and local-storage policies, exported queue records clear precise location after Photos export, pending retry classification now uses a named typed-error classifier instead of localized-description matching and has tests for single plus multiple typed underlying errors, DepthAnalysis bounds HEIC byte count, primary-image dimensions, depth-map pixel count, sample count, row stride, and projection calibration before local analysis tools allocate per-pixel products, DepthAnalysis thumbnail cache keys for Photos, owned exports, and pending records are hashed while disk writes stay protected, DepthAnalysis, TAP Library album, and Planes selection error copy now uses fixed public-safe text instead of raw Photos, reader, local analysis, URL, path, asset, or capture identifiers, concrete Region and Plane Filter inspectors accept typed `DepthAnalysisInspectorErrorMessage` values instead of raw `String?` error sinks, shared region-stats presentation is source-guarded to accept numeric `TAPDepthRegionStats` instead of source/error/manifest/identifier/proof inputs, manual-control resolution presentation redacts stale device ids and requested raw values into fixed control groups, manual-control command plans build no commands for blocked resolutions, keep target device ids and control-surface signatures only for Runtime stale guards, redact string/debug output, and store no session/writer handles, Runtime manual-control application rejects blocked plans, stale camera ids, stale control surfaces, and unsupported commands before locking the device, and the Debug metadata HUD summary falls back to fixed labels when optional manifest display fields look like paths, URLs, proofs, App Attest key IDs, capture IDs, asset IDs, manifest IDs, or token values. Public diagnostics omit raw localized errors, failing URLs, network paths, and capture/proof identifiers, Settings App Attest status uses generic failure text plus redacted key ID summaries and backend public summaries instead of full key IDs, raw backend URLs, or raw localized errors, camera status plus Debug metrics failure text use public-safe presentation instead of raw localized errors or associated capture/manifest/path/URL/key/proof reasons, the OSLog source privacy harness enforces private interpolation for capture ids, Photos asset ids, manifest ids, credential names, key ids, and invalid bundle names in critical log call sites, inspector source checks prevent raw Region/Plane error-string sinks from returning, shutter-time unsigned signature status uses fixed public fallback text, and TAP Library persisted failure reasons now use typed fixed retry text, store-level write normalization, read-side legacy normalization, and explicit legacy bundle migration that skips invalid bundles while continuing valid migrations. C2PA, positive real-depth fixtures, Photos acceptance evidence, unified-log runtime capture evidence, unopened legacy bundle cleanup evidence, legacy exported-location cleanup evidence, thumbnail retention policy, and real-device signing/protected-data/backend evidence still need stronger proof. |
-| Readability | 9.9 / 10 | Large view work has been split, startup naming now says gate/preflight instead of generic network permission, `StartupGatePolicy` names required versus optional first-launch checks, `StartupSecurityPreflightPolicy` names retry/deadline decisions, `StartupBackendSecurityPreflight` names network execution before the `NSObject` coordinator, CameraCapture screen shell, lifecycle hook modifier, preview stage, Debug overlay, display-only FOV state, display-only Debug depth/zoom state, field-level bottom controls view, route/lifecycle stores, DepthAnalysis input loading, input validation, error presentation, inspector visible-error message boundary, rectangular region selection, Planes seed-selection state, async plane request coordination, plane-region detection, Planes estimator facade/fitting/growth/output files, item loading, thumbnails, view-mode metadata, stage view, controls view, panel content adapter, public-safe debug HUD summary, panel support, inspector strip, adaptive panel layer, pure adaptive panel metrics, shared region-stats presentation, and inspector bodies now have named loader/validation/presentation/state/coordinator/detector/provider/pipeline/stage/control/content files outside the analysis and album picker UI. `CameraView.body` now reads as navigation, Settings sheet, screen surface, and one named lifecycle hook adapter while lifecycle policy remains in `CaptureLifecycleCoordinator`. Output policy now reads as quality policy -> catalog -> selection intent -> profile contract -> resolved Runtime execution token -> pre-capture crop snapshot -> provider/package/manifest -> provenance writer, manual-control support reads as capability snapshot -> user intent -> resolution -> public-safe summary -> field-row summary -> Runtime-executable pure command plan -> source-boundary guards -> queue-guarded Runtime write boundary, and TAP Library now reads as route context -> item merge -> record model -> path policy -> bundle storage -> actor store -> artifact writer -> thumbnail renderer -> protected-data readiness -> retry classification -> failure-reason presentation. `TAPPendingCaptureBundleStorage` owns directory enumeration, record JSON IO, HEIC/thumbnail IO, and cleanup, while `TAPPendingCaptureStore` owns queue semantics, state transitions, actor serialization, notifications, and diagnostics. DepthAnalysis input/source/load, DepthAnalysis selection state and ViewModel selection bridge, DepthAnalysis plane geometry/detector/request coordination, DepthAnalysis error presentation, DepthAnalysis presentation/privacy, inspector visible-error presentation, adaptive panel metrics, shared region-stats presentation, capture metadata summary presentation, capture output profile, capture provenance, CameraCapture presentation, camera status presentation, manual-control intent, manual-control presentation, manual-control summary, manual-control command-plan, manual-control boundary, manual-control Runtime service, TAP Library route, storage, and processing tests now have separate suites plus shared deterministic fixtures instead of living inside the broad mixed test file. Remaining readability gaps include rendered UI/layout evidence gaps and some scorecard sections that require long strict-read rows. This score is only about source readability and entry points; it is not a claim that product behavior, UI automation, or real-device evidence is complete. |
+| Professional camera capabilities | 4.1 / 10 | FOV chips, front/back switch, touch-down shutter, Settings HEIC/JPG format selection, largest standard still-photo dimension selection, debug zoom/depth, default foreground return to camera, best-effort durable TAP Library scroll/return context, a read-only manual-control capability snapshot, a pure manual-control intent model, and an internal queue-guarded manual-control application boundary exist. User-facing EV, ISO, shutter, focus, white-balance, aperture controls, guides, video, Live Photo, RAW/ProRAW, lock-screen launch, durable album filters, and UI regression coverage are still missing. |
+| Core depth plus App Attest capture | 8.1 / 10 | Capture requires depth data, supports reviewed HEIC and JPG TAP depth photo artifacts without hidden fallback, stages unsigned private artifacts, signs queued output with App Attest before Photos export, revalidates the signed photo file before Photos, and exposes App Attest entitlements in the checkout. Physical-device audit evidence now covers HEIC and JPG Photos round-trip with original bytes, depth, manifest, dimensions, and proof count; production App Attest/backend acceptance still needs stronger evidence. |
+| Extensibility | 10.0 / 10 | `CapturePhotoQualityPolicy`, `CaptureOutputProfileCatalog`, `CaptureOutputProfileSelectionIntent`, `CaptureOutputProfileSelectionPresentation`, `CaptureOutputProfile`, `ResolvedCaptureOutputProfile`, `CapturePhotoOutputCapabilitySnapshot`, `CaptureOutputResourcePlan`, capture planning, `PreCaptureConfigurationBuilder`, `CameraControlCapabilitySnapshot`, `CameraManualControlIntent`, `CameraManualControlResolutionPresentation`, `CameraManualControlSummary`, `CameraManualControlCommandPlan`, `CameraControlService`, provenance writer, pending record model, pending bundle path policy, pending bundle storage, pending store, pending artifact writer, pending processing policy, worker readiness, retry classifier, pending failure-reason presentation, startup gate policy, startup security preflight retry policy, backend preflight execution boundary, diagnostic/UI presentation privacy, App Attest credential presentation, CameraCapture status presentation, CameraCapture screen shell, CameraCapture preview stage, CameraCapture Debug overlay, CameraCapture controls view, DepthAnalysis input loader, DepthAnalysis input validation, DepthAnalysis error presentation, DepthAnalysis rectangular region-selection state, DepthAnalysis plane-selection state, DepthAnalysis plane-region detector, DepthAnalysis plane-region request coordinator, Planes estimator facade, plane fitting helpers, seed/BFS growth helpers, region output-product helpers, DepthAnalysis item provider, DepthAnalysis thumbnail pipeline, DepthAnalysis view-mode model, stage view, controls view, panel content adapter, debug metadata HUD, panel support, inspector strip, adaptive panel layer, pure panel height metrics, shared region-stats presentation, inspector content files, `CameraRouteStore`, `CameraRouteContextStore`, `CaptureLifecycleCoordinator`, and module READMEs give future work clear seams. Output quality policy/profile catalog/selection/presentation/resolved execution token/photo-output capability snapshot/contract violations, resource-plan validation through the resolved embedded TAP depth photo packaging gate, final export validation, tokenized route context, worker readiness, startup preflight policy, App Attest UI presentation, CameraCapture public-safe status presentation, TAP Library queue record/path-policy/bundle-storage/store/adapter/helper boundaries, public-safe persisted failure reasons, CameraCapture field-level controls state, pre-capture crop snapshot, CameraCapture preview-stage state, display-only FOV chips, display-only Debug depth/zoom rows, DepthAnalysis source routing, input byte/pixel/sample/calibration contracts, fixed album/analyzer/Planes error presentation, rectangular selection products, Planes seed/strictness presentation state, async plane request freshness/cache reuse, plane geometry building/seed-region calculation, view-mode labels/debug flags, per-mode inspector route lists, panel support, pure adaptive panel metrics, shared region-stats presentation, inspector field-level inputs, merge/dedupe/partial-failure rules, cache-key privacy, thumbnail protection, manual-control intent resolution, public-safe presentation, field-row summary, Runtime command plan, and queue-guarded Runtime command application now make future RAW/quality/24 MP deferred delivery, route-state, protected-data, diagnostics, startup security, App Attest status UI, camera status UI, pending queue UI, analysis-reader, region-analysis, plane-analysis, camera chrome, preview overlays, stage/control/panel UI, and manual-control work explicit. Manual-control SwiftUI controls, persistence, durable album filters, protected-data UI policy, and rendered UI/layout regression evidence are still not extracted. Multi-resource output modeling now has a pure resource-plan boundary, but real RAW/Live Photo/video/C2PA packagers, validators, and readers are still absent. |
+| Security | 9.2 / 10 | Startup security preflight remains strict, signed export does not silently fall back to unsigned, digests cover RGB/depth/metadata with container-specific media labels, local artifacts have a shared protection policy, AppAttestKit is pinned to a reviewed revision, and App Attest entitlements are visible. The reviewed HEIC/JPG output profiles reject cross-container fallback and unsupported file type, codec, depth, quality, or dimension combinations; provider/package/manifest paths consume one resolved output execution token; the final Photos gate re-reads signed bytes, revalidates Release output facts, and mints `ValidatedTAPDepthPhoto` only inside the provenance writer before Photos save. Durable route context stores fixed-length HMAC tokens instead of raw Photos or capture identifiers, pending bundle filenames stay allow-listed, public diagnostics and visible errors omit raw IDs, proofs, backend payloads, photo bytes, private paths, and localized errors, and focused tests cover digest stability, App Attest assertion shape, pending-signing identity, single-proof enforcement, export-gate rejection paths, OSLog privacy, queue failure-reason presentation, and local analysis input hardening. C2PA, broader real-device format/device matrix evidence, unified-log runtime capture evidence, unopened legacy bundle cleanup evidence, legacy exported-location cleanup evidence, thumbnail retention policy, and production App Attest signing/protected-data/backend evidence still need stronger proof. |
+| Readability | 9.9 / 10 | Large view work, startup policy, CameraCapture screen/lifecycle/preview/controls, DepthAnalysis reader/state/stage/panel/inspector files, TAP Library route/item/storage/worker boundaries, output profile resolution, provenance validation, manual-control models, and focused test suites now have named reading entrances. `TAPPendingCaptureBundleStorage` owns directory enumeration, record JSON IO, photo artifact/thumbnail IO, and cleanup, while `TAPPendingCaptureStore` owns queue semantics, state transitions, actor serialization, notifications, and diagnostics. Remaining readability gaps include rendered UI/layout evidence gaps and some scorecard sections that still require long strict-read rows. This score is only about source readability and entry points; it is not a claim that product behavior, UI automation, or real-device evidence is complete. |
 | Docs clarity | 9.9 / 10 | The root README, module READMEs, FutureCameraSpecs, startup docs, App Attest docs, CameraCapture UI and DepthAnalysis read-only versus attended acceptance paths, CameraCapture view-model/route/lifecycle-policy/lifecycle-hook/view/preview-stage/debug-overlay/controls/status-presentation paths, TAP Library route-context/item/storage/writer/thumbnail/worker/retry-classifier/failure-reason paths, DepthAnalysis input-validation/input-loader/error-presentation/inspector-error-boundary/metadata-HUD/adaptive-panel-metrics/region-stats-presentation/region-state/plane-selection/request-coordinator/detector/provider/picker/view/stage/controls/panel/inspector paths, output quality policy/catalog/selection/resolved-token/contract docs, startup-policy, startup-preflight retry, route-context, manual-control summary/command-plan/focused-test path, worker-readiness, queue-storage, output-profile/quality, provenance/export-gate, logging/status/retry/failure-reason privacy review paths, score formula, and test README explain what exists versus what is deferred. The DepthAnalysis README now points input/source/load-state review to `TAPDepthAnalysisInputTests`, selection-state review to `TAPDepthAnalysisSelectionTests`, plane geometry/request review to `TAPDepthAnalysisPlaneRegionTests`, includes an Inspector/HUD Presentation Map with adaptive panel metrics and shared region-stats presentation, and the test README separates DepthAnalysis input/source/load, DepthAnalysis selection state and ViewModel bridge, DepthAnalysis plane geometry/detector/request coordination, DepthAnalysis error presentation, DepthAnalysis presentation/privacy, inspector visible-error presentation, adaptive panel metrics, region-stats presentation, metadata HUD presentation, capture output profile, capture provenance, CameraCapture presentation, camera status presentation, manual-control, TAP Library route, storage, processing, and shared fixture coverage for manual reading. Remaining docs gaps include dense scorecard rows, limited visual reading aids for large flows, and evidence gaps that are documented but not yet backed by real-device or rendered UI automation artifacts. |
 
-Overall score: **8.7 / 10**.
+Overall score: **8.9 / 10**.
 
 This score is intentionally strict and uses the weighting model above.
 The app has a credible depth plus App Attest capture core, but it is not yet
 close to a professional camera feature set.
-The latest score holds steady after selectively syncing the `assert` branch's
-verification-panel work into the current DepthAnalysis architecture. The new
-saved-photo verification route is split into a service/report model and a
-SwiftUI panel: the service reuses the final signed-export validator before
-submitting the stored App Attest signing material to the configured backend, and
-the panel renders fixed public-safe status steps instead of raw backend URLs,
-request/response JSON, key IDs, assertion objects, capture IDs, digest values,
-Photos asset IDs, or pending capture IDs. Focused privacy tests, OSLog privacy
-tests, and the full Simulator test suite passed. The score does not rise because
-the new evidence is still local/unit/Simulator evidence; real Photos asset
-verification, real backend acceptance, rendered panel layout, and real-device
-App Attest evidence remain missing.
+The latest score stays conservative even after stronger multi-format evidence.
+HEIC/JPG output selection is now a reviewed profile choice, Runtime configures
+the largest standard still-photo dimensions for the selected camera and format,
+and physical-device artifact audit now covers Photos round-trip for both
+formats on the connected iPhone 15 Pro. The audit read two exported HEIC
+originals back from Photos at `4032x3024`, with 8.4 MB / 6.0 MB byte counts,
+Apple auxiliary depth, TAP manifest policy, and one proof each. The focused JPG
+path captured, signed, exported, and read back one `4032x3024` JPG original at
+3.38 MB with `768x576` depth and one proof. The focused shutter UI smoke test
+also passed on the unlocked device. The score does not rise above 8.9 because
+production App Attest/backend acceptance, unsupported-device matrix coverage,
+and broader rendered UI/layout evidence remain incomplete.
 
 ## Current Strengths
 
@@ -500,7 +502,7 @@ App Attest evidence remain missing.
   route that reuses local signed-export validation before backend verification
   and keeps visible verification text public-safe.
 - `TAPPendingCaptureWorkerReadiness` makes protected-data readiness explicit
-  before the pending worker reads private HEIC bundles, manifests, proofs,
+  before the pending worker reads private photo artifacts, manifests, proofs,
   Photos export identifiers, or queue records.
 - `TAPDiagnostics.describe` is now a public-safe error summary boundary.
   `TAPDiagnosticsOSLogPrivacyTests` source-scans critical logging files so
@@ -542,13 +544,13 @@ App Attest evidence remain missing.
   failures, pending unavailable analysis loads, reader failures, Photos data
   loader failures, and Planes selection failures now map to fixed public-safe
   text before reaching SwiftUI.
-- DepthAnalysis HEIC input loading is isolated in `DepthAnalysisInputLoader`.
+- DepthAnalysis photo input loading is isolated in `DepthAnalysisInputLoader`.
   Photos and pending sources now have a readable source-to-bytes-to-reader
   boundary with model tests for source routing, pending temporary-unavailable
   mapping, generic reader failures, and view-model presentation.
 - DepthAnalysis input hardening is isolated in
   `TAPDepthAnalysisInputValidation`. The loader and reader reject oversized
-  local HEIC inputs, invalid depth-map dimensions, sample-count mismatches,
+  local photo inputs, invalid depth-map dimensions, sample-count mismatches,
   missing finite positive samples, unsafe row stride, and unusable camera
   calibration before heatmap, mask, geometry cache, or Plane-growth paths can
   allocate per-pixel products. Missing calibration still permits RGB, Heatmap,
@@ -566,7 +568,7 @@ App Attest evidence remain missing.
   `DepthAnalysisPlaneRegionRequestCoordinator`. Request cancellation,
   freshness, strictness debounce, prewarm task scheduling, and image-local
   geometry-cache reuse are now outside the ViewModel with focused async tests.
-  The coordinator does not hold sources, manifests, HEIC bytes, proofs, App
+  The coordinator does not hold sources, manifests, photo bytes, proofs, App
   Attest key ids, Photos handles, pending store handles, or export state.
 - DepthAnalysis Planes seed-selection state is isolated in
   `DepthAnalysisPlaneSelectionState`. Strictness clamping, seed clamping,
@@ -609,10 +611,10 @@ App Attest evidence remain missing.
   `CaptureOutputProfileSelectionIntent`,
   `CaptureOutputProfileSelectionPresentation`, and `CaptureOutputProfile`,
   including explicit invalid combinations for duplicate profile ids, a missing
-  default profile, empty or missing profile selection, JPEG fallback, missing
-  required depth, and requested quality above configured max. The selection
-  presentation gives future UI fixed public-safe text instead of raw catalog or
-  profile identifiers.
+  default profile, empty or missing profile selection, cross-container fallback,
+  missing required depth, unsupported file type/codec/dimensions, and requested
+  quality above configured max. The selection presentation gives future UI fixed
+  public-safe text instead of raw catalog or profile identifiers.
 - The startup gate now names the backend health/security check as product
   policy rather than an iOS network permission prompt. `StartupGatePolicy`
   is the pure code entry for required security preflight, camera, and photo
@@ -653,13 +655,13 @@ App Attest evidence remain missing.
   display-only rows while `CameraView` keeps the real Debug device options and
   zoom profiles.
 - Foreground capture still ends at `TAPPendingCaptureArtifactWriter`; lifecycle
-  coordination does not create a capture pipeline or export unsigned HEICs to
-  Photos.
-- `TAPCaptureProvenanceWriter.validateSignedExportHEIC` is the final export
-  gate. It re-reads the signed bytes, checks the HEIC source type, manifest
+  coordination does not create a capture pipeline or export unsigned photo files
+  to Photos.
+- `TAPCaptureProvenanceWriter.validateSignedExportPhoto` is the final export
+  gate. It re-reads the signed bytes, checks the HEIC/JPG source type, manifest
   schema and capture ID, Release output facts, exactly one App Attest proof,
   proof digest/binding, and Apple auxiliary depth before the Photos writer can
-  save the file. `ValidatedTAPDepthHEIC` is constructed only inside the
+  save the file. `ValidatedTAPDepthPhoto` is constructed only inside the
   provenance writer file, so ordinary module code cannot mint the trusted
   Photos-save wrapper directly.
 - `CameraControlCapabilitySnapshot` gives future manual controls a stable read
@@ -723,11 +725,12 @@ App Attest evidence remain missing.
   durable album filters, protected-data UI messaging, real-device
   protected-data validation, and UI regression evidence for the camera chrome,
   preview stage, and Debug overlay.
-- Output format/quality is still not user configurable. The current work keeps
-  one Release HEIC-depth profile and one unsigned-to-signed HEIC export path;
-  JPEG, RAW, Live Photo, video, or user-visible quality levels still need new
-  profiles, validators, manifest rules, packaging paths, signing/verifier
-  contracts, readers, and tests.
+- Output format is now user configurable for reviewed HEIC and JPG profiles.
+  HEIC remains the default, JPG is not a fallback, and Runtime selects the
+  largest standard supported still-photo dimensions for the current camera and
+  format. RAW, Live Photo, video, 24 MP deferred delivery, and user-visible
+  quality levels still need new profiles, validators, manifest rules, packaging
+  paths, signing/verifier contracts, readers, tests, and real-device evidence.
 - Manual camera controls now have a read-only capability snapshot, a pure
   intent model, a public-safe resolution presentation, a field-row summary, a
   Runtime-executable pure command plan, and an internal queue-guarded Runtime
@@ -742,14 +745,19 @@ App Attest evidence remain missing.
   backend. The saved-photo verification panel also needs real Photos asset and
   backend acceptance evidence.
 - The signed export validator has negative unit coverage for missing, invalid,
-  and multiple proof records, but still needs a positive real-depth HEIC fixture
-  and attended Photos/App Attest evidence on a physical device.
+  and multiple proof records. HEIC and JPG now have positive physical-device
+  Photos artifact evidence with generated sanitized audit reports. Attended
+  production App Attest/backend evidence remains incomplete.
 - C2PA, Live Photo, video, guides, RAW/ProRAW, and MultiCam remain future work.
 - Startup security preflight failure reasons are still coarse even though the
   gate itself is now named more clearly.
-- Diagnostic logging has unit coverage for the shared public error formatter and
-  a source-level OSLog privacy harness for critical call sites, but it still
-  lacks real-device unified-log capture evidence.
+- Diagnostic logging has unit coverage for the shared public error formatter, a
+  source-level OSLog privacy harness for critical call sites, and real-device
+  CameraCapture logs for HEIC/JPG output configuration plus JPG post-shutter
+  capture/sign/export stages. Physical-device artifact audit now proves exported
+  HEIC and JPG original bytes and dimensions after Photos round-trip, but a
+  broader unified-log capture package for all public-safe diagnostics is still
+  incomplete.
 - TAP Library persisted `failureReason` now has typed store writes, normalized
   reads, explicit migration coverage, and invalid-bundle skip coverage during
   migration; an old bundle that has not been opened or reconciled yet can still
@@ -773,8 +781,9 @@ boundaries before adding user-visible controls:
    touching AVFoundation directly from SwiftUI.
 2. Real-device unified-log redaction evidence for the diagnostics and
    presentation privacy boundaries.
-3. Output export evidence: add a positive real-depth HEIC fixture and attended
-   Photos/App Attest acceptance notes for the final signed-export gate.
+3. Output export evidence: add attended production App Attest/backend
+   acceptance notes for the final signed-export gate, and expand the physical
+   format/device matrix beyond the current iPhone 15 Pro HEIC/JPG audit.
 4. App Attest hardening: real-device entitlement/backend acceptance validation,
    including the saved-photo verification panel path.
 5. Protected-data UI policy and real-device validation on top of

@@ -67,16 +67,16 @@ nonisolated struct AppAttestCaptureSignatureVerifier: Sendable {
         }
 
         do {
-            let heicData = try await photoDataLoader(assetID)
+            let photoData = try await photoDataLoader(assetID)
             steps.append(
                 AppAttestSignatureVerificationStep(
                     status: .success,
                     title: "Original Photos resource",
-                    detail: "Saved HEIC bytes loaded from Photos."
+                    detail: "Saved photo bytes loaded from Photos."
                 )
             )
 
-            let material = try requestMaterialBuilder(heicData)
+            let material = try requestMaterialBuilder(photoData)
             steps.append(contentsOf: material.steps)
 
             let requestData = try JSONEncoder.tapCaptureCanonical.encode(material.request)
@@ -111,15 +111,20 @@ nonisolated struct AppAttestCaptureSignatureVerifier: Sendable {
     }
 
     private static func makeRequestMaterial(
-        from heicData: Data
+        from photoData: Data
     ) throws -> AppAttestSignatureVerificationRequestMaterial {
         do {
-            let manifest = try TAPDepthHEICReader.decodedManifest(from: heicData)
-            let validatedHEIC = try TAPCaptureProvenanceWriter().validateSignedExportHEIC(
-                heicData,
-                expectedCaptureID: manifest.payload.id
+            let fileContainer = try TAPDepthPhotoFileReader.fileContainer(from: photoData)
+            let expectedProfile: CaptureOutputProfile = fileContainer == .jpeg
+                ? .releasePhotoDepthJPEG
+                : .releasePhotoDepthHEIC
+            let manifest = try TAPDepthPhotoFileReader.decodedManifest(from: photoData)
+            let validatedPhoto = try TAPCaptureProvenanceWriter().validateSignedExportPhoto(
+                photoData,
+                expectedCaptureID: manifest.payload.id,
+                expectedProfile: expectedProfile
             )
-            let proof = try captureProof(from: validatedHEIC.manifest)
+            let proof = try captureProof(from: validatedPhoto.manifest)
             let proofValue = try decodeProofValue(proof)
             let request = CaptureSignatureVerificationRequest(
                 keyId: proofValue.keyId,
@@ -130,7 +135,7 @@ nonisolated struct AppAttestCaptureSignatureVerifier: Sendable {
                 steps: [
                     AppAttestSignatureVerificationStep(
                         status: .success,
-                        title: "Local signed HEIC gate",
+                        title: "Local signed photo gate",
                         detail: "Container, Release manifest policy, App Attest proof, digest binding, and auxiliary depth passed local validation."
                     )
                 ],
@@ -141,8 +146,8 @@ nonisolated struct AppAttestCaptureSignatureVerifier: Sendable {
         } catch {
             TAPDiagnostics.appAttest.error("capture signature local validation failed error=\(TAPDiagnostics.describe(error), privacy: .public)")
             throw AppAttestSignatureVerificationFailure(
-                title: "Local signed HEIC gate",
-                detail: "Saved HEIC did not pass local signature, digest, manifest, and depth validation."
+                title: "Local signed photo gate",
+                detail: "Saved photo did not pass local signature, digest, manifest, and depth validation."
             )
         }
     }

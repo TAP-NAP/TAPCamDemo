@@ -7,20 +7,23 @@
 import Foundation
 
 /// Executable output request after a profile has passed contract validation and
-/// codec selection for the current `AVCapturePhotoOutput`.
+/// capability selection for the current `AVCapturePhotoOutput`.
 ///
 /// Runtime should consume this value rather than repeatedly reading profile
-/// fields. That keeps future quality/format variants from accidentally skipping
-/// the same validation used by the current Release HEIC-depth path.
+/// fields. That keeps format, quality, depth, and dimensions checks identical
+/// across session configuration, prewarming, capture, packaging, and export.
 nonisolated struct ResolvedCaptureOutputProfile: Equatable, Sendable {
     let profileID: String
     let container: CaptureOutputContainer
+    let fileContainer: CapturePhotoFileContainer
     let codec: CapturePhotoCodec
     let depthDataDeliveryEnabled: Bool
     let embedsDepthDataInPhoto: Bool
     let depthDataFiltered: Bool
     let requiresDepthData: Bool
     let photoQualityPolicy: CapturePhotoQualityPolicy
+    let maxPhotoDimensions: CapturePhotoDimensions?
+    let compressionQuality: Double
 
     var photoQualityPrioritization: AVCapturePhotoOutput.QualityPrioritization {
         photoQualityPolicy.avFoundationRequestedPrioritization
@@ -34,38 +37,72 @@ nonisolated struct ResolvedCaptureOutputProfile: Equatable, Sendable {
         codec.avVideoCodecType
     }
 
+    var processedFileType: AVFileType {
+        fileContainer.avFileType
+    }
+
     fileprivate init(
         profileID: String,
         container: CaptureOutputContainer,
+        fileContainer: CapturePhotoFileContainer,
         codec: CapturePhotoCodec,
         depthDataDeliveryEnabled: Bool,
         embedsDepthDataInPhoto: Bool,
         depthDataFiltered: Bool,
         requiresDepthData: Bool,
-        photoQualityPolicy: CapturePhotoQualityPolicy
+        photoQualityPolicy: CapturePhotoQualityPolicy,
+        maxPhotoDimensions: CapturePhotoDimensions?,
+        compressionQuality: Double
     ) {
         self.profileID = profileID
         self.container = container
+        self.fileContainer = fileContainer
         self.codec = codec
         self.depthDataDeliveryEnabled = depthDataDeliveryEnabled
         self.embedsDepthDataInPhoto = embedsDepthDataInPhoto
         self.depthDataFiltered = depthDataFiltered
         self.requiresDepthData = requiresDepthData
         self.photoQualityPolicy = photoQualityPolicy
+        self.maxPhotoDimensions = maxPhotoDimensions
+        self.compressionQuality = compressionQuality
     }
 }
 
-/// The `AVCapturePhotoOutput` capabilities that a resolved output profile needs
-/// before Runtime applies settings or reuses an existing graph.
+/// The `AVCapturePhotoOutput` and active-format capabilities that a resolved
+/// output profile needs before Runtime applies settings or reuses a graph.
 ///
-/// This is a small snapshot, not an owner of `AVCapturePhotoOutput`. Runtime
-/// still owns all AVFoundation mutation; the snapshot only keeps capability
-/// checks readable and shared across configure, reuse, and future profile work.
+/// Empty arrays mean the source did not expose that capability yet. Runtime uses
+/// this during early planning before the output is attached to a session, then
+/// repeats validation with populated values after rebuilding the graph.
 nonisolated struct CapturePhotoOutputCapabilitySnapshot: Equatable, Sendable {
+    let availablePhotoFileTypeIdentifiers: [String]
     let availablePhotoCodecTypes: [AVVideoCodecType]
+    let supportedPhotoCodecTypesByFileTypeIdentifier: [String: [AVVideoCodecType]]
+    let supportedMaxPhotoDimensions: [CapturePhotoDimensions]
+    let configuredMaxPhotoDimensions: CapturePhotoDimensions?
     let isDepthDataDeliverySupported: Bool
     let isDepthDataDeliveryEnabled: Bool
     let maxPhotoQualityPrioritization: AVCapturePhotoOutput.QualityPrioritization
+
+    init(
+        availablePhotoFileTypeIdentifiers: [String],
+        availablePhotoCodecTypes: [AVVideoCodecType],
+        supportedPhotoCodecTypesByFileTypeIdentifier: [String: [AVVideoCodecType]],
+        supportedMaxPhotoDimensions: [CapturePhotoDimensions],
+        configuredMaxPhotoDimensions: CapturePhotoDimensions?,
+        isDepthDataDeliverySupported: Bool,
+        isDepthDataDeliveryEnabled: Bool,
+        maxPhotoQualityPrioritization: AVCapturePhotoOutput.QualityPrioritization
+    ) {
+        self.availablePhotoFileTypeIdentifiers = availablePhotoFileTypeIdentifiers
+        self.availablePhotoCodecTypes = availablePhotoCodecTypes
+        self.supportedPhotoCodecTypesByFileTypeIdentifier = supportedPhotoCodecTypesByFileTypeIdentifier
+        self.supportedMaxPhotoDimensions = supportedMaxPhotoDimensions
+        self.configuredMaxPhotoDimensions = configuredMaxPhotoDimensions
+        self.isDepthDataDeliverySupported = isDepthDataDeliverySupported
+        self.isDepthDataDeliveryEnabled = isDepthDataDeliveryEnabled
+        self.maxPhotoQualityPrioritization = maxPhotoQualityPrioritization
+    }
 
     init(
         availablePhotoCodecTypes: [AVVideoCodecType],
@@ -73,16 +110,36 @@ nonisolated struct CapturePhotoOutputCapabilitySnapshot: Equatable, Sendable {
         isDepthDataDeliveryEnabled: Bool,
         maxPhotoQualityPrioritization: AVCapturePhotoOutput.QualityPrioritization
     ) {
-        self.availablePhotoCodecTypes = availablePhotoCodecTypes
-        self.isDepthDataDeliverySupported = isDepthDataDeliverySupported
-        self.isDepthDataDeliveryEnabled = isDepthDataDeliveryEnabled
-        self.maxPhotoQualityPrioritization = maxPhotoQualityPrioritization
+        self.init(
+            availablePhotoFileTypeIdentifiers: [],
+            availablePhotoCodecTypes: availablePhotoCodecTypes,
+            supportedPhotoCodecTypesByFileTypeIdentifier: [:],
+            supportedMaxPhotoDimensions: [],
+            configuredMaxPhotoDimensions: nil,
+            isDepthDataDeliverySupported: isDepthDataDeliverySupported,
+            isDepthDataDeliveryEnabled: isDepthDataDeliveryEnabled,
+            maxPhotoQualityPrioritization: maxPhotoQualityPrioritization
+        )
     }
 
-    init(photoOutput: AVCapturePhotoOutput) {
+    init(
+        photoOutput: AVCapturePhotoOutput,
+        activeFormat: AVCaptureDevice.Format? = nil,
+        assumesDepthDeliverySupported: Bool = false
+    ) {
+        let fileTypes = photoOutput.availablePhotoFileTypes
+        let codecsByFileType = Dictionary(uniqueKeysWithValues: fileTypes.map { fileType in
+            (fileType.rawValue, photoOutput.supportedPhotoCodecTypes(for: fileType))
+        })
+        let configuredDimensions = CapturePhotoDimensions(photoOutput.maxPhotoDimensions)
+
         self.init(
+            availablePhotoFileTypeIdentifiers: fileTypes.map(\.rawValue),
             availablePhotoCodecTypes: photoOutput.availablePhotoCodecTypes,
-            isDepthDataDeliverySupported: photoOutput.isDepthDataDeliverySupported,
+            supportedPhotoCodecTypesByFileTypeIdentifier: codecsByFileType,
+            supportedMaxPhotoDimensions: activeFormat?.supportedMaxPhotoDimensions.map(CapturePhotoDimensions.init) ?? [],
+            configuredMaxPhotoDimensions: configuredDimensions.isValid ? configuredDimensions : nil,
+            isDepthDataDeliverySupported: assumesDepthDeliverySupported || photoOutput.isDepthDataDeliverySupported,
             isDepthDataDeliveryEnabled: photoOutput.isDepthDataDeliveryEnabled,
             maxPhotoQualityPrioritization: photoOutput.maxPhotoQualityPrioritization
         )
@@ -93,29 +150,52 @@ extension CaptureOutputProfile {
     nonisolated func resolvedPhotoOutput(
         availablePhotoCodecTypes: [AVVideoCodecType]
     ) throws -> ResolvedCaptureOutputProfile {
-        try validateForEmbeddedPhotoDepthCapture()
-        let codec = try requiredCodec(availablePhotoCodecTypes: availablePhotoCodecTypes)
-
-        return ResolvedCaptureOutputProfile(
-            profileID: id,
-            container: container,
-            codec: codec,
-            depthDataDeliveryEnabled: depthDataDeliveryEnabled,
-            embedsDepthDataInPhoto: embedsDepthDataInPhoto,
-            depthDataFiltered: depthDataFiltered,
-            requiresDepthData: requiresDepthData,
-            photoQualityPolicy: photoQualityPolicy
+        try resolvedPhotoOutput(
+            capabilities: CapturePhotoOutputCapabilitySnapshot(
+                availablePhotoFileTypeIdentifiers: [],
+                availablePhotoCodecTypes: availablePhotoCodecTypes,
+                supportedPhotoCodecTypesByFileTypeIdentifier: [:],
+                supportedMaxPhotoDimensions: [],
+                configuredMaxPhotoDimensions: nil,
+                isDepthDataDeliverySupported: true,
+                isDepthDataDeliveryEnabled: depthDataDeliveryEnabled,
+                maxPhotoQualityPrioritization: maxPhotoQualityPrioritization
+            )
         )
     }
 
     nonisolated func resolvedPhotoOutput(
         capabilities: CapturePhotoOutputCapabilitySnapshot
     ) throws -> ResolvedCaptureOutputProfile {
-        let resolvedOutput = try resolvedPhotoOutput(
-            availablePhotoCodecTypes: capabilities.availablePhotoCodecTypes
+        try validateForEmbeddedPhotoDepthCapture()
+        let codec = try requiredCodec(
+            availablePhotoCodecTypes: supportedCodecTypes(for: fileContainer, in: capabilities)
+        )
+        let dimensions = try photoDimensionsPolicy.resolve(from: capabilities.supportedMaxPhotoDimensions)
+
+        let resolvedOutput = ResolvedCaptureOutputProfile(
+            profileID: id,
+            container: container,
+            fileContainer: fileContainer,
+            codec: codec,
+            depthDataDeliveryEnabled: depthDataDeliveryEnabled,
+            embedsDepthDataInPhoto: embedsDepthDataInPhoto,
+            depthDataFiltered: depthDataFiltered,
+            requiresDepthData: requiresDepthData,
+            photoQualityPolicy: photoQualityPolicy,
+            maxPhotoDimensions: dimensions,
+            compressionQuality: compressionQuality
         )
         try resolvedOutput.validatePhotoOutputCapabilities(capabilities)
         return resolvedOutput
+    }
+
+    private nonisolated func supportedCodecTypes(
+        for fileContainer: CapturePhotoFileContainer,
+        in capabilities: CapturePhotoOutputCapabilitySnapshot
+    ) -> [AVVideoCodecType] {
+        capabilities.supportedPhotoCodecTypesByFileTypeIdentifier[fileContainer.avFileType.rawValue]
+            ?? capabilities.availablePhotoCodecTypes
     }
 }
 
@@ -124,14 +204,41 @@ extension ResolvedCaptureOutputProfile {
         _ capabilities: CapturePhotoOutputCapabilitySnapshot,
         requireConfiguredState: Bool = false
     ) throws {
-        if !capabilities.availablePhotoCodecTypes.isEmpty,
-           !capabilities.availablePhotoCodecTypes.contains(requestedCodec) {
+        if !capabilities.availablePhotoFileTypeIdentifiers.isEmpty,
+           !capabilities.availablePhotoFileTypeIdentifiers.contains(processedFileType.rawValue) {
+            let available = capabilities.availablePhotoFileTypeIdentifiers.sorted().joined(separator: ", ")
+            throw TAPDepthCaptureError.invalidCaptureOutputProfile(
+                "Resolved output profile \(profileID) requires file type \(processedFileType.rawValue), available [\(available)]."
+            )
+        }
+
+        if let fileSpecificCodecs = capabilities.supportedPhotoCodecTypesByFileTypeIdentifier[processedFileType.rawValue],
+           !fileSpecificCodecs.isEmpty,
+           !fileSpecificCodecs.contains(requestedCodec) {
+            let available = fileSpecificCodecs.map(\.rawValue).sorted().joined(separator: ", ")
+            throw TAPDepthCaptureError.captureOutputCodecUnsupported(
+                "Resolved output profile \(profileID) requires \(requestedCodec.rawValue) for \(processedFileType.rawValue), available [\(available)]."
+            )
+        } else if !capabilities.availablePhotoCodecTypes.isEmpty,
+                  !capabilities.availablePhotoCodecTypes.contains(requestedCodec) {
             let available = capabilities.availablePhotoCodecTypes
                 .map(\.rawValue)
                 .sorted()
                 .joined(separator: ", ")
             throw TAPDepthCaptureError.captureOutputCodecUnsupported(
                 "Resolved output profile \(profileID) requires \(requestedCodec.rawValue), available [\(available)]."
+            )
+        }
+
+        if let maxPhotoDimensions,
+           !capabilities.supportedMaxPhotoDimensions.isEmpty,
+           !capabilities.supportedMaxPhotoDimensions.contains(maxPhotoDimensions) {
+            let available = capabilities.supportedMaxPhotoDimensions
+                .map(\.debugDescription)
+                .sorted()
+                .joined(separator: ", ")
+            throw TAPDepthCaptureError.invalidCaptureOutputProfile(
+                "Resolved output profile \(profileID) requires maxPhotoDimensions \(maxPhotoDimensions.debugDescription), available [\(available)]."
             )
         }
 
@@ -150,6 +257,14 @@ extension ResolvedCaptureOutputProfile {
                 || capabilities.maxPhotoQualityPrioritization == maxPhotoQualityPrioritization else {
             throw TAPDepthCaptureError.invalidCaptureOutputProfile(
                 "Photo output maximum quality does not match the resolved output profile."
+            )
+        }
+
+        guard !requireConfiguredState
+                || maxPhotoDimensions == nil
+                || capabilities.configuredMaxPhotoDimensions == maxPhotoDimensions else {
+            throw TAPDepthCaptureError.invalidCaptureOutputProfile(
+                "Photo output maximum dimensions do not match the resolved output profile."
             )
         }
     }
@@ -171,29 +286,29 @@ extension ResolvedCaptureOutputProfile {
     }
 
     nonisolated func validateForEmbeddedPhotoDepthPackaging() throws {
-        guard container == .embeddedPhotoDepthHEIC else {
+        guard container.preservesEmbeddedPhotoDepth else {
             throw TAPDepthCaptureError.invalidCaptureOutputProfile(
-                "Resolved output profile is not an embedded photo-depth HEIC container."
+                "Resolved output profile is not an embedded photo-depth container."
             )
         }
-        guard codec == .hevc else {
+        guard fileContainer.defaultCodec == codec else {
             throw TAPDepthCaptureError.captureOutputCodecUnsupported(
-                "Resolved embedded photo-depth HEIC output must use HEVC."
+                "Resolved \(fileContainer.displayName) photo-depth output must use \(fileContainer.defaultCodec.rawValue)."
             )
         }
         guard requiresDepthData else {
             throw TAPDepthCaptureError.invalidCaptureOutputProfile(
-                "Resolved embedded photo-depth HEIC output must require depth data."
+                "Resolved photo-depth output must require depth data."
             )
         }
         guard depthDataDeliveryEnabled else {
             throw TAPDepthCaptureError.invalidCaptureOutputProfile(
-                "Resolved embedded photo-depth HEIC output must request depth delivery."
+                "Resolved photo-depth output must request depth delivery."
             )
         }
         guard embedsDepthDataInPhoto else {
             throw TAPDepthCaptureError.invalidCaptureOutputProfile(
-                "Resolved embedded photo-depth HEIC output must embed depth data."
+                "Resolved photo-depth output must embed depth data."
             )
         }
     }

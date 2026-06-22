@@ -26,7 +26,7 @@ enum CameraFeedbackPreferences {
 /// - Tag: CameraCaptureRootView
 struct CameraView: View {
     private let startsAutomatically: Bool
-    private let lifecycleCoordinator: CaptureLifecycleCoordinator
+    @StateObject private var lifecycleCoordinator: CaptureLifecycleCoordinator
     @StateObject private var viewModel: CameraViewModel
     @StateObject private var routeStore: CameraRouteStore
     @StateObject private var chromeOrientation: CameraChromeOrientationController
@@ -36,6 +36,8 @@ struct CameraView: View {
     private var isShutterHapticsEnabled = CameraFeedbackPreferences.defaultShutterHapticsEnabled
     @AppStorage(CameraFeedbackPreferences.shutterSoundEnabledKey)
     private var isShutterSoundEnabled = CameraFeedbackPreferences.defaultShutterSoundEnabled
+    @AppStorage(CameraOutputFormatPreference.storageKey)
+    private var outputFormatRawValue = CameraOutputFormatPreference.defaultValue.rawValue
 
     init(
         viewModel: CameraViewModel? = nil,
@@ -45,7 +47,7 @@ struct CameraView: View {
         startsAutomatically: Bool = true
     ) {
         self.startsAutomatically = startsAutomatically
-        self.lifecycleCoordinator = lifecycleCoordinator
+        _lifecycleCoordinator = StateObject(wrappedValue: lifecycleCoordinator)
         if let viewModel {
             _viewModel = StateObject(wrappedValue: viewModel)
         } else {
@@ -87,6 +89,11 @@ struct CameraView: View {
             chromeOrientation: chromeOrientation,
             appAttestController: appAttestController
         )
+        .onChange(of: outputFormatRawValue) { _, _ in
+            Task {
+                await viewModel.configureCurrentSelection()
+            }
+        }
     }
 
     private var cameraSurface: some View {

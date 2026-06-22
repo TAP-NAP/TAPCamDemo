@@ -11,7 +11,7 @@ import ImageIO
 import Foundation
 
 /// Supplies standard EXIF/GPS/TIFF metadata while `AVCapturePhoto` flattens the
-/// in-memory capture into HEIC bytes.
+/// in-memory capture into photo bytes.
 ///
 /// TAP-specific data is intentionally not written here. This customizer keeps
 /// generic photo metadata compatible with normal image tools, while

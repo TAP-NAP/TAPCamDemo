@@ -17,8 +17,8 @@ system:
   export; full Photos asset recovery is reserved for interrupted `.exporting`
   records.
 - Camera still defaults to the capture surface on a fresh route.
-- Foreground return can force Camera only after more than 10 seconds away, and
-  only when the user enables the Settings preference.
+- Foreground return forces Camera every time the app returns to active, but only
+  when the user enables the Settings preference.
 
 ## User Constraints
 
@@ -74,8 +74,9 @@ system:
   `PhotoLibraryWriter.depthAssetIdentifier` full-album scan for normal `.signed`
   first export. It only runs that recovery scan when a record is already
   `.exporting`, where the app may be recovering from an interrupted Photos save.
-- `CameraRoutePreferences` owns the foreground-return preference key, default,
-  and 10-second threshold.
+- `CameraRoutePreferences` owns the foreground-return preference key and
+  default. The original stored key string is preserved so existing installs keep
+  their toggle value, but the policy no longer has a delay threshold.
 - The Settings toggle defaults off, so users opt in before foreground return can
   force the Camera route.
 
@@ -90,9 +91,10 @@ system:
 - `TAPCamDemo/TAPLibrary/TAPPendingCaptureProcessor.swift`: injectable exporter
   actions and guard that avoid first-export full-album Photos scans.
 - `TAPCamDemo/CameraCapture/UI/CaptureLifecycleCoordinator.swift`: explicit
-  foreground route-restore policy input.
+  foreground route-restore policy input and stable active/inactive transition
+  tracking.
 - `TAPCamDemo/CameraCapture/UI/CameraViewLifecycleModifier.swift`: background
-  timestamp tracking and Settings-backed policy wiring.
+  Settings-backed policy wiring.
 - `TAPCamDemo/CameraCapture/UI/CameraRouteStore.swift`: route preference
   constants only; no precise scroll state.
 - `TAPCamDemo/DepthAnalysis/DepthAnalyzerSettingsView.swift`: user toggle.
@@ -115,8 +117,9 @@ Score this plan out of 10 during review:
   item-refreshes consuming the pending return bookmark.
 - 2.0: returning from TAP Library to Camera clears the precise offset without
   writing it to route context.
-- 2.0: foreground return policy respects the 10-second threshold and the
-  default-off Settings preference.
+- 2.0: foreground return policy is default-off, and when enabled, every
+  inactive/background-to-active return restores the Camera route without a delay
+  threshold.
 - 1.5: ownership boundaries stay readable: precise offset and album snapshot
   cache in `DepthAlbumPickerView`, route/token fallback in route stores, and
   signed/export queue policy in TAP Library.
@@ -126,13 +129,19 @@ Score this plan out of 10 during review:
 
 ## Current Plan Score
 
-Current implementation evidence score: 9.6 / 10.
+Current implementation evidence score: 9.75 / 10.
 
 - Full credit for ownership boundaries, default-off Settings preference, lifecycle
   policy tests, source-boundary tests, cached non-empty/empty/error snapshot
   tests, fresh-entry top-start source guard, clicked-item bookmark restore tests,
   queue-priority tests, behavior-level exporter scan-boundary tests, and readable
   trace/docs.
+- The foreground-return preference now matches the updated requirement: when the
+  toggle is on, every inactive/background-to-active return restores the Camera
+  route, without waiting for 10 seconds.
+- Return-to-Camera route changes now disable SwiftUI navigation animation for
+  both foreground restore and the TAP Library `Camera` button, so users do not
+  wait through a pop animation when the intent is to resume shooting.
 - Partial deduction remains because the clicked-item bookmark still needs
   attended UI proof on a real album, and the Photos scan reduction still needs
   real-device log confirmation under a large album.
@@ -147,6 +156,14 @@ Current implementation evidence score: 9.6 / 10.
 - `xcodebuild test -project TAPCamDemo.xcodeproj -scheme TAPCamDemo -destination 'id=ADC347E0-6819-4898-810F-8FBBFCECE294' -only-testing:TAPCamDemoTests/TAPLibraryProcessingTests`
 - `xcodebuild test -project TAPCamDemo.xcodeproj -scheme TAPCamDemo -destination 'id=ADC347E0-6819-4898-810F-8FBBFCECE294' -only-testing:TAPCamDemoTests/TAPLibraryRouteTests` after replacing row correction with clicked-item bookmark restore.
 - `git diff --check` after adding the folder-wide AI Trace scoring rule.
+- `git diff --check` after changing the foreground-return preference semantics.
+- `xcodebuild build-for-testing -project TAPCamDemo.xcodeproj -scheme TAPCamDemo -destination 'generic/platform=iOS Simulator'` after changing the foreground-return preference semantics.
+- `xcodebuild test -project TAPCamDemo.xcodeproj -scheme TAPCamDemo -destination 'id=ADC347E0-6819-4898-810F-8FBBFCECE294' -only-testing:TAPCamDemoTests/TAPCameraCapturePresentationTests` after changing the foreground-return preference semantics.
+- `rg -n "forceCameraOnForegroundAfterDelay|defaultForceCameraOnForegroundAfterDelay|foregroundCameraReturnDelay|shouldForceCameraRouteOnForeground|backgroundElapsedTime|more than 10 seconds away|10-second threshold|10 秒阈值|超过 10 秒" TAPCamDemo TAPCamDemoTests TAPCamDemo/DepthAnalysis/README.md TAPCamDemo/TAPLibrary/README.md -g '*'` returned no matches after the semantics change.
+- Codex Security scoped triage render returned no findings for this preference and
+  lifecycle change.
+- `git diff --check` after disabling Return-to-Camera animation.
+- `xcodebuild test -project TAPCamDemo.xcodeproj -scheme TAPCamDemo -destination 'id=ADC347E0-6819-4898-810F-8FBBFCECE294' -only-testing:TAPCamDemoTests/TAPCameraCapturePresentationTests -only-testing:TAPCamDemoTests/TAPLibraryRouteTests` after disabling Return-to-Camera animation.
 
 Latest follow-up changes from the same conversation:
 
@@ -159,9 +176,20 @@ Latest follow-up changes from the same conversation:
   after returning from analysis.
 - Added a folder-wide AI Trace rule requiring future scored-plan changes to
   record the applicable rubric, current score, and why the score changed or
-  stayed the same. This process-documentation update keeps the current plan
-  score at 9.6 / 10 because the remaining deductions still require real-device
-  UI and Photos-scan evidence.
+  stayed the same.
+- Changed the foreground-return toggle semantics after user review: when enabled,
+  it ignores the previous 10-second delay and restores the Camera route on every
+  app return to active after the scene has gone inactive or backgrounded. The
+  stored preference key string remains unchanged to preserve existing toggle
+  values.
+- Moved foreground-return transition memory into the stable
+  `CaptureLifecycleCoordinator` held by `CameraView` as a `@StateObject`, instead
+  of storing it in the view modifier's local `@State`.
+- Disabled Return-to-Camera navigation animation in the two explicit camera-return
+  paths: foreground restore in `CaptureLifecycleCoordinator`, and the TAP Library
+  `Camera` button in `DepthAlbumPickerView`. The picker no longer calls
+  `dismiss()` separately for that button, so one route-state change owns the
+  transition.
 
 All listed checks passed.
 

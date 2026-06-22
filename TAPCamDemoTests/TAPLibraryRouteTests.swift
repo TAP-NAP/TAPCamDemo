@@ -217,6 +217,19 @@ struct TAPLibraryRouteTests {
         #expect(!contextStoreSource.contains("contentOffset"))
     }
 
+    @Test func depthAlbumPickerCameraReturnDisablesNavigationAnimation() throws {
+        let pickerSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAlbumPickerView.swift"
+        )
+
+        #expect(pickerSource.contains("returnToCameraWithoutAnimation"))
+        #expect(pickerSource.contains("transaction.animation = nil"))
+        #expect(pickerSource.contains("transaction.disablesAnimations = true"))
+        #expect(pickerSource.contains("withTransaction(transaction)"))
+        #expect(!pickerSource.contains("@Environment(\\.dismiss)"))
+        #expect(!pickerSource.contains("dismiss()"))
+    }
+
     @Test @MainActor func depthAlbumPickerReturnScrollBookmarkRestoresClickedItemViewportPosition() throws {
         let records = (0..<8).map { index in
             TAPCamDemoTestFixtures.samplePendingRecord(

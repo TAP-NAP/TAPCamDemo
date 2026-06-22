@@ -1,9 +1,9 @@
 # TAPLibrary Module
 
 `TAPCamDemo/TAPLibrary` owns the app-private queue for TAP capture artifacts.
-Camera capture writes an unsigned HEIC and returns quickly. The queue processor
-serially signs, exports, retries, and cleans up records so real-device App
-Attest and Photos work do not overlap.
+Camera capture writes one unsigned TAP depth photo file, either HEIC or JPG, and
+returns quickly. The queue processor serially signs, exports, retries, and
+cleans up records so real-device App Attest and Photos work do not overlap.
 
 ## Code Map
 
@@ -31,14 +31,14 @@ Attest and Photos work do not overlap.
 
 ```mermaid
 flowchart TD
-    Capture["CameraCapture Output\nunsigned HEIC"] --> Ingest["TAPPendingCaptureStore.ingest"]
-    Ingest --> Bundle["Pending/<captureID>\nbundle.json\nunsigned.heic\nthumbnail.jpg"]
+    Capture["CameraCapture Output\nunsigned HEIC/JPG"] --> Ingest["TAPPendingCaptureStore.ingest"]
+    Ingest --> Bundle["Pending/<captureID>\nbundle.json\nunsigned.heic or unsigned.jpg\nthumbnail.jpg"]
     Bundle --> Processor["TAPPendingCaptureProcessor"]
     Processor --> Readiness["Worker readiness\nprotected data available"]
     Readiness --> Sign["Validate manifest id,\nsign, inject proof"]
-    Sign --> Signed["signed.heic"]
+    Sign --> Signed["signed.heic or signed.jpg"]
     Signed --> Validate["Final signed-export validator"]
-    Validate --> Export["PhotoLibraryWriter.saveDepthHEIC"]
+    Validate --> Export["PhotoLibraryWriter.saveDepthPhoto"]
     Export --> Mark["markExported(assetLocalIdentifier)"]
     Mark --> Cleanup["cleanupExportedLargeFiles"]
 
@@ -54,9 +54,9 @@ flowchart TD
 
 ```mermaid
 stateDiagram-v2
-    [*] --> pending: ingest unsigned.heic
+    [*] --> pending: ingest unsigned photo
     pending --> signing: worker starts signing
-    signing --> signed: signed.heic stored
+    signing --> signed: signed photo stored
     signed --> exporting: worker starts Photos export
     exporting --> exported: assetLocalIdentifier stored
     pending --> waitingNetwork: network error
@@ -78,7 +78,7 @@ Candidate priority is defined by
 3. `failedRetryable` and `waitingNetwork`
 
 The same policy also decides whether a candidate should sign then export, export
-an existing signed HEIC, or be skipped.
+an existing signed TAP depth photo file, or be skipped.
 Already signed/exporting work is first because those records have already paid
 the App Attest signing cost and should reach Photos before newer pending records
 start another signing pass.
@@ -94,7 +94,7 @@ decision: the worker may read private pending artifacts, or it must return
 without doing queue work.
 
 When protected data is unavailable, the worker returns before reconciliation,
-candidate enumeration, unsigned or signed HEIC reads, manifest/proof parsing,
+candidate enumeration, unsigned or signed photo reads, manifest/proof parsing,
 Photos asset lookup, signing, export, retry updates, cleanup, or failure-reason
 updates. The record remains in its existing state because this branch means
 temporary device or storage readiness, not a failed capture and not a network
@@ -135,14 +135,16 @@ without App Attest hardware, network, or Photos side effects.
 
 - `TAPLocalArtifactStoragePolicy.privatePhotoArtifact` is the write boundary for
   app-private photo artifacts and derived thumbnails.
-- `unsigned.heic` is the output of `EmbeddedPhotoPackager`.
-- `signed.heic` is created only after the record `captureID` matches the
-  embedded TAP manifest `payload.id` and App Attest proof injection succeeds.
-- `signed.heic` is exported only after `validateSignedExportHEIC` re-reads the
-  final bytes and verifies the HEIC source type, manifest schema/id, proof
-  envelope, proof digest binding, and Apple auxiliary depth/disparity. The
-  validator returns `ValidatedTAPDepthHEIC`, which is the type accepted by the
-  Photos writer.
+- `unsigned.heic` or `unsigned.jpg` is the output of `EmbeddedPhotoPackager`,
+  depending on the resolved output profile.
+- `signed.heic` or `signed.jpg` is created only after the record `captureID`
+  matches the embedded TAP manifest `payload.id` and App Attest proof injection
+  succeeds.
+- The signed photo file is exported only after `validateSignedExportPhoto`
+  re-reads the final bytes and verifies the source container, manifest
+  schema/id, proof envelope, proof digest binding, and Apple auxiliary
+  depth/disparity. The validator returns `ValidatedTAPDepthPhoto`, which is the
+  type accepted by the Photos writer.
 - Normal `.signed` first export goes straight to final validation and Photos
   save; it does not scan every existing TAPCamDepth Photos asset first.
   Existing-asset recovery via `depthAssetIdentifier` is reserved for `.exporting`
@@ -154,8 +156,8 @@ without App Attest hardware, network, or Photos side effects.
 - Precise capture location is kept only while the record is pending, signing,
   or exporting so Photos can receive the location at save time. `markExported`
   clears the persisted queue copy after Photos has accepted the asset.
-- Pending bundle directories, records, HEICs, and thumbnails are protected with
-  complete-until-first-user-authentication file protection.
+- Pending bundle directories, records, photo artifacts, and thumbnails are
+  protected with complete-until-first-user-authentication file protection.
 - `TAPPendingCaptureBundlePathPolicy` validates pending bundle path components:
   capture IDs must be single safe directory names, and persisted artifact
   filenames must be one of the fixed bundle resources.
@@ -166,7 +168,7 @@ without App Attest hardware, network, or Photos side effects.
   through `TAPPendingCaptureBundlePathPolicy` and routes writes/protection
   through `TAPLocalArtifactStoragePolicy`.
 - `TAPPendingCaptureStore` does not directly enumerate directories, call
-  `Data(contentsOf:)`, write `bundle.json`, or remove HEIC files. It owns queue
+  `Data(contentsOf:)`, write `bundle.json`, or remove photo files. It owns queue
   semantics: ingest idempotence, record ordering, state transitions, failure
   reason normalization, actor serialization, notifications, and diagnostics.
 
@@ -185,7 +187,7 @@ behavior needs them. Persisted `failureReason` values come from
 `error.localizedDescription`. Legacy stored reasons are normalized before
 records leave the store. Public error summaries come from
 `TAPDiagnostics.describe`, which keeps domain/code and scalar network hints but
-omits localized messages, failing URLs, raw network paths, proof bodies, HEIC
+omits localized messages, failing URLs, raw network paths, proof bodies, photo
 bytes, GPS values, and thumbnails.
 
 ## Persisted Failure Reason Presentation
@@ -210,7 +212,7 @@ for non-failure states:
 - `failedRetryable`: `Capture processing failed. It will retry.`
 
 The persisted reason must not include capture IDs, manifest IDs, Photos asset
-IDs, URLs, paths, App Attest key IDs, proofs, HEIC bytes, or raw associated
+IDs, URLs, paths, App Attest key IDs, proofs, photo bytes, or raw associated
 error reasons.
 
 Older `bundle.json` files may contain raw strings from builds before this
@@ -250,7 +252,7 @@ coordinate to disk.
 Pending-to-owned migration is handled by the capture token: a
 `pending:<captureID>` anchor can resolve to `owned:<assetLocalIdentifier>` after
 export because the owned item still carries the same pending record `captureID`.
-Route context must remain item context only; it must not trigger HEIC
+Route context must remain item context only; it must not trigger photo artifact
 reads, signing, export, retry, Photos fetches, or automatic analysis navigation.
 
 ## Tests

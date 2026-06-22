@@ -3,8 +3,8 @@
 `TAPCamDemo/CameraCapture` owns the live camera surface and the SingleCam
 photo-depth capture path. Release UI chooses semantic field-of-view options;
 Planning resolves them into concrete AVFoundation-compatible sources; Runtime
-captures one Apple photo-depth result; Output builds an unsigned embedded HEIC
-and stages it in TAP Library.
+captures one Apple photo-depth result; Output builds an unsigned embedded TAP
+depth photo file and stages it in TAP Library.
 
 The module does not run separate RGB/depth sessions, does not write sidecars,
 and does not export to Photos directly.
@@ -16,7 +16,7 @@ and does not export to Photos directly.
 | UI | Camera screen shell, preview stage, debug overlay, bottom chrome controls, FOV chips, preview bridge | [UI/README.md](UI/README.md) |
 | Planning | Device discovery, RGB/depth compatibility, zoom, capture plan | [Planning/README.md](Planning/README.md) |
 | Runtime | SingleCam session mutation and photo capture | [Runtime/README.md](Runtime/README.md) |
-| Output | Logical package, TAP manifest, HEIC injection, pending writer | [Output/README.md](Output/README.md) |
+| Output | Logical package, TAP manifest, TAP photo metadata injection, pending writer | [Output/README.md](Output/README.md) |
 | Support | Location, metrics, capture errors, public-safe status text | [Support/README.md](Support/README.md) |
 
 ## Layer Flow
@@ -49,19 +49,19 @@ as an in-memory restore anchor while the camera view is alive.
 camera surface. It turns SwiftUI scene, route, and pending-capture signing
 credential events into explicit actions such as restore route, refresh recent
 preview, and retry pending captures. It does not create the capture pipeline,
-write Photos assets, sign HEIC files, or bypass TAP Library's protected-data
+write Photos assets, sign photo files, or bypass TAP Library's protected-data
 checks.
 
 `CameraPreviewStageView` is the local SwiftUI composition boundary for the live
 preview. It owns preview sizing, render-only `AVCaptureSession` handoff, crop
 metadata callback routing, Release FOV overlay, and the Debug overlay host.
 It does not configure the session, inspect devices, build capture plans, sign or
-export HEICs, persist route state, or own output format/quality policy.
+export photo artifacts, persist route state, or own output format/quality policy.
 
 `CameraPreviewDebugOverlayView` is the Debug-only composition boundary for
 status, depth-source, zoom, and performance overlays. It receives display-only
 depth/zoom rows from `CameraView`, not raw device objects, camera profiles,
-format selections, capture plans, App Attest objects, pending records, HEIC
+format selections, capture plans, App Attest objects, pending records, photo
 bytes, manifests, or Photos identifiers.
 
 `CameraCaptureStatusPresentation` is the public-safe status boundary shared by
@@ -115,7 +115,7 @@ sequenceDiagram
     Pipeline->>Provider: capturePhotoDepth()
     Provider-->>Pipeline: AVCapturePhoto + depthData
     Pipeline->>Packager: package(CapturePackage)
-    Packager-->>Pipeline: unsigned HEIC + TAP manifest
+    Packager-->>Pipeline: unsigned HEIC/JPG + TAP manifest
     Pipeline->>Writer: write(artifact)
     Writer-->>Pipeline: pending capture ID
 ```
@@ -132,11 +132,13 @@ The format and quality boundary crosses layers in this order:
 1. Future UI or product policy should express the choice as
    `CaptureOutputProfileSelectionIntent`, then resolve it against
    `CaptureOutputProfileCatalog.release`.
-2. Today, because no format or quality UI exists, app-level quality still comes
-   from `CapturePhotoQualityPolicy.releaseQuality` through the release profile.
-3. `SessionConfigurationRequest` carries
-   `CaptureOutputProfileCatalog.releaseDefaultProfile`, which is currently
-   `CaptureOutputProfile.releasePhotoDepthHEIC`.
+2. `DepthAnalyzerSettingsView` stores `CameraOutputFormatPreference` as HEIC or
+   JPG. `CameraViewModel.configureCurrentSelection()` resolves that preference
+   through `CaptureOutputProfileSelectionIntent` before Runtime sees it.
+3. `SessionConfigurationRequest` carries a concrete reviewed profile from
+   `CaptureOutputProfileCatalog.release`. The default remains
+   `CaptureOutputProfile.releasePhotoDepthHEIC`; JPG uses
+   `CaptureOutputProfile.releasePhotoDepthJPEG`.
 4. `CaptureSessionController` resolves that raw policy once into
    `ResolvedCaptureOutputProfile`, configures `AVCapturePhotoOutput` from that
    resolved request, and stores it in `SessionConfigurationResult`.
@@ -146,13 +148,15 @@ The format and quality boundary crosses layers in this order:
 6. `CapturePackageBuilder`, `EmbeddedPhotoPackager`, and
    `TAPDepthManifestBuilder` read the same resolved output facts instead of
    reinterpreting the raw profile during packaging.
-7. Output builds an unsigned embedded HEIC; TAP Library later signs, validates,
-   and exports it. Output does not export to Photos directly.
+7. Output builds an unsigned embedded HEIC or JPG TAP depth photo file; TAP
+   Library later signs, validates, and exports it. Output does not export to
+   Photos directly.
 
-This is not a user-facing image-quality feature yet. Future JPEG, RAW, Live
-Photo, video, or quality-level work should add a new profile/catalog entry plus
-validation, manifest, packaging, signing, reader, and test evidence before UI
-can request it.
+This is still not a broad image-quality feature. The visible format choice is
+limited to the two reviewed TAP depth photo profiles. Future RAW, Live Photo,
+video, 24MP deferred delivery, or quality-level work should add a new
+profile/catalog entry plus validation, manifest, packaging, signing, reader,
+and test evidence before UI can request it.
 
 ## Packaging Handoff
 
@@ -160,11 +164,11 @@ can request it.
 flowchart TD
     Photo["AVCapturePhoto"] --> Package["CapturePackage"]
     Package --> Manifest["TAPDepthManifestBuilder"]
-    Package --> BaseHEIC["fileDataRepresentation(with:)"]
+    Package --> BasePhoto["fileDataRepresentation(with:)"]
     Manifest --> Provenance["TAPCaptureProvenanceWriter.writeManifest"]
-    BaseHEIC --> Provenance
-    Provenance --> Writer["TAPDepthHEICWriter"]
-    Writer --> Unsigned["Unsigned HEIC with TAP XMP manifest"]
+    BasePhoto --> Provenance
+    Provenance --> Writer["TAPDepthPhotoFileWriter"]
+    Writer --> Unsigned["Unsigned HEIC/JPG with TAP XMP manifest"]
     Unsigned --> Store["TAPPendingCaptureStore"]
 
     click Package "Output/CapturePackage.swift"
@@ -180,7 +184,7 @@ injection, and final Photos export are retried by
 [TAPPendingCaptureProcessor](../TAPLibrary/TAPPendingCaptureProcessor.swift),
 not by the shutter-time capture job. The pending signing path calls the same
 provenance writer in throwing mode so export cannot silently fall back to an
-unsigned HEIC.
+unsigned photo file.
 
 ## Debug Path
 
@@ -208,5 +212,5 @@ Start with [UI/CameraViewModel+Debug.swift](UI/CameraViewModel+Debug.swift).
 | [Documentation/ZOOM.md](Documentation/ZOOM.md) | Raw `videoZoomFactor`, semantic FOV labels, and depth-safe zoom ranges. |
 | [Documentation/CROP.md](Documentation/CROP.md) | Preview crop metadata versus destructive final crop. |
 | [Documentation/CAPTURE_SOURCES.md](Documentation/CAPTURE_SOURCES.md) | Why this app has one photo-depth provider path. |
-| [Documentation/PACKAGING.md](Documentation/PACKAGING.md) | Embedded HEIC packaging, pending storage, signing, and export. |
+| [Documentation/PACKAGING.md](Documentation/PACKAGING.md) | Embedded TAP depth photo packaging, pending storage, signing, and export. |
 | [Documentation/DEBUGGING.md](Documentation/DEBUGGING.md) | Debug panels, metrics, and queue state. |

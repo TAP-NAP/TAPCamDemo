@@ -8,9 +8,9 @@ import Foundation
 /// Logical resources that make up one reviewed capture output.
 ///
 /// This is a pure planning model, not a packager and not a storage manifest.
-/// It names what the current Release output promises so future JPEG, RAW, Live
-/// Photo, video, or C2PA work has a small place to add resource-level policy
-/// before Runtime, Photos, or App Attest code changes.
+/// It names what Release photo-depth output promises so future RAW, Live Photo,
+/// video, or C2PA work has a small place to add resource-level policy before
+/// Runtime, Photos, or App Attest code changes.
 nonisolated struct CaptureOutputResourcePlan: Equatable, Sendable {
     let container: CaptureOutputContainer
     let resources: [CaptureOutputResource]
@@ -39,33 +39,40 @@ nonisolated struct CaptureOutputResourcePlan: Equatable, Sendable {
 
     static let releasePhotoDepthHEIC = CaptureOutputResourcePlan(
         container: .embeddedPhotoDepthHEIC,
-        resources: [
-            CaptureOutputResource(
-                kind: .primaryPhoto,
-                storage: .embeddedInPrimaryPhoto,
-                requiredForExport: true,
-                coveredByAppAttestContentDigest: true
-            ),
-            CaptureOutputResource(
-                kind: .appleAuxiliaryDepth,
-                storage: .embeddedInPrimaryPhoto,
-                requiredForExport: true,
-                coveredByAppAttestContentDigest: true
-            ),
-            CaptureOutputResource(
-                kind: .tapManifest,
-                storage: .embeddedInPrimaryPhoto,
-                requiredForExport: true,
-                coveredByAppAttestContentDigest: true
-            ),
-            CaptureOutputResource(
-                kind: .appAttestCaptureProof,
-                storage: .tapManifestProofRecord,
-                requiredForExport: true,
-                coveredByAppAttestContentDigest: false
-            )
-        ]
+        resources: releasePhotoDepthResources
     )
+
+    static let releasePhotoDepthJPEG = CaptureOutputResourcePlan(
+        container: .embeddedPhotoDepthJPEG,
+        resources: releasePhotoDepthResources
+    )
+
+    private static let releasePhotoDepthResources: [CaptureOutputResource] = [
+        CaptureOutputResource(
+            kind: .primaryPhoto,
+            storage: .embeddedInPrimaryPhoto,
+            requiredForExport: true,
+            coveredByAppAttestContentDigest: true
+        ),
+        CaptureOutputResource(
+            kind: .appleAuxiliaryDepth,
+            storage: .embeddedInPrimaryPhoto,
+            requiredForExport: true,
+            coveredByAppAttestContentDigest: true
+        ),
+        CaptureOutputResource(
+            kind: .tapManifest,
+            storage: .embeddedInPrimaryPhoto,
+            requiredForExport: true,
+            coveredByAppAttestContentDigest: true
+        ),
+        CaptureOutputResource(
+            kind: .appAttestCaptureProof,
+            storage: .tapManifestProofRecord,
+            requiredForExport: true,
+            coveredByAppAttestContentDigest: false
+        )
+    ]
 
     private func requires(_ kind: CaptureOutputResource.Kind) -> Bool {
         resources.contains { $0.kind == kind && $0.requiredForExport }
@@ -105,6 +112,8 @@ extension ResolvedCaptureOutputProfile {
             switch container {
             case .embeddedPhotoDepthHEIC:
                 return CaptureOutputResourcePlan.releasePhotoDepthHEIC
+            case .embeddedPhotoDepthJPEG:
+                return CaptureOutputResourcePlan.releasePhotoDepthJPEG
             }
         }
     }

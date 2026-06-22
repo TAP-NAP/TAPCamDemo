@@ -131,7 +131,7 @@ If this directory is new to you, read it in this order:
    bottom camera chrome. It receives only `CameraCaptureControlsState`, a
    thumbnail image, and closures; it does not receive the view model, route
    store, App Attest controller, pending store, capture pipeline, output
-   profile, identifiers, HEIC bytes, manifests, or proofs.
+   profile, identifiers, photo bytes, manifests, or proofs.
 13. [CameraPreviewView.swift](CameraPreviewView.swift),
    [FocalLengthSelectorView.swift](FocalLengthSelectorView.swift), Debug panels,
    and [PerformancePanelView.swift](PerformancePanelView.swift) for the smaller
@@ -179,7 +179,7 @@ Foreground capture must continue to use the `CameraViewModel`-owned
 `CapturePipeline` with `TAPPendingCaptureArtifactWriter`. The lifecycle
 coordinator may ask the view model to retry pending captures, but it must not
 create a pipeline, call a signer, export to Photos, or choose between signed and
-unsigned HEIC data.
+unsigned photo data.
 
 ## Rules
 
@@ -187,26 +187,26 @@ unsigned HEIC data.
 - `CameraViewModel.statusMessage` and Debug metrics failure text must receive
   public-safe text from `CameraCaptureStatusPresentation`. Do not assign
   `error.localizedDescription`, capture IDs, manifest IDs, Photos asset IDs,
-  URLs, paths, App Attest key IDs, proofs, HEIC bytes, or raw associated error
+  URLs, paths, App Attest key IDs, proofs, photo bytes, or raw associated error
   reasons directly into visible status strings.
 - Camera chrome controls receive field-level presentation state and closures.
   They must not receive `CameraViewModel`, `CameraRouteStore`,
   `AppAttestRuntimeController`, `AppAttestClient`, `CapturePipeline`,
   `TAPPendingCaptureStore`, `CaptureOutputProfile`, session configuration
-  results, raw Photos identifiers, pending capture identifiers, HEIC bytes,
+  results, raw Photos identifiers, pending capture identifiers, photo bytes,
   manifests, proofs, App Attest key IDs, or output objects.
 - The preview stage may receive a render-only `AVCaptureSession`, normalized
   crop callback, display-only FOV options, primitive preview sizing values, and
   a Debug-only overlay state. It must not receive `CameraViewModel`,
   `CaptureSessionController`, camera/depth profiles, raw device identifiers,
   capture plans, session configuration results, App Attest objects, pending
-  stores/processors/records, Photos identifiers, HEIC bytes, manifests, proofs,
+  stores/processors/records, Photos identifiers, photo bytes, manifests, proofs,
   key IDs, capture pipelines, or output profile objects.
 - Debug preview overlay state must remain under `#if DEBUG`. It may display
   already-derived strings, counts, metrics, display-only Debug depth rows, and
   display-only Debug zoom rows, and it may pass selected tokens back through
   closures. It must not start/stop/configure the session, inspect
-  `AVCaptureDevice`, build capture plans, read or write HEICs, sign/export
+  `AVCaptureDevice`, build capture plans, read or write photo artifacts, sign/export
   captures, persist identifiers, or enter Release UI.
 - `DebugDepthDeviceOption` and `ZoomProfile` stay behind `CameraView` and
   `CameraViewModel`. The overlay receives `CameraDebugDepthDisplayOption` and
@@ -237,7 +237,7 @@ unsigned HEIC data.
 - Release FOV selection passes the raw resolved zoom factor through selection
   state so Planning can preserve nonstandard FOV mappings.
 - The shutter path queues foreground capture/write work and returns a pending
-  capture ID after the unsigned HEIC is staged.
+  capture ID after the unsigned photo file is staged.
 - Debug controls override the same SingleCam path; they do not enable a second
   RGB/depth pipeline.
 - Preview crop metadata feeds capture provenance. The stage boundary is now

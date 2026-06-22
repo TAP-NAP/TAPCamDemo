@@ -46,9 +46,24 @@ nonisolated struct CaptureContentDigest: Codable, Equatable, Sendable {
         baseHEICData: Data,
         depthData: AVDepthData
     ) throws -> CaptureContentDigest {
+        try make(
+            manifest: manifest,
+            basePhotoData: baseHEICData,
+            fileContainer: .heic,
+            depthData: depthData
+        )
+    }
+
+    static func make(
+        manifest: TAPDepthManifest,
+        basePhotoData: Data,
+        fileContainer: CapturePhotoFileContainer,
+        depthData: AVDepthData
+    ) throws -> CaptureContentDigest {
         try makeWithMetrics(
             manifest: manifest,
-            baseHEICData: baseHEICData,
+            basePhotoData: basePhotoData,
+            fileContainer: fileContainer,
             depthData: depthData
         ).digest
     }
@@ -58,10 +73,24 @@ nonisolated struct CaptureContentDigest: Codable, Equatable, Sendable {
         baseHEICData: Data,
         depthData: AVDepthData
     ) throws -> CaptureContentDigestBuildResult {
+        try makeWithMetrics(
+            manifest: manifest,
+            basePhotoData: baseHEICData,
+            fileContainer: .heic,
+            depthData: depthData
+        )
+    }
+
+    static func makeWithMetrics(
+        manifest: TAPDepthManifest,
+        basePhotoData: Data,
+        fileContainer: CapturePhotoFileContainer,
+        depthData: AVDepthData
+    ) throws -> CaptureContentDigestBuildResult {
         var metrics = CaptureContentDigestMetrics()
 
         let rgbStart = Date()
-        let rgb = try rgbComponent(from: baseHEICData)
+        let rgb = try rgbComponent(from: basePhotoData, fileContainer: fileContainer)
         metrics.rgbDigestDuration = Date().timeIntervalSince(rgbStart)
 
         let depthStart = Date()
@@ -110,8 +139,11 @@ nonisolated struct CaptureContentDigest: Codable, Equatable, Sendable {
         }
     }
 
-    private static func rgbComponent(from heicData: Data) throws -> Component {
-        guard let source = CGImageSourceCreateWithData(heicData as CFData, nil),
+    private static func rgbComponent(
+        from photoData: Data,
+        fileContainer: CapturePhotoFileContainer
+    ) throws -> Component {
+        guard let source = CGImageSourceCreateWithData(photoData as CFData, nil),
               let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
             throw TAPDepthCaptureError.imageSourceCreationFailed
         }
@@ -140,7 +172,7 @@ nonisolated struct CaptureContentDigest: Codable, Equatable, Sendable {
         context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
 
         return Component(
-            mediaType: "image/heic-primary-rgba8",
+            mediaType: "image/\(fileContainer.rawValue)-primary-rgba8",
             width: width,
             height: height,
             value: pixels.withUnsafeBytes { bytes in

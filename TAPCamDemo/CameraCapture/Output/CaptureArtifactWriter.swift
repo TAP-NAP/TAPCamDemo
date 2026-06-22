@@ -26,7 +26,7 @@ protocol CaptureArtifactWriter: Sendable {
     func write(_ artifact: PackagedCaptureArtifact) async throws -> CaptureWriteResult
 }
 
-/// Direct Photos writer retained for flows that already have a final HEIC.
+/// Direct Photos writer retained for flows that already have a final TAP depth photo file.
 ///
 /// The camera UI now uses `TAPPendingCaptureArtifactWriter` so capture writes
 /// finish at the app-private pending store before async signing/export.
@@ -35,12 +35,16 @@ nonisolated struct PhotoLibraryCaptureArtifactWriter: CaptureArtifactWriter {
     ///
     /// - Tag: WritePackagedArtifactToPhotos
     func write(_ artifact: PackagedCaptureArtifact) async throws -> CaptureWriteResult {
-        let validatedHEIC = try TAPCaptureProvenanceWriter().validateSignedExportHEIC(
+        let expectedProfile: CaptureOutputProfile = artifact.fileContainer == .jpeg
+            ? .releasePhotoDepthJPEG
+            : .releasePhotoDepthHEIC
+        let validatedPhoto = try TAPCaptureProvenanceWriter().validateSignedExportPhoto(
             artifact.photoData,
-            expectedCaptureID: artifact.manifest.payload.id
+            expectedCaptureID: artifact.manifest.payload.id,
+            expectedProfile: expectedProfile
         )
-        let assetID = try await PhotoLibraryWriter.saveDepthHEIC(
-            validatedHEIC,
+        let assetID = try await PhotoLibraryWriter.saveDepthPhoto(
+            validatedPhoto,
             capturedAt: artifact.capturedAt,
             location: artifact.location
         )

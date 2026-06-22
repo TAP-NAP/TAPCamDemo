@@ -9,20 +9,32 @@ import Testing
 @testable import TAPCamDemo
 
 struct TAPCaptureOutputProfileTests {
-    @Test func releaseOutputProfileNamesCurrentHEICDepthPolicy() throws {
-        let profile = CaptureOutputProfile.releasePhotoDepthHEIC
+    @Test func releaseOutputProfilesNameHEICAndJPGDepthPolicy() throws {
+        let heic = CaptureOutputProfile.releasePhotoDepthHEIC
+        let jpg = CaptureOutputProfile.releasePhotoDepthJPEG
 
-        #expect(profile.id == "release.photo-depth.heic")
-        #expect(profile.container == .embeddedPhotoDepthHEIC)
-        #expect(profile.codecPreference == [.hevc])
-        #expect(profile.depthDataDeliveryEnabled)
-        #expect(profile.embedsDepthDataInPhoto)
-        #expect(profile.depthDataFiltered)
-        #expect(profile.requiresDepthData)
-        #expect(profile.photoQualityPolicy == .releaseQuality)
-        #expect(profile.photoQualityPrioritization == .quality)
-        #expect(profile.maxPhotoQualityPrioritization == .quality)
-        #expect(profile.contractViolations.isEmpty)
+        #expect(heic.id == "release.photo-depth.heic")
+        #expect(heic.container == .embeddedPhotoDepthHEIC)
+        #expect(heic.fileContainer == .heic)
+        #expect(heic.codecPreference == [.hevc])
+
+        #expect(jpg.id == "release.photo-depth.jpg")
+        #expect(jpg.container == .embeddedPhotoDepthJPEG)
+        #expect(jpg.fileContainer == .jpeg)
+        #expect(jpg.codecPreference == [.jpeg])
+
+        for profile in [heic, jpg] {
+            #expect(profile.depthDataDeliveryEnabled)
+            #expect(profile.embedsDepthDataInPhoto)
+            #expect(profile.depthDataFiltered)
+            #expect(profile.requiresDepthData)
+            #expect(profile.photoQualityPolicy == .releaseQuality)
+            #expect(profile.photoDimensionsPolicy == .largestStandardSupported)
+            #expect(profile.compressionQuality == 1.0)
+            #expect(profile.photoQualityPrioritization == .quality)
+            #expect(profile.maxPhotoQualityPrioritization == .quality)
+            #expect(profile.contractViolations.isEmpty)
+        }
     }
 
     @Test func capturePhotoQualityPolicyNamesAppLevelQualityBeforeAVFoundation() throws {
@@ -53,12 +65,12 @@ struct TAPCaptureOutputProfileTests {
         #expect(samplePayload.capture.photoQualityPrioritization == releaseProfile.photoQualityPolicy.requested.manifestDescription)
     }
 
-    @Test func releaseOutputProfileCatalogNamesSingleExecutableDefault() throws {
+    @Test func releaseOutputProfileCatalogNamesHEICDefaultAndJPGOption() throws {
         let catalog = CaptureOutputProfileCatalog.release
 
         #expect(catalog.defaultProfile == .releasePhotoDepthHEIC)
-        #expect(catalog.profileIDs == ["release.photo-depth.heic"])
-        #expect(catalog.executableProfiles == [.releasePhotoDepthHEIC])
+        #expect(catalog.profileIDs == ["release.photo-depth.heic", "release.photo-depth.jpg"])
+        #expect(catalog.executableProfiles == [.releasePhotoDepthHEIC, .releasePhotoDepthJPEG])
         #expect(catalog.contractViolations.isEmpty)
     }
 
@@ -105,6 +117,33 @@ struct TAPCaptureOutputProfileTests {
         } catch {
             Issue.record("Unexpected output profile error: \(error)")
         }
+    }
+
+    @Test func releaseJPGProfileRequiresJPEGAndDoesNotFallbackToHEVC() throws {
+        let profile = CaptureOutputProfile.releasePhotoDepthJPEG
+
+        #expect(profile.preferredCodec(availablePhotoCodecTypes: [.jpeg, .hevc]) == .jpeg)
+        #expect(profile.preferredCodec(availablePhotoCodecTypes: [.hevc]) == nil)
+        #expect(try profile.requiredCodec(availablePhotoCodecTypes: []) == .jpeg)
+
+        do {
+            _ = try profile.requiredCodec(availablePhotoCodecTypes: [.hevc])
+            Issue.record("Expected JPG output profile to reject HEVC-only codec availability.")
+        } catch TAPDepthCaptureError.captureOutputCodecUnsupported(let reason) {
+            #expect(reason.contains("release.photo-depth.jpg"))
+        } catch {
+            Issue.record("Unexpected output profile error: \(error)")
+        }
+    }
+
+    @Test func largestStandardDimensionsPolicySkipsDeferredOnly24MP() throws {
+        let dimensions = [
+            CapturePhotoDimensions(width: 1920, height: 1440),
+            CapturePhotoDimensions(width: 5712, height: 4284),
+            CapturePhotoDimensions(width: 4032, height: 3024)
+        ]
+
+        #expect(try CapturePhotoDimensionsPolicy.largestStandardSupported.resolve(from: dimensions) == CapturePhotoDimensions(width: 4032, height: 3024))
     }
 
     @Test func outputProfileRejectsDepthAndQualityContractDrift() throws {
@@ -162,6 +201,7 @@ struct TAPCaptureOutputProfileTests {
 
         #expect(resolved.profileID == "release.photo-depth.heic")
         #expect(resolved.container == .embeddedPhotoDepthHEIC)
+        #expect(resolved.fileContainer == .heic)
         #expect(resolved.codec == .hevc)
         #expect(resolved.depthDataDeliveryEnabled)
         #expect(resolved.embedsDepthDataInPhoto)
@@ -170,6 +210,34 @@ struct TAPCaptureOutputProfileTests {
         #expect(resolved.photoQualityPolicy == .releaseQuality)
         #expect(resolved.photoQualityPrioritization == .quality)
         #expect(resolved.maxPhotoQualityPrioritization == .quality)
+    }
+
+    @Test func outputProfileResolutionSelectsFileSpecificCodecAndDimensions() throws {
+        let dimensions = [
+            CapturePhotoDimensions(width: 5712, height: 4284),
+            CapturePhotoDimensions(width: 4032, height: 3024)
+        ]
+        let resolved = try CaptureOutputProfile.releasePhotoDepthJPEG.resolvedPhotoOutput(
+            capabilities: CapturePhotoOutputCapabilitySnapshot(
+                availablePhotoFileTypeIdentifiers: [AVFileType.heic.rawValue, AVFileType.jpg.rawValue],
+                availablePhotoCodecTypes: [.hevc, .jpeg],
+                supportedPhotoCodecTypesByFileTypeIdentifier: [
+                    AVFileType.heic.rawValue: [.hevc],
+                    AVFileType.jpg.rawValue: [.jpeg]
+                ],
+                supportedMaxPhotoDimensions: dimensions,
+                configuredMaxPhotoDimensions: nil,
+                isDepthDataDeliverySupported: true,
+                isDepthDataDeliveryEnabled: true,
+                maxPhotoQualityPrioritization: .quality
+            )
+        )
+
+        #expect(resolved.profileID == "release.photo-depth.jpg")
+        #expect(resolved.fileContainer == .jpeg)
+        #expect(resolved.processedFileType == .jpg)
+        #expect(resolved.codec == .jpeg)
+        #expect(resolved.maxPhotoDimensions == CapturePhotoDimensions(width: 4032, height: 3024))
     }
 
     @Test func resolvedOutputValidatesPhotoOutputCapabilities() throws {
@@ -263,7 +331,7 @@ struct TAPCaptureOutputProfileTests {
         }
     }
 
-    @Test func outputResourcePlanNamesCurrentSignedHEICResources() throws {
+    @Test func outputResourcePlanNamesCurrentSignedPhotoResources() throws {
         let resolved = try CaptureOutputProfile.releasePhotoDepthHEIC.resolvedPhotoOutput(
             availablePhotoCodecTypes: [.hevc]
         )
@@ -286,6 +354,11 @@ struct TAPCaptureOutputProfileTests {
             .tapManifest
         ])
         #expect(plan.resources.first { $0.kind == .appAttestCaptureProof }?.coveredByAppAttestContentDigest == false)
+
+        let jpgResolved = try CaptureOutputProfile.releasePhotoDepthJPEG.resolvedPhotoOutput(
+            availablePhotoCodecTypes: [.jpeg]
+        )
+        #expect(try jpgResolved.resourcePlan.container == .embeddedPhotoDepthJPEG)
     }
 
     @Test func outputResourcePlanReusesResolvedPackagingValidation() throws {
@@ -297,6 +370,7 @@ struct TAPCaptureOutputProfileTests {
         #expect(resourcePlanSource.contains("get throws"))
         #expect(resourcePlanSource.contains("try validateForEmbeddedPhotoDepthPackaging()"))
         #expect(resourcePlanSource.contains("case .embeddedPhotoDepthHEIC"))
+        #expect(resourcePlanSource.contains("case .embeddedPhotoDepthJPEG"))
     }
 
     @Test func outputResourcePlanStaysPurePolicyModel() throws {
@@ -320,7 +394,7 @@ struct TAPCaptureOutputProfileTests {
         #expect(resourcePlanSource.contains("extension ResolvedCaptureOutputProfile"))
     }
 
-    @Test func currentPhotosExportSurfaceStaysSingleValidatedHEICResource() throws {
+    @Test func currentPhotosExportSurfaceUsesSingleValidatedPhotoResource() throws {
         let photoLibrarySource = try Self.source(relativePath: "TAPCamDemo/CameraCapture/Output/PhotoLibraryWriter.swift")
         let createAssetSource = try #require(Self.substring(
             in: photoLibrarySource,
@@ -328,9 +402,13 @@ struct TAPCaptureOutputProfileTests {
             to: "private static func fetchAlbum"
         ))
 
-        #expect(photoLibrarySource.contains("static func saveDepthHEIC(\n        _ validatedHEIC: ValidatedTAPDepthHEIC"))
+        #expect(photoLibrarySource.contains("static func saveDepthPhoto(\n        _ validatedPhoto: ValidatedTAPDepthPhoto"))
+        #expect(createAssetSource.contains("options.uniformTypeIdentifier = fileContainer.uniformTypeIdentifier"))
+        #expect(createAssetSource.contains("options.originalFilename = resourceFilename"))
+        #expect(createAssetSource.contains("options.shouldMoveFile = false"))
         #expect(createAssetSource.components(separatedBy: "addResource(").count - 1 == 1)
-        #expect(createAssetSource.contains("addResource(with: .photo"))
+        #expect(createAssetSource.contains("addResource(with: .photo, fileURL: resourceURL, options: options)"))
+        #expect(!createAssetSource.contains("addResource(with: .photo, data:"))
         #expect(!createAssetSource.contains(".pairedVideo"))
         #expect(!createAssetSource.contains(".alternatePhoto"))
         #expect(!createAssetSource.contains(".fullSizePhoto"))
@@ -382,12 +460,12 @@ struct TAPCaptureOutputProfileTests {
     }
 
     @Test func outputProfileSelectionIntentResolvesExplicitProfileID() throws {
-        let intent = CaptureOutputProfileSelectionIntent(request: .profile(id: " release.photo-depth.heic "))
+        let intent = CaptureOutputProfileSelectionIntent(request: .profile(id: " release.photo-depth.jpg "))
         let resolution = intent.resolved()
 
         #expect(resolution.isExecutable)
-        #expect(resolution.requestedProfileID == "release.photo-depth.heic")
-        #expect(resolution.selectedProfile?.id == CaptureOutputProfile.releasePhotoDepthHEIC.id)
+        #expect(resolution.requestedProfileID == "release.photo-depth.jpg")
+        #expect(resolution.selectedProfile?.id == CaptureOutputProfile.releasePhotoDepthJPEG.id)
     }
 
     @Test func outputProfileSelectionPresentationNamesValidSelectionWithoutRawProfileID() throws {
@@ -530,18 +608,31 @@ struct TAPCaptureOutputProfileTests {
         let profileResolutionSource = try Self.source(
             relativePath: "TAPCamDemo/CameraCapture/Output/CaptureOutputProfileResolution.swift"
         )
+        let packagerSource = try Self.source(
+            relativePath: "TAPCamDemo/CameraCapture/Output/EmbeddedPhotoPackager.swift"
+        )
 
         #expect(profileResolutionSource.contains("struct CapturePhotoOutputCapabilitySnapshot"))
-        #expect(profileResolutionSource.contains("init(photoOutput: AVCapturePhotoOutput)"))
+        #expect(profileResolutionSource.contains("init(\n        photoOutput: AVCapturePhotoOutput"))
         #expect(profileResolutionSource.contains("func validatePhotoOutputCapabilities"))
-        #expect(providerSource.contains("availablePhotoCodecTypes: photoOutput.availablePhotoCodecTypes"))
-        #expect(providerSource.contains("switch resolvedOutput.codec"))
-        #expect(providerSource.contains("case .hevc:"))
-        #expect(providerSource.contains("case .jpeg:"))
+        #expect(profileResolutionSource.contains("availablePhotoFileTypeIdentifiers"))
+        #expect(profileResolutionSource.contains("supportedPhotoCodecTypesByFileTypeIdentifier"))
+        #expect(profileResolutionSource.contains("supportedMaxPhotoDimensions"))
+        #expect(profileResolutionSource.contains("configuredMaxPhotoDimensions"))
+        #expect(providerSource.contains("processedFileType: resolvedOutput.processedFileType"))
+        #expect(providerSource.contains("AVVideoQualityKey: resolvedOutput.compressionQuality"))
+        #expect(providerSource.contains("settings.maxPhotoDimensions = maxPhotoDimensions.cmVideoDimensions"))
+        #expect(providerSource.contains("photo settings prepared profile="))
+        #expect(providerSource.contains("photo capture processed profile="))
         #expect(!providerSource.contains("else {\n            settings = AVCapturePhotoSettings()"))
         #expect(sessionControllerSource.contains("validatePhotoOutputCapabilities"))
         #expect(sessionControllerSource.components(separatedBy: "requireConfiguredState: true").count - 1 == 2)
+        #expect(sessionControllerSource.contains("photoOutput.maxPhotoDimensions = maxPhotoDimensions.cmVideoDimensions"))
+        #expect(sessionControllerSource.contains("capture output capabilities profile="))
+        #expect(sessionControllerSource.contains("capture output configured profile="))
         #expect(!sessionControllerSource.contains("resolvedOutput.depthDataDeliveryEnabled && !photoOutput.isDepthDataDeliverySupported"))
+        #expect(packagerSource.contains("base photo materialized profile="))
+        #expect(packagerSource.contains("unsigned photo packaged profile="))
     }
 
     @Test func runtimePackageAndManifestUseResolvedOutputAsExecutionToken() throws {

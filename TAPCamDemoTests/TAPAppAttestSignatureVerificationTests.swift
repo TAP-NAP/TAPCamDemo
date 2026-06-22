@@ -26,7 +26,7 @@ struct TAPAppAttestSignatureVerificationTests {
             steps: [
                 AppAttestSignatureVerificationStep(
                     status: .success,
-                    title: "Local signed HEIC gate",
+                    title: "Local signed photo gate",
                     detail: "Container, Release manifest policy, App Attest proof, digest binding, and auxiliary depth passed local validation."
                 )
             ],

@@ -3,6 +3,7 @@
 //  TAPCamDemo
 //
 
+import Combine
 import SwiftUI
 
 /// Coordinates camera-screen lifecycle side effects.
@@ -12,7 +13,9 @@ import SwiftUI
 /// policy that decides when scene, route, and pending-capture signing
 /// transitions should resume the camera, refresh the TAP Library thumbnail, or
 /// retry staged pending captures.
-nonisolated final class CaptureLifecycleCoordinator {
+final class CaptureLifecycleCoordinator: ObservableObject {
+    nonisolated let objectWillChange = ObservableObjectPublisher()
+
     nonisolated enum LifecycleAction: Equatable {
         case startCamera
         case warmPendingCaptureSigningCredential
@@ -24,6 +27,8 @@ nonisolated final class CaptureLifecycleCoordinator {
         case stopChromeOrientation
         case stopCamera
     }
+
+    private var didLeaveActiveScene = false
 
     nonisolated init() {}
 
@@ -111,18 +116,18 @@ nonisolated final class CaptureLifecycleCoordinator {
     @MainActor
     func scenePhaseDidChange(
         _ phase: ScenePhase,
-        shouldForceCameraRouteOnForeground: Bool,
+        shouldReturnToCameraOnForeground: Bool,
         routeStore: CameraRouteStore,
         viewModel: CameraViewModel,
         appAttestController: AppAttestRuntimeController
     ) async {
         for action in Self.scenePhaseActions(
             for: phase,
-            shouldForceCameraRouteOnForeground: shouldForceCameraRouteOnForeground
+            shouldReturnToCameraOnForeground: shouldReturnToCameraOnForeground
         ) {
             switch action {
             case .restoreCameraRoute:
-                routeStore.restoreCameraOnForeground()
+                restoreCameraRouteWithoutAnimation(routeStore: routeStore)
             case .loadRecentTAPLibraryPreview:
                 await viewModel.loadRecentTAPLibraryPreviewIfAvailable()
             case .retryPendingCaptures:
@@ -133,6 +138,16 @@ nonisolated final class CaptureLifecycleCoordinator {
             default:
                 break
             }
+        }
+    }
+
+    @MainActor
+    private func restoreCameraRouteWithoutAnimation(routeStore: CameraRouteStore) {
+        var transaction = Transaction()
+        transaction.animation = nil
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            routeStore.restoreCameraOnForeground()
         }
     }
 
@@ -200,14 +215,14 @@ nonisolated final class CaptureLifecycleCoordinator {
 
     nonisolated static func scenePhaseActions(
         for phase: ScenePhase,
-        shouldForceCameraRouteOnForeground: Bool = false
+        shouldReturnToCameraOnForeground: Bool = false
     ) -> [LifecycleAction] {
         guard phase == .active else {
             return []
         }
 
         var actions: [LifecycleAction] = []
-        if shouldForceCameraRouteOnForeground {
+        if shouldReturnToCameraOnForeground {
             actions.append(.restoreCameraRoute)
         }
         actions.append(contentsOf: [.loadRecentTAPLibraryPreview, .retryPendingCaptures])
@@ -227,25 +242,33 @@ nonisolated final class CaptureLifecycleCoordinator {
         isCredentialPreparationActive ? [] : [.retryPendingCaptures]
     }
 
-    nonisolated static func shouldForceCameraRouteOnForeground(
-        isEnabled: Bool,
-        backgroundElapsedTime: TimeInterval?
-    ) -> Bool {
-        guard isEnabled,
-              let backgroundElapsedTime else {
-            return false
-        }
-        return backgroundElapsedTime > CameraRoutePreferences.foregroundCameraReturnDelay
-    }
-
     nonisolated static func shouldRestoreCamera(
         for phase: ScenePhase,
-        shouldForceCameraRouteOnForeground: Bool = false
+        shouldReturnToCameraOnForeground: Bool = false
     ) -> Bool {
         scenePhaseActions(
             for: phase,
-            shouldForceCameraRouteOnForeground: shouldForceCameraRouteOnForeground
+            shouldReturnToCameraOnForeground: shouldReturnToCameraOnForeground
         ).contains(.restoreCameraRoute)
+    }
+
+    @MainActor
+    func foregroundRouteRestorePolicy(
+        for phase: ScenePhase,
+        returnsToCameraOnForeground: Bool
+    ) -> Bool {
+        switch phase {
+        case .active:
+            defer {
+                didLeaveActiveScene = false
+            }
+            return returnsToCameraOnForeground && didLeaveActiveScene
+        case .inactive, .background:
+            didLeaveActiveScene = true
+            return false
+        @unknown default:
+            return false
+        }
     }
 
     nonisolated static func shouldResumeCameraAfterDepthAlbumPresentationChange(

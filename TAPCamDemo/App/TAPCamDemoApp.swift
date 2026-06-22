@@ -47,7 +47,11 @@ private struct XCTestHostView: View {
 
 private extension ProcessInfo {
     var isXCTestHost: Bool {
-        environment["TAPCAM_XCTEST_HOST"] == "1"
+        guard environment["TAPCAM_UI_TEST_REAL_APP"] != "1" else {
+            return false
+        }
+
+        return environment["TAPCAM_XCTEST_HOST"] == "1"
             || environment["XCTestConfigurationFilePath"] != nil
             || environment["XCTestBundlePath"] != nil
     }

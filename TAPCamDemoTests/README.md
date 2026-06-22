@@ -5,14 +5,27 @@
 app-hosted checks that can compile on Simulator without a depth-capable camera,
 App Attest hardware acceptance, Photos UI automation, or live backend calls.
 
+`TAPCamDemoUITests` is a separate, attended smoke-test target for real app UI
+automation. Its first test is
+`ShutterCaptureSmokeTests.testTappingShutterRequestsDepthCapture`, which launches
+the real app with `TAPCAM_UI_TEST_REAL_APP=1`, handles common permission alerts,
+and taps the shutter accessibility element. This target is useful for real
+device evidence, but it can fail before test code runs if XCTest cannot enable
+device automation mode.
+
 ## Test Entry
 
 ```mermaid
 flowchart TD
     Scheme["TAPCamDemo.xcscheme"] --> Env["TAPCAM_XCTEST_HOST=1"]
     Scheme --> Tests["TAPCamDemoTests.xctest"]
+    Scheme --> UITests["TAPCamDemoUITests.xctest"]
     Env --> App["TAPCamDemoApp"]
     App --> Host["XCTestHostView"]
+    UITests --> RealAppEnv["TAPCAM_UI_TEST_REAL_APP=1"]
+    RealAppEnv --> RealApp["StartupGateView + real capture UI"]
+    UITests --> ShutterSmoke["ShutterCaptureSmokeTests.swift"]
+    ShutterSmoke --> Shutter["Capture depth photo"]
     Tests --> Main["TAPCamDemoTests.swift"]
     Tests --> DepthInput["TAPDepthAnalysisInputTests.swift"]
     Tests --> DepthSelection["TAPDepthAnalysisSelectionTests.swift"]
@@ -84,6 +97,7 @@ flowchart TD
 
     click Scheme "../TAPCamDemo.xcodeproj/xcshareddata/xcschemes/TAPCamDemo.xcscheme"
     click App "../TAPCamDemo/App/TAPCamDemoApp.swift"
+    click ShutterSmoke "../TAPCamDemoUITests/ShutterCaptureSmokeTests.swift"
     click Main "TAPCamDemoTests.swift"
     click DepthInput "TAPDepthAnalysisInputTests.swift"
     click DepthSelection "TAPDepthAnalysisSelectionTests.swift"
@@ -134,14 +148,16 @@ suite.
 | App Attest logging/UI privacy review | `diagnosticsDescriptionOmitsLocalizedDescriptionAndFailingURL`, `diagnosticsDescriptionKeepsVPNHintWithoutRawNetworkPath`, `diagnosticsDescriptionKeepsScalarStreamDiagnostics`, key ID presentation redaction tests, and credential failure status redaction tests in [AppAttestRuntimeTests.swift](AppAttestRuntimeTests.swift) |
 | OSLog source privacy harness | `allTAPDiagnosticsLoggingFilesAreCoveredByHarness`, `osLogInterpolationsDeclareReviewedPrivacy`, backend public-summary source guard, and `sensitiveOSLogLabelsAreNotAccidentallyBroadenedByPrefix` in [TAPDiagnosticsOSLogPrivacyTests.swift](TAPDiagnosticsOSLogPrivacyTests.swift) |
 | Startup gate policy, backend preflight retry policy, backend preflight execution, and coordination | `startupGatePolicyNamesRequiredAndOptionalRequirements`, `startupGateRequiresSecurityPreflightCameraAndPhotos`, `startupGateRejectsNonGrantedSecurityPreflightStates`, `startupGateTreatsSecurityPreflightDenialAsBlocking`, `startupGateTreatsLocationAsOptional`, pure security-preflight retry/timeout policy tests, injected backend preflight execution tests, and injected preflight coordinator tests in [StartupGateCoordinatorTests.swift](StartupGateCoordinatorTests.swift) |
-| Output profile selection, public-safe selection presentation, catalog, quality policy, resolved output execution token, resource plan, photo-output capability snapshot, and photo settings factory | `releaseOutputProfileNamesCurrentHEICDepthPolicy`, `capturePhotoQualityPolicyNamesAppLevelQualityBeforeAVFoundation`, `tapDepthManifestUsesPhotoQualityPolicyManifestDescription`, `releaseOutputProfileCatalogNamesSingleExecutableDefault`, `outputProfileCatalogSurfacesInvalidProfileSets`, `releaseOutputProfileRequiresHEVCAndDoesNotFallbackToJPEG`, `outputProfileRejectsDepthAndQualityContractDrift`, `outputProfileResolutionProducesSingleRuntimeRequest`, `resolvedOutputValidatesPhotoOutputCapabilities`, `runtimeResolvesAndReusesOutputThroughCapabilitySnapshot`, `outputResourcePlanNamesCurrentSignedHEICResources`, `outputResourcePlanReusesResolvedPackagingValidation`, `outputResourcePlanStaysPurePolicyModel`, `resolvedOutputValidatesCapturePlanDepthContract`, `runtimePackageAndManifestUseResolvedOutputAsExecutionToken`, `outputProfileSelectionIntentResolvesReleaseDefaultProfile`, `outputProfileSelectionIntentResolvesExplicitProfileID`, output-profile selection presentation redaction tests, `outputProfileSelectionIntentRejectsEmptyProfileIDWithoutFallback`, `outputProfileSelectionIntentRejectsMissingProfile`, `outputProfileSelectionIntentFailsClosedForInvalidCatalog`, and `photoSettingsFactoryUsesReleaseOutputProfileDefaults` in [TAPCaptureOutputProfileTests.swift](TAPCaptureOutputProfileTests.swift) |
+| Output profile selection, public-safe selection presentation, catalog, quality policy, resolved output execution token, resource plan, photo-output capability snapshot, and photo settings factory | `releaseOutputProfilesNameHEICAndJPGDepthPolicy`, `capturePhotoQualityPolicyNamesAppLevelQualityBeforeAVFoundation`, `tapDepthManifestUsesPhotoQualityPolicyManifestDescription`, `releaseOutputProfileCatalogNamesHEICDefaultAndJPGOption`, `outputProfileCatalogSurfacesInvalidProfileSets`, `releaseOutputProfileRequiresHEVCAndDoesNotFallbackToJPEG`, `releaseJPGProfileRequiresJPEGAndDoesNotFallbackToHEVC`, `largestStandardDimensionsPolicySkipsDeferredOnly24MP`, `outputProfileRejectsDepthAndQualityContractDrift`, `outputProfileResolutionProducesSingleRuntimeRequest`, `outputProfileResolutionSelectsFileSpecificCodecAndDimensions`, `resolvedOutputValidatesPhotoOutputCapabilities`, `runtimeResolvesAndReusesOutputThroughCapabilitySnapshot`, `outputResourcePlanNamesCurrentSignedPhotoResources`, `outputResourcePlanReusesResolvedPackagingValidation`, `outputResourcePlanStaysPurePolicyModel`, `currentPhotosExportSurfaceUsesSingleValidatedPhotoResource`, `resolvedOutputValidatesCapturePlanDepthContract`, `runtimePackageAndManifestUseResolvedOutputAsExecutionToken`, `outputProfileSelectionIntentResolvesReleaseDefaultProfile`, `outputProfileSelectionIntentResolvesExplicitProfileID`, output-profile selection presentation redaction tests, `outputProfileSelectionIntentRejectsEmptyProfileIDWithoutFallback`, `outputProfileSelectionIntentRejectsMissingProfile`, `outputProfileSelectionIntentFailsClosedForInvalidCatalog`, and `photoSettingsFactoryUsesReleaseOutputProfileDefaults` in [TAPCaptureOutputProfileTests.swift](TAPCaptureOutputProfileTests.swift) |
 | Pre-capture configuration snapshot, preview crop handoff, and Runtime fact preservation | crop update, selection-context crop update, Runtime execution-fact preservation, fixed zoom ID, custom raw release zoom, and source-guard tests in [TAPPreCaptureConfigurationBuilderTests.swift](TAPPreCaptureConfigurationBuilderTests.swift) |
 | Manifest payload/proof separation | `proofChangesDoNotAffectPayloadBytes` in [TAPCaptureManifestEncodingTests.swift](TAPCaptureManifestEncodingTests.swift) |
 | Capture content digest stability | `captureContentDigestCanonicalJSONIsStable` in [TAPCaptureContentDigestTests.swift](TAPCaptureContentDigestTests.swift) |
 | App Attest capture assertion shape | `appAttestCaptureAssertionSignerBuildsProofValue` and `appAttestCaptureAssertionSignerStopsWhenPrepareIfNeededFails` in [TAPCaptureAssertionSignerTests.swift](TAPCaptureAssertionSignerTests.swift) |
 | App Attest capture-signature verification panel/service privacy | `signatureVerificationContextUsesPublicBackendSummary`, `signatureVerificationSuccessReportKeepsRawVerificationMaterialOutOfVisibleText`, `signatureVerificationFailureReportUsesGenericVisibleErrorText`, and `signatureVerificationPanelDoesNotRenderRawVerificationSections` in [TAPAppAttestSignatureVerificationTests.swift](TAPAppAttestSignatureVerificationTests.swift) |
 | Pending-signing provenance writer guardrails | `unsignedCaptureManifestKeepsProofsEmptyWhenSignerIsMissing`, `unsignedCaptureManifestUsesFixedReasonWhenProofCannotBeCreated`, and `pendingSigningRejectsManifestIDMismatchBeforeSignerCall` in [TAPCaptureProvenanceWriterSigningTests.swift](TAPCaptureProvenanceWriterSigningTests.swift) |
-| Final Photos preflight gate | `signedExportValidatorRejectsNonHEICContainerBeforePhotosSave`, `validatedTAPDepthHEICRejectsRawJPEGBeforePhotosWriterCanBeCalled`, `signedExportValidatorCoversReleaseResourcePlanBeforePhotosSave`, `signedExportValidatorRejectsMissingProofAfterContainerCheck`, `signedExportValidatorRejectsInvalidProofEnvelopeAfterContainerCheck`, `signedExportValidatorRejectsMultipleManifestProofsBeforePhotosSave`, `signedExportValidatorRejectsManifestMismatchAfterContainerCheck`, `signedExportValidatorRejectsReleaseOutputPolicyDriftBeforePhotosSave`, and `signedExportValidatorRejectsMissingAuxiliaryDepthAfterContainerCheck` in [TAPSignedExportValidatorTests.swift](TAPSignedExportValidatorTests.swift) |
+| Final Photos preflight gate | `signedExportValidatorRejectsWrongContainerBeforePhotosSave`, `validatedTAPDepthPhotoRejectsRawContainerBeforePhotosWriterCanBeCalled`, `signedExportValidatorCoversReleaseResourcePlanBeforePhotosSave`, `signedExportValidatorRejectsMissingProofAfterContainerCheck`, `signedExportValidatorRejectsInvalidProofEnvelopeAfterContainerCheck`, `signedExportValidatorRejectsMultipleManifestProofsBeforePhotosSave`, `signedExportValidatorRejectsManifestMismatchAfterContainerCheck`, `signedExportValidatorRejectsReleaseOutputPolicyDriftBeforePhotosSave`, and `signedExportValidatorRejectsMissingAuxiliaryDepthAfterContainerCheck` in [TAPSignedExportValidatorTests.swift](TAPSignedExportValidatorTests.swift) |
+| Physical-device exported artifact audit | `exportedPhysicalDeviceCaptureArtifactsReadBackFromPhotos` in [TAPDeviceCaptureArtifactAuditTests.swift](TAPDeviceCaptureArtifactAuditTests.swift) runs only on physical devices with exported TAP records. It reads Photos original resources, validates container, manifest policy, depth, image dimensions, proof count, and writes a sanitized `TAPDeviceCaptureArtifactAudit.json` report in app tmp. |
+| Physical-device JPG capture/export/readback audit | `jpgPhysicalDeviceCaptureExportsAndReadsBackFromPhotos` in [TAPDeviceCaptureArtifactAuditTests.swift](TAPDeviceCaptureArtifactAuditTests.swift) runs only on physical devices. It sets the output preference to JPG for the test, configures the real camera through `CameraViewModel`, captures into an injected pending store, signs with an App-Attest-shaped test proof, exports through the live Photos writer, reads original JPG bytes back from Photos, validates the same artifact contract, and writes `TAPDeviceCaptureJPEGAudit.json` in app tmp. |
 | CameraCapture chrome, lifecycle, preview-stage, and Debug presentation state | `captureLifecycleCoordinatorKeepsPendingSigningWarmupAndRetryPoliciesExplicit`, shutter feedback preference checks, `cameraCaptureControlsStateLocksLibraryWhileCaptureWrites`, `cameraCaptureControlsStateDoesNotNameSensitiveInputs`, `cameraPreviewStageStateDoesNotNameCaptureSecurityOrOutputInputs`, `cameraFocalLengthDisplayOptionDoesNotNameHardwarePlanningInputs`, and Debug overlay display-state reflection tests in [TAPCameraCapturePresentationTests.swift](TAPCameraCapturePresentationTests.swift). |
 | Camera status presentation and capture metrics failure text | `cameraCaptureStatusPresentationOmitsRawIdentifiersAndPaths`, `cameraCaptureStatusPresentationRedactsAssociatedReasons`, `cameraCaptureStatusPresentationRedactsNSErrorDescriptionURLAndPath`, `cameraCaptureStatusPresentationKeepsGenericRecoverableMessages`, and `capturePipelineMetricsUsePublicSafeFailureReason` in [TAPCameraStatusPresentationTests.swift](TAPCameraStatusPresentationTests.swift). |
 | Durable TAP Library route context, top-start picker boundary, clicked-item return bookmarks, cached picker loading, item merge rules, album error presentation, and thumbnail cache-key privacy | `cameraRouteStoreDefaultsToCamera`, `cameraRouteStoreReturnsToCameraWithoutDroppingAlbumAnchor`, `cameraRouteStorePersistsAlbumAnchorsAcrossInstances`, `cameraRouteStoreClearsUnavailablePersistedAlbumAnchors`, `cameraRouteStoreMigratesPersistedPendingAnchorToOwnedPhotoAnchor`, `cameraRouteContextPersistsTokensWithoutRawAlbumIdentifiers`, `cameraRouteContextPersistsOnlyHexTokenValues`, item merge/provider tests, `depthAlbumPickerReturnScrollBookmarkRestoresClickedItemViewportPosition`, `depthAlbumPickerReturnScrollBookmarkMatchesPendingItemAfterOwnedExport`, `depthAlbumPickerLoadIfNeededReusesCachedSnapshot`, `depthAlbumPickerLoadIfNeededCachesEmptySnapshot`, `depthAlbumPickerLoadIfNeededCachesFailedSnapshotAttempt`, `depthAlbumPickerShowsPhotosErrorOnlyWhenNoItemsSurvive`, `depthAlbumPickerUsesFixedErrorWhenStoreLoadFails`, and Photos, owned-export, plus pending thumbnail cache-key privacy tests in [TAPLibraryRouteTests.swift](TAPLibraryRouteTests.swift) |
@@ -153,7 +169,7 @@ suite.
 | Manual camera control Runtime write service | Matching-plan validation, blocked-plan rejection, stale-camera rejection, stale-control-surface rejection, public error copy, zoom clamping, and registered session-queue marking in [TAPCameraControlServiceTests.swift](TAPCameraControlServiceTests.swift) |
 | TAP Library record model, path policy, bundle storage, candidate selection, exporting-only recovery policy, exported-location minimization, and store-level failure-reason migration | `pendingCaptureRecordNamesIdentityLocationAndVisibilityWithoutStore`, `pendingCaptureStorePersistsLedgerAcrossInstances`, `pendingCaptureStoreWritesArtifactsThroughLocalStoragePolicy`, `pendingCaptureStoreRejectsUnsafeCaptureIDsBeforeBundlePathUse`, `pendingCaptureStoreRejectsHiddenAndUnicodeCaptureIDs`, `pendingCaptureStoreRejectsTamperedBundleFilenames`, `pendingCaptureBundlePathPolicyKeepsArtifactFilenameAllowListExact`, `pendingCaptureBundlePathPolicyAllowsOnlyCurrentArtifactFilenames`, `pendingCaptureStoreRejectsMismatchedBundleRecordCaptureID`, `pendingCaptureStoreSkipsThumbnailWhenSourceCannotDecode`, `pendingCaptureStoreTracksSigningExportAndCleanup`, `pendingCaptureStoreNormalizesFailureReasonAtWriteSink`, `pendingCaptureStoreClearsFailureReasonForNonFailureStatuses`, `pendingCaptureStoreNormalizesLegacyFailureReasonOnRead`, `pendingCaptureStoreMigratesLegacyBundleJSONFailureReason`, `pendingCaptureStoreMigrationSkipsInvalidBundlesAndNormalizesOthers`, `pendingCaptureStoreAllRecordsNormalizesLegacyFailureReasons`, `pendingCaptureStorePrioritizesSignedExportBeforeFreshSigningAndRetryBacklog`, `pendingCaptureStoreReturnsNextProcessingCandidateWithExclusions`, and thumbnail/exported-index checks in [TAPLibraryStorageTests.swift](TAPLibraryStorageTests.swift) |
 | TAP Library worker readiness, processor routing, retry classification, export-scan boundaries, and persisted failure-reason presentation | `pendingCaptureWorkerReadinessRequiresProtectedData`, `pendingCaptureProcessorStopsWhenProtectedDataIsUnavailable`, `pendingCaptureProcessorLeavesSignedRecordUntouchedWhenProtectedDataIsUnavailable`, `pendingCaptureProcessorDoesNotReconcileLegacyFailureReasonsWhenProtectedDataUnavailable`, `pendingCaptureProcessorSignsAndExportsInCandidatePriorityOrder`, `photoLibraryPendingCaptureExporterSkipsExistingAssetLookupForSignedFirstExport`, `photoLibraryPendingCaptureExporterUsesExistingAssetLookupOnlyForExportingRecovery`, `pendingCaptureProcessorClassifiesNetworkExportFailureAsWaitingNetwork`, `pendingCaptureRetryClassifierMapsTypedNetworkErrorsToWaitingNetwork`, `pendingCaptureRetryClassifierReadsUnderlyingNSErrorCodes`, `pendingCaptureRetryClassifierReadsMultipleUnderlyingNSErrorCodes`, `pendingCaptureRetryClassifierDoesNotClassifyByLocalizedDescription`, `pendingCaptureFailureReasonPresentationOmitsRawIdentifiersAndPaths`, `pendingCaptureProcessorPersistsPublicSafeNetworkFailureReason`, and `pendingCaptureProcessorPersistsPublicSafeRetryFailureReason` in [TAPLibraryProcessingTests.swift](TAPLibraryProcessingTests.swift) |
-| DepthAnalysis input validation, reader metadata/input rejection, source loading, load-error presentation, and load-state ViewModel bridge | `depthAnalysisInputValidationRejectsUnsafeDepthMapShapes`, `depthAnalysisInputValidationRejectsOversizedBudgetsBeforeAllocation`, `depthAnalysisReaderRejectsNonHEICInputBeforeAnalysisDecode`, `imageOrientationReaderAcceptsImageIONumericMetadataTypes`, Photos/pending loader routing tests, pending temporary-unavailable mapping, reader refresh separation, fixed reader/Photos loader presentation tests, and `depthAnalysisViewModelLoadsInputAndClearsPreviousAnalysisState` in [TAPDepthAnalysisInputTests.swift](TAPDepthAnalysisInputTests.swift) |
+| DepthAnalysis input validation, reader metadata/input rejection, source loading, load-error presentation, and load-state ViewModel bridge | `depthAnalysisInputValidationRejectsUnsafeDepthMapShapes`, `depthAnalysisInputValidationRejectsOversizedBudgetsBeforeAllocation`, `depthAnalysisReaderRejectsUnsupportedInputBeforeAnalysisDecode`, `imageOrientationReaderAcceptsImageIONumericMetadataTypes`, Photos/pending loader routing tests, pending temporary-unavailable mapping, reader refresh separation, fixed reader/Photos loader presentation tests, and `depthAnalysisViewModelLoadsInputAndClearsPreviousAnalysisState` in [TAPDepthAnalysisInputTests.swift](TAPDepthAnalysisInputTests.swift) |
 | DepthAnalysis rectangular region selection, Planes seed-selection state, and ViewModel selection bridge | `depthAnalysisRegionSelectionStateBeginsAndPreviewsWithoutDerivedProducts`, `depthAnalysisRegionSelectionStateFinishesWithStatsHeatmapAndPlaneEstimate`, `depthAnalysisRegionSelectionStateClearRemovesSelectionAndDerivedProducts`, `depthAnalysisRegionSelectionStateClampsOutOfBoundsSelection`, `depthAnalysisRegionSelectionStateMapsInvalidRegionHeatmapToGenericMessage`, `depthAnalysisPlaneSelectionStateClampsSeedAndStrictness`, `depthAnalysisPlaneSelectionStateStartSuccessFailureAndClearTransitions`, `depthAnalysisViewModelBuildsRegionProductsOnlyAfterExplicitSelection`, and `depthAnalysisViewModelClearSelectionRemovesDerivedRegionProducts` in [TAPDepthAnalysisSelectionTests.swift](TAPDepthAnalysisSelectionTests.swift) |
 | DepthAnalysis camera-space geometry, Planes estimator/growth, detector cache behavior, and async request freshness | `projectorUsesCalibrationToProduceCameraCoordinates`, `cameraIntrinsicsRejectNonFiniteAndZeroCalibration`, seed validation and growth tests, `planeEstimatorFindsSyntheticFlatDepthRegion`, `planeDetectorFindsAndFiltersHighConfidenceFlatRegions`, `depthAnalysisPlaneRegionDetectorBuildsGeometryAndDetectsRegion`, `depthAnalysisPlaneRegionDetectorReusesMatchingGeometryCache`, `depthAnalysisPlaneRegionRequestCoordinatorKeepsGeometryCacheAcrossRegionCancel`, and `depthAnalysisPlaneRegionRequestCoordinatorPublishesOnlyNewestRegionRequest` in [TAPDepthAnalysisPlaneRegionTests.swift](TAPDepthAnalysisPlaneRegionTests.swift) |
 | DepthAnalysis, album, Planes, inspector public-safe error presentation, and stats-presentation privacy guard | `depthAnalysisErrorPresentationKeepsAnalysisLoadCopyFixedAndPublicSafe`, `depthAnalysisErrorPresentationKeepsAlbumCopyFixedAndPublicSafe`, `depthAnalysisErrorPresentationKeepsPlaneSelectionCopyFixedAndPublicSafe`, `depthAnalysisInspectorErrorMessageKeepsRegionHeatmapCopyPublicSafe`, `depthAnalysisInspectorErrorMessageKeepsPlaneSelectionCopyPublicSafe`, `depthAnalysisInspectorViewsDoNotAcceptRawErrorStringSinks`, and `depthRegionStatsPresentationDoesNotAcceptSensitiveInputs` in [DepthAnalysisErrorPresentationTests.swift](DepthAnalysisErrorPresentationTests.swift) |
@@ -161,23 +177,49 @@ suite.
 | DepthAnalysis orientation, renderer products, pure adaptive panel layout metrics, and remaining broad depth-analysis model coverage | Orientation mapping, heatmap/mask rendering, adaptive panel metrics, and broad mixed capture/depth checks in [TAPCamDemoTests.swift](TAPCamDemoTests.swift). These are model and Simulator checks, not debug metadata HUD layout, rendered adaptive panel height layout, inspector body layout automation, real-device Photos UI regression, limited-access/deletion, App Attest/backend acceptance, or positive real HEIC/Photos acceptance evidence. |
 | Capture planning, manifest, and HEIC packaging | The remaining broad capture tests in [TAPCamDemoTests.swift](TAPCamDemoTests.swift). |
 
+## Physical Device Artifact Audit
+
+Run the focused artifact audit only when the iPhone is unlocked, trusted, and
+kept awake. The command intentionally skips the UI test target so this audit
+does not build and sign the unrelated XCTest runner:
+
+```sh
+xcodebuild test \
+  -project TAPCamDemo.xcodeproj \
+  -scheme TAPCamDemo \
+  -destination 'id=<DEVICE_ID>' \
+  -only-testing:TAPCamDemoTests/TAPDeviceCaptureArtifactAuditTests \
+  -skip-testing:TAPCamDemoUITests \
+  -derivedDataPath /private/tmp/TAPCamDemoJPEGAuditDeviceTest \
+  -resultBundlePath /private/tmp/TAPCamDemoJPEGAuditDeviceTest.xcresult
+```
+
+After a passing run, copy `tmp/TAPDeviceCaptureJPEGAudit.json` from the app data
+container and review the sanitized byte count, image dimensions, depth
+dimensions, container, and proof count.
+
 ## Capture Output Profile Focused Tests
 
 When reading the future format and quality boundary tests, start with
 [TAPCaptureOutputProfileTests.swift](TAPCaptureOutputProfileTests.swift). This
-file is the deterministic Simulator suite for the current Release HEIC-depth
-profile, app-level quality policy, fail-closed profile selection, and the
+file is the deterministic Simulator suite for the current Release HEIC/JPG
+depth profiles, app-level quality policy, fail-closed profile selection, and the
 AVFoundation photo-settings handoff.
 
-- `releaseOutputProfileNamesCurrentHEICDepthPolicy` proves the current Release
-  profile is one HEVC HEIC with required embedded depth.
+- `releaseOutputProfilesNameHEICAndJPGDepthPolicy` proves Release HEIC and JPG
+  are explicit profiles, each with required embedded depth.
 - `capturePhotoQualityPolicyNamesAppLevelQualityBeforeAVFoundation` proves
   quality is named as app policy before it becomes AVFoundation settings, and
   that the current policy makes no file-size or compression-ratio guarantee.
-- `releaseOutputProfileCatalogNamesSingleExecutableDefault` proves there is
-  only one executable Release default today.
+- `releaseOutputProfileCatalogNamesHEICDefaultAndJPGOption` proves HEIC remains
+  the default while JPG is an executable option.
 - `releaseOutputProfileRequiresHEVCAndDoesNotFallbackToJPEG` proves JPEG-only
-  codec availability is rejected instead of used as fallback.
+  codec availability is rejected for HEIC instead of used as fallback.
+- `releaseJPGProfileRequiresJPEGAndDoesNotFallbackToHEVC` proves HEVC-only
+  codec availability is rejected for JPG instead of used as fallback.
+- `largestStandardDimensionsPolicySkipsDeferredOnly24MP` proves this release
+  selects the largest standard still-photo size instead of 24 MP deferred-only
+  candidates.
 - `outputProfileRejectsDepthAndQualityContractDrift` proves future profile
   combinations cannot silently weaken depth or quality requirements.
 - `outputProfileSelectionIntent*` tests prove future UI requests must resolve
@@ -190,26 +232,27 @@ AVFoundation photo-settings handoff.
 - `runtimePackageAndManifestUseResolvedOutputAsExecutionToken` proves provider,
   package, packager, and manifest paths consume `ResolvedCaptureOutputProfile`
   instead of reinterpreting raw profile fields after configuration.
-- `outputResourcePlanNamesCurrentSignedHEICResources` and
+- `outputResourcePlanNamesCurrentSignedPhotoResources` and
   `outputResourcePlanStaysPurePolicyModel` prove the current Release resource
   set is named without carrying bytes, paths, URLs, Photos identifiers, key IDs,
   capture IDs, manifests, or AVFoundation objects.
-- `currentPhotosExportSurfaceStaysSingleValidatedHEICResource` proves the
-  current Photos writer still exports exactly one validated `.photo` HEIC
+- `currentPhotosExportSurfaceUsesSingleValidatedPhotoResource` proves the
+  current Photos writer still exports exactly one validated `.photo`
   resource and has not grown an unreviewed paired-video or alternate-photo path.
 - `photoSettingsFactoryUsesReleaseOutputProfileDefaults` proves the resolved
-  profile feeds depth, HEVC, and quality into `AVCapturePhotoSettings`.
+  profile feeds depth, codec, quality, and max dimensions into
+  `AVCapturePhotoSettings`.
 
 These are policy and Runtime-request checks. They do not prove real-device
-codec availability, visual quality, output file size, Photos acceptance, or a
-positive real-depth HEIC fixture.
+codec availability, visual quality, output file size, Photos acceptance, or
+positive real-depth HEIC/JPG fixtures.
 
 ## Capture Provenance Focused Tests
 
 When reading the capture proof and export gate tests, read these files in
 order. They form the deterministic Simulator suite for content digest
 stability, App Attest capture assertion shape, pending-signing guardrails, and
-the final signed HEIC validation that runs before Photos export.
+the final signed TAP depth photo validation that runs before Photos export.
 
 - [TAPCaptureManifestEncodingTests.swift](TAPCaptureManifestEncodingTests.swift)
   proves manifest proofs do not alter the canonical payload bytes that are
@@ -403,8 +446,8 @@ When reading the DepthAnalysis tests, use these entry points before scanning the
 broad mixed suite:
 
 - [TAPDepthAnalysisInputTests.swift](TAPDepthAnalysisInputTests.swift) proves
-  the local analysis reader and loader safety boundary: HEIC byte and depth
-  pixel budgets, sample-count shape rejection, non-HEIC rejection before
+  the local analysis reader and loader safety boundary: photo byte and depth
+  pixel budgets, sample-count shape rejection, unsupported input rejection before
   analysis decode, numeric ImageIO orientation metadata, Photos versus pending
   source routing, pending unavailable refresh behavior, fixed user-visible
   reader/Photos loader errors, and `DepthAnalysisViewModel.load(source:)`
@@ -448,10 +491,11 @@ broad mixed suite:
   access, region stats, geometry sampling, plane detection, or geometry-cache
   allocation can use them.
 - `depthAnalysisInputValidationRejectsOversizedBudgetsBeforeAllocation` proves
-  HEIC byte count, depth pixel count, and overflow-prone dimensions are rejected
+  photo byte count, depth pixel count, and overflow-prone dimensions are rejected
   by the shared input validation policy without constructing oversized data.
-- `depthAnalysisReaderRejectsNonHEICInputBeforeAnalysisDecode` proves the
-  analysis reader rejects non-HEIC bytes before local RGB/depth analysis.
+- `depthAnalysisReaderRejectsUnsupportedInputBeforeAnalysisDecode` proves the
+  analysis reader rejects unsupported photo bytes before local RGB/depth
+  analysis.
 - `cameraIntrinsicsRejectNonFiniteAndZeroCalibration` proves zero, NaN, and
   infinite calibration inputs do not create camera intrinsics, projected points,
   or Plane regions.
@@ -565,12 +609,12 @@ combinations. They do not prove real-device codec availability, actual visual
 quality, file size, positive Apple auxiliary-depth fixture behavior, Photos
 export acceptance, or App Attest backend acceptance.
 
-Final export validation tests prove that non-HEIC containers, missing proofs,
-invalid proof envelopes, manifest mismatches, Release output policy drift, and
-missing auxiliary depth cannot reach the Photos writer through the current
-signed TAP depth HEIC gate. The Release drift check is split between a small
-manifest policy unit test and writer integration tests that still re-read the
-final signed bytes. Unsigned shutter-time manifest tests prove fallback
+Final export validation tests prove that wrong or raw containers, missing
+proofs, invalid proof envelopes, manifest mismatches, Release output policy
+drift, and missing auxiliary depth cannot reach the Photos writer through the
+current signed TAP depth photo gate. The Release drift check is split between a
+small manifest policy unit test and writer integration tests that still re-read
+the final signed bytes. Unsigned shutter-time manifest tests prove fallback
 signature status uses fixed public text instead of raw proof-creation errors.
 They do not prove external App Attest assertion verification by a backend.
 

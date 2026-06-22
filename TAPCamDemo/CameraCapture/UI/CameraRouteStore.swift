@@ -7,9 +7,16 @@ import Combine
 import Foundation
 
 enum CameraRoutePreferences {
-    static let forceCameraOnForegroundAfterDelayKey = "CameraRouteForceCameraOnForegroundAfterDelay"
-    static let defaultForceCameraOnForegroundAfterDelay = false
-    static let foregroundCameraReturnDelay: TimeInterval = 10
+    // Keep the original stored key so existing installs do not lose the user's toggle.
+    static let returnToCameraOnForegroundKey = "CameraRouteForceCameraOnForegroundAfterDelay"
+    static let defaultReturnToCameraOnForeground = false
+
+    static func returnToCameraOnForeground(
+        in userDefaults: UserDefaults = .standard
+    ) -> Bool {
+        userDefaults.object(forKey: returnToCameraOnForegroundKey) as? Bool
+            ?? defaultReturnToCameraOnForeground
+    }
 }
 
 /// Owns the camera module's in-memory navigation state.

@@ -135,6 +135,8 @@ nonisolated struct CaptureOutputProfileSelectionPresentation: Equatable, Sendabl
         switch profile.container {
         case .embeddedPhotoDepthHEIC:
             "Photo-depth HEIC"
+        case .embeddedPhotoDepthJPEG:
+            "Photo-depth JPG"
         }
     }
 

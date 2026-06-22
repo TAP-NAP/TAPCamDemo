@@ -126,6 +126,7 @@ struct CameraPreviewDebugOverlayView: View {
                 .font(.caption2)
                 .lineLimit(2)
                 .foregroundStyle(.white.opacity(0.82))
+                .accessibilityIdentifier("camera.capture.status")
 
             if isPerformanceExpanded {
                 PerformancePanelView(

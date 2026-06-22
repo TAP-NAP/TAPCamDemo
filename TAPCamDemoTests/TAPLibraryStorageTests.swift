@@ -69,6 +69,31 @@ struct TAPLibraryStorageTests {
         #expect(FileManager.default.fileExists(atPath: bundleURL.appendingPathComponent("signed.heic").path))
     }
 
+    @Test func pendingCaptureStoreUsesContainerSpecificPhotoFilenames() async throws {
+        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        let store = TAPPendingCaptureStore(rootURL: rootURL)
+        let record = try await store.ingest(TAPCamDemoTestFixtures.samplePendingArtifact(
+            photoData: Data("unsigned-jpg".utf8),
+            fileContainer: .jpeg,
+            captureID: "jpg-capture"
+        ))
+        let bundleURL = rootURL.appendingPathComponent(record.captureID, isDirectory: true)
+
+        #expect(record.photoFileContainer == .jpeg)
+        #expect(record.unsignedPhotoFilename == "unsigned.jpg")
+        #expect(record.unsignedHEICFilename == nil)
+        #expect(FileManager.default.fileExists(atPath: bundleURL.appendingPathComponent("unsigned.jpg").path))
+        #expect(!FileManager.default.fileExists(atPath: bundleURL.appendingPathComponent("unsigned.heic").path))
+        #expect(try await store.unsignedPhotoData(captureID: record.captureID) == Data("unsigned-jpg".utf8))
+
+        let signedRecord = try await store.storeSignedPhoto(Data("signed-jpg".utf8), captureID: record.captureID)
+
+        #expect(signedRecord.signedPhotoFilename == "signed.jpg")
+        #expect(signedRecord.signedHEICFilename == nil)
+        #expect(FileManager.default.fileExists(atPath: bundleURL.appendingPathComponent("signed.jpg").path))
+        #expect(try await store.signedPhotoData(captureID: record.captureID) == Data("signed-jpg".utf8))
+    }
+
     @Test func pendingCaptureStoreRejectsUnsafeCaptureIDsBeforeBundlePathUse() async throws {
         let unsafeCaptureIDs = [
             "",
@@ -144,11 +169,15 @@ struct TAPLibraryStorageTests {
 
         #expect(source.contains(#"static let unsignedHEICFilename = "unsigned.heic""#))
         #expect(source.contains(#"static let signedHEICFilename = "signed.heic""#))
+        #expect(source.contains(#"static let unsignedJPEGFilename = "unsigned.jpg""#))
+        #expect(source.contains(#"static let signedJPEGFilename = "signed.jpg""#))
         #expect(source.contains(#"static let thumbnailFilename = "thumbnail.jpg""#))
         #expect(source.contains(#"""
     private static let artifactFilenames: Set<String> = [
         unsignedHEICFilename,
         signedHEICFilename,
+        unsignedJPEGFilename,
+        signedJPEGFilename,
         thumbnailFilename
     ]
 """#))
@@ -164,6 +193,8 @@ struct TAPLibraryStorageTests {
         let allowedFilenames = [
             TAPPendingCaptureBundlePathPolicy.unsignedHEICFilename,
             TAPPendingCaptureBundlePathPolicy.signedHEICFilename,
+            TAPPendingCaptureBundlePathPolicy.unsignedJPEGFilename,
+            TAPPendingCaptureBundlePathPolicy.signedJPEGFilename,
             TAPPendingCaptureBundlePathPolicy.thumbnailFilename
         ]
         let unauthorizedFilenames = [

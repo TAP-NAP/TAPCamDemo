@@ -21,7 +21,7 @@ nonisolated enum DepthAnalysisInputLoaderError: LocalizedError {
     }
 }
 
-/// Loads persisted HEIC bytes for the analysis surface and decodes them.
+/// Loads persisted TAP depth photo bytes for the analysis surface and decodes them.
 ///
 /// This is the boundary between UI state and storage. Photos asset identifiers
 /// and pending capture identifiers stay private source selectors; the loader
@@ -42,7 +42,7 @@ nonisolated struct DepthAnalysisInputLoader {
             try await PhotoLibraryWriter.originalPhotoData(localIdentifier: assetID)
         },
         pendingDataLoader: @escaping PendingDataLoader = { captureID in
-            try TAPPendingCaptureStore.shared.bestAvailableHEICData(captureID: captureID)
+            try TAPPendingCaptureStore.shared.bestAvailablePhotoData(captureID: captureID)
         },
         analysisInputReader: @escaping AnalysisInputReader = { data in
             try TAPDepthMapReader.analysisInput(from: data)
@@ -58,21 +58,21 @@ nonisolated struct DepthAnalysisInputLoader {
     }
 
     func loadInput(source: DepthAnalysisSource) async throws -> TAPDepthAnalysisInput {
-        let data = try await heicData(for: source)
+        let data = try await photoData(for: source)
         try TAPDepthAnalysisInputValidation.validateHEICByteCount(data.count)
         return try analysisInputReader(data)
     }
 
-    private func heicData(for source: DepthAnalysisSource) async throws -> Data {
+    private func photoData(for source: DepthAnalysisSource) async throws -> Data {
         switch source {
         case .photosAsset(let assetID):
             return try await photosDataLoader(assetID)
         case .pendingCapture(let captureID):
-            return try await pendingCaptureHEICData(captureID: captureID)
+            return try await pendingCapturePhotoData(captureID: captureID)
         }
     }
 
-    private func pendingCaptureHEICData(captureID: String) async throws -> Data {
+    private func pendingCapturePhotoData(captureID: String) async throws -> Data {
         do {
             return try await pendingDataLoader(captureID)
         } catch {

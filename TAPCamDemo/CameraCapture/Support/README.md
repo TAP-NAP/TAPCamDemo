@@ -43,4 +43,4 @@ flowchart TD
 - Public-safe camera status text may explain recoverable conditions such as
   denied camera access, unsupported depth delivery, or capture backpressure, but
   it must not include capture IDs, manifest IDs, Photos asset IDs, URLs, paths,
-  App Attest key IDs, proofs, HEIC bytes, or raw associated error reasons.
+  App Attest key IDs, proofs, photo bytes, or raw associated error reasons.

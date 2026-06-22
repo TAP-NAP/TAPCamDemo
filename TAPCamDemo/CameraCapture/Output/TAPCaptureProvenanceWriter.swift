@@ -7,7 +7,7 @@
 import AppAttestKit
 import Foundation
 
-/// Writes TAP provenance into embedded HEIC artifacts.
+/// Writes TAP provenance into embedded photo-depth artifacts.
 ///
 /// This is the code entry for provenance work. It owns the current TAP XMP
 /// manifest and App Attest proof write path, while packagers and queue workers
@@ -17,9 +17,9 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
 
     func writeManifest(
         _ manifest: TAPDepthManifest,
-        into heicData: Data
-    ) throws -> TAPDepthHEICWriteResult {
-        try TAPDepthHEICWriter.injectingManifestWithMetrics(manifest, into: heicData)
+        into photoData: Data
+    ) throws -> TAPDepthPhotoFileWriteResult {
+        try TAPDepthPhotoFileWriter.injectingManifestWithMetrics(manifest, into: photoData)
     }
 
     /// Shutter-time helper: attempts to add an App Attest proof, but returns an
@@ -28,6 +28,7 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
     func manifestByApplyingCaptureAssertion(
         to manifest: TAPDepthManifest,
         baseHEICData: Data,
+        fileContainer: CapturePhotoFileContainer = .heic,
         depthData: AVDepthData?,
         assertionSigner: (any CaptureAssertionSigning)?
     ) async -> TAPCaptureProvenanceManifestResult {
@@ -48,7 +49,8 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
 
             let digestResult = try CaptureContentDigest.makeWithMetrics(
                 manifest: manifest,
-                baseHEICData: baseHEICData,
+                basePhotoData: baseHEICData,
+                fileContainer: fileContainer,
                 depthData: depthData
             )
             metrics.rgbDigestDuration = digestResult.metrics.rgbDigestDuration
@@ -79,37 +81,68 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
         }
     }
 
-    /// Pending-queue helper: returns a signed HEIC or throws. This path must not
-    /// silently fall back to unsigned output because export requires proofed data.
-    func signedHEICData(
-        from unsignedHEICData: Data,
+    /// Pending-queue helper: returns a signed TAP depth photo file or throws.
+    /// This path must not silently fall back to unsigned output because export
+    /// requires proofed data.
+    func signedPhotoData(
+        from unsignedPhotoData: Data,
         expectedCaptureID: String,
+        expectedProfile: CaptureOutputProfile,
         assertionSigner: any CaptureAssertionSigning
-    ) async throws -> TAPCaptureProvenanceSignedHEICResult {
-        let manifest = try TAPDepthHEICReader.decodedManifest(from: unsignedHEICData)
-        try validateManifestID(manifest.payload.id, expectedCaptureID: expectedCaptureID)
+    ) async throws -> TAPCaptureProvenanceSignedPhotoResult {
+        let fileContainer = try TAPDepthPhotoFileReader.fileContainer(from: unsignedPhotoData)
+        guard fileContainer == expectedProfile.fileContainer else {
+            throw TAPDepthCaptureError.invalidHEICContainerType(fileContainer.uniformTypeIdentifier)
+        }
 
-        guard let depthData = try TAPDepthHEICReader.depthData(from: unsignedHEICData) else {
+        let manifest = try TAPDepthPhotoFileReader.decodedManifest(from: unsignedPhotoData)
+        try validateManifestSchema(manifest)
+        try validateManifestID(manifest.payload.id, expectedCaptureID: expectedCaptureID)
+        try CaptureOutputManifestPolicy(profile: expectedProfile).validate(manifest.payload.capture)
+
+        guard let depthData = try TAPDepthPhotoFileReader.depthData(from: unsignedPhotoData) else {
             throw TAPDepthCaptureError.missingDepthData
         }
 
         let digest = try CaptureContentDigest.make(
             manifest: manifest,
-            baseHEICData: unsignedHEICData,
+            basePhotoData: unsignedPhotoData,
+            fileContainer: fileContainer,
             depthData: depthData
         )
         let assertionProof = try await assertionSigner.sign(contentDigest: digest)
         let signedManifest = manifest.applying(proof: assertionProof.proof)
-        let writeResult = try writeManifest(signedManifest, into: unsignedHEICData)
-        _ = try validateSignedExportHEIC(
+        let writeResult = try writeManifest(signedManifest, into: unsignedPhotoData)
+        _ = try validateSignedExportPhoto(
             writeResult.data,
-            expectedCaptureID: expectedCaptureID
+            expectedCaptureID: expectedCaptureID,
+            expectedProfile: expectedProfile
         )
 
-        return TAPCaptureProvenanceSignedHEICResult(
+        return TAPCaptureProvenanceSignedPhotoResult(
             data: writeResult.data,
             manifest: signedManifest,
-            keyID: assertionProof.keyID
+            keyID: assertionProof.keyID,
+            fileContainer: fileContainer
+        )
+    }
+
+    /// Backward-compatible pending-queue helper for existing HEIC call sites.
+    func signedHEICData(
+        from unsignedHEICData: Data,
+        expectedCaptureID: String,
+        assertionSigner: any CaptureAssertionSigning
+    ) async throws -> TAPCaptureProvenanceSignedHEICResult {
+        let result = try await signedPhotoData(
+            from: unsignedHEICData,
+            expectedCaptureID: expectedCaptureID,
+            expectedProfile: .releasePhotoDepthHEIC,
+            assertionSigner: assertionSigner
+        )
+        return TAPCaptureProvenanceSignedHEICResult(
+            data: result.data,
+            manifest: result.manifest,
+            keyID: result.keyID
         )
     }
 
@@ -117,17 +150,21 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
     /// app-private pending store.
     ///
     /// This re-reads the bytes that will be exported, not the earlier unsigned
-    /// input. It prevents stale or corrupted `signed.heic` files from reaching
-    /// Photos merely because a pending record says a signed filename exists.
-    func validateSignedExportHEIC(
-        _ signedHEICData: Data,
-        expectedCaptureID: String
-    ) throws -> ValidatedTAPDepthHEIC {
-        try TAPDepthHEICReader.validateHEICContainer(signedHEICData)
-        let manifest = try TAPDepthHEICReader.decodedManifest(from: signedHEICData)
+    /// input. It prevents stale or corrupted signed files from reaching Photos
+    /// merely because a pending record says a signed filename exists.
+    func validateSignedExportPhoto(
+        _ signedPhotoData: Data,
+        expectedCaptureID: String,
+        expectedProfile: CaptureOutputProfile
+    ) throws -> ValidatedTAPDepthPhoto {
+        try TAPDepthPhotoFileReader.validateContainer(
+            signedPhotoData,
+            expected: expectedProfile.fileContainer
+        )
+        let manifest = try TAPDepthPhotoFileReader.decodedManifest(from: signedPhotoData)
         try validateManifestSchema(manifest)
         try validateManifestID(manifest.payload.id, expectedCaptureID: expectedCaptureID)
-        try CaptureOutputManifestPolicy.releasePhotoDepthHEIC.validate(manifest.payload.capture)
+        try CaptureOutputManifestPolicy(profile: expectedProfile).validate(manifest.payload.capture)
 
         guard let proof = manifest.proofs.first else {
             throw TAPDepthCaptureError.pendingCaptureProofMissing
@@ -138,13 +175,14 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
 
         let proofValue = try decodedCaptureProofValue(proof, expectedCaptureID: expectedCaptureID)
 
-        guard let depthData = try TAPDepthHEICReader.depthData(from: signedHEICData) else {
+        guard let depthData = try TAPDepthPhotoFileReader.depthData(from: signedPhotoData) else {
             throw TAPDepthCaptureError.missingDepthData
         }
 
         let recomputedDigest = try CaptureContentDigest.make(
             manifest: manifest,
-            baseHEICData: signedHEICData,
+            basePhotoData: signedPhotoData,
+            fileContainer: expectedProfile.fileContainer,
             depthData: depthData
         )
         try validateCaptureProof(
@@ -153,7 +191,24 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
             recomputedDigest: recomputedDigest
         )
 
-        return ValidatedTAPDepthHEIC(data: signedHEICData, manifest: manifest)
+        return ValidatedTAPDepthPhoto(
+            data: signedPhotoData,
+            manifest: manifest,
+            fileContainer: expectedProfile.fileContainer
+        )
+    }
+
+    /// Backward-compatible final gate for existing HEIC call sites.
+    func validateSignedExportHEIC(
+        _ signedHEICData: Data,
+        expectedCaptureID: String
+    ) throws -> ValidatedTAPDepthHEIC {
+        let validated = try validateSignedExportPhoto(
+            signedHEICData,
+            expectedCaptureID: expectedCaptureID,
+            expectedProfile: .releasePhotoDepthHEIC
+        )
+        return ValidatedTAPDepthHEIC(data: validated.data, manifest: validated.manifest)
     }
 
     private func validateManifestSchema(_ manifest: TAPDepthManifest) throws {
@@ -230,17 +285,40 @@ nonisolated struct TAPCaptureProvenanceManifestResult: Sendable {
     let metrics: CapturePackagingMetrics
 }
 
+nonisolated struct TAPCaptureProvenanceSignedPhotoResult: Sendable {
+    let data: Data
+    let manifest: TAPDepthManifest
+    let keyID: String
+    let fileContainer: CapturePhotoFileContainer
+}
+
 nonisolated struct TAPCaptureProvenanceSignedHEICResult: Sendable {
     let data: Data
     let manifest: TAPDepthManifest
     let keyID: String
 }
 
+nonisolated struct ValidatedTAPDepthPhoto: Sendable {
+    let data: Data
+    let manifest: TAPDepthManifest
+    let fileContainer: CapturePhotoFileContainer
+
+    init(
+        data: Data,
+        manifest: TAPDepthManifest,
+        fileContainer: CapturePhotoFileContainer
+    ) {
+        self.data = data
+        self.manifest = manifest
+        self.fileContainer = fileContainer
+    }
+}
+
 nonisolated struct ValidatedTAPDepthHEIC: Sendable {
     let data: Data
     let manifest: TAPDepthManifest
 
-    fileprivate init(data: Data, manifest: TAPDepthManifest) {
+    init(data: Data, manifest: TAPDepthManifest) {
         self.data = data
         self.manifest = manifest
     }

@@ -11,15 +11,16 @@ import OSLog
 import Photos
 import UniformTypeIdentifiers
 
-/// Saves final TAP depth HEIC bytes into the user's Photos library.
+/// Saves final TAP depth photo bytes into the user's Photos library.
 ///
 /// Photos is treated as storage for the finished file, not as the source of
 /// metadata truth. To parse a saved asset later, request the original `.photo`
-/// resource bytes with `PHAssetResourceManager` and then use `TAPDepthHEICReader`.
+/// resource bytes with `PHAssetResourceManager` and then use
+/// `TAPDepthPhotoFileReader`.
 nonisolated enum PhotoLibraryWriter {
     static let albumName = "TAPCamDepth"
 
-    /// Saves a validated TAP depth HEIC to Photos.
+    /// Saves a validated TAP depth photo file to Photos.
     ///
     /// This writer receives a completed, provenance-checked artifact; it does
     /// not inspect cameras, choose packaging policy, or mutate capture session
@@ -27,22 +28,45 @@ nonisolated enum PhotoLibraryWriter {
     /// limited access saves the app-created asset directly and relies on its
     /// returned local identifier.
     ///
-    /// - Tag: SaveDepthHEICToPhotos
+    /// - Tag: SaveDepthPhotoToPhotos
+    static func saveDepthPhoto(
+        _ validatedPhoto: ValidatedTAPDepthPhoto,
+        capturedAt: Date,
+        location: CLLocation?
+    ) async throws -> String {
+        let data = validatedPhoto.data
+        TAPDiagnostics.photoLibrary.info("saveDepthPhoto start container=\(validatedPhoto.fileContainer.rawValue, privacy: .public) bytes=\(data.count, privacy: .public) hasLocation=\(location != nil, privacy: .public)")
+        let authorizationStatus = try await requestReadWriteAccess()
+        TAPDiagnostics.photoLibrary.info("saveDepthPhoto authorization status=\(String(describing: authorizationStatus), privacy: .public)")
+        let album: PHAssetCollection? = authorizationStatus == .authorized
+            ? try await fetchOrCreateAlbum()
+            : nil
+        let assetID = try await createAsset(
+            data: data,
+            fileContainer: validatedPhoto.fileContainer,
+            capturedAt: capturedAt,
+            location: location,
+            album: album
+        )
+        TAPDiagnostics.photoLibrary.info("saveDepthPhoto success assetID=\(assetID, privacy: .private)")
+        return assetID
+    }
+
+    /// Backward-compatible HEIC save wrapper.
     static func saveDepthHEIC(
         _ validatedHEIC: ValidatedTAPDepthHEIC,
         capturedAt: Date,
         location: CLLocation?
     ) async throws -> String {
-        let data = validatedHEIC.data
-        TAPDiagnostics.photoLibrary.info("saveDepthHEIC start bytes=\(data.count, privacy: .public) hasLocation=\(location != nil, privacy: .public)")
-        let authorizationStatus = try await requestReadWriteAccess()
-        TAPDiagnostics.photoLibrary.info("saveDepthHEIC authorization status=\(String(describing: authorizationStatus), privacy: .public)")
-        let album: PHAssetCollection? = authorizationStatus == .authorized
-            ? try await fetchOrCreateAlbum()
-            : nil
-        let assetID = try await createAsset(data: data, capturedAt: capturedAt, location: location, album: album)
-        TAPDiagnostics.photoLibrary.info("saveDepthHEIC success assetID=\(assetID, privacy: .private)")
-        return assetID
+        try await saveDepthPhoto(
+            ValidatedTAPDepthPhoto(
+                data: validatedHEIC.data,
+                manifest: validatedHEIC.manifest,
+                fileContainer: .heic
+            ),
+            capturedAt: capturedAt,
+            location: location
+        )
     }
 
     static func originalPhotoData(for asset: PHAsset) async throws -> Data {
@@ -76,7 +100,7 @@ nonisolated enum PhotoLibraryWriter {
         }
     }
 
-    /// Reads original HEIC bytes by resolving the asset inside a detached task.
+    /// Reads original photo bytes by resolving the asset inside a detached task.
     ///
     /// `PHAssetResource.assetResources(for:)` can force Photos to fetch
     /// original-metadata properties. Running that lookup on the main actor
@@ -140,9 +164,14 @@ nonisolated enum PhotoLibraryWriter {
         let provenanceWriter = TAPCaptureProvenanceWriter()
         for asset in assets {
             guard let data = try? await originalPhotoData(for: asset),
-                  (try? provenanceWriter.validateSignedExportHEIC(
+                  (try? provenanceWriter.validateSignedExportPhoto(
                     data,
-                    expectedCaptureID: captureID
+                    expectedCaptureID: captureID,
+                    expectedProfile: .releasePhotoDepthHEIC
+                  )) != nil || (try? provenanceWriter.validateSignedExportPhoto(
+                    data,
+                    expectedCaptureID: captureID,
+                    expectedProfile: .releasePhotoDepthJPEG
                   )) != nil else {
                 continue
             }
@@ -202,11 +231,25 @@ nonisolated enum PhotoLibraryWriter {
 
     private static func createAsset(
         data: Data,
+        fileContainer: CapturePhotoFileContainer,
         capturedAt: Date,
         location: CLLocation?,
         album: PHAssetCollection?
     ) async throws -> String {
         var placeholder: PHObjectPlaceholder?
+        let resourceFilename = "tap-depth-photo.\(fileContainer.fileExtension)"
+        let resourceURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TAPPhotoLibraryWriter-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent(resourceFilename)
+
+        try FileManager.default.createDirectory(
+            at: resourceURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try data.write(to: resourceURL, options: .atomic)
+        defer {
+            try? FileManager.default.removeItem(at: resourceURL.deletingLastPathComponent())
+        }
 
         TAPDiagnostics.photoLibrary.info("createAsset start bytes=\(data.count, privacy: .public) album=\(album != nil, privacy: .public)")
         try await PHPhotoLibrary.shared().performChanges {
@@ -215,8 +258,10 @@ nonisolated enum PhotoLibraryWriter {
             creationRequest.location = location
 
             let options = PHAssetResourceCreationOptions()
-            options.uniformTypeIdentifier = UTType.heic.identifier
-            creationRequest.addResource(with: .photo, data: data, options: options)
+            options.uniformTypeIdentifier = fileContainer.uniformTypeIdentifier
+            options.originalFilename = resourceFilename
+            options.shouldMoveFile = false
+            creationRequest.addResource(with: .photo, fileURL: resourceURL, options: options)
 
             placeholder = creationRequest.placeholderForCreatedAsset
 
@@ -239,5 +284,16 @@ nonisolated enum PhotoLibraryWriter {
         let options = PHFetchOptions()
         options.predicate = NSPredicate(format: "title = %@", albumName)
         return PHAssetCollection.fetchAssetCollections(with: .album, subtype: .albumRegular, options: options).firstObject
+    }
+}
+
+private extension CapturePhotoFileContainer {
+    nonisolated var fileExtension: String {
+        switch self {
+        case .heic:
+            "heic"
+        case .jpeg:
+            "jpg"
+        }
     }
 }
