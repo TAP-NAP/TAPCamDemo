@@ -52,7 +52,9 @@ flowchart TD
 
 The startup gate marks first-install setup complete when the required backend
 security preflight, camera access, and photo library access are available. The
-backend check is product security policy, not an iOS permission prompt.
+backend check is product security policy, not an iOS permission prompt. The
+welcome UI presents that required backend preflight as Network Access so the
+first-launch checklist matches what users need to do.
 `StartupGatePolicy` is the pure required/optional gate entry.
 `StartupSecurityPreflightPolicy` is the pure retry/timeout decision boundary
 for backend security preflight. `StartupBackendSecurityPreflight` performs the

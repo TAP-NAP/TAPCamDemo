@@ -43,10 +43,13 @@ flowchart TD
 - The backend security preflight is a strict product gate, not an iOS network
   permission prompt. The current policy intentionally blocks first camera entry
   until that preflight succeeds.
+- The welcome page labels that required backend preflight as **Network Access**
+  because the user-facing action is checking connectivity, while the code keeps
+  the `securityPreflight` policy name.
 - If location is skipped or still not authorized after first launch, later
   captures do not request location permission. They use any already cached
   authorized location or save without location metadata.
-- The security check row performs a lightweight HTTPS preflight against the
+- The Network Access row performs a lightweight HTTPS preflight against the
   configured App Attest server `/healthz` endpoint before first camera entry and
   automatic pending-capture signing credential warmup.
 - After required access is complete, `StartupGateView` marks

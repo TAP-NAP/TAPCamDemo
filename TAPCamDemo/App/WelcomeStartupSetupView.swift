@@ -23,11 +23,11 @@ struct WelcomeStartupSetupView: View {
 
                     VStack(spacing: 10) {
                         StartupRequirementRow(
-                            iconName: "lock.shield",
-                            title: "Security Check",
-                            message: "Checks the App Attest backend before first camera setup.",
+                            iconName: "wifi",
+                            title: "Network Access",
+                            message: "Checks that TAPCam can reach the service before first camera setup.",
                             status: coordinator.securityPreflightStatus,
-                            actionTitle: "Check"
+                            actionTitle: "Allow"
                         ) {
                             Task { await coordinator.requestSecurityPreflight() }
                         }
@@ -112,14 +112,14 @@ struct WelcomeStartupSetupView: View {
         } else {
             VStack(alignment: .leading, spacing: 10) {
                 if coordinator.hasSecurityPreflightFailure {
-                    Text("Security check failed. Check connectivity, then run it again.")
+                    Text("Network access check failed. Check connectivity, then try again.")
                         .font(.footnote)
                         .foregroundStyle(.yellow)
 
                     Button {
                         Task { await coordinator.requestSecurityPreflight() }
                     } label: {
-                        Label("Retry Security Check", systemImage: "arrow.clockwise")
+                        Label("Retry Network Access", systemImage: "arrow.clockwise")
                             .font(.headline)
                             .frame(maxWidth: .infinity)
                             .frame(height: 50)
@@ -146,7 +146,7 @@ struct WelcomeStartupSetupView: View {
                 }
 
                 if !coordinator.hasBlockingStartupFailure {
-                    Text("Finish security check, camera, and photo library access first. Location is optional.")
+                    Text("Complete network access, camera, and photo library access first. Location is optional.")
                         .font(.footnote)
                         .foregroundStyle(.white.opacity(0.64))
                 }
