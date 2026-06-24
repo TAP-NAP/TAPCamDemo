@@ -295,15 +295,18 @@ nonisolated enum TAPProofSlot {
         in photoData: Data,
         fileContainer: CapturePhotoFileContainer
     ) throws -> Data {
-        if (try? locate(in: photoData, fileContainer: fileContainer)) != nil {
+        do {
+            _ = try locate(in: photoData, fileContainer: fileContainer)
             return photoData
-        }
-
-        switch fileContainer {
-        case .heic:
-            return photoData + bmffProofBox(payload: emptyPayload())
-        case .jpeg:
-            return try jpegDataByInsertingAPP11Slot(into: photoData, payload: emptyPayload())
+        } catch TAPDepthCaptureError.pendingCaptureProofMissing {
+            switch fileContainer {
+            case .heic:
+                return photoData + bmffProofBox(payload: emptyPayload())
+            case .jpeg:
+                return try jpegDataByInsertingAPP11Slot(into: photoData, payload: emptyPayload())
+            }
+        } catch {
+            throw error
         }
     }
 
@@ -435,8 +438,11 @@ nonisolated enum TAPProofSlot {
             offset = boxStart + boxSize
         }
 
-        guard matches.count == 1, let match = matches.first else {
+        guard !matches.isEmpty else {
             throw TAPDepthCaptureError.pendingCaptureProofMissing
+        }
+        guard matches.count == 1, let match = matches.first else {
+            throw TAPDepthCaptureError.pendingCaptureProofInvalid("expected exactly one TAP proof slot")
         }
         guard match.payloadRange.count == payloadByteCount else {
             throw TAPDepthCaptureError.pendingCaptureProofInvalid("unexpected proof slot length")
@@ -509,8 +515,11 @@ nonisolated enum TAPProofSlot {
             offset = segmentEnd
         }
 
-        guard matches.count == 1, let match = matches.first else {
+        guard !matches.isEmpty else {
             throw TAPDepthCaptureError.pendingCaptureProofMissing
+        }
+        guard matches.count == 1, let match = matches.first else {
+            throw TAPDepthCaptureError.pendingCaptureProofInvalid("expected exactly one TAP proof slot")
         }
         return match
     }

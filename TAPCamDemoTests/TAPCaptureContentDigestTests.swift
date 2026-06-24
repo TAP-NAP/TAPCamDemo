@@ -95,6 +95,22 @@ struct TAPCaptureContentDigestTests {
         }
     }
 
+    @Test func proofSlotReservationRejectsDuplicateSlots() throws {
+        let emptySlotData = try TAPProofSlot.ensuringEmptySlot(
+            in: Self.syntheticBMFFData(),
+            fileContainer: .heic
+        )
+        let slot = try TAPProofSlot.locate(in: emptySlotData, fileContainer: .heic)
+        let duplicatedSlotData = emptySlotData + emptySlotData.subdata(in: slot.containerRange)
+
+        #expect(throws: TAPDepthCaptureError.self) {
+            try TAPProofSlot.locate(in: duplicatedSlotData, fileContainer: .heic)
+        }
+        #expect(throws: TAPDepthCaptureError.self) {
+            try TAPProofSlot.ensuringEmptySlot(in: duplicatedSlotData, fileContainer: .heic)
+        }
+    }
+
     private static func syntheticBMFFData() -> Data {
         bmffBox("ftyp", payload: Data("heic".utf8))
             + bmffBox("meta", payload: Data([0x00, 0x00, 0x00, 0x00, 0x69, 0x69, 0x64, 0x00]))

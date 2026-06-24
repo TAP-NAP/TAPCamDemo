@@ -72,6 +72,8 @@ fixed proof slot exists, recompute the C2PA-aligned content binding over the
 photo bytes excluding that slot, create the App Attest capture proof, write the
 proof envelope into the slot, and return the signed TAP depth photo file for
 export.
+Slot reservation only creates a slot when none exists. Duplicate or malformed
+proof slots fail closed instead of being repaired by appending another slot.
 
 The shutter-time packager does not create a proof. It keeps `proofs: []` and
 returns a fixed public `unsigned` reason while the app-private pending worker
@@ -246,7 +248,8 @@ JPG import saved the asset but the Photos round-trip original lost
 - `validateSignedExportPhoto` is the final export gate for signed TAP depth
   artifacts. Queue status and filenames are scheduling hints; the signed bytes
   themselves must pass container, manifest schema/id, Release output facts,
-  proof-slot, digest binding, and auxiliary depth validation before Photos save.
+  exactly-one proof-slot, digest binding, and auxiliary depth validation before
+  Photos save.
 
 ## Future Profile Rules
 

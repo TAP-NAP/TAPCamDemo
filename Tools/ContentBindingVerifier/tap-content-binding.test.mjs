@@ -84,6 +84,20 @@ test("proof slot parser rejects non-zero padding after envelope", () => {
   );
 });
 
+test("proof slot parser rejects duplicate slots", () => {
+  const baseData = concatBytes(
+    bmffBox("ftyp", textEncoder.encode("heic")),
+    bmffBox("mdat", textEncoder.encode("asset bytes")),
+  );
+  const firstSlot = bmffProofBox();
+  const duplicateSlotData = concatBytes(baseData, firstSlot, firstSlot);
+
+  assert.throws(
+    () => readProofEnvelopeData(duplicateSlotData, "heic"),
+    /expected exactly one TAP proof slot; found 2/u,
+  );
+});
+
 function bmffProofBox() {
   const payload = encodeProofSlotPayload();
   const box = new Uint8Array(8 + TAP_PROOF_SLOT.bmffUUID.length + payload.length);
