@@ -57,13 +57,17 @@ extension CameraViewModel {
 
         let queueEnteredAt = Date()
         let job = CaptureJob()
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.pendingCapture.info("capture requested jobID=\(job.id.uuidString, privacy: .public) suppressesShutterSound=\(suppressesShutterSound, privacy: .public)")
+        #endif
 
         do {
             let pendingCount = try await jobQueue.beginJob()
             pendingJobCount = pendingCount
             statusMessage = "Capture queued..."
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.pendingCapture.info("capture queued jobID=\(job.id.uuidString, privacy: .public) pendingJobCount=\(pendingCount, privacy: .public)")
+            #endif
 
             let location = locationProvider.cachedCaptureLocation()
             locationProvider.warmLocationCache()
@@ -93,7 +97,9 @@ extension CameraViewModel {
                     self.recentMetrics = metrics
                     switch result {
                     case .success(let writeResult):
+                        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
                         TAPDiagnostics.pendingCapture.info("capture pipeline success jobID=\(job.id.uuidString, privacy: .public) pendingCaptureIDPresent=\(writeResult.pendingCaptureID != nil, privacy: .public) assetIDPresent=\(writeResult.assetLocalIdentifier != nil, privacy: .public) remainingJobs=\(remaining, privacy: .public)")
+                        #endif
                         self.statusMessage = writeResult.signatureStatus.captureStatusMessage
                         if let pendingCaptureID = writeResult.pendingCaptureID {
                             Task {
@@ -106,13 +112,17 @@ extension CameraViewModel {
                             self.loadRecentDepthAssetPreview(assetID: assetID)
                         }
                     case .failure(let error):
+                        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
                         TAPDiagnostics.pendingCapture.error("capture pipeline failed jobID=\(job.id.uuidString, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
+                        #endif
                         self.statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .capture)
                     }
                 }
             }
         } catch {
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.pendingCapture.error("capture queue failed jobID=\(job.id.uuidString, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
+            #endif
             statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .capture)
             pendingJobCount = await jobQueue.pendingCount()
         }
@@ -168,13 +178,17 @@ extension CameraViewModel {
     }
 
     func retryPendingCaptures(pendingCaptureWorkerClient: any AppAttestClient) async {
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.pendingCapture.info("viewModel retryPendingCaptures start")
+        #endif
         await pendingCaptureProcessor.processPendingCaptures(
             store: pendingCaptureStore,
             appAttestClient: pendingCaptureWorkerClient
         )
         await loadRecentTAPLibraryPreviewIfAvailable()
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.pendingCapture.info("viewModel retryPendingCaptures finish")
+        #endif
     }
 
     /// Updates the camera chrome's recent-photo entry point after a successful

@@ -38,12 +38,16 @@ nonisolated struct AppAttestCaptureAssertionSigner: CaptureAssertionSigning {
         contentDigest: CaptureContentDigest
     ) async throws -> CaptureAssertionProof {
         guard deviceService.isSupported else {
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.appAttest.error("capture assertion unsupported captureID=\(contentDigest.captureID, privacy: .private)")
+            #endif
             throw AppAttestError.unsupportedDevice
         }
 
         let operationID = UUID().uuidString
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.appAttest.info("capture assertion sign start operationID=\(operationID, privacy: .public) captureID=\(contentDigest.captureID, privacy: .private)")
+        #endif
         let credential = try await AppAttestOperationTimeout.run(
             operationDescription: "Prepare App Attest capture credential",
             timeout: operationTimeout
@@ -54,7 +58,9 @@ nonisolated struct AppAttestCaptureAssertionSigner: CaptureAssertionSigning {
         }
         let signingBinding = try CaptureSigningBinding(contentDigest: contentDigest)
         let clientDataHash = try signingBinding.clientDataHash()
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.appAttest.info("capture assertion credential ready operationID=\(operationID, privacy: .public) captureID=\(contentDigest.captureID, privacy: .private) keyID=\(Self.keyIDSummary(credential.keyId), privacy: .private)")
+        #endif
         let assertionObject = try await AppAttestOperationTimeout.run(
             operationDescription: "Generate App Attest capture assertion",
             timeout: operationTimeout
@@ -80,7 +86,9 @@ nonisolated struct AppAttestCaptureAssertionSigner: CaptureAssertionSigning {
             value: proofData.appAttestBase64URL
         )
 
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.appAttest.info("capture assertion sign success operationID=\(operationID, privacy: .public) captureID=\(contentDigest.captureID, privacy: .private) keyID=\(Self.keyIDSummary(credential.keyId), privacy: .private) proofBytes=\(proofData.count, privacy: .public)")
+        #endif
         return CaptureAssertionProof(proof: proof, keyID: credential.keyId)
     }
 

@@ -228,14 +228,18 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         _ resolvedOutput: ResolvedCaptureOutputProfile,
         capabilities: CapturePhotoOutputCapabilitySnapshot
     ) {
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.cameraCapture.info("capture output capabilities profile=\(resolvedOutput.profileID, privacy: .public) container=\(resolvedOutput.fileContainer.rawValue, privacy: .public) fileType=\(resolvedOutput.processedFileType.rawValue, privacy: .public) codec=\(resolvedOutput.requestedCodec.rawValue, privacy: .public) selectedDimensions=\(dimensionsDescription(resolvedOutput.maxPhotoDimensions), privacy: .public) availableFileTypes=\(fileTypesDescription(capabilities), privacy: .public) availableCodecs=\(codecsDescription(capabilities), privacy: .public) supportedDimensions=\(dimensionsDescription(capabilities.supportedMaxPhotoDimensions), privacy: .public)")
+        #endif
     }
 
     private static func logConfiguredOutput(
         _ resolvedOutput: ResolvedCaptureOutputProfile,
         capabilities: CapturePhotoOutputCapabilitySnapshot
     ) {
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.cameraCapture.info("capture output configured profile=\(resolvedOutput.profileID, privacy: .public) container=\(resolvedOutput.fileContainer.rawValue, privacy: .public) fileType=\(resolvedOutput.processedFileType.rawValue, privacy: .public) codec=\(resolvedOutput.requestedCodec.rawValue, privacy: .public) selectedDimensions=\(dimensionsDescription(resolvedOutput.maxPhotoDimensions), privacy: .public) configuredDimensions=\(dimensionsDescription(capabilities.configuredMaxPhotoDimensions), privacy: .public)")
+        #endif
     }
 
     private static func fileTypesDescription(_ capabilities: CapturePhotoOutputCapabilitySnapshot) -> String {

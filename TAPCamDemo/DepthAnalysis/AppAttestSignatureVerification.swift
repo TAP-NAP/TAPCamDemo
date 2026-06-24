@@ -97,7 +97,9 @@ nonisolated struct AppAttestCaptureSignatureVerifier: Sendable {
             )
             return .success(steps: steps)
         } catch {
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.appAttest.error("capture signature verification failed error=\(TAPDiagnostics.describe(error), privacy: .public)")
+            #endif
             let failure = AppAttestSignatureVerificationFailure(error)
             steps.append(
                 AppAttestSignatureVerificationStep(
@@ -147,7 +149,9 @@ nonisolated struct AppAttestCaptureSignatureVerifier: Sendable {
         } catch let failure as AppAttestSignatureVerificationFailure {
             throw failure
         } catch {
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.appAttest.error("capture signature local validation failed error=\(TAPDiagnostics.describe(error), privacy: .public)")
+            #endif
             throw AppAttestSignatureVerificationFailure(
                 title: "Local signed photo gate",
                 detail: "Saved photo did not pass local signature, digest, manifest, and depth validation."
@@ -207,7 +211,9 @@ nonisolated struct AppAttestCaptureSignatureVerifier: Sendable {
         }
 
         guard (200..<300).contains(httpResponse.statusCode) else {
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.appAttest.error("capture signature verify HTTP failure status=\(httpResponse.statusCode, privacy: .public) bytes=\(data.count, privacy: .public)")
+            #endif
             throw AppAttestSignatureVerificationFailure(
                 title: "Backend signature verification",
                 detail: "Backend returned an unsuccessful HTTP status."

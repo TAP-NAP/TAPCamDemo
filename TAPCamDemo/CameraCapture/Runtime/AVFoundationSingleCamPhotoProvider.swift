@@ -49,7 +49,9 @@ nonisolated final class AVFoundationSingleCamPhotoProvider: SingleCamPhotoCaptur
                 switch result {
                 case .success(let photo):
                     let actualDimensions = CapturePhotoDimensions(photo.resolvedSettings.photoDimensions)
+                    #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
                     TAPDiagnostics.cameraCapture.info("photo capture processed profile=\(resolvedOutput.profileID, privacy: .public) container=\(resolvedOutput.fileContainer.rawValue, privacy: .public) actualDimensions=\(actualDimensions.debugDescription, privacy: .public)")
+                    #endif
                     continuation.resume(returning: SingleCamPhotoCaptureResult(
                         photo: photo
                     ))
@@ -116,7 +118,9 @@ nonisolated enum SingleCamPhotoSettingsFactory {
         if let maxPhotoDimensions = resolvedOutput.maxPhotoDimensions {
             settings.maxPhotoDimensions = maxPhotoDimensions.cmVideoDimensions
         }
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.cameraCapture.info("photo settings prepared profile=\(resolvedOutput.profileID, privacy: .public) container=\(resolvedOutput.fileContainer.rawValue, privacy: .public) fileType=\(resolvedOutput.processedFileType.rawValue, privacy: .public) codec=\(resolvedOutput.requestedCodec.rawValue, privacy: .public) selectedDimensions=\(resolvedOutput.maxPhotoDimensions?.debugDescription ?? "none", privacy: .public)")
+        #endif
         if suppressesShutterSound && photoOutput.isShutterSoundSuppressionSupported {
             settings.isShutterSoundSuppressionEnabled = true
         }

@@ -86,7 +86,9 @@ final class AppAttestRuntimeController: ObservableObject {
             self.credentialStatusText = AppAttestCredentialPresentation.resetStatusText
         } catch {
             self.credentialStatusText = AppAttestCredentialPresentation.failureStatusText(label: "Reset local credential")
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.appAttest.error("credential reset failed error=\(TAPDiagnostics.describe(error), privacy: .public)")
+            #endif
         }
     }
 
@@ -182,7 +184,9 @@ final class AppAttestRuntimeController: ObservableObject {
         operation: @MainActor @Sendable @escaping () async throws -> Void
     ) async -> Bool {
         let operationID = UUID().uuidString
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.appAttest.info("credential operation start operationID=\(operationID, privacy: .public) label=\(label, privacy: .public) backend=\(self.runtime.backendPublicSummary, privacy: .public)")
+        #endif
         beginOperation()
         if showsPreparationProgress {
             isPreparingCredential = true
@@ -202,12 +206,16 @@ final class AppAttestRuntimeController: ObservableObject {
             ) {
                 try await operation()
             }
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.appAttest.info("credential operation success operationID=\(operationID, privacy: .public) label=\(label, privacy: .public)")
+            #endif
             return true
         } catch {
             credentialKeyIdText = nil
             credentialStatusText = AppAttestCredentialPresentation.failureStatusText(label: label)
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.appAttest.error("credential operation failed operationID=\(operationID, privacy: .public) label=\(label, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
+            #endif
             return false
         }
     }

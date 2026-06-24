@@ -33,7 +33,9 @@ actor TAPPendingCaptureStore {
         let finalURL = try storage.bundleURL(captureID: captureID)
         if storage.bundleExists(at: finalURL),
            let existing = try? readRecord(captureID: captureID) {
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.pendingCapture.info("store ingest existing captureID=\(captureID, privacy: .private) status=\(existing.status.rawValue, privacy: .public) retryCount=\(existing.retryCount, privacy: .public)")
+            #endif
             return existing
         }
 
@@ -75,7 +77,9 @@ actor TAPPendingCaptureStore {
 
         try storage.commitTemporaryBundle(at: temporaryURL, to: finalURL)
         Self.postLibraryDidChange()
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.pendingCapture.info("store ingest created captureID=\(captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public) unsignedBytes=\(artifact.photoData.count, privacy: .public) hasThumbnail=\(thumbnailFilename != nil, privacy: .public)")
+        #endif
         return record
     }
 
@@ -189,7 +193,9 @@ actor TAPPendingCaptureStore {
         }
         try storage.writeRecord(record)
         Self.postLibraryDidChange()
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.pendingCapture.info("store status updated captureID=\(captureID, privacy: .private) status=\(status.rawValue, privacy: .public) retryCount=\(record.retryCount, privacy: .public) hasFailureReason=\(failureReason != nil, privacy: .public)")
+        #endif
         return record
     }
 
@@ -202,7 +208,9 @@ actor TAPPendingCaptureStore {
             do {
                 record = try storage.readStoredRecord(in: url, expectedCaptureID: url.lastPathComponent)
             } catch {
+                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
                 TAPDiagnostics.pendingCapture.error("store skipped invalid bundle during failure-reason normalization bundle=\(url.lastPathComponent, privacy: .private) error=\(TAPDiagnostics.describe(error), privacy: .public)")
+                #endif
                 continue
             }
 
@@ -220,7 +228,9 @@ actor TAPPendingCaptureStore {
         }
         if normalizedCount > 0 {
             Self.postLibraryDidChange()
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.pendingCapture.info("store normalized persisted failure reasons count=\(normalizedCount, privacy: .public)")
+            #endif
         }
         return normalizedCount
     }
@@ -234,7 +244,9 @@ actor TAPPendingCaptureStore {
         record.updatedAt = Date()
         try storage.writeRecord(record)
         Self.postLibraryDidChange()
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.pendingCapture.info("store signedPhoto stored captureID=\(captureID, privacy: .private) container=\(record.photoFileContainer.rawValue, privacy: .public) bytes=\(data.count, privacy: .public) status=\(record.status.rawValue, privacy: .public)")
+        #endif
         return record
     }
 
@@ -252,7 +264,9 @@ actor TAPPendingCaptureStore {
         try storage.writeRecord(record)
         try storage.cleanupLargeFiles(for: record)
         Self.postLibraryDidChange()
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.pendingCapture.info("store exported marked captureID=\(captureID, privacy: .private) assetID=\(assetLocalIdentifier, privacy: .private)")
+        #endif
         return record
     }
 

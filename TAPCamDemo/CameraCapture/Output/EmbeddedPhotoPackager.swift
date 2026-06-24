@@ -53,7 +53,9 @@ nonisolated struct EmbeddedPhotoPackager: CapturePackager {
             throw TAPDepthCaptureError.unableToCreatePhotoData
         }
         packagingMetrics.baseHEICDuration = Date().timeIntervalSince(basePhotoStart)
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.cameraCapture.info("base photo materialized profile=\(capturePackage.resolvedOutput.profileID, privacy: .public) container=\(fileContainer.rawValue, privacy: .public) selectedDimensions=\(capturePackage.resolvedOutput.maxPhotoDimensions?.debugDescription ?? "none", privacy: .public) bytes=\(basePhotoData.count, privacy: .public)")
+        #endif
 
         let signingResult = await provenanceWriter.manifestByApplyingCaptureAssertion(
             to: unsignedManifest,
@@ -70,7 +72,9 @@ nonisolated struct EmbeddedPhotoPackager: CapturePackager {
         let writeResult = try provenanceWriter.writeManifest(signingResult.manifest, into: basePhotoData)
         packagingMetrics.xmpInjectDuration = writeResult.xmpInjectDuration
         packagingMetrics.xmpVerifyDuration = writeResult.xmpVerifyDuration
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.cameraCapture.info("unsigned photo packaged profile=\(capturePackage.resolvedOutput.profileID, privacy: .public) container=\(fileContainer.rawValue, privacy: .public) selectedDimensions=\(capturePackage.resolvedOutput.maxPhotoDimensions?.debugDescription ?? "none", privacy: .public) bytes=\(writeResult.data.count, privacy: .public)")
+        #endif
 
         return PackagedCaptureArtifact(
             packageID: capturePackage.job.id,

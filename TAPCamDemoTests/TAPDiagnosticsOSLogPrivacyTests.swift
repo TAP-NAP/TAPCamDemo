@@ -49,7 +49,6 @@ struct TAPDiagnosticsOSLogPrivacyTests {
         "processedCount",
         "profile",
         "proofBytes",
-        "proofCount",
         "readiness",
         "remainingJobs",
         "requested",
@@ -136,6 +135,18 @@ struct TAPDiagnosticsOSLogPrivacyTests {
         #expect(publicLabels.contains("pendingCaptureIDPresent"))
         #expect(!publicLabels.contains("assetID"))
         #expect(!publicLabels.contains("captureID"))
+    }
+
+    @Test func runtimeOutputLogsAreConditionallyCompiled() throws {
+        let calls = try Self.runtimeOutputLoggingCalls()
+        #expect(!calls.isEmpty, "Output log scanner should find existing runtime logs")
+
+        for call in calls {
+            #expect(
+                call.isConditionallyCompiled,
+                "\(call.location) must be inside #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS"
+            )
+        }
     }
 
     private static func loggingInterpolations() throws -> [OSLogInterpolation] {
@@ -229,6 +240,84 @@ struct TAPDiagnosticsOSLogPrivacyTests {
             }
         }
         return sourceFiles.sorted()
+    }
+
+    private static func runtimeOutputLoggingCalls() throws -> [RuntimeOutputLogCall] {
+        let root = try repositoryRoot()
+        let appURL = root.appendingPathComponent("TAPCamDemo")
+        let fileManager = FileManager.default
+        guard let enumerator = fileManager.enumerator(
+            at: appURL,
+            includingPropertiesForKeys: nil
+        ) else {
+            return []
+        }
+
+        var calls: [RuntimeOutputLogCall] = []
+        for case let fileURL as URL in enumerator where fileURL.pathExtension == "swift" {
+            let relativePath = relativePath(for: fileURL, root: root)
+            let lines = try sourceLines(relativePath: relativePath)
+            for (index, line) in lines.enumerated() where lineContainsRuntimeOutputLogCall(line) {
+                calls.append(
+                    RuntimeOutputLogCall(
+                        sourceFile: relativePath,
+                        lineNumber: index + 1,
+                        isConditionallyCompiled: lineIsInsideReleaseDiagnosticsConditional(
+                            lineNumber: index + 1,
+                            lines: lines
+                        )
+                    )
+                )
+            }
+        }
+        return calls.sorted { lhs, rhs in
+            lhs.location < rhs.location
+        }
+    }
+
+    private static func lineContainsRuntimeOutputLogCall(_ line: String) -> Bool {
+        let containsTAPDiagnosticsCall = line.range(
+            of: #"TAPDiagnostics\.[A-Za-z]+\.(debug|info|notice|warning|error|fault)\s*\("#,
+            options: .regularExpression
+        ) != nil
+        let containsStandardOutputCall = line.range(
+            of: #"\b(print|debugPrint|NSLog|os_log)\s*\("#,
+            options: .regularExpression
+        ) != nil
+        return containsTAPDiagnosticsCall || containsStandardOutputCall
+    }
+
+    private static func lineIsInsideReleaseDiagnosticsConditional(
+        lineNumber: Int,
+        lines: [String]
+    ) -> Bool {
+        var conditions: [String] = []
+        for line in lines.prefix(max(lineNumber - 1, 0)) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("#if ") {
+                conditions.append(String(trimmed.dropFirst("#if ".count)))
+            } else if trimmed.hasPrefix("#elseif ") {
+                guard !conditions.isEmpty else {
+                    continue
+                }
+                conditions[conditions.count - 1] = String(trimmed.dropFirst("#elseif ".count))
+            } else if trimmed == "#else" {
+                guard !conditions.isEmpty else {
+                    continue
+                }
+                conditions[conditions.count - 1] = "#else"
+            } else if trimmed == "#endif" {
+                _ = conditions.popLast()
+            }
+        }
+        return conditions.contains(where: isReleaseDiagnosticsCondition)
+    }
+
+    private static func isReleaseDiagnosticsCondition(_ condition: String) -> Bool {
+        let compactCondition = condition
+            .replacingOccurrences(of: " ", with: "")
+            .trimmingCharacters(in: CharacterSet(charactersIn: "()"))
+        return compactCondition == "DEBUG||TAP_ENABLE_RELEASE_DIAGNOSTICS"
     }
 
     private static func relativePath(for fileURL: URL, root: URL) -> String {
@@ -400,6 +489,16 @@ private struct OSLogInterpolation {
     let label: String
     let expression: String
     let privacy: String?
+
+    var location: String {
+        "\(sourceFile):\(lineNumber)"
+    }
+}
+
+private struct RuntimeOutputLogCall {
+    let sourceFile: String
+    let lineNumber: Int
+    let isConditionallyCompiled: Bool
 
     var location: String {
         "\(sourceFile):\(lineNumber)"

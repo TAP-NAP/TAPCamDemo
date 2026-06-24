@@ -52,9 +52,13 @@ actor TAPPendingCaptureProcessor {
         exporter: any TAPPendingCaptureExporting,
         protectedDataIsAvailable: @escaping @Sendable () async -> Bool
     ) async {
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.pendingCapture.info("processPendingCaptures requested workerActive=\(self.workerTask != nil, privacy: .public)")
+        #endif
         while let currentWorkerTask = workerTask {
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.pendingCapture.info("processPendingCaptures waiting for active worker")
+            #endif
             await currentWorkerTask.value
         }
 
@@ -78,28 +82,38 @@ actor TAPPendingCaptureProcessor {
     ) async {
         defer { workerTask = nil }
         let workerID = UUID().uuidString
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.pendingCapture.info("worker start workerID=\(workerID, privacy: .public)")
+        #endif
         let readiness = TAPPendingCaptureWorkerReadiness(
             protectedDataIsAvailable: await protectedDataIsAvailable()
         )
         guard readiness.allowsPrivateArtifactAccess else {
             let readinessDescription = readiness.diagnosticDescription
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.pendingCapture.info(
                 "worker stopped workerID=\(workerID, privacy: .public) readiness=\(readinessDescription, privacy: .public)"
             )
+            #endif
             return
         }
 
         do {
             try await reconcile(store: store)
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.pendingCapture.info("worker reconcile complete workerID=\(workerID, privacy: .public)")
+            #endif
         } catch {
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.pendingCapture.error("worker reconcile failed workerID=\(workerID, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
+            #endif
         }
 
         var processedCaptureIDs = Set<String>()
         while let candidate = await nextProcessingCandidate(store: store, excludingCaptureIDs: processedCaptureIDs) {
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.pendingCapture.info("worker candidate workerID=\(workerID, privacy: .public) captureID=\(candidate.captureID, privacy: .private) status=\(candidate.status.rawValue, privacy: .public) retryCount=\(candidate.retryCount, privacy: .public) container=\(candidate.photoFileContainer.rawValue, privacy: .public) signedPhoto=\(candidate.signedPhotoFilename != nil, privacy: .public)")
+            #endif
             processedCaptureIDs.insert(candidate.captureID)
             await process(candidate, store: store, signer: signer, exporter: exporter)
         }
@@ -107,9 +121,13 @@ actor TAPPendingCaptureProcessor {
         do {
             try await store.cleanupExportedLargeFiles()
         } catch {
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.pendingCapture.error("worker cleanup failed workerID=\(workerID, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
+            #endif
         }
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.pendingCapture.info("worker finish workerID=\(workerID, privacy: .public) processedCount=\(processedCaptureIDs.count, privacy: .public)")
+        #endif
     }
 
     private func nextProcessingCandidate(
@@ -119,7 +137,9 @@ actor TAPPendingCaptureProcessor {
         do {
             return try await store.nextProcessingCandidate(excludingCaptureIDs: excludingCaptureIDs)
         } catch {
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.pendingCapture.error("nextProcessingCandidate failed excludedCount=\(excludingCaptureIDs.count, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
+            #endif
             return nil
         }
     }
@@ -148,11 +168,15 @@ actor TAPPendingCaptureProcessor {
         signer: any TAPPendingCaptureSigning,
         exporter: any TAPPendingCaptureExporting
     ) async {
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.pendingCapture.info("process start captureID=\(record.captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public) retryCount=\(record.retryCount, privacy: .public)")
+        #endif
         do {
             switch record.processingRoute {
             case .signThenExport:
+                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
                 TAPDiagnostics.pendingCapture.info("process route signThenExport captureID=\(record.captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public)")
+                #endif
                 let signedRecord = try await signer.sign(record, store: store)
                 try await exporter.export(signedRecord, store: store)
 
@@ -160,21 +184,31 @@ actor TAPPendingCaptureProcessor {
                 if record.signedPhotoFilename != nil,
                    record.status != .signed,
                    record.status != .exporting {
+                    #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
                     TAPDiagnostics.pendingCapture.info("process route export existing signedPhoto captureID=\(record.captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public)")
+                    #endif
                 } else {
+                    #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
                     TAPDiagnostics.pendingCapture.info("process route export captureID=\(record.captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public)")
+                    #endif
                 }
                 try await exporter.export(record, store: store)
 
             case .skip:
+                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
                 TAPDiagnostics.pendingCapture.info("process skipped exported captureID=\(record.captureID, privacy: .private)")
+                #endif
                 return
             }
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.pendingCapture.info("process success captureID=\(record.captureID, privacy: .private) previousStatus=\(record.status.rawValue, privacy: .public)")
+            #endif
         } catch {
             let status = TAPPendingCaptureRetryClassifier.status(for: error)
             let failureReason = TAPPendingCaptureFailureReasonPresentation.reason(for: status)
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.pendingCapture.error("process failed captureID=\(record.captureID, privacy: .private) previousStatus=\(record.status.rawValue, privacy: .public) nextStatus=\(status.rawValue, privacy: .public) retryCount=\(record.retryCount + 1, privacy: .public) vpnHint=\(TAPDiagnostics.errorLooksVPNRelated(error), privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
+            #endif
             _ = try? await store.updateStatus(
                 captureID: record.captureID,
                 status: status,
@@ -204,21 +238,31 @@ private struct AppAttestPendingCaptureSigner: TAPPendingCaptureSigning {
         _ record: TAPPendingCaptureRecord,
         store: TAPPendingCaptureStore
     ) async throws -> TAPPendingCaptureRecord {
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.pendingCapture.info("sign start captureID=\(record.captureID, privacy: .private)")
+        #endif
         _ = try await store.updateStatus(captureID: record.captureID, status: .signing)
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.pendingCapture.info("sign status updated captureID=\(record.captureID, privacy: .private) status=\(TAPPendingCaptureStatus.signing.rawValue, privacy: .public)")
+        #endif
 
         let unsignedData = try await store.unsignedPhotoData(captureID: record.captureID)
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.pendingCapture.info("sign unsigned data loaded captureID=\(record.captureID, privacy: .private) bytes=\(unsignedData.count, privacy: .public)")
+        #endif
         let signedPhoto = try await provenanceWriter.signedPhotoData(
             from: unsignedData,
             expectedCaptureID: record.captureID,
             expectedProfile: record.outputProfile,
             assertionSigner: signer
         )
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.pendingCapture.info("sign provenance ready captureID=\(record.captureID, privacy: .private) container=\(signedPhoto.fileContainer.rawValue, privacy: .public) manifestID=\(signedPhoto.manifest.payload.id, privacy: .private) keyID=\(signedPhoto.keyID, privacy: .private)")
+        #endif
         let signedRecord = try await store.storeSignedPhoto(signedPhoto.data, captureID: record.captureID)
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.pendingCapture.info("sign success captureID=\(record.captureID, privacy: .private) signedBytes=\(signedPhoto.data.count, privacy: .public)")
+        #endif
         return signedRecord
     }
 }
@@ -276,21 +320,33 @@ struct PhotoLibraryPendingCaptureExporter: TAPPendingCaptureExporting {
     }
 
     func export(_ record: TAPPendingCaptureRecord, store: TAPPendingCaptureStore) async throws {
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.pendingCapture.info("export start captureID=\(record.captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public)")
+        #endif
         if record.shouldAttemptExistingAssetRecoveryBeforeExport,
            let existingAssetID = try? await actions.existingAssetIdentifier(record.captureID) {
             _ = try await store.markExported(captureID: record.captureID, assetLocalIdentifier: existingAssetID)
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.pendingCapture.info("export skipped existing asset captureID=\(record.captureID, privacy: .private) assetID=\(existingAssetID, privacy: .private)")
+            #endif
             return
         }
 
         _ = try await store.updateStatus(captureID: record.captureID, status: .exporting)
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.pendingCapture.info("export status updated captureID=\(record.captureID, privacy: .private) status=\(TAPPendingCaptureStatus.exporting.rawValue, privacy: .public)")
+        #endif
         let signedData = try await store.signedPhotoData(captureID: record.captureID)
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.pendingCapture.info("export signed data loaded captureID=\(record.captureID, privacy: .private) bytes=\(signedData.count, privacy: .public)")
+        #endif
         let assetID = try await actions.saveValidatedSignedPhoto(signedData, record)
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.pendingCapture.info("export validation and save passed captureID=\(record.captureID, privacy: .private)")
+        #endif
         _ = try await store.markExported(captureID: record.captureID, assetLocalIdentifier: assetID)
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.pendingCapture.info("export success captureID=\(record.captureID, privacy: .private) assetID=\(assetID, privacy: .private)")
+        #endif
     }
 }

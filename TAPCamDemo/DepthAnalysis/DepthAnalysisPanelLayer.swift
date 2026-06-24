@@ -145,7 +145,7 @@ struct AnalysisPanelLayer<Content: View>: View {
     }
 
     private func logPanelLayout(contentHeight: CGFloat, panelHeight: CGFloat) {
-        #if DEBUG
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         guard contentHeight > 0 || panelHeight > 0 else {
             return
         }
