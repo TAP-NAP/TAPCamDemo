@@ -5,20 +5,25 @@
 
 import SwiftUI
 
-/// Keeps camera-screen lifecycle event forwarding out of the layout body.
+/// Keeps camera-screen lifecycle event forwarding and screen-awake policy out
+/// of the layout body.
 ///
 /// `CaptureLifecycleCoordinator` still owns the policy. This modifier only wires
-/// SwiftUI lifecycle events to that coordinator so `CameraView` can stay focused
-/// on object lifetime, navigation, sheet presentation, and visible UI.
+/// SwiftUI lifecycle events to that coordinator and applies the main-app
+/// camera idle-timer gate so `CameraView` can stay focused on object lifetime,
+/// navigation, sheet presentation, and visible UI.
 struct CameraViewLifecycleModifier: ViewModifier {
     @Environment(\.scenePhase) private var scenePhase
     @ObservedObject private var viewModel: CameraViewModel
     @ObservedObject private var routeStore: CameraRouteStore
     @ObservedObject private var chromeOrientation: CameraChromeOrientationController
     @ObservedObject private var appAttestController: AppAttestRuntimeController
+    @AppStorage(CameraIdleTimerPreferences.keepScreenAwakeKey)
+    private var keepScreenAwake = CameraIdleTimerPreferences.defaultKeepScreenAwake
 
     private let startsAutomatically: Bool
     private let lifecycleCoordinator: CaptureLifecycleCoordinator
+    private let isSettingsPresented: Bool
 
     init(
         startsAutomatically: Bool,
@@ -26,7 +31,8 @@ struct CameraViewLifecycleModifier: ViewModifier {
         viewModel: CameraViewModel,
         routeStore: CameraRouteStore,
         chromeOrientation: CameraChromeOrientationController,
-        appAttestController: AppAttestRuntimeController
+        appAttestController: AppAttestRuntimeController,
+        isSettingsPresented: Bool
     ) {
         self.startsAutomatically = startsAutomatically
         self.lifecycleCoordinator = lifecycleCoordinator
@@ -34,6 +40,7 @@ struct CameraViewLifecycleModifier: ViewModifier {
         self.routeStore = routeStore
         self.chromeOrientation = chromeOrientation
         self.appAttestController = appAttestController
+        self.isSettingsPresented = isSettingsPresented
     }
 
     func body(content: Content) -> some View {
@@ -59,6 +66,12 @@ struct CameraViewLifecycleModifier: ViewModifier {
             .onChange(of: scenePhase) { _, phase in
                 scenePhaseDidChange(phase)
             }
+            .onChange(of: keepScreenAwake) { _, _ in
+                updateIdleTimerForCurrentPresentation()
+            }
+            .onChange(of: isSettingsPresented) { _, _ in
+                updateIdleTimerForCurrentPresentation()
+            }
             .onChange(of: appAttestController.isPreparingCredential) { wasPreparing, isPreparing in
                 credentialPreparationDidChange(wasPreparing: wasPreparing, isPreparing: isPreparing)
             }
@@ -66,6 +79,7 @@ struct CameraViewLifecycleModifier: ViewModifier {
 
     private func viewDidAppear() {
         lifecycleCoordinator.viewDidAppear(chromeOrientation: chromeOrientation)
+        updateIdleTimerForCurrentPresentation()
     }
 
     private func viewDidDisappear() {
@@ -73,9 +87,11 @@ struct CameraViewLifecycleModifier: ViewModifier {
             viewModel: viewModel,
             chromeOrientation: chromeOrientation
         )
+        CameraIdleTimerController.setCameraScreenIdleTimerDisabled(false)
     }
 
     private func depthAlbumPresentationDidChange(_ isPresented: Bool) {
+        updateIdleTimerForCurrentPresentation()
         Task {
             await lifecycleCoordinator.depthAlbumPresentationDidChange(
                 isPresented: isPresented,
@@ -86,6 +102,7 @@ struct CameraViewLifecycleModifier: ViewModifier {
     }
 
     private func scenePhaseDidChange(_ phase: ScenePhase) {
+        updateIdleTimerForCurrentPresentation()
         let shouldReturnToCameraOnForeground = lifecycleCoordinator.foregroundRouteRestorePolicy(
             for: phase,
             returnsToCameraOnForeground: CameraRoutePreferences.returnToCameraOnForeground()
@@ -114,6 +131,18 @@ struct CameraViewLifecycleModifier: ViewModifier {
             )
         }
     }
+
+    private func updateIdleTimerForCurrentPresentation() {
+        CameraIdleTimerController.setCameraScreenIdleTimerDisabled(
+            CameraIdleTimerPolicy.shouldDisableIdleTimer(
+                keepScreenAwake: keepScreenAwake,
+                isCameraViewVisible: true,
+                isActiveScene: scenePhase == .active,
+                isSettingsPresented: isSettingsPresented,
+                isLibraryPresented: routeStore.isDepthAlbumPresented
+            )
+        )
+    }
 }
 
 extension View {
@@ -123,7 +152,8 @@ extension View {
         viewModel: CameraViewModel,
         routeStore: CameraRouteStore,
         chromeOrientation: CameraChromeOrientationController,
-        appAttestController: AppAttestRuntimeController
+        appAttestController: AppAttestRuntimeController,
+        isSettingsPresented: Bool
     ) -> some View {
         modifier(CameraViewLifecycleModifier(
             startsAutomatically: startsAutomatically,
@@ -131,7 +161,8 @@ extension View {
             viewModel: viewModel,
             routeStore: routeStore,
             chromeOrientation: chromeOrientation,
-            appAttestController: appAttestController
+            appAttestController: appAttestController,
+            isSettingsPresented: isSettingsPresented
         ))
     }
 }

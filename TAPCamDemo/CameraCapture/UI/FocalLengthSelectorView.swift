@@ -43,7 +43,11 @@ struct FocalLengthSelectorView: View {
                         Button {
                             select(option)
                         } label: {
-                            ZStack {
+                            CenterAnchoredChromeRotation(
+                                rotation: contentRotation,
+                                width: 48,
+                                height: 42
+                            ) {
                                 VStack(spacing: 0) {
                                     Text(option.numericLabel)
                                         .font(.system(size: 16, weight: .bold, design: .rounded))
@@ -53,9 +57,7 @@ struct FocalLengthSelectorView: View {
                                         .font(.system(size: 9, weight: .semibold, design: .rounded))
                                         .textCase(.lowercase)
                                 }
-                                .rotationEffect(contentRotation)
                             }
-                            .frame(width: 48, height: 42)
                             .background(background(for: option), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
                             .foregroundStyle(foreground(for: option))
                         }

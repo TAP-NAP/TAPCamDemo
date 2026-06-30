@@ -34,8 +34,11 @@ nonisolated struct PackagedCaptureArtifact: Sendable {
     let strategy: PackagingStrategy
     let photoData: Data
     let fileContainer: CapturePhotoFileContainer
+    let photoQualityLevel: CapturePhotoQualityLevel
     let manifest: TAPDepthManifest
     let signatureStatus: CaptureSignatureStatus
+    let depthAvailability: CaptureDepthAvailability
+    let captureScoreSummary: CaptureScoreSummary
     let packagingMetrics: CapturePackagingMetrics
     let capturedAt: Date
     let location: CLLocation?

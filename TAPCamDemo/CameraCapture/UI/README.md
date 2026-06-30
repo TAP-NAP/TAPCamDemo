@@ -5,14 +5,21 @@ model. It presents Release FOV choices, Debug controls, the preview bridge, and
 the shutter path. It delegates camera decisions to Planning and Runtime instead
 of inspecting AVFoundation devices directly in views.
 
+The current control vocabulary and placement rules live in
+[../../../Docs/CameraControlsDesign.md](../../../Docs/CameraControlsDesign.md).
+
 ## Code Map
 
 | Responsibility | Code |
 | --- | --- |
-| Main camera screen shell, object lifetime, navigation, sheet, and capture action owner | [CameraView.swift](CameraView.swift) |
-| Live preview stage, preview sizing, crop metadata callback, FOV overlay, and Debug overlay host | [CameraPreviewStageView.swift](CameraPreviewStageView.swift) |
+| Main camera screen shell, object lifetime, navigation, sheet, camera chrome state, and capture action owner | [CameraView.swift](CameraView.swift) |
+| Viewfinder chrome state, top shoulder Settings, and Flash/Live Photo toolbar | [CameraViewfinderChromeView.swift](CameraViewfinderChromeView.swift) |
+| Lower toolbar parameter buttons, AF/MF state, and ticked adjustment strip | [CameraAdjustmentControlView.swift](CameraAdjustmentControlView.swift) |
+| First-stage camera UX preferences, mode enums, flash mode, AF/MF mode, LiDAR Focus Assist setting, Manual Focus Tap Assist setting, and idle-timer policy | [CameraUXPreferences.swift](CameraUXPreferences.swift) |
+| Live preview stage, preview sizing, crop metadata callback, tap-focus and temporary-EV gesture layer, focus loupe, viewfinder edge toast, guide overlay, FOV overlay, and Debug overlay host | [CameraPreviewStageView.swift](CameraPreviewStageView.swift) |
+| Settings-owned guide overlay renderer | [CameraGuideOverlayView.swift](CameraGuideOverlayView.swift) |
 | Debug-only preview overlay for status, depth source, zoom, and performance panels | [CameraPreviewDebugOverlayView.swift](CameraPreviewDebugOverlayView.swift) |
-| Bottom camera chrome, settings button, TAP Library entry, shutter touch state, and camera switch button | [CameraCaptureControlsView.swift](CameraCaptureControlsView.swift) |
+| Bottom camera chrome, mode selector slot, lower toolbar host, TAP Library entry, shutter touch state, camera switch button, and disabled mode strip | [CameraCaptureControlsView.swift](CameraCaptureControlsView.swift) |
 | Observable camera state | [CameraViewModel.swift](CameraViewModel.swift) |
 | Public-safe status and metrics failure text consumed by CameraViewModel and Debug overlays | [../Support/CameraCaptureStatusPresentation.swift](../Support/CameraCaptureStatusPresentation.swift) |
 | Release selection and plan configuration handoff | [CameraViewModel+Selection.swift](CameraViewModel+Selection.swift) |
@@ -26,7 +33,7 @@ of inspecting AVFoundation devices directly in views.
 | Camera/TAP Library route state | [CameraRouteStore.swift](CameraRouteStore.swift) |
 | Durable TAP Library route context | [CameraRouteContextStore.swift](CameraRouteContextStore.swift) |
 | Camera screen lifecycle event policy | [CaptureLifecycleCoordinator.swift](CaptureLifecycleCoordinator.swift) |
-| SwiftUI lifecycle hook binding | [CameraViewLifecycleModifier.swift](CameraViewLifecycleModifier.swift) |
+| SwiftUI lifecycle hook binding and screen-awake policy | [CameraViewLifecycleModifier.swift](CameraViewLifecycleModifier.swift) |
 
 ## UI Flow
 
@@ -34,12 +41,17 @@ of inspecting AVFoundation devices directly in views.
 flowchart TD
     View["CameraView"] --> Stage["CameraPreviewStageView"]
     Stage --> Preview["CameraPreviewView"]
+    Stage --> FocusGesture["Tap focus and AE/AF lock"]
+    Stage --> Guides["CameraGuideOverlayView"]
     Stage --> FOV["FocalLengthSelectorView"]
     Stage --> DebugOverlay["CameraPreviewDebugOverlayView"]
     DebugOverlay --> DebugDepth["DebugDepthPanelView"]
     DebugOverlay --> DebugZoom["DebugZoomControlView"]
     DebugOverlay --> DebugMetrics["PerformancePanelView"]
     View --> Controls["CameraCaptureControlsView"]
+    View --> Chrome["CameraViewfinderChromeView"]
+    Controls --> AdjustmentControls["CameraAdjustmentControlView"]
+    View --> Preferences["CameraUXPreferences"]
     View --> VM["CameraViewModel"]
     Controls --> CaptureAction["onCapture closure"]
     Controls --> LibraryAction["onOpenTAPLibrary closure"]
@@ -62,6 +74,8 @@ flowchart TD
 
     click View "CameraView.swift"
     click Stage "CameraPreviewStageView.swift"
+    click FocusGesture "CameraPreviewStageView.swift"
+    click Guides "CameraGuideOverlayView.swift"
     click DebugOverlay "CameraPreviewDebugOverlayView.swift"
     click DebugDepth "DebugDepthPanelView.swift"
     click DebugZoom "DebugZoomControlView.swift"
@@ -69,6 +83,9 @@ flowchart TD
     click Preview "CameraPreviewView.swift"
     click FOV "FocalLengthSelectorView.swift"
     click Controls "CameraCaptureControlsView.swift"
+    click Chrome "CameraViewfinderChromeView.swift"
+    click AdjustmentControls "CameraAdjustmentControlView.swift"
+    click Preferences "CameraUXPreferences.swift"
     click VM "CameraViewModel.swift"
     click Route "CameraRouteStore.swift"
     click LifecycleModifier "CameraViewLifecycleModifier.swift"
@@ -114,25 +131,43 @@ If this directory is new to you, read it in this order:
    policy.
 8. [CameraViewLifecycleModifier.swift](CameraViewLifecycleModifier.swift) for
    SwiftUI `.task`, `.onAppear`, `.onDisappear`, and `.onChange` binding into
-   the coordinator. This file should stay a thin adapter.
+   the coordinator plus the camera-only idle-timer gate. This file should stay
+   a thin adapter.
 9. [CameraView.swift](CameraView.swift) for the screen shell. It owns
-   `StateObject` lifetimes, `NavigationStack`, Settings sheet, and top-level
-   capture/open/switch actions.
-10. [CameraPreviewStageView.swift](CameraPreviewStageView.swift) for preview
-   sizing, render-only `AVCaptureSession` handoff, crop metadata callback, FOV
-   overlay, and Debug overlay hosting. It receives display-only FOV state, not
-   camera profiles, depth profiles, raw device identifiers, or capture plans.
-11. [CameraPreviewDebugOverlayView.swift](CameraPreviewDebugOverlayView.swift)
+   `StateObject` lifetimes, `NavigationStack`, Settings sheet, camera chrome
+   state, and top-level capture/open/switch actions.
+10. [CameraUXPreferences.swift](CameraUXPreferences.swift) for first-stage
+   camera UI enums and preference policy: guide selection, EV reset default,
+   Focus Magnifier default, LiDAR Focus Assist default, Manual Focus Tap Assist
+   default, depth-warning default, keep-screen-awake default, AF/MF mode, flash
+   mode, disabled capture modes, and the idle-timer gate.
+11. [CameraViewfinderChromeView.swift](CameraViewfinderChromeView.swift) for the
+   viewfinder top shoulder Settings control and top Flash/Live Photo toolbar.
+   It receives only viewfinder chrome state and action closures.
+12. [CameraAdjustmentControlView.swift](CameraAdjustmentControlView.swift) for
+   the `viewfinder lower toolbar` parameter buttons and the
+   `ticked adjustment strip`. It receives capability-gated display ranges and
+   value callbacks, not camera devices or Runtime writers.
+13. [CameraPreviewStageView.swift](CameraPreviewStageView.swift) and
+   [CameraGuideOverlayView.swift](CameraGuideOverlayView.swift) for preview
+   sizing, render-only `AVCaptureSession` handoff, crop metadata callback,
+   tap-focus point mapping, temporary focus EV adjustment, long-press AE/AF
+   lock routing, MF focus loupe, viewfinder edge toast, Settings-owned guide
+   overlay, FOV overlay, and Debug overlay hosting. The stage receives
+   display-only FOV, focus-point, temporary EV, focus mode, toast, and guide
+   state, not camera profiles, depth profiles, raw device identifiers, or
+   capture plans.
+14. [CameraPreviewDebugOverlayView.swift](CameraPreviewDebugOverlayView.swift)
    for Debug-only status, depth source, zoom, and performance overlay layout.
    It owns the expanded/collapsed overlay state and receives display-only depth
    and zoom rows; it does not own preview sizing, crop metadata, release chrome
    rotation, capture planning, signing, export, or persistence.
-12. [CameraCaptureControlsView.swift](CameraCaptureControlsView.swift) for the
+15. [CameraCaptureControlsView.swift](CameraCaptureControlsView.swift) for the
    bottom camera chrome. It receives only `CameraCaptureControlsState`, a
    thumbnail image, and closures; it does not receive the view model, route
    store, App Attest controller, pending store, capture pipeline, output
    profile, identifiers, photo bytes, manifests, or proofs.
-13. [CameraPreviewView.swift](CameraPreviewView.swift),
+16. [CameraPreviewView.swift](CameraPreviewView.swift),
    [FocalLengthSelectorView.swift](FocalLengthSelectorView.swift), Debug panels,
    and [PerformancePanelView.swift](PerformancePanelView.swift) for the smaller
    UI leaves.
@@ -168,8 +203,9 @@ signing, export, protected-data policy, or capture pipeline construction.
 
 `CameraViewLifecycleModifier` is the adapter between SwiftUI lifecycle hooks and
 the coordinator. It owns `.task`, `.onAppear`, `.onDisappear`, and `.onChange`
-wiring so `CameraView.body` stays readable as screen structure. It should not
-gain policy branches beyond forwarding events to `CaptureLifecycleCoordinator`.
+wiring plus the camera-only idle-timer gate so `CameraView.body` stays readable
+as screen structure. It should not gain capture or route policy branches beyond
+forwarding events to `CaptureLifecycleCoordinator`.
 This modifier is a root-only boundary because it holds `CameraViewModel`,
 `CameraRouteStore`, `CameraChromeOrientationController`, and
 `AppAttestRuntimeController`. Do not attach it to preview, Debug overlay, or
@@ -196,8 +232,8 @@ unsigned photo data.
   results, raw Photos identifiers, pending capture identifiers, photo bytes,
   manifests, proofs, App Attest key IDs, or output objects.
 - The preview stage may receive a render-only `AVCaptureSession`, normalized
-  crop callback, display-only FOV options, primitive preview sizing values, and
-  a Debug-only overlay state. It must not receive `CameraViewModel`,
+  crop callback, display-only FOV options, guide-overlay preference, primitive
+  preview sizing values, and a Debug-only overlay state. It must not receive `CameraViewModel`,
   `CaptureSessionController`, camera/depth profiles, raw device identifiers,
   capture plans, session configuration results, App Attest objects, pending
   stores/processors/records, Photos identifiers, photo bytes, manifests, proofs,
@@ -224,8 +260,9 @@ unsigned photo data.
 - Restore anchors must be validated against the current `TAPLibraryItem` list
   before scrolling. Persisted route context must not trigger HEIC reads, signing,
   export, Photos fetches, or navigation into analysis detail.
-- Scene, route, and App Attest lifecycle side effects go through
-  `CaptureLifecycleCoordinator`; SwiftUI lifecycle hooks belong in
+- Scene, route, App Attest lifecycle side effects, and camera-only idle-timer
+  handling go through `CaptureLifecycleCoordinator` or
+  `CameraViewLifecycleModifier`; SwiftUI lifecycle hooks belong in
   `CameraViewLifecycleModifier`, not back in `CameraView.body`.
 - `CameraViewLifecycleModifier` must be applied by `CameraView` only. Do not
   reuse it on `CameraPreviewStageView`, `CameraPreviewDebugOverlayView`,

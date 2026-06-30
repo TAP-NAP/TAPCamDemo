@@ -25,14 +25,16 @@ nonisolated struct CapturePackage: @unchecked Sendable {
     let zoomCapabilitySnapshot: ZoomCapability
     let cropRectNormalized: CropRectNormalized
     let resolvedOutput: ResolvedCaptureOutputProfile
+    let depthAvailability: CaptureDepthAvailability
     let photo: AVCapturePhoto
 }
 
 /// Builds `CapturePackage` from SingleCam photo output.
 ///
-/// Validation happens here before physical packaging. A package without
-/// `AVCapturePhoto.depthData` is invalid because output must remain a single
-/// photo artifact with embedded auxiliary depth.
+/// Validation happens here before physical packaging. Runtime still requests a
+/// depth-capable photo path, but the individual shutter result may come back
+/// without `AVCapturePhoto.depthData`; that is recorded as No Depth instead of
+/// failing the foreground capture.
 nonisolated enum CapturePackageBuilder {
     /// Normalizes one `AVCapturePhoto` result into the app's logical package.
     ///
@@ -52,10 +54,6 @@ nonisolated enum CapturePackageBuilder {
             embedsDepthDataInPhoto: context.sessionConfiguration.capturePlan.captureConfig.embedsDepthDataInPhoto
         )
 
-        guard !resolvedOutput.requiresDepthData || captureResult.photo.depthData != nil else {
-            throw TAPDepthCaptureError.missingDepthData
-        }
-
         let plan = context.sessionConfiguration.capturePlan
         return CapturePackage(
             job: job,
@@ -67,6 +65,7 @@ nonisolated enum CapturePackageBuilder {
             zoomCapabilitySnapshot: plan.zoomCapability,
             cropRectNormalized: plan.cropPolicy.cropRectNormalized,
             resolvedOutput: resolvedOutput,
+            depthAvailability: captureResult.photo.depthData == nil ? .unavailable : .available,
             photo: captureResult.photo
         )
     }

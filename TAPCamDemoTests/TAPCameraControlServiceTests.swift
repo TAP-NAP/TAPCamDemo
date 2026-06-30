@@ -135,6 +135,12 @@ struct TAPCameraControlServiceTests {
         #expect(CameraControlService.clampedZoomFactor(8, minimum: 1, maximum: 5) == 5)
     }
 
+    @Test func cameraControlServiceClampsRequestedExposureBiasToDeviceRange() throws {
+        #expect(CameraControlService.clampedExposureBias(-4, minimum: -2, maximum: 2) == -2)
+        #expect(CameraControlService.clampedExposureBias(0.7, minimum: -2, maximum: 2) == 0.7)
+        #expect(CameraControlService.clampedExposureBias(4, minimum: -2, maximum: 2) == 2)
+    }
+
     @Test func cameraControlServiceMarksOnlyTheRegisteredSessionQueueAsWritable() async throws {
         let queue = DispatchQueue(label: "tapcam.tests.camera-control.session")
 

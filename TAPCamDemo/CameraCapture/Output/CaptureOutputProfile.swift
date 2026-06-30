@@ -316,6 +316,34 @@ nonisolated struct CaptureOutputProfile: Equatable, Sendable {
         compressionQuality: 1.0
     )
 
+    static func releasePhotoDepthProfile(
+        fileContainer: CapturePhotoFileContainer,
+        photoQualityLevel: CapturePhotoQualityLevel = .quality
+    ) -> CaptureOutputProfile {
+        let baseProfile: CaptureOutputProfile = fileContainer == .jpeg
+            ? .releasePhotoDepthJPEG
+            : .releasePhotoDepthHEIC
+        return baseProfile.withPhotoQualityPolicy(
+            .release(requested: photoQualityLevel)
+        )
+    }
+
+    func withPhotoQualityPolicy(_ policy: CapturePhotoQualityPolicy) -> CaptureOutputProfile {
+        CaptureOutputProfile(
+            id: id,
+            container: container,
+            fileContainer: fileContainer,
+            codecPreference: codecPreference,
+            depthDataDeliveryEnabled: depthDataDeliveryEnabled,
+            embedsDepthDataInPhoto: embedsDepthDataInPhoto,
+            depthDataFiltered: depthDataFiltered,
+            requiresDepthData: requiresDepthData,
+            photoQualityPolicy: policy,
+            photoDimensionsPolicy: photoDimensionsPolicy,
+            compressionQuality: compressionQuality
+        )
+    }
+
     func preferredCodec(availablePhotoCodecTypes: [AVVideoCodecType]) -> CapturePhotoCodec? {
         codecPreference.first { codec in
             availablePhotoCodecTypes.contains(codec.avVideoCodecType)

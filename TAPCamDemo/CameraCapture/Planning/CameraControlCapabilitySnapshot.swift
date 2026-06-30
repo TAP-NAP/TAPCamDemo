@@ -29,6 +29,9 @@ nonisolated struct CameraControlCapabilitySnapshot: Equatable, Sendable {
         let exposureBiasRange: DoubleRange
         let isoRange: DoubleRange
         let shutterDurationRangeSeconds: DoubleRange
+        let currentISO: Double
+        let currentShutterDurationSeconds: Double
+        let currentExposureTargetOffset: Double
 
         var hasManualRange: Bool {
             supportsCustomExposure
@@ -41,8 +44,15 @@ nonisolated struct CameraControlCapabilitySnapshot: Equatable, Sendable {
         let supportsAutoFocus: Bool
         let supportsContinuousAutoFocus: Bool
         let supportsLockedFocus: Bool
+        let supportsCustomLensPosition: Bool
         let supportsFocusPointOfInterest: Bool
         let supportsSmoothAutoFocus: Bool
+        let minimumFocusDistanceMillimeters: Int?
+        let currentLensPosition: Double
+
+        var supportsManualLensPosition: Bool {
+            supportsLockedFocus && supportsCustomLensPosition
+        }
     }
 
     nonisolated struct WhiteBalance: Equatable, Sendable {
@@ -107,14 +117,20 @@ nonisolated struct CameraControlCapabilitySnapshot: Equatable, Sendable {
                 shutterDurationRangeSeconds: DoubleRange(
                     minimum: finiteSeconds(format.minExposureDuration),
                     maximum: finiteSeconds(format.maxExposureDuration)
-                )
+                ),
+                currentISO: Double(device.iso),
+                currentShutterDurationSeconds: finiteSeconds(device.exposureDuration),
+                currentExposureTargetOffset: Double(device.exposureTargetOffset)
             ),
             focus: Focus(
                 supportsAutoFocus: device.isFocusModeSupported(.autoFocus),
                 supportsContinuousAutoFocus: device.isFocusModeSupported(.continuousAutoFocus),
                 supportsLockedFocus: device.isFocusModeSupported(.locked),
+                supportsCustomLensPosition: device.isLockingFocusWithCustomLensPositionSupported,
                 supportsFocusPointOfInterest: device.isFocusPointOfInterestSupported,
-                supportsSmoothAutoFocus: device.isSmoothAutoFocusSupported
+                supportsSmoothAutoFocus: device.isSmoothAutoFocusSupported,
+                minimumFocusDistanceMillimeters: minimumFocusDistanceMillimeters(device),
+                currentLensPosition: Double(device.lensPosition)
             ),
             whiteBalance: WhiteBalance(
                 supportsContinuousAutoWhiteBalance: device.isWhiteBalanceModeSupported(.continuousAutoWhiteBalance),
@@ -134,5 +150,13 @@ nonisolated struct CameraControlCapabilitySnapshot: Equatable, Sendable {
     private static func finiteSeconds(_ time: CMTime) -> Double {
         let seconds = CMTimeGetSeconds(time)
         return seconds.isFinite ? seconds : 0
+    }
+
+    private static func minimumFocusDistanceMillimeters(_ device: AVCaptureDevice) -> Int? {
+        guard #available(iOS 15.0, *) else {
+            return nil
+        }
+        let distance = device.minimumFocusDistance
+        return distance >= 0 ? distance : nil
     }
 }

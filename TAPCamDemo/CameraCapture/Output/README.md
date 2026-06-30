@@ -208,12 +208,12 @@ JPG import saved the asset but the Photos round-trip original lost
 
 | Field | Current Release Meaning |
 | --- | --- |
-| `container` | `embeddedPhotoDepthHEIC` or `embeddedPhotoDepthJPEG`; one Apple photo file with auxiliary depth and TAP XMP. |
+| `container` | `embeddedPhotoDepthHEIC` or `embeddedPhotoDepthJPEG`; one Apple photo file that requests auxiliary depth and always carries TAP XMP. |
 | `fileContainer` | `.heic` maps to `AVFileType.heic` and `UTType.heic`; `.jpeg` maps to `AVFileType.jpg` and `UTType.jpeg`. |
 | `codecPreference` | HEIC uses `[.hevc]`; JPG uses `[.jpeg]`. Cross-container codec fallback is a contract violation. |
 | `photoDimensionsPolicy` | `.largestStandardSupported`; Runtime chooses the largest supported non-deferred still-photo dimensions for the active camera format and writes them to output and per-shot settings. |
 | `compressionQuality` | `1.0`; passed through `AVVideoQualityKey` in processed photo settings. It is still not a file-size guarantee. |
-| `requiresDepthData` | `true`; depth is required, not best effort. |
+| `requiresDepthData` | `true` at configuration time; Runtime requests a depth-capable capture path, but a supported device may still return a per-shot No Depth result. |
 | `depthDataDeliveryEnabled` | `true`; Runtime must request depth delivery from `AVCapturePhotoOutput`. |
 | `embedsDepthDataInPhoto` | `true`; Apple auxiliary depth must remain inside the photo artifact. |
 | `depthDataFiltered` | `true`; the current Release output requests filtered Apple depth. |
@@ -225,9 +225,15 @@ JPG import saved the asset but the Photos round-trip original lost
   debug bundles.
 - The current release output policies are
   `CaptureOutputProfile.releasePhotoDepthHEIC` and
-  `CaptureOutputProfile.releasePhotoDepthJPEG`. Both require embedded depth,
-  filtered depth, required depth, `CapturePhotoQualityPolicy.releaseQuality`,
-  and a matching reviewed file container/codec pair.
+  `CaptureOutputProfile.releasePhotoDepthJPEG`. Both request embedded depth,
+  filtered depth, required depth configuration,
+  `CapturePhotoQualityPolicy.releaseQuality`, and a matching reviewed file
+  container/codec pair.
+- If AVFoundation returns a photo without `AVCapturePhoto.depthData` on an
+  otherwise depth-capable capture path, the foreground capture is still saved.
+  The TAP manifest records `depthAvailability: unavailable` and the App Attest
+  content binding records `depthResource.presence: unavailable`; it must not be
+  presented as depth verified.
 - `CapturePhotoQualityPolicy` names quality intent before Runtime maps it to
   `AVCapturePhotoOutput.QualityPrioritization`. It is still internal policy,
   not a visible quality setting. The current Release policy preserves the
@@ -245,11 +251,12 @@ JPG import saved the asset but the Photos round-trip original lost
 - `manifestByApplyingCaptureAssertion` is the non-throwing shutter-time path;
   `signedPhotoData` is the throwing pending-signing path and requires the
   expected queue `captureID`.
-- `validateSignedExportPhoto` is the final export gate for signed TAP depth
+- `validateSignedExportPhoto` is the final export gate for signed TAP photo
   artifacts. Queue status and filenames are scheduling hints; the signed bytes
   themselves must pass container, manifest schema/id, Release output facts,
-  exactly-one proof-slot, digest binding, and auxiliary depth validation before
-  Photos save.
+  exactly-one proof-slot, digest binding, and depth readback validation before
+  Photos save. Depth-available manifests still require Apple auxiliary depth;
+  No Depth manifests require that no auxiliary depth is present.
 
 ## Future Profile Rules
 

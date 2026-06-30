@@ -10,6 +10,12 @@ import CoreGraphics
 import Foundation
 import OSLog
 
+nonisolated enum CaptureSessionFocusRuntimeEvent: Equatable, Sendable {
+    case focusStarted
+    case focusSettled
+    case subjectAreaChanged
+}
+
 /// Owns the managed SingleCam `AVCaptureSession` and its mutation queue.
 ///
 /// This is the only production type that changes the AVFoundation session
@@ -21,13 +27,31 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     let photoOutput = AVCapturePhotoOutput()
 
     private let sessionQueue = DispatchQueue(label: "tapcam.camera-capture.singlecam.session")
+    private var focusRuntimeEventHandler: (@Sendable (CaptureSessionFocusRuntimeEvent) -> Void)?
+    private var subjectAreaChangeObserver: NSObjectProtocol?
+    private var focusAdjustingObservation: NSKeyValueObservation?
 
     init() {
         CameraControlService.registerSessionQueue(sessionQueue)
     }
 
+    deinit {
+        if let subjectAreaChangeObserver {
+            NotificationCenter.default.removeObserver(subjectAreaChangeObserver)
+        }
+        focusAdjustingObservation?.invalidate()
+    }
+
     var isShutterSoundSuppressionSupported: Bool {
         photoOutput.isShutterSoundSuppressionSupported
+    }
+
+    func setFocusRuntimeEventHandler(
+        _ handler: (@Sendable (CaptureSessionFocusRuntimeEvent) -> Void)?
+    ) {
+        sessionQueue.async { [weak self] in
+            self?.focusRuntimeEventHandler = handler
+        }
     }
 
     /// Applies a planned SingleCam photo-depth configuration.
@@ -38,13 +62,14 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     /// - Tag: ConfigureSingleCamSession
     func configure(_ request: SessionConfigurationRequest) async throws -> SessionConfigurationResult {
         try await withCheckedThrowingContinuation { continuation in
-            sessionQueue.async { [session, photoOutput] in
+            sessionQueue.async { [self, session, photoOutput] in
                 do {
                     let result = try Self.configureSession(
                         session: session,
                         photoOutput: photoOutput,
                         request: request
                     )
+                    observeFocusRuntimeEvents(for: result.device)
 
                     if !session.isRunning {
                         session.startRunning()
@@ -56,6 +81,37 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                     continuation.resume(throwing: error)
                 }
             }
+        }
+    }
+
+    private func observeFocusRuntimeEvents(for device: AVCaptureDevice) {
+        focusAdjustingObservation?.invalidate()
+        focusAdjustingObservation = nil
+
+        if let subjectAreaChangeObserver {
+            NotificationCenter.default.removeObserver(subjectAreaChangeObserver)
+            self.subjectAreaChangeObserver = nil
+        }
+
+        subjectAreaChangeObserver = NotificationCenter.default.addObserver(
+            forName: AVCaptureDevice.subjectAreaDidChangeNotification,
+            object: device,
+            queue: nil
+        ) { [weak self] _ in
+            self?.emitFocusRuntimeEvent(.subjectAreaChanged)
+        }
+
+        focusAdjustingObservation = device.observe(\.isAdjustingFocus, options: [.new]) { [weak self] _, change in
+            guard let isAdjustingFocus = change.newValue else {
+                return
+            }
+            self?.emitFocusRuntimeEvent(isAdjustingFocus ? .focusStarted : .focusSettled)
+        }
+    }
+
+    private func emitFocusRuntimeEvent(_ event: CaptureSessionFocusRuntimeEvent) {
+        sessionQueue.async { [weak self] in
+            self?.focusRuntimeEventHandler?(event)
         }
     }
 
@@ -80,6 +136,59 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             }
 
             photoOutput.capturePhoto(with: settings, delegate: delegate)
+        }
+    }
+
+    func applyManualControlCommandPlan(
+        _ plan: CameraManualControlCommandPlan,
+        to device: AVCaptureDevice
+    ) async throws {
+        try await withCheckedThrowingContinuation { continuation in
+            sessionQueue.async {
+                do {
+                    try CameraControlService.applyManualControlCommandPlan(plan, to: device)
+                    continuation.resume()
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    func applyManualControlIntent(
+        _ intent: CameraManualControlIntent,
+        against capability: CameraControlCapabilitySnapshot,
+        to device: AVCaptureDevice
+    ) async throws -> CameraManualControlResolutionPresentation {
+        let resolution = intent.resolved(against: capability)
+        let presentation = CameraManualControlResolutionPresentation(resolution: resolution)
+        guard resolution.isExecutable else {
+            return presentation
+        }
+
+        try await applyManualControlCommandPlan(
+            CameraManualControlCommandPlan(resolution: resolution),
+            to: device
+        )
+        return presentation
+    }
+
+    func restoreAutoPhotoControls(
+        globalExposureBias: Double,
+        to device: AVCaptureDevice
+    ) async throws {
+        try await withCheckedThrowingContinuation { continuation in
+            sessionQueue.async {
+                do {
+                    try CameraControlService.restoreAutoPhotoControls(
+                        globalExposureBias: globalExposureBias,
+                        to: device
+                    )
+                    continuation.resume()
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
         }
     }
 

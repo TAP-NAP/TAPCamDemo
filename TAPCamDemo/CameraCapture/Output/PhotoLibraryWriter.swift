@@ -182,14 +182,11 @@ nonisolated enum PhotoLibraryWriter {
         let provenanceWriter = TAPCaptureProvenanceWriter()
         for asset in assets {
             guard let data = try? await originalPhotoData(for: asset),
+                  let expectedProfile = expectedProfile(for: data),
                   (try? provenanceWriter.validateSignedExportPhoto(
                     data,
                     expectedCaptureID: captureID,
-                    expectedProfile: .releasePhotoDepthHEIC
-                  )) != nil || (try? provenanceWriter.validateSignedExportPhoto(
-                    data,
-                    expectedCaptureID: captureID,
-                    expectedProfile: .releasePhotoDepthJPEG
+                    expectedProfile: expectedProfile
                   )) != nil else {
                 continue
             }
@@ -202,6 +199,20 @@ nonisolated enum PhotoLibraryWriter {
         TAPDiagnostics.photoLibrary.info("depthAssetIdentifier not found captureID=\(captureID, privacy: .private) scannedCount=\(assets.count, privacy: .public)")
         #endif
         return nil
+    }
+
+    private static func expectedProfile(for signedPhotoData: Data) -> CaptureOutputProfile? {
+        guard let fileContainer = try? TAPDepthPhotoFileReader.fileContainer(from: signedPhotoData),
+              let manifest = try? TAPDepthPhotoFileReader.decodedManifest(from: signedPhotoData) else {
+            return nil
+        }
+        let qualityLevel = CapturePhotoQualityLevel(
+            rawValue: manifest.payload.capture.photoQualityPrioritization
+        ) ?? .quality
+        return CaptureOutputProfile.releasePhotoDepthProfile(
+            fileContainer: fileContainer,
+            photoQualityLevel: qualityLevel
+        )
     }
 
     @discardableResult

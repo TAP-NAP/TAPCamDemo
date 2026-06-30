@@ -67,6 +67,20 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
         fileContainer: CapturePhotoFileContainer,
         depthData: AVDepthData
     ) throws -> CaptureContentBinding {
+        try make(
+            manifest: manifest,
+            basePhotoData: basePhotoData,
+            fileContainer: fileContainer,
+            depthData: Optional(depthData)
+        )
+    }
+
+    static func make(
+        manifest: TAPDepthManifest,
+        basePhotoData: Data,
+        fileContainer: CapturePhotoFileContainer,
+        depthData: AVDepthData?
+    ) throws -> CaptureContentBinding {
         try makeWithMetrics(
             manifest: manifest,
             basePhotoData: basePhotoData,
@@ -94,6 +108,20 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
         fileContainer: CapturePhotoFileContainer,
         depthData: AVDepthData
     ) throws -> CaptureContentDigestBuildResult {
+        try makeWithMetrics(
+            manifest: manifest,
+            basePhotoData: basePhotoData,
+            fileContainer: fileContainer,
+            depthData: Optional(depthData)
+        )
+    }
+
+    static func makeWithMetrics(
+        manifest: TAPDepthManifest,
+        basePhotoData: Data,
+        fileContainer: CapturePhotoFileContainer,
+        depthData: AVDepthData?
+    ) throws -> CaptureContentDigestBuildResult {
         var metrics = CaptureContentDigestMetrics()
 
         let contentStart = Date()
@@ -110,13 +138,7 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
         metrics.rgbDigestDuration = Date().timeIntervalSince(contentStart)
 
         let depthStart = Date()
-        let depthResource = DepthResource(
-            presence: "required",
-            binding: "covered-by-assetHash",
-            interpretation: "not-part-of-base-signature",
-            platformPresenceCheck: "AVDepthData-readback"
-        )
-        _ = depthData
+        let depthResource = depthResource(for: depthData == nil ? .unavailable : .available)
         metrics.depthDigestDuration = Date().timeIntervalSince(depthStart)
 
         let metadataStart = Date()
@@ -134,6 +156,25 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
             ),
             metrics: metrics
         )
+    }
+
+    private static func depthResource(for availability: CaptureDepthAvailability) -> DepthResource {
+        switch availability {
+        case .available:
+            DepthResource(
+                presence: "required",
+                binding: "covered-by-assetHash",
+                interpretation: "not-part-of-base-signature",
+                platformPresenceCheck: "AVDepthData-readback"
+            )
+        case .unavailable:
+            DepthResource(
+                presence: "unavailable",
+                binding: "not-present",
+                interpretation: "no-depth-captured",
+                platformPresenceCheck: "AVDepthData-readback-missing"
+            )
+        }
     }
 
     func canonicalJSONData() throws -> Data {

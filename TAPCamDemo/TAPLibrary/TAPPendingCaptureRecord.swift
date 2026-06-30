@@ -52,6 +52,8 @@ nonisolated struct TAPPendingCaptureRecord: Codable, Equatable, Identifiable, Se
     var updatedAt: Date
     var status: TAPPendingCaptureStatus
     var photoFileContainer: CapturePhotoFileContainer
+    var photoQualityLevel: CapturePhotoQualityLevel
+    var captureScoreSummary: CaptureScoreSummary
     var unsignedPhotoFilename: String?
     var signedPhotoFilename: String?
     var thumbnailFilename: String?
@@ -69,12 +71,10 @@ nonisolated struct TAPPendingCaptureRecord: Codable, Equatable, Identifiable, Se
     }
 
     var outputProfile: CaptureOutputProfile {
-        switch photoFileContainer {
-        case .heic:
-            .releasePhotoDepthHEIC
-        case .jpeg:
-            .releasePhotoDepthJPEG
-        }
+        CaptureOutputProfile.releasePhotoDepthProfile(
+            fileContainer: photoFileContainer,
+            photoQualityLevel: photoQualityLevel
+        )
     }
 
     /// Legacy HEIC field retained for older tests and decoded records.
@@ -103,6 +103,8 @@ nonisolated struct TAPPendingCaptureRecord: Codable, Equatable, Identifiable, Se
         updatedAt: Date,
         status: TAPPendingCaptureStatus,
         photoFileContainer: CapturePhotoFileContainer = .heic,
+        photoQualityLevel: CapturePhotoQualityLevel = .quality,
+        captureScoreSummary: CaptureScoreSummary = .unknown,
         unsignedPhotoFilename: String? = nil,
         signedPhotoFilename: String? = nil,
         unsignedHEICFilename: String? = nil,
@@ -120,6 +122,8 @@ nonisolated struct TAPPendingCaptureRecord: Codable, Equatable, Identifiable, Se
         self.updatedAt = updatedAt
         self.status = status
         self.photoFileContainer = photoFileContainer
+        self.photoQualityLevel = photoQualityLevel
+        self.captureScoreSummary = captureScoreSummary
         self.unsignedPhotoFilename = unsignedPhotoFilename ?? unsignedHEICFilename
         self.signedPhotoFilename = signedPhotoFilename ?? signedHEICFilename
         self.thumbnailFilename = thumbnailFilename
@@ -137,6 +141,8 @@ nonisolated struct TAPPendingCaptureRecord: Codable, Equatable, Identifiable, Se
         case updatedAt
         case status
         case photoFileContainer
+        case photoQualityLevel
+        case captureScoreSummary
         case unsignedPhotoFilename
         case signedPhotoFilename
         case unsignedHEICFilename
@@ -163,6 +169,14 @@ nonisolated struct TAPPendingCaptureRecord: Codable, Equatable, Identifiable, Se
             updatedAt: try container.decode(Date.self, forKey: .updatedAt),
             status: try container.decode(TAPPendingCaptureStatus.self, forKey: .status),
             photoFileContainer: photoFileContainer,
+            photoQualityLevel: try container.decodeIfPresent(
+                CapturePhotoQualityLevel.self,
+                forKey: .photoQualityLevel
+            ) ?? .quality,
+            captureScoreSummary: try container.decodeIfPresent(
+                CaptureScoreSummary.self,
+                forKey: .captureScoreSummary
+            ) ?? .unknown,
             unsignedPhotoFilename: try container.decodeIfPresent(String.self, forKey: .unsignedPhotoFilename),
             signedPhotoFilename: try container.decodeIfPresent(String.self, forKey: .signedPhotoFilename),
             unsignedHEICFilename: try container.decodeIfPresent(String.self, forKey: .unsignedHEICFilename),
@@ -184,6 +198,8 @@ nonisolated struct TAPPendingCaptureRecord: Codable, Equatable, Identifiable, Se
         try container.encode(updatedAt, forKey: .updatedAt)
         try container.encode(status, forKey: .status)
         try container.encode(photoFileContainer, forKey: .photoFileContainer)
+        try container.encode(photoQualityLevel, forKey: .photoQualityLevel)
+        try container.encode(captureScoreSummary, forKey: .captureScoreSummary)
         try container.encodeIfPresent(unsignedPhotoFilename, forKey: .unsignedPhotoFilename)
         try container.encodeIfPresent(signedPhotoFilename, forKey: .signedPhotoFilename)
         try container.encodeIfPresent(thumbnailFilename, forKey: .thumbnailFilename)

@@ -3,6 +3,7 @@
 //  TAPCamDemoTests
 //
 
+import AppAttestKit
 import AVFoundation
 import Foundation
 import Testing
@@ -279,5 +280,64 @@ struct TAPSignedExportValidatorTests {
         } catch {
             Issue.record("Unexpected final export validation error: \(error)")
         }
+    }
+
+    @Test func pendingSigningAndExportValidationAllowNoDepthCapture() async throws {
+        let payload = TAPCamDemoTestFixtures.samplePayload(
+            location: nil,
+            capture: TAPCamDemoTestFixtures.sampleManifestCapture(depthAvailability: .unavailable),
+            depthAvailability: .unavailable
+        )
+        let unsignedData = try TAPDepthHEICWriter.injectingManifest(
+            TAPDepthManifest(payload: payload),
+            into: TAPCaptureProvenanceTestFixtures.sampleHEICSourceData()
+        )
+        let signer = SuccessfulCaptureAssertionSigner()
+        let writer = TAPCaptureProvenanceWriter()
+
+        let signedPhoto = try await writer.signedPhotoData(
+            from: unsignedData,
+            expectedCaptureID: "sample-capture",
+            expectedProfile: .releasePhotoDepthHEIC,
+            assertionSigner: signer
+        )
+        let validated = try writer.validateSignedExportPhoto(
+            signedPhoto.data,
+            expectedCaptureID: "sample-capture",
+            expectedProfile: .releasePhotoDepthHEIC
+        )
+        let digest = try #require(await signer.lastDigest())
+
+        #expect(validated.manifest.payload.capture.depthAvailability == .unavailable)
+        #expect(validated.manifest.payload.depth.availability == .unavailable)
+        #expect(digest.depthResource.presence == "unavailable")
+        #expect(digest.depthResource.binding == "not-present")
+    }
+}
+
+private actor SuccessfulCaptureAssertionSigner: CaptureAssertionSigning {
+    private var recordedDigest: CaptureContentDigest?
+
+    func lastDigest() -> CaptureContentDigest? {
+        recordedDigest
+    }
+
+    func sign(contentDigest: CaptureContentDigest) async throws -> CaptureAssertionProof {
+        recordedDigest = contentDigest
+        let proofValue = CaptureAssertionProofValue(
+            contentDigest: contentDigest,
+            keyId: "test-key-id",
+            assertionObject: Data([0xA1, 0x01]).appAttestBase64URL,
+            signingBinding: try CaptureSigningBinding(contentDigest: contentDigest)
+        )
+        let proofData = try proofValue.canonicalJSONData()
+        let proof = TAPDepthManifest.Proof(
+            type: "appAttestAssertion",
+            algorithm: "TAPCam.AppAttestCaptureSignature.v1",
+            keyID: "test-key-id",
+            createdAt: contentDigest.capturedAt,
+            value: proofData.appAttestBase64URL
+        )
+        return CaptureAssertionProof(proof: proof, keyID: "test-key-id")
     }
 }

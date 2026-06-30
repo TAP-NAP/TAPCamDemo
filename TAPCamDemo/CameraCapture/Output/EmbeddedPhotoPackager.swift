@@ -81,8 +81,16 @@ nonisolated struct EmbeddedPhotoPackager: CapturePackager {
             strategy: strategy,
             photoData: writeResult.data,
             fileContainer: fileContainer,
+            photoQualityLevel: capturePackage.resolvedOutput.photoQualityPolicy.requested,
             manifest: signingResult.manifest,
             signatureStatus: signingResult.status,
+            depthAvailability: capturePackage.depthAvailability,
+            captureScoreSummary: CaptureScoreSummary.make(
+                depthAvailability: capturePackage.depthAvailability,
+                fileContainer: fileContainer,
+                photoQualityLevel: capturePackage.resolvedOutput.photoQualityPolicy.requested,
+                signatureStatus: signingResult.status
+            ),
             packagingMetrics: packagingMetrics,
             capturedAt: capturePackage.sourceContext.capturedAt,
             location: capturePackage.sourceContext.location

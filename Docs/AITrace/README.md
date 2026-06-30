@@ -10,25 +10,34 @@ open follow-ups.
 
 ## Read First
 
-1. [2026-06-22-multi-format-photo-implementation.md](2026-06-22-multi-format-photo-implementation.md)
+1. [2026-06-30-camera-ux-stage-one-shell.md](2026-06-30-camera-ux-stage-one-shell.md)
+   records the first-stage camera UX shell and control wiring, including the
+   agreed `CameraControlsDesign` vocabulary, Dynamic Island shoulder chrome,
+   global EV writes, flash handoff, basic tap focus, temporary focus EV, AE/AF
+   lock, direct ISO/shutter/lens-position controls, Settings-owned guides and
+   LiDAR Focus Assist, keep-awake policy, non-rotating disabled mode selector,
+   No Depth output behavior, first-stage analysis scoring, App Intents
+   latest/selected-score surface plus Camera/TAP Library handoff, and scorecard
+   update.
+2. [2026-06-22-multi-format-photo-implementation.md](2026-06-22-multi-format-photo-implementation.md)
    records the implementation for HEIC/JPG TAP depth photo output, max photo
    dimensions, Settings preference, storage/provenance/analysis generalization,
    validation status, and the plan-specific score.
-2. [2026-06-22-multi-format-photo-research.md](2026-06-22-multi-format-photo-research.md)
+3. [2026-06-22-multi-format-photo-research.md](2026-06-22-multi-format-photo-research.md)
    records the research for HEIC/JPEG output support, max photo dimensions, and
    how selected-camera capabilities should shape the implementation plan.
-3. [2026-06-21-tap-library-scroll-memory.md](2026-06-21-tap-library-scroll-memory.md)
+4. [2026-06-21-tap-library-scroll-memory.md](2026-06-21-tap-library-scroll-memory.md)
    records the current TAP Library scroll-memory plan, the foreground-return
    preference decision, and the plan-specific score rubric for this user journey.
-4. [2026-06-21-assert-verification-panel-sync.md](2026-06-21-assert-verification-panel-sync.md)
+5. [2026-06-21-assert-verification-panel-sync.md](2026-06-21-assert-verification-panel-sync.md)
    records the current `assert` branch verification-panel sync goal, how AI work
    is being traced, and which validation evidence is still pending.
-5. [2026-06-21-refactor-trace.md](2026-06-21-refactor-trace.md) records the
+6. [2026-06-21-refactor-trace.md](2026-06-21-refactor-trace.md) records the
    current readability/security refactor goal, iteration history, AI tool use,
    validation status, and next-round candidates.
-6. [../ProjectScorecard.md](../ProjectScorecard.md) defines the score formula,
+7. [../ProjectScorecard.md](../ProjectScorecard.md) defines the score formula,
    strict gaps, current score, and from-scratch reading order.
-7. [../FutureCameraSpecs.md](../FutureCameraSpecs.md) explains the refactor
+8. [../FutureCameraSpecs.md](../FutureCameraSpecs.md) explains the refactor
    boundary status before future camera features are added.
 
 ## What To Record

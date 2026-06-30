@@ -40,6 +40,7 @@ nonisolated struct CameraManualControlCommandPlan: CustomDebugStringConvertible,
         let supportsAutoFocus: Bool
         let supportsContinuousAutoFocus: Bool
         let supportsLockedFocus: Bool
+        let supportsCustomLensPosition: Bool
         let supportsFocusPointOfInterest: Bool
         let supportsLockedWhiteBalance: Bool
         let supportsContinuousAutoWhiteBalance: Bool
@@ -57,6 +58,7 @@ nonisolated struct CameraManualControlCommandPlan: CustomDebugStringConvertible,
             supportsAutoFocus = capability.focus.supportsAutoFocus
             supportsContinuousAutoFocus = capability.focus.supportsContinuousAutoFocus
             supportsLockedFocus = capability.focus.supportsLockedFocus
+            supportsCustomLensPosition = capability.focus.supportsCustomLensPosition
             supportsFocusPointOfInterest = capability.focus.supportsFocusPointOfInterest
             supportsLockedWhiteBalance = capability.whiteBalance.supportsLockedWhiteBalance
             supportsContinuousAutoWhiteBalance = capability.whiteBalance.supportsContinuousAutoWhiteBalance

@@ -9,7 +9,8 @@ import Testing
 @testable import TAPCamDemo
 
 struct TAPCameraCapturePresentationTests {
-    @Test func cameraUISmokeTestAnchorsStayExplicit() throws {
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func cameraUISmokeTestAnchorsStayExplicit() throws {
         let appSource = try TAPCamDemoTestSourceInspection.source(relativePath: "TAPCamDemo/App/TAPCamDemoApp.swift")
         let controlsSource = try TAPCamDemoTestSourceInspection.source(relativePath: "TAPCamDemo/CameraCapture/UI/CameraCaptureControlsView.swift")
         let overlaySource = try TAPCamDemoTestSourceInspection.source(relativePath: "TAPCamDemo/CameraCapture/UI/CameraPreviewDebugOverlayView.swift")
@@ -157,7 +158,8 @@ struct TAPCameraCapturePresentationTests {
         ))
     }
 
-    @Test func foregroundCameraRouteRestoreDisablesNavigationAnimation() throws {
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func foregroundCameraRouteRestoreDisablesNavigationAnimation() throws {
         let source = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/CameraCapture/UI/CaptureLifecycleCoordinator.swift"
         )
@@ -172,6 +174,8 @@ struct TAPCameraCapturePresentationTests {
         let readyState = CameraCaptureControlsState(
             isShutterEnabled: true,
             isLibraryWriteInProgress: false,
+            selectedMode: .photo,
+            adjustmentControlState: nil,
             contentRotation: .zero
         )
         #expect(readyState.canOpenTAPLibrary)
@@ -182,6 +186,8 @@ struct TAPCameraCapturePresentationTests {
         let writingState = CameraCaptureControlsState(
             isShutterEnabled: true,
             isLibraryWriteInProgress: true,
+            selectedMode: .photo,
+            adjustmentControlState: nil,
             contentRotation: .zero
         )
         #expect(!writingState.canOpenTAPLibrary)
@@ -194,6 +200,8 @@ struct TAPCameraCapturePresentationTests {
         let state = CameraCaptureControlsState(
             isShutterEnabled: true,
             isLibraryWriteInProgress: false,
+            selectedMode: .photo,
+            adjustmentControlState: nil,
             contentRotation: .zero
         )
         let fieldNames = Mirror(reflecting: state).children.compactMap(\.label).joined(separator: " ")
@@ -219,6 +227,14 @@ struct TAPCameraCapturePresentationTests {
             nativePreviewAspectRatio: 3.0 / 4.0,
             focalLengthOptions: [],
             shouldShowFocalLengthSelector: false,
+            guideOverlayPreference: .ruleOfThirds,
+            previewCropRectNormalized: CropRectNormalized(x: 0.1, y: 0.2, width: 0.8, height: 0.6),
+            temporaryFocusEVOffset: 0.3,
+            focusMode: .auto,
+            focusRuntimeEvent: nil,
+            isFocusMagnifierEnabled: true,
+            isManualFocusTapAssistEnabled: false,
+            viewfinderEdgeToastMessage: nil,
             contentRotation: .zero
         )
         let fieldNames = Mirror(reflecting: state).children.compactMap(\.label).joined(separator: " ")
@@ -243,6 +259,246 @@ struct TAPCameraCapturePresentationTests {
         for token in forbiddenTokens {
             #expect(!fieldNames.localizedCaseInsensitiveContains(token))
         }
+    }
+
+    @Test func cameraPreviewFocusPointMapsThroughVisibleCrop() throws {
+        let localPoint = CameraPreviewFocusPoint(x: 0.25, y: 0.75)
+        let mappedPoint = localPoint.mappedThroughVisibleCrop(
+            CropRectNormalized(x: 0.1, y: 0.2, width: 0.8, height: 0.6)
+        )
+        let nonFinitePoint = CameraPreviewFocusPoint(x: .nan, y: .infinity)
+
+        #expect(abs(mappedPoint.x - 0.3) < 0.0001)
+        #expect(abs(mappedPoint.y - 0.65) < 0.0001)
+        #expect(CameraPreviewFocusPoint(x: -1, y: 2) == CameraPreviewFocusPoint(x: 0, y: 1))
+        #expect(nonFinitePoint == CameraPreviewFocusPoint(x: 0.5, y: 0.5))
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func cameraPreviewFocusTargetOverlayUsesSharedLifecycleAndLocksExistingTarget() throws {
+        let source = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraPreviewStageView.swift"
+        )
+
+        #expect(source.contains("CameraFocusTargetOverlay"))
+        #expect(source.contains("showFocusTargetOverlay(at: localPoint, isLocked: false)"))
+        #expect(source.contains("showFocusTargetOverlay(at: localPoint, isLocked: true)"))
+        #expect(source.contains("let localPoint = focusTargetOverlay?.point ?? latestPressStartPoint"))
+        #expect(source.contains("handleFocusRuntimeEvent"))
+        #expect(source.contains("hideFocusTargetOverlay()"))
+        #expect(!source.contains("onRefocusTarget"))
+        #expect(source.contains("focusExposureScrub"))
+        #expect(source.contains("onAdjustTemporaryFocusEV(focusExposureScrubOffset"))
+        #expect(!source.contains("FocusEVControl"))
+        #expect(!source.contains("focusIndicator: FocusIndicator"))
+        #expect(!source.contains("scheduleFocusTargetOverlayDismissal"))
+        #expect(!source.contains("nonLockedFocusTargetLifetimeMilliseconds"))
+        #expect(!source.contains(".milliseconds(1_100)"))
+        #expect(!source.contains(".milliseconds(4_000)"))
+        #expect(source.contains("latestPressStartPoint"))
+        #expect(source.contains("onLockFocusAndExposure(capturePoint)"))
+        #expect(!source.contains("showFocusTargetOverlay(at: CameraPreviewFocusPoint(x: 0.5, y: 0.5), isLocked: true)"))
+    }
+
+    @Test func cameraFocusTargetOverlayStatePersistsUntilRuntimeInvalidation() throws {
+        let point = CameraPreviewFocusPoint(x: 0.25, y: 0.75)
+        let focusing = CameraFocusTargetOverlay.focusing(at: point)
+        let initialFocusCycle = focusing.applyingRuntimeEvent(.focusStarted)
+        let focused = try #require(focusing.applyingRuntimeEvent(.focusSettled))
+        let invalidatedBySubjectChange = focused.applyingRuntimeEvent(.subjectAreaChanged)
+        let invalidatedByRuntimeFocusCycle = focused.applyingRuntimeEvent(.focusStarted)
+        let locked = focused.lockedOverlay()
+        let ignoredRuntimeCycle = locked.applyingRuntimeEvent(.focusStarted)
+
+        #expect(focusing.point == point)
+        #expect(focusing.phase == .focusing)
+        #expect(initialFocusCycle == focusing)
+        #expect(focused.id == focusing.id)
+        #expect(focused.phase == .focused)
+        #expect(invalidatedBySubjectChange == nil)
+        #expect(invalidatedByRuntimeFocusCycle == nil)
+        #expect(locked.phase == .locked)
+        #expect(ignoredRuntimeCycle == locked)
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func cameraFocusRuntimeEventsDriveOverlayValidity() throws {
+        let previewSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraPreviewStageView.swift"
+        )
+        let viewModelSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraViewModel.swift"
+        )
+        let controllerSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/Runtime/CaptureSessionController.swift"
+        )
+        let controlServiceSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/Runtime/CameraControlService.swift"
+        )
+
+        #expect(previewSource.contains("state.focusRuntimeEvent"))
+        #expect(previewSource.contains("focusTargetOverlay.applyingRuntimeEvent(event.kind)"))
+        #expect(previewSource.contains("guard let nextOverlay = focusTargetOverlay.applyingRuntimeEvent(event.kind) else"))
+        #expect(previewSource.contains("hideFocusTargetOverlay()"))
+        #expect(!previewSource.contains("onRefocusTarget"))
+        #expect(viewModelSource.contains("@Published var focusRuntimeEvent"))
+        #expect(viewModelSource.contains("setFocusRuntimeEventHandler"))
+        #expect(controllerSource.contains("AVCaptureDevice.subjectAreaDidChangeNotification"))
+        #expect(controllerSource.contains(#"device.observe(\.isAdjustingFocus"#))
+        #expect(controlServiceSource.contains("device.isSubjectAreaChangeMonitoringEnabled = true"))
+        #expect(controlServiceSource.contains("device.isSubjectAreaChangeMonitoringEnabled = false"))
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func cameraFocusLockBadgeDoesNotMoveFrameAnchor() throws {
+        let source = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraPreviewStageView.swift"
+        )
+        let viewStart = try #require(source.range(of: "private struct FocusIndicatorView: View"))
+        let viewEnd = try #require(source.range(of: "private struct FocusEVAdjustmentView: View"))
+        let viewSource = String(source[viewStart.lowerBound..<viewEnd.lowerBound])
+
+        #expect(viewSource.contains("private var lockBadge: some View"))
+        #expect(viewSource.contains(".offset(y: -(Metrics.focusIndicatorSide / 2 + Metrics.lockBadgeVerticalGap))"))
+        #expect(viewSource.contains(".frame(width: Metrics.focusIndicatorSide, height: Metrics.focusIndicatorSide)"))
+        #expect(!viewSource.contains("VStack(spacing: 7)"))
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func cameraTemporaryFocusEVControlAvoidsLargeCapsuleBackground() throws {
+        let source = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraPreviewStageView.swift"
+        )
+        let viewStart = try #require(source.range(of: "private struct FocusEVAdjustmentView: View"))
+        let viewSource = String(source[viewStart.lowerBound...])
+
+        #expect(viewSource.contains("ForEach(0..<7"))
+        #expect(viewSource.contains(".fill(.yellow)"))
+        #expect(viewSource.contains(#"Image(systemName: "sun.max")"#))
+        #expect(viewSource.contains("static let focusEVRailWidth: CGFloat = 28"))
+        #expect(viewSource.contains("static let focusEVEdgeGap: CGFloat = 6"))
+        #expect(!viewSource.contains("Text(label)"))
+        #expect(!viewSource.contains("EV 0.0"))
+        #expect(!viewSource.contains("String(format: \"%+0.1f\", offset)"))
+        #expect(!viewSource.contains(".background("))
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func cameraFocusControlGroupRotatesContentLikeFocalLengthSelector() throws {
+        let focalLengthSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/FocalLengthSelectorView.swift"
+        )
+        let adjustmentSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraAdjustmentControlView.swift"
+        )
+        let captureControlsSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraCaptureControlsView.swift"
+        )
+
+        #expect(focalLengthSource.contains("CenterAnchoredChromeRotation"))
+        #expect(adjustmentSource.contains("let contentRotation: Angle"))
+        #expect(adjustmentSource.contains("CameraToolbarButtonContent("))
+        #expect(adjustmentSource.contains("TickedSliderRow("))
+        #expect(adjustmentSource.contains("CenterAnchoredChromeRotation"))
+        #expect(adjustmentSource.contains("DragGesture(minimumDistance: 0)"))
+        #expect(!adjustmentSource.contains("Slider(value: valueBinding"))
+        #expect(captureControlsSource.contains("CenterAnchoredChromeRotation"))
+        #expect(!adjustmentSource.contains(".rotationEffect(contentRotation)\n        .foregroundStyle(.white)"))
+        #expect(!adjustmentSource.contains(".rotationEffect(contentRotation)\n        .accessibilityIdentifier(\"camera.tickedAdjustmentStrip\")"))
+        #expect(!captureControlsSource.contains(".rotationEffect(state.contentRotation)\n        }"))
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func cameraCenterAnchoredChromeRotationUsesStableFrameCenter() throws {
+        let orientationSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraChromeOrientationController.swift"
+        )
+        let chromeSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraViewfinderChromeView.swift"
+        )
+        let adjustmentSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraAdjustmentControlView.swift"
+        )
+
+        #expect(orientationSource.contains("struct CenterAnchoredChromeRotation"))
+        #expect(orientationSource.contains(".rotationEffect(rotation, anchor: .center)"))
+        #expect(orientationSource.contains(".frame(width: width, height: height, alignment: .center)"))
+        #expect(chromeSource.contains("CenterAnchoredChromeRotation"))
+        #expect(adjustmentSource.contains("CenterAnchoredChromeRotation"))
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func cameraTickedAdjustmentStripUsesCenteredAxisCursorAndHaptics() throws {
+        let source = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraAdjustmentControlView.swift"
+        )
+
+        #expect(source.contains("portraitAdjustmentCenterline"))
+        #expect(source.contains("valueCursor"))
+        #expect(source.contains(#".accessibilityIdentifier("camera.tickedAdjustmentStrip.valueCursor")"#))
+        #expect(source.contains("UISelectionFeedbackGenerator"))
+        #expect(source.contains("lastHapticStepIndex"))
+        #expect(source.contains("triggerSelectionHapticIfNeeded"))
+        #expect(source.contains("position(x: portraitAdjustmentCenterline"))
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func cameraModeSelectorBarDoesNotRotateOuterOrInnerContent() throws {
+        let controlsSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraCaptureControlsView.swift"
+        )
+        let modeStripStart = try #require(controlsSource.range(of: "private var modeStrip: some View"))
+        let lowerToolbarStart = try #require(controlsSource.range(of: "@ViewBuilder\n    private var lowerToolbar"))
+        let modeStripSource = String(controlsSource[modeStripStart.lowerBound..<lowerToolbarStart.lowerBound])
+
+        #expect(modeStripSource.contains("ForEach(CameraCaptureModeOption.allCases)"))
+        #expect(modeStripSource.contains("Text(mode.title)"))
+        #expect(!modeStripSource.contains("rotationEffect"))
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func cameraControlsDesignIsSingleCameraUXDesignSource() throws {
+        let futureSpecsSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "Docs/FutureCameraSpecs.md"
+        )
+        let controlsDesignSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "Docs/CameraControlsDesign.md"
+        )
+        let aiTraceSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "Docs/AITrace/2026-06-30-camera-ux-stage-one-shell.md"
+        )
+
+        #expect(controlsDesignSource.contains("FOV selector bar"))
+        #expect(controlsDesignSource.contains("Rotation Rules"))
+        #expect(controlsDesignSource.contains("mode selector bar"))
+        #expect(controlsDesignSource.contains("portrait adjustment centerline"))
+        #expect(controlsDesignSource.contains("value cursor"))
+        #expect(controlsDesignSource.contains("focus target overlay"))
+        #expect(controlsDesignSource.contains("focus frame anchor"))
+        #expect(controlsDesignSource.contains("focus validity"))
+        #expect(controlsDesignSource.contains("lock badge"))
+        #expect(controlsDesignSource.contains("subject area changed"))
+        #expect(controlsDesignSource.contains("runtime focus invalidation"))
+        #expect(controlsDesignSource.contains("必须隐藏 `focus target overlay`"))
+        #expect(controlsDesignSource.contains("```mermaid"))
+        #expect(controlsDesignSource.contains("stateDiagram-v2"))
+        #expect(controlsDesignSource.contains("Focused --> None: subject area changed"))
+        #expect(controlsDesignSource.contains("Focused --> None: isAdjustingFocus == true"))
+        #expect(!controlsDesignSource.contains("refocusing"))
+        #expect(controlsDesignSource.contains("focus exposure scrub"))
+        #expect(controlsDesignSource.contains("center-anchored chrome rotation"))
+        #expect(controlsDesignSource.contains("manual focus tap assist"))
+        #expect(controlsDesignSource.contains("按钮 frame、`PHOTO / VIDEO` 文字都不旋转"))
+        #expect(controlsDesignSource.contains("`focus companion EV rail` 继续显示且不自动消失"))
+        #expect(controlsDesignSource.contains("不显示 `EV` 字样或当前 EV 数值"))
+        #expect(controlsDesignSource.contains("两者边缘间距优先使用 6pt"))
+        #expect(controlsDesignSource.contains("不使用固定时间自动隐藏"))
+        #expect(controlsDesignSource.contains("不能改变对焦框位置"))
+        #expect(controlsDesignSource.contains("只显示刻度和 `value cursor`，不显示系统 slider 的实线轨道"))
+        #expect(futureSpecsSource.contains("[CameraControlsDesign.md](CameraControlsDesign.md)"))
+        #expect(aiTraceSource.contains("Docs/CameraControlsDesign.md"))
+        #expect(!futureSpecsSource.contains("CameraUXPlan.md"))
+        #expect(!aiTraceSource.contains("CameraUXPlan.md"))
     }
 
     @Test func cameraFocalLengthDisplayOptionDoesNotNameHardwarePlanningInputs() throws {
@@ -270,6 +526,556 @@ struct TAPCameraCapturePresentationTests {
             "proof",
             "manifest",
             "key"
+        ]
+
+        for token in forbiddenTokens {
+            #expect(!fieldNames.localizedCaseInsensitiveContains(token))
+        }
+    }
+
+    @Test func cameraGuideOverlayPreferenceDefaultsToOffAndResolvesSafely() throws {
+        #expect(CameraGuideOverlayPreference.defaultValue == .off)
+        #expect(CameraGuideOverlayPreference.resolved(rawValue: "ruleOfThirds") == .ruleOfThirds)
+        #expect(CameraGuideOverlayPreference.resolved(rawValue: "centerCross") == .centerCross)
+        #expect(CameraGuideOverlayPreference.resolved(rawValue: "unexpected") == .off)
+    }
+
+    @Test func cameraCaptureModeOptionKeepsOnlyPhotoAvailableInStageOne() throws {
+        #expect(CameraCaptureModeOption.photo.isAvailableInStageOne)
+        #expect(!CameraCaptureModeOption.video.isAvailableInStageOne)
+        #expect(CameraCaptureModeOption.allCases.map(\.title) == ["PHOTO", "VIDEO"])
+    }
+
+    @Test func cameraChromeControlModesKeepExpectedDefaultsAndCycleOrder() throws {
+        #expect(CameraFocusControlMode.auto.toggled == .manual)
+        #expect(CameraFocusControlMode.manual.toggled == .auto)
+        #expect(CameraFlashControlMode.defaultValue == .auto)
+        #expect(CameraFlashControlMode.auto.next == .on)
+        #expect(CameraFlashControlMode.on.next == .off)
+        #expect(CameraFlashControlMode.off.next == .auto)
+        #expect(CameraFlashControlMode.auto.captureFlashMode == .auto)
+        #expect(CameraFlashControlMode.on.captureFlashMode == .on)
+        #expect(CameraFlashControlMode.off.captureFlashMode == .off)
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func cameraViewfinderChromeKeepsLiDARInSettingsAndPairsFlashWithLivePhoto() throws {
+        let chromeSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraViewfinderChromeView.swift"
+        )
+        let settingsSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalyzerSettingsView.swift"
+        )
+
+        #expect(chromeSource.contains("private var topToolbar: some View"))
+        #expect(chromeSource.contains("let topSafeAreaInset: CGFloat"))
+        #expect(!chromeSource.contains("GeometryReader"))
+        #expect(chromeSource.contains("flashButton"))
+        #expect(chromeSource.contains("livePhotoButton"))
+        #expect(chromeSource.contains("static let viewfinderButtonSize: CGFloat = 44"))
+        #expect(chromeSource.contains(#".accessibilityIdentifier("camera.chrome.flash")"#))
+        #expect(chromeSource.contains(#".accessibilityIdentifier("camera.chrome.livePhoto")"#))
+        #expect(!chromeSource.localizedCaseInsensitiveContains("LiDAR"))
+        #expect(settingsSource.contains("CameraLiDARFocusAssistPreferences.isEnabledKey"))
+        #expect(settingsSource.contains("LiDAR Focus Assist"))
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func cameraViewLaysOutTopToolbarBeforeViewfinderInsteadOfOverlayingIt() throws {
+        let cameraSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraView.swift"
+        )
+        let chromeRange = try #require(cameraSource.range(of: "CameraViewfinderChromeView("))
+        let previewRange = try #require(cameraSource.range(of: "cameraPreviewStage"))
+
+        #expect(cameraSource.contains("topSafeAreaInset: proxy.safeAreaInsets.top"))
+        #expect(chromeRange.lowerBound < previewRange.lowerBound)
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func cameraViewfinderEdgeToastStaysAtTopEdge() throws {
+        let previewSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraPreviewStageView.swift"
+        )
+        let toastOverlayStart = try #require(previewSource.range(of: ".overlay(alignment: .top) {\n                viewfinderEdgeToast"))
+        let controlsOverlayStart = try #require(previewSource.range(of: ".overlay(alignment: .bottom) {\n                viewfinderControls"))
+        let designSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "Docs/CameraControlsDesign.md"
+        )
+
+        #expect(toastOverlayStart.lowerBound < controlsOverlayStart.lowerBound)
+        #expect(previewSource.contains("viewfinderEdgeToast\n                    .padding(.top, 14)"))
+        #expect(!previewSource.contains("viewfinderEdgeToast\n                    .padding(.bottom, 14)"))
+        #expect(designSource.contains("贴取景器上边缘内侧，水平居中"))
+        #expect(!designSource.contains("贴取景器下边缘内侧，水平居中"))
+    }
+
+    @Test func cameraAdjustmentControlStatePublishesCapabilityGatedRanges() throws {
+        let capability = TAPCamDemoTestFixtures.sampleManualControlCapability(
+            minimumFocusDistanceMillimeters: 125,
+            isoRange: .init(minimum: 64, maximum: 1_250),
+            shutterDurationRangeSeconds: .init(minimum: 1.0 / 8_000.0, maximum: 0.5)
+        )
+        let state = CameraAdjustmentControlState(
+            capability: capability,
+            activeControl: .iso,
+            exposureMode: .auto(globalBias: 0.3),
+            focusMode: .manual,
+            draft: .init(iso: 400.4, shutterDurationSeconds: 1.0 / 125.0, lensPosition: 0.456)
+        )
+        let shutterPosition = state.exposure.normalizedShutterPosition(for: 1.0 / 125.0)
+        let resolvedShutter = state.exposure.shutterDuration(forNormalizedPosition: shutterPosition)
+
+        #expect(state.exposure.isAvailable)
+        #expect(state.focus.isAvailable)
+        #expect(state.exposure.isoRange == 64...1_250)
+        #expect(state.activeControl == .iso)
+        #expect(state.exposure.evTitle == "EV")
+        #expect(state.exposure.evValue == "+0.3")
+        #expect(abs(resolvedShutter - (1.0 / 125.0)) < 0.0001)
+        #expect(state.exposure.isoLabel(for: 400.4) == "400")
+        #expect(state.exposure.shutterLabel(for: 1.0 / 120.0) == "1/120")
+        #expect(state.focus.lensPositionLabel(for: 0.456) == "0.46")
+        #expect(state.focus.minimumFocusDistanceLabel == "min 125mm")
+    }
+
+    @Test func cameraAdjustmentControlStateShowsMeterForCustomExposure() throws {
+        let capability = TAPCamDemoTestFixtures.sampleManualControlCapability()
+        let state = CameraAdjustmentControlState(
+            capability: capability,
+            activeControl: nil,
+            exposureMode: .custom(meterOffset: -0.7),
+            focusMode: .auto,
+            draft: CameraAdjustmentControlState.defaultDraft(from: capability)
+        )
+
+        #expect(state.exposure.isCustom)
+        #expect(state.exposure.evTitle == "Meter")
+        #expect(state.exposure.evValue == "-0.7")
+    }
+
+    @Test func cameraAdjustmentControlStateDisablesUnsupportedRows() throws {
+        let capability = TAPCamDemoTestFixtures.sampleManualControlCapability(
+            supportsCustomExposure: false,
+            supportsCustomLensPosition: false,
+            minimumFocusDistanceMillimeters: nil,
+            isoRange: .init(minimum: 100, maximum: 100),
+            shutterDurationRangeSeconds: .init(minimum: 1.0 / 60.0, maximum: 1.0 / 60.0)
+        )
+        let state = CameraAdjustmentControlState(
+            capability: capability,
+            activeControl: nil,
+            exposureMode: .auto(globalBias: 0),
+            focusMode: .auto,
+            draft: CameraAdjustmentControlState.defaultDraft(from: capability)
+        )
+
+        #expect(!state.exposure.isAvailable)
+        #expect(!state.focus.isAvailable)
+        #expect(state.focus.minimumFocusDistanceLabel == nil)
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func cameraAdjustmentDraftMemoryRestoresPerControlKeyWithoutPersistence() throws {
+        let capability = TAPCamDemoTestFixtures.sampleManualControlCapability(
+            minimumFocusDistanceMillimeters: 125,
+            isoRange: .init(minimum: 64, maximum: 1_250),
+            shutterDurationRangeSeconds: .init(minimum: 1.0 / 8_000.0, maximum: 0.5)
+        )
+        let state = CameraAdjustmentControlState(
+            capability: capability,
+            activeControl: nil,
+            exposureMode: .auto(globalBias: 0),
+            focusMode: .auto,
+            draft: CameraAdjustmentControlState.defaultDraft(from: capability)
+        )
+        var memory = CameraAdjustmentControlDraftMemory()
+
+        let wideDraft = memory.store(
+            CameraAdjustmentControlDraft(
+                iso: 640,
+                shutterDurationSeconds: 1.0 / 240.0,
+                lensPosition: 0.28
+            ),
+            for: "wide-control",
+            state: state
+        )
+
+        #expect(memory.storedDraftCount == 1)
+        #expect(memory.draft(for: "wide-control", state: state) == wideDraft)
+
+        let teleDefault = memory.draft(for: "tele-control", state: state)
+        #expect(teleDefault == CameraAdjustmentControlDraft.fallback.clamped(to: state))
+        #expect(memory.storedDraftCount == 2)
+
+        let clampedWideDraft = memory.store(
+            CameraAdjustmentControlDraft(
+                iso: 9_999,
+                shutterDurationSeconds: 99,
+                lensPosition: -1
+            ),
+            for: "wide-control",
+            state: state
+        )
+
+        #expect(clampedWideDraft.iso == 1_250)
+        #expect(clampedWideDraft.shutterDurationSeconds == 0.5)
+        #expect(clampedWideDraft.lensPosition == 0)
+        #expect(memory.draft(for: "wide-control", state: state) == clampedWideDraft)
+        #expect(memory.draft(for: "tele-control", state: state) == teleDefault)
+
+        let adjustmentControlSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraAdjustmentControlView.swift"
+        )
+        #expect(adjustmentControlSource.contains("CameraAdjustmentControlDraftMemory"))
+        #expect(!adjustmentControlSource.contains("@AppStorage"))
+        #expect(!adjustmentControlSource.contains("UserDefaults"))
+    }
+
+    @Test func cameraAdjustmentControlStateDoesNotNameCaptureSecurityOrOutputInputs() throws {
+        let capability = TAPCamDemoTestFixtures.sampleManualControlCapability()
+        let state = CameraAdjustmentControlState(
+            capability: capability,
+            activeControl: .focus,
+            exposureMode: .auto(globalBias: 0),
+            focusMode: .manual,
+            draft: CameraAdjustmentControlState.defaultDraft(from: capability)
+        )
+        let fieldNames = Mirror(reflecting: state).children.compactMap(\.label).joined(separator: " ")
+        let forbiddenTokens = [
+            "attest",
+            "client",
+            "capture",
+            "asset",
+            "photo",
+            "heic",
+            "proof",
+            "manifest",
+            "key",
+            "store",
+            "pipeline",
+            "profile",
+            "route",
+            "pending",
+            "data",
+            "device"
+        ]
+
+        for token in forbiddenTokens {
+            #expect(!fieldNames.localizedCaseInsensitiveContains(token))
+        }
+    }
+
+    @Test func cameraFirstStagePreferencesExposeExplicitStorageKeysAndDefaults() throws {
+        #expect(CameraEVPreferences.defaultResetOnAppLaunch)
+        #expect(!CameraEVPreferences.resetOnAppLaunchKey.isEmpty)
+        #expect(CameraEVPreferences.defaultGlobalBias == 0)
+        #expect(!CameraEVPreferences.globalBiasKey.isEmpty)
+        #expect(CameraEVPreferences.minimumGlobalBias < CameraEVPreferences.maximumGlobalBias)
+        #expect(CameraPhotoQualityPreference.defaultValue == .quality)
+        #expect(!CameraPhotoQualityPreference.storageKey.isEmpty)
+        #expect(CameraDepthAvailabilityHintPreferences.defaultShowsHints)
+        #expect(!CameraDepthAvailabilityHintPreferences.showsHintsKey.isEmpty)
+        #expect(CameraFocusMagnifierPreferences.defaultIsEnabled)
+        #expect(!CameraFocusMagnifierPreferences.isEnabledKey.isEmpty)
+        #expect(!CameraLivePhotoPreferences.defaultIsEnabled)
+        #expect(!CameraLivePhotoPreferences.isEnabledKey.isEmpty)
+        #expect(CameraIdleTimerPreferences.defaultKeepScreenAwake)
+        #expect(!CameraIdleTimerPreferences.keepScreenAwakeKey.isEmpty)
+        #expect(!CameraLiDARFocusAssistPreferences.defaultIsEnabled)
+        #expect(!CameraLiDARFocusAssistPreferences.isEnabledKey.isEmpty)
+        #expect(!CameraManualFocusTapAssistPreferences.defaultIsEnabled)
+        #expect(!CameraManualFocusTapAssistPreferences.isEnabledKey.isEmpty)
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func cameraSettingsExposeManualFocusTapAssist() throws {
+        let cameraSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraView.swift"
+        )
+        let settingsSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalyzerSettingsView.swift"
+        )
+        let previewSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraPreviewStageView.swift"
+        )
+
+        #expect(cameraSource.contains("@AppStorage(CameraManualFocusTapAssistPreferences.isEnabledKey)"))
+        #expect(cameraSource.contains("manualFocusTapAssistAtPreviewPoint"))
+        #expect(settingsSource.contains("Manual Focus Tap Assist"))
+        #expect(settingsSource.contains("CameraManualFocusTapAssistPreferences.isEnabledKey"))
+        #expect(previewSource.contains("state.isManualFocusTapAssistEnabled"))
+    }
+
+    @Test func cameraEVPreferenceClampsAndResetsPerLaunchWhenEnabled() throws {
+        let suiteName = "TAPCameraEVPreferenceTests-\(UUID().uuidString)"
+        let userDefaults = try #require(UserDefaults(suiteName: suiteName))
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+
+        #expect(CameraEVPreferences.clampedBias(-99) == CameraEVPreferences.minimumGlobalBias)
+        #expect(CameraEVPreferences.clampedBias(99) == CameraEVPreferences.maximumGlobalBias)
+        #expect(CameraEVPreferences.clampedBias(.nan) == CameraEVPreferences.defaultGlobalBias)
+
+        userDefaults.set(true, forKey: CameraEVPreferences.resetOnAppLaunchKey)
+        userDefaults.set(1.2, forKey: CameraEVPreferences.globalBiasKey)
+        userDefaults.set(-1, forKey: CameraEVPreferences.launchResetProcessIDKey)
+
+        #expect(CameraEVPreferences.resolvedLaunchBias(in: userDefaults) == 0)
+        #expect(userDefaults.double(forKey: CameraEVPreferences.globalBiasKey) == 0)
+
+        CameraEVPreferences.persistGlobalBias(1.4, in: userDefaults)
+
+        #expect(CameraEVPreferences.resolvedLaunchBias(in: userDefaults) == 1.4)
+    }
+
+    @Test func cameraEVPreferenceCanPersistAcrossColdLaunchWhenResetDisabled() throws {
+        let suiteName = "TAPCameraEVPersistTests-\(UUID().uuidString)"
+        let userDefaults = try #require(UserDefaults(suiteName: suiteName))
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+
+        userDefaults.set(false, forKey: CameraEVPreferences.resetOnAppLaunchKey)
+        userDefaults.set(-0.7, forKey: CameraEVPreferences.globalBiasKey)
+
+        #expect(CameraEVPreferences.resolvedLaunchBias(in: userDefaults) == -0.7)
+    }
+
+    @Test func cameraTemporaryFocusEVPreferenceClampsOffset() throws {
+        #expect(CameraTemporaryFocusEVPreferences.clampedOffset(-99) == CameraTemporaryFocusEVPreferences.minimumOffset)
+        #expect(CameraTemporaryFocusEVPreferences.clampedOffset(99) == CameraTemporaryFocusEVPreferences.maximumOffset)
+        #expect(CameraTemporaryFocusEVPreferences.clampedOffset(.nan) == 0)
+        #expect(CameraTemporaryFocusEVPreferences.clampedOffset(0.7) == 0.7)
+    }
+
+    @Test func captureScoreSummaryUsesPublicSafeCaptureFacts() throws {
+        let signedDepthScore = CaptureScoreSummary.make(
+            depthAvailability: .available,
+            fileContainer: .heic,
+            photoQualityLevel: .quality,
+            signatureStatus: .signed(keyID: "secret-key-id")
+        )
+        let noDepthPendingScore = CaptureScoreSummary.make(
+            depthAvailability: .unavailable,
+            fileContainer: .jpeg,
+            photoQualityLevel: .speed,
+            signatureStatus: .pending(reason: "secret pending reason")
+        )
+
+        #expect(signedDepthScore.value == 100)
+        #expect(signedDepthScore.detail == "Depth available · HEIC · Quality · Capture signed · Analysis ready")
+        #expect(noDepthPendingScore.value < signedDepthScore.value)
+        #expect(noDepthPendingScore.detail.contains("Depth unavailable"))
+        for text in [
+            signedDepthScore.detail,
+            signedDepthScore.accessibilityText,
+            noDepthPendingScore.detail,
+            noDepthPendingScore.accessibilityText
+        ] {
+            for forbidden in ["secret", "key-id", "captureID", "asset", "file://", "/private/"] {
+                #expect(!text.localizedCaseInsensitiveContains(forbidden))
+            }
+        }
+    }
+
+    @Test func captureScoreIntentServicePublishesLatestPublicSafeSnapshot() async throws {
+        let olderScore = CaptureScoreSummary.make(
+            depthAvailability: .unavailable,
+            fileContainer: .jpeg,
+            photoQualityLevel: .speed,
+            signatureStatus: .pending(reason: "private reason")
+        )
+        let latestScore = CaptureScoreSummary.make(
+            depthAvailability: .available,
+            fileContainer: .heic,
+            photoQualityLevel: .quality,
+            signatureStatus: .signed(keyID: "private-key")
+        )
+        let olderRecord = TAPCamDemoTestFixtures.samplePendingRecord(
+            captureID: "raw-older-capture",
+            capturedAt: Date(timeIntervalSince1970: 10),
+            status: .pending,
+            photoQualityLevel: .speed,
+            captureScoreSummary: olderScore
+        )
+        let latestRecord = TAPCamDemoTestFixtures.samplePendingRecord(
+            captureID: "raw-latest-capture",
+            capturedAt: Date(timeIntervalSince1970: 20),
+            status: .exported,
+            assetLocalIdentifier: "raw-asset-id",
+            captureScoreSummary: latestScore
+        )
+        let service = CaptureScoreIntentService(
+            records: {
+                [olderRecord, latestRecord]
+            },
+            token: { rawValue in
+                "token-\(rawValue.hashValue.magnitude)"
+            }
+        )
+
+        let snapshot = try #require(try await service.latestScore())
+
+        #expect(snapshot.summary == latestScore)
+        #expect(snapshot.statusLabel == "Exported")
+        #expect(snapshot.subtitle == "100/100 · Strong · Exported")
+        #expect(!snapshot.id.contains("raw-latest-capture"))
+        #expect(!snapshot.dialogText.contains("raw-latest-capture"))
+        #expect(!snapshot.dialogText.contains("raw-asset-id"))
+        #expect(!snapshot.dialogText.localizedCaseInsensitiveContains("private-key"))
+
+        let matchedSnapshots = try await service.scoreSnapshots(matching: [snapshot.id])
+        #expect(matchedSnapshots == [snapshot])
+    }
+
+    @Test func captureScoreQuerySuggestsRecentPublicSafeEntities() async throws {
+        let score = CaptureScoreSummary.make(
+            depthAvailability: .available,
+            fileContainer: .heic,
+            photoQualityLevel: .balanced,
+            signatureStatus: .signed(keyID: "private-key")
+        )
+        let records = (0..<6).map { index in
+            TAPCamDemoTestFixtures.samplePendingRecord(
+                captureID: "raw-capture-\(index)",
+                capturedAt: Date(timeIntervalSince1970: Double(index)),
+                status: .exported,
+                captureScoreSummary: score
+            )
+        }
+        let query = CaptureScoreQuery(service: CaptureScoreIntentService(
+            records: {
+                records
+            },
+            token: { rawValue in
+                "token-\(rawValue.hashValue.magnitude)"
+            }
+        ))
+
+        let suggestedEntities = try await query.suggestedEntities()
+
+        #expect(suggestedEntities.count == 5)
+        #expect(suggestedEntities.map(\.snapshot.capturedAt) == records.reversed().prefix(5).map(\.capturedAt))
+        for entity in suggestedEntities {
+            #expect(!entity.snapshot.subtitle.isEmpty)
+            #expect(!entity.id.contains("raw-capture"))
+            #expect(!entity.snapshot.dialogText.contains("raw-capture"))
+            #expect(!entity.snapshot.dialogText.localizedCaseInsensitiveContains("private-key"))
+        }
+    }
+
+    @Test func tapCamIntentHandoffStoreConsumesOnlyFreshDestinationRequests() throws {
+        let suiteName = "TAPCamIntentHandoffTests-\(UUID().uuidString)"
+        let userDefaults = try #require(UserDefaults(suiteName: suiteName))
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+        let store = TAPCamIntentHandoffStore(userDefaults: userDefaults)
+        let now = Date(timeIntervalSince1970: 1_000)
+
+        store.saveHandoff(TAPCamIntentHandoff(destination: .tapLibrary, requestedAt: now))
+        #expect(store.loadAndClearHandoff(now: now.addingTimeInterval(20))?.destination == .tapLibrary)
+        #expect(store.loadAndClearHandoff(now: now.addingTimeInterval(21)) == nil)
+
+        store.saveHandoff(TAPCamIntentHandoff(
+            destination: .camera,
+            requestedAt: now.addingTimeInterval(-TAPCamIntentHandoff.defaultTimeToLive - 1)
+        ))
+        #expect(store.loadAndClearHandoff(now: now) == nil)
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func tapCamAppIntentsExposeCameraLibraryAndCaptureScoreShortcuts() throws {
+        let source = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/App/TAPCamAppIntents.swift"
+        )
+
+        #expect(source.contains("enum TAPCamIntentDestination: String, AppEnum"))
+        #expect(source.contains("struct OpenTAPCameraIntent: AppIntent"))
+        #expect(source.contains("struct ShowLatestCaptureScoreIntent: AppIntent"))
+        #expect(source.contains("struct ShowCaptureScoreIntent: AppIntent"))
+        #expect(source.contains("struct CaptureScoreEntity: AppEntity"))
+        #expect(source.contains("struct TAPCamAppShortcuts: AppShortcutsProvider"))
+        #expect(source.contains("@Parameter(title: \"Destination\")"))
+        #expect(source.contains("@Parameter(title: \"Capture Score\")"))
+        #expect(source.contains("scoreEntity = await CaptureScoreQuery().defaultResult()"))
+        #expect(source.contains("TAPCamIntentHandoffStore().saveHandoff"))
+        #expect(source.contains("static let openAppWhenRun = true"))
+        #expect(source.contains("static let openAppWhenRun = false"))
+        #expect(source.contains(#""Open TAP Camera in \(.applicationName)""#))
+        #expect(source.contains(#""Open TAP Library in \(.applicationName)""#))
+        #expect(source.contains(#""Show TAP capture score in \(.applicationName)""#))
+        #expect(source.contains(#""Show a TAP capture score in \(.applicationName)""#))
+        #expect(source.contains("CameraRouteFileContextStore().token(for: rawValue)"))
+        #expect(!source.contains("assetLocalIdentifier"))
+        #expect(!source.contains("fileURL"))
+        #expect(!source.contains("photoData"))
+    }
+
+    @Test func cameraIdleTimerPolicyOnlyDisablesIdleTimerForActiveVisibleCamera() throws {
+        #expect(CameraIdleTimerPolicy.shouldDisableIdleTimer(
+            keepScreenAwake: true,
+            isCameraViewVisible: true,
+            isActiveScene: true,
+            isSettingsPresented: false,
+            isLibraryPresented: false
+        ))
+        #expect(!CameraIdleTimerPolicy.shouldDisableIdleTimer(
+            keepScreenAwake: false,
+            isCameraViewVisible: true,
+            isActiveScene: true,
+            isSettingsPresented: false,
+            isLibraryPresented: false
+        ))
+        #expect(!CameraIdleTimerPolicy.shouldDisableIdleTimer(
+            keepScreenAwake: true,
+            isCameraViewVisible: true,
+            isActiveScene: false,
+            isSettingsPresented: false,
+            isLibraryPresented: false
+        ))
+        #expect(!CameraIdleTimerPolicy.shouldDisableIdleTimer(
+            keepScreenAwake: true,
+            isCameraViewVisible: true,
+            isActiveScene: true,
+            isSettingsPresented: true,
+            isLibraryPresented: false
+        ))
+        #expect(!CameraIdleTimerPolicy.shouldDisableIdleTimer(
+            keepScreenAwake: true,
+            isCameraViewVisible: true,
+            isActiveScene: true,
+            isSettingsPresented: false,
+            isLibraryPresented: true
+        ))
+    }
+
+    @Test func cameraViewfinderChromeStateDoesNotNameCaptureSecurityOrOutputInputs() throws {
+        let state = CameraViewfinderChromeState(
+            flashMode: .auto,
+            isFlashAvailable: true,
+            isLivePhotoAvailable: false,
+            isLivePhotoEnabled: false,
+            contentRotation: .zero
+        )
+        let fieldNames = Mirror(reflecting: state).children.compactMap(\.label).joined(separator: " ")
+        let forbiddenTokens = [
+            "attest",
+            "client",
+            "capture",
+            "asset",
+            "heic",
+            "proof",
+            "manifest",
+            "key",
+            "store",
+            "pipeline",
+            "profile",
+            "route",
+            "pending",
+            "data"
         ]
 
         for token in forbiddenTokens {

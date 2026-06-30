@@ -170,6 +170,9 @@ nonisolated struct CameraManualControlIntent: Equatable, Sendable {
             if !capability.supportsLockedFocus {
                 violations.append(.lockedFocusUnsupported)
             }
+            if lensPosition != nil && !capability.supportsCustomLensPosition {
+                violations.append(.customLensPositionUnsupported)
+            }
             if let lensPosition, !Self.contains(lensPosition, in: .init(minimum: 0, maximum: 1)) {
                 violations.append(.lensPositionOutOfRange(lensPosition))
             }
@@ -328,6 +331,7 @@ nonisolated enum CameraManualControlViolation: Equatable, Sendable {
     case continuousAutoFocusUnsupported
     case autoFocusUnsupported
     case lockedFocusUnsupported
+    case customLensPositionUnsupported
     case focusPointUnsupported
     case focusPointOutOfBounds(x: Double, y: Double)
     case lensPositionOutOfRange(Double)
@@ -363,6 +367,8 @@ nonisolated enum CameraManualControlViolation: Equatable, Sendable {
             "The active camera does not support one-shot auto focus."
         case .lockedFocusUnsupported:
             "The active camera does not support locked focus."
+        case .customLensPositionUnsupported:
+            "The active camera does not support custom lens position."
         case .focusPointUnsupported:
             "The active camera does not support a focus point of interest."
         case .focusPointOutOfBounds(let x, let y):

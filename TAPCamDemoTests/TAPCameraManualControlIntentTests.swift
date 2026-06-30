@@ -130,6 +130,22 @@ struct TAPCameraManualControlIntentTests {
         #expect(intent.resolved(against: capability).violations == [.exposureBiasUnsupported])
     }
 
+    @Test func manualControlIntentRejectsCustomLensPositionWhenUnsupported() throws {
+        let capability = TAPCamDemoTestFixtures.sampleManualControlCapability(
+            supportsCustomLensPosition: false
+        )
+        let intent = CameraManualControlIntent(
+            targetDeviceID: capability.deviceID,
+            exposure: nil,
+            focus: .locked(lensPosition: 0.4),
+            whiteBalance: nil,
+            aperture: nil,
+            zoomFactor: nil
+        )
+
+        #expect(intent.resolved(against: capability).violations == [.customLensPositionUnsupported])
+    }
+
     @Test func manualControlIntentRejectsNonFiniteManualValues() throws {
         let capability = TAPCamDemoTestFixtures.sampleManualControlCapability()
         let intent = CameraManualControlIntent(

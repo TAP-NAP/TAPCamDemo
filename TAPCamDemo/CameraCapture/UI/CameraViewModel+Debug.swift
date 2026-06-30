@@ -201,6 +201,7 @@ extension CameraViewModel {
             nativePreviewAspectRatio = result.nativePreviewAspectRatio
             isDepthCaptureReady = result.depthDeliverySupported && result.capturePlan.canCapturePhotoDepth
             statusMessage = statusText(for: result.capturePlan)
+            await applyRequestedGlobalAutoExposureBiasToActiveConfiguration()
         } catch {
             guard generation == configurationGeneration else {
                 return

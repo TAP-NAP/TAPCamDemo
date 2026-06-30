@@ -29,6 +29,7 @@ struct DepthAnalysisStageView: View {
     let planeRegion: TAPPlaneRegion?
     let planeSeedPoint: CGPoint?
     let metadataSummary: CaptureMetadataSummary?
+    let scoreSummary: DepthAnalysisScoreSummary?
     let onSelectionBegan: (CGRect) -> Void
     let onSelectionChanged: (CGRect) -> Void
     let onSelectionEnded: (CGRect) -> Void
@@ -41,7 +42,10 @@ struct DepthAnalysisStageView: View {
 
             #if DEBUG
             if let metadataSummary {
-                CaptureMetadataHUD(summary: metadataSummary)
+                CaptureMetadataHUD(
+                    summary: metadataSummary,
+                    scoreSummary: scoreSummary
+                )
                     .padding(.horizontal, 12)
                     .padding(.top, 8)
                     .allowsHitTesting(false)

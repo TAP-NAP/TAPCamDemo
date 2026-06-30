@@ -36,7 +36,8 @@ nonisolated final class AVFoundationSingleCamPhotoProvider: SingleCamPhotoCaptur
         let settings = SingleCamPhotoSettingsFactory.make(
             photoOutput: sessionController.photoOutput,
             resolvedOutput: resolvedOutput,
-            suppressesShutterSound: context.suppressesShutterSound
+            suppressesShutterSound: context.suppressesShutterSound,
+            flashMode: context.flashMode
         )
         let videoRotationAngle = Self.videoRotationAngleForHorizonLevelCapture(
             device: context.sessionConfiguration.device
@@ -96,7 +97,8 @@ nonisolated enum SingleCamPhotoSettingsFactory {
     static func make(
         photoOutput: AVCapturePhotoOutput,
         resolvedOutput: ResolvedCaptureOutputProfile,
-        suppressesShutterSound: Bool = false
+        suppressesShutterSound: Bool = false,
+        flashMode: CaptureFlashMode = .auto
     ) -> AVCapturePhotoSettings {
         let processedFormat: [String: Any] = [
             AVVideoCodecKey: resolvedOutput.codec.avVideoCodecType,
@@ -118,8 +120,12 @@ nonisolated enum SingleCamPhotoSettingsFactory {
         if let maxPhotoDimensions = resolvedOutput.maxPhotoDimensions {
             settings.maxPhotoDimensions = maxPhotoDimensions.cmVideoDimensions
         }
+        let requestedFlashMode = flashMode.avCaptureFlashMode
+        if photoOutput.supportedFlashModes.contains(requestedFlashMode) {
+            settings.flashMode = requestedFlashMode
+        }
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.cameraCapture.info("photo settings prepared profile=\(resolvedOutput.profileID, privacy: .public) container=\(resolvedOutput.fileContainer.rawValue, privacy: .public) fileType=\(resolvedOutput.processedFileType.rawValue, privacy: .public) codec=\(resolvedOutput.requestedCodec.rawValue, privacy: .public) selectedDimensions=\(resolvedOutput.maxPhotoDimensions?.debugDescription ?? "none", privacy: .public)")
+        TAPDiagnostics.cameraCapture.info("photo settings prepared profile=\(resolvedOutput.profileID, privacy: .public) container=\(resolvedOutput.fileContainer.rawValue, privacy: .public) fileType=\(resolvedOutput.processedFileType.rawValue, privacy: .public) codec=\(resolvedOutput.requestedCodec.rawValue, privacy: .public) selectedDimensions=\(resolvedOutput.maxPhotoDimensions?.debugDescription ?? "none", privacy: .public) flashMode=\(String(describing: requestedFlashMode), privacy: .public)")
         #endif
         if suppressesShutterSound && photoOutput.isShutterSoundSuppressionSupported {
             settings.isShutterSoundSuppressionEnabled = true

@@ -9,6 +9,23 @@
 import CoreLocation
 import Foundation
 
+nonisolated enum CaptureFlashMode: Equatable, Sendable {
+    case auto
+    case on
+    case off
+
+    var avCaptureFlashMode: AVCaptureDevice.FlashMode {
+        switch self {
+        case .auto:
+            .auto
+        case .on:
+            .on
+        case .off:
+            .off
+        }
+    }
+}
+
 /// Context passed to the SingleCam photo provider for one job.
 ///
 /// The provider receives already-configured SingleCam session facts. It may use
@@ -19,6 +36,7 @@ nonisolated struct CaptureSourceContext: @unchecked Sendable {
     let capturedAt: Date
     let location: CLLocation?
     let suppressesShutterSound: Bool
+    let flashMode: CaptureFlashMode
 }
 
 /// Result of a SingleCam photo-depth capture.

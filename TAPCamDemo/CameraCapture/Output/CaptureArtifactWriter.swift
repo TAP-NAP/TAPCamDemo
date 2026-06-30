@@ -16,6 +16,8 @@ nonisolated struct CaptureWriteResult: Equatable, Sendable {
     let assetLocalIdentifier: String?
     let pendingCaptureID: String?
     let signatureStatus: CaptureSignatureStatus
+    let depthAvailability: CaptureDepthAvailability
+    let captureScoreSummary: CaptureScoreSummary
 }
 
 /// Persists a packaged capture artifact.
@@ -35,13 +37,13 @@ nonisolated struct PhotoLibraryCaptureArtifactWriter: CaptureArtifactWriter {
     ///
     /// - Tag: WritePackagedArtifactToPhotos
     func write(_ artifact: PackagedCaptureArtifact) async throws -> CaptureWriteResult {
-        let expectedProfile: CaptureOutputProfile = artifact.fileContainer == .jpeg
-            ? .releasePhotoDepthJPEG
-            : .releasePhotoDepthHEIC
         let validatedPhoto = try TAPCaptureProvenanceWriter().validateSignedExportPhoto(
             artifact.photoData,
             expectedCaptureID: artifact.manifest.payload.id,
-            expectedProfile: expectedProfile
+            expectedProfile: CaptureOutputProfile.releasePhotoDepthProfile(
+                fileContainer: artifact.fileContainer,
+                photoQualityLevel: artifact.photoQualityLevel
+            )
         )
         let assetID = try await PhotoLibraryWriter.saveDepthPhoto(
             validatedPhoto,
@@ -54,7 +56,9 @@ nonisolated struct PhotoLibraryCaptureArtifactWriter: CaptureArtifactWriter {
             publicDestinationSummary: "Photos asset",
             assetLocalIdentifier: assetID,
             pendingCaptureID: nil,
-            signatureStatus: artifact.signatureStatus
+            signatureStatus: artifact.signatureStatus,
+            depthAvailability: artifact.depthAvailability,
+            captureScoreSummary: artifact.captureScoreSummary
         )
     }
 }

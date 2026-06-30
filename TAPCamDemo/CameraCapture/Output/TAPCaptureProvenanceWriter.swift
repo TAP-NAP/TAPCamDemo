@@ -80,9 +80,8 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
         try CaptureOutputManifestPolicy(profile: expectedProfile).validate(manifest.payload.capture)
         try validateManifestCarriesNoProofBody(manifest)
 
-        guard let depthData = try TAPDepthPhotoFileReader.depthData(from: unsignedPhotoDataWithSlot) else {
-            throw TAPDepthCaptureError.missingDepthData
-        }
+        let depthData = try TAPDepthPhotoFileReader.depthData(from: unsignedPhotoDataWithSlot)
+        try validateDepthReadback(depthData, manifest: manifest)
 
         let digest = try CaptureContentDigest.make(
             manifest: manifest,
@@ -157,9 +156,8 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
         )
         let proofValue = try decodedCaptureProofValue(proof, expectedCaptureID: expectedCaptureID)
 
-        guard let depthData = try TAPDepthPhotoFileReader.depthData(from: signedPhotoData) else {
-            throw TAPDepthCaptureError.missingDepthData
-        }
+        let depthData = try TAPDepthPhotoFileReader.depthData(from: signedPhotoData)
+        try validateDepthReadback(depthData, manifest: manifest)
 
         let recomputedDigest = try CaptureContentDigest.make(
             manifest: manifest,
@@ -202,6 +200,30 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
     private func validateManifestCarriesNoProofBody(_ manifest: TAPDepthManifest) throws {
         guard manifest.proofs.isEmpty else {
             throw TAPDepthCaptureError.pendingCaptureProofInvalid("manifest proofs must not carry capture proof bodies")
+        }
+    }
+
+    private func validateDepthReadback(
+        _ depthData: AVDepthData?,
+        manifest: TAPDepthManifest
+    ) throws {
+        guard manifest.payload.capture.depthAvailability == manifest.payload.depth.availability else {
+            throw TAPDepthCaptureError.invalidTAPManifest(
+                "manifest capture and depth availability disagree"
+            )
+        }
+
+        switch manifest.payload.depth.availability {
+        case .available:
+            guard depthData != nil else {
+                throw TAPDepthCaptureError.missingDepthData
+            }
+        case .unavailable:
+            guard depthData == nil else {
+                throw TAPDepthCaptureError.invalidTAPManifest(
+                    "manifest marks depth unavailable but the photo contains auxiliary depth"
+                )
+            }
         }
     }
 

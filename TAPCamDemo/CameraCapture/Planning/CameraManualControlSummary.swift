@@ -229,6 +229,7 @@ nonisolated struct CameraManualControlSummary: Equatable, Sendable {
         case .continuousAutoFocusUnsupported,
              .autoFocusUnsupported,
              .lockedFocusUnsupported,
+             .customLensPositionUnsupported,
              .focusPointUnsupported,
              .focusPointOutOfBounds,
              .lensPositionOutOfRange:

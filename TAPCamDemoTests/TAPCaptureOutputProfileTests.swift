@@ -56,6 +56,30 @@ struct TAPCaptureOutputProfileTests {
         #expect(!CapturePhotoQualityPolicy(requested: .balanced, maximum: .quality).exceedsConfiguredMaximum)
     }
 
+    @Test func cameraPhotoQualityPreferenceAppliesReviewedReleasePolicy() throws {
+        #expect(CameraPhotoQualityPreference.defaultValue == .quality)
+        #expect(CameraPhotoQualityPreference.allCases.map(\.title) == ["Speed", "Balanced", "Quality"])
+        #expect(CameraPhotoQualityPreference.resolved(rawValue: "unexpected") == .quality)
+
+        let balancedJPG = CameraPhotoQualityPreference.balanced.applied(to: .releasePhotoDepthJPEG)
+        #expect(balancedJPG.id == CaptureOutputProfile.releasePhotoDepthJPEG.id)
+        #expect(balancedJPG.fileContainer == .jpeg)
+        #expect(balancedJPG.codecPreference == [.jpeg])
+        #expect(balancedJPG.photoQualityPolicy.requested == .balanced)
+        #expect(balancedJPG.photoQualityPolicy.maximum == .quality)
+        #expect(!balancedJPG.photoQualityPolicy.exceedsConfiguredMaximum)
+        #expect(balancedJPG.contractViolations.isEmpty)
+
+        let speedHEIC = CaptureOutputProfile.releasePhotoDepthProfile(
+            fileContainer: .heic,
+            photoQualityLevel: .speed
+        )
+        #expect(speedHEIC.id == CaptureOutputProfile.releasePhotoDepthHEIC.id)
+        #expect(speedHEIC.photoQualityPolicy.requested == .speed)
+        #expect(speedHEIC.photoQualityPrioritization == .speed)
+        #expect(speedHEIC.maxPhotoQualityPrioritization == .quality)
+    }
+
     @Test func tapDepthManifestUsesPhotoQualityPolicyManifestDescription() throws {
         let releaseProfile = CaptureOutputProfile.releasePhotoDepthHEIC
         let samplePayload = TAPCamDemoTestFixtures.samplePayload(location: nil)
@@ -596,6 +620,20 @@ struct TAPCaptureOutputProfileTests {
         #expect(settings.embedsDepthDataInPhoto)
         #expect(settings.isDepthDataFiltered)
         #expect(settings.photoQualityPrioritization == .quality)
+    }
+
+    @Test func photoSettingsFactoryUsesSelectedPhotoQualityPreference() throws {
+        let photoOutput = AVCapturePhotoOutput()
+        let profile = CameraPhotoQualityPreference.speed.applied(to: .releasePhotoDepthHEIC)
+        let resolvedOutput = try profile.resolvedPhotoOutput(availablePhotoCodecTypes: [])
+        let settings = SingleCamPhotoSettingsFactory.make(
+            photoOutput: photoOutput,
+            resolvedOutput: resolvedOutput
+        )
+
+        #expect(resolvedOutput.photoQualityPolicy.requested == .speed)
+        #expect(resolvedOutput.maxPhotoQualityPrioritization == .quality)
+        #expect(settings.photoQualityPrioritization == .speed)
     }
 
     @Test func runtimeResolvesAndReusesOutputThroughCapabilitySnapshot() throws {

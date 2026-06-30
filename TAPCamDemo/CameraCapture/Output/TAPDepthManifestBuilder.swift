@@ -35,10 +35,6 @@ nonisolated enum TAPDepthManifestBuilder {
         let plan = context.sessionConfiguration.capturePlan
         let resolvedOutput = capturePackage.resolvedOutput
 
-        guard let depthData = photo.depthData else {
-            throw TAPDepthCaptureError.missingDepthData
-        }
-
         let captureID = UUID().uuidString
         let resolvedDimensions = photo.resolvedSettings.photoDimensions
         let payload = TAPDepthManifest.Payload(
@@ -54,6 +50,7 @@ nonisolated enum TAPDepthManifestBuilder {
                 depthDataDeliveryEnabled: resolvedOutput.depthDataDeliveryEnabled,
                 embedsDepthDataInPhoto: resolvedOutput.embedsDepthDataInPhoto,
                 depthDataFiltered: resolvedOutput.depthDataFiltered,
+                depthAvailability: capturePackage.depthAvailability,
                 photoQualityPrioritization: resolvedOutput.photoQualityPolicy.requested.manifestDescription
             ),
             rgbSource: makeRGBSource(selectionContext, plan: plan),
@@ -73,8 +70,8 @@ nonisolated enum TAPDepthManifestBuilder {
                 orientation: Self.orientationDescription(from: photo.metadata),
                 metadataKeys: photo.metadata.keys.sorted()
             ),
-            depth: makeDepth(depthData: depthData, device: device),
-            alignment: TAPDepthManifest.Alignment(depthToImage: "appleAuxiliaryDepthNative"),
+            depth: makeDepth(depthData: photo.depthData, device: device),
+            alignment: makeAlignment(depthAvailability: capturePackage.depthAvailability),
             location: context.location.map(makeLocation),
             software: .current
         )
@@ -246,14 +243,34 @@ nonisolated enum TAPDepthManifestBuilder {
         )
     }
 
-    private static func makeDepth(depthData: AVDepthData, device: AVCaptureDevice) -> TAPDepthManifest.Depth {
+    private static func makeDepth(depthData: AVDepthData?, device: AVCaptureDevice) -> TAPDepthManifest.Depth {
+        let source = TAPDepthSourceClassifier.source(forDeviceType: device.deviceType.rawValue, localizedName: device.localizedName)
+        guard let depthData else {
+            return TAPDepthManifest.Depth(
+                availability: .unavailable,
+                auxiliaryDataKind: "none",
+                depthDataType: "none",
+                metricUnit: "none",
+                conversionPath: "depthUnavailable",
+                width: 0,
+                height: 0,
+                pixelFormat: "none",
+                orientation: "unavailable",
+                accuracy: "unavailable",
+                quality: "unavailable",
+                isFiltered: false,
+                source: source,
+                cameraCalibration: nil
+            )
+        }
+
         let pixelBuffer = depthData.depthDataMap
         let width = CVPixelBufferGetWidth(pixelBuffer)
         let height = CVPixelBufferGetHeight(pixelBuffer)
         let auxiliaryKind = TAPDepthAuxiliaryKind(kind: depthData.depthDataType)
-        let source = TAPDepthSourceClassifier.source(forDeviceType: device.deviceType.rawValue, localizedName: device.localizedName)
 
         return TAPDepthManifest.Depth(
+            availability: .available,
             auxiliaryDataKind: auxiliaryKind.rawValue,
             depthDataType: TAPFourCharCode.string(from: depthData.depthDataType),
             metricUnit: auxiliaryKind == .depth ? "meters" : "convertDisparityToDepthMeters",
@@ -268,6 +285,15 @@ nonisolated enum TAPDepthManifestBuilder {
             source: source,
             cameraCalibration: depthData.cameraCalibrationData.map(makeCalibration)
         )
+    }
+
+    private static func makeAlignment(depthAvailability: CaptureDepthAvailability) -> TAPDepthManifest.Alignment {
+        switch depthAvailability {
+        case .available:
+            TAPDepthManifest.Alignment(depthToImage: "appleAuxiliaryDepthNative")
+        case .unavailable:
+            TAPDepthManifest.Alignment(depthToImage: "unavailable")
+        }
     }
 
     private static func makeCalibration(_ calibration: AVCameraCalibrationData) -> TAPDepthManifest.CameraCalibration {

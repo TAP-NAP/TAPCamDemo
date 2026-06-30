@@ -12,6 +12,20 @@ import Foundation
 import ImageIO
 import simd
 
+nonisolated enum CaptureDepthAvailability: String, Codable, Equatable, Sendable {
+    case available
+    case unavailable
+
+    var viewfinderHint: String? {
+        switch self {
+        case .available:
+            nil
+        case .unavailable:
+            "Depth unavailable"
+        }
+    }
+}
+
 /// Versioned metadata contract embedded into every TAP depth HEIC.
 ///
 /// The HEIC file itself remains standards-friendly:
@@ -167,7 +181,52 @@ extension TAPDepthManifest {
         let depthDataDeliveryEnabled: Bool
         let embedsDepthDataInPhoto: Bool
         let depthDataFiltered: Bool
+        let depthAvailability: CaptureDepthAvailability
         let photoQualityPrioritization: String
+
+        nonisolated init(
+            resolvedSettingsUniqueID: Int64,
+            requestedCodec: String,
+            depthDataDeliveryEnabled: Bool,
+            embedsDepthDataInPhoto: Bool,
+            depthDataFiltered: Bool,
+            depthAvailability: CaptureDepthAvailability = .available,
+            photoQualityPrioritization: String
+        ) {
+            self.resolvedSettingsUniqueID = resolvedSettingsUniqueID
+            self.requestedCodec = requestedCodec
+            self.depthDataDeliveryEnabled = depthDataDeliveryEnabled
+            self.embedsDepthDataInPhoto = embedsDepthDataInPhoto
+            self.depthDataFiltered = depthDataFiltered
+            self.depthAvailability = depthAvailability
+            self.photoQualityPrioritization = photoQualityPrioritization
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case resolvedSettingsUniqueID
+            case requestedCodec
+            case depthDataDeliveryEnabled
+            case embedsDepthDataInPhoto
+            case depthDataFiltered
+            case depthAvailability
+            case photoQualityPrioritization
+        }
+
+        nonisolated init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            self.init(
+                resolvedSettingsUniqueID: try container.decode(Int64.self, forKey: .resolvedSettingsUniqueID),
+                requestedCodec: try container.decode(String.self, forKey: .requestedCodec),
+                depthDataDeliveryEnabled: try container.decode(Bool.self, forKey: .depthDataDeliveryEnabled),
+                embedsDepthDataInPhoto: try container.decode(Bool.self, forKey: .embedsDepthDataInPhoto),
+                depthDataFiltered: try container.decode(Bool.self, forKey: .depthDataFiltered),
+                depthAvailability: try container.decodeIfPresent(
+                    CaptureDepthAvailability.self,
+                    forKey: .depthAvailability
+                ) ?? .available,
+                photoQualityPrioritization: try container.decode(String.self, forKey: .photoQualityPrioritization)
+            )
+        }
     }
 
     nonisolated struct SelectedDepthCamera: Codable, Equatable {
@@ -300,6 +359,7 @@ extension TAPDepthManifest {
     }
 
     nonisolated struct Depth: Codable, Equatable {
+        let availability: CaptureDepthAvailability
         let auxiliaryDataKind: String
         let depthDataType: String
         let metricUnit: String
@@ -313,6 +373,78 @@ extension TAPDepthManifest {
         let isFiltered: Bool
         let source: DepthSource
         let cameraCalibration: CameraCalibration?
+
+        nonisolated init(
+            availability: CaptureDepthAvailability = .available,
+            auxiliaryDataKind: String,
+            depthDataType: String,
+            metricUnit: String,
+            conversionPath: String,
+            width: Int,
+            height: Int,
+            pixelFormat: String,
+            orientation: String,
+            accuracy: String,
+            quality: String,
+            isFiltered: Bool,
+            source: DepthSource,
+            cameraCalibration: CameraCalibration?
+        ) {
+            self.availability = availability
+            self.auxiliaryDataKind = auxiliaryDataKind
+            self.depthDataType = depthDataType
+            self.metricUnit = metricUnit
+            self.conversionPath = conversionPath
+            self.width = width
+            self.height = height
+            self.pixelFormat = pixelFormat
+            self.orientation = orientation
+            self.accuracy = accuracy
+            self.quality = quality
+            self.isFiltered = isFiltered
+            self.source = source
+            self.cameraCalibration = cameraCalibration
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case availability
+            case auxiliaryDataKind
+            case depthDataType
+            case metricUnit
+            case conversionPath
+            case width
+            case height
+            case pixelFormat
+            case orientation
+            case accuracy
+            case quality
+            case isFiltered
+            case source
+            case cameraCalibration
+        }
+
+        nonisolated init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            self.init(
+                availability: try container.decodeIfPresent(
+                    CaptureDepthAvailability.self,
+                    forKey: .availability
+                ) ?? .available,
+                auxiliaryDataKind: try container.decode(String.self, forKey: .auxiliaryDataKind),
+                depthDataType: try container.decode(String.self, forKey: .depthDataType),
+                metricUnit: try container.decode(String.self, forKey: .metricUnit),
+                conversionPath: try container.decode(String.self, forKey: .conversionPath),
+                width: try container.decode(Int.self, forKey: .width),
+                height: try container.decode(Int.self, forKey: .height),
+                pixelFormat: try container.decode(String.self, forKey: .pixelFormat),
+                orientation: try container.decode(String.self, forKey: .orientation),
+                accuracy: try container.decode(String.self, forKey: .accuracy),
+                quality: try container.decode(String.self, forKey: .quality),
+                isFiltered: try container.decode(Bool.self, forKey: .isFiltered),
+                source: try container.decode(DepthSource.self, forKey: .source),
+                cameraCalibration: try container.decodeIfPresent(CameraCalibration.self, forKey: .cameraCalibration)
+            )
+        }
     }
 
     nonisolated struct Alignment: Codable, Equatable {

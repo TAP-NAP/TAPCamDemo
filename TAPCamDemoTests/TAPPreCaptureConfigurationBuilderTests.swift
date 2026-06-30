@@ -185,14 +185,20 @@ struct TAPPreCaptureConfigurationBuilderTests {
                 supportsCustomExposure: true,
                 exposureBiasRange: .init(minimum: -2, maximum: 2),
                 isoRange: .init(minimum: 32, maximum: 1_600),
-                shutterDurationRangeSeconds: .init(minimum: 1.0 / 12_000.0, maximum: 1)
+                shutterDurationRangeSeconds: .init(minimum: 1.0 / 12_000.0, maximum: 1),
+                currentISO: 100,
+                currentShutterDurationSeconds: 1.0 / 120.0,
+                currentExposureTargetOffset: 0
             ),
             focus: CameraControlCapabilitySnapshot.Focus(
                 supportsAutoFocus: true,
                 supportsContinuousAutoFocus: true,
                 supportsLockedFocus: true,
+                supportsCustomLensPosition: true,
                 supportsFocusPointOfInterest: true,
-                supportsSmoothAutoFocus: true
+                supportsSmoothAutoFocus: true,
+                minimumFocusDistanceMillimeters: 120,
+                currentLensPosition: 0.5
             ),
             whiteBalance: CameraControlCapabilitySnapshot.WhiteBalance(
                 supportsContinuousAutoWhiteBalance: true,

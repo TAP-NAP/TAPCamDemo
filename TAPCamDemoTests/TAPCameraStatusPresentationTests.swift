@@ -204,7 +204,8 @@ struct TAPCameraStatusPresentationTests {
             sessionConfiguration: result,
             capturedAt: Date(timeIntervalSince1970: 1_779_897_600),
             location: nil,
-            suppressesShutterSound: false
+            suppressesShutterSound: false,
+            flashMode: .auto
         )
     }
 }

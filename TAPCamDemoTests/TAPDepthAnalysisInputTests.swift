@@ -329,6 +329,25 @@ struct TAPDepthAnalysisInputTests {
         #expect(viewModel.errorMessage?.contains(sensitiveURL) == false)
     }
 
+    @Test @MainActor func depthAnalysisViewModelMarksMissingDepthAsNoDepth() async throws {
+        let loader = DepthAnalysisInputLoader(
+            photosDataLoader: { _ in Data("no-depth-photo".utf8) },
+            pendingDataLoader: { _ in Data() },
+            analysisInputReader: { _ in
+                throw TAPDepthAnalysisError.missingDepthData
+            },
+            libraryRefreshPoster: {}
+        )
+        let viewModel = DepthAnalysisViewModel(inputLoader: loader)
+
+        await viewModel.load(source: .photosAsset("asset-without-depth"))
+
+        #expect(viewModel.input == nil)
+        #expect(viewModel.errorTitle == "No Depth")
+        #expect(viewModel.errorSystemImage == "photo.badge.exclamationmark")
+        #expect(viewModel.errorMessage == "Score 20/100. Depth unavailable for this capture.")
+    }
+
     @Test @MainActor func depthAnalysisViewModelUsesFixedGenericPresentationForPhotosLoaderErrors() async throws {
         let sensitiveAssetID = "photos-library://asset/private-id"
         let sensitivePath = "/private/var/mobile/Containers/Data/private.heic"

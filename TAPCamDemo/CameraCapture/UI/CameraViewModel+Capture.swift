@@ -19,7 +19,8 @@ import UIKit
 extension CameraViewModel {
     func capture(
         pendingCaptureWorkerClient: (any AppAttestClient)? = nil,
-        suppressesShutterSound: Bool = false
+        suppressesShutterSound: Bool = false,
+        flashMode: CaptureFlashMode = .auto
     ) async {
         guard !isPausedForAnalysis else {
             statusMessage = "Camera paused for analysis."
@@ -75,7 +76,8 @@ extension CameraViewModel {
                 sessionConfiguration: captureConfiguration,
                 capturedAt: job.createdAt,
                 location: location,
-                suppressesShutterSound: suppressesShutterSound
+                suppressesShutterSound: suppressesShutterSound,
+                flashMode: flashMode
             )
             let queueWaitDuration = Date().timeIntervalSince(queueEnteredAt)
             Task { [pipeline, jobQueue, metricsStore] in
@@ -101,6 +103,9 @@ extension CameraViewModel {
                         TAPDiagnostics.pendingCapture.info("capture pipeline success jobID=\(job.id.uuidString, privacy: .public) pendingCaptureIDPresent=\(writeResult.pendingCaptureID != nil, privacy: .public) assetIDPresent=\(writeResult.assetLocalIdentifier != nil, privacy: .public) remainingJobs=\(remaining, privacy: .public)")
                         #endif
                         self.statusMessage = writeResult.signatureStatus.captureStatusMessage
+                        if let hint = writeResult.depthAvailability.viewfinderHint {
+                            self.latestCaptureDepthHint = CameraCaptureDepthHint(message: hint)
+                        }
                         if let pendingCaptureID = writeResult.pendingCaptureID {
                             Task {
                                 await self.loadRecentPendingCapturePreview(captureID: pendingCaptureID)

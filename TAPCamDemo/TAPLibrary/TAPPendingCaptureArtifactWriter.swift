@@ -25,7 +25,9 @@ nonisolated struct TAPPendingCaptureArtifactWriter: CaptureArtifactWriter {
             publicDestinationSummary: "Pending TAP capture",
             assetLocalIdentifier: nil,
             pendingCaptureID: record.captureID,
-            signatureStatus: .pending(reason: "Queued for App Attest signing.")
+            signatureStatus: .pending(reason: "Queued for App Attest signing."),
+            depthAvailability: artifact.depthAvailability,
+            captureScoreSummary: artifact.captureScoreSummary
         )
     }
 }

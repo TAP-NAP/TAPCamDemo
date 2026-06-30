@@ -34,6 +34,8 @@ final class CameraViewModel: ObservableObject {
     @Published var nativePreviewAspectRatio = 3.0 / 4.0
     @Published var previewCropRectNormalized = CropRectNormalized.fullFrame
     @Published var recentThumbnail: UIImage?
+    @Published var latestCaptureDepthHint: CameraCaptureDepthHint?
+    @Published var focusRuntimeEvent: CameraFocusRuntimeEvent?
     #if DEBUG
     @Published var debugDepthDeviceOptions: [DebugDepthDeviceOption]
     @Published var debugSelectedDepthDeviceID: String?
@@ -55,6 +57,7 @@ final class CameraViewModel: ObservableObject {
     var activeSessionConfiguration: SessionConfigurationResult?
     var configurationGeneration = 0
     var depthSelectionMode: DepthSelectionMode = .automatic
+    var requestedGlobalAutoExposureBias = CameraEVPreferences.defaultGlobalBias
 
     var session: AVCaptureSession {
         sessionController.session
@@ -94,6 +97,19 @@ final class CameraViewModel: ObservableObject {
         return selectedFocalLengthOptionID
     }
 
+    var activeControlCapabilities: CameraControlCapabilitySnapshot? {
+        activeSessionConfiguration?.controlCapabilities
+    }
+
+    var isFlashAvailable: Bool {
+        sessionController.photoOutput.supportedFlashModes.contains(.auto)
+            || sessionController.photoOutput.supportedFlashModes.contains(.on)
+    }
+
+    var isLivePhotoCaptureSupported: Bool {
+        sessionController.photoOutput.isLivePhotoCaptureSupported
+    }
+
     init(
         capabilityMatrix: CapabilityMatrix = CameraCapabilityResolver.discover(),
         sessionController: CaptureSessionController = CaptureSessionController(),
@@ -115,6 +131,13 @@ final class CameraViewModel: ObservableObject {
             writer: TAPPendingCaptureArtifactWriter(store: pendingCaptureStore),
             metricsStore: metricsStore
         )
+        sessionController.setFocusRuntimeEventHandler { [weak self] event in
+            Task { @MainActor in
+                self?.focusRuntimeEvent = CameraFocusRuntimeEvent(
+                    kind: CameraFocusRuntimeEvent.Kind(captureSessionEvent: event)
+                )
+            }
+        }
     }
 
     func start() async {
@@ -197,4 +220,300 @@ final class CameraViewModel: ObservableObject {
         previewCropRectNormalized = rect
     }
 
+    func setGlobalAutoExposureBias(
+        _ exposureBias: Double,
+        effectiveExposureBias: Double? = nil
+    ) async {
+        requestedGlobalAutoExposureBias = CameraEVPreferences.clampedBias(exposureBias)
+        await applyEffectiveAutoExposureBiasToActiveConfiguration(
+            effectiveExposureBias ?? requestedGlobalAutoExposureBias
+        )
+    }
+
+    func restoreAutoCameraControls(globalExposureBias: Double) async {
+        requestedGlobalAutoExposureBias = CameraEVPreferences.clampedBias(globalExposureBias)
+        guard let activeSessionConfiguration else {
+            return
+        }
+
+        do {
+            try await sessionController.restoreAutoPhotoControls(
+                globalExposureBias: requestedGlobalAutoExposureBias,
+                to: activeSessionConfiguration.device
+            )
+        } catch {
+            statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .configuration)
+        }
+    }
+
+    func applyRequestedGlobalAutoExposureBiasToActiveConfiguration() async {
+        await applyEffectiveAutoExposureBiasToActiveConfiguration(requestedGlobalAutoExposureBias)
+    }
+
+    func applyEffectiveAutoExposureBiasToActiveConfiguration(_ exposureBias: Double) async {
+        guard let activeSessionConfiguration else {
+            return
+        }
+
+        let effectiveExposureBias = CameraEVPreferences.clampedBias(exposureBias)
+        let intent = CameraManualControlIntent(
+            targetDeviceID: activeSessionConfiguration.controlCapabilities.deviceID,
+            exposure: .exposureBias(effectiveExposureBias),
+            focus: nil,
+            whiteBalance: nil,
+            aperture: nil,
+            zoomFactor: nil
+        )
+        do {
+            let presentation = try await sessionController.applyManualControlIntent(
+                intent,
+                against: activeSessionConfiguration.controlCapabilities,
+                to: activeSessionConfiguration.device
+            )
+            if presentation.status == .blocked {
+                statusMessage = "\(presentation.title) · \(presentation.detail)"
+            }
+        } catch {
+            statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .configuration)
+        }
+    }
+
+    func focusAtPreviewPoint(
+        _ point: CameraPreviewFocusPoint,
+        globalExposureBias: Double
+    ) async {
+        requestedGlobalAutoExposureBias = CameraEVPreferences.clampedBias(globalExposureBias)
+        guard let activeSessionConfiguration else {
+            return
+        }
+
+        let intentPoint = CameraManualControlIntent.NormalizedPoint(x: point.x, y: point.y)
+        let intent = CameraManualControlIntent(
+            targetDeviceID: activeSessionConfiguration.controlCapabilities.deviceID,
+            exposure: nil,
+            focus: .autoFocus(pointOfInterest: intentPoint),
+            whiteBalance: nil,
+            aperture: nil,
+            zoomFactor: nil
+        )
+
+        do {
+            let presentation = try await sessionController.applyManualControlIntent(
+                intent,
+                against: activeSessionConfiguration.controlCapabilities,
+                to: activeSessionConfiguration.device
+            )
+            if presentation.status == .blocked {
+                statusMessage = "\(presentation.title) · \(presentation.detail)"
+            } else {
+                await applyEffectiveAutoExposureBiasToActiveConfiguration(requestedGlobalAutoExposureBias)
+            }
+        } catch {
+            statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .configuration)
+        }
+    }
+
+    func lockFocusAndExposure() async {
+        await lockFocusAndExposure(at: nil)
+    }
+
+    func lockFocusAndExposure(at point: CameraPreviewFocusPoint) async {
+        await lockFocusAndExposure(at: CameraManualControlIntent.NormalizedPoint(x: point.x, y: point.y))
+    }
+
+    private func lockFocusAndExposure(
+        at point: CameraManualControlIntent.NormalizedPoint?
+    ) async {
+        guard let activeSessionConfiguration else {
+            return
+        }
+
+        if let point {
+            let pointIntent = CameraManualControlIntent(
+                targetDeviceID: activeSessionConfiguration.controlCapabilities.deviceID,
+                exposure: nil,
+                focus: .autoFocus(pointOfInterest: point),
+                whiteBalance: nil,
+                aperture: nil,
+                zoomFactor: nil
+            )
+
+            do {
+                let presentation = try await sessionController.applyManualControlIntent(
+                    pointIntent,
+                    against: activeSessionConfiguration.controlCapabilities,
+                    to: activeSessionConfiguration.device
+                )
+                if presentation.status == .blocked {
+                    statusMessage = "\(presentation.title) · \(presentation.detail)"
+                }
+            } catch {
+                statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .configuration)
+            }
+        }
+
+        let intent = CameraManualControlIntent(
+            targetDeviceID: activeSessionConfiguration.controlCapabilities.deviceID,
+            exposure: .locked,
+            focus: .locked(lensPosition: nil),
+            whiteBalance: nil,
+            aperture: nil,
+            zoomFactor: nil
+        )
+
+        do {
+            let presentation = try await sessionController.applyManualControlIntent(
+                intent,
+                against: activeSessionConfiguration.controlCapabilities,
+                to: activeSessionConfiguration.device
+            )
+            if presentation.status == .blocked {
+                statusMessage = "\(presentation.title) · \(presentation.detail)"
+            }
+        } catch {
+            statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .configuration)
+        }
+    }
+
+    func restoreAutoExposure(globalExposureBias: Double) async {
+        requestedGlobalAutoExposureBias = CameraEVPreferences.clampedBias(globalExposureBias)
+        guard let activeSessionConfiguration else {
+            return
+        }
+
+        let capability = activeSessionConfiguration.controlCapabilities
+        let intent = CameraManualControlIntent(
+            targetDeviceID: capability.deviceID,
+            exposure: .continuousAuto,
+            focus: nil,
+            whiteBalance: nil,
+            aperture: nil,
+            zoomFactor: nil
+        )
+        await applyCameraControlIntent(intent, against: capability, to: activeSessionConfiguration.device)
+        await applyEffectiveAutoExposureBiasToActiveConfiguration(requestedGlobalAutoExposureBias)
+    }
+
+    func applyCustomExposure(
+        iso: Double,
+        shutterDurationSeconds: Double
+    ) async {
+        guard let activeSessionConfiguration else {
+            return
+        }
+
+        let capability = activeSessionConfiguration.controlCapabilities
+        guard capability.exposure.hasManualRange else {
+            statusMessage = "Manual exposure unavailable"
+            return
+        }
+
+        let intent = CameraManualControlIntent(
+            targetDeviceID: capability.deviceID,
+            exposure: .custom(
+                iso: Self.clamped(iso, in: capability.exposure.isoRange),
+                shutterDurationSeconds: Self.clamped(
+                    shutterDurationSeconds,
+                    in: capability.exposure.shutterDurationRangeSeconds
+                )
+            ),
+            focus: nil,
+            whiteBalance: nil,
+            aperture: nil,
+            zoomFactor: nil
+        )
+        await applyCameraControlIntent(intent, against: capability, to: activeSessionConfiguration.device)
+    }
+
+    func applyManualFocus(lensPosition: Double) async {
+        guard let activeSessionConfiguration else {
+            return
+        }
+
+        let capability = activeSessionConfiguration.controlCapabilities
+        guard capability.focus.supportsManualLensPosition else {
+            statusMessage = "Manual focus unavailable"
+            return
+        }
+
+        let intent = CameraManualControlIntent(
+            targetDeviceID: capability.deviceID,
+            exposure: nil,
+            focus: .locked(lensPosition: Self.clamped(lensPosition, in: .init(minimum: 0, maximum: 1))),
+            whiteBalance: nil,
+            aperture: nil,
+            zoomFactor: nil
+        )
+        await applyCameraControlIntent(intent, against: capability, to: activeSessionConfiguration.device)
+    }
+
+    func restoreAutoFocus() async {
+        guard let activeSessionConfiguration else {
+            return
+        }
+
+        let capability = activeSessionConfiguration.controlCapabilities
+        let intent = CameraManualControlIntent(
+            targetDeviceID: capability.deviceID,
+            exposure: nil,
+            focus: .continuousAuto,
+            whiteBalance: nil,
+            aperture: nil,
+            zoomFactor: nil
+        )
+        await applyCameraControlIntent(intent, against: capability, to: activeSessionConfiguration.device)
+    }
+
+    private func applyCameraControlIntent(
+        _ intent: CameraManualControlIntent,
+        against capability: CameraControlCapabilitySnapshot,
+        to device: AVCaptureDevice
+    ) async {
+        do {
+            let presentation = try await sessionController.applyManualControlIntent(
+                intent,
+                against: capability,
+                to: device
+            )
+            if presentation.status == .blocked {
+                statusMessage = "\(presentation.title) · \(presentation.detail)"
+            }
+        } catch {
+            statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .configuration)
+        }
+    }
+
+    private static func clamped(
+        _ value: Double,
+        in range: CameraControlCapabilitySnapshot.DoubleRange
+    ) -> Double {
+        guard value.isFinite else {
+            return range.minimum
+        }
+        return min(max(value, range.minimum), range.maximum)
+    }
+
+}
+
+nonisolated struct CameraCaptureDepthHint: Equatable, Sendable {
+    let id: UUID
+    let message: String
+
+    init(message: String) {
+        self.id = UUID()
+        self.message = message
+    }
+}
+
+private extension CameraFocusRuntimeEvent.Kind {
+    init(captureSessionEvent: CaptureSessionFocusRuntimeEvent) {
+        switch captureSessionEvent {
+        case .focusStarted:
+            self = .focusStarted
+        case .focusSettled:
+            self = .focusSettled
+        case .subjectAreaChanged:
+            self = .subjectAreaChanged
+        }
+    }
 }

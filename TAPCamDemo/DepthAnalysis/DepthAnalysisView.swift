@@ -103,6 +103,7 @@ struct DepthAnalysisView: View {
             planeRegion: viewModel.planeSelection.selectedRegion,
             planeSeedPoint: viewModel.planeSelection.seedPoint,
             metadataSummary: CaptureMetadataSummary(payload: input.manifest?.payload),
+            scoreSummary: DepthAnalysisScoreSummary(input: input),
             onSelectionBegan: { depthRect in
                 viewModel.beginSelection(depthRect)
             },

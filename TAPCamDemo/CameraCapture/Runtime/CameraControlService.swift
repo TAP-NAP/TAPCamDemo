@@ -58,6 +58,7 @@ nonisolated enum CameraControlService {
         if device.isFocusModeSupported(.continuousAutoFocus) {
             device.focusMode = .continuousAutoFocus
         }
+        device.isSubjectAreaChangeMonitoringEnabled = true
 
         if device.activePrimaryConstituentDeviceSwitchingBehavior != .unsupported {
             /*
@@ -83,6 +84,33 @@ nonisolated enum CameraControlService {
             minimum: Double(device.minAvailableVideoZoomFactor),
             maximum: Double(device.maxAvailableVideoZoomFactor)
         ))
+    }
+
+    static func restoreAutoPhotoControls(
+        globalExposureBias: Double,
+        to device: AVCaptureDevice
+    ) throws {
+        try requireSessionQueueAccess()
+        try device.lockForConfiguration()
+        defer { device.unlockForConfiguration() }
+
+        if device.isExposureModeSupported(.continuousAutoExposure) {
+            device.exposureMode = .continuousAutoExposure
+        }
+        let clampedBias = clampedExposureBias(
+            globalExposureBias,
+            minimum: Double(device.minExposureTargetBias),
+            maximum: Double(device.maxExposureTargetBias)
+        )
+        device.setExposureTargetBias(Float(clampedBias), completionHandler: nil)
+
+        if device.isFocusModeSupported(.continuousAutoFocus) {
+            device.focusMode = .continuousAutoFocus
+        }
+        device.isSubjectAreaChangeMonitoringEnabled = true
+        if device.isWhiteBalanceModeSupported(.continuousAutoWhiteBalance) {
+            device.whiteBalanceMode = .continuousAutoWhiteBalance
+        }
     }
 
     static func applyManualControlCommandPlan(
@@ -137,6 +165,14 @@ nonisolated enum CameraControlService {
         min(max(zoomFactor, minimum), maximum)
     }
 
+    static func clampedExposureBias(
+        _ exposureBias: Double,
+        minimum: Double,
+        maximum: Double
+    ) -> Double {
+        min(max(exposureBias, minimum), maximum)
+    }
+
     private static func apply(
         _ command: CameraManualControlCommandPlan.Command,
         to device: AVCaptureDevice
@@ -186,12 +222,24 @@ nonisolated enum CameraControlService {
         switch focus {
         case .continuousAuto:
             device.focusMode = .continuousAutoFocus
+            device.isSubjectAreaChangeMonitoringEnabled = true
         case .autoFocus(let pointOfInterest):
             if let pointOfInterest {
-                device.focusPointOfInterest = CGPoint(x: pointOfInterest.x, y: pointOfInterest.y)
+                let point = CGPoint(x: pointOfInterest.x, y: pointOfInterest.y)
+                if device.isFocusPointOfInterestSupported {
+                    device.focusPointOfInterest = point
+                }
+                if device.isExposurePointOfInterestSupported {
+                    device.exposurePointOfInterest = point
+                    if device.isExposureModeSupported(.continuousAutoExposure) {
+                        device.exposureMode = .continuousAutoExposure
+                    }
+                }
             }
             device.focusMode = .autoFocus
+            device.isSubjectAreaChangeMonitoringEnabled = true
         case .locked(let lensPosition):
+            device.isSubjectAreaChangeMonitoringEnabled = false
             if let lensPosition {
                 device.setFocusModeLocked(lensPosition: Float(lensPosition), completionHandler: nil)
             } else {

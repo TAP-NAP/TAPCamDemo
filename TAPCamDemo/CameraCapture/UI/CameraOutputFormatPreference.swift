@@ -41,3 +41,48 @@ nonisolated enum CameraOutputFormatPreference: String, CaseIterable, Identifiabl
         CameraOutputFormatPreference(rawValue: rawValue) ?? defaultValue
     }
 }
+
+nonisolated enum CameraPhotoQualityPreference: String, CaseIterable, Identifiable, Sendable {
+    case speed
+    case balanced
+    case quality
+
+    static let storageKey = "CameraPhotoQualityPreference"
+    static let defaultValue = CameraPhotoQualityPreference.quality
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .speed:
+            "Speed"
+        case .balanced:
+            "Balanced"
+        case .quality:
+            "Quality"
+        }
+    }
+
+    var captureQualityLevel: CapturePhotoQualityLevel {
+        switch self {
+        case .speed:
+            .speed
+        case .balanced:
+            .balanced
+        case .quality:
+            .quality
+        }
+    }
+
+    var photoQualityPolicy: CapturePhotoQualityPolicy {
+        .release(requested: captureQualityLevel)
+    }
+
+    func applied(to profile: CaptureOutputProfile) -> CaptureOutputProfile {
+        profile.withPhotoQualityPolicy(photoQualityPolicy)
+    }
+
+    static func resolved(rawValue: String) -> CameraPhotoQualityPreference {
+        CameraPhotoQualityPreference(rawValue: rawValue) ?? defaultValue
+    }
+}

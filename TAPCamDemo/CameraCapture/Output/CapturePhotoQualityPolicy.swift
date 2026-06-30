@@ -8,9 +8,8 @@ import Foundation
 
 /// App-level photo quality names used before AVFoundation settings are built.
 ///
-/// This is not a user-facing quality selector. It keeps product policy readable
-/// while still resolving to `AVCapturePhotoOutput.QualityPrioritization` at the
-/// Runtime boundary.
+/// The user-visible labels live in `CameraPhotoQualityPreference`; this type is
+/// the durable capture/output value that Runtime and manifests consume.
 nonisolated enum CapturePhotoQualityLevel: String, Codable, Equatable, Sendable {
     case speed
     case balanced
@@ -69,6 +68,13 @@ nonisolated struct CapturePhotoQualityPolicy: Codable, Equatable, Sendable {
         requested: .quality,
         maximum: .quality
     )
+
+    static func release(requested: CapturePhotoQualityLevel) -> CapturePhotoQualityPolicy {
+        CapturePhotoQualityPolicy(
+            requested: requested,
+            maximum: .quality
+        )
+    }
 
     var exceedsConfiguredMaximum: Bool {
         requested.contractRank > maximum.contractRank

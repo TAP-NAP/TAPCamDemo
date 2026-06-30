@@ -19,6 +19,19 @@ nonisolated enum DepthAnalysisErrorPresentation {
     static let planeNoStableRegionMessage = "No stable plane region found from this point."
 
     static func analysisLoadError(for error: Error) -> DepthAnalysisLoadErrorPresentation {
+        if let analysisError = error as? TAPDepthAnalysisError {
+            switch analysisError {
+            case .missingDepthData:
+                return DepthAnalysisLoadErrorPresentation(
+                    title: "No Depth",
+                    message: "Score \(DepthAnalysisScoreSummary.noDepth.scoreText). Depth unavailable for this capture.",
+                    systemImage: "photo.badge.exclamationmark"
+                )
+            default:
+                break
+            }
+        }
+
         if error is DepthAnalysisInputLoaderError {
             return DepthAnalysisLoadErrorPresentation(
                 title: "Image unavailable",

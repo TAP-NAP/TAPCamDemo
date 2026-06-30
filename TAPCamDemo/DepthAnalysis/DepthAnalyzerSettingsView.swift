@@ -28,6 +28,22 @@ struct DepthAnalyzerSettingsView: View {
     private var shutterSoundEnabled = CameraFeedbackPreferences.defaultShutterSoundEnabled
     @AppStorage(CameraOutputFormatPreference.storageKey)
     private var outputFormatRawValue = CameraOutputFormatPreference.defaultValue.rawValue
+    @AppStorage(CameraPhotoQualityPreference.storageKey)
+    private var photoQualityRawValue = CameraPhotoQualityPreference.defaultValue.rawValue
+    @AppStorage(CameraGuideOverlayPreference.storageKey)
+    private var guideOverlayRawValue = CameraGuideOverlayPreference.defaultValue.rawValue
+    @AppStorage(CameraEVPreferences.resetOnAppLaunchKey)
+    private var resetEVOnAppLaunch = CameraEVPreferences.defaultResetOnAppLaunch
+    @AppStorage(CameraDepthAvailabilityHintPreferences.showsHintsKey)
+    private var showsDepthAvailabilityHints = CameraDepthAvailabilityHintPreferences.defaultShowsHints
+    @AppStorage(CameraFocusMagnifierPreferences.isEnabledKey)
+    private var isFocusMagnifierEnabled = CameraFocusMagnifierPreferences.defaultIsEnabled
+    @AppStorage(CameraManualFocusTapAssistPreferences.isEnabledKey)
+    private var isManualFocusTapAssistEnabled = CameraManualFocusTapAssistPreferences.defaultIsEnabled
+    @AppStorage(CameraIdleTimerPreferences.keepScreenAwakeKey)
+    private var keepScreenAwake = CameraIdleTimerPreferences.defaultKeepScreenAwake
+    @AppStorage(CameraLiDARFocusAssistPreferences.isEnabledKey)
+    private var isLiDARFocusAssistEnabled = CameraLiDARFocusAssistPreferences.defaultIsEnabled
     @AppStorage(CameraRoutePreferences.returnToCameraOnForegroundKey)
     private var returnToCameraOnForeground = CameraRoutePreferences.defaultReturnToCameraOnForeground
 
@@ -45,12 +61,56 @@ struct DepthAnalyzerSettingsView: View {
         NavigationStack {
             List {
                 Section("Capture") {
-                    Picker("Photo Format", selection: $outputFormatRawValue) {
+                    Picker("Photo Quality", selection: $photoQualityRawValue) {
+                        ForEach(CameraPhotoQualityPreference.allCases) { quality in
+                            Text(quality.title).tag(quality.rawValue)
+                        }
+                    }
+
+                    Picker("Output Format", selection: $outputFormatRawValue) {
                         ForEach(CameraOutputFormatPreference.allCases) { format in
                             Text(format.title).tag(format.rawValue)
                         }
                     }
 
+                    SettingsRoadmapRow(
+                        title: "Live Photo",
+                        value: "Coming soon",
+                        systemImage: "livephoto"
+                    )
+
+                    Toggle(isOn: $keepScreenAwake) {
+                        Label("Keep Screen Awake", systemImage: "sun.max")
+                    }
+                }
+
+                Section("Viewfinder") {
+                    Picker("Grid", selection: $guideOverlayRawValue) {
+                        ForEach(CameraGuideOverlayPreference.allCases) { guide in
+                            Text(guide.title).tag(guide.rawValue)
+                        }
+                    }
+
+                    Toggle(isOn: $isFocusMagnifierEnabled) {
+                        Label("Focus Magnifier", systemImage: "plus.magnifyingglass")
+                    }
+
+                    Toggle(isOn: $showsDepthAvailabilityHints) {
+                        Label("Depth Warnings", systemImage: "rectangle.and.text.magnifyingglass")
+                    }
+                }
+
+                Section("Focus") {
+                    Toggle(isOn: $isLiDARFocusAssistEnabled) {
+                        Label("LiDAR Focus Assist", systemImage: "scope")
+                    }
+
+                    Toggle(isOn: $isManualFocusTapAssistEnabled) {
+                        Label("Manual Focus Tap Assist", systemImage: "scope")
+                    }
+                }
+
+                Section("Feedback") {
                     Toggle(isOn: $shutterSoundEnabled) {
                         Label("Shutter Sound", systemImage: "speaker.wave.2")
                     }
@@ -58,6 +118,10 @@ struct DepthAnalyzerSettingsView: View {
 
                     Toggle(isOn: $shutterHapticsEnabled) {
                         Label("Shutter Haptics", systemImage: "iphone.radiowaves.left.and.right")
+                    }
+
+                    Toggle(isOn: $resetEVOnAppLaunch) {
+                        Label("Reset EV on App Launch", systemImage: "plusminus")
                     }
 
                     if !shutterSoundSuppressionSupported {
@@ -68,15 +132,22 @@ struct DepthAnalyzerSettingsView: View {
                     }
                 }
 
-                Section("Analysis") {
-                    Toggle(isOn: $showsAnalysisHelp) {
-                        Label("Help", systemImage: "questionmark.circle")
-                    }
-                }
-
                 Section("Navigation") {
                     Toggle(isOn: $returnToCameraOnForeground) {
                         Label("Return to Camera After Background", systemImage: "camera.viewfinder")
+                    }
+                }
+
+                Section("Roadmap") {
+                    SettingsRoadmapRow(title: "Video", value: "Coming soon", systemImage: "video")
+                    SettingsRoadmapRow(title: "Shutter Position", value: "Coming soon", systemImage: "circle.dashed")
+                    SettingsRoadmapRow(title: "Second Shutter", value: "Coming soon", systemImage: "camera.circle")
+                    SettingsRoadmapRow(title: "Landscape Control Split", value: "Coming soon", systemImage: "rectangle.split.2x1")
+                }
+
+                Section("Analysis") {
+                    Toggle(isOn: $showsAnalysisHelp) {
+                        Label("Help", systemImage: "questionmark.circle")
                     }
                 }
 
@@ -181,6 +252,30 @@ private struct DepthAnalyzerStatusRow: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.trailing)
         }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct SettingsRoadmapRow: View {
+    let title: String
+    let value: String
+    let systemImage: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 24)
+
+            Text(title)
+
+            Spacer(minLength: 12)
+
+            Text(value)
+                .foregroundStyle(.secondary)
+        }
+        .opacity(0.48)
         .accessibilityElement(children: .combine)
     }
 }

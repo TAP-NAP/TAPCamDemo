@@ -15,6 +15,8 @@ import UIKit
 struct CameraCaptureControlsState {
     let isShutterEnabled: Bool
     let isLibraryWriteInProgress: Bool
+    let selectedMode: CameraCaptureModeOption
+    let adjustmentControlState: CameraAdjustmentControlState?
     let contentRotation: Angle
 
     var canOpenTAPLibrary: Bool {
@@ -36,7 +38,7 @@ struct CameraCaptureControlsState {
     }
 }
 
-/// Bottom camera chrome: settings, TAP Library entry, shutter, and camera switch.
+/// Bottom camera chrome: TAP Library entry, shutter, camera switch, and mode strip.
 ///
 /// The view receives only presentation fields and action closures. It does not
 /// receive App Attest clients, capture IDs, Photos asset IDs, photo bytes,
@@ -44,48 +46,37 @@ struct CameraCaptureControlsState {
 struct CameraCaptureControlsView: View {
     let state: CameraCaptureControlsState
     let recentThumbnail: UIImage?
-    let onOpenSettings: () -> Void
     let onOpenTAPLibrary: () -> Void
     let onCapture: () -> Void
     let onSwitchCamera: () -> Void
+    let onSelectMode: (CameraCaptureModeOption) -> Void
+    let onSelectAdjustmentControl: (CameraAdjustmentControl) -> Void
+    let onToggleFocusMode: () -> Void
+    let onAdjustEV: (Double) -> Void
+    let onAdjustISO: (Double) -> Void
+    let onAdjustShutterPosition: (Double) -> Void
+    let onAdjustLensPosition: (Double) -> Void
 
     @State private var isShutterTouchActive = false
 
     var body: some View {
-        VStack(spacing: 10) {
-            settingsRow
+        VStack(spacing: 8) {
+            modeSelectorSlot
+            lowerToolbar
             bottomControls
         }
     }
 
-    private var settingsRow: some View {
-        HStack {
-            Spacer()
-
-            Button(action: onOpenSettings) {
-                ZStack {
-                    Circle()
-                        .fill(.white.opacity(0.12))
-
-                    Image(systemName: "gearshape")
-                        .font(.system(size: 21, weight: .semibold))
-                        .rotationEffect(state.contentRotation)
-                }
-                .frame(width: 46, height: 46)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Settings")
-            .help("Open camera and analysis settings.")
-        }
-        .foregroundStyle(.white)
-        .padding(.horizontal, 34)
-    }
-
     private var bottomControls: some View {
         HStack {
-            recentPhotoButton
-                .frame(width: 78, height: 78)
-                .rotationEffect(state.contentRotation)
+            CenterAnchoredChromeRotation(
+                rotation: state.contentRotation,
+                width: 78,
+                height: 78
+            ) {
+                recentPhotoButton
+                    .frame(width: 78, height: 78)
+            }
 
             Spacer()
 
@@ -94,10 +85,14 @@ struct CameraCaptureControlsView: View {
             Spacer()
 
             Button(action: onSwitchCamera) {
-                Image(systemName: "arrow.triangle.2.circlepath.camera")
-                    .font(.system(size: 27, weight: .semibold))
-                    .frame(width: 58, height: 58)
-                    .rotationEffect(state.contentRotation)
+                CenterAnchoredChromeRotation(
+                    rotation: state.contentRotation,
+                    width: 58,
+                    height: 58
+                ) {
+                    Image(systemName: "arrow.triangle.2.circlepath.camera")
+                        .font(.system(size: 27, weight: .semibold))
+                }
             }
             .accessibilityLabel("Switch front and back camera")
             .frame(width: 78, height: 78)
@@ -105,8 +100,83 @@ struct CameraCaptureControlsView: View {
         .buttonStyle(.plain)
         .foregroundStyle(.white)
         .padding(.horizontal, 34)
-        .padding(.bottom, 34)
+        .padding(.bottom, 4)
         .frame(maxWidth: .infinity)
+    }
+
+    private var modeSelectorSlot: some View {
+        ZStack {
+            if let adjustmentControlState = state.adjustmentControlState,
+               adjustmentControlState.activeControl != nil {
+                CameraTickedAdjustmentStrip(
+                    state: adjustmentControlState,
+                    contentRotation: state.contentRotation,
+                    onAdjustEV: onAdjustEV,
+                    onAdjustISO: onAdjustISO,
+                    onAdjustShutterPosition: onAdjustShutterPosition,
+                    onAdjustLensPosition: onAdjustLensPosition
+                )
+                .transition(.opacity)
+            } else {
+                modeStrip
+                    .transition(.opacity)
+            }
+        }
+        .frame(height: 50)
+        .animation(.easeInOut(duration: 0.16), value: state.adjustmentControlState?.activeControl)
+    }
+
+    private var modeStrip: some View {
+        HStack(spacing: 18) {
+            ForEach(CameraCaptureModeOption.allCases) { mode in
+                Button {
+                    onSelectMode(mode)
+                } label: {
+                    Text(mode.title)
+                        .font(.caption.weight(.semibold))
+                        .tracking(0)
+                        .foregroundStyle(modeForegroundStyle(mode))
+                        .frame(minWidth: 48, minHeight: 26)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(mode.isAvailableInStageOne ? "\(mode.title) mode" : "\(mode.title) mode coming soon")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var lowerToolbar: some View {
+        if let adjustmentControlState = state.adjustmentControlState {
+            CameraLowerToolbarView(
+                state: adjustmentControlState,
+                contentRotation: state.contentRotation,
+                onSelectControl: onSelectAdjustmentControl,
+                onToggleFocusMode: onToggleFocusMode
+            )
+        } else {
+            HStack(spacing: 8) {
+                ForEach(["EV", "ISO", "S", "AF", "ƒ"], id: \.self) { title in
+                    CenterAnchoredChromeRotation(
+                        rotation: state.contentRotation,
+                        width: 58,
+                        height: 38
+                    ) {
+                        Text(title)
+                            .font(.caption2.weight(.bold))
+                            .monospaced()
+                    }
+                    .background(.black.opacity(0.32), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .foregroundStyle(.white.opacity(0.30))
+                }
+            }
+        }
+    }
+
+    private func modeForegroundStyle(_ mode: CameraCaptureModeOption) -> Color {
+        if mode == state.selectedMode {
+            return .white
+        }
+        return mode.isAvailableInStageOne ? .white.opacity(0.78) : .white.opacity(0.34)
     }
 
     private var shutterControl: some View {

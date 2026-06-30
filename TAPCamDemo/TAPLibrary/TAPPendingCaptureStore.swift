@@ -65,6 +65,8 @@ actor TAPPendingCaptureStore {
             updatedAt: now,
             status: .pending,
             photoFileContainer: artifact.fileContainer,
+            photoQualityLevel: artifact.photoQualityLevel,
+            captureScoreSummary: artifact.captureScoreSummary,
             unsignedPhotoFilename: artifact.fileContainer.unsignedFilename,
             signedPhotoFilename: nil,
             thumbnailFilename: thumbnailFilename,

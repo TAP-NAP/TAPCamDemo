@@ -179,8 +179,12 @@ extension CameraViewModel {
                 rawValue: UserDefaults.standard.string(forKey: CameraOutputFormatPreference.storageKey)
                     ?? CameraOutputFormatPreference.defaultValue.rawValue
             )
+            let photoQualityPreference = CameraPhotoQualityPreference.resolved(
+                rawValue: UserDefaults.standard.string(forKey: CameraPhotoQualityPreference.storageKey)
+                    ?? CameraPhotoQualityPreference.defaultValue.rawValue
+            )
             let outputResolution = outputFormatPreference.selectionIntent.resolved()
-            guard let outputProfile = outputResolution.selectedProfile, outputResolution.isExecutable else {
+            guard let selectedProfile = outputResolution.selectedProfile, outputResolution.isExecutable else {
                 let presentation = CaptureOutputProfileSelectionPresentation(resolution: outputResolution)
                 activeSessionConfiguration = nil
                 isDepthCaptureReady = false
@@ -188,6 +192,7 @@ extension CameraViewModel {
                 statusMessage = "\(presentation.title) · \(presentation.detail)"
                 return
             }
+            let outputProfile = photoQualityPreference.applied(to: selectedProfile)
 
             let result = try await sessionController.configure(SessionConfigurationRequest(
                 capturePlan: plan,
@@ -204,6 +209,7 @@ extension CameraViewModel {
             nativePreviewAspectRatio = result.nativePreviewAspectRatio
             isDepthCaptureReady = result.depthDeliverySupported && result.capturePlan.canCapturePhotoDepth
             statusMessage = statusText(for: result.capturePlan)
+            await applyRequestedGlobalAutoExposureBiasToActiveConfiguration()
         } catch {
             guard generation == configurationGeneration else {
                 return

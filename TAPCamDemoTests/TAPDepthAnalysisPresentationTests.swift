@@ -106,6 +106,67 @@ struct TAPDepthAnalysisPresentationTests {
         #expect(!summary.detail.localizedCaseInsensitiveContains(".json"))
     }
 
+    @Test func depthAnalysisScoreSummaryScoresHighQualityCalibratedDepth() throws {
+        let input = try scoredAnalysisInput(
+            payload: TAPCamDemoTestFixtures.samplePayload(location: nil),
+            samples: [1, 1.1, 1.2, 1.3],
+            calibration: TAPCamDemoTestFixtures.sampleCalibration
+        )
+        let score = DepthAnalysisScoreSummary(input: input)
+
+        #expect(score.value == 100)
+        #expect(score.scoreText == "100/100")
+        #expect(score.grade == "Excellent")
+        #expect(score.detail == "Coverage 100% · Quality high · Accuracy absolute · Calibration available")
+        #expect(score.accessibilityText.contains("Analysis score 100 out of 100."))
+    }
+
+    @Test func depthAnalysisScoreSummaryUsesConservativeScoreWithoutManifestOrCalibration() throws {
+        let input = try TAPCamDemoTestFixtures.analysisInput(depthMap: TAPMetricDepthMap(
+            width: 2,
+            height: 2,
+            samples: [1, 0, 2, -1],
+            calibration: nil
+        ))
+        let score = DepthAnalysisScoreSummary(input: input)
+
+        #expect(score.value == 41)
+        #expect(score.grade == "Limited")
+        #expect(score.detail == "Coverage 50% · Manifest unavailable · Calibration unavailable")
+    }
+
+    @Test func depthAnalysisScoreSummaryNoDepthIsFixedAndPublicSafe() throws {
+        let score = DepthAnalysisScoreSummary.noDepth
+        let visibleText = "\(score.scoreText) \(score.grade) \(score.detail) \(score.accessibilityText)"
+
+        #expect(score.value == 20)
+        #expect(score.scoreText == "20/100")
+        #expect(score.grade == "No Depth")
+        #expect(score.detail == "RGB saved · Depth unavailable · Depth tools disabled")
+        #expect(!visibleText.localizedCaseInsensitiveContains("captureID"))
+        #expect(!visibleText.localizedCaseInsensitiveContains("asset"))
+        #expect(!visibleText.localizedCaseInsensitiveContains("proof"))
+    }
+
+    @Test func depthAnalysisScoreSummaryOmitsManifestIdentifiersAndLocation() throws {
+        let input = try scoredAnalysisInput(
+            payload: TAPCamDemoTestFixtures.samplePayload(
+                id: "private-capture-id",
+                capturedAt: "2026-06-30T00:00:00.000Z",
+                location: TAPCamDemoTestFixtures.sampleLocation
+            ),
+            samples: [1, 1, 1, 1],
+            calibration: nil
+        )
+        let score = DepthAnalysisScoreSummary(input: input)
+        let visibleText = "\(score.scoreText) \(score.grade) \(score.detail) \(score.accessibilityText)"
+
+        #expect(!visibleText.contains("private-capture-id"))
+        #expect(!visibleText.contains("2026-06-30T00:00:00.000Z"))
+        #expect(!visibleText.contains("31.2304"))
+        #expect(!visibleText.contains("121.4737"))
+    }
+
     @Test func analysisDepthAndMaskViewModeButtonsAreDebugOnly() throws {
         #expect(DepthAnalysisViewMode.heatmap.isDebugOnlyAnalysisButton)
         #expect(DepthAnalysisViewMode.mask.isDebugOnlyAnalysisButton)
@@ -200,4 +261,30 @@ struct TAPDepthAnalysisPresentationTests {
         #expect(DepthAnalyzerAuthorizationStatusText.location(.authorizedWhenInUse) == "While using app")
         #expect(DepthAnalyzerAuthorizationStatusText.location(.restricted) == "Restricted")
     }
+}
+
+private func scoredAnalysisInput(
+    payload: TAPDepthManifest.Payload,
+    samples: [Float],
+    calibration: TAPDepthManifest.CameraCalibration?
+) throws -> TAPDepthAnalysisInput {
+    let width = 2
+    let height = samples.count / width
+    let depthMap = TAPMetricDepthMap(
+        width: width,
+        height: height,
+        samples: samples,
+        calibration: calibration
+    )
+    let baseInput = try TAPCamDemoTestFixtures.analysisInput(depthMap: depthMap)
+    return TAPDepthAnalysisInput(
+        manifest: TAPDepthManifest(payload: payload),
+        image: baseInput.image,
+        imageOrientation: baseInput.imageOrientation,
+        depthMap: baseInput.depthMap,
+        depthAccuracy: payload.depth.accuracy,
+        depthQuality: payload.depth.quality,
+        heatmap: baseInput.heatmap,
+        validMask: baseInput.validMask
+    )
 }

@@ -41,9 +41,12 @@ enum TAPCamDemoTestFixtures {
         resolvedActivePrimaryConstituentDeviceName: String? = "Back Wide Camera",
         depthSourceCaptureDeviceName: String = "Back Triple Camera",
         depthSourceSensingMethod: String = "multiCameraStereoOrComputational",
-        depthSourceLidarParticipation: String = "notAsserted"
+        depthSourceLidarParticipation: String = "notAsserted",
+        depthAvailability: CaptureDepthAvailability = .available
     ) -> TAPDepthManifest.Payload {
-        TAPDepthManifest.Payload(
+        let hasDepth = depthAvailability == .available
+
+        return TAPDepthManifest.Payload(
             id: id,
             capturedAt: capturedAt,
             sessionMode: "singleCam",
@@ -169,17 +172,18 @@ enum TAPCamDemoTestFixtures {
                 metadataKeys: ["{Exif}", "{TIFF}"]
             ),
             depth: TAPDepthManifest.Depth(
-                auxiliaryDataKind: "depth",
-                depthDataType: "hdep",
-                metricUnit: "meters",
-                conversionPath: "nativeDepthMeters",
-                width: 256,
-                height: 192,
-                pixelFormat: "hdep",
-                orientation: "appleAuxiliaryDepthNative",
-                accuracy: "absolute",
-                quality: "high",
-                isFiltered: true,
+                availability: depthAvailability,
+                auxiliaryDataKind: hasDepth ? "depth" : "none",
+                depthDataType: hasDepth ? "hdep" : "none",
+                metricUnit: hasDepth ? "meters" : "none",
+                conversionPath: hasDepth ? "nativeDepthMeters" : "depthUnavailable",
+                width: hasDepth ? 256 : 0,
+                height: hasDepth ? 192 : 0,
+                pixelFormat: hasDepth ? "hdep" : "none",
+                orientation: hasDepth ? "appleAuxiliaryDepthNative" : "unavailable",
+                accuracy: hasDepth ? "absolute" : "unavailable",
+                quality: hasDepth ? "high" : "unavailable",
+                isFiltered: hasDepth,
                 source: TAPDepthManifest.DepthSource(
                     captureDeviceType: "AVCaptureDeviceTypeBuiltInTripleCamera",
                     captureDeviceName: depthSourceCaptureDeviceName,
@@ -188,7 +192,9 @@ enum TAPCamDemoTestFixtures {
                 ),
                 cameraCalibration: nil
             ),
-            alignment: TAPDepthManifest.Alignment(depthToImage: "appleAuxiliaryDepthNative"),
+            alignment: TAPDepthManifest.Alignment(
+                depthToImage: hasDepth ? "appleAuxiliaryDepthNative" : "unavailable"
+            ),
             location: location,
             software: TAPDepthManifest.Software(
                 appName: "TAPCamDemo",
@@ -204,6 +210,7 @@ enum TAPCamDemoTestFixtures {
         depthDataDeliveryEnabled: Bool = true,
         embedsDepthDataInPhoto: Bool = true,
         depthDataFiltered: Bool = true,
+        depthAvailability: CaptureDepthAvailability = .available,
         photoQualityPrioritization: String = "quality"
     ) -> TAPDepthManifest.Capture {
         TAPDepthManifest.Capture(
@@ -212,6 +219,7 @@ enum TAPCamDemoTestFixtures {
             depthDataDeliveryEnabled: depthDataDeliveryEnabled,
             embedsDepthDataInPhoto: embedsDepthDataInPhoto,
             depthDataFiltered: depthDataFiltered,
+            depthAvailability: depthAvailability,
             photoQualityPrioritization: photoQualityPrioritization
         )
     }
@@ -260,15 +268,21 @@ enum TAPCamDemoTestFixtures {
         supportsAutoFocus: Bool = true,
         supportsContinuousAutoFocus: Bool = true,
         supportsLockedFocus: Bool = true,
+        supportsCustomLensPosition: Bool = true,
         supportsFocusPointOfInterest: Bool = true,
         supportsLockedWhiteBalance: Bool = true,
         supportsContinuousAutoWhiteBalance: Bool = true,
+        minimumFocusDistanceMillimeters: Int? = 120,
         exposureBiasRange: CameraControlCapabilitySnapshot.DoubleRange = .init(minimum: -2, maximum: 2),
         isoRange: CameraControlCapabilitySnapshot.DoubleRange = .init(minimum: 32, maximum: 1_600),
         shutterDurationRangeSeconds: CameraControlCapabilitySnapshot.DoubleRange = .init(
             minimum: 1.0 / 12_000.0,
             maximum: 1
         ),
+        currentISO: Double = 100,
+        currentShutterDurationSeconds: Double = 1.0 / 120.0,
+        currentExposureTargetOffset: Double = 0,
+        currentLensPosition: Double = 0.5,
         zoomRange: CameraControlCapabilitySnapshot.DoubleRange = .init(minimum: 1, maximum: 15)
     ) -> CameraControlCapabilitySnapshot {
         CameraControlCapabilitySnapshot(
@@ -281,14 +295,20 @@ enum TAPCamDemoTestFixtures {
                 supportsCustomExposure: supportsCustomExposure,
                 exposureBiasRange: exposureBiasRange,
                 isoRange: isoRange,
-                shutterDurationRangeSeconds: shutterDurationRangeSeconds
+                shutterDurationRangeSeconds: shutterDurationRangeSeconds,
+                currentISO: currentISO,
+                currentShutterDurationSeconds: currentShutterDurationSeconds,
+                currentExposureTargetOffset: currentExposureTargetOffset
             ),
             focus: CameraControlCapabilitySnapshot.Focus(
                 supportsAutoFocus: supportsAutoFocus,
                 supportsContinuousAutoFocus: supportsContinuousAutoFocus,
                 supportsLockedFocus: supportsLockedFocus,
+                supportsCustomLensPosition: supportsCustomLensPosition,
                 supportsFocusPointOfInterest: supportsFocusPointOfInterest,
-                supportsSmoothAutoFocus: true
+                supportsSmoothAutoFocus: true,
+                minimumFocusDistanceMillimeters: minimumFocusDistanceMillimeters,
+                currentLensPosition: currentLensPosition
             ),
             whiteBalance: CameraControlCapabilitySnapshot.WhiteBalance(
                 supportsContinuousAutoWhiteBalance: supportsContinuousAutoWhiteBalance,
@@ -309,6 +329,8 @@ enum TAPCamDemoTestFixtures {
         thumbnailFilename: String? = nil,
         assetLocalIdentifier: String? = nil,
         failureReason: String? = nil,
+        photoQualityLevel: CapturePhotoQualityLevel = .quality,
+        captureScoreSummary: CaptureScoreSummary = .unknown,
         location: TAPPendingCaptureLocation? = nil
     ) -> TAPPendingCaptureRecord {
         TAPPendingCaptureRecord(
@@ -318,6 +340,8 @@ enum TAPCamDemoTestFixtures {
             createdAt: capturedAt,
             updatedAt: capturedAt,
             status: status,
+            photoQualityLevel: photoQualityLevel,
+            captureScoreSummary: captureScoreSummary,
             unsignedHEICFilename: status == .exported ? nil : unsignedHEICFilename,
             signedHEICFilename: signedHEICFilename,
             thumbnailFilename: thumbnailFilename,
@@ -331,6 +355,7 @@ enum TAPCamDemoTestFixtures {
     static func samplePendingArtifact(
         photoData: Data,
         fileContainer: CapturePhotoFileContainer = .heic,
+        photoQualityLevel: CapturePhotoQualityLevel = .quality,
         captureID: String = "sample-capture",
         capturedAt: Date = Date(timeIntervalSince1970: 0)
     ) -> PackagedCaptureArtifact {
@@ -339,12 +364,23 @@ enum TAPCamDemoTestFixtures {
             strategy: .embeddedPhoto,
             photoData: photoData,
             fileContainer: fileContainer,
+            photoQualityLevel: photoQualityLevel,
             manifest: TAPDepthManifest(payload: samplePayload(
                 id: captureID,
                 capturedAt: TAPDateFormatting.iso8601.string(from: capturedAt),
-                location: sampleLocation
+                location: sampleLocation,
+                capture: sampleManifestCapture(
+                    photoQualityPrioritization: photoQualityLevel.manifestDescription
+                )
             )),
             signatureStatus: .unsigned(reason: "test"),
+            depthAvailability: .available,
+            captureScoreSummary: CaptureScoreSummary.make(
+                depthAvailability: .available,
+                fileContainer: fileContainer,
+                photoQualityLevel: photoQualityLevel,
+                signatureStatus: .unsigned(reason: "test")
+            ),
             packagingMetrics: CapturePackagingMetrics(),
             capturedAt: capturedAt,
             location: CLLocation(

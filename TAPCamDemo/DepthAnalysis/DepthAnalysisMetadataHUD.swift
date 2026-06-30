@@ -159,12 +159,127 @@ struct CaptureMetadataSummary: Equatable {
     }
 }
 
+nonisolated struct DepthAnalysisScoreSummary: Equatable, Sendable {
+    let value: Int
+    let grade: String
+    let detail: String
+    let accessibilityText: String
+
+    var scoreText: String {
+        "\(value)/100"
+    }
+
+    init(input: TAPDepthAnalysisInput) {
+        let validRatio = Self.clampedRatio(input.validMask.validRatio)
+        let coverageScore = Int((validRatio * 45).rounded())
+        let manifestScore = input.manifest == nil ? 18 : 25
+        let qualityScore = Self.qualityScore(payload: input.manifest?.payload)
+        let calibrationAvailable = input.depthMap.calibration != nil
+            || input.manifest?.payload.depth.cameraCalibration != nil
+        let calibrationScore = calibrationAvailable ? 15 : 0
+        let value = min(max(manifestScore + coverageScore + qualityScore + calibrationScore, 0), 100)
+        let coverageText = "\(Int((validRatio * 100).rounded()))%"
+        let qualityText = Self.qualityText(payload: input.manifest?.payload)
+        let calibrationText = calibrationAvailable ? "Calibration available" : "Calibration unavailable"
+
+        self.value = value
+        self.grade = Self.grade(for: value)
+        self.detail = "Coverage \(coverageText) · \(qualityText) · \(calibrationText)"
+        self.accessibilityText = "Analysis score \(value) out of 100. \(grade). \(detail)."
+    }
+
+    static let noDepth = DepthAnalysisScoreSummary(
+        value: 20,
+        grade: "No Depth",
+        detail: "RGB saved · Depth unavailable · Depth tools disabled"
+    )
+
+    private init(value: Int, grade: String, detail: String) {
+        self.value = value
+        self.grade = grade
+        self.detail = detail
+        self.accessibilityText = "Analysis score \(value) out of 100. \(grade). \(detail)."
+    }
+
+    private static func clampedRatio(_ ratio: Double) -> Double {
+        guard ratio.isFinite else {
+            return 0
+        }
+        return min(max(ratio, 0), 1)
+    }
+
+    private static func qualityScore(payload: TAPDepthManifest.Payload?) -> Int {
+        guard let payload else {
+            return 0
+        }
+
+        let accuracyPoints: Int
+        switch payload.depth.accuracy {
+        case "absolute":
+            accuracyPoints = 8
+        case "relative":
+            accuracyPoints = 4
+        default:
+            accuracyPoints = 0
+        }
+
+        let qualityPoints: Int
+        switch payload.depth.quality {
+        case "high":
+            qualityPoints = 7
+        case "medium":
+            qualityPoints = 4
+        case "low":
+            qualityPoints = 1
+        default:
+            qualityPoints = 0
+        }
+
+        return accuracyPoints + qualityPoints
+    }
+
+    private static func qualityText(payload: TAPDepthManifest.Payload?) -> String {
+        guard let payload else {
+            return "Manifest unavailable"
+        }
+
+        let accuracy = payload.depth.accuracy.trimmingCharacters(in: .whitespacesAndNewlines)
+        let quality = payload.depth.quality.trimmingCharacters(in: .whitespacesAndNewlines)
+        if accuracy.isEmpty && quality.isEmpty {
+            return "Depth quality unavailable"
+        }
+        if accuracy.isEmpty {
+            return "Quality \(quality)"
+        }
+        if quality.isEmpty {
+            return "Accuracy \(accuracy)"
+        }
+        return "Quality \(quality) · Accuracy \(accuracy)"
+    }
+
+    private static func grade(for value: Int) -> String {
+        switch value {
+        case 85...:
+            "Excellent"
+        case 70..<85:
+            "Strong"
+        case 50..<70:
+            "Usable"
+        case 30..<50:
+            "Limited"
+        default:
+            "No Depth"
+        }
+    }
+}
+
 #if DEBUG
 
 import SwiftUI
 
 struct CaptureMetadataHUD: View {
     let summary: CaptureMetadataSummary
+    let scoreSummary: DepthAnalysisScoreSummary?
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -184,6 +299,29 @@ struct CaptureMetadataHUD: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
+
+                if let scoreSummary {
+                    Divider()
+                        .overlay(.white.opacity(0.14))
+
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Image(systemName: "gauge")
+                            .font(.caption2.weight(.bold))
+                        Text("Score \(scoreSummary.scoreText)")
+                            .font(.caption2.weight(.semibold))
+                        Text(scoreSummary.grade)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.76)
+
+                    Text(scoreSummary.detail)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
         .padding(.horizontal, 10)
@@ -194,7 +332,11 @@ struct CaptureMetadataHUD: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(.white.opacity(0.16), lineWidth: 1)
         }
-        .accessibilityLabel(summary.accessibilityText)
+        .accessibilityLabel(
+            [summary.accessibilityText, scoreSummary?.accessibilityText]
+                .compactMap { $0 }
+                .joined(separator: " ")
+        )
     }
 }
 

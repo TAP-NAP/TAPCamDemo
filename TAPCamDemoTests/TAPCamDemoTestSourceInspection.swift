@@ -6,19 +6,19 @@
 import Foundation
 
 enum TAPCamDemoTestSourceInspection {
+    static var isSourceTreeAvailable: Bool {
+        FileManager.default.fileExists(
+            atPath: sourceRoot.appendingPathComponent("TAPCamDemo/App/TAPCamDemoApp.swift").path
+        )
+    }
+
     static func source(relativePath: String) throws -> String {
-        let root = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let fileURL = root.appendingPathComponent(relativePath)
+        let fileURL = sourceRoot.appendingPathComponent(relativePath)
         return try String(contentsOf: fileURL, encoding: .utf8)
     }
 
     static func swiftSourceRelativePaths(under relativeDirectory: String) throws -> [String] {
-        let root = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let directoryURL = root.appendingPathComponent(relativeDirectory, isDirectory: true)
+        let directoryURL = sourceRoot.appendingPathComponent(relativeDirectory, isDirectory: true)
         let files = try FileManager.default.contentsOfDirectory(
             at: directoryURL,
             includingPropertiesForKeys: nil
@@ -51,5 +51,11 @@ enum TAPCamDemoTestSourceInspection {
             return nil
         }
         return String(source[startRange.lowerBound..<endRange.lowerBound])
+    }
+
+    private static var sourceRoot: URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
     }
 }

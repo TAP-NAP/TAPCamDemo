@@ -18,6 +18,7 @@ struct TAPLibraryStorageTests {
 
         #expect(record.captureID == "sample-capture")
         #expect(record.status == .pending)
+        #expect(record.captureScoreSummary == artifact.captureScoreSummary)
         #expect(try await store.unsignedHEICData(captureID: record.captureID) == Data("unsigned".utf8))
 
         let reloadedStore = TAPPendingCaptureStore(rootURL: rootURL)
@@ -25,6 +26,27 @@ struct TAPLibraryStorageTests {
 
         #expect(reloadedRecords.map(\.captureID) == ["sample-capture"])
         #expect(reloadedRecords.first?.status == .pending)
+        #expect(reloadedRecords.first?.captureScoreSummary == artifact.captureScoreSummary)
+    }
+
+    @Test func pendingCaptureStorePersistsPhotoQualityForSigningProfile() async throws {
+        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        let store = TAPPendingCaptureStore(rootURL: rootURL)
+        let artifact = TAPCamDemoTestFixtures.samplePendingArtifact(
+            photoData: Data("unsigned".utf8),
+            photoQualityLevel: .balanced
+        )
+
+        let record = try await store.ingest(artifact)
+        let reloadedStore = TAPPendingCaptureStore(rootURL: rootURL)
+        let reloadedRecords = try await reloadedStore.visiblePendingRecords()
+        let reloadedRecord = try #require(reloadedRecords.first)
+
+        #expect(record.photoQualityLevel == .balanced)
+        #expect(record.outputProfile.photoQualityPolicy.requested == .balanced)
+        #expect(reloadedRecord.photoQualityLevel == .balanced)
+        #expect(reloadedRecord.outputProfile.photoQualityPolicy.requested == .balanced)
+        #expect(reloadedRecord.outputProfile.fileContainer == .heic)
     }
 
     @Test func pendingCaptureRecordNamesIdentityLocationAndVisibilityWithoutStore() throws {
@@ -281,6 +303,7 @@ struct TAPLibraryStorageTests {
         #expect(result.publicDestinationSummary == "Pending TAP capture")
         #expect(!result.publicDestinationSummary.contains("sample-capture"))
         #expect(result.signatureStatus == .pending(reason: "Queued for App Attest signing."))
+        #expect(result.captureScoreSummary == artifact.captureScoreSummary)
         #expect(try await store.unsignedHEICData(captureID: "sample-capture") == Data("unsigned".utf8))
     }
 
