@@ -23,6 +23,37 @@ struct TAPCameraCapturePresentationTests {
         #expect(uiTestSource.contains(#"app.buttons["camera.capture.shutter"]"#))
     }
 
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func cameraControlsUITestHarnessIsDebugOnlyAndClicksProductionControlView() throws {
+        let appSource = try TAPCamDemoTestSourceInspection.source(relativePath: "TAPCamDemo/App/TAPCamDemoApp.swift")
+        let harnessSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/App/CameraControlsUITestHarnessView.swift"
+        )
+        let uiTestSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemoUITests/CameraControlsRegressionUITests.swift"
+        )
+
+        #expect(appSource.contains("#if DEBUG"))
+        #expect(appSource.contains("isCameraControlsUITestHarness"))
+        #expect(appSource.contains("TAPCAM_UI_TEST_CAMERA_CONTROLS"))
+        #expect(appSource.contains("--tapcam-camera-controls-ui-test-harness"))
+        #expect(appSource.contains("CameraControlsUITestHarnessView()"))
+        #expect(harnessSource.contains("#if DEBUG"))
+        #expect(harnessSource.contains("CameraCaptureControlsView("))
+        #expect(harnessSource.contains("CameraAdjustmentControlState("))
+        #expect(harnessSource.contains("camera.controlsHarness.status"))
+        #expect(!harnessSource.contains("AVCaptureDevice"))
+        #expect(!harnessSource.contains("CameraControlService"))
+        #expect(uiTestSource.contains("TAPCAM_UI_TEST_CAMERA_CONTROLS"))
+        #expect(uiTestSource.contains("--tapcam-camera-controls-ui-test-harness"))
+        #expect(uiTestSource.contains(#"tapButton("camera.lowerToolbar.ev""#))
+        #expect(uiTestSource.contains(#"tapButton("camera.lowerToolbar.iso""#))
+        #expect(uiTestSource.contains(#"tapButton("camera.lowerToolbar.shutter""#))
+        #expect(uiTestSource.contains(#"tapButton("camera.lowerToolbar.focus""#))
+        #expect(uiTestSource.contains("camera.tickedAdjustmentStrip"))
+        #expect(uiTestSource.contains("VIDEO mode coming soon"))
+    }
+
     @Test func captureLifecycleCoordinatorKeepsPendingSigningWarmupAndRetryPoliciesExplicit() {
         #expect(CaptureLifecycleCoordinator.initialCameraActions(startsAutomatically: true) == [.startCamera])
         #expect(CaptureLifecycleCoordinator.initialCameraActions(startsAutomatically: false) == [])
@@ -377,6 +408,11 @@ struct TAPCameraCapturePresentationTests {
         #expect(viewSource.contains(#"Image(systemName: "sun.max")"#))
         #expect(viewSource.contains("static let focusEVRailWidth: CGFloat = 28"))
         #expect(viewSource.contains("static let focusEVEdgeGap: CGFloat = 6"))
+        #expect(viewSource.contains("static let focusEVRailTravel: CGFloat = 116"))
+        #expect(viewSource.contains("static let focusEVRailTopInset: CGFloat = focusEVRailHeight - focusEVRailTravel"))
+        #expect(viewSource.contains("static let focusEVMarkerSide: CGFloat = 13"))
+        #expect(viewSource.contains("Metrics.focusEVMarkerSide / 2 - CGFloat(normalized * Metrics.focusEVRailTravel)"))
+        #expect(viewSource.contains("let railY = y - Metrics.focusEVRailTopInset"))
         #expect(!viewSource.contains("Text(label)"))
         #expect(!viewSource.contains("EV 0.0"))
         #expect(!viewSource.contains("String(format: \"%+0.1f\", offset)"))
@@ -492,6 +528,7 @@ struct TAPCameraCapturePresentationTests {
         #expect(controlsDesignSource.contains("`focus companion EV rail` 继续显示且不自动消失"))
         #expect(controlsDesignSource.contains("不显示 `EV` 字样或当前 EV 数值"))
         #expect(controlsDesignSource.contains("两者边缘间距优先使用 6pt"))
+        #expect(controlsDesignSource.contains("`value cursor` 的圆心必须落在中间刻度上"))
         #expect(controlsDesignSource.contains("不使用固定时间自动隐藏"))
         #expect(controlsDesignSource.contains("不能改变对焦框位置"))
         #expect(controlsDesignSource.contains("只显示刻度和 `value cursor`，不显示系统 slider 的实线轨道"))

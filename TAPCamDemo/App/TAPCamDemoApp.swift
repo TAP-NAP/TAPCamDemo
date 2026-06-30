@@ -29,12 +29,24 @@ struct TAPCamDemoApp: App {
 
     var body: some Scene {
         WindowGroup {
+            #if DEBUG
+            if ProcessInfo.processInfo.isCameraControlsUITestHarness {
+                CameraControlsUITestHarnessView()
+                    .preferredColorScheme(.dark)
+            } else if ProcessInfo.processInfo.isXCTestHost {
+                XCTestHostView()
+            } else {
+                StartupGateView()
+                    .preferredColorScheme(.dark)
+            }
+            #else
             if ProcessInfo.processInfo.isXCTestHost {
                 XCTestHostView()
             } else {
                 StartupGateView()
                     .preferredColorScheme(.dark)
             }
+            #endif
         }
     }
 }
@@ -46,6 +58,13 @@ private struct XCTestHostView: View {
 }
 
 private extension ProcessInfo {
+    #if DEBUG
+    var isCameraControlsUITestHarness: Bool {
+        environment["TAPCAM_UI_TEST_CAMERA_CONTROLS"] == "1"
+            || arguments.contains("--tapcam-camera-controls-ui-test-harness")
+    }
+    #endif
+
     var isXCTestHost: Bool {
         guard environment["TAPCAM_UI_TEST_REAL_APP"] != "1" else {
             return false

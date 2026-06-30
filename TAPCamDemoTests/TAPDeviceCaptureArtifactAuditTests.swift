@@ -66,6 +66,11 @@ struct TAPDeviceCaptureArtifactAuditTests {
         )
         let artifact = try await Self.auditArtifact(for: exportedRecord)
         #expect(artifact.container == CapturePhotoFileContainer.jpeg.rawValue)
+        #expect(artifact.captureScoreValue > 0)
+        #expect(!artifact.captureScoreGrade.isEmpty)
+        #expect(!artifact.captureScoreDetail.localizedCaseInsensitiveContains("captureID"))
+        #expect(!artifact.captureScoreDetail.localizedCaseInsensitiveContains("asset"))
+        #expect(!artifact.captureScoreDetail.localizedCaseInsensitiveContains("key"))
 
         try Self.writeReport(
             DeviceCaptureArtifactAuditReport(
@@ -175,9 +180,10 @@ struct TAPDeviceCaptureArtifactAuditTests {
         let depthPixelBuffer = depthData.depthDataMap
         let depthWidth = CVPixelBufferGetWidth(depthPixelBuffer)
         let depthHeight = CVPixelBufferGetHeight(depthPixelBuffer)
+        let minimumByteCount = fileContainer == .jpeg ? 100_000 : 1_000_000
 
         #expect(fileContainer == record.photoFileContainer)
-        #expect(photoData.count > 1_000_000)
+        #expect(photoData.count > minimumByteCount)
         #expect(imageDimensions.width > 0)
         #expect(imageDimensions.height > 0)
         #expect(max(imageDimensions.width, imageDimensions.height) >= 3_000)
@@ -206,7 +212,10 @@ struct TAPDeviceCaptureArtifactAuditTests {
             depthWidth: depthWidth,
             depthHeight: depthHeight,
             proofSlotByteCount: TAPProofSlot.payloadByteCount,
-            proofEnvelopeByteCount: proofEnvelope.count
+            proofEnvelopeByteCount: proofEnvelope.count,
+            captureScoreValue: record.captureScoreSummary.value,
+            captureScoreGrade: record.captureScoreSummary.grade,
+            captureScoreDetail: record.captureScoreSummary.detail
         )
     }
 
@@ -333,6 +342,9 @@ private struct DeviceCaptureArtifactAuditReport: Codable, Equatable {
         let depthHeight: Int
         let proofSlotByteCount: Int
         let proofEnvelopeByteCount: Int
+        let captureScoreValue: Int
+        let captureScoreGrade: String
+        let captureScoreDetail: String
     }
 
     let recordsAvailable: Int

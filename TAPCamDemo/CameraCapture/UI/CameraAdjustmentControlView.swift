@@ -391,21 +391,26 @@ struct CameraTickedAdjustmentStrip: View {
     let onAdjustLensPosition: (Double) -> Void
 
     var body: some View {
-        Group {
-            switch state.activeControl {
-            case .ev:
-                evStrip
-            case .iso:
-                isoStrip
-            case .shutter:
-                shutterStrip
-            case .focus:
-                focusStrip
-            case nil:
-                EmptyView()
-            }
+        VStack(spacing: 0) {
+            content
         }
         .accessibilityIdentifier("camera.tickedAdjustmentStrip")
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch state.activeControl {
+        case .ev:
+            evStrip
+        case .iso:
+            isoStrip
+        case .shutter:
+            shutterStrip
+        case .focus:
+            focusStrip
+        case nil:
+            EmptyView()
+        }
     }
 
     private var evStrip: some View {
@@ -640,6 +645,7 @@ private struct TickedSliderRow: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(title) \(value)")
+        .accessibilityIdentifier("camera.tickedAdjustmentStrip")
         .accessibilityAdjustableAction { direction in
             guard isEnabled else {
                 return

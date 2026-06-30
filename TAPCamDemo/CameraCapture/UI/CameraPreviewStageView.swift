@@ -444,25 +444,25 @@ struct CameraPreviewStageView: View {
             ZStack(alignment: .bottom) {
                 Capsule()
                     .fill(.white.opacity(0.46))
-                    .frame(width: 2, height: 116)
+                    .frame(width: 2, height: Metrics.focusEVRailTravel)
 
                 ForEach(0..<7, id: \.self) { index in
                     Capsule()
                         .fill(.white.opacity(index == 3 ? 0.74 : 0.46))
                         .frame(width: index == 3 ? 13 : 8, height: 1.2)
-                        .offset(y: -CGFloat(index) * (116.0 / 6.0))
+                        .offset(y: -CGFloat(index) * (Metrics.focusEVRailTravel / 6.0))
                 }
 
                 Circle()
                     .fill(.yellow)
-                    .frame(width: 13, height: 13)
+                    .frame(width: Metrics.focusEVMarkerSide, height: Metrics.focusEVMarkerSide)
                     .overlay {
                         Circle()
                             .stroke(.white.opacity(0.72), lineWidth: 1)
                     }
                     .offset(y: markerOffset)
             }
-            .frame(width: 24, height: 126)
+            .frame(width: 24, height: Metrics.focusEVRailHeight)
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0)
@@ -476,11 +476,12 @@ struct CameraPreviewStageView: View {
             let normalized = (CameraTemporaryFocusEVPreferences.clampedOffset(offset)
                 - CameraTemporaryFocusEVPreferences.minimumOffset)
                 / (CameraTemporaryFocusEVPreferences.maximumOffset - CameraTemporaryFocusEVPreferences.minimumOffset)
-            return -CGFloat(normalized * 116)
+            return Metrics.focusEVMarkerSide / 2 - CGFloat(normalized * Metrics.focusEVRailTravel)
         }
 
         private func offset(for y: CGFloat) -> Double {
-            let normalized = 1 - min(max(Double(y / 126), 0), 1)
+            let railY = y - Metrics.focusEVRailTopInset
+            let normalized = 1 - min(max(Double(railY / Metrics.focusEVRailTravel), 0), 1)
             let rawOffset = CameraTemporaryFocusEVPreferences.minimumOffset
                 + normalized
                 * (CameraTemporaryFocusEVPreferences.maximumOffset - CameraTemporaryFocusEVPreferences.minimumOffset)
@@ -494,6 +495,9 @@ struct CameraPreviewStageView: View {
         static let focusIndicatorSide: CGFloat = 72
         static let focusEVRailWidth: CGFloat = 28
         static let focusEVRailHeight: CGFloat = 126
+        static let focusEVRailTravel: CGFloat = 116
+        static let focusEVRailTopInset: CGFloat = focusEVRailHeight - focusEVRailTravel
+        static let focusEVMarkerSide: CGFloat = 13
         static let focusEVEdgeGap: CGFloat = 6
         static let previewEdgeInset: CGFloat = 12
         static let focusExposureScrubPointsPerEV: CGFloat = 96
