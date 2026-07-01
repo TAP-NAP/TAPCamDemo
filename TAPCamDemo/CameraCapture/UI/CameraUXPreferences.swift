@@ -87,9 +87,46 @@ nonisolated enum CameraDepthAvailabilityHintPreferences {
     static let defaultShowsHints = true
 }
 
-nonisolated enum CameraFocusMagnifierPreferences {
-    static let isEnabledKey = "CameraFocusMagnifierEnabled"
-    static let defaultIsEnabled = true
+nonisolated enum CameraFocusMagnifierPreference: String, CaseIterable, Identifiable, Sendable {
+    case off
+    case brief
+    case standard
+    case extended
+
+    static let storageKey = "CameraFocusMagnifierPreference"
+    static let defaultValue = CameraFocusMagnifierPreference.brief
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .off:
+            "Off"
+        case .brief:
+            "1.5s"
+        case .standard:
+            "3s"
+        case .extended:
+            "5s"
+        }
+    }
+
+    var duration: Duration? {
+        switch self {
+        case .off:
+            nil
+        case .brief:
+            .milliseconds(1_500)
+        case .standard:
+            .seconds(3)
+        case .extended:
+            .seconds(5)
+        }
+    }
+
+    static func resolved(rawValue: String) -> CameraFocusMagnifierPreference {
+        CameraFocusMagnifierPreference(rawValue: rawValue) ?? defaultValue
+    }
 }
 
 nonisolated enum CameraManualFocusTapAssistPreferences {
@@ -147,6 +184,21 @@ nonisolated struct CameraFocusRuntimeEvent: Equatable, Identifiable, Sendable {
         case focusStarted
         case focusSettled
         case subjectAreaChanged
+    }
+
+    let id: UUID
+    let kind: Kind
+
+    init(kind: Kind, id: UUID = UUID()) {
+        self.id = id
+        self.kind = kind
+    }
+}
+
+nonisolated struct CameraExposureRuntimeEvent: Equatable, Identifiable, Sendable {
+    nonisolated enum Kind: Equatable, Sendable {
+        case exposureStarted
+        case exposureSettled
     }
 
     let id: UUID

@@ -164,7 +164,7 @@ nonisolated struct CameraManualControlSummary: Equatable, Sendable {
             .unchanged
         case .continuousAuto:
             .explicitAuto("Continuous auto focus")
-        case .autoFocus:
+        case .autoFocus, .autoFocusOnly:
             .manual("Auto focus")
         case .locked:
             .manual("Locked focus")

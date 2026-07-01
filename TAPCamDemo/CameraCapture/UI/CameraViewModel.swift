@@ -36,6 +36,8 @@ final class CameraViewModel: ObservableObject {
     @Published var recentThumbnail: UIImage?
     @Published var latestCaptureDepthHint: CameraCaptureDepthHint?
     @Published var focusRuntimeEvent: CameraFocusRuntimeEvent?
+    @Published var exposureRuntimeEvent: CameraExposureRuntimeEvent?
+    @Published var latestManualControlReadback: CameraManualControlReadbackSnapshot?
     #if DEBUG
     @Published var debugDepthDeviceOptions: [DebugDepthDeviceOption]
     @Published var debugSelectedDepthDeviceID: String?
@@ -101,6 +103,14 @@ final class CameraViewModel: ObservableObject {
         activeSessionConfiguration?.controlCapabilities
     }
 
+    var isManualFocusControlAvailable: Bool {
+        guard let activeSessionConfiguration else {
+            return false
+        }
+        return activeSessionConfiguration.device.position != .front
+            && activeSessionConfiguration.controlCapabilities.focus.supportsManualLensPosition
+    }
+
     var isFlashAvailable: Bool {
         sessionController.photoOutput.supportedFlashModes.contains(.auto)
             || sessionController.photoOutput.supportedFlashModes.contains(.on)
@@ -135,6 +145,13 @@ final class CameraViewModel: ObservableObject {
             Task { @MainActor in
                 self?.focusRuntimeEvent = CameraFocusRuntimeEvent(
                     kind: CameraFocusRuntimeEvent.Kind(captureSessionEvent: event)
+                )
+            }
+        }
+        sessionController.setExposureRuntimeEventHandler { [weak self] event in
+            Task { @MainActor in
+                self?.exposureRuntimeEvent = CameraExposureRuntimeEvent(
+                    kind: CameraExposureRuntimeEvent.Kind(captureSessionEvent: event)
                 )
             }
         }
@@ -313,6 +330,28 @@ final class CameraViewModel: ObservableObject {
         }
     }
 
+    func focusOnlyAtPreviewPoint(_ point: CameraPreviewFocusPoint) async {
+        guard let activeSessionConfiguration else {
+            return
+        }
+
+        let intentPoint = CameraManualControlIntent.NormalizedPoint(x: point.x, y: point.y)
+        let intent = CameraManualControlIntent(
+            targetDeviceID: activeSessionConfiguration.controlCapabilities.deviceID,
+            exposure: nil,
+            focus: .autoFocusOnly(pointOfInterest: intentPoint),
+            whiteBalance: nil,
+            aperture: nil,
+            zoomFactor: nil
+        )
+
+        await applyCameraControlIntent(
+            intent,
+            against: activeSessionConfiguration.controlCapabilities,
+            to: activeSessionConfiguration.device
+        )
+    }
+
     func lockFocusAndExposure() async {
         await lockFocusAndExposure(at: nil)
     }
@@ -431,7 +470,8 @@ final class CameraViewModel: ObservableObject {
         }
 
         let capability = activeSessionConfiguration.controlCapabilities
-        guard capability.focus.supportsManualLensPosition else {
+        guard activeSessionConfiguration.device.position != .front,
+              capability.focus.supportsManualLensPosition else {
             statusMessage = "Manual focus unavailable"
             return
         }
@@ -445,6 +485,34 @@ final class CameraViewModel: ObservableObject {
             zoomFactor: nil
         )
         await applyCameraControlIntent(intent, against: capability, to: activeSessionConfiguration.device)
+    }
+
+    func readManualControlSnapshot(
+        reason: CameraManualControlReadbackReason
+    ) async -> CameraManualControlReadbackSnapshot? {
+        guard let activeSessionConfiguration else {
+            return nil
+        }
+
+        let snapshot = await sessionController.readManualControlSnapshot(
+            reason: reason,
+            generation: configurationGeneration,
+            from: activeSessionConfiguration.device
+        )
+        latestManualControlReadback = snapshot
+        return snapshot
+    }
+
+    func applyManualControlIntent(_ intent: CameraManualControlIntent) async {
+        guard let activeSessionConfiguration else {
+            return
+        }
+
+        await applyCameraControlIntent(
+            intent,
+            against: activeSessionConfiguration.controlCapabilities,
+            to: activeSessionConfiguration.device
+        )
     }
 
     func restoreAutoFocus() async {
@@ -514,6 +582,17 @@ private extension CameraFocusRuntimeEvent.Kind {
             self = .focusSettled
         case .subjectAreaChanged:
             self = .subjectAreaChanged
+        }
+    }
+}
+
+private extension CameraExposureRuntimeEvent.Kind {
+    init(captureSessionEvent: CaptureSessionExposureRuntimeEvent) {
+        switch captureSessionEvent {
+        case .exposureStarted:
+            self = .exposureStarted
+        case .exposureSettled:
+            self = .exposureSettled
         }
     }
 }

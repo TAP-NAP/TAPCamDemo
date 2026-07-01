@@ -16,6 +16,11 @@ nonisolated enum CaptureSessionFocusRuntimeEvent: Equatable, Sendable {
     case subjectAreaChanged
 }
 
+nonisolated enum CaptureSessionExposureRuntimeEvent: Equatable, Sendable {
+    case exposureStarted
+    case exposureSettled
+}
+
 /// Owns the managed SingleCam `AVCaptureSession` and its mutation queue.
 ///
 /// This is the only production type that changes the AVFoundation session
@@ -28,8 +33,10 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
 
     private let sessionQueue = DispatchQueue(label: "tapcam.camera-capture.singlecam.session")
     private var focusRuntimeEventHandler: (@Sendable (CaptureSessionFocusRuntimeEvent) -> Void)?
+    private var exposureRuntimeEventHandler: (@Sendable (CaptureSessionExposureRuntimeEvent) -> Void)?
     private var subjectAreaChangeObserver: NSObjectProtocol?
     private var focusAdjustingObservation: NSKeyValueObservation?
+    private var exposureAdjustingObservation: NSKeyValueObservation?
 
     init() {
         CameraControlService.registerSessionQueue(sessionQueue)
@@ -40,6 +47,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             NotificationCenter.default.removeObserver(subjectAreaChangeObserver)
         }
         focusAdjustingObservation?.invalidate()
+        exposureAdjustingObservation?.invalidate()
     }
 
     var isShutterSoundSuppressionSupported: Bool {
@@ -51,6 +59,14 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     ) {
         sessionQueue.async { [weak self] in
             self?.focusRuntimeEventHandler = handler
+        }
+    }
+
+    func setExposureRuntimeEventHandler(
+        _ handler: (@Sendable (CaptureSessionExposureRuntimeEvent) -> Void)?
+    ) {
+        sessionQueue.async { [weak self] in
+            self?.exposureRuntimeEventHandler = handler
         }
     }
 
@@ -69,7 +85,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                         photoOutput: photoOutput,
                         request: request
                     )
-                    observeFocusRuntimeEvents(for: result.device)
+                    observeRuntimeEvents(for: result.device)
 
                     if !session.isRunning {
                         session.startRunning()
@@ -84,9 +100,11 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         }
     }
 
-    private func observeFocusRuntimeEvents(for device: AVCaptureDevice) {
+    private func observeRuntimeEvents(for device: AVCaptureDevice) {
         focusAdjustingObservation?.invalidate()
         focusAdjustingObservation = nil
+        exposureAdjustingObservation?.invalidate()
+        exposureAdjustingObservation = nil
 
         if let subjectAreaChangeObserver {
             NotificationCenter.default.removeObserver(subjectAreaChangeObserver)
@@ -107,11 +125,24 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             }
             self?.emitFocusRuntimeEvent(isAdjustingFocus ? .focusStarted : .focusSettled)
         }
+
+        exposureAdjustingObservation = device.observe(\.isAdjustingExposure, options: [.new]) { [weak self] _, change in
+            guard let isAdjustingExposure = change.newValue else {
+                return
+            }
+            self?.emitExposureRuntimeEvent(isAdjustingExposure ? .exposureStarted : .exposureSettled)
+        }
     }
 
     private func emitFocusRuntimeEvent(_ event: CaptureSessionFocusRuntimeEvent) {
         sessionQueue.async { [weak self] in
             self?.focusRuntimeEventHandler?(event)
+        }
+    }
+
+    private func emitExposureRuntimeEvent(_ event: CaptureSessionExposureRuntimeEvent) {
+        sessionQueue.async { [weak self] in
+            self?.exposureRuntimeEventHandler?(event)
         }
     }
 
@@ -171,6 +202,33 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             to: device
         )
         return presentation
+    }
+
+    func readManualControlSnapshot(
+        reason: CameraManualControlReadbackReason,
+        generation: Int,
+        from device: AVCaptureDevice
+    ) async -> CameraManualControlReadbackSnapshot {
+        await withCheckedContinuation { continuation in
+            sessionQueue.async {
+                let capability = CameraControlCapabilitySnapshot.make(device: device)
+                continuation.resume(returning: CameraManualControlReadbackSnapshot(
+                    deviceID: device.uniqueID,
+                    controlSurfaceSignature: CameraManualControlCommandPlan.ControlSurfaceSignature(capability: capability),
+                    generation: generation,
+                    iso: capability.exposure.currentISO,
+                    shutterDurationSeconds: capability.exposure.currentShutterDurationSeconds,
+                    exposureTargetOffset: capability.exposure.currentExposureTargetOffset,
+                    exposureTargetBias: Double(device.exposureTargetBias),
+                    lensPosition: capability.focus.currentLensPosition,
+                    exposureMode: CameraManualControlReadbackExposureMode(device.exposureMode),
+                    focusMode: CameraManualControlReadbackFocusMode(device.focusMode),
+                    isAdjustingExposure: device.isAdjustingExposure,
+                    isAdjustingFocus: device.isAdjustingFocus,
+                    reason: reason
+                ))
+            }
+        }
     }
 
     func restoreAutoPhotoControls(
@@ -522,5 +580,35 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         }
 
         return min(width, height) / max(width, height)
+    }
+}
+
+private extension CameraManualControlReadbackExposureMode {
+    init(_ mode: AVCaptureDevice.ExposureMode) {
+        switch mode {
+        case .continuousAutoExposure, .autoExpose:
+            self = .continuousAuto
+        case .locked:
+            self = .locked
+        case .custom:
+            self = .custom
+        @unknown default:
+            self = .unknown
+        }
+    }
+}
+
+private extension CameraManualControlReadbackFocusMode {
+    init(_ mode: AVCaptureDevice.FocusMode) {
+        switch mode {
+        case .continuousAutoFocus:
+            self = .continuousAuto
+        case .autoFocus:
+            self = .autoFocus
+        case .locked:
+            self = .locked
+        @unknown default:
+            self = .unknown
+        }
     }
 }

@@ -8,9 +8,45 @@ import SwiftUI
 import UIKit
 
 nonisolated struct CameraAdjustmentControlState: Equatable, Sendable {
+    nonisolated struct ExposureRiskRanges: Equatable, Sendable {
+        let iso: [ClosedRange<Double>]
+        let shutterDurationSeconds: [ClosedRange<Double>]
+
+        static let empty = ExposureRiskRanges(iso: [], shutterDurationSeconds: [])
+    }
+
     nonisolated enum ExposureMode: Equatable, Sendable {
         case auto(globalBias: Double)
+        case isoPriority(globalBias: Double)
+        case shutterPriority(globalBias: Double)
         case custom(meterOffset: Double)
+
+        var isISOAutomatic: Bool {
+            switch self {
+            case .auto, .shutterPriority:
+                true
+            case .isoPriority, .custom:
+                false
+            }
+        }
+
+        var isShutterAutomatic: Bool {
+            switch self {
+            case .auto, .isoPriority:
+                true
+            case .shutterPriority, .custom:
+                false
+            }
+        }
+
+        var isEVReadOnly: Bool {
+            switch self {
+            case .custom:
+                true
+            case .auto, .isoPriority, .shutterPriority:
+                false
+            }
+        }
     }
 
     nonisolated struct Exposure: Equatable, Sendable {
@@ -18,6 +54,8 @@ nonisolated struct CameraAdjustmentControlState: Equatable, Sendable {
         let mode: ExposureMode
         let isoRange: ClosedRange<Double>
         let shutterDurationRangeSeconds: ClosedRange<Double>
+        let isoRiskRanges: [ClosedRange<Double>]
+        let shutterDurationRiskRanges: [ClosedRange<Double>]
         let iso: Double
         let shutterDurationSeconds: Double
 
@@ -25,22 +63,34 @@ nonisolated struct CameraAdjustmentControlState: Equatable, Sendable {
             switch mode {
             case .auto:
                 false
-            case .custom:
+            case .isoPriority, .shutterPriority, .custom:
                 true
             }
         }
 
         var evTitle: String {
-            isCustom ? "Meter" : "EV"
+            mode.isEVReadOnly ? "Meter" : "EV"
         }
 
         var evValue: String {
             switch mode {
             case .auto(let globalBias):
                 Self.signedLabel(globalBias, zeroPrefix: "0.0")
+            case .isoPriority(let globalBias):
+                Self.signedLabel(globalBias, zeroPrefix: "0.0")
+            case .shutterPriority(let globalBias):
+                Self.signedLabel(globalBias, zeroPrefix: "0.0")
             case .custom(let meterOffset):
                 Self.signedLabel(meterOffset, zeroPrefix: "0.0")
             }
+        }
+
+        var isoBadge: String {
+            mode.isISOAutomatic ? "A" : "M"
+        }
+
+        var shutterBadge: String {
+            mode.isShutterAutomatic ? "A" : "M"
         }
 
         var isoValue: String {
@@ -152,7 +202,9 @@ nonisolated struct CameraAdjustmentControlState: Equatable, Sendable {
         activeControl: CameraAdjustmentControl?,
         exposureMode: ExposureMode,
         focusMode: CameraFocusControlMode,
-        draft: CameraAdjustmentControlDraft
+        draft: CameraAdjustmentControlDraft,
+        exposureRiskRanges: ExposureRiskRanges = .empty,
+        allowsManualFocusControl: Bool = true
     ) {
         let exposureRange = Self.closedRange(from: capability.exposure.shutterDurationRangeSeconds)
         let isoRange = Self.closedRange(from: capability.exposure.isoRange)
@@ -162,11 +214,13 @@ nonisolated struct CameraAdjustmentControlState: Equatable, Sendable {
             mode: exposureMode,
             isoRange: isoRange,
             shutterDurationRangeSeconds: exposureRange,
+            isoRiskRanges: exposureRiskRanges.iso,
+            shutterDurationRiskRanges: exposureRiskRanges.shutterDurationSeconds,
             iso: clamped(draft.iso, in: isoRange),
             shutterDurationSeconds: clamped(draft.shutterDurationSeconds, in: exposureRange)
         )
         focus = Focus(
-            isAvailable: capability.focus.supportsManualLensPosition,
+            isAvailable: allowsManualFocusControl && capability.focus.supportsManualLensPosition,
             mode: focusMode,
             lensPositionRange: focusRange,
             lensPosition: clamped(draft.lensPosition, in: focusRange),
@@ -311,7 +365,7 @@ struct CameraLowerToolbarView: View {
             parameterButton(
                 title: "ISO",
                 value: state.exposure.isoValue,
-                badge: state.exposure.isCustom ? nil : "A",
+                badge: state.exposure.isoBadge,
                 control: .iso,
                 isEnabled: state.exposure.isAvailable,
                 contentRotation: contentRotation
@@ -320,7 +374,7 @@ struct CameraLowerToolbarView: View {
             parameterButton(
                 title: "S",
                 value: state.exposure.shutterValue,
-                badge: state.exposure.isCustom ? nil : "A",
+                badge: state.exposure.shutterBadge,
                 control: .shutter,
                 isEnabled: state.exposure.isAvailable,
                 contentRotation: contentRotation
@@ -332,12 +386,12 @@ struct CameraLowerToolbarView: View {
                     value: nil,
                     badge: nil,
                     isActive: state.activeControl == .focus,
-                    isEnabled: state.focus.isAvailable || state.focus.mode == .auto,
+                    isEnabled: state.focus.isAvailable,
                     contentRotation: contentRotation
                 )
             }
             .buttonStyle(.plain)
-            .disabled(!state.focus.isAvailable && state.focus.mode == .auto)
+            .disabled(!state.focus.isAvailable)
             .accessibilityLabel(state.focus.mode == .auto ? "Auto focus" : "Manual focus")
             .accessibilityIdentifier("camera.lowerToolbar.focus")
 
@@ -389,6 +443,8 @@ struct CameraTickedAdjustmentStrip: View {
     let onAdjustISO: (Double) -> Void
     let onAdjustShutterPosition: (Double) -> Void
     let onAdjustLensPosition: (Double) -> Void
+    let onBeginAdjustment: (CameraAdjustmentControl) -> Void
+    let onEndAdjustment: (CameraAdjustmentControl) -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -418,6 +474,10 @@ struct CameraTickedAdjustmentStrip: View {
             switch state.exposure.mode {
             case .auto(let globalBias):
                 return globalBias
+            case .isoPriority(let globalBias):
+                return globalBias
+            case .shutterPriority(let globalBias):
+                return globalBias
             case .custom:
                 return 0
             }
@@ -431,8 +491,11 @@ struct CameraTickedAdjustmentStrip: View {
             ),
             range: CameraEVPreferences.minimumGlobalBias...CameraEVPreferences.maximumGlobalBias,
             step: CameraEVPreferences.adjustmentStep,
-            isEnabled: !state.exposure.isCustom,
-            contentRotation: contentRotation
+            isEnabled: !state.exposure.mode.isEVReadOnly,
+            contentRotation: contentRotation,
+            riskRanges: [],
+            onEditingBegan: { onBeginAdjustment(.ev) },
+            onEditingEnded: { onEndAdjustment(.ev) }
         )
     }
 
@@ -447,7 +510,10 @@ struct CameraTickedAdjustmentStrip: View {
             range: state.exposure.isoRange,
             step: 1,
             isEnabled: state.exposure.isAvailable,
-            contentRotation: contentRotation
+            contentRotation: contentRotation,
+            riskRanges: state.exposure.isoRiskRanges,
+            onEditingBegan: { onBeginAdjustment(.iso) },
+            onEditingEnded: { onEndAdjustment(.iso) }
         )
     }
 
@@ -462,8 +528,19 @@ struct CameraTickedAdjustmentStrip: View {
             range: 0...1,
             step: 0.01,
             isEnabled: state.exposure.isAvailable,
-            contentRotation: contentRotation
+            contentRotation: contentRotation,
+            riskRanges: shutterRiskRangesForSlider,
+            onEditingBegan: { onBeginAdjustment(.shutter) },
+            onEditingEnded: { onEndAdjustment(.shutter) }
         )
+    }
+
+    private var shutterRiskRangesForSlider: [ClosedRange<Double>] {
+        state.exposure.shutterDurationRiskRanges.map { range in
+            let lower = state.exposure.normalizedShutterPosition(for: range.lowerBound)
+            let upper = state.exposure.normalizedShutterPosition(for: range.upperBound)
+            return min(lower, upper)...max(lower, upper)
+        }
     }
 
     private var focusStrip: some View {
@@ -477,12 +554,70 @@ struct CameraTickedAdjustmentStrip: View {
             range: state.focus.lensPositionRange,
             step: 0.01,
             isEnabled: state.focus.isAvailable && state.focus.mode == .manual,
-            contentRotation: contentRotation
+            contentRotation: contentRotation,
+            riskRanges: [],
+            onEditingBegan: { onBeginAdjustment(.focus) },
+            onEditingEnded: { onEndAdjustment(.focus) }
         )
     }
 }
 
-private struct CameraToolbarButtonContent: View {
+struct CameraLowerToolbarPlaceholderView: View {
+    let contentRotation: Angle
+
+    var body: some View {
+        HStack(spacing: 8) {
+            CameraToolbarButtonContent(
+                title: "EV",
+                value: "0.0",
+                badge: nil,
+                isActive: false,
+                isEnabled: false,
+                contentRotation: contentRotation
+            )
+
+            CameraToolbarButtonContent(
+                title: "ISO",
+                value: "--",
+                badge: "A",
+                isActive: false,
+                isEnabled: false,
+                contentRotation: contentRotation
+            )
+
+            CameraToolbarButtonContent(
+                title: "S",
+                value: "--",
+                badge: "A",
+                isActive: false,
+                isEnabled: false,
+                contentRotation: contentRotation
+            )
+
+            CameraToolbarButtonContent(
+                title: "AF",
+                value: nil,
+                badge: nil,
+                isActive: false,
+                isEnabled: false,
+                contentRotation: contentRotation
+            )
+
+            CameraToolbarButtonContent(
+                title: "ƒ",
+                value: "--",
+                badge: nil,
+                isActive: false,
+                isEnabled: false,
+                contentRotation: contentRotation
+            )
+        }
+        .foregroundStyle(.white)
+        .accessibilityIdentifier("camera.lowerToolbar.placeholder")
+    }
+}
+
+struct CameraToolbarButtonContent: View {
     let title: String
     let value: String?
     let badge: String?
@@ -548,8 +683,12 @@ private struct TickedSliderRow: View {
     let step: Double
     let isEnabled: Bool
     let contentRotation: Angle
+    let riskRanges: [ClosedRange<Double>]
+    let onEditingBegan: () -> Void
+    let onEditingEnded: () -> Void
 
     @State private var lastHapticStepIndex: Int?
+    @State private var isDragging = false
 
     var body: some View {
         GeometryReader { proxy in
@@ -561,6 +700,9 @@ private struct TickedSliderRow: View {
                 tickMarks
                     .padding(.horizontal, Metrics.tickHorizontalPadding)
                     .frame(width: trackWidth, height: Metrics.trackHeight)
+                    .position(x: portraitAdjustmentCenterline, y: rowCenterY)
+
+                riskZoneLayer(trackWidth: trackWidth)
                     .position(x: portraitAdjustmentCenterline, y: rowCenterY)
 
                 valueCursor
@@ -581,12 +723,16 @@ private struct TickedSliderRow: View {
                                     guard isEnabled else {
                                         return
                                     }
+                                    beginEditingIfNeeded()
                                     updateValue(
                                         steppedValue(
                                             at: value.location.x,
                                             width: trackProxy.size.width
                                         )
                                     )
+                                }
+                                .onEnded { _ in
+                                    endEditingIfNeeded()
                                 }
                         )
                 }
@@ -675,6 +821,23 @@ private struct TickedSliderRow: View {
         .allowsHitTesting(false)
     }
 
+    private func riskZoneLayer(trackWidth: CGFloat) -> some View {
+        ZStack(alignment: .leading) {
+            ForEach(Array(riskRanges.enumerated()), id: \.offset) { _, range in
+                let start = normalizedPosition(for: range.lowerBound)
+                let end = normalizedPosition(for: range.upperBound)
+                let width = max(CGFloat(end - start) * trackWidth, 0)
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(.gray.opacity(0.34))
+                    .frame(width: width, height: 6)
+                    .offset(x: CGFloat(start) * trackWidth)
+            }
+        }
+        .frame(width: trackWidth, height: 8, alignment: .leading)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
     private var valueCursor: some View {
         Circle()
             .fill(isEnabled ? .yellow : .white.opacity(0.36))
@@ -728,18 +891,38 @@ private struct TickedSliderRow: View {
     }
 
     private var normalizedValue: Double {
+        normalizedPosition(for: valueBinding.wrappedValue)
+    }
+
+    private func normalizedPosition(for value: Double) -> Double {
         let lowerBound = range.lowerBound
         let upperBound = range.upperBound
         guard upperBound > lowerBound else {
             return 0.5
         }
-        return min(max((valueBinding.wrappedValue - lowerBound) / (upperBound - lowerBound), 0), 1)
+        return min(max((value - lowerBound) / (upperBound - lowerBound), 0), 1)
     }
 
     private func updateValue(_ value: Double) {
         let nextValue = steppedClampedValue(value)
         triggerSelectionHapticIfNeeded(for: nextValue)
         valueBinding.wrappedValue = nextValue
+    }
+
+    private func beginEditingIfNeeded() {
+        guard !isDragging else {
+            return
+        }
+        isDragging = true
+        onEditingBegan()
+    }
+
+    private func endEditingIfNeeded() {
+        guard isDragging else {
+            return
+        }
+        isDragging = false
+        onEditingEnded()
     }
 
     private func triggerSelectionHapticIfNeeded(for value: Double) {

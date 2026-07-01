@@ -238,6 +238,12 @@ nonisolated enum CameraControlService {
             }
             device.focusMode = .autoFocus
             device.isSubjectAreaChangeMonitoringEnabled = true
+        case .autoFocusOnly(let pointOfInterest):
+            if let pointOfInterest, device.isFocusPointOfInterestSupported {
+                device.focusPointOfInterest = CGPoint(x: pointOfInterest.x, y: pointOfInterest.y)
+            }
+            device.focusMode = .autoFocus
+            device.isSubjectAreaChangeMonitoringEnabled = true
         case .locked(let lensPosition):
             device.isSubjectAreaChangeMonitoringEnabled = false
             if let lensPosition {

@@ -33,9 +33,10 @@ manual user intent on its own; future controls should pass only a resolved
 executable command plan into session-queue-safe service commands.
 The service registers `CaptureSessionController`'s serial session queue and
 rejects device writes outside that queue. It uses the session-safe runtime path
-for baseline focus, virtual camera switching, raw zoom writes, and future
-manual-control command application. This is infrastructure for future manual
-controls; it does not add sliders, buttons, or a visible manual camera mode.
+for baseline focus, virtual camera switching, raw zoom writes, manual-control
+command application, focus-only AF assist, and manual-control readback. Runtime
+readback returns a pure `CameraManualControlReadbackSnapshot`; it does not
+persist, log, or infer product state on its own.
 
 ## Code Map
 
@@ -45,6 +46,7 @@ controls; it does not add sliders, buttons, or a visible manual camera mode.
 | Capture job and context models | [CaptureJob.swift](CaptureJob.swift) |
 | Session graph owner | [CaptureSessionController.swift](CaptureSessionController.swift) |
 | Session-safe camera control writes | [CameraControlService.swift](CameraControlService.swift) |
+| Pure readback value handed to UI/Planning | [../Planning/CameraManualControlReadbackSnapshot.swift](../Planning/CameraManualControlReadbackSnapshot.swift) |
 | Photo-depth provider protocol | [SingleCamPhotoCaptureProvider.swift](SingleCamPhotoCaptureProvider.swift) |
 | AVFoundation provider | [AVFoundationSingleCamPhotoProvider.swift](AVFoundationSingleCamPhotoProvider.swift) |
 

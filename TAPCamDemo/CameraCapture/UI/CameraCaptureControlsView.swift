@@ -56,6 +56,8 @@ struct CameraCaptureControlsView: View {
     let onAdjustISO: (Double) -> Void
     let onAdjustShutterPosition: (Double) -> Void
     let onAdjustLensPosition: (Double) -> Void
+    let onBeginAdjustment: (CameraAdjustmentControl) -> Void
+    let onEndAdjustment: (CameraAdjustmentControl) -> Void
 
     @State private var isShutterTouchActive = false
 
@@ -114,7 +116,9 @@ struct CameraCaptureControlsView: View {
                     onAdjustEV: onAdjustEV,
                     onAdjustISO: onAdjustISO,
                     onAdjustShutterPosition: onAdjustShutterPosition,
-                    onAdjustLensPosition: onAdjustLensPosition
+                    onAdjustLensPosition: onAdjustLensPosition,
+                    onBeginAdjustment: onBeginAdjustment,
+                    onEndAdjustment: onEndAdjustment
                 )
                 .transition(.opacity)
             } else {
@@ -154,21 +158,7 @@ struct CameraCaptureControlsView: View {
                 onToggleFocusMode: onToggleFocusMode
             )
         } else {
-            HStack(spacing: 8) {
-                ForEach(["EV", "ISO", "S", "AF", "ƒ"], id: \.self) { title in
-                    CenterAnchoredChromeRotation(
-                        rotation: state.contentRotation,
-                        width: 58,
-                        height: 38
-                    ) {
-                        Text(title)
-                            .font(.caption2.weight(.bold))
-                            .monospaced()
-                    }
-                    .background(.black.opacity(0.32), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .foregroundStyle(.white.opacity(0.30))
-                }
-            }
+            CameraLowerToolbarPlaceholderView(contentRotation: state.contentRotation)
         }
     }
 

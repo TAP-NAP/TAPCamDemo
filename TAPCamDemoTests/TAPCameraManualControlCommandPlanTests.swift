@@ -77,6 +77,27 @@ struct TAPCameraManualControlCommandPlanTests {
         #expect(!plan.requiresRuntimeWrite)
     }
 
+    @Test func manualControlCommandPlanKeepsFocusOnlyTapAssistDistinct() throws {
+        let capability = TAPCamDemoTestFixtures.sampleManualControlCapability()
+        let focusPoint = CameraManualControlIntent.NormalizedPoint(x: 0.4, y: 0.6)
+        let expectedFocusPoint = CameraManualControlCommandPlan.NormalizedPoint(x: 0.4, y: 0.6)
+        let plan = CameraManualControlCommandPlan(
+            resolution: CameraManualControlIntent(
+                targetDeviceID: capability.deviceID,
+                exposure: nil,
+                focus: .autoFocusOnly(pointOfInterest: focusPoint),
+                whiteBalance: nil,
+                aperture: nil,
+                zoomFactor: nil
+            ).resolved(against: capability)
+        )
+
+        #expect(plan.commands == [
+            .focus(.autoFocusOnly(pointOfInterest: expectedFocusPoint))
+        ])
+    }
+
+
     @Test func manualControlCommandPlanStringRepresentationsRedactRuntimeValues() throws {
         let capability = TAPCamDemoTestFixtures.sampleManualControlCapability(deviceID: "secret-device-id")
         let plan = CameraManualControlCommandPlan(

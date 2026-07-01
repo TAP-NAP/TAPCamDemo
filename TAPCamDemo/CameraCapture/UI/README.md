@@ -14,11 +14,11 @@ The current control vocabulary and placement rules live in
 | --- | --- |
 | Main camera screen shell, object lifetime, navigation, sheet, camera chrome state, and capture action owner | [CameraView.swift](CameraView.swift) |
 | Viewfinder chrome state, top shoulder Settings, and Flash/Live Photo toolbar | [CameraViewfinderChromeView.swift](CameraViewfinderChromeView.swift) |
-| Lower toolbar parameter buttons, AF/MF state, and ticked adjustment strip | [CameraAdjustmentControlView.swift](CameraAdjustmentControlView.swift) |
-| First-stage camera UX preferences, mode enums, flash mode, AF/MF mode, LiDAR Focus Assist setting, Manual Focus Tap Assist setting, and idle-timer policy | [CameraUXPreferences.swift](CameraUXPreferences.swift) |
+| Lower toolbar parameter buttons, AF/MF state, exposure risk-zone display, and ticked adjustment strip | [CameraAdjustmentControlView.swift](CameraAdjustmentControlView.swift) |
+| First-stage camera UX preferences, mode enums, flash mode, AF/MF mode, Focus Magnifier duration setting, LiDAR Focus Assist setting, Manual Focus Tap Assist setting, and idle-timer policy | [CameraUXPreferences.swift](CameraUXPreferences.swift) |
 | Live preview stage, preview sizing, crop metadata callback, tap-focus and temporary-EV gesture layer, focus loupe, viewfinder edge toast, guide overlay, FOV overlay, and Debug overlay host | [CameraPreviewStageView.swift](CameraPreviewStageView.swift) |
 | Settings-owned guide overlay renderer | [CameraGuideOverlayView.swift](CameraGuideOverlayView.swift) |
-| Debug-only preview overlay for status, depth source, zoom, and performance panels | [CameraPreviewDebugOverlayView.swift](CameraPreviewDebugOverlayView.swift) |
+| Debug-only preview overlay for status, depth source, zoom, manual-control readback strings, and performance panels | [CameraPreviewDebugOverlayView.swift](CameraPreviewDebugOverlayView.swift) |
 | Bottom camera chrome, mode selector slot, lower toolbar host, TAP Library entry, shutter touch state, camera switch button, and disabled mode strip | [CameraCaptureControlsView.swift](CameraCaptureControlsView.swift) |
 | Observable camera state | [CameraViewModel.swift](CameraViewModel.swift) |
 | Public-safe status and metrics failure text consumed by CameraViewModel and Debug overlays | [../Support/CameraCaptureStatusPresentation.swift](../Support/CameraCaptureStatusPresentation.swift) |
@@ -138,7 +138,7 @@ If this directory is new to you, read it in this order:
    state, and top-level capture/open/switch actions.
 10. [CameraUXPreferences.swift](CameraUXPreferences.swift) for first-stage
    camera UI enums and preference policy: guide selection, EV reset default,
-   Focus Magnifier default, LiDAR Focus Assist default, Manual Focus Tap Assist
+   Focus Magnifier duration default, LiDAR Focus Assist default, Manual Focus Tap Assist
    default, depth-warning default, keep-screen-awake default, AF/MF mode, flash
    mode, disabled capture modes, and the idle-timer gate.
 11. [CameraViewfinderChromeView.swift](CameraViewfinderChromeView.swift) for the
@@ -152,13 +152,14 @@ If this directory is new to you, read it in this order:
    [CameraGuideOverlayView.swift](CameraGuideOverlayView.swift) for preview
    sizing, render-only `AVCaptureSession` handoff, crop metadata callback,
    tap-focus point mapping, temporary focus EV adjustment, long-press AE/AF
-   lock routing, MF focus loupe, viewfinder edge toast, Settings-owned guide
+   lock routing, MF focus loupe duration, viewfinder edge toast, Settings-owned guide
    overlay, FOV overlay, and Debug overlay hosting. The stage receives
    display-only FOV, focus-point, temporary EV, focus mode, toast, and guide
    state, not camera profiles, depth profiles, raw device identifiers, or
    capture plans.
 14. [CameraPreviewDebugOverlayView.swift](CameraPreviewDebugOverlayView.swift)
-   for Debug-only status, depth source, zoom, and performance overlay layout.
+   for Debug-only status, depth source, zoom, manual-control readback strings,
+   and performance overlay layout.
    It owns the expanded/collapsed overlay state and receives display-only depth
    and zoom rows; it does not own preview sizing, crop metadata, release chrome
    rotation, capture planning, signing, export, or persistence.

@@ -79,6 +79,20 @@ struct TAPCameraManualControlIntentTests {
         #expect(intent.resolved(against: capability).isExecutable)
     }
 
+    @Test func manualControlIntentAcceptsFocusOnlyTapAssistRequest() throws {
+        let capability = TAPCamDemoTestFixtures.sampleManualControlCapability()
+        let intent = CameraManualControlIntent(
+            targetDeviceID: capability.deviceID,
+            exposure: nil,
+            focus: .autoFocusOnly(pointOfInterest: .init(x: 0.4, y: 0.6)),
+            whiteBalance: nil,
+            aperture: nil,
+            zoomFactor: nil
+        )
+
+        #expect(intent.resolved(against: capability).isExecutable)
+    }
+
     @Test func manualControlIntentRejectsUnsupportedAndOutOfRangeValues() throws {
         let capability = TAPCamDemoTestFixtures.sampleManualControlCapability(
             supportsLockedExposure: false,

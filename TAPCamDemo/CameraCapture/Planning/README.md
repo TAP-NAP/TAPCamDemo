@@ -17,6 +17,8 @@ not capture photos.
 | Manual-control user intent | [CameraManualControlIntent.swift](CameraManualControlIntent.swift) |
 | Manual-control field summary | [CameraManualControlSummary.swift](CameraManualControlSummary.swift) |
 | Manual-control Runtime command plan | [CameraManualControlCommandPlan.swift](CameraManualControlCommandPlan.swift) |
+| TAPCam-owned exposure-priority and metering state | [CameraExposureControlState.swift](CameraExposureControlState.swift) |
+| Manual-control Runtime readback snapshot | [CameraManualControlReadbackSnapshot.swift](CameraManualControlReadbackSnapshot.swift) |
 | Device discovery and profiles | [CameraCapabilityResolver.swift](CameraCapabilityResolver.swift) |
 | Release FOV option matrix | [CapabilityMatrix.swift](CapabilityMatrix.swift) |
 | RGB/depth pairing validation | [RGBDepthCompatibilityMatrix.swift](RGBDepthCompatibilityMatrix.swift) |
@@ -91,6 +93,14 @@ flowchart TD
   device id plus control-surface signature for stale-camera/stale-capability
   protection, so SwiftUI, logs, and persistence must not use it as display
   state.
+- `CameraExposureControlState` is the pure TAPCam exposure model for
+  `A/A`, `M/A`, `A/M`, and `M/M`. It owns `meter baseline`, `pending meter
+  sample`, EV recalculation, read-only `Meter`, risk ranges, and stale
+  generation/device/signature rejection without importing AVFoundation.
+- `CameraManualControlReadbackSnapshot` is a pure value copied from Runtime
+  readback. The caller-supplied reason is Debug/acceptance evidence only; the
+  exposure model consumes the event/sample shape, not reason-specific business
+  branches.
 - Planning still does not mutate `AVCaptureSession`, capture photos, or add UI
   controls.
 
@@ -116,5 +126,9 @@ Read the manual-control files in this order:
    is the Runtime-executable pure command plan. Read it before wiring future
    controls into a session-queue writer; do not use it for UI text, logs, or
    persistence.
-7. [../Runtime/CameraControlService.swift](../Runtime/CameraControlService.swift)
+7. [CameraExposureControlState.swift](CameraExposureControlState.swift) owns the
+   exposure-priority/metering state machine before UI or Runtime writes happen.
+8. [CameraManualControlReadbackSnapshot.swift](CameraManualControlReadbackSnapshot.swift)
+   is the value bridge from Runtime readback into the pure metering model.
+9. [../Runtime/CameraControlService.swift](../Runtime/CameraControlService.swift)
    remains the Runtime write boundary. Planning does not call it directly.

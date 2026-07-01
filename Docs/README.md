@@ -10,6 +10,7 @@ flowchart TD
     Docs["Docs"] --> Startup["Startup\nfirst-install flow"]
     Docs --> AppAttest["AppAttest\nclient/backend/capture proof"]
     Docs --> Future["FutureCameraSpecs\nboundary status"]
+    Docs --> ManualLimits["Manual control\ndevice limits"]
     Docs --> Scorecard["ProjectScorecard\ndated score"]
     Docs --> AITrace["AITrace\ncollaboration trace"]
     AppAttest --> Backend["BackendContract.md"]
@@ -17,6 +18,7 @@ flowchart TD
     AppAttest --> Security["SecurityNotes.md"]
 
     click Future "FutureCameraSpecs.md"
+    click ManualLimits "CameraManualControlDeviceLimits.md"
     click Scorecard "ProjectScorecard.md"
     click AITrace "AITrace/README.md"
     click Startup "Startup/FirstLaunch.md"
@@ -30,6 +32,7 @@ flowchart TD
 | --- | --- |
 | Dated score and from-scratch reading order | [ProjectScorecard.md](ProjectScorecard.md) |
 | Refactor boundary status and future camera specs | [FutureCameraSpecs.md](FutureCameraSpecs.md) |
+| Professional camera-control device limits | [CameraManualControlDeviceLimits.md](CameraManualControlDeviceLimits.md) |
 | AI collaboration trace | [AITrace/README.md](AITrace/README.md) |
 | Output profile contract | [../TAPCamDemo/CameraCapture/Output/README.md](../TAPCamDemo/CameraCapture/Output/README.md) |
 | First-install startup flow | [Startup/FirstLaunch.md](Startup/FirstLaunch.md) |

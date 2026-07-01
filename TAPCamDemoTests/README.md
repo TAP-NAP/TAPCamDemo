@@ -45,6 +45,7 @@ flowchart TD
     Tests --> ManualPresentation["TAPCameraManualControlPresentationTests.swift"]
     Tests --> ManualSummary["TAPCameraManualControlSummaryTests.swift"]
     Tests --> ManualCommandPlan["TAPCameraManualControlCommandPlanTests.swift"]
+    Tests --> ExposureControl["TAPCameraExposureControlStateTests.swift"]
     Tests --> ManualBoundary["TAPCameraManualControlBoundaryGuardTests.swift"]
     Tests --> ControlService["TAPCameraControlServiceTests.swift"]
     Tests --> Route["TAPLibraryRouteTests.swift"]
@@ -117,6 +118,7 @@ flowchart TD
     click ManualPresentation "TAPCameraManualControlPresentationTests.swift"
     click ManualSummary "TAPCameraManualControlSummaryTests.swift"
     click ManualCommandPlan "TAPCameraManualControlCommandPlanTests.swift"
+    click ExposureControl "TAPCameraExposureControlStateTests.swift"
     click ManualBoundary "TAPCameraManualControlBoundaryGuardTests.swift"
     click ControlService "TAPCameraControlServiceTests.swift"
     click Route "TAPLibraryRouteTests.swift"
@@ -165,6 +167,7 @@ suite.
 | Manual camera control public-safe status presentation | No-op/ready/blocked copy, fixed control-group labels, blocked value redaction, hostile device-string redaction, reader-description separation, depth-unsafe zoom status, and Runtime error status copy in [TAPCameraManualControlPresentationTests.swift](TAPCameraManualControlPresentationTests.swift) |
 | Manual camera control field-row summary | No-change versus explicit-auto rows, executable requested rows, blocked row mapping, raw identifier redaction, zoom-only summary, and stored-field privacy checks in [TAPCameraManualControlSummaryTests.swift](TAPCameraManualControlSummaryTests.swift) |
 | Manual camera control Runtime command plan | No-op plans, ordered executable commands, blocked-plan no-command behavior, string/debug redaction, and no session/writer/input-model storage in [TAPCameraManualControlCommandPlanTests.swift](TAPCameraManualControlCommandPlanTests.swift) |
+| TAPCam exposure-priority and metering state | A/A, ISO priority, shutter priority, manual Meter, EV recalc of only the automatic side, pending meter samples, stale generation discard, configuration reset, and equivalent-exposure formula sign coverage in [TAPCameraExposureControlStateTests.swift](TAPCameraExposureControlStateTests.swift) |
 | Manual camera control architecture guards | Command-plan source dependency checks, CameraCapture UI source guard, and Runtime guard-before-lock source order in [TAPCameraManualControlBoundaryGuardTests.swift](TAPCameraManualControlBoundaryGuardTests.swift) |
 | Manual camera control Runtime write service | Matching-plan validation, blocked-plan rejection, stale-camera rejection, stale-control-surface rejection, public error copy, exposure-bias clamping, zoom clamping, and registered session-queue marking in [TAPCameraControlServiceTests.swift](TAPCameraControlServiceTests.swift) |
 | TAP Library record model, path policy, bundle storage, candidate selection, exporting-only recovery policy, exported-location minimization, and store-level failure-reason migration | `pendingCaptureRecordNamesIdentityLocationAndVisibilityWithoutStore`, `pendingCaptureStorePersistsLedgerAcrossInstances`, `pendingCaptureStoreWritesArtifactsThroughLocalStoragePolicy`, `pendingCaptureStoreRejectsUnsafeCaptureIDsBeforeBundlePathUse`, `pendingCaptureStoreRejectsHiddenAndUnicodeCaptureIDs`, `pendingCaptureStoreRejectsTamperedBundleFilenames`, `pendingCaptureBundlePathPolicyKeepsArtifactFilenameAllowListExact`, `pendingCaptureBundlePathPolicyAllowsOnlyCurrentArtifactFilenames`, `pendingCaptureStoreRejectsMismatchedBundleRecordCaptureID`, `pendingCaptureStoreSkipsThumbnailWhenSourceCannotDecode`, `pendingCaptureStoreTracksSigningExportAndCleanup`, `pendingCaptureStoreNormalizesFailureReasonAtWriteSink`, `pendingCaptureStoreClearsFailureReasonForNonFailureStatuses`, `pendingCaptureStoreNormalizesLegacyFailureReasonOnRead`, `pendingCaptureStoreMigratesLegacyBundleJSONFailureReason`, `pendingCaptureStoreMigrationSkipsInvalidBundlesAndNormalizesOthers`, `pendingCaptureStoreAllRecordsNormalizesLegacyFailureReasons`, `pendingCaptureStorePrioritizesSignedExportBeforeFreshSigningAndRetryBacklog`, `pendingCaptureStoreReturnsNextProcessingCandidateWithExclusions`, and thumbnail/exported-index checks in [TAPLibraryStorageTests.swift](TAPLibraryStorageTests.swift) |

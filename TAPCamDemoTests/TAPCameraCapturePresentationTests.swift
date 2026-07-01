@@ -263,7 +263,8 @@ struct TAPCameraCapturePresentationTests {
             temporaryFocusEVOffset: 0.3,
             focusMode: .auto,
             focusRuntimeEvent: nil,
-            isFocusMagnifierEnabled: true,
+            focusMagnifierPreference: .brief,
+            focusLoupePulseID: nil,
             isManualFocusTapAssistEnabled: false,
             viewfinderEdgeToastMessage: nil,
             contentRotation: .zero
@@ -490,6 +491,8 @@ struct TAPCameraCapturePresentationTests {
         #expect(modeStripSource.contains("ForEach(CameraCaptureModeOption.allCases)"))
         #expect(modeStripSource.contains("Text(mode.title)"))
         #expect(!modeStripSource.contains("rotationEffect"))
+        #expect(controlsSource.contains("CameraLowerToolbarPlaceholderView"))
+        #expect(!controlsSource.contains(#"ForEach(["EV", "ISO", "S", "AF", "ƒ"]"#))
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
@@ -669,6 +672,8 @@ struct TAPCameraCapturePresentationTests {
         #expect(state.activeControl == .iso)
         #expect(state.exposure.evTitle == "EV")
         #expect(state.exposure.evValue == "+0.3")
+        #expect(state.exposure.isoBadge == "A")
+        #expect(state.exposure.shutterBadge == "A")
         #expect(abs(resolvedShutter - (1.0 / 125.0)) < 0.0001)
         #expect(state.exposure.isoLabel(for: 400.4) == "400")
         #expect(state.exposure.shutterLabel(for: 1.0 / 120.0) == "1/120")
@@ -689,6 +694,8 @@ struct TAPCameraCapturePresentationTests {
         #expect(state.exposure.isCustom)
         #expect(state.exposure.evTitle == "Meter")
         #expect(state.exposure.evValue == "-0.7")
+        #expect(state.exposure.isoBadge == "M")
+        #expect(state.exposure.shutterBadge == "M")
     }
 
     @Test func cameraAdjustmentControlStateDisablesUnsupportedRows() throws {
@@ -710,6 +717,24 @@ struct TAPCameraCapturePresentationTests {
         #expect(!state.exposure.isAvailable)
         #expect(!state.focus.isAvailable)
         #expect(state.focus.minimumFocusDistanceLabel == nil)
+    }
+
+    @Test func cameraAdjustmentControlStateCanDisableManualFocusDespiteCapabilitySupport() throws {
+        let capability = TAPCamDemoTestFixtures.sampleManualControlCapability(
+            supportsLockedFocus: true,
+            supportsCustomLensPosition: true
+        )
+        let state = CameraAdjustmentControlState(
+            capability: capability,
+            activeControl: nil,
+            exposureMode: .auto(globalBias: 0),
+            focusMode: .auto,
+            draft: CameraAdjustmentControlState.defaultDraft(from: capability),
+            allowsManualFocusControl: false
+        )
+
+        #expect(capability.focus.supportsManualLensPosition)
+        #expect(!state.focus.isAvailable)
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
@@ -813,8 +838,8 @@ struct TAPCameraCapturePresentationTests {
         #expect(!CameraPhotoQualityPreference.storageKey.isEmpty)
         #expect(CameraDepthAvailabilityHintPreferences.defaultShowsHints)
         #expect(!CameraDepthAvailabilityHintPreferences.showsHintsKey.isEmpty)
-        #expect(CameraFocusMagnifierPreferences.defaultIsEnabled)
-        #expect(!CameraFocusMagnifierPreferences.isEnabledKey.isEmpty)
+        #expect(CameraFocusMagnifierPreference.defaultValue == .brief)
+        #expect(!CameraFocusMagnifierPreference.storageKey.isEmpty)
         #expect(!CameraLivePhotoPreferences.defaultIsEnabled)
         #expect(!CameraLivePhotoPreferences.isEnabledKey.isEmpty)
         #expect(CameraIdleTimerPreferences.defaultKeepScreenAwake)
@@ -1134,7 +1159,8 @@ struct TAPCameraCapturePresentationTests {
             selectedZoomFactor: 1,
             fovLabel: "24mm",
             sliderRange: 1...1,
-            isSliderEnabled: false
+            isSliderEnabled: false,
+            manualControlLines: []
         )
         let fieldNames = Mirror(reflecting: state).children.compactMap(\.label).joined(separator: " ")
         let forbiddenTokens = [

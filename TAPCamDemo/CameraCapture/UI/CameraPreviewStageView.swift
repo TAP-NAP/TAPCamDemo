@@ -23,7 +23,8 @@ struct CameraPreviewStageState {
     let temporaryFocusEVOffset: Double
     let focusMode: CameraFocusControlMode
     let focusRuntimeEvent: CameraFocusRuntimeEvent?
-    let isFocusMagnifierEnabled: Bool
+    let focusMagnifierPreference: CameraFocusMagnifierPreference
+    let focusLoupePulseID: UUID?
     let isManualFocusTapAssistEnabled: Bool
     let viewfinderEdgeToastMessage: String?
     let contentRotation: Angle
@@ -53,6 +54,8 @@ struct CameraPreviewStageView: View {
     @State private var focusTargetOverlay: CameraFocusTargetOverlay?
     @State private var focusExposureScrubStartOffset: Double?
     @State private var focusLoupePoint = CameraPreviewFocusPoint(x: 0.5, y: 0.5)
+    @State private var isFocusLoupeVisible = false
+    @State private var focusLoupeVisibilityTask: Task<Void, Never>?
     @State private var latestPressStartPoint = CameraPreviewFocusPoint(x: 0.5, y: 0.5)
 
     var body: some View {
@@ -120,7 +123,15 @@ struct CameraPreviewStageView: View {
         .onChange(of: state.focusMode) { _, mode in
             if mode == .manual {
                 hideFocusTargetOverlay()
+            } else {
+                hideFocusLoupe()
             }
+        }
+        .onChange(of: state.focusLoupePulseID) { _, pulseID in
+            guard pulseID != nil else {
+                return
+            }
+            showFocusLoupe()
         }
         .onChange(of: state.focusRuntimeEvent) { _, event in
             guard let event else {
@@ -147,11 +158,10 @@ struct CameraPreviewStageView: View {
                         latestPressStartPoint = localPoint
                         let capturePoint = localPoint.mappedThroughVisibleCrop(state.previewCropRectNormalized)
                         guard state.focusMode == .auto else {
-                            if state.isFocusMagnifierEnabled {
-                                withAnimation(.easeInOut(duration: 0.14)) {
-                                    focusLoupePoint = localPoint
-                                }
+                            withAnimation(.easeInOut(duration: 0.14)) {
+                                focusLoupePoint = localPoint
                             }
+                            showFocusLoupe()
                             if state.isManualFocusTapAssistEnabled {
                                 onManualFocusTapAssist(capturePoint)
                             }
@@ -271,6 +281,33 @@ struct CameraPreviewStageView: View {
         focusExposureScrubStartOffset = nil
     }
 
+    private func showFocusLoupe() {
+        guard let duration = state.focusMagnifierPreference.duration,
+              state.focusMode == .manual else {
+            hideFocusLoupe()
+            return
+        }
+
+        focusLoupeVisibilityTask?.cancel()
+        withAnimation(.easeInOut(duration: 0.14)) {
+            isFocusLoupeVisible = true
+        }
+        focusLoupeVisibilityTask = Task { @MainActor in
+            try? await Task.sleep(for: duration)
+            guard !Task.isCancelled else {
+                return
+            }
+            hideFocusLoupe()
+        }
+    }
+
+    private func hideFocusLoupe() {
+        focusLoupeVisibilityTask?.cancel()
+        withAnimation(.easeInOut(duration: 0.14)) {
+            isFocusLoupeVisible = false
+        }
+    }
+
     private func handleFocusRuntimeEvent(_ event: CameraFocusRuntimeEvent) {
         guard state.focusMode == .auto,
               let focusTargetOverlay else {
@@ -314,7 +351,7 @@ struct CameraPreviewStageView: View {
 
     @ViewBuilder
     private func focusLoupe(previewSize: CGSize) -> some View {
-        if state.focusMode == .manual, state.isFocusMagnifierEnabled {
+        if state.focusMode == .manual, isFocusLoupeVisible {
             let loupeWidth = max(112, previewSize.width * 0.34)
             let loupeHeight = loupeWidth * 9.0 / 16.0
             ZStack {

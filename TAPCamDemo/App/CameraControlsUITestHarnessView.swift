@@ -45,7 +45,9 @@ struct CameraControlsUITestHarnessView: View {
                 onAdjustEV: adjustEV,
                 onAdjustISO: adjustISO,
                 onAdjustShutterPosition: adjustShutterPosition,
-                onAdjustLensPosition: adjustLensPosition
+                onAdjustLensPosition: adjustLensPosition,
+                onBeginAdjustment: { _ in },
+                onEndAdjustment: { _ in }
             )
         }
         .padding(.horizontal, 12)

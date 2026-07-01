@@ -60,6 +60,7 @@ struct CameraPreviewDebugState {
     let fovLabel: String
     let sliderRange: ClosedRange<Double>
     let isSliderEnabled: Bool
+    let manualControlLines: [String]
 }
 
 /// Debug-only overlay for camera source, zoom, and recent capture metrics.
@@ -127,6 +128,19 @@ struct CameraPreviewDebugOverlayView: View {
                 .lineLimit(2)
                 .foregroundStyle(.white.opacity(0.82))
                 .accessibilityIdentifier("camera.capture.status")
+
+            if !state.manualControlLines.isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(state.manualControlLines, id: \.self) { line in
+                        Text(line)
+                            .font(.system(size: 9, weight: .medium, design: .monospaced))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                    }
+                }
+                .foregroundStyle(.white.opacity(0.78))
+                .accessibilityIdentifier("camera.debug.manualControls")
+            }
 
             if isPerformanceExpanded {
                 PerformancePanelView(

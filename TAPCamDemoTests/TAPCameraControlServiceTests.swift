@@ -141,6 +141,22 @@ struct TAPCameraControlServiceTests {
         #expect(CameraControlService.clampedExposureBias(4, minimum: -2, maximum: 2) == 2)
     }
 
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func cameraControlServiceFocusOnlyDoesNotWriteExposurePointOrMode() throws {
+        let source = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/Runtime/CameraControlService.swift"
+        )
+        let focusOnlyStart = try #require(source.range(of: "case .autoFocusOnly"))
+        let lockedStart = try #require(source.range(
+            of: "case .locked",
+            range: focusOnlyStart.upperBound..<source.endIndex
+        ))
+        let focusOnlyBody = source[focusOnlyStart.lowerBound..<lockedStart.lowerBound]
+
+        #expect(!focusOnlyBody.contains("exposurePointOfInterest"))
+        #expect(!focusOnlyBody.contains("exposureMode"))
+    }
+
     @Test func cameraControlServiceMarksOnlyTheRegisteredSessionQueueAsWritable() async throws {
         let queue = DispatchQueue(label: "tapcam.tests.camera-control.session")
 

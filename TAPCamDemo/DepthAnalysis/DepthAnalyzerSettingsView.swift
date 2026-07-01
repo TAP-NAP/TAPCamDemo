@@ -36,8 +36,8 @@ struct DepthAnalyzerSettingsView: View {
     private var resetEVOnAppLaunch = CameraEVPreferences.defaultResetOnAppLaunch
     @AppStorage(CameraDepthAvailabilityHintPreferences.showsHintsKey)
     private var showsDepthAvailabilityHints = CameraDepthAvailabilityHintPreferences.defaultShowsHints
-    @AppStorage(CameraFocusMagnifierPreferences.isEnabledKey)
-    private var isFocusMagnifierEnabled = CameraFocusMagnifierPreferences.defaultIsEnabled
+    @AppStorage(CameraFocusMagnifierPreference.storageKey)
+    private var focusMagnifierRawValue = CameraFocusMagnifierPreference.defaultValue.rawValue
     @AppStorage(CameraManualFocusTapAssistPreferences.isEnabledKey)
     private var isManualFocusTapAssistEnabled = CameraManualFocusTapAssistPreferences.defaultIsEnabled
     @AppStorage(CameraIdleTimerPreferences.keepScreenAwakeKey)
@@ -91,8 +91,10 @@ struct DepthAnalyzerSettingsView: View {
                         }
                     }
 
-                    Toggle(isOn: $isFocusMagnifierEnabled) {
-                        Label("Focus Magnifier", systemImage: "plus.magnifyingglass")
+                    Picker("Focus Magnifier", selection: $focusMagnifierRawValue) {
+                        ForEach(CameraFocusMagnifierPreference.allCases) { preference in
+                            Text(preference.title).tag(preference.rawValue)
+                        }
                     }
 
                     Toggle(isOn: $showsDepthAvailabilityHints) {

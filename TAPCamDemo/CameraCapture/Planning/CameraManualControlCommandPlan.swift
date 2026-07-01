@@ -150,6 +150,7 @@ nonisolated struct CameraManualControlCommandPlan: CustomDebugStringConvertible,
     nonisolated enum Focus: CustomDebugStringConvertible, CustomStringConvertible, Equatable, Sendable {
         case continuousAuto
         case autoFocus(pointOfInterest: NormalizedPoint?)
+        case autoFocusOnly(pointOfInterest: NormalizedPoint?)
         case locked(lensPosition: Double?)
 
         var description: String {
@@ -158,6 +159,8 @@ nonisolated struct CameraManualControlCommandPlan: CustomDebugStringConvertible,
                 "continuousAuto"
             case .autoFocus:
                 "autoFocus"
+            case .autoFocusOnly:
+                "autoFocusOnly"
             case .locked:
                 "locked"
             }
@@ -274,6 +277,10 @@ nonisolated struct CameraManualControlCommandPlan: CustomDebugStringConvertible,
             .continuousAuto
         case .autoFocus(let pointOfInterest):
             .autoFocus(pointOfInterest: pointOfInterest.map {
+                NormalizedPoint(x: $0.x, y: $0.y)
+            })
+        case .autoFocusOnly(let pointOfInterest):
+            .autoFocusOnly(pointOfInterest: pointOfInterest.map {
                 NormalizedPoint(x: $0.x, y: $0.y)
             })
         case .locked(let lensPosition):

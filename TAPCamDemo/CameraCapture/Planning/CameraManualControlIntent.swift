@@ -41,6 +41,7 @@ nonisolated struct CameraManualControlIntent: Equatable, Sendable {
     nonisolated enum Focus: Equatable, Sendable {
         case continuousAuto
         case autoFocus(pointOfInterest: NormalizedPoint?)
+        case autoFocusOnly(pointOfInterest: NormalizedPoint?)
         case locked(lensPosition: Double?)
     }
 
@@ -151,7 +152,7 @@ nonisolated struct CameraManualControlIntent: Equatable, Sendable {
             return []
         case .continuousAuto:
             return capability.supportsContinuousAutoFocus ? [] : [.continuousAutoFocusUnsupported]
-        case .autoFocus(let point):
+        case .autoFocus(let point), .autoFocusOnly(let point):
             var violations: [CameraManualControlViolation] = []
             if !capability.supportsAutoFocus {
                 violations.append(.autoFocusUnsupported)

@@ -37,8 +37,8 @@ struct CameraView: View {
     @State private var flashMode = CameraFlashControlMode.defaultValue
     @State private var focusMode = CameraFocusControlMode.auto
     @State private var activeAdjustmentControl: CameraAdjustmentControl?
-    @State private var isCustomExposure = false
-    @State private var exposureMeterOffset = 0.0
+    @State private var exposureControlState: CameraExposureControlState?
+    @State private var latestExposureControlDebugState: CameraExposureControlDebugState?
     @State private var globalEVBias: Double
     @State private var globalEVApplyTask: Task<Void, Never>?
     @State private var temporaryFocusEVOffset = 0.0
@@ -46,6 +46,11 @@ struct CameraView: View {
     @State private var adjustmentDraft = CameraAdjustmentControlDraft.fallback
     @State private var adjustmentDraftMemory = CameraAdjustmentControlDraftMemory()
     @State private var adjustmentApplyTask: Task<Void, Never>?
+    @State private var exposureApplyTask: Task<Void, Never>?
+    @State private var exposureReadbackTask: Task<Void, Never>?
+    @State private var manualFocusAssistToken: UUID?
+    @State private var focusLoupePulseID: UUID?
+    @State private var lastFocusMeteringAt = Date.distantPast
     @State private var viewfinderHint: String?
     @AppStorage(CameraFeedbackPreferences.shutterHapticsEnabledKey)
     private var isShutterHapticsEnabled = CameraFeedbackPreferences.defaultShutterHapticsEnabled
@@ -59,8 +64,8 @@ struct CameraView: View {
     private var guideOverlayRawValue = CameraGuideOverlayPreference.defaultValue.rawValue
     @AppStorage(CameraDepthAvailabilityHintPreferences.showsHintsKey)
     private var showsDepthAvailabilityHints = CameraDepthAvailabilityHintPreferences.defaultShowsHints
-    @AppStorage(CameraFocusMagnifierPreferences.isEnabledKey)
-    private var isFocusMagnifierEnabled = CameraFocusMagnifierPreferences.defaultIsEnabled
+    @AppStorage(CameraFocusMagnifierPreference.storageKey)
+    private var focusMagnifierRawValue = CameraFocusMagnifierPreference.defaultValue.rawValue
     @AppStorage(CameraManualFocusTapAssistPreferences.isEnabledKey)
     private var isManualFocusTapAssistEnabled = CameraManualFocusTapAssistPreferences.defaultIsEnabled
     @AppStorage(CameraLivePhotoPreferences.isEnabledKey)
@@ -145,6 +150,18 @@ struct CameraView: View {
         .onChange(of: viewModel.activeControlCapabilities) { _, _ in
             alignVisibleAdjustmentControlsIfNeeded()
         }
+        .onChange(of: viewModel.exposureRuntimeEvent) { _, event in
+            guard event?.kind == .exposureSettled else {
+                return
+            }
+            scheduleManualControlReadback(reason: .exposureSettled, delay: .milliseconds(0))
+        }
+        .onChange(of: viewModel.focusRuntimeEvent) { _, event in
+            guard event?.kind == .focusSettled else {
+                return
+            }
+            handleFocusSettledMeteringTrigger()
+        }
         .onChange(of: showsDepthAvailabilityHints) { _, isEnabled in
             if !isEnabled {
                 viewfinderHint = nil
@@ -193,7 +210,9 @@ struct CameraView: View {
                     onAdjustEV: adjustGlobalEVBias,
                     onAdjustISO: adjustISO,
                     onAdjustShutterPosition: adjustShutterPosition,
-                    onAdjustLensPosition: adjustLensPosition
+                    onAdjustLensPosition: adjustLensPosition,
+                    onBeginAdjustment: beginAdjustmentInteraction,
+                    onEndAdjustment: endAdjustmentInteraction
                 )
             }
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
@@ -247,7 +266,8 @@ struct CameraView: View {
                 selectedZoomFactor: viewModel.debugSelectedZoomFactor,
                 fovLabel: viewModel.debugFOVLabel,
                 sliderRange: viewModel.debugZoomSliderRange,
-                isSliderEnabled: viewModel.debugZoomSliderEnabled
+                isSliderEnabled: viewModel.debugZoomSliderEnabled,
+                manualControlLines: debugManualControlLines
             ),
             onSelectDebugDepthOption: selectDebugDepthDisplayOption,
             onSelectDebugZoomOption: selectDebugZoomDisplayOption,
@@ -279,7 +299,8 @@ struct CameraView: View {
             temporaryFocusEVOffset: temporaryFocusEVOffset,
             focusMode: focusMode,
             focusRuntimeEvent: viewModel.focusRuntimeEvent,
-            isFocusMagnifierEnabled: isFocusMagnifierEnabled,
+            focusMagnifierPreference: CameraFocusMagnifierPreference.resolved(rawValue: focusMagnifierRawValue),
+            focusLoupePulseID: focusLoupePulseID,
             isManualFocusTapAssistEnabled: isManualFocusTapAssistEnabled,
             viewfinderEdgeToastMessage: viewfinderHint,
             contentRotation: chromeOrientation.angle
@@ -294,14 +315,61 @@ struct CameraView: View {
         guard let capability = viewModel.activeControlCapabilities else {
             return nil
         }
+        let exposureState = resolvedExposureControlState(for: capability)
+        let exposureDisplay = exposureState.currentDisplayState
+        let exposureDraft = CameraAdjustmentControlDraft(
+            iso: exposureDisplay.iso,
+            shutterDurationSeconds: exposureDisplay.shutterDurationSeconds,
+            lensPosition: adjustmentDraft.lensPosition
+        )
         return CameraAdjustmentControlState(
             capability: capability,
             activeControl: activeAdjustmentControl,
-            exposureMode: isCustomExposure
-                ? .custom(meterOffset: exposureMeterOffset)
-                : .auto(globalBias: globalEVBias),
+            exposureMode: adjustmentExposureMode(from: exposureDisplay),
             focusMode: focusMode,
-            draft: adjustmentDraft
+            draft: exposureDraft,
+            exposureRiskRanges: exposureRiskRanges(from: exposureState),
+            allowsManualFocusControl: viewModel.isManualFocusControlAvailable
+        )
+    }
+
+    private func resolvedExposureControlState(
+        for capability: CameraControlCapabilitySnapshot
+    ) -> CameraExposureControlState {
+        if let exposureControlState,
+           exposureControlState.deviceID == capability.deviceID,
+           exposureControlState.controlSurfaceSignature == CameraManualControlCommandPlan.ControlSurfaceSignature(capability: capability),
+           exposureControlState.generation == viewModel.configurationGeneration {
+            return exposureControlState
+        }
+        return CameraExposureControlState(
+            capability: capability,
+            generation: viewModel.configurationGeneration,
+            evBias: globalEVBias
+        )
+    }
+
+    private func adjustmentExposureMode(
+        from display: CameraExposureControlDisplayState
+    ) -> CameraAdjustmentControlState.ExposureMode {
+        switch display.mode {
+        case .auto:
+            return .auto(globalBias: display.evBias)
+        case .isoPriority:
+            return .isoPriority(globalBias: display.evBias)
+        case .shutterPriority:
+            return .shutterPriority(globalBias: display.evBias)
+        case .manual:
+            return .custom(meterOffset: display.meterDeltaEV ?? 0)
+        }
+    }
+
+    private func exposureRiskRanges(
+        from state: CameraExposureControlState
+    ) -> CameraAdjustmentControlState.ExposureRiskRanges {
+        CameraAdjustmentControlState.ExposureRiskRanges(
+            iso: state.riskRangeForISO(),
+            shutterDurationSeconds: state.riskRangeForShutterDuration()
         )
     }
 
@@ -338,17 +406,23 @@ struct CameraView: View {
         let nextBias = CameraEVPreferences.clampedBias(value)
         globalEVBias = nextBias
         CameraEVPreferences.persistGlobalBias(nextBias)
-        globalEVApplyTask?.cancel()
-        globalEVApplyTask = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(80))
-            guard !Task.isCancelled else {
-                return
+
+        guard let capability = viewModel.activeControlCapabilities else {
+            globalEVApplyTask?.cancel()
+            globalEVApplyTask = Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(80))
+                guard !Task.isCancelled else {
+                    return
+                }
+                await viewModel.setGlobalAutoExposureBias(
+                    nextBias,
+                    effectiveExposureBias: effectiveAutoExposureBias
+                )
             }
-            await viewModel.setGlobalAutoExposureBias(
-                nextBias,
-                effectiveExposureBias: effectiveAutoExposureBias
-            )
+            return
         }
+        let result = resolvedExposureControlState(for: capability).setEVBias(nextBias)
+        applyExposureControlResult(result, delay: .milliseconds(70))
     }
 
     private var effectiveAutoExposureBias: Double {
@@ -375,14 +449,17 @@ struct CameraView: View {
 
         switch control {
         case .ev:
-            if state.exposure.isCustom {
-                restoreAutoExposureFromMeter()
-            } else {
-                activeAdjustmentControl = activeAdjustmentControl == .ev ? nil : .ev
-            }
+            activeAdjustmentControl = activeAdjustmentControl == .ev ? nil : .ev
         case .iso:
             guard state.exposure.isAvailable else {
                 showViewfinderHint("ISO unavailable")
+                return
+            }
+            if activeAdjustmentControl == .iso,
+               let exposureControlState,
+               !exposureControlState.mode.isISOAutomatic {
+                applyExposureControlResult(exposureControlState.makeISOAutomatic())
+                activeAdjustmentControl = nil
                 return
             }
             activeAdjustmentControl = activeAdjustmentControl == .iso ? nil : .iso
@@ -391,42 +468,81 @@ struct CameraView: View {
                 showViewfinderHint("Shutter unavailable")
                 return
             }
+            if activeAdjustmentControl == .shutter,
+               let exposureControlState,
+               !exposureControlState.mode.isShutterAutomatic {
+                applyExposureControlResult(exposureControlState.makeShutterAutomatic())
+                activeAdjustmentControl = nil
+                return
+            }
             activeAdjustmentControl = activeAdjustmentControl == .shutter ? nil : .shutter
         case .focus:
             toggleFocusMode()
         }
     }
 
+    private func beginAdjustmentInteraction(_ control: CameraAdjustmentControl) {
+        guard let exposureInteraction = exposureInteraction(for: control),
+              let capability = viewModel.activeControlCapabilities else {
+            return
+        }
+        let result = resolvedExposureControlState(for: capability).beginInteraction(exposureInteraction)
+        exposureControlState = result.nextState
+        latestExposureControlDebugState = result.debugState
+    }
+
+    private func endAdjustmentInteraction(_ control: CameraAdjustmentControl) {
+        guard exposureInteraction(for: control) != nil,
+              let exposureControlState else {
+            return
+        }
+        applyExposureControlResult(exposureControlState.endInteraction())
+    }
+
+    private func exposureInteraction(
+        for control: CameraAdjustmentControl
+    ) -> CameraExposureControlInteraction? {
+        switch control {
+        case .ev:
+            .ev
+        case .iso:
+            .iso
+        case .shutter:
+            .shutter
+        case .focus:
+            nil
+        }
+    }
+
     private func adjustISO(_ value: Double) {
-        guard let state = adjustmentControlState else {
+        guard let capability = viewModel.activeControlCapabilities,
+              let state = adjustmentControlState else {
             return
         }
 
-        isCustomExposure = true
-        exposureMeterOffset = currentExposureMeterOffset
         activeAdjustmentControl = .iso
         storeAdjustmentDraft(
             adjustmentDraft.replacingISO(value),
             state: state
         )
-        scheduleCustomExposureApply()
+        let result = resolvedExposureControlState(for: capability).setISO(value)
+        applyExposureControlResult(result, delay: .milliseconds(80))
     }
 
     private func adjustShutterPosition(_ position: Double) {
-        guard let state = adjustmentControlState else {
+        guard let capability = viewModel.activeControlCapabilities,
+              let state = adjustmentControlState else {
             return
         }
 
-        isCustomExposure = true
-        exposureMeterOffset = currentExposureMeterOffset
         activeAdjustmentControl = .shutter
+        let shutterDuration = state.exposure.shutterDuration(forNormalizedPosition: position)
         storeAdjustmentDraft(
-            adjustmentDraft.replacingShutterDuration(
-                state.exposure.shutterDuration(forNormalizedPosition: position)
-            ),
+            adjustmentDraft.replacingShutterDuration(shutterDuration),
             state: state
         )
-        scheduleCustomExposureApply()
+        let result = resolvedExposureControlState(for: capability).setShutterDuration(shutterDuration)
+        applyExposureControlResult(result, delay: .milliseconds(80))
     }
 
     private func adjustLensPosition(_ value: Double) {
@@ -434,6 +550,8 @@ struct CameraView: View {
             return
         }
 
+        manualFocusAssistToken = nil
+        focusLoupePulseID = UUID()
         focusMode = .manual
         activeAdjustmentControl = .focus
         storeAdjustmentDraft(
@@ -443,15 +561,17 @@ struct CameraView: View {
         scheduleManualFocusApply()
     }
 
-    private var currentExposureMeterOffset: Double {
-        viewModel.activeControlCapabilities?.exposure.currentExposureTargetOffset ?? exposureMeterOffset
-    }
-
     private func restoreAutoExposureFromMeter() {
-        isCustomExposure = false
-        exposureMeterOffset = 0
+        guard let capability = viewModel.activeControlCapabilities else {
+            return
+        }
+        exposureControlState = CameraExposureControlState(
+            capability: capability,
+            generation: viewModel.configurationGeneration,
+            evBias: globalEVBias
+        )
         activeAdjustmentControl = nil
-        adjustmentApplyTask?.cancel()
+        exposureApplyTask?.cancel()
         showViewfinderHint("Auto exposure restored")
         Task {
             await viewModel.restoreAutoExposure(globalExposureBias: globalEVBias)
@@ -491,25 +611,41 @@ struct CameraView: View {
         }
 
         let fallback = CameraAdjustmentControlState.defaultDraft(from: capability)
+        let currentExposureState = resolvedExposureControlState(for: capability)
         let state = CameraAdjustmentControlState(
             capability: capability,
             activeControl: activeAdjustmentControl,
-            exposureMode: isCustomExposure
-                ? .custom(meterOffset: exposureMeterOffset)
-                : .auto(globalBias: globalEVBias),
+            exposureMode: adjustmentExposureMode(from: currentExposureState.currentDisplayState),
             focusMode: focusMode,
-            draft: fallback
+            draft: fallback,
+            exposureRiskRanges: exposureRiskRanges(from: currentExposureState),
+            allowsManualFocusControl: viewModel.isManualFocusControlAvailable
         )
         adjustmentDraft = adjustmentDraftMemory.draft(
             for: activeAdjustmentControlKey,
             state: state,
             fallback: fallback
         )
-        if !isCustomExposure {
-            exposureMeterOffset = capability.exposure.currentExposureTargetOffset
-        }
-        if isCustomExposure {
-            scheduleCustomExposureApply()
+        let expectedSignature = CameraManualControlCommandPlan.ControlSurfaceSignature(capability: capability)
+        if exposureControlState?.deviceID != capability.deviceID
+            || exposureControlState?.controlSurfaceSignature != expectedSignature
+            || exposureControlState?.generation != viewModel.configurationGeneration {
+            let result = CameraExposureControlState.configurationChanged(
+                capability: capability,
+                generation: viewModel.configurationGeneration,
+                evBias: globalEVBias
+            )
+            exposureControlState = result.nextState
+            latestExposureControlDebugState = result.debugState
+            activeAdjustmentControl = nil
+            focusMode = .auto
+            manualFocusAssistToken = nil
+            adjustmentApplyTask?.cancel()
+            exposureApplyTask?.cancel()
+            Task {
+                await viewModel.restoreAutoCameraControls(globalExposureBias: globalEVBias)
+            }
+            scheduleManualControlReadback(reason: .initialBaseline)
         }
         if focusMode == .manual {
             scheduleManualFocusApply()
@@ -527,17 +663,116 @@ struct CameraView: View {
         )
     }
 
-    private func scheduleCustomExposureApply() {
-        adjustmentApplyTask?.cancel()
-        adjustmentApplyTask = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(120))
+    private func applyExposureControlResult(
+        _ result: CameraExposureControlResult,
+        delay: Duration = .milliseconds(0)
+    ) {
+        exposureControlState = result.nextState
+        latestExposureControlDebugState = result.debugState
+        if let state = adjustmentControlState {
+            storeAdjustmentDraft(
+                CameraAdjustmentControlDraft(
+                    iso: result.displayState.iso,
+                    shutterDurationSeconds: result.displayState.shutterDurationSeconds,
+                    lensPosition: adjustmentDraft.lensPosition
+                ),
+                state: state
+            )
+        }
+
+        guard let intent = result.manualControlIntent else {
+            if result.shouldReadback, let reason = result.readbackReason {
+                scheduleManualControlReadback(reason: reason)
+            }
+            return
+        }
+
+        exposureApplyTask?.cancel()
+        exposureApplyTask = Task { @MainActor in
+            if delay > .zero {
+                try? await Task.sleep(for: delay)
+            }
             guard !Task.isCancelled else {
                 return
             }
-            await viewModel.applyCustomExposure(
-                iso: adjustmentDraft.iso,
-                shutterDurationSeconds: adjustmentDraft.shutterDurationSeconds
+            if result.nextState.mode == .auto,
+               case .continuousAuto? = intent.exposure {
+                await viewModel.restoreAutoExposure(globalExposureBias: result.nextState.evBias)
+            } else {
+                await viewModel.applyManualControlIntent(intent)
+            }
+            if result.shouldReadback, let reason = result.readbackReason {
+                scheduleManualControlReadback(reason: reason)
+            } else if result.nextState.mode != .auto {
+                scheduleManualControlReadback(reason: .userInteractionEnded)
+            }
+        }
+    }
+
+    private func scheduleManualControlReadback(
+        reason: CameraManualControlReadbackReason,
+        delay: Duration = .milliseconds(300)
+    ) {
+        exposureReadbackTask?.cancel()
+        exposureReadbackTask = Task { @MainActor in
+            if delay > .zero {
+                try? await Task.sleep(for: delay)
+            }
+            guard !Task.isCancelled else {
+                return
+            }
+            guard let snapshot = await viewModel.readManualControlSnapshot(reason: reason) else {
+                return
+            }
+            applyMeterSample(snapshot.meterSample)
+        }
+    }
+
+    private func applyMeterSample(_ sample: CameraExposureMeterSample) {
+        guard let capability = viewModel.activeControlCapabilities else {
+            return
+        }
+        let state = exposureControlState ?? CameraExposureControlState(
+            capability: capability,
+            generation: viewModel.configurationGeneration,
+            evBias: globalEVBias
+        )
+        let result = state.receiveMeterSample(sample)
+        exposureControlState = result.nextState
+        latestExposureControlDebugState = result.debugState
+        if let adjustmentState = adjustmentControlState {
+            storeAdjustmentDraft(
+                CameraAdjustmentControlDraft(
+                    iso: result.displayState.iso,
+                    shutterDurationSeconds: result.displayState.shutterDurationSeconds,
+                    lensPosition: adjustmentDraft.lensPosition
+                ),
+                state: adjustmentState
             )
+        }
+        guard let intent = result.manualControlIntent,
+              result.nextState.mode != .auto else {
+            return
+        }
+        exposureApplyTask?.cancel()
+        exposureApplyTask = Task { @MainActor in
+            await viewModel.applyManualControlIntent(intent)
+        }
+    }
+
+    private func handleFocusSettledMeteringTrigger() {
+        let now = Date()
+        guard now.timeIntervalSince(lastFocusMeteringAt) >= 0.5 else {
+            return
+        }
+        lastFocusMeteringAt = now
+        guard let exposureControlState else {
+            scheduleManualControlReadback(reason: .focusMetering, delay: .milliseconds(0))
+            return
+        }
+        switch exposureControlState.mode {
+        case .auto, .isoPriority, .shutterPriority, .manual:
+            scheduleManualControlReadback(reason: .focusMetering, delay: .milliseconds(0))
         }
     }
 
@@ -555,23 +790,40 @@ struct CameraView: View {
     private func focusAtPreviewPoint(_ point: CameraPreviewFocusPoint) {
         temporaryFocusEVOffset = 0
         temporaryFocusEVApplyTask?.cancel()
+        let exposureMode = exposureControlState?.mode ?? .auto
         Task {
-            await viewModel.focusAtPreviewPoint(
-                point,
-                globalExposureBias: globalEVBias
-            )
+            if exposureMode == .auto {
+                await viewModel.focusAtPreviewPoint(
+                    point,
+                    globalExposureBias: globalEVBias
+                )
+            } else {
+                await viewModel.focusOnlyAtPreviewPoint(point)
+            }
         }
     }
 
     private func manualFocusTapAssistAtPreviewPoint(_ point: CameraPreviewFocusPoint) {
         temporaryFocusEVOffset = 0
         temporaryFocusEVApplyTask?.cancel()
+        let assistToken = UUID()
+        manualFocusAssistToken = assistToken
+        focusLoupePulseID = UUID()
         Task {
-            await viewModel.focusAtPreviewPoint(
-                point,
-                globalExposureBias: globalEVBias
+            await viewModel.focusOnlyAtPreviewPoint(point)
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled,
+                  manualFocusAssistToken == assistToken,
+                  focusMode == .manual,
+                  let snapshot = await viewModel.readManualControlSnapshot(reason: .focusMetering),
+                  let state = adjustmentControlState else {
+                return
+            }
+            storeAdjustmentDraft(
+                adjustmentDraft.replacingLensPosition(snapshot.lensPosition),
+                state: state
             )
-            await viewModel.applyManualFocus(lensPosition: adjustmentDraft.lensPosition)
+            await viewModel.applyManualFocus(lensPosition: snapshot.lensPosition)
         }
     }
 
@@ -618,6 +870,31 @@ struct CameraView: View {
                 isEnabled: zoom.isEnabled
             )
         }
+    }
+
+    private var debugManualControlLines: [String] {
+        var lines: [String] = []
+        if let debugState = latestExposureControlDebugState {
+            lines.append("EXP \(debugState.mode) gen \(debugState.generation) settled \(debugState.baselineSettled)")
+            if let equivalentExposure = debugState.equivalentExposure {
+                lines.append(String(format: "eq %.5f target %.5f", equivalentExposure, debugState.targetExposure ?? 0))
+            }
+            if let meterDeltaEV = debugState.meterDeltaEV {
+                lines.append(String(format: "meter %+0.2f EV", meterDeltaEV))
+            }
+            if let lastReadbackReason = debugState.lastReadbackReason {
+                lines.append("read \(lastReadbackReason.rawValue)")
+            }
+        }
+        if let readback = viewModel.latestManualControlReadback {
+            lines.append(String(
+                format: "rb ISO %.0f S %.5f off %+0.2f",
+                readback.iso,
+                readback.shutterDurationSeconds,
+                readback.exposureTargetOffset
+            ))
+        }
+        return lines
     }
 
     private func selectDebugDepthDisplayOption(_ option: CameraDebugDepthDisplayOption) {
