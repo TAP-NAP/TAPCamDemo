@@ -3,7 +3,7 @@
 //  TAPCamDemo
 //
 
-#if DEBUG
+#if DEBUG && TAP_ENABLE_PRO_CAMERA_CONTROLS
 import Foundation
 import SwiftUI
 

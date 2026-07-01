@@ -312,12 +312,16 @@ nonisolated enum CameraAdjustmentControl: String, Equatable, Identifiable, Senda
     var id: String { rawValue }
 }
 
-nonisolated enum CameraFlashControlMode: String, Equatable, Sendable {
+nonisolated enum CameraFlashControlMode: String, CaseIterable, Equatable, Identifiable, Sendable {
     case auto
     case on
     case off
 
+    static let allCases: [CameraFlashControlMode] = [.off, .auto, .on]
+    static let defaultModeKey = "CameraDefaultFlashMode"
     static let defaultValue = CameraFlashControlMode.auto
+
+    var id: String { rawValue }
 
     var title: String {
         switch self {
@@ -325,6 +329,17 @@ nonisolated enum CameraFlashControlMode: String, Equatable, Sendable {
             "Auto"
         case .on:
             "On"
+        case .off:
+            "Off"
+        }
+    }
+
+    var settingsTitle: String {
+        switch self {
+        case .auto:
+            "Auto"
+        case .on:
+            "Always On"
         case .off:
             "Off"
         }
@@ -350,6 +365,15 @@ nonisolated enum CameraFlashControlMode: String, Equatable, Sendable {
         case .off:
             .auto
         }
+    }
+
+    static func resolved(rawValue: String) -> CameraFlashControlMode {
+        CameraFlashControlMode(rawValue: rawValue) ?? defaultValue
+    }
+
+    static func resolvedDefault(in userDefaults: UserDefaults = .standard) -> CameraFlashControlMode {
+        let rawValue = userDefaults.string(forKey: defaultModeKey) ?? defaultValue.rawValue
+        return resolved(rawValue: rawValue)
     }
 
     var captureFlashMode: CaptureFlashMode {

@@ -7,6 +7,7 @@ import Foundation
 import SwiftUI
 import UIKit
 
+#if TAP_ENABLE_PRO_CAMERA_CONTROLS
 nonisolated struct CameraAdjustmentControlState: Equatable, Sendable {
     nonisolated struct ExposureRiskRanges: Equatable, Sendable {
         let iso: [ClosedRange<Double>]
@@ -482,7 +483,7 @@ struct CameraTickedAdjustmentStrip: View {
                 return 0
             }
         }()
-        return TickedSliderRow(
+        return CameraTickedSliderRow(
             title: "EV",
             value: state.exposure.evValue,
             valueBinding: Binding(
@@ -500,7 +501,7 @@ struct CameraTickedAdjustmentStrip: View {
     }
 
     private var isoStrip: some View {
-        TickedSliderRow(
+        CameraTickedSliderRow(
             title: "ISO",
             value: state.exposure.isoValue,
             valueBinding: Binding(
@@ -518,7 +519,7 @@ struct CameraTickedAdjustmentStrip: View {
     }
 
     private var shutterStrip: some View {
-        TickedSliderRow(
+        CameraTickedSliderRow(
             title: "S",
             value: state.exposure.shutterValue,
             valueBinding: Binding(
@@ -544,7 +545,7 @@ struct CameraTickedAdjustmentStrip: View {
     }
 
     private var focusStrip: some View {
-        TickedSliderRow(
+        CameraTickedSliderRow(
             title: "MF",
             value: state.focus.lensPositionDetail,
             valueBinding: Binding(
@@ -997,3 +998,4 @@ nonisolated private func clamped(_ value: Double, in range: ClosedRange<Double>)
     }
     return min(max(value, range.lowerBound), range.upperBound)
 }
+#endif

@@ -204,6 +204,20 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         return presentation
     }
 
+    func applyExposureTargetBias(_ exposureBias: Double, to device: AVCaptureDevice) async throws {
+        try await withCheckedThrowingContinuation { continuation in
+            sessionQueue.async {
+                do {
+                    try CameraControlService.applyExposureTargetBias(exposureBias, to: device)
+                    continuation.resume()
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    #if TAP_ENABLE_PRO_CAMERA_CONTROLS
     func readManualControlSnapshot(
         reason: CameraManualControlReadbackReason,
         generation: Int,
@@ -230,6 +244,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             }
         }
     }
+    #endif
 
     func restoreAutoPhotoControls(
         globalExposureBias: Double,
@@ -583,6 +598,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     }
 }
 
+#if TAP_ENABLE_PRO_CAMERA_CONTROLS
 private extension CameraManualControlReadbackExposureMode {
     init(_ mode: AVCaptureDevice.ExposureMode) {
         switch mode {
@@ -612,3 +628,4 @@ private extension CameraManualControlReadbackFocusMode {
         }
     }
 }
+#endif

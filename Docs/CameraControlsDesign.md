@@ -7,16 +7,18 @@
 | Term | 中文解释 | 使用规则 |
 | --- | --- | --- |
 | `viewfinder top shoulder` | 取景器顶部 Face ID / Dynamic Island 两侧肩区 | 不放状态噪音。右肩放 `Settings`。 |
+| `Basic EV` | 普通产品曝光补偿 | 不依赖专业控制状态机的轻量 EV 流程。入口在 Face ID / Dynamic Island 左侧，只写 exposure target bias。 |
 | `viewfinder top toolbar` | 肩区下方、取景器上方工具栏 | 放高频但不属于参数条的按钮：`Flash` 和 `Live Photo`。它参与垂直布局，占用 viewfinder 上方空间，不覆盖预览画面。 |
-| `viewfinder lower toolbar` | 取景器下方参数工具栏 | 常驻显示 `EV`、`ISO`、`S`、`AF/MF`、`ƒ`。 |
+| `viewfinder lower toolbar` | 取景器下方参数工具栏 | 只属于 `TAP_ENABLE_PRO_CAMERA_CONTROLS` 专业控制构建；普通产品构建不编译这组专业参数入口。 |
 | `mode selector slot` | 拍摄模式选择占位区 | 默认承载 `mode selector bar`。控制条打开时被 `ticked adjustment strip` 临时替代。 |
 | `mode selector bar` | 拍摄模式选择条 | 默认显示 `PHOTO / VIDEO`。外层 bar、按钮 frame、按钮文字都不参与旋转。 |
 | `portrait adjustment centerline` | Portrait UI 的全局参数调节中线 | 所有横向参数条的中心刻度必须对齐整个屏幕 / 控件容器的水平中心线，不能被左标题或右数值挤偏。 |
-| `ticked adjustment strip` | 刻度调节条 | 通用控制条，可调 `EV`、`ISO`、`S`、`MF lens position`。只显示刻度、`value cursor` 和透明拖动热区，不显示系统 slider 实线轨道。当前参数由 `viewfinder lower toolbar` 的 active 按钮标识。不是 sheet，不从底部滑出。 |
+| `ticked adjustment strip` | 刻度调节条 | 共享 UI primitive，可服务 Basic EV 或 Pro EV/ISO/S/MF。它只知道 value/range/step/label/callback，不知道 Basic/Pro 业务模式。 |
 | `value cursor` | 当前值游标 | 位于 `ticked adjustment strip` 上的可见圆点 / 小按钮，用来标识当前选择值；不是实线轨道。 |
 | `FOV selector bar` | 镜头 / 视角选择条 | 显示 release field-of-view chips。外层 bar 固定在取景器下边缘内侧，chip 内容按设备姿态旋转，bar 本身不旋转。 |
 | `preview-only zoom` | 取景器预览缩放 | 第一阶段的 `1x / 2x / 3x` 只改变用户看到的预览和 tap 坐标映射，不改变最终 RGB/depth 输出。 |
 | `source switching mode` | 真实摄像头源切换模式 | 后续 roadmap。切换焦段时可能切到不同 Apple camera path，并按当前 path 能力重新决定 ISO/S/AF/MF 可用性。 |
+| `TAP_ENABLE_PRO_CAMERA_CONTROLS` | 专业相机控制编译开关 | 只允许 Debug 实验构建使用。普通产品构建不定义它；Release + 该 flag 必须 fail build。 |
 | `viewfinder edge toast` | 取景器边缘提示 | 贴在取景器上边缘内侧，水平居中淡入淡出，不阻止拍摄。 |
 | `focus loupe` | 对焦放大预览 | MF 下由用户点按位置驱动的预览辅助。它只放大预览，不写 `videoZoomFactor`，不影响构图或成片。显示时长由 Settings 的 `Focus Magnifier` 枚举决定。 |
 | `focus target overlay` | 对焦目标覆盖层 | 同一个状态同时驱动对焦框、`AE/AF LOCK` 标签和旁边的临时 EV 条。 |
@@ -55,12 +57,36 @@
 
 不要对整组 toolbar 或 strip 直接做 `rotationEffect`。整组旋转会改变触控方向和布局锚点，和镜头选择条行为不一致。
 
+## Build-Time Surface Split
+
+普通产品构建和专业控制实验构建是编译期互斥的两套流程，不是运行时设置：
+
+- 未定义 `TAP_ENABLE_PRO_CAMERA_CONTROLS`：编译 `Basic EV`，不编译
+  Pro Controls UI，不编译 ISO/S/MF/Meter/risk/readback 专业状态机。
+- `DEBUG && TAP_ENABLE_PRO_CAMERA_CONTROLS`：编译 Pro Controls，且不编译
+  `Basic EV` 入口。
+- `!DEBUG && TAP_ENABLE_PRO_CAMERA_CONTROLS`：必须 fail build，避免专业实验
+  控制进入 Release 产品包。
+
+Settings 里不提供 `Pro Controls` runtime toggle。这个选择只由编译条件决定。
+
+允许共享的只有足够小的底层：`ticked adjustment strip` UI primitive、EV 常量、
+纯显示/数值限制 helper，以及不感知 ISO/S/Meter/MF 的最小 exposure-bias 写入。
+普通 `Basic EV` 不允许依赖 `CameraExposureControlState`、`CameraAdjustmentControlState`
+或任何 Pro lower-toolbar 状态。
+
+完整边界、实现状态和验证记录见 [CameraProControlsBuildIsolationPlan.md](CameraProControlsBuildIsolationPlan.md)。
+
 ## Top Layout
 
 `viewfinder top shoulder` 只承担两个角色：
 
 - 右肩：`Settings`，替代系统状态区位置。
-- 左肩：当前不放常驻状态。`EV` 不再放在这里。
+- 左肩：普通产品构建显示 `Basic EV` 常驻入口。它采用 Apple Camera 风格的
+  透明单行文字控件，显示紧凑当前值；点击后在 `mode selector slot` 打开 EV
+  `ticked adjustment strip`，再次点击关闭。
+- `TAP_ENABLE_PRO_CAMERA_CONTROLS` 构建不编译 `Basic EV` 左肩入口；Pro Controls
+  自己拥有专业 EV/ISO/S/AFMF 入口。
 
 `viewfinder top toolbar` 放：
 
@@ -73,7 +99,10 @@
 
 ## Lower Toolbar
 
-`viewfinder lower toolbar` 从左到右：
+`viewfinder lower toolbar` 只属于 `TAP_ENABLE_PRO_CAMERA_CONTROLS` 专业控制构建。
+普通产品构建不编译这组入口。
+
+Pro Controls 构建中从左到右：
 
 1. `EV`
 2. `ISO`
@@ -83,7 +112,7 @@
 
 行为：
 
-- toolbar 常驻。
+- toolbar 在 Pro Controls 构建中常驻。
 - 点击 `EV / ISO / S` 时，`mode selector slot` 被 `ticked adjustment strip` 临时替代；快门位置不移动。
 - 点击另一个参数会直接切换控制条。
 - `ƒ` 灰色只读，例如 `ƒ1.8`；不可点击，不提示。
@@ -94,7 +123,40 @@
 - 只显示刻度和 `value cursor`，不显示系统 slider 的实线轨道。
 - 拖动热区可以透明覆盖刻度。
 - 每跨过一个有效 step 触发轻量 selection haptic。
-- 当前正在调节的参数由 `viewfinder lower toolbar` 对应按钮的 active 状态标识，不在 strip 内额外加选中标签或轨道高亮。
+- 在 Pro Controls 构建中，当前正在调节的参数由 `viewfinder lower toolbar`
+  对应按钮的 active 状态标识，不在 strip 内额外加选中标签或轨道高亮。
+- 在普通产品构建中，`Basic EV` 左肩入口的 active 状态标识 EV strip 已打开。
+
+## Basic EV
+
+`Basic EV` 是普通产品构建的完整独立流程，不是 Pro Controls 的残留入口。
+
+UI：
+
+- 入口常驻在 `viewfinder top shoulder` 左侧。
+- 入口是 Apple Camera 风格的轻量文字控件，不是 capsule、card、chip 或
+  toolbar button。
+- 入口视觉必须保持紧凑：单行 `EV` + 当前值，例如 `EV 0.0`、`EV +0.7`、
+  `EV -1.0`。Tap target 可以通过固定 frame / `contentShape` 保持可点，但
+  不能用可见背景来放大视觉重量。
+- 入口不得显示背景、描边、阴影、material blur、外框或按下态高亮。
+- 非 0 状态由紧凑数值本身传达；如果后续需要强调，只允许使用克制的文字色
+  或字重变化，不能引入背景或边框。
+- strip 打开时，active 状态可以使用文字 tint 表示，仍显示当前值。
+- 点击入口打开 `mode selector slot` 里的 EV `ticked adjustment strip`。
+- 再次点击入口关闭 strip，并恢复 `mode selector bar`。
+- Shutter、Flash、Live Photo、preview-only zoom 不自动关闭 EV strip，方便用户连续调节。
+- 打开 Settings、离开相机或 view 生命周期结束时关闭 EV strip。
+- 关闭 strip 不重置 EV；EV 值保持到用户再次调整或启动重置策略生效。
+
+行为：
+
+- 保留已有 EV 持久化与启动重置策略。
+- 写入路径只允许写 exposure target bias。
+- 不读、不计算、不写 ISO 或 shutter。
+- 不进入 custom exposure。
+- 不改变 AF/MF 或 focus mode。
+- 不写 App Intents、TAP manifest、Photos metadata 或 pending record schema。
 
 ## FOV Selector Bar
 
@@ -141,6 +203,9 @@ RGB/depth 都是 full-frame LiDAR 24mm。
 完整设备限制说明见 [CameraManualControlDeviceLimits.md](CameraManualControlDeviceLimits.md)。
 
 ## Exposure Model
+
+本节只属于 `TAP_ENABLE_PRO_CAMERA_CONTROLS` 专业控制构建。普通产品构建只有
+`Basic EV`，不编译 ISO/S/Meter/risk/readback 专业曝光状态机。
 
 曝光控制有四个用户可见状态。`ISO` 和 `S` 两个按钮就是完整模式选择器，不新增独立曝光模式按钮：
 
@@ -247,6 +312,10 @@ AF completion metering 的节流规则：
 
 `AF/MF` 与曝光完全独立。
 
+普通产品构建保留基础 tap-to-focus 路径，但不编译 `AF/MF` 专业切换入口、
+MF lens-position strip、MF 专业调节状态或 Pro readback。以下 MF 专业控制规则只属于
+`TAP_ENABLE_PRO_CAMERA_CONTROLS` 构建。
+
 对焦模式只决定相机如何找焦点，不决定曝光控制权。曝光写入由 `A/A`、`M/A`、`A/M`、`M/M` 决定。AF 事件可以成为 metering trigger，但 metering 的结果必须按当前曝光状态处理。
 
 AF：
@@ -348,10 +417,10 @@ Settings 的 `Depth Warnings` 只控制深度类提示；普通操作反馈不�
 
 Settings 分组：
 
-- `Capture`：`Photo Quality`、`Output Format`、`Live Photo`、`Keep Screen Awake`。
+- `Capture`：`Photo Quality`、`Output Format`、`Default Flash`、`Live Photo`、`Keep Screen Awake`。
 - `Viewfinder`：`Grid`、`Focus Magnifier`、`Depth Warnings`。
-- `Focus`：`LiDAR Focus Assist`，默认关；`Manual Focus Tap Assist`，默认关。
-- `Roadmap`：`Video`、`Shutter Position`、`Second Shutter`、`Landscape Control Split`，全部灰色并提示 `Coming soon`。
+- `Focus`：`LiDAR Focus Assist`，默认关。`Manual Focus Tap Assist` 属于
+  `TAP_ENABLE_PRO_CAMERA_CONTROLS`，普通产品构建不显示。
 
 `Focus Magnifier` 是 Picker，不是 bool toggle：
 
@@ -360,7 +429,18 @@ Settings 分组：
 - `3s`
 - `5s`
 
-该设置只控制 `focus loupe` 是否显示以及显示时长，不影响 `manual focus tap assist` 是否执行 focus-only AF assist。
+该设置只控制 `focus loupe` 是否显示以及显示时长。`manual focus tap assist`
+只属于 `TAP_ENABLE_PRO_CAMERA_CONTROLS` 构建；在 Pro Controls 构建中，
+`Focus Magnifier` 不 gate 它是否执行 focus-only AF assist。
+
+`Default Flash` 是 Settings 里的持久化默认值：
+
+- 选项顺序是 `Off`、`Auto`、`Always On`。
+- 默认值是 `Auto`。
+- 相机页面创建时用它初始化当前 `Flash` 状态。
+- Settings 修改该值时，当前相机页面同步到新的默认状态。
+- 相机 viewfinder 顶部 `Flash` 按钮仍然只改变当前会话状态，不反写
+  `Default Flash`。
 
 C2PA 当前不出现在 UI。
 
@@ -368,7 +448,6 @@ C2PA 当前不出现在 UI。
 
 不跨冷启动持久化：
 
-- 全局 `EV`
 - ISO/S 半自动和双手动曝光状态、`meter baseline`、`pending meter sample`
 - `AF/MF`
 - MF lens position
@@ -381,13 +460,16 @@ C2PA 当前不出现在 UI。
 
 - `Photo Quality`
 - `Output Format`
+- `Default Flash`
 - `Live Photo`
 - `Keep Screen Awake`
+- `Reset EV on App Launch`
+- `Basic EV` 值按 EV preference policy 处理：如果启动重置开启，冷启动回到默认值；如果关闭，可恢复上次 EV。它不进入 capture artifact、manifest、Photos metadata 或 pending record。
 - `Grid`
 - `Focus Magnifier` 枚举：`Off / 1.5s / 3s / 5s`
 - `Depth Warnings`
 - `LiDAR Focus Assist`
-- `Manual Focus Tap Assist`
+- `Manual Focus Tap Assist`，仅 `TAP_ENABLE_PRO_CAMERA_CONTROLS` 构建显示和读取
 
 ## No Depth
 
@@ -426,7 +508,7 @@ TAP 仍优先选择支持深度的设备和格式，并请求深度。
 - `CaptureSessionController` 观察 `isAdjustingExposure`，向 ViewModel 发出 `exposureStarted` / `exposureSettled`。进入半自动/手动或 focus-driven metering 后，View 层按 300ms settle 上限安排 readback。
 - `CameraControlService` 区分 `autoFocus` 和 `autoFocusOnly`。`manual focus tap assist` 使用 focus-only 写入，不写 AE、不改 exposure point。
 - `CameraView` 把纯模型输出的 display state、Runtime intent、Debug state 分开处理；Debug overlay 只显示 readback/model 字符串，不写 OSLog、不持久化、不进入 manifest。
-- `Focus Magnifier` 使用单个 Settings 枚举 key：`Off / 1.5s / 3s / 5s`，默认 `1.5s`；关闭只影响 loupe，不影响 `Manual Focus Tap Assist`。
+- `Focus Magnifier` 使用单个 Settings 枚举 key：`Off / 1.5s / 3s / 5s`，默认 `1.5s`；关闭只影响 loupe。`Manual Focus Tap Assist` 只在 `TAP_ENABLE_PRO_CAMERA_CONTROLS` 构建中显示，且不由 `Focus Magnifier` gate。
 
 当前自动化覆盖：
 

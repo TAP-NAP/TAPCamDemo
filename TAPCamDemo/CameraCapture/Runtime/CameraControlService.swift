@@ -86,6 +86,19 @@ nonisolated enum CameraControlService {
         ))
     }
 
+    static func applyExposureTargetBias(_ exposureBias: Double, to device: AVCaptureDevice) throws {
+        try requireSessionQueueAccess()
+        try device.lockForConfiguration()
+        defer { device.unlockForConfiguration() }
+
+        let clampedBias = clampedExposureBias(
+            exposureBias,
+            minimum: Double(device.minExposureTargetBias),
+            maximum: Double(device.maxExposureTargetBias)
+        )
+        device.setExposureTargetBias(Float(clampedBias), completionHandler: nil)
+    }
+
     static func restoreAutoPhotoControls(
         globalExposureBias: Double,
         to device: AVCaptureDevice

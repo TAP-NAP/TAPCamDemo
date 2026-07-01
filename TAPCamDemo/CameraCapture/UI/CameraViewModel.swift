@@ -37,7 +37,9 @@ final class CameraViewModel: ObservableObject {
     @Published var latestCaptureDepthHint: CameraCaptureDepthHint?
     @Published var focusRuntimeEvent: CameraFocusRuntimeEvent?
     @Published var exposureRuntimeEvent: CameraExposureRuntimeEvent?
+    #if TAP_ENABLE_PRO_CAMERA_CONTROLS
     @Published var latestManualControlReadback: CameraManualControlReadbackSnapshot?
+    #endif
     #if DEBUG
     @Published var debugDepthDeviceOptions: [DebugDepthDeviceOption]
     @Published var debugSelectedDepthDeviceID: String?
@@ -273,6 +275,7 @@ final class CameraViewModel: ObservableObject {
         }
 
         let effectiveExposureBias = CameraEVPreferences.clampedBias(exposureBias)
+        #if TAP_ENABLE_PRO_CAMERA_CONTROLS
         let intent = CameraManualControlIntent(
             targetDeviceID: activeSessionConfiguration.controlCapabilities.deviceID,
             exposure: .exposureBias(effectiveExposureBias),
@@ -293,6 +296,16 @@ final class CameraViewModel: ObservableObject {
         } catch {
             statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .configuration)
         }
+        #else
+        do {
+            try await sessionController.applyExposureTargetBias(
+                effectiveExposureBias,
+                to: activeSessionConfiguration.device
+            )
+        } catch {
+            statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .configuration)
+        }
+        #endif
     }
 
     func focusAtPreviewPoint(
@@ -487,6 +500,7 @@ final class CameraViewModel: ObservableObject {
         await applyCameraControlIntent(intent, against: capability, to: activeSessionConfiguration.device)
     }
 
+    #if TAP_ENABLE_PRO_CAMERA_CONTROLS
     func readManualControlSnapshot(
         reason: CameraManualControlReadbackReason
     ) async -> CameraManualControlReadbackSnapshot? {
@@ -502,6 +516,7 @@ final class CameraViewModel: ObservableObject {
         latestManualControlReadback = snapshot
         return snapshot
     }
+    #endif
 
     func applyManualControlIntent(_ intent: CameraManualControlIntent) async {
         guard let activeSessionConfiguration else {

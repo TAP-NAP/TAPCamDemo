@@ -10,12 +10,18 @@ struct CameraViewfinderChromeState: Equatable {
     let isFlashAvailable: Bool
     let isLivePhotoAvailable: Bool
     let isLivePhotoEnabled: Bool
+    #if !TAP_ENABLE_PRO_CAMERA_CONTROLS
+    let basicEVState: CameraBasicEVControlState
+    #endif
     let contentRotation: Angle
 }
 
 struct CameraViewfinderChromeView: View {
     let state: CameraViewfinderChromeState
     let topSafeAreaInset: CGFloat
+    #if !TAP_ENABLE_PRO_CAMERA_CONTROLS
+    let onToggleBasicEV: () -> Void
+    #endif
     let onOpenSettings: () -> Void
     let onCycleFlash: () -> Void
     let onToggleLivePhoto: () -> Void
@@ -38,6 +44,14 @@ struct CameraViewfinderChromeView: View {
 
     private var shoulderRow: some View {
         HStack(alignment: .center) {
+            #if !TAP_ENABLE_PRO_CAMERA_CONTROLS
+            CameraBasicEVButton(
+                state: state.basicEVState,
+                contentRotation: state.contentRotation,
+                onToggle: onToggleBasicEV
+            )
+            #endif
+
             Spacer(minLength: Metrics.dynamicIslandClearance)
 
             Button(action: onOpenSettings) {

@@ -16,7 +16,11 @@ struct CameraCaptureControlsState {
     let isShutterEnabled: Bool
     let isLibraryWriteInProgress: Bool
     let selectedMode: CameraCaptureModeOption
+    #if TAP_ENABLE_PRO_CAMERA_CONTROLS
     let adjustmentControlState: CameraAdjustmentControlState?
+    #else
+    let basicEVControlState: CameraBasicEVControlState
+    #endif
     let contentRotation: Angle
 
     var canOpenTAPLibrary: Bool {
@@ -50,6 +54,7 @@ struct CameraCaptureControlsView: View {
     let onCapture: () -> Void
     let onSwitchCamera: () -> Void
     let onSelectMode: (CameraCaptureModeOption) -> Void
+    #if TAP_ENABLE_PRO_CAMERA_CONTROLS
     let onSelectAdjustmentControl: (CameraAdjustmentControl) -> Void
     let onToggleFocusMode: () -> Void
     let onAdjustEV: (Double) -> Void
@@ -58,13 +63,18 @@ struct CameraCaptureControlsView: View {
     let onAdjustLensPosition: (Double) -> Void
     let onBeginAdjustment: (CameraAdjustmentControl) -> Void
     let onEndAdjustment: (CameraAdjustmentControl) -> Void
+    #else
+    let onAdjustEV: (Double) -> Void
+    #endif
 
     @State private var isShutterTouchActive = false
 
     var body: some View {
         VStack(spacing: 8) {
             modeSelectorSlot
+            #if TAP_ENABLE_PRO_CAMERA_CONTROLS
             lowerToolbar
+            #endif
             bottomControls
         }
     }
@@ -108,6 +118,7 @@ struct CameraCaptureControlsView: View {
 
     private var modeSelectorSlot: some View {
         ZStack {
+            #if TAP_ENABLE_PRO_CAMERA_CONTROLS
             if let adjustmentControlState = state.adjustmentControlState,
                adjustmentControlState.activeControl != nil {
                 CameraTickedAdjustmentStrip(
@@ -125,9 +136,26 @@ struct CameraCaptureControlsView: View {
                 modeStrip
                     .transition(.opacity)
             }
+            #else
+            if state.basicEVControlState.isStripVisible {
+                CameraBasicEVAdjustmentStrip(
+                    state: state.basicEVControlState,
+                    contentRotation: state.contentRotation,
+                    onAdjustEV: onAdjustEV
+                )
+                .transition(.opacity)
+            } else {
+                modeStrip
+                    .transition(.opacity)
+            }
+            #endif
         }
         .frame(height: 50)
+        #if TAP_ENABLE_PRO_CAMERA_CONTROLS
         .animation(.easeInOut(duration: 0.16), value: state.adjustmentControlState?.activeControl)
+        #else
+        .animation(.easeInOut(duration: 0.16), value: state.basicEVControlState.isStripVisible)
+        #endif
     }
 
     private var modeStrip: some View {
@@ -148,6 +176,7 @@ struct CameraCaptureControlsView: View {
         }
     }
 
+    #if TAP_ENABLE_PRO_CAMERA_CONTROLS
     @ViewBuilder
     private var lowerToolbar: some View {
         if let adjustmentControlState = state.adjustmentControlState {
@@ -161,6 +190,7 @@ struct CameraCaptureControlsView: View {
             CameraLowerToolbarPlaceholderView(contentRotation: state.contentRotation)
         }
     }
+    #endif
 
     private func modeForegroundStyle(_ mode: CameraCaptureModeOption) -> Color {
         if mode == state.selectedMode {

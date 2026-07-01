@@ -103,6 +103,13 @@ Any future LiDAR-control plus higher-quality RGB fusion would need a separate
 design for synchronization, alignment, fusion, manifest representation,
 validation, and scoring.
 
+The build-boundary plan for hiding professional controls from ordinary product
+builds is separate and lives in
+[CameraProControlsBuildIsolationPlan.md](CameraProControlsBuildIsolationPlan.md).
+That plan keeps Basic EV and Debug-only Pro Controls mutually exclusive at
+compile time; this document only explains why Apple active-device capabilities
+limit which controls can work once a camera path is selected.
+
 ## Open Validation
 
 The remaining evidence gap is physical device coverage:
@@ -113,4 +120,3 @@ The remaining evidence gap is physical device coverage:
 - Confirm ISO/S/MF writes on the LiDAR path after real readback.
 - Confirm front-camera AF/MF gating avoids the observed black-screen path.
 - Expand to other Apple devices before making product-wide support claims.
-

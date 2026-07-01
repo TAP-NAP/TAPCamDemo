@@ -30,6 +30,8 @@ struct DepthAnalyzerSettingsView: View {
     private var outputFormatRawValue = CameraOutputFormatPreference.defaultValue.rawValue
     @AppStorage(CameraPhotoQualityPreference.storageKey)
     private var photoQualityRawValue = CameraPhotoQualityPreference.defaultValue.rawValue
+    @AppStorage(CameraFlashControlMode.defaultModeKey)
+    private var defaultFlashRawValue = CameraFlashControlMode.defaultValue.rawValue
     @AppStorage(CameraGuideOverlayPreference.storageKey)
     private var guideOverlayRawValue = CameraGuideOverlayPreference.defaultValue.rawValue
     @AppStorage(CameraEVPreferences.resetOnAppLaunchKey)
@@ -38,8 +40,10 @@ struct DepthAnalyzerSettingsView: View {
     private var showsDepthAvailabilityHints = CameraDepthAvailabilityHintPreferences.defaultShowsHints
     @AppStorage(CameraFocusMagnifierPreference.storageKey)
     private var focusMagnifierRawValue = CameraFocusMagnifierPreference.defaultValue.rawValue
+    #if TAP_ENABLE_PRO_CAMERA_CONTROLS
     @AppStorage(CameraManualFocusTapAssistPreferences.isEnabledKey)
     private var isManualFocusTapAssistEnabled = CameraManualFocusTapAssistPreferences.defaultIsEnabled
+    #endif
     @AppStorage(CameraIdleTimerPreferences.keepScreenAwakeKey)
     private var keepScreenAwake = CameraIdleTimerPreferences.defaultKeepScreenAwake
     @AppStorage(CameraLiDARFocusAssistPreferences.isEnabledKey)
@@ -70,6 +74,12 @@ struct DepthAnalyzerSettingsView: View {
                     Picker("Output Format", selection: $outputFormatRawValue) {
                         ForEach(CameraOutputFormatPreference.allCases) { format in
                             Text(format.title).tag(format.rawValue)
+                        }
+                    }
+
+                    Picker("Default Flash", selection: $defaultFlashRawValue) {
+                        ForEach(CameraFlashControlMode.allCases) { mode in
+                            Text(mode.settingsTitle).tag(mode.rawValue)
                         }
                     }
 
@@ -107,9 +117,11 @@ struct DepthAnalyzerSettingsView: View {
                         Label("LiDAR Focus Assist", systemImage: "scope")
                     }
 
+                    #if TAP_ENABLE_PRO_CAMERA_CONTROLS
                     Toggle(isOn: $isManualFocusTapAssistEnabled) {
                         Label("Manual Focus Tap Assist", systemImage: "scope")
                     }
+                    #endif
                 }
 
                 Section("Feedback") {
@@ -138,13 +150,6 @@ struct DepthAnalyzerSettingsView: View {
                     Toggle(isOn: $returnToCameraOnForeground) {
                         Label("Return to Camera After Background", systemImage: "camera.viewfinder")
                     }
-                }
-
-                Section("Roadmap") {
-                    SettingsRoadmapRow(title: "Video", value: "Coming soon", systemImage: "video")
-                    SettingsRoadmapRow(title: "Shutter Position", value: "Coming soon", systemImage: "circle.dashed")
-                    SettingsRoadmapRow(title: "Second Shutter", value: "Coming soon", systemImage: "camera.circle")
-                    SettingsRoadmapRow(title: "Landscape Control Split", value: "Coming soon", systemImage: "rectangle.split.2x1")
                 }
 
                 Section("Analysis") {

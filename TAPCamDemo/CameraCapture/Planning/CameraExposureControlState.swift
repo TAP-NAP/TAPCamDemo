@@ -5,6 +5,7 @@
 
 import Foundation
 
+#if TAP_ENABLE_PRO_CAMERA_CONTROLS
 nonisolated enum CameraExposureControlMode: Equatable, Sendable {
     case auto
     case isoPriority
@@ -650,3 +651,4 @@ private extension CameraManualControlCommandPlan.ControlSurfaceSignature.DoubleR
         return lower...(lower + 0.000_001)
     }
 }
+#endif

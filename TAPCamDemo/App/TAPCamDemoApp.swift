@@ -29,7 +29,7 @@ struct TAPCamDemoApp: App {
 
     var body: some Scene {
         WindowGroup {
-            #if DEBUG
+            #if DEBUG && TAP_ENABLE_PRO_CAMERA_CONTROLS
             if ProcessInfo.processInfo.isCameraControlsUITestHarness {
                 CameraControlsUITestHarnessView()
                     .preferredColorScheme(.dark)
@@ -58,7 +58,7 @@ private struct XCTestHostView: View {
 }
 
 private extension ProcessInfo {
-    #if DEBUG
+    #if DEBUG && TAP_ENABLE_PRO_CAMERA_CONTROLS
     var isCameraControlsUITestHarness: Bool {
         environment["TAPCAM_UI_TEST_CAMERA_CONTROLS"] == "1"
             || arguments.contains("--tapcam-camera-controls-ui-test-harness")

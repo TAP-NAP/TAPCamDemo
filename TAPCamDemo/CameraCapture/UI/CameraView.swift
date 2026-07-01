@@ -34,15 +34,20 @@ struct CameraView: View {
     private let intentHandoffStore: TAPCamIntentHandoffStore
     @State private var isShowingSettings = false
     @State private var selectedMode: CameraCaptureModeOption = .photo
-    @State private var flashMode = CameraFlashControlMode.defaultValue
+    @State private var flashMode: CameraFlashControlMode
     @State private var focusMode = CameraFocusControlMode.auto
+    #if TAP_ENABLE_PRO_CAMERA_CONTROLS
     @State private var activeAdjustmentControl: CameraAdjustmentControl?
     @State private var exposureControlState: CameraExposureControlState?
     @State private var latestExposureControlDebugState: CameraExposureControlDebugState?
+    #else
+    @State private var isBasicEVStripVisible = false
+    #endif
     @State private var globalEVBias: Double
     @State private var globalEVApplyTask: Task<Void, Never>?
     @State private var temporaryFocusEVOffset = 0.0
     @State private var temporaryFocusEVApplyTask: Task<Void, Never>?
+    #if TAP_ENABLE_PRO_CAMERA_CONTROLS
     @State private var adjustmentDraft = CameraAdjustmentControlDraft.fallback
     @State private var adjustmentDraftMemory = CameraAdjustmentControlDraftMemory()
     @State private var adjustmentApplyTask: Task<Void, Never>?
@@ -51,6 +56,7 @@ struct CameraView: View {
     @State private var manualFocusAssistToken: UUID?
     @State private var focusLoupePulseID: UUID?
     @State private var lastFocusMeteringAt = Date.distantPast
+    #endif
     @State private var viewfinderHint: String?
     @AppStorage(CameraFeedbackPreferences.shutterHapticsEnabledKey)
     private var isShutterHapticsEnabled = CameraFeedbackPreferences.defaultShutterHapticsEnabled
@@ -60,14 +66,18 @@ struct CameraView: View {
     private var outputFormatRawValue = CameraOutputFormatPreference.defaultValue.rawValue
     @AppStorage(CameraPhotoQualityPreference.storageKey)
     private var photoQualityRawValue = CameraPhotoQualityPreference.defaultValue.rawValue
+    @AppStorage(CameraFlashControlMode.defaultModeKey)
+    private var defaultFlashRawValue = CameraFlashControlMode.defaultValue.rawValue
     @AppStorage(CameraGuideOverlayPreference.storageKey)
     private var guideOverlayRawValue = CameraGuideOverlayPreference.defaultValue.rawValue
     @AppStorage(CameraDepthAvailabilityHintPreferences.showsHintsKey)
     private var showsDepthAvailabilityHints = CameraDepthAvailabilityHintPreferences.defaultShowsHints
     @AppStorage(CameraFocusMagnifierPreference.storageKey)
     private var focusMagnifierRawValue = CameraFocusMagnifierPreference.defaultValue.rawValue
+    #if TAP_ENABLE_PRO_CAMERA_CONTROLS
     @AppStorage(CameraManualFocusTapAssistPreferences.isEnabledKey)
     private var isManualFocusTapAssistEnabled = CameraManualFocusTapAssistPreferences.defaultIsEnabled
+    #endif
     @AppStorage(CameraLivePhotoPreferences.isEnabledKey)
     private var isLivePhotoEnabled = CameraLivePhotoPreferences.defaultIsEnabled
 
@@ -86,6 +96,7 @@ struct CameraView: View {
         let resolvedViewModel = viewModel ?? CameraViewModel()
         resolvedViewModel.requestedGlobalAutoExposureBias = initialGlobalEVBias
         _viewModel = StateObject(wrappedValue: resolvedViewModel)
+        _flashMode = State(initialValue: CameraFlashControlMode.resolvedDefault())
         _globalEVBias = State(initialValue: initialGlobalEVBias)
         if let routeStore {
             _routeStore = StateObject(wrappedValue: routeStore)
@@ -126,6 +137,16 @@ struct CameraView: View {
             isSettingsPresented: isShowingSettings
         )
         .onAppear(perform: applyPendingIntentHandoff)
+        #if !TAP_ENABLE_PRO_CAMERA_CONTROLS
+        .onDisappear {
+            isBasicEVStripVisible = false
+        }
+        .onChange(of: isShowingSettings) { _, isPresented in
+            if isPresented {
+                isBasicEVStripVisible = false
+            }
+        }
+        #endif
         .onChange(of: outputFormatRawValue) { _, _ in
             Task {
                 await viewModel.configureCurrentSelection()
@@ -136,6 +157,9 @@ struct CameraView: View {
                 await viewModel.configureCurrentSelection()
             }
         }
+        .onChange(of: defaultFlashRawValue) { _, rawValue in
+            flashMode = CameraFlashControlMode.resolved(rawValue: rawValue)
+        }
         .onChange(of: viewModel.latestCaptureDepthHint) { _, hint in
             guard let hint else {
                 return
@@ -144,6 +168,7 @@ struct CameraView: View {
                 showViewfinderHint(hint.message)
             }
         }
+        #if TAP_ENABLE_PRO_CAMERA_CONTROLS
         .onChange(of: activeAdjustmentControlKey) { _, _ in
             alignVisibleAdjustmentControlsIfNeeded()
         }
@@ -162,6 +187,7 @@ struct CameraView: View {
             }
             handleFocusSettledMeteringTrigger()
         }
+        #endif
         .onChange(of: showsDepthAvailabilityHints) { _, isEnabled in
             if !isEnabled {
                 viewfinderHint = nil
@@ -172,53 +198,103 @@ struct CameraView: View {
     private var cameraSurface: some View {
         GeometryReader { proxy in
             VStack(spacing: 10) {
-                CameraViewfinderChromeView(
-                    state: CameraViewfinderChromeState(
-                        flashMode: flashMode,
-                        isFlashAvailable: viewModel.isFlashAvailable,
-                        isLivePhotoAvailable: false,
-                        isLivePhotoEnabled: isLivePhotoEnabled,
-                        contentRotation: chromeOrientation.angle
-                    ),
-                    topSafeAreaInset: proxy.safeAreaInsets.top,
-                    onOpenSettings: {
-                        isShowingSettings = true
-                    },
-                    onCycleFlash: cycleFlashMode,
-                    onToggleLivePhoto: {
-                        showViewfinderHint("Coming soon")
-                    }
-                )
+                viewfinderChrome(topSafeAreaInset: proxy.safeAreaInsets.top)
 
                 cameraPreviewStage
                 Spacer(minLength: 8)
-                CameraCaptureControlsView(
-                    state: CameraCaptureControlsState(
-                        isShutterEnabled: viewModel.canCapture,
-                        isLibraryWriteInProgress: viewModel.isCaptureWriteInProgress,
-                        selectedMode: selectedMode,
-                        adjustmentControlState: adjustmentControlState,
-                        contentRotation: chromeOrientation.angle
-                    ),
-                    recentThumbnail: viewModel.recentThumbnail,
-                    onOpenTAPLibrary: openTAPLibrary,
-                    onCapture: triggerShutter,
-                    onSwitchCamera: switchCameraPosition,
-                    onSelectMode: selectCaptureMode,
-                    onSelectAdjustmentControl: selectAdjustmentControl,
-                    onToggleFocusMode: toggleFocusMode,
-                    onAdjustEV: adjustGlobalEVBias,
-                    onAdjustISO: adjustISO,
-                    onAdjustShutterPosition: adjustShutterPosition,
-                    onAdjustLensPosition: adjustLensPosition,
-                    onBeginAdjustment: beginAdjustmentInteraction,
-                    onEndAdjustment: endAdjustmentInteraction
-                )
+                captureControls
             }
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
         }
         .background(Color.black.ignoresSafeArea())
         .ignoresSafeArea(.container, edges: .top)
+    }
+
+    @ViewBuilder
+    private func viewfinderChrome(topSafeAreaInset: CGFloat) -> some View {
+        #if TAP_ENABLE_PRO_CAMERA_CONTROLS
+        CameraViewfinderChromeView(
+            state: CameraViewfinderChromeState(
+                flashMode: flashMode,
+                isFlashAvailable: viewModel.isFlashAvailable,
+                isLivePhotoAvailable: false,
+                isLivePhotoEnabled: isLivePhotoEnabled,
+                contentRotation: chromeOrientation.angle
+            ),
+            topSafeAreaInset: topSafeAreaInset,
+            onOpenSettings: {
+                isShowingSettings = true
+            },
+            onCycleFlash: cycleFlashMode,
+            onToggleLivePhoto: {
+                showViewfinderHint("Coming soon")
+            }
+        )
+        #else
+        CameraViewfinderChromeView(
+            state: CameraViewfinderChromeState(
+                flashMode: flashMode,
+                isFlashAvailable: viewModel.isFlashAvailable,
+                isLivePhotoAvailable: false,
+                isLivePhotoEnabled: isLivePhotoEnabled,
+                basicEVState: basicEVControlState,
+                contentRotation: chromeOrientation.angle
+            ),
+            topSafeAreaInset: topSafeAreaInset,
+            onToggleBasicEV: toggleBasicEVStrip,
+            onOpenSettings: {
+                isShowingSettings = true
+            },
+            onCycleFlash: cycleFlashMode,
+            onToggleLivePhoto: {
+                showViewfinderHint("Coming soon")
+            }
+        )
+        #endif
+    }
+
+    @ViewBuilder
+    private var captureControls: some View {
+        #if TAP_ENABLE_PRO_CAMERA_CONTROLS
+        CameraCaptureControlsView(
+            state: CameraCaptureControlsState(
+                isShutterEnabled: viewModel.canCapture,
+                isLibraryWriteInProgress: viewModel.isCaptureWriteInProgress,
+                selectedMode: selectedMode,
+                adjustmentControlState: adjustmentControlState,
+                contentRotation: chromeOrientation.angle
+            ),
+            recentThumbnail: viewModel.recentThumbnail,
+            onOpenTAPLibrary: openTAPLibrary,
+            onCapture: triggerShutter,
+            onSwitchCamera: switchCameraPosition,
+            onSelectMode: selectCaptureMode,
+            onSelectAdjustmentControl: selectAdjustmentControl,
+            onToggleFocusMode: toggleFocusMode,
+            onAdjustEV: adjustGlobalEVBias,
+            onAdjustISO: adjustISO,
+            onAdjustShutterPosition: adjustShutterPosition,
+            onAdjustLensPosition: adjustLensPosition,
+            onBeginAdjustment: beginAdjustmentInteraction,
+            onEndAdjustment: endAdjustmentInteraction
+        )
+        #else
+        CameraCaptureControlsView(
+            state: CameraCaptureControlsState(
+                isShutterEnabled: viewModel.canCapture,
+                isLibraryWriteInProgress: viewModel.isCaptureWriteInProgress,
+                selectedMode: selectedMode,
+                basicEVControlState: basicEVControlState,
+                contentRotation: chromeOrientation.angle
+            ),
+            recentThumbnail: viewModel.recentThumbnail,
+            onOpenTAPLibrary: openTAPLibrary,
+            onCapture: triggerShutter,
+            onSwitchCamera: switchCameraPosition,
+            onSelectMode: selectCaptureMode,
+            onAdjustEV: adjustGlobalEVBias
+        )
+        #endif
     }
 
     private var depthAlbumPresentedBinding: Binding<Bool> {
@@ -267,7 +343,7 @@ struct CameraView: View {
                 fovLabel: viewModel.debugFOVLabel,
                 sliderRange: viewModel.debugZoomSliderRange,
                 isSliderEnabled: viewModel.debugZoomSliderEnabled,
-                manualControlLines: debugManualControlLines
+                manualControlLines: previewDebugManualControlLines
             ),
             onSelectDebugDepthOption: selectDebugDepthDisplayOption,
             onSelectDebugZoomOption: selectDebugZoomDisplayOption,
@@ -300,13 +376,45 @@ struct CameraView: View {
             focusMode: focusMode,
             focusRuntimeEvent: viewModel.focusRuntimeEvent,
             focusMagnifierPreference: CameraFocusMagnifierPreference.resolved(rawValue: focusMagnifierRawValue),
-            focusLoupePulseID: focusLoupePulseID,
-            isManualFocusTapAssistEnabled: isManualFocusTapAssistEnabled,
+            focusLoupePulseID: previewFocusLoupePulseID,
+            isManualFocusTapAssistEnabled: previewManualFocusTapAssistEnabled,
             viewfinderEdgeToastMessage: viewfinderHint,
             contentRotation: chromeOrientation.angle
         )
     }
 
+    private var previewFocusLoupePulseID: UUID? {
+        #if TAP_ENABLE_PRO_CAMERA_CONTROLS
+        focusLoupePulseID
+        #else
+        nil
+        #endif
+    }
+
+    private var previewManualFocusTapAssistEnabled: Bool {
+        #if TAP_ENABLE_PRO_CAMERA_CONTROLS
+        isManualFocusTapAssistEnabled
+        #else
+        false
+        #endif
+    }
+
+    #if !TAP_ENABLE_PRO_CAMERA_CONTROLS
+    private var basicEVControlState: CameraBasicEVControlState {
+        CameraBasicEVControlState(
+            bias: globalEVBias,
+            isStripVisible: isBasicEVStripVisible
+        )
+    }
+
+    private func toggleBasicEVStrip() {
+        withAnimation(.easeInOut(duration: 0.16)) {
+            isBasicEVStripVisible.toggle()
+        }
+    }
+    #endif
+
+    #if TAP_ENABLE_PRO_CAMERA_CONTROLS
     private var activeAdjustmentControlKey: String? {
         viewModel.activeSessionConfiguration?.controlCapabilities.deviceID
     }
@@ -372,6 +480,7 @@ struct CameraView: View {
             shutterDurationSeconds: state.riskRangeForShutterDuration()
         )
     }
+    #endif
 
     private func selectCaptureMode(_ mode: CameraCaptureModeOption) {
         guard mode.isAvailableInStageOne else {
@@ -407,22 +516,30 @@ struct CameraView: View {
         globalEVBias = nextBias
         CameraEVPreferences.persistGlobalBias(nextBias)
 
+        #if TAP_ENABLE_PRO_CAMERA_CONTROLS
         guard let capability = viewModel.activeControlCapabilities else {
-            globalEVApplyTask?.cancel()
-            globalEVApplyTask = Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(80))
-                guard !Task.isCancelled else {
-                    return
-                }
-                await viewModel.setGlobalAutoExposureBias(
-                    nextBias,
-                    effectiveExposureBias: effectiveAutoExposureBias
-                )
-            }
+            scheduleGlobalEVBiasApply(nextBias)
             return
         }
         let result = resolvedExposureControlState(for: capability).setEVBias(nextBias)
         applyExposureControlResult(result, delay: .milliseconds(70))
+        #else
+        scheduleGlobalEVBiasApply(nextBias)
+        #endif
+    }
+
+    private func scheduleGlobalEVBiasApply(_ requestedBias: Double) {
+        globalEVApplyTask?.cancel()
+        globalEVApplyTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(80))
+            guard !Task.isCancelled else {
+                return
+            }
+            await viewModel.setGlobalAutoExposureBias(
+                requestedBias,
+                effectiveExposureBias: effectiveAutoExposureBias
+            )
+        }
     }
 
     private var effectiveAutoExposureBias: Double {
@@ -441,6 +558,7 @@ struct CameraView: View {
         }
     }
 
+    #if TAP_ENABLE_PRO_CAMERA_CONTROLS
     private func selectAdjustmentControl(_ control: CameraAdjustmentControl) {
         guard let state = adjustmentControlState else {
             showViewfinderHint("Camera controls unavailable")
@@ -786,10 +904,12 @@ struct CameraView: View {
             await viewModel.applyManualFocus(lensPosition: adjustmentDraft.lensPosition)
         }
     }
+    #endif
 
     private func focusAtPreviewPoint(_ point: CameraPreviewFocusPoint) {
         temporaryFocusEVOffset = 0
         temporaryFocusEVApplyTask?.cancel()
+        #if TAP_ENABLE_PRO_CAMERA_CONTROLS
         let exposureMode = exposureControlState?.mode ?? .auto
         Task {
             if exposureMode == .auto {
@@ -801,9 +921,18 @@ struct CameraView: View {
                 await viewModel.focusOnlyAtPreviewPoint(point)
             }
         }
+        #else
+        Task {
+            await viewModel.focusAtPreviewPoint(
+                point,
+                globalExposureBias: globalEVBias
+            )
+        }
+        #endif
     }
 
     private func manualFocusTapAssistAtPreviewPoint(_ point: CameraPreviewFocusPoint) {
+        #if TAP_ENABLE_PRO_CAMERA_CONTROLS
         temporaryFocusEVOffset = 0
         temporaryFocusEVApplyTask?.cancel()
         let assistToken = UUID()
@@ -825,6 +954,7 @@ struct CameraView: View {
             )
             await viewModel.applyManualFocus(lensPosition: snapshot.lensPosition)
         }
+        #endif
     }
 
     private func lockFocusAndExposure(at point: CameraPreviewFocusPoint) {
@@ -849,6 +979,14 @@ struct CameraView: View {
     }
 
     #if DEBUG
+    private var previewDebugManualControlLines: [String] {
+        #if TAP_ENABLE_PRO_CAMERA_CONTROLS
+        debugManualControlLines
+        #else
+        []
+        #endif
+    }
+
     private var debugDepthDisplayOptions: [CameraDebugDepthDisplayOption] {
         viewModel.debugDepthDeviceOptions.enumerated().map { index, option in
             CameraDebugDepthDisplayOption(
@@ -872,6 +1010,7 @@ struct CameraView: View {
         }
     }
 
+    #if TAP_ENABLE_PRO_CAMERA_CONTROLS
     private var debugManualControlLines: [String] {
         var lines: [String] = []
         if let debugState = latestExposureControlDebugState {
@@ -896,6 +1035,7 @@ struct CameraView: View {
         }
         return lines
     }
+    #endif
 
     private func selectDebugDepthDisplayOption(_ option: CameraDebugDepthDisplayOption) {
         guard let index = debugDepthOptionIndex(for: option.selectionToken),
@@ -986,6 +1126,9 @@ struct CameraView: View {
             return
         }
 
+        #if !TAP_ENABLE_PRO_CAMERA_CONTROLS
+        isBasicEVStripVisible = false
+        #endif
         viewModel.pauseForAnalysis()
         routeStore.presentDepthAlbum()
     }

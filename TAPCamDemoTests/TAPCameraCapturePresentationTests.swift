@@ -33,7 +33,7 @@ struct TAPCameraCapturePresentationTests {
             relativePath: "TAPCamDemoUITests/CameraControlsRegressionUITests.swift"
         )
 
-        #expect(appSource.contains("#if DEBUG"))
+        #expect(appSource.contains("#if DEBUG && TAP_ENABLE_PRO_CAMERA_CONTROLS"))
         #expect(appSource.contains("isCameraControlsUITestHarness"))
         #expect(appSource.contains("TAPCAM_UI_TEST_CAMERA_CONTROLS"))
         #expect(appSource.contains("--tapcam-camera-controls-ui-test-harness"))
@@ -202,6 +202,7 @@ struct TAPCameraCapturePresentationTests {
     }
 
     @Test func cameraCaptureControlsStateLocksLibraryWhileCaptureWrites() throws {
+        #if TAP_ENABLE_PRO_CAMERA_CONTROLS
         let readyState = CameraCaptureControlsState(
             isShutterEnabled: true,
             isLibraryWriteInProgress: false,
@@ -209,11 +210,21 @@ struct TAPCameraCapturePresentationTests {
             adjustmentControlState: nil,
             contentRotation: .zero
         )
+        #else
+        let readyState = CameraCaptureControlsState(
+            isShutterEnabled: true,
+            isLibraryWriteInProgress: false,
+            selectedMode: .photo,
+            basicEVControlState: CameraBasicEVControlState(bias: 0, isStripVisible: false),
+            contentRotation: .zero
+        )
+        #endif
         #expect(readyState.canOpenTAPLibrary)
         #expect(readyState.recentThumbnailOpacity == 1)
         #expect(readyState.tapLibraryAccessibilityLabel == "Open TAPCamDepth album")
         #expect(readyState.tapLibraryHelpText == "Open TAPCamDepth album.")
 
+        #if TAP_ENABLE_PRO_CAMERA_CONTROLS
         let writingState = CameraCaptureControlsState(
             isShutterEnabled: true,
             isLibraryWriteInProgress: true,
@@ -221,6 +232,15 @@ struct TAPCameraCapturePresentationTests {
             adjustmentControlState: nil,
             contentRotation: .zero
         )
+        #else
+        let writingState = CameraCaptureControlsState(
+            isShutterEnabled: true,
+            isLibraryWriteInProgress: true,
+            selectedMode: .photo,
+            basicEVControlState: CameraBasicEVControlState(bias: 0, isStripVisible: false),
+            contentRotation: .zero
+        )
+        #endif
         #expect(!writingState.canOpenTAPLibrary)
         #expect(writingState.recentThumbnailOpacity == 0.42)
         #expect(writingState.tapLibraryAccessibilityLabel == "Finishing capture write")
@@ -228,6 +248,7 @@ struct TAPCameraCapturePresentationTests {
     }
 
     @Test func cameraCaptureControlsStateDoesNotNameSensitiveInputs() throws {
+        #if TAP_ENABLE_PRO_CAMERA_CONTROLS
         let state = CameraCaptureControlsState(
             isShutterEnabled: true,
             isLibraryWriteInProgress: false,
@@ -235,6 +256,15 @@ struct TAPCameraCapturePresentationTests {
             adjustmentControlState: nil,
             contentRotation: .zero
         )
+        #else
+        let state = CameraCaptureControlsState(
+            isShutterEnabled: true,
+            isLibraryWriteInProgress: false,
+            selectedMode: .photo,
+            basicEVControlState: CameraBasicEVControlState(bias: 0, isStripVisible: false),
+            contentRotation: .zero
+        )
+        #endif
         let fieldNames = Mirror(reflecting: state).children.compactMap(\.label).joined(separator: " ")
         let forbiddenTokens = [
             "id",
@@ -596,6 +626,26 @@ struct TAPCameraCapturePresentationTests {
         #expect(CameraFlashControlMode.auto.captureFlashMode == .auto)
         #expect(CameraFlashControlMode.on.captureFlashMode == .on)
         #expect(CameraFlashControlMode.off.captureFlashMode == .off)
+        #expect(CameraFlashControlMode.allCases.map(\.settingsTitle) == ["Off", "Auto", "Always On"])
+    }
+
+    @Test func cameraDefaultFlashModeResolvesPersistedSettingsValue() throws {
+        let suiteName = "TAPCameraDefaultFlashModeTests-\(UUID().uuidString)"
+        let userDefaults = try #require(UserDefaults(suiteName: suiteName))
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+
+        #expect(CameraFlashControlMode.resolvedDefault(in: userDefaults) == .auto)
+
+        userDefaults.set(CameraFlashControlMode.off.rawValue, forKey: CameraFlashControlMode.defaultModeKey)
+        #expect(CameraFlashControlMode.resolvedDefault(in: userDefaults) == .off)
+
+        userDefaults.set(CameraFlashControlMode.on.rawValue, forKey: CameraFlashControlMode.defaultModeKey)
+        #expect(CameraFlashControlMode.resolvedDefault(in: userDefaults) == .on)
+
+        userDefaults.set("unexpected", forKey: CameraFlashControlMode.defaultModeKey)
+        #expect(CameraFlashControlMode.resolvedDefault(in: userDefaults) == .auto)
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
@@ -618,6 +668,10 @@ struct TAPCameraCapturePresentationTests {
         #expect(!chromeSource.localizedCaseInsensitiveContains("LiDAR"))
         #expect(settingsSource.contains("CameraLiDARFocusAssistPreferences.isEnabledKey"))
         #expect(settingsSource.contains("LiDAR Focus Assist"))
+        #expect(!settingsSource.contains(#"Section("Roadmap")"#))
+        #expect(!settingsSource.contains("Shutter Position"))
+        #expect(!settingsSource.contains("Second Shutter"))
+        #expect(!settingsSource.contains("Landscape Control Split"))
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
@@ -625,7 +679,7 @@ struct TAPCameraCapturePresentationTests {
         let cameraSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/CameraCapture/UI/CameraView.swift"
         )
-        let chromeRange = try #require(cameraSource.range(of: "CameraViewfinderChromeView("))
+        let chromeRange = try #require(cameraSource.range(of: "viewfinderChrome(topSafeAreaInset:"))
         let previewRange = try #require(cameraSource.range(of: "cameraPreviewStage"))
 
         #expect(cameraSource.contains("topSafeAreaInset: proxy.safeAreaInsets.top"))
@@ -650,6 +704,7 @@ struct TAPCameraCapturePresentationTests {
         #expect(!designSource.contains("贴取景器下边缘内侧，水平居中"))
     }
 
+    #if TAP_ENABLE_PRO_CAMERA_CONTROLS
     @Test func cameraAdjustmentControlStatePublishesCapabilityGatedRanges() throws {
         let capability = TAPCamDemoTestFixtures.sampleManualControlCapability(
             minimumFocusDistanceMillimeters: 125,
@@ -827,6 +882,7 @@ struct TAPCameraCapturePresentationTests {
             #expect(!fieldNames.localizedCaseInsensitiveContains(token))
         }
     }
+    #endif
 
     @Test func cameraFirstStagePreferencesExposeExplicitStorageKeysAndDefaults() throws {
         #expect(CameraEVPreferences.defaultResetOnAppLaunch)
@@ -836,6 +892,8 @@ struct TAPCameraCapturePresentationTests {
         #expect(CameraEVPreferences.minimumGlobalBias < CameraEVPreferences.maximumGlobalBias)
         #expect(CameraPhotoQualityPreference.defaultValue == .quality)
         #expect(!CameraPhotoQualityPreference.storageKey.isEmpty)
+        #expect(CameraFlashControlMode.defaultValue == .auto)
+        #expect(!CameraFlashControlMode.defaultModeKey.isEmpty)
         #expect(CameraDepthAvailabilityHintPreferences.defaultShowsHints)
         #expect(!CameraDepthAvailabilityHintPreferences.showsHintsKey.isEmpty)
         #expect(CameraFocusMagnifierPreference.defaultValue == .brief)
@@ -851,7 +909,7 @@ struct TAPCameraCapturePresentationTests {
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func cameraSettingsExposeManualFocusTapAssist() throws {
+    func cameraSettingsKeepManualFocusTapAssistBehindProControlsFlag() throws {
         let cameraSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/CameraCapture/UI/CameraView.swift"
         )
@@ -862,8 +920,10 @@ struct TAPCameraCapturePresentationTests {
             relativePath: "TAPCamDemo/CameraCapture/UI/CameraPreviewStageView.swift"
         )
 
-        #expect(cameraSource.contains("@AppStorage(CameraManualFocusTapAssistPreferences.isEnabledKey)"))
+        #expect(cameraSource.contains("#if TAP_ENABLE_PRO_CAMERA_CONTROLS\n    @AppStorage(CameraManualFocusTapAssistPreferences.isEnabledKey)"))
         #expect(cameraSource.contains("manualFocusTapAssistAtPreviewPoint"))
+        #expect(settingsSource.contains("#if TAP_ENABLE_PRO_CAMERA_CONTROLS\n    @AppStorage(CameraManualFocusTapAssistPreferences.isEnabledKey)"))
+        #expect(settingsSource.contains("#if TAP_ENABLE_PRO_CAMERA_CONTROLS\n                    Toggle(isOn: $isManualFocusTapAssistEnabled)"))
         #expect(settingsSource.contains("Manual Focus Tap Assist"))
         #expect(settingsSource.contains("CameraManualFocusTapAssistPreferences.isEnabledKey"))
         #expect(previewSource.contains("state.isManualFocusTapAssistEnabled"))
@@ -904,6 +964,20 @@ struct TAPCameraCapturePresentationTests {
 
         #expect(CameraEVPreferences.resolvedLaunchBias(in: userDefaults) == -0.7)
     }
+
+    #if !TAP_ENABLE_PRO_CAMERA_CONTROLS
+    @Test func cameraBasicEVControlStateClampsAndFormatsCompactValue() throws {
+        let negative = CameraBasicEVControlState(bias: -99, isStripVisible: true)
+        let zero = CameraBasicEVControlState(bias: 0.01, isStripVisible: false)
+        let positive = CameraBasicEVControlState(bias: 1.24, isStripVisible: false)
+
+        #expect(negative.bias == CameraEVPreferences.minimumGlobalBias)
+        #expect(negative.compactValue == "-2.0")
+        #expect(negative.isStripVisible)
+        #expect(zero.compactValue == "0.0")
+        #expect(positive.compactValue == "+1.2")
+    }
+    #endif
 
     @Test func cameraTemporaryFocusEVPreferenceClampsOffset() throws {
         #expect(CameraTemporaryFocusEVPreferences.clampedOffset(-99) == CameraTemporaryFocusEVPreferences.minimumOffset)
@@ -1115,6 +1189,7 @@ struct TAPCameraCapturePresentationTests {
     }
 
     @Test func cameraViewfinderChromeStateDoesNotNameCaptureSecurityOrOutputInputs() throws {
+        #if TAP_ENABLE_PRO_CAMERA_CONTROLS
         let state = CameraViewfinderChromeState(
             flashMode: .auto,
             isFlashAvailable: true,
@@ -1122,6 +1197,16 @@ struct TAPCameraCapturePresentationTests {
             isLivePhotoEnabled: false,
             contentRotation: .zero
         )
+        #else
+        let state = CameraViewfinderChromeState(
+            flashMode: .auto,
+            isFlashAvailable: true,
+            isLivePhotoAvailable: false,
+            isLivePhotoEnabled: false,
+            basicEVState: CameraBasicEVControlState(bias: 0, isStripVisible: false),
+            contentRotation: .zero
+        )
+        #endif
         let fieldNames = Mirror(reflecting: state).children.compactMap(\.label).joined(separator: " ")
         let forbiddenTokens = [
             "attest",
