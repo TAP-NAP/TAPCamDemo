@@ -35,6 +35,17 @@ nonisolated struct EmbeddedPhotoPackager: CapturePackager {
     ) async throws -> PackagedCaptureArtifact {
         try capturePackage.resolvedOutput.validateForEmbeddedPhotoDepthPackaging()
         let fileContainer = capturePackage.resolvedOutput.fileContainer
+        let livePhotoMovie = capturePackage.livePhotoMovie.map {
+            PackagedLivePhotoMovie(
+                fileURL: $0.fileURL,
+                durationSeconds: max(0, $0.duration.seconds),
+                photoDisplayTimeSeconds: max(0, $0.photoDisplayTime.seconds),
+                width: $0.dimensions.width,
+                height: $0.dimensions.height,
+                codec: $0.codec,
+                capturesAudio: $0.capturesAudio
+            )
+        }
 
         var packagingMetrics = CapturePackagingMetrics()
 
@@ -83,6 +94,7 @@ nonisolated struct EmbeddedPhotoPackager: CapturePackager {
             fileContainer: fileContainer,
             photoQualityLevel: capturePackage.resolvedOutput.photoQualityPolicy.requested,
             manifest: signingResult.manifest,
+            livePhotoMovie: livePhotoMovie,
             signatureStatus: signingResult.status,
             depthAvailability: capturePackage.depthAvailability,
             captureScoreSummary: CaptureScoreSummary.make(

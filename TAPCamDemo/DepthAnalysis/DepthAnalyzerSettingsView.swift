@@ -48,6 +48,8 @@ struct DepthAnalyzerSettingsView: View {
     private var keepScreenAwake = CameraIdleTimerPreferences.defaultKeepScreenAwake
     @AppStorage(CameraLiDARFocusAssistPreferences.isEnabledKey)
     private var isLiDARFocusAssistEnabled = CameraLiDARFocusAssistPreferences.defaultIsEnabled
+    @AppStorage(CameraLivePhotoPreferences.isEnabledKey)
+    private var isLivePhotoEnabled = CameraLivePhotoPreferences.defaultIsEnabled
     @AppStorage(CameraRoutePreferences.returnToCameraOnForegroundKey)
     private var returnToCameraOnForeground = CameraRoutePreferences.defaultReturnToCameraOnForeground
 
@@ -83,11 +85,9 @@ struct DepthAnalyzerSettingsView: View {
                         }
                     }
 
-                    SettingsRoadmapRow(
-                        title: "Live Photo",
-                        value: "Coming soon",
-                        systemImage: "livephoto"
-                    )
+                    Toggle(isOn: $isLivePhotoEnabled) {
+                        Label("Live Photo", systemImage: "livephoto")
+                    }
 
                     Toggle(isOn: $keepScreenAwake) {
                         Label("Keep Screen Awake", systemImage: "sun.max")
@@ -259,30 +259,6 @@ private struct DepthAnalyzerStatusRow: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.trailing)
         }
-        .accessibilityElement(children: .combine)
-    }
-}
-
-private struct SettingsRoadmapRow: View {
-    let title: String
-    let value: String
-    let systemImage: String
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: systemImage)
-                .font(.body.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .frame(width: 24)
-
-            Text(title)
-
-            Spacer(minLength: 12)
-
-            Text(value)
-                .foregroundStyle(.secondary)
-        }
-        .opacity(0.48)
         .accessibilityElement(children: .combine)
     }
 }

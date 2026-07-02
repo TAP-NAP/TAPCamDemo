@@ -40,6 +40,8 @@ nonisolated enum CaptureDepthAvailability: String, Codable, Equatable, Sendable 
 nonisolated struct TAPDepthManifest: Codable, Equatable {
     static let schemaIdentifier = "urn:tapnap:tapcam:depth-manifest:v1"
     static let mediaType = "application/vnd.tapnap.depth-manifest+json;version=1"
+    static let livePhotoSchemaIdentifier = "urn:tapnap:tapcam:depth-manifest:v2"
+    static let livePhotoMediaType = "application/vnd.tapnap.depth-manifest+json;version=2"
     static let xmpNamespaceURI = "urn:tapnap:tapcam:depth:1.0"
     static let xmpPrefix = "tapdepth"
     static let xmpManifestPath = "tapdepth:Manifest"
@@ -49,8 +51,8 @@ nonisolated struct TAPDepthManifest: Codable, Equatable {
     let payload: Payload
     let proofs: [Proof]
 
-    init(payload: Payload, proofs: [Proof] = []) {
-        self.schema = Schema()
+    init(payload: Payload, proofs: [Proof] = [], schema: Schema = Schema()) {
+        self.schema = schema
         self.payload = payload
         self.proofs = proofs
     }
@@ -65,13 +67,25 @@ extension TAPDepthManifest {
         let xmpPrefix: String
         let xmpManifestPath: String
 
-        nonisolated init() {
-            self.id = TAPDepthManifest.schemaIdentifier
-            self.version = 1
-            self.mediaType = TAPDepthManifest.mediaType
+        nonisolated init(
+            id: String = TAPDepthManifest.schemaIdentifier,
+            version: Int = 1,
+            mediaType: String = TAPDepthManifest.mediaType
+        ) {
+            self.id = id
+            self.version = version
+            self.mediaType = mediaType
             self.xmpNamespaceURI = TAPDepthManifest.xmpNamespaceURI
             self.xmpPrefix = TAPDepthManifest.xmpPrefix
             self.xmpManifestPath = TAPDepthManifest.xmpManifestPath
+        }
+
+        nonisolated static var livePhotoV2: Schema {
+            Schema(
+                id: TAPDepthManifest.livePhotoSchemaIdentifier,
+                version: 2,
+                mediaType: TAPDepthManifest.livePhotoMediaType
+            )
         }
     }
 
@@ -99,6 +113,59 @@ extension TAPDepthManifest {
         let alignment: Alignment
         let location: Location?
         let software: Software
+        let livePhoto: LivePhoto?
+
+        nonisolated init(
+            id: String,
+            capturedAt: String,
+            sessionMode: String,
+            pairingMode: String,
+            alignmentStatus: String,
+            sourceAPIs: SourceAPIs,
+            capture: Capture,
+            rgbSource: RGBSource,
+            depthSource: DepthSourceSelection,
+            pairing: Pairing,
+            zoom: Zoom,
+            crop: Crop,
+            resolvedSession: ResolvedSession,
+            selectedDepthCamera: SelectedDepthCamera,
+            selectedZoom: SelectedZoom,
+            photoLens: PhotoLens,
+            depthBackend: DepthBackendSelection,
+            camera: Camera,
+            photo: Photo,
+            depth: Depth,
+            alignment: Alignment,
+            location: Location?,
+            software: Software,
+            livePhoto: LivePhoto? = nil
+        ) {
+            self.id = id
+            self.capturedAt = capturedAt
+            self.sessionMode = sessionMode
+            self.pairingMode = pairingMode
+            self.alignmentStatus = alignmentStatus
+            self.sourceAPIs = sourceAPIs
+            self.capture = capture
+            self.rgbSource = rgbSource
+            self.depthSource = depthSource
+            self.pairing = pairing
+            self.zoom = zoom
+            self.crop = crop
+            self.resolvedSession = resolvedSession
+            self.selectedDepthCamera = selectedDepthCamera
+            self.selectedZoom = selectedZoom
+            self.photoLens = photoLens
+            self.depthBackend = depthBackend
+            self.camera = camera
+            self.photo = photo
+            self.depth = depth
+            self.alignment = alignment
+            self.location = location
+            self.software = software
+            self.livePhoto = livePhoto
+        }
 
         enum CodingKeys: String, CodingKey {
             case id
@@ -124,6 +191,7 @@ extension TAPDepthManifest {
             case alignment
             case location
             case software
+            case livePhoto
         }
 
         /// Encodes the payload with an explicit `location: null` when no
@@ -158,7 +226,19 @@ extension TAPDepthManifest {
             try container.encode(alignment, forKey: .alignment)
             try container.encode(location, forKey: .location)
             try container.encode(software, forKey: .software)
+            try container.encodeIfPresent(livePhoto, forKey: .livePhoto)
         }
+    }
+
+    nonisolated struct LivePhoto: Codable, Equatable {
+        let presence: String
+        let pairedVideoFilename: String
+        let durationSeconds: Double
+        let photoDisplayTimeSeconds: Double
+        let width: Int32
+        let height: Int32
+        let videoCodec: String?
+        let audio: String
     }
 
     nonisolated struct SourceAPIs: Codable, Equatable {

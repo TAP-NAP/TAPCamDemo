@@ -23,26 +23,42 @@ struct AppAttestSignatureVerificationPanel: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SignatureVerificationHeader(
-                report: viewModel.report,
-                onRetry: retry
-            )
+        ScrollViewReader { proxy in
+            VStack(alignment: .leading, spacing: 12) {
+                SignatureVerificationHeader(
+                    report: viewModel.report,
+                    onRetry: retry,
+                    onAttentionTapped: {
+                        scrollToAttention(in: proxy)
+                    }
+                )
 
-            LazyVStack(alignment: .leading, spacing: 8) {
-                ForEach(viewModel.report.steps) { step in
-                    SignatureVerificationStepRow(step: step)
+                LazyVStack(alignment: .leading, spacing: 8) {
+                    ForEach(viewModel.report.steps) { step in
+                        SignatureVerificationStepRow(step: step)
+                            .id(step.id)
+                    }
                 }
             }
-        }
-        .task(id: runID) {
-            await verify()
+            .task(id: runID) {
+                await verify()
+            }
         }
     }
 
     private func retry() {
         Task {
             await verify()
+        }
+    }
+
+    private func scrollToAttention(in proxy: ScrollViewProxy) {
+        guard let stepID = viewModel.report.firstAttentionStepID else {
+            return
+        }
+
+        withAnimation(.easeInOut(duration: 0.18)) {
+            proxy.scrollTo(stepID, anchor: .center)
         }
     }
 
@@ -96,11 +112,21 @@ private final class AppAttestSignatureVerificationPanelModel: ObservableObject {
 private struct SignatureVerificationHeader: View {
     let report: AppAttestSignatureVerificationReport
     let onRetry: () -> Void
+    let onAttentionTapped: () -> Void
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Label(report.summary.title, systemImage: report.summary.systemImage)
-                .font(.subheadline.weight(.semibold))
+            if report.firstAttentionStepID == nil {
+                Label(report.summary.title, systemImage: report.summary.systemImage)
+                    .font(.subheadline.weight(.semibold))
+            } else {
+                Button(action: onAttentionTapped) {
+                    Label(report.summary.title, systemImage: report.summary.systemImage)
+                        .font(.subheadline.weight(.semibold))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(report.summary.title)
+            }
 
             Spacer(minLength: 8)
 
@@ -151,6 +177,8 @@ private extension AppAttestSignatureVerificationReport.Summary {
             "checkmark.shield"
         case .success:
             "checkmark.seal.fill"
+        case .warning:
+            "exclamationmark.triangle.fill"
         case .failure:
             "xmark.octagon.fill"
         }
@@ -162,6 +190,8 @@ private extension AppAttestSignatureVerificationReport.Summary {
             .primary
         case .success:
             .green
+        case .warning:
+            .yellow
         case .failure:
             .red
         }
@@ -175,6 +205,8 @@ private extension AppAttestSignatureVerificationStatus {
             "info.circle"
         case .success:
             "checkmark.circle.fill"
+        case .warning:
+            "exclamationmark.triangle.fill"
         case .failure:
             "xmark.circle.fill"
         }
@@ -186,6 +218,8 @@ private extension AppAttestSignatureVerificationStatus {
             .secondary
         case .success:
             .green
+        case .warning:
+            .yellow
         case .failure:
             .red
         }

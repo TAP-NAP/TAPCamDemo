@@ -116,6 +116,38 @@ struct TAPLibraryStorageTests {
         #expect(try await store.signedPhotoData(captureID: record.captureID) == Data("signed-jpg".utf8))
     }
 
+    @Test func pendingCaptureStorePersistsAndCleansLivePhotoPairedVideo() async throws {
+        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        let movieDirectory = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        let movieURL = movieDirectory.appendingPathComponent("source.mov")
+        try Data("paired-video".utf8).write(to: movieURL)
+        let store = TAPPendingCaptureStore(rootURL: rootURL)
+        let record = try await store.ingest(TAPCamDemoTestFixtures.samplePendingArtifact(
+            photoData: Data("unsigned".utf8),
+            livePhotoMovie: PackagedLivePhotoMovie(
+                fileURL: movieURL,
+                durationSeconds: 1.2,
+                photoDisplayTimeSeconds: 0.5,
+                width: 1440,
+                height: 1080,
+                codec: "hvc1",
+                capturesAudio: false
+            )
+        ))
+        let bundleURL = rootURL.appendingPathComponent(record.captureID, isDirectory: true)
+        let pairedVideoURL = bundleURL.appendingPathComponent(TAPPendingCaptureBundlePathPolicy.pairedVideoFilename)
+        let storedPairedVideoURL = try #require(await store.pairedVideoURL(captureID: record.captureID))
+
+        #expect(record.pairedVideoFilename == TAPPendingCaptureBundlePathPolicy.pairedVideoFilename)
+        #expect(FileManager.default.fileExists(atPath: pairedVideoURL.path))
+        #expect(try Data(contentsOf: storedPairedVideoURL) == Data("paired-video".utf8))
+
+        _ = try await store.storeSignedPhoto(Data("signed".utf8), captureID: record.captureID)
+        _ = try await store.markExported(captureID: record.captureID, assetLocalIdentifier: "asset-live-photo")
+
+        #expect(!FileManager.default.fileExists(atPath: pairedVideoURL.path))
+    }
+
     @Test func pendingCaptureStoreRejectsUnsafeCaptureIDsBeforeBundlePathUse() async throws {
         let unsafeCaptureIDs = [
             "",
@@ -193,6 +225,7 @@ struct TAPLibraryStorageTests {
         #expect(source.contains(#"static let signedHEICFilename = "signed.heic""#))
         #expect(source.contains(#"static let unsignedJPEGFilename = "unsigned.jpg""#))
         #expect(source.contains(#"static let signedJPEGFilename = "signed.jpg""#))
+        #expect(source.contains(#"static let pairedVideoFilename = "paired-video.mov""#))
         #expect(source.contains(#"static let thumbnailFilename = "thumbnail.jpg""#))
         #expect(source.contains(#"""
     private static let artifactFilenames: Set<String> = [
@@ -200,10 +233,10 @@ struct TAPLibraryStorageTests {
         signedHEICFilename,
         unsignedJPEGFilename,
         signedJPEGFilename,
+        pairedVideoFilename,
         thumbnailFilename
     ]
 """#))
-        #expect(!source.contains("pairedVideo"))
         #expect(!source.contains("alternatePhoto"))
         #expect(!source.contains("sidecar"))
         #expect(!source.contains("rawFilename"))
@@ -217,6 +250,7 @@ struct TAPLibraryStorageTests {
             TAPPendingCaptureBundlePathPolicy.signedHEICFilename,
             TAPPendingCaptureBundlePathPolicy.unsignedJPEGFilename,
             TAPPendingCaptureBundlePathPolicy.signedJPEGFilename,
+            TAPPendingCaptureBundlePathPolicy.pairedVideoFilename,
             TAPPendingCaptureBundlePathPolicy.thumbnailFilename
         ]
         let unauthorizedFilenames = [

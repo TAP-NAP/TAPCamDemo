@@ -42,7 +42,8 @@ enum TAPCamDemoTestFixtures {
         depthSourceCaptureDeviceName: String = "Back Triple Camera",
         depthSourceSensingMethod: String = "multiCameraStereoOrComputational",
         depthSourceLidarParticipation: String = "notAsserted",
-        depthAvailability: CaptureDepthAvailability = .available
+        depthAvailability: CaptureDepthAvailability = .available,
+        livePhoto: TAPDepthManifest.LivePhoto? = nil
     ) -> TAPDepthManifest.Payload {
         let hasDepth = depthAvailability == .available
 
@@ -201,7 +202,8 @@ enum TAPCamDemoTestFixtures {
                 bundleIdentifier: "TAP-NAP.TAPCamDemo",
                 version: "1.0",
                 build: "1"
-            )
+            ),
+            livePhoto: livePhoto
         )
     }
 
@@ -357,7 +359,8 @@ enum TAPCamDemoTestFixtures {
         fileContainer: CapturePhotoFileContainer = .heic,
         photoQualityLevel: CapturePhotoQualityLevel = .quality,
         captureID: String = "sample-capture",
-        capturedAt: Date = Date(timeIntervalSince1970: 0)
+        capturedAt: Date = Date(timeIntervalSince1970: 0),
+        livePhotoMovie: PackagedLivePhotoMovie? = nil
     ) -> PackagedCaptureArtifact {
         PackagedCaptureArtifact(
             packageID: UUID(uuidString: "00000000-0000-0000-0000-000000000123")!,
@@ -373,6 +376,7 @@ enum TAPCamDemoTestFixtures {
                     photoQualityPrioritization: photoQualityLevel.manifestDescription
                 )
             )),
+            livePhotoMovie: livePhotoMovie,
             signatureStatus: .unsigned(reason: "test"),
             depthAvailability: .available,
             captureScoreSummary: CaptureScoreSummary.make(

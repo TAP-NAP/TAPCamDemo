@@ -56,6 +56,7 @@ nonisolated struct TAPPendingCaptureRecord: Codable, Equatable, Identifiable, Se
     var captureScoreSummary: CaptureScoreSummary
     var unsignedPhotoFilename: String?
     var signedPhotoFilename: String?
+    var pairedVideoFilename: String?
     var thumbnailFilename: String?
     var assetLocalIdentifier: String?
     var failureReason: String?
@@ -107,6 +108,7 @@ nonisolated struct TAPPendingCaptureRecord: Codable, Equatable, Identifiable, Se
         captureScoreSummary: CaptureScoreSummary = .unknown,
         unsignedPhotoFilename: String? = nil,
         signedPhotoFilename: String? = nil,
+        pairedVideoFilename: String? = nil,
         unsignedHEICFilename: String? = nil,
         signedHEICFilename: String? = nil,
         thumbnailFilename: String?,
@@ -126,6 +128,7 @@ nonisolated struct TAPPendingCaptureRecord: Codable, Equatable, Identifiable, Se
         self.captureScoreSummary = captureScoreSummary
         self.unsignedPhotoFilename = unsignedPhotoFilename ?? unsignedHEICFilename
         self.signedPhotoFilename = signedPhotoFilename ?? signedHEICFilename
+        self.pairedVideoFilename = pairedVideoFilename
         self.thumbnailFilename = thumbnailFilename
         self.assetLocalIdentifier = assetLocalIdentifier
         self.failureReason = failureReason
@@ -145,6 +148,7 @@ nonisolated struct TAPPendingCaptureRecord: Codable, Equatable, Identifiable, Se
         case captureScoreSummary
         case unsignedPhotoFilename
         case signedPhotoFilename
+        case pairedVideoFilename
         case unsignedHEICFilename
         case signedHEICFilename
         case thumbnailFilename
@@ -179,6 +183,7 @@ nonisolated struct TAPPendingCaptureRecord: Codable, Equatable, Identifiable, Se
             ) ?? .unknown,
             unsignedPhotoFilename: try container.decodeIfPresent(String.self, forKey: .unsignedPhotoFilename),
             signedPhotoFilename: try container.decodeIfPresent(String.self, forKey: .signedPhotoFilename),
+            pairedVideoFilename: try container.decodeIfPresent(String.self, forKey: .pairedVideoFilename),
             unsignedHEICFilename: try container.decodeIfPresent(String.self, forKey: .unsignedHEICFilename),
             signedHEICFilename: try container.decodeIfPresent(String.self, forKey: .signedHEICFilename),
             thumbnailFilename: try container.decodeIfPresent(String.self, forKey: .thumbnailFilename),
@@ -202,6 +207,7 @@ nonisolated struct TAPPendingCaptureRecord: Codable, Equatable, Identifiable, Se
         try container.encode(captureScoreSummary, forKey: .captureScoreSummary)
         try container.encodeIfPresent(unsignedPhotoFilename, forKey: .unsignedPhotoFilename)
         try container.encodeIfPresent(signedPhotoFilename, forKey: .signedPhotoFilename)
+        try container.encodeIfPresent(pairedVideoFilename, forKey: .pairedVideoFilename)
         try container.encodeIfPresent(thumbnailFilename, forKey: .thumbnailFilename)
         try container.encodeIfPresent(assetLocalIdentifier, forKey: .assetLocalIdentifier)
         try container.encodeIfPresent(failureReason, forKey: .failureReason)

@@ -2,8 +2,9 @@
 
 `TAPCamDemo/TAPLibrary` owns the app-private queue for TAP capture artifacts.
 Camera capture writes one unsigned TAP depth photo file, either HEIC or JPG, and
-returns quickly. The queue processor serially signs, exports, retries, and
-cleans up records so real-device App Attest and Photos work do not overlap.
+returns quickly. Live Photo captures may add one fixed paired MOV resource. The
+queue processor serially signs, exports, retries, and cleans up records so
+real-device App Attest and Photos work do not overlap.
 
 ## Code Map
 
@@ -31,8 +32,8 @@ cleans up records so real-device App Attest and Photos work do not overlap.
 
 ```mermaid
 flowchart TD
-    Capture["CameraCapture Output\nunsigned HEIC/JPG"] --> Ingest["TAPPendingCaptureStore.ingest"]
-    Ingest --> Bundle["Pending/<captureID>\nbundle.json\nunsigned.heic or unsigned.jpg\nthumbnail.jpg"]
+    Capture["CameraCapture Output\nunsigned HEIC/JPG\noptional paired MOV"] --> Ingest["TAPPendingCaptureStore.ingest"]
+    Ingest --> Bundle["Pending/<captureID>\nbundle.json\nunsigned.heic or unsigned.jpg\noptional paired-video.mov\nthumbnail.jpg"]
     Bundle --> Processor["TAPPendingCaptureProcessor"]
     Processor --> Readiness["Worker readiness\nprotected data available"]
     Readiness --> Sign["Validate manifest id,\nsign, inject proof"]
@@ -140,11 +141,18 @@ without App Attest hardware, network, or Photos side effects.
 - `signed.heic` or `signed.jpg` is created only after the record `captureID`
   matches the embedded TAP manifest `payload.id` and App Attest proof injection
   succeeds.
+- `paired-video.mov` is present only for Live Photo captures whose Apple movie
+  complement was delivered. It is copied into the pending bundle before commit,
+  signed as `content-binding:v3`, and removed with the staged photo files after
+  export.
 - The signed photo file is exported only after `validateSignedExportPhoto`
   re-reads the final bytes and verifies the source container, manifest
   schema/id, proof envelope, proof digest binding, and Apple auxiliary
   depth/disparity. The validator returns `ValidatedTAPDepthPhoto`, which is the
   type accepted by the Photos writer.
+- Live Photo export uses `validateSignedExportLivePhoto` and
+  `PhotoLibraryWriter.saveDepthLivePhoto`; still-photo export continues to use
+  `validateSignedExportPhoto` and `saveDepthPhoto`.
 - Normal `.signed` first export goes straight to final validation and Photos
   save; it does not scan every existing TAPCamDepth Photos asset first.
   Existing-asset recovery via `depthAssetIdentifier` is reserved for `.exporting`

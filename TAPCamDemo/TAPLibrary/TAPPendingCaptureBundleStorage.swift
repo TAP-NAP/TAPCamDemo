@@ -96,6 +96,14 @@ nonisolated struct TAPPendingCaptureBundleStorage {
         )
     }
 
+    func copyPairedVideo(from sourceURL: URL, to bundleURL: URL) throws {
+        let destinationURL = bundleURL.appendingPathComponent(TAPPendingCaptureBundlePathPolicy.pairedVideoFilename)
+        if fileManager.fileExists(atPath: destinationURL.path) {
+            try fileManager.removeItem(at: destinationURL)
+        }
+        try fileManager.copyItem(at: sourceURL, to: destinationURL)
+    }
+
     func writeSignedPhoto(
         _ data: Data,
         fileContainer: CapturePhotoFileContainer,
@@ -180,6 +188,18 @@ nonisolated struct TAPPendingCaptureBundleStorage {
         ))
     }
 
+    func pairedVideoURL(filename: String, captureID: String) throws -> URL {
+        let url = try TAPPendingCaptureBundlePathPolicy.artifactURL(
+            rootURL: rootURL,
+            captureID: captureID,
+            filename: filename
+        )
+        guard fileManager.fileExists(atPath: url.path) else {
+            throw TAPDepthCaptureError.pendingCaptureDataMissing
+        }
+        return url
+    }
+
     func writeRecord(_ record: TAPPendingCaptureRecord) throws {
         try writeRecord(record, in: try bundleURL(captureID: record.captureID))
     }
@@ -195,7 +215,11 @@ nonisolated struct TAPPendingCaptureBundleStorage {
     }
 
     func cleanupLargeFiles(for record: TAPPendingCaptureRecord) throws {
-        for filename in [record.unsignedPhotoFilename, record.signedPhotoFilename].compactMap({ $0 }) {
+        for filename in [
+            record.unsignedPhotoFilename,
+            record.signedPhotoFilename,
+            record.pairedVideoFilename
+        ].compactMap({ $0 }) {
             let url = try TAPPendingCaptureBundlePathPolicy.artifactURL(
                 rootURL: rootURL,
                 captureID: record.captureID,

@@ -418,8 +418,18 @@ struct TAPCaptureOutputProfileTests {
         #expect(resourcePlanSource.contains("extension ResolvedCaptureOutputProfile"))
     }
 
-    @Test func currentPhotosExportSurfaceUsesSingleValidatedPhotoResource() throws {
+    @Test func photosExportSurfaceSeparatesStillPhotoAndLivePhotoResources() throws {
         let photoLibrarySource = try Self.source(relativePath: "TAPCamDemo/CameraCapture/Output/PhotoLibraryWriter.swift")
+        let stillSaveSource = try #require(Self.substring(
+            in: photoLibrarySource,
+            from: "static func saveDepthPhoto",
+            to: "/// Saves a validated TAP depth Live Photo"
+        ))
+        let liveSaveSource = try #require(Self.substring(
+            in: photoLibrarySource,
+            from: "static func saveDepthLivePhoto",
+            to: "/// Backward-compatible HEIC save wrapper."
+        ))
         let createAssetSource = try #require(Self.substring(
             in: photoLibrarySource,
             from: "private static func createAsset",
@@ -427,13 +437,16 @@ struct TAPCaptureOutputProfileTests {
         ))
 
         #expect(photoLibrarySource.contains("static func saveDepthPhoto(\n        _ validatedPhoto: ValidatedTAPDepthPhoto"))
+        #expect(photoLibrarySource.contains("static func saveDepthLivePhoto(\n        _ validatedLivePhoto: ValidatedTAPLivePhoto"))
+        #expect(!stillSaveSource.contains("pairedVideoURL:"))
+        #expect(liveSaveSource.contains("pairedVideoURL: validatedLivePhoto.pairedVideoURL"))
         #expect(createAssetSource.contains("options.uniformTypeIdentifier = fileContainer.uniformTypeIdentifier"))
         #expect(createAssetSource.contains("options.originalFilename = resourceFilename"))
         #expect(createAssetSource.contains("options.shouldMoveFile = false"))
-        #expect(createAssetSource.components(separatedBy: "addResource(").count - 1 == 1)
+        #expect(createAssetSource.components(separatedBy: "addResource(").count - 1 == 2)
         #expect(createAssetSource.contains("addResource(with: .photo, fileURL: resourceURL, options: options)"))
+        #expect(createAssetSource.contains("addResource(with: .pairedVideo, fileURL: pairedVideoURL, options: videoOptions)"))
         #expect(!createAssetSource.contains("addResource(with: .photo, data:"))
-        #expect(!createAssetSource.contains(".pairedVideo"))
         #expect(!createAssetSource.contains(".alternatePhoto"))
         #expect(!createAssetSource.contains(".fullSizePhoto"))
     }

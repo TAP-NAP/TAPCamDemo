@@ -8,6 +8,16 @@
 import CoreLocation
 import Foundation
 
+nonisolated struct PackagedLivePhotoMovie: Sendable {
+    let fileURL: URL
+    let durationSeconds: Double
+    let photoDisplayTimeSeconds: Double
+    let width: Int32
+    let height: Int32
+    let codec: String?
+    let capturesAudio: Bool
+}
+
 /// Physical packaging strategies known to the architecture.
 ///
 /// The current demo only writes a single embedded photo-depth file. Sidecars and
@@ -36,6 +46,7 @@ nonisolated struct PackagedCaptureArtifact: Sendable {
     let fileContainer: CapturePhotoFileContainer
     let photoQualityLevel: CapturePhotoQualityLevel
     let manifest: TAPDepthManifest
+    let livePhotoMovie: PackagedLivePhotoMovie?
     let signatureStatus: CaptureSignatureStatus
     let depthAvailability: CaptureDepthAvailability
     let captureScoreSummary: CaptureScoreSummary

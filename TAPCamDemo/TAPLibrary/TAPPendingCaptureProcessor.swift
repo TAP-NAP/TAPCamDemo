@@ -247,14 +247,16 @@ private struct AppAttestPendingCaptureSigner: TAPPendingCaptureSigning {
         #endif
 
         let unsignedData = try await store.unsignedPhotoData(captureID: record.captureID)
+        let pairedVideoURL = try await store.pairedVideoURL(captureID: record.captureID)
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.pendingCapture.info("sign unsigned data loaded captureID=\(record.captureID, privacy: .private) bytes=\(unsignedData.count, privacy: .public)")
+        TAPDiagnostics.pendingCapture.info("sign unsigned data loaded captureID=\(record.captureID, privacy: .private) bytes=\(unsignedData.count, privacy: .public) hasPairedVideo=\(pairedVideoURL != nil, privacy: .public)")
         #endif
         let signedPhoto = try await provenanceWriter.signedPhotoData(
             from: unsignedData,
             expectedCaptureID: record.captureID,
             expectedProfile: record.outputProfile,
-            assertionSigner: signer
+            assertionSigner: signer,
+            pairedVideoURL: pairedVideoURL
         )
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.pendingCapture.info("sign provenance ready captureID=\(record.captureID, privacy: .private) container=\(signedPhoto.fileContainer.rawValue, privacy: .public) manifestID=\(signedPhoto.manifest.payload.id, privacy: .private) keyID=\(signedPhoto.keyID, privacy: .private)")
@@ -269,11 +271,21 @@ private struct AppAttestPendingCaptureSigner: TAPPendingCaptureSigning {
 
 nonisolated struct PhotoLibraryPendingCaptureExportActions: Sendable {
     let existingAssetIdentifier: @Sendable (String) async throws -> String?
-    let saveValidatedSignedPhoto: @Sendable (Data, TAPPendingCaptureRecord) async throws -> String
+    let saveValidatedSignedPhoto: @Sendable (Data, TAPPendingCaptureRecord, URL?) async throws -> String
 
     init(
         existingAssetIdentifier: @escaping @Sendable (String) async throws -> String?,
         saveValidatedSignedPhoto: @escaping @Sendable (Data, TAPPendingCaptureRecord) async throws -> String
+    ) {
+        self.existingAssetIdentifier = existingAssetIdentifier
+        self.saveValidatedSignedPhoto = { data, record, _ in
+            try await saveValidatedSignedPhoto(data, record)
+        }
+    }
+
+    init(
+        existingAssetIdentifier: @escaping @Sendable (String) async throws -> String?,
+        saveValidatedSignedPhoto: @escaping @Sendable (Data, TAPPendingCaptureRecord, URL?) async throws -> String
     ) {
         self.existingAssetIdentifier = existingAssetIdentifier
         self.saveValidatedSignedPhoto = saveValidatedSignedPhoto
@@ -296,17 +308,31 @@ nonisolated struct PhotoLibraryPendingCaptureExportActions: Sendable {
             existingAssetIdentifier: { captureID in
                 try await PhotoLibraryWriter.depthAssetIdentifier(captureID: captureID)
             },
-            saveValidatedSignedPhoto: { signedData, record in
-                let validatedPhoto = try provenanceWriter.validateSignedExportPhoto(
-                    signedData,
-                    expectedCaptureID: record.captureID,
-                    expectedProfile: record.outputProfile
-                )
-                return try await PhotoLibraryWriter.saveDepthPhoto(
-                    validatedPhoto,
-                    capturedAt: record.capturedAt,
-                    location: record.location?.clLocation
-                )
+            saveValidatedSignedPhoto: { signedData, record, pairedVideoURL in
+                if let pairedVideoURL {
+                    let validatedLivePhoto = try provenanceWriter.validateSignedExportLivePhoto(
+                        signedData,
+                        pairedVideoURL: pairedVideoURL,
+                        expectedCaptureID: record.captureID,
+                        expectedProfile: record.outputProfile
+                    )
+                    return try await PhotoLibraryWriter.saveDepthLivePhoto(
+                        validatedLivePhoto,
+                        capturedAt: record.capturedAt,
+                        location: record.location?.clLocation
+                    )
+                } else {
+                    let validatedPhoto = try provenanceWriter.validateSignedExportPhoto(
+                        signedData,
+                        expectedCaptureID: record.captureID,
+                        expectedProfile: record.outputProfile
+                    )
+                    return try await PhotoLibraryWriter.saveDepthPhoto(
+                        validatedPhoto,
+                        capturedAt: record.capturedAt,
+                        location: record.location?.clLocation
+                    )
+                }
             }
         )
     }
@@ -340,7 +366,8 @@ struct PhotoLibraryPendingCaptureExporter: TAPPendingCaptureExporting {
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.pendingCapture.info("export signed data loaded captureID=\(record.captureID, privacy: .private) bytes=\(signedData.count, privacy: .public)")
         #endif
-        let assetID = try await actions.saveValidatedSignedPhoto(signedData, record)
+        let pairedVideoURL = try await store.pairedVideoURL(captureID: record.captureID)
+        let assetID = try await actions.saveValidatedSignedPhoto(signedData, record, pairedVideoURL)
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.pendingCapture.info("export validation and save passed captureID=\(record.captureID, privacy: .private)")
         #endif

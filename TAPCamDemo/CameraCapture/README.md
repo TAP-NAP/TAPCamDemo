@@ -153,10 +153,13 @@ The format and quality boundary crosses layers in this order:
    Photos directly.
 
 This is still not a broad image-quality feature. The visible format choice is
-limited to the two reviewed TAP depth photo profiles. Future RAW, Live Photo,
-video, 24MP deferred delivery, or quality-level work should add a new
-profile/catalog entry plus validation, manifest, packaging, signing, reader,
-and test evidence before UI can request it.
+limited to the two reviewed TAP depth photo profiles. Live Photo is a narrow
+extension on top of those profiles: when the active photo output supports it,
+the app captures one paired MOV resource and signs it through the v2/v3 Live
+Photo contract. Future RAW, general video, 24MP deferred delivery, or new
+quality-level work should add a new profile/catalog entry plus validation,
+manifest, packaging, signing, reader, and test evidence before UI can request
+it.
 
 ## Packaging Handoff
 

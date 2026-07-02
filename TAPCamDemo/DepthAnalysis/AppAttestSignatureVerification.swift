@@ -37,23 +37,46 @@ nonisolated struct AppAttestSignatureVerificationContext: Sendable {
 
 nonisolated struct AppAttestCaptureSignatureVerifier: Sendable {
     typealias PhotoDataLoader = @Sendable (String) async throws -> Data
-    typealias RequestMaterialBuilder = @Sendable (Data) throws -> AppAttestSignatureVerificationRequestMaterial
+    typealias ResourceLoader = @Sendable (String) async throws -> PhotoLibraryWriter.SignatureVerificationResources
+    typealias PhotoRequestMaterialBuilder = @Sendable (Data) throws -> AppAttestSignatureVerificationRequestMaterial
+    typealias RequestMaterialBuilder = @Sendable (PhotoLibraryWriter.SignatureVerificationResources) throws -> AppAttestSignatureVerificationRequestMaterial
     typealias VerificationSubmitter = @Sendable (Data, URL) async throws -> CaptureSignatureVerificationHTTPResponse
 
-    private let photoDataLoader: PhotoDataLoader
+    private let resourceLoader: ResourceLoader
     private let requestMaterialBuilder: RequestMaterialBuilder
     private let verificationSubmitter: VerificationSubmitter
 
     init(
-        photoDataLoader: @escaping PhotoDataLoader = { assetID in
-            try await PhotoLibraryWriter.originalPhotoData(localIdentifier: assetID)
+        resourceLoader: @escaping ResourceLoader = { assetID in
+            try await PhotoLibraryWriter.signatureVerificationResources(localIdentifier: assetID)
         },
         requestMaterialBuilder: @escaping RequestMaterialBuilder = Self.makeRequestMaterial(from:),
         verificationSubmitter: @escaping VerificationSubmitter = Self.submitVerification(requestData:endpoint:)
     ) {
-        self.photoDataLoader = photoDataLoader
+        self.resourceLoader = resourceLoader
         self.requestMaterialBuilder = requestMaterialBuilder
         self.verificationSubmitter = verificationSubmitter
+    }
+
+    init(
+        photoDataLoader: @escaping PhotoDataLoader,
+        requestMaterialBuilder: @escaping PhotoRequestMaterialBuilder,
+        verificationSubmitter: @escaping VerificationSubmitter = Self.submitVerification(requestData:endpoint:)
+    ) {
+        self.init(
+            resourceLoader: { assetID in
+                PhotoLibraryWriter.SignatureVerificationResources(
+                    photoData: try await photoDataLoader(assetID),
+                    pairedVideoURL: nil,
+                    temporaryDirectoryURL: nil,
+                    presentationAdjustmentResourceLabels: []
+                )
+            },
+            requestMaterialBuilder: { resources in
+                try requestMaterialBuilder(resources.photoData)
+            },
+            verificationSubmitter: verificationSubmitter
+        )
     }
 
     func verify(
@@ -67,16 +90,28 @@ nonisolated struct AppAttestCaptureSignatureVerifier: Sendable {
         }
 
         do {
-            let photoData = try await photoDataLoader(assetID)
+            let resources = try await resourceLoader(assetID)
+            defer {
+                resources.removeTemporaryDirectory()
+            }
             steps.append(
                 AppAttestSignatureVerificationStep(
                     status: .success,
-                    title: "Original Photos resource",
+                    title: "Original Photos photo",
                     detail: "Saved photo bytes loaded from Photos."
                 )
             )
+            if resources.hasPairedVideo {
+                steps.append(
+                    AppAttestSignatureVerificationStep(
+                        status: .success,
+                        title: "Original Live Photo video",
+                        detail: "Saved paired MOV loaded from Photos."
+                    )
+                )
+            }
 
-            let material = try requestMaterialBuilder(photoData)
+            let material = try requestMaterialBuilder(resources)
             steps.append(contentsOf: material.steps)
 
             let requestData = try JSONEncoder.tapCaptureCanonical.encode(material.request)
@@ -95,7 +130,7 @@ nonisolated struct AppAttestCaptureSignatureVerifier: Sendable {
                     detail: "Backend accepted the App Attest assertion for this signing binding."
                 )
             )
-            return .success(steps: steps)
+            return .verified(steps: steps)
         } catch {
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.appAttest.error("capture signature verification failed error=\(TAPDiagnostics.describe(error), privacy: .public)")
@@ -113,14 +148,30 @@ nonisolated struct AppAttestCaptureSignatureVerifier: Sendable {
     }
 
     private static func makeRequestMaterial(
-        from photoData: Data
+        from resources: PhotoLibraryWriter.SignatureVerificationResources
     ) throws -> AppAttestSignatureVerificationRequestMaterial {
         do {
+            let photoData = resources.photoData
             let fileContainer = try TAPDepthPhotoFileReader.fileContainer(from: photoData)
-            let expectedProfile: CaptureOutputProfile = fileContainer == .jpeg
-                ? .releasePhotoDepthJPEG
-                : .releasePhotoDepthHEIC
             let manifest = try TAPDepthPhotoFileReader.decodedManifest(from: photoData)
+            let expectedProfile = expectedProfile(
+                fileContainer: fileContainer,
+                manifest: manifest
+            )
+            if manifest.schema == TAPDepthManifest.Schema.livePhotoV2 {
+                return try makeLivePhotoRequestMaterial(
+                    from: resources,
+                    manifest: manifest,
+                    expectedProfile: expectedProfile
+                )
+            }
+            guard manifest.schema == TAPDepthManifest.Schema() else {
+                throw AppAttestSignatureVerificationFailure(
+                    title: "Local signed photo gate",
+                    detail: "Saved photo uses an unsupported TAP manifest schema."
+                )
+            }
+
             let validatedPhoto = try TAPCaptureProvenanceWriter().validateSignedExportPhoto(
                 photoData,
                 expectedCaptureID: manifest.payload.id,
@@ -143,7 +194,7 @@ nonisolated struct AppAttestCaptureSignatureVerifier: Sendable {
                         title: "Local signed photo gate",
                         detail: "Container, Release manifest policy, App Attest proof, digest binding, and auxiliary depth passed local validation."
                     )
-                ],
+                ] + presentationWarningSteps(from: resources, isLivePhoto: false),
                 request: request
             )
         } catch let failure as AppAttestSignatureVerificationFailure {
@@ -157,6 +208,97 @@ nonisolated struct AppAttestCaptureSignatureVerifier: Sendable {
                 detail: "Saved photo did not pass local signature, digest, manifest, and depth validation."
             )
         }
+    }
+
+    private static func makeLivePhotoRequestMaterial(
+        from resources: PhotoLibraryWriter.SignatureVerificationResources,
+        manifest: TAPDepthManifest,
+        expectedProfile: CaptureOutputProfile
+    ) throws -> AppAttestSignatureVerificationRequestMaterial {
+        guard let pairedVideoURL = resources.pairedVideoURL else {
+            throw AppAttestSignatureVerificationFailure(
+                title: "Local signed Live Photo gate",
+                detail: "Saved Live Photo is missing its original paired video resource."
+            )
+        }
+
+        do {
+            let validatedLivePhoto = try TAPCaptureProvenanceWriter().validateSignedExportLivePhoto(
+                resources.photoData,
+                pairedVideoURL: pairedVideoURL,
+                expectedCaptureID: manifest.payload.id,
+                expectedProfile: expectedProfile
+            )
+            let proof = try captureProof(
+                from: validatedLivePhoto.photo.data,
+                fileContainer: validatedLivePhoto.photo.fileContainer
+            )
+            let proofValue = try decodeProofValue(proof)
+            let request = CaptureSignatureVerificationRequest(
+                keyId: proofValue.keyId,
+                assertionObject: proofValue.assertionObject,
+                signingBinding: proofValue.signingBinding
+            )
+            return AppAttestSignatureVerificationRequestMaterial(
+                steps: [
+                    AppAttestSignatureVerificationStep(
+                        status: .success,
+                        title: "Local signed Live Photo gate",
+                        detail: "Primary photo, paired MOV, manifest, App Attest proof, digest binding, and still-photo depth passed local validation."
+                    ),
+                    AppAttestSignatureVerificationStep(
+                        status: .info,
+                        title: "Live Photo depth scope",
+                        detail: "Depth is bound to the original still photo. The paired MOV is signed as video bytes, not per-frame depth."
+                    )
+                ] + presentationWarningSteps(from: resources, isLivePhoto: true),
+                request: request
+            )
+        } catch let failure as AppAttestSignatureVerificationFailure {
+            throw failure
+        } catch {
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.appAttest.error("capture signature Live Photo local validation failed error=\(TAPDiagnostics.describe(error), privacy: .public)")
+            #endif
+            throw AppAttestSignatureVerificationFailure(
+                title: "Local signed Live Photo gate",
+                detail: "Saved Live Photo did not pass local signature, digest, manifest, paired MOV, and depth validation."
+            )
+        }
+    }
+
+    private static func expectedProfile(
+        fileContainer: CapturePhotoFileContainer,
+        manifest: TAPDepthManifest
+    ) -> CaptureOutputProfile {
+        let qualityLevel = CapturePhotoQualityLevel(
+            rawValue: manifest.payload.capture.photoQualityPrioritization
+        ) ?? .quality
+        return CaptureOutputProfile.releasePhotoDepthProfile(
+            fileContainer: fileContainer,
+            photoQualityLevel: qualityLevel
+        )
+    }
+
+    private static func presentationWarningSteps(
+        from resources: PhotoLibraryWriter.SignatureVerificationResources,
+        isLivePhoto: Bool
+    ) -> [AppAttestSignatureVerificationStep] {
+        guard resources.hasPresentationAdjustments else {
+            return []
+        }
+
+        let resourceScope = isLivePhoto
+            ? "original .photo and .pairedVideo"
+            : "original .photo"
+        let labels = resources.presentationAdjustmentResourceLabels.joined(separator: ", ")
+        return [
+            AppAttestSignatureVerificationStep(
+                status: .warning,
+                title: "Photos presentation warning",
+                detail: "Photos has presentation resources: \(labels). Verification covers \(resourceScope) only."
+            )
+        ]
     }
 
     private static func captureProof(
@@ -242,28 +384,50 @@ nonisolated struct AppAttestSignatureVerificationReport: Equatable, Sendable {
     )
 
     static let running = AppAttestSignatureVerificationReport(
-        summary: Summary(state: .running, title: "Verifying Signature"),
+        summary: Summary(state: .running, title: "Verifying"),
         steps: [
             AppAttestSignatureVerificationStep(
                 status: .info,
                 title: "Verification started",
-                detail: "Loading the saved HEIC, checking local proof binding, and contacting the configured backend."
+                detail: "Loading saved original resources, checking local proof binding, and contacting the configured backend."
             )
         ]
     )
 
     static func success(steps: [AppAttestSignatureVerificationStep]) -> Self {
         AppAttestSignatureVerificationReport(
-            summary: Summary(state: .success, title: "Signature Verified"),
+            summary: Summary(state: .success, title: "Verified"),
+            steps: steps
+        )
+    }
+
+    static func warning(steps: [AppAttestSignatureVerificationStep]) -> Self {
+        AppAttestSignatureVerificationReport(
+            summary: Summary(state: .warning, title: "Warnings"),
             steps: steps
         )
     }
 
     static func failure(steps: [AppAttestSignatureVerificationStep]) -> Self {
         AppAttestSignatureVerificationReport(
-            summary: Summary(state: .failure, title: "Verification Failed"),
+            summary: Summary(state: .failure, title: "Failed"),
             steps: steps
         )
+    }
+
+    static func verified(steps: [AppAttestSignatureVerificationStep]) -> Self {
+        if steps.contains(where: { $0.status == .failure }) {
+            return failure(steps: steps)
+        }
+        if steps.contains(where: { $0.status == .warning }) {
+            return warning(steps: steps)
+        }
+        return success(steps: steps)
+    }
+
+    var firstAttentionStepID: UUID? {
+        steps.first(where: { $0.status == .failure })?.id
+            ?? steps.first(where: { $0.status == .warning })?.id
     }
 
     nonisolated struct Summary: Equatable, Sendable {
@@ -271,6 +435,7 @@ nonisolated struct AppAttestSignatureVerificationReport: Equatable, Sendable {
             case idle
             case running
             case success
+            case warning
             case failure
         }
 
@@ -305,6 +470,7 @@ nonisolated struct AppAttestSignatureVerificationStep: Equatable, Identifiable, 
 nonisolated enum AppAttestSignatureVerificationStatus: Equatable, Sendable {
     case info
     case success
+    case warning
     case failure
 }
 

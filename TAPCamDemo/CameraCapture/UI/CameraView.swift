@@ -217,7 +217,7 @@ struct CameraView: View {
             state: CameraViewfinderChromeState(
                 flashMode: flashMode,
                 isFlashAvailable: viewModel.isFlashAvailable,
-                isLivePhotoAvailable: false,
+                isLivePhotoAvailable: viewModel.isLivePhotoCaptureSupported,
                 isLivePhotoEnabled: isLivePhotoEnabled,
                 contentRotation: chromeOrientation.angle
             ),
@@ -227,7 +227,7 @@ struct CameraView: View {
             },
             onCycleFlash: cycleFlashMode,
             onToggleLivePhoto: {
-                showViewfinderHint("Coming soon")
+                isLivePhotoEnabled.toggle()
             }
         )
         #else
@@ -235,7 +235,7 @@ struct CameraView: View {
             state: CameraViewfinderChromeState(
                 flashMode: flashMode,
                 isFlashAvailable: viewModel.isFlashAvailable,
-                isLivePhotoAvailable: false,
+                isLivePhotoAvailable: viewModel.isLivePhotoCaptureSupported,
                 isLivePhotoEnabled: isLivePhotoEnabled,
                 basicEVState: basicEVControlState,
                 contentRotation: chromeOrientation.angle
@@ -247,7 +247,7 @@ struct CameraView: View {
             },
             onCycleFlash: cycleFlashMode,
             onToggleLivePhoto: {
-                showViewfinderHint("Coming soon")
+                isLivePhotoEnabled.toggle()
             }
         )
         #endif
@@ -1116,7 +1116,11 @@ struct CameraView: View {
             await viewModel.capture(
                 pendingCaptureWorkerClient: pendingCaptureWorkerClient,
                 suppressesShutterSound: !isShutterSoundEnabled,
-                flashMode: flashMode.captureFlashMode
+                flashMode: flashMode.captureFlashMode,
+                livePhotoRequest: CaptureLivePhotoRequest(
+                    isEnabled: isLivePhotoEnabled && viewModel.isLivePhotoCaptureSupported,
+                    capturesAudio: false
+                )
             )
         }
     }

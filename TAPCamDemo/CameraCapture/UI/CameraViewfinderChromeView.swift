@@ -75,7 +75,9 @@ struct CameraViewfinderChromeView: View {
     private var topToolbar: some View {
         HStack(spacing: 10) {
             flashButton
-            livePhotoButton
+            if state.isLivePhotoAvailable {
+                livePhotoButton
+            }
             Spacer(minLength: 0)
         }
     }
@@ -110,19 +112,11 @@ struct CameraViewfinderChromeView: View {
                     .font(.system(size: 17, weight: .semibold))
             }
             .background(.black.opacity(0.42), in: Circle())
-            .opacity(state.isLivePhotoAvailable ? 1 : 0.36)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(livePhotoAccessibilityLabel)
+        .accessibilityLabel(state.isLivePhotoEnabled ? "Live Photo on" : "Live Photo off")
         .accessibilityIdentifier("camera.chrome.livePhoto")
-        .help(state.isLivePhotoAvailable ? "Toggle Live Photo capture." : "Live Photo coming soon.")
-    }
-
-    private var livePhotoAccessibilityLabel: String {
-        guard state.isLivePhotoAvailable else {
-            return "Live Photo coming soon"
-        }
-        return state.isLivePhotoEnabled ? "Live Photo on" : "Live Photo off"
+        .help("Toggle Live Photo capture.")
     }
 
     private enum Metrics {

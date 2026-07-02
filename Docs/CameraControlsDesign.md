@@ -91,7 +91,10 @@ Settings 里不提供 `Pro Controls` runtime toggle。这个选择只由编译�
 `viewfinder top toolbar` 放：
 
 - `Flash`：44pt 圆形按钮，点按循环 `Off -> Auto -> On -> Off`。
-- `Live Photo`：44pt 圆形按钮，当前阶段作为可见入口；完整 Live Photo 电影配对、写入和分析链路仍在 roadmap。点击未完成能力时使用 `viewfinder edge toast` 显示 `Coming soon`。
+- `Live Photo`：44pt 圆形按钮，仅在当前 `AVCapturePhotoOutput` 支持 Live Photo
+  时显示；点击切换 Settings 共用的 `CameraLivePhotoEnabled` 偏好。当前实现支持
+  无声 Live Photo：照片、manifest/proof、paired MOV 写入和 Photos 导出链路已接通，
+  麦克风音频不作为启用前提。
 
 `viewfinder top toolbar` 不能作为 preview overlay。布局顺序必须是 `viewfinder top shoulder`、`viewfinder top toolbar`、viewfinder，再进入下方控制区。
 

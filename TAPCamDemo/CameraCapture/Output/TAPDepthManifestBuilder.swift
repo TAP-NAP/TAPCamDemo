@@ -73,10 +73,14 @@ nonisolated enum TAPDepthManifestBuilder {
             depth: makeDepth(depthData: photo.depthData, device: device),
             alignment: makeAlignment(depthAvailability: capturePackage.depthAvailability),
             location: context.location.map(makeLocation),
-            software: .current
+            software: .current,
+            livePhoto: makeLivePhoto(capturePackage.livePhotoMovie)
         )
 
-        return TAPDepthManifest(payload: payload)
+        let schema: TAPDepthManifest.Schema = capturePackage.livePhotoMovie == nil
+            ? TAPDepthManifest.Schema()
+            : .livePhotoV2
+        return TAPDepthManifest(payload: payload, schema: schema)
     }
 
     private static func makeRGBSource(
@@ -240,6 +244,22 @@ nonisolated enum TAPDepthManifestBuilder {
             lensPosition: device.isFocusModeSupported(.locked) || device.isFocusModeSupported(.autoFocus) || device.isFocusModeSupported(.continuousAutoFocus) ? device.lensPosition : nil,
             minimumFocusDistanceMillimeters: device.minimumFocusDistance > 0 ? device.minimumFocusDistance : nil,
             nominalFocalLengthIn35mmFilmMillimeters: device.tapNominalFocalLengthIn35mmFilm
+        )
+    }
+
+    private static func makeLivePhoto(_ movie: CapturedLivePhotoMovie?) -> TAPDepthManifest.LivePhoto? {
+        guard let movie else {
+            return nil
+        }
+        return TAPDepthManifest.LivePhoto(
+            presence: "paired-video",
+            pairedVideoFilename: "paired-video.mov",
+            durationSeconds: max(0, movie.duration.seconds),
+            photoDisplayTimeSeconds: max(0, movie.photoDisplayTime.seconds),
+            width: movie.dimensions.width,
+            height: movie.dimensions.height,
+            videoCodec: movie.codec,
+            audio: movie.capturesAudio ? "captured" : "not-captured"
         )
     }
 
