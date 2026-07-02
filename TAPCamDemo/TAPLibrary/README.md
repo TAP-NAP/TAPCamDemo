@@ -161,6 +161,14 @@ without App Attest hardware, network, or Photos side effects.
 - `assetLocalIdentifier` is kept after export so saved TAP photos remain
   discoverable even when Photos access is limited.
 - Exported large files are cleaned up; records and thumbnails remain.
+- Saved Photos assets can later be exported from the signature-verification
+  panel as verification originals. Still-photo captures export the original
+  `.photo` resource as a single HEIC/JPG. Complete Live Photo captures export
+  a ZIP containing `primary-photo.heic` or `primary-photo.jpg`,
+  `paired-video.mov`, and an unsigned minimal `tapcam-export.json` sidecar.
+  If a Live Photo manifest is present but Photos no longer exposes the original
+  `.pairedVideo`, the export path may provide only the primary photo and must
+  warn that Live Photo verification remains incomplete.
 - Precise capture location is kept only while the record is pending, signing,
   or exporting so Photos can receive the location at save time. `markExported`
   clears the persisted queue copy after Photos has accepted the asset.

@@ -243,6 +243,56 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
         )
     }
 
+    /// Partial gate for exporting the primary photo from an incomplete saved
+    /// Live Photo. This validates the signed still resource and the proof's
+    /// internal Live Photo binding, but it deliberately does not mark the Live
+    /// Photo as complete when the paired MOV is unavailable.
+    func validateSignedExportLivePhotoPrimaryPhoto(
+        _ signedPhotoData: Data,
+        expectedCaptureID: String,
+        expectedProfile: CaptureOutputProfile
+    ) throws -> ValidatedTAPDepthPhoto {
+        try TAPDepthPhotoFileReader.validateContainer(
+            signedPhotoData,
+            expected: expectedProfile.fileContainer
+        )
+        let manifest = try TAPDepthPhotoFileReader.decodedManifest(from: signedPhotoData)
+        try validateLivePhotoManifestSchema(manifest)
+        try validateManifestID(manifest.payload.id, expectedCaptureID: expectedCaptureID)
+        try CaptureOutputManifestPolicy(profile: expectedProfile).validate(manifest.payload.capture)
+        try validateManifestCarriesNoProofBody(manifest)
+        try validateManifestLivePhotoPayload(manifest)
+
+        let proof = try decodedCaptureProof(
+            from: signedPhotoData,
+            fileContainer: expectedProfile.fileContainer
+        )
+        let proofValue = try decodedCaptureProofValue(proof, expectedCaptureID: expectedCaptureID)
+
+        let depthData = try TAPDepthPhotoFileReader.depthData(from: signedPhotoData)
+        try validateDepthReadback(depthData, manifest: manifest)
+
+        let recomputedPrimaryDigest = try CaptureContentDigest.make(
+            manifest: manifest,
+            basePhotoData: signedPhotoData,
+            fileContainer: expectedProfile.fileContainer,
+            depthData: depthData
+        )
+        try validateLivePhotoPrimaryProof(
+            proof,
+            proofValue: proofValue,
+            recomputedPrimaryDigest: recomputedPrimaryDigest,
+            manifest: manifest,
+            fileContainer: expectedProfile.fileContainer
+        )
+
+        return ValidatedTAPDepthPhoto(
+            data: signedPhotoData,
+            manifest: manifest,
+            fileContainer: expectedProfile.fileContainer
+        )
+    }
+
     /// Backward-compatible final gate for existing HEIC call sites.
     func validateSignedExportHEIC(
         _ signedHEICData: Data,
@@ -363,6 +413,72 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
         let expectedSigningBinding = try CaptureSigningBinding(contentDigest: recomputedDigest)
         guard proofValue.signingBinding == expectedSigningBinding else {
             throw TAPDepthCaptureError.pendingCaptureProofInvalid("proof signing binding does not match exported bytes")
+        }
+    }
+
+    private func validateLivePhotoPrimaryProof(
+        _ proof: TAPDepthManifest.Proof,
+        proofValue: CaptureAssertionProofValue,
+        recomputedPrimaryDigest: CaptureContentDigest,
+        manifest: TAPDepthManifest,
+        fileContainer: CapturePhotoFileContainer
+    ) throws {
+        let digest = proofValue.contentDigest
+        guard proof.createdAt == recomputedPrimaryDigest.capturedAt else {
+            throw TAPDepthCaptureError.pendingCaptureProofInvalid("proof timestamp does not match capture digest")
+        }
+        guard digest.schemaID == CaptureContentBinding.livePhotoSchemaIdentifier,
+              digest.manifestSchemaID == manifest.schema.id,
+              digest.captureID == recomputedPrimaryDigest.captureID,
+              digest.capturedAt == recomputedPrimaryDigest.capturedAt,
+              digest.assetHash == recomputedPrimaryDigest.assetHash,
+              digest.metadataHash == recomputedPrimaryDigest.metadataHash,
+              digest.proofSlot == recomputedPrimaryDigest.proofSlot,
+              digest.depthResource == recomputedPrimaryDigest.depthResource else {
+            throw TAPDepthCaptureError.pendingCaptureProofInvalid("proof primary photo digest does not match exported bytes")
+        }
+
+        let expectedSigningBinding = try CaptureSigningBinding(contentDigest: digest)
+        guard proofValue.signingBinding == expectedSigningBinding else {
+            throw TAPDepthCaptureError.pendingCaptureProofInvalid("proof signing binding does not match exported bytes")
+        }
+
+        guard let signedResources = digest.signedResources,
+              signedResources.count == 3 else {
+            throw TAPDepthCaptureError.pendingCaptureProofInvalid("missing Live Photo signed resources")
+        }
+
+        let payloadData = try TAPDepthManifestEncoder.payloadDataExcludingProofs(manifest.payload)
+        let expectedPrimaryResource = CaptureContentDigest.SignedResource(
+            role: "primaryPhoto",
+            kind: recomputedPrimaryDigest.assetHash.kind,
+            mediaType: fileContainer.uniformTypeIdentifier,
+            algorithm: recomputedPrimaryDigest.assetHash.algorithm,
+            byteCount: recomputedPrimaryDigest.assetHash.byteCount,
+            value: recomputedPrimaryDigest.assetHash.value,
+            binding: "format-native-byte-ranges",
+            excludedRanges: recomputedPrimaryDigest.assetHash.excludedRanges
+        )
+        let expectedManifestResource = CaptureContentDigest.SignedResource(
+            role: "tapDepthManifestPayload",
+            kind: recomputedPrimaryDigest.metadataHash.kind,
+            mediaType: recomputedPrimaryDigest.metadataHash.mediaType,
+            algorithm: recomputedPrimaryDigest.metadataHash.algorithm,
+            byteCount: payloadData.count,
+            value: recomputedPrimaryDigest.metadataHash.value,
+            binding: "canonical-json"
+        )
+
+        guard signedResources.contains(expectedPrimaryResource),
+              signedResources.contains(expectedManifestResource),
+              signedResources.contains(where: { resource in
+                resource.role == "pairedLivePhotoVideo"
+                    && resource.kind == "format-native-full-file"
+                    && resource.mediaType == "com.apple.quicktime-movie"
+                    && resource.algorithm == "SHA-256"
+                    && resource.binding == "full-file"
+              }) else {
+            throw TAPDepthCaptureError.pendingCaptureProofInvalid("proof Live Photo resource descriptors do not match exported bytes")
         }
     }
 

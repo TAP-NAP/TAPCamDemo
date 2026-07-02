@@ -186,6 +186,27 @@ The v3 binding keeps the still-photo fields above and adds `signedResources`:
 - `pairedLivePhotoVideo`: SHA-256 over the complete MOV file bytes with media
   type `com.apple.quicktime-movie`.
 
+The Live Photo hash chain is:
+
+```mermaid
+flowchart TD
+    Primary["Original Photos .photo<br/>HEIC or JPG"] --> Slot["Exclude TAP proof slot"]
+    Slot --> PrimaryHash["SHA-256 photo bytes<br/>assetHash + primaryPhoto resource"]
+    Manifest["tapdepth:Manifest payload"] --> PayloadJSON["Canonical JSON"]
+    PayloadJSON --> ManifestHash["SHA-256 payload<br/>metadataHash + manifest resource"]
+    MOV["Original Photos .pairedVideo<br/>paired-video.mov"] --> MOVHash["SHA-256 full MOV<br/>pairedLivePhotoVideo resource"]
+    PrimaryHash --> Digest["content-binding:v3"]
+    ManifestHash --> Digest
+    MOVHash --> Digest
+    Digest --> BindingHash["SHA-256 canonical digest<br/>signingBinding.bodySHA256"]
+    BindingHash --> AppAttest["App Attest assertion"]
+```
+
+The MOV hash is not stored in `manifest.payload.livePhoto`. The manifest names
+the required paired-video role and filename; the proof value's v3 content
+binding stores the actual resource hash descriptors. This keeps the manifest as
+capture metadata and the proof as the trust-bearing hash chain.
+
 Live Photo manifests use
 `urn:tapnap:tapcam:depth-manifest:v2` and add
 `manifest.payload.livePhoto` with the fixed `pairedVideoFilename`, duration,

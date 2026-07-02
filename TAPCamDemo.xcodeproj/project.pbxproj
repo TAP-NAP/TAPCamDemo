@@ -9,6 +9,8 @@
 /* Begin PBXBuildFile section */
 		F2A0A0032FA0000000000003 /* AppAttestKit in Frameworks */ = {isa = PBXBuildFile; productRef = F2A0A0022FA0000000000002 /* AppAttestKit */; };
 		F2A0A0052FA0000000000005 /* AppAttestKit in Frameworks */ = {isa = PBXBuildFile; productRef = F2A0A0042FA0000000000004 /* AppAttestKit */; };
+		F2A0B0032FB0000000000003 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = F2A0B0022FB0000000000002 /* ZIPFoundation */; };
+		F2A0B0052FB0000000000005 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = F2A0B0042FB0000000000004 /* ZIPFoundation */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -108,6 +110,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F2A0A0032FA0000000000003 /* AppAttestKit in Frameworks */,
+				F2A0B0032FB0000000000003 /* ZIPFoundation in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -116,6 +119,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F2A0A0052FA0000000000005 /* AppAttestKit in Frameworks */,
+				F2A0B0052FB0000000000005 /* ZIPFoundation in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -186,6 +190,7 @@
 			name = TAPCamDemo;
 			packageProductDependencies = (
 				F2A0A0022FA0000000000002 /* AppAttestKit */,
+				F2A0B0022FB0000000000002 /* ZIPFoundation */,
 			);
 			productName = TAPCamDemo;
 			productReference = F2F5FDEF2F9B320F00F5071A /* TAPCamDemo.app */;
@@ -210,6 +215,7 @@
 			name = TAPCamDemoTests;
 			packageProductDependencies = (
 				F2A0A0042FA0000000000004 /* AppAttestKit */,
+				F2A0B0042FB0000000000004 /* ZIPFoundation */,
 			);
 			productName = TAPCamDemoTests;
 			productReference = F2F5FDFC2F9B321100F5071A /* TAPCamDemoTests.xctest */;
@@ -249,6 +255,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				F2A0A0012FA0000000000001 /* XCRemoteSwiftPackageReference "AppAttestKit" */,
+				F2A0B0012FB0000000000001 /* XCRemoteSwiftPackageReference "ZIPFoundation" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = F2F5FDF02F9B320F00F5071A /* Products */;
@@ -647,6 +654,14 @@
 				revision = cca2e79c6fdb054503bab9899c98460e9e3d0b38;
 			};
 		};
+		F2A0B0012FB0000000000001 /* XCRemoteSwiftPackageReference "ZIPFoundation" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/weichsel/ZIPFoundation.git";
+			requirement = {
+				kind = exactVersion;
+				version = 0.9.20;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -659,6 +674,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = F2A0A0012FA0000000000001 /* XCRemoteSwiftPackageReference "AppAttestKit" */;
 			productName = AppAttestKit;
+		};
+		F2A0B0022FB0000000000002 /* ZIPFoundation */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F2A0B0012FB0000000000001 /* XCRemoteSwiftPackageReference "ZIPFoundation" */;
+			productName = ZIPFoundation;
+		};
+		F2A0B0042FB0000000000004 /* ZIPFoundation */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F2A0B0012FB0000000000001 /* XCRemoteSwiftPackageReference "ZIPFoundation" */;
+			productName = ZIPFoundation;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

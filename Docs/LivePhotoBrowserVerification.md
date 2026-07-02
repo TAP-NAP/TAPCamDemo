@@ -58,6 +58,65 @@ If Live Photo capture is requested but the movie complement fails, the capture
 should be signed and exported as the still-photo contract above, not as a
 partial v2/v3 Live Photo.
 
+## Primary Photo, Paired MOV, and Hash Chain
+
+The TAP Live Photo verification object is a pair of original Photos resources:
+
+- primary photo: the original `.photo` resource, exported as
+  `primary-photo.heic` or `primary-photo.jpg`
+- paired video: the original `.pairedVideo` resource, exported as
+  `paired-video.mov`
+
+The resources correspond through two layers:
+
+- Apple layer: Photos stores them as one Live Photo asset using `.photo` plus
+  `.pairedVideo`. Apple also writes its own Live Photo pairing metadata.
+- TAP layer: `manifest.payload.livePhoto.pairedVideoFilename` fixes the verifier
+  filename to `paired-video.mov`, and
+  `proof.value.contentDigest.signedResources` binds the primary photo, manifest
+  payload, and paired MOV bytes into one signed content digest.
+
+The TAP verifier must trust the TAP hash chain, not the ZIP sidecar, filenames
+alone, decoded pixels, or platform Live Photo playback state.
+
+```mermaid
+flowchart TD
+    Photo["primary-photo.heic or primary-photo.jpg<br/>original Photos .photo bytes"] --> ProofSlot["Locate exactly one TAP proof slot"]
+    ProofSlot --> PhotoRange["Hash photo bytes excluding the proof slot"]
+    PhotoRange --> PhotoHash["SHA-256 -> assetHash<br/>signedResources.primaryPhoto"]
+
+    Manifest["XMP tapdepth:Manifest"] --> Payload["manifest.payload"]
+    Payload --> CanonPayload["Canonical JSON payload"]
+    CanonPayload --> PayloadHash["SHA-256 -> metadataHash<br/>signedResources.tapDepthManifestPayload"]
+
+    Movie["paired-video.mov<br/>original Photos .pairedVideo bytes"] --> MovieHash["SHA-256 full file<br/>signedResources.pairedLivePhotoVideo"]
+
+    PhotoHash --> Digest["contentDigest v3"]
+    PayloadHash --> Digest
+    MovieHash --> Digest
+    Digest --> DigestJSON["Canonical JSON contentDigest"]
+    DigestJSON --> BodyHash["SHA-256 -> signingBinding.bodySHA256"]
+    BodyHash --> SigningBinding["App Attest signingBinding"]
+    SigningBinding --> Assertion["assertionObject signs the binding"]
+    Assertion --> Backend["Backend verifies App Attest assertion only"]
+```
+
+Inside `proof.value.contentDigest`, the required Live Photo descriptors are:
+
+| Descriptor | Byte source | Hash rule |
+| --- | --- | --- |
+| `assetHash` | Primary HEIC/JPG | SHA-256 over format-native photo bytes excluding the TAP proof slot. |
+| `metadataHash` | `manifest.payload` | SHA-256 over canonical payload JSON. |
+| `signedResources.primaryPhoto` | Primary HEIC/JPG | Same hash material as `assetHash`, repeated as a named Live Photo resource. |
+| `signedResources.tapDepthManifestPayload` | `manifest.payload` | Same hash material as `metadataHash`, repeated as a named Live Photo resource. |
+| `signedResources.pairedLivePhotoVideo` | Paired MOV | SHA-256 over the complete MOV file bytes. |
+| `signingBinding.bodySHA256` | Canonical `contentDigest` JSON | SHA-256 over the full v3 digest object above. |
+
+The manifest itself does not store the MOV hash. It declares that this is a
+Live Photo contract and names the required paired video filename. The hash lives
+in the proof value's v3 `contentDigest`, which is then bound to App Attest by
+`signingBinding.bodySHA256`.
+
 ## Depth Scope and Streaming Depth Non-Goal
 
 Apple exposes two separate depth paths:
@@ -133,6 +192,41 @@ make that boundary visible: a green Live Photo means the original signed
 resources match; a yellow Live Photo means the original signed resources match
 but the Photos presentation may differ.
 
+## Verification Export Package
+
+TAPCam's in-app export path is the stable transport for verification material.
+It must not use Photos' generic share/export surface, because that surface may
+render edits, change compatibility format, or drop the Live Photo movie for
+targets that do not support Live Photos.
+
+For still-photo captures, TAPCam exports the original Photos `.photo` resource
+as one HEIC or JPG file. For Live Photo captures with a complete original
+paired movie, TAPCam exports one ZIP package:
+
+```text
+tapcam-live-photo-verification.zip
+├── primary-photo.heic   or primary-photo.jpg
+├── paired-video.mov
+└── tapcam-export.json
+```
+
+The ZIP is a transport container only. It is written without media
+re-encoding, and browser verification must not trust the ZIP container or the
+sidecar as signature evidence. The verifier must read `primary-photo.*`, parse
+the embedded TAP proof, and then hash `paired-video.mov` against
+`proof.value.contentDigest.signedResources`.
+
+`tapcam-export.json` is intentionally minimal and unsigned. It may contain only
+the export schema/version, package kind, resource roles, filenames, media
+types, and warning labels. It must not contain capture IDs, App Attest key
+IDs, assertion objects, signing bindings, proof bodies, resource hashes, or
+server verification results.
+
+If a saved Live Photo `.photo` carries the v2 manifest but the original
+`.pairedVideo` resource is missing, TAPCam may export `tapcam-primary-photo-only`
+as a single HEIC/JPG and warn that Live Photo verification remains incomplete.
+That fallback is not a successful Live Photo package.
+
 ## Browser Verification Flow
 
 For still-photo v1/v2 captures, keep the current flow:
@@ -185,13 +279,50 @@ The server does not need to know whether `bodySHA256` came from v2 still-photo
 content binding or v3 Live Photo content binding. That distinction is owned by
 the local verifier.
 
+## Cross-Platform Verification Requirements
+
+TAP Live Photo verification must work outside Apple's Photos app. A compliant
+verifier can run in a browser, desktop app, Android app, server-side worker, or
+CLI as long as it receives byte-preserving inputs.
+
+Required support:
+
+- Accept TAPCam's verification ZIP as the user-facing Live Photo transport.
+- Preserve entry bytes exactly when reading `primary-photo.*` and
+  `paired-video.mov`.
+- Parse the TAP manifest and proof slot from HEIC/BMFF or JPEG bytes without
+  relying on Apple Photos, ImageIO, QuickTime playback, or Live Photo playback.
+- Hash the MOV as a complete binary file. The verifier does not need to decode
+  video frames.
+- Recompute canonical JSON and SHA-256 values exactly as specified above.
+- Submit only the unchanged backend request shape after local byte verification
+  has passed far enough to produce a trusted `signingBinding`.
+
+Supported input modes:
+
+| Platform / source | Required behavior |
+| --- | --- |
+| TAPCam in-app export ZIP | Primary supported path. Unzip, verify primary photo, then verify paired MOV. |
+| Developer fixture with separate photo and MOV | Supported for tests if the MOV is explicitly selected as the paired resource. |
+| Single HEIC/JPG still photo | Supported only for v1/v2 still-photo contracts. If the embedded manifest is Live Photo v2, report missing MOV. |
+| Generic share, AirDrop, social app export, or platform "compatible" export | Not a stable verification source. These paths may transcode, compress, drop resources, or export presentation edits. |
+
+Non-goals for cross-platform verification:
+
+- Native Live Photo re-import or playback.
+- Android Motion Photo, Google Motion Photo, or social-platform dynamic-photo
+  conversion.
+- Reconstructing a Live Photo from decoded frames.
+- Proving that the selected Photos key photo comes from the MOV.
+
 ## Browser Tool Requirements
 
 The browser verifier needs these implementation tools:
 
 | Need | Browser-side tool |
 | --- | --- |
-| Read user-selected photo and MOV bytes | File input / drag-drop plus `Blob.arrayBuffer()` |
+| Read user-selected photo, MOV, or ZIP bytes | File input / drag-drop plus `Blob.arrayBuffer()` |
+| Unpack TAPCam Live Photo verification ZIPs | ZIP reader that preserves entry bytes; trust only the embedded TAP proof after unpacking |
 | Parse binary containers | TAP-owned HEIC/BMFF and JPEG byte parsers, preferably in the existing Rust/WASM verifier path |
 | Locate and validate the TAP proof slot | Extend `Tools/ContentBindingVerifier/tap-content-binding.mjs` rules or port the same rules into WASM |
 | Parse TAP XMP manifest | TAP-owned XMP extraction for JPEG APP1 and HEIC/BMFF metadata, then JSON parse the `tapdepth:Manifest` value |
@@ -247,7 +378,9 @@ binding schema itself.
 Implementation belongs in the TAPCamVerifier repository. TAPCamDemo only
 publishes the artifact contract and fixtures/spec expectations.
 
-- Accept either a single still-photo file or a Live Photo pair: photo plus MOV.
+- Accept either a single still-photo file or a TAPCam Live Photo verification
+  ZIP. Raw photo-plus-MOV pairs may remain a developer fixture path, but the
+  user-facing Live Photo transport is the ZIP package.
 - Keep the visible verifier simple: file selection or drag-drop should start
   verification directly.
 - Preserve the current server split:

@@ -13,7 +13,10 @@ open follow-ups.
 1. [2026-07-02-live-photo-implementation.md](2026-07-02-live-photo-implementation.md)
    records the app-side Live Photo capture/sign/export implementation, the
    `depth-manifest:v2` plus `content-binding:v3` extension contract, and the
-   browser/server repository boundary.
+   browser/server repository boundary. It also records the TAPCam
+   verification-original export path for still photos and Live Photo ZIP
+   packages, plus the HEIC/MOV hash-chain documentation intended to seed later
+   verifier work and technical whitepapers.
 2. [2026-07-02-basic-ev-pro-controls-build-isolation.md](2026-07-02-basic-ev-pro-controls-build-isolation.md)
    records the decision to separate ordinary Basic EV from experimental Pro
    Controls at compile time, using `TAP_ENABLE_PRO_CAMERA_CONTROLS`, with no

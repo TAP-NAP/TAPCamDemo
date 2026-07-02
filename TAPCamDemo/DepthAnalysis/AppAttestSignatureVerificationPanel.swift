@@ -4,13 +4,16 @@
 //
 
 import Combine
+import OSLog
 import SwiftUI
+import UIKit
 
 struct AppAttestSignatureVerificationPanel: View {
     let assetID: String
     @ObservedObject private var appAttestController: AppAttestRuntimeController
     let runID: UUID
     @StateObject private var viewModel = AppAttestSignatureVerificationPanelModel()
+    @State private var sharePayload: VerificationExportSharePayload?
 
     init(
         assetID: String,
@@ -33,6 +36,11 @@ struct AppAttestSignatureVerificationPanel: View {
                     }
                 )
 
+                VerificationExportSection(
+                    state: viewModel.exportState,
+                    onExportTapped: exportOriginals
+                )
+
                 LazyVStack(alignment: .leading, spacing: 8) {
                     ForEach(viewModel.report.steps) { step in
                         SignatureVerificationStepRow(step: step)
@@ -42,6 +50,9 @@ struct AppAttestSignatureVerificationPanel: View {
             }
             .task(id: runID) {
                 await verify()
+            }
+            .sheet(item: $sharePayload) { payload in
+                VerificationExportActivityView(activityItems: [payload.export.fileURL])
             }
         }
     }
@@ -68,6 +79,14 @@ struct AppAttestSignatureVerificationPanel: View {
             appAttestController: appAttestController
         )
     }
+
+    private func exportOriginals() {
+        Task {
+            if let export = await viewModel.exportOriginals(assetID: assetID) {
+                sharePayload = VerificationExportSharePayload(export: export)
+            }
+        }
+    }
 }
 
 struct SignatureVerificationUnavailablePanel: View {
@@ -88,10 +107,16 @@ struct SignatureVerificationUnavailablePanel: View {
 @MainActor
 private final class AppAttestSignatureVerificationPanelModel: ObservableObject {
     @Published private(set) var report = AppAttestSignatureVerificationReport.idle
+    @Published private(set) var exportState = VerificationExportPanelState.idle
     private let verifier: AppAttestCaptureSignatureVerifier
+    private let exportBuilder: TAPVerificationExportBuilder
 
-    init(verifier: AppAttestCaptureSignatureVerifier = AppAttestCaptureSignatureVerifier()) {
+    init(
+        verifier: AppAttestCaptureSignatureVerifier = AppAttestCaptureSignatureVerifier(),
+        exportBuilder: TAPVerificationExportBuilder = TAPVerificationExportBuilder()
+    ) {
         self.verifier = verifier
+        self.exportBuilder = exportBuilder
     }
 
     func verify(
@@ -99,6 +124,7 @@ private final class AppAttestSignatureVerificationPanelModel: ObservableObject {
         appAttestController: AppAttestRuntimeController
     ) async {
         report = .running
+        exportState = .idle
 
         let runtime = appAttestController.runtime
         let context = AppAttestSignatureVerificationContext(
@@ -106,6 +132,39 @@ private final class AppAttestSignatureVerificationPanelModel: ObservableObject {
             backendPublicSummary: runtime.backendPublicSummary
         )
         report = await verifier.verify(assetID: assetID, context: context)
+    }
+
+    func exportOriginals(assetID: String) async -> TAPVerificationExport? {
+        exportState = .running
+
+        do {
+            let export = try await exportBuilder.export(assetID: assetID)
+            exportState = .ready(
+                title: "\(export.kind.displayName) ready",
+                warnings: export.warnings
+            )
+            return export
+        } catch {
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.appAttest.error("verification export failed error=\(TAPDiagnostics.describe(error), privacy: .public)")
+            #endif
+            exportState = .failed
+            return nil
+        }
+    }
+}
+
+private enum VerificationExportPanelState: Equatable {
+    case idle
+    case running
+    case ready(title: String, warnings: [String])
+    case failed
+
+    var isRunning: Bool {
+        if case .running = self {
+            return true
+        }
+        return false
     }
 }
 
@@ -167,6 +226,83 @@ private struct SignatureVerificationStepRow: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(8)
         .background(.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+    }
+}
+
+private struct VerificationExportSection: View {
+    let state: VerificationExportPanelState
+    let onExportTapped: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button(action: onExportTapped) {
+                Label(
+                    state.isRunning ? "Preparing export..." : "Export Originals",
+                    systemImage: "square.and.arrow.up"
+                )
+                .font(.caption.weight(.semibold))
+            }
+            .disabled(state.isRunning)
+
+            switch state {
+            case .idle:
+                Text("Exports original signed resources for local or browser verification.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            case .running:
+                ProgressView()
+                    .controlSize(.small)
+            case .ready(let title, let warnings):
+                exportMessage(title: title, warnings: warnings)
+            case .failed:
+                Label("Export failed", systemImage: "xmark.circle.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.red)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(8)
+        .background(.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+    }
+
+    @ViewBuilder
+    private func exportMessage(title: String, warnings: [String]) -> some View {
+        Label(title, systemImage: warnings.isEmpty ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(warnings.isEmpty ? .green : .yellow)
+
+        ForEach(warnings, id: \.self) { warning in
+            Text(warning)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+@MainActor
+private final class VerificationExportSharePayload: Identifiable {
+    let id = UUID()
+    let export: TAPVerificationExport
+
+    init(export: TAPVerificationExport) {
+        self.export = export
+    }
+
+    deinit {
+        export.removeTemporaryDirectory()
+    }
+}
+
+private struct VerificationExportActivityView: UIViewControllerRepresentable {
+    let activityItems: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {
     }
 }
 

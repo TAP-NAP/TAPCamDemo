@@ -45,6 +45,26 @@ agreed browser/server boundary into a versioned artifact specification.
 - Photos presentation resources such as `.fullSizePairedVideo`,
   `.adjustmentBasePairedVideo`, and `.adjustmentData` are warning evidence only.
   They do not become signed inputs and do not change the server request.
+- Verification-original export is owned by the saved Photos asset path, not by
+  Photos' generic share sheet. Still photos export as one original HEIC/JPG.
+  Complete Live Photos export as an uncompressed ZIP containing the original
+  primary photo, the original `paired-video.mov`, and an unsigned minimal
+  `tapcam-export.json` sidecar. The sidecar is a file map only and is not part
+  of the trust chain.
+- The primary HEIC/JPG and paired MOV correspond through the Photos `.photo` +
+  `.pairedVideo` resource pair and through TAP's v3 `signedResources`. The
+  manifest names the Live Photo role and fixed MOV filename; the proof value's
+  content digest stores the actual primary-photo, manifest-payload, and MOV
+  hash descriptors.
+- The Live Photo hash chain is: photo bytes excluding TAP proof slot, canonical
+  `manifest.payload` JSON, and complete MOV bytes -> `contentDigest:v3` ->
+  canonical content-digest SHA-256 -> `signingBinding.bodySHA256` -> App Attest
+  assertion. The backend verifies the assertion over the binding and does not
+  re-hash media bytes.
+- If a saved Live Photo manifest is present but Photos no longer exposes the
+  original `.pairedVideo`, TAPCam may export the primary photo only and warn
+  that Live Photo verification remains incomplete. That fallback is not a
+  successful Live Photo export.
 
 ## Files Updated
 
@@ -77,11 +97,44 @@ agreed browser/server boundary into a versioned artifact specification.
   Live Photo v2/v3, and returns `Verified`, `Warnings`, or `Failed`.
 - `DepthAnalysis/AppAttestSignatureVerificationPanel.swift`: shows warning
   state, keeps failure priority, and jumps to the first failed or warning step.
+- `DepthAnalysis/TAPVerificationExportBuilder.swift`: builds verification
+  originals from Photos resource bytes, runs local still/Live export gates,
+  writes Live Photo ZIP packages with ZIPFoundation, and keeps ZIP sidecars
+  unsigned and minimal.
+- `TAPCaptureProvenanceWriter.swift`: adds a primary-photo-only Live Photo
+  validation gate for the missing-MOV fallback. It validates the signed primary
+  resource and the proof's Live Photo resource descriptors without treating the
+  absent MOV as verified.
 - `Docs/LivePhotoBrowserVerification.md`: specifies the browser/server handoff,
-  verifier tools, version routing, and resource roles.
+  verifier tools, version routing, resource roles, and verification ZIP
+  package shape. It now also includes the Mermaid HEIC/MOV hash-chain diagram,
+  the resource-descriptor table, and cross-platform verifier requirements for
+  browser, desktop, Android, server-side worker, and CLI implementations.
 - `CameraCapture/Documentation/PACKAGING.md`,
   `CameraCapture/Output/README.md`, and `TAPLibrary/README.md`: record the
   app-side Live Photo contract and reading path.
+
+## Whitepaper Documentation Addendum
+
+The verifier-facing documentation now treats the Live Photo pair as a
+byte-level protocol rather than an Apple Photos playback feature:
+
+- `primary-photo.heic` or `primary-photo.jpg` is the trust-bearing photo
+  container. It carries XMP `tapdepth:Manifest` and the fixed TAP proof slot.
+- `paired-video.mov` is the trust-bearing movie resource. It is hashed as a
+  complete file and never decoded for base signature validation.
+- `manifest.payload.livePhoto` declares that a paired MOV is required and names
+  the fixed filename, but it does not carry the MOV hash.
+- `proof.value.contentDigest.signedResources` is the authoritative list of
+  bound resources.
+- `tapcam-export.json` is unsigned transport metadata only.
+
+This is the text basis for future public technical whitepapers and for the
+separate TAPCamVerifier implementation. Other platforms are supported when they
+consume TAPCam's byte-preserving ZIP or equivalent fixture inputs and reproduce
+the specified hash chain. Generic AirDrop, Photos compatible export, social app
+export, Android Motion Photo conversion, and native Live Photo playback state
+are explicitly outside the trust chain.
 
 ## Validation
 
@@ -90,6 +143,7 @@ agreed browser/server boundary into a versioned artifact specification.
 - `xcodebuild test -quiet -scheme TAPCamDemo -destination 'platform=iOS Simulator,OS=26.5,name=iPhone 17' -only-testing:TAPCamDemoTests/TAPCaptureManifestEncodingTests -only-testing:TAPCamDemoTests/TAPCaptureProvenanceWriterSigningTests -only-testing:TAPCamDemoTests/TAPLibraryProcessingTests`
 - `xcodebuild test -quiet -scheme TAPCamDemo -destination 'platform=iOS Simulator,OS=26.5,name=iPhone 17' -only-testing:TAPCamDemoTests/TAPCaptureContentDigestTests`
 - `xcodebuild test -quiet -scheme TAPCamDemo -destination 'platform=iOS Simulator,OS=26.5,name=iPhone 17' -only-testing:TAPCamDemoTests/TAPAppAttestSignatureVerificationTests`
+- `xcodebuild test -quiet -scheme TAPCamDemo -destination 'platform=iOS Simulator,OS=26.5,name=iPhone 17' -only-testing:TAPCamDemoTests/TAPVerificationExportBuilderTests`
 - `git diff --check`
 
 ## Open Follow-Ups
@@ -97,6 +151,9 @@ agreed browser/server boundary into a versioned artifact specification.
 - Run a real-device capture with Live Photo enabled on the current 24/48/77 mm
   depth path and inspect the saved Photos asset resources.
 - Add physical-device fixtures for v2/v3 browser verification.
+- Run real-device verification-original export after editing a Live Photo key
+  photo in Photos, then confirm the ZIP verifies while warning about
+  presentation resources.
 - Implement browser local verifier support in the TAPCamVerifier repository.
 - Research a future video-depth format using streaming `AVCaptureDepthDataOutput`
   only after defining resource storage, synchronization, manifest, and signing
