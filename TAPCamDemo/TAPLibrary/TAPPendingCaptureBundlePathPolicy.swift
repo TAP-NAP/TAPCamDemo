@@ -17,6 +17,7 @@ nonisolated enum TAPPendingCaptureBundlePathPolicy {
     static let signedHEICFilename = "signed.heic"
     static let unsignedJPEGFilename = "unsigned.jpg"
     static let signedJPEGFilename = "signed.jpg"
+    static let pairedVideoFilename = "paired-video.mov"
     static let thumbnailFilename = "thumbnail.jpg"
 
     static func bundleURL(rootURL: URL, captureID: String) throws -> URL {
@@ -40,6 +41,7 @@ nonisolated enum TAPPendingCaptureBundlePathPolicy {
 
         try validateOptionalArtifactFilename(record.unsignedPhotoFilename)
         try validateOptionalArtifactFilename(record.signedPhotoFilename)
+        try validateOptionalArtifactFilename(record.pairedVideoFilename)
         try validateOptionalArtifactFilename(record.thumbnailFilename)
     }
 
@@ -83,6 +85,7 @@ nonisolated enum TAPPendingCaptureBundlePathPolicy {
         signedHEICFilename,
         unsignedJPEGFilename,
         signedJPEGFilename,
+        pairedVideoFilename,
         thumbnailFilename
     ]
 }

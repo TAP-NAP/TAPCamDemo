@@ -12,6 +12,7 @@ flowchart TD
     Docs --> Future["FutureCameraSpecs\nboundary status"]
     Docs --> ManualLimits["Manual control\ndevice limits"]
     Docs --> ProBuild["Pro controls\nbuild isolation"]
+    Docs --> LiveBrowser["Live Photo\nbrowser verification"]
     Docs --> Scorecard["ProjectScorecard\ndated score"]
     Docs --> AITrace["AITrace\ncollaboration trace"]
     AppAttest --> Backend["BackendContract.md"]
@@ -21,6 +22,7 @@ flowchart TD
     click Future "FutureCameraSpecs.md"
     click ManualLimits "CameraManualControlDeviceLimits.md"
     click ProBuild "CameraProControlsBuildIsolationPlan.md"
+    click LiveBrowser "LivePhotoBrowserVerification.md"
     click Scorecard "ProjectScorecard.md"
     click AITrace "AITrace/README.md"
     click Startup "Startup/FirstLaunch.md"
@@ -36,6 +38,7 @@ flowchart TD
 | Refactor boundary status and future camera specs | [FutureCameraSpecs.md](FutureCameraSpecs.md) |
 | Professional camera-control device limits | [CameraManualControlDeviceLimits.md](CameraManualControlDeviceLimits.md) |
 | Basic EV and Pro Controls build isolation | [CameraProControlsBuildIsolationPlan.md](CameraProControlsBuildIsolationPlan.md) |
+| Live Photo browser verification contract | [LivePhotoBrowserVerification.md](LivePhotoBrowserVerification.md) |
 | AI collaboration trace | [AITrace/README.md](AITrace/README.md) |
 | Output profile contract | [../TAPCamDemo/CameraCapture/Output/README.md](../TAPCamDemo/CameraCapture/Output/README.md) |
 | First-install startup flow | [Startup/FirstLaunch.md](Startup/FirstLaunch.md) |

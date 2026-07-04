@@ -27,6 +27,8 @@ nonisolated struct CapturePackage: @unchecked Sendable {
     let resolvedOutput: ResolvedCaptureOutputProfile
     let depthAvailability: CaptureDepthAvailability
     let photo: AVCapturePhoto
+    let livePhotoMovie: CapturedLivePhotoMovie?
+    let livePhotoFailureReason: String?
 }
 
 /// Builds `CapturePackage` from SingleCam photo output.
@@ -66,7 +68,9 @@ nonisolated enum CapturePackageBuilder {
             cropRectNormalized: plan.cropPolicy.cropRectNormalized,
             resolvedOutput: resolvedOutput,
             depthAvailability: captureResult.photo.depthData == nil ? .unavailable : .available,
-            photo: captureResult.photo
+            photo: captureResult.photo,
+            livePhotoMovie: captureResult.livePhotoMovie,
+            livePhotoFailureReason: captureResult.livePhotoFailureReason
         )
     }
 }

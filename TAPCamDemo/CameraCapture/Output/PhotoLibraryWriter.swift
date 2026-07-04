@@ -20,6 +20,29 @@ import UniformTypeIdentifiers
 nonisolated enum PhotoLibraryWriter {
     static let albumName = "TAPCamDepth"
 
+    nonisolated struct SignatureVerificationResources: Sendable {
+        let photoData: Data
+        let pairedVideoURL: URL?
+        let temporaryDirectoryURL: URL?
+        let presentationAdjustmentResourceLabels: [String]
+
+        var hasPairedVideo: Bool {
+            pairedVideoURL != nil
+        }
+
+        var hasPresentationAdjustments: Bool {
+            !presentationAdjustmentResourceLabels.isEmpty
+        }
+
+        func removeTemporaryDirectory() {
+            guard let temporaryDirectoryURL else {
+                return
+            }
+
+            try? FileManager.default.removeItem(at: temporaryDirectoryURL)
+        }
+    }
+
     /// Saves a validated TAP depth photo file to Photos.
     ///
     /// This writer receives a completed, provenance-checked artifact; it does
@@ -54,6 +77,34 @@ nonisolated enum PhotoLibraryWriter {
         )
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.photoLibrary.info("saveDepthPhoto success assetID=\(assetID, privacy: .private)")
+        #endif
+        return assetID
+    }
+
+    /// Saves a validated TAP depth Live Photo to Photos.
+    static func saveDepthLivePhoto(
+        _ validatedLivePhoto: ValidatedTAPLivePhoto,
+        capturedAt: Date,
+        location: CLLocation?
+    ) async throws -> String {
+        let data = validatedLivePhoto.photo.data
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.photoLibrary.info("saveDepthLivePhoto start container=\(validatedLivePhoto.photo.fileContainer.rawValue, privacy: .public) bytes=\(data.count, privacy: .public) hasLocation=\(location != nil, privacy: .public)")
+        #endif
+        let authorizationStatus = try await requestReadWriteAccess()
+        let album: PHAssetCollection? = authorizationStatus == .authorized
+            ? try await fetchOrCreateAlbum()
+            : nil
+        let assetID = try await createAsset(
+            data: data,
+            fileContainer: validatedLivePhoto.photo.fileContainer,
+            capturedAt: capturedAt,
+            location: location,
+            album: album,
+            pairedVideoURL: validatedLivePhoto.pairedVideoURL
+        )
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.photoLibrary.info("saveDepthLivePhoto success assetID=\(assetID, privacy: .private)")
         #endif
         return assetID
     }
@@ -114,6 +165,62 @@ nonisolated enum PhotoLibraryWriter {
         }
     }
 
+    static func signatureVerificationResources(for asset: PHAsset) async throws -> SignatureVerificationResources {
+        let resources = PHAssetResource.assetResources(for: asset)
+        guard let photoResource = resources.first(where: { $0.type == .photo }) else {
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.photoLibrary.error("signatureVerificationResources missing photo resource assetID=\(asset.localIdentifier, privacy: .private)")
+            #endif
+            throw TAPDepthCaptureError.assetCreationFailed
+        }
+
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.photoLibrary.info("signatureVerificationResources request start assetID=\(asset.localIdentifier, privacy: .private) resourceCount=\(resources.count, privacy: .public)")
+        #endif
+        let photoData = try await resourceData(
+            for: photoResource,
+            assetLocalIdentifier: asset.localIdentifier,
+            label: "signatureVerificationPhoto"
+        )
+        let presentationAdjustmentLabels = presentationAdjustmentResourceLabels(in: resources)
+
+        guard let pairedVideoResource = resources.first(where: { $0.type == .pairedVideo }) else {
+            return SignatureVerificationResources(
+                photoData: photoData,
+                pairedVideoURL: nil,
+                temporaryDirectoryURL: nil,
+                presentationAdjustmentResourceLabels: presentationAdjustmentLabels
+            )
+        }
+
+        let temporaryDirectoryURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TAPSignatureVerification-\(UUID().uuidString)", isDirectory: true)
+        let pairedVideoURL = temporaryDirectoryURL
+            .appendingPathComponent(TAPPendingCaptureBundlePathPolicy.pairedVideoFilename)
+
+        do {
+            try FileManager.default.createDirectory(
+                at: temporaryDirectoryURL,
+                withIntermediateDirectories: true
+            )
+            try await writeResource(
+                pairedVideoResource,
+                to: pairedVideoURL,
+                assetLocalIdentifier: asset.localIdentifier,
+                label: "signatureVerificationPairedVideo"
+            )
+            return SignatureVerificationResources(
+                photoData: photoData,
+                pairedVideoURL: pairedVideoURL,
+                temporaryDirectoryURL: temporaryDirectoryURL,
+                presentationAdjustmentResourceLabels: presentationAdjustmentLabels
+            )
+        } catch {
+            try? FileManager.default.removeItem(at: temporaryDirectoryURL)
+            throw error
+        }
+    }
+
     /// Reads original photo bytes by resolving the asset inside a detached task.
     ///
     /// `PHAssetResource.assetResources(for:)` can force Photos to fetch
@@ -131,6 +238,16 @@ nonisolated enum PhotoLibraryWriter {
             }
 
             return try await originalPhotoData(for: asset)
+        }.value
+    }
+
+    static func signatureVerificationResources(localIdentifier: String) async throws -> SignatureVerificationResources {
+        try await Task.detached(priority: .userInitiated) {
+            guard let asset = asset(localIdentifier: localIdentifier) else {
+                throw TAPDepthCaptureError.assetNotFound
+            }
+
+            return try await signatureVerificationResources(for: asset)
         }.value
     }
 
@@ -215,6 +332,91 @@ nonisolated enum PhotoLibraryWriter {
         )
     }
 
+    private static func resourceData(
+        for resource: PHAssetResource,
+        assetLocalIdentifier: String,
+        label: String
+    ) async throws -> Data {
+        try await withCheckedThrowingContinuation { continuation in
+            var result = Data()
+            let options = PHAssetResourceRequestOptions()
+            options.isNetworkAccessAllowed = true
+
+            PHAssetResourceManager.default().requestData(
+                for: resource,
+                options: options,
+                dataReceivedHandler: { chunk in
+                    result.append(chunk)
+                },
+                completionHandler: { error in
+                    if let error {
+                        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                        TAPDiagnostics.photoLibrary.error("\(label, privacy: .public) request failed assetID=\(assetLocalIdentifier, privacy: .private) error=\(TAPDiagnostics.describe(error), privacy: .public)")
+                        #endif
+                        continuation.resume(throwing: error)
+                    } else {
+                        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                        TAPDiagnostics.photoLibrary.info("\(label, privacy: .public) request success assetID=\(assetLocalIdentifier, privacy: .private) bytes=\(result.count, privacy: .public)")
+                        #endif
+                        continuation.resume(returning: result)
+                    }
+                }
+            )
+        }
+    }
+
+    private static func writeResource(
+        _ resource: PHAssetResource,
+        to fileURL: URL,
+        assetLocalIdentifier: String,
+        label: String
+    ) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+            let options = PHAssetResourceRequestOptions()
+            options.isNetworkAccessAllowed = true
+
+            PHAssetResourceManager.default().writeData(
+                for: resource,
+                toFile: fileURL,
+                options: options,
+                completionHandler: { error in
+                    if let error {
+                        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                        TAPDiagnostics.photoLibrary.error("\(label, privacy: .public) write failed assetID=\(assetLocalIdentifier, privacy: .private) error=\(TAPDiagnostics.describe(error), privacy: .public)")
+                        #endif
+                        continuation.resume(throwing: error)
+                    } else {
+                        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                        TAPDiagnostics.photoLibrary.info("\(label, privacy: .public) write success assetID=\(assetLocalIdentifier, privacy: .private)")
+                        #endif
+                        continuation.resume(returning: ())
+                    }
+                }
+            )
+        }
+    }
+
+    private static func presentationAdjustmentResourceLabels(
+        in resources: [PHAssetResource]
+    ) -> [String] {
+        resources.compactMap { resource in
+            switch resource.type {
+            case .adjustmentData:
+                "adjustmentData"
+            case .adjustmentBasePhoto:
+                "adjustmentBasePhoto"
+            case .fullSizePairedVideo:
+                "fullSizePairedVideo"
+            case .adjustmentBasePairedVideo:
+                "adjustmentBasePairedVideo"
+            case .adjustmentBaseVideo:
+                "adjustmentBaseVideo"
+            default:
+                nil
+            }
+        }
+    }
+
     @discardableResult
     private static func requestReadWriteAccess() async throws -> PHAuthorizationStatus {
         let current = PHPhotoLibrary.authorizationStatus(for: .readWrite)
@@ -277,7 +479,8 @@ nonisolated enum PhotoLibraryWriter {
         fileContainer: CapturePhotoFileContainer,
         capturedAt: Date,
         location: CLLocation?,
-        album: PHAssetCollection?
+        album: PHAssetCollection?,
+        pairedVideoURL: URL? = nil
     ) async throws -> String {
         var placeholder: PHObjectPlaceholder?
         let resourceFilename = "tap-depth-photo.\(fileContainer.fileExtension)"
@@ -307,6 +510,14 @@ nonisolated enum PhotoLibraryWriter {
             options.originalFilename = resourceFilename
             options.shouldMoveFile = false
             creationRequest.addResource(with: .photo, fileURL: resourceURL, options: options)
+
+            if let pairedVideoURL {
+                let videoOptions = PHAssetResourceCreationOptions()
+                videoOptions.uniformTypeIdentifier = UTType.quickTimeMovie.identifier
+                videoOptions.originalFilename = TAPPendingCaptureBundlePathPolicy.pairedVideoFilename
+                videoOptions.shouldMoveFile = false
+                creationRequest.addResource(with: .pairedVideo, fileURL: pairedVideoURL, options: videoOptions)
+            }
 
             placeholder = creationRequest.placeholderForCreatedAsset
 

@@ -7,6 +7,7 @@
 
 @preconcurrency import AVFoundation
 import CoreLocation
+import CoreMedia
 import Foundation
 
 nonisolated enum CaptureFlashMode: Equatable, Sendable {
@@ -26,6 +27,26 @@ nonisolated enum CaptureFlashMode: Equatable, Sendable {
     }
 }
 
+nonisolated struct CaptureLivePhotoRequest: Equatable, Sendable {
+    static let disabled = CaptureLivePhotoRequest(isEnabled: false, capturesAudio: false)
+
+    let isEnabled: Bool
+    let capturesAudio: Bool
+}
+
+nonisolated struct CapturedLivePhotoMovie: Sendable {
+    let fileURL: URL
+    let duration: CMTime
+    let photoDisplayTime: CMTime
+    let dimensions: CapturePhotoDimensions
+    let codec: String?
+    let capturesAudio: Bool
+
+    nonisolated func removeTemporaryFile() {
+        try? FileManager.default.removeItem(at: fileURL.deletingLastPathComponent())
+    }
+}
+
 /// Context passed to the SingleCam photo provider for one job.
 ///
 /// The provider receives already-configured SingleCam session facts. It may use
@@ -37,6 +58,23 @@ nonisolated struct CaptureSourceContext: @unchecked Sendable {
     let location: CLLocation?
     let suppressesShutterSound: Bool
     let flashMode: CaptureFlashMode
+    let livePhotoRequest: CaptureLivePhotoRequest
+
+    init(
+        sessionConfiguration: SessionConfigurationResult,
+        capturedAt: Date,
+        location: CLLocation?,
+        suppressesShutterSound: Bool,
+        flashMode: CaptureFlashMode,
+        livePhotoRequest: CaptureLivePhotoRequest = .disabled
+    ) {
+        self.sessionConfiguration = sessionConfiguration
+        self.capturedAt = capturedAt
+        self.location = location
+        self.suppressesShutterSound = suppressesShutterSound
+        self.flashMode = flashMode
+        self.livePhotoRequest = livePhotoRequest
+    }
 }
 
 /// Result of a SingleCam photo-depth capture.
@@ -46,6 +84,18 @@ nonisolated struct CaptureSourceContext: @unchecked Sendable {
 /// map remain Apple's paired output from one `AVCapturePhotoOutput` request.
 nonisolated struct SingleCamPhotoCaptureResult: @unchecked Sendable {
     let photo: AVCapturePhoto
+    let livePhotoMovie: CapturedLivePhotoMovie?
+    let livePhotoFailureReason: String?
+
+    init(
+        photo: AVCapturePhoto,
+        livePhotoMovie: CapturedLivePhotoMovie? = nil,
+        livePhotoFailureReason: String? = nil
+    ) {
+        self.photo = photo
+        self.livePhotoMovie = livePhotoMovie
+        self.livePhotoFailureReason = livePhotoFailureReason
+    }
 }
 
 /// Produces one paired SingleCam photo-depth result.

@@ -47,6 +47,13 @@ actor TAPPendingCaptureStore {
             fileContainer: artifact.fileContainer,
             to: temporaryURL
         )
+        let pairedVideoFilename: String?
+        if let livePhotoMovie = artifact.livePhotoMovie {
+            try storage.copyPairedVideo(from: livePhotoMovie.fileURL, to: temporaryURL)
+            pairedVideoFilename = TAPPendingCaptureBundlePathPolicy.pairedVideoFilename
+        } else {
+            pairedVideoFilename = nil
+        }
 
         let thumbnailFilename: String?
         if let thumbnailData = TAPPendingCaptureThumbnailRenderer.thumbnailData(from: artifact.photoData) {
@@ -69,6 +76,7 @@ actor TAPPendingCaptureStore {
             captureScoreSummary: artifact.captureScoreSummary,
             unsignedPhotoFilename: artifact.fileContainer.unsignedFilename,
             signedPhotoFilename: nil,
+            pairedVideoFilename: pairedVideoFilename,
             thumbnailFilename: thumbnailFilename,
             assetLocalIdentifier: nil,
             failureReason: nil,
@@ -80,7 +88,7 @@ actor TAPPendingCaptureStore {
         try storage.commitTemporaryBundle(at: temporaryURL, to: finalURL)
         Self.postLibraryDidChange()
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.pendingCapture.info("store ingest created captureID=\(captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public) unsignedBytes=\(artifact.photoData.count, privacy: .public) hasThumbnail=\(thumbnailFilename != nil, privacy: .public)")
+        TAPDiagnostics.pendingCapture.info("store ingest created captureID=\(captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public) unsignedBytes=\(artifact.photoData.count, privacy: .public) hasThumbnail=\(thumbnailFilename != nil, privacy: .public) hasPairedVideo=\(pairedVideoFilename != nil, privacy: .public)")
         #endif
         return record
     }
@@ -175,6 +183,14 @@ actor TAPPendingCaptureStore {
             return nil
         }
         return try storage.thumbnailData(filename: filename, captureID: captureID)
+    }
+
+    func pairedVideoURL(captureID: String) throws -> URL? {
+        let record = try readRecord(captureID: captureID)
+        guard let filename = record.pairedVideoFilename else {
+            return nil
+        }
+        return try storage.pairedVideoURL(filename: filename, captureID: captureID)
     }
 
     func updateStatus(

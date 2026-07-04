@@ -63,7 +63,8 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
         from unsignedPhotoData: Data,
         expectedCaptureID: String,
         expectedProfile: CaptureOutputProfile,
-        assertionSigner: any CaptureAssertionSigning
+        assertionSigner: any CaptureAssertionSigning,
+        pairedVideoURL: URL? = nil
     ) async throws -> TAPCaptureProvenanceSignedPhotoResult {
         let fileContainer = try TAPDepthPhotoFileReader.fileContainer(from: unsignedPhotoData)
         guard fileContainer == expectedProfile.fileContainer else {
@@ -75,7 +76,11 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
             fileContainer: fileContainer
         )
         let manifest = try TAPDepthPhotoFileReader.decodedManifest(from: unsignedPhotoDataWithSlot)
-        try validateManifestSchema(manifest)
+        if pairedVideoURL == nil {
+            try validateStillPhotoManifestSchema(manifest)
+        } else {
+            try validateLivePhotoManifestSchema(manifest)
+        }
         try validateManifestID(manifest.payload.id, expectedCaptureID: expectedCaptureID)
         try CaptureOutputManifestPolicy(profile: expectedProfile).validate(manifest.payload.capture)
         try validateManifestCarriesNoProofBody(manifest)
@@ -87,7 +92,8 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
             manifest: manifest,
             basePhotoData: unsignedPhotoDataWithSlot,
             fileContainer: fileContainer,
-            depthData: depthData
+            depthData: depthData,
+            pairedVideoURL: pairedVideoURL
         )
         let assertionProof = try await assertionSigner.sign(contentDigest: digest)
         let proofEnvelope = try JSONEncoder.tapCaptureCanonical.encode(assertionProof.proof)
@@ -96,11 +102,20 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
             into: unsignedPhotoDataWithSlot,
             fileContainer: fileContainer
         )
-        _ = try validateSignedExportPhoto(
-            signedPhotoData,
-            expectedCaptureID: expectedCaptureID,
-            expectedProfile: expectedProfile
-        )
+        if let pairedVideoURL {
+            _ = try validateSignedExportLivePhoto(
+                signedPhotoData,
+                pairedVideoURL: pairedVideoURL,
+                expectedCaptureID: expectedCaptureID,
+                expectedProfile: expectedProfile
+            )
+        } else {
+            _ = try validateSignedExportPhoto(
+                signedPhotoData,
+                expectedCaptureID: expectedCaptureID,
+                expectedProfile: expectedProfile
+            )
+        }
 
         return TAPCaptureProvenanceSignedPhotoResult(
             data: signedPhotoData,
@@ -145,7 +160,7 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
             expected: expectedProfile.fileContainer
         )
         let manifest = try TAPDepthPhotoFileReader.decodedManifest(from: signedPhotoData)
-        try validateManifestSchema(manifest)
+        try validateStillPhotoManifestSchema(manifest)
         try validateManifestID(manifest.payload.id, expectedCaptureID: expectedCaptureID)
         try CaptureOutputManifestPolicy(profile: expectedProfile).validate(manifest.payload.capture)
         try validateManifestCarriesNoProofBody(manifest)
@@ -178,6 +193,106 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
         )
     }
 
+    /// Final fail-closed gate for a signed TAP Live Photo export.
+    func validateSignedExportLivePhoto(
+        _ signedPhotoData: Data,
+        pairedVideoURL: URL,
+        expectedCaptureID: String,
+        expectedProfile: CaptureOutputProfile
+    ) throws -> ValidatedTAPLivePhoto {
+        try TAPDepthPhotoFileReader.validateContainer(
+            signedPhotoData,
+            expected: expectedProfile.fileContainer
+        )
+        let manifest = try TAPDepthPhotoFileReader.decodedManifest(from: signedPhotoData)
+        try validateLivePhotoManifestSchema(manifest)
+        try validateManifestID(manifest.payload.id, expectedCaptureID: expectedCaptureID)
+        try CaptureOutputManifestPolicy(profile: expectedProfile).validate(manifest.payload.capture)
+        try validateManifestCarriesNoProofBody(manifest)
+        try validateManifestLivePhotoPayload(manifest)
+
+        let proof = try decodedCaptureProof(
+            from: signedPhotoData,
+            fileContainer: expectedProfile.fileContainer
+        )
+        let proofValue = try decodedCaptureProofValue(proof, expectedCaptureID: expectedCaptureID)
+
+        let depthData = try TAPDepthPhotoFileReader.depthData(from: signedPhotoData)
+        try validateDepthReadback(depthData, manifest: manifest)
+
+        let recomputedDigest = try CaptureContentDigest.make(
+            manifest: manifest,
+            basePhotoData: signedPhotoData,
+            fileContainer: expectedProfile.fileContainer,
+            depthData: depthData,
+            pairedVideoURL: pairedVideoURL
+        )
+        try validateCaptureProof(
+            proof,
+            proofValue: proofValue,
+            recomputedDigest: recomputedDigest
+        )
+
+        return ValidatedTAPLivePhoto(
+            photo: ValidatedTAPDepthPhoto(
+                data: signedPhotoData,
+                manifest: manifest,
+                fileContainer: expectedProfile.fileContainer
+            ),
+            pairedVideoURL: pairedVideoURL
+        )
+    }
+
+    /// Partial gate for exporting the primary photo from an incomplete saved
+    /// Live Photo. This validates the signed still resource and the proof's
+    /// internal Live Photo binding, but it deliberately does not mark the Live
+    /// Photo as complete when the paired MOV is unavailable.
+    func validateSignedExportLivePhotoPrimaryPhoto(
+        _ signedPhotoData: Data,
+        expectedCaptureID: String,
+        expectedProfile: CaptureOutputProfile
+    ) throws -> ValidatedTAPDepthPhoto {
+        try TAPDepthPhotoFileReader.validateContainer(
+            signedPhotoData,
+            expected: expectedProfile.fileContainer
+        )
+        let manifest = try TAPDepthPhotoFileReader.decodedManifest(from: signedPhotoData)
+        try validateLivePhotoManifestSchema(manifest)
+        try validateManifestID(manifest.payload.id, expectedCaptureID: expectedCaptureID)
+        try CaptureOutputManifestPolicy(profile: expectedProfile).validate(manifest.payload.capture)
+        try validateManifestCarriesNoProofBody(manifest)
+        try validateManifestLivePhotoPayload(manifest)
+
+        let proof = try decodedCaptureProof(
+            from: signedPhotoData,
+            fileContainer: expectedProfile.fileContainer
+        )
+        let proofValue = try decodedCaptureProofValue(proof, expectedCaptureID: expectedCaptureID)
+
+        let depthData = try TAPDepthPhotoFileReader.depthData(from: signedPhotoData)
+        try validateDepthReadback(depthData, manifest: manifest)
+
+        let recomputedPrimaryDigest = try CaptureContentDigest.make(
+            manifest: manifest,
+            basePhotoData: signedPhotoData,
+            fileContainer: expectedProfile.fileContainer,
+            depthData: depthData
+        )
+        try validateLivePhotoPrimaryProof(
+            proof,
+            proofValue: proofValue,
+            recomputedPrimaryDigest: recomputedPrimaryDigest,
+            manifest: manifest,
+            fileContainer: expectedProfile.fileContainer
+        )
+
+        return ValidatedTAPDepthPhoto(
+            data: signedPhotoData,
+            manifest: manifest,
+            fileContainer: expectedProfile.fileContainer
+        )
+    }
+
     /// Backward-compatible final gate for existing HEIC call sites.
     func validateSignedExportHEIC(
         _ signedHEICData: Data,
@@ -191,9 +306,23 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
         return ValidatedTAPDepthHEIC(data: validated.data, manifest: validated.manifest)
     }
 
-    private func validateManifestSchema(_ manifest: TAPDepthManifest) throws {
+    private func validateStillPhotoManifestSchema(_ manifest: TAPDepthManifest) throws {
         guard manifest.schema == TAPDepthManifest.Schema() else {
             throw TAPDepthCaptureError.invalidTAPManifest("unexpected schema metadata")
+        }
+    }
+
+    private func validateLivePhotoManifestSchema(_ manifest: TAPDepthManifest) throws {
+        guard manifest.schema == TAPDepthManifest.Schema.livePhotoV2 else {
+            throw TAPDepthCaptureError.invalidTAPManifest("unexpected Live Photo schema metadata")
+        }
+    }
+
+    private func validateManifestLivePhotoPayload(_ manifest: TAPDepthManifest) throws {
+        guard let livePhoto = manifest.payload.livePhoto,
+              livePhoto.presence == "paired-video",
+              livePhoto.pairedVideoFilename == "paired-video.mov" else {
+            throw TAPDepthCaptureError.invalidTAPManifest("missing Live Photo paired video metadata")
         }
     }
 
@@ -287,6 +416,72 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
         }
     }
 
+    private func validateLivePhotoPrimaryProof(
+        _ proof: TAPDepthManifest.Proof,
+        proofValue: CaptureAssertionProofValue,
+        recomputedPrimaryDigest: CaptureContentDigest,
+        manifest: TAPDepthManifest,
+        fileContainer: CapturePhotoFileContainer
+    ) throws {
+        let digest = proofValue.contentDigest
+        guard proof.createdAt == recomputedPrimaryDigest.capturedAt else {
+            throw TAPDepthCaptureError.pendingCaptureProofInvalid("proof timestamp does not match capture digest")
+        }
+        guard digest.schemaID == CaptureContentBinding.livePhotoSchemaIdentifier,
+              digest.manifestSchemaID == manifest.schema.id,
+              digest.captureID == recomputedPrimaryDigest.captureID,
+              digest.capturedAt == recomputedPrimaryDigest.capturedAt,
+              digest.assetHash == recomputedPrimaryDigest.assetHash,
+              digest.metadataHash == recomputedPrimaryDigest.metadataHash,
+              digest.proofSlot == recomputedPrimaryDigest.proofSlot,
+              digest.depthResource == recomputedPrimaryDigest.depthResource else {
+            throw TAPDepthCaptureError.pendingCaptureProofInvalid("proof primary photo digest does not match exported bytes")
+        }
+
+        let expectedSigningBinding = try CaptureSigningBinding(contentDigest: digest)
+        guard proofValue.signingBinding == expectedSigningBinding else {
+            throw TAPDepthCaptureError.pendingCaptureProofInvalid("proof signing binding does not match exported bytes")
+        }
+
+        guard let signedResources = digest.signedResources,
+              signedResources.count == 3 else {
+            throw TAPDepthCaptureError.pendingCaptureProofInvalid("missing Live Photo signed resources")
+        }
+
+        let payloadData = try TAPDepthManifestEncoder.payloadDataExcludingProofs(manifest.payload)
+        let expectedPrimaryResource = CaptureContentDigest.SignedResource(
+            role: "primaryPhoto",
+            kind: recomputedPrimaryDigest.assetHash.kind,
+            mediaType: fileContainer.uniformTypeIdentifier,
+            algorithm: recomputedPrimaryDigest.assetHash.algorithm,
+            byteCount: recomputedPrimaryDigest.assetHash.byteCount,
+            value: recomputedPrimaryDigest.assetHash.value,
+            binding: "format-native-byte-ranges",
+            excludedRanges: recomputedPrimaryDigest.assetHash.excludedRanges
+        )
+        let expectedManifestResource = CaptureContentDigest.SignedResource(
+            role: "tapDepthManifestPayload",
+            kind: recomputedPrimaryDigest.metadataHash.kind,
+            mediaType: recomputedPrimaryDigest.metadataHash.mediaType,
+            algorithm: recomputedPrimaryDigest.metadataHash.algorithm,
+            byteCount: payloadData.count,
+            value: recomputedPrimaryDigest.metadataHash.value,
+            binding: "canonical-json"
+        )
+
+        guard signedResources.contains(expectedPrimaryResource),
+              signedResources.contains(expectedManifestResource),
+              signedResources.contains(where: { resource in
+                resource.role == "pairedLivePhotoVideo"
+                    && resource.kind == "format-native-full-file"
+                    && resource.mediaType == "com.apple.quicktime-movie"
+                    && resource.algorithm == "SHA-256"
+                    && resource.binding == "full-file"
+              }) else {
+            throw TAPDepthCaptureError.pendingCaptureProofInvalid("proof Live Photo resource descriptors do not match exported bytes")
+        }
+    }
+
     private func validateManifestID(
         _ manifestID: String,
         expectedCaptureID: String
@@ -333,6 +528,11 @@ nonisolated struct ValidatedTAPDepthPhoto: Sendable {
         self.manifest = manifest
         self.fileContainer = fileContainer
     }
+}
+
+nonisolated struct ValidatedTAPLivePhoto: Sendable {
+    let photo: ValidatedTAPDepthPhoto
+    let pairedVideoURL: URL
 }
 
 nonisolated struct ValidatedTAPDepthHEIC: Sendable {

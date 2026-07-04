@@ -137,6 +137,8 @@ nonisolated enum CameraManualFocusTapAssistPreferences {
 nonisolated enum CameraLivePhotoPreferences {
     static let isEnabledKey = "CameraLivePhotoEnabled"
     static let defaultIsEnabled = false
+    static let soundEnabledKey = "CameraLivePhotoSoundEnabled"
+    static let defaultSoundEnabled = false
 }
 
 nonisolated enum CameraIdleTimerPreferences {

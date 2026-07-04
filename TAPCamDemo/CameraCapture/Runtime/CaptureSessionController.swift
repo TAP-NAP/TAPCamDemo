@@ -390,6 +390,9 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             logAvailableOutput(resolvedOutput, capabilities: availableCapabilities)
             try resolvedOutput.validatePhotoOutputCapabilities(availableCapabilities)
             photoOutput.isDepthDataDeliveryEnabled = resolvedOutput.depthDataDeliveryEnabled
+            if photoOutput.isLivePhotoCaptureSupported {
+                photoOutput.isLivePhotoCaptureEnabled = true
+            }
             let configuredCapabilities = CapturePhotoOutputCapabilitySnapshot(
                 photoOutput: photoOutput,
                 activeFormat: plan.resolvedCaptureDevice.activeFormat
@@ -479,6 +482,10 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         }
 
         guard photoOutput.isDepthDataDeliveryEnabled == resolvedOutput.depthDataDeliveryEnabled else {
+            return false
+        }
+
+        if photoOutput.isLivePhotoCaptureSupported && !photoOutput.isLivePhotoCaptureEnabled {
             return false
         }
 

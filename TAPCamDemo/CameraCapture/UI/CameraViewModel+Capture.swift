@@ -20,7 +20,8 @@ extension CameraViewModel {
     func capture(
         pendingCaptureWorkerClient: (any AppAttestClient)? = nil,
         suppressesShutterSound: Bool = false,
-        flashMode: CaptureFlashMode = .auto
+        flashMode: CaptureFlashMode = .auto,
+        livePhotoRequest: CaptureLivePhotoRequest = .disabled
     ) async {
         guard !isPausedForAnalysis else {
             statusMessage = "Camera paused for analysis."
@@ -77,7 +78,8 @@ extension CameraViewModel {
                 capturedAt: job.createdAt,
                 location: location,
                 suppressesShutterSound: suppressesShutterSound,
-                flashMode: flashMode
+                flashMode: flashMode,
+                livePhotoRequest: livePhotoRequest
             )
             let queueWaitDuration = Date().timeIntervalSince(queueEnteredAt)
             Task { [pipeline, jobQueue, metricsStore] in

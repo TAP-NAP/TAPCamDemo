@@ -40,7 +40,7 @@ flowchart TD
     Manifest --> Provenance["TAPCaptureProvenanceWriter.writeManifest"]
     BasePhoto --> Provenance
     Provenance --> Writer["TAPDepthPhotoFileWriter"]
-    Writer --> Artifact["PackagedCaptureArtifact\nunsigned HEIC/JPG"]
+    Writer --> Artifact["PackagedCaptureArtifact\nunsigned HEIC/JPG\noptional Live Photo MOV"]
     Artifact --> Pending["TAPPendingCaptureArtifactWriter"]
 
     click Package "CapturePackage.swift"
@@ -61,8 +61,8 @@ flowchart LR
     Unsigned --> Provenance
     Provenance --> Slot["TAPProofSlot.writeProofEnvelope"]
     Slot --> Signed["signed HEIC/JPG\nproof slot"]
-    Signed --> Validator["validateSignedExportPhoto"]
-    Validator --> Photos["PhotoLibraryWriter.saveDepthPhoto"]
+    Signed --> Validator["validateSignedExportPhoto\nor validateSignedExportLivePhoto"]
+    Validator --> Photos["PhotoLibraryWriter.saveDepthPhoto\nor saveDepthLivePhoto"]
 ```
 
 The shutter-time packager emits `proofs: []`. The pending queue later asks
@@ -94,6 +94,15 @@ through this final gate first.
 
 `ValidatedTAPDepthPhoto` has no module-wide public construction path; the
 provenance writer is the only production file that can mint that trusted wrapper.
+
+Live Photo capture adds one optional MOV resource without changing the still
+photo path. If `AVCapturePhotoOutput` delivers the movie complement,
+`CapturePackage` and `PackagedCaptureArtifact` carry it to TAP Library. The
+manifest switches from `depth-manifest:v1` to `depth-manifest:v2` and records
+`payload.livePhoto`; signing switches from `content-binding:v2` to
+`content-binding:v3` and adds `signedResources` for the primary photo, manifest
+payload, and paired MOV. If the movie complement fails, the package has no MOV
+and the still-photo v1/v2 path is used.
 
 ## Output Profile Contract
 
@@ -156,10 +165,12 @@ Read the output contract in this order:
 
 `CaptureOutputProfile` is internal output policy, not a raw UI setting. The
 visible Settings picker resolves to a reviewed catalog profile before Runtime
-sees it. The current app saves one TAP photo-depth artifact per capture, either
-HEIC or JPG. There is no hidden container fallback, quality slider, RAW output,
-Live Photo output, 24 MP deferred delivery, or extra saved artifact in this
-change.
+sees it. The current app saves one TAP photo-depth photo artifact per capture,
+either HEIC or JPG. Live Photo is a narrow extension that adds one Apple paired
+MOV resource when supported by the active `AVCapturePhotoOutput`; it is not a
+general multi-resource output profile. There is no hidden container fallback,
+quality slider, RAW output, 24 MP deferred delivery, or extra debug artifact in
+this change.
 
 `CaptureOutputProfileSelectionIntent` is also internal policy. It does not add
 an output setting, persist a preference, write a manifest field, or bypass
@@ -188,21 +199,25 @@ output without carrying the concrete data. It is exposed through
 `ResolvedCaptureOutputProfile.resourcePlan`, which reuses
 `validateForEmbeddedPhotoDepthPackaging()` before returning the current plan.
 Today it names one photo container with primary RGB, embedded Apple auxiliary
-depth, an embedded TAP manifest, and an App Attest proof record. Future RAW,
-Live Photo, video, sidecar, or C2PA work should extend this model before new
-packagers or Photos writers are added. The App Attest proof resource is
+depth, an embedded TAP manifest, and an App Attest proof record. The current
+Live Photo implementation adds a fixed paired MOV through the capture artifact,
+pending store, v2 manifest, and v3 content binding without changing that still
+photo resource plan. Future RAW, general video, sidecar, or C2PA work should
+extend this model before new packagers or Photos writers are added. The App
+Attest proof resource is
 required before export, but it is not itself an input to the App Attest content
 binding; the binding covers the current photo file bytes excluding the fixed
 proof slot, plus canonical manifest payload facts. Embedded auxiliary depth is
 therefore bound as format-native bytes in the photo file, while later metric
 depth conversion remains a consumer-side interpretation step.
 
-`PhotoLibraryWriter` receives only a `ValidatedTAPDepthPhoto`. It stages those
-final bytes as a temporary `.heic` or `.jpg` file and gives Photos that file URL
-with the matching UTType. Do not switch this back to `addResource(with:data:)`
-without repeating the physical-device JPG audit: on iPhone 15 Pro, data-based
-JPG import saved the asset but the Photos round-trip original lost
-`tapdepth:Manifest`.
+`PhotoLibraryWriter.saveDepthPhoto` receives only a `ValidatedTAPDepthPhoto`. It
+stages those final bytes as a temporary `.heic` or `.jpg` file and gives Photos
+that file URL with the matching UTType. `saveDepthLivePhoto` additionally
+requires `ValidatedTAPLivePhoto` and adds the paired MOV as `.pairedVideo`. Do
+not switch the photo path back to `addResource(with:data:)` without repeating
+the physical-device JPG audit: on iPhone 15 Pro, data-based JPG import saved
+the asset but the Photos round-trip original lost `tapdepth:Manifest`.
 
 ## Profile Fields
 
@@ -262,8 +277,10 @@ JPG import saved the asset but the Photos round-trip original lost
 
 - Do not turn `releasePhotoDepthHEIC` or `releasePhotoDepthJPEG` into
   multi-format fallback profiles.
-- Add a new catalog profile for RAW, Live Photo, video, 24 MP deferred delivery,
-  or an alternative HEIC/JPG-depth path.
+- Add a new catalog profile for RAW, general video, 24 MP deferred delivery, or
+  an alternative HEIC/JPG-depth path. The current Live Photo path is a fixed
+  extension over the reviewed HEIC/JPG depth profiles, not a separate catalog
+  profile.
 - Add validation rules for every new invalid combination before UI can request
   it.
 - Add or update the resource plan so readers can tell whether App Attest signs

@@ -18,6 +18,7 @@ typealias CaptureContentDigest = CaptureContentBinding
 
 nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
     static let schemaIdentifier = "urn:tapnap:tapcam:content-binding:v2"
+    static let livePhotoSchemaIdentifier = "urn:tapnap:tapcam:content-binding:v3"
 
     let schemaID: String
     let manifestSchemaID: String
@@ -27,6 +28,7 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
     let metadataHash: MetadataHash
     let proofSlot: ProofSlot
     let depthResource: DepthResource
+    let signedResources: [SignedResource]?
 
     nonisolated init(
         schemaID: String = CaptureContentBinding.schemaIdentifier,
@@ -36,7 +38,8 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
         assetHash: AssetHash,
         metadataHash: MetadataHash,
         proofSlot: ProofSlot,
-        depthResource: DepthResource
+        depthResource: DepthResource,
+        signedResources: [SignedResource]? = nil
     ) {
         self.schemaID = schemaID
         self.manifestSchemaID = manifestSchemaID
@@ -46,6 +49,7 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
         self.metadataHash = metadataHash
         self.proofSlot = proofSlot
         self.depthResource = depthResource
+        self.signedResources = signedResources
     }
 
     static func make(
@@ -79,13 +83,15 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
         manifest: TAPDepthManifest,
         basePhotoData: Data,
         fileContainer: CapturePhotoFileContainer,
-        depthData: AVDepthData?
+        depthData: AVDepthData?,
+        pairedVideoURL: URL? = nil
     ) throws -> CaptureContentBinding {
         try makeWithMetrics(
             manifest: manifest,
             basePhotoData: basePhotoData,
             fileContainer: fileContainer,
-            depthData: depthData
+            depthData: depthData,
+            pairedVideoURL: pairedVideoURL
         ).digest
     }
 
@@ -120,7 +126,8 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
         manifest: TAPDepthManifest,
         basePhotoData: Data,
         fileContainer: CapturePhotoFileContainer,
-        depthData: AVDepthData?
+        depthData: AVDepthData?,
+        pairedVideoURL: URL? = nil
     ) throws -> CaptureContentDigestBuildResult {
         var metrics = CaptureContentDigestMetrics()
 
@@ -142,17 +149,35 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
         metrics.depthDigestDuration = Date().timeIntervalSince(depthStart)
 
         let metadataStart = Date()
-        let metadataHash = try MetadataHash(payload: manifest.payload)
+        let payloadData = try TAPDepthManifestEncoder.payloadDataExcludingProofs(manifest.payload)
+        let metadataHash = MetadataHash(payloadData: payloadData, schemaVersion: manifest.schema.version)
         metrics.metadataDigestDuration = Date().timeIntervalSince(metadataStart)
+        let livePhotoSignedResources: [SignedResource]?
+        if let pairedVideoURL {
+            livePhotoSignedResources = try signedResources(
+                pairedVideoURL: pairedVideoURL,
+                fileContainer: fileContainer,
+                assetHash: assetHash,
+                metadataHash: metadataHash,
+                payloadByteCount: payloadData.count
+            )
+        } else {
+            livePhotoSignedResources = nil
+        }
 
         return CaptureContentDigestBuildResult(
             digest: CaptureContentBinding(
+                schemaID: pairedVideoURL == nil
+                    ? CaptureContentBinding.schemaIdentifier
+                    : CaptureContentBinding.livePhotoSchemaIdentifier,
+                manifestSchemaID: manifest.schema.id,
                 captureID: manifest.payload.id,
                 capturedAt: manifest.payload.capturedAt,
                 assetHash: assetHash,
                 metadataHash: metadataHash,
                 proofSlot: ProofSlot(slot),
-                depthResource: depthResource
+                depthResource: depthResource,
+                signedResources: livePhotoSignedResources
             ),
             metrics: metrics
         )
@@ -175,6 +200,46 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
                 platformPresenceCheck: "AVDepthData-readback-missing"
             )
         }
+    }
+
+    private static func signedResources(
+        pairedVideoURL: URL,
+        fileContainer: CapturePhotoFileContainer,
+        assetHash: AssetHash,
+        metadataHash: MetadataHash,
+        payloadByteCount: Int
+    ) throws -> [SignedResource] {
+        let pairedVideoData = try Data(contentsOf: pairedVideoURL)
+        return [
+            SignedResource(
+                role: "primaryPhoto",
+                kind: assetHash.kind,
+                mediaType: fileContainer.uniformTypeIdentifier,
+                algorithm: assetHash.algorithm,
+                byteCount: assetHash.byteCount,
+                value: assetHash.value,
+                binding: "format-native-byte-ranges",
+                excludedRanges: assetHash.excludedRanges
+            ),
+            SignedResource(
+                role: "tapDepthManifestPayload",
+                kind: metadataHash.kind,
+                mediaType: metadataHash.mediaType,
+                algorithm: metadataHash.algorithm,
+                byteCount: payloadByteCount,
+                value: metadataHash.value,
+                binding: "canonical-json"
+            ),
+            SignedResource(
+                role: "pairedLivePhotoVideo",
+                kind: "format-native-full-file",
+                mediaType: "com.apple.quicktime-movie",
+                algorithm: "SHA-256",
+                byteCount: pairedVideoData.count,
+                value: TAPContentBindingHash.sha256Base64URL(data: pairedVideoData),
+                binding: "full-file"
+            )
+        ]
     }
 
     func canonicalJSONData() throws -> Data {
@@ -236,8 +301,12 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
 
         nonisolated init(payload: TAPDepthManifest.Payload) throws {
             let payloadData = try TAPDepthManifestEncoder.payloadDataExcludingProofs(payload)
+            self.init(payloadData: payloadData, schemaVersion: 1)
+        }
+
+        nonisolated init(payloadData: Data, schemaVersion: Int) {
             self.kind = "canonical-json"
-            self.mediaType = "application/vnd.tapnap.depth-manifest.payload+json;version=1"
+            self.mediaType = "application/vnd.tapnap.depth-manifest.payload+json;version=\(schemaVersion)"
             self.algorithm = "SHA-256"
             self.value = TAPContentBindingHash.sha256Base64URL(data: payloadData)
         }
@@ -266,6 +335,37 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
         let binding: String
         let interpretation: String
         let platformPresenceCheck: String
+    }
+
+    nonisolated struct SignedResource: Codable, Equatable, Sendable {
+        let role: String
+        let kind: String
+        let mediaType: String
+        let algorithm: String
+        let byteCount: Int
+        let value: String
+        let binding: String
+        let excludedRanges: [ExcludedRange]?
+
+        nonisolated init(
+            role: String,
+            kind: String,
+            mediaType: String,
+            algorithm: String,
+            byteCount: Int,
+            value: String,
+            binding: String,
+            excludedRanges: [ExcludedRange]? = nil
+        ) {
+            self.role = role
+            self.kind = kind
+            self.mediaType = mediaType
+            self.algorithm = algorithm
+            self.byteCount = byteCount
+            self.value = value
+            self.binding = binding
+            self.excludedRanges = excludedRanges
+        }
     }
 }
 

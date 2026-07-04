@@ -56,7 +56,7 @@ struct TAPSignedExportValidatorTests {
         let validatorSource = try #require(TAPCamDemoTestSourceInspection.substring(
             in: provenanceSource,
             from: "func validateSignedExportPhoto",
-            to: "private func validateManifestSchema"
+            to: "func validateSignedExportLivePhoto"
         ))
 
         #expect(requiredKinds == [
@@ -67,7 +67,7 @@ struct TAPSignedExportValidatorTests {
         ])
         #expect(validatorSource.contains("TAPDepthPhotoFileReader.validateContainer"))
         #expect(validatorSource.contains("decodedManifest"))
-        #expect(validatorSource.contains("validateManifestSchema"))
+        #expect(validatorSource.contains("validateStillPhotoManifestSchema"))
         #expect(validatorSource.contains("validateManifestID"))
         #expect(validatorSource.contains("CaptureOutputManifestPolicy(profile: expectedProfile).validate"))
         #expect(validatorSource.contains("validateManifestCarriesNoProofBody"))

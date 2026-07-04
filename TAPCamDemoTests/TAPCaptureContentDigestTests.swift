@@ -35,6 +35,54 @@ struct TAPCaptureContentDigestTests {
         #expect(!source.contains("converting(toDepthDataType:"))
     }
 
+    @Test func livePhotoContentBindingAddsSignedResources() throws {
+        let movieURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+            .appendingPathComponent("paired-video.mov")
+        let movieData = Data("paired-video".utf8)
+        try movieData.write(to: movieURL)
+        let photoData = try TAPProofSlot.ensuringEmptySlot(
+            in: Self.syntheticBMFFData(),
+            fileContainer: .heic
+        )
+        let manifest = TAPDepthManifest(
+            payload: TAPCamDemoTestFixtures.samplePayload(
+                location: nil,
+                capture: TAPCamDemoTestFixtures.sampleManifestCapture(depthAvailability: .unavailable),
+                depthAvailability: .unavailable,
+                livePhoto: TAPDepthManifest.LivePhoto(
+                    presence: "paired-video",
+                    pairedVideoFilename: "paired-video.mov",
+                    durationSeconds: 1.2,
+                    photoDisplayTimeSeconds: 0.5,
+                    width: 1440,
+                    height: 1080,
+                    videoCodec: "hvc1",
+                    audio: "not-captured"
+                )
+            ),
+            schema: .livePhotoV2
+        )
+
+        let digest = try CaptureContentDigest.make(
+            manifest: manifest,
+            basePhotoData: photoData,
+            fileContainer: .heic,
+            depthData: nil,
+            pairedVideoURL: movieURL
+        )
+        let resources = try #require(digest.signedResources)
+        let expectedMovieHash = try Self.sha256Base64URL(movieData)
+
+        #expect(digest.schemaID == CaptureContentBinding.livePhotoSchemaIdentifier)
+        #expect(digest.manifestSchemaID == TAPDepthManifest.livePhotoSchemaIdentifier)
+        #expect(digest.metadataHash.mediaType == "application/vnd.tapnap.depth-manifest.payload+json;version=2")
+        #expect(resources.map(\.role) == ["primaryPhoto", "tapDepthManifestPayload", "pairedLivePhotoVideo"])
+        #expect(resources.last?.mediaType == "com.apple.quicktime-movie")
+        #expect(resources.last?.byteCount == movieData.count)
+        #expect(resources.last?.value == expectedMovieHash)
+        #expect(try String(data: digest.canonicalJSONData(), encoding: .utf8)?.contains("\"signedResources\"") == true)
+    }
+
     @Test func bmffProofSlotIsFixedSizeAndExcludedFromAssetHash() throws {
         let baseData = Self.syntheticBMFFData()
         let emptySlotData = try TAPProofSlot.ensuringEmptySlot(
