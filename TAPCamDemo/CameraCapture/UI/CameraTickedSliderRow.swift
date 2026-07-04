@@ -16,6 +16,8 @@ struct CameraTickedSliderRow: View {
     let highlightColor: Color
     let contentRotation: Angle
     let riskRanges: [ClosedRange<Double>]
+    let tickValueStep: Double?
+    let isEVIntegerHapticsEnabled: Bool
     let onEditingBegan: () -> Void
     let onEditingEnded: () -> Void
 
@@ -30,7 +32,6 @@ struct CameraTickedSliderRow: View {
 
             ZStack {
                 tickMarks
-                    .padding(.horizontal, Metrics.tickHorizontalPadding)
                     .frame(width: trackWidth, height: Metrics.trackHeight)
                     .position(x: portraitAdjustmentCenterline, y: rowCenterY)
 
@@ -140,13 +141,20 @@ struct CameraTickedSliderRow: View {
     }
 
     private var tickMarks: some View {
-        HStack(spacing: 0) {
-            ForEach(0..<17, id: \.self) { index in
-                Rectangle()
-                    .fill(.white.opacity(index == 8 ? 0.50 : 0.24))
-                    .frame(width: 1, height: index == 8 ? 18 : 10)
-                if index < 16 {
-                    Spacer(minLength: 0)
+        GeometryReader { proxy in
+            let descriptors = tickDescriptors
+            ZStack(alignment: .leading) {
+                ForEach(Array(descriptors.enumerated()), id: \.offset) { index, descriptor in
+                    Rectangle()
+                        .fill(.white.opacity(opacity(for: descriptor)))
+                        .frame(
+                            width: descriptor.isMajor ? Metrics.majorTickWidth : Metrics.minorTickWidth,
+                            height: tickHeight(for: descriptor)
+                        )
+                        .position(
+                            x: tickX(for: index, count: descriptors.count, width: proxy.size.width),
+                            y: proxy.size.height / 2
+                        )
                 }
             }
         }
@@ -171,16 +179,26 @@ struct CameraTickedSliderRow: View {
     }
 
     private var valueCursor: some View {
-        Circle()
+        ZStack {
+            cursorTriangle(direction: .down)
+                .offset(y: -Metrics.cursorTriangleBaseOffset)
+            cursorTriangle(direction: .up)
+                .offset(y: Metrics.cursorTriangleBaseOffset)
+        }
+        .frame(width: Metrics.cursorWidth, height: Metrics.cursorHeight)
+        .shadow(color: .black.opacity(0.38), radius: 3)
+        .accessibilityHidden(true)
+        .accessibilityIdentifier("camera.tickedAdjustmentStrip.valueCursor")
+    }
+
+    private func cursorTriangle(direction: CameraTriangleCursorShape.Direction) -> some View {
+        CameraTriangleCursorShape(direction: direction)
             .fill(isEnabled ? highlightColor : .white.opacity(0.36))
-            .frame(width: 13, height: 13)
+            .frame(width: Metrics.cursorTriangleWidth, height: Metrics.cursorTriangleHeight)
             .overlay {
-                Circle()
+                CameraTriangleCursorShape(direction: direction)
                     .stroke(.white.opacity(isEnabled ? 0.72 : 0.24), lineWidth: 1)
             }
-            .shadow(color: .black.opacity(0.38), radius: 3)
-            .accessibilityHidden(true)
-            .accessibilityIdentifier("camera.tickedAdjustmentStrip.valueCursor")
     }
 
     private func resolvedTrackWidth(for containerWidth: CGFloat) -> CGFloat {
@@ -263,6 +281,25 @@ struct CameraTickedSliderRow: View {
             return
         }
         lastHapticStepIndex = nextStepIndex
+        triggerHaptic(for: value)
+    }
+
+    private func triggerHaptic(for value: Double) {
+        guard isEVIntegerHapticsEnabled else {
+            UISelectionFeedbackGenerator().selectionChanged()
+            return
+        }
+
+        if isZeroValue(value) {
+            UIImpactFeedbackGenerator(style: .heavy).impactOccurred(intensity: 1)
+            return
+        }
+
+        if isIntegerValue(value) {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred(intensity: 0.78)
+            return
+        }
+
         UISelectionFeedbackGenerator().selectionChanged()
     }
 
@@ -304,6 +341,105 @@ struct CameraTickedSliderRow: View {
         return min(max(stepped, lowerBound), upperBound)
     }
 
+    private var tickDescriptors: [TickDescriptor] {
+        let values = tickValues()
+        let midpointIndex = values.count / 2
+
+        return values.enumerated().map { index, value in
+            let isZero = isZeroValue(value)
+            let isInteger = isEVIntegerHapticsEnabled && isIntegerValue(value)
+            return TickDescriptor(
+                isCenter: isZero || (!isEVIntegerHapticsEnabled && index == midpointIndex),
+                isMajor: isZero || isInteger || (!isEVIntegerHapticsEnabled && index == midpointIndex)
+            )
+        }
+    }
+
+    private func tickValues() -> [Double] {
+        let lowerBound = range.lowerBound
+        let upperBound = range.upperBound
+        guard upperBound > lowerBound else {
+            return [lowerBound]
+        }
+
+        if let tickValueStep = resolvedTickValueStep {
+            let count = max(Int(((upperBound - lowerBound) / tickValueStep).rounded()), 1)
+            return (0...count).map { index in
+                index == count
+                    ? upperBound
+                    : min(lowerBound + Double(index) * tickValueStep, upperBound)
+            }
+        }
+
+        let count = Metrics.defaultTickCount - 1
+        return (0...count).map { index in
+            lowerBound + Double(index) / Double(count) * (upperBound - lowerBound)
+        }
+    }
+
+    private var resolvedTickValueStep: Double? {
+        guard
+            let tickValueStep,
+            tickValueStep.isFinite,
+            tickValueStep > 0,
+            range.upperBound > range.lowerBound
+        else {
+            return nil
+        }
+
+        let count = Int(((range.upperBound - range.lowerBound) / tickValueStep).rounded())
+        guard count > 0, count <= Metrics.maximumTickCount else {
+            return nil
+        }
+        return tickValueStep
+    }
+
+    private func opacity(for descriptor: TickDescriptor) -> Double {
+        if descriptor.isCenter {
+            return 0.62
+        }
+        if descriptor.isMajor {
+            return 0.44
+        }
+        return 0.24
+    }
+
+    private func tickHeight(for descriptor: TickDescriptor) -> CGFloat {
+        if descriptor.isCenter {
+            return Metrics.centerTickHeight
+        }
+        if descriptor.isMajor {
+            return Metrics.majorTickHeight
+        }
+        return Metrics.minorTickHeight
+    }
+
+    private func tickX(for index: Int, count: Int, width: CGFloat) -> CGFloat {
+        guard count > 1 else {
+            return width / 2
+        }
+        return CGFloat(index) / CGFloat(count - 1) * width
+    }
+
+    private func isZeroValue(_ value: Double) -> Bool {
+        abs(value) <= hapticValueTolerance
+    }
+
+    private func isIntegerValue(_ value: Double) -> Bool {
+        let nearestInteger = value.rounded()
+        return abs(value - nearestInteger) <= hapticValueTolerance
+    }
+
+    private var hapticValueTolerance: Double {
+        max(resolvedStepSize / 10_000, 0.000_001)
+    }
+
+    private var resolvedStepSize: Double {
+        step.isFinite && step > 0
+            ? step
+            : max((range.upperBound - range.lowerBound) / 100, 0.000_001)
+    }
+
     private enum Metrics {
         static let rowHeight: CGFloat = 50
         static let trackHeight: CGFloat = 34
@@ -313,12 +449,53 @@ struct CameraTickedSliderRow: View {
         static let valueWidth: CGFloat = 78
         static let labelGap: CGFloat = 8
         static let horizontalInset: CGFloat = 12
-        static let tickHorizontalPadding: CGFloat = 6
+        static let minorTickWidth: CGFloat = 1
+        static let majorTickWidth: CGFloat = 1.5
+        static let minorTickHeight: CGFloat = 9
+        static let majorTickHeight: CGFloat = 14
+        static let centerTickHeight: CGFloat = 20
+        static let cursorWidth: CGFloat = 12
+        static let cursorHeight: CGFloat = centerTickHeight
+        static let cursorTriangleWidth: CGFloat = 11
+        static let cursorTriangleHeight: CGFloat = 6
+        static let cursorTriangleBaseOffset: CGFloat = centerTickHeight / 2 - cursorTriangleHeight / 2
+        static let defaultTickCount = 17
+        static let maximumTickCount = 61
         static let minimumTrackWidth: CGFloat = 128
         static let maximumTrackWidth: CGFloat = 208
         static let labelReserveWidth: CGFloat = titleWidth
             + valueWidth
             + labelGap * 2
             + horizontalInset * 2
+    }
+
+    private struct TickDescriptor: Equatable {
+        let isCenter: Bool
+        let isMajor: Bool
+    }
+}
+
+private struct CameraTriangleCursorShape: Shape {
+    enum Direction {
+        case up
+        case down
+    }
+
+    let direction: Direction
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        switch direction {
+        case .up:
+            path.move(to: CGPoint(x: rect.midX, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+            path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        case .down:
+            path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
+        }
+        path.closeSubpath()
+        return path
     }
 }

@@ -537,9 +537,7 @@ struct TAPCameraCapturePresentationTests {
         #expect(focalLengthSource.contains("CenterAnchoredChromeRotation"))
         #expect(adjustmentSource.contains("let contentRotation: Angle"))
         #expect(adjustmentSource.contains("CameraToolbarButtonContent("))
-        #expect(adjustmentSource.contains("TickedSliderRow("))
-        #expect(adjustmentSource.contains("CenterAnchoredChromeRotation"))
-        #expect(adjustmentSource.contains("DragGesture(minimumDistance: 0)"))
+        #expect(adjustmentSource.contains("CameraTickedSliderRow("))
         #expect(!adjustmentSource.contains("Slider(value: valueBinding"))
         #expect(captureControlsSource.contains("CenterAnchoredChromeRotation"))
         #expect(!adjustmentSource.contains(".rotationEffect(contentRotation)\n        .foregroundStyle(.white)"))
@@ -568,17 +566,32 @@ struct TAPCameraCapturePresentationTests {
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
     func cameraTickedAdjustmentStripUsesCenteredAxisCursorAndHaptics() throws {
-        let source = try TAPCamDemoTestSourceInspection.source(
+        let adjustmentSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/CameraCapture/UI/CameraAdjustmentControlView.swift"
         )
+        let sliderSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraTickedSliderRow.swift"
+        )
 
-        #expect(source.contains("portraitAdjustmentCenterline"))
-        #expect(source.contains("valueCursor"))
-        #expect(source.contains(#".accessibilityIdentifier("camera.tickedAdjustmentStrip.valueCursor")"#))
-        #expect(source.contains("UISelectionFeedbackGenerator"))
-        #expect(source.contains("lastHapticStepIndex"))
-        #expect(source.contains("triggerSelectionHapticIfNeeded"))
-        #expect(source.contains("position(x: portraitAdjustmentCenterline"))
+        #expect(adjustmentSource.contains("tickValueStep: CameraEVPreferences.adjustmentStep"))
+        #expect(adjustmentSource.contains("isEVIntegerHapticsEnabled: true"))
+        #expect(sliderSource.contains("portraitAdjustmentCenterline"))
+        #expect(sliderSource.contains("valueCursor"))
+        #expect(sliderSource.contains("cursorTriangle(direction: .down)"))
+        #expect(sliderSource.contains("cursorTriangle(direction: .up)"))
+        #expect(sliderSource.contains("offset(y: -Metrics.cursorTriangleBaseOffset)"))
+        #expect(sliderSource.contains("offset(y: Metrics.cursorTriangleBaseOffset)"))
+        #expect(sliderSource.contains("static let cursorTriangleWidth"))
+        #expect(sliderSource.contains("static let cursorTriangleHeight"))
+        #expect(sliderSource.contains("static let cursorTriangleBaseOffset"))
+        #expect(sliderSource.contains("tickX(for: index, count: descriptors.count, width: proxy.size.width)"))
+        #expect(sliderSource.contains(#".accessibilityIdentifier("camera.tickedAdjustmentStrip.valueCursor")"#))
+        #expect(sliderSource.contains("UISelectionFeedbackGenerator"))
+        #expect(sliderSource.contains("UIImpactFeedbackGenerator(style: .heavy)"))
+        #expect(sliderSource.contains("UIImpactFeedbackGenerator(style: .medium)"))
+        #expect(sliderSource.contains("lastHapticStepIndex"))
+        #expect(sliderSource.contains("triggerSelectionHapticIfNeeded"))
+        #expect(sliderSource.contains("position(x: portraitAdjustmentCenterline"))
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
