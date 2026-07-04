@@ -54,6 +54,23 @@ struct TAPCameraCapturePresentationTests {
         #expect(uiTestSource.contains("VIDEO mode coming soon"))
     }
 
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func cameraCaptureControlsKeepShutterRowAboveModeSelectorSlot() throws {
+        let controlsSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraCaptureControlsView.swift"
+        )
+        let bodyStart = try #require(controlsSource.range(of: "var body: some View"))
+        let bottomControlsDeclaration = try #require(controlsSource.range(of: "private var bottomControls"))
+        let bodySource = String(controlsSource[bodyStart.lowerBound..<bottomControlsDeclaration.lowerBound])
+        let bottomControlsCall = try #require(bodySource.range(of: "bottomControls"))
+        let lowerToolbarCall = try #require(bodySource.range(of: "lowerToolbar"))
+        let modeSelectorCall = try #require(bodySource.range(of: "modeSelectorSlot"))
+
+        #expect(bottomControlsCall.lowerBound < lowerToolbarCall.lowerBound)
+        #expect(lowerToolbarCall.lowerBound < modeSelectorCall.lowerBound)
+        #expect(bodySource.contains(".padding(.bottom, 4)"))
+    }
+
     @Test func captureLifecycleCoordinatorKeepsPendingSigningWarmupAndRetryPoliciesExplicit() {
         #expect(CaptureLifecycleCoordinator.initialCameraActions(startsAutomatically: true) == [.startCamera])
         #expect(CaptureLifecycleCoordinator.initialCameraActions(startsAutomatically: false) == [])

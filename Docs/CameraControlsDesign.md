@@ -105,6 +105,10 @@ Settings 里不提供 `Pro Controls` runtime toggle。这个选择只由编译�
 `viewfinder lower toolbar` 只属于 `TAP_ENABLE_PRO_CAMERA_CONTROLS` 专业控制构建。
 普通产品构建不编译这组入口。
 
+下方控制区从上到下固定为：快门行、`viewfinder lower toolbar`（仅 Pro Controls
+构建）、`mode selector slot`。快门行必须高于 `mode selector slot`，避免主要拍摄
+动作落在屏幕过低位置；底部留白属于整个控制栈，不属于快门行本身。
+
 Pro Controls 构建中从左到右：
 
 1. `EV`

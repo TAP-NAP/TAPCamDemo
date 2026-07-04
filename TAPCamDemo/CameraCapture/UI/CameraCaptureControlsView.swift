@@ -71,12 +71,13 @@ struct CameraCaptureControlsView: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            modeSelectorSlot
+            bottomControls
             #if TAP_ENABLE_PRO_CAMERA_CONTROLS
             lowerToolbar
             #endif
-            bottomControls
+            modeSelectorSlot
         }
+        .padding(.bottom, 4)
     }
 
     private var bottomControls: some View {
@@ -112,7 +113,6 @@ struct CameraCaptureControlsView: View {
         .buttonStyle(.plain)
         .foregroundStyle(.white)
         .padding(.horizontal, 34)
-        .padding(.bottom, 4)
         .frame(maxWidth: .infinity)
     }
 
