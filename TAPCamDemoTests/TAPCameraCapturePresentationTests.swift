@@ -438,6 +438,9 @@ struct TAPCameraCapturePresentationTests {
         let viewSource = String(source[viewStart.lowerBound..<viewEnd.lowerBound])
 
         #expect(viewSource.contains("private var lockBadge: some View"))
+        #expect(viewSource.contains("let highlightColor: Color"))
+        #expect(viewSource.contains(".stroke(isLocked ? highlightColor : .white"))
+        #expect(viewSource.contains(".foregroundStyle(highlightColor)"))
         #expect(viewSource.contains(".offset(y: -(Metrics.focusIndicatorSide / 2 + Metrics.lockBadgeVerticalGap))"))
         #expect(viewSource.contains(".frame(width: Metrics.focusIndicatorSide, height: Metrics.focusIndicatorSide)"))
         #expect(!viewSource.contains("VStack(spacing: 7)"))
@@ -452,7 +455,8 @@ struct TAPCameraCapturePresentationTests {
         let viewSource = String(source[viewStart.lowerBound...])
 
         #expect(viewSource.contains("ForEach(0..<7"))
-        #expect(viewSource.contains(".fill(.yellow)"))
+        #expect(viewSource.contains("let highlightColor: Color"))
+        #expect(viewSource.contains(".fill(highlightColor)"))
         #expect(viewSource.contains(#"Image(systemName: "sun.max")"#))
         #expect(viewSource.contains("static let focusEVRailWidth: CGFloat = 28"))
         #expect(viewSource.contains("static let focusEVEdgeGap: CGFloat = 6"))
@@ -625,6 +629,10 @@ struct TAPCameraCapturePresentationTests {
         #expect(CameraGuideOverlayPreference.resolved(rawValue: "ruleOfThirds") == .ruleOfThirds)
         #expect(CameraGuideOverlayPreference.resolved(rawValue: "centerCross") == .centerCross)
         #expect(CameraGuideOverlayPreference.resolved(rawValue: "unexpected") == .off)
+        #expect(CameraViewfinderHighlightPreference.defaultValue == .yellow)
+        #expect(CameraViewfinderHighlightPreference.resolved(rawValue: "titian") == .titian)
+        #expect(CameraViewfinderHighlightPreference.resolved(rawValue: "unexpected") == .yellow)
+        #expect(CameraViewfinderHighlightPreference.titian.title == "Titian")
     }
 
     @Test func cameraCaptureModeOptionKeepsOnlyPhotoAvailableInStageOne() throws {
@@ -678,17 +686,66 @@ struct TAPCameraCapturePresentationTests {
         #expect(chromeSource.contains("let topSafeAreaInset: CGFloat"))
         #expect(!chromeSource.contains("GeometryReader"))
         #expect(chromeSource.contains("flashButton"))
+        #expect(chromeSource.contains("private var flashButtonIcon: some View"))
+        #expect(chromeSource.contains(#"Image(systemName: state.flashMode.systemImage)"#))
+        #expect(chromeSource.contains(".symbolRenderingMode(.palette)"))
+        #expect(chromeSource.contains(".foregroundStyle(.white, highlightColor)"))
+        #expect(chromeSource.contains(".foregroundStyle(highlightColor)"))
+        #expect(!chromeSource.contains(#"Text("a")"#))
+        #expect(!chromeSource.contains("flashBaseSystemImage"))
         #expect(chromeSource.contains("livePhotoButton"))
         #expect(chromeSource.contains("static let viewfinderButtonSize: CGFloat = 44"))
         #expect(chromeSource.contains(#".accessibilityIdentifier("camera.chrome.flash")"#))
         #expect(chromeSource.contains(#".accessibilityIdentifier("camera.chrome.livePhoto")"#))
         #expect(!chromeSource.localizedCaseInsensitiveContains("LiDAR"))
+        #expect(settingsSource.contains("@AppStorage(CameraViewfinderHighlightPreference.storageKey)"))
+        #expect(settingsSource.contains(#"Picker("Highlight Color", selection: $viewfinderHighlightRawValue)"#))
+        #expect(settingsSource.contains("CameraViewfinderHighlightPreference.allCases"))
+        #expect(settingsSource.contains(".fill(preference.color)"))
         #expect(settingsSource.contains("CameraLiDARFocusAssistPreferences.isEnabledKey"))
         #expect(settingsSource.contains("LiDAR Focus Assist"))
         #expect(!settingsSource.contains(#"Section("Roadmap")"#))
         #expect(!settingsSource.contains("Shutter Position"))
         #expect(!settingsSource.contains("Second Shutter"))
         #expect(!settingsSource.contains("Landscape Control Split"))
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func cameraViewfinderHighlightPreferenceFlowsThroughUserVisibleChrome() throws {
+        let cameraSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraView.swift"
+        )
+        let chromeSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraViewfinderChromeView.swift"
+        )
+        let controlsSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraCaptureControlsView.swift"
+        )
+        let stageSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraPreviewStageView.swift"
+        )
+        let debugZoomSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/DebugZoomControlView.swift"
+        )
+
+        #expect(cameraSource.contains("@AppStorage(CameraViewfinderHighlightPreference.storageKey)"))
+        #expect(cameraSource.contains("private var viewfinderHighlightColor: Color"))
+        #expect(cameraSource.components(separatedBy: "highlightColor: viewfinderHighlightColor").count >= 4)
+        #expect(chromeSource.contains("let highlightColor: Color"))
+        #expect(chromeSource.contains(#"Image(systemName: state.flashMode.systemImage)"#))
+        #expect(chromeSource.contains(".symbolRenderingMode(.palette)"))
+        #expect(chromeSource.contains(".foregroundStyle(.white, highlightColor)"))
+        #expect(chromeSource.contains(".foregroundStyle(highlightColor)"))
+        #expect(chromeSource.contains(".foregroundStyle(state.isLivePhotoEnabled ? highlightColor : .white)"))
+        #expect(!chromeSource.contains(#"Text("a")"#))
+        #expect(!chromeSource.contains("flashBaseSystemImage"))
+        #expect(controlsSource.contains("let highlightColor: Color"))
+        #expect(controlsSource.contains("highlightColor: highlightColor"))
+        #expect(stageSource.contains("let highlightColor: Color"))
+        #expect(stageSource.contains(".fill(highlightColor)"))
+        #expect(stageSource.contains(".stroke(isLocked ? highlightColor : .white"))
+        #expect(!debugZoomSource.contains("CameraViewfinderHighlightPreference"))
+        #expect(!debugZoomSource.contains("highlightColor"))
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))

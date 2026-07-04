@@ -34,6 +34,8 @@ struct DepthAnalyzerSettingsView: View {
     private var defaultFlashRawValue = CameraFlashControlMode.defaultValue.rawValue
     @AppStorage(CameraGuideOverlayPreference.storageKey)
     private var guideOverlayRawValue = CameraGuideOverlayPreference.defaultValue.rawValue
+    @AppStorage(CameraViewfinderHighlightPreference.storageKey)
+    private var viewfinderHighlightRawValue = CameraViewfinderHighlightPreference.defaultValue.rawValue
     @AppStorage(CameraEVPreferences.resetOnAppLaunchKey)
     private var resetEVOnAppLaunch = CameraEVPreferences.defaultResetOnAppLaunch
     @AppStorage(CameraDepthAvailabilityHintPreferences.showsHintsKey)
@@ -98,6 +100,18 @@ struct DepthAnalyzerSettingsView: View {
                     Picker("Grid", selection: $guideOverlayRawValue) {
                         ForEach(CameraGuideOverlayPreference.allCases) { guide in
                             Text(guide.title).tag(guide.rawValue)
+                        }
+                    }
+
+                    Picker("Highlight Color", selection: $viewfinderHighlightRawValue) {
+                        ForEach(CameraViewfinderHighlightPreference.allCases) { preference in
+                            HStack {
+                                Circle()
+                                    .fill(preference.color)
+                                    .frame(width: 11, height: 11)
+                                Text(preference.title)
+                            }
+                            .tag(preference.rawValue)
                         }
                     }
 

@@ -439,6 +439,7 @@ struct CameraLowerToolbarView: View {
 
 struct CameraTickedAdjustmentStrip: View {
     let state: CameraAdjustmentControlState
+    let highlightColor: Color
     let contentRotation: Angle
     let onAdjustEV: (Double) -> Void
     let onAdjustISO: (Double) -> Void
@@ -493,6 +494,7 @@ struct CameraTickedAdjustmentStrip: View {
             range: CameraEVPreferences.minimumGlobalBias...CameraEVPreferences.maximumGlobalBias,
             step: CameraEVPreferences.adjustmentStep,
             isEnabled: !state.exposure.mode.isEVReadOnly,
+            highlightColor: highlightColor,
             contentRotation: contentRotation,
             riskRanges: [],
             onEditingBegan: { onBeginAdjustment(.ev) },
@@ -511,6 +513,7 @@ struct CameraTickedAdjustmentStrip: View {
             range: state.exposure.isoRange,
             step: 1,
             isEnabled: state.exposure.isAvailable,
+            highlightColor: highlightColor,
             contentRotation: contentRotation,
             riskRanges: state.exposure.isoRiskRanges,
             onEditingBegan: { onBeginAdjustment(.iso) },
@@ -529,6 +532,7 @@ struct CameraTickedAdjustmentStrip: View {
             range: 0...1,
             step: 0.01,
             isEnabled: state.exposure.isAvailable,
+            highlightColor: highlightColor,
             contentRotation: contentRotation,
             riskRanges: shutterRiskRangesForSlider,
             onEditingBegan: { onBeginAdjustment(.shutter) },
@@ -555,6 +559,7 @@ struct CameraTickedAdjustmentStrip: View {
             range: state.focus.lensPositionRange,
             step: 0.01,
             isEnabled: state.focus.isAvailable && state.focus.mode == .manual,
+            highlightColor: highlightColor,
             contentRotation: contentRotation,
             riskRanges: [],
             onEditingBegan: { onBeginAdjustment(.focus) },
@@ -683,6 +688,7 @@ private struct TickedSliderRow: View {
     let range: ClosedRange<Double>
     let step: Double
     let isEnabled: Bool
+    let highlightColor: Color
     let contentRotation: Angle
     let riskRanges: [ClosedRange<Double>]
     let onEditingBegan: () -> Void
@@ -841,7 +847,7 @@ private struct TickedSliderRow: View {
 
     private var valueCursor: some View {
         Circle()
-            .fill(isEnabled ? .yellow : .white.opacity(0.36))
+            .fill(isEnabled ? highlightColor : .white.opacity(0.36))
             .frame(width: 13, height: 13)
             .overlay {
                 Circle()

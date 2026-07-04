@@ -37,6 +37,7 @@ nonisolated struct CameraBasicEVControlState: Equatable, Sendable {
 
 struct CameraBasicEVButton: View {
     let state: CameraBasicEVControlState
+    let highlightColor: Color
     let contentRotation: Angle
     let onToggle: () -> Void
 
@@ -59,7 +60,7 @@ struct CameraBasicEVButton: View {
                         .minimumScaleFactor(0.72)
                 }
             }
-            .foregroundStyle(state.isStripVisible ? Color.yellow : Color.white)
+            .foregroundStyle(state.isStripVisible ? highlightColor : Color.white)
             .contentShape(Rectangle())
         }
         .buttonStyle(CameraNoHighlightButtonStyle())
@@ -82,6 +83,7 @@ private struct CameraNoHighlightButtonStyle: ButtonStyle {
 
 struct CameraBasicEVAdjustmentStrip: View {
     let state: CameraBasicEVControlState
+    let highlightColor: Color
     let contentRotation: Angle
     let onAdjustEV: (Double) -> Void
 
@@ -96,6 +98,7 @@ struct CameraBasicEVAdjustmentStrip: View {
             range: CameraEVPreferences.minimumGlobalBias...CameraEVPreferences.maximumGlobalBias,
             step: CameraEVPreferences.adjustmentStep,
             isEnabled: true,
+            highlightColor: highlightColor,
             contentRotation: contentRotation,
             riskRanges: [],
             onEditingBegan: {},

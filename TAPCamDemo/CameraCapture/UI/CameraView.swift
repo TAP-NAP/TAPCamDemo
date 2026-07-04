@@ -70,6 +70,8 @@ struct CameraView: View {
     private var defaultFlashRawValue = CameraFlashControlMode.defaultValue.rawValue
     @AppStorage(CameraGuideOverlayPreference.storageKey)
     private var guideOverlayRawValue = CameraGuideOverlayPreference.defaultValue.rawValue
+    @AppStorage(CameraViewfinderHighlightPreference.storageKey)
+    private var viewfinderHighlightRawValue = CameraViewfinderHighlightPreference.defaultValue.rawValue
     @AppStorage(CameraDepthAvailabilityHintPreferences.showsHintsKey)
     private var showsDepthAvailabilityHints = CameraDepthAvailabilityHintPreferences.defaultShowsHints
     @AppStorage(CameraFocusMagnifierPreference.storageKey)
@@ -210,6 +212,10 @@ struct CameraView: View {
         .ignoresSafeArea(.container, edges: .top)
     }
 
+    private var viewfinderHighlightColor: Color {
+        CameraViewfinderHighlightPreference.resolved(rawValue: viewfinderHighlightRawValue).color
+    }
+
     @ViewBuilder
     private func viewfinderChrome(topSafeAreaInset: CGFloat) -> some View {
         #if TAP_ENABLE_PRO_CAMERA_CONTROLS
@@ -221,6 +227,7 @@ struct CameraView: View {
                 isLivePhotoEnabled: isLivePhotoEnabled,
                 contentRotation: chromeOrientation.angle
             ),
+            highlightColor: viewfinderHighlightColor,
             topSafeAreaInset: topSafeAreaInset,
             onOpenSettings: {
                 isShowingSettings = true
@@ -240,6 +247,7 @@ struct CameraView: View {
                 basicEVState: basicEVControlState,
                 contentRotation: chromeOrientation.angle
             ),
+            highlightColor: viewfinderHighlightColor,
             topSafeAreaInset: topSafeAreaInset,
             onToggleBasicEV: toggleBasicEVStrip,
             onOpenSettings: {
@@ -264,6 +272,7 @@ struct CameraView: View {
                 adjustmentControlState: adjustmentControlState,
                 contentRotation: chromeOrientation.angle
             ),
+            highlightColor: viewfinderHighlightColor,
             recentThumbnail: viewModel.recentThumbnail,
             onOpenTAPLibrary: openTAPLibrary,
             onCapture: triggerShutter,
@@ -287,6 +296,7 @@ struct CameraView: View {
                 basicEVControlState: basicEVControlState,
                 contentRotation: chromeOrientation.angle
             ),
+            highlightColor: viewfinderHighlightColor,
             recentThumbnail: viewModel.recentThumbnail,
             onOpenTAPLibrary: openTAPLibrary,
             onCapture: triggerShutter,
@@ -322,6 +332,7 @@ struct CameraView: View {
         CameraPreviewStageView(
             session: viewModel.session,
             state: previewStageState,
+            highlightColor: viewfinderHighlightColor,
             onPreviewCropChange: viewModel.updatePreviewCropRect,
             onSelectFocalLengthOption: selectFocalLengthDisplayOption,
             onTapFocusPoint: focusAtPreviewPoint,
@@ -353,6 +364,7 @@ struct CameraView: View {
         CameraPreviewStageView(
             session: viewModel.session,
             state: previewStageState,
+            highlightColor: viewfinderHighlightColor,
             onPreviewCropChange: viewModel.updatePreviewCropRect,
             onSelectFocalLengthOption: selectFocalLengthDisplayOption,
             onTapFocusPoint: focusAtPreviewPoint,

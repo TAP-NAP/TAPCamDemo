@@ -33,6 +33,38 @@ nonisolated enum CameraGuideOverlayPreference: String, CaseIterable, Identifiabl
     }
 }
 
+nonisolated enum CameraViewfinderHighlightPreference: String, CaseIterable, Identifiable, Sendable {
+    case yellow
+    case titian
+
+    static let storageKey = "CameraViewfinderHighlightPreference"
+    static let defaultValue = CameraViewfinderHighlightPreference.yellow
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .yellow:
+            "Yellow"
+        case .titian:
+            "Titian"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .yellow:
+            .yellow
+        case .titian:
+            Color(red: 183.0 / 255.0, green: 40.0 / 255.0, blue: 46.0 / 255.0)
+        }
+    }
+
+    static func resolved(rawValue: String) -> CameraViewfinderHighlightPreference {
+        CameraViewfinderHighlightPreference(rawValue: rawValue) ?? defaultValue
+    }
+}
+
 nonisolated enum CameraEVPreferences {
     static let resetOnAppLaunchKey = "CameraResetEVOnAppLaunch"
     static let defaultResetOnAppLaunch = true

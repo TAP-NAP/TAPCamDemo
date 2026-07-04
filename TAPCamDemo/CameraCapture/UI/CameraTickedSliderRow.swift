@@ -13,6 +13,7 @@ struct CameraTickedSliderRow: View {
     let range: ClosedRange<Double>
     let step: Double
     let isEnabled: Bool
+    let highlightColor: Color
     let contentRotation: Angle
     let riskRanges: [ClosedRange<Double>]
     let onEditingBegan: () -> Void
@@ -171,7 +172,7 @@ struct CameraTickedSliderRow: View {
 
     private var valueCursor: some View {
         Circle()
-            .fill(isEnabled ? .yellow : .white.opacity(0.36))
+            .fill(isEnabled ? highlightColor : .white.opacity(0.36))
             .frame(width: 13, height: 13)
             .overlay {
                 Circle()

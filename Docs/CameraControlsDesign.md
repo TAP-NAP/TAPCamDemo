@@ -425,7 +425,7 @@ Settings 的 `Depth Warnings` 只控制深度类提示；普通操作反馈不�
 Settings 分组：
 
 - `Capture`：`Photo Quality`、`Output Format`、`Default Flash`、`Live Photo`、`Keep Screen Awake`。
-- `Viewfinder`：`Grid`、`Focus Magnifier`、`Depth Warnings`。
+- `Viewfinder`：`Grid`、`Highlight Color`、`Focus Magnifier`、`Depth Warnings`。
 - `Focus`：`LiDAR Focus Assist`，默认关。`Manual Focus Tap Assist` 属于
   `TAP_ENABLE_PRO_CAMERA_CONTROLS`，普通产品构建不显示。
 
@@ -439,6 +439,15 @@ Settings 分组：
 该设置只控制 `focus loupe` 是否显示以及显示时长。`manual focus tap assist`
 只属于 `TAP_ENABLE_PRO_CAMERA_CONTROLS` 构建；在 Pro Controls 构建中，
 `Focus Magnifier` 不 gate 它是否执行 focus-only AF assist。
+
+`Highlight Color` 是取景器交互高亮色：
+
+- 默认值是 `Yellow`，保留既有外观。
+- `Titian`（`#B7282E`）影响用户可见的 EV 激活状态、Flash Auto 的 `A`
+  角标、Flash On 强制开启态、Live Photo 激活态、AE/AF lock、tap-focus
+  temporary EV marker，以及 Pro 控制 ticked slider cursor。
+- Debug-only overlay、Settings Debug rows、warning/status 黄色、深度热力图或
+  分析语义色不读取该设置。
 
 `Default Flash` 是 Settings 里的持久化默认值：
 
@@ -473,6 +482,7 @@ C2PA 当前不出现在 UI。
 - `Reset EV on App Launch`
 - `Basic EV` 值按 EV preference policy 处理：如果启动重置开启，冷启动回到默认值；如果关闭，可恢复上次 EV。它不进入 capture artifact、manifest、Photos metadata 或 pending record。
 - `Grid`
+- `Highlight Color`
 - `Focus Magnifier` 枚举：`Off / 1.5s / 3s / 5s`
 - `Depth Warnings`
 - `LiDAR Focus Assist`

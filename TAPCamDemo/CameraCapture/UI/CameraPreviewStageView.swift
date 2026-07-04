@@ -38,6 +38,7 @@ struct CameraPreviewStageState {
 struct CameraPreviewStageView: View {
     let session: AVCaptureSession
     let state: CameraPreviewStageState
+    let highlightColor: Color
     let onPreviewCropChange: (CropRectNormalized) -> Void
     let onSelectFocalLengthOption: (CameraFocalLengthDisplayOption) -> Void
     let onTapFocusPoint: (CameraPreviewFocusPoint) -> Void
@@ -197,7 +198,10 @@ struct CameraPreviewStageView: View {
     private func focusTargetOverlayLayer(previewSize: CGSize) -> some View {
         ZStack {
             if let focusTargetOverlay, state.focusMode == .auto {
-                FocusIndicatorView(isLocked: focusTargetOverlay.isLocked)
+                FocusIndicatorView(
+                    isLocked: focusTargetOverlay.isLocked,
+                    highlightColor: highlightColor
+                )
                     .position(
                         x: CGFloat(focusTargetOverlay.point.x) * previewSize.width,
                         y: CGFloat(focusTargetOverlay.point.y) * previewSize.height
@@ -213,6 +217,7 @@ struct CameraPreviewStageView: View {
             if let focusTargetOverlay, state.focusMode == .auto {
                 FocusEVAdjustmentView(
                     offset: state.temporaryFocusEVOffset,
+                    highlightColor: highlightColor,
                     onAdjust: { offset in
                         onAdjustTemporaryFocusEV(offset)
                     }
@@ -429,11 +434,12 @@ struct CameraPreviewStageView: View {
 
     private struct FocusIndicatorView: View {
         let isLocked: Bool
+        let highlightColor: Color
 
         var body: some View {
             ZStack {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .stroke(isLocked ? .yellow : .white, lineWidth: 1.8)
+                    .stroke(isLocked ? highlightColor : .white, lineWidth: 1.8)
                     .frame(width: Metrics.focusIndicatorSide, height: Metrics.focusIndicatorSide)
 
                 if isLocked {
@@ -450,7 +456,7 @@ struct CameraPreviewStageView: View {
             Text("AE/AF LOCK")
                 .font(.caption2.weight(.bold))
                 .monospacedDigit()
-                .foregroundStyle(.yellow)
+                .foregroundStyle(highlightColor)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
                 .background(.black.opacity(0.48), in: Capsule())
@@ -460,6 +466,7 @@ struct CameraPreviewStageView: View {
 
     private struct FocusEVAdjustmentView: View {
         let offset: Double
+        let highlightColor: Color
         let onAdjust: (Double) -> Void
 
         var body: some View {
@@ -491,7 +498,7 @@ struct CameraPreviewStageView: View {
                 }
 
                 Circle()
-                    .fill(.yellow)
+                    .fill(highlightColor)
                     .frame(width: Metrics.focusEVMarkerSide, height: Metrics.focusEVMarkerSide)
                     .overlay {
                         Circle()

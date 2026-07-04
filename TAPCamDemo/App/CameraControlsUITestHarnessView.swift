@@ -35,6 +35,7 @@ struct CameraControlsUITestHarnessView: View {
                     adjustmentControlState: adjustmentState,
                     contentRotation: .zero
                 ),
+                highlightColor: CameraViewfinderHighlightPreference.defaultValue.color,
                 recentThumbnail: nil,
                 onOpenTAPLibrary: { status = "Library opened" },
                 onCapture: { status = "Capture tapped" },

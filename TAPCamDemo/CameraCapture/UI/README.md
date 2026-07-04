@@ -137,11 +137,11 @@ If this directory is new to you, read it in this order:
    `StateObject` lifetimes, `NavigationStack`, Settings sheet, camera chrome
    state, and top-level capture/open/switch actions.
 10. [CameraUXPreferences.swift](CameraUXPreferences.swift) for first-stage
-   camera UI enums and preference policy: guide selection, EV reset default,
-   Focus Magnifier duration default, LiDAR Focus Assist default, Pro-only
-   Manual Focus Tap Assist default, default flash mode, depth-warning default,
-   keep-screen-awake default, AF/MF mode, current flash mode, disabled capture
-   modes, and the idle-timer gate.
+   camera UI enums and preference policy: guide selection, viewfinder highlight
+   color, EV reset default, Focus Magnifier duration default, LiDAR Focus Assist
+   default, Pro-only Manual Focus Tap Assist default, default flash mode,
+   depth-warning default, keep-screen-awake default, AF/MF mode, current flash
+   mode, disabled capture modes, and the idle-timer gate.
 11. [CameraViewfinderChromeView.swift](CameraViewfinderChromeView.swift) for the
    viewfinder top shoulder Settings control and top Flash/Live Photo toolbar.
    It receives only viewfinder chrome state and action closures.
@@ -153,11 +153,11 @@ If this directory is new to you, read it in this order:
    [CameraGuideOverlayView.swift](CameraGuideOverlayView.swift) for preview
    sizing, render-only `AVCaptureSession` handoff, crop metadata callback,
    tap-focus point mapping, temporary focus EV adjustment, long-press AE/AF
-   lock routing, MF focus loupe duration, viewfinder edge toast, Settings-owned guide
-   overlay, FOV overlay, and Debug overlay hosting. The stage receives
-   display-only FOV, focus-point, temporary EV, focus mode, toast, and guide
-   state, not camera profiles, depth profiles, raw device identifiers, or
-   capture plans.
+   lock routing, MF focus loupe duration, viewfinder edge toast, Settings-owned
+   guide overlay, FOV overlay, and Debug overlay hosting. The stage receives
+   display-only FOV, focus-point, temporary EV, focus mode, toast, guide state,
+   and viewfinder highlight color, not camera profiles, depth profiles, raw
+   device identifiers, or capture plans.
 14. [CameraPreviewDebugOverlayView.swift](CameraPreviewDebugOverlayView.swift)
    for Debug-only status, depth source, zoom, manual-control readback strings,
    and performance overlay layout.

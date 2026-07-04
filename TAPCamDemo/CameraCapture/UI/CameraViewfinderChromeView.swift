@@ -18,6 +18,7 @@ struct CameraViewfinderChromeState: Equatable {
 
 struct CameraViewfinderChromeView: View {
     let state: CameraViewfinderChromeState
+    let highlightColor: Color
     let topSafeAreaInset: CGFloat
     #if !TAP_ENABLE_PRO_CAMERA_CONTROLS
     let onToggleBasicEV: () -> Void
@@ -47,6 +48,7 @@ struct CameraViewfinderChromeView: View {
             #if !TAP_ENABLE_PRO_CAMERA_CONTROLS
             CameraBasicEVButton(
                 state: state.basicEVState,
+                highlightColor: highlightColor,
                 contentRotation: state.contentRotation,
                 onToggle: onToggleBasicEV
             )
@@ -89,8 +91,7 @@ struct CameraViewfinderChromeView: View {
                 width: Metrics.viewfinderButtonSize,
                 height: Metrics.viewfinderButtonSize
             ) {
-                Image(systemName: state.flashMode.systemImage)
-                    .font(.system(size: 16, weight: .semibold))
+                flashButtonIcon
             }
             .background(.black.opacity(0.42), in: Circle())
             .opacity(state.isFlashAvailable ? 1 : 0.36)
@@ -99,6 +100,27 @@ struct CameraViewfinderChromeView: View {
         .accessibilityLabel(state.isFlashAvailable ? "Flash \(state.flashMode.title)" : "Flash unavailable")
         .accessibilityIdentifier("camera.chrome.flash")
         .help("Cycle flash mode.")
+    }
+
+    @ViewBuilder
+    private var flashButtonIcon: some View {
+        switch state.flashMode {
+        case .auto:
+            Image(systemName: state.flashMode.systemImage)
+                .symbolRenderingMode(.palette)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(.white, highlightColor)
+        case .on:
+            Image(systemName: state.flashMode.systemImage)
+                .symbolRenderingMode(.monochrome)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(highlightColor)
+        case .off:
+            Image(systemName: state.flashMode.systemImage)
+                .symbolRenderingMode(.monochrome)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(.white)
+        }
     }
 
     private var livePhotoButton: some View {
@@ -110,6 +132,7 @@ struct CameraViewfinderChromeView: View {
             ) {
                 Image(systemName: state.isLivePhotoEnabled ? "livephoto" : "livephoto.slash")
                     .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(state.isLivePhotoEnabled ? highlightColor : .white)
             }
             .background(.black.opacity(0.42), in: Circle())
         }

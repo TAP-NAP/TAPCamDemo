@@ -49,6 +49,7 @@ struct CameraCaptureControlsState {
 /// manifests, proofs, pending-store handles, or output profile objects.
 struct CameraCaptureControlsView: View {
     let state: CameraCaptureControlsState
+    let highlightColor: Color
     let recentThumbnail: UIImage?
     let onOpenTAPLibrary: () -> Void
     let onCapture: () -> Void
@@ -123,6 +124,7 @@ struct CameraCaptureControlsView: View {
                adjustmentControlState.activeControl != nil {
                 CameraTickedAdjustmentStrip(
                     state: adjustmentControlState,
+                    highlightColor: highlightColor,
                     contentRotation: state.contentRotation,
                     onAdjustEV: onAdjustEV,
                     onAdjustISO: onAdjustISO,
@@ -140,6 +142,7 @@ struct CameraCaptureControlsView: View {
             if state.basicEVControlState.isStripVisible {
                 CameraBasicEVAdjustmentStrip(
                     state: state.basicEVControlState,
+                    highlightColor: highlightColor,
                     contentRotation: state.contentRotation,
                     onAdjustEV: onAdjustEV
                 )
