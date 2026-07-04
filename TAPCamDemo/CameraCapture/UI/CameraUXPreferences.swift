@@ -207,6 +207,28 @@ nonisolated struct CameraPreviewFocusPoint: Equatable, Sendable {
     }
 }
 
+nonisolated enum CameraFocusLockRequest: Equatable, Sendable {
+    case lockCurrent(displayPoint: CameraPreviewFocusPoint)
+    case refocusAndLock(displayPoint: CameraPreviewFocusPoint, capturePoint: CameraPreviewFocusPoint)
+
+    var displayPoint: CameraPreviewFocusPoint {
+        switch self {
+        case .lockCurrent(let displayPoint),
+             .refocusAndLock(let displayPoint, _):
+            displayPoint
+        }
+    }
+
+    var capturePoint: CameraPreviewFocusPoint? {
+        switch self {
+        case .lockCurrent:
+            nil
+        case .refocusAndLock(_, let capturePoint):
+            capturePoint
+        }
+    }
+}
+
 nonisolated enum CameraFocusTargetOverlayPhase: Equatable, Sendable {
     case focusing
     case focused
@@ -267,8 +289,23 @@ nonisolated struct CameraFocusTargetOverlay: Equatable, Identifiable, Sendable {
         phase == .locked
     }
 
-    func lockedOverlay() -> CameraFocusTargetOverlay {
-        CameraFocusTargetOverlay(id: id, point: point, phase: .locked)
+    func lockedOverlay(at point: CameraPreviewFocusPoint? = nil) -> CameraFocusTargetOverlay {
+        let lockedPoint = point ?? self.point
+        if lockedPoint == self.point {
+            return CameraFocusTargetOverlay(id: id, point: lockedPoint, phase: .locked)
+        }
+        return CameraFocusTargetOverlay(point: lockedPoint, phase: .locked)
+    }
+
+    func contains(
+        _ point: CameraPreviewFocusPoint,
+        previewSize: CGSize,
+        sideLength: CGFloat
+    ) -> Bool {
+        let halfSide = max(sideLength, 0) / 2
+        let horizontalDistance = abs(CGFloat(point.x - self.point.x) * max(previewSize.width, 1))
+        let verticalDistance = abs(CGFloat(point.y - self.point.y) * max(previewSize.height, 1))
+        return horizontalDistance <= halfSide && verticalDistance <= halfSide
     }
 
     func applyingRuntimeEvent(_ event: CameraFocusRuntimeEvent.Kind) -> CameraFocusTargetOverlay? {

@@ -353,16 +353,44 @@ struct TAPCameraCapturePresentationTests {
         #expect(nonFinitePoint == CameraPreviewFocusPoint(x: 0.5, y: 0.5))
     }
 
+    @Test func cameraFocusLockRequestSeparatesDisplayAndCapturePoints() throws {
+        let displayPoint = CameraPreviewFocusPoint(x: 0.25, y: 0.75)
+        let capturePoint = CameraPreviewFocusPoint(x: 0.3, y: 0.65)
+        let lockCurrent = CameraFocusLockRequest.lockCurrent(displayPoint: displayPoint)
+        let refocusAndLock = CameraFocusLockRequest.refocusAndLock(
+            displayPoint: displayPoint,
+            capturePoint: capturePoint
+        )
+
+        #expect(lockCurrent.displayPoint == displayPoint)
+        #expect(lockCurrent.capturePoint == nil)
+        #expect(refocusAndLock.displayPoint == displayPoint)
+        #expect(refocusAndLock.capturePoint == capturePoint)
+    }
+
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func cameraPreviewFocusTargetOverlayUsesSharedLifecycleAndLocksExistingTarget() throws {
+    func cameraPreviewFocusTargetOverlayUsesPressStartForLongPressLock() throws {
         let source = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/CameraCapture/UI/CameraPreviewStageView.swift"
+        )
+        let cameraViewSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraView.swift"
         )
 
         #expect(source.contains("CameraFocusTargetOverlay"))
         #expect(source.contains("showFocusTargetOverlay(at: localPoint, isLocked: false)"))
-        #expect(source.contains("showFocusTargetOverlay(at: localPoint, isLocked: true)"))
-        #expect(source.contains("let localPoint = focusTargetOverlay?.point ?? latestPressStartPoint"))
+        #expect(source.contains("showFocusTargetOverlay(at: request.displayPoint, isLocked: true)"))
+        #expect(source.contains("scheduleLongPressLock(at: pressStartPoint, previewSize: previewSize)"))
+        #expect(source.contains("let request = longPressLockRequest(for: pressStartPoint, previewSize: previewSize)"))
+        #expect(source.contains(".lockCurrent(displayPoint: focusTargetOverlay.point)"))
+        #expect(source.contains(".refocusAndLock(displayPoint: pressStartPoint, capturePoint: capturePoint)"))
+        #expect(source.contains("focusTargetOverlay.contains("))
+        #expect(source.contains("sideLength: Metrics.focusIndicatorSide"))
+        #expect(!source.contains("LongPressGesture(minimumDuration: 0.45)"))
+        #expect(!source.contains("latestPressStartPoint"))
+        #expect(!source.contains("let localPoint = focusTargetOverlay?.point ?? latestPressStartPoint"))
+        #expect(source.contains("focusTargetOverlay.lockedOverlay(at: point)"))
+        #expect(source.contains("onLockFocusAndExposure(request)"))
         #expect(source.contains("handleFocusRuntimeEvent"))
         #expect(source.contains("hideFocusTargetOverlay()"))
         #expect(!source.contains("onRefocusTarget"))
@@ -374,9 +402,13 @@ struct TAPCameraCapturePresentationTests {
         #expect(!source.contains("nonLockedFocusTargetLifetimeMilliseconds"))
         #expect(!source.contains(".milliseconds(1_100)"))
         #expect(!source.contains(".milliseconds(4_000)"))
-        #expect(source.contains("latestPressStartPoint"))
-        #expect(source.contains("onLockFocusAndExposure(capturePoint)"))
+        #expect(!source.contains("onLockFocusAndExposure(capturePoint)"))
         #expect(!source.contains("showFocusTargetOverlay(at: CameraPreviewFocusPoint(x: 0.5, y: 0.5), isLocked: true)"))
+        #expect(cameraViewSource.contains("private func lockFocusAndExposure(_ request: CameraFocusLockRequest)"))
+        #expect(cameraViewSource.contains("case .lockCurrent:"))
+        #expect(cameraViewSource.contains("await viewModel.lockFocusAndExposure()"))
+        #expect(cameraViewSource.contains("case .refocusAndLock(_, let capturePoint):"))
+        #expect(cameraViewSource.contains("await viewModel.lockFocusAndExposure(at: capturePoint)"))
     }
 
     @Test func cameraFocusTargetOverlayStatePersistsUntilRuntimeInvalidation() throws {
@@ -388,6 +420,19 @@ struct TAPCameraCapturePresentationTests {
         let invalidatedByRuntimeFocusCycle = focused.applyingRuntimeEvent(.focusStarted)
         let locked = focused.lockedOverlay()
         let ignoredRuntimeCycle = locked.applyingRuntimeEvent(.focusStarted)
+        let movedLockPoint = CameraPreviewFocusPoint(x: 0.8, y: 0.2)
+        let movedLocked = focused.lockedOverlay(at: movedLockPoint)
+        let previewSize = CGSize(width: 300, height: 400)
+        let insideCurrentFrame = focused.contains(
+            CameraPreviewFocusPoint(x: 0.25 + 35.0 / 300.0, y: 0.75),
+            previewSize: previewSize,
+            sideLength: 72
+        )
+        let outsideCurrentFrame = focused.contains(
+            CameraPreviewFocusPoint(x: 0.25 + 37.0 / 300.0, y: 0.75),
+            previewSize: previewSize,
+            sideLength: 72
+        )
 
         #expect(focusing.point == point)
         #expect(focusing.phase == .focusing)
@@ -398,6 +443,10 @@ struct TAPCameraCapturePresentationTests {
         #expect(invalidatedByRuntimeFocusCycle == nil)
         #expect(locked.phase == .locked)
         #expect(ignoredRuntimeCycle == locked)
+        #expect(movedLocked.point == movedLockPoint)
+        #expect(movedLocked.phase == .locked)
+        #expect(insideCurrentFrame)
+        #expect(!outsideCurrentFrame)
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))

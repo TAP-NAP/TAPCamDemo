@@ -338,8 +338,8 @@ struct CameraView: View {
             onTapFocusPoint: focusAtPreviewPoint,
             onManualFocusTapAssist: manualFocusTapAssistAtPreviewPoint,
             onAdjustTemporaryFocusEV: adjustTemporaryFocusEVOffset,
-            onLockFocusAndExposure: { point in
-                lockFocusAndExposure(at: point)
+            onLockFocusAndExposure: { request in
+                lockFocusAndExposure(request)
             },
             debugState: CameraPreviewDebugState(
                 isDepthReady: viewModel.isDepthCaptureReady,
@@ -370,8 +370,8 @@ struct CameraView: View {
             onTapFocusPoint: focusAtPreviewPoint,
             onManualFocusTapAssist: manualFocusTapAssistAtPreviewPoint,
             onAdjustTemporaryFocusEV: adjustTemporaryFocusEVOffset,
-            onLockFocusAndExposure: { point in
-                lockFocusAndExposure(at: point)
+            onLockFocusAndExposure: { request in
+                lockFocusAndExposure(request)
             }
         )
         #endif
@@ -969,11 +969,16 @@ struct CameraView: View {
         #endif
     }
 
-    private func lockFocusAndExposure(at point: CameraPreviewFocusPoint) {
+    private func lockFocusAndExposure(_ request: CameraFocusLockRequest) {
         temporaryFocusEVApplyTask?.cancel()
         showViewfinderHint("AE/AF LOCK")
         Task {
-            await viewModel.lockFocusAndExposure(at: point)
+            switch request {
+            case .lockCurrent:
+                await viewModel.lockFocusAndExposure()
+            case .refocusAndLock(_, let capturePoint):
+                await viewModel.lockFocusAndExposure(at: capturePoint)
+            }
         }
     }
 

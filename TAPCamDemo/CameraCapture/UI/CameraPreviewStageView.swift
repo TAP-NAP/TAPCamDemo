@@ -44,7 +44,7 @@ struct CameraPreviewStageView: View {
     let onTapFocusPoint: (CameraPreviewFocusPoint) -> Void
     let onManualFocusTapAssist: (CameraPreviewFocusPoint) -> Void
     let onAdjustTemporaryFocusEV: (Double) -> Void
-    let onLockFocusAndExposure: (CameraPreviewFocusPoint) -> Void
+    let onLockFocusAndExposure: (CameraFocusLockRequest) -> Void
     #if DEBUG
     let debugState: CameraPreviewDebugState
     let onSelectDebugDepthOption: (CameraDebugDepthDisplayOption) -> Void
@@ -57,7 +57,8 @@ struct CameraPreviewStageView: View {
     @State private var focusLoupePoint = CameraPreviewFocusPoint(x: 0.5, y: 0.5)
     @State private var isFocusLoupeVisible = false
     @State private var focusLoupeVisibilityTask: Task<Void, Never>?
-    @State private var latestPressStartPoint = CameraPreviewFocusPoint(x: 0.5, y: 0.5)
+    @State private var pendingLongPressStartPoint: CameraPreviewFocusPoint?
+    @State private var longPressLockTask: Task<Void, Never>?
 
     var body: some View {
         GeometryReader { proxy in
@@ -122,6 +123,7 @@ struct CameraPreviewStageView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onChange(of: state.focusMode) { _, mode in
+            cancelPendingLongPressLock()
             if mode == .manual {
                 hideFocusTargetOverlay()
             } else {
@@ -140,6 +142,9 @@ struct CameraPreviewStageView: View {
             }
             handleFocusRuntimeEvent(event)
         }
+        .onDisappear {
+            cancelPendingLongPressLock()
+        }
     }
 
     private var previewCornerRadius: CGFloat {
@@ -156,7 +161,6 @@ struct CameraPreviewStageView: View {
                             from: value.location,
                             previewSize: previewSize
                         )
-                        latestPressStartPoint = localPoint
                         let capturePoint = localPoint.mappedThroughVisibleCrop(state.previewCropRectNormalized)
                         guard state.focusMode == .auto else {
                             withAnimation(.easeInOut(duration: 0.14)) {
@@ -175,22 +179,14 @@ struct CameraPreviewStageView: View {
             .simultaneousGesture(
                 DragGesture(minimumDistance: 0, coordinateSpace: .local)
                     .onChanged { value in
-                        latestPressStartPoint = previewFocusPoint(
+                        let pressStartPoint = previewFocusPoint(
                             from: value.startLocation,
                             previewSize: previewSize
                         )
+                        scheduleLongPressLock(at: pressStartPoint, previewSize: previewSize)
                     }
-            )
-            .simultaneousGesture(
-                LongPressGesture(minimumDuration: 0.45)
                     .onEnded { _ in
-                        guard state.focusMode == .auto else {
-                            return
-                        }
-                        let localPoint = focusTargetOverlay?.point ?? latestPressStartPoint
-                        let capturePoint = localPoint.mappedThroughVisibleCrop(state.previewCropRectNormalized)
-                        showFocusTargetOverlay(at: localPoint, isLocked: true)
-                        onLockFocusAndExposure(capturePoint)
+                        cancelPendingLongPressLock()
                     }
             )
     }
@@ -263,10 +259,56 @@ struct CameraPreviewStageView: View {
         )
     }
 
+    private func scheduleLongPressLock(
+        at pressStartPoint: CameraPreviewFocusPoint,
+        previewSize: CGSize
+    ) {
+        guard pendingLongPressStartPoint == nil else {
+            return
+        }
+
+        pendingLongPressStartPoint = pressStartPoint
+        longPressLockTask?.cancel()
+        longPressLockTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(450))
+            guard !Task.isCancelled,
+                  pendingLongPressStartPoint == pressStartPoint,
+                  state.focusMode == .auto else {
+                return
+            }
+            let request = longPressLockRequest(for: pressStartPoint, previewSize: previewSize)
+            showFocusTargetOverlay(at: request.displayPoint, isLocked: true)
+            onLockFocusAndExposure(request)
+        }
+    }
+
+    private func cancelPendingLongPressLock() {
+        longPressLockTask?.cancel()
+        longPressLockTask = nil
+        pendingLongPressStartPoint = nil
+    }
+
+    private func longPressLockRequest(
+        for pressStartPoint: CameraPreviewFocusPoint,
+        previewSize: CGSize
+    ) -> CameraFocusLockRequest {
+        if let focusTargetOverlay,
+           focusTargetOverlay.contains(
+                pressStartPoint,
+                previewSize: previewSize,
+                sideLength: Metrics.focusIndicatorSide
+           ) {
+            return .lockCurrent(displayPoint: focusTargetOverlay.point)
+        }
+
+        let capturePoint = pressStartPoint.mappedThroughVisibleCrop(state.previewCropRectNormalized)
+        return .refocusAndLock(displayPoint: pressStartPoint, capturePoint: capturePoint)
+    }
+
     private func showFocusTargetOverlay(at point: CameraPreviewFocusPoint, isLocked: Bool) {
         let nextOverlay: CameraFocusTargetOverlay
         if isLocked, let focusTargetOverlay {
-            nextOverlay = focusTargetOverlay.lockedOverlay()
+            nextOverlay = focusTargetOverlay.lockedOverlay(at: point)
         } else {
             nextOverlay = CameraFocusTargetOverlay(
                 point: point,
