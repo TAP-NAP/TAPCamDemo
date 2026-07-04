@@ -166,11 +166,68 @@ nonisolated enum CameraManualFocusTapAssistPreferences {
     static let defaultIsEnabled = false
 }
 
+nonisolated enum CameraViewfinderControlDefaultPolicy: String, CaseIterable, Identifiable, Sendable {
+    case defaultOff
+    case defaultOn
+    case rememberLastState
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .defaultOff:
+            "Default Off"
+        case .defaultOn:
+            "Default On"
+        case .rememberLastState:
+            "Last State"
+        }
+    }
+
+    static func resolved(
+        rawValue: String,
+        fallback: CameraViewfinderControlDefaultPolicy
+    ) -> CameraViewfinderControlDefaultPolicy {
+        CameraViewfinderControlDefaultPolicy(rawValue: rawValue) ?? fallback
+    }
+}
+
 nonisolated enum CameraLivePhotoPreferences {
-    static let isEnabledKey = "CameraLivePhotoEnabled"
-    static let defaultIsEnabled = false
+    static let startupPolicyKey = "CameraLivePhotoStartupPolicy"
+    static let defaultStartupPolicy = CameraViewfinderControlDefaultPolicy.rememberLastState
+    static let lastEnabledKey = "CameraLivePhotoLastEnabled"
+    static let defaultLastEnabled = false
+    static let legacyIsEnabledKey = "CameraLivePhotoEnabled"
     static let soundEnabledKey = "CameraLivePhotoSoundEnabled"
     static let defaultSoundEnabled = false
+
+    static func resolvedStartupIsEnabled(
+        policyRawValue: String,
+        lastIsEnabled: Bool
+    ) -> Bool {
+        switch CameraViewfinderControlDefaultPolicy.resolved(
+            rawValue: policyRawValue,
+            fallback: defaultStartupPolicy
+        ) {
+        case .defaultOff:
+            return false
+        case .defaultOn:
+            return true
+        case .rememberLastState:
+            return lastIsEnabled
+        }
+    }
+
+    static func resolvedStartupIsEnabled(in userDefaults: UserDefaults = .standard) -> Bool {
+        let policyRawValue = userDefaults.string(forKey: startupPolicyKey) ?? defaultStartupPolicy.rawValue
+        let lastIsEnabled = userDefaults.object(forKey: lastEnabledKey) as? Bool
+            ?? userDefaults.object(forKey: legacyIsEnabledKey) as? Bool
+            ?? defaultLastEnabled
+        return resolvedStartupIsEnabled(
+            policyRawValue: policyRawValue,
+            lastIsEnabled: lastIsEnabled
+        )
+    }
 }
 
 nonisolated enum CameraIdleTimerPreferences {
@@ -391,6 +448,10 @@ nonisolated enum CameraFlashControlMode: String, CaseIterable, Equatable, Identi
     static let allCases: [CameraFlashControlMode] = [.off, .auto, .on]
     static let defaultModeKey = "CameraDefaultFlashMode"
     static let defaultValue = CameraFlashControlMode.auto
+    static let startupPolicyKey = "CameraFlashStartupPolicy"
+    static let defaultStartupPolicy = CameraViewfinderControlDefaultPolicy.defaultOn
+    static let lastModeKey = "CameraLastFlashMode"
+    static let defaultLastMode = CameraFlashControlMode.auto
 
     var id: String { rawValue }
 
@@ -445,6 +506,34 @@ nonisolated enum CameraFlashControlMode: String, CaseIterable, Equatable, Identi
     static func resolvedDefault(in userDefaults: UserDefaults = .standard) -> CameraFlashControlMode {
         let rawValue = userDefaults.string(forKey: defaultModeKey) ?? defaultValue.rawValue
         return resolved(rawValue: rawValue)
+    }
+
+    static func resolvedStartupMode(
+        policyRawValue: String,
+        lastModeRawValue: String
+    ) -> CameraFlashControlMode {
+        switch CameraViewfinderControlDefaultPolicy.resolved(
+            rawValue: policyRawValue,
+            fallback: defaultStartupPolicy
+        ) {
+        case .defaultOff:
+            return .off
+        case .defaultOn:
+            return .auto
+        case .rememberLastState:
+            return resolved(rawValue: lastModeRawValue)
+        }
+    }
+
+    static func resolvedStartupMode(in userDefaults: UserDefaults = .standard) -> CameraFlashControlMode {
+        let policyRawValue = userDefaults.string(forKey: startupPolicyKey) ?? defaultStartupPolicy.rawValue
+        let lastModeRawValue = userDefaults.string(forKey: lastModeKey)
+            ?? userDefaults.string(forKey: defaultModeKey)
+            ?? defaultLastMode.rawValue
+        return resolvedStartupMode(
+            policyRawValue: policyRawValue,
+            lastModeRawValue: lastModeRawValue
+        )
     }
 
     var captureFlashMode: CaptureFlashMode {

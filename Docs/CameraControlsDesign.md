@@ -20,7 +20,7 @@
 | `source switching mode` | 真实摄像头源切换模式 | 后续 roadmap。切换焦段时可能切到不同 Apple camera path，并按当前 path 能力重新决定 ISO/S/AF/MF 可用性。 |
 | `TAP_ENABLE_PRO_CAMERA_CONTROLS` | 专业相机控制编译开关 | 只允许 Debug 实验构建使用。普通产品构建不定义它；Release + 该 flag 必须 fail build。 |
 | `viewfinder edge toast` | 取景器边缘提示 | 贴在取景器上边缘内侧，水平居中淡入淡出，不阻止拍摄。 |
-| `focus loupe` | 对焦放大预览 | MF 下由用户点按位置驱动的预览辅助。它只放大预览，不写 `videoZoomFactor`，不影响构图或成片。显示时长由 Settings 的 `Focus Magnifier` 枚举决定。 |
+| `focus loupe` | 对焦放大预览 | MF 下由用户点按位置驱动的预览辅助。它只放大预览，不写 `videoZoomFactor`，不影响构图或成片。显示时长由 Debug Settings 的 `Focus Magnifier` 枚举决定；普通产品设置页暂不展示。 |
 | `focus target overlay` | 对焦目标覆盖层 | 同一个状态同时驱动对焦框、`AE/AF LOCK` 标签和旁边的临时 EV 条。 |
 | `focus frame anchor` | 对焦框锚点 | 用户点按或锁定的 preview-local 归一化坐标。对焦框的几何中心必须始终由这个点决定，不能被标签、提示、EV 条或动画布局推移。 |
 | `focus validity` | 对焦目标有效性 | 可见对焦框代表“当前仍然有效的用户选择目标”。它不会按固定 TTL 自动消失，只会被用户替换、手动对焦模式、镜头/模式切换、取消或 runtime invalidation 改变。 |
@@ -92,13 +92,13 @@ Settings 里不提供 `Pro Controls` runtime toggle。这个选择只由编译�
 
 - `Flash`：44pt 圆形按钮，点按循环 `Off -> Auto -> On -> Off`。
 - `Live Photo`：44pt 圆形按钮，仅在当前 `AVCapturePhotoOutput` 支持 Live Photo
-  时显示；点击切换 Settings 共用的 `CameraLivePhotoEnabled` 偏好。当前实现支持
+  时显示；点击只切换当前 viewfinder 状态。当前实现支持
   无声 Live Photo：照片、manifest/proof、paired MOV 写入和 Photos 导出链路已接通，
   麦克风音频不作为启用前提。
 
 `viewfinder top toolbar` 不能作为 preview overlay。布局顺序必须是 `viewfinder top shoulder`、`viewfinder top toolbar`、viewfinder，再进入下方控制区。
 
-`LiDAR Focus Assist` 不出现在拍摄 UI 上，只在 Settings 里。
+`LiDAR Focus Assist` 不出现在拍摄 UI 上，只在 Debug Settings 里。
 
 ## Lower Toolbar
 
@@ -373,9 +373,9 @@ MF：
 - `manual focus tap assist` 关闭时，MF tap 仍然可以显示/移动 loupe，但不执行 AF assist。
 - `manual focus tap assist` 不写 `exposurePointOfInterest`，不切 `continuousAutoExposure`，不更新 `meter baseline`，不改变 `A/A`、`M/A`、`A/M`、`M/M`。
 - AF assist 未完成前如果用户拖动 MF 杆，用户拖动优先。旧 AF assist 回调只能更新 Debug readback，不能覆盖 `lensPosition` 或对焦杆位置。
-- `focus loupe` 默认显示 1.5s。显示时长由 Settings 的 `Focus Magnifier` 选择：`Off`、`1.5s`、`3s`、`5s`。用户 tap 或拖动 MF 杆时续期；停止交互后按所选时长关闭。
+- `focus loupe` 默认显示 1.5s。显示时长由 Debug Settings 的 `Focus Magnifier` 选择：`Off`、`1.5s`、`3s`、`5s`。用户 tap 或拖动 MF 杆时续期；停止交互后按所选时长关闭。
 - 半按快门、拍照、切回 AF、切换镜头、退出相机或 view 生命周期结束时立即关闭 loupe。
-- `Focus Magnifier` 的 Settings 形态是单个枚举 key，包含关闭和三个时长值；不保留旧 bool key，也不做未上线内部 key 兼容。这个 UX 允许后续根据真实反馈调整。
+- `Focus Magnifier` 的 Debug Settings 形态是单个枚举 key，包含关闭和三个时长值；不保留旧 bool key，也不做未上线内部 key 兼容。这个 UX 允许后续根据真实反馈调整。
 
 ```mermaid
 stateDiagram-v2
@@ -424,21 +424,31 @@ Settings 的 `Depth Warnings` 只控制深度类提示；普通操作反馈不�
 
 Settings 分组：
 
-- `Capture`：`Photo Quality`、`Output Format`、`Default Flash`、`Live Photo`、`Keep Screen Awake`。
-- `Viewfinder`：`Grid`、`Highlight Color`、`Focus Magnifier`、`Depth Warnings`。
-- `Focus`：`LiDAR Focus Assist`，默认关。`Manual Focus Tap Assist` 属于
-  `TAP_ENABLE_PRO_CAMERA_CONTROLS`，普通产品构建不显示。
+- `Capture`：`Photo Quality`、`Output Format`、`Flash Default`、`Live Photo Default`。
+- `Viewfinder`：`Grid`、`Highlight Color`、`Depth Warnings`。
+- `Camera Behavior`：`Keep Screen Awake`、`Reset EV on App Launch`、`Return to Camera After Background`。
+- `Feedback`：`Shutter Sound`、`Shutter Haptics`。
+- `Analysis`：`Help`。
+- `Permissions`：`Camera`、`Photos`、`Location` 授权状态。
+- `App Attest`：凭证状态和 redacted KeyID 摘要。
+- `Debug Camera Controls`：仅 `DEBUG` 构建显示 `Focus Magnifier` 和
+  `LiDAR Focus Assist`。`Manual Focus Tap Assist` 还必须属于
+  `TAP_ENABLE_PRO_CAMERA_CONTROLS` 构建；普通产品构建不显示。
 
-`Focus Magnifier` 是 Picker，不是 bool toggle：
+`Focus Magnifier` 是 Debug-only Picker，不是 bool toggle：
 
 - `Off`
 - `1.5s`，默认值
 - `3s`
 - `5s`
 
-该设置只控制 `focus loupe` 是否显示以及显示时长。`manual focus tap assist`
-只属于 `TAP_ENABLE_PRO_CAMERA_CONTROLS` 构建；在 Pro Controls 构建中，
+该设置只控制 `focus loupe` 是否显示以及显示时长。因为普通产品构建当前没有
+手动对焦入口，它不进入普通 Settings。`manual focus tap assist` 只属于
+`DEBUG && TAP_ENABLE_PRO_CAMERA_CONTROLS` 构建；在 Pro Controls 构建中，
 `Focus Magnifier` 不 gate 它是否执行 focus-only AF assist。
+
+`LiDAR Focus Assist` 当前不清楚 LiDAR 如何参与真实对焦流程，因此只保留为
+Debug-only 实验开关，默认关，不进入普通 Settings。
 
 `Highlight Color` 是取景器交互高亮色：
 
@@ -449,14 +459,34 @@ Settings 分组：
 - Debug-only overlay、Settings Debug rows、warning/status 黄色、深度热力图或
   分析语义色不读取该设置。
 
-`Default Flash` 是 Settings 里的持久化默认值：
+`Flash Default` 和 `Live Photo Default` 是 Settings 里的 viewfinder
+初始化策略，不是当前按钮状态。它们的选项顺序一致：
 
-- 选项顺序是 `Off`、`Auto`、`Always On`。
-- 默认值是 `Auto`。
-- 相机页面创建时用它初始化当前 `Flash` 状态。
-- Settings 修改该值时，当前相机页面同步到新的默认状态。
-- 相机 viewfinder 顶部 `Flash` 按钮仍然只改变当前会话状态，不反写
-  `Default Flash`。
+- `Default Off`
+- `Default On`
+- `Remember Last State`
+
+`Flash Default`：
+
+- 默认策略是 `Default On`，进入相机时映射为 `Flash Auto`，不是强制
+  `Always On`。
+- `Default Off` 进入相机时映射为 `Flash Off`。
+- `Remember Last State` 恢复上次离开 viewfinder 时的 `Off / Auto / Always On`。
+- viewfinder 顶部 `Flash` 按钮仍然只改变当前 viewfinder 状态；只有当前
+  policy 是 `Remember Last State` 时，离开 viewfinder 才保存该状态。
+- 如果 Settings 正在打开时才切到 `Remember Last State`，当前 viewfinder
+  的 Flash 状态会成为第一份 remembered state，不回跳到旧历史值。
+
+`Live Photo Default`：
+
+- 默认策略是 `Remember Last State`，以兼容既有 viewfinder 切换会被记住的行为；
+  没有历史状态时默认关闭。
+- `Default On` 进入相机时默认开启 Live Photo。
+- `Default Off` 进入相机时默认关闭 Live Photo。
+- viewfinder 顶部 `Live Photo` 按钮仍然只改变当前 viewfinder 状态；只有当前
+  policy 是 `Remember Last State` 时，离开 viewfinder 才保存该状态。
+- 如果 Settings 正在打开时才切到 `Remember Last State`，当前 viewfinder
+  的 Live Photo 状态会成为第一份 remembered state，不回跳到旧历史值。
 
 C2PA 当前不出现在 UI。
 
@@ -468,7 +498,8 @@ C2PA 当前不出现在 UI。
 - `AF/MF`
 - MF lens position
 - 当前激活的 `ticked adjustment strip`
-- `Flash`
+- `Flash`，除非 `Flash Default` 是 `Remember Last State`
+- `Live Photo`，除非 `Live Photo Default` 是 `Remember Last State`
 
 从后台回到前台时，本次会话状态应恢复。
 
@@ -476,17 +507,25 @@ C2PA 当前不出现在 UI。
 
 - `Photo Quality`
 - `Output Format`
-- `Default Flash`
-- `Live Photo`
+- `Flash Default`
+- `Live Photo Default`
+- `Flash Last State`，仅当 `Flash Default` 为 `Remember Last State` 时写入
+- `Live Photo Last State`，仅当 `Live Photo Default` 为 `Remember Last State` 时写入
 - `Keep Screen Awake`
 - `Reset EV on App Launch`
 - `Basic EV` 值按 EV preference policy 处理：如果启动重置开启，冷启动回到默认值；如果关闭，可恢复上次 EV。它不进入 capture artifact、manifest、Photos metadata 或 pending record。
 - `Grid`
 - `Highlight Color`
-- `Focus Magnifier` 枚举：`Off / 1.5s / 3s / 5s`
 - `Depth Warnings`
+- `Return to Camera After Background`
+- `Help`
+
+Debug-only 持久化 Settings 项：
+
+- `Focus Magnifier` 枚举：`Off / 1.5s / 3s / 5s`
 - `LiDAR Focus Assist`
-- `Manual Focus Tap Assist`，仅 `TAP_ENABLE_PRO_CAMERA_CONTROLS` 构建显示和读取
+- `Manual Focus Tap Assist`，仅 `DEBUG && TAP_ENABLE_PRO_CAMERA_CONTROLS`
+  构建显示和读取
 
 ## No Depth
 
@@ -525,7 +564,7 @@ TAP 仍优先选择支持深度的设备和格式，并请求深度。
 - `CaptureSessionController` 观察 `isAdjustingExposure`，向 ViewModel 发出 `exposureStarted` / `exposureSettled`。进入半自动/手动或 focus-driven metering 后，View 层按 300ms settle 上限安排 readback。
 - `CameraControlService` 区分 `autoFocus` 和 `autoFocusOnly`。`manual focus tap assist` 使用 focus-only 写入，不写 AE、不改 exposure point。
 - `CameraView` 把纯模型输出的 display state、Runtime intent、Debug state 分开处理；Debug overlay 只显示 readback/model 字符串，不写 OSLog、不持久化、不进入 manifest。
-- `Focus Magnifier` 使用单个 Settings 枚举 key：`Off / 1.5s / 3s / 5s`，默认 `1.5s`；关闭只影响 loupe。`Manual Focus Tap Assist` 只在 `TAP_ENABLE_PRO_CAMERA_CONTROLS` 构建中显示，且不由 `Focus Magnifier` gate。
+- `Focus Magnifier` 使用单个 Debug Settings 枚举 key：`Off / 1.5s / 3s / 5s`，默认 `1.5s`；关闭只影响 loupe。`Manual Focus Tap Assist` 只在 `DEBUG && TAP_ENABLE_PRO_CAMERA_CONTROLS` 构建中显示，且不由 `Focus Magnifier` gate。
 
 当前自动化覆盖：
 

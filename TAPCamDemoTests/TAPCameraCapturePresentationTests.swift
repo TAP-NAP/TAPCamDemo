@@ -709,36 +709,87 @@ struct TAPCameraCapturePresentationTests {
         #expect(CameraFocusControlMode.auto.toggled == .manual)
         #expect(CameraFocusControlMode.manual.toggled == .auto)
         #expect(CameraFlashControlMode.defaultValue == .auto)
+        #expect(CameraFlashControlMode.defaultStartupPolicy == .defaultOn)
         #expect(CameraFlashControlMode.auto.next == .on)
         #expect(CameraFlashControlMode.on.next == .off)
         #expect(CameraFlashControlMode.off.next == .auto)
         #expect(CameraFlashControlMode.auto.captureFlashMode == .auto)
         #expect(CameraFlashControlMode.on.captureFlashMode == .on)
         #expect(CameraFlashControlMode.off.captureFlashMode == .off)
-        #expect(CameraFlashControlMode.allCases.map(\.settingsTitle) == ["Off", "Auto", "Always On"])
+        #expect(CameraViewfinderControlDefaultPolicy.allCases.map(\.title) == [
+            "Default Off",
+            "Default On",
+            "Remember Last State"
+        ])
     }
 
-    @Test func cameraDefaultFlashModeResolvesPersistedSettingsValue() throws {
-        let suiteName = "TAPCameraDefaultFlashModeTests-\(UUID().uuidString)"
+    @Test func viewfinderControlDefaultPoliciesResolveStartupState() throws {
+        #expect(CameraFlashControlMode.resolvedStartupMode(
+            policyRawValue: CameraViewfinderControlDefaultPolicy.defaultOff.rawValue,
+            lastModeRawValue: CameraFlashControlMode.on.rawValue
+        ) == .off)
+        #expect(CameraFlashControlMode.resolvedStartupMode(
+            policyRawValue: CameraViewfinderControlDefaultPolicy.defaultOn.rawValue,
+            lastModeRawValue: CameraFlashControlMode.off.rawValue
+        ) == .auto)
+        #expect(CameraFlashControlMode.resolvedStartupMode(
+            policyRawValue: CameraViewfinderControlDefaultPolicy.rememberLastState.rawValue,
+            lastModeRawValue: CameraFlashControlMode.on.rawValue
+        ) == .on)
+        #expect(CameraFlashControlMode.resolvedStartupMode(
+            policyRawValue: "unexpected",
+            lastModeRawValue: CameraFlashControlMode.off.rawValue
+        ) == .auto)
+
+        #expect(!CameraLivePhotoPreferences.resolvedStartupIsEnabled(
+            policyRawValue: CameraViewfinderControlDefaultPolicy.defaultOff.rawValue,
+            lastIsEnabled: true
+        ))
+        #expect(CameraLivePhotoPreferences.resolvedStartupIsEnabled(
+            policyRawValue: CameraViewfinderControlDefaultPolicy.defaultOn.rawValue,
+            lastIsEnabled: false
+        ))
+        #expect(CameraLivePhotoPreferences.resolvedStartupIsEnabled(
+            policyRawValue: CameraViewfinderControlDefaultPolicy.rememberLastState.rawValue,
+            lastIsEnabled: true
+        ))
+        #expect(CameraLivePhotoPreferences.resolvedStartupIsEnabled(
+            policyRawValue: "unexpected",
+            lastIsEnabled: true
+        ))
+    }
+
+    @Test func viewfinderControlStartupPoliciesReadPersistedDefaultsAndLastState() throws {
+        let suiteName = "TAPCameraViewfinderDefaultPolicyTests-\(UUID().uuidString)"
         let userDefaults = try #require(UserDefaults(suiteName: suiteName))
         defer {
             userDefaults.removePersistentDomain(forName: suiteName)
         }
 
-        #expect(CameraFlashControlMode.resolvedDefault(in: userDefaults) == .auto)
+        #expect(CameraFlashControlMode.resolvedStartupMode(in: userDefaults) == .auto)
+        #expect(!CameraLivePhotoPreferences.resolvedStartupIsEnabled(in: userDefaults))
 
-        userDefaults.set(CameraFlashControlMode.off.rawValue, forKey: CameraFlashControlMode.defaultModeKey)
-        #expect(CameraFlashControlMode.resolvedDefault(in: userDefaults) == .off)
+        userDefaults.set(
+            CameraViewfinderControlDefaultPolicy.rememberLastState.rawValue,
+            forKey: CameraFlashControlMode.startupPolicyKey
+        )
+        userDefaults.set(CameraFlashControlMode.on.rawValue, forKey: CameraFlashControlMode.lastModeKey)
+        #expect(CameraFlashControlMode.resolvedStartupMode(in: userDefaults) == .on)
 
-        userDefaults.set(CameraFlashControlMode.on.rawValue, forKey: CameraFlashControlMode.defaultModeKey)
-        #expect(CameraFlashControlMode.resolvedDefault(in: userDefaults) == .on)
+        userDefaults.set(
+            CameraViewfinderControlDefaultPolicy.rememberLastState.rawValue,
+            forKey: CameraLivePhotoPreferences.startupPolicyKey
+        )
+        userDefaults.set(true, forKey: CameraLivePhotoPreferences.lastEnabledKey)
+        #expect(CameraLivePhotoPreferences.resolvedStartupIsEnabled(in: userDefaults))
 
-        userDefaults.set("unexpected", forKey: CameraFlashControlMode.defaultModeKey)
-        #expect(CameraFlashControlMode.resolvedDefault(in: userDefaults) == .auto)
+        userDefaults.removeObject(forKey: CameraLivePhotoPreferences.lastEnabledKey)
+        userDefaults.set(true, forKey: CameraLivePhotoPreferences.legacyIsEnabledKey)
+        #expect(CameraLivePhotoPreferences.resolvedStartupIsEnabled(in: userDefaults))
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func cameraViewfinderChromeKeepsLiDARInSettingsAndPairsFlashWithLivePhoto() throws {
+    func cameraViewfinderChromeKeepsFocusExperimentsOutOfReleaseSettingsAndPairsFlashWithLivePhoto() throws {
         let chromeSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/CameraCapture/UI/CameraViewfinderChromeView.swift"
         )
@@ -763,11 +814,25 @@ struct TAPCameraCapturePresentationTests {
         #expect(chromeSource.contains(#".accessibilityIdentifier("camera.chrome.livePhoto")"#))
         #expect(!chromeSource.localizedCaseInsensitiveContains("LiDAR"))
         #expect(settingsSource.contains("@AppStorage(CameraViewfinderHighlightPreference.storageKey)"))
+        #expect(settingsSource.contains("@AppStorage(CameraFlashControlMode.startupPolicyKey)"))
+        #expect(settingsSource.contains("@AppStorage(CameraLivePhotoPreferences.startupPolicyKey)"))
+        #expect(settingsSource.contains(#"Picker("Flash Default", selection: $flashStartupPolicyRawValue)"#))
+        #expect(settingsSource.contains(#"Picker("Live Photo Default", selection: $livePhotoStartupPolicyRawValue)"#))
+        #expect(settingsSource.contains("CameraViewfinderControlDefaultPolicy.allCases"))
+        #expect(!settingsSource.contains(#"Picker("Default Flash""#))
+        #expect(!settingsSource.contains(#"Toggle(isOn: $isLivePhotoEnabled)"#))
         #expect(settingsSource.contains(#"Picker("Highlight Color", selection: $viewfinderHighlightRawValue)"#))
         #expect(settingsSource.contains("CameraViewfinderHighlightPreference.allCases"))
         #expect(settingsSource.contains(".fill(preference.color)"))
+        #expect(settingsSource.contains(#"Section("Debug Camera Controls")"#))
+        #expect(settingsSource.contains("#if DEBUG\n    @AppStorage(CameraFocusMagnifierPreference.storageKey)"))
         #expect(settingsSource.contains("CameraLiDARFocusAssistPreferences.isEnabledKey"))
-        #expect(settingsSource.contains("LiDAR Focus Assist"))
+        let viewfinderSectionStart = try #require(settingsSource.range(of: "private var viewfinderSettingsSection"))
+        let cameraBehaviorSectionStart = try #require(settingsSource.range(of: "private var cameraBehaviorSection"))
+        let viewfinderSection = String(settingsSource[viewfinderSectionStart.lowerBound..<cameraBehaviorSectionStart.lowerBound])
+        #expect(!viewfinderSection.contains("Focus Magnifier"))
+        #expect(!viewfinderSection.contains("LiDAR Focus Assist"))
+        #expect(!settingsSource.contains(#"Section("Focus")"#))
         #expect(!settingsSource.contains(#"Section("Roadmap")"#))
         #expect(!settingsSource.contains("Shutter Position"))
         #expect(!settingsSource.contains("Second Shutter"))
@@ -793,6 +858,18 @@ struct TAPCameraCapturePresentationTests {
         )
 
         #expect(cameraSource.contains("@AppStorage(CameraViewfinderHighlightPreference.storageKey)"))
+        #expect(cameraSource.contains("@AppStorage(CameraFlashControlMode.startupPolicyKey)"))
+        #expect(cameraSource.contains("@AppStorage(CameraFlashControlMode.lastModeKey)"))
+        #expect(cameraSource.contains("@State private var isLivePhotoEnabled: Bool"))
+        #expect(cameraSource.contains("@AppStorage(CameraLivePhotoPreferences.startupPolicyKey)"))
+        #expect(cameraSource.contains("@AppStorage(CameraLivePhotoPreferences.lastEnabledKey)"))
+        #expect(cameraSource.contains("applyFlashStartupPolicy"))
+        #expect(cameraSource.contains("applyLivePhotoStartupPolicy"))
+        #expect(cameraSource.contains("persistRememberedViewfinderControlStateIfNeeded"))
+        #expect(cameraSource.components(separatedBy: "== .rememberLastState").count >= 3)
+        #expect(cameraSource.contains("lastFlashModeRawValue = flashMode.rawValue"))
+        #expect(cameraSource.contains("lastLivePhotoEnabled = isLivePhotoEnabled"))
+        #expect(!cameraSource.contains("@AppStorage(CameraLivePhotoPreferences.isEnabledKey)"))
         #expect(cameraSource.contains("private var viewfinderHighlightColor: Color"))
         #expect(cameraSource.components(separatedBy: "highlightColor: viewfinderHighlightColor").count >= 4)
         #expect(chromeSource.contains("let highlightColor: Color"))
@@ -1031,13 +1108,18 @@ struct TAPCameraCapturePresentationTests {
         #expect(CameraPhotoQualityPreference.defaultValue == .quality)
         #expect(!CameraPhotoQualityPreference.storageKey.isEmpty)
         #expect(CameraFlashControlMode.defaultValue == .auto)
-        #expect(!CameraFlashControlMode.defaultModeKey.isEmpty)
+        #expect(CameraFlashControlMode.defaultStartupPolicy == .defaultOn)
+        #expect(!CameraFlashControlMode.startupPolicyKey.isEmpty)
+        #expect(CameraFlashControlMode.defaultLastMode == .auto)
+        #expect(!CameraFlashControlMode.lastModeKey.isEmpty)
         #expect(CameraDepthAvailabilityHintPreferences.defaultShowsHints)
         #expect(!CameraDepthAvailabilityHintPreferences.showsHintsKey.isEmpty)
         #expect(CameraFocusMagnifierPreference.defaultValue == .brief)
         #expect(!CameraFocusMagnifierPreference.storageKey.isEmpty)
-        #expect(!CameraLivePhotoPreferences.defaultIsEnabled)
-        #expect(!CameraLivePhotoPreferences.isEnabledKey.isEmpty)
+        #expect(CameraLivePhotoPreferences.defaultStartupPolicy == .rememberLastState)
+        #expect(!CameraLivePhotoPreferences.startupPolicyKey.isEmpty)
+        #expect(!CameraLivePhotoPreferences.defaultLastEnabled)
+        #expect(!CameraLivePhotoPreferences.lastEnabledKey.isEmpty)
         #expect(CameraIdleTimerPreferences.defaultKeepScreenAwake)
         #expect(!CameraIdleTimerPreferences.keepScreenAwakeKey.isEmpty)
         #expect(!CameraLiDARFocusAssistPreferences.defaultIsEnabled)
@@ -1047,7 +1129,7 @@ struct TAPCameraCapturePresentationTests {
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func cameraSettingsKeepManualFocusTapAssistBehindProControlsFlag() throws {
+    func cameraSettingsKeepManualFocusTapAssistBehindDebugProControlsFlags() throws {
         let cameraSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/CameraCapture/UI/CameraView.swift"
         )
@@ -1060,8 +1142,15 @@ struct TAPCameraCapturePresentationTests {
 
         #expect(cameraSource.contains("#if TAP_ENABLE_PRO_CAMERA_CONTROLS\n    @AppStorage(CameraManualFocusTapAssistPreferences.isEnabledKey)"))
         #expect(cameraSource.contains("manualFocusTapAssistAtPreviewPoint"))
+        #expect(settingsSource.contains("#if DEBUG\n    @AppStorage(CameraFocusMagnifierPreference.storageKey)"))
         #expect(settingsSource.contains("#if TAP_ENABLE_PRO_CAMERA_CONTROLS\n    @AppStorage(CameraManualFocusTapAssistPreferences.isEnabledKey)"))
-        #expect(settingsSource.contains("#if TAP_ENABLE_PRO_CAMERA_CONTROLS\n                    Toggle(isOn: $isManualFocusTapAssistEnabled)"))
+        let debugSectionStart = try #require(settingsSource.range(of: "private var debugCameraControlsSection"))
+        let debugSectionEnd = try #require(settingsSource.range(of: "private var debugAppAttestSections"))
+        let debugCameraControlsSection = String(settingsSource[debugSectionStart.lowerBound..<debugSectionEnd.lowerBound])
+        #expect(debugCameraControlsSection.contains(#"Picker("Focus Magnifier", selection: $focusMagnifierRawValue)"#))
+        #expect(debugCameraControlsSection.contains("LiDAR Focus Assist"))
+        #expect(debugCameraControlsSection.contains("#if TAP_ENABLE_PRO_CAMERA_CONTROLS"))
+        #expect(debugCameraControlsSection.contains("Toggle(isOn: $isManualFocusTapAssistEnabled)"))
         #expect(settingsSource.contains("Manual Focus Tap Assist"))
         #expect(settingsSource.contains("CameraManualFocusTapAssistPreferences.isEnabledKey"))
         #expect(previewSource.contains("state.isManualFocusTapAssistEnabled"))

@@ -25,6 +25,7 @@ enum CameraFeedbackPreferences {
 ///
 /// - Tag: CameraCaptureRootView
 struct CameraView: View {
+    @Environment(\.scenePhase) private var scenePhase
     private let startsAutomatically: Bool
     @StateObject private var lifecycleCoordinator: CaptureLifecycleCoordinator
     @StateObject private var viewModel: CameraViewModel
@@ -35,6 +36,7 @@ struct CameraView: View {
     @State private var isShowingSettings = false
     @State private var selectedMode: CameraCaptureModeOption = .photo
     @State private var flashMode: CameraFlashControlMode
+    @State private var isLivePhotoEnabled: Bool
     @State private var focusMode = CameraFocusControlMode.auto
     #if TAP_ENABLE_PRO_CAMERA_CONTROLS
     @State private var activeAdjustmentControl: CameraAdjustmentControl?
@@ -66,8 +68,10 @@ struct CameraView: View {
     private var outputFormatRawValue = CameraOutputFormatPreference.defaultValue.rawValue
     @AppStorage(CameraPhotoQualityPreference.storageKey)
     private var photoQualityRawValue = CameraPhotoQualityPreference.defaultValue.rawValue
-    @AppStorage(CameraFlashControlMode.defaultModeKey)
-    private var defaultFlashRawValue = CameraFlashControlMode.defaultValue.rawValue
+    @AppStorage(CameraFlashControlMode.startupPolicyKey)
+    private var flashStartupPolicyRawValue = CameraFlashControlMode.defaultStartupPolicy.rawValue
+    @AppStorage(CameraFlashControlMode.lastModeKey)
+    private var lastFlashModeRawValue = CameraFlashControlMode.defaultLastMode.rawValue
     @AppStorage(CameraGuideOverlayPreference.storageKey)
     private var guideOverlayRawValue = CameraGuideOverlayPreference.defaultValue.rawValue
     @AppStorage(CameraViewfinderHighlightPreference.storageKey)
@@ -80,8 +84,10 @@ struct CameraView: View {
     @AppStorage(CameraManualFocusTapAssistPreferences.isEnabledKey)
     private var isManualFocusTapAssistEnabled = CameraManualFocusTapAssistPreferences.defaultIsEnabled
     #endif
-    @AppStorage(CameraLivePhotoPreferences.isEnabledKey)
-    private var isLivePhotoEnabled = CameraLivePhotoPreferences.defaultIsEnabled
+    @AppStorage(CameraLivePhotoPreferences.startupPolicyKey)
+    private var livePhotoStartupPolicyRawValue = CameraLivePhotoPreferences.defaultStartupPolicy.rawValue
+    @AppStorage(CameraLivePhotoPreferences.lastEnabledKey)
+    private var lastLivePhotoEnabled = CameraLivePhotoPreferences.defaultLastEnabled
 
     init(
         viewModel: CameraViewModel? = nil,
@@ -92,13 +98,16 @@ struct CameraView: View {
         startsAutomatically: Bool = true
     ) {
         let initialGlobalEVBias = CameraEVPreferences.resolvedLaunchBias()
+        let initialFlashMode = CameraFlashControlMode.resolvedStartupMode()
+        let initialLivePhotoEnabled = CameraLivePhotoPreferences.resolvedStartupIsEnabled()
         self.startsAutomatically = startsAutomatically
         self.intentHandoffStore = intentHandoffStore
         _lifecycleCoordinator = StateObject(wrappedValue: lifecycleCoordinator)
         let resolvedViewModel = viewModel ?? CameraViewModel()
         resolvedViewModel.requestedGlobalAutoExposureBias = initialGlobalEVBias
         _viewModel = StateObject(wrappedValue: resolvedViewModel)
-        _flashMode = State(initialValue: CameraFlashControlMode.resolvedDefault())
+        _flashMode = State(initialValue: initialFlashMode)
+        _isLivePhotoEnabled = State(initialValue: initialLivePhotoEnabled)
         _globalEVBias = State(initialValue: initialGlobalEVBias)
         if let routeStore {
             _routeStore = StateObject(wrappedValue: routeStore)
@@ -141,11 +150,22 @@ struct CameraView: View {
         .onAppear(perform: applyPendingIntentHandoff)
         #if !TAP_ENABLE_PRO_CAMERA_CONTROLS
         .onDisappear {
+            persistRememberedViewfinderControlStateIfNeeded()
             isBasicEVStripVisible = false
         }
         .onChange(of: isShowingSettings) { _, isPresented in
             if isPresented {
+                persistRememberedViewfinderControlStateIfNeeded()
                 isBasicEVStripVisible = false
+            }
+        }
+        #else
+        .onDisappear {
+            persistRememberedViewfinderControlStateIfNeeded()
+        }
+        .onChange(of: isShowingSettings) { _, isPresented in
+            if isPresented {
+                persistRememberedViewfinderControlStateIfNeeded()
             }
         }
         #endif
@@ -159,8 +179,21 @@ struct CameraView: View {
                 await viewModel.configureCurrentSelection()
             }
         }
-        .onChange(of: defaultFlashRawValue) { _, rawValue in
-            flashMode = CameraFlashControlMode.resolved(rawValue: rawValue)
+        .onChange(of: flashStartupPolicyRawValue) { _, rawValue in
+            applyFlashStartupPolicy(rawValue)
+        }
+        .onChange(of: livePhotoStartupPolicyRawValue) { _, rawValue in
+            applyLivePhotoStartupPolicy(rawValue)
+        }
+        .onChange(of: routeStore.isDepthAlbumPresented) { _, isPresented in
+            if isPresented {
+                persistRememberedViewfinderControlStateIfNeeded()
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active {
+                persistRememberedViewfinderControlStateIfNeeded()
+            }
         }
         .onChange(of: viewModel.latestCaptureDepthHint) { _, hint in
             guard let hint else {
@@ -233,9 +266,7 @@ struct CameraView: View {
                 isShowingSettings = true
             },
             onCycleFlash: cycleFlashMode,
-            onToggleLivePhoto: {
-                isLivePhotoEnabled.toggle()
-            }
+            onToggleLivePhoto: toggleLivePhoto
         )
         #else
         CameraViewfinderChromeView(
@@ -254,9 +285,7 @@ struct CameraView: View {
                 isShowingSettings = true
             },
             onCycleFlash: cycleFlashMode,
-            onToggleLivePhoto: {
-                isLivePhotoEnabled.toggle()
-            }
+            onToggleLivePhoto: toggleLivePhoto
         )
         #endif
     }
@@ -508,6 +537,62 @@ struct CameraView: View {
             return
         }
         flashMode = flashMode.next
+    }
+
+    private func toggleLivePhoto() {
+        isLivePhotoEnabled.toggle()
+    }
+
+    private func applyFlashStartupPolicy(_ rawValue: String) {
+        let policy = CameraViewfinderControlDefaultPolicy.resolved(
+            rawValue: rawValue,
+            fallback: CameraFlashControlMode.defaultStartupPolicy
+        )
+        let lastModeRawValue: String
+        if policy == .rememberLastState {
+            lastModeRawValue = flashMode.rawValue
+            lastFlashModeRawValue = lastModeRawValue
+        } else {
+            lastModeRawValue = lastFlashModeRawValue
+        }
+        flashMode = CameraFlashControlMode.resolvedStartupMode(
+            policyRawValue: rawValue,
+            lastModeRawValue: lastModeRawValue
+        )
+    }
+
+    private func applyLivePhotoStartupPolicy(_ rawValue: String) {
+        let policy = CameraViewfinderControlDefaultPolicy.resolved(
+            rawValue: rawValue,
+            fallback: CameraLivePhotoPreferences.defaultStartupPolicy
+        )
+        let lastIsEnabled: Bool
+        if policy == .rememberLastState {
+            lastIsEnabled = isLivePhotoEnabled
+            lastLivePhotoEnabled = lastIsEnabled
+        } else {
+            lastIsEnabled = lastLivePhotoEnabled
+        }
+        isLivePhotoEnabled = CameraLivePhotoPreferences.resolvedStartupIsEnabled(
+            policyRawValue: rawValue,
+            lastIsEnabled: lastIsEnabled
+        )
+    }
+
+    private func persistRememberedViewfinderControlStateIfNeeded() {
+        if CameraViewfinderControlDefaultPolicy.resolved(
+            rawValue: flashStartupPolicyRawValue,
+            fallback: CameraFlashControlMode.defaultStartupPolicy
+        ) == .rememberLastState {
+            lastFlashModeRawValue = flashMode.rawValue
+        }
+
+        if CameraViewfinderControlDefaultPolicy.resolved(
+            rawValue: livePhotoStartupPolicyRawValue,
+            fallback: CameraLivePhotoPreferences.defaultStartupPolicy
+        ) == .rememberLastState {
+            lastLivePhotoEnabled = isLivePhotoEnabled
+        }
     }
 
     private func showViewfinderHint(_ message: String) {

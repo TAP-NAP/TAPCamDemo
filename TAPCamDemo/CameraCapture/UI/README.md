@@ -15,7 +15,7 @@ The current control vocabulary and placement rules live in
 | Main camera screen shell, object lifetime, navigation, sheet, camera chrome state, and capture action owner | [CameraView.swift](CameraView.swift) |
 | Viewfinder chrome state, top shoulder Settings, and Flash/Live Photo toolbar | [CameraViewfinderChromeView.swift](CameraViewfinderChromeView.swift) |
 | Lower toolbar parameter buttons, AF/MF state, exposure risk-zone display, and ticked adjustment strip | [CameraAdjustmentControlView.swift](CameraAdjustmentControlView.swift) |
-| First-stage camera UX preferences, mode enums, default flash mode setting, AF/MF mode, Focus Magnifier duration setting, LiDAR Focus Assist setting, Pro-only Manual Focus Tap Assist setting, and idle-timer policy | [CameraUXPreferences.swift](CameraUXPreferences.swift) |
+| First-stage camera UX preferences, mode enums, Flash/Live Photo viewfinder default policy, AF/MF mode, Debug-only Focus Magnifier duration setting, Debug-only LiDAR Focus Assist setting, Pro-only Manual Focus Tap Assist setting, and idle-timer policy | [CameraUXPreferences.swift](CameraUXPreferences.swift) |
 | Live preview stage, preview sizing, crop metadata callback, tap-focus and temporary-EV gesture layer, focus loupe, viewfinder edge toast, guide overlay, FOV overlay, and Debug overlay host | [CameraPreviewStageView.swift](CameraPreviewStageView.swift) |
 | Settings-owned guide overlay renderer | [CameraGuideOverlayView.swift](CameraGuideOverlayView.swift) |
 | Debug-only preview overlay for status, depth source, zoom, manual-control readback strings, and performance panels | [CameraPreviewDebugOverlayView.swift](CameraPreviewDebugOverlayView.swift) |
@@ -138,10 +138,11 @@ If this directory is new to you, read it in this order:
    state, and top-level capture/open/switch actions.
 10. [CameraUXPreferences.swift](CameraUXPreferences.swift) for first-stage
    camera UI enums and preference policy: guide selection, viewfinder highlight
-   color, EV reset default, Focus Magnifier duration default, LiDAR Focus Assist
-   default, Pro-only Manual Focus Tap Assist default, default flash mode,
-   depth-warning default, keep-screen-awake default, AF/MF mode, current flash
-   mode, disabled capture modes, and the idle-timer gate.
+   color, EV reset default, Debug-only Focus Magnifier duration default,
+   Debug-only LiDAR Focus Assist default, Pro-only Manual Focus Tap Assist
+   default, Flash/Live Photo viewfinder default policy, depth-warning default,
+   keep-screen-awake default, AF/MF mode, current flash mode, disabled capture
+   modes, and the idle-timer gate.
 11. [CameraViewfinderChromeView.swift](CameraViewfinderChromeView.swift) for the
    viewfinder top shoulder Settings control and top Flash/Live Photo toolbar.
    It receives only viewfinder chrome state and action closures.

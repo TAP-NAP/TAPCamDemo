@@ -30,8 +30,8 @@ struct DepthAnalyzerSettingsView: View {
     private var outputFormatRawValue = CameraOutputFormatPreference.defaultValue.rawValue
     @AppStorage(CameraPhotoQualityPreference.storageKey)
     private var photoQualityRawValue = CameraPhotoQualityPreference.defaultValue.rawValue
-    @AppStorage(CameraFlashControlMode.defaultModeKey)
-    private var defaultFlashRawValue = CameraFlashControlMode.defaultValue.rawValue
+    @AppStorage(CameraFlashControlMode.startupPolicyKey)
+    private var flashStartupPolicyRawValue = CameraFlashControlMode.defaultStartupPolicy.rawValue
     @AppStorage(CameraGuideOverlayPreference.storageKey)
     private var guideOverlayRawValue = CameraGuideOverlayPreference.defaultValue.rawValue
     @AppStorage(CameraViewfinderHighlightPreference.storageKey)
@@ -40,18 +40,20 @@ struct DepthAnalyzerSettingsView: View {
     private var resetEVOnAppLaunch = CameraEVPreferences.defaultResetOnAppLaunch
     @AppStorage(CameraDepthAvailabilityHintPreferences.showsHintsKey)
     private var showsDepthAvailabilityHints = CameraDepthAvailabilityHintPreferences.defaultShowsHints
+    #if DEBUG
     @AppStorage(CameraFocusMagnifierPreference.storageKey)
     private var focusMagnifierRawValue = CameraFocusMagnifierPreference.defaultValue.rawValue
     #if TAP_ENABLE_PRO_CAMERA_CONTROLS
     @AppStorage(CameraManualFocusTapAssistPreferences.isEnabledKey)
     private var isManualFocusTapAssistEnabled = CameraManualFocusTapAssistPreferences.defaultIsEnabled
     #endif
-    @AppStorage(CameraIdleTimerPreferences.keepScreenAwakeKey)
-    private var keepScreenAwake = CameraIdleTimerPreferences.defaultKeepScreenAwake
     @AppStorage(CameraLiDARFocusAssistPreferences.isEnabledKey)
     private var isLiDARFocusAssistEnabled = CameraLiDARFocusAssistPreferences.defaultIsEnabled
-    @AppStorage(CameraLivePhotoPreferences.isEnabledKey)
-    private var isLivePhotoEnabled = CameraLivePhotoPreferences.defaultIsEnabled
+    #endif
+    @AppStorage(CameraIdleTimerPreferences.keepScreenAwakeKey)
+    private var keepScreenAwake = CameraIdleTimerPreferences.defaultKeepScreenAwake
+    @AppStorage(CameraLivePhotoPreferences.startupPolicyKey)
+    private var livePhotoStartupPolicyRawValue = CameraLivePhotoPreferences.defaultStartupPolicy.rawValue
     @AppStorage(CameraRoutePreferences.returnToCameraOnForegroundKey)
     private var returnToCameraOnForeground = CameraRoutePreferences.defaultReturnToCameraOnForeground
 
@@ -67,128 +69,13 @@ struct DepthAnalyzerSettingsView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                Section("Capture") {
-                    Picker("Photo Quality", selection: $photoQualityRawValue) {
-                        ForEach(CameraPhotoQualityPreference.allCases) { quality in
-                            Text(quality.title).tag(quality.rawValue)
-                        }
-                    }
-
-                    Picker("Output Format", selection: $outputFormatRawValue) {
-                        ForEach(CameraOutputFormatPreference.allCases) { format in
-                            Text(format.title).tag(format.rawValue)
-                        }
-                    }
-
-                    Picker("Default Flash", selection: $defaultFlashRawValue) {
-                        ForEach(CameraFlashControlMode.allCases) { mode in
-                            Text(mode.settingsTitle).tag(mode.rawValue)
-                        }
-                    }
-
-                    Toggle(isOn: $isLivePhotoEnabled) {
-                        Label("Live Photo", systemImage: "livephoto")
-                    }
-
-                    Toggle(isOn: $keepScreenAwake) {
-                        Label("Keep Screen Awake", systemImage: "sun.max")
-                    }
-                }
-
-                Section("Viewfinder") {
-                    Picker("Grid", selection: $guideOverlayRawValue) {
-                        ForEach(CameraGuideOverlayPreference.allCases) { guide in
-                            Text(guide.title).tag(guide.rawValue)
-                        }
-                    }
-
-                    Picker("Highlight Color", selection: $viewfinderHighlightRawValue) {
-                        ForEach(CameraViewfinderHighlightPreference.allCases) { preference in
-                            HStack {
-                                Circle()
-                                    .fill(preference.color)
-                                    .frame(width: 11, height: 11)
-                                Text(preference.title)
-                            }
-                            .tag(preference.rawValue)
-                        }
-                    }
-
-                    Picker("Focus Magnifier", selection: $focusMagnifierRawValue) {
-                        ForEach(CameraFocusMagnifierPreference.allCases) { preference in
-                            Text(preference.title).tag(preference.rawValue)
-                        }
-                    }
-
-                    Toggle(isOn: $showsDepthAvailabilityHints) {
-                        Label("Depth Warnings", systemImage: "rectangle.and.text.magnifyingglass")
-                    }
-                }
-
-                Section("Focus") {
-                    Toggle(isOn: $isLiDARFocusAssistEnabled) {
-                        Label("LiDAR Focus Assist", systemImage: "scope")
-                    }
-
-                    #if TAP_ENABLE_PRO_CAMERA_CONTROLS
-                    Toggle(isOn: $isManualFocusTapAssistEnabled) {
-                        Label("Manual Focus Tap Assist", systemImage: "scope")
-                    }
-                    #endif
-                }
-
-                Section("Feedback") {
-                    Toggle(isOn: $shutterSoundEnabled) {
-                        Label("Shutter Sound", systemImage: "speaker.wave.2")
-                    }
-                    .disabled(!shutterSoundSuppressionSupported)
-
-                    Toggle(isOn: $shutterHapticsEnabled) {
-                        Label("Shutter Haptics", systemImage: "iphone.radiowaves.left.and.right")
-                    }
-
-                    Toggle(isOn: $resetEVOnAppLaunch) {
-                        Label("Reset EV on App Launch", systemImage: "plusminus")
-                    }
-
-                    if !shutterSoundSuppressionSupported {
-                        Text("Shutter sound cannot be disabled on this device or in this region.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-
-                Section("Navigation") {
-                    Toggle(isOn: $returnToCameraOnForeground) {
-                        Label("Return to Camera After Background", systemImage: "camera.viewfinder")
-                    }
-                }
-
-                Section("Analysis") {
-                    Toggle(isOn: $showsAnalysisHelp) {
-                        Label("Help", systemImage: "questionmark.circle")
-                    }
-                }
-
-                Section("Permissions") {
-                    DepthAnalyzerStatusRow(
-                        title: "Camera",
-                        value: snapshot.camera,
-                        systemImage: "camera"
-                    )
-                    DepthAnalyzerStatusRow(
-                        title: "Photos",
-                        value: snapshot.photos,
-                        systemImage: "photo.on.rectangle"
-                    )
-                    DepthAnalyzerStatusRow(
-                        title: "Location",
-                        value: snapshot.location,
-                        systemImage: "location"
-                    )
-                }
+            Form {
+                captureSettingsSection
+                viewfinderSettingsSection
+                cameraBehaviorSection
+                feedbackSettingsSection
+                analysisSettingsSection
+                permissionsSection
 
                 DepthAnalyzerAppAttestSection(
                     statusText: appAttestController.credentialStatusText,
@@ -203,37 +90,8 @@ struct DepthAnalyzerSettingsView: View {
                 )
 
                 #if DEBUG
-                // Debug-only App Attest controls are hidden from Release and highlighted here.
-                Section("App Attest Backend") {
-                    LabeledContent("Active", value: appAttestController.runtime.backendPublicSummary)
-                        .listRowBackground(Self.debugOnlyAppAttestBackground)
-                }
-
-                Section("App Attest Credential") {
-                    LabeledContent("Credential", value: AppAttestRuntimeDefaults.photoCredentialName)
-                        .listRowBackground(Self.debugOnlyAppAttestBackground)
-
-                    Button {
-                        Task {
-                            await appAttestController.prepareCredentialIfNeeded()
-                        }
-                    } label: {
-                        Label("Prepare Credential", systemImage: "checkmark.seal")
-                    }
-                    .disabled(appAttestController.isWorking)
-                    .listRowBackground(Self.debugOnlyAppAttestBackground)
-
-                    Button(role: .destructive) {
-                        Task {
-                            await appAttestController.resetLocalCredential()
-                        }
-                    } label: {
-                        Label("Reset Local Credential", systemImage: "trash")
-                    }
-                    .disabled(appAttestController.isWorking)
-                    .listRowBackground(Self.debugOnlyAppAttestBackground)
-
-                }
+                debugCameraControlsSection
+                debugAppAttestSections
                 #endif
             }
             .navigationTitle("Settings")
@@ -248,8 +106,184 @@ struct DepthAnalyzerSettingsView: View {
         }
     }
 
+    private var captureSettingsSection: some View {
+        Section("Capture") {
+            Picker("Photo Quality", selection: $photoQualityRawValue) {
+                ForEach(CameraPhotoQualityPreference.allCases) { quality in
+                    Text(quality.title).tag(quality.rawValue)
+                }
+            }
+
+            Picker("Output Format", selection: $outputFormatRawValue) {
+                ForEach(CameraOutputFormatPreference.allCases) { format in
+                    Text(format.title).tag(format.rawValue)
+                }
+            }
+
+            Picker("Flash Default", selection: $flashStartupPolicyRawValue) {
+                ForEach(CameraViewfinderControlDefaultPolicy.allCases) { policy in
+                    Text(policy.title).tag(policy.rawValue)
+                }
+            }
+
+            Picker("Live Photo Default", selection: $livePhotoStartupPolicyRawValue) {
+                ForEach(CameraViewfinderControlDefaultPolicy.allCases) { policy in
+                    Text(policy.title).tag(policy.rawValue)
+                }
+            }
+        }
+    }
+
+    private var viewfinderSettingsSection: some View {
+        Section("Viewfinder") {
+            Picker("Grid", selection: $guideOverlayRawValue) {
+                ForEach(CameraGuideOverlayPreference.allCases) { guide in
+                    Text(guide.title).tag(guide.rawValue)
+                }
+            }
+
+            Picker("Highlight Color", selection: $viewfinderHighlightRawValue) {
+                ForEach(CameraViewfinderHighlightPreference.allCases) { preference in
+                    HStack {
+                        Circle()
+                            .fill(preference.color)
+                            .frame(width: 11, height: 11)
+                        Text(preference.title)
+                    }
+                    .tag(preference.rawValue)
+                }
+            }
+
+            Toggle(isOn: $showsDepthAvailabilityHints) {
+                Label("Depth Warnings", systemImage: "rectangle.and.text.magnifyingglass")
+            }
+        }
+    }
+
+    private var cameraBehaviorSection: some View {
+        Section("Camera Behavior") {
+            Toggle(isOn: $keepScreenAwake) {
+                Label("Keep Screen Awake", systemImage: "sun.max")
+            }
+
+            Toggle(isOn: $resetEVOnAppLaunch) {
+                Label("Reset EV on App Launch", systemImage: "plusminus")
+            }
+
+            Toggle(isOn: $returnToCameraOnForeground) {
+                Label("Return to Camera After Background", systemImage: "camera.viewfinder")
+            }
+        }
+    }
+
+    private var feedbackSettingsSection: some View {
+        Section("Feedback") {
+            Toggle(isOn: $shutterSoundEnabled) {
+                Label("Shutter Sound", systemImage: "speaker.wave.2")
+            }
+            .disabled(!shutterSoundSuppressionSupported)
+
+            Toggle(isOn: $shutterHapticsEnabled) {
+                Label("Shutter Haptics", systemImage: "iphone.radiowaves.left.and.right")
+            }
+
+            if !shutterSoundSuppressionSupported {
+                Text("Shutter sound cannot be disabled on this device or in this region.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var analysisSettingsSection: some View {
+        Section("Analysis") {
+            Toggle(isOn: $showsAnalysisHelp) {
+                Label("Help", systemImage: "questionmark.circle")
+            }
+        }
+    }
+
+    private var permissionsSection: some View {
+        Section("Permissions") {
+            DepthAnalyzerStatusRow(
+                title: "Camera",
+                value: snapshot.camera,
+                systemImage: "camera"
+            )
+            DepthAnalyzerStatusRow(
+                title: "Photos",
+                value: snapshot.photos,
+                systemImage: "photo.on.rectangle"
+            )
+            DepthAnalyzerStatusRow(
+                title: "Location",
+                value: snapshot.location,
+                systemImage: "location"
+            )
+        }
+    }
+
     #if DEBUG
-    private static let debugOnlyAppAttestBackground = Color.yellow.opacity(0.30)
+    private var debugCameraControlsSection: some View {
+        Section("Debug Camera Controls") {
+            Picker("Focus Magnifier", selection: $focusMagnifierRawValue) {
+                ForEach(CameraFocusMagnifierPreference.allCases) { preference in
+                    Text(preference.title).tag(preference.rawValue)
+                }
+            }
+            .listRowBackground(Self.debugOnlySettingsBackground)
+
+            Toggle(isOn: $isLiDARFocusAssistEnabled) {
+                Label("LiDAR Focus Assist", systemImage: "scope")
+            }
+            .listRowBackground(Self.debugOnlySettingsBackground)
+
+            #if TAP_ENABLE_PRO_CAMERA_CONTROLS
+            Toggle(isOn: $isManualFocusTapAssistEnabled) {
+                Label("Manual Focus Tap Assist", systemImage: "scope")
+            }
+            .listRowBackground(Self.debugOnlySettingsBackground)
+            #endif
+        }
+    }
+
+    private var debugAppAttestSections: some View {
+        Group {
+            // Debug-only App Attest controls are hidden from Release and highlighted here.
+            Section("App Attest Backend") {
+                LabeledContent("Active", value: appAttestController.runtime.backendPublicSummary)
+                    .listRowBackground(Self.debugOnlySettingsBackground)
+            }
+
+            Section("App Attest Credential") {
+                LabeledContent("Credential", value: AppAttestRuntimeDefaults.photoCredentialName)
+                    .listRowBackground(Self.debugOnlySettingsBackground)
+
+                Button {
+                    Task {
+                        await appAttestController.prepareCredentialIfNeeded()
+                    }
+                } label: {
+                    Label("Prepare Credential", systemImage: "checkmark.seal")
+                }
+                .disabled(appAttestController.isWorking)
+                .listRowBackground(Self.debugOnlySettingsBackground)
+
+                Button(role: .destructive) {
+                    Task {
+                        await appAttestController.resetLocalCredential()
+                    }
+                } label: {
+                    Label("Reset Local Credential", systemImage: "trash")
+                }
+                .disabled(appAttestController.isWorking)
+                .listRowBackground(Self.debugOnlySettingsBackground)
+            }
+        }
+    }
+
+    private static let debugOnlySettingsBackground = Color.yellow.opacity(0.30)
     #endif
 }
 
