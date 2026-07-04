@@ -971,7 +971,6 @@ struct CameraView: View {
 
     private func lockFocusAndExposure(_ request: CameraFocusLockRequest) {
         temporaryFocusEVApplyTask?.cancel()
-        showViewfinderHint("AE/AF LOCK")
         Task {
             switch request {
             case .lockCurrent:
