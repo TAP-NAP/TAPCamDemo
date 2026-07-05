@@ -367,6 +367,8 @@ struct CameraView: View {
             onTapFocusPoint: focusAtPreviewPoint,
             onManualFocusTapAssist: manualFocusTapAssistAtPreviewPoint,
             onAdjustTemporaryFocusEV: adjustTemporaryFocusEVOffset,
+            onFinishTemporaryFocusEVAdjustment: finishTemporaryFocusEVAdjustment,
+            onClearFocusSession: clearFocusSession,
             onLockFocusAndExposure: { request in
                 lockFocusAndExposure(request)
             },
@@ -399,6 +401,8 @@ struct CameraView: View {
             onTapFocusPoint: focusAtPreviewPoint,
             onManualFocusTapAssist: manualFocusTapAssistAtPreviewPoint,
             onAdjustTemporaryFocusEV: adjustTemporaryFocusEVOffset,
+            onFinishTemporaryFocusEVAdjustment: finishTemporaryFocusEVAdjustment,
+            onClearFocusSession: clearFocusSession,
             onLockFocusAndExposure: { request in
                 lockFocusAndExposure(request)
             }
@@ -644,7 +648,11 @@ struct CameraView: View {
     }
 
     private func adjustTemporaryFocusEVOffset(_ offset: Double) {
-        temporaryFocusEVOffset = CameraTemporaryFocusEVPreferences.clampedOffset(offset)
+        let clampedOffset = CameraTemporaryFocusEVPreferences.clampedOffset(offset)
+        guard clampedOffset != temporaryFocusEVOffset else {
+            return
+        }
+        temporaryFocusEVOffset = clampedOffset
         temporaryFocusEVApplyTask?.cancel()
         temporaryFocusEVApplyTask = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(70))
@@ -653,6 +661,37 @@ struct CameraView: View {
             }
             await viewModel.applyEffectiveAutoExposureBiasToActiveConfiguration(effectiveAutoExposureBias)
         }
+    }
+
+    private func finishTemporaryFocusEVAdjustment() {
+        temporaryFocusEVApplyTask?.cancel()
+        temporaryFocusEVApplyTask = nil
+        Task {
+            await viewModel.applyEffectiveAutoExposureBiasToActiveConfiguration(effectiveAutoExposureBias)
+        }
+    }
+
+    private func clearFocusSession() {
+        temporaryFocusEVOffset = 0
+        temporaryFocusEVApplyTask?.cancel()
+        temporaryFocusEVApplyTask = nil
+        guard focusMode == .auto else {
+            return
+        }
+        #if TAP_ENABLE_PRO_CAMERA_CONTROLS
+        let exposureMode = exposureControlState?.mode ?? .auto
+        Task {
+            if exposureMode == .auto {
+                await viewModel.restoreAutoCameraControls(globalExposureBias: globalEVBias)
+            } else {
+                await viewModel.restoreAutoFocus()
+            }
+        }
+        #else
+        Task {
+            await viewModel.restoreAutoCameraControls(globalExposureBias: globalEVBias)
+        }
+        #endif
     }
 
     #if TAP_ENABLE_PRO_CAMERA_CONTROLS

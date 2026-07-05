@@ -44,6 +44,8 @@ struct CameraPreviewStageView: View {
     let onTapFocusPoint: (CameraPreviewFocusPoint) -> Void
     let onManualFocusTapAssist: (CameraPreviewFocusPoint) -> Void
     let onAdjustTemporaryFocusEV: (Double) -> Void
+    let onFinishTemporaryFocusEVAdjustment: () -> Void
+    let onClearFocusSession: () -> Void
     let onLockFocusAndExposure: (CameraFocusLockRequest) -> Void
     #if DEBUG
     let debugState: CameraPreviewDebugState
@@ -59,6 +61,7 @@ struct CameraPreviewStageView: View {
     @State private var focusLoupeVisibilityTask: Task<Void, Never>?
     @State private var pendingLongPressStartPoint: CameraPreviewFocusPoint?
     @State private var longPressLockTask: Task<Void, Never>?
+    @State private var shouldSuppressNextTapFocus = false
 
     var body: some View {
         GeometryReader { proxy in
@@ -144,6 +147,7 @@ struct CameraPreviewStageView: View {
         }
         .onDisappear {
             cancelPendingLongPressLock()
+            hideFocusTargetOverlay()
         }
     }
 
@@ -157,6 +161,10 @@ struct CameraPreviewStageView: View {
             .gesture(
                 SpatialTapGesture(coordinateSpace: .local)
                     .onEnded { value in
+                        guard !shouldSuppressNextTapFocus else {
+                            shouldSuppressNextTapFocus = false
+                            return
+                        }
                         let localPoint = previewFocusPoint(
                             from: value.location,
                             previewSize: previewSize
@@ -179,6 +187,10 @@ struct CameraPreviewStageView: View {
             .simultaneousGesture(
                 DragGesture(minimumDistance: 0, coordinateSpace: .local)
                     .onChanged { value in
+                        guard focusExposureScrubStartOffset == nil,
+                              !shouldSuppressNextTapFocus else {
+                            return
+                        }
                         let pressStartPoint = previewFocusPoint(
                             from: value.startLocation,
                             previewSize: previewSize
@@ -189,6 +201,7 @@ struct CameraPreviewStageView: View {
                         cancelPendingLongPressLock()
                     }
             )
+            .simultaneousGesture(focusExposureScrub())
     }
 
     private func focusTargetOverlayLayer(previewSize: CGSize) -> some View {
@@ -203,7 +216,6 @@ struct CameraPreviewStageView: View {
                         y: CGFloat(focusTargetOverlay.point.y) * previewSize.height
                     )
                     .transition(.opacity)
-                    .gesture(focusExposureScrub(for: focusTargetOverlay))
             }
         }
     }
@@ -213,10 +225,7 @@ struct CameraPreviewStageView: View {
             if let focusTargetOverlay, state.focusMode == .auto {
                 FocusEVAdjustmentView(
                     offset: state.temporaryFocusEVOffset,
-                    highlightColor: highlightColor,
-                    onAdjust: { offset in
-                        onAdjustTemporaryFocusEV(offset)
-                    }
+                    highlightColor: highlightColor
                 )
                 .position(focusEVControlPosition(for: focusTargetOverlay.point, previewSize: previewSize))
                 .transition(.opacity)
@@ -322,10 +331,16 @@ struct CameraPreviewStageView: View {
     }
 
     private func hideFocusTargetOverlay() {
+        let shouldClearRuntimeFocusSession = focusTargetOverlay != nil
+            || state.temporaryFocusEVOffset != 0
         withAnimation(.easeInOut(duration: 0.14)) {
             focusTargetOverlay = nil
         }
         focusExposureScrubStartOffset = nil
+        shouldSuppressNextTapFocus = false
+        if shouldClearRuntimeFocusSession {
+            onClearFocusSession()
+        }
     }
 
     private func showFocusLoupe() {
@@ -375,16 +390,32 @@ struct CameraPreviewStageView: View {
         }
     }
 
-    private func focusExposureScrub(for overlay: CameraFocusTargetOverlay) -> some Gesture {
-        DragGesture(minimumDistance: 0, coordinateSpace: .local)
+    private func focusExposureScrub() -> some Gesture {
+        DragGesture(minimumDistance: Metrics.focusExposureScrubMinimumDistance, coordinateSpace: .local)
             .onChanged { value in
+                guard state.focusMode == .auto,
+                      focusTargetOverlay != nil else {
+                    return
+                }
+                shouldSuppressNextTapFocus = true
+                cancelPendingLongPressLock()
                 if focusExposureScrubStartOffset == nil {
                     focusExposureScrubStartOffset = state.temporaryFocusEVOffset
                 }
                 onAdjustTemporaryFocusEV(focusExposureScrubOffset(translationHeight: value.translation.height))
             }
             .onEnded { _ in
+                let wasScrubbing = focusExposureScrubStartOffset != nil
                 focusExposureScrubStartOffset = nil
+                guard wasScrubbing else {
+                    shouldSuppressNextTapFocus = false
+                    return
+                }
+                onFinishTemporaryFocusEVAdjustment()
+                Task { @MainActor in
+                    await Task.yield()
+                    shouldSuppressNextTapFocus = false
+                }
             }
     }
 
@@ -509,19 +540,13 @@ struct CameraPreviewStageView: View {
     private struct FocusEVAdjustmentView: View {
         let offset: Double
         let highlightColor: Color
-        let onAdjust: (Double) -> Void
 
         var body: some View {
-            ZStack {
-                evRail
-
-                Image(systemName: "sun.max")
-                    .font(.system(size: 11, weight: .bold))
-                    .offset(y: -78)
-            }
+            evRail
             .frame(width: Metrics.focusEVRailWidth, height: Metrics.focusEVRailHeight)
             .foregroundStyle(.white)
             .shadow(color: .black.opacity(0.42), radius: 8)
+            .allowsHitTesting(false)
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Temporary focus exposure")
         }
@@ -532,30 +557,15 @@ struct CameraPreviewStageView: View {
                     .fill(.white.opacity(0.46))
                     .frame(width: 2, height: Metrics.focusEVRailTravel)
 
-                ForEach(0..<7, id: \.self) { index in
-                    Capsule()
-                        .fill(.white.opacity(index == 3 ? 0.74 : 0.46))
-                        .frame(width: index == 3 ? 13 : 8, height: 1.2)
-                        .offset(y: -CGFloat(index) * (Metrics.focusEVRailTravel / 6.0))
-                }
-
-                Circle()
-                    .fill(highlightColor)
+                Image(systemName: "sun.max.fill")
+                    .font(.system(size: Metrics.focusEVMarkerSide, weight: .semibold))
+                    .foregroundStyle(highlightColor)
                     .frame(width: Metrics.focusEVMarkerSide, height: Metrics.focusEVMarkerSide)
-                    .overlay {
-                        Circle()
-                            .stroke(.white.opacity(0.72), lineWidth: 1)
-                    }
+                    .background(.black.opacity(0.24), in: Circle())
                     .offset(y: markerOffset)
+                    .animation(.easeOut(duration: 0.12), value: offset)
             }
-            .frame(width: 24, height: Metrics.focusEVRailHeight)
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { value in
-                        onAdjust(offset(for: value.location.y))
-                    }
-            )
+            .frame(width: Metrics.focusEVRailWidth, height: Metrics.focusEVRailHeight)
         }
 
         private var markerOffset: CGFloat {
@@ -564,28 +574,17 @@ struct CameraPreviewStageView: View {
                 / (CameraTemporaryFocusEVPreferences.maximumOffset - CameraTemporaryFocusEVPreferences.minimumOffset)
             return Metrics.focusEVMarkerSide / 2 - CGFloat(normalized * Metrics.focusEVRailTravel)
         }
-
-        private func offset(for y: CGFloat) -> Double {
-            let railY = y - Metrics.focusEVRailTopInset
-            let normalized = 1 - min(max(Double(railY / Metrics.focusEVRailTravel), 0), 1)
-            let rawOffset = CameraTemporaryFocusEVPreferences.minimumOffset
-                + normalized
-                * (CameraTemporaryFocusEVPreferences.maximumOffset - CameraTemporaryFocusEVPreferences.minimumOffset)
-            let stepped = (rawOffset / CameraTemporaryFocusEVPreferences.adjustmentStep).rounded()
-                * CameraTemporaryFocusEVPreferences.adjustmentStep
-            return CameraTemporaryFocusEVPreferences.clampedOffset(stepped)
-        }
     }
 
     private enum Metrics {
         static let focusIndicatorSide: CGFloat = 72
-        static let focusEVRailWidth: CGFloat = 28
+        static let focusEVRailWidth: CGFloat = 20
         static let focusEVRailHeight: CGFloat = 126
         static let focusEVRailTravel: CGFloat = 116
-        static let focusEVRailTopInset: CGFloat = focusEVRailHeight - focusEVRailTravel
-        static let focusEVMarkerSide: CGFloat = 13
-        static let focusEVEdgeGap: CGFloat = 6
+        static let focusEVMarkerSide: CGFloat = 17
+        static let focusEVEdgeGap: CGFloat = 2
         static let previewEdgeInset: CGFloat = 12
+        static let focusExposureScrubMinimumDistance: CGFloat = 8
         static let focusExposureScrubPointsPerEV: CGFloat = 96
         static let lockBadgeVerticalGap: CGFloat = 16
     }

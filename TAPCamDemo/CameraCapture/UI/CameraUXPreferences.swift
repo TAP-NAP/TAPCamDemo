@@ -180,7 +180,7 @@ nonisolated enum CameraViewfinderControlDefaultPolicy: String, CaseIterable, Ide
         case .defaultOn:
             "Default On"
         case .rememberLastState:
-            "Last State"
+            "Remember Last State"
         }
     }
 

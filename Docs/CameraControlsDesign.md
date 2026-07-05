@@ -25,8 +25,8 @@
 | `focus frame anchor` | 对焦框锚点 | 用户点按或锁定的 preview-local 归一化坐标。对焦框的几何中心必须始终由这个点决定，不能被标签、提示、EV 条或动画布局推移。 |
 | `focus validity` | 对焦目标有效性 | 可见对焦框代表“当前仍然有效的用户选择目标”。它不会按固定 TTL 自动消失，只会被用户替换、手动对焦模式、镜头/模式切换、取消或 runtime invalidation 改变。 |
 | `lock badge` | 锁定标签 | `AE/AF LOCK` 标签。它是对焦框的附属 overlay，放在 frame 外侧，不参与 frame 本体布局，也不能改变 `focus frame anchor`。 |
-| `focus companion EV rail` | 对焦框旁边的临时 EV 条 | AF tap-to-focus 后和对焦框同步显示 / 消失；AE/AF lock 后继续显示。只显示小太阳图标、刻度和当前值游标，不显示 `EV` 字样或数值。 |
-| `focus exposure scrub` | 对焦点曝光拖拽 | 对焦框或旁边 EV 条出现后，用户可在对焦目标附近上下拖动来调节临时 EV。 |
+| `focus companion EV rail` | 对焦框旁边的临时 EV 条 | AF tap-to-focus 后和对焦框同步显示 / 消失；AE/AF lock 后继续显示。只显示靠近对焦框的细线和太阳游标，不显示刻度、`EV` 字样或数值。 |
+| `focus exposure scrub` | 对焦点曝光拖拽 | 对焦框出现后，用户可在 viewfinder 内上下拖动来调节临时 EV；临时 EV 条只作为视觉反馈。 |
 | `subject area changed` | 画面/主体区域变化 | AVFoundation 的 subject-area 变化信号。非锁定 AF 下，它表示当前用户选择的对焦目标已经失效。 |
 | `runtime focus invalidation` | 运行时对焦失效 | 用户选择的非锁定对焦目标已经不再代表当前画面。触发条件包括 `subject area changed`，或对焦已经 settled 后 runtime 再次进入 `isAdjustingFocus == true`。 |
 | `center-anchored chrome rotation` | 中心锚点旋转 | 固定控件 frame 不旋转，只把内部内容放进稳定 frame 后以 `.center` 为锚点旋转，避免按文字自身边界偏心旋转。 |
@@ -319,6 +319,10 @@ AF completion metering 的节流规则：
 
 `AF/MF` 与曝光完全独立。
 
+原生 iPhone Camera、AVFoundation 约束、当前 TAPCam 差异和临时 EV 全局
+viewfinder 上下滑动目标见
+[FocusTemporaryEVNativeComparison.md](FocusTemporaryEVNativeComparison.md)。
+
 普通产品构建保留基础 tap-to-focus 路径，但不编译 `AF/MF` 专业切换入口、
 MF lens-position strip、MF 专业调节状态或 Pro readback。以下 MF 专业控制规则只属于
 `TAP_ENABLE_PRO_CAMERA_CONTROLS` 构建。
@@ -334,11 +338,12 @@ AF：
 - 非锁定 AF 的 overlay 不使用固定时间自动隐藏。只要 runtime 没有让当前目标失效，对焦框继续代表当前有效的 `focus frame anchor`。
 - 对焦 overlay 状态机是 `none -> focusing(point) -> focused(point) -> locked(point) -> none`。`none` 可由用户切到 MF、替换目标、镜头/模式切换、显式取消、view 生命周期或 `runtime focus invalidation` 触发。
 - `subject area changed` 不创建新框，也不使用旧 `focus frame anchor` 再发起一次对焦。它表示当前非锁定目标失效，必须隐藏 `focus target overlay`。
+- `focus target overlay` 清空时，temporary focus EV 必须回到 0；自动曝光路径恢复 continuous auto camera controls，非自动曝光 Pro 路径只恢复 autofocus，不能偷改 ISO/S 用户意图。
 - runtime `isAdjustingFocus` 进入 true 时，如果当前 overlay 仍在 `focusing(point)`，这是用户刚 tap 后的初始对焦周期，overlay 保持显示；如果当前 overlay 已经 `focused(point)`，这是 `runtime focus invalidation`，必须隐藏 overlay。回到 false 时只有仍存在的 `focusing(point)` 才进入 `focused(point)`。
-- `focus companion EV rail` 的中心线和对焦框中心线对齐，默认贴在对焦框右侧；右侧空间不足时翻到左侧。两者边缘间距优先使用 6pt，靠近取景器边缘时允许被 clamp。
-- `focus companion EV rail` 不显示 `EV` 字样或当前 EV 数值；用户只看到小太阳图标、刻度和黄色 `value cursor`。
-- `focus companion EV rail` 的默认值是 0 EV，`value cursor` 的圆心必须落在中间刻度上；实现时不能用圆点底边去对齐刻度。
-- 对焦框或旁边 EV 条出现后，支持 `focus exposure scrub`：用户在对焦目标附近上下拖动，也能调节同一份临时 EV。
+- `focus companion EV rail` 的中心线和对焦框中心线对齐，默认贴在对焦框右侧；右侧空间不足时翻到左侧。细线要靠近对焦框，两者边缘间距优先使用 2pt，靠近取景器边缘时允许被 clamp。
+- `focus companion EV rail` 不显示 `EV` 字样、当前 EV 数值或刻度；用户只看到细线和黄色太阳 `value cursor`。
+- `focus companion EV rail` 的默认值是 0 EV，太阳游标的中心必须落在 rail 的中点上。
+- 对焦框出现后，支持 `focus exposure scrub`：用户在 viewfinder 内上下拖动即可调节同一份临时 EV，不需要按住临时 EV 条。
 - 长按只通过对焦框附属的 `lock badge` 显示 `AE/AF LOCK`，不额外触发 `viewfinder edge toast`。如果当前已有可见 `focus target overlay`，长按把这个已有目标升级为锁定态；只有没有现有目标时才使用长按开始点创建新目标。非 `A/A` 曝光状态下，长按不能偷写 AE；锁定文案后续可按 UX 反馈调整，第一阶段先保证曝光写入规则正确。
 - AE/AF lock 后，对焦框固定在锁定的目标点，`focus companion EV rail` 继续显示且不自动消失。`lock badge` 不能改变对焦框位置；subject-area 变化和 runtime focus cycle 也不能自动移动或取消锁定目标。
 
