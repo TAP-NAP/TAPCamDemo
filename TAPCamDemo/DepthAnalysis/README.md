@@ -4,26 +4,34 @@
 saved or pending TAP depth photo files. It does not configure the live camera
 and does not mutate capture output. It reads original HEIC or JPG bytes,
 requires the TAP manifest plus Apple auxiliary depth, reconstructs metric depth,
-and renders analysis views for RGB, heatmap, valid mask, planes, and point
-cloud.
+and renders a Photos-style browser with a stable carousel, 2D overlay/plane
+analysis, native 3D projection, and credential status.
+
+Related design note:
+[DepthAnalysisViewerRedesign.md](../../Docs/DepthAnalysisViewerRedesign.md)
+describes the Photos-style viewer, half/full tool drawer, icon-only `2D`/`3D`/
+credential bottom controls, 2D overlay opacity/plane detection, and native 3D
+projection direction.
 
 ## Code Map
 
 | Responsibility | Code |
 | --- | --- |
 | Photos album browser | [DepthAlbumPickerView.swift](DepthAlbumPickerView.swift) |
+| Ordered album context used for left/right photo switching inside Analysis | [DepthAnalysisAlbumContext.swift](DepthAnalysisAlbumContext.swift) |
 | Analysis photo source loading and decode handoff | [DepthAnalysisInputLoader.swift](DepthAnalysisInputLoader.swift) |
+| Stable Analysis carousel slots, progressive thumbnail/original loading, Photos progress, and per-photo Plane state | [DepthAnalysisCarouselState.swift](DepthAnalysisCarouselState.swift) |
 | Public-safe analysis, album, and Planes error copy | [DepthAnalysisErrorPresentation.swift](DepthAnalysisErrorPresentation.swift) |
 | TAP Library item loading, pending/exported/Photos merge, route anchors, and item cache keys | [DepthAlbumItemProvider.swift](DepthAlbumItemProvider.swift) |
-| Main analysis screen source entry, loading/error shell, view-model lifetime, and route callbacks | [DepthAnalysisView.swift](DepthAnalysisView.swift) |
-| Central visual stage for RGB, heatmap, mask, planes, point cloud, region gestures, and plane seed taps | [DepthAnalysisStageView.swift](DepthAnalysisStageView.swift) |
-| Bottom mode controls, inspector strip, and adaptive panel presentation | [DepthAnalysisControlsView.swift](DepthAnalysisControlsView.swift) |
+| Main analysis screen shell, stable photo carousel, zoom/pan gestures, scroll-revealed tools, and route callbacks | [DepthAnalysisView.swift](DepthAnalysisView.swift) |
+| Central visual stage for RGB, heatmap, mask, planes, internal point projection, region gestures, and plane seed taps | [DepthAnalysisStageView.swift](DepthAnalysisStageView.swift) |
+| Icon-only Photos-style bottom control bar for share, 2D, 3D, credential, and delete | [DepthAnalysisControlsView.swift](DepthAnalysisControlsView.swift) |
 | App Attest capture-signature verification service and public-safe report model | [AppAttestSignatureVerification.swift](AppAttestSignatureVerification.swift) |
 | App Attest capture-signature verification panel | [AppAttestSignatureVerificationPanel.swift](AppAttestSignatureVerificationPanel.swift) |
 | Field-level panel content adapter for concrete inspector bodies | [DepthAnalysisInspectorPanelContent.swift](DepthAnalysisInspectorPanelContent.swift) |
 | Analysis view-mode model, labels, icons, debug-only mode flag, and explanations | [DepthAnalysisViewMode.swift](DepthAnalysisViewMode.swift) |
 | Public-safe capture metadata summary model and debug-only HUD from manifest payload summary fields | [DepthAnalysisMetadataHUD.swift](DepthAnalysisMetadataHUD.swift) |
-| Analysis loading and selection-state bridging | [DepthAnalysisViewModel.swift](DepthAnalysisViewModel.swift) |
+| Legacy single-input analysis loading and selection-state bridge used by older focused tests | [DepthAnalysisViewModel.swift](DepthAnalysisViewModel.swift) |
 | Rectangular region selection state and derived products | [DepthAnalysisRegionSelectionState.swift](DepthAnalysisRegionSelectionState.swift) |
 | Planes seed selection, strictness, loading, error, and selected-region state | [DepthAnalysisPlaneSelectionState.swift](DepthAnalysisPlaneSelectionState.swift) |
 | Plane geometry prewarm and seed-region calculation boundary | [DepthAnalysisPlaneRegionDetector.swift](DepthAnalysisPlaneRegionDetector.swift) |
@@ -33,21 +41,21 @@ cloud.
 | Interactive image, selection gestures, and plane overlays | [DepthAnalysisInteractiveImage.swift](DepthAnalysisInteractiveImage.swift) |
 | Panel-controls index for the split panel files | [DepthAnalysisPanelControls.swift](DepthAnalysisPanelControls.swift) |
 | Shared panel support values and button hint model | [DepthAnalysisPanelSupport.swift](DepthAnalysisPanelSupport.swift) |
-| Bottom view-mode and inspector strip with scroll-position sync | [DepthAnalysisInspectorStrip.swift](DepthAnalysisInspectorStrip.swift) |
+| Legacy bottom view-mode and inspector strip with scroll-position sync | [DepthAnalysisInspectorStrip.swift](DepthAnalysisInspectorStrip.swift) |
 | Adaptive analysis panel shell, pure height metrics, measurement, and debug layout log | [DepthAnalysisPanelLayer.swift](DepthAnalysisPanelLayer.swift) |
 | Shared inspector help text, legends, metric rows, and region-stats presentation | [DepthAnalysisInspectors.swift](DepthAnalysisInspectors.swift) |
 | Measurements inspector for rectangular depth stats and local plane summary | [DepthAnalysisMeasurementsInspectorContent.swift](DepthAnalysisMeasurementsInspectorContent.swift) |
-| Legend inspector for RGB, heatmap, mask, planes, and point-cloud modes | [DepthAnalysisLegendInspectorContent.swift](DepthAnalysisLegendInspectorContent.swift) |
+| Legend inspector for RGB, heatmap, mask, planes, and internal projection modes | [DepthAnalysisLegendInspectorContent.swift](DepthAnalysisLegendInspectorContent.swift) |
 | Region inspector and selected-area local heatmap loupe | [DepthAnalysisRegionInspectorContent.swift](DepthAnalysisRegionInspectorContent.swift) |
 | Plane filter inspector, strictness binding, and plane metrics | [DepthAnalysisPlaneFilterInspectorContent.swift](DepthAnalysisPlaneFilterInspectorContent.swift) |
-| Overlay opacity and point-cloud info inspectors | [DepthAnalysisOverlayCloudInspectors.swift](DepthAnalysisOverlayCloudInspectors.swift) |
+| Overlay opacity and internal projection info inspectors | [DepthAnalysisOverlayCloudInspectors.swift](DepthAnalysisOverlayCloudInspectors.swift) |
 | TAP depth photo, auxiliary depth, manifest, and calibration reader | [DepthAnalysisReader.swift](DepthAnalysisReader.swift) |
 | Photo byte budget, depth-map shape budget, sample-count, and calibration validation | [DepthAnalysisInputValidation.swift](DepthAnalysisInputValidation.swift) |
 | Analysis input and metric depth models | [DepthAnalysisModels.swift](DepthAnalysisModels.swift) |
 | Orientation mapping | [DepthOrientationMapper.swift](DepthOrientationMapper.swift) |
 | Settings shell and authorization status surface | [DepthAnalyzerSettingsView.swift](DepthAnalyzerSettingsView.swift) |
 | Settings App Attest section using public-safe status and redacted key ID presentation | [DepthAnalyzerAppAttestSection.swift](DepthAnalyzerAppAttestSection.swift) |
-| Heatmap, mask, plane, and point-cloud tools | [AnalysisTools/README.md](AnalysisTools/README.md) |
+| Heatmap, mask, plane, and native projection helpers | [AnalysisTools/README.md](AnalysisTools/README.md) |
 
 ## Reading Order
 
@@ -73,50 +81,57 @@ If this module is new to you, read it in this order:
 7. [DepthAlbumPickerView.swift](DepthAlbumPickerView.swift) owns the TAP Library
    grid UI, fresh-entry top start, cached first album load, in-session
    clicked-item scroll return, item selection, and navigation into analysis.
-8. [DepthAnalysisRegionSelectionState.swift](DepthAnalysisRegionSelectionState.swift)
+   [DepthAnalysisAlbumContext.swift](DepthAnalysisAlbumContext.swift) is the
+   small ordered context passed into Analysis so left/right swipes can move
+   through the same time flow and keep route/bookmark state current.
+8. [DepthAnalysisCarouselState.swift](DepthAnalysisCarouselState.swift) owns
+   the Analysis browser's `previous/current/next` slot model, progressive
+   thumbnail-first loading, Photos original download progress, decoded input,
+   per-photo selection state, and per-slot Plane region coordinator. Read this
+   before changing photo switching, iCloud loading behavior, or 2D/3D shared
+   analysis state.
+9. [DepthAnalysisRegionSelectionState.swift](DepthAnalysisRegionSelectionState.swift)
    owns rectangular region selection, clamping, region stats, local heatmap
    generation, and local plane estimate generation. It receives only a loaded
    depth map and a rectangle.
-9. [DepthAnalysisPlaneSelectionState.swift](DepthAnalysisPlaneSelectionState.swift)
+10. [DepthAnalysisPlaneSelectionState.swift](DepthAnalysisPlaneSelectionState.swift)
    owns Planes-mode seed selection, strictness, loading, error, and selected
    region state. It receives only a loaded depth map, a depth-space point, or a
    detector result. Failed detector results pass through
    `DepthAnalysisErrorPresentation` before the Plane Filter inspector can show
    the error text.
-10. [DepthAnalysisPlaneRegionDetector.swift](DepthAnalysisPlaneRegionDetector.swift)
+11. [DepthAnalysisPlaneRegionDetector.swift](DepthAnalysisPlaneRegionDetector.swift)
    owns plane geometry cache building and seed-region calculation. It is local
    analysis only: it does not read Photos, write exports, or validate proofs.
-11. [DepthAnalysisPlaneRegionRequestCoordinator.swift](DepthAnalysisPlaneRegionRequestCoordinator.swift)
+12. [DepthAnalysisPlaneRegionRequestCoordinator.swift](DepthAnalysisPlaneRegionRequestCoordinator.swift)
    owns async Planes request cancellation, request freshness, strictness
    debounce, prewarm task scheduling, and geometry-cache reuse. It receives
    only loaded depth maps, seed points, strictness values, and detector results.
-12. [AnalysisTools/README.md](AnalysisTools/README.md) gives the Planes
+13. [AnalysisTools/README.md](AnalysisTools/README.md) gives the Planes
    algorithm reading path: projector, estimator facade, fitting helpers,
    seed/BFS growth, and output-product builders. Read this before changing
    thresholds or Planes result metrics.
    [../../TAPCamDemoTests/TAPDepthAnalysisPlaneRegionTests.swift](../../TAPCamDemoTests/TAPDepthAnalysisPlaneRegionTests.swift)
    is the focused test entry for camera-space geometry, Planes estimator/growth,
    detector cache build/reuse, and async request cache/freshness behavior.
-13. [DepthAnalysisViewModel.swift](DepthAnalysisViewModel.swift) owns analysis
-   load state and selection-state bridging. It consumes the input loader,
-   region-selection state, plane-selection state, plane-region detector, and
-   request coordinator instead of reading Photos, pending storage, or analysis
-   algorithms directly.
 14. [DepthAnalysisViewMode.swift](DepthAnalysisViewMode.swift) owns the mode
    labels, icons, explanations, legend text, and debug-only mode flag used by
    the screen, strip, and tests.
 15. [DepthAnalysisView.swift](DepthAnalysisView.swift) is the source entry and
-   screen shell. It owns view-model lifetime, loaded/error states, mode-switch
-   side effects, panel destination routing, and top-level callbacks.
+   screen shell. It owns stable chrome, photo zoom/pan/double-tap,
+   `previous/current/next` carousel layout, left/right switching at fit size,
+   scroll-revealed tool detail page, selected-tool routing, and top-level
+   callbacks.
 16. [DepthAnalysisStageView.swift](DepthAnalysisStageView.swift) owns the
-   central visual stage for RGB, heatmap, mask, planes, and point cloud. It
+   central visual stage for RGB, heatmap, mask, planes, and internal projection
+   previews. It
    receives display-ready images, the loaded local depth map, local selection
    bindings, a capture metadata summary, and gesture callbacks; it does not
    receive sources, manifests, proofs, identifiers, Photos handles, pending
    store handles, geometry caches, or export state.
 17. [DepthAnalysisControlsView.swift](DepthAnalysisControlsView.swift) owns the
-   bottom mode controls, inspector strip, panel presentation, panel animation,
-   and button-hint routing.
+   icon-only bottom controls and button-hint routing. Tool content is rendered
+   by the scroll-revealed detail page in `DepthAnalysisView`.
    For the Verify Signature route, then read
    [AppAttestSignatureVerification.swift](AppAttestSignatureVerification.swift)
    for Photos photo loading, local signed-export validation reuse, backend
@@ -145,7 +160,8 @@ If this module is new to you, read it in this order:
 22. [DepthAnalysisPanelSupport.swift](DepthAnalysisPanelSupport.swift),
    [DepthAnalysisInspectorStrip.swift](DepthAnalysisInspectorStrip.swift), and
    [DepthAnalysisPanelLayer.swift](DepthAnalysisPanelLayer.swift) own shared
-   panel support, the bottom view/inspector strip, and the adaptive panel shell.
+   panel support, the legacy bottom view/inspector strip, and the adaptive panel
+   shell still used by older inspector paths.
    `AnalysisPanelLayoutMetrics` is the pure policy for the panel content max
    height, pre-measurement viewport height, and scroll-indicator threshold.
 23. [DepthAnalysisInspectors.swift](DepthAnalysisInspectors.swift) owns shared
@@ -157,7 +173,7 @@ If this module is new to you, read it in this order:
    [DepthAnalysisPlaneFilterInspectorContent.swift](DepthAnalysisPlaneFilterInspectorContent.swift),
    and [DepthAnalysisOverlayCloudInspectors.swift](DepthAnalysisOverlayCloudInspectors.swift).
 24. [AnalysisTools/README.md](AnalysisTools/README.md) is the entry point for
-   heatmap, mask, plane, and point-cloud implementations.
+   heatmap, mask, plane, and native projection implementations.
 
 ## Inspector/HUD Presentation Map
 
@@ -180,12 +196,12 @@ Plane geometry, detector, and request-coordinator tests live in
 | --- | --- | --- | --- | --- |
 | DEBUG metadata HUD | A loaded analysis input has a manifest payload and the stage is built in DEBUG | [DepthAnalysisMetadataHUD.swift](DepthAnalysisMetadataHUD.swift) | `TAPDepthAnalysisPresentationTests`: `captureMetadataSummaryRequiresPayload`, `captureMetadataSummaryPublishesExpectedPublicText`, `captureMetadataSummaryOmitsIdentifiersAndLocation`, `captureMetadataSummaryFallsBackForSensitiveManifestDisplayFields`, `captureMetadataSummaryFallsBackForDepthSourceDeviceName` | Visual HUD layout still needs UI regression evidence |
 | Inspector panel adapter | A bottom inspector route is selected | [DepthAnalysisInspectorPanelContent.swift](DepthAnalysisInspectorPanelContent.swift) | `TAPDepthAnalysisPresentationTests`: `analysisViewModesPublishInspectorRoutes`, `analysisPanelDestinationSelectsInspectorsOnly` | Inspector body layout still needs UI regression evidence |
-| Signature verification panel | The shield verify button is selected from a saved Photos asset, or from a pending item before export | [AppAttestSignatureVerification.swift](AppAttestSignatureVerification.swift), [AppAttestSignatureVerificationPanel.swift](AppAttestSignatureVerificationPanel.swift), [TAPVerificationExportBuilder.swift](TAPVerificationExportBuilder.swift), [DepthAnalysisView.swift](DepthAnalysisView.swift), [DepthAnalysisInspectorStrip.swift](DepthAnalysisInspectorStrip.swift) | `TAPAppAttestSignatureVerificationTests`: public backend summary, success/failure visible-text redaction, and panel raw-section source guard. `TAPVerificationExportBuilderTests`: original still export, Live Photo ZIP export, primary-only fallback, MOV mismatch, and sidecar privacy. `TAPDepthAnalysisPresentationTests`: panel destination keeps verification separate from inspector selection. | Real backend acceptance, real Photos asset verification/export, and rendered panel layout still need attended evidence |
+| Signature verification panel | The credential tool is selected from a saved Photos asset, or from a pending item before export | [AppAttestSignatureVerification.swift](AppAttestSignatureVerification.swift), [AppAttestSignatureVerificationPanel.swift](AppAttestSignatureVerificationPanel.swift), [TAPVerificationExportBuilder.swift](TAPVerificationExportBuilder.swift), [DepthAnalysisView.swift](DepthAnalysisView.swift) | `TAPAppAttestSignatureVerificationTests`: public backend summary, success/failure visible-text redaction, and panel raw-section source guard. `TAPVerificationExportBuilderTests`: original still export, Live Photo ZIP export, primary-only fallback, MOV mismatch, and sidecar privacy. `TAPDepthAnalysisPresentationTests`: panel destination keeps verification separate from inspector selection. | Real backend acceptance, real Photos asset verification/export, and rendered panel layout still need attended evidence |
 | Adaptive panel height metrics | A panel's measured content height changes | [DepthAnalysisPanelLayer.swift](DepthAnalysisPanelLayer.swift) | `analysisPanelLayoutMetricsUsesOnePointViewportBeforeMeasurement`, `analysisPanelLayoutMetricsFitsShortMeasuredContentWithoutScrolling`, `analysisPanelLayoutMetricsCapsOverflowingContentAndEnablesScrolling`, `analysisPanelLayoutMetricsKeepsMinimumContentHeightForSmallPanels` | Pure metrics only; rendered SwiftUI panel layout and screenshot evidence still need UI regression coverage |
 | Inspector visible errors | Region heatmap or Plane selection fails | [DepthAnalysisErrorPresentation.swift](DepthAnalysisErrorPresentation.swift), [DepthAnalysisInspectorPanelContent.swift](DepthAnalysisInspectorPanelContent.swift) | `depthAnalysisInspectorErrorMessageKeepsRegionHeatmapCopyPublicSafe`, `depthAnalysisInspectorErrorMessageKeepsPlaneSelectionCopyPublicSafe`, `depthAnalysisInspectorViewsDoNotAcceptRawErrorStringSinks` | Real-device unified-log evidence remains separate |
 | Measurements and Region inspectors | A rectangular region is selected outside Planes mode | [DepthAnalysisInspectors.swift](DepthAnalysisInspectors.swift), [DepthAnalysisMeasurementsInspectorContent.swift](DepthAnalysisMeasurementsInspectorContent.swift), [DepthAnalysisRegionInspectorContent.swift](DepthAnalysisRegionInspectorContent.swift) | `TAPDepthAnalysisSelectionTests` covers region clamping, stats, local heatmap, local plane estimate, and ViewModel selection bridge. `TAPDepthAnalysisPresentationTests` covers shared region-stats presentation text. `DepthAnalysisErrorPresentationTests` covers typed public-safe local-heatmap failure text. | Visual measurement rows and loupe layout still need UI evidence |
 | Plane Filter inspector | A Planes seed request is active or has a selected region | [DepthAnalysisPlaneFilterInspectorContent.swift](DepthAnalysisPlaneFilterInspectorContent.swift) | `TAPDepthAnalysisSelectionTests` covers seed, strictness, loading, selected-region, clear, and fixed public-safe failure text. `TAPDepthAnalysisPlaneRegionTests` covers geometry guardrails, detector build/reuse, request-coordinator latest-result, and cache-reuse behavior. | Visual strictness control and plane-result layout still need UI evidence |
-| Legend, Overlay, and Cloud inspectors | View mode exposes legend, overlay, or point-cloud details | [DepthAnalysisLegendInspectorContent.swift](DepthAnalysisLegendInspectorContent.swift), [DepthAnalysisOverlayCloudInspectors.swift](DepthAnalysisOverlayCloudInspectors.swift) | `TAPDepthAnalysisPresentationTests` covers labels, icons, explanations, debug-only mode flags, and per-mode inspector routes | Inspector body layout still needs UI evidence |
+| Legend, Overlay, and internal projection inspectors | View mode exposes legend, overlay, or projection details | [DepthAnalysisLegendInspectorContent.swift](DepthAnalysisLegendInspectorContent.swift), [DepthAnalysisOverlayCloudInspectors.swift](DepthAnalysisOverlayCloudInspectors.swift) | `TAPDepthAnalysisPresentationTests` covers labels, icons, explanations, debug-only mode flags, and per-mode inspector routes | Inspector body layout still needs UI evidence |
 
 ## Human Acceptance Path
 
@@ -203,7 +219,8 @@ list for attended device or UI checks that code reading alone cannot prove.
    budget, primary-image dimension budget, depth-map pixel budget, sample-count
    invariant, finite positive sample requirement, and usable calibration
    intrinsics. Invalid or missing calibration still permits RGB, Heatmap, and
-   Valid Mask analysis; Planes and Point Cloud require usable intrinsics.
+   Valid Mask analysis; Planes and native 3D projection require usable
+   intrinsics.
 3. Read [DepthAnalysisInputLoader.swift](DepthAnalysisInputLoader.swift) for the
    source-to-photo boundary. Photos items load original Photos data; pending
    items load the best available local signed or unsigned photo artifact and map
@@ -308,12 +325,17 @@ list for attended device or UI checks that code reading alone cannot prove.
    top start, in-session clicked-item scroll return, cached album snapshot reuse,
    item selection, and navigation to analysis. Pending items open with
    `pendingCaptureID`; owned and Photos-only items open with `assetID`.
-3. Open an item and verify RGB, Planes, and Point Cloud modes remain available.
-   Heatmap and Valid Mask are still debug-only buttons.
-4. In RGB/Heatmap/Mask modes, use rectangular selection to inspect a region.
-   In Planes mode, tap a seed point; rectangular selection is intentionally
-   disabled there so plane growth and region measurement stay separate.
-5. Treat this module as a local reader. It may read pending or saved TAP HEIC or
+3. Open an item and verify the main photo supports double-tap zoom, pinch zoom,
+   pan while zoomed, and left/right photo switching at fit size.
+4. Tap the 2D icon and verify the half-height black tool page opens. The overlay
+   opacity slider should span original photo at `0`, heatmap at `1`, and blended
+   analysis in between. Tap the overlay view to run plane detection.
+5. Tap the 3D icon and verify the black tool page shows the native projected 3D
+   model. Drag and pinch should interact with the model; the UI should not expose
+   point-cloud terminology.
+6. Tap the credential icon and verify the credential panel follows the currently
+   selected photo while left/right photo switching preserves the selected tool.
+7. Treat this module as a local reader. It may read pending or saved TAP HEIC or
    JPG photo files, but App Attest proof validation and final export trust
    remain in the capture/output pipeline.
 
@@ -349,7 +371,7 @@ flowchart TD
     RequestCoordinator --> PlaneState["DepthAnalysisPlaneSelectionState"]
     Detector --> Plane["TAPPlaneEstimator facade"]
     Plane --> PlaneHelpers["Fitting + growth + output helpers"]
-    Metric --> Cloud["PointCloudPreview"]
+    Metric --> Projection["Native 3D projection"]
 
     click Validation "DepthAnalysisInputValidation.swift"
     click Reader "DepthAnalysisReader.swift"
@@ -362,7 +384,7 @@ flowchart TD
     click Mask "AnalysisTools/DepthMaskRenderer.swift"
     click Plane "AnalysisTools/DepthPlaneEstimator.swift"
     click PlaneHelpers "AnalysisTools/README.md"
-    click Cloud "AnalysisTools/DepthPointCloudPreview.swift"
+    click Projection "AnalysisTools/DepthPointCloudPreview.swift"
 ```
 
 ## View Modes
@@ -375,8 +397,8 @@ stateDiagram-v2
     rgb --> heatmap
     heatmap --> mask
     mask --> planes
-    planes --> pointCloud
-    pointCloud --> rgb
+    planes --> projection
+    projection --> rgb
     heatmap --> rgb
     mask --> rgb
     planes --> rgb
@@ -387,10 +409,11 @@ Photos asset or a pending capture ID. Pending capture reads use the best
 available local photo artifact, preferring the signed container-specific file
 and falling back to the unsigned container-specific file.
 
-`DepthAnalysisView` is intentionally a shell now. `DepthAnalysisStageView`
-receives display-ready local analysis values for the central stage, while
-`DepthAnalysisControlsView` and `AnalysisInspectorPanelContent` keep panel
-routing and field-level inspector data out of the screen entry.
+`DepthAnalysisView` owns the Photos-style browser shell now. It receives
+display-ready local analysis values from `DepthAnalysisViewModel`, keeps the
+main photo as the primary surface, and renders the scroll-revealed tool detail
+page. `DepthAnalysisControlsView` is only the icon bottom bar; field-level
+inspector data still stays out of the control bar.
 
 TAP Library item construction is split from the grid UI.
 [DepthAlbumItemProvider.swift](DepthAlbumItemProvider.swift) reads visible
@@ -463,7 +486,7 @@ flowchart LR
     Intrinsics --> Point["Camera-space point X,Y,Z"]
     Point --> Region["Region stats"]
     Point --> Plane["Plane estimate"]
-    Point --> Cloud["Point cloud preview"]
+    Point --> Projection["Native 3D projection"]
 ```
 
 For a depth pixel `(u, v)` with metric depth `Z`, the analysis module uses the

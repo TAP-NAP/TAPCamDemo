@@ -69,6 +69,8 @@ final class DepthAnalysisViewModel: ObservableObject {
     }
 
     func load(source: DepthAnalysisSource) async {
+        input = nil
+        clearLoadError()
         planeRequestCoordinator.resetForNewInput()
         planeSelection.cancelDetection()
 

@@ -30,6 +30,7 @@ struct DepthAnalysisStageView: View {
     let planeSeedPoint: CGPoint?
     let metadataSummary: CaptureMetadataSummary?
     let scoreSummary: DepthAnalysisScoreSummary?
+    let allowsRegionSelection: Bool
     let onSelectionBegan: (CGRect) -> Void
     let onSelectionChanged: (CGRect) -> Void
     let onSelectionEnded: (CGRect) -> Void
@@ -58,11 +59,19 @@ struct DepthAnalysisStageView: View {
     private var stageContent: some View {
         switch viewMode {
         case .rgb:
-            depthImageStage(overlayImage: nil, overlayOpacity: 0)
+            depthImageStage(overlayImage: nil, overlayOpacity: 0, isSelectionEnabled: allowsRegionSelection)
         case .heatmap:
-            depthImageStage(overlayImage: heatmapImage, overlayOpacity: heatmapOpacity)
+            depthImageStage(
+                overlayImage: heatmapImage,
+                overlayOpacity: heatmapOpacity,
+                isSelectionEnabled: allowsRegionSelection
+            )
         case .mask:
-            depthImageStage(overlayImage: validMaskImage, overlayOpacity: 1)
+            depthImageStage(
+                overlayImage: validMaskImage,
+                overlayOpacity: 1,
+                isSelectionEnabled: allowsRegionSelection
+            )
         case .planes:
             depthImageStage(
                 overlayImage: heatmapImage,
@@ -79,6 +88,7 @@ struct DepthAnalysisStageView: View {
                 orientation: imageOrientation,
                 selection: $selection,
                 interactionState: interactionState,
+                allowsSelection: allowsRegionSelection,
                 onSelectionBegan: onSelectionBegan,
                 onSelectionChanged: onSelectionChanged,
                 onSelectionEnded: onSelectionEnded,

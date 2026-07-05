@@ -7,6 +7,8 @@
 
 import CoreGraphics
 import Foundation
+import ImageIO
+import SceneKit
 import simd
 import Testing
 @testable import TAPCamDemo
@@ -27,6 +29,353 @@ struct TAPDepthAnalysisPlaneRegionTests {
         #expect(abs(center.y) < 0.0001)
         #expect(abs(center.z - 2.0) < 0.0001)
         #expect(abs(right.x - 0.02) < 0.0001)
+    }
+
+    @Test func projectionCameraContractUsesCaptureCameraIntrinsics() throws {
+        let depthMap = TAPMetricDepthMap(
+            width: 8,
+            height: 8,
+            samples: Array(repeating: 1.5, count: 64),
+            calibration: Self.sampleCalibration
+        )
+        let cameraModel = try #require(TAPDepthProjectionCameraModel(
+            depthMap: depthMap,
+            imageWidth: 16,
+            imageHeight: 8
+        ))
+        let fitted = TAPDepthProjectionCameraContract.fittedIntrinsics(
+            cameraModel: cameraModel,
+            viewportSize: CGSize(width: 200, height: 100)
+        )
+        let matrix = TAPDepthProjectionCameraContract.projectionMatrix(
+            cameraModel: cameraModel,
+            viewportSize: CGSize(width: 200, height: 100),
+            near: 0.01,
+            far: 100
+        )
+
+        #expect(abs(cameraModel.fx - 200) < 0.0001)
+        #expect(abs(cameraModel.cx - 8) < 0.0001)
+        #expect(abs(fitted.fx - 2500) < 0.0001)
+        #expect(abs(fitted.cx - 100) < 0.0001)
+        #expect(abs(matrix.m11 - 25) < 0.0001)
+        #expect(abs(matrix.m31) < 0.0001)
+        #expect(abs(matrix.m34 + 1) < 0.0001)
+        #expect(abs(matrix.m43 + 0.020002) < 0.0001)
+    }
+
+    @Test func depthProjectionInteractionKeepsSceneKitDefaultCameraControlDisabled() {
+        #expect(TAPDepthProjectionInteractionPolicy.usesSceneKitDefaultCameraControl == false)
+    }
+
+    @Test func depthProjectionInteractionClampsUserZoomScale() {
+        #expect(TAPDepthProjectionInteractionPolicy.clampedScale(0.1) == TAPDepthProjectionInteractionPolicy.minimumScale)
+        #expect(TAPDepthProjectionInteractionPolicy.clampedScale(1.4) == 1.4)
+        #expect(TAPDepthProjectionInteractionPolicy.clampedScale(9) == TAPDepthProjectionInteractionPolicy.maximumScale)
+    }
+
+    @Test func depthProjectionInteractionUsesNaturalScreenRollDirection() {
+        let startAngle: Float = 0.4
+
+        #expect(TAPDepthProjectionInteractionPolicy.rollAngle(startAngle: startAngle, gestureRotation: 0.2) < startAngle)
+        #expect(TAPDepthProjectionInteractionPolicy.rollAngle(startAngle: startAngle, gestureRotation: -0.2) > startAngle)
+    }
+
+    @Test func depthProjectionInteractionConvertsScreenPanUsingCaptureIntrinsics() throws {
+        let cameraModel = TAPDepthProjectionCameraModel(
+            fx: 100,
+            fy: 200,
+            cx: 50,
+            cy: 50,
+            imageWidth: 100,
+            imageHeight: 100
+        )
+
+        let offset = TAPDepthProjectionInteractionPolicy.scenePanOffset(
+            forScreenTranslation: CGPoint(x: 20, y: 30),
+            cameraModel: cameraModel,
+            viewportSize: CGSize(width: 100, height: 100),
+            targetDepth: 2
+        )
+
+        #expect(abs(offset.x - 0.4) < 0.0001)
+        #expect(abs(offset.y + 0.3) < 0.0001)
+    }
+
+    @Test func depthProjectionInteractionPivotsAroundTargetDepthWithoutChangingInitialProjection() {
+        let targetDepth: Float = 2
+        let interactionNode = SCNNode()
+        interactionNode.position = TAPDepthProjectionInteractionPolicy.interactionPivotPosition(
+            targetDepth: targetDepth
+        )
+        let geometryRootNode = SCNNode()
+        geometryRootNode.position = TAPDepthProjectionInteractionPolicy.geometryCompensationPosition(
+            targetDepth: targetDepth
+        )
+        interactionNode.addChildNode(geometryRootNode)
+
+        let targetVertex = SCNVector3(0, 0, -targetDepth)
+        let offCenterVertex = SCNVector3(0.4, 0, -1.2)
+        let initialTarget = geometryRootNode.convertPosition(targetVertex, to: nil)
+        let initialOffCenter = geometryRootNode.convertPosition(offCenterVertex, to: nil)
+
+        interactionNode.eulerAngles.y = .pi / 2
+        let rotatedTarget = geometryRootNode.convertPosition(targetVertex, to: nil)
+        let rotatedOffCenter = geometryRootNode.convertPosition(offCenterVertex, to: nil)
+
+        #expect(abs(initialTarget.z + targetDepth) < 0.0001)
+        #expect(abs(initialOffCenter.x - offCenterVertex.x) < 0.0001)
+        #expect(abs(initialOffCenter.z - offCenterVertex.z) < 0.0001)
+        #expect(abs(rotatedTarget.x) < 0.0001)
+        #expect(abs(rotatedTarget.z + targetDepth) < 0.0001)
+        #expect(abs(rotatedOffCenter.x - initialOffCenter.x) > 0.01)
+        #expect(abs(rotatedOffCenter.z - initialOffCenter.z) > 0.01)
+    }
+
+    @Test func depthProjectionSampleFilterRejectsFarDepthSentinels() {
+        let samples: [(point: TAPPoint3D, imagePoint: CGPoint)] = [
+            (TAPPoint3D(x: 0, y: 0, z: 1.0), CGPoint(x: 0, y: 0)),
+            (TAPPoint3D(x: 0, y: 0, z: 1.2), CGPoint(x: 1, y: 0)),
+            (TAPPoint3D(x: 0, y: 0, z: 1.4), CGPoint(x: 2, y: 0)),
+            (TAPPoint3D(x: 0, y: 0, z: 9_999.0), CGPoint(x: 3, y: 0)),
+            (TAPPoint3D(x: 0, y: 0, z: .nan), CGPoint(x: 4, y: 0))
+        ]
+
+        let renderable = TAPDepthProjectionSampleFilter.renderableSamples(from: samples)
+        let targetDepth = TAPDepthProjectionSampleFilter.targetDepth(
+            from: samples.map(\.point.z)
+        )
+
+        #expect(renderable.map(\.point.z) == [1.0, 1.2, 1.4])
+        #expect(abs(targetDepth - 1.2) < 0.0001)
+        #expect(TAPDepthProjectionSampleFilter.isRenderableDepth(100) == false)
+    }
+
+    @Test func rgbSamplerProjectsDepthPixelsBackToPrimaryImageColors() throws {
+        let depthMap = TAPMetricDepthMap(
+            width: 2,
+            height: 1,
+            samples: Array(repeating: 1, count: 2),
+            calibration: Self.calibration(width: 2, height: 1)
+        )
+        let image = try TAPDepthRGBAImageRenderer.image(
+            pixels: [
+                255, 0, 0, 255,
+                0, 0, 255, 255
+            ],
+            width: 2,
+            height: 1
+        )
+        let sampler = try #require(TAPRGBPixelSampler(image: image))
+        let projectionFrame = try #require(TAPDepthDisplayProjectionFrame(
+            depthMap: depthMap,
+            imageWidth: image.width,
+            imageHeight: image.height,
+            orientation: .up
+        ))
+
+        let left = sampler.color(
+            atDepthPoint: CGPoint(x: 0, y: 0),
+            projectionFrame: projectionFrame
+        )
+        let right = sampler.color(
+            atDepthPoint: CGPoint(x: 1, y: 0),
+            projectionFrame: projectionFrame
+        )
+
+        #expect(left.x > 0.99)
+        #expect(left.z < 0.01)
+        #expect(right.x < 0.01)
+        #expect(right.z > 0.99)
+    }
+
+    @Test func displayProjectionFrameUsesSameRightRotationAsImageMapper() throws {
+        let depthMap = TAPMetricDepthMap(
+            width: 4,
+            height: 3,
+            samples: Array(repeating: 1, count: 12),
+            calibration: Self.calibration(width: 4, height: 3)
+        )
+        let frame = try #require(TAPDepthDisplayProjectionFrame(
+            depthMap: depthMap,
+            imageWidth: 4,
+            imageHeight: 3,
+            orientation: .right
+        ))
+
+        let displayPoint = frame.displayImagePoint(forDepthPoint: CGPoint(x: 1, y: 0))
+        let mapperRect = TAPImageOrientationMapper.displayedRect(
+            fromNative: CGRect(x: 1, y: 0, width: 1, height: 1),
+            nativeSize: CGSize(width: 4, height: 3),
+            orientation: .right
+        )
+
+        #expect(displayPoint == CGPoint(x: mapperRect.midX - 0.5, y: mapperRect.midY - 0.5))
+        #expect(frame.cameraModel.imageWidth == 3)
+        #expect(frame.cameraModel.imageHeight == 4)
+    }
+
+    @Test func displayProjectionFrameRotatesRightOrientationIntrinsicsAndPixels() throws {
+        let depthMap = TAPMetricDepthMap(
+            width: 4,
+            height: 3,
+            samples: Array(repeating: 1, count: 12),
+            calibration: Self.calibration(
+                width: 4,
+                height: 3,
+                intrinsicMatrix: [40, 0, 0, 0, 30, 0, 1, 1, 1]
+            )
+        )
+        let frame = try #require(TAPDepthDisplayProjectionFrame(
+            depthMap: depthMap,
+            imageWidth: 4,
+            imageHeight: 3,
+            orientation: .right
+        ))
+
+        #expect(abs(frame.cameraModel.fx - 30) < 0.0001)
+        #expect(abs(frame.cameraModel.fy - 40) < 0.0001)
+        #expect(abs(frame.cameraModel.cx - 1) < 0.0001)
+        #expect(abs(frame.cameraModel.cy - 1) < 0.0001)
+        #expect(frame.cameraModel.imageWidth == 3)
+        #expect(frame.cameraModel.imageHeight == 4)
+        #expect(frame.displayImagePoint(forDepthPoint: CGPoint(x: 1, y: 0)) == CGPoint(x: 2, y: 1))
+        #expect(frame.displayImagePoint(forDepthPoint: CGPoint(x: 1, y: 2)) == CGPoint(x: 0, y: 1))
+    }
+
+    @Test func displayProjectionFrameBuildsSceneKitCameraFacingVertices() throws {
+        let depthMap = TAPMetricDepthMap(
+            width: 4,
+            height: 3,
+            samples: Array(repeating: 2, count: 12),
+            calibration: Self.calibration(
+                width: 4,
+                height: 3,
+                intrinsicMatrix: [40, 0, 0, 0, 30, 0, 1, 1, 1]
+            )
+        )
+        let frame = try #require(TAPDepthDisplayProjectionFrame(
+            depthMap: depthMap,
+            imageWidth: 4,
+            imageHeight: 3,
+            orientation: .up
+        ))
+
+        let center = frame.sceneVertex(forDepthPoint: CGPoint(x: 1, y: 1), depthMeters: 2)
+        let right = frame.sceneVertex(forDepthPoint: CGPoint(x: 2, y: 1), depthMeters: 2)
+        let upper = frame.sceneVertex(forDepthPoint: CGPoint(x: 1, y: 0), depthMeters: 2)
+        let lower = frame.sceneVertex(forDepthPoint: CGPoint(x: 1, y: 2), depthMeters: 2)
+
+        #expect(abs(center.x) < 0.0001)
+        #expect(abs(center.y) < 0.0001)
+        #expect(abs(center.z + 2) < 0.0001)
+        #expect(right.x > center.x)
+        #expect(upper.y > center.y)
+        #expect(lower.y < center.y)
+    }
+
+    @Test func rgbSamplerKeepsRawPixelColorWhenProjectionFrameRotatesGeometry() throws {
+        let depthMap = TAPMetricDepthMap(
+            width: 3,
+            height: 2,
+            samples: Array(repeating: 1, count: 6),
+            calibration: Self.calibration(width: 3, height: 2)
+        )
+        let image = try TAPDepthRGBAImageRenderer.image(
+            pixels: [
+                255, 0, 0, 255,
+                0, 255, 0, 255,
+                0, 0, 255, 255,
+                0, 255, 255, 255,
+                255, 0, 255, 255,
+                255, 255, 0, 255
+            ],
+            width: 3,
+            height: 2
+        )
+        let sampler = try #require(TAPRGBPixelSampler(image: image))
+        let projectionFrame = try #require(TAPDepthDisplayProjectionFrame(
+            depthMap: depthMap,
+            imageWidth: image.width,
+            imageHeight: image.height,
+            orientation: .right
+        ))
+
+        let bottomLeftRawPixel = sampler.color(
+            atDepthPoint: CGPoint(x: 0, y: 1),
+            projectionFrame: projectionFrame
+        )
+
+        #expect(bottomLeftRawPixel.x < 0.01)
+        #expect(bottomLeftRawPixel.y > 0.99)
+        #expect(bottomLeftRawPixel.z > 0.99)
+    }
+
+    @Test func planeRegionPixelRunsBuildProjectionHighlightMask() throws {
+        let depthMap = TAPMetricDepthMap(
+            width: 5,
+            height: 4,
+            samples: Array(repeating: 1, count: 20),
+            calibration: Self.sampleCalibration
+        )
+        let base = Self.samplePlaneRegion()
+        let region = TAPPlaneRegion(
+            seedPixel: base.seedPixel,
+            estimate: base.estimate,
+            pixelRuns: [
+                TAPPlanePixelRun(y: 1, xStart: 1, xEndExclusive: 3),
+                TAPPlanePixelRun(y: 2, xStart: -2, xEndExclusive: 2),
+                TAPPlanePixelRun(y: 8, xStart: 0, xEndExclusive: 5)
+            ],
+            gridCells: base.gridCells,
+            contourPoints: base.contourPoints,
+            imageBounds: base.imageBounds,
+            confidence: base.confidence,
+            flatnessScore: base.flatnessScore,
+            sampleCount: base.sampleCount,
+            areaSquareMeters: base.areaSquareMeters
+        )
+
+        let indexes = TAPPlaneRegionHighlightMask.depthIndexSet(for: region, depthMap: depthMap)
+
+        #expect(indexes == Set([6, 7, 10, 11]))
+    }
+
+    @Test func planeHighlightMaskStaysInNativeDepthSpaceWhenDisplayRotates() throws {
+        let depthMap = TAPMetricDepthMap(
+            width: 4,
+            height: 3,
+            samples: Array(repeating: 1, count: 12),
+            calibration: Self.calibration(width: 4, height: 3)
+        )
+        let base = Self.samplePlaneRegion()
+        let region = TAPPlaneRegion(
+            seedPixel: CGPoint(x: 1, y: 0),
+            estimate: base.estimate,
+            pixelRuns: [
+                TAPPlanePixelRun(y: 0, xStart: 1, xEndExclusive: 2)
+            ],
+            gridCells: base.gridCells,
+            contourPoints: base.contourPoints,
+            imageBounds: CGRect(x: 1, y: 0, width: 1, height: 1),
+            confidence: base.confidence,
+            flatnessScore: base.flatnessScore,
+            sampleCount: 1,
+            areaSquareMeters: base.areaSquareMeters
+        )
+        let frame = try #require(TAPDepthDisplayProjectionFrame(
+            depthMap: depthMap,
+            imageWidth: 4,
+            imageHeight: 3,
+            orientation: .right
+        ))
+
+        let selectedDisplayPoint = frame.displayImagePoint(forDepthPoint: CGPoint(x: 1, y: 0))
+        let indexes = TAPPlaneRegionHighlightMask.depthIndexSet(for: region, depthMap: depthMap)
+
+        #expect(selectedDisplayPoint == CGPoint(x: 2, y: 1))
+        #expect(indexes.contains(depthMap.index(x: 1, y: 0)))
+        #expect(!indexes.contains(depthMap.index(x: 2, y: 1)))
     }
 
     @Test func cameraIntrinsicsRejectNonFiniteAndZeroCalibration() throws {

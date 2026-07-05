@@ -15,6 +15,7 @@ nonisolated enum TAPDiagnostics {
     static let pendingCapture = Logger(subsystem: subsystem, category: "PendingCapture")
     static let securityPreflight = Logger(subsystem: subsystem, category: "SecurityPreflight")
     static let photoLibrary = Logger(subsystem: subsystem, category: "PhotoLibrary")
+    static let depthAnalysis = Logger(subsystem: subsystem, category: "DepthAnalysis")
 
     /// Public log-safe error summary.
     ///

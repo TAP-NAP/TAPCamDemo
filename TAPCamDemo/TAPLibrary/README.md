@@ -6,6 +6,11 @@ returns quickly. Live Photo captures may add one fixed paired MOV resource. The
 queue processor serially signs, exports, retries, and cleans up records so
 real-device App Attest and Photos work do not overlap.
 
+Related design note:
+[CredentialSigningRetryDesign.md](../../Docs/CredentialSigningRetryDesign.md)
+describes the proposed stage-separated credential/assertion retry model that
+will replace the current coarse retry status model.
+
 ## Code Map
 
 | Responsibility | Code |

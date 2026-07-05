@@ -148,15 +148,30 @@ struct DepthAlbumPickerView: View {
     @ViewBuilder
     private func analysisDestination() -> some View {
         if let selectedAnalysisRoute {
-            switch selectedAnalysisRoute.source {
-            case .photosAsset(let assetID):
-                DepthAnalysisView(assetID: assetID)
-            case .pendingCapture(let captureID):
-                DepthAnalysisView(pendingCaptureID: captureID)
-            }
+            DepthAnalysisView(
+                source: selectedAnalysisRoute.source,
+                albumContext: DepthAnalysisAlbumContext(
+                    currentItemID: selectedAnalysisRoute.itemID,
+                    items: viewModel.items
+                ),
+                onCurrentAlbumEntryChanged: { entry in
+                    updatePresentedAnalysisRoute(entry)
+                }
+            )
         } else {
             EmptyView()
         }
+    }
+
+    private func updatePresentedAnalysisRoute(_ entry: DepthAnalysisAlbumContext.Entry) {
+        selectedAnalysisRoute = DepthAlbumAnalysisRoute(entry: entry)
+        routeStore.openDepthAlbumItem(entry.routeAnchor)
+        pendingReturnScrollBookmark = DepthAlbumReturnScrollBookmark(
+            itemID: entry.id,
+            routeAnchor: entry.routeAnchor,
+            itemViewportY: itemViewportYByID[entry.id] ?? 0
+        )
+        returnScrollRestoreToken = UUID()
     }
 
     private func openAlbumItem(_ item: TAPLibraryItem, returnScrollRowStride: CGFloat) {
@@ -324,6 +339,11 @@ nonisolated struct DepthAlbumReturnScrollBookmark: Equatable, Sendable {
 private struct DepthAlbumAnalysisRoute: Hashable {
     let itemID: String
     let source: DepthAnalysisSource
+
+    init(entry: DepthAnalysisAlbumContext.Entry) {
+        itemID = entry.id
+        source = entry.source
+    }
 
     init(item: TAPLibraryItem) {
         itemID = item.id

@@ -20,7 +20,7 @@ struct OverlayInspectorContent: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .help("Opacity controls the global overlay on the main image. It does not change local region heatmap colors.")
-                Slider(value: $opacity, in: 0.2...1.0)
+                Slider(value: $opacity, in: 0.0...1.0)
                     .tint(.primary)
                 Text("\(Int((opacity * 100).rounded()))%")
                     .font(.caption.monospacedDigit())
