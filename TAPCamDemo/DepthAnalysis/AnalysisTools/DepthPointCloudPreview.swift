@@ -282,7 +282,7 @@ struct PointCloudRegionPreview: View {
     }
 }
 
-nonisolated struct TAPDepthProjectionCameraModel: Equatable {
+nonisolated struct TAPDepthProjectionCameraModel: Equatable, Sendable {
     let fx: Float
     let fy: Float
     let cx: Float
@@ -741,6 +741,286 @@ nonisolated struct TAPRGBPixelSampler {
     }
 }
 
+fileprivate struct TAPDepthProjectionPayloadBuildRequest: @unchecked Sendable {
+    let image: CGImage?
+    let depthMap: TAPMetricDepthMap
+    let orientation: CGImagePropertyOrientation
+    let selectedPlaneRegion: TAPPlaneRegion?
+}
+
+nonisolated struct TAPDepthProjectionScenePayloadData: Sendable {
+    let cameraModel: TAPDepthProjectionCameraModel
+    let targetDepth: Float
+    let stats: TAPDepthProjectionSceneStats
+    let baseVertices: [SIMD3<Float>]
+    let baseColors: [SIMD4<Float>]
+    let highlightVertices: [SIMD3<Float>]
+    let pointSize: CGFloat
+}
+
+nonisolated struct TAPDepthProjectionSceneStats: Sendable {
+    let depthWidth: Int
+    let depthHeight: Int
+    let rawImageWidth: Int
+    let rawImageHeight: Int
+    let orientedImageWidth: Int
+    let orientedImageHeight: Int
+    let cameraFx: Float
+    let cameraFy: Float
+    let cameraCx: Float
+    let cameraCy: Float
+    let rawSampleCount: Int
+    let sampleCount: Int
+    let filteredOutPointCount: Int
+    let highlightPointCount: Int
+    let depthMin: Float
+    let depthMax: Float
+    let depthMean: Float
+    let vertexMinZ: Float
+    let vertexMaxZ: Float
+    let targetDepth: Float
+    let pointSize: Float
+    let hasRGB: Bool
+    let hasHighlight: Bool
+
+    #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+    func probeFields(orientation: CGImagePropertyOrientation) -> [String: Any] {
+        [
+            "depthWidth": depthWidth,
+            "depthHeight": depthHeight,
+            "rawImageWidth": rawImageWidth,
+            "rawImageHeight": rawImageHeight,
+            "orientedImageWidth": orientedImageWidth,
+            "orientedImageHeight": orientedImageHeight,
+            "orientation": orientation.rawValue,
+            "cameraFx": Double(cameraFx),
+            "cameraFy": Double(cameraFy),
+            "cameraCx": Double(cameraCx),
+            "cameraCy": Double(cameraCy),
+            "rawSampleCount": rawSampleCount,
+            "sampleCount": sampleCount,
+            "filteredOutPointCount": filteredOutPointCount,
+            "highlightPointCount": highlightPointCount,
+            "depthMin": Double(depthMin),
+            "depthMax": Double(depthMax),
+            "depthMean": Double(depthMean),
+            "vertexMinZ": Double(vertexMinZ),
+            "vertexMaxZ": Double(vertexMaxZ),
+            "targetDepth": Double(targetDepth),
+            "pointSize": Double(pointSize),
+            "hasRGB": hasRGB,
+            "hasHighlight": hasHighlight
+        ]
+    }
+    #endif
+}
+
+nonisolated enum TAPDepthProjectionScenePayloadBuilder {
+    static func makePayloadData(
+        image: CGImage?,
+        depthMap: TAPMetricDepthMap,
+        orientation: CGImagePropertyOrientation,
+        selectedPlaneRegion: TAPPlaneRegion?
+    ) -> TAPDepthProjectionScenePayloadData? {
+        makePayloadData(
+            request: TAPDepthProjectionPayloadBuildRequest(
+                image: image,
+                depthMap: depthMap,
+                orientation: orientation,
+                selectedPlaneRegion: selectedPlaneRegion
+            )
+        )
+    }
+
+    fileprivate static func makePayloadData(
+        request: TAPDepthProjectionPayloadBuildRequest
+    ) -> TAPDepthProjectionScenePayloadData? {
+        guard !Task.isCancelled else {
+            return nil
+        }
+
+        let image = request.image
+        let depthMap = request.depthMap
+        let orientation = request.orientation
+        let selectedPlaneRegion = request.selectedPlaneRegion
+        let fullRegion = CGRect(x: 0, y: 0, width: depthMap.width, height: depthMap.height)
+        let samples = TAPDepthGeometryProjector.sampledPoints(
+            from: depthMap,
+            in: fullRegion,
+            maxCount: 12_000
+        )
+        let rawSampleCount = samples.count
+        let renderableSamples = TAPDepthProjectionSampleFilter.renderableSamples(from: samples)
+        let filteredOutPointCount = rawSampleCount - renderableSamples.count
+        guard !renderableSamples.isEmpty else {
+            return nil
+        }
+        let projectionFrame = TAPDepthDisplayProjectionFrame(
+            depthMap: depthMap,
+            imageWidth: image?.width ?? depthMap.width,
+            imageHeight: image?.height ?? depthMap.height,
+            orientation: orientation
+        )
+        guard let projectionFrame else {
+            return nil
+        }
+
+        let rgbSampler = image.flatMap(TAPRGBPixelSampler.init(image:))
+        let highlightMask = TAPPlaneRegionHighlightMask.depthIndexSet(
+            for: selectedPlaneRegion,
+            depthMap: depthMap
+        )
+        var baseVertices: [SIMD3<Float>] = []
+        var baseColors: [SIMD4<Float>] = []
+        var highlightVertices: [SIMD3<Float>] = []
+        baseVertices.reserveCapacity(renderableSamples.count)
+        baseColors.reserveCapacity(renderableSamples.count)
+
+        var depthSum: Float = 0
+        var depthMin = Float.greatestFiniteMagnitude
+        var depthMax = -Float.greatestFiniteMagnitude
+        var vertexMinZ = Float.greatestFiniteMagnitude
+        var vertexMaxZ = -Float.greatestFiniteMagnitude
+        for (sampleIndex, sample) in renderableSamples.enumerated() {
+            if sampleIndex.isMultiple(of: 512), Task.isCancelled {
+                return nil
+            }
+
+            let vertex = projectionFrame.sceneVertex(
+                forDepthPoint: sample.imagePoint,
+                depthMeters: sample.point.z
+            )
+            baseVertices.append(vertex)
+            baseColors.append(
+                rgbSampler?.color(
+                    atDepthPoint: sample.imagePoint,
+                    projectionFrame: projectionFrame
+                ) ?? fallbackColor(sample: sample)
+            )
+            depthSum += sample.point.z
+            depthMin = min(depthMin, sample.point.z)
+            depthMax = max(depthMax, sample.point.z)
+            vertexMinZ = min(vertexMinZ, vertex.z)
+            vertexMaxZ = max(vertexMaxZ, vertex.z)
+
+            let x = min(max(Int(sample.imagePoint.x.rounded(.down)), 0), max(depthMap.width - 1, 0))
+            let y = min(max(Int(sample.imagePoint.y.rounded(.down)), 0), max(depthMap.height - 1, 0))
+            if highlightMask.contains(depthMap.index(x: x, y: y)) {
+                highlightVertices.append(vertex)
+            }
+        }
+        let targetDepth = TAPDepthProjectionSampleFilter.targetDepth(
+            from: renderableSamples.map(\.point.z)
+        )
+        let basePointSize = pointSize(depthMap: depthMap, sampleCount: baseVertices.count)
+        let stats = TAPDepthProjectionSceneStats(
+            depthWidth: depthMap.width,
+            depthHeight: depthMap.height,
+            rawImageWidth: image?.width ?? depthMap.width,
+            rawImageHeight: image?.height ?? depthMap.height,
+            orientedImageWidth: projectionFrame.cameraModel.imageWidth,
+            orientedImageHeight: projectionFrame.cameraModel.imageHeight,
+            cameraFx: projectionFrame.cameraModel.fx,
+            cameraFy: projectionFrame.cameraModel.fy,
+            cameraCx: projectionFrame.cameraModel.cx,
+            cameraCy: projectionFrame.cameraModel.cy,
+            rawSampleCount: rawSampleCount,
+            sampleCount: baseVertices.count,
+            filteredOutPointCount: filteredOutPointCount,
+            highlightPointCount: highlightVertices.count,
+            depthMin: depthMin,
+            depthMax: depthMax,
+            depthMean: depthSum / Float(renderableSamples.count),
+            vertexMinZ: vertexMinZ,
+            vertexMaxZ: vertexMaxZ,
+            targetDepth: targetDepth,
+            pointSize: Float(basePointSize),
+            hasRGB: rgbSampler != nil,
+            hasHighlight: !highlightVertices.isEmpty
+        )
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDepthProjectionProbeReport.writeVertexDump(
+            fields: stats.probeFields(orientation: orientation),
+            samples: vertexDumpSamples(
+                samples: renderableSamples,
+                vertices: baseVertices,
+                colors: baseColors
+            )
+        )
+        #endif
+
+        return TAPDepthProjectionScenePayloadData(
+            cameraModel: projectionFrame.cameraModel,
+            targetDepth: targetDepth,
+            stats: stats,
+            baseVertices: baseVertices,
+            baseColors: baseColors,
+            highlightVertices: highlightVertices,
+            pointSize: basePointSize
+        )
+    }
+
+    private static func fallbackColor(sample: (point: TAPPoint3D, imagePoint: CGPoint)) -> SIMD4<Float> {
+        let normalizedZ = min(max(sample.point.z / 5.0, 0), 1)
+        let color = TAPDepthHeatmapRenderer.viridisColor(normalized: normalizedZ)
+        return SIMD4<Float>(
+            Float(color.red) / 255.0,
+            Float(color.green) / 255.0,
+            Float(color.blue) / 255.0,
+            Float(color.alpha) / 255.0
+        )
+    }
+
+    private static func pointSize(depthMap: TAPMetricDepthMap, sampleCount: Int) -> CGFloat {
+        let longestEdge = max(depthMap.width, depthMap.height, 1)
+        let density = sqrt(Double(max(sampleCount, 1))) / Double(longestEdge)
+        return CGFloat(min(max(density * 5.4, 2.4), 5.8))
+    }
+
+    #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+    private static func vertexDumpSamples(
+        samples: [(point: TAPPoint3D, imagePoint: CGPoint)],
+        vertices: [SIMD3<Float>],
+        colors: [SIMD4<Float>],
+        maxCount: Int = 2_048
+    ) -> [[String: Double]] {
+        guard !samples.isEmpty,
+              samples.count == vertices.count,
+              samples.count == colors.count else {
+            return []
+        }
+        let step = max(samples.count / max(maxCount, 1), 1)
+        var output: [[String: Double]] = []
+        output.reserveCapacity(min(samples.count, maxCount))
+
+        for index in stride(from: 0, to: samples.count, by: step) {
+            guard output.count < maxCount else {
+                break
+            }
+            let sample = samples[index]
+            let vertex = vertices[index]
+            let color = colors[index]
+            output.append([
+                "depthX": Double(sample.imagePoint.x),
+                "depthY": Double(sample.imagePoint.y),
+                "depthMeters": Double(sample.point.z),
+                "cameraX": Double(sample.point.x),
+                "cameraY": Double(sample.point.y),
+                "cameraZ": Double(sample.point.z),
+                "sceneX": Double(vertex.x),
+                "sceneY": Double(vertex.y),
+                "sceneZ": Double(vertex.z),
+                "red": Double(color.x),
+                "green": Double(color.y),
+                "blue": Double(color.z),
+                "alpha": Double(color.w)
+            ])
+        }
+        return output
+    }
+    #endif
+}
+
 private struct DepthProjectionSceneView: UIViewRepresentable {
     let image: CGImage?
     let depthMap: TAPMetricDepthMap
@@ -909,6 +1189,8 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
 
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
         private var currentSignature: String?
+        private var pendingPayloadSignature: String?
+        private var payloadBuildTask: Task<TAPDepthProjectionScenePayloadData?, Never>?
         private let motionManager = CMMotionManager()
         private weak var interactionRootNode: SCNNode?
         private weak var projectionRootNode: SCNNode?
@@ -930,6 +1212,7 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
         #endif
 
         deinit {
+            payloadBuildTask?.cancel()
             motionManager.stopDeviceMotionUpdates()
         }
 
@@ -1125,8 +1408,9 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
             )
             if currentSignature != signature {
                 currentSignature = signature
-                configureScene(
+                configureSceneAsync(
                     view: view,
+                    signature: signature,
                     image: image,
                     depthMap: depthMap,
                     orientation: orientation,
@@ -1162,23 +1446,62 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
             #endif
         }
 
-        private func configureScene(
+        private func configureSceneAsync(
             view: SCNView,
+            signature: String,
             image: CGImage?,
             depthMap: TAPMetricDepthMap,
             orientation: CGImagePropertyOrientation,
             selectedPlaneRegion: TAPPlaneRegion?,
             reduceMotion: Bool
         ) {
-            let scene = SCNScene()
-            let payload = Self.makeProjectionPayload(
+            let request = TAPDepthProjectionPayloadBuildRequest(
                 image: image,
                 depthMap: depthMap,
                 orientation: orientation,
                 selectedPlaneRegion: selectedPlaneRegion
             )
-            currentCameraModel = payload?.cameraModel
-            let targetDepth = payload?.targetDepth ?? 0.25
+            let depthWidth = depthMap.width
+            let depthHeight = depthMap.height
+            pendingPayloadSignature = signature
+            payloadBuildTask?.cancel()
+            let buildTask = Task.detached(priority: .userInitiated) {
+                TAPDepthProjectionScenePayloadBuilder.makePayloadData(request: request)
+            }
+            payloadBuildTask = buildTask
+
+            Task { @MainActor [weak self, weak view] in
+                let payloadData = await buildTask.value
+                guard let self,
+                      let view,
+                      self.pendingPayloadSignature == signature else {
+                    return
+                }
+                self.pendingPayloadSignature = nil
+                self.payloadBuildTask = nil
+                self.configureScene(
+                    view: view,
+                    payloadData: payloadData,
+                    depthWidth: depthWidth,
+                    depthHeight: depthHeight,
+                    orientation: orientation,
+                    reduceMotion: reduceMotion
+                )
+            }
+        }
+
+        @MainActor
+        private func configureScene(
+            view: SCNView,
+            payloadData: TAPDepthProjectionScenePayloadData?,
+            depthWidth: Int,
+            depthHeight: Int,
+            orientation: CGImagePropertyOrientation,
+            reduceMotion: Bool
+        ) {
+            let scene = SCNScene()
+            currentCameraModel = payloadData?.cameraModel
+            let targetDepth = payloadData?.targetDepth ?? 0.25
             currentTargetDepth = targetDepth
 
             let interactionNode = SCNNode()
@@ -1200,19 +1523,28 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
             )
             motionNode.addChildNode(geometryRootNode)
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            if let payload {
-                Self.logPayloadStats(payload.stats, orientation: orientation)
+            if let payloadData {
+                Self.logPayloadStats(payloadData.stats, orientation: orientation)
             } else {
-                TAPDiagnostics.depthAnalysis.warning("projection payload missing label=\("payloadMissing", privacy: .public) depthWidth=\(depthMap.width, privacy: .public) depthHeight=\(depthMap.height, privacy: .public)")
+                TAPDiagnostics.depthAnalysis.warning("projection payload missing label=\("payloadMissing", privacy: .public) depthWidth=\(depthWidth, privacy: .public) depthHeight=\(depthHeight, privacy: .public)")
             }
             #endif
 
-            if let geometry = payload?.baseGeometry {
+            if let payloadData,
+               let geometry = Self.makePointGeometry(
+                vertices: payloadData.baseVertices,
+                colors: payloadData.baseColors,
+                pointSize: payloadData.pointSize
+               ) {
                 let node = SCNNode(geometry: geometry)
                 node.name = "DepthProjectionModel"
                 geometryRootNode.addChildNode(node)
             }
-            if let highlightGeometry = payload?.highlightGeometry {
+            if let payloadData,
+               let highlightGeometry = Self.makeHighlightGeometry(
+                vertices: payloadData.highlightVertices,
+                pointSize: payloadData.pointSize * 1.85
+               ) {
                 let node = SCNNode(geometry: highlightGeometry)
                 node.name = "SelectedPlaneProjection"
                 highlightNode = node
@@ -1254,7 +1586,7 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
             scene.rootNode.addChildNode(ambientNode)
             view.scene = scene
             view.pointOfView = cameraNode
-            if payload != nil {
+            if payloadData != nil {
                 syncProjection(view: view, viewportSize: view.bounds.size)
             }
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
@@ -1320,130 +1652,6 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
                 )
                 #endif
             }
-        }
-
-        private static func makeProjectionPayload(
-            image: CGImage?,
-            depthMap: TAPMetricDepthMap,
-            orientation: CGImagePropertyOrientation,
-            selectedPlaneRegion: TAPPlaneRegion?
-        ) -> DepthProjectionScenePayload? {
-            let fullRegion = CGRect(x: 0, y: 0, width: depthMap.width, height: depthMap.height)
-            let samples = TAPDepthGeometryProjector.sampledPoints(
-                from: depthMap,
-                in: fullRegion,
-                maxCount: 12_000
-            )
-            let rawSampleCount = samples.count
-            let renderableSamples = TAPDepthProjectionSampleFilter.renderableSamples(from: samples)
-            let filteredOutPointCount = rawSampleCount - renderableSamples.count
-            guard !renderableSamples.isEmpty else {
-                return nil
-            }
-            let projectionFrame = TAPDepthDisplayProjectionFrame(
-                depthMap: depthMap,
-                imageWidth: image?.width ?? depthMap.width,
-                imageHeight: image?.height ?? depthMap.height,
-                orientation: orientation
-            )
-            guard let projectionFrame else {
-                return nil
-            }
-
-            let rgbSampler = image.flatMap(TAPRGBPixelSampler.init(image:))
-            let highlightMask = TAPPlaneRegionHighlightMask.depthIndexSet(
-                for: selectedPlaneRegion,
-                depthMap: depthMap
-            )
-            var baseVertices: [SIMD3<Float>] = []
-            var baseColors: [SIMD4<Float>] = []
-            var highlightVertices: [SIMD3<Float>] = []
-            baseVertices.reserveCapacity(renderableSamples.count)
-            baseColors.reserveCapacity(renderableSamples.count)
-
-            var depthSum: Float = 0
-            var depthMin = Float.greatestFiniteMagnitude
-            var depthMax = -Float.greatestFiniteMagnitude
-            var vertexMinZ = Float.greatestFiniteMagnitude
-            var vertexMaxZ = -Float.greatestFiniteMagnitude
-            for sample in renderableSamples {
-                let vertex = projectionFrame.sceneVertex(
-                    forDepthPoint: sample.imagePoint,
-                    depthMeters: sample.point.z
-                )
-                baseVertices.append(vertex)
-                baseColors.append(
-                    rgbSampler?.color(
-                        atDepthPoint: sample.imagePoint,
-                        projectionFrame: projectionFrame
-                    ) ?? fallbackColor(sample: sample)
-                )
-                depthSum += sample.point.z
-                depthMin = min(depthMin, sample.point.z)
-                depthMax = max(depthMax, sample.point.z)
-                vertexMinZ = min(vertexMinZ, vertex.z)
-                vertexMaxZ = max(vertexMaxZ, vertex.z)
-
-                let x = min(max(Int(sample.imagePoint.x.rounded(.down)), 0), max(depthMap.width - 1, 0))
-                let y = min(max(Int(sample.imagePoint.y.rounded(.down)), 0), max(depthMap.height - 1, 0))
-                if highlightMask.contains(depthMap.index(x: x, y: y)) {
-                    highlightVertices.append(vertex)
-                }
-            }
-            let targetDepth = TAPDepthProjectionSampleFilter.targetDepth(
-                from: renderableSamples.map(\.point.z)
-            )
-            let basePointSize = pointSize(depthMap: depthMap, sampleCount: baseVertices.count)
-            let stats = DepthProjectionSceneStats(
-                depthWidth: depthMap.width,
-                depthHeight: depthMap.height,
-                rawImageWidth: image?.width ?? depthMap.width,
-                rawImageHeight: image?.height ?? depthMap.height,
-                orientedImageWidth: projectionFrame.cameraModel.imageWidth,
-                orientedImageHeight: projectionFrame.cameraModel.imageHeight,
-                cameraFx: projectionFrame.cameraModel.fx,
-                cameraFy: projectionFrame.cameraModel.fy,
-                cameraCx: projectionFrame.cameraModel.cx,
-                cameraCy: projectionFrame.cameraModel.cy,
-                rawSampleCount: rawSampleCount,
-                sampleCount: baseVertices.count,
-                filteredOutPointCount: filteredOutPointCount,
-                highlightPointCount: highlightVertices.count,
-                depthMin: depthMin,
-                depthMax: depthMax,
-                depthMean: depthSum / Float(renderableSamples.count),
-                vertexMinZ: vertexMinZ,
-                vertexMaxZ: vertexMaxZ,
-                targetDepth: targetDepth,
-                pointSize: Float(basePointSize),
-                hasRGB: rgbSampler != nil,
-                hasHighlight: !highlightVertices.isEmpty
-            )
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDepthProjectionProbeReport.writeVertexDump(
-                fields: stats.probeFields(orientation: orientation),
-                samples: vertexDumpSamples(
-                    samples: renderableSamples,
-                    vertices: baseVertices,
-                    colors: baseColors
-                )
-            )
-            #endif
-
-            return DepthProjectionScenePayload(
-                cameraModel: projectionFrame.cameraModel,
-                targetDepth: targetDepth,
-                stats: stats,
-                baseGeometry: makePointGeometry(
-                    vertices: baseVertices,
-                    colors: baseColors,
-                    pointSize: basePointSize
-                ),
-                highlightGeometry: highlightVertices.isEmpty ? nil : makeHighlightGeometry(
-                    vertices: highlightVertices,
-                    pointSize: basePointSize * 1.85
-                )
-            )
         }
 
         private static func makePointGeometry(
@@ -1531,131 +1739,6 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
             geometry.materials = [material]
             return geometry
         }
-
-        private static func fallbackColor(sample: (point: TAPPoint3D, imagePoint: CGPoint)) -> SIMD4<Float> {
-            let normalizedZ = min(max(sample.point.z / 5.0, 0), 1)
-            let color = TAPDepthHeatmapRenderer.viridisColor(normalized: normalizedZ)
-            return SIMD4<Float>(
-                Float(color.red) / 255.0,
-                Float(color.green) / 255.0,
-                Float(color.blue) / 255.0,
-                Float(color.alpha) / 255.0
-            )
-        }
-
-        private static func pointSize(depthMap: TAPMetricDepthMap, sampleCount: Int) -> CGFloat {
-            let longestEdge = max(depthMap.width, depthMap.height, 1)
-            let density = sqrt(Double(max(sampleCount, 1))) / Double(longestEdge)
-            return CGFloat(min(max(density * 5.4, 2.4), 5.8))
-        }
-
-        private struct DepthProjectionScenePayload {
-            let cameraModel: TAPDepthProjectionCameraModel
-            let targetDepth: Float
-            let stats: DepthProjectionSceneStats
-            let baseGeometry: SCNGeometry?
-            let highlightGeometry: SCNGeometry?
-        }
-
-        private struct DepthProjectionSceneStats {
-            let depthWidth: Int
-            let depthHeight: Int
-            let rawImageWidth: Int
-            let rawImageHeight: Int
-            let orientedImageWidth: Int
-            let orientedImageHeight: Int
-            let cameraFx: Float
-            let cameraFy: Float
-            let cameraCx: Float
-            let cameraCy: Float
-            let rawSampleCount: Int
-            let sampleCount: Int
-            let filteredOutPointCount: Int
-            let highlightPointCount: Int
-            let depthMin: Float
-            let depthMax: Float
-            let depthMean: Float
-            let vertexMinZ: Float
-            let vertexMaxZ: Float
-            let targetDepth: Float
-            let pointSize: Float
-            let hasRGB: Bool
-            let hasHighlight: Bool
-
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            func probeFields(orientation: CGImagePropertyOrientation) -> [String: Any] {
-                [
-                    "depthWidth": depthWidth,
-                    "depthHeight": depthHeight,
-                    "rawImageWidth": rawImageWidth,
-                    "rawImageHeight": rawImageHeight,
-                    "orientedImageWidth": orientedImageWidth,
-                    "orientedImageHeight": orientedImageHeight,
-                    "orientation": orientation.rawValue,
-                    "cameraFx": Double(cameraFx),
-                    "cameraFy": Double(cameraFy),
-                    "cameraCx": Double(cameraCx),
-                    "cameraCy": Double(cameraCy),
-                    "rawSampleCount": rawSampleCount,
-                    "sampleCount": sampleCount,
-                    "filteredOutPointCount": filteredOutPointCount,
-                    "highlightPointCount": highlightPointCount,
-                    "depthMin": Double(depthMin),
-                    "depthMax": Double(depthMax),
-                    "depthMean": Double(depthMean),
-                    "vertexMinZ": Double(vertexMinZ),
-                    "vertexMaxZ": Double(vertexMaxZ),
-                    "targetDepth": Double(targetDepth),
-                    "pointSize": Double(pointSize),
-                    "hasRGB": hasRGB,
-                    "hasHighlight": hasHighlight
-                ]
-            }
-            #endif
-        }
-
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        private static func vertexDumpSamples(
-            samples: [(point: TAPPoint3D, imagePoint: CGPoint)],
-            vertices: [SIMD3<Float>],
-            colors: [SIMD4<Float>],
-            maxCount: Int = 2_048
-        ) -> [[String: Double]] {
-            guard !samples.isEmpty,
-                  samples.count == vertices.count,
-                  samples.count == colors.count else {
-                return []
-            }
-            let step = max(samples.count / max(maxCount, 1), 1)
-            var output: [[String: Double]] = []
-            output.reserveCapacity(min(samples.count, maxCount))
-
-            for index in stride(from: 0, to: samples.count, by: step) {
-                guard output.count < maxCount else {
-                    break
-                }
-                let sample = samples[index]
-                let vertex = vertices[index]
-                let color = colors[index]
-                output.append([
-                    "depthX": Double(sample.imagePoint.x),
-                    "depthY": Double(sample.imagePoint.y),
-                    "depthMeters": Double(sample.point.z),
-                    "cameraX": Double(sample.point.x),
-                    "cameraY": Double(sample.point.y),
-                    "cameraZ": Double(sample.point.z),
-                    "sceneX": Double(vertex.x),
-                    "sceneY": Double(vertex.y),
-                    "sceneZ": Double(vertex.z),
-                    "red": Double(color.x),
-                    "green": Double(color.y),
-                    "blue": Double(color.z),
-                    "alpha": Double(color.w)
-                ])
-            }
-            return output
-        }
-        #endif
 
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         func logViewCreated(view: SCNView) {
@@ -1786,7 +1869,7 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
         }
 
         private static func logPayloadStats(
-            _ stats: DepthProjectionSceneStats,
+            _ stats: TAPDepthProjectionSceneStats,
             orientation: CGImagePropertyOrientation
         ) {
             TAPDiagnostics.depthAnalysis.info("projection payload label=\("payload", privacy: .public) depthWidth=\(stats.depthWidth, privacy: .public) depthHeight=\(stats.depthHeight, privacy: .public) rawImageWidth=\(stats.rawImageWidth, privacy: .public) rawImageHeight=\(stats.rawImageHeight, privacy: .public) orientedImageWidth=\(stats.orientedImageWidth, privacy: .public) orientedImageHeight=\(stats.orientedImageHeight, privacy: .public) orientation=\(orientation.rawValue, privacy: .public) cameraFx=\(Double(stats.cameraFx), privacy: .public) cameraFy=\(Double(stats.cameraFy), privacy: .public) cameraCx=\(Double(stats.cameraCx), privacy: .public) cameraCy=\(Double(stats.cameraCy), privacy: .public) rawSampleCount=\(stats.rawSampleCount, privacy: .public) sampleCount=\(stats.sampleCount, privacy: .public) filteredOutPointCount=\(stats.filteredOutPointCount, privacy: .public) highlightPointCount=\(stats.highlightPointCount, privacy: .public) depthMin=\(Double(stats.depthMin), privacy: .public) depthMax=\(Double(stats.depthMax), privacy: .public) depthMean=\(Double(stats.depthMean), privacy: .public) vertexMinZ=\(Double(stats.vertexMinZ), privacy: .public) vertexMaxZ=\(Double(stats.vertexMaxZ), privacy: .public) targetDepth=\(Double(stats.targetDepth), privacy: .public) pointSize=\(Double(stats.pointSize), privacy: .public) hasRGB=\(stats.hasRGB, privacy: .public) hasHighlight=\(stats.hasHighlight, privacy: .public)")

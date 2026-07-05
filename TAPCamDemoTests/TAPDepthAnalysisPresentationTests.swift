@@ -247,6 +247,35 @@ struct TAPDepthAnalysisPresentationTests {
         #expect(store.slot(for: DepthAnalysisCarouselEntry(albumEntry: second)) === cachedSecondSlot)
     }
 
+    @Test @MainActor func analysisCarouselStoreEvictsSlotsOutsideVisibleWindow() throws {
+        let first = try analysisAlbumEntry(id: "first", source: .photosAsset("asset-first"))
+        let second = try analysisAlbumEntry(id: "second", source: .pendingCapture("capture-second"))
+        let third = try analysisAlbumEntry(id: "third", source: .photosAsset("asset-third"))
+        let fourth = try analysisAlbumEntry(id: "fourth", source: .photosAsset("asset-fourth"))
+        let context = DepthAnalysisAlbumContext(
+            currentItemID: second.id,
+            entries: [first, second, third, fourth]
+        )
+        let store = DepthAnalysisCarouselStore(
+            source: second.source,
+            albumContext: context,
+            loader: .noop
+        )
+        let firstEntry = DepthAnalysisCarouselEntry(albumEntry: first)
+        let cachedFirstSlot = store.slot(for: firstEntry)
+        cachedFirstSlot.updatePlaneGrowthStrictness(0.9)
+
+        let movedEntry = try #require(store.move(offset: 1))
+
+        #expect(movedEntry.id == third.id)
+        #expect(store.windowEntries().map(\.entry.id) == ["second", "third", "fourth"])
+        #expect(store.retainedSlotCount == 3)
+
+        let restoredFirstSlot = store.slot(for: firstEntry)
+        #expect(restoredFirstSlot !== cachedFirstSlot)
+        #expect(abs(restoredFirstSlot.planeSelection.strictness - 0.9) < 0.0001)
+    }
+
     @Test @MainActor func analysisPhotoSlotPublishesThumbnailProgressAndDecodedInput() async throws {
         let depthMap = TAPMetricDepthMap(
             width: 2,

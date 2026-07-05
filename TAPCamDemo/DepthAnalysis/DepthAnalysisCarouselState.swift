@@ -201,6 +201,10 @@ nonisolated struct DepthAnalysisProgressivePhotoLoader {
     }
 }
 
+nonisolated struct AnalysisPhotoSlotRetainedState {
+    var planeSelection: DepthAnalysisPlaneSelectionState
+}
+
 @MainActor
 final class AnalysisPhotoSlot: ObservableObject, Identifiable {
     let entry: DepthAnalysisCarouselEntry
@@ -238,10 +242,15 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
 
     init(
         entry: DepthAnalysisCarouselEntry,
+        retainedState: AnalysisPhotoSlotRetainedState? = nil,
         planeRegionDetector: DepthAnalysisPlaneRegionDetector = DepthAnalysisPlaneRegionDetector()
     ) {
         self.entry = entry
         self.planeRequestCoordinator = DepthAnalysisPlaneRegionRequestCoordinator(detector: planeRegionDetector)
+        if let retainedState {
+            self.planeSelection = retainedState.planeSelection
+            self.planeSelection.cancelDetection()
+        }
     }
 
     deinit {
@@ -256,6 +265,27 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
     ) {
         ensureThumbnailLoading(loader: loader, pixelLength: pixelLength)
         ensureInputLoading(loader: loader, priority: priority)
+    }
+
+    func retainedStateForEviction() -> AnalysisPhotoSlotRetainedState {
+        var retainedPlaneSelection = planeSelection
+        retainedPlaneSelection.cancelDetection()
+        return AnalysisPhotoSlotRetainedState(planeSelection: retainedPlaneSelection)
+    }
+
+    func prepareForEviction() {
+        thumbnailTask?.cancel()
+        thumbnailTask = nil
+        inputTask?.cancel()
+        inputTask = nil
+        planeRequestCoordinator.cancelRegionRequest()
+        planeRequestCoordinator.resetForNewInput()
+        thumbnailImage = nil
+        input = nil
+        phase = .idle
+        errorMessage = nil
+        regionSelection.clear()
+        planeSelection.cancelDetection()
     }
 
     func clearSelection() {
@@ -291,6 +321,9 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
         let source = entry.source
         thumbnailTask = Task(priority: .utility) { [weak self] in
             let image = await loader.thumbnail(source: source, pixelLength: pixelLength)
+            guard !Task.isCancelled else {
+                return
+            }
             await MainActor.run {
                 guard let self else {
                     return
@@ -323,6 +356,12 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
                 let loadedInput = try await loader.input(source: source) { progress in
                     self?.phase = .originalLoading(progress: progress)
                 }
+                guard !Task.isCancelled else {
+                    await MainActor.run {
+                        self?.inputTask = nil
+                    }
+                    return
+                }
                 await MainActor.run {
                     guard let self else {
                         return
@@ -337,6 +376,12 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
                     self.planeRequestCoordinator.prewarmGeometry(for: loadedInput.depthMap)
                 }
             } catch {
+                guard !Task.isCancelled else {
+                    await MainActor.run {
+                        self?.inputTask = nil
+                    }
+                    return
+                }
                 await MainActor.run {
                     guard let self else {
                         return
@@ -403,6 +448,7 @@ final class DepthAnalysisCarouselStore: ObservableObject {
     let entries: [DepthAnalysisCarouselEntry]
     private let loader: DepthAnalysisProgressivePhotoLoader
     private var slots: [String: AnalysisPhotoSlot] = [:]
+    private var retainedSlotStates: [String: AnalysisPhotoSlotRetainedState] = [:]
 
     init(
         source: DepthAnalysisSource,
@@ -436,6 +482,10 @@ final class DepthAnalysisCarouselStore: ObservableObject {
             return nil
         }
         return slot(for: currentEntry)
+    }
+
+    var retainedSlotCount: Int {
+        slots.count
     }
 
     func entry(offset: Int) -> DepthAnalysisCarouselEntry? {
@@ -477,19 +527,34 @@ final class DepthAnalysisCarouselStore: ObservableObject {
         if let existing = slots[entry.id] {
             return existing
         }
-        let slot = AnalysisPhotoSlot(entry: entry)
+        let retainedState = retainedSlotStates.removeValue(forKey: entry.id)
+        let slot = AnalysisPhotoSlot(entry: entry, retainedState: retainedState)
         slots[entry.id] = slot
         return slot
     }
 
     func ensureVisibleWindowLoaded(pixelLength: Int = 960) {
-        for item in windowEntries() {
+        let window = windowEntries()
+        let windowIDs = Set(window.map(\.entry.id))
+        for item in window {
             let slot = slot(for: item.entry)
             slot.ensureLoading(
                 loader: loader,
                 pixelLength: pixelLength,
                 priority: item.offset == 0 ? .userInitiated : .utility
             )
+        }
+        pruneSlots(keeping: windowIDs)
+    }
+
+    private func pruneSlots(keeping retainedIDs: Set<String>) {
+        let evictedIDs = slots.keys.filter { !retainedIDs.contains($0) }
+        for id in evictedIDs {
+            guard let slot = slots.removeValue(forKey: id) else {
+                continue
+            }
+            retainedSlotStates[id] = slot.retainedStateForEviction()
+            slot.prepareForEviction()
         }
     }
 }

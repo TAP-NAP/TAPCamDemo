@@ -311,6 +311,56 @@ struct TAPDepthAnalysisPlaneRegionTests {
         #expect(bottomLeftRawPixel.z > 0.99)
     }
 
+    @Test func projectionPayloadBuilderProducesRGBDepthVerticesAndHighlightData() throws {
+        let depthMap = TAPMetricDepthMap(
+            width: 2,
+            height: 1,
+            samples: [1, 1.25],
+            calibration: Self.calibration(width: 2, height: 1)
+        )
+        let image = try TAPDepthRGBAImageRenderer.image(
+            pixels: [
+                255, 0, 0, 255,
+                0, 0, 255, 255
+            ],
+            width: 2,
+            height: 1
+        )
+        let base = Self.samplePlaneRegion()
+        let region = TAPPlaneRegion(
+            seedPixel: CGPoint(x: 1, y: 0),
+            estimate: base.estimate,
+            pixelRuns: [
+                TAPPlanePixelRun(y: 0, xStart: 1, xEndExclusive: 2)
+            ],
+            gridCells: base.gridCells,
+            contourPoints: base.contourPoints,
+            imageBounds: CGRect(x: 1, y: 0, width: 1, height: 1),
+            confidence: base.confidence,
+            flatnessScore: base.flatnessScore,
+            sampleCount: 1,
+            areaSquareMeters: base.areaSquareMeters
+        )
+
+        let payload = try #require(TAPDepthProjectionScenePayloadBuilder.makePayloadData(
+            image: image,
+            depthMap: depthMap,
+            orientation: .up,
+            selectedPlaneRegion: region
+        ))
+
+        #expect(payload.baseVertices.count == 2)
+        #expect(payload.baseColors.count == 2)
+        #expect(payload.highlightVertices.count == 1)
+        #expect(payload.stats.hasRGB)
+        #expect(payload.stats.hasHighlight)
+        #expect(payload.baseColors[0].x > 0.99)
+        #expect(payload.baseColors[0].z < 0.01)
+        #expect(payload.baseColors[1].x < 0.01)
+        #expect(payload.baseColors[1].z > 0.99)
+        #expect(payload.baseVertices.allSatisfy { $0.z < 0 })
+    }
+
     @Test func planeRegionPixelRunsBuildProjectionHighlightMask() throws {
         let depthMap = TAPMetricDepthMap(
             width: 5,
