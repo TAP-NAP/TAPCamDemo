@@ -176,34 +176,81 @@ struct TAPDepthAnalysisPresentationTests {
         #expect(!DepthAnalysisViewMode.pointCloud.isDebugOnlyAnalysisButton)
     }
 
-    @Test func analysisDrawerToolsMatchAgreedBottomControls() throws {
-        #expect(AnalysisDrawerTool.allCases.map(\.title) == ["2D", "3D", "凭证"])
-        #expect(AnalysisDrawerTool.allCases.map(\.systemImage) == ["square.on.square", "cube.transparent", "checkmark.shield"])
-        #expect(AnalysisDrawerTool.twoD.accessibilityLabel == "2D analysis")
-        #expect(AnalysisDrawerTool.threeD.accessibilityLabel == "3D projection")
-        #expect(AnalysisDrawerTool.credential.systemImage == "checkmark.shield")
+    @Test func analysisViewerToolsMatchAgreedBottomControls() throws {
+        #expect(AnalysisViewerTool.allCases.map(\.title) == ["RAW", "2D", "3D"])
+        #expect(AnalysisViewerTool.raw.accessibilityLabel == "Raw photo")
+        #expect(AnalysisViewerTool.twoD.accessibilityLabel == "2D analysis")
+        #expect(AnalysisViewerTool.threeD.accessibilityLabel == "3D projection")
     }
 
-    @Test func analysisToolViewportFollowsDisplayedImageAspectRatio() throws {
-        let landscape = AnalysisToolViewportLayout.size(
+    @Test func analysisNativePagingUsesEighteenPointBlackGap() throws {
+        #expect(DepthAnalysisViewerInteractionPolicy.nativePageSpacing == 18)
+    }
+
+    @Test func analysisEdgeBackPolicyRequiresLeftEdgeRightwardDominantDrag() throws {
+        #expect(AnalysisEdgeBackPolicy.shouldReturn(
+            startX: 12,
+            translation: CGSize(width: 72, height: 8),
+            predictedTranslation: CGSize(width: 80, height: 8)
+        ))
+        #expect(AnalysisEdgeBackPolicy.shouldReturn(
+            startX: 12,
+            translation: CGSize(width: 32, height: 4),
+            predictedTranslation: CGSize(width: 120, height: 4)
+        ))
+        #expect(!AnalysisEdgeBackPolicy.shouldReturn(
+            startX: 28,
+            translation: CGSize(width: 100, height: 4),
+            predictedTranslation: CGSize(width: 120, height: 4)
+        ))
+        #expect(!AnalysisEdgeBackPolicy.shouldReturn(
+            startX: 12,
+            translation: CGSize(width: -90, height: 2),
+            predictedTranslation: CGSize(width: -130, height: 2)
+        ))
+        #expect(!AnalysisEdgeBackPolicy.shouldReturn(
+            startX: 12,
+            translation: CGSize(width: 90, height: 90),
+            predictedTranslation: CGSize(width: 130, height: 90)
+        ))
+    }
+
+    @Test func analysisToolContainerRectMatchesRawAspectFitAndStaysCentered() throws {
+        let viewportSize = CGSize(width: 390, height: 844)
+        let containerRect = DepthAnalysisViewerInteractionPolicy.centeredToolContainerRect(
             imageSize: CGSize(width: 400, height: 300),
             orientation: .up,
-            viewportSize: CGSize(width: 424, height: 800)
+            viewportSize: viewportSize
         )
-        let portrait = AnalysisToolViewportLayout.size(
-            imageSize: CGSize(width: 300, height: 600),
-            orientation: .up,
-            viewportSize: CGSize(width: 424, height: 800)
-        )
-        let rotated = AnalysisToolViewportLayout.size(
+        let rotatedRect = DepthAnalysisViewerInteractionPolicy.centeredToolContainerRect(
             imageSize: CGSize(width: 400, height: 300),
             orientation: .right,
-            viewportSize: CGSize(width: 424, height: 800)
+            viewportSize: viewportSize
         )
 
-        #expect(landscape == CGSize(width: 400, height: 300))
-        #expect(portrait == CGSize(width: 256, height: 512))
-        #expect(rotated == CGSize(width: 384, height: 512))
+        #expect(containerRect == CGRect(x: 0, y: 275.75, width: 390, height: 292.5))
+        #expect(containerRect.midX == viewportSize.width * 0.5)
+        #expect(containerRect.midY == viewportSize.height * 0.5)
+        #expect(rotatedRect == CGRect(x: 0, y: 162, width: 390, height: 520))
+        #expect(rotatedRect.midX == viewportSize.width * 0.5)
+        #expect(rotatedRect.midY == viewportSize.height * 0.5)
+    }
+
+    @Test func analysisPhotoLayoutUsesAspectFit() throws {
+        let containerSize = CGSize(width: 300, height: 300)
+        let landscapeRect = DepthAnalysisViewerInteractionPolicy.aspectFitRect(
+            imageSize: CGSize(width: 400, height: 300),
+            orientation: .up,
+            containerSize: containerSize
+        )
+        let rotatedRect = DepthAnalysisViewerInteractionPolicy.aspectFitRect(
+            imageSize: CGSize(width: 400, height: 300),
+            orientation: .right,
+            containerSize: containerSize
+        )
+
+        #expect(landscapeRect == CGRect(x: 0, y: 37.5, width: 300, height: 225))
+        #expect(rotatedRect == CGRect(x: 37.5, y: 0, width: 225, height: 300))
     }
 
     @Test func analysisAlbumContextMovesThroughAdjacentEntries() throws {
@@ -247,6 +294,26 @@ struct TAPDepthAnalysisPresentationTests {
         #expect(store.slot(for: DepthAnalysisCarouselEntry(albumEntry: second)) === cachedSecondSlot)
     }
 
+    @Test @MainActor func analysisCarouselStoreMoveKeepsAlbumRouteContext() throws {
+        let first = try analysisAlbumEntry(id: "first", source: .photosAsset("asset-first"))
+        let second = try analysisAlbumEntry(id: "second", source: .photosAsset("asset-second"))
+        let context = DepthAnalysisAlbumContext(
+            currentItemID: first.id,
+            entries: [first, second]
+        )
+        let store = DepthAnalysisCarouselStore(
+            source: first.source,
+            albumContext: context,
+            loader: .noop
+        )
+
+        let movedEntry = try #require(store.move(offset: 1))
+
+        #expect(movedEntry.albumEntry?.id == second.id)
+        #expect(movedEntry.albumEntry?.routeAnchor == second.routeAnchor)
+        #expect(store.currentItemID == second.id)
+    }
+
     @Test @MainActor func analysisCarouselStoreEvictsSlotsOutsideVisibleWindow() throws {
         let first = try analysisAlbumEntry(id: "first", source: .photosAsset("asset-first"))
         let second = try analysisAlbumEntry(id: "second", source: .pendingCapture("capture-second"))
@@ -276,6 +343,78 @@ struct TAPDepthAnalysisPresentationTests {
         #expect(abs(restoredFirstSlot.planeSelection.strictness - 0.9) < 0.0001)
     }
 
+    @Test @MainActor func analysisCarouselStoreLoadsDisplayBeforeCurrentAnalysis() async throws {
+        let first = try analysisAlbumEntry(id: "first", source: .photosAsset("asset-first"))
+        let second = try analysisAlbumEntry(id: "second", source: .photosAsset("asset-second"))
+        let third = try analysisAlbumEntry(id: "third", source: .photosAsset("asset-third"))
+        let fourth = try analysisAlbumEntry(id: "fourth", source: .photosAsset("asset-fourth"))
+        let depthMap = TAPMetricDepthMap(
+            width: 2,
+            height: 2,
+            samples: [1, 1, 1, 1],
+            calibration: TAPCamDemoTestFixtures.sampleCalibration
+        )
+        let input = try TAPCamDemoTestFixtures.analysisInput(depthMap: depthMap)
+        let thumbnail = try singlePixelUIImage()
+        let events = AnalysisLoaderEventRecorder()
+        let loader = DepthAnalysisProgressivePhotoLoader(
+            thumbnailLoader: { source, _ in
+                await events.recordThumbnail(source)
+                return thumbnail
+            },
+            displayLoader: { source, _ in
+                await events.recordDisplay(source)
+                return AnalysisDisplayPhoto(image: thumbnail)
+            },
+            inputLoader: { source, _ in
+                await events.recordInput(source)
+                return input
+            }
+        )
+        let context = DepthAnalysisAlbumContext(
+            currentItemID: second.id,
+            entries: [first, second, third, fourth]
+        )
+        let store = DepthAnalysisCarouselStore(
+            source: second.source,
+            albumContext: context,
+            loader: loader
+        )
+
+        store.ensureVisibleWindowLoaded(pixelLength: 80)
+        try await waitForLoaderEvents(events, thumbnailCount: 3, displayCount: 3, inputCount: 0)
+
+        var snapshot = await events.snapshot()
+        #expect(Set(snapshot.thumbnails) == ["photos:asset-first", "photos:asset-second", "photos:asset-third"])
+        #expect(Set(snapshot.displays) == ["photos:asset-first", "photos:asset-second", "photos:asset-third"])
+        #expect(snapshot.inputs.isEmpty)
+
+        store.ensureVisibleWindowLoaded(pixelLength: 80, loadCurrentAnalysis: true)
+        try await waitForLoaderEvents(events, thumbnailCount: 3, displayCount: 3, inputCount: 1)
+
+        snapshot = await events.snapshot()
+        #expect(snapshot.inputs == ["photos:asset-second"])
+
+        let movedEntry = try #require(store.move(offset: 1, loadCurrentAnalysis: true))
+        #expect(movedEntry.id == third.id)
+        try await waitForLoaderEvents(events, thumbnailCount: 4, displayCount: 4, inputCount: 2)
+
+        snapshot = await events.snapshot()
+        #expect(Set(snapshot.thumbnails) == [
+            "photos:asset-first",
+            "photos:asset-second",
+            "photos:asset-third",
+            "photos:asset-fourth"
+        ])
+        #expect(Set(snapshot.displays) == [
+            "photos:asset-first",
+            "photos:asset-second",
+            "photos:asset-third",
+            "photos:asset-fourth"
+        ])
+        #expect(snapshot.inputs == ["photos:asset-second", "photos:asset-third"])
+    }
+
     @Test @MainActor func analysisPhotoSlotPublishesThumbnailProgressAndDecodedInput() async throws {
         let depthMap = TAPMetricDepthMap(
             width: 2,
@@ -287,6 +426,7 @@ struct TAPDepthAnalysisPresentationTests {
         let thumbnail = try singlePixelUIImage()
         let loader = DepthAnalysisProgressivePhotoLoader(
             thumbnailLoader: { _, _ in thumbnail },
+            displayLoader: { _, _ in AnalysisDisplayPhoto(image: thumbnail) },
             inputLoader: { _, progress in
                 await progress(0.35)
                 return input
@@ -301,6 +441,7 @@ struct TAPDepthAnalysisPresentationTests {
 
         #expect(slot.phase == .analysisReady)
         #expect(slot.thumbnailImage != nil)
+        #expect(slot.displayPhoto?.image.size == thumbnail.size)
         #expect(slot.input?.depthMap.width == 2)
         #expect(slot.loadProgress == nil)
     }
@@ -455,10 +596,64 @@ private func waitForCondition(
     Issue.record("Timed out waiting for condition.")
 }
 
+private func waitForLoaderEvents(
+    _ events: AnalysisLoaderEventRecorder,
+    thumbnailCount: Int,
+    displayCount: Int,
+    inputCount: Int,
+    timeoutNanoseconds: UInt64 = 1_000_000_000
+) async throws {
+    let deadline = Date().addingTimeInterval(Double(timeoutNanoseconds) / 1_000_000_000)
+    while Date() < deadline {
+        let snapshot = await events.snapshot()
+        if snapshot.thumbnails.count >= thumbnailCount,
+           snapshot.displays.count >= displayCount,
+           snapshot.inputs.count >= inputCount {
+            return
+        }
+        try await Task.sleep(nanoseconds: 10_000_000)
+    }
+    Issue.record("Timed out waiting for loader events.")
+}
+
+private actor AnalysisLoaderEventRecorder {
+    private(set) var thumbnails: [String] = []
+    private(set) var displays: [String] = []
+    private(set) var inputs: [String] = []
+
+    func recordThumbnail(_ source: DepthAnalysisSource) {
+        thumbnails.append(Self.id(for: source))
+    }
+
+    func recordDisplay(_ source: DepthAnalysisSource) {
+        displays.append(Self.id(for: source))
+    }
+
+    func recordInput(_ source: DepthAnalysisSource) {
+        inputs.append(Self.id(for: source))
+    }
+
+    func snapshot() -> (thumbnails: [String], displays: [String], inputs: [String]) {
+        (thumbnails, displays, inputs)
+    }
+
+    private static func id(for source: DepthAnalysisSource) -> String {
+        switch source {
+        case .photosAsset(let assetID):
+            "photos:\(assetID)"
+        case .pendingCapture(let captureID):
+            "pending:\(captureID)"
+        }
+    }
+}
+
 private extension DepthAnalysisProgressivePhotoLoader {
     static var noop: DepthAnalysisProgressivePhotoLoader {
         DepthAnalysisProgressivePhotoLoader(
             thumbnailLoader: { _, _ in nil },
+            displayLoader: { _, _ in
+                throw DepthAnalysisInputLoaderError.pendingCaptureTemporarilyUnavailable
+            },
             inputLoader: { _, _ in
                 throw DepthAnalysisInputLoaderError.pendingCaptureTemporarilyUnavailable
             }

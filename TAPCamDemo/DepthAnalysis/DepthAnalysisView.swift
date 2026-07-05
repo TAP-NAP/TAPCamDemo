@@ -5,75 +5,25 @@
 //  Created by Codex on 2026/4/26.
 //
 
-import CoreGraphics
 import Foundation
 import ImageIO
+import OSLog
 import SwiftUI
-
-nonisolated enum AnalysisToolViewportLayout {
-    static let horizontalPadding: CGFloat = 24
-    static let maximumHeightRatio: CGFloat = 0.64
-    static let fallbackAspectRatio: CGFloat = 4.0 / 3.0
-
-    static func size(
-        imageSize: CGSize?,
-        orientation: CGImagePropertyOrientation,
-        viewportSize: CGSize
-    ) -> CGSize {
-        let availableWidth = max(viewportSize.width - horizontalPadding, 1)
-        let maxHeight = max(viewportSize.height * maximumHeightRatio, 240)
-        let aspectRatio = displayAspectRatio(imageSize: imageSize, orientation: orientation)
-        let naturalHeight = availableWidth / aspectRatio
-
-        guard naturalHeight > maxHeight else {
-            return CGSize(width: availableWidth, height: max(naturalHeight, 1))
-        }
-
-        return CGSize(width: maxHeight * aspectRatio, height: maxHeight)
-    }
-
-    private static func displayAspectRatio(
-        imageSize: CGSize?,
-        orientation: CGImagePropertyOrientation
-    ) -> CGFloat {
-        guard let imageSize,
-              imageSize.width > 0,
-              imageSize.height > 0 else {
-            return fallbackAspectRatio
-        }
-
-        let displayedSize = TAPImageOrientationMapper.displayedSize(
-            nativeSize: imageSize,
-            orientation: orientation
-        )
-        guard displayedSize.width > 0, displayedSize.height > 0 else {
-            return fallbackAspectRatio
-        }
-        return displayedSize.width / displayedSize.height
-    }
-}
+import UIKit
 
 /// Independent browser/analysis surface for saved TAP Depth HEIC files.
 ///
 /// The camera view links here through a thumbnail only. The default state is a
-/// Photos-like browser for the original image; analysis tools live in the
-/// scroll-revealed black detail page below the photo.
+/// Photos-like browser where the bottom capsule switches the centered primary
+/// surface between RAW, 2D, and 3D.
 struct DepthAnalysisView: View {
     private let onCurrentAlbumEntryChanged: ((DepthAnalysisAlbumContext.Entry) -> Void)?
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.displayScale) private var displayScale
     @StateObject private var carouselStore: DepthAnalysisCarouselStore
-    @StateObject private var appAttestController: AppAttestRuntimeController
-    @State private var analysisScrollPosition = ScrollPosition(idType: String.self)
     @State private var heatmapOpacity = 0.58
-    @State private var selectedTool: AnalysisDrawerTool?
-    @State private var buttonHint: AnalysisButtonHint?
-    @State private var buttonHintToken = UUID()
-    @State private var signatureVerificationRunID = UUID()
-    @State private var photoScale: CGFloat = 1
-    @State private var photoOffset: CGSize = .zero
-    @AppStorage(DepthAnalyzerPreferences.showsAnalysisHelpKey)
-    private var isShowingInlineHelp = DepthAnalyzerPreferences.defaultShowsAnalysisHelp
+    @State private var selectedTool = AnalysisViewerTool.raw
 
     init(
         source: DepthAnalysisSource,
@@ -87,7 +37,6 @@ struct DepthAnalysisView: View {
                 albumContext: albumContext
             )
         )
-        _appAttestController = StateObject(wrappedValue: appAttestController ?? AppAttestRuntimeController())
         self.onCurrentAlbumEntryChanged = onCurrentAlbumEntryChanged
     }
 
@@ -113,222 +62,699 @@ struct DepthAnalysisView: View {
 
     var body: some View {
         analysisSurface()
-        .navigationTitle("Analysis")
-        .navigationBarTitleDisplayMode(.inline)
-        .task {
-            carouselStore.ensureVisibleWindowLoaded()
-        }
-        .onChange(of: carouselStore.currentItemID) { _, _ in
-            resetPhotoTransform()
-            carouselStore.ensureVisibleWindowLoaded()
-            if selectedTool == .credential {
-                signatureVerificationRunID = UUID()
-            }
-        }
+        .toolbar(.hidden, for: .navigationBar)
+        .ignoresSafeArea(.container, edges: .all)
     }
 
     private func analysisSurface() -> some View {
         GeometryReader { geometry in
             let viewportSize = geometry.size
-            let drawerY = halfDrawerScrollY(for: viewportSize)
+            let safeAreaInsets = geometry.safeAreaInsets
+            let displayPixelLength = Self.displayPixelLength(
+                viewportSize: viewportSize,
+                displayScale: displayScale
+            )
 
             ZStack(alignment: .bottom) {
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: 0) {
-                        AnalysisPhotoCarouselView(
-                            store: carouselStore,
-                            scale: $photoScale,
-                            offset: $photoOffset,
-                            onCurrentEntryChanged: { entry in
-                                if let albumEntry = entry.albumEntry {
-                                    onCurrentAlbumEntryChanged?(albumEntry)
-                                }
-                            },
-                            onDismiss: {
-                                dismiss()
-                            }
-                        )
-                        .frame(width: viewportSize.width, height: viewportSize.height)
-                        .id("photo")
-
-                        analysisDetailPage(
-                            slot: carouselStore.currentSlot,
-                            viewportSize: viewportSize
-                        )
-                            .frame(width: viewportSize.width)
-                            .frame(minHeight: viewportSize.height)
-                            .id("tools")
+                AnalysisPhotoCarouselView(
+                    store: carouselStore,
+                    selectedTool: selectedTool,
+                    displayPixelLength: displayPixelLength,
+                    heatmapOpacity: $heatmapOpacity,
+                    onCurrentEntryChanged: handleCurrentEntryChanged,
+                    onEdgeBack: {
+                        dismiss()
                     }
-                }
-                .scrollPosition($analysisScrollPosition)
+                )
+                .frame(width: viewportSize.width, height: viewportSize.height)
                 .background(Color.black)
 
-                analysisControls(drawerY: drawerY)
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 12)
-            }
-        }
-        .background(Color.black)
-    }
-
-    private func analysisControls(drawerY: CGFloat) -> some View {
-        DepthAnalysisControlsView(
-            selectedTool: selectedTool,
-            buttonHint: buttonHint,
-            onToolTapped: { tool in
-                selectedTool = tool
-                if tool == .credential {
-                    signatureVerificationRunID = UUID()
-                }
-                showButtonHint(.tool(tool))
-                withAnimation(.snappy(duration: 0.28)) {
-                    analysisScrollPosition.scrollTo(y: drawerY)
-                }
-            },
-            onShareTapped: {
-                showButtonHint(.share)
-            },
-            onDeleteTapped: {
-                showButtonHint(.delete)
-            }
-        )
-        .animation(.snappy(duration: 0.18), value: isShowingInlineHelp)
-    }
-
-    private func analysisDetailPage(
-        slot: AnalysisPhotoSlot?,
-        viewportSize: CGSize
-    ) -> some View {
-        let activeTool = selectedTool ?? .credential
-
-        return VStack(alignment: .leading, spacing: 14) {
-            Capsule()
-                .fill(.white.opacity(0.36))
-                .frame(width: 38, height: 5)
-                .frame(maxWidth: .infinity)
-                .padding(.top, 10)
-
-            toolHeader(activeTool)
-
-            toolContent(for: activeTool, slot: slot, viewportSize: viewportSize)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-
-            Spacer(minLength: 92)
-        }
-        .padding(.horizontal, 12)
-        .padding(.top, 4)
-        .foregroundStyle(.white)
-        .background(Color.black)
-    }
-
-    private func toolHeader(_ tool: AnalysisDrawerTool) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: tool.systemImage)
-                .font(.subheadline.weight(.semibold))
-                .symbolRenderingMode(.hierarchical)
-            Text(tool.title)
-                .font(.subheadline.weight(.semibold))
-            Spacer(minLength: 0)
-        }
-        .foregroundStyle(.white.opacity(0.86))
-        .accessibilityElement(children: .combine)
-    }
-
-    @ViewBuilder
-    private func toolContent(
-        for tool: AnalysisDrawerTool,
-        slot: AnalysisPhotoSlot?,
-        viewportSize: CGSize
-    ) -> some View {
-        switch tool {
-        case .twoD:
-            twoDToolContent(slot: slot, viewportSize: viewportSize)
-        case .threeD:
-            threeDToolContent(slot: slot, viewportSize: viewportSize)
-        case .credential:
-            credentialToolContent(slot: slot)
-        }
-    }
-
-    @ViewBuilder
-    private func twoDToolContent(
-        slot: AnalysisPhotoSlot?,
-        viewportSize: CGSize
-    ) -> some View {
-        if let slot, let input = slot.input {
-            let toolSize = toolViewportSize(input: input, slot: slot, viewportSize: viewportSize)
-            VStack(alignment: .leading, spacing: 12) {
-                DepthAnalysisStageView(
-                    viewMode: .planes,
-                    image: input.image,
-                    imageOrientation: input.imageOrientation,
-                    depthMap: input.depthMap,
-                    heatmapImage: input.heatmap.image,
-                    validMaskImage: input.validMask.image,
-                    heatmapOpacity: heatmapOpacity,
-                    selection: Binding(
-                        get: { slot.regionSelection.selectionRect },
-                        set: { slot.regionSelection.selectionRect = $0 }
-                    ),
-                    interactionState: slot.regionSelection.interactionState,
-                    planeRegion: slot.planeSelection.selectedRegion,
-                    planeSeedPoint: slot.planeSelection.seedPoint,
-                    metadataSummary: nil,
-                    scoreSummary: nil,
-                    allowsRegionSelection: false,
-                    onSelectionBegan: { _ in },
-                    onSelectionChanged: { _ in },
-                    onSelectionEnded: { _ in },
-                    onSelectionCleared: {
-                        slot.clearSelection()
+                DepthAnalysisViewerChromeView(
+                    selectedTool: selectedTool,
+                    heatmapOpacity: $heatmapOpacity,
+                    topSafeArea: safeAreaInsets.top,
+                    bottomSafeArea: safeAreaInsets.bottom,
+                    onBackTapped: {
+                        dismiss()
                     },
-                    onPlaneSeedSelected: { depthPoint in
-                        slot.selectPlaneSeed(depthPoint)
-                    }
+                    onToolTapped: handleToolTapped
                 )
-                .frame(width: toolSize.width, height: toolSize.height)
-                .frame(maxWidth: .infinity)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .stroke(.white.opacity(0.16), lineWidth: 1)
+                .zIndex(2)
+            }
+            .animation(.snappy(duration: 0.2), value: selectedTool)
+        }
+        .background(Color.black)
+    }
+
+    private func handleToolTapped(_ tool: AnalysisViewerTool) {
+        selectedTool = tool
+    }
+
+    private func handleCurrentEntryChanged(_ entry: DepthAnalysisCarouselEntry) {
+        if let albumEntry = entry.albumEntry {
+            onCurrentAlbumEntryChanged?(albumEntry)
+        }
+    }
+
+    private static func displayPixelLength(viewportSize: CGSize, displayScale: CGFloat) -> Int {
+        let viewportMaxLength = max(viewportSize.width, viewportSize.height)
+        let scaledLength = Int(ceil(viewportMaxLength * max(displayScale, 1)))
+        return min(max(scaledLength, 960), 4096)
+    }
+}
+
+private struct AnalysisPhotoCarouselView: View {
+    @ObservedObject var store: DepthAnalysisCarouselStore
+    let selectedTool: AnalysisViewerTool
+    let displayPixelLength: Int
+    @Binding var heatmapOpacity: Double
+    let onCurrentEntryChanged: (DepthAnalysisCarouselEntry) -> Void
+    let onEdgeBack: () -> Void
+
+    var body: some View {
+        AnalysisNativePagingView(
+            store: store,
+            selectedTool: selectedTool,
+            displayPixelLength: displayPixelLength,
+            heatmapOpacity: $heatmapOpacity,
+            onCurrentEntryChanged: onCurrentEntryChanged,
+            onEdgeBack: onEdgeBack
+        )
+        .background(Color.black)
+        .accessibilityLabel("Photo carousel")
+        .task(id: "\(selectedTool.rawValue)-\(displayPixelLength)") {
+            store.ensureVisibleWindowLoaded(
+                pixelLength: displayPixelLength,
+                loadCurrentAnalysis: selectedTool != .raw,
+                prewarmCurrentPlaneGeometry: selectedTool == .threeD
+            )
+        }
+    }
+}
+
+private struct AnalysisNativePagingView: UIViewRepresentable {
+    @ObservedObject var store: DepthAnalysisCarouselStore
+    let selectedTool: AnalysisViewerTool
+    let displayPixelLength: Int
+    @Binding var heatmapOpacity: Double
+    let onCurrentEntryChanged: (DepthAnalysisCarouselEntry) -> Void
+    let onEdgeBack: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeUIView(context: Context) -> UIScrollView {
+        let scrollView = UIScrollView()
+        scrollView.backgroundColor = .black
+        scrollView.isPagingEnabled = true
+        scrollView.bounces = true
+        scrollView.alwaysBounceHorizontal = true
+        scrollView.alwaysBounceVertical = false
+        scrollView.showsHorizontalScrollIndicator = false
+        scrollView.showsVerticalScrollIndicator = false
+        scrollView.decelerationRate = .fast
+        scrollView.delegate = context.coordinator
+        scrollView.contentInsetAdjustmentBehavior = .never
+        context.coordinator.installHosts(in: scrollView)
+        context.coordinator.installEdgeBackGesture(in: scrollView, onEdgeBack: onEdgeBack)
+        return scrollView
+    }
+
+    func updateUIView(_ scrollView: UIScrollView, context: Context) {
+        context.coordinator.update(parent: self, scrollView: scrollView)
+    }
+
+    final class Coordinator: NSObject, UIScrollViewDelegate, UIGestureRecognizerDelegate {
+        private var parent: AnalysisNativePagingView?
+        private var hosts: [UIHostingController<AnyView>] = []
+        private var isProgrammaticScroll = false
+        private var edgeBackAction: (() -> Void)?
+
+        func installHosts(in scrollView: UIScrollView) {
+            guard hosts.isEmpty else {
+                return
+            }
+            hosts = (0..<3).map { _ in
+                let host = UIHostingController(rootView: AnyView(Color.black))
+                host.view.backgroundColor = .black
+                host.view.isOpaque = true
+                scrollView.addSubview(host.view)
+                return host
+            }
+        }
+
+        func installEdgeBackGesture(in scrollView: UIScrollView, onEdgeBack: @escaping () -> Void) {
+            edgeBackAction = onEdgeBack
+            guard scrollView.gestureRecognizers?.contains(where: { $0 is UIScreenEdgePanGestureRecognizer }) != true else {
+                return
+            }
+            let gesture = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handleEdgeBack(_:)))
+            gesture.edges = .left
+            gesture.delegate = self
+            scrollView.addGestureRecognizer(gesture)
+        }
+
+        func update(parent: AnalysisNativePagingView, scrollView: UIScrollView) {
+            self.parent = parent
+            edgeBackAction = parent.onEdgeBack
+            configure(
+                scrollView: scrollView,
+                parent: parent,
+                forceResetOffset: !scrollView.isDragging && !scrollView.isDecelerating
+            )
+        }
+
+        private func configure(
+            scrollView: UIScrollView,
+            parent: AnalysisNativePagingView,
+            forceResetOffset: Bool
+        ) {
+            let bounds = scrollView.bounds
+            guard bounds.width > 0, bounds.height > 0 else {
+                return
+            }
+
+            let window = parent.store.windowEntries()
+            let currentPosition = window.firstIndex { $0.offset == 0 } ?? 0
+            let pageWidth = bounds.width
+            let pageSpacing = min(
+                DepthAnalysisViewerInteractionPolicy.nativePageSpacing,
+                max(pageWidth - 1, 0)
+            )
+            let pageContentSize = CGSize(
+                width: max(pageWidth - pageSpacing, 1),
+                height: bounds.height
+            )
+            scrollView.contentSize = CGSize(width: bounds.width * CGFloat(max(window.count, 1)), height: bounds.height)
+
+            for index in hosts.indices {
+                let host = hosts[index]
+                host.view.frame = CGRect(
+                    x: CGFloat(index) * pageWidth + pageSpacing * 0.5,
+                    y: 0,
+                    width: pageContentSize.width,
+                    height: pageContentSize.height
+                )
+
+                guard window.indices.contains(index) else {
+                    host.rootView = AnyView(Color.black)
+                    host.view.isHidden = true
+                    continue
                 }
 
-                OverlayInspectorContent(opacity: $heatmapOpacity, showsInlineHelp: isShowingInlineHelp)
-                PlaneFilterInspectorContent(
-                    depthMap: input.depthMap,
-                    depthAccuracy: input.depthAccuracy,
-                    depthQuality: input.depthQuality,
-                    selectedPlaneRegion: slot.planeSelection.selectedRegion,
-                    planeSeedPoint: slot.planeSelection.seedPoint,
-                    isDetecting: slot.planeSelection.isDetecting,
-                    errorMessage: DepthAnalysisInspectorErrorMessage.planeSelection(
-                        slot.planeSelection.errorMessage
-                    ),
-                    strictness: Binding(
-                        get: { slot.planeSelection.strictness },
-                        set: { slot.updatePlaneGrowthStrictness($0) }
-                    ),
-                    showsInlineHelp: isShowingInlineHelp
+                let item = window[index]
+                host.view.isHidden = false
+                host.rootView = AnyView(
+                    AnalysisNativePageView(
+                        slot: parent.store.slot(for: item.entry),
+                        tool: parent.selectedTool,
+                        viewportSize: pageContentSize,
+                        isCurrent: item.offset == 0,
+                        heatmapOpacity: parent.$heatmapOpacity
+                    )
                 )
             }
-            .tint(.white)
+
+            let targetOffset = CGPoint(x: CGFloat(currentPosition) * pageWidth, y: 0)
+            guard forceResetOffset else {
+                return
+            }
+            if abs(scrollView.contentOffset.x - targetOffset.x) > 0.5 || scrollView.contentOffset.y != 0 {
+                isProgrammaticScroll = true
+                scrollView.setContentOffset(targetOffset, animated: false)
+                isProgrammaticScroll = false
+            }
+        }
+
+        func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+            guard !decelerate else {
+                return
+            }
+            finishPaging(scrollView)
+        }
+
+        func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+            finishPaging(scrollView)
+        }
+
+        func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
+            finishPaging(scrollView)
+        }
+
+        private func finishPaging(_ scrollView: UIScrollView) {
+            guard !isProgrammaticScroll,
+                  let parent,
+                  scrollView.bounds.width > 0 else {
+                return
+            }
+            let window = parent.store.windowEntries()
+            guard !window.isEmpty else {
+                return
+            }
+            let currentPosition = window.firstIndex { $0.offset == 0 } ?? 0
+            let page = min(
+                max(Int(round(scrollView.contentOffset.x / scrollView.bounds.width)), 0),
+                window.count - 1
+            )
+            let offset = page - currentPosition
+            guard offset != 0 else {
+                configure(scrollView: scrollView, parent: parent, forceResetOffset: true)
+                return
+            }
+            guard let entry = parent.store.move(
+                offset: offset,
+                pixelLength: parent.displayPixelLength,
+                loadCurrentAnalysis: parent.selectedTool != .raw,
+                prewarmCurrentPlaneGeometry: parent.selectedTool == .threeD
+            ) else {
+                configure(scrollView: scrollView, parent: parent, forceResetOffset: true)
+                return
+            }
+            parent.onCurrentEntryChanged(entry)
+            configure(scrollView: scrollView, parent: parent, forceResetOffset: true)
+        }
+
+        @objc private func handleEdgeBack(_ gesture: UIScreenEdgePanGestureRecognizer) {
+            guard gesture.state == .ended else {
+                return
+            }
+            let translation = gesture.translation(in: gesture.view)
+            let velocity = gesture.velocity(in: gesture.view)
+            let predicted = CGSize(
+                width: translation.x + velocity.x * 0.12,
+                height: translation.y + velocity.y * 0.12
+            )
+            guard AnalysisEdgeBackPolicy.shouldReturn(
+                startX: 0,
+                translation: CGSize(width: translation.x, height: translation.y),
+                predictedTranslation: predicted
+            ) else {
+                return
+            }
+            edgeBackAction?()
+        }
+
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+        ) -> Bool {
+            gestureRecognizer is UIScreenEdgePanGestureRecognizer
+        }
+
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            guard let parent,
+                  let scrollView = gestureRecognizer.view as? UIScrollView,
+                  gestureRecognizer === scrollView.panGestureRecognizer,
+                  parent.selectedTool != .raw,
+                  let toolContainerRect = currentToolContainerRect(in: scrollView, parent: parent) else {
+                return true
+            }
+
+            let location = gestureRecognizer.location(in: scrollView)
+            let visibleX: CGFloat
+            if location.x >= scrollView.contentOffset.x,
+               location.x <= scrollView.contentOffset.x + scrollView.bounds.width {
+                visibleX = location.x - scrollView.contentOffset.x
+            } else {
+                visibleX = location.x
+            }
+            let visibleLocation = CGPoint(x: visibleX, y: location.y)
+            let shouldBegin = !toolContainerRect.contains(visibleLocation)
+            return shouldBegin
+        }
+
+        private func currentToolContainerRect(
+            in scrollView: UIScrollView,
+            parent: AnalysisNativePagingView
+        ) -> CGRect? {
+            guard let slot = parent.store.currentSlot else {
+                return nil
+            }
+            if let input = slot.input {
+                return DepthAnalysisViewerInteractionPolicy.centeredToolContainerRect(
+                    imageSize: CGSize(width: input.image.width, height: input.image.height),
+                    orientation: input.imageOrientation,
+                    viewportSize: scrollView.bounds.size
+                )
+            }
+            if let displayPhoto = slot.displayPhoto {
+                return DepthAnalysisViewerInteractionPolicy.centeredToolContainerRect(
+                    imageSize: displayPhoto.pixelSize,
+                    orientation: displayPhoto.orientation,
+                    viewportSize: scrollView.bounds.size
+                )
+            }
+            if let thumbnailImage = slot.thumbnailImage {
+                return DepthAnalysisViewerInteractionPolicy.centeredToolContainerRect(
+                    imageSize: thumbnailImage.size,
+                    orientation: .up,
+                    viewportSize: scrollView.bounds.size
+                )
+            }
+            return nil
+        }
+    }
+}
+
+private struct AnalysisNativePageView: View {
+    @ObservedObject var slot: AnalysisPhotoSlot
+    let tool: AnalysisViewerTool
+    let viewportSize: CGSize
+    let isCurrent: Bool
+    @Binding var heatmapOpacity: Double
+
+    var body: some View {
+        ZStack {
+            Color.black
+
+            switch tool {
+            case .raw:
+                rawContent
+            case .twoD, .threeD:
+                AnalysisToolPhotoStage(
+                    slot: slot,
+                    tool: tool,
+                    viewportSize: viewportSize,
+                    heatmapOpacity: $heatmapOpacity
+                )
+            }
+        }
+        .frame(width: viewportSize.width, height: viewportSize.height)
+    }
+
+    private var rawContent: some View {
+        ZStack {
+            AnalysisRawZoomScrollView(
+                image: rawImage,
+                imageIdentifier: rawImageIdentifier,
+                isCurrent: isCurrent
+            )
+            .frame(width: viewportSize.width, height: viewportSize.height)
+
+            if slot.displayPhase == .displayLoading, rawImage == nil {
+                AnalysisPhotoProgressBadge(progress: nil)
+            }
+
+            if let errorMessage = slot.errorMessage, !slot.hasDisplayImage {
+                ContentUnavailableView(
+                    slot.errorTitle,
+                    systemImage: slot.errorSystemImage,
+                    description: Text(errorMessage)
+                )
+                .foregroundStyle(.white)
+                .padding(24)
+            }
+        }
+    }
+
+    private var rawImage: UIImage? {
+        if let displayPhoto = slot.displayPhoto {
+            return displayPhoto.image
+        }
+        if let input = slot.input {
+            return UIImage(
+                cgImage: input.image,
+                scale: 1,
+                orientation: input.imageOrientation.uiImageOrientation
+            )
+        }
+        return slot.thumbnailImage
+    }
+
+    private var rawImageIdentifier: String {
+        if let displayPhoto = slot.displayPhoto {
+            return "\(slot.id)-display-\(displayPhoto.requestedPixelLength)-\(Int(displayPhoto.pixelSize.width))x\(Int(displayPhoto.pixelSize.height))"
+        }
+        if let input = slot.input {
+            return "\(slot.id)-analysisInput-\(input.image.width)x\(input.image.height)-\(input.imageOrientation.rawValue)"
+        }
+        if slot.thumbnailImage != nil {
+            return "\(slot.id)-thumbnail"
+        }
+        return "\(slot.id)-empty"
+    }
+}
+
+private struct AnalysisRawZoomScrollView: UIViewRepresentable {
+    let image: UIImage?
+    let imageIdentifier: String
+    let isCurrent: Bool
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeUIView(context: Context) -> UIScrollView {
+        let scrollView = AnalysisRawZoomUIScrollView()
+        let coordinator = context.coordinator
+        scrollView.onLayout = { [weak coordinator] scrollView in
+            coordinator?.handleLayout(in: scrollView)
+        }
+        scrollView.backgroundColor = .black
+        scrollView.delegate = context.coordinator
+        scrollView.minimumZoomScale = 1
+        scrollView.maximumZoomScale = DepthAnalysisViewerInteractionPolicy.maximumPhotoScale
+        scrollView.bounces = true
+        scrollView.bouncesZoom = true
+        scrollView.showsHorizontalScrollIndicator = false
+        scrollView.showsVerticalScrollIndicator = false
+        scrollView.contentInsetAdjustmentBehavior = .never
+        scrollView.decelerationRate = .fast
+        context.coordinator.installImageView(in: scrollView)
+        context.coordinator.installDoubleTap(in: scrollView)
+        return scrollView
+    }
+
+    func updateUIView(_ scrollView: UIScrollView, context: Context) {
+        context.coordinator.update(
+            scrollView: scrollView,
+            image: image,
+            imageIdentifier: imageIdentifier,
+            isCurrent: isCurrent
+        )
+    }
+
+    final class Coordinator: NSObject, UIScrollViewDelegate {
+        private let imageView = UIImageView()
+        private var currentImageIdentifier: String?
+        private var lastBoundsSize: CGSize = .zero
+
+        func installImageView(in scrollView: UIScrollView) {
+            imageView.backgroundColor = .black
+            imageView.contentMode = .scaleAspectFit
+            imageView.clipsToBounds = true
+            scrollView.addSubview(imageView)
+        }
+
+        func installDoubleTap(in scrollView: UIScrollView) {
+            let gesture = UITapGestureRecognizer(target: self, action: #selector(handleDoubleTap(_:)))
+            gesture.numberOfTapsRequired = 2
+            scrollView.addGestureRecognizer(gesture)
+        }
+
+        func update(
+            scrollView: UIScrollView,
+            image: UIImage?,
+            imageIdentifier: String,
+            isCurrent: Bool
+        ) {
+            scrollView.isUserInteractionEnabled = isCurrent
+            let boundsSize = scrollView.bounds.size
+            let imageObjectChanged = imageView.image !== image
+            if currentImageIdentifier != imageIdentifier || imageObjectChanged {
+                currentImageIdentifier = imageIdentifier
+                imageView.image = image
+                if boundsSize.width > 0, boundsSize.height > 0 {
+                    resetZoom(in: scrollView)
+                }
+            }
+            syncLayoutIfNeeded(in: scrollView)
+        }
+
+        func handleLayout(in scrollView: UIScrollView) {
+            syncLayoutIfNeeded(in: scrollView)
+        }
+
+        func viewForZooming(in scrollView: UIScrollView) -> UIView? {
+            imageView
+        }
+
+        func scrollViewDidZoom(_ scrollView: UIScrollView) {
+            centerImage(in: scrollView)
+            syncPanAvailability(in: scrollView)
+        }
+
+        private func resetZoom(in scrollView: UIScrollView) {
+            let bounds = scrollView.bounds
+            guard bounds.width > 0, bounds.height > 0 else {
+                return
+            }
+            imageView.frame = bounds
+            scrollView.contentSize = bounds.size
+            scrollView.setZoomScale(1, animated: false)
+            centerImage(in: scrollView)
+            syncPanAvailability(in: scrollView)
+        }
+
+        private func syncLayoutIfNeeded(in scrollView: UIScrollView) {
+            let boundsSize = scrollView.bounds.size
+            guard boundsSize.width > 0, boundsSize.height > 0 else {
+                syncPanAvailability(in: scrollView)
+                return
+            }
+
+            let needsFrameRepair = imageView.frame.width <= 0
+                || imageView.frame.height <= 0
+                || scrollView.contentSize.width <= 0
+                || scrollView.contentSize.height <= 0
+            guard boundsSize != lastBoundsSize || needsFrameRepair else {
+                syncPanAvailability(in: scrollView)
+                return
+            }
+
+            lastBoundsSize = boundsSize
+            if scrollView.zoomScale <= DepthAnalysisViewerInteractionPolicy.zoomedScaleThreshold || needsFrameRepair {
+                resetZoom(in: scrollView)
+            } else {
+                centerImage(in: scrollView)
+                syncPanAvailability(in: scrollView)
+            }
+        }
+
+        private func centerImage(in scrollView: UIScrollView) {
+            let bounds = scrollView.bounds
+            guard bounds.width > 0, bounds.height > 0 else {
+                return
+            }
+            var frame = imageView.frame
+            frame.origin.x = frame.width < bounds.width ? (bounds.width - frame.width) * 0.5 : 0
+            frame.origin.y = frame.height < bounds.height ? (bounds.height - frame.height) * 0.5 : 0
+            imageView.frame = frame
+        }
+
+        private func syncPanAvailability(in scrollView: UIScrollView) {
+            scrollView.panGestureRecognizer.isEnabled = scrollView.zoomScale > DepthAnalysisViewerInteractionPolicy.zoomedScaleThreshold
+        }
+
+        @objc private func handleDoubleTap(_ gesture: UITapGestureRecognizer) {
+            guard let scrollView = gesture.view as? UIScrollView else {
+                return
+            }
+            if scrollView.zoomScale > DepthAnalysisViewerInteractionPolicy.zoomedScaleThreshold {
+                scrollView.setZoomScale(1, animated: true)
+                return
+            }
+            let location = gesture.location(in: imageView)
+            let targetScale = min(
+                DepthAnalysisViewerInteractionPolicy.doubleTapScale,
+                scrollView.maximumZoomScale
+            )
+            let zoomSize = CGSize(
+                width: scrollView.bounds.width / targetScale,
+                height: scrollView.bounds.height / targetScale
+            )
+            let zoomRect = CGRect(
+                x: location.x - zoomSize.width * 0.5,
+                y: location.y - zoomSize.height * 0.5,
+                width: zoomSize.width,
+                height: zoomSize.height
+            )
+            scrollView.zoom(to: zoomRect, animated: true)
+        }
+    }
+}
+
+private final class AnalysisRawZoomUIScrollView: UIScrollView {
+    var onLayout: ((UIScrollView) -> Void)?
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        onLayout?(self)
+    }
+}
+
+private struct AnalysisToolPhotoStage: View {
+    @ObservedObject var slot: AnalysisPhotoSlot
+    let tool: AnalysisViewerTool
+    let viewportSize: CGSize
+    @Binding var heatmapOpacity: Double
+
+    var body: some View {
+        let containerRect = DepthAnalysisViewerInteractionPolicy.centeredToolContainerRect(
+            imageSize: displayedImageSize,
+            orientation: displayedImageOrientation,
+            viewportSize: viewportSize
+        )
+
+        toolContent(size: containerRect.size)
+            .frame(width: containerRect.width, height: containerRect.height)
+            .contentShape(Rectangle())
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(.white.opacity(0.16), lineWidth: 1)
+            }
+            .position(x: containerRect.midX, y: containerRect.midY)
+            .accessibilityLabel(tool.accessibilityLabel)
+    }
+
+    @ViewBuilder
+    private func toolContent(size: CGSize) -> some View {
+        switch tool {
+        case .raw:
+            EmptyView()
+        case .twoD:
+            twoDContent(size: size)
+        case .threeD:
+            threeDContent(size: size)
+        }
+    }
+
+    @ViewBuilder
+    private func twoDContent(size: CGSize) -> some View {
+        if let input = slot.input {
+            DepthAnalysisStageView(
+                viewMode: .planes,
+                image: input.image,
+                imageOrientation: input.imageOrientation,
+                depthMap: input.depthMap,
+                heatmapImage: input.heatmap.image,
+                validMaskImage: input.validMask.image,
+                heatmapOpacity: heatmapOpacity,
+                selection: Binding(
+                    get: { slot.regionSelection.selectionRect },
+                    set: { slot.regionSelection.selectionRect = $0 }
+                ),
+                interactionState: slot.regionSelection.interactionState,
+                planeRegion: slot.planeSelection.selectedRegion,
+                planeSeedPoint: slot.planeSelection.seedPoint,
+                metadataSummary: nil,
+                scoreSummary: nil,
+                allowsRegionSelection: false,
+                onSelectionBegan: { _ in },
+                onSelectionChanged: { _ in },
+                onSelectionEnded: { _ in },
+                onSelectionCleared: {
+                    slot.clearSelection()
+                },
+                onPlaneSeedSelected: { depthPoint in
+                    slot.selectPlaneSeed(depthPoint)
+                }
+            )
+            .frame(width: size.width, height: size.height)
         } else {
             AnalysisToolLoadingView(
                 slot: slot,
                 title: "Preparing 2D analysis",
-                size: toolViewportSize(input: nil, slot: slot, viewportSize: viewportSize)
+                size: size
             )
         }
     }
 
     @ViewBuilder
-    private func threeDToolContent(
-        slot: AnalysisPhotoSlot?,
-        viewportSize: CGSize
-    ) -> some View {
-        if let slot, let input = slot.input {
-            let toolSize = toolViewportSize(input: input, slot: slot, viewportSize: viewportSize)
+    private func threeDContent(size: CGSize) -> some View {
+        if let input = slot.input {
             PointCloudPreview(
                 image: input.image,
                 depthMap: input.depthMap,
@@ -346,335 +772,30 @@ struct DepthAnalysisView: View {
                 onSelectionEnded: { _ in },
                 onSelectionCleared: { }
             )
-            .frame(width: toolSize.width, height: toolSize.height)
-            .frame(maxWidth: .infinity)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(.white.opacity(0.16), lineWidth: 1)
-            }
+            .frame(width: size.width, height: size.height)
         } else {
             AnalysisToolLoadingView(
                 slot: slot,
                 title: "Preparing 3D projection",
-                size: toolViewportSize(input: nil, slot: slot, viewportSize: viewportSize)
+                size: size
             )
         }
     }
 
-    @ViewBuilder
-    private func credentialToolContent(slot: AnalysisPhotoSlot?) -> some View {
-        if let slot {
-            switch slot.source {
-            case .photosAsset(let assetID):
-                AppAttestSignatureVerificationPanel(
-                    assetID: assetID,
-                    appAttestController: appAttestController,
-                    runID: signatureVerificationRunID
-                )
-            case .pendingCapture:
-                CredentialPendingPanel()
-            }
-        } else {
-            CredentialPendingPanel()
-        }
-    }
-
-    private func resetPhotoTransform() {
-        photoScale = 1
-        photoOffset = .zero
-    }
-
-    private func halfDrawerScrollY(for viewportSize: CGSize) -> CGFloat {
-        max(viewportSize.height - halfDrawerHeight(for: viewportSize), 0)
-    }
-
-    private func halfDrawerHeight(for viewportSize: CGSize) -> CGFloat {
-        min(max(viewportSize.height * 0.48, 300), viewportSize.height * 0.62)
-    }
-
-    private func toolViewportSize(
-        input: TAPDepthAnalysisInput?,
-        slot: AnalysisPhotoSlot?,
-        viewportSize: CGSize
-    ) -> CGSize {
-        if let input {
-            return AnalysisToolViewportLayout.size(
-                imageSize: CGSize(width: input.image.width, height: input.image.height),
-                orientation: input.imageOrientation,
-                viewportSize: viewportSize
-            )
-        }
-
-        return AnalysisToolViewportLayout.size(
-            imageSize: slot?.thumbnailImage?.size,
-            orientation: .up,
-            viewportSize: viewportSize
-        )
-    }
-
-    private func showButtonHint(_ hint: AnalysisButtonHint) {
-        let token = UUID()
-        buttonHintToken = token
-        withAnimation(.snappy(duration: 0.16)) {
-            buttonHint = hint
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-            guard buttonHintToken == token else {
-                return
-            }
-            withAnimation(.snappy(duration: 0.16)) {
-                buttonHint = nil
-            }
-        }
-    }
-}
-
-private struct AnalysisPhotoCarouselView: View {
-    @ObservedObject var store: DepthAnalysisCarouselStore
-    @Binding var scale: CGFloat
-    @Binding var offset: CGSize
-    let onCurrentEntryChanged: (DepthAnalysisCarouselEntry) -> Void
-    let onDismiss: () -> Void
-
-    @GestureState private var carouselDragX: CGFloat = 0
-
-    var body: some View {
-        GeometryReader { proxy in
-            let viewportSize = proxy.size
-            let width = max(viewportSize.width, 1)
-            let window = store.windowEntries()
-            let currentPosition = window.firstIndex { $0.offset == 0 } ?? 0
-
-            HStack(spacing: 0) {
-                ForEach(window, id: \.entry.id) { item in
-                    ZoomableAnalysisPhotoStage(
-                        slot: store.slot(for: item.entry),
-                        isCurrent: item.offset == 0,
-                        scale: $scale,
-                        offset: $offset
-                    )
-                    .frame(width: viewportSize.width, height: viewportSize.height)
-                }
-            }
-            .frame(width: viewportSize.width, height: viewportSize.height, alignment: .leading)
-            .offset(x: -CGFloat(currentPosition) * width + carouselDragX)
-            .animation(.snappy(duration: 0.24), value: store.currentItemID)
-            .animation(.snappy(duration: 0.18), value: carouselDragX == 0)
-            .contentShape(Rectangle())
-            .gesture(carouselGesture(width: width))
-            .background(Color.black)
-        }
-        .background(Color.black)
-        .accessibilityLabel("Photo carousel")
-    }
-
-    private var isZoomed: Bool {
-        scale > 1.05
-    }
-
-    private func carouselGesture(width: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 12)
-            .updating($carouselDragX) { value, state, _ in
-                guard !isZoomed else {
-                    return
-                }
-                let horizontal = value.translation.width
-                let vertical = value.translation.height
-                guard abs(horizontal) > abs(vertical) * 0.82 else {
-                    return
-                }
-                let direction = horizontal < 0 ? 1 : -1
-                state = store.canMove(offset: direction) ? horizontal : horizontal * 0.22
-            }
-            .onEnded { value in
-                guard !isZoomed else {
-                    return
-                }
-
-                let horizontal = value.translation.width
-                let vertical = value.translation.height
-                let predictedHorizontal = value.predictedEndTranslation.width
-                if vertical > 110, vertical > abs(horizontal) * 1.3 {
-                    onDismiss()
-                    return
-                }
-
-                let direction = horizontal < 0 ? 1 : -1
-                let threshold = min(max(width * 0.18, 72), 132)
-                guard abs(horizontal) > threshold || abs(predictedHorizontal) > threshold * 1.24 else {
-                    return
-                }
-                guard let entry = store.move(offset: direction) else {
-                    return
-                }
-                onCurrentEntryChanged(entry)
-            }
-    }
-}
-
-private struct ZoomableAnalysisPhotoStage: View {
-    @ObservedObject var slot: AnalysisPhotoSlot
-    let isCurrent: Bool
-    @Binding var scale: CGFloat
-    @Binding var offset: CGSize
-
-    @GestureState private var pinchScale: CGFloat = 1
-    @State private var dragStartOffset: CGSize?
-
-    var body: some View {
-        GeometryReader { proxy in
-            ZStack {
-                Color.black
-
-                displayImage
-                    .scaleEffect(isCurrent ? effectiveScale : 1)
-                    .offset(isCurrent ? offset : .zero)
-                    .animation(.snappy(duration: 0.22), value: scale)
-                    .animation(.snappy(duration: 0.22), value: offset)
-
-                if slot.isOriginalLoading {
-                    AnalysisPhotoProgressBadge(progress: slot.loadProgress)
-                }
-
-                if let errorMessage = slot.errorMessage, !slot.hasDisplayImage {
-                    ContentUnavailableView(
-                        slot.errorTitle,
-                        systemImage: slot.errorSystemImage,
-                        description: Text(errorMessage)
-                    )
-                    .foregroundStyle(.white)
-                    .padding(24)
-                }
-            }
-            .contentShape(Rectangle())
-            .simultaneousGesture(pinchGesture(containerSize: proxy.size))
-            .simultaneousGesture(dragGesture(containerSize: proxy.size))
-            .simultaneousGesture(doubleTapGesture(containerSize: proxy.size))
-        }
-        .background(Color.black)
-        .accessibilityLabel("Photo")
-    }
-
-    @ViewBuilder
-    private var displayImage: some View {
+    private var displayedImageSize: CGSize? {
         if let input = slot.input {
-            Image(decorative: input.image, scale: 1, orientation: input.imageOrientation.swiftUIImageOrientation)
-                .resizable()
-                .scaledToFit()
-                .transition(.opacity)
-                .id("original-\(slot.id)")
-        } else if let thumbnailImage = slot.thumbnailImage {
-            Image(uiImage: thumbnailImage)
-                .resizable()
-                .scaledToFit()
-                .transition(.opacity)
-                .id("thumbnail-\(slot.id)")
-        } else {
-            ProgressView()
-                .tint(.white)
+            return CGSize(width: input.image.width, height: input.image.height)
         }
-    }
-
-    private var effectiveScale: CGFloat {
-        clampedScale(scale * pinchScale)
-    }
-
-    private var isZoomed: Bool {
-        scale > 1.05
-    }
-
-    private func pinchGesture(containerSize: CGSize) -> some Gesture {
-        MagnificationGesture()
-            .updating($pinchScale) { value, state, _ in
-                guard isCurrent else {
-                    return
-                }
-                state = value
-            }
-            .onEnded { value in
-                guard isCurrent else {
-                    return
-                }
-                scale = clampedScale(scale * value)
-                offset = clampedOffset(offset, scale: scale, containerSize: containerSize)
-                if scale <= 1.05 {
-                    reset()
-                }
-            }
-    }
-
-    private func dragGesture(containerSize: CGSize) -> some Gesture {
-        DragGesture(minimumDistance: 18)
-            .onChanged { value in
-                guard isCurrent, isZoomed else {
-                    return
-                }
-                if dragStartOffset == nil {
-                    dragStartOffset = offset
-                }
-                let start = dragStartOffset ?? .zero
-                offset = clampedOffset(
-                    CGSize(width: start.width + value.translation.width, height: start.height + value.translation.height),
-                    scale: scale,
-                    containerSize: containerSize
-                )
-            }
-            .onEnded { value in
-                defer {
-                    dragStartOffset = nil
-                }
-
-                guard isCurrent else {
-                    return
-                }
-                guard !isZoomed else {
-                    offset = clampedOffset(offset, scale: scale, containerSize: containerSize)
-                    return
-                }
-            }
-    }
-
-    private func doubleTapGesture(containerSize: CGSize) -> some Gesture {
-        TapGesture(count: 2)
-            .onEnded {
-                guard isCurrent else {
-                    return
-                }
-                if isZoomed {
-                    reset()
-                } else {
-                    scale = 2.5
-                    offset = clampedOffset(.zero, scale: scale, containerSize: containerSize)
-                }
-            }
-    }
-
-    private func reset() {
-        scale = 1
-        offset = .zero
-    }
-
-    private func clampedScale(_ value: CGFloat) -> CGFloat {
-        min(max(value, 1), 5)
-    }
-
-    private func clampedOffset(
-        _ proposed: CGSize,
-        scale: CGFloat,
-        containerSize: CGSize
-    ) -> CGSize {
-        guard scale > 1.05 else {
-            return .zero
+        if let displayPhoto = slot.displayPhoto {
+            return displayPhoto.pixelSize
         }
-        let maxX = max(containerSize.width * (scale - 1) * 0.5, 0)
-        let maxY = max(containerSize.height * (scale - 1) * 0.5, 0)
-        return CGSize(
-            width: min(max(proposed.width, -maxX), maxX),
-            height: min(max(proposed.height, -maxY), maxY)
-        )
+        return slot.thumbnailImage?.size
     }
+
+    private var displayedImageOrientation: CGImagePropertyOrientation {
+        slot.input?.imageOrientation ?? slot.displayPhoto?.orientation ?? .up
+    }
+
 }
 
 private struct AnalysisPhotoProgressBadge: View {
@@ -742,6 +863,11 @@ private struct AnalysisToolSlotLoadingView: View {
                     .resizable()
                     .scaledToFit()
                     .opacity(0.54)
+            } else if let displayPhoto = slot.displayPhoto {
+                Image(uiImage: displayPhoto.image)
+                    .resizable()
+                    .scaledToFit()
+                    .opacity(0.54)
             } else if let thumbnailImage = slot.thumbnailImage {
                 Image(uiImage: thumbnailImage)
                     .resizable()
@@ -793,5 +919,28 @@ private struct CredentialPendingPanel: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private extension CGImagePropertyOrientation {
+    var uiImageOrientation: UIImage.Orientation {
+        switch self {
+        case .up:
+            .up
+        case .upMirrored:
+            .upMirrored
+        case .down:
+            .down
+        case .downMirrored:
+            .downMirrored
+        case .left:
+            .left
+        case .leftMirrored:
+            .leftMirrored
+        case .right:
+            .right
+        case .rightMirrored:
+            .rightMirrored
+        }
     }
 }

@@ -7,43 +7,32 @@
 
 import SwiftUI
 
-enum AnalysisDrawerTool: String, CaseIterable, Identifiable, Equatable {
+enum AnalysisViewerTool: String, CaseIterable, Identifiable, Equatable {
+    case raw
     case twoD
     case threeD
-    case credential
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
+        case .raw:
+            "RAW"
         case .twoD:
             "2D"
         case .threeD:
             "3D"
-        case .credential:
-            "凭证"
-        }
-    }
-
-    var systemImage: String {
-        switch self {
-        case .twoD:
-            "square.on.square"
-        case .threeD:
-            "cube.transparent"
-        case .credential:
-            "checkmark.shield"
         }
     }
 
     var accessibilityLabel: String {
         switch self {
+        case .raw:
+            "Raw photo"
         case .twoD:
             "2D analysis"
         case .threeD:
             "3D projection"
-        case .credential:
-            "Credential"
         }
     }
 }
@@ -54,7 +43,6 @@ enum AnalysisDebugHighlight {
 }
 
 enum AnalysisButtonHint: Equatable {
-    case tool(AnalysisDrawerTool)
     case view(DepthAnalysisViewMode)
     case inspector(AnalysisInspector)
     case signatureVerification
@@ -63,8 +51,6 @@ enum AnalysisButtonHint: Equatable {
 
     var title: String {
         switch self {
-        case .tool(let tool):
-            tool.title
         case .view(let viewMode):
             viewMode.title
         case .inspector(let inspector):
@@ -80,8 +66,6 @@ enum AnalysisButtonHint: Equatable {
 
     var systemImage: String {
         switch self {
-        case .tool(let tool):
-            tool.systemImage
         case .view(let viewMode):
             viewMode.systemImage
         case .inspector(let inspector):

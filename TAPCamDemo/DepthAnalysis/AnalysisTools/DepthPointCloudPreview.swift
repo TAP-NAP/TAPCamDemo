@@ -1092,7 +1092,9 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
             }
             coordinator?.syncProjection(view: view, viewportSize: size)
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            coordinator?.logLayout(view: view, viewportSize: size)
+            if Coordinator.isValidViewportSize(size) {
+                coordinator?.logLayout(view: view, viewportSize: size)
+            }
             #endif
         }
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
@@ -1421,20 +1423,19 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
             syncMotionParallax(enabled: enablesMotionParallax)
             syncProjection(view: view, viewportSize: view.bounds.size)
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            logSceneState(label: "update", view: view)
+            if Self.isValidViewportSize(view.bounds.size) {
+                logSceneState(label: "update", view: view)
+            }
             #endif
         }
 
         func syncProjection(view: SCNView, viewportSize: CGSize) {
             guard let cameraNode,
                   let camera = cameraNode.camera,
-                  let currentCameraModel else {
+                  let currentCameraModel,
+                  Self.isValidViewportSize(viewportSize) else {
                 return
             }
-            let viewportSize = CGSize(
-                width: max(viewportSize.width, 1),
-                height: max(viewportSize.height, 1)
-            )
             camera.projectionTransform = TAPDepthProjectionCameraContract.projectionMatrix(
                 cameraModel: currentCameraModel,
                 viewportSize: viewportSize,
@@ -1444,6 +1445,10 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             logProjectionSync(view: view, viewportSize: viewportSize, camera: camera)
             #endif
+        }
+
+        static func isValidViewportSize(_ size: CGSize) -> Bool {
+            size.width.isFinite && size.height.isFinite && size.width > 0 && size.height > 0
         }
 
         private func configureSceneAsync(

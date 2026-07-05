@@ -110,8 +110,8 @@ The SceneKit v1 renderer follows the TAPCamVerifier capture-camera contract:
   image display orientation. It rotates both projected geometry and the fitted
   projection camera, while RGB sampling and `TAPPlaneRegion.pixelRuns` stay in
   the raw/native pixel coordinate space.
-- `TAPDepthProjectionCameraContract` fits `fx / fy / cx / cy` to the drawer
-  content frame and writes the SceneKit projection matrix.
+- `TAPDepthProjectionCameraContract` fits `fx / fy / cx / cy` to the centered
+  3D container frame and writes the SceneKit projection matrix.
 - `TAPRGBPixelSampler` samples the primary image so projected vertices carry
   RGB color instead of a depth-only color ramp.
 - `TAPPlaneRegionHighlightMask` converts `TAPPlaneRegion.pixelRuns` into depth
@@ -127,14 +127,13 @@ The SceneKit v1 renderer follows the TAPCamVerifier capture-camera contract:
   one-finger drag orbits around the model depth instead of around the capture
   camera origin. Device motion still applies only a small parallax rotation to
   the projection root.
-- The 3D view is its own gesture domain inside the analysis drawer. Its pan
-  recognizers force ancestor scroll views to wait, so dragging inside the
-  SceneKit surface does not move the page. Internal gestures can still combine:
-  one-finger drag orbits, two-finger drag pans in capture-camera units,
-  pinch scales around the pivot within a clamped range, two-finger rotation
-  rolls the model in the same apparent direction as the screen gesture, and
-  double-tap resets the interaction root to the
-  capture-camera identity view.
+- The 3D view is its own gesture domain inside the centered 3D container.
+  Gestures that begin inside the SceneKit surface do not page the photo
+  carousel. Internal gestures can still combine: one-finger drag orbits,
+  two-finger drag pans in capture-camera units, pinch scales around the pivot
+  within a clamped range, two-finger rotation rolls the model in the same
+  apparent direction as the screen gesture, and double-tap resets the
+  interaction root to the capture-camera identity view.
 - `TAPDepthProjectionSampleFilter` rejects non-renderable far-depth sentinels
   before building the SceneKit payload. Real captures can contain finite
   positive values around `9999m`; those are not useful still-photo depth and

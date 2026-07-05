@@ -8,6 +8,7 @@
 import Combine
 import CoreGraphics
 import Foundation
+import ImageIO
 import os
 import Photos
 import UIKit
@@ -39,6 +40,46 @@ nonisolated struct DepthAnalysisCarouselEntry: Identifiable, Equatable {
     }
 }
 
+nonisolated struct AnalysisDisplayPhoto {
+    let image: UIImage
+    let orientation: CGImagePropertyOrientation
+    let pixelSize: CGSize
+    let requestedPixelLength: Int
+
+    init(image: UIImage, requestedPixelLength: Int = 0) {
+        self.image = image
+        self.orientation = image.imageOrientation.cgImagePropertyOrientation
+        self.requestedPixelLength = requestedPixelLength
+        if let cgImage = image.cgImage {
+            self.pixelSize = CGSize(width: cgImage.width, height: cgImage.height)
+        } else {
+            self.pixelSize = image.size
+        }
+    }
+}
+
+nonisolated enum AnalysisPhotoDisplayPhase: Equatable {
+    case idle
+    case thumbnailReady
+    case displayLoading
+    case displayReady
+    case failed
+}
+
+nonisolated enum AnalysisPhotoAnalysisPhase: Equatable {
+    case idle
+    case loading(progress: Double?)
+    case ready
+    case failed
+
+    var isLoading: Bool {
+        if case .loading = self {
+            return true
+        }
+        return false
+    }
+}
+
 nonisolated enum AnalysisSlotLoadPhase: Equatable {
     case idle
     case thumbnailReady
@@ -54,35 +95,31 @@ nonisolated enum AnalysisSlotLoadPhase: Equatable {
     }
 }
 
-nonisolated struct DepthAnalysisProgressivePhotoLoader {
-    typealias OriginalProgressHandler = @Sendable @MainActor (Double?) -> Void
+nonisolated struct DepthAnalysisDisplayPhotoLoader {
     typealias ThumbnailLoader = @Sendable (DepthAnalysisSource, Int) async -> UIImage?
-    typealias InputLoader = @Sendable (DepthAnalysisSource, @escaping OriginalProgressHandler) async throws -> TAPDepthAnalysisInput
+    typealias DisplayLoader = @Sendable (DepthAnalysisSource, Int) async throws -> AnalysisDisplayPhoto
 
     private let thumbnailLoader: ThumbnailLoader
-    private let inputLoader: InputLoader
+    private let displayLoader: DisplayLoader
 
     init(
         thumbnailLoader: @escaping ThumbnailLoader = { source, pixelLength in
             await Self.defaultThumbnail(source: source, pixelLength: pixelLength)
         },
-        inputLoader: @escaping InputLoader = { source, progressHandler in
-            try await Self.defaultInput(source: source, progressHandler: progressHandler)
+        displayLoader: @escaping DisplayLoader = { source, pixelLength in
+            try await Self.defaultDisplayPhoto(source: source, pixelLength: pixelLength)
         }
     ) {
         self.thumbnailLoader = thumbnailLoader
-        self.inputLoader = inputLoader
+        self.displayLoader = displayLoader
     }
 
     func thumbnail(source: DepthAnalysisSource, pixelLength: Int) async -> UIImage? {
         await thumbnailLoader(source, pixelLength)
     }
 
-    func input(
-        source: DepthAnalysisSource,
-        progressHandler: @escaping OriginalProgressHandler
-    ) async throws -> TAPDepthAnalysisInput {
-        try await inputLoader(source, progressHandler)
+    func displayPhoto(source: DepthAnalysisSource, pixelLength: Int) async throws -> AnalysisDisplayPhoto {
+        try await displayLoader(source, pixelLength)
     }
 
     private static func defaultThumbnail(
@@ -104,11 +141,145 @@ nonisolated struct DepthAnalysisProgressivePhotoLoader {
             }
             return UIImage(data: data)
         case .pendingCapture(let captureID):
-            guard let data = try? await TAPPendingCaptureStore.shared.bestAvailablePhotoData(captureID: captureID) else {
+            let data: Data?
+            if let thumbnailData = try? await TAPPendingCaptureStore.shared.thumbnailData(captureID: captureID) {
+                data = thumbnailData
+            } else {
+                data = try? await TAPPendingCaptureStore.shared.bestAvailablePhotoData(captureID: captureID)
+            }
+            guard let data else {
                 return nil
             }
             return UIImage(data: data)
         }
+    }
+
+    private static func defaultDisplayPhoto(
+        source: DepthAnalysisSource,
+        pixelLength: Int
+    ) async throws -> AnalysisDisplayPhoto {
+        switch source {
+        case .photosAsset(let assetID):
+            guard let asset = await photosAsset(localIdentifier: assetID),
+                  let image = await requestDisplayImage(for: asset, pixelLength: pixelLength) else {
+                throw TAPDepthCaptureError.assetNotFound
+            }
+            return AnalysisDisplayPhoto(image: image, requestedPixelLength: pixelLength)
+        case .pendingCapture(let captureID):
+            do {
+                let data = try await TAPPendingCaptureStore.shared.bestAvailablePhotoData(captureID: captureID)
+                guard let image = downsampledImage(data: data, pixelLength: pixelLength) ?? UIImage(data: data) else {
+                    throw TAPDepthCaptureError.assetCreationFailed
+                }
+                return AnalysisDisplayPhoto(image: image, requestedPixelLength: pixelLength)
+            } catch {
+                NotificationCenter.default.post(name: .tapLibraryDidChange, object: nil)
+                throw DepthAnalysisInputLoaderError.pendingCaptureTemporarilyUnavailable
+            }
+        }
+    }
+
+    private static func requestDisplayImage(for asset: PHAsset, pixelLength: Int) async -> UIImage? {
+        await withCheckedContinuation { continuation in
+            var didResume = false
+            let targetLength = max(pixelLength, 1)
+            let options = PHImageRequestOptions()
+            options.deliveryMode = .highQualityFormat
+            options.resizeMode = .exact
+            options.isNetworkAccessAllowed = true
+            PHImageManager.default().requestImage(
+                for: asset,
+                targetSize: CGSize(width: targetLength, height: targetLength),
+                contentMode: .aspectFit,
+                options: options
+            ) { image, info in
+                guard !didResume else {
+                    return
+                }
+                let isDegraded = info?[PHImageResultIsDegradedKey] as? Bool == true
+                if isDegraded {
+                    return
+                }
+                if info?[PHImageCancelledKey] as? Bool == true || info?[PHImageErrorKey] != nil {
+                    didResume = true
+                    continuation.resume(returning: nil)
+                    return
+                }
+                guard let image else {
+                    didResume = true
+                    continuation.resume(returning: nil)
+                    return
+                }
+                didResume = true
+                continuation.resume(returning: image)
+            }
+        }
+    }
+
+    private static func downsampledImage(data: Data, pixelLength: Int) -> UIImage? {
+        let sourceOptions: [CFString: Any] = [kCGImageSourceShouldCache: false]
+        guard let source = CGImageSourceCreateWithData(data as CFData, sourceOptions as CFDictionary) else {
+            return nil
+        }
+        let thumbnailOptions: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: max(pixelLength, 1)
+        ]
+        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbnailOptions as CFDictionary) else {
+            return nil
+        }
+        return UIImage(cgImage: image)
+    }
+
+    private static func photosAsset(localIdentifier: String) async -> PHAsset? {
+        await Task.detached(priority: .utility) {
+            PhotoLibraryWriter.asset(localIdentifier: localIdentifier)
+        }.value
+    }
+}
+
+nonisolated struct DepthAnalysisProgressivePhotoLoader {
+    typealias OriginalProgressHandler = @Sendable @MainActor (Double?) -> Void
+    typealias ThumbnailLoader = DepthAnalysisDisplayPhotoLoader.ThumbnailLoader
+    typealias DisplayLoader = DepthAnalysisDisplayPhotoLoader.DisplayLoader
+    typealias InputLoader = @Sendable (DepthAnalysisSource, @escaping OriginalProgressHandler) async throws -> TAPDepthAnalysisInput
+
+    private let displayPhotoLoader: DepthAnalysisDisplayPhotoLoader
+    private let inputLoader: InputLoader
+
+    init(
+        thumbnailLoader: @escaping ThumbnailLoader = { source, pixelLength in
+            await DepthAnalysisDisplayPhotoLoader().thumbnail(source: source, pixelLength: pixelLength)
+        },
+        displayLoader: @escaping DisplayLoader = { source, pixelLength in
+            try await DepthAnalysisDisplayPhotoLoader().displayPhoto(source: source, pixelLength: pixelLength)
+        },
+        inputLoader: @escaping InputLoader = { source, progressHandler in
+            try await Self.defaultInput(source: source, progressHandler: progressHandler)
+        }
+    ) {
+        self.displayPhotoLoader = DepthAnalysisDisplayPhotoLoader(
+            thumbnailLoader: thumbnailLoader,
+            displayLoader: displayLoader
+        )
+        self.inputLoader = inputLoader
+    }
+
+    func thumbnail(source: DepthAnalysisSource, pixelLength: Int) async -> UIImage? {
+        await displayPhotoLoader.thumbnail(source: source, pixelLength: pixelLength)
+    }
+
+    func displayPhoto(source: DepthAnalysisSource, pixelLength: Int) async throws -> AnalysisDisplayPhoto {
+        try await displayPhotoLoader.displayPhoto(source: source, pixelLength: pixelLength)
+    }
+
+    func input(
+        source: DepthAnalysisSource,
+        progressHandler: @escaping OriginalProgressHandler
+    ) async throws -> TAPDepthAnalysisInput {
+        try await inputLoader(source, progressHandler)
     }
 
     private static func defaultInput(
@@ -201,6 +372,31 @@ nonisolated struct DepthAnalysisProgressivePhotoLoader {
     }
 }
 
+extension UIImage.Orientation {
+    nonisolated var cgImagePropertyOrientation: CGImagePropertyOrientation {
+        switch self {
+        case .up:
+            .up
+        case .upMirrored:
+            .upMirrored
+        case .down:
+            .down
+        case .downMirrored:
+            .downMirrored
+        case .left:
+            .left
+        case .leftMirrored:
+            .leftMirrored
+        case .right:
+            .right
+        case .rightMirrored:
+            .rightMirrored
+        @unknown default:
+            .up
+        }
+    }
+}
+
 nonisolated struct AnalysisPhotoSlotRetainedState {
     var planeSelection: DepthAnalysisPlaneSelectionState
 }
@@ -209,8 +405,10 @@ nonisolated struct AnalysisPhotoSlotRetainedState {
 final class AnalysisPhotoSlot: ObservableObject, Identifiable {
     let entry: DepthAnalysisCarouselEntry
 
-    @Published private(set) var phase: AnalysisSlotLoadPhase = .idle
+    @Published private(set) var displayPhase: AnalysisPhotoDisplayPhase = .idle
+    @Published private(set) var analysisPhase: AnalysisPhotoAnalysisPhase = .idle
     @Published private(set) var thumbnailImage: UIImage?
+    @Published private(set) var displayPhoto: AnalysisDisplayPhoto?
     @Published private(set) var input: TAPDepthAnalysisInput?
     @Published private(set) var errorMessage: String?
     @Published private(set) var errorTitle = "Unable to analyze image"
@@ -220,24 +418,55 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
 
     private let planeRequestCoordinator: DepthAnalysisPlaneRegionRequestCoordinator
     private var thumbnailTask: Task<Void, Never>?
+    private var displayTask: Task<Void, Never>?
+    private var displayTaskPixelLength: Int?
     private var inputTask: Task<Void, Never>?
+    private var wantsPlaneGeometryPrewarm = false
+    private var hasRequestedPlaneGeometryPrewarm = false
 
     var id: String { entry.id }
     var source: DepthAnalysisSource { entry.source }
 
+    var phase: AnalysisSlotLoadPhase {
+        if case .failed = analysisPhase {
+            return .failed
+        }
+        if case .failed = displayPhase {
+            return .failed
+        }
+        if case .ready = analysisPhase {
+            return .analysisReady
+        }
+        if case .loading(let progress) = analysisPhase {
+            return .originalLoading(progress: progress)
+        }
+        switch displayPhase {
+        case .idle:
+            return .idle
+        case .thumbnailReady:
+            return .thumbnailReady
+        case .displayLoading:
+            return .originalLoading(progress: nil)
+        case .displayReady:
+            return .thumbnailReady
+        case .failed:
+            return .failed
+        }
+    }
+
     var isOriginalLoading: Bool {
-        phase.isOriginalLoading
+        analysisPhase.isLoading || displayPhase == .displayLoading
     }
 
     var loadProgress: Double? {
-        if case .originalLoading(let progress) = phase {
+        if case .loading(let progress) = analysisPhase {
             return progress
         }
         return nil
     }
 
     var hasDisplayImage: Bool {
-        input != nil || thumbnailImage != nil
+        displayPhoto != nil || input != nil || thumbnailImage != nil
     }
 
     init(
@@ -255,16 +484,38 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
 
     deinit {
         thumbnailTask?.cancel()
+        displayTask?.cancel()
         inputTask?.cancel()
     }
 
     func ensureLoading(
         loader: DepthAnalysisProgressivePhotoLoader,
         pixelLength: Int,
-        priority: TaskPriority
+        priority: TaskPriority,
+        prewarmPlaneGeometry: Bool = false
+    ) {
+        ensureDisplayPhoto(loader: loader, pixelLength: pixelLength, priority: priority)
+        ensureInputLoading(
+            loader: loader,
+            priority: priority,
+            prewarmPlaneGeometry: prewarmPlaneGeometry
+        )
+    }
+
+    func ensureThumbnail(
+        loader: DepthAnalysisProgressivePhotoLoader,
+        pixelLength: Int
     ) {
         ensureThumbnailLoading(loader: loader, pixelLength: pixelLength)
-        ensureInputLoading(loader: loader, priority: priority)
+    }
+
+    func ensureDisplayPhoto(
+        loader: DepthAnalysisProgressivePhotoLoader,
+        pixelLength: Int,
+        priority: TaskPriority
+    ) {
+        ensureThumbnail(loader: loader, pixelLength: pixelLength)
+        ensureDisplayPhotoLoading(loader: loader, pixelLength: pixelLength, priority: priority)
     }
 
     func retainedStateForEviction() -> AnalysisPhotoSlotRetainedState {
@@ -276,14 +527,21 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
     func prepareForEviction() {
         thumbnailTask?.cancel()
         thumbnailTask = nil
+        displayTask?.cancel()
+        displayTask = nil
+        displayTaskPixelLength = nil
         inputTask?.cancel()
         inputTask = nil
         planeRequestCoordinator.cancelRegionRequest()
         planeRequestCoordinator.resetForNewInput()
         thumbnailImage = nil
+        displayPhoto = nil
         input = nil
-        phase = .idle
+        displayPhase = .idle
+        analysisPhase = .idle
         errorMessage = nil
+        wantsPlaneGeometryPrewarm = false
+        hasRequestedPlaneGeometryPrewarm = false
         regionSelection.clear()
         planeSelection.cancelDetection()
     }
@@ -333,8 +591,67 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
                     return
                 }
                 self.thumbnailImage = image
-                if self.input == nil, case .idle = self.phase {
-                    self.phase = .thumbnailReady
+                if self.displayPhoto == nil, case .idle = self.displayPhase {
+                    self.displayPhase = .thumbnailReady
+                }
+            }
+        }
+    }
+
+    private func ensureDisplayPhotoLoading(
+        loader: DepthAnalysisProgressivePhotoLoader,
+        pixelLength: Int,
+        priority: TaskPriority
+    ) {
+        if displayPhoto != nil || displayTask != nil {
+            if let displayPhoto,
+               displayPhoto.requestedPixelLength >= Int(Double(pixelLength) * 0.9) {
+                return
+            }
+            if let displayTaskPixelLength,
+               displayTaskPixelLength >= Int(Double(pixelLength) * 0.9) {
+                return
+            }
+            displayTask?.cancel()
+            displayTask = nil
+            displayTaskPixelLength = nil
+        }
+
+        let source = entry.source
+        displayPhase = .displayLoading
+        errorMessage = nil
+        displayTaskPixelLength = pixelLength
+        displayTask = Task(priority: priority) { [weak self] in
+            do {
+                let loadedDisplayPhoto = try await loader.displayPhoto(source: source, pixelLength: pixelLength)
+                guard !Task.isCancelled else {
+                    return
+                }
+                await MainActor.run {
+                    guard let self else {
+                        return
+                    }
+                    self.displayTask = nil
+                    self.displayTaskPixelLength = nil
+                    self.displayPhoto = loadedDisplayPhoto
+                    self.displayPhase = .displayReady
+                    self.clearLoadErrorIfAnalysisIsHealthy()
+                }
+            } catch {
+                guard !Task.isCancelled else {
+                    await MainActor.run {
+                        self?.displayTask = nil
+                        self?.displayTaskPixelLength = nil
+                    }
+                    return
+                }
+                await MainActor.run {
+                    guard let self else {
+                        return
+                    }
+                    self.displayTask = nil
+                    self.displayTaskPixelLength = nil
+                    self.applyDisplayLoadError(error)
                 }
             }
         }
@@ -342,19 +659,26 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
 
     private func ensureInputLoading(
         loader: DepthAnalysisProgressivePhotoLoader,
-        priority: TaskPriority
+        priority: TaskPriority,
+        prewarmPlaneGeometry: Bool
     ) {
+        if prewarmPlaneGeometry {
+            wantsPlaneGeometryPrewarm = true
+        }
+        if let input {
+            ensurePlaneGeometryPrewarmIfNeeded(for: input.depthMap)
+        }
         guard input == nil, inputTask == nil else {
             return
         }
 
         let source = entry.source
-        phase = .originalLoading(progress: nil)
+        analysisPhase = .loading(progress: nil)
         errorMessage = nil
         inputTask = Task(priority: priority) { [weak self] in
             do {
                 let loadedInput = try await loader.input(source: source) { progress in
-                    self?.phase = .originalLoading(progress: progress)
+                    self?.analysisPhase = .loading(progress: progress)
                 }
                 guard !Task.isCancelled else {
                     await MainActor.run {
@@ -368,12 +692,13 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
                     }
                     self.inputTask = nil
                     self.input = loadedInput
-                    self.phase = .analysisReady
+                    self.analysisPhase = .ready
                     self.clearLoadError()
                     self.regionSelection.clear()
                     self.planeSelection.cancelDetection()
                     self.planeRequestCoordinator.resetForNewInput()
-                    self.planeRequestCoordinator.prewarmGeometry(for: loadedInput.depthMap)
+                    self.hasRequestedPlaneGeometryPrewarm = false
+                    self.ensurePlaneGeometryPrewarmIfNeeded(for: loadedInput.depthMap)
                 }
             } catch {
                 guard !Task.isCancelled else {
@@ -399,14 +724,37 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
         errorSystemImage = "exclamationmark.triangle"
     }
 
+    private func clearLoadErrorIfAnalysisIsHealthy() {
+        guard analysisPhase != .failed else {
+            return
+        }
+        clearLoadError()
+    }
+
+    private func applyDisplayLoadError(_ error: Error) {
+        let presentation = DepthAnalysisErrorPresentation.analysisLoadError(for: error)
+        errorTitle = presentation.title
+        errorSystemImage = presentation.systemImage
+        errorMessage = presentation.message
+        displayPhase = .failed
+    }
+
     private func applyLoadError(_ error: Error) {
         let presentation = DepthAnalysisErrorPresentation.analysisLoadError(for: error)
         errorTitle = presentation.title
         errorSystemImage = presentation.systemImage
         errorMessage = presentation.message
-        phase = .failed
+        analysisPhase = .failed
         planeRequestCoordinator.resetForNewInput()
         planeSelection.cancelDetection()
+    }
+
+    private func ensurePlaneGeometryPrewarmIfNeeded(for depthMap: TAPMetricDepthMap) {
+        guard wantsPlaneGeometryPrewarm, !hasRequestedPlaneGeometryPrewarm else {
+            return
+        }
+        hasRequestedPlaneGeometryPrewarm = true
+        planeRequestCoordinator.prewarmGeometry(for: depthMap)
     }
 
     private func updateSeedPlaneRegion(debounceNanoseconds: UInt64 = 0) {
@@ -513,13 +861,22 @@ final class DepthAnalysisCarouselStore: ObservableObject {
     }
 
     @discardableResult
-    func move(offset: Int) -> DepthAnalysisCarouselEntry? {
+    func move(
+        offset: Int,
+        pixelLength: Int = 960,
+        loadCurrentAnalysis: Bool = false,
+        prewarmCurrentPlaneGeometry: Bool = false
+    ) -> DepthAnalysisCarouselEntry? {
         guard abs(offset) == 1,
               let entry = entry(offset: offset) else {
             return nil
         }
         currentItemID = entry.id
-        ensureVisibleWindowLoaded()
+        ensureVisibleWindowLoaded(
+            pixelLength: pixelLength,
+            loadCurrentAnalysis: loadCurrentAnalysis,
+            prewarmCurrentPlaneGeometry: prewarmCurrentPlaneGeometry
+        )
         return entry
     }
 
@@ -533,16 +890,36 @@ final class DepthAnalysisCarouselStore: ObservableObject {
         return slot
     }
 
-    func ensureVisibleWindowLoaded(pixelLength: Int = 960) {
+    func ensureVisibleWindowLoaded(
+        pixelLength: Int = 960,
+        loadCurrentAnalysis: Bool = false,
+        prewarmCurrentPlaneGeometry: Bool = false
+    ) {
         let window = windowEntries()
         let windowIDs = Set(window.map(\.entry.id))
         for item in window {
             let slot = slot(for: item.entry)
-            slot.ensureLoading(
-                loader: loader,
-                pixelLength: pixelLength,
-                priority: item.offset == 0 ? .userInitiated : .utility
-            )
+            if item.offset == 0 {
+                slot.ensureDisplayPhoto(
+                    loader: loader,
+                    pixelLength: pixelLength,
+                    priority: .userInitiated
+                )
+                if loadCurrentAnalysis {
+                    slot.ensureLoading(
+                        loader: loader,
+                        pixelLength: pixelLength,
+                        priority: .userInitiated,
+                        prewarmPlaneGeometry: prewarmCurrentPlaneGeometry
+                    )
+                }
+            } else {
+                slot.ensureDisplayPhoto(
+                    loader: loader,
+                    pixelLength: pixelLength,
+                    priority: .utility
+                )
+            }
         }
         pruneSlots(keeping: windowIDs)
     }

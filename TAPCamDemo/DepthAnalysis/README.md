@@ -4,14 +4,28 @@
 saved or pending TAP depth photo files. It does not configure the live camera
 and does not mutate capture output. It reads original HEIC or JPG bytes,
 requires the TAP manifest plus Apple auxiliary depth, reconstructs metric depth,
-and renders a Photos-style browser with a stable carousel, 2D overlay/plane
-analysis, native 3D projection, and credential status.
+and renders a Photos-style browser with a stable carousel plus centered
+`RAW` / `2D` / `3D` primary surfaces.
+
+The Photos-like feel is intentionally delegated to UIKit where it matters:
+`DepthAnalysisView` wraps a `UIScrollView.isPagingEnabled` shell for horizontal
+photo switching, keeps only previous/current/next page hosts alive, separates
+RAW display-image loading from 2D/3D depth-analysis loading, uses a nested
+`UIScrollView + UIImageView` for RAW pinch/double-tap zoom, and renders 2D/3D
+inside the same centered aspect-fit rectangle as the RAW photo. Page content
+leaves an 18pt black gap between neighboring photos.
 
 Related design note:
 [DepthAnalysisViewerRedesign.md](../../Docs/DepthAnalysisViewerRedesign.md)
-describes the Photos-style viewer, half/full tool drawer, icon-only `2D`/`3D`/
-credential bottom controls, 2D overlay opacity/plane detection, and native 3D
-projection direction.
+describes the current Photos-style viewer implementation, the `RAW` / `2D` /
+`3D` bottom capsule, centered aspect-fit tool containers, global Share/Delete
+gaps, Liquid Glass future work, 2D overlay/plane detection, and native 3D
+projection.
+
+Terminology note: `TAPCamDemo/TAPLibrary` is the app-private pending artifact
+queue for signing, Photos export, retry, and cleanup. The user-facing TAP
+Library grid and viewer path is `DepthAlbumPickerView` -> `DepthAnalysisView`
+inside this module.
 
 ## Code Map
 
@@ -23,9 +37,11 @@ projection direction.
 | Stable Analysis carousel slots, progressive thumbnail/original loading, Photos progress, and per-photo Plane state | [DepthAnalysisCarouselState.swift](DepthAnalysisCarouselState.swift) |
 | Public-safe analysis, album, and Planes error copy | [DepthAnalysisErrorPresentation.swift](DepthAnalysisErrorPresentation.swift) |
 | TAP Library item loading, pending/exported/Photos merge, route anchors, and item cache keys | [DepthAlbumItemProvider.swift](DepthAlbumItemProvider.swift) |
-| Main analysis screen shell, stable photo carousel, zoom/pan gestures, scroll-revealed tools, and route callbacks | [DepthAnalysisView.swift](DepthAnalysisView.swift) |
+| Main analysis screen shell, UIKit paged-scroll carousel, centered `RAW` / `2D` / `3D` surfaces, RAW zoom scroll view, 18pt page gap, left-edge return, and route callbacks | [DepthAnalysisView.swift](DepthAnalysisView.swift) |
+| Pure viewer policy for left-edge return thresholds, native page spacing, centered aspect-fit tool containers, and aspect-fit rects | [DepthAnalysisViewerInteractionPolicy.swift](DepthAnalysisViewerInteractionPolicy.swift) |
+| Stable full-screen viewer chrome above the photo carousel | [DepthAnalysisViewerChromeView.swift](DepthAnalysisViewerChromeView.swift) |
 | Central visual stage for RGB, heatmap, mask, planes, internal point projection, region gestures, and plane seed taps | [DepthAnalysisStageView.swift](DepthAnalysisStageView.swift) |
-| Icon-only Photos-style bottom control bar for share, 2D, 3D, credential, and delete | [DepthAnalysisControlsView.swift](DepthAnalysisControlsView.swift) |
+| Bottom `RAW` / `2D` / `3D` capsule; Share/Delete actions are documented gaps outside the current capsule | [DepthAnalysisControlsView.swift](DepthAnalysisControlsView.swift) |
 | App Attest capture-signature verification service and public-safe report model | [AppAttestSignatureVerification.swift](AppAttestSignatureVerification.swift) |
 | App Attest capture-signature verification panel | [AppAttestSignatureVerificationPanel.swift](AppAttestSignatureVerificationPanel.swift) |
 | Field-level panel content adapter for concrete inspector bodies | [DepthAnalysisInspectorPanelContent.swift](DepthAnalysisInspectorPanelContent.swift) |
@@ -118,10 +134,17 @@ If this module is new to you, read it in this order:
    labels, icons, explanations, legend text, and debug-only mode flag used by
    the screen, strip, and tests.
 15. [DepthAnalysisView.swift](DepthAnalysisView.swift) is the source entry and
-   screen shell. It owns stable chrome, photo zoom/pan/double-tap,
-   `previous/current/next` carousel layout, left/right switching at fit size,
-   scroll-revealed tool detail page, selected-tool routing, and top-level
-   callbacks.
+   screen shell. It owns stable chrome, UIKit paged scrolling,
+   `previous/current/next` page hosting, RAW display-only browsing,
+   RAW zoom/pan/double-tap, centered `RAW` / `2D` / `3D` primary surfaces,
+   selected-tool routing, left-edge return, and top-level callbacks. Global
+   Share and Delete are not present in the current bottom capsule; the intended
+   action menu, system share sheet, and deletion confirmation are tracked in
+   [DepthAnalysisViewerRedesign.md](../../Docs/DepthAnalysisViewerRedesign.md).
+   [DepthAnalysisViewerInteractionPolicy.swift](DepthAnalysisViewerInteractionPolicy.swift)
+   keeps left-edge return thresholds, native page spacing, aspect-fit rects,
+   and centered-container layout testable. [DepthAnalysisViewerChromeView.swift](DepthAnalysisViewerChromeView.swift)
+   owns stable viewer chrome above the carousel.
 16. [DepthAnalysisStageView.swift](DepthAnalysisStageView.swift) owns the
    central visual stage for RGB, heatmap, mask, planes, and internal projection
    previews. It
@@ -130,9 +153,11 @@ If this module is new to you, read it in this order:
    receive sources, manifests, proofs, identifiers, Photos handles, pending
    store handles, geometry caches, or export state.
 17. [DepthAnalysisControlsView.swift](DepthAnalysisControlsView.swift) owns the
-   icon-only bottom controls and button-hint routing. Tool content is rendered
-   by the scroll-revealed detail page in `DepthAnalysisView`.
-   For the Verify Signature route, then read
+   bottom `RAW` / `2D` / `3D` capsule. Tool content is rendered as the primary
+   centered surface in `DepthAnalysisView`. Do not treat this control bar as
+   proof that global Share or Delete is functional; those actions are not wired
+   in the current viewer.
+   For the Verify Signature route, read
    [AppAttestSignatureVerification.swift](AppAttestSignatureVerification.swift)
    for Photos photo loading, local signed-export validation reuse, backend
    verify submission, and public-safe report text, followed by
@@ -196,7 +221,7 @@ Plane geometry, detector, and request-coordinator tests live in
 | --- | --- | --- | --- | --- |
 | DEBUG metadata HUD | A loaded analysis input has a manifest payload and the stage is built in DEBUG | [DepthAnalysisMetadataHUD.swift](DepthAnalysisMetadataHUD.swift) | `TAPDepthAnalysisPresentationTests`: `captureMetadataSummaryRequiresPayload`, `captureMetadataSummaryPublishesExpectedPublicText`, `captureMetadataSummaryOmitsIdentifiersAndLocation`, `captureMetadataSummaryFallsBackForSensitiveManifestDisplayFields`, `captureMetadataSummaryFallsBackForDepthSourceDeviceName` | Visual HUD layout still needs UI regression evidence |
 | Inspector panel adapter | A bottom inspector route is selected | [DepthAnalysisInspectorPanelContent.swift](DepthAnalysisInspectorPanelContent.swift) | `TAPDepthAnalysisPresentationTests`: `analysisViewModesPublishInspectorRoutes`, `analysisPanelDestinationSelectsInspectorsOnly` | Inspector body layout still needs UI regression evidence |
-| Signature verification panel | The credential tool is selected from a saved Photos asset, or from a pending item before export | [AppAttestSignatureVerification.swift](AppAttestSignatureVerification.swift), [AppAttestSignatureVerificationPanel.swift](AppAttestSignatureVerificationPanel.swift), [TAPVerificationExportBuilder.swift](TAPVerificationExportBuilder.swift), [DepthAnalysisView.swift](DepthAnalysisView.swift) | `TAPAppAttestSignatureVerificationTests`: public backend summary, success/failure visible-text redaction, and panel raw-section source guard. `TAPVerificationExportBuilderTests`: original still export, Live Photo ZIP export, primary-only fallback, MOV mismatch, and sidecar privacy. `TAPDepthAnalysisPresentationTests`: panel destination keeps verification separate from inspector selection. | Real backend acceptance, real Photos asset verification/export, and rendered panel layout still need attended evidence |
+| Signature verification panel | A saved Photos asset or pending item opens the verification route outside the current `RAW` / `2D` / `3D` bottom capsule | [AppAttestSignatureVerification.swift](AppAttestSignatureVerification.swift), [AppAttestSignatureVerificationPanel.swift](AppAttestSignatureVerificationPanel.swift), [TAPVerificationExportBuilder.swift](TAPVerificationExportBuilder.swift), [DepthAnalysisView.swift](DepthAnalysisView.swift) | `TAPAppAttestSignatureVerificationTests`: public backend summary, success/failure visible-text redaction, and panel raw-section source guard. `TAPVerificationExportBuilderTests`: original still export, Live Photo ZIP export, primary-only fallback, MOV mismatch, and sidecar privacy. `TAPDepthAnalysisPresentationTests`: panel destination keeps verification separate from inspector selection. | Real backend acceptance, real Photos asset verification/export, and rendered panel layout still need attended evidence |
 | Adaptive panel height metrics | A panel's measured content height changes | [DepthAnalysisPanelLayer.swift](DepthAnalysisPanelLayer.swift) | `analysisPanelLayoutMetricsUsesOnePointViewportBeforeMeasurement`, `analysisPanelLayoutMetricsFitsShortMeasuredContentWithoutScrolling`, `analysisPanelLayoutMetricsCapsOverflowingContentAndEnablesScrolling`, `analysisPanelLayoutMetricsKeepsMinimumContentHeightForSmallPanels` | Pure metrics only; rendered SwiftUI panel layout and screenshot evidence still need UI regression coverage |
 | Inspector visible errors | Region heatmap or Plane selection fails | [DepthAnalysisErrorPresentation.swift](DepthAnalysisErrorPresentation.swift), [DepthAnalysisInspectorPanelContent.swift](DepthAnalysisInspectorPanelContent.swift) | `depthAnalysisInspectorErrorMessageKeepsRegionHeatmapCopyPublicSafe`, `depthAnalysisInspectorErrorMessageKeepsPlaneSelectionCopyPublicSafe`, `depthAnalysisInspectorViewsDoNotAcceptRawErrorStringSinks` | Real-device unified-log evidence remains separate |
 | Measurements and Region inspectors | A rectangular region is selected outside Planes mode | [DepthAnalysisInspectors.swift](DepthAnalysisInspectors.swift), [DepthAnalysisMeasurementsInspectorContent.swift](DepthAnalysisMeasurementsInspectorContent.swift), [DepthAnalysisRegionInspectorContent.swift](DepthAnalysisRegionInspectorContent.swift) | `TAPDepthAnalysisSelectionTests` covers region clamping, stats, local heatmap, local plane estimate, and ViewModel selection bridge. `TAPDepthAnalysisPresentationTests` covers shared region-stats presentation text. `DepthAnalysisErrorPresentationTests` covers typed public-safe local-heatmap failure text. | Visual measurement rows and loupe layout still need UI evidence |
@@ -285,9 +310,9 @@ list for attended device or UI checks that code reading alone cannot prove.
    [DepthAnalysisControlsView.swift](DepthAnalysisControlsView.swift), and
    [DepthAnalysisInspectorPanelContent.swift](DepthAnalysisInspectorPanelContent.swift)
    together. The view is the source entry and screen shell; the stage owns the
-   central visual mode switch; the controls own panel presentation; the panel
-   content adapter is where field-level values are passed to concrete
-   inspectors.
+   central visual mode switch; the controls own the current `RAW` / `2D` / `3D`
+   bottom capsule; the panel content adapter is where field-level values are
+   passed to concrete legacy inspectors.
 14. Read [DepthAnalysisMetadataHUD.swift](DepthAnalysisMetadataHUD.swift) for
    capture metadata presentation. `CaptureMetadataSummary` is a small summary
    model used by the stage, while the visible HUD remains debug-only. It
@@ -298,10 +323,10 @@ list for attended device or UI checks that code reading alone cannot prove.
 15. Read [DepthAnalysisPanelControls.swift](DepthAnalysisPanelControls.swift),
    [DepthAnalysisPanelSupport.swift](DepthAnalysisPanelSupport.swift),
    [DepthAnalysisInspectorStrip.swift](DepthAnalysisInspectorStrip.swift), and
-   [DepthAnalysisPanelLayer.swift](DepthAnalysisPanelLayer.swift) for the bottom
-   controls and panel shell. `AnalysisPanelLayoutMetrics` is the pure adaptive
-   height policy; the SwiftUI view still owns measurement preferences and
-   rendering. These files receive route/model values, bindings, and content
+   [DepthAnalysisPanelLayer.swift](DepthAnalysisPanelLayer.swift) for the legacy
+   inspector controls and panel shell. `AnalysisPanelLayoutMetrics` is the pure
+   adaptive height policy; the SwiftUI view still owns measurement preferences
+   and rendering. These files receive route/model values, bindings, and content
    closures; they should not receive `TAPDepthAnalysisInput`,
    `DepthAnalysisSource`, Photos identifiers, pending identifiers, manifests,
    proofs, App Attest key IDs, or export state.
@@ -325,17 +350,25 @@ list for attended device or UI checks that code reading alone cannot prove.
    top start, in-session clicked-item scroll return, cached album snapshot reuse,
    item selection, and navigation to analysis. Pending items open with
    `pendingCaptureID`; owned and Photos-only items open with `assetID`.
-3. Open an item and verify the main photo supports double-tap zoom, pinch zoom,
-   pan while zoomed, and left/right photo switching at fit size.
-4. Tap the 2D icon and verify the half-height black tool page opens. The overlay
-   opacity slider should span original photo at `0`, heatmap at `1`, and blended
-   analysis in between. Tap the overlay view to run plane detection.
-5. Tap the 3D icon and verify the black tool page shows the native projected 3D
-   model. Drag and pinch should interact with the model; the UI should not expose
+3. Open an item and verify the raw photo is centered on the screen, supports
+   double-tap zoom, pinch zoom, pan while zoomed, and left/right photo switching
+   at fit size.
+4. Tap `2D` and verify the analysis surface replaces the primary surface in a
+   centered aspect-fit container with the same visible ratio as the raw photo.
+   Swiping outside that container should switch photos; tapping inside the
+   analysis surface should still select a Plane seed.
+5. Tap `3D` and verify the native projected 3D model replaces the primary
+   surface in a centered aspect-fit container with the same visible ratio as the
+   raw photo. Drag and pinch inside the container should interact with SceneKit;
+   swiping outside the container should switch photos; the UI should not expose
    point-cloud terminology.
-6. Tap the credential icon and verify the credential panel follows the currently
-   selected photo while left/right photo switching preserves the selected tool.
-7. Treat this module as a local reader. It may read pending or saved TAP HEIC or
+6. Switch among `RAW`, `2D`, and `3D` while paging left/right and verify the
+   selected tool, toolbar, and route/bookmark state remain stable with no black
+   rebuild flash.
+7. Treat global Share and Delete as known gaps for this review: they are not in
+   the current bottom capsule until the action menu/share sheet and deletion
+   confirmation are implemented.
+8. Treat this module as a local reader. It may read pending or saved TAP HEIC or
    JPG photo files, but App Attest proof validation and final export trust
    remain in the capture/output pipeline.
 
@@ -410,10 +443,12 @@ available local photo artifact, preferring the signed container-specific file
 and falling back to the unsigned container-specific file.
 
 `DepthAnalysisView` owns the Photos-style browser shell now. It receives
-display-ready local analysis values from `DepthAnalysisViewModel`, keeps the
-main photo as the primary surface, and renders the scroll-revealed tool detail
-page. `DepthAnalysisControlsView` is only the icon bottom bar; field-level
-inspector data still stays out of the control bar.
+display-ready local analysis values from `DepthAnalysisCarouselStore` and its
+`AnalysisPhotoSlot`s, keeps the active photo centered, and switches the primary
+surface among `RAW`, `2D`, and `3D`.
+`DepthAnalysisControlsView` is only the bottom `RAW` / `2D` / `3D` capsule.
+Global Share and Delete are still documented gaps outside this capsule.
+Field-level inspector data still stays out of the control bar.
 
 TAP Library item construction is split from the grid UI.
 [DepthAlbumItemProvider.swift](DepthAlbumItemProvider.swift) reads visible

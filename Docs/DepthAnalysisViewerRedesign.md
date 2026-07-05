@@ -1,58 +1,132 @@
 # Depth Analysis Viewer Redesign
 
-Status: implemented design record from the 2026-07-05 Analysis viewer
-refactor. This document describes the user-facing contract and the code seams
-that now support it.
+Status: current implementation record plus target behavior. The 2026-07-05
+Analysis viewer refactor now uses a stable full-screen browser shell, a
+previous/current/next carousel, progressive loading, and a bottom `RAW / 2D /
+3D` capsule that switches the primary centered surface. Global Share/Delete
+actions, credential action-menu integration, single-tap chrome toggle, and iOS
+26 Liquid Glass polish remain explicit gaps, not completed product behavior.
+
+`TAPCamDemo/TAPLibrary` is the app-private pending artifact queue for signing
+and Photos export. The user-facing TAP Library grid/viewer path lives in
+`TAPCamDemo/DepthAnalysis`: `DepthAlbumPickerView` opens `DepthAnalysisView`.
 
 ## Goals
 
 - Make the Analysis surface feel like a native photo viewer first.
-- Move analysis tools into an explicit bottom drawer instead of changing the
-  main photo every time a mode is selected.
-- Keep the original photo as the primary object. Analysis previews are
-  secondary and live in the drawer.
+- Keep the active photo centered on the screen in every tool state.
+- Use the bottom capsule only for `RAW`, `2D`, and `3D` primary-surface
+  switching.
+- Preserve reliable left/right photo switching without vertical drawer or
+  sheet gestures.
+- Keep `2D` and `3D` tool surfaces visually aligned with the original photo by
+  rendering them in a centered aspect-fit container that matches the raw photo
+  ratio.
 - De-emphasize rectangular region selection. It can remain as a debug or
   advanced tool, but it should not be the default Release interaction.
-- Split tools into simple user concepts: `2D`, `3D`, and `凭证`.
+
+## Current Implementation Status
+
+This table maps the target Photos-style behavior to the current implementation
+so future work does not confuse an intended contract with shipped interaction.
+
+| Area | Current status |
+| --- | --- |
+| Stable viewer and chrome | Implemented. `DepthAnalysisView` keeps bottom chrome and selected tool state outside per-photo loading. |
+| Carousel | Implemented. `AnalysisNativePagingView` wraps UIKit `UIScrollView.isPagingEnabled`, while `DepthAnalysisCarouselStore` owns previous/current/next slots and switches by changing `currentItemID`. |
+| Loading | Implemented. RAW display loading is separate from 2D/3D analysis input loading. Slots load thumbnails first, then viewport-sized display images for browsing; depth analysis input is loaded on demand for the current 2D/3D page. |
+| Bottom capsule | Implemented. `DepthAnalysisControlsView` exposes only `RAW`, `2D`, and `3D`. Share/Delete are not part of the current bottom capsule. |
+| Raw photo surface | Implemented. The raw photo is centered in the full-screen black viewer, supports pinch, pan while zoomed, double-tap zoom, and fit-size left/right paging. |
+| 2D tool surface | Implemented. `2D` replaces the primary surface with a centered aspect-fit container matching the raw photo ratio. Swipes that begin outside the container page left/right. |
+| 3D tool surface | Implemented. `3D` replaces the primary surface with a centered aspect-fit SceneKit container matching the raw photo ratio. SceneKit owns gestures that begin inside the container; swipes outside it page left/right. |
+| Vertical gestures | Not implemented by design in this pass. There is no up-swipe drawer, down-swipe dismiss, or half/full detent behavior in the current viewer. |
+| Global Share | Not implemented. No global Share button is shown in the current bottom capsule. Verification-original sharing exists only inside the credential verification panel through `TAPVerificationExportBuilder` and `VerificationExportActivityView`. |
+| Delete | Not implemented. No Delete button is shown in the current bottom capsule. |
+| Liquid Glass | Not implemented. Current controls use material fallbacks such as `.thinMaterial`; future iOS 26 adoption should be `#available(iOS 26, *)` gated because the project deployment target is iOS 18.6. |
+
+## Native Paging Implementation
+
+The current viewer uses UIKit for the parts where iOS Photos feel matters most.
+This is the engineering contract for the shipped browser behavior:
+
+- Horizontal photo switching is driven by a `UIScrollView` with
+  `isPagingEnabled`, `.fast` deceleration, horizontal bounce, and a stable black
+  background. We do not hand-roll page commit distance, velocity landing, or
+  spring-back curves in SwiftUI.
+- The SwiftUI bridge keeps three `UIHostingController` page hosts alive for
+  previous/current/next. When the system scroll view lands on a neighbor,
+  `DepthAnalysisCarouselStore.move(offset:)` updates `currentItemID`, then the
+  scroll view is reset without animation back to the center/active page.
+- Each page reserves `DepthAnalysisViewerInteractionPolicy.nativePageSpacing`
+  points for black inter-page separation. The current value is `18`, applied as
+  a 9pt inset on each side of page content.
+- RAW browsing uses a display-only chain. It requests a viewport-sized Photos
+  image for the current/neighbor browser pages and does not require
+  `TAPDepthAnalysisInput`.
+- 2D and 3D are analysis tools. They load `TAPDepthAnalysisInput` only for the
+  current page when the selected tool needs depth/geometry data.
+- RAW zoom is a nested UIKit `UIScrollView + UIImageView`. It owns pinch,
+  double-tap zoom, and pan while zoomed. At fit size the nested pan recognizer
+  is disabled so the parent paged scroll view owns left/right swipes.
+- RAW layout has a UIKit layout repair path that restores the image view frame,
+  content size, and zoom state after page reuse or tool switching. This prevents
+  the observed black RAW page after returning from 2D/3D.
+- 2D and 3D render in a centered aspect-fit container computed from the raw
+  photo dimensions and display orientation. In tool modes, parent paging begins
+  only when the gesture starts outside that container; SceneKit owns gestures
+  inside the 3D container.
+- Viewer and grid left-edge return use UIKit/SwiftUI edge policy thresholds from
+  `AnalysisEdgeBackPolicy`: start within 24pt of the left edge, rightward,
+  horizontally dominant, and past distance or predicted-distance threshold.
+
+Known engineering limitation: display image tasks cancel the Swift concurrency
+task and drop stale results, but the underlying `PHImageManager` display-image
+request is not yet cancelled by request ID. Rapid paging can still leave old
+Photos requests running in the system manager even though stale UI publication
+is guarded.
 
 ## Primary Surface
 
-The normal state is a Photos-like browser. It shows one original image and a
-small bottom control set:
+The normal state is a Photos-like browser. The active photo or tool container is
+centered in the viewport. The bottom control is one capsule:
 
-| Position | Control | Behavior |
-| --- | --- | --- |
-| Left | Share | Opens TAPCam actions first, then system share/export when needed. |
-| Center capsule | 2D icon | Opens the drawer and selects the 2D analysis tool. The visible capsule button is icon-only; accessibility keeps the `2D analysis` label. |
-| Center capsule | 3D icon | Opens the drawer and selects the native 3D projection tool. The visible capsule button is icon-only; accessibility keeps the `3D projection` label. |
-| Center capsule | credential icon | Opens the drawer and selects credential status. The visible capsule button is icon-only; accessibility keeps the credential label. |
-| Right | Delete | Deletes the current TAP Library item or Photos asset with confirmation. |
+| Control | Behavior |
+| --- | --- |
+| `RAW` | Shows the original photo as the primary full-screen surface. At fit size, left/right drag pages to neighboring photos. When zoomed, horizontal drag pans the current photo instead of paging. |
+| `2D` | Shows the 2D analysis surface in a centered aspect-fit container whose ratio matches the visible raw photo. Horizontal swipes that begin outside the container page left/right. |
+| `3D` | Shows the native 3D projection in a centered aspect-fit container whose ratio matches the visible raw photo. Gestures inside the container control SceneKit; horizontal swipes outside the container page left/right. |
 
-There is no visible `Normal` mode button. Closing the drawer returns to normal
-photo browsing.
+There is no visible `Normal` button, no credential button in this capsule, and
+no bottom drawer close state. Returning to plain photo browsing is the `RAW`
+selection.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> PhotoBrowser
-    PhotoBrowser --> HalfDrawer: "tap 2D / 3D / 凭证"
-    PhotoBrowser --> HalfDrawer: "swipe up"
-    HalfDrawer --> FullDrawer: "pull up"
-    HalfDrawer --> PhotoBrowser: "swipe down"
-    FullDrawer --> PhotoBrowser: "swipe down"
-    PhotoBrowser --> Library: "swipe down near 1x"
+    [*] --> Raw
+    Raw --> TwoD: "tap 2D"
+    Raw --> ThreeD: "tap 3D"
+    TwoD --> Raw: "tap RAW"
+    ThreeD --> Raw: "tap RAW"
+    TwoD --> ThreeD: "tap 3D"
+    ThreeD --> TwoD: "tap 2D"
+    Raw --> NeighborPhoto: "horizontal swipe at fit size"
+    TwoD --> NeighborPhoto: "horizontal swipe outside container"
+    ThreeD --> NeighborPhoto: "horizontal swipe outside container"
 ```
 
 ## Photo Gestures
 
-The photo browser keeps native-feeling gesture priority:
+The viewer keeps one primary gesture rule: horizontal photo paging is available
+when the gesture starts in a pageable region.
 
-- Pinch zoom and drag pan are always photo gestures in the main photo layer.
-- Double tap toggles between fit size and a useful zoomed-in scale.
-- Left and right swipes switch photos only when the photo is at fit size or
-  close to fit size.
-- When zoomed in, horizontal movement pans the current photo instead of
-  switching photos.
-- Down-swipe returns to the Library only when the photo is near fit size.
+- `RAW` mode pages left/right at fit size or close to fit size.
+- `RAW` mode does not page while zoomed; the same drag pans the current photo.
+- Pinch zoom and double tap are raw photo gestures.
+- `2D` and `3D` modes page left/right only from the black area outside the
+  centered tool container.
+- Gestures that begin inside the 3D SceneKit container are owned by SceneKit.
+- Vertical drags do not open a drawer, resize a sheet, or dismiss the viewer in
+  the current implementation.
 - Timeline navigation includes every item. Pending, signing, failed, missing
   credential, and external invalid items stay in the same time flow.
 
@@ -61,69 +135,70 @@ The photo browser keeps native-feeling gesture priority:
 Analysis no longer rebuilds the whole page from a single `currentSource`.
 `DepthAnalysisCarouselStore` owns a stable ordered list and creates one
 `AnalysisPhotoSlot` per item. The visible window is always the current item plus
-its previous and next neighbors when they exist.
+its previous and next neighbors when they exist. UIKit paging owns the drag,
+deceleration, page landing, and edge bounce; the store owns only the model
+transition after the page lands.
 
 Each slot owns:
 
 - thumbnail image;
-- original/depth loading phase and Photos progress;
-- decoded `TAPDepthAnalysisInput`;
+- display image loading phase and Photos progress;
+- decoded `TAPDepthAnalysisInput` only when 2D/3D needs analysis;
 - rectangular debug selection state;
 - Plane seed/region state;
 - a Plane region request coordinator with geometry prewarm.
 
-Switching photos changes only `currentItemID`. The bottom chrome, selected
-tool, scroll page, and neighboring slots remain alive. This is the contract that
-prevents the old black flash where `input = nil` destroyed the surface before
-the next photo decoded.
+Switching photos changes only `currentItemID`. The bottom capsule, selected
+tool, and neighboring slots remain alive. This is the contract that prevents
+the old black flash where `input = nil` destroyed the surface before the next
+photo decoded.
 
 Loading is progressive:
 
 - Photos thumbnails are requested with no network access and can appear before
   the original asset is local.
-- Original photo bytes allow network access and publish the Photos download
-  progress handler.
-- The main photo and tool placeholders keep showing the thumbnail while the
-  original image/depth decode is pending.
-- When decode succeeds, the surface crossfades to the full image and the
-  selected 2D/3D/credential content follows the same slot.
+- Display images allow network access and publish the Photos download progress
+  handler.
+- RAW keeps showing the thumbnail until a viewport-sized display image is ready.
+- 2D/3D keep showing loading or unavailable states until the current page's
+  `TAPDepthAnalysisInput` decode is ready.
+- When display or analysis decode succeeds, the selected `RAW` / `2D` / `3D`
+  content follows the same slot.
 - Pending captures are local and may skip the iCloud progress path.
 
-## Drawer Behavior
+## Tool Surface
 
-The drawer is the tool surface.
+Current implementation uses primary-surface replacement instead of a bottom
+detail sheet.
 
-- Tapping `2D`, `3D`, or `凭证` opens the half-height drawer and selects that
+- Tapping `RAW`, `2D`, or `3D` switches the centered primary viewer surface.
+- `RAW` renders the raw/original photo full-screen with aspect-fit centering.
+- `2D` and `3D` render inside a centered aspect-fit container calculated from
+  the current raw photo dimensions and display orientation.
+- The center of the raw photo or tool container stays at the center of the
+  screen.
+- Tool selection is preserved while switching photos.
+- If a selected tool is unavailable for the next photo, keep the tool selected
+  and show an unavailable/loading state instead of silently switching to another
   tool.
-- Opening the drawer by swiping up defaults to `凭证`.
-- The selected tool is preserved while switching photos.
-- If the selected tool is unavailable for the next photo, keep the tool selected
-  and show an unavailable state instead of silently switching to another tool.
-- The half-height drawer allows left and right photo switching. The drawer
-  content follows the selected photo.
-- The full-screen drawer disables photo switching because the selected tool owns
-  gestures.
-- Full-screen drawer still supports down-swipe to exit directly back to normal
-  photo browsing.
-- Half-screen 3D preview hides controls and can respond to gyroscope movement.
+- There are no hidden/half/full drawer detents in the current viewer.
 
 ```mermaid
 flowchart TD
-    ToolTap["Tap bottom capsule tool"] --> Half["Half-height drawer"]
-    SwipeUp["Swipe up on photo"] --> Half
-    Half --> Selected["Selected tool content"]
-    Selected --> TwoD["2D preview"]
-    Selected --> ThreeD["3D preview"]
-    Selected --> Credential["Credential status"]
-    Half --> Full["Full-screen drawer"]
-    Full --> ToolGestures["Tool-owned gestures"]
-    ToolGestures --> Exit["Swipe down exits drawer"]
+    ToolTap["Tap bottom capsule"] --> Selected["Selected primary surface"]
+    Selected --> Raw["RAW centered photo"]
+    Selected --> TwoD["2D centered aspect-fit container"]
+    Selected --> ThreeD["3D centered aspect-fit container"]
+    Raw --> Page["Horizontal page at fit size"]
+    TwoD --> PageOutside["Horizontal page outside container"]
+    ThreeD --> SceneKit["SceneKit gestures inside container"]
+    ThreeD --> PageOutside
 ```
 
 ## 2D Tool
 
 Release UI exposes one top-level `2D` tool. The primary 2D view is an overlay
-analysis surface with an opacity slider:
+analysis surface:
 
 - opacity `0` shows the original RGB photo;
 - opacity `1` shows the full heatmap;
@@ -133,14 +208,11 @@ analysis surface with an opacity slider:
 
 `Mask` is not exposed inside the Release 2D tool. Valid-depth mask rendering can
 remain an internal/debug view mode, but the Release 2D tool is only RGB plus
-heatmap overlay. Separate top-level `热力图` and `热力图重叠` controls are
-unnecessary because the opacity slider spans both endpoints.
+heatmap overlay.
 
-The half-height drawer shows a small preview, opacity control, and plane
-status.
-
-The full-screen 2D tool owns analysis gestures. It does not switch photos by
-horizontal swipe while full-screen.
+Current implementation renders the 2D surface in the centered aspect-fit
+container. It does not expose a separate bottom sheet or drawer for 2D controls
+in this pass.
 
 If depth is unavailable, keep the tool selected and show:
 
@@ -157,17 +229,14 @@ browser implementation detail, not the iOS rendering target.
 Release terminology is `3D projection`. Avoid exposing `point cloud` as the
 primary user-facing label.
 
-Initial implementation direction:
+Current implementation direction:
 
 - Use SceneKit for v1 native rendering.
-- Half-height drawer directly shows the native projected model with no visible
-  controls.
-- Half-height 3D preview uses slight gyroscope/parallax motion by default while
-  visible.
+- Show the native projected model directly in the centered `3D` aspect-fit
+  container.
 - Respect Reduce Motion. Disable gyroscope movement when Reduce Motion is on.
-- 3D gestures are owned by the SceneKit surface, not by the drawer page. A
-  gesture that starts inside the 3D content must not scroll or resize the
-  analysis page underneath it.
+- 3D gestures are owned by the SceneKit surface. A gesture that starts inside
+  the 3D content must not page the photo carousel.
 - One-finger drag orbits the model around the current target depth. Two-finger
   drag pans in capture-camera units. Pinch scales the model around the same
   target depth with a bounded scale range. Two-finger rotation rolls the model
@@ -181,7 +250,7 @@ Initial implementation direction:
 - The initial camera matches the capture-camera contract from TAPCamVerifier:
   the camera node starts at the capture camera origin, looks down the same
   viewing direction as the photo, and sets a projection matrix from
-  `fx / fy / cx / cy` fitted to the drawer content size.
+  `fx / fy / cx / cy` fitted to the centered 3D container size.
 - The display orientation is applied once in the 3D projection frame. Geometry
   and camera intrinsics rotate into the same orientation as the visible photo,
   while RGB sampling and selected-plane membership stay in raw/native pixel
@@ -210,11 +279,15 @@ If depth is unavailable, keep the tool selected and show:
 
 > 没有可用深度，无法生成 3D 投影
 
-## Credential Tool
+## Credential Status
 
-The center capsule label is `凭证`.
+Credential verification is not part of the current `RAW / 2D / 3D` bottom
+capsule. It remains available through the existing credential verification
+panel paths and should be integrated into a future TAPCam action menu rather
+than reintroduced as a fourth primary viewer mode.
 
-Release UI should show only small, understandable credential text:
+Release UI should show only small, understandable credential text when the
+credential panel is shown:
 
 | Internal situation | Release text |
 | --- | --- |
@@ -230,15 +303,26 @@ appear only for exception states:
 - no credential
 
 `已导出无凭证版本` should not appear on the thumbnail. It can appear in the
-Credential drawer or Share menu state.
+credential panel or future Share menu state.
 
 Release UI does not expose a manual retry signing button. Retry is automatic in
 the background. Debug builds may expose retry and diagnostics.
 
 ## Share And Export
 
-The left button is `Share`, not `Export`. It opens a TAPCam action menu before
-the system Share Sheet.
+Current implementation status: no global Share button is shown in the bottom
+viewer capsule, and global sharing is not wired from `DepthAnalysisView`.
+
+Target behavior remains a TAPCam action menu before the system Share Sheet.
+
+Existing reusable implementation pieces:
+
+- `TAPVerificationExportBuilder` builds verification-original exports for
+  still photos and Live Photos.
+- `VerificationExportActivityView` wraps `UIActivityViewController` inside the
+  credential panel.
+- Future global Share work should reuse or extract these pieces instead of
+  creating a separate export/share path.
 
 | Item state | Share menu actions |
 | --- | --- |
@@ -260,7 +344,10 @@ invalid file.
 
 ## Delete
 
-The right button deletes with confirmation.
+Current implementation status: no Delete button is shown in the bottom viewer
+capsule, and deletion is not wired from `DepthAnalysisView`.
+
+Target behavior remains delete with confirmation.
 
 - Photos assets should use system Photos delete semantics, including Recently
   Deleted behavior.
@@ -275,6 +362,8 @@ The right button deletes with confirmation.
 - No separate top-level Heatmap, Heatmap Overlay, or Mask buttons in the bottom
   capsule.
 - No WebView/Three.js renderer inside the iOS app.
+- No up-swipe drawer, down-swipe dismissal, or half/full sheet detents in this
+  pass.
 - No queue-position UI for credential generation.
 - No Release UI that exposes raw proof IDs, App Attest key IDs, capture IDs,
   Photos asset IDs, backend URLs, or raw retry logs.
