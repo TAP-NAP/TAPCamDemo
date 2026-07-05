@@ -721,6 +721,33 @@ struct TAPCaptureOutputProfileTests {
         #expect(!manifestSource.contains("let outputProfile = capturePackage.outputProfile"))
     }
 
+    @Test func runtimeSetsPhotoConnectionMirroringFromCameraPosition() throws {
+        let sessionControllerSource = try Self.source(
+            relativePath: "TAPCamDemo/CameraCapture/Runtime/CaptureSessionController.swift"
+        )
+        let providerSource = try Self.source(
+            relativePath: "TAPCamDemo/CameraCapture/Runtime/AVFoundationSingleCamPhotoProvider.swift"
+        )
+        let controllerCaptureMethod = try #require(Self.substring(
+            in: sessionControllerSource,
+            from: "func capturePhoto(",
+            to: "func applyManualControlCommandPlan"
+        ))
+        let providerCaptureMethod = try #require(Self.substring(
+            in: providerSource,
+            from: "func capturePhotoDepth",
+            to: "@MainActor"
+        ))
+
+        #expect(controllerCaptureMethod.contains("isVideoMirrored: Bool"))
+        #expect(controllerCaptureMethod.contains("photoOutput.connection(with: .video)"))
+        #expect(controllerCaptureMethod.contains("connection.isVideoMirroringSupported"))
+        #expect(controllerCaptureMethod.contains("connection.automaticallyAdjustsVideoMirroring = false"))
+        #expect(controllerCaptureMethod.contains("connection.isVideoMirrored = isVideoMirrored"))
+        #expect(controllerCaptureMethod.contains("photoOutput.capturePhoto(with: settings, delegate: delegate)"))
+        #expect(providerCaptureMethod.contains("isVideoMirrored: context.sessionConfiguration.device.position == .front"))
+    }
+
     private static func source(relativePath: String) throws -> String {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

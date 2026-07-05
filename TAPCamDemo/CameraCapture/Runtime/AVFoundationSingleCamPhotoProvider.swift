@@ -78,7 +78,8 @@ nonisolated final class AVFoundationSingleCamPhotoProvider: SingleCamPhotoCaptur
             sessionController.capturePhoto(
                 settings: settings,
                 delegate: delegate,
-                videoRotationAngle: videoRotationAngle
+                videoRotationAngle: videoRotationAngle,
+                isVideoMirrored: context.sessionConfiguration.device.position == .front
             )
         }
     }

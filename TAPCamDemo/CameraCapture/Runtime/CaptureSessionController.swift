@@ -157,13 +157,20 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     func capturePhoto(
         settings: AVCapturePhotoSettings,
         delegate: AVCapturePhotoCaptureDelegate,
-        videoRotationAngle: CGFloat?
+        videoRotationAngle: CGFloat?,
+        isVideoMirrored: Bool
     ) {
         sessionQueue.async { [photoOutput] in
-            if let videoRotationAngle,
-               let connection = photoOutput.connection(with: .video),
-               connection.isVideoRotationAngleSupported(videoRotationAngle) {
-                connection.videoRotationAngle = videoRotationAngle
+            if let connection = photoOutput.connection(with: .video) {
+                if connection.isVideoMirroringSupported {
+                    connection.automaticallyAdjustsVideoMirroring = false
+                    connection.isVideoMirrored = isVideoMirrored
+                }
+
+                if let videoRotationAngle,
+                   connection.isVideoRotationAngleSupported(videoRotationAngle) {
+                    connection.videoRotationAngle = videoRotationAngle
+                }
             }
 
             photoOutput.capturePhoto(with: settings, delegate: delegate)
