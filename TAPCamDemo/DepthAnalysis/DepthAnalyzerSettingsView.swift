@@ -13,6 +13,12 @@ import SwiftUI
 enum DepthAnalyzerPreferences {
     static let showsAnalysisHelpKey = "DepthAnalyzerShowsAnalysisHelp"
     static let defaultShowsAnalysisHelp = true
+    static let planeGridAnimationEnabledKey = "DepthAnalyzerPlaneGridAnimationEnabled"
+    static let defaultPlaneGridAnimationEnabled = true
+    static let confirmsDeleteBeforeDeletingKey = "DepthAnalyzerConfirmsDeleteBeforeDeleting"
+    static let defaultConfirmsDeleteBeforeDeleting = true
+    static let planeGrowthStrictnessKey = "DepthAnalyzerPlaneGrowthStrictness"
+    static let defaultPlaneGrowthStrictness = DepthAnalysisPlaneSelectionState.defaultStrictness
 }
 
 struct DepthAnalyzerSettingsView: View {
@@ -22,6 +28,12 @@ struct DepthAnalyzerSettingsView: View {
     @ObservedObject private var appAttestController: AppAttestRuntimeController
     @AppStorage(DepthAnalyzerPreferences.showsAnalysisHelpKey)
     private var showsAnalysisHelp = DepthAnalyzerPreferences.defaultShowsAnalysisHelp
+    @AppStorage(DepthAnalyzerPreferences.planeGridAnimationEnabledKey)
+    private var isPlaneGridAnimationEnabled = DepthAnalyzerPreferences.defaultPlaneGridAnimationEnabled
+    @AppStorage(DepthAnalyzerPreferences.confirmsDeleteBeforeDeletingKey)
+    private var confirmsDeleteBeforeDeleting = DepthAnalyzerPreferences.defaultConfirmsDeleteBeforeDeleting
+    @AppStorage(DepthAnalyzerPreferences.planeGrowthStrictnessKey)
+    private var planeGrowthStrictness = DepthAnalyzerPreferences.defaultPlaneGrowthStrictness
     @AppStorage(CameraFeedbackPreferences.shutterHapticsEnabledKey)
     private var shutterHapticsEnabled = CameraFeedbackPreferences.defaultShutterHapticsEnabled
     @AppStorage(CameraFeedbackPreferences.shutterSoundEnabledKey)
@@ -201,6 +213,26 @@ struct DepthAnalyzerSettingsView: View {
             Toggle(isOn: $showsAnalysisHelp) {
                 Label("Help", systemImage: "questionmark.circle")
             }
+
+            Toggle(isOn: $isPlaneGridAnimationEnabled) {
+                Label("Grid Growth Animation", systemImage: "square.grid.3x3")
+            }
+
+            Toggle(isOn: $confirmsDeleteBeforeDeleting) {
+                Label("Delete Confirmation", systemImage: "trash.slash")
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Plane Strictness", systemImage: "scope")
+
+                Slider(
+                    value: $planeGrowthStrictness,
+                    in: DepthAnalysisPlaneSelectionState.minimumStrictness...DepthAnalysisPlaneSelectionState.maximumStrictness
+                )
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Plane Strictness")
+            .accessibilityValue("\(Int((planeGrowthStrictness * 100).rounded())) percent")
         }
     }
 

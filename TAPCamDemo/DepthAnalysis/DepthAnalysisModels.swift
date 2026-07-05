@@ -171,6 +171,12 @@ nonisolated struct TAPPlaneRegion: Equatable {
     let areaSquareMeters: Double
 }
 
+nonisolated struct TAPPlaneGridProgress: Equatable {
+    let seedPixel: CGPoint
+    let gridCells: [TAPPlaneGridCell]
+    let progress: Double
+}
+
 nonisolated struct TAPPlaneGrowthParameters: Equatable {
     let strictness: Double
     let residualThresholdMeters: Float

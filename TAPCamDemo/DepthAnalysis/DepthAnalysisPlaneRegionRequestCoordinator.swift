@@ -10,10 +10,11 @@ import Foundation
 
 /// Main-actor events emitted by the async Planes request coordinator.
 enum DepthAnalysisPlaneRegionRequestEvent {
-    case started
-    case succeeded(DepthAnalysisPlaneRegionDetection)
-    case failed(Error)
-    case cancelled
+    case started(generationID: Int)
+    case partial(TAPPlaneGridProgress, generationID: Int)
+    case succeeded(DepthAnalysisPlaneRegionDetection, generationID: Int)
+    case failed(Error, generationID: Int)
+    case cancelled(generationID: Int)
 }
 
 /// Owns Planes-mode async request freshness and reusable geometry cache state.
@@ -29,6 +30,8 @@ final class DepthAnalysisPlaneRegionRequestCoordinator {
     private var regionTask: Task<Void, Never>?
     private var regionRequestID = UUID()
     private var regionEventHandler: EventHandler?
+    private var lastPublishedPartialCellCount = 0
+    private var lastPublishedPartialProgress = -Double.infinity
 
     // Image-level geometry shared by Planes taps. It is prewarmed after load and
     // can also be built by the first tap if prewarm has not finished yet.
@@ -58,6 +61,8 @@ final class DepthAnalysisPlaneRegionRequestCoordinator {
         regionTask = nil
         regionRequestID = UUID()
         regionEventHandler = nil
+        lastPublishedPartialCellCount = 0
+        lastPublishedPartialProgress = -Double.infinity
     }
 
     func prewarmGeometry(for depthMap: TAPMetricDepthMap) {
@@ -86,6 +91,7 @@ final class DepthAnalysisPlaneRegionRequestCoordinator {
         depthMap: TAPMetricDepthMap,
         seed: CGPoint,
         strictness: Double,
+        generationID: Int,
         debounceNanoseconds: UInt64 = 0,
         eventHandler: @escaping EventHandler
     ) {
@@ -96,6 +102,8 @@ final class DepthAnalysisPlaneRegionRequestCoordinator {
         regionTask?.cancel()
         regionRequestID = requestID
         regionEventHandler = eventHandler
+        lastPublishedPartialCellCount = 0
+        lastPublishedPartialProgress = -Double.infinity
 
         if preparedGeometryCache == nil {
             // The tap now owns cache construction; cancel utility prewarm so the
@@ -105,8 +113,10 @@ final class DepthAnalysisPlaneRegionRequestCoordinator {
             geometryRequestID = UUID()
         }
 
-        eventHandler(.started)
+        eventHandler(.started(generationID: generationID))
         regionTask = Task.detached(priority: .userInitiated) { [weak self] in
+            var progressBuffer: [TAPPlaneGridProgress] = []
+            let partialPublishIntervalNanoseconds: UInt64 = 150_000_000
             do {
                 if debounceNanoseconds > 0 {
                     try await Task.sleep(nanoseconds: debounceNanoseconds)
@@ -116,16 +126,43 @@ final class DepthAnalysisPlaneRegionRequestCoordinator {
                     depthMap: depthMap,
                     seed: seed,
                     strictness: strictness,
-                    geometryCache: preparedGeometryCache
+                    geometryCache: preparedGeometryCache,
+                    progressHandler: { progress in
+                        progressBuffer.append(progress)
+                    }
                 )
                 try Task.checkCancellation()
-                await self?.finishRegionRequest(requestID, result: .success(detection))
+                for (index, progress) in progressBuffer.enumerated() {
+                    await self?.publishPartialRegionRequest(
+                        requestID,
+                        generationID: generationID,
+                        progress: progress
+                    )
+                    guard index < progressBuffer.count - 1 else {
+                        continue
+                    }
+                    try await Task.sleep(nanoseconds: partialPublishIntervalNanoseconds)
+                    try Task.checkCancellation()
+                }
+                await self?.finishRegionRequest(
+                    requestID,
+                    generationID: generationID,
+                    result: .success(detection)
+                )
             } catch is CancellationError {
-                await self?.finishCancelledRegionRequest(requestID)
+                await self?.finishCancelledRegionRequest(requestID, generationID: generationID)
             } catch let error as TAPPlaneGrowthError {
-                await self?.finishRegionRequest(requestID, result: .failure(error))
+                await self?.finishRegionRequest(
+                    requestID,
+                    generationID: generationID,
+                    result: .failure(error)
+                )
             } catch {
-                await self?.finishRegionRequest(requestID, result: .failure(error))
+                await self?.finishRegionRequest(
+                    requestID,
+                    generationID: generationID,
+                    result: .failure(error)
+                )
             }
         }
     }
@@ -139,7 +176,30 @@ final class DepthAnalysisPlaneRegionRequestCoordinator {
         geometryCache = cache
     }
 
-    private func finishRegionRequest(_ requestID: UUID, result: Result<DepthAnalysisPlaneRegionDetection, Error>) {
+    private func publishPartialRegionRequest(
+        _ requestID: UUID,
+        generationID: Int,
+        progress: TAPPlaneGridProgress
+    ) {
+        guard regionRequestID == requestID else {
+            return
+        }
+
+        let cellCount = progress.gridCells.count
+        guard cellCount > lastPublishedPartialCellCount || progress.progress > lastPublishedPartialProgress else {
+            return
+        }
+        lastPublishedPartialCellCount = cellCount
+        lastPublishedPartialProgress = progress.progress
+
+        regionEventHandler?(.partial(progress, generationID: generationID))
+    }
+
+    private func finishRegionRequest(
+        _ requestID: UUID,
+        generationID: Int,
+        result: Result<DepthAnalysisPlaneRegionDetection, Error>
+    ) {
         guard regionRequestID == requestID else {
             return
         }
@@ -150,20 +210,20 @@ final class DepthAnalysisPlaneRegionRequestCoordinator {
             if let geometryCache = detection.geometryCache {
                 self.geometryCache = geometryCache
             }
-            regionEventHandler?(.succeeded(detection))
+            regionEventHandler?(.succeeded(detection, generationID: generationID))
         case .failure(let error):
-            regionEventHandler?(.failed(error))
+            regionEventHandler?(.failed(error, generationID: generationID))
         }
         regionEventHandler = nil
     }
 
-    private func finishCancelledRegionRequest(_ requestID: UUID) {
+    private func finishCancelledRegionRequest(_ requestID: UUID, generationID: Int) {
         guard regionRequestID == requestID else {
             return
         }
 
         regionTask = nil
-        regionEventHandler?(.cancelled)
+        regionEventHandler?(.cancelled(generationID: generationID))
         regionEventHandler = nil
     }
 }

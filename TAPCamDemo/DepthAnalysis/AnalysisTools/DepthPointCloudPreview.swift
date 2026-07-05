@@ -24,6 +24,7 @@ struct PointCloudPreview: View {
     let depthMap: TAPMetricDepthMap
     let orientation: CGImagePropertyOrientation
     var selectedPlaneRegion: TAPPlaneRegion?
+    var highlightColor: UIColor = .systemYellow
     @Binding var selection: CGRect?
     let interactionState: AnalysisInteractionState
     let allowsSelection: Bool
@@ -49,6 +50,7 @@ struct PointCloudPreview: View {
                 depthMap: depthMap,
                 orientation: orientation,
                 selectedPlaneRegion: selectedPlaneRegion,
+                highlightColor: highlightColor,
                 enablesMotionParallax: enablesMotionParallax && !accessibilityReduceMotion
             )
             .accessibilityLabel("3D projection model")
@@ -746,6 +748,7 @@ fileprivate struct TAPDepthProjectionPayloadBuildRequest: @unchecked Sendable {
     let depthMap: TAPMetricDepthMap
     let orientation: CGImagePropertyOrientation
     let selectedPlaneRegion: TAPPlaneRegion?
+    let highlightColor: UIColor
 }
 
 nonisolated struct TAPDepthProjectionScenePayloadData: Sendable {
@@ -755,6 +758,7 @@ nonisolated struct TAPDepthProjectionScenePayloadData: Sendable {
     let baseVertices: [SIMD3<Float>]
     let baseColors: [SIMD4<Float>]
     let highlightVertices: [SIMD3<Float>]
+    let highlightColor: SIMD4<Float>
     let pointSize: CGFloat
 }
 
@@ -820,14 +824,16 @@ nonisolated enum TAPDepthProjectionScenePayloadBuilder {
         image: CGImage?,
         depthMap: TAPMetricDepthMap,
         orientation: CGImagePropertyOrientation,
-        selectedPlaneRegion: TAPPlaneRegion?
+        selectedPlaneRegion: TAPPlaneRegion?,
+        highlightColor: UIColor = .systemYellow
     ) -> TAPDepthProjectionScenePayloadData? {
         makePayloadData(
             request: TAPDepthProjectionPayloadBuildRequest(
                 image: image,
                 depthMap: depthMap,
                 orientation: orientation,
-                selectedPlaneRegion: selectedPlaneRegion
+                selectedPlaneRegion: selectedPlaneRegion,
+                highlightColor: highlightColor
             )
         )
     }
@@ -843,6 +849,7 @@ nonisolated enum TAPDepthProjectionScenePayloadBuilder {
         let depthMap = request.depthMap
         let orientation = request.orientation
         let selectedPlaneRegion = request.selectedPlaneRegion
+        let highlightColor = rgbaColor(request.highlightColor)
         let fullRegion = CGRect(x: 0, y: 0, width: depthMap.width, height: depthMap.height)
         let samples = TAPDepthGeometryProjector.sampledPoints(
             from: depthMap,
@@ -956,6 +963,7 @@ nonisolated enum TAPDepthProjectionScenePayloadBuilder {
             baseVertices: baseVertices,
             baseColors: baseColors,
             highlightVertices: highlightVertices,
+            highlightColor: highlightColor,
             pointSize: basePointSize
         )
     }
@@ -969,6 +977,15 @@ nonisolated enum TAPDepthProjectionScenePayloadBuilder {
             Float(color.blue) / 255.0,
             Float(color.alpha) / 255.0
         )
+    }
+
+    fileprivate static func rgbaColor(_ color: UIColor) -> SIMD4<Float> {
+        var red: CGFloat = 1
+        var green: CGFloat = 0.84
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 1
+        color.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+        return SIMD4<Float>(Float(red), Float(green), Float(blue), Float(alpha))
     }
 
     private static func pointSize(depthMap: TAPMetricDepthMap, sampleCount: Int) -> CGFloat {
@@ -1026,6 +1043,7 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
     let depthMap: TAPMetricDepthMap
     let orientation: CGImagePropertyOrientation
     let selectedPlaneRegion: TAPPlaneRegion?
+    let highlightColor: UIColor
     let enablesMotionParallax: Bool
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
 
@@ -1116,6 +1134,7 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
             depthMap: depthMap,
             orientation: orientation,
             selectedPlaneRegion: selectedPlaneRegion,
+            highlightColor: highlightColor,
             enablesMotionParallax: enablesMotionParallax,
             reduceMotion: accessibilityReduceMotion
         )
@@ -1396,6 +1415,7 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
             depthMap: TAPMetricDepthMap,
             orientation: CGImagePropertyOrientation,
             selectedPlaneRegion: TAPPlaneRegion?,
+            highlightColor: UIColor,
             enablesMotionParallax: Bool,
             reduceMotion: Bool
         ) {
@@ -1406,7 +1426,8 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
                 depthMap: depthMap,
                 image: image,
                 orientation: orientation,
-                selectedPlaneRegion: selectedPlaneRegion
+                selectedPlaneRegion: selectedPlaneRegion,
+                highlightColor: highlightColor
             )
             if currentSignature != signature {
                 currentSignature = signature
@@ -1417,6 +1438,7 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
                     depthMap: depthMap,
                     orientation: orientation,
                     selectedPlaneRegion: selectedPlaneRegion,
+                    highlightColor: highlightColor,
                     reduceMotion: reduceMotion
                 )
             }
@@ -1458,13 +1480,15 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
             depthMap: TAPMetricDepthMap,
             orientation: CGImagePropertyOrientation,
             selectedPlaneRegion: TAPPlaneRegion?,
+            highlightColor: UIColor,
             reduceMotion: Bool
         ) {
             let request = TAPDepthProjectionPayloadBuildRequest(
                 image: image,
                 depthMap: depthMap,
                 orientation: orientation,
-                selectedPlaneRegion: selectedPlaneRegion
+                selectedPlaneRegion: selectedPlaneRegion,
+                highlightColor: highlightColor
             )
             let depthWidth = depthMap.width
             let depthHeight = depthMap.height
@@ -1548,7 +1572,8 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
             if let payloadData,
                let highlightGeometry = Self.makeHighlightGeometry(
                 vertices: payloadData.highlightVertices,
-                pointSize: payloadData.pointSize * 1.85
+                pointSize: payloadData.pointSize * 1.85,
+                color: payloadData.highlightColor
                ) {
                 let node = SCNNode(geometry: highlightGeometry)
                 node.name = "SelectedPlaneProjection"
@@ -1709,7 +1734,8 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
 
         private static func makeHighlightGeometry(
             vertices: [SIMD3<Float>],
-            pointSize: CGFloat
+            pointSize: CGFloat,
+            color: SIMD4<Float>
         ) -> SCNGeometry? {
             guard !vertices.isEmpty else {
                 return nil
@@ -1738,8 +1764,14 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
             let geometry = SCNGeometry(sources: [vertexSource], elements: [element])
             let material = SCNMaterial()
             material.lightingModel = .constant
-            material.diffuse.contents = UIColor.systemYellow
-            material.emission.contents = UIColor.systemYellow.withAlphaComponent(0.72)
+            let uiColor = UIColor(
+                red: CGFloat(color.x),
+                green: CGFloat(color.y),
+                blue: CGFloat(color.z),
+                alpha: CGFloat(color.w)
+            )
+            material.diffuse.contents = uiColor
+            material.emission.contents = uiColor.withAlphaComponent(0.72)
             material.isDoubleSided = true
             geometry.materials = [material]
             return geometry
@@ -1984,7 +2016,8 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
             depthMap: TAPMetricDepthMap,
             image: CGImage?,
             orientation: CGImagePropertyOrientation,
-            selectedPlaneRegion: TAPPlaneRegion?
+            selectedPlaneRegion: TAPPlaneRegion?,
+            highlightColor: UIColor
         ) -> String {
             let count = depthMap.samples.count
             let sampleIndices = [0, count / 2, max(count - 1, 0)].filter { depthMap.samples.indices.contains($0) }
@@ -1995,7 +2028,9 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
                 "\(region.seedPixel.x):\(region.seedPixel.y):\(region.sampleCount):\(region.pixelRuns.count)"
             } ?? "no-plane"
             let imageSignature = image.map { "\($0.width)x\($0.height)" } ?? "no-rgb"
-            return "\(depthMap.width)x\(depthMap.height)-\(count)-\(imageSignature)-\(orientation.rawValue)-\(sampleSignature)-\(planeSignature)"
+            let color = TAPDepthProjectionScenePayloadBuilder.rgbaColor(highlightColor)
+            let colorSignature = String(format: "%.3f:%.3f:%.3f:%.3f", color.x, color.y, color.z, color.w)
+            return "\(depthMap.width)x\(depthMap.height)-\(count)-\(imageSignature)-\(orientation.rawValue)-\(sampleSignature)-\(planeSignature)-\(colorSignature)"
         }
 
         private static func data<T>(from values: [T]) -> Data {

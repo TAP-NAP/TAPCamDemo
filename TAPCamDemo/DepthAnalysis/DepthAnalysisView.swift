@@ -25,10 +25,19 @@ struct DepthAnalysisView: View {
     @Environment(\.displayScale) private var displayScale
     @StateObject private var carouselStore: DepthAnalysisCarouselStore
     @State private var heatmapOpacity = 0.58
+    @State private var twoDComparisonPosition = 0.5
     @State private var selectedTool = AnalysisViewerTool.raw
-    @State private var shareRequest: DepthAnalysisShareRequest?
+    @State private var sharePayload: DepthAnalysisSystemSharePayload?
+    @State private var isPreparingShare = false
     @State private var deleteRequest: DepthAnalysisDeleteRequest?
     @State private var deleteAlert: DepthAnalysisDeleteAlert?
+    @State private var deleteConfirmationDontAskAgain = false
+    @AppStorage(CameraViewfinderHighlightPreference.storageKey)
+    private var viewfinderHighlightRawValue = CameraViewfinderHighlightPreference.defaultValue.rawValue
+    @AppStorage(DepthAnalyzerPreferences.planeGridAnimationEnabledKey)
+    private var isPlaneGridAnimationEnabled = DepthAnalyzerPreferences.defaultPlaneGridAnimationEnabled
+    @AppStorage(DepthAnalyzerPreferences.confirmsDeleteBeforeDeletingKey)
+    private var confirmsDeleteBeforeDeleting = DepthAnalyzerPreferences.defaultConfirmsDeleteBeforeDeleting
 
     init(
         source: DepthAnalysisSource,
@@ -60,24 +69,19 @@ struct DepthAnalysisView: View {
         analysisSurface()
         .toolbar(.hidden, for: .navigationBar)
         .ignoresSafeArea(.container, edges: .all)
-        .sheet(item: $shareRequest) { request in
-            DepthAnalysisShareSheet(source: request.source)
-                .presentationDetents([.height(380), .medium])
-                .presentationDragIndicator(.visible)
+        .sheet(item: $sharePayload) { payload in
+            VerificationExportActivityView(activityItems: [payload.export.fileURL])
         }
-        .confirmationDialog(
-            "Delete photo?",
-            isPresented: deleteConfirmationPresented,
-            titleVisibility: .visible
-        ) {
-            Button("Delete Photo", role: .destructive) {
-                deleteConfirmedItem()
+        .overlay {
+            if deleteRequest != nil, confirmsDeleteBeforeDeleting {
+                DepthAnalysisDeleteConfirmationDialog(
+                    dontAskAgain: $deleteConfirmationDontAskAgain,
+                    onCancel: cancelDeleteConfirmation,
+                    onDelete: deleteConfirmedItem
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                .zIndex(3)
             }
-            Button("Cancel", role: .cancel) {
-                deleteRequest = nil
-            }
-        } message: {
-            Text("This removes the current item from TAP Library.")
         }
         .alert(item: $deleteAlert) { alert in
             Alert(
@@ -103,6 +107,9 @@ struct DepthAnalysisView: View {
                     selectedTool: selectedTool,
                     displayPixelLength: displayPixelLength,
                     heatmapOpacity: $heatmapOpacity,
+                    comparisonPosition: $twoDComparisonPosition,
+                    highlightPalette: highlightPalette,
+                    isPlaneGridAnimationEnabled: isPlaneGridAnimationEnabled,
                     onCurrentEntryChanged: handleCurrentEntryChanged,
                     onEdgeBack: {
                         dismiss()
@@ -114,12 +121,13 @@ struct DepthAnalysisView: View {
                 DepthAnalysisViewerChromeView(
                     selectedTool: selectedTool,
                     heatmapOpacity: $heatmapOpacity,
+                    isSharePreparing: isPreparingShare,
                     topSafeArea: safeAreaInsets.top,
                     bottomSafeArea: safeAreaInsets.bottom,
                     onBackTapped: {
                         dismiss()
                     },
-                    onShareTapped: presentShareSheet,
+                    onShareTapped: presentSystemShareSheet,
                     onToolTapped: handleToolTapped,
                     onDeleteTapped: confirmDeleteCurrentItem
                 )
@@ -134,37 +142,53 @@ struct DepthAnalysisView: View {
         selectedTool = tool
     }
 
-    private var deleteConfirmationPresented: Binding<Bool> {
-        Binding(
-            get: {
-                deleteRequest != nil
-            },
-            set: { isPresented in
-                if !isPresented {
-                    deleteRequest = nil
-                }
-            }
-        )
+    private var highlightPalette: AnalysisHighlightPalette {
+        AnalysisHighlightPalette.resolved(viewfinderRawValue: viewfinderHighlightRawValue)
     }
 
-    private func presentShareSheet() {
-        guard let source = carouselStore.currentEntry?.source else {
+    private func presentSystemShareSheet() {
+        guard !isPreparingShare,
+              case .photosAsset(let assetID) = carouselStore.currentEntry?.source else {
             return
         }
-        shareRequest = DepthAnalysisShareRequest(source: source)
+        isPreparingShare = true
+
+        Task { @MainActor in
+            defer {
+                isPreparingShare = false
+            }
+
+            do {
+                let export = try await TAPVerificationExportBuilder().export(assetID: assetID)
+                sharePayload = DepthAnalysisSystemSharePayload(export: export)
+            } catch {
+                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                TAPDiagnostics.appAttest.error("analysis share export failed error=\(TAPDiagnostics.describe(error), privacy: .public)")
+                #endif
+            }
+        }
     }
 
     private func confirmDeleteCurrentItem() {
         guard let source = carouselStore.currentEntry?.source else {
             return
         }
+        deleteConfirmationDontAskAgain = false
         deleteRequest = DepthAnalysisDeleteRequest(source: source)
+        guard confirmsDeleteBeforeDeleting else {
+            deleteConfirmedItem()
+            return
+        }
     }
 
     private func deleteConfirmedItem() {
         guard let request = deleteRequest else {
             return
         }
+        if deleteConfirmationDontAskAgain {
+            confirmsDeleteBeforeDeleting = false
+        }
+        deleteConfirmationDontAskAgain = false
         deleteRequest = nil
 
         Task { @MainActor in
@@ -183,6 +207,11 @@ struct DepthAnalysisView: View {
         }
     }
 
+    private func cancelDeleteConfirmation() {
+        deleteConfirmationDontAskAgain = false
+        deleteRequest = nil
+    }
+
     private func handleCurrentEntryChanged(_ entry: DepthAnalysisCarouselEntry) {
         if let albumEntry = entry.albumEntry {
             onCurrentAlbumEntryChanged?(albumEntry)
@@ -193,14 +222,6 @@ struct DepthAnalysisView: View {
         let viewportMaxLength = max(viewportSize.width, viewportSize.height)
         let scaledLength = Int(ceil(viewportMaxLength * max(displayScale, 1)))
         return min(max(scaledLength, 960), 4096)
-    }
-}
-
-private struct DepthAnalysisShareRequest: Identifiable {
-    let source: DepthAnalysisSource
-
-    var id: String {
-        source.loadID
     }
 }
 
@@ -216,6 +237,89 @@ private struct DepthAnalysisDeleteAlert: Identifiable {
     let id = UUID()
     let title: String
     let message: String
+}
+
+private struct DepthAnalysisDeleteConfirmationDialog: View {
+    @Binding var dontAskAgain: Bool
+    let onCancel: () -> Void
+    let onDelete: () -> Void
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.48)
+                .ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Delete photo?")
+                        .font(.headline)
+                    Text("This removes the current item from TAP Library.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Toggle("Don't Ask Again", isOn: $dontAskAgain)
+                    .toggleStyle(AnalysisCheckboxToggleStyle())
+
+                HStack(spacing: 10) {
+                    Button("Cancel", role: .cancel, action: onCancel)
+                        .buttonStyle(.bordered)
+                        .frame(maxWidth: .infinity)
+
+                    Button("Delete Photo", role: .destructive, action: onDelete)
+                        .buttonStyle(.borderedProminent)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .padding(18)
+            .frame(maxWidth: 330)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(.white.opacity(0.18), lineWidth: 1)
+            }
+            .padding(.horizontal, 24)
+            .accessibilityElement(children: .contain)
+        }
+    }
+}
+
+private struct AnalysisCheckboxToggleStyle: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Button {
+            configuration.isOn.toggle()
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: configuration.isOn ? "checkmark.square.fill" : "square")
+                    .font(.body.weight(.semibold))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(.primary)
+
+                configuration.label
+                    .font(.subheadline.weight(.semibold))
+
+                Spacer(minLength: 0)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityValue(configuration.isOn ? "On" : "Off")
+    }
+}
+
+@MainActor
+private final class DepthAnalysisSystemSharePayload: Identifiable {
+    let id = UUID()
+    let export: TAPVerificationExport
+
+    init(export: TAPVerificationExport) {
+        self.export = export
+    }
+
+    deinit {
+        export.removeTemporaryDirectory()
+    }
 }
 
 private enum DepthAnalysisDeletionService {
@@ -235,6 +339,9 @@ private struct AnalysisPhotoCarouselView: View {
     let selectedTool: AnalysisViewerTool
     let displayPixelLength: Int
     @Binding var heatmapOpacity: Double
+    @Binding var comparisonPosition: Double
+    let highlightPalette: AnalysisHighlightPalette
+    let isPlaneGridAnimationEnabled: Bool
     let onCurrentEntryChanged: (DepthAnalysisCarouselEntry) -> Void
     let onEdgeBack: () -> Void
 
@@ -244,6 +351,9 @@ private struct AnalysisPhotoCarouselView: View {
             selectedTool: selectedTool,
             displayPixelLength: displayPixelLength,
             heatmapOpacity: $heatmapOpacity,
+            comparisonPosition: $comparisonPosition,
+            highlightPalette: highlightPalette,
+            isPlaneGridAnimationEnabled: isPlaneGridAnimationEnabled,
             onCurrentEntryChanged: onCurrentEntryChanged,
             onEdgeBack: onEdgeBack
         )
@@ -264,6 +374,9 @@ private struct AnalysisNativePagingView: UIViewRepresentable {
     let selectedTool: AnalysisViewerTool
     let displayPixelLength: Int
     @Binding var heatmapOpacity: Double
+    @Binding var comparisonPosition: Double
+    let highlightPalette: AnalysisHighlightPalette
+    let isPlaneGridAnimationEnabled: Bool
     let onCurrentEntryChanged: (DepthAnalysisCarouselEntry) -> Void
     let onEdgeBack: () -> Void
 
@@ -378,7 +491,10 @@ private struct AnalysisNativePagingView: UIViewRepresentable {
                         tool: parent.selectedTool,
                         viewportSize: pageContentSize,
                         isCurrent: item.offset == 0,
-                        heatmapOpacity: parent.$heatmapOpacity
+                        heatmapOpacity: parent.$heatmapOpacity,
+                        comparisonPosition: parent.$comparisonPosition,
+                        highlightPalette: parent.highlightPalette,
+                        isPlaneGridAnimationEnabled: parent.isPlaneGridAnimationEnabled
                     )
                 )
             }
@@ -530,6 +646,9 @@ private struct AnalysisNativePageView: View {
     let viewportSize: CGSize
     let isCurrent: Bool
     @Binding var heatmapOpacity: Double
+    @Binding var comparisonPosition: Double
+    let highlightPalette: AnalysisHighlightPalette
+    let isPlaneGridAnimationEnabled: Bool
 
     var body: some View {
         ZStack {
@@ -543,7 +662,11 @@ private struct AnalysisNativePageView: View {
                     slot: slot,
                     tool: tool,
                     viewportSize: viewportSize,
-                    heatmapOpacity: $heatmapOpacity
+                    isCurrent: isCurrent,
+                    heatmapOpacity: $heatmapOpacity,
+                    comparisonPosition: $comparisonPosition,
+                    highlightPalette: highlightPalette,
+                    isPlaneGridAnimationEnabled: isPlaneGridAnimationEnabled
                 )
             }
 
@@ -1184,7 +1307,15 @@ private struct AnalysisToolPhotoStage: View {
     @ObservedObject var slot: AnalysisPhotoSlot
     let tool: AnalysisViewerTool
     let viewportSize: CGSize
+    let isCurrent: Bool
     @Binding var heatmapOpacity: Double
+    @Binding var comparisonPosition: Double
+    let highlightPalette: AnalysisHighlightPalette
+    let isPlaneGridAnimationEnabled: Bool
+    @AppStorage(DepthAnalyzerPreferences.planeGrowthStrictnessKey)
+    private var planeGrowthStrictness = DepthAnalyzerPreferences.defaultPlaneGrowthStrictness
+    @State private var gridToastMessage: String?
+    @State private var displayedGridToastID: UUID?
 
     var body: some View {
         let containerRect = DepthAnalysisViewerInteractionPolicy.centeredToolContainerRect(
@@ -1197,6 +1328,10 @@ private struct AnalysisToolPhotoStage: View {
             .frame(width: containerRect.width, height: containerRect.height)
             .contentShape(Rectangle())
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(alignment: .top) {
+                analysisEdgeToast
+                    .padding(.top, 10)
+            }
             .overlay {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .stroke(.white.opacity(0.16), lineWidth: 1)
@@ -1228,27 +1363,44 @@ private struct AnalysisToolPhotoStage: View {
                 heatmapImage: input.heatmap.image,
                 validMaskImage: input.validMask.image,
                 heatmapOpacity: heatmapOpacity,
-                selection: Binding(
-                    get: { slot.regionSelection.selectionRect },
-                    set: { slot.regionSelection.selectionRect = $0 }
-                ),
-                interactionState: slot.regionSelection.interactionState,
+                comparisonPosition: comparisonPosition,
+                onComparisonPositionChanged: { newValue in
+                    comparisonPosition = newValue
+                },
                 planeRegion: slot.planeSelection.selectedRegion,
+                partialPlaneGridCells: slot.planeSelection.partialGridCells,
+                planeGridProgress: slot.planeSelection.gridProgress,
                 planeSeedPoint: slot.planeSelection.seedPoint,
+                highlightPalette: highlightPalette,
+                isPlaneGridAnimationEnabled: isPlaneGridAnimationEnabled,
                 metadataSummary: nil,
                 scoreSummary: nil,
-                allowsRegionSelection: false,
-                onSelectionBegan: { _ in },
-                onSelectionChanged: { _ in },
-                onSelectionEnded: { _ in },
                 onSelectionCleared: {
                     slot.clearSelection()
                 },
                 onPlaneSeedSelected: { depthPoint in
-                    slot.selectPlaneSeed(depthPoint)
+                    slot.selectPlaneSeed(
+                        depthPoint,
+                        strictness: planeGrowthStrictness
+                    )
                 }
             )
             .frame(width: size.width, height: size.height)
+            .onAppear {
+                syncPlaneGrowthStrictnessSettingIfCurrent()
+            }
+            .onChange(of: isCurrent) { _, _ in
+                syncPlaneGrowthStrictnessSettingIfCurrent()
+            }
+            .onChange(of: planeGrowthStrictness) { _, _ in
+                syncPlaneGrowthStrictnessSettingIfCurrent()
+            }
+            .onChange(of: slot.planeSelection.completedGridToastID) { _, toastID in
+                showGridReadyToastIfNeeded(toastID)
+            }
+            .onChange(of: slot.planeSelection.generationID) { _, _ in
+                hideGridToast()
+            }
         } else {
             AnalysisToolLoadingView(
                 slot: slot,
@@ -1256,6 +1408,13 @@ private struct AnalysisToolPhotoStage: View {
                 size: size
             )
         }
+    }
+
+    private func syncPlaneGrowthStrictnessSettingIfCurrent() {
+        guard isCurrent else {
+            return
+        }
+        slot.updatePlaneGrowthStrictness(planeGrowthStrictness)
     }
 
     @ViewBuilder
@@ -1266,11 +1425,9 @@ private struct AnalysisToolPhotoStage: View {
                 depthMap: input.depthMap,
                 orientation: input.imageOrientation,
                 selectedPlaneRegion: slot.planeSelection.selectedRegion,
-                selection: Binding(
-                    get: { slot.regionSelection.selectionRect },
-                    set: { slot.regionSelection.selectionRect = $0 }
-                ),
-                interactionState: slot.regionSelection.interactionState,
+                highlightColor: highlightPalette.uiColor,
+                selection: .constant(nil),
+                interactionState: .idle,
                 allowsSelection: false,
                 enablesMotionParallax: true,
                 onSelectionBegan: { _ in },
@@ -1302,6 +1459,50 @@ private struct AnalysisToolPhotoStage: View {
         slot.input?.imageOrientation ?? slot.displayPhoto?.orientation ?? .up
     }
 
+    @ViewBuilder
+    private var analysisEdgeToast: some View {
+        if tool == .twoD, let gridToastMessage {
+            Text(gridToastMessage)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.76)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(.black.opacity(0.58), in: Capsule())
+                .allowsHitTesting(false)
+                .transition(.opacity)
+                .accessibilityIdentifier("analysis.edgeToast")
+        }
+    }
+
+    private func showGridReadyToastIfNeeded(_ toastID: UUID?) {
+        guard tool == .twoD,
+              isCurrent,
+              let toastID,
+              displayedGridToastID != toastID else {
+            return
+        }
+        displayedGridToastID = toastID
+        withAnimation(.easeInOut(duration: 0.18)) {
+            gridToastMessage = "Grid ready"
+        }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2))
+            guard displayedGridToastID == toastID else {
+                return
+            }
+            hideGridToast()
+            slot.dismissCompletedGridToast(toastID)
+        }
+    }
+
+    private func hideGridToast() {
+        displayedGridToastID = nil
+        withAnimation(.easeInOut(duration: 0.18)) {
+            gridToastMessage = nil
+        }
+    }
 }
 
 private struct AnalysisPhotoProgressBadge: View {

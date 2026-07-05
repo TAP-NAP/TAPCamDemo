@@ -167,7 +167,8 @@ nonisolated enum TAPPlaneEstimator {
         seed: CGPoint,
         strictness: Double,
         geometryCache: TAPDepthGeometryCache? = nil,
-        shouldCancel: () -> Bool = { false }
+        shouldCancel: () -> Bool = { false },
+        progressHandler: (TAPPlaneGridProgress) -> Void = { _ in }
     ) throws -> TAPPlaneRegion {
         let parameters = TAPPlaneGrowthParameters(strictness: strictness)
         _ = try TAPDepthAnalysisInputValidation.validatedDepthPixelCount(for: depthMap)
@@ -281,7 +282,9 @@ nonisolated enum TAPPlaneEstimator {
             plane: finalPlane,
             imageBounds: bounds,
             residualThresholdMeters: residualThreshold,
-            geometryCache: preparedGeometryCache
+            geometryCache: preparedGeometryCache,
+            seedPixel: CGPoint(x: seedX, y: seedY),
+            progressHandler: progressHandler
         )
         let contour = contourPoints(
             from: accepted.accepted,

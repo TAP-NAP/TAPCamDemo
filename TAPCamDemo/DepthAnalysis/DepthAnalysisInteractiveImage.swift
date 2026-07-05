@@ -8,6 +8,9 @@
 import Foundation
 import ImageIO
 import SwiftUI
+import UIKit
+
+private let comparisonDividerCoordinateSpaceName = "InteractiveDepthImageComparisonSpace"
 
 /// Renders the analysis image and translates display-space gestures back into
 /// native depth-map coordinates.
@@ -15,23 +18,23 @@ struct InteractiveDepthImage: View {
     let image: CGImage
     let overlayImage: CGImage?
     let overlayOpacity: Double
+    let comparisonPosition: Double?
+    let onComparisonPositionChanged: (Double) -> Void
     let orientation: CGImagePropertyOrientation
     let depthSize: CGSize
-    @Binding var selection: CGRect?
-    let interactionState: AnalysisInteractionState
     let planeOverlays: [TAPDetectedPlane]
     let planeRegion: TAPPlaneRegion?
+    let partialPlaneGridCells: [TAPPlaneGridCell]
+    let planeGridProgress: Double?
     let planeSeedPoint: CGPoint?
-    let isSelectionEnabled: Bool
+    let highlightPalette: AnalysisHighlightPalette
+    let isPlaneGridAnimationEnabled: Bool
     let isPointSelectionEnabled: Bool
-    let onSelectionBegan: (CGRect) -> Void
-    let onSelectionChanged: (CGRect) -> Void
-    let onSelectionEnded: (CGRect) -> Void
     let onSelectionCleared: () -> Void
     let onPointSelected: (CGPoint) -> Void
 
-    @State private var dragStart: CGPoint?
     @State private var lastClearDate = Date.distantPast
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
 
     var body: some View {
         GeometryReader { proxy in
@@ -54,12 +57,7 @@ struct InteractiveDepthImage: View {
                     .position(x: imageFrame.midX, y: imageFrame.midY)
 
                 if let overlayImage {
-                    Image(decorative: overlayImage, scale: 1, orientation: orientation.swiftUIImageOrientation)
-                        .resizable()
-                        .interpolation(.none)
-                        .frame(width: imageFrame.width, height: imageFrame.height)
-                        .position(x: imageFrame.midX, y: imageFrame.midY)
-                        .opacity(overlayOpacity)
+                    overlayImageView(overlayImage, imageFrame: imageFrame)
                 }
 
                 ForEach(planeOverlays) { plane in
@@ -73,17 +71,40 @@ struct InteractiveDepthImage: View {
 
                 if let planeRegion {
                     PlaneRegionOverlay(
-                        region: planeRegion,
+                        gridCells: planeRegion.gridCells,
+                        contourPoints: planeRegion.contourPoints,
+                        seedPixel: planeRegion.seedPixel,
+                        progress: 1,
+                        animationID: "final-\(planeRegion.seedPixel.x)-\(planeRegion.seedPixel.y)-\(planeRegion.gridCells.count)",
+                        isFinal: true,
                         depthSize: depthSize,
                         orientation: orientation,
-                        imageFrame: imageFrame
+                        imageFrame: imageFrame,
+                        highlightPalette: highlightPalette,
+                        reduceMotion: accessibilityReduceMotion || !isPlaneGridAnimationEnabled
                     )
 
+                    #if DEBUG
                     let rect = viewRect(for: planeRegion.imageBounds, imageFrame: imageFrame)
                     if rect.width > 8, rect.height > 8 {
-                        PlaneRegionBadge(region: planeRegion)
+                        PlaneRegionBadge(region: planeRegion, highlightPalette: highlightPalette)
                             .position(x: rect.minX + 44, y: max(rect.minY + 16, imageFrame.minY + 16))
                     }
+                    #endif
+                } else if let planeSeedPoint, !partialPlaneGridCells.isEmpty {
+                    PlaneRegionOverlay(
+                        gridCells: partialPlaneGridCells,
+                        contourPoints: [],
+                        seedPixel: planeSeedPoint,
+                        progress: planeGridProgress ?? 0.18,
+                        animationID: "partial-\(planeSeedPoint.x)-\(planeSeedPoint.y)-\(partialPlaneGridCells.count)",
+                        isFinal: false,
+                        depthSize: depthSize,
+                        orientation: orientation,
+                        imageFrame: imageFrame,
+                        highlightPalette: highlightPalette,
+                        reduceMotion: accessibilityReduceMotion || !isPlaneGridAnimationEnabled
+                    )
                 }
 
                 if let planeSeedPoint {
@@ -91,66 +112,27 @@ struct InteractiveDepthImage: View {
                         for: CGRect(x: planeSeedPoint.x - 2, y: planeSeedPoint.y - 2, width: 4, height: 4),
                         imageFrame: imageFrame
                     )
-                    PlaneSeedMarker()
+                    PlaneSeedMarker(highlightPalette: highlightPalette)
                         .position(x: seedRect.midX, y: seedRect.midY)
                 }
 
-                if isSelectionEnabled, let selection {
-                    let rect = viewRect(for: selection, imageFrame: imageFrame)
-                    Rectangle()
-                        .stroke(.white, lineWidth: 2)
-                        .background(Rectangle().fill(selectionFill))
-                        .frame(width: rect.width, height: rect.height)
-                        .position(x: rect.midX, y: rect.midY)
+                if comparisonDividerX(in: imageFrame) != nil {
+                    ComparisonDivider(
+                        imageFrame: imageFrame,
+                        position: comparisonPosition ?? 0.5,
+                        onPositionChanged: { position in
+                            onComparisonPositionChanged(position)
+                        }
+                    )
+                    .frame(width: imageFrame.width, height: imageFrame.height)
+                    .position(x: imageFrame.midX, y: imageFrame.midY)
                 }
             }
+            .coordinateSpace(name: comparisonDividerCoordinateSpaceName)
             .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 4)
-                    .onChanged { value in
-                        guard isSelectionEnabled else {
-                            return
-                        }
-                        let isBeginning = dragStart == nil
-                        if isBeginning {
-                            dragStart = value.startLocation
-                        }
-                        let viewRect = CGRect(
-                            x: min(dragStart?.x ?? value.location.x, value.location.x),
-                            y: min(dragStart?.y ?? value.location.y, value.location.y),
-                            width: abs(value.location.x - (dragStart?.x ?? value.location.x)),
-                            height: abs(value.location.y - (dragStart?.y ?? value.location.y))
-                        ).insetBy(dx: -14, dy: -14)
-
-                        let depthRect = depthRect(for: viewRect, imageFrame: imageFrame)
-                        selection = depthRect
-                        if isBeginning {
-                            onSelectionBegan(depthRect)
-                        } else {
-                            onSelectionChanged(depthRect)
-                        }
-                    }
-                    .onEnded { value in
-                        guard isSelectionEnabled else {
-                            dragStart = nil
-                            return
-                        }
-                        let viewRect = CGRect(
-                            x: min(dragStart?.x ?? value.location.x, value.location.x),
-                            y: min(dragStart?.y ?? value.location.y, value.location.y),
-                            width: abs(value.location.x - (dragStart?.x ?? value.location.x)),
-                            height: abs(value.location.y - (dragStart?.y ?? value.location.y))
-                        ).insetBy(dx: -14, dy: -14)
-                        let depthRect = depthRect(for: viewRect, imageFrame: imageFrame)
-                        selection = depthRect
-                        onSelectionEnded(depthRect)
-                        dragStart = nil
-                    }
-            )
             .simultaneousGesture(
                 TapGesture(count: 2)
                     .onEnded {
-                        dragStart = nil
                         lastClearDate = Date()
                         onSelectionCleared()
                     }
@@ -160,6 +142,7 @@ struct InteractiveDepthImage: View {
                     .onEnded { value in
                         guard isPointSelectionEnabled,
                               Date().timeIntervalSince(lastClearDate) > 0.25,
+                              !isNearComparisonDivider(value.location, imageFrame: imageFrame),
                               let depthPoint = depthPoint(for: value.location, imageFrame: imageFrame) else {
                             return
                         }
@@ -169,13 +152,41 @@ struct InteractiveDepthImage: View {
         }
     }
 
-    private var selectionFill: Color {
-        switch interactionState {
-        case .drawingSelection:
-            .white.opacity(0.08)
-        case .idle, .regionSelected:
-            .white.opacity(0.14)
+    @ViewBuilder
+    private func overlayImageView(_ overlayImage: CGImage, imageFrame: CGRect) -> some View {
+        let overlay = Image(decorative: overlayImage, scale: 1, orientation: orientation.swiftUIImageOrientation)
+            .resizable()
+            .interpolation(.none)
+            .frame(width: imageFrame.width, height: imageFrame.height)
+            .position(x: imageFrame.midX, y: imageFrame.midY)
+            .opacity(overlayOpacity)
+
+        if let comparisonPosition {
+            let clamped = min(max(comparisonPosition, 0), 1)
+            overlay
+                .mask(alignment: .topLeading) {
+                    Rectangle()
+                        .frame(width: imageFrame.width * (1 - clamped), height: imageFrame.height)
+                        .offset(x: imageFrame.width * clamped)
+                }
+        } else {
+            overlay
         }
+    }
+
+    private func comparisonDividerX(in imageFrame: CGRect) -> CGFloat? {
+        guard let comparisonPosition, imageFrame.width > 0 else {
+            return nil
+        }
+        let clamped = min(max(comparisonPosition, 0), 1)
+        return imageFrame.minX + imageFrame.width * clamped
+    }
+
+    private func isNearComparisonDivider(_ location: CGPoint, imageFrame: CGRect) -> Bool {
+        guard let dividerX = comparisonDividerX(in: imageFrame), imageFrame.contains(location) else {
+            return false
+        }
+        return abs(location.x - dividerX) <= 18
     }
 
     private func fittedRect(imageSize: CGSize, containerSize: CGSize) -> CGRect {
@@ -194,46 +205,11 @@ struct InteractiveDepthImage: View {
         )
     }
 
-    private func depthRect(for viewRect: CGRect, imageFrame: CGRect) -> CGRect {
-        guard imageFrame.width > 0, imageFrame.height > 0 else {
-            return .zero
-        }
-
-        let clamped = viewRect.intersection(imageFrame)
-        guard !clamped.isNull else {
-            return .zero
-        }
-
-        // The user drags in oriented display coordinates. Plane fitting and
-        // depth statistics operate on the native depth-map pixel grid, so we
-        // first scale into the displayed depth plane and then invert the
-        // orientation transform.
-        let displayedDepthSize = TAPImageOrientationMapper.displayedSize(nativeSize: depthSize, orientation: orientation)
-        let displayedX = (clamped.minX - imageFrame.minX) / imageFrame.width * displayedDepthSize.width
-        let displayedY = (clamped.minY - imageFrame.minY) / imageFrame.height * displayedDepthSize.height
-        let displayedWidth = clamped.width / imageFrame.width * displayedDepthSize.width
-        let displayedHeight = clamped.height / imageFrame.height * displayedDepthSize.height
-        let displayedRect = CGRect(
-            x: displayedX,
-            y: displayedY,
-            width: max(displayedWidth, 1),
-            height: max(displayedHeight, 1)
-        )
-        return TAPImageOrientationMapper.nativeRect(
-            fromDisplayed: displayedRect,
-            nativeSize: depthSize,
-            orientation: orientation
-        )
-    }
-
     private func viewRect(for depthRect: CGRect, imageFrame: CGRect) -> CGRect {
         guard depthSize.width > 0, depthSize.height > 0 else {
             return .zero
         }
 
-        // Selection state is stored as a native depth-map rect because that is
-        // what `TAPDepthGeometryProjector` and `TAPPlaneEstimator` consume. This
-        // converts it back into oriented display coordinates for the overlay.
         let displayedDepthSize = TAPImageOrientationMapper.displayedSize(nativeSize: depthSize, orientation: orientation)
         let displayedRect = TAPImageOrientationMapper.displayedRect(
             fromNative: depthRect,
@@ -273,52 +249,103 @@ struct InteractiveDepthImage: View {
 }
 
 private struct PlaneRegionOverlay: View {
-    let region: TAPPlaneRegion
+    let gridCells: [TAPPlaneGridCell]
+    let contourPoints: [CGPoint]
+    let seedPixel: CGPoint
+    let progress: Double
+    let animationID: String
+    let isFinal: Bool
     let depthSize: CGSize
     let orientation: CGImagePropertyOrientation
     let imageFrame: CGRect
+    let highlightPalette: AnalysisHighlightPalette
+    let reduceMotion: Bool
+
+    @State private var displayedProgress: Double = 0
 
     var body: some View {
         Canvas { context, _ in
-            for cell in region.gridCells {
+            for cell in gridCells {
+                let visibility = cellVisibility(cell)
+                guard visibility > 0 else {
+                    continue
+                }
                 let rect = viewRect(for: cell.imageBounds).insetBy(dx: 0.8, dy: 0.8)
-                context.fill(Path(rect), with: .color(cellFillColor(cell)))
-                context.stroke(Path(rect), with: .color(cellEdgeColor(cell)), lineWidth: 1.15)
+                context.fill(Path(rect), with: .color(cellFillColor(cell).opacity(visibility)))
+                context.stroke(Path(rect), with: .color(cellEdgeColor(cell).opacity(visibility)), lineWidth: 1.15)
             }
 
-            let stride = max(region.contourPoints.count / 2_500, 1)
-            for (index, point) in region.contourPoints.enumerated() where index.isMultiple(of: stride) {
+            let stride = max(contourPoints.count / 2_500, 1)
+            for (index, point) in contourPoints.enumerated() where index.isMultiple(of: stride) {
                 let rect = viewRect(for: CGRect(x: point.x, y: point.y, width: 1, height: 1))
                     .insetBy(dx: -1.2, dy: -1.2)
                 context.fill(Path(ellipseIn: rect), with: .color(edgeColor))
             }
         }
+        .onAppear {
+            resetDisplayedProgress()
+        }
+        .onChange(of: animationID) { _, _ in
+            resetDisplayedProgress()
+        }
+        .onChange(of: progress) { _, newValue in
+            animateDisplayedProgress(to: newValue)
+        }
         .allowsHitTesting(false)
-        .accessibilityLabel("Selected plane region")
+        .accessibilityLabel(isFinal ? "Selected plane region" : "Growing plane region")
     }
 
     private func cellFillColor(_ cell: TAPPlaneGridCell) -> Color {
-        let confidence = min(max(cell.confidence, 0), 1)
-        return Color(
-            red: 1.0 - 0.26 * confidence,
-            green: 0.58 + 0.38 * confidence,
-            blue: 0.22 + 0.14 * confidence
-        )
-        .opacity(0.16 + 0.18 * confidence)
+        highlightPalette.gridFill(confidence: cell.confidence)
     }
 
     private func cellEdgeColor(_ cell: TAPPlaneGridCell) -> Color {
-        let confidence = min(max(cell.confidence, 0), 1)
-        return Color(
-            red: 1.0 - 0.30 * confidence,
-            green: 0.72 + 0.28 * confidence,
-            blue: 0.24 + 0.16 * confidence
-        )
-        .opacity(0.42 + 0.42 * confidence)
+        highlightPalette.gridStroke(confidence: cell.confidence)
     }
 
     private var edgeColor: Color {
-        Color(red: 0.78, green: 1.0, blue: 0.42).opacity(0.92)
+        highlightPalette.contour
+    }
+
+    private func resetDisplayedProgress() {
+        if reduceMotion {
+            displayedProgress = progress
+        } else {
+            displayedProgress = 0
+            animateDisplayedProgress(to: progress)
+        }
+    }
+
+    private func animateDisplayedProgress(to value: Double) {
+        let clamped = min(max(value, 0), 1)
+        if reduceMotion {
+            displayedProgress = clamped
+        } else {
+            withAnimation(.easeOut(duration: isFinal ? 0.58 : 0.18)) {
+                displayedProgress = clamped
+            }
+        }
+    }
+
+    private func cellVisibility(_ cell: TAPPlaneGridCell) -> Double {
+        guard !reduceMotion else {
+            return 1
+        }
+        let normalizedDistance = cellDistanceFromSeed(cell)
+        let reveal = (displayedProgress - normalizedDistance) / 0.18
+        return min(max(reveal, 0), 1)
+    }
+
+    private func cellDistanceFromSeed(_ cell: TAPPlaneGridCell) -> Double {
+        let center = CGPoint(x: cell.imageBounds.midX, y: cell.imageBounds.midY)
+        let dx = center.x - seedPixel.x
+        let dy = center.y - seedPixel.y
+        let distance = sqrt(dx * dx + dy * dy)
+        let maxDistance = max(
+            sqrt(depthSize.width * depthSize.width + depthSize.height * depthSize.height),
+            1
+        )
+        return min(max(Double(distance / maxDistance), 0), 1)
     }
 
     private func viewRect(for depthRect: CGRect) -> CGRect {
@@ -343,34 +370,110 @@ private struct PlaneRegionOverlay: View {
 
 private struct PlaneRegionBadge: View {
     let region: TAPPlaneRegion
+    let highlightPalette: AnalysisHighlightPalette
 
     var body: some View {
         Text("\(Int((region.confidence * 100).rounded()))%")
             .font(.caption2.monospacedDigit().weight(.bold))
-            .foregroundStyle(.black)
+            .foregroundStyle(highlightPalette.badgeForeground)
             .padding(.horizontal, 7)
             .padding(.vertical, 4)
-            .background(Color(red: 0.78, green: 1.0, blue: 0.42), in: Capsule())
+            .background(highlightPalette.badgeBackground, in: Capsule())
             .shadow(color: .black.opacity(0.25), radius: 4, y: 2)
             .accessibilityLabel("Selected plane region \(Int((region.confidence * 100).rounded())) percent confidence")
     }
 }
 
 private struct PlaneSeedMarker: View {
+    let highlightPalette: AnalysisHighlightPalette
+
     var body: some View {
         ZStack {
             Circle()
                 .stroke(.black.opacity(0.78), lineWidth: 5)
                 .frame(width: 18, height: 18)
             Circle()
-                .stroke(Color(red: 0.78, green: 1.0, blue: 0.42), lineWidth: 3)
+                .stroke(highlightPalette.seedStroke, lineWidth: 3)
                 .frame(width: 18, height: 18)
             Circle()
-                .fill(Color(red: 0.78, green: 1.0, blue: 0.42))
+                .fill(highlightPalette.seedFill)
                 .frame(width: 5, height: 5)
         }
         .shadow(color: .black.opacity(0.32), radius: 4, y: 2)
         .accessibilityLabel("Plane seed point")
+    }
+}
+
+private struct ComparisonDivider: View {
+    let imageFrame: CGRect
+    let position: Double
+    let onPositionChanged: (Double) -> Void
+    @State private var dragOffsetFromDividerX: CGFloat?
+    @State private var hasTriggeredDragFeedback = false
+
+    var body: some View {
+        let dividerX = imageFrame.width * CGFloat(min(max(position, 0), 1))
+
+        ZStack(alignment: .topLeading) {
+            Rectangle()
+                .fill(.clear)
+                .frame(width: imageFrame.width, height: imageFrame.height)
+                .allowsHitTesting(false)
+
+            Rectangle()
+                .fill(Color.white.opacity(0.001))
+                .frame(width: 36, height: imageFrame.height)
+                .position(x: dividerX, y: imageFrame.height / 2)
+                .contentShape(Rectangle())
+                .highPriorityGesture(comparisonDragGesture)
+                .accessibilityHidden(true)
+
+            Rectangle()
+                .fill(Color.white.opacity(0.88))
+                .frame(width: 1.5, height: imageFrame.height)
+                .position(x: dividerX, y: imageFrame.height / 2)
+                .shadow(color: .black.opacity(0.55), radius: 2)
+                .allowsHitTesting(false)
+        }
+        .frame(width: imageFrame.width, height: imageFrame.height)
+        .accessibilityLabel("2D comparison divider")
+        .accessibilityValue("\(Int((position * 100).rounded())) percent")
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment:
+                onPositionChanged(min(position + 0.05, 1))
+            case .decrement:
+                onPositionChanged(max(position - 0.05, 0))
+            @unknown default:
+                break
+            }
+        }
+    }
+
+    private var comparisonDragGesture: some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .named(comparisonDividerCoordinateSpaceName))
+            .onChanged { value in
+                let currentDividerX = imageFrame.minX + imageFrame.width * CGFloat(position)
+                if dragOffsetFromDividerX == nil {
+                    dragOffsetFromDividerX = value.location.x - currentDividerX
+                }
+                triggerDragFeedbackIfNeeded()
+                let adjustedLocationX = value.location.x - (dragOffsetFromDividerX ?? 0)
+                let nextPosition = Double((adjustedLocationX - imageFrame.minX) / max(imageFrame.width, 1))
+                onPositionChanged(min(max(nextPosition, 0), 1))
+            }
+            .onEnded { _ in
+                dragOffsetFromDividerX = nil
+                hasTriggeredDragFeedback = false
+            }
+    }
+
+    private func triggerDragFeedbackIfNeeded() {
+        guard !hasTriggeredDragFeedback else {
+            return
+        }
+        hasTriggeredDragFeedback = true
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 }
 

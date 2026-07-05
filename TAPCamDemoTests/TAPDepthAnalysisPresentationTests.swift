@@ -184,7 +184,8 @@ struct TAPDepthAnalysisPresentationTests {
         #expect(AnalysisViewerTool.allCases.map(\.systemImage) == ["photo", "square.on.square", "cube"])
     }
 
-    @Test func analysisBottomControlsUseIconOnlyModes() throws {
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func analysisBottomControlsUseIconOnlyModes() throws {
         let controlsSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisControlsView.swift"
         )
@@ -196,7 +197,8 @@ struct TAPDepthAnalysisPresentationTests {
         #expect(!controlsSource.contains("Label(\""))
     }
 
-    @Test func analysisChromeSeparatesGlobalActionsFromModeCapsule() throws {
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func analysisChromeSeparatesGlobalActionsFromModeCapsule() throws {
         let chromeSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisViewerChromeView.swift"
         )
@@ -208,7 +210,122 @@ struct TAPDepthAnalysisPresentationTests {
         #expect(chromeSource.contains("Circle()"))
     }
 
-    @Test func analysisShareSheetKeepsCredentialPresentationMinimalOutsideDebug() throws {
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func analysisTwoDChromeUsesOverlayOpacityControlAndImageDivider() throws {
+        let viewSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisView.swift"
+        )
+        let chromeSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisViewerChromeView.swift"
+        )
+        let settingsSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalyzerSettingsView.swift"
+        )
+        let interactiveSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisInteractiveImage.swift"
+        )
+
+        #expect(chromeSource.contains("AnalysisOpacityControl"))
+        #expect(chromeSource.contains("2D overlay opacity"))
+        #expect(!chromeSource.contains("AnalysisPlaneStrictnessControl"))
+        #expect(!chromeSource.contains("Plane strictness"))
+        #expect(!viewSource.contains("planeStrictness: planeStrictness"))
+        #expect(settingsSource.contains("planeGrowthStrictnessKey"))
+        #expect(settingsSource.contains("Plane Strictness"))
+        #expect(settingsSource.contains("DepthAnalysisPlaneSelectionState.minimumStrictness...DepthAnalysisPlaneSelectionState.maximumStrictness"))
+        #expect(viewSource.contains("strictness: planeGrowthStrictness"))
+        #expect(viewSource.contains("updatePlaneGrowthStrictness(planeGrowthStrictness)"))
+        #expect(!chromeSource.contains("AnalysisComparisonControl"))
+        #expect(!chromeSource.contains("2D comparison position"))
+        #expect(interactiveSource.contains("ComparisonDivider"))
+        #expect(interactiveSource.contains("comparisonDividerX"))
+        #expect(interactiveSource.contains("comparisonDividerCoordinateSpaceName"))
+        #expect(interactiveSource.contains(".highPriorityGesture(comparisonDragGesture)"))
+        #expect(interactiveSource.contains(".fill(Color.white.opacity(0.001))"))
+        #expect(interactiveSource.contains(".position(x: dividerX, y: imageFrame.height / 2)"))
+        #expect(interactiveSource.contains("isNearComparisonDivider"))
+        #expect(interactiveSource.contains("UIImpactFeedbackGenerator(style: .light).impactOccurred()"))
+        #expect(!interactiveSource.contains("arrow.left.and.right"))
+        #expect(!interactiveSource.contains("comparisonClipRect"))
+        #expect(!interactiveSource.contains("@State private var dragStart"))
+        #expect(!interactiveSource.contains("selectionFill"))
+        #expect(!interactiveSource.contains("DragGesture(minimumDistance: 4)"))
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func analysisPlaneHighlightPaletteFeedsTwoDAndThreeD() throws {
+        let viewSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisView.swift"
+        )
+        let interactiveSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisInteractiveImage.swift"
+        )
+        let pointCloudSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/AnalysisTools/DepthPointCloudPreview.swift"
+        )
+
+        #expect(viewSource.contains("AnalysisHighlightPalette.resolved"))
+        #expect(viewSource.contains("highlightColor: highlightPalette.uiColor"))
+        #expect(interactiveSource.contains("PlaneSeedMarker(highlightPalette: highlightPalette)"))
+        #expect(interactiveSource.contains("highlightPalette.gridFill"))
+        #expect(pointCloudSource.contains("material.diffuse.contents = uiColor"))
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func analysisPlaneConfidenceBadgeIsDebugOnly() throws {
+        let interactiveSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisInteractiveImage.swift"
+        )
+        let badgeSection = try #require(TAPCamDemoTestSourceInspection.substring(
+            in: interactiveSource,
+            from: "#if DEBUG\n                    let rect = viewRect(for: planeRegion.imageBounds",
+            to: "#endif\n                } else if let planeSeedPoint"
+        ))
+
+        #expect(badgeSection.contains("PlaneRegionBadge"))
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func analysisGridReadyToastUsesViewfinderEdgeToastLanguage() throws {
+        let viewSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisView.swift"
+        )
+
+        #expect(viewSource.contains("analysis.edgeToast"))
+        #expect(viewSource.contains("Grid ready"))
+        #expect(viewSource.contains(".background(.black.opacity(0.58), in: Capsule())"))
+        #expect(viewSource.contains(".allowsHitTesting(false)"))
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func analysisPlaneGridAnimationCanBeDisabledInSettings() throws {
+        let settingsSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalyzerSettingsView.swift"
+        )
+        let interactiveSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisInteractiveImage.swift"
+        )
+
+        #expect(settingsSource.contains("planeGridAnimationEnabledKey"))
+        #expect(settingsSource.contains("Grid Growth Animation"))
+        #expect(interactiveSource.contains("accessibilityReduceMotion || !isPlaneGridAnimationEnabled"))
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func analysisShareButtonPresentsSystemShareDirectly() throws {
+        let analysisSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisView.swift"
+        )
+
+        #expect(analysisSource.contains("DepthAnalysisSystemSharePayload"))
+        #expect(analysisSource.contains("VerificationExportActivityView(activityItems: [payload.export.fileURL])"))
+        #expect(analysisSource.contains("TAPVerificationExportBuilder().export(assetID: assetID)"))
+        #expect(!analysisSource.contains("DepthAnalysisShareSheet(source:"))
+        #expect(!analysisSource.contains("presentationDetents([.height(380), .medium])"))
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func analysisShareSheetKeepsCredentialPresentationMinimalOutsideDebug() throws {
         let shareSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisShareSheet.swift"
         )
@@ -276,9 +393,13 @@ struct TAPDepthAnalysisPresentationTests {
         #expect(itemProviderSource.contains("record.pairedVideoFilename != nil"))
     }
 
-    @Test func analysisDeleteUsesPhotosAndPendingStoreBoundaries() throws {
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func analysisDeleteUsesPhotosAndPendingStoreBoundaries() throws {
         let analysisSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisView.swift"
+        )
+        let settingsSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalyzerSettingsView.swift"
         )
         let writerSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/CameraCapture/Output/PhotoLibraryWriter.swift"
@@ -286,6 +407,15 @@ struct TAPDepthAnalysisPresentationTests {
 
         #expect(analysisSource.contains("PhotoLibraryWriter.deleteAsset"))
         #expect(analysisSource.contains("TAPPendingCaptureStore.shared.removeRecord"))
+        #expect(analysisSource.contains("DepthAnalysisDeleteConfirmationDialog"))
+        #expect(analysisSource.contains("Toggle(\"Don't Ask Again\", isOn: $dontAskAgain)"))
+        #expect(analysisSource.contains("AnalysisCheckboxToggleStyle"))
+        #expect(analysisSource.contains("checkmark.square.fill"))
+        #expect(!analysisSource.contains("Delete and Don't Ask Again"))
+        #expect(!analysisSource.contains(".confirmationDialog("))
+        #expect(analysisSource.contains("confirmsDeleteBeforeDeleting"))
+        #expect(settingsSource.contains("confirmsDeleteBeforeDeletingKey"))
+        #expect(settingsSource.contains("Delete Confirmation"))
         #expect(writerSource.contains("PHAssetChangeRequest.deleteAssets"))
     }
 

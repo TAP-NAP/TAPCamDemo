@@ -121,18 +121,24 @@ final class DepthAnalysisViewModel: ObservableObject {
             return
         }
 
-        planeSelection.selectSeed(depthPoint, depthMap: input.depthMap)
-        updateSeedPlaneRegion()
+        let generationID = planeSelection.selectSeed(depthPoint, depthMap: input.depthMap)
+        updateSeedPlaneRegion(generationID: generationID)
     }
 
     func updatePlaneGrowthStrictness(_ strictness: Double) {
         planeSelection.updateStrictness(strictness)
         if planeSelection.hasSeed {
-            updateSeedPlaneRegion(debounceNanoseconds: 120_000_000)
+            updateSeedPlaneRegion(
+                generationID: planeSelection.generationID,
+                debounceNanoseconds: 120_000_000
+            )
         }
     }
 
-    private func updateSeedPlaneRegion(debounceNanoseconds: UInt64 = 0) {
+    private func updateSeedPlaneRegion(
+        generationID: Int,
+        debounceNanoseconds: UInt64 = 0
+    ) {
         guard let input, let planeSeedPoint = planeSelection.seedPoint else {
             planeRequestCoordinator.cancelRegionRequest()
             planeSelection.clearDetection()
@@ -143,6 +149,7 @@ final class DepthAnalysisViewModel: ObservableObject {
             depthMap: input.depthMap,
             seed: planeSeedPoint,
             strictness: planeSelection.strictness,
+            generationID: generationID,
             debounceNanoseconds: debounceNanoseconds,
             eventHandler: { [weak self] event in
                 self?.applyPlaneRequestEvent(event)
@@ -152,14 +159,16 @@ final class DepthAnalysisViewModel: ObservableObject {
 
     private func applyPlaneRequestEvent(_ event: DepthAnalysisPlaneRegionRequestEvent) {
         switch event {
-        case .started:
-            planeSelection.startDetection()
-        case .succeeded(let detection):
-            planeSelection.finishDetection(detection)
-        case .failed(let error):
-            planeSelection.finishFailure(error)
-        case .cancelled:
-            planeSelection.cancelDetection()
+        case .started(let generationID):
+            planeSelection.startDetection(generationID: generationID)
+        case .partial(let progress, let generationID):
+            planeSelection.applyPartialGrid(progress, generationID: generationID)
+        case .succeeded(let detection, let generationID):
+            planeSelection.finishDetection(detection, generationID: generationID)
+        case .failed(let error, let generationID):
+            planeSelection.finishFailure(error, generationID: generationID)
+        case .cancelled(let generationID):
+            planeSelection.cancelDetection(generationID: generationID)
         }
     }
 }

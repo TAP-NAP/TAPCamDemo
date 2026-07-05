@@ -25,7 +25,14 @@ nonisolated struct DepthAnalysisPlaneRegionDetection {
 /// loaded `TAPMetricDepthMap` and receive local analysis products.
 nonisolated struct DepthAnalysisPlaneRegionDetector {
     typealias GeometryCacheBuilder = (TAPMetricDepthMap, () -> Bool) throws -> TAPDepthGeometryCache?
-    typealias PlaneRegionGrower = (TAPMetricDepthMap, CGPoint, Double, TAPDepthGeometryCache?, () -> Bool) throws -> TAPPlaneRegion
+    typealias PlaneRegionGrower = (
+        TAPMetricDepthMap,
+        CGPoint,
+        Double,
+        TAPDepthGeometryCache?,
+        () -> Bool,
+        (TAPPlaneGridProgress) -> Void
+    ) throws -> TAPPlaneRegion
 
     private let geometryCacheBuilder: GeometryCacheBuilder
     private let planeRegionGrower: PlaneRegionGrower
@@ -37,13 +44,14 @@ nonisolated struct DepthAnalysisPlaneRegionDetector {
                 shouldCancel: shouldCancel
             )
         },
-        planeRegionGrower: @escaping PlaneRegionGrower = { depthMap, seed, strictness, geometryCache, shouldCancel in
+        planeRegionGrower: @escaping PlaneRegionGrower = { depthMap, seed, strictness, geometryCache, shouldCancel, progressHandler in
             try TAPPlaneEstimator.growPlaneRegion(
                 depthMap: depthMap,
                 seed: seed,
                 strictness: strictness,
                 geometryCache: geometryCache,
-                shouldCancel: shouldCancel
+                shouldCancel: shouldCancel,
+                progressHandler: progressHandler
             )
         }
     ) {
@@ -59,7 +67,8 @@ nonisolated struct DepthAnalysisPlaneRegionDetector {
         depthMap: TAPMetricDepthMap,
         seed: CGPoint,
         strictness: Double,
-        geometryCache: TAPDepthGeometryCache?
+        geometryCache: TAPDepthGeometryCache?,
+        progressHandler: @escaping (TAPPlaneGridProgress) -> Void = { _ in }
     ) throws -> DepthAnalysisPlaneRegionDetection {
         let preparedGeometryCache = try preparedGeometryCache(
             for: depthMap,
@@ -70,7 +79,8 @@ nonisolated struct DepthAnalysisPlaneRegionDetector {
             seed,
             strictness,
             preparedGeometryCache,
-            { Task.isCancelled }
+            { Task.isCancelled },
+            progressHandler
         )
         return DepthAnalysisPlaneRegionDetection(
             region: region,

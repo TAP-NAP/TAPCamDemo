@@ -131,29 +131,33 @@ struct TAPDepthAnalysisSelectionTests {
         var state = DepthAnalysisPlaneSelectionState()
         let region = Self.samplePlaneRegion()
         let detection = DepthAnalysisPlaneRegionDetection(region: region, geometryCache: nil)
+        let generationID = 1
+        state.generationID = generationID
 
-        state.startDetection()
+        state.startDetection(generationID: generationID)
 
         #expect(state.selectedRegion == nil)
         #expect(state.isDetecting)
         #expect(state.errorMessage == nil)
 
-        state.finishDetection(detection)
+        state.finishDetection(detection, generationID: generationID)
 
         #expect(state.selectedRegion == region)
         #expect(!state.isDetecting)
         #expect(state.errorMessage == nil)
+        #expect(state.completedGridToastID != nil)
 
-        state.startDetection()
-        state.finishFailure(TAPPlaneGrowthError.invalidSeed)
+        state.startDetection(generationID: generationID)
+        state.finishFailure(TAPPlaneGrowthError.invalidSeed, generationID: generationID)
 
         #expect(state.selectedRegion == nil)
         #expect(!state.isDetecting)
         #expect(state.errorMessage == "No valid depth at this point.")
 
-        state.startDetection()
+        state.startDetection(generationID: generationID)
         state.finishFailure(
-            DepthAnalysisPlaneSelectionTestError.sensitiveLocalizedFailure("/private/tmp/plane-cache")
+            DepthAnalysisPlaneSelectionTestError.sensitiveLocalizedFailure("/private/tmp/plane-cache"),
+            generationID: generationID
         )
 
         #expect(state.selectedRegion == nil)
@@ -168,6 +172,43 @@ struct TAPDepthAnalysisSelectionTests {
         #expect(state.selectedRegion == nil)
         #expect(!state.isDetecting)
         #expect(state.errorMessage == nil)
+    }
+
+    @Test func depthAnalysisPlaneSelectionStateStreamsPartialGridAndDropsStaleEvents() throws {
+        let depthMap = Self.syntheticPlaneDepthMap(width: 16, height: 16)
+        var state = DepthAnalysisPlaneSelectionState()
+        let generationID = state.selectSeed(CGPoint(x: 4, y: 4), depthMap: depthMap)
+        let staleRegion = Self.samplePlaneRegion(seedPixel: CGPoint(x: 1, y: 1))
+        let currentRegion = Self.samplePlaneRegion(seedPixel: CGPoint(x: 4, y: 4))
+
+        state.applyPartialGrid(
+            TAPPlaneGridProgress(seedPixel: CGPoint(x: 1, y: 1), gridCells: staleRegion.gridCells, progress: 0.4),
+            generationID: generationID - 1
+        )
+        #expect(state.partialGridCells.isEmpty)
+
+        state.applyPartialGrid(
+            TAPPlaneGridProgress(seedPixel: CGPoint(x: 4, y: 4), gridCells: currentRegion.gridCells, progress: 0.5),
+            generationID: generationID
+        )
+        #expect(state.partialGridCells == currentRegion.gridCells)
+        #expect(state.gridProgress == 0.5)
+
+        state.finishDetection(
+            DepthAnalysisPlaneRegionDetection(region: staleRegion, geometryCache: nil),
+            generationID: generationID - 1
+        )
+        #expect(state.selectedRegion == nil)
+        #expect(state.partialGridCells == currentRegion.gridCells)
+
+        state.finishDetection(
+            DepthAnalysisPlaneRegionDetection(region: currentRegion, geometryCache: nil),
+            generationID: generationID
+        )
+        #expect(state.selectedRegion == currentRegion)
+        #expect(state.partialGridCells.isEmpty)
+        #expect(state.gridProgress == 1)
+        #expect(state.completedGridToastID != nil)
     }
 
     @Test @MainActor func depthAnalysisViewModelBuildsRegionProductsOnlyAfterExplicitSelection() throws {

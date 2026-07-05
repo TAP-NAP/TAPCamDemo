@@ -42,7 +42,7 @@ inside this module.
 | Stable full-screen viewer chrome above the photo carousel | [DepthAnalysisViewerChromeView.swift](DepthAnalysisViewerChromeView.swift) |
 | Central visual stage for RGB, heatmap, mask, planes, internal point projection, region gestures, and plane seed taps | [DepthAnalysisStageView.swift](DepthAnalysisStageView.swift) |
 | Bottom-left Share, centered icon-only `RAW` / `2D` / `3D` capsule, and bottom-right Delete | [DepthAnalysisViewerChromeView.swift](DepthAnalysisViewerChromeView.swift), [DepthAnalysisControlsView.swift](DepthAnalysisControlsView.swift) |
-| Compact share page with local valid-credential Yes/No and reusable verification-original export sheet | [DepthAnalysisShareSheet.swift](DepthAnalysisShareSheet.swift), [VerificationExportActivityView.swift](VerificationExportActivityView.swift) |
+| System share entry for verification-original exports | [DepthAnalysisView.swift](DepthAnalysisView.swift), [VerificationExportActivityView.swift](VerificationExportActivityView.swift) |
 | App Attest capture-signature verification service and public-safe report model | [AppAttestSignatureVerification.swift](AppAttestSignatureVerification.swift) |
 | App Attest capture-signature verification panel | [AppAttestSignatureVerificationPanel.swift](AppAttestSignatureVerificationPanel.swift) |
 | Field-level panel content adapter for concrete inspector bodies | [DepthAnalysisInspectorPanelContent.swift](DepthAnalysisInspectorPanelContent.swift) |
@@ -139,11 +139,12 @@ If this module is new to you, read it in this order:
    `previous/current/next` page hosting, RAW display-only browsing,
    RAW zoom/pan/double-tap, centered `RAW` / `2D` / `3D` primary surfaces,
    selected-tool routing, global Share/Delete presentation, left-edge return,
-   and top-level callbacks. Share opens a minimal page that shows only whether
-   a valid credential is present, then reuses the verification export/share
-   components for saved Photos items. Delete asks for confirmation, then routes
-   Photos assets through `PhotoLibraryWriter.deleteAsset` and pending local
-   records through `TAPPendingCaptureStore.removeRecord`.
+   and top-level callbacks. Share prepares the verification-original export
+   for saved Photos items and opens the system share page directly. Delete asks
+   for confirmation with a `Don't Ask Again` checkbox unless the user has
+   disabled that reminder, then routes Photos assets through
+   `PhotoLibraryWriter.deleteAsset` and pending local records through
+   `TAPPendingCaptureStore.removeRecord`.
    [DepthAnalysisViewerInteractionPolicy.swift](DepthAnalysisViewerInteractionPolicy.swift)
    keeps left-edge return thresholds, native page spacing, aspect-fit rects,
    and centered-container layout testable. [DepthAnalysisViewerChromeView.swift](DepthAnalysisViewerChromeView.swift)

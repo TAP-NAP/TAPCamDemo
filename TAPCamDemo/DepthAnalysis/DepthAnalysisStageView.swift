@@ -24,16 +24,16 @@ struct DepthAnalysisStageView: View {
     let heatmapImage: CGImage
     let validMaskImage: CGImage
     let heatmapOpacity: Double
-    @Binding var selection: CGRect?
-    let interactionState: AnalysisInteractionState
+    let comparisonPosition: Double?
+    let onComparisonPositionChanged: (Double) -> Void
     let planeRegion: TAPPlaneRegion?
+    let partialPlaneGridCells: [TAPPlaneGridCell]
+    let planeGridProgress: Double?
     let planeSeedPoint: CGPoint?
+    let highlightPalette: AnalysisHighlightPalette
+    let isPlaneGridAnimationEnabled: Bool
     let metadataSummary: CaptureMetadataSummary?
     let scoreSummary: DepthAnalysisScoreSummary?
-    let allowsRegionSelection: Bool
-    let onSelectionBegan: (CGRect) -> Void
-    let onSelectionChanged: (CGRect) -> Void
-    let onSelectionEnded: (CGRect) -> Void
     let onSelectionCleared: () -> Void
     let onPlaneSeedSelected: (CGPoint) -> Void
 
@@ -59,26 +59,26 @@ struct DepthAnalysisStageView: View {
     private var stageContent: some View {
         switch viewMode {
         case .rgb:
-            depthImageStage(overlayImage: nil, overlayOpacity: 0, isSelectionEnabled: allowsRegionSelection)
+            depthImageStage(overlayImage: nil, overlayOpacity: 0)
         case .heatmap:
             depthImageStage(
                 overlayImage: heatmapImage,
-                overlayOpacity: heatmapOpacity,
-                isSelectionEnabled: allowsRegionSelection
+                overlayOpacity: heatmapOpacity
             )
         case .mask:
             depthImageStage(
                 overlayImage: validMaskImage,
-                overlayOpacity: 1,
-                isSelectionEnabled: allowsRegionSelection
+                overlayOpacity: 1
             )
         case .planes:
             depthImageStage(
                 overlayImage: heatmapImage,
                 overlayOpacity: heatmapOpacity,
                 planeRegion: planeRegion,
+                partialPlaneGridCells: partialPlaneGridCells,
+                planeGridProgress: planeGridProgress,
                 planeSeedPoint: planeSeedPoint,
-                isSelectionEnabled: false,
+                comparisonPosition: comparisonPosition,
                 isPointSelectionEnabled: true,
                 onPointSelected: onPlaneSeedSelected
             )
@@ -86,12 +86,12 @@ struct DepthAnalysisStageView: View {
             PointCloudPreview(
                 depthMap: depthMap,
                 orientation: imageOrientation,
-                selection: $selection,
-                interactionState: interactionState,
-                allowsSelection: allowsRegionSelection,
-                onSelectionBegan: onSelectionBegan,
-                onSelectionChanged: onSelectionChanged,
-                onSelectionEnded: onSelectionEnded,
+                selection: .constant(nil),
+                interactionState: .idle,
+                allowsSelection: false,
+                onSelectionBegan: { _ in },
+                onSelectionChanged: { _ in },
+                onSelectionEnded: { _ in },
                 onSelectionCleared: onSelectionCleared
             )
             .background(Color.black)
@@ -102,8 +102,10 @@ struct DepthAnalysisStageView: View {
         overlayImage: CGImage?,
         overlayOpacity: Double,
         planeRegion: TAPPlaneRegion? = nil,
+        partialPlaneGridCells: [TAPPlaneGridCell] = [],
+        planeGridProgress: Double? = nil,
         planeSeedPoint: CGPoint? = nil,
-        isSelectionEnabled: Bool = true,
+        comparisonPosition: Double? = nil,
         isPointSelectionEnabled: Bool = false,
         onPointSelected: ((CGPoint) -> Void)? = nil
     ) -> some View {
@@ -111,18 +113,18 @@ struct DepthAnalysisStageView: View {
             image: image,
             overlayImage: overlayImage,
             overlayOpacity: overlayOpacity,
+            comparisonPosition: comparisonPosition,
+            onComparisonPositionChanged: onComparisonPositionChanged,
             orientation: imageOrientation,
             depthSize: CGSize(width: depthMap.width, height: depthMap.height),
-            selection: $selection,
-            interactionState: interactionState,
             planeOverlays: [],
             planeRegion: planeRegion,
+            partialPlaneGridCells: partialPlaneGridCells,
+            planeGridProgress: planeGridProgress,
             planeSeedPoint: planeSeedPoint,
-            isSelectionEnabled: isSelectionEnabled,
+            highlightPalette: highlightPalette,
+            isPlaneGridAnimationEnabled: isPlaneGridAnimationEnabled,
             isPointSelectionEnabled: isPointSelectionEnabled,
-            onSelectionBegan: onSelectionBegan,
-            onSelectionChanged: onSelectionChanged,
-            onSelectionEnded: onSelectionEnded,
             onSelectionCleared: onSelectionCleared,
             onPointSelected: { depthPoint in
                 onPointSelected?(depthPoint)

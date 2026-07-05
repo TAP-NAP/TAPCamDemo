@@ -129,7 +129,9 @@ extension TAPPlaneEstimator {
         plane: (normal: SIMD3<Float>, d: Float),
         imageBounds: CGRect,
         residualThresholdMeters: Float,
-        geometryCache: TAPDepthGeometryCache
+        geometryCache: TAPDepthGeometryCache,
+        seedPixel: CGPoint? = nil,
+        progressHandler: (TAPPlaneGridProgress) -> Void = { _ in }
     ) -> [TAPPlaneGridCell] {
         guard imageBounds.width > 0, imageBounds.height > 0 else {
             return []
@@ -146,6 +148,7 @@ extension TAPPlaneEstimator {
         let longestSide = max(maxX - minX, maxY - minY)
         let cellSize = min(max(longestSide / 9, 10), 28)
         var cells: [TAPPlaneGridCell] = []
+        let progressCellBatchSize = 6
 
         var row = 0
         var y = minY
@@ -198,7 +201,118 @@ extension TAPPlaneEstimator {
             row += 1
         }
 
-        return cells
+        let orderedCells = planeGridCellsOrderedForSeedGrowth(cells, seedPixel: seedPixel)
+        publishGridProgressBatches(
+            seedPixel: seedPixel,
+            cells: orderedCells,
+            depthSize: CGSize(width: depthMap.width, height: depthMap.height),
+            cellBatchSize: progressCellBatchSize,
+            progressHandler: progressHandler
+        )
+        return orderedCells
+    }
+
+    nonisolated static func planeGridCellsOrderedForSeedGrowth(
+        _ cells: [TAPPlaneGridCell],
+        seedPixel: CGPoint?
+    ) -> [TAPPlaneGridCell] {
+        guard let seedPixel else {
+            return cells
+        }
+        return cells.sorted { lhs, rhs in
+            let lhsDistance = squaredDistanceFromSeed(lhs, seedPixel: seedPixel)
+            let rhsDistance = squaredDistanceFromSeed(rhs, seedPixel: seedPixel)
+            if lhsDistance != rhsDistance {
+                return lhsDistance < rhsDistance
+            }
+
+            let lhsAngle = angleFromSeed(lhs, seedPixel: seedPixel)
+            let rhsAngle = angleFromSeed(rhs, seedPixel: seedPixel)
+            if lhsAngle != rhsAngle {
+                return lhsAngle < rhsAngle
+            }
+
+            if lhs.row != rhs.row {
+                return lhs.row < rhs.row
+            }
+            return lhs.column < rhs.column
+        }
+    }
+
+    nonisolated static func publishGridProgressBatches(
+        seedPixel: CGPoint?,
+        cells: [TAPPlaneGridCell],
+        depthSize: CGSize,
+        cellBatchSize: Int,
+        progressHandler: (TAPPlaneGridProgress) -> Void
+    ) {
+        guard let seedPixel, !cells.isEmpty else {
+            return
+        }
+
+        let batchSize = max(cellBatchSize, 1)
+        var publishedCount = min(batchSize, cells.count)
+        while publishedCount < cells.count {
+            let publishedCells = Array(cells.prefix(publishedCount))
+            progressHandler(
+                TAPPlaneGridProgress(
+                    seedPixel: seedPixel,
+                    gridCells: publishedCells,
+                    progress: gridRevealProgress(
+                        for: publishedCells,
+                        seedPixel: seedPixel,
+                        depthSize: depthSize,
+                        isFinal: false
+                    )
+                )
+            )
+            publishedCount = min(publishedCount + batchSize, cells.count)
+        }
+
+        progressHandler(
+            TAPPlaneGridProgress(
+                seedPixel: seedPixel,
+                gridCells: cells,
+                progress: gridRevealProgress(
+                    for: cells,
+                    seedPixel: seedPixel,
+                    depthSize: depthSize,
+                    isFinal: true
+                )
+            )
+        )
+    }
+
+    nonisolated static func gridRevealProgress(
+        for cells: [TAPPlaneGridCell],
+        seedPixel: CGPoint,
+        depthSize: CGSize,
+        isFinal: Bool
+    ) -> Double {
+        guard !isFinal else {
+            return 1
+        }
+        let diagonal = max(sqrt(depthSize.width * depthSize.width + depthSize.height * depthSize.height), 1)
+        let farthestNormalizedDistance = cells
+            .map { sqrt(squaredDistanceFromSeed($0, seedPixel: seedPixel)) / diagonal }
+            .max() ?? 0
+        return min(max(Double(farthestNormalizedDistance) + 0.18, 0), 0.98)
+    }
+
+    private nonisolated static func squaredDistanceFromSeed(
+        _ cell: TAPPlaneGridCell,
+        seedPixel: CGPoint
+    ) -> CGFloat {
+        let dx = cell.imageBounds.midX - seedPixel.x
+        let dy = cell.imageBounds.midY - seedPixel.y
+        return dx * dx + dy * dy
+    }
+
+    private nonisolated static func angleFromSeed(
+        _ cell: TAPPlaneGridCell,
+        seedPixel: CGPoint
+    ) -> CGFloat {
+        atan2(cell.imageBounds.midY - seedPixel.y, cell.imageBounds.midX - seedPixel.x)
     }
 
     nonisolated static func isBoundaryPixel(x: Int, y: Int, accepted: [Bool], width: Int, height: Int) -> Bool {

@@ -10,6 +10,7 @@ import SwiftUI
 struct DepthAnalysisViewerChromeView: View {
     let selectedTool: AnalysisViewerTool
     @Binding var heatmapOpacity: Double
+    let isSharePreparing: Bool
     let topSafeArea: CGFloat
     let bottomSafeArea: CGFloat
     let onBackTapped: () -> Void
@@ -43,16 +44,17 @@ struct DepthAnalysisViewerChromeView: View {
 
             if selectedTool == .twoD {
                 AnalysisOpacityControl(opacity: $heatmapOpacity)
-                    .frame(maxWidth: 320)
+                    .frame(maxWidth: 340)
                     .padding(.horizontal, 16)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
             HStack(alignment: .center, spacing: 12) {
                 chromeActionButton(
-                    systemImage: "square.and.arrow.up",
-                    accessibilityLabel: "Share photo",
+                    systemImage: isSharePreparing ? "clock" : "square.and.arrow.up",
+                    accessibilityLabel: isSharePreparing ? "Preparing share" : "Share photo",
                     foregroundStyle: .primary,
+                    isEnabled: !isSharePreparing,
                     action: onShareTapped
                 )
 
@@ -72,7 +74,7 @@ struct DepthAnalysisViewerChromeView: View {
                     action: onDeleteTapped
                 )
             }
-            .padding(.horizontal, 14)
+            .padding(.horizontal, ViewerChromeMetrics.bottomActionHorizontalPadding)
             .padding(.bottom, max(12, bottomSafeArea + 8))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -84,6 +86,7 @@ struct DepthAnalysisViewerChromeView: View {
         systemImage: String,
         accessibilityLabel: String,
         foregroundStyle: Color,
+        isEnabled: Bool = true,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
@@ -100,6 +103,8 @@ struct DepthAnalysisViewerChromeView: View {
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1 : 0.55)
         .accessibilityLabel(accessibilityLabel)
         .help(accessibilityLabel)
         .shadow(color: .black.opacity(0.16), radius: 12, y: 4)
@@ -110,6 +115,7 @@ private enum ViewerChromeMetrics {
     static let backButtonSize: CGFloat = 42
     static let inlineNavigationBarHeight: CGFloat = 44
     static let fallbackBackButtonTopPadding: CGFloat = 58
+    static let bottomActionHorizontalPadding: CGFloat = 34
 
     static func backButtonTopPadding(topSafeArea: CGFloat) -> CGFloat {
         guard topSafeArea > 0 else {
@@ -124,16 +130,16 @@ private struct AnalysisOpacityControl: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: "circle.lefthalf.filled")
+            Image(systemName: "photo")
                 .font(.caption.weight(.semibold))
                 .symbolRenderingMode(.hierarchical)
 
             Slider(value: $opacity, in: 0...1)
                 .tint(.primary)
 
-            Text("\(Int((opacity * 100).rounded()))%")
+            Image(systemName: "waveform.path.ecg.rectangle")
                 .font(.caption.monospacedDigit().weight(.semibold))
-                .frame(width: 42, alignment: .trailing)
+                .symbolRenderingMode(.hierarchical)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)

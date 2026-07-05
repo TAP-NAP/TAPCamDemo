@@ -559,6 +559,31 @@ struct TAPDepthAnalysisPlaneRegionTests {
         #expect(!region.contourPoints.isEmpty)
     }
 
+    @Test func seedPlaneGrowthPublishesPartialGridProgress() throws {
+        let depthMap = Self.syntheticPlaneDepthMap(width: 32, height: 32)
+        var progressEvents: [TAPPlaneGridProgress] = []
+
+        let region = try TAPPlaneEstimator.growPlaneRegion(
+            depthMap: depthMap,
+            seed: CGPoint(x: 16, y: 16),
+            strictness: 0.68,
+            progressHandler: { progressEvents.append($0) }
+        )
+
+        #expect(!progressEvents.isEmpty)
+        #expect(progressEvents.first?.seedPixel == region.seedPixel)
+        #expect(progressEvents.first?.gridCells.isEmpty == false)
+        let progressCellCounts = progressEvents.map(\.gridCells.count)
+        #expect(progressCellCounts.first == 6)
+        #expect(progressCellCounts.dropLast().allSatisfy { $0.isMultiple(of: 6) })
+        #expect(zip(progressCellCounts, progressCellCounts.dropFirst()).allSatisfy { $1 > $0 })
+        #expect(progressEvents.first?.gridCells == Array(region.gridCells.prefix(6)))
+        let orderedDistances = region.gridCells.map { Self.squaredDistanceFromSeed($0, seedPixel: region.seedPixel) }
+        #expect(zip(orderedDistances, orderedDistances.dropFirst()).allSatisfy { lhs, rhs in lhs <= rhs })
+        #expect(progressEvents.last?.gridCells == region.gridCells)
+        #expect((progressEvents.last?.progress ?? 0) >= 0.99)
+    }
+
     @Test func depthAnalysisPlaneRegionDetectorBuildsGeometryAndDetectsRegion() throws {
         let depthMap = Self.syntheticPlaneDepthMap(width: 32, height: 32)
         let detector = DepthAnalysisPlaneRegionDetector()
@@ -585,14 +610,15 @@ struct TAPDepthAnalysisPlaneRegionTests {
                 builderWasCalled = true
                 return nil
             },
-            planeRegionGrower: { depthMap, seed, strictness, geometryCache, shouldCancel in
+            planeRegionGrower: { depthMap, seed, strictness, geometryCache, shouldCancel, progressHandler in
                 #expect(geometryCache?.matches(depthMap: depthMap) == true)
                 return try TAPPlaneEstimator.growPlaneRegion(
                     depthMap: depthMap,
                     seed: seed,
                     strictness: strictness,
                     geometryCache: geometryCache,
-                    shouldCancel: shouldCancel
+                    shouldCancel: shouldCancel,
+                    progressHandler: progressHandler
                 )
             }
         )
@@ -619,9 +645,11 @@ struct TAPDepthAnalysisPlaneRegionTests {
                     shouldCancel: shouldCancel
                 )
             },
-            planeRegionGrower: { depthMap, seed, _, geometryCache, _ in
+            planeRegionGrower: { depthMap, seed, _, geometryCache, _, progressHandler in
                 #expect(geometryCache?.matches(depthMap: depthMap) == true)
-                return Self.samplePlaneRegion(seedPixel: seed)
+                let region = Self.samplePlaneRegion(seedPixel: seed)
+                progressHandler(TAPPlaneGridProgress(seedPixel: seed, gridCells: region.gridCells, progress: 1))
+                return region
             }
         )
         let coordinator = DepthAnalysisPlaneRegionRequestCoordinator(detector: detector)
@@ -631,18 +659,21 @@ struct TAPDepthAnalysisPlaneRegionTests {
             depthMap: depthMap,
             seed: CGPoint(x: 4, y: 4),
             strictness: 0.68,
+            generationID: 1,
             eventHandler: { events.append($0) }
         )
         try await Self.waitForCondition {
             Self.succeededPlaneRegions(in: events).count == 1
         }
         #expect(builderCallCount.count == 1)
+        #expect(Self.partialPlaneGridProgress(in: events).contains { $0.seedPixel == CGPoint(x: 4, y: 4) })
 
         coordinator.cancelRegionRequest()
         coordinator.requestRegion(
             depthMap: depthMap,
             seed: CGPoint(x: 5, y: 5),
             strictness: 0.68,
+            generationID: 2,
             eventHandler: { events.append($0) }
         )
         try await Self.waitForCondition {
@@ -654,17 +685,20 @@ struct TAPDepthAnalysisPlaneRegionTests {
             CGPoint(x: 4, y: 4),
             CGPoint(x: 5, y: 5)
         ])
+        #expect(Self.partialPlaneGridProgress(in: events).map(\.seedPixel).contains(CGPoint(x: 5, y: 5)))
     }
 
     @Test @MainActor func depthAnalysisPlaneRegionRequestCoordinatorPublishesOnlyNewestRegionRequest() async throws {
         let depthMap = Self.syntheticPlaneDepthMap(width: 16, height: 16)
         let detector = DepthAnalysisPlaneRegionDetector(
             geometryCacheBuilder: { _, _ in nil },
-            planeRegionGrower: { _, seed, _, _, _ in
+            planeRegionGrower: { _, seed, _, _, _, progressHandler in
                 if seed == CGPoint(x: 1, y: 1) {
                     Thread.sleep(forTimeInterval: 0.06)
                 }
-                return Self.samplePlaneRegion(seedPixel: seed)
+                let region = Self.samplePlaneRegion(seedPixel: seed)
+                progressHandler(TAPPlaneGridProgress(seedPixel: seed, gridCells: region.gridCells, progress: 1))
+                return region
             }
         )
         let coordinator = DepthAnalysisPlaneRegionRequestCoordinator(detector: detector)
@@ -674,12 +708,14 @@ struct TAPDepthAnalysisPlaneRegionTests {
             depthMap: depthMap,
             seed: CGPoint(x: 1, y: 1),
             strictness: 0.68,
+            generationID: 1,
             eventHandler: { events.append($0) }
         )
         coordinator.requestRegion(
             depthMap: depthMap,
             seed: CGPoint(x: 2, y: 2),
             strictness: 0.68,
+            generationID: 2,
             eventHandler: { events.append($0) }
         )
 
@@ -883,16 +919,25 @@ struct TAPDepthAnalysisPlaneRegionTests {
 
     private static func startedPlaneRequestCount(in events: [DepthAnalysisPlaneRegionRequestEvent]) -> Int {
         events.filter { event in
-            if case .started = event {
+            if case .started(_) = event {
                 return true
             }
             return false
         }.count
     }
 
+    private static func partialPlaneGridProgress(in events: [DepthAnalysisPlaneRegionRequestEvent]) -> [TAPPlaneGridProgress] {
+        events.compactMap { event in
+            if case .partial(let progress, _) = event {
+                return progress
+            }
+            return nil
+        }
+    }
+
     private static func succeededPlaneRegions(in events: [DepthAnalysisPlaneRegionRequestEvent]) -> [TAPPlaneRegion] {
         events.compactMap { event in
-            if case .succeeded(let detection) = event {
+            if case .succeeded(let detection, _) = event {
                 return detection.region
             }
             return nil
@@ -992,6 +1037,12 @@ struct TAPDepthAnalysisPlaneRegionTests {
         }
 
         return samples
+    }
+
+    private static func squaredDistanceFromSeed(_ cell: TAPPlaneGridCell, seedPixel: CGPoint) -> CGFloat {
+        let dx = cell.imageBounds.midX - seedPixel.x
+        let dy = cell.imageBounds.midY - seedPixel.y
+        return dx * dx + dy * dy
     }
 
     private static func calibration(
