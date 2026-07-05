@@ -255,6 +255,17 @@ nonisolated enum PhotoLibraryWriter {
         PHAsset.fetchAssets(withLocalIdentifiers: [localIdentifier], options: nil).firstObject
     }
 
+    static func deleteAsset(localIdentifier: String) async throws {
+        try await requestReadWriteAccess()
+        guard let asset = asset(localIdentifier: localIdentifier) else {
+            return
+        }
+
+        try await PHPhotoLibrary.shared().performChanges {
+            PHAssetChangeRequest.deleteAssets([asset] as NSArray)
+        }
+    }
+
     static func latestDepthAssetIfAuthorized() -> PHAsset? {
         let current = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         guard current == .authorized || current == .limited,

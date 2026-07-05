@@ -24,11 +24,13 @@ struct DepthAnalysisView: View {
     @StateObject private var carouselStore: DepthAnalysisCarouselStore
     @State private var heatmapOpacity = 0.58
     @State private var selectedTool = AnalysisViewerTool.raw
+    @State private var shareRequest: DepthAnalysisShareRequest?
+    @State private var deleteRequest: DepthAnalysisDeleteRequest?
+    @State private var deleteAlert: DepthAnalysisDeleteAlert?
 
     init(
         source: DepthAnalysisSource,
         albumContext: DepthAnalysisAlbumContext? = nil,
-        appAttestController: AppAttestRuntimeController? = nil,
         onCurrentAlbumEntryChanged: ((DepthAnalysisAlbumContext.Entry) -> Void)? = nil
     ) {
         _carouselStore = StateObject(
@@ -40,23 +42,15 @@ struct DepthAnalysisView: View {
         self.onCurrentAlbumEntryChanged = onCurrentAlbumEntryChanged
     }
 
-    init(
-        assetID: String,
-        appAttestController: AppAttestRuntimeController? = nil
-    ) {
+    init(assetID: String) {
         self.init(
-            source: .photosAsset(assetID),
-            appAttestController: appAttestController
+            source: .photosAsset(assetID)
         )
     }
 
-    init(
-        pendingCaptureID: String,
-        appAttestController: AppAttestRuntimeController? = nil
-    ) {
+    init(pendingCaptureID: String) {
         self.init(
-            source: .pendingCapture(pendingCaptureID),
-            appAttestController: appAttestController
+            source: .pendingCapture(pendingCaptureID)
         )
     }
 
@@ -64,6 +58,32 @@ struct DepthAnalysisView: View {
         analysisSurface()
         .toolbar(.hidden, for: .navigationBar)
         .ignoresSafeArea(.container, edges: .all)
+        .sheet(item: $shareRequest) { request in
+            DepthAnalysisShareSheet(source: request.source)
+                .presentationDetents([.height(240)])
+                .presentationDragIndicator(.visible)
+        }
+        .confirmationDialog(
+            "Delete photo?",
+            isPresented: deleteConfirmationPresented,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Photo", role: .destructive) {
+                deleteConfirmedItem()
+            }
+            Button("Cancel", role: .cancel) {
+                deleteRequest = nil
+            }
+        } message: {
+            Text("This removes the current item from TAP Library.")
+        }
+        .alert(item: $deleteAlert) { alert in
+            Alert(
+                title: Text(alert.title),
+                message: Text(alert.message),
+                dismissButton: .default(Text("OK"))
+            )
+        }
     }
 
     private func analysisSurface() -> some View {
@@ -97,7 +117,9 @@ struct DepthAnalysisView: View {
                     onBackTapped: {
                         dismiss()
                     },
-                    onToolTapped: handleToolTapped
+                    onShareTapped: presentShareSheet,
+                    onToolTapped: handleToolTapped,
+                    onDeleteTapped: confirmDeleteCurrentItem
                 )
                 .zIndex(2)
             }
@@ -110,6 +132,55 @@ struct DepthAnalysisView: View {
         selectedTool = tool
     }
 
+    private var deleteConfirmationPresented: Binding<Bool> {
+        Binding(
+            get: {
+                deleteRequest != nil
+            },
+            set: { isPresented in
+                if !isPresented {
+                    deleteRequest = nil
+                }
+            }
+        )
+    }
+
+    private func presentShareSheet() {
+        guard let source = carouselStore.currentEntry?.source else {
+            return
+        }
+        shareRequest = DepthAnalysisShareRequest(source: source)
+    }
+
+    private func confirmDeleteCurrentItem() {
+        guard let source = carouselStore.currentEntry?.source else {
+            return
+        }
+        deleteRequest = DepthAnalysisDeleteRequest(source: source)
+    }
+
+    private func deleteConfirmedItem() {
+        guard let request = deleteRequest else {
+            return
+        }
+        deleteRequest = nil
+
+        Task { @MainActor in
+            do {
+                try await DepthAnalysisDeletionService.delete(source: request.source)
+                dismiss()
+            } catch {
+                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                TAPDiagnostics.photoLibrary.error("analysis delete failed error=\(TAPDiagnostics.describe(error), privacy: .public)")
+                #endif
+                deleteAlert = DepthAnalysisDeleteAlert(
+                    title: "Unable to delete photo",
+                    message: "Try again from TAP Library."
+                )
+            }
+        }
+    }
+
     private func handleCurrentEntryChanged(_ entry: DepthAnalysisCarouselEntry) {
         if let albumEntry = entry.albumEntry {
             onCurrentAlbumEntryChanged?(albumEntry)
@@ -120,6 +191,40 @@ struct DepthAnalysisView: View {
         let viewportMaxLength = max(viewportSize.width, viewportSize.height)
         let scaledLength = Int(ceil(viewportMaxLength * max(displayScale, 1)))
         return min(max(scaledLength, 960), 4096)
+    }
+}
+
+private struct DepthAnalysisShareRequest: Identifiable {
+    let source: DepthAnalysisSource
+
+    var id: String {
+        source.loadID
+    }
+}
+
+private struct DepthAnalysisDeleteRequest: Identifiable {
+    let source: DepthAnalysisSource
+
+    var id: String {
+        source.loadID
+    }
+}
+
+private struct DepthAnalysisDeleteAlert: Identifiable {
+    let id = UUID()
+    let title: String
+    let message: String
+}
+
+private enum DepthAnalysisDeletionService {
+    static func delete(source: DepthAnalysisSource) async throws {
+        switch source {
+        case .photosAsset(let assetID):
+            try await PhotoLibraryWriter.deleteAsset(localIdentifier: assetID)
+            NotificationCenter.default.post(name: .tapLibraryDidChange, object: nil)
+        case .pendingCapture(let captureID):
+            try await TAPPendingCaptureStore.shared.removeRecord(captureID: captureID)
+        }
     }
 }
 

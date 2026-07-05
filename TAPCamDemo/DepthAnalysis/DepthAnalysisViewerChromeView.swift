@@ -13,7 +13,9 @@ struct DepthAnalysisViewerChromeView: View {
     let topSafeArea: CGFloat
     let bottomSafeArea: CGFloat
     let onBackTapped: () -> Void
+    let onShareTapped: () -> Void
     let onToolTapped: (AnalysisViewerTool) -> Void
+    let onDeleteTapped: () -> Void
 
     var body: some View {
         VStack(spacing: 10) {
@@ -46,17 +48,61 @@ struct DepthAnalysisViewerChromeView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
-            DepthAnalysisControlsView(
-                selectedTool: selectedTool,
-                onToolTapped: onToolTapped
-            )
-            .frame(maxWidth: 640, alignment: .center)
-            .padding(.horizontal, 12)
+            HStack(alignment: .center, spacing: 12) {
+                chromeActionButton(
+                    systemImage: "square.and.arrow.up",
+                    accessibilityLabel: "Share photo",
+                    foregroundStyle: .primary,
+                    action: onShareTapped
+                )
+
+                Spacer(minLength: 0)
+
+                DepthAnalysisControlsView(
+                    selectedTool: selectedTool,
+                    onToolTapped: onToolTapped
+                )
+
+                Spacer(minLength: 0)
+
+                chromeActionButton(
+                    systemImage: "trash",
+                    accessibilityLabel: "Delete photo",
+                    foregroundStyle: .red,
+                    action: onDeleteTapped
+                )
+            }
+            .padding(.horizontal, 14)
             .padding(.bottom, max(12, bottomSafeArea + 8))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .animation(.snappy(duration: 0.18), value: selectedTool)
         .accessibilityElement(children: .contain)
+    }
+
+    private func chromeActionButton(
+        systemImage: String,
+        accessibilityLabel: String,
+        foregroundStyle: Color,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.callout.weight(.semibold))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(foregroundStyle)
+                .frame(width: 44, height: 44)
+                .background(.thinMaterial, in: Circle())
+                .overlay {
+                    Circle()
+                        .stroke(.white.opacity(0.18), lineWidth: 1)
+                }
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityLabel)
+        .help(accessibilityLabel)
+        .shadow(color: .black.opacity(0.16), radius: 12, y: 4)
     }
 }
 

@@ -114,6 +114,25 @@ struct TAPVerificationExportBuilderTests {
         #expect(export.warnings.contains { $0.contains("adjustmentData") })
     }
 
+    @Test func localCredentialProbeReusesExportValidationWithoutCreatingShareFile() async throws {
+        let photoData = try Self.photoData(captureID: "credential-probe")
+
+        let builder = TAPVerificationExportBuilder(
+            temporaryDirectoryProvider: {
+                throw TAPVerificationExportTestError.unexpectedExportDirectory
+            },
+            localValidator: Self.localValidator()
+        )
+        let resources = PhotoLibraryWriter.SignatureVerificationResources(
+            photoData: photoData,
+            pairedVideoURL: nil,
+            temporaryDirectoryURL: nil,
+            presentationAdjustmentResourceLabels: []
+        )
+
+        #expect(builder.hasValidCredential(resources: resources))
+    }
+
     @Test func liveMovieMismatchDoesNotGenerateVerificationZip() async throws {
         let signedMovieData = Data("signed-movie".utf8)
         let signedMovieURL = try Self.movieURL(data: signedMovieData)
@@ -231,4 +250,5 @@ struct TAPVerificationExportBuilderTests {
 
 private enum TAPVerificationExportTestError: Error {
     case mismatchedMovie
+    case unexpectedExportDirectory
 }

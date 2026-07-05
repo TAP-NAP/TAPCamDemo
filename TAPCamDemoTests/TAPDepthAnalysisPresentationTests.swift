@@ -181,6 +181,62 @@ struct TAPDepthAnalysisPresentationTests {
         #expect(AnalysisViewerTool.raw.accessibilityLabel == "Raw photo")
         #expect(AnalysisViewerTool.twoD.accessibilityLabel == "2D analysis")
         #expect(AnalysisViewerTool.threeD.accessibilityLabel == "3D projection")
+        #expect(AnalysisViewerTool.allCases.map(\.systemImage) == ["photo", "square.on.square", "cube"])
+    }
+
+    @Test func analysisBottomControlsUseIconOnlyModes() throws {
+        let controlsSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisControlsView.swift"
+        )
+
+        #expect(controlsSource.contains("Image(systemName: systemImage)"))
+        #expect(!controlsSource.contains("square.and.arrow.up"))
+        #expect(!controlsSource.contains("trash"))
+        #expect(!controlsSource.contains("Text(tool.title)"))
+        #expect(!controlsSource.contains("Label(\""))
+    }
+
+    @Test func analysisChromeSeparatesGlobalActionsFromModeCapsule() throws {
+        let chromeSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisViewerChromeView.swift"
+        )
+
+        #expect(chromeSource.contains("square.and.arrow.up"))
+        #expect(chromeSource.contains("trash"))
+        #expect(chromeSource.contains("DepthAnalysisControlsView("))
+        #expect(chromeSource.contains("HStack(alignment: .center"))
+        #expect(chromeSource.contains("Circle()"))
+    }
+
+    @Test func analysisShareSheetKeepsCredentialPresentationMinimalOutsideDebug() throws {
+        let shareSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisShareSheet.swift"
+        )
+
+        #expect(shareSource.contains("Valid credential"))
+        #expect(shareSource.contains("viewModel.hasValidCredential ? \"Yes\" : \"No\""))
+        #expect(shareSource.contains("exportBuilder.hasValidCredential"))
+        #expect(shareSource.contains("#if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS"))
+        #expect(shareSource.contains("Debug status"))
+        #expect(!shareSource.contains("AppAttestCaptureSignatureVerifier"))
+        #expect(!shareSource.contains(".verify("))
+        #expect(!shareSource.contains("assertionObject"))
+        #expect(!shareSource.contains("keyId"))
+        #expect(!shareSource.contains("signingBinding"))
+        #expect(!shareSource.contains("proof"))
+    }
+
+    @Test func analysisDeleteUsesPhotosAndPendingStoreBoundaries() throws {
+        let analysisSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisView.swift"
+        )
+        let writerSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/Output/PhotoLibraryWriter.swift"
+        )
+
+        #expect(analysisSource.contains("PhotoLibraryWriter.deleteAsset"))
+        #expect(analysisSource.contains("TAPPendingCaptureStore.shared.removeRecord"))
+        #expect(writerSource.contains("PHAssetChangeRequest.deleteAssets"))
     }
 
     @Test func analysisNativePagingUsesEighteenPointBlackGap() throws {

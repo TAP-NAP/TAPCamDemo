@@ -295,17 +295,6 @@ private final class VerificationExportSharePayload: Identifiable {
     }
 }
 
-private struct VerificationExportActivityView: UIViewControllerRepresentable {
-    let activityItems: [Any]
-
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
-    }
-
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {
-    }
-}
-
 private extension AppAttestSignatureVerificationReport.Summary {
     var systemImage: String {
         switch state {

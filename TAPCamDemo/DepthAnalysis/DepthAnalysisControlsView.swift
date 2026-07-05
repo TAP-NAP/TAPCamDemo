@@ -10,7 +10,7 @@ import SwiftUI
 /// Bottom controls for the Photos-style analysis browser.
 ///
 /// The controls own no loaded image or depth data. They only expose the
-/// centered raw/2D/3D tool switcher.
+/// centered raw/2D/3D tool switcher; global actions live in the viewer chrome.
 struct DepthAnalysisControlsView: View {
     let selectedTool: AnalysisViewerTool
     let onToolTapped: (AnalysisViewerTool) -> Void
@@ -20,7 +20,6 @@ struct DepthAnalysisControlsView: View {
             selectedTool: selectedTool,
             onToolTapped: onToolTapped
         )
-        .frame(maxWidth: 640, alignment: .center)
         .animation(.snappy(duration: 0.18), value: selectedTool)
     }
 }
@@ -32,14 +31,14 @@ private struct AnalysisBottomNavBar: View {
     var body: some View {
         HStack(spacing: 4) {
             ForEach(AnalysisViewerTool.allCases) { tool in
-                Button {
-                    onToolTapped(tool)
-                } label: {
-                    toolLabel(tool)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(tool.accessibilityLabel)
-                .help(tool.accessibilityLabel)
+                iconButton(
+                    systemImage: tool.systemImage,
+                    accessibilityLabel: tool.accessibilityLabel,
+                    isSelected: selectedTool == tool,
+                    action: {
+                        onToolTapped(tool)
+                    }
+                )
             }
         }
         .padding(5)
@@ -49,17 +48,26 @@ private struct AnalysisBottomNavBar: View {
                 .stroke(.white.opacity(0.18), lineWidth: 1)
         }
         .shadow(color: .black.opacity(0.16), radius: 12, y: 4)
-        .padding(.vertical, 6)
     }
 
-    private func toolLabel(_ tool: AnalysisViewerTool) -> some View {
-        Text(tool.title)
-            .font(.callout.weight(.semibold))
-            .monospacedDigit()
-            .foregroundStyle(.primary)
-            .frame(width: 58, height: 36)
-            .background(toolBackground(isSelected: selectedTool == tool), in: Capsule())
-            .contentShape(Capsule())
+    private func iconButton(
+        systemImage: String,
+        accessibilityLabel: String,
+        isSelected: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.callout.weight(.semibold))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(.primary)
+                .frame(width: 42, height: 36)
+                .background(toolBackground(isSelected: isSelected), in: Capsule())
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityLabel)
+        .help(accessibilityLabel)
     }
 
     private func toolBackground(isSelected: Bool) -> Color {

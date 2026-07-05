@@ -3,9 +3,10 @@
 Status: current implementation record plus target behavior. The 2026-07-05
 Analysis viewer refactor now uses a stable full-screen browser shell, a
 previous/current/next carousel, progressive loading, and a bottom `RAW / 2D /
-3D` capsule that switches the primary centered surface. Global Share/Delete
-actions, credential action-menu integration, single-tap chrome toggle, and iOS
-26 Liquid Glass polish remain explicit gaps, not completed product behavior.
+3D` mode group that switches the primary centered surface. The bottom capsule
+also includes global Share/Delete icon buttons. Credential action-menu
+expansion, single-tap chrome toggle, and iOS 26 Liquid Glass polish remain
+explicit gaps, not completed product behavior.
 
 `TAPCamDemo/TAPLibrary` is the app-private pending artifact queue for signing
 and Photos export. The user-facing TAP Library grid/viewer path lives in
@@ -15,8 +16,8 @@ and Photos export. The user-facing TAP Library grid/viewer path lives in
 
 - Make the Analysis surface feel like a native photo viewer first.
 - Keep the active photo centered on the screen in every tool state.
-- Use the bottom capsule only for `RAW`, `2D`, and `3D` primary-surface
-  switching.
+- Keep `RAW`, `2D`, and `3D` as the only primary-surface modes; global Share
+  and Delete sit beside them and do not add viewer modes.
 - Preserve reliable left/right photo switching without vertical drawer or
   sheet gestures.
 - Keep `2D` and `3D` tool surfaces visually aligned with the original photo by
@@ -35,13 +36,13 @@ so future work does not confuse an intended contract with shipped interaction.
 | Stable viewer and chrome | Implemented. `DepthAnalysisView` keeps bottom chrome and selected tool state outside per-photo loading. |
 | Carousel | Implemented. `AnalysisNativePagingView` wraps UIKit `UIScrollView.isPagingEnabled`, while `DepthAnalysisCarouselStore` owns previous/current/next slots and switches by changing `currentItemID`. |
 | Loading | Implemented. RAW display loading is separate from 2D/3D analysis input loading. Slots load thumbnails first, then viewport-sized display images for browsing; depth analysis input is loaded on demand for the current 2D/3D page. |
-| Bottom capsule | Implemented. `DepthAnalysisControlsView` exposes only `RAW`, `2D`, and `3D`. Share/Delete are not part of the current bottom capsule. |
+| Bottom controls | Implemented. `DepthAnalysisViewerChromeView` places Share at bottom-left, Delete at bottom-right, and keeps `DepthAnalysisControlsView` as the centered icon-only `RAW` / `2D` / `3D` capsule. `RAW`, `2D`, and `3D` remain the only viewer modes. |
 | Raw photo surface | Implemented. The raw photo is centered in the full-screen black viewer, supports pinch, pan while zoomed, double-tap zoom, and fit-size left/right paging. |
 | 2D tool surface | Implemented. `2D` replaces the primary surface with a centered aspect-fit container matching the raw photo ratio. Swipes that begin outside the container page left/right. |
 | 3D tool surface | Implemented. `3D` replaces the primary surface with a centered aspect-fit SceneKit container matching the raw photo ratio. SceneKit owns gestures that begin inside the container; swipes outside it page left/right. |
 | Vertical gestures | Not implemented by design in this pass. There is no up-swipe drawer, down-swipe dismiss, or half/full detent behavior in the current viewer. |
-| Global Share | Not implemented. No global Share button is shown in the current bottom capsule. Verification-original sharing exists only inside the credential verification panel through `TAPVerificationExportBuilder` and `VerificationExportActivityView`. |
-| Delete | Not implemented. No Delete button is shown in the current bottom capsule. |
+| Global Share | Implemented. The Share button opens a compact share page, shows only whether a locally valid credential is present, and reuses `TAPVerificationExportBuilder` plus `VerificationExportActivityView` for verification-original exports. |
+| Delete | Implemented. The Delete button asks for confirmation, then deletes Photos assets through Photos semantics or removes pending local records through `TAPPendingCaptureStore`. |
 | Liquid Glass | Not implemented. Current controls use material fallbacks such as `.thinMaterial`; future iOS 26 adoption should be `#available(iOS 26, *)` gated because the project deployment target is iOS 18.6. |
 
 ## Native Paging Implementation
@@ -310,26 +311,29 @@ the background. Debug builds may expose retry and diagnostics.
 
 ## Share And Export
 
-Current implementation status: no global Share button is shown in the bottom
-viewer capsule, and global sharing is not wired from `DepthAnalysisView`.
+Current implementation status: a global Share button is shown in the bottom
+viewer capsule and wired from `DepthAnalysisView`.
 
-Target behavior remains a TAPCam action menu before the system Share Sheet.
+The current Release share page is intentionally minimal: it uses a compact
+drawer and shows only `Valid credential: Yes/No`. That status is a local
+credential/proof check through the verification-export validator; opening the
+Share drawer must not call the backend. Full App Attest backend verification
+remains in the Verify Signature panel. Debug-only details must stay behind
+`DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS` and must continue to avoid raw proof,
+key, asset, capture, signing-binding, or backend payload values.
 
 Existing reusable implementation pieces:
 
 - `TAPVerificationExportBuilder` builds verification-original exports for
   still photos and Live Photos.
-- `VerificationExportActivityView` wraps `UIActivityViewController` inside the
-  credential panel.
-- Future global Share work should reuse or extract these pieces instead of
-  creating a separate export/share path.
+- `VerificationExportActivityView` wraps `UIActivityViewController` for both
+  the credential panel and global Share page.
 
 | Item state | Share menu actions |
 | --- | --- |
-| Valid credential | `分享照片`, `导出验证包` |
-| TAPCam record without generated credential | `导出无凭证版本` |
-| External invalid asset | `分享原图` |
-| Debug only | `导出诊断信息` |
+| Saved Photos TAP asset | Show valid credential Yes/No, then allow Share via verification-original export. |
+| Pending local item | Show valid credential No; do not invent an uncredentialed export path in this UI. |
+| Debug only | Optional diagnostics, guarded by the debug compile condition and the existing privacy boundary. |
 
 Manual uncredentialed export is allowed when signing fails or cannot complete.
 It must be a user action, not an automatic fallback.
@@ -344,10 +348,10 @@ invalid file.
 
 ## Delete
 
-Current implementation status: no Delete button is shown in the bottom viewer
-capsule, and deletion is not wired from `DepthAnalysisView`.
+Current implementation status: a Delete button is shown in the bottom viewer
+capsule and wired from `DepthAnalysisView`.
 
-Target behavior remains delete with confirmation.
+Delete always requires confirmation.
 
 - Photos assets should use system Photos delete semantics, including Recently
   Deleted behavior.

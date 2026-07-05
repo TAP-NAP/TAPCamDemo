@@ -70,6 +70,32 @@ nonisolated struct TAPVerificationExportBuilder: Sendable {
         return try export(resources: resources)
     }
 
+    func hasValidCredential(assetID: String) async -> Bool {
+        do {
+            let resources = try await resourceLoader(assetID)
+            defer {
+                resources.removeTemporaryDirectory()
+            }
+            return hasValidCredential(resources: resources)
+        } catch {
+            return false
+        }
+    }
+
+    func hasValidCredential(
+        resources: PhotoLibraryWriter.SignatureVerificationResources
+    ) -> Bool {
+        do {
+            try Self.validateCredential(
+                resources: resources,
+                localValidator: localValidator
+            )
+            return true
+        } catch {
+            return false
+        }
+    }
+
     func export(
         resources: PhotoLibraryWriter.SignatureVerificationResources
     ) throws -> TAPVerificationExport {
@@ -145,6 +171,47 @@ nonisolated struct TAPVerificationExportBuilder: Sendable {
             validatedPhoto: validatedPhoto,
             warningLabels: warningLabels,
             outputDirectory: outputDirectory
+        )
+    }
+
+    private static func validateCredential(
+        resources: PhotoLibraryWriter.SignatureVerificationResources,
+        localValidator: TAPVerificationExportLocalValidator
+    ) throws {
+        let fileContainer = try TAPDepthPhotoFileReader.fileContainer(from: resources.photoData)
+        let manifest = try TAPDepthPhotoFileReader.decodedManifest(from: resources.photoData)
+        let expectedProfile = Self.expectedProfile(
+            fileContainer: fileContainer,
+            manifest: manifest
+        )
+
+        if manifest.schema == TAPDepthManifest.Schema.livePhotoV2 {
+            if let pairedVideoURL = resources.pairedVideoURL {
+                _ = try localValidator.validateLivePhoto(
+                    resources.photoData,
+                    pairedVideoURL,
+                    manifest.payload.id,
+                    expectedProfile
+                )
+                return
+            }
+
+            _ = try localValidator.validateLivePhotoPrimaryPhoto(
+                resources.photoData,
+                manifest.payload.id,
+                expectedProfile
+            )
+            return
+        }
+
+        guard manifest.schema == TAPDepthManifest.Schema() else {
+            throw TAPVerificationExportError.unsupportedManifestSchema
+        }
+
+        _ = try localValidator.validateStillPhoto(
+            resources.photoData,
+            manifest.payload.id,
+            expectedProfile
         )
     }
 

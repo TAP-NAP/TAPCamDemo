@@ -35,6 +35,17 @@ enum AnalysisViewerTool: String, CaseIterable, Identifiable, Equatable {
             "3D projection"
         }
     }
+
+    var systemImage: String {
+        switch self {
+        case .raw:
+            "photo"
+        case .twoD:
+            "square.on.square"
+        case .threeD:
+            "cube"
+        }
+    }
 }
 
 enum AnalysisDebugHighlight {
