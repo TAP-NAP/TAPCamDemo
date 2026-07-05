@@ -215,6 +215,8 @@ struct TAPDepthAnalysisPresentationTests {
 
         #expect(shareSource.contains("Valid credential"))
         #expect(shareSource.contains("viewModel.hasValidCredential ? \"Yes\" : \"No\""))
+        #expect(shareSource.contains("File information"))
+        #expect(shareSource.contains("fileURL.lastPathComponent"))
         #expect(shareSource.contains("exportBuilder.hasValidCredential"))
         #expect(shareSource.contains("#if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS"))
         #expect(shareSource.contains("Debug status"))
@@ -224,6 +226,54 @@ struct TAPDepthAnalysisPresentationTests {
         #expect(!shareSource.contains("keyId"))
         #expect(!shareSource.contains("signingBinding"))
         #expect(!shareSource.contains("proof"))
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func analysisRawViewerSupportsLongPressLivePhotoPlaybackForPhotosAssets() throws {
+        let analysisSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisView.swift"
+        )
+
+        #expect(analysisSource.contains("import PhotosUI"))
+        #expect(analysisSource.contains("PHLivePhotoView"))
+        #expect(analysisSource.contains("UILongPressGestureRecognizer"))
+        #expect(analysisSource.contains("requestLivePhoto"))
+        #expect(analysisSource.contains("case .photosAsset(let assetID)"))
+        #expect(analysisSource.contains("case .pendingCapture(let captureID)"))
+        #expect(analysisSource.contains("PHLivePhoto.request("))
+        #expect(analysisSource.contains("withResourceFileURLs: [resources.photoURL, resources.pairedVideoURL]"))
+        #expect(analysisSource.contains("bestAvailablePhotoURL(captureID: captureID)"))
+        #expect(analysisSource.contains("pairedVideoURL(captureID: captureID)"))
+        #expect(analysisSource.contains("startPlayback(with: .full)"))
+        #expect(analysisSource.contains("stopPlayback()"))
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func albumAndAnalysisUseLivePhotoLogoBadges() throws {
+        let badgeSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisLivePhotoBadge.swift"
+        )
+        let albumSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAlbumPickerView.swift"
+        )
+        let analysisSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisView.swift"
+        )
+        let itemProviderSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAlbumItemProvider.swift"
+        )
+
+        #expect(badgeSource.contains(#"Image(systemName: "livephoto")"#))
+        #expect(badgeSource.contains(#".accessibilityLabel("Live Photo")"#))
+        #expect(!badgeSource.contains(".background("))
+        #expect(!badgeSource.contains("Circle()"))
+        #expect(albumSource.contains("item.isLivePhoto"))
+        #expect(albumSource.contains("DepthAnalysisLivePhotoBadge(size: .thumbnail)"))
+        #expect(analysisSource.contains("AnalysisLivePhotoBadgeOverlay"))
+        #expect(analysisSource.contains("DepthAnalysisLivePhotoBadge(size: .viewer)"))
+        #expect(analysisSource.contains("centeredToolContainerRect"))
+        #expect(itemProviderSource.contains("asset.mediaSubtypes.contains(.photoLive)"))
+        #expect(itemProviderSource.contains("record.pairedVideoFilename != nil"))
     }
 
     @Test func analysisDeleteUsesPhotosAndPendingStoreBoundaries() throws {

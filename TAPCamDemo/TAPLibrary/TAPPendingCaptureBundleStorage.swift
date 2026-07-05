@@ -161,6 +161,13 @@ nonisolated struct TAPPendingCaptureBundleStorage {
     }
 
     func photoDataIfPresent(filename: String, captureID: String) throws -> Data? {
+        guard let url = try photoURLIfPresent(filename: filename, captureID: captureID) else {
+            return nil
+        }
+        return try Data(contentsOf: url)
+    }
+
+    func photoURLIfPresent(filename: String, captureID: String) throws -> URL? {
         let url = try TAPPendingCaptureBundlePathPolicy.artifactURL(
             rootURL: rootURL,
             captureID: captureID,
@@ -169,7 +176,7 @@ nonisolated struct TAPPendingCaptureBundleStorage {
         guard fileManager.fileExists(atPath: url.path) else {
             return nil
         }
-        return try Data(contentsOf: url)
+        return url
     }
 
     func heicData(filename: String, captureID: String) throws -> Data {

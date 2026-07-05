@@ -133,6 +133,32 @@ struct TAPVerificationExportBuilderTests {
         #expect(builder.hasValidCredential(resources: resources))
     }
 
+    @Test func shareFileInfoUsesBasenameKindSizeAndWarningsOnly() throws {
+        let outputDirectory = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        defer {
+            try? FileManager.default.removeItem(at: outputDirectory)
+        }
+        let fileURL = outputDirectory.appendingPathComponent("tapcam-live-photo-verification.zip")
+        try Data("share-file-info".utf8).write(to: fileURL)
+        let export = TAPVerificationExport(
+            id: UUID(),
+            kind: .livePhotoPackage,
+            fileURL: fileURL,
+            temporaryDirectoryURL: outputDirectory,
+            warnings: ["Photos presentation resources detected."]
+        )
+
+        let fileInfo = DepthAnalysisShareFileInfo(export: export)
+        let visibleText = "\(fileInfo.fileName) \(fileInfo.kind) \(fileInfo.fileSize) \(fileInfo.warnings.joined(separator: " "))"
+
+        #expect(fileInfo.fileName == "tapcam-live-photo-verification.zip")
+        #expect(fileInfo.kind == "Live Photo Verification ZIP")
+        #expect(fileInfo.fileSize != "Unknown")
+        #expect(fileInfo.warnings == ["Photos presentation resources detected."])
+        #expect(!visibleText.contains(outputDirectory.path))
+        #expect(!visibleText.contains("file://"))
+    }
+
     @Test func liveMovieMismatchDoesNotGenerateVerificationZip() async throws {
         let signedMovieData = Data("signed-movie".utf8)
         let signedMovieURL = try Self.movieURL(data: signedMovieData)

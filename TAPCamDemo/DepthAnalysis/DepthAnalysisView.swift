@@ -8,6 +8,8 @@
 import Foundation
 import ImageIO
 import OSLog
+import Photos
+import PhotosUI
 import SwiftUI
 import UIKit
 
@@ -60,7 +62,7 @@ struct DepthAnalysisView: View {
         .ignoresSafeArea(.container, edges: .all)
         .sheet(item: $shareRequest) { request in
             DepthAnalysisShareSheet(source: request.source)
-                .presentationDetents([.height(240)])
+                .presentationDetents([.height(380), .medium])
                 .presentationDragIndicator(.visible)
         }
         .confirmationDialog(
@@ -544,6 +546,14 @@ private struct AnalysisNativePageView: View {
                     heatmapOpacity: $heatmapOpacity
                 )
             }
+
+            AnalysisLivePhotoBadgeOverlay(
+                source: slot.source,
+                isCurrent: isCurrent,
+                viewportSize: viewportSize,
+                displayedImageSize: displayedImageSize,
+                displayedImageOrientation: displayedImageOrientation
+            )
         }
         .frame(width: viewportSize.width, height: viewportSize.height)
     }
@@ -551,6 +561,7 @@ private struct AnalysisNativePageView: View {
     private var rawContent: some View {
         ZStack {
             AnalysisRawZoomScrollView(
+                source: slot.source,
                 image: rawImage,
                 imageIdentifier: rawImageIdentifier,
                 isCurrent: isCurrent
@@ -599,9 +610,98 @@ private struct AnalysisNativePageView: View {
         }
         return "\(slot.id)-empty"
     }
+
+    private var displayedImageSize: CGSize? {
+        if let input = slot.input {
+            return CGSize(width: input.image.width, height: input.image.height)
+        }
+        if let displayPhoto = slot.displayPhoto {
+            return displayPhoto.pixelSize
+        }
+        return slot.thumbnailImage?.size
+    }
+
+    private var displayedImageOrientation: CGImagePropertyOrientation {
+        slot.input?.imageOrientation ?? slot.displayPhoto?.orientation ?? .up
+    }
+}
+
+private struct AnalysisLivePhotoBadgeOverlay: View {
+    let source: DepthAnalysisSource
+    let isCurrent: Bool
+    let viewportSize: CGSize
+    let displayedImageSize: CGSize?
+    let displayedImageOrientation: CGImagePropertyOrientation
+    @State private var isLivePhoto = false
+
+    var body: some View {
+        ZStack {
+            if isLivePhoto, let badgePosition {
+                DepthAnalysisLivePhotoBadge(size: .viewer)
+                    .position(badgePosition)
+                    .transition(.opacity)
+            }
+        }
+        .frame(width: viewportSize.width, height: viewportSize.height)
+        .allowsHitTesting(false)
+        .accessibilityHidden(!isLivePhoto)
+        .task(id: "\(source.loadID)|\(isCurrent)") {
+            await refresh()
+        }
+    }
+
+    private var badgePosition: CGPoint? {
+        guard viewportSize.width > 0,
+              viewportSize.height > 0,
+              displayedImageSize != nil else {
+            return nil
+        }
+
+        let imageRect = DepthAnalysisViewerInteractionPolicy.centeredToolContainerRect(
+            imageSize: displayedImageSize,
+            orientation: displayedImageOrientation,
+            viewportSize: viewportSize
+        )
+        let edgeInset = DepthAnalysisLivePhotoBadge.Size.viewer.edgeInset
+        return CGPoint(
+            x: imageRect.maxX - edgeInset,
+            y: imageRect.minY + edgeInset
+        )
+    }
+
+    private func refresh() async {
+        guard isCurrent else {
+            isLivePhoto = false
+            return
+        }
+
+        let resolvedIsLivePhoto = await DepthAnalysisLivePhotoSourceResolver.isLivePhoto(source: source)
+        guard !Task.isCancelled else {
+            return
+        }
+        isLivePhoto = resolvedIsLivePhoto
+    }
+}
+
+private enum DepthAnalysisLivePhotoSourceResolver {
+    static func isLivePhoto(source: DepthAnalysisSource) async -> Bool {
+        switch source {
+        case .photosAsset(let assetID):
+            let asset = await Task.detached(priority: .utility) {
+                PhotoLibraryWriter.asset(localIdentifier: assetID)
+            }.value
+            return asset?.mediaSubtypes.contains(.photoLive) == true
+        case .pendingCapture(let captureID):
+            guard let record = try? await TAPPendingCaptureStore.shared.readRecord(captureID: captureID) else {
+                return false
+            }
+            return record.pairedVideoFilename != nil
+        }
+    }
 }
 
 private struct AnalysisRawZoomScrollView: UIViewRepresentable {
+    let source: DepthAnalysisSource
     let image: UIImage?
     let imageIdentifier: String
     let isCurrent: Bool
@@ -628,28 +728,50 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
         scrollView.decelerationRate = .fast
         context.coordinator.installImageView(in: scrollView)
         context.coordinator.installDoubleTap(in: scrollView)
+        context.coordinator.installLivePhotoLongPress(in: scrollView)
         return scrollView
     }
 
     func updateUIView(_ scrollView: UIScrollView, context: Context) {
         context.coordinator.update(
             scrollView: scrollView,
+            source: source,
             image: image,
             imageIdentifier: imageIdentifier,
             isCurrent: isCurrent
         )
     }
 
-    final class Coordinator: NSObject, UIScrollViewDelegate {
+    final class Coordinator: NSObject, UIScrollViewDelegate, UIGestureRecognizerDelegate {
+        private let contentView = UIView()
         private let imageView = UIImageView()
+        private let livePhotoView = PHLivePhotoView()
         private var currentImageIdentifier: String?
         private var lastBoundsSize: CGSize = .zero
+        private var livePhotoRequestCancellation: LivePhotoRequestCancellation?
+        private var livePhotoPreparationTask: Task<Void, Never>?
+        private var livePhotoRequestKey: String?
+        private var livePhotoReadyKey: String?
+        private var livePhotoUnavailableKey: String?
+        private var isPressingForLivePhoto = false
 
         func installImageView(in scrollView: UIScrollView) {
+            contentView.backgroundColor = .black
+            contentView.clipsToBounds = true
+
             imageView.backgroundColor = .black
             imageView.contentMode = .scaleAspectFit
             imageView.clipsToBounds = true
-            scrollView.addSubview(imageView)
+
+            livePhotoView.backgroundColor = .black
+            livePhotoView.contentMode = .scaleAspectFit
+            livePhotoView.clipsToBounds = true
+            livePhotoView.isHidden = true
+            livePhotoView.isUserInteractionEnabled = false
+
+            contentView.addSubview(imageView)
+            contentView.addSubview(livePhotoView)
+            scrollView.addSubview(contentView)
         }
 
         func installDoubleTap(in scrollView: UIScrollView) {
@@ -658,8 +780,18 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
             scrollView.addGestureRecognizer(gesture)
         }
 
+        func installLivePhotoLongPress(in scrollView: UIScrollView) {
+            let gesture = UILongPressGestureRecognizer(target: self, action: #selector(handleLivePhotoLongPress(_:)))
+            gesture.minimumPressDuration = 0.42
+            gesture.allowableMovement = 28
+            gesture.cancelsTouchesInView = false
+            gesture.delegate = self
+            scrollView.addGestureRecognizer(gesture)
+        }
+
         func update(
             scrollView: UIScrollView,
+            source: DepthAnalysisSource,
             image: UIImage?,
             imageIdentifier: String,
             isCurrent: Bool
@@ -675,6 +807,11 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
                 }
             }
             syncLayoutIfNeeded(in: scrollView)
+            syncLivePhoto(
+                in: scrollView,
+                source: source,
+                isCurrent: isCurrent
+            )
         }
 
         func handleLayout(in scrollView: UIScrollView) {
@@ -682,12 +819,19 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
         }
 
         func viewForZooming(in scrollView: UIScrollView) -> UIView? {
-            imageView
+            contentView
         }
 
         func scrollViewDidZoom(_ scrollView: UIScrollView) {
-            centerImage(in: scrollView)
+            centerContent(in: scrollView)
             syncPanAvailability(in: scrollView)
+        }
+
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+        ) -> Bool {
+            gestureRecognizer is UILongPressGestureRecognizer
         }
 
         private func resetZoom(in scrollView: UIScrollView) {
@@ -695,10 +839,11 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
             guard bounds.width > 0, bounds.height > 0 else {
                 return
             }
-            imageView.frame = bounds
+            contentView.frame = bounds
+            syncMediaFrames()
             scrollView.contentSize = bounds.size
             scrollView.setZoomScale(1, animated: false)
-            centerImage(in: scrollView)
+            centerContent(in: scrollView)
             syncPanAvailability(in: scrollView)
         }
 
@@ -722,20 +867,28 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
             if scrollView.zoomScale <= DepthAnalysisViewerInteractionPolicy.zoomedScaleThreshold || needsFrameRepair {
                 resetZoom(in: scrollView)
             } else {
-                centerImage(in: scrollView)
+                syncMediaFrames()
+                centerContent(in: scrollView)
                 syncPanAvailability(in: scrollView)
             }
         }
 
-        private func centerImage(in scrollView: UIScrollView) {
+        private func centerContent(in scrollView: UIScrollView) {
             let bounds = scrollView.bounds
             guard bounds.width > 0, bounds.height > 0 else {
                 return
             }
-            var frame = imageView.frame
+            var frame = contentView.frame
             frame.origin.x = frame.width < bounds.width ? (bounds.width - frame.width) * 0.5 : 0
             frame.origin.y = frame.height < bounds.height ? (bounds.height - frame.height) * 0.5 : 0
-            imageView.frame = frame
+            contentView.frame = frame
+            syncMediaFrames()
+        }
+
+        private func syncMediaFrames() {
+            let bounds = contentView.bounds
+            imageView.frame = bounds
+            livePhotoView.frame = bounds
         }
 
         private func syncPanAvailability(in scrollView: UIScrollView) {
@@ -750,7 +903,7 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
                 scrollView.setZoomScale(1, animated: true)
                 return
             }
-            let location = gesture.location(in: imageView)
+            let location = gesture.location(in: contentView)
             let targetScale = min(
                 DepthAnalysisViewerInteractionPolicy.doubleTapScale,
                 scrollView.maximumZoomScale
@@ -766,6 +919,254 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
                 height: zoomSize.height
             )
             scrollView.zoom(to: zoomRect, animated: true)
+        }
+
+        @objc private func handleLivePhotoLongPress(_ gesture: UILongPressGestureRecognizer) {
+            switch gesture.state {
+            case .began:
+                isPressingForLivePhoto = true
+                startLivePhotoPlaybackIfAvailable()
+            case .ended, .cancelled, .failed:
+                isPressingForLivePhoto = false
+                livePhotoView.stopPlayback()
+            default:
+                break
+            }
+        }
+
+        private func syncLivePhoto(
+            in scrollView: UIScrollView,
+            source: DepthAnalysisSource,
+            isCurrent: Bool
+        ) {
+            guard isCurrent,
+                  scrollView.bounds.width > 0,
+                  scrollView.bounds.height > 0 else {
+                clearLivePhoto()
+                return
+            }
+
+            let targetSize = livePhotoTargetSize(in: scrollView)
+            let key = "\(source.loadID)|\(Int(targetSize.width))x\(Int(targetSize.height))"
+            if livePhotoReadyKey == key || livePhotoRequestKey == key || livePhotoUnavailableKey == key {
+                return
+            }
+
+            requestLivePhoto(source: source, targetSize: targetSize, key: key)
+        }
+
+        private func requestLivePhoto(source: DepthAnalysisSource, targetSize: CGSize, key: String) {
+            cancelLivePhotoRequest()
+            livePhotoRequestKey = key
+            livePhotoReadyKey = nil
+            livePhotoUnavailableKey = nil
+            livePhotoView.livePhoto = nil
+            livePhotoView.isHidden = true
+
+            livePhotoPreparationTask = Task { @MainActor [weak self] in
+                guard let self else {
+                    return
+                }
+                switch source {
+                case .photosAsset(let assetID):
+                    await self.requestPhotosAssetLivePhoto(assetID: assetID, targetSize: targetSize, key: key)
+                case .pendingCapture(let captureID):
+                    await self.requestPendingCaptureLivePhoto(captureID: captureID, targetSize: targetSize, key: key)
+                }
+            }
+        }
+
+        private func requestPhotosAssetLivePhoto(assetID: String, targetSize: CGSize, key: String) async {
+            let asset = await Task.detached(priority: .utility) {
+                PhotoLibraryWriter.asset(localIdentifier: assetID)
+            }.value
+            guard livePhotoRequestKey == key else {
+                return
+            }
+            guard let asset,
+                  asset.mediaSubtypes.contains(.photoLive) else {
+                markLivePhotoUnavailable(key: key)
+                return
+            }
+
+            let options = PHLivePhotoRequestOptions()
+            options.deliveryMode = .highQualityFormat
+            options.isNetworkAccessAllowed = true
+            let requestID = PHImageManager.default().requestLivePhoto(
+                for: asset,
+                targetSize: targetSize,
+                contentMode: .aspectFit,
+                options: options
+            ) { [weak self] livePhoto, info in
+                Task { @MainActor in
+                    self?.handlePhotosAssetLivePhotoResult(
+                        livePhoto,
+                        info: info,
+                        key: key
+                    )
+                }
+            }
+            livePhotoRequestCancellation = .photosAsset(requestID)
+        }
+
+        private func requestPendingCaptureLivePhoto(captureID: String, targetSize: CGSize, key: String) async {
+            let resources: PendingLivePhotoResources
+            do {
+                let photoURL = try await TAPPendingCaptureStore.shared.bestAvailablePhotoURL(captureID: captureID)
+                guard let pairedVideoURL = try await TAPPendingCaptureStore.shared.pairedVideoURL(captureID: captureID) else {
+                    markLivePhotoUnavailable(key: key)
+                    return
+                }
+                resources = PendingLivePhotoResources(photoURL: photoURL, pairedVideoURL: pairedVideoURL)
+            } catch {
+                markLivePhotoUnavailable(key: key)
+                return
+            }
+
+            guard livePhotoRequestKey == key else {
+                return
+            }
+
+            let requestID = PHLivePhoto.request(
+                withResourceFileURLs: [resources.photoURL, resources.pairedVideoURL],
+                placeholderImage: imageView.image,
+                targetSize: targetSize,
+                contentMode: .aspectFit
+            ) { [weak self] livePhoto, info in
+                Task { @MainActor in
+                    self?.handleLocalResourceLivePhotoResult(
+                        livePhoto,
+                        info: info,
+                        key: key
+                    )
+                }
+            }
+            livePhotoRequestCancellation = .pendingResources(requestID)
+        }
+
+        private func handlePhotosAssetLivePhotoResult(
+            _ livePhoto: PHLivePhoto?,
+            info: [AnyHashable: Any]?,
+            key: String
+        ) {
+            handleLivePhotoResult(
+                livePhoto,
+                isCancelled: info?[PHImageCancelledKey] as? Bool == true,
+                error: info?[PHImageErrorKey],
+                isDegraded: info?[PHImageResultIsDegradedKey] as? Bool == true,
+                key: key
+            )
+        }
+
+        private func handleLocalResourceLivePhotoResult(
+            _ livePhoto: PHLivePhoto?,
+            info: [AnyHashable: Any],
+            key: String
+        ) {
+            handleLivePhotoResult(
+                livePhoto,
+                isCancelled: info[PHLivePhotoInfoCancelledKey] as? Bool == true,
+                error: info[PHLivePhotoInfoErrorKey],
+                isDegraded: info[PHLivePhotoInfoIsDegradedKey] as? Bool == true,
+                key: key
+            )
+        }
+
+        private struct PendingLivePhotoResources {
+            let photoURL: URL
+            let pairedVideoURL: URL
+        }
+
+        private enum LivePhotoRequestCancellation {
+            case photosAsset(PHImageRequestID)
+            case pendingResources(PHLivePhotoRequestID)
+
+            func cancel() {
+                switch self {
+                case .photosAsset(let requestID):
+                    PHImageManager.default().cancelImageRequest(requestID)
+                case .pendingResources(let requestID):
+                    PHLivePhoto.cancelRequest(withRequestID: requestID)
+                }
+            }
+        }
+
+        private func handleLivePhotoResult(
+            _ livePhoto: PHLivePhoto?,
+            isCancelled: Bool,
+            error: Any?,
+            isDegraded: Bool,
+            key: String
+        ) {
+            guard livePhotoRequestKey == key else {
+                return
+            }
+            if isCancelled || error != nil {
+                markLivePhotoUnavailable(key: key)
+                return
+            }
+            guard let livePhoto else {
+                return
+            }
+
+            livePhotoView.livePhoto = livePhoto
+            livePhotoView.isHidden = false
+            livePhotoReadyKey = key
+            livePhotoUnavailableKey = nil
+            syncMediaFrames()
+
+            if isPressingForLivePhoto {
+                startLivePhotoPlaybackIfAvailable()
+            }
+
+            guard !isDegraded else {
+                return
+            }
+            livePhotoRequestCancellation = nil
+            livePhotoRequestKey = nil
+        }
+
+        private func livePhotoTargetSize(in scrollView: UIScrollView) -> CGSize {
+            let scale = max(UIScreen.main.scale, 1)
+            return CGSize(
+                width: max(scrollView.bounds.width * scale, 1),
+                height: max(scrollView.bounds.height * scale, 1)
+            )
+        }
+
+        private func startLivePhotoPlaybackIfAvailable() {
+            guard livePhotoView.livePhoto != nil,
+                  !livePhotoView.isHidden else {
+                return
+            }
+            livePhotoView.startPlayback(with: .full)
+        }
+
+        private func markLivePhotoUnavailable(key: String) {
+            livePhotoRequestCancellation = nil
+            livePhotoRequestKey = nil
+            livePhotoReadyKey = nil
+            livePhotoUnavailableKey = key
+            livePhotoView.livePhoto = nil
+            livePhotoView.isHidden = true
+        }
+
+        private func clearLivePhoto() {
+            isPressingForLivePhoto = false
+            livePhotoView.stopPlayback()
+            cancelLivePhotoRequest()
+            livePhotoReadyKey = nil
+            livePhotoUnavailableKey = nil
+            livePhotoView.livePhoto = nil
+            livePhotoView.isHidden = true
+        }
+
+        private func cancelLivePhotoRequest() {
+            livePhotoPreparationTask?.cancel()
+            livePhotoPreparationTask = nil
+            livePhotoRequestCancellation?.cancel()
+            livePhotoRequestCancellation = nil
+            livePhotoRequestKey = nil
         }
     }
 }

@@ -550,12 +550,15 @@ struct TAPLibraryStorageTests {
         let unsignedURL = bundleURL.appendingPathComponent("unsigned.heic")
 
         #expect(try await store.bestAvailableHEICData(captureID: record.captureID) == Data("unsigned".utf8))
+        #expect(try await store.bestAvailablePhotoURL(captureID: record.captureID) == unsignedURL)
 
         _ = try await store.storeSignedHEIC(Data("signed".utf8), captureID: record.captureID)
         #expect(try await store.bestAvailableHEICData(captureID: record.captureID) == Data("signed".utf8))
+        #expect(try await store.bestAvailablePhotoURL(captureID: record.captureID) == signedURL)
 
         try FileManager.default.removeItem(at: signedURL)
         #expect(try await store.bestAvailableHEICData(captureID: record.captureID) == Data("unsigned".utf8))
+        #expect(try await store.bestAvailablePhotoURL(captureID: record.captureID) == unsignedURL)
 
         try FileManager.default.removeItem(at: unsignedURL)
         do {
@@ -566,6 +569,38 @@ struct TAPLibraryStorageTests {
         } catch {
             Issue.record("Unexpected pending HEIC error: \(error)")
         }
+    }
+
+    @Test func pendingLivePhotoPlaybackResourcesUseUnsignedPhotoBeforeSigningSucceeds() async throws {
+        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        let movieDirectory = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        let movieURL = movieDirectory.appendingPathComponent("source.mov")
+        try Data("paired-video".utf8).write(to: movieURL)
+
+        let store = TAPPendingCaptureStore(rootURL: rootURL)
+        let record = try await store.ingest(TAPCamDemoTestFixtures.samplePendingArtifact(
+            photoData: Data("unsigned-live-photo".utf8),
+            livePhotoMovie: PackagedLivePhotoMovie(
+                fileURL: movieURL,
+                durationSeconds: 1.2,
+                photoDisplayTimeSeconds: 0.5,
+                width: 1440,
+                height: 1080,
+                codec: "hvc1",
+                capturesAudio: false
+            )
+        ))
+        let bundleURL = rootURL.appendingPathComponent(record.captureID, isDirectory: true)
+        let unsignedPhotoURL = bundleURL.appendingPathComponent(TAPPendingCaptureBundlePathPolicy.unsignedHEICFilename)
+        let pairedVideoURL = bundleURL.appendingPathComponent(TAPPendingCaptureBundlePathPolicy.pairedVideoFilename)
+
+        #expect(record.status == .pending)
+        #expect(record.signedPhotoFilename == nil)
+        #expect(record.pairedVideoFilename == TAPPendingCaptureBundlePathPolicy.pairedVideoFilename)
+        #expect(try await store.bestAvailablePhotoURL(captureID: record.captureID) == unsignedPhotoURL)
+        #expect(try await store.pairedVideoURL(captureID: record.captureID) == pairedVideoURL)
+        #expect(try Data(contentsOf: unsignedPhotoURL) == Data("unsigned-live-photo".utf8))
+        #expect(try Data(contentsOf: pairedVideoURL) == Data("paired-video".utf8))
     }
 
     @Test func pendingCaptureProcessingPolicyKeepsRouteAndPriorityReadable() async throws {

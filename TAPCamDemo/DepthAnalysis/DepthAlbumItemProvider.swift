@@ -90,6 +90,7 @@ nonisolated struct DepthAlbumPhotoAsset {
     let modificationDate: Date?
     let pixelWidth: Int
     let pixelHeight: Int
+    let isLivePhoto: Bool
     let phAsset: PHAsset?
 
     init(asset: PHAsset) {
@@ -98,6 +99,7 @@ nonisolated struct DepthAlbumPhotoAsset {
         self.modificationDate = asset.modificationDate
         self.pixelWidth = asset.pixelWidth
         self.pixelHeight = asset.pixelHeight
+        self.isLivePhoto = asset.mediaSubtypes.contains(.photoLive)
         self.phAsset = asset
     }
 
@@ -107,6 +109,7 @@ nonisolated struct DepthAlbumPhotoAsset {
         modificationDate: Date? = nil,
         pixelWidth: Int = 0,
         pixelHeight: Int = 0,
+        isLivePhoto: Bool = false,
         phAsset: PHAsset? = nil
     ) {
         self.localIdentifier = localIdentifier
@@ -114,6 +117,7 @@ nonisolated struct DepthAlbumPhotoAsset {
         self.modificationDate = modificationDate
         self.pixelWidth = pixelWidth
         self.pixelHeight = pixelHeight
+        self.isLivePhoto = isLivePhoto
         self.phAsset = phAsset
     }
 }
@@ -240,6 +244,17 @@ nonisolated struct TAPLibraryItem: Identifiable {
 }
 
 extension TAPLibraryItem {
+    var isLivePhoto: Bool {
+        switch source {
+        case .photos(let asset):
+            return asset.isLivePhoto
+        case .ownedPhoto(let record, let asset):
+            return asset.isLivePhoto || record.pairedVideoFilename != nil
+        case .pending(let record):
+            return record.pairedVideoFilename != nil
+        }
+    }
+
     var pendingBadge: String? {
         guard case .pending(let record) = source else {
             return nil
@@ -266,8 +281,14 @@ extension TAPLibraryItem {
     var accessibilityLabel: String {
         switch source {
         case .photos, .ownedPhoto:
+            if isLivePhoto {
+                return "Open saved Live Photo"
+            }
             return "Open saved depth photo"
         case .pending(let record):
+            if isLivePhoto {
+                return "Open pending Live Photo, \(record.status.rawValue)"
+            }
             return "Open pending depth photo, \(record.status.rawValue)"
         }
     }

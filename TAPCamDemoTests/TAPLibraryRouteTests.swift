@@ -374,6 +374,58 @@ struct TAPLibraryRouteTests {
         ])
     }
 
+    @Test func depthAlbumItemsPublishLivePhotoFlagForPhotosOwnedAndPendingSources() throws {
+        let livePending = TAPCamDemoTestFixtures.samplePendingRecord(
+            captureID: "pending-live",
+            capturedAt: Date(timeIntervalSince1970: 400),
+            pairedVideoFilename: TAPPendingCaptureBundlePathPolicy.pairedVideoFilename
+        )
+        let plainPending = TAPCamDemoTestFixtures.samplePendingRecord(
+            captureID: "pending-plain",
+            capturedAt: Date(timeIntervalSince1970: 300)
+        )
+        let exportedLiveRecord = TAPCamDemoTestFixtures.samplePendingRecord(
+            captureID: "exported-live",
+            capturedAt: Date(timeIntervalSince1970: 200),
+            status: .exported,
+            pairedVideoFilename: TAPPendingCaptureBundlePathPolicy.pairedVideoFilename,
+            assetLocalIdentifier: "asset-owned"
+        )
+        let ownedAsset = DepthAlbumPhotoAsset(
+            localIdentifier: "asset-owned",
+            creationDate: Date(timeIntervalSince1970: 200),
+            modificationDate: nil,
+            pixelWidth: 0,
+            pixelHeight: 0,
+            isLivePhoto: false,
+            phAsset: nil
+        )
+        let photosLiveAsset = DepthAlbumPhotoAsset(
+            localIdentifier: "asset-live",
+            creationDate: Date(timeIntervalSince1970: 100),
+            modificationDate: nil,
+            pixelWidth: 0,
+            pixelHeight: 0,
+            isLivePhoto: true,
+            phAsset: nil
+        )
+
+        let items = TAPLibraryItem.merged(
+            pendingRecords: [livePending, plainPending],
+            exportedRecords: [exportedLiveRecord],
+            photoAssets: [photosLiveAsset],
+            exportedAssetResolver: { $0 == ownedAsset.localIdentifier ? ownedAsset : nil }
+        )
+        let livePhotoFlags: [String: Bool] = Dictionary(
+            uniqueKeysWithValues: items.map { ($0.id, $0.isLivePhoto) }
+        )
+
+        #expect(livePhotoFlags["pending:pending-live"] == true)
+        #expect(livePhotoFlags["pending:pending-plain"] == false)
+        #expect(livePhotoFlags["owned:asset-owned"] == true)
+        #expect(livePhotoFlags["photos:asset-live"] == true)
+    }
+
     @Test func depthAlbumItemsSortByCapturedAtDescending() throws {
         let oldPending = TAPCamDemoTestFixtures.samplePendingRecord(
             captureID: "pending-old",

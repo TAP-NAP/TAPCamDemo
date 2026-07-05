@@ -173,6 +173,21 @@ actor TAPPendingCaptureStore {
         throw TAPDepthCaptureError.pendingCaptureDataMissing
     }
 
+    func bestAvailablePhotoURL(captureID: String) throws -> URL {
+        let record = try readRecord(captureID: captureID)
+        if let filename = record.signedPhotoFilename {
+            if let url = try storage.photoURLIfPresent(filename: filename, captureID: captureID) {
+                return url
+            }
+        }
+        if let filename = record.unsignedPhotoFilename {
+            if let url = try storage.photoURLIfPresent(filename: filename, captureID: captureID) {
+                return url
+            }
+        }
+        throw TAPDepthCaptureError.pendingCaptureDataMissing
+    }
+
     func bestAvailableHEICData(captureID: String) throws -> Data {
         try bestAvailablePhotoData(captureID: captureID)
     }

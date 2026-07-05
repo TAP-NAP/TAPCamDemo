@@ -452,7 +452,7 @@ private struct TAPLibraryItemCell: View {
     @State private var thumbnail: UIImage?
 
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
+        ZStack {
             Rectangle()
                 .fill(Color(uiColor: .secondarySystemBackground))
                 .aspectRatio(1, contentMode: .fit)
@@ -469,16 +469,35 @@ private struct TAPLibraryItemCell: View {
                     .foregroundStyle(.secondary)
             }
 
+            if item.isLivePhoto {
+                VStack {
+                    HStack {
+                        Spacer()
+                        DepthAnalysisLivePhotoBadge(size: .thumbnail)
+                    }
+                    Spacer()
+                }
+                .padding(5)
+                .allowsHitTesting(false)
+            }
+
             if let badge = item.pendingBadge {
-                Text(badge)
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(.black)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 3)
-                    .background(.yellow, in: Capsule())
-                    .padding(5)
+                VStack {
+                    Spacer()
+                    HStack {
+                        Text(badge)
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(.black)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 3)
+                            .background(.yellow, in: Capsule())
+                        Spacer()
+                    }
+                }
+                .padding(5)
+                .allowsHitTesting(false)
             }
         }
         .aspectRatio(1, contentMode: .fit)
