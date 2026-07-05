@@ -71,8 +71,11 @@ extension CameraViewModel {
             TAPDiagnostics.pendingCapture.info("capture queued jobID=\(job.id.uuidString, privacy: .public) pendingJobCount=\(pendingCount, privacy: .public)")
             #endif
 
-            let location = locationProvider.cachedCaptureLocation()
-            locationProvider.warmLocationCache()
+            let usesLocationData = CameraCaptureDataUsePreferences.usesLocationData()
+            let location = usesLocationData ? locationProvider.cachedCaptureLocation() : nil
+            if usesLocationData {
+                locationProvider.warmLocationCache()
+            }
             let context = CaptureSourceContext(
                 sessionConfiguration: captureConfiguration,
                 capturedAt: job.createdAt,

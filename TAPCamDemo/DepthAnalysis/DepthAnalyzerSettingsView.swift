@@ -6,9 +6,11 @@
 //
 
 @preconcurrency import AVFoundation
+import Combine
 import CoreLocation
 import Photos
 import SwiftUI
+import UIKit
 
 enum DepthAnalyzerPreferences {
     static let showsAnalysisHelpKey = "DepthAnalyzerShowsAnalysisHelp"
@@ -21,7 +23,10 @@ enum DepthAnalyzerPreferences {
 
 struct DepthAnalyzerSettingsView: View {
     @Environment(\.dismiss) private var dismiss
-    private let snapshot: DepthAnalyzerAuthorizationSnapshot
+    @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
+    @StateObject private var permissionRequester = DepthAnalyzerPermissionRequester()
+    @State private var authorizationSnapshot: DepthAnalyzerAuthorizationSnapshot
     private let shutterSoundSuppressionSupported: Bool
     @ObservedObject private var appAttestController: AppAttestRuntimeController
     @AppStorage(DepthAnalyzerPreferences.showsAnalysisHelpKey)
@@ -62,6 +67,10 @@ struct DepthAnalyzerSettingsView: View {
     private var keepScreenAwake = CameraIdleTimerPreferences.defaultKeepScreenAwake
     @AppStorage(CameraLivePhotoPreferences.startupPolicyKey)
     private var livePhotoStartupPolicyRawValue = CameraLivePhotoPreferences.defaultStartupPolicy.rawValue
+    @AppStorage(CameraCaptureDataUsePreferences.usesLocationDataKey)
+    private var usesLocationData = CameraCaptureDataUsePreferences.defaultUsesLocationData
+    @AppStorage(CameraCaptureDataUsePreferences.usesMicrophoneDataKey)
+    private var usesMicrophoneData = CameraCaptureDataUsePreferences.defaultUsesMicrophoneData
     @AppStorage(CameraRoutePreferences.returnToCameraOnForegroundKey)
     private var returnToCameraOnForeground = CameraRoutePreferences.defaultReturnToCameraOnForeground
 
@@ -70,7 +79,7 @@ struct DepthAnalyzerSettingsView: View {
         appAttestController: AppAttestRuntimeController,
         shutterSoundSuppressionSupported: Bool = true
     ) {
-        self.snapshot = snapshot
+        _authorizationSnapshot = State(initialValue: snapshot)
         self.appAttestController = appAttestController
         self.shutterSoundSuppressionSupported = shutterSoundSuppressionSupported
     }
@@ -110,6 +119,11 @@ struct DepthAnalyzerSettingsView: View {
                         dismiss()
                     }
                 }
+            }
+            .onAppear(perform: refreshAuthorizationSnapshot)
+            .onChange(of: scenePhase) { _, phase in
+                guard phase == .active else { return }
+                refreshAuthorizationSnapshot()
             }
         }
     }
@@ -232,20 +246,88 @@ struct DepthAnalyzerSettingsView: View {
         Section("Permissions") {
             DepthAnalyzerStatusRow(
                 title: "Camera",
-                value: snapshot.camera,
+                value: authorizationSnapshot.camera,
                 systemImage: "camera"
             )
             DepthAnalyzerStatusRow(
                 title: "Photos",
-                value: snapshot.photos,
+                value: authorizationSnapshot.photos,
                 systemImage: "photo.on.rectangle"
             )
-            DepthAnalyzerStatusRow(
+            DepthAnalyzerPermissionControlRow(
                 title: "Location",
-                value: snapshot.location,
-                systemImage: "location"
+                value: authorizationSnapshot.location,
+                systemImage: "location",
+                actionTitle: authorizationSnapshot.locationPermissionActionTitle,
+                isRequesting: permissionRequester.isRequestingLocation,
+                action: performLocationPermissionAction
             )
+
+            Toggle(isOn: $usesLocationData) {
+                Label("Use Location Data", systemImage: "location.fill")
+            }
+
+            DepthAnalyzerPermissionControlRow(
+                title: "Microphone",
+                value: authorizationSnapshot.microphone,
+                systemImage: "mic",
+                actionTitle: authorizationSnapshot.microphonePermissionActionTitle,
+                isRequesting: permissionRequester.isRequestingMicrophone,
+                action: performMicrophonePermissionAction
+            )
+
+            Toggle(isOn: $usesMicrophoneData) {
+                Label("Use Microphone Data", systemImage: "mic.fill")
+            }
+
+            Text("Capture uses location or microphone data only when system authorization and the app data-use switch are both enabled.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    private func refreshAuthorizationSnapshot() {
+        authorizationSnapshot = .current()
+    }
+
+    private func performLocationPermissionAction() {
+        switch authorizationSnapshot.locationAuthorizationStatus {
+        case .notDetermined:
+            Task {
+                await permissionRequester.requestLocationAccess()
+                refreshAuthorizationSnapshot()
+            }
+        case .denied, .restricted:
+            openAppSettings()
+        case .authorizedAlways, .authorizedWhenInUse:
+            break
+        @unknown default:
+            break
+        }
+    }
+
+    private func performMicrophonePermissionAction() {
+        switch authorizationSnapshot.microphoneAuthorizationStatus {
+        case .notDetermined:
+            Task {
+                await permissionRequester.requestMicrophoneAccess()
+                refreshAuthorizationSnapshot()
+            }
+        case .denied, .restricted:
+            openAppSettings()
+        case .authorized:
+            break
+        @unknown default:
+            break
+        }
+    }
+
+    private func openAppSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else {
+            return
+        }
+        openURL(url)
     }
 
     #if DEBUG
@@ -335,17 +417,153 @@ private struct DepthAnalyzerStatusRow: View {
     }
 }
 
+private struct DepthAnalyzerPermissionControlRow: View {
+    let title: String
+    let value: String
+    let systemImage: String
+    let actionTitle: String?
+    let isRequesting: Bool
+    let action: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 24)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                Text(value)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 12)
+
+            if isRequesting {
+                ProgressView()
+            } else if let actionTitle {
+                Button(actionTitle, action: action)
+                    .buttonStyle(.bordered)
+                    .font(.footnote.weight(.semibold))
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+@MainActor
+private final class DepthAnalyzerPermissionRequester: NSObject, ObservableObject, CLLocationManagerDelegate {
+    @Published var isRequestingLocation = false
+    @Published var isRequestingMicrophone = false
+
+    private let locationManager = CLLocationManager()
+    private var locationAuthorizationContinuation: CheckedContinuation<CLAuthorizationStatus, Never>?
+
+    override init() {
+        super.init()
+        locationManager.delegate = self
+    }
+
+    func requestLocationAccess() async {
+        guard !isRequestingLocation else { return }
+
+        switch locationManager.authorizationStatus {
+        case .authorizedAlways, .authorizedWhenInUse, .denied, .restricted:
+            return
+        case .notDetermined:
+            isRequestingLocation = true
+            _ = await withCheckedContinuation { continuation in
+                locationAuthorizationContinuation = continuation
+                locationManager.requestWhenInUseAuthorization()
+            }
+            isRequestingLocation = false
+        @unknown default:
+            return
+        }
+    }
+
+    func requestMicrophoneAccess() async {
+        guard !isRequestingMicrophone else { return }
+
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized, .denied, .restricted:
+            return
+        case .notDetermined:
+            isRequestingMicrophone = true
+            _ = await AVCaptureDevice.requestAccess(for: .audio)
+            isRequestingMicrophone = false
+        @unknown default:
+            return
+        }
+    }
+
+    nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        Task { @MainActor [weak self] in
+            guard let self,
+                  let continuation = locationAuthorizationContinuation else {
+                return
+            }
+            locationAuthorizationContinuation = nil
+            continuation.resume(returning: manager.authorizationStatus)
+        }
+    }
+}
+
 nonisolated struct DepthAnalyzerAuthorizationSnapshot: Equatable {
     let camera: String
     let photos: String
     let location: String
+    let microphone: String
+    let locationAuthorizationStatus: CLAuthorizationStatus
+    let microphoneAuthorizationStatus: AVAuthorizationStatus
+
+    var locationPermissionActionTitle: String? {
+        Self.permissionActionTitle(for: locationAuthorizationStatus)
+    }
+
+    var microphonePermissionActionTitle: String? {
+        Self.permissionActionTitle(for: microphoneAuthorizationStatus)
+    }
 
     static func current() -> DepthAnalyzerAuthorizationSnapshot {
-        DepthAnalyzerAuthorizationSnapshot(
+        let locationStatus = CLLocationManager().authorizationStatus
+        let microphoneStatus = AVCaptureDevice.authorizationStatus(for: .audio)
+        return DepthAnalyzerAuthorizationSnapshot(
             camera: DepthAnalyzerAuthorizationStatusText.camera(AVCaptureDevice.authorizationStatus(for: .video)),
             photos: DepthAnalyzerAuthorizationStatusText.photos(PHPhotoLibrary.authorizationStatus(for: .readWrite)),
-            location: DepthAnalyzerAuthorizationStatusText.location(CLLocationManager().authorizationStatus)
+            location: DepthAnalyzerAuthorizationStatusText.location(locationStatus),
+            microphone: DepthAnalyzerAuthorizationStatusText.microphone(microphoneStatus),
+            locationAuthorizationStatus: locationStatus,
+            microphoneAuthorizationStatus: microphoneStatus
         )
+    }
+
+    private static func permissionActionTitle(for status: CLAuthorizationStatus) -> String? {
+        switch status {
+        case .notDetermined:
+            "Get Permission"
+        case .denied, .restricted:
+            "Open Settings"
+        case .authorizedAlways, .authorizedWhenInUse:
+            nil
+        @unknown default:
+            nil
+        }
+    }
+
+    private static func permissionActionTitle(for status: AVAuthorizationStatus) -> String? {
+        switch status {
+        case .notDetermined:
+            "Get Permission"
+        case .denied, .restricted:
+            "Open Settings"
+        case .authorized:
+            nil
+        @unknown default:
+            nil
+        }
     }
 }
 
@@ -388,6 +606,21 @@ nonisolated enum DepthAnalyzerAuthorizationStatusText {
             "Always allowed"
         case .authorizedWhenInUse:
             "While using app"
+        case .notDetermined:
+            "Not requested"
+        case .denied:
+            "Denied"
+        case .restricted:
+            "Restricted"
+        @unknown default:
+            "Unknown"
+        }
+    }
+
+    static func microphone(_ status: AVAuthorizationStatus) -> String {
+        switch status {
+        case .authorized:
+            "Authorized"
         case .notDetermined:
             "Not requested"
         case .denied:

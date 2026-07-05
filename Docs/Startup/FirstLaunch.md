@@ -17,6 +17,7 @@ flowchart TD
     F --> H["Camera permission"]
     F --> I["Photo library permission"]
     F --> J["Location permission (optional)"]
+    F --> O["Microphone permission (optional)"]
     G --> K{"Required startup checks complete"}
     H --> K
     I --> K
@@ -36,10 +37,11 @@ flowchart TD
 - First-install users see `WelcomeStartupSetupView` before the camera surface is
   created.
 - `StartupGatePolicy` is the code-level policy entry. It names backend security
-  preflight, camera, and photo library as required checks, while location stays
-  optional.
+  preflight, camera, and photo library as required checks, while location and
+  microphone stay optional.
 - The welcome page requires a backend security preflight, camera access, and
-  photo library access. Location is optional and can be skipped.
+  photo library access. Location and microphone are optional and can be
+  skipped.
 - The backend security preflight is a strict product gate, not an iOS network
   permission prompt. The current policy intentionally blocks first camera entry
   until that preflight succeeds.
@@ -47,8 +49,12 @@ flowchart TD
   because the user-facing action is checking connectivity, while the code keeps
   the `securityPreflight` policy name.
 - If location is skipped or still not authorized after first launch, later
-  captures do not request location permission. They use any already cached
-  authorized location or save without location metadata.
+  captures use the app's location data-use switch plus any already cached
+  authorized location, or save without location metadata.
+- If microphone is skipped or still not authorized after first launch, the
+  camera continues to capture still photos and silent Live Photos. Live Photo
+  sound requires both system microphone authorization and the app's microphone
+  data-use switch.
 - The Network Access row performs a lightweight HTTPS preflight against the
   configured App Attest server `/healthz` endpoint before first camera entry and
   automatic pending-capture signing credential warmup.

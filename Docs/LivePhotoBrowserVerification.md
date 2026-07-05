@@ -37,7 +37,8 @@ verification behavior of existing still-photo captures.
   - `width`
   - `height`
   - `videoCodec`
-  - `audio`, currently `"not-captured"` for silent Live Photos
+  - `audio`, either `"not-captured"` for silent Live Photos or `"captured"` when
+    Live Photo sound was enabled at capture time
 - `proof.value.contentDigest.signedResources` is present only for v3 Live Photo
   bindings and uses these roles:
   - `primaryPhoto`

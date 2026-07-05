@@ -15,7 +15,7 @@ bytes, or run the pending queue.
 | Required versus optional startup policy | [StartupGatePolicy.swift](StartupGatePolicy.swift) |
 | Backend security preflight retry and timeout policy | [StartupSecurityPreflightPolicy.swift](StartupSecurityPreflightPolicy.swift) |
 | Backend security preflight execution | [StartupBackendSecurityPreflight.swift](StartupBackendSecurityPreflight.swift) |
-| Backend security preflight, camera, photo, and optional location gate state | [StartupGateCoordinator.swift](StartupGateCoordinator.swift) |
+| Backend security preflight, camera, photo, optional location, and optional microphone gate state | [StartupGateCoordinator.swift](StartupGateCoordinator.swift) |
 | App Attest runtime factory and diagnostics | [AppAttestRuntime.swift](AppAttestRuntime.swift) |
 | App Attest credential preparation state | [AppAttestRuntimeController.swift](AppAttestRuntimeController.swift) |
 | Public-safe App Attest UI status and key ID presentation | [AppAttestCredentialPresentation.swift](AppAttestCredentialPresentation.swift) |
@@ -37,6 +37,7 @@ flowchart TD
     Coord --> CameraPerm["Camera permission"]
     Coord --> PhotosPerm["Photo library permission"]
     Coord --> LocationPerm["Location permission optional"]
+    Coord --> MicrophonePerm["Microphone permission optional"]
     Network --> Required{"Required startup checks ready?"}
     CameraPerm --> Required
     PhotosPerm --> Required
@@ -63,6 +64,9 @@ reads and requests the actual OS statuses and coordinates the backend preflight
 result. Camera warmup, pending-capture signing credential warmup, and
 pending-capture retry happen after entering
 [CameraView](../CameraCapture/UI/CameraView.swift).
+Location and microphone setup are optional: capture writes location or Live
+Photo audio only when the corresponding system permission and app data-use
+switch are both enabled.
 
 ## App Attest Runtime Flow
 
@@ -97,7 +101,7 @@ The app target also sets `APP_ATTEST_ENVIRONMENT` to `development` for Debug and
 - App startup must not pre-create `CameraViewModel` or camera runtime objects.
 - `StartupGatePolicy` is the source of truth for required versus optional
   first-launch checks. Security preflight, camera, and photo library remain
-  required; location remains optional.
+  required; location and microphone remain optional.
 - `APP_ATTEST_BACKEND_URL` must be an HTTPS base URL with a domain host.
 - Shared diagnostics categories are declared in `TAPDiagnostics`: `AppAttest`,
   `PendingCapture`, `SecurityPreflight`, and `PhotoLibrary`. Public error

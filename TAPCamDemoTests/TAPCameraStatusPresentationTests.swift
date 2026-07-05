@@ -196,6 +196,7 @@ struct TAPCameraStatusPresentationTests {
             outputProfile: request.outputProfile,
             resolvedOutput: resolvedOutput,
             device: option.rgbSource.device,
+            livePhotoAudioInputConfigured: false,
             controlCapabilities: TAPCamDemoTestFixtures.sampleManualControlCapability(),
             selectionContext: request.selectionContext
         )

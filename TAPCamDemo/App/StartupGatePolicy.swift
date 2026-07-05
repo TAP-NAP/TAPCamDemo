@@ -27,6 +27,7 @@ nonisolated enum StartupGateRequirementKind: CaseIterable, Equatable, Sendable {
     case camera
     case photoLibrary
     case location
+    case microphone
 }
 
 nonisolated struct StartupGateStatusSnapshot: Equatable, Sendable {
@@ -34,6 +35,7 @@ nonisolated struct StartupGateStatusSnapshot: Equatable, Sendable {
     let camera: StartupGateRequirementStatus
     let photoLibrary: StartupGateRequirementStatus
     let location: StartupGateRequirementStatus
+    let microphone: StartupGateRequirementStatus
 
     var hasCompletedRequiredStartupChecks: Bool {
         StartupGatePolicy.hasCompletedRequiredStartupChecks(self)
@@ -60,7 +62,8 @@ nonisolated enum StartupGatePolicy {
     ]
 
     static let optionalRequirements: [StartupGateRequirementKind] = [
-        .location
+        .location,
+        .microphone
     ]
 
     static func hasCompletedRequiredStartupChecks(_ snapshot: StartupGateStatusSnapshot) -> Bool {

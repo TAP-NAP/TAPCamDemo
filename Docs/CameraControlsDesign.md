@@ -434,7 +434,10 @@ Settings 分组：
 - `Camera Behavior`：`Keep Screen Awake`、`Reset EV on App Launch`、`Return to Camera After Background`。
 - `Feedback`：`Shutter Sound`、`Shutter Haptics`。
 - `Analysis`：`Help`。
-- `Permissions`：`Camera`、`Photos`、`Location` 授权状态。
+- `Permissions`：`Camera`、`Photos` 授权状态；`Location`、`Microphone`
+  授权状态和获取权限入口；`Use Location Data`、`Use Microphone Data`
+  是 App 内数据使用开关。采集只在系统授权和 App 内开关都允许时使用地点或
+  麦克风数据。
 - `App Attest`：凭证状态和 redacted KeyID 摘要。
 - `Debug Camera Controls`：仅 `DEBUG` 构建显示 `Focus Magnifier` 和
   `LiDAR Focus Assist`。`Manual Focus Tap Assist` 还必须属于

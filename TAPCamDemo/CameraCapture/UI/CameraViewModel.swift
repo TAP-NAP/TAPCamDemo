@@ -163,13 +163,17 @@ final class CameraViewModel: ObservableObject {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
             await configureDefaultSelection()
-            locationProvider.warmLocationCache()
+            if CameraCaptureDataUsePreferences.usesLocationData() {
+                locationProvider.warmLocationCache()
+            }
             await loadRecentTAPLibraryPreviewIfAvailable()
         case .notDetermined:
             let granted = await AVCaptureDevice.requestAccess(for: .video)
             if granted {
                 await configureDefaultSelection()
-                locationProvider.warmLocationCache()
+                if CameraCaptureDataUsePreferences.usesLocationData() {
+                    locationProvider.warmLocationCache()
+                }
                 await loadRecentTAPLibraryPreviewIfAvailable()
             } else {
                 statusMessage = CameraCaptureStatusPresentation.message(
@@ -217,7 +221,9 @@ final class CameraViewModel: ObservableObject {
             } else {
                 await configureCurrentSelection()
             }
-            locationProvider.warmLocationCache()
+            if CameraCaptureDataUsePreferences.usesLocationData() {
+                locationProvider.warmLocationCache()
+            }
             await loadRecentTAPLibraryPreviewIfAvailable()
         case .notDetermined:
             await start()

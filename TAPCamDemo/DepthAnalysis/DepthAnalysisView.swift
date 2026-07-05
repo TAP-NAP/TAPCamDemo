@@ -535,6 +535,7 @@ private struct AnalysisNativePageView: View {
     @Binding var comparisonPosition: Double
     let highlightPalette: AnalysisHighlightPalette
     let isPlaneGridAnimationEnabled: Bool
+    @State private var isLivePhotoMuted = true
 
     var body: some View {
         ZStack {
@@ -563,8 +564,27 @@ private struct AnalysisNativePageView: View {
                 displayedImageSize: displayedImageSize,
                 displayedImageOrientation: displayedImageOrientation
             )
+
+            if tool == .raw {
+                AnalysisLivePhotoSoundButtonOverlay(
+                    source: slot.source,
+                    isCurrent: isCurrent,
+                    viewportSize: viewportSize,
+                    displayedImageSize: displayedImageSize,
+                    displayedImageOrientation: displayedImageOrientation,
+                    isMuted: $isLivePhotoMuted
+                )
+            }
         }
         .frame(width: viewportSize.width, height: viewportSize.height)
+        .onChange(of: slot.source.loadID) { _, _ in
+            isLivePhotoMuted = true
+        }
+        .onChange(of: isCurrent) { _, isCurrent in
+            if isCurrent {
+                isLivePhotoMuted = true
+            }
+        }
     }
 
     private var rawContent: some View {
@@ -573,7 +593,8 @@ private struct AnalysisNativePageView: View {
                 source: slot.source,
                 image: rawImage,
                 imageIdentifier: rawImageIdentifier,
-                isCurrent: isCurrent
+                isCurrent: isCurrent,
+                isLivePhotoMuted: $isLivePhotoMuted
             )
             .frame(width: viewportSize.width, height: viewportSize.height)
 
@@ -692,6 +713,79 @@ private struct AnalysisLivePhotoBadgeOverlay: View {
     }
 }
 
+private struct AnalysisLivePhotoSoundButtonOverlay: View {
+    let source: DepthAnalysisSource
+    let isCurrent: Bool
+    let viewportSize: CGSize
+    let displayedImageSize: CGSize?
+    let displayedImageOrientation: CGImagePropertyOrientation
+    @Binding var isMuted: Bool
+    @State private var isLivePhoto = false
+
+    var body: some View {
+        ZStack {
+            if isLivePhoto, let buttonPosition {
+                Button {
+                    isMuted.toggle()
+                } label: {
+                    Image(systemName: isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                        .font(.callout.weight(.semibold))
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(.primary)
+                        .frame(width: 42, height: 42)
+                        .background(.thinMaterial, in: Circle())
+                        .overlay {
+                            Circle()
+                                .stroke(.white.opacity(0.18), lineWidth: 1)
+                        }
+                }
+                .buttonStyle(.plain)
+                .position(buttonPosition)
+                .transition(.opacity)
+                .accessibilityLabel(isMuted ? "Live Photo muted" : "Live Photo sound on")
+                .help(isMuted ? "Unmute Live Photo" : "Mute Live Photo")
+            }
+        }
+        .frame(width: viewportSize.width, height: viewportSize.height)
+        .accessibilityHidden(!isLivePhoto)
+        .task(id: "\(source.loadID)|\(isCurrent)") {
+            await refresh()
+        }
+    }
+
+    private var buttonPosition: CGPoint? {
+        guard viewportSize.width > 0,
+              viewportSize.height > 0,
+              displayedImageSize != nil else {
+            return nil
+        }
+
+        let imageRect = DepthAnalysisViewerInteractionPolicy.centeredToolContainerRect(
+            imageSize: displayedImageSize,
+            orientation: displayedImageOrientation,
+            viewportSize: viewportSize
+        )
+        let edgeInset = DepthAnalysisLivePhotoBadge.Size.viewer.edgeInset
+        return CGPoint(
+            x: imageRect.maxX - edgeInset,
+            y: imageRect.minY + edgeInset + 48
+        )
+    }
+
+    private func refresh() async {
+        guard isCurrent else {
+            isLivePhoto = false
+            return
+        }
+
+        let resolvedIsLivePhoto = await DepthAnalysisLivePhotoSourceResolver.isLivePhoto(source: source)
+        guard !Task.isCancelled else {
+            return
+        }
+        isLivePhoto = resolvedIsLivePhoto
+    }
+}
+
 private enum DepthAnalysisLivePhotoSourceResolver {
     static func isLivePhoto(source: DepthAnalysisSource) async -> Bool {
         switch source {
@@ -714,6 +808,7 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
     let image: UIImage?
     let imageIdentifier: String
     let isCurrent: Bool
+    @Binding var isLivePhotoMuted: Bool
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -745,10 +840,11 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
         context.coordinator.update(
             scrollView: scrollView,
             source: source,
-            image: image,
-            imageIdentifier: imageIdentifier,
-            isCurrent: isCurrent
-        )
+                image: image,
+                imageIdentifier: imageIdentifier,
+                isCurrent: isCurrent,
+                isLivePhotoMuted: isLivePhotoMuted
+            )
     }
 
     final class Coordinator: NSObject, UIScrollViewDelegate, UIGestureRecognizerDelegate {
@@ -763,6 +859,7 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
         private var livePhotoReadyKey: String?
         private var livePhotoUnavailableKey: String?
         private var isPressingForLivePhoto = false
+        private var isLivePhotoMuted = true
 
         func installImageView(in scrollView: UIScrollView) {
             contentView.backgroundColor = .black
@@ -803,9 +900,12 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
             source: DepthAnalysisSource,
             image: UIImage?,
             imageIdentifier: String,
-            isCurrent: Bool
+            isCurrent: Bool,
+            isLivePhotoMuted: Bool
         ) {
             scrollView.isUserInteractionEnabled = isCurrent
+            self.isLivePhotoMuted = isLivePhotoMuted
+            livePhotoView.isMuted = isLivePhotoMuted
             let boundsSize = scrollView.bounds.size
             let imageObjectChanged = imageView.image !== image
             if currentImageIdentifier != imageIdentifier || imageObjectChanged {
@@ -1119,6 +1219,7 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
             }
 
             livePhotoView.livePhoto = livePhoto
+            livePhotoView.isMuted = isLivePhotoMuted
             livePhotoView.isHidden = false
             livePhotoReadyKey = key
             livePhotoUnavailableKey = nil
@@ -1148,6 +1249,7 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
                   !livePhotoView.isHidden else {
                 return
             }
+            livePhotoView.isMuted = isLivePhotoMuted
             livePhotoView.startPlayback(with: .full)
         }
 
@@ -1167,6 +1269,7 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
             livePhotoReadyKey = nil
             livePhotoUnavailableKey = nil
             livePhotoView.livePhoto = nil
+            livePhotoView.isMuted = true
             livePhotoView.isHidden = true
         }
 

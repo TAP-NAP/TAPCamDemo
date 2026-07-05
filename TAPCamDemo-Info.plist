@@ -28,6 +28,8 @@
 	<string>TAPCamDemo captures photos with depth data from the camera.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>TAPCamDemo can attach capture location to the TAP depth HEIC metadata.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>TAPCamDemo can record audio for Live Photo captures when Live Photo sound is enabled.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>TAPCamDemo saves depth HEIC captures into the TAPCamDepth photo album.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

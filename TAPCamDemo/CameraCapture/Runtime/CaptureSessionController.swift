@@ -285,6 +285,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             assumesDepthDeliverySupported: true,
             outputProfile: request.outputProfile
         )
+        let shouldConfigureLivePhotoAudioInput = shouldConfigureLivePhotoAudioInput()
         try resolvedOutput.validateCapturePlanDepthConfiguration(
             depthDataDeliveryEnabled: plan.captureConfig.depthDataDeliveryEnabled,
             embedsDepthDataInPhoto: plan.captureConfig.embedsDepthDataInPhoto
@@ -302,7 +303,8 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             session: session,
             photoOutput: photoOutput,
             plan: plan,
-            resolvedOutput: resolvedOutput
+            resolvedOutput: resolvedOutput,
+            shouldConfigureLivePhotoAudioInput: shouldConfigureLivePhotoAudioInput
         ) {
             try CameraControlService.applyZoom(zoom, to: plan.resolvedCaptureDevice)
             let capabilities = CapturePhotoOutputCapabilitySnapshot(
@@ -314,16 +316,18 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                 plan: plan,
                 photoOutput: photoOutput,
                 request: request,
-                resolvedOutput: resolvedOutput
+                resolvedOutput: resolvedOutput,
+                livePhotoAudioInputConfigured: shouldConfigureLivePhotoAudioInput
             )
         }
 
-        try rebuildSessionGraph(
+        let livePhotoAudioInputConfigured = try rebuildSessionGraph(
             session: session,
             photoOutput: photoOutput,
             plan: plan,
             resolvedOutput: resolvedOutput,
-            zoom: zoom
+            zoom: zoom,
+            shouldConfigureLivePhotoAudioInput: shouldConfigureLivePhotoAudioInput
         )
 
         /*
@@ -341,7 +345,8 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             plan: plan,
             photoOutput: photoOutput,
             request: request,
-            resolvedOutput: resolvedOutput
+            resolvedOutput: resolvedOutput,
+            livePhotoAudioInputConfigured: livePhotoAudioInputConfigured
         )
     }
 
@@ -352,9 +357,11 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         photoOutput: AVCapturePhotoOutput,
         plan: CaptureSourcePlan,
         resolvedOutput: ResolvedCaptureOutputProfile,
-        zoom: Double
-    ) throws {
+        zoom: Double,
+        shouldConfigureLivePhotoAudioInput: Bool
+    ) throws -> Bool {
         session.beginConfiguration()
+        var livePhotoAudioInputConfigured = false
         do {
             session.sessionPreset = .photo
             session.inputs.forEach { session.removeInput($0) }
@@ -378,6 +385,13 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                 throw TAPDepthCaptureError.unableToAddCameraInput
             }
             session.addInput(input)
+
+            if shouldConfigureLivePhotoAudioInput,
+               let audioInput = try? makeLivePhotoAudioInput(),
+               session.canAddInput(audioInput) {
+                session.addInput(audioInput)
+                livePhotoAudioInputConfigured = true
+            }
 
             if !session.outputs.contains(photoOutput) {
                 guard session.canAddOutput(photoOutput) else {
@@ -410,6 +424,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                 requireConfiguredState: true
             )
             session.commitConfiguration()
+            return livePhotoAudioInputConfigured
         } catch {
             session.commitConfiguration()
             throw error
@@ -458,20 +473,26 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         session: AVCaptureSession,
         photoOutput: AVCapturePhotoOutput,
         plan: CaptureSourcePlan,
-        resolvedOutput: ResolvedCaptureOutputProfile
+        resolvedOutput: ResolvedCaptureOutputProfile,
+        shouldConfigureLivePhotoAudioInput: Bool
     ) -> Bool {
         guard session.sessionPreset == .photo else {
             return false
         }
 
-        let deviceInputs = session.inputs.compactMap { input in
+        let inputDevices = session.inputs.compactMap { input in
             (input as? AVCaptureDeviceInput)?.device
         }
-        guard deviceInputs.count == 1 else {
+        let videoInputDevices = inputDevices.filter { $0.hasMediaType(.video) }
+        guard videoInputDevices.count == 1 else {
             return false
         }
 
-        let activeDevice = deviceInputs[0]
+        guard hasLivePhotoAudioInput(session) == shouldConfigureLivePhotoAudioInput else {
+            return false
+        }
+
+        let activeDevice = videoInputDevices[0]
         guard activeDevice.uniqueID == plan.resolvedCaptureDevice.uniqueID else {
             return false
         }
@@ -507,6 +528,24 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         }
 
         return true
+    }
+
+    private static func shouldConfigureLivePhotoAudioInput() -> Bool {
+        CameraCaptureDataUsePreferences.usesMicrophoneData()
+            && AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
+    }
+
+    private static func makeLivePhotoAudioInput() throws -> AVCaptureDeviceInput? {
+        guard let audioDevice = AVCaptureDevice.default(for: .audio) else {
+            return nil
+        }
+        return try AVCaptureDeviceInput(device: audioDevice)
+    }
+
+    private static func hasLivePhotoAudioInput(_ session: AVCaptureSession) -> Bool {
+        session.inputs
+            .compactMap { ($0 as? AVCaptureDeviceInput)?.device }
+            .contains { $0.hasMediaType(.audio) }
     }
 
     private static func formatsHaveSamePhotoDepthPreviewSignature(
@@ -549,7 +588,8 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         plan: CaptureSourcePlan,
         photoOutput: AVCapturePhotoOutput,
         request: SessionConfigurationRequest,
-        resolvedOutput: ResolvedCaptureOutputProfile
+        resolvedOutput: ResolvedCaptureOutputProfile,
+        livePhotoAudioInputConfigured: Bool
     ) -> SessionConfigurationResult {
         let focalLabel = plan.requestedFocalLengthLabel.label
         let nativePreviewAspectRatio = portraitPreviewAspectRatio(for: plan.resolvedCaptureDevice.activeFormat)
@@ -562,6 +602,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             outputProfile: request.outputProfile,
             resolvedOutput: resolvedOutput,
             device: plan.resolvedCaptureDevice,
+            livePhotoAudioInputConfigured: livePhotoAudioInputConfigured,
             controlCapabilities: CameraControlCapabilitySnapshot.make(device: plan.resolvedCaptureDevice),
             selectionContext: request.selectionContext
         )

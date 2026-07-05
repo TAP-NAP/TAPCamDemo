@@ -834,6 +834,23 @@ struct TAPCameraCapturePresentationTests {
         #expect(CameraLivePhotoPreferences.resolvedStartupIsEnabled(in: userDefaults))
     }
 
+    @Test func cameraCaptureDataUsePreferencesDefaultToLocationOnMicrophoneOff() throws {
+        let suiteName = "TAPCameraCaptureDataUsePreferencesTests-\(UUID().uuidString)"
+        let userDefaults = try #require(UserDefaults(suiteName: suiteName))
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+
+        #expect(CameraCaptureDataUsePreferences.usesLocationData(in: userDefaults))
+        #expect(!CameraCaptureDataUsePreferences.usesMicrophoneData(in: userDefaults))
+
+        userDefaults.set(false, forKey: CameraCaptureDataUsePreferences.usesLocationDataKey)
+        userDefaults.set(true, forKey: CameraCaptureDataUsePreferences.usesMicrophoneDataKey)
+
+        #expect(!CameraCaptureDataUsePreferences.usesLocationData(in: userDefaults))
+        #expect(CameraCaptureDataUsePreferences.usesMicrophoneData(in: userDefaults))
+    }
+
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
     func cameraViewfinderChromeKeepsFocusExperimentsOutOfReleaseSettingsAndPairsFlashWithLivePhoto() throws {
         let chromeSource = try TAPCamDemoTestSourceInspection.source(
@@ -862,8 +879,13 @@ struct TAPCameraCapturePresentationTests {
         #expect(settingsSource.contains("@AppStorage(CameraViewfinderHighlightPreference.storageKey)"))
         #expect(settingsSource.contains("@AppStorage(CameraFlashControlMode.startupPolicyKey)"))
         #expect(settingsSource.contains("@AppStorage(CameraLivePhotoPreferences.startupPolicyKey)"))
+        #expect(settingsSource.contains("@AppStorage(CameraCaptureDataUsePreferences.usesLocationDataKey)"))
+        #expect(settingsSource.contains("@AppStorage(CameraCaptureDataUsePreferences.usesMicrophoneDataKey)"))
         #expect(settingsSource.contains(#"Picker("Flash Default", selection: $flashStartupPolicyRawValue)"#))
         #expect(settingsSource.contains(#"Picker("Live Photo Default", selection: $livePhotoStartupPolicyRawValue)"#))
+        #expect(settingsSource.contains("Use Location Data"))
+        #expect(settingsSource.contains("Use Microphone Data"))
+        #expect(settingsSource.contains("Get Permission"))
         #expect(settingsSource.contains("CameraViewfinderControlDefaultPolicy.allCases"))
         #expect(!settingsSource.contains(#"Picker("Default Flash""#))
         #expect(!settingsSource.contains(#"Toggle(isOn: $isLivePhotoEnabled)"#))
@@ -909,6 +931,11 @@ struct TAPCameraCapturePresentationTests {
         #expect(cameraSource.contains("@State private var isLivePhotoEnabled: Bool"))
         #expect(cameraSource.contains("@AppStorage(CameraLivePhotoPreferences.startupPolicyKey)"))
         #expect(cameraSource.contains("@AppStorage(CameraLivePhotoPreferences.lastEnabledKey)"))
+        #expect(cameraSource.contains("@AppStorage(CameraCaptureDataUsePreferences.usesMicrophoneDataKey)"))
+        #expect(cameraSource.contains("private var shouldCaptureLivePhotoAudio: Bool"))
+        #expect(cameraSource.contains("AVCaptureDevice.authorizationStatus(for: .audio) == .authorized"))
+        #expect(cameraSource.contains("livePhotoAudioInputConfigured == true"))
+        #expect(cameraSource.contains("refreshCaptureDataUsePolicyAfterSettingsDismissal"))
         #expect(cameraSource.contains("applyFlashStartupPolicy"))
         #expect(cameraSource.contains("applyLivePhotoStartupPolicy"))
         #expect(cameraSource.contains("persistRememberedViewfinderControlStateIfNeeded"))

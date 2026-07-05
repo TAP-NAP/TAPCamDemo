@@ -88,6 +88,8 @@ struct CameraView: View {
     private var livePhotoStartupPolicyRawValue = CameraLivePhotoPreferences.defaultStartupPolicy.rawValue
     @AppStorage(CameraLivePhotoPreferences.lastEnabledKey)
     private var lastLivePhotoEnabled = CameraLivePhotoPreferences.defaultLastEnabled
+    @AppStorage(CameraCaptureDataUsePreferences.usesMicrophoneDataKey)
+    private var usesMicrophoneData = CameraCaptureDataUsePreferences.defaultUsesMicrophoneData
 
     init(
         viewModel: CameraViewModel? = nil,
@@ -157,6 +159,8 @@ struct CameraView: View {
             if isPresented {
                 persistRememberedViewfinderControlStateIfNeeded()
                 isBasicEVStripVisible = false
+            } else {
+                refreshCaptureDataUsePolicyAfterSettingsDismissal()
             }
         }
         #else
@@ -166,6 +170,8 @@ struct CameraView: View {
         .onChange(of: isShowingSettings) { _, isPresented in
             if isPresented {
                 persistRememberedViewfinderControlStateIfNeeded()
+            } else {
+                refreshCaptureDataUsePolicyAfterSettingsDismissal()
             }
         }
         #endif
@@ -184,6 +190,11 @@ struct CameraView: View {
         }
         .onChange(of: livePhotoStartupPolicyRawValue) { _, rawValue in
             applyLivePhotoStartupPolicy(rawValue)
+        }
+        .onChange(of: usesMicrophoneData) { _, _ in
+            Task {
+                await viewModel.configureCurrentSelection()
+            }
         }
         .onChange(of: routeStore.isDepthAlbumPresented) { _, isPresented in
             if isPresented {
@@ -596,6 +607,12 @@ struct CameraView: View {
             fallback: CameraLivePhotoPreferences.defaultStartupPolicy
         ) == .rememberLastState {
             lastLivePhotoEnabled = isLivePhotoEnabled
+        }
+    }
+
+    private func refreshCaptureDataUsePolicyAfterSettingsDismissal() {
+        Task {
+            await viewModel.configureCurrentSelection()
         }
     }
 
@@ -1259,10 +1276,18 @@ struct CameraView: View {
                 flashMode: flashMode.captureFlashMode,
                 livePhotoRequest: CaptureLivePhotoRequest(
                     isEnabled: isLivePhotoEnabled && viewModel.isLivePhotoCaptureSupported,
-                    capturesAudio: false
+                    capturesAudio: shouldCaptureLivePhotoAudio
                 )
             )
         }
+    }
+
+    private var shouldCaptureLivePhotoAudio: Bool {
+        isLivePhotoEnabled
+            && viewModel.isLivePhotoCaptureSupported
+            && usesMicrophoneData
+            && AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
+            && viewModel.activeSessionConfiguration?.livePhotoAudioInputConfigured == true
     }
 
     private func openTAPLibrary() {

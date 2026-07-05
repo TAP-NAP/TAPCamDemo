@@ -35,6 +35,7 @@ nonisolated enum PreCaptureConfigurationBuilder {
             outputProfile: active.outputProfile,
             resolvedOutput: active.resolvedOutput,
             device: active.device,
+            livePhotoAudioInputConfigured: active.livePhotoAudioInputConfigured,
             controlCapabilities: active.controlCapabilities,
             selectionContext: request.selectionContext
         )

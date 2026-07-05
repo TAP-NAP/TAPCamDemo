@@ -169,6 +169,7 @@ struct TAPPreCaptureConfigurationBuilderTests {
             outputProfile: request.outputProfile,
             resolvedOutput: resolvedOutput,
             device: device,
+            livePhotoAudioInputConfigured: false,
             controlCapabilities: Self.controlCapabilities(),
             selectionContext: request.selectionContext
         )

@@ -19,7 +19,7 @@ struct StartupGateCoordinatorTests {
             .camera,
             .photoLibrary
         ])
-        #expect(StartupGatePolicy.optionalRequirements == [.location])
+        #expect(StartupGatePolicy.optionalRequirements == [.location, .microphone])
     }
 
     @Test func startupGateRequiresSecurityPreflightCameraAndPhotos() {
@@ -27,7 +27,8 @@ struct StartupGateCoordinatorTests {
             securityPreflight: .granted,
             camera: .granted,
             photoLibrary: .granted,
-            location: .idle
+            location: .idle,
+            microphone: .idle
         )
 
         #expect(completedSnapshot.hasCompletedRequiredStartupChecks)
@@ -99,13 +100,15 @@ struct StartupGateCoordinatorTests {
             securityPreflight: .denied,
             camera: .granted,
             photoLibrary: .granted,
-            location: .idle
+            location: .idle,
+            microphone: .idle
         ).hasBlockingStartupFailure)
         #expect(!StartupGateStatusSnapshot(
             securityPreflight: .requesting,
             camera: .granted,
             photoLibrary: .granted,
-            location: .idle
+            location: .idle,
+            microphone: .idle
         ).hasBlockingStartupFailure)
     }
 
@@ -121,7 +124,29 @@ struct StartupGateCoordinatorTests {
                 securityPreflight: .granted,
                 camera: .granted,
                 photoLibrary: .granted,
-                location: locationStatus
+                location: locationStatus,
+                microphone: .idle
+            )
+
+            #expect(snapshot.hasCompletedRequiredStartupChecks)
+            #expect(!snapshot.hasBlockingStartupFailure)
+        }
+    }
+
+    @Test func startupGateTreatsMicrophoneAsOptional() {
+        for microphoneStatus in [
+            StartupGateRequirementStatus.idle,
+            .requesting,
+            .granted,
+            .denied,
+            .skipped
+        ] {
+            let snapshot = StartupGateStatusSnapshot(
+                securityPreflight: .granted,
+                camera: .granted,
+                photoLibrary: .granted,
+                location: .idle,
+                microphone: microphoneStatus
             )
 
             #expect(snapshot.hasCompletedRequiredStartupChecks)

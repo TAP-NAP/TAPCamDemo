@@ -361,6 +361,10 @@ struct TAPDepthAnalysisPresentationTests {
         #expect(analysisSource.contains("withResourceFileURLs: [resources.photoURL, resources.pairedVideoURL]"))
         #expect(analysisSource.contains("bestAvailablePhotoURL(captureID: captureID)"))
         #expect(analysisSource.contains("pairedVideoURL(captureID: captureID)"))
+        #expect(analysisSource.contains("AnalysisLivePhotoSoundButtonOverlay"))
+        #expect(analysisSource.contains("@State private var isLivePhotoMuted = true"))
+        #expect(analysisSource.contains(#"Image(systemName: isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")"#))
+        #expect(analysisSource.contains("livePhotoView.isMuted = isLivePhotoMuted"))
         #expect(analysisSource.contains("startPlayback(with: .full)"))
         #expect(analysisSource.contains("stopPlayback()"))
     }
@@ -767,6 +771,8 @@ struct TAPDepthAnalysisPresentationTests {
         #expect(DepthAnalyzerAuthorizationStatusText.photos(.denied) == "Denied")
         #expect(DepthAnalyzerAuthorizationStatusText.location(.authorizedWhenInUse) == "While using app")
         #expect(DepthAnalyzerAuthorizationStatusText.location(.restricted) == "Restricted")
+        #expect(DepthAnalyzerAuthorizationStatusText.microphone(.authorized) == "Authorized")
+        #expect(DepthAnalyzerAuthorizationStatusText.microphone(.notDetermined) == "Not requested")
     }
 }
 

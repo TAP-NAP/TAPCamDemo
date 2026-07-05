@@ -242,6 +242,7 @@ nonisolated struct SessionConfigurationResult: @unchecked Sendable {
     let outputProfile: CaptureOutputProfile
     let resolvedOutput: ResolvedCaptureOutputProfile
     let device: AVCaptureDevice
+    let livePhotoAudioInputConfigured: Bool
     let controlCapabilities: CameraControlCapabilitySnapshot
     let selectionContext: CaptureSelectionContext
 }

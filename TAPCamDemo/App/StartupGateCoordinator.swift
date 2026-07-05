@@ -20,6 +20,7 @@ final class StartupGateCoordinator: NSObject, ObservableObject, CLLocationManage
     @Published private(set) var cameraStatus: StartupGateRequirementStatus = .idle
     @Published private(set) var photoLibraryStatus: StartupGateRequirementStatus = .idle
     @Published private(set) var locationStatus: StartupGateRequirementStatus = .idle
+    @Published private(set) var microphoneStatus: StartupGateRequirementStatus = .idle
 
     private let locationManager = CLLocationManager()
     private let securityPreflight: any StartupSecurityPreflightChecking
@@ -53,7 +54,8 @@ final class StartupGateCoordinator: NSObject, ObservableObject, CLLocationManage
             securityPreflight: securityPreflightStatus,
             camera: cameraStatus,
             photoLibrary: photoLibraryStatus,
-            location: locationStatus
+            location: locationStatus,
+            microphone: microphoneStatus
         )
     }
 
@@ -66,7 +68,8 @@ final class StartupGateCoordinator: NSObject, ObservableObject, CLLocationManage
             securityPreflight: securityPreflightStatus,
             camera: cameraStatus,
             photoLibrary: photoLibraryStatus,
-            location: .idle
+            location: .idle,
+            microphone: .idle
         ).hasCompletedRequiredStartupChecks
     }
 
@@ -79,7 +82,8 @@ final class StartupGateCoordinator: NSObject, ObservableObject, CLLocationManage
             securityPreflight: securityPreflightStatus,
             camera: cameraStatus,
             photoLibrary: photoLibraryStatus,
-            location: .idle
+            location: .idle,
+            microphone: .idle
         ).hasBlockingStartupFailure
     }
 
@@ -99,8 +103,14 @@ final class StartupGateCoordinator: NSObject, ObservableObject, CLLocationManage
             photoLibraryStatus = Self.photoLibraryStatus()
         }
 
-        if locationStatus != .requesting {
+        if locationStatus != .requesting,
+           locationStatus != .skipped {
             locationStatus = Self.locationStatus(from: locationManager.authorizationStatus)
+        }
+
+        if microphoneStatus != .requesting,
+           microphoneStatus != .skipped {
+            microphoneStatus = Self.microphoneStatus()
         }
     }
 
@@ -181,6 +191,32 @@ final class StartupGateCoordinator: NSObject, ObservableObject, CLLocationManage
         locationStatus = .skipped
     }
 
+    func requestMicrophoneAccess() async {
+        guard microphoneStatus != .requesting else {
+            return
+        }
+
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized:
+            microphoneStatus = .granted
+        case .notDetermined:
+            microphoneStatus = .requesting
+            let granted = await AVCaptureDevice.requestAccess(for: .audio)
+            microphoneStatus = granted ? .granted : .denied
+        case .denied, .restricted:
+            microphoneStatus = .denied
+        @unknown default:
+            microphoneStatus = .denied
+        }
+    }
+
+    func skipMicrophoneAccess() {
+        guard microphoneStatus != .requesting else {
+            return
+        }
+        microphoneStatus = .skipped
+    }
+
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         Task { @MainActor [weak self] in
             guard let self else { return }
@@ -227,6 +263,19 @@ final class StartupGateCoordinator: NSObject, ObservableObject, CLLocationManage
     private static func locationStatus(from status: CLAuthorizationStatus) -> StartupGateRequirementStatus {
         switch status {
         case .authorizedAlways, .authorizedWhenInUse:
+            .granted
+        case .notDetermined:
+            .idle
+        case .denied, .restricted:
+            .denied
+        @unknown default:
+            .denied
+        }
+    }
+
+    private static func microphoneStatus() -> StartupGateRequirementStatus {
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized:
             .granted
         case .notDetermined:
             .idle

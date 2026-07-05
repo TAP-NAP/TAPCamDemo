@@ -211,8 +211,10 @@ Live Photo manifests use
 `urn:tapnap:tapcam:depth-manifest:v2` and add
 `manifest.payload.livePhoto` with the fixed `pairedVideoFilename`, duration,
 photo-display time, dimensions, optional video codec, and audio state. Silent
-Live Photos record `audio: "not-captured"`; microphone access is not required
-for the current implementation.
+Live Photos record `audio: "not-captured"`. Live Photos with sound record
+`audio: "captured"` only when system microphone authorization, the app
+microphone data-use switch, and the configured capture session audio input are
+all enabled.
 
 ### Live Photo Depth Scope
 

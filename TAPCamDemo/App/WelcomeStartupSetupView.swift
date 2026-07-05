@@ -64,6 +64,19 @@ struct WelcomeStartupSetupView: View {
                         } secondaryAction: {
                             coordinator.skipLocationAccess()
                         }
+
+                        StartupRequirementRow(
+                            iconName: "mic",
+                            title: "Microphone Access",
+                            message: "Optional. Used to include sound when Live Photo sound is enabled.",
+                            status: coordinator.microphoneStatus,
+                            actionTitle: "Allow",
+                            secondaryActionTitle: "Skip"
+                        ) {
+                            Task { await coordinator.requestMicrophoneAccess() }
+                        } secondaryAction: {
+                            coordinator.skipMicrophoneAccess()
+                        }
                     }
 
                     footer
@@ -146,7 +159,7 @@ struct WelcomeStartupSetupView: View {
                 }
 
                 if !coordinator.hasBlockingStartupFailure {
-                    Text("Complete network access, camera, and photo library access first. Location is optional.")
+                    Text("Complete network access, camera, and photo library access first. Location and microphone are optional.")
                         .font(.footnote)
                         .foregroundStyle(.white.opacity(0.64))
                 }
