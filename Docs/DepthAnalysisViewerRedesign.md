@@ -351,10 +351,11 @@ invalid file.
 Current implementation status: a Delete button is shown in the bottom viewer
 capsule and wired from `DepthAnalysisView`.
 
-Delete always requires confirmation.
+Delete does not add an app-owned confirmation panel. Photos assets use system
+Photos delete semantics, including the system delete prompt and Recently Deleted
+behavior.
 
-- Photos assets should use system Photos delete semantics, including Recently
-  Deleted behavior.
+- Photos assets should use system Photos delete semantics.
 - Pending or local-only records delete the local record and temporary files.
 - If a signing-failed TAPCam record has an uncredentialed export, warn that
   deleting the TAPCam capture record prevents a future credentialed version from

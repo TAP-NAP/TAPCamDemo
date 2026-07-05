@@ -29,15 +29,11 @@ struct DepthAnalysisView: View {
     @State private var selectedTool = AnalysisViewerTool.raw
     @State private var sharePayload: DepthAnalysisSystemSharePayload?
     @State private var isPreparingShare = false
-    @State private var deleteRequest: DepthAnalysisDeleteRequest?
     @State private var deleteAlert: DepthAnalysisDeleteAlert?
-    @State private var deleteConfirmationDontAskAgain = false
     @AppStorage(CameraViewfinderHighlightPreference.storageKey)
     private var viewfinderHighlightRawValue = CameraViewfinderHighlightPreference.defaultValue.rawValue
     @AppStorage(DepthAnalyzerPreferences.planeGridAnimationEnabledKey)
     private var isPlaneGridAnimationEnabled = DepthAnalyzerPreferences.defaultPlaneGridAnimationEnabled
-    @AppStorage(DepthAnalyzerPreferences.confirmsDeleteBeforeDeletingKey)
-    private var confirmsDeleteBeforeDeleting = DepthAnalyzerPreferences.defaultConfirmsDeleteBeforeDeleting
 
     init(
         source: DepthAnalysisSource,
@@ -71,17 +67,6 @@ struct DepthAnalysisView: View {
         .ignoresSafeArea(.container, edges: .all)
         .sheet(item: $sharePayload) { payload in
             VerificationExportActivityView(activityItems: [payload.export.fileURL])
-        }
-        .overlay {
-            if deleteRequest != nil, confirmsDeleteBeforeDeleting {
-                DepthAnalysisDeleteConfirmationDialog(
-                    dontAskAgain: $deleteConfirmationDontAskAgain,
-                    onCancel: cancelDeleteConfirmation,
-                    onDelete: deleteConfirmedItem
-                )
-                .transition(.opacity.combined(with: .scale(scale: 0.98)))
-                .zIndex(3)
-            }
         }
         .alert(item: $deleteAlert) { alert in
             Alert(
@@ -129,7 +114,7 @@ struct DepthAnalysisView: View {
                     },
                     onShareTapped: presentSystemShareSheet,
                     onToolTapped: handleToolTapped,
-                    onDeleteTapped: confirmDeleteCurrentItem
+                    onDeleteTapped: deleteCurrentItem
                 )
                 .zIndex(2)
             }
@@ -169,31 +154,14 @@ struct DepthAnalysisView: View {
         }
     }
 
-    private func confirmDeleteCurrentItem() {
+    private func deleteCurrentItem() {
         guard let source = carouselStore.currentEntry?.source else {
             return
         }
-        deleteConfirmationDontAskAgain = false
-        deleteRequest = DepthAnalysisDeleteRequest(source: source)
-        guard confirmsDeleteBeforeDeleting else {
-            deleteConfirmedItem()
-            return
-        }
-    }
-
-    private func deleteConfirmedItem() {
-        guard let request = deleteRequest else {
-            return
-        }
-        if deleteConfirmationDontAskAgain {
-            confirmsDeleteBeforeDeleting = false
-        }
-        deleteConfirmationDontAskAgain = false
-        deleteRequest = nil
 
         Task { @MainActor in
             do {
-                try await DepthAnalysisDeletionService.delete(source: request.source)
+                try await DepthAnalysisDeletionService.delete(source: source)
                 dismiss()
             } catch {
                 #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
@@ -205,11 +173,6 @@ struct DepthAnalysisView: View {
                 )
             }
         }
-    }
-
-    private func cancelDeleteConfirmation() {
-        deleteConfirmationDontAskAgain = false
-        deleteRequest = nil
     }
 
     private func handleCurrentEntryChanged(_ entry: DepthAnalysisCarouselEntry) {
@@ -225,87 +188,10 @@ struct DepthAnalysisView: View {
     }
 }
 
-private struct DepthAnalysisDeleteRequest: Identifiable {
-    let source: DepthAnalysisSource
-
-    var id: String {
-        source.loadID
-    }
-}
-
 private struct DepthAnalysisDeleteAlert: Identifiable {
     let id = UUID()
     let title: String
     let message: String
-}
-
-private struct DepthAnalysisDeleteConfirmationDialog: View {
-    @Binding var dontAskAgain: Bool
-    let onCancel: () -> Void
-    let onDelete: () -> Void
-
-    var body: some View {
-        ZStack {
-            Color.black.opacity(0.48)
-                .ignoresSafeArea()
-
-            VStack(alignment: .leading, spacing: 16) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Delete photo?")
-                        .font(.headline)
-                    Text("This removes the current item from TAP Library.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Toggle("Don't Ask Again", isOn: $dontAskAgain)
-                    .toggleStyle(AnalysisCheckboxToggleStyle())
-
-                HStack(spacing: 10) {
-                    Button("Cancel", role: .cancel, action: onCancel)
-                        .buttonStyle(.bordered)
-                        .frame(maxWidth: .infinity)
-
-                    Button("Delete Photo", role: .destructive, action: onDelete)
-                        .buttonStyle(.borderedProminent)
-                        .frame(maxWidth: .infinity)
-                }
-            }
-            .padding(18)
-            .frame(maxWidth: 330)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(.white.opacity(0.18), lineWidth: 1)
-            }
-            .padding(.horizontal, 24)
-            .accessibilityElement(children: .contain)
-        }
-    }
-}
-
-private struct AnalysisCheckboxToggleStyle: ToggleStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        Button {
-            configuration.isOn.toggle()
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: configuration.isOn ? "checkmark.square.fill" : "square")
-                    .font(.body.weight(.semibold))
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(.primary)
-
-                configuration.label
-                    .font(.subheadline.weight(.semibold))
-
-                Spacer(minLength: 0)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityValue(configuration.isOn ? "On" : "Off")
-    }
 }
 
 @MainActor

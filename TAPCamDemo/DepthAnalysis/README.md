@@ -140,9 +140,8 @@ If this module is new to you, read it in this order:
    RAW zoom/pan/double-tap, centered `RAW` / `2D` / `3D` primary surfaces,
    selected-tool routing, global Share/Delete presentation, left-edge return,
    and top-level callbacks. Share prepares the verification-original export
-   for saved Photos items and opens the system share page directly. Delete asks
-   for confirmation with a `Don't Ask Again` checkbox unless the user has
-   disabled that reminder, then routes Photos assets through
+   for saved Photos items and opens the system share page directly. Delete routes
+   Photos assets through system Photos deletion via
    `PhotoLibraryWriter.deleteAsset` and pending local records through
    `TAPPendingCaptureStore.removeRecord`.
    [DepthAnalysisViewerInteractionPolicy.swift](DepthAnalysisViewerInteractionPolicy.swift)
@@ -371,8 +370,8 @@ list for attended device or UI checks that code reading alone cannot prove.
    selected tool, toolbar, and route/bookmark state remain stable with no black
    rebuild flash.
 7. Tap Share and verify the sheet shows only whether a valid credential exists
-   in Release UI. Tap Delete and verify confirmation appears before Photos
-   deletion or pending local-record removal.
+   in Release UI. Tap Delete and verify Photos deletion uses the system Photos
+   prompt while pending local records are removed through TAPCam storage.
 8. Treat this module as a local reader. It may read pending or saved TAP HEIC or
    JPG photo files, but App Attest proof validation and final export trust
    remain in the capture/output pipeline.

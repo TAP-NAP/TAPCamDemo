@@ -15,8 +15,6 @@ enum DepthAnalyzerPreferences {
     static let defaultShowsAnalysisHelp = true
     static let planeGridAnimationEnabledKey = "DepthAnalyzerPlaneGridAnimationEnabled"
     static let defaultPlaneGridAnimationEnabled = true
-    static let confirmsDeleteBeforeDeletingKey = "DepthAnalyzerConfirmsDeleteBeforeDeleting"
-    static let defaultConfirmsDeleteBeforeDeleting = true
     static let planeGrowthStrictnessKey = "DepthAnalyzerPlaneGrowthStrictness"
     static let defaultPlaneGrowthStrictness = DepthAnalysisPlaneSelectionState.defaultStrictness
 }
@@ -30,8 +28,6 @@ struct DepthAnalyzerSettingsView: View {
     private var showsAnalysisHelp = DepthAnalyzerPreferences.defaultShowsAnalysisHelp
     @AppStorage(DepthAnalyzerPreferences.planeGridAnimationEnabledKey)
     private var isPlaneGridAnimationEnabled = DepthAnalyzerPreferences.defaultPlaneGridAnimationEnabled
-    @AppStorage(DepthAnalyzerPreferences.confirmsDeleteBeforeDeletingKey)
-    private var confirmsDeleteBeforeDeleting = DepthAnalyzerPreferences.defaultConfirmsDeleteBeforeDeleting
     @AppStorage(DepthAnalyzerPreferences.planeGrowthStrictnessKey)
     private var planeGrowthStrictness = DepthAnalyzerPreferences.defaultPlaneGrowthStrictness
     @AppStorage(CameraFeedbackPreferences.shutterHapticsEnabledKey)
@@ -216,10 +212,6 @@ struct DepthAnalyzerSettingsView: View {
 
             Toggle(isOn: $isPlaneGridAnimationEnabled) {
                 Label("Grid Growth Animation", systemImage: "square.grid.3x3")
-            }
-
-            Toggle(isOn: $confirmsDeleteBeforeDeleting) {
-                Label("Delete Confirmation", systemImage: "trash.slash")
             }
 
             VStack(alignment: .leading, spacing: 8) {

@@ -394,7 +394,7 @@ struct TAPDepthAnalysisPresentationTests {
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func analysisDeleteUsesPhotosAndPendingStoreBoundaries() throws {
+    func analysisDeleteUsesPhotosPromptAndPendingStoreBoundaries() throws {
         let analysisSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisView.swift"
         )
@@ -407,15 +407,15 @@ struct TAPDepthAnalysisPresentationTests {
 
         #expect(analysisSource.contains("PhotoLibraryWriter.deleteAsset"))
         #expect(analysisSource.contains("TAPPendingCaptureStore.shared.removeRecord"))
-        #expect(analysisSource.contains("DepthAnalysisDeleteConfirmationDialog"))
-        #expect(analysisSource.contains("Toggle(\"Don't Ask Again\", isOn: $dontAskAgain)"))
-        #expect(analysisSource.contains("AnalysisCheckboxToggleStyle"))
-        #expect(analysisSource.contains("checkmark.square.fill"))
+        #expect(!analysisSource.contains("DepthAnalysisDeleteConfirmationDialog"))
+        #expect(!analysisSource.contains("Toggle(\"Don't Ask Again\", isOn: $dontAskAgain)"))
+        #expect(!analysisSource.contains("AnalysisCheckboxToggleStyle"))
+        #expect(!analysisSource.contains("checkmark.square.fill"))
         #expect(!analysisSource.contains("Delete and Don't Ask Again"))
         #expect(!analysisSource.contains(".confirmationDialog("))
-        #expect(analysisSource.contains("confirmsDeleteBeforeDeleting"))
-        #expect(settingsSource.contains("confirmsDeleteBeforeDeletingKey"))
-        #expect(settingsSource.contains("Delete Confirmation"))
+        #expect(!analysisSource.contains("confirmsDeleteBeforeDeleting"))
+        #expect(!settingsSource.contains("confirmsDeleteBeforeDeletingKey"))
+        #expect(!settingsSource.contains("Delete Confirmation"))
         #expect(writerSource.contains("PHAssetChangeRequest.deleteAssets"))
     }
 
