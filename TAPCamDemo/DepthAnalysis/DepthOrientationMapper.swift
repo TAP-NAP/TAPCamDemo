@@ -34,11 +34,11 @@ nonisolated enum TAPImageOrientationMapper {
         case .right:
             return CGRect(x: rect.minY, y: nativeSize.height - rect.maxX, width: rect.height, height: rect.width)
         case .rightMirrored:
-            return CGRect(x: rect.minY, y: rect.minX, width: rect.height, height: rect.width)
+            return CGRect(x: nativeSize.width - rect.maxY, y: nativeSize.height - rect.maxX, width: rect.height, height: rect.width)
         case .left:
             return CGRect(x: nativeSize.width - rect.maxY, y: rect.minX, width: rect.height, height: rect.width)
         case .leftMirrored:
-            return CGRect(x: nativeSize.width - rect.maxY, y: nativeSize.height - rect.maxX, width: rect.height, height: rect.width)
+            return CGRect(x: rect.minY, y: rect.minX, width: rect.height, height: rect.width)
         }
     }
 
@@ -55,11 +55,11 @@ nonisolated enum TAPImageOrientationMapper {
         case .right:
             return CGRect(x: nativeSize.height - rect.maxY, y: rect.minX, width: rect.height, height: rect.width)
         case .rightMirrored:
-            return CGRect(x: rect.minY, y: rect.minX, width: rect.height, height: rect.width)
+            return CGRect(x: nativeSize.height - rect.maxY, y: nativeSize.width - rect.maxX, width: rect.height, height: rect.width)
         case .left:
             return CGRect(x: rect.minY, y: nativeSize.width - rect.maxX, width: rect.height, height: rect.width)
         case .leftMirrored:
-            return CGRect(x: nativeSize.height - rect.maxY, y: nativeSize.width - rect.maxX, width: rect.height, height: rect.width)
+            return CGRect(x: rect.minY, y: rect.minX, width: rect.height, height: rect.width)
         }
     }
 }

@@ -219,6 +219,61 @@ struct TAPCamDemoTests {
         #expect(TAPImageOrientationMapper.displayedSize(nativeSize: nativeSize, orientation: .right) == CGSize(width: 3, height: 4))
     }
 
+    @Test func orientationMapperKeepsMirroredRotatedNamesAlignedWithEXIFCorners() throws {
+        let nativeSize = CGSize(width: 4, height: 3)
+        let topLeft = CGRect(x: 0, y: 0, width: 1, height: 1)
+        let topRight = CGRect(x: 3, y: 0, width: 1, height: 1)
+        let bottomLeft = CGRect(x: 0, y: 2, width: 1, height: 1)
+
+        let leftMirroredTopLeft = TAPImageOrientationMapper.displayedRect(
+            fromNative: topLeft,
+            nativeSize: nativeSize,
+            orientation: .leftMirrored
+        )
+        let leftMirroredTopRight = TAPImageOrientationMapper.displayedRect(
+            fromNative: topRight,
+            nativeSize: nativeSize,
+            orientation: .leftMirrored
+        )
+        let leftMirroredBottomLeft = TAPImageOrientationMapper.displayedRect(
+            fromNative: bottomLeft,
+            nativeSize: nativeSize,
+            orientation: .leftMirrored
+        )
+        let rightMirroredTopLeft = TAPImageOrientationMapper.displayedRect(
+            fromNative: topLeft,
+            nativeSize: nativeSize,
+            orientation: .rightMirrored
+        )
+        let rightMirroredTopRight = TAPImageOrientationMapper.displayedRect(
+            fromNative: topRight,
+            nativeSize: nativeSize,
+            orientation: .rightMirrored
+        )
+        let rightMirroredBottomLeft = TAPImageOrientationMapper.displayedRect(
+            fromNative: bottomLeft,
+            nativeSize: nativeSize,
+            orientation: .rightMirrored
+        )
+
+        #expect(leftMirroredTopLeft == CGRect(x: 0, y: 0, width: 1, height: 1))
+        #expect(leftMirroredTopRight == CGRect(x: 0, y: 3, width: 1, height: 1))
+        #expect(leftMirroredBottomLeft == CGRect(x: 2, y: 0, width: 1, height: 1))
+        #expect(rightMirroredTopLeft == CGRect(x: 2, y: 3, width: 1, height: 1))
+        #expect(rightMirroredTopRight == CGRect(x: 2, y: 0, width: 1, height: 1))
+        #expect(rightMirroredBottomLeft == CGRect(x: 0, y: 3, width: 1, height: 1))
+        #expect(TAPImageOrientationMapper.nativeRect(
+            fromDisplayed: leftMirroredTopRight,
+            nativeSize: nativeSize,
+            orientation: .leftMirrored
+        ) == topRight)
+        #expect(TAPImageOrientationMapper.nativeRect(
+            fromDisplayed: rightMirroredBottomLeft,
+            nativeSize: nativeSize,
+            orientation: .rightMirrored
+        ) == bottomLeft)
+    }
+
     @Test func heatmapVisualizationPublishesRangeLegendAndDistinctColors() throws {
         let depthMap = TAPMetricDepthMap(
             width: 3,

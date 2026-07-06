@@ -243,6 +243,44 @@ struct TAPDepthAnalysisPlaneRegionTests {
         #expect(frame.displayImagePoint(forDepthPoint: CGPoint(x: 1, y: 2)) == CGPoint(x: 0, y: 1))
     }
 
+    @Test func displayProjectionFrameKeepsMirroredRotatedOrientationNamesAlignedWithImageMapper() throws {
+        let depthMap = TAPMetricDepthMap(
+            width: 4,
+            height: 3,
+            samples: Array(repeating: 1, count: 12),
+            calibration: Self.calibration(
+                width: 4,
+                height: 3,
+                intrinsicMatrix: [40, 0, 0, 0, 30, 0, 0.5, 1.25, 1]
+            )
+        )
+        let leftMirroredFrame = try #require(TAPDepthDisplayProjectionFrame(
+            depthMap: depthMap,
+            imageWidth: 4,
+            imageHeight: 3,
+            orientation: .leftMirrored
+        ))
+        let rightMirroredFrame = try #require(TAPDepthDisplayProjectionFrame(
+            depthMap: depthMap,
+            imageWidth: 4,
+            imageHeight: 3,
+            orientation: .rightMirrored
+        ))
+
+        #expect(leftMirroredFrame.displayImagePoint(forDepthPoint: CGPoint(x: 1, y: 0)) == CGPoint(x: 0, y: 1))
+        #expect(leftMirroredFrame.displayImagePoint(forDepthPoint: CGPoint(x: 1, y: 2)) == CGPoint(x: 2, y: 1))
+        #expect(rightMirroredFrame.displayImagePoint(forDepthPoint: CGPoint(x: 1, y: 0)) == CGPoint(x: 2, y: 2))
+        #expect(rightMirroredFrame.displayImagePoint(forDepthPoint: CGPoint(x: 1, y: 2)) == CGPoint(x: 0, y: 2))
+        #expect(abs(leftMirroredFrame.cameraModel.fx - 30) < 0.0001)
+        #expect(abs(leftMirroredFrame.cameraModel.fy - 40) < 0.0001)
+        #expect(abs(leftMirroredFrame.cameraModel.cx - 1.25) < 0.0001)
+        #expect(abs(leftMirroredFrame.cameraModel.cy - 0.5) < 0.0001)
+        #expect(abs(rightMirroredFrame.cameraModel.fx - 30) < 0.0001)
+        #expect(abs(rightMirroredFrame.cameraModel.fy - 40) < 0.0001)
+        #expect(abs(rightMirroredFrame.cameraModel.cx - 0.75) < 0.0001)
+        #expect(abs(rightMirroredFrame.cameraModel.cy - 2.5) < 0.0001)
+    }
+
     @Test func displayProjectionFrameBuildsSceneKitCameraFacingVertices() throws {
         let depthMap = TAPMetricDepthMap(
             width: 4,

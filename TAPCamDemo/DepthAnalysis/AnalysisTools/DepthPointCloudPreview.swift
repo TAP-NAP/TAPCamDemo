@@ -379,8 +379,8 @@ nonisolated struct TAPDepthProjectionCameraModel: Equatable, Sendable {
             return TAPDepthProjectionCameraModel(
                 fx: fy,
                 fy: fx,
-                cx: cy,
-                cy: cx,
+                cx: height - cy,
+                cy: width - cx,
                 imageWidth: imageHeight,
                 imageHeight: imageWidth
             )
@@ -397,8 +397,8 @@ nonisolated struct TAPDepthProjectionCameraModel: Equatable, Sendable {
             return TAPDepthProjectionCameraModel(
                 fx: fy,
                 fy: fx,
-                cx: height - cy,
-                cy: width - cx,
+                cx: cy,
+                cy: cx,
                 imageWidth: imageHeight,
                 imageHeight: imageWidth
             )
@@ -499,11 +499,11 @@ nonisolated struct TAPDepthDisplayProjectionFrame: Equatable {
         case .right:
             return CGPoint(x: maxY - rawPoint.y, y: rawPoint.x)
         case .rightMirrored:
-            return CGPoint(x: rawPoint.y, y: rawPoint.x)
+            return CGPoint(x: maxY - rawPoint.y, y: maxX - rawPoint.x)
         case .left:
             return CGPoint(x: rawPoint.y, y: maxX - rawPoint.x)
         case .leftMirrored:
-            return CGPoint(x: maxY - rawPoint.y, y: maxX - rawPoint.x)
+            return CGPoint(x: rawPoint.y, y: rawPoint.x)
         }
     }
 
