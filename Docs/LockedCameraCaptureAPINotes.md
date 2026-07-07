@@ -202,7 +202,7 @@ These are contradictions or over-strong assumptions in the current PRD:
 
 | Document claim | Why it is questionable now | Proposed discussion |
 | --- | --- | --- |
-| Q35/Q36 previously drifted toward status-only as the main path. | Status-only is useful as a baseline/negative control, but it does not satisfy the required UX: the lower-left placeholder must directly open the containing app. E2A temporarily uses status-only again only to isolate flat-HEIC transfer from direct-open lifecycle. | Keep status-only as rollback/negative-control and E2A isolation only. The final UX still requires a direct-open solution, to be retested as E2B after flat-HEIC transfer is proven. |
+| Q35/Q36 previously drifted toward status-only as the main path. | Status-only is useful as a baseline/negative control, but it does not satisfy the desired UX if a safe public direct-open path exists. E2A temporarily used status-only to isolate flat-HEIC transfer from direct-open lifecycle; E2B then restored direct-open and still failed with delayed content exposure plus next-launch freeze. | Keep status-only/no-direct-open as the currently stable rollback path. Do not treat saved-placeholder direct-open as usable until a new public API boundary or system timing strategy is validated. |
 | Q33 says main App startup/import should not block UI. | True for app responsiveness, but it means "open app" does not guarantee the first visible Library snapshot includes just-migrated locked content. | Define whether immediate visibility means pending-store visibility after natural `sessionContentUpdates`, or a hard requirement for the same tap that opens the app. |
 | Q36 implies transition-delay APIs may solve the saved handoff. | `beginDelayingAppearance()` delays app appearance, not session-content migration. Latest smoke saw `sessionCount=0` during the delayed transition. | Mark transition delay as diagnostic-only unless a future public API provides migration-complete semantics. |
 | "lib has no extension photo" is ambiguous. | Pending store, TAP Library grid, and Photos/exported album are separate layers. The log proves pending ingest happened, while signing/export failed. | Add exact acceptance language: after locked import, the capture must appear as a TAP Library pending item even if signing/export later fails. |
@@ -246,29 +246,23 @@ These are contradictions or over-strong assumptions in the current PRD:
    photo. E1 route variants are now considered exhausted for Phase 1.
 5. Keep the status-only placeholder baseline as a committed rollback point and
    negative control. It is not the target UX.
-6. E2A historical-transfer experiment: extension writes flat
-   `TAPCam-<captureID>.heic` depth HEIC staging files directly under
-   `sessionContentURL`, and the main app importer enumerates root `.heic` files
-   like `lockScreen_test`. The current extension target does not own the full
-   main-app packaging stack, so E2A packages the flat HEIC into an unsigned TAP
-   artifact app-side before pending-store ingest. This validates the historical
-   root-file transfer/counter strategy first; E2B can later combine it with
-   direct-open. E2A is now confirmed for the no-direct-open transfer path:
+6. E2A/E2B split the historical branch strategy into two findings. The flat
+   `TAPCam-<captureID>.heic` root-file transfer works, but combining that shape
+   with direct-open does not currently work. E2A is confirmed for the
+   no-direct-open transfer path:
    repeated smokes logged `locked_camera_session_capture_found
    reason=session_content_update layout=flat-heic`, including a later run with
    three captures across two sessions and summary `found=3 imported=3 skipped=0
    failed=0 invalidated=2`. The same stability smoke did not reproduce freeze or
    the historical black screen under repeated manual locks and lock timeout.
-7. E2B flat-HEIC plus direct-open experiment: keep E2A's flat HEIC data layout
-   and restore the lower-left placeholder direct-open using
-   `tapAction=openTAPLibraryRuntimeImport`. The extension must log
-   `open_application_call tapAction=openTAPLibraryRuntimeImport`; the user
-   activity reason must be `e2b_flat_heic_runtime_import_after_saved_capture`
-   after capture or `e2b_flat_heic_runtime_import_placeholder` before capture.
-   This route should use the minimal runtime-import handoff branch rather than
-   extension-side pre-open teardown. The app should still rely on app-level
-   `sessionContentUpdates`; direct-open must not reintroduce transition-delay
-   polling as a migration-complete signal.
+7. E2B flat-HEIC plus direct-open is confirmed failed in the same shape as E1:
+   the app received `openTAPLibraryRuntimeImport` with
+   `reason=e2b_flat_heic_runtime_import_after_saved_capture` while
+   `managerSessionCount=0`, TAP Library waited, session content arrived later as
+   `sessionContentUpdates kind=added`, flat HEIC package/import then succeeded,
+   and the next locked launch froze once before recovery. This rules out current
+   staging bundle shape as the cause and keeps direct-open lifecycle as the main
+   risk.
 8. Keep the new TAP Library presentation probe: pending record count, latest
    capture IDs, merged item count, and whether the locked capture ID is present.
 9. Keep the app-level `sessionContentUpdates` runtime as the only normal import

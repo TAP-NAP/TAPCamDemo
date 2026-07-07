@@ -1024,3 +1024,69 @@ Interpretation:
   UX.
 - If E2B fails like E1B, the direct-open lifecycle remains the dominant issue,
   independent of data-transfer shape.
+
+### 2026-07-07 E2B Smoke Result
+
+User-reported operation:
+
+- Opened the main app and captured normally.
+- Locked the device and launched the extension. The first launch froze once;
+  relaunching the extension succeeded.
+- Captured in the extension, manually locked/unlocked, opened the main app, and
+  Library showed the locked capture normally.
+- Locked again, launched the extension, captured, then tapped the lower-left
+  placeholder. The app opened to Library but stayed in "waiting for locked
+  capture"; after manually locking and launching the extension again, that launch
+  froze once before recovery.
+- A later no-direct-open extension capture followed by manual lock/unlock again
+  imported normally.
+
+Log evidence:
+
+- The E2B handoff reached the app before locked session content was available:
+  `locked_camera_handoff_received destination=tapLibraryAwaitingLockedImport
+  tapAction=openTAPLibraryRuntimeImport
+  reason=e2b_flat_heic_runtime_import_after_saved_capture
+  managerSessionCount=0`.
+- The app explicitly skipped transition-delay import and applied the Library
+  route with no manager sessions:
+  `locked_camera_transition_delay_skipped ...` and
+  `locked_camera_handoff_apply ... managerSessionCount=0`.
+- TAP Library presented in awaiting state but still had no migrated locked
+  session content:
+  `tap_library_present ... awaitingLockedCaptureImport=true
+  managerSessionCount=0`.
+- The first visible Library snapshots only showed the older pending record
+  `AFAEFA57-4A46-4653-91ED-EDEC4A0430B0`; the E2B capture was not present yet.
+- Later, after another lifecycle turn, the app received the session content:
+  `locked_camera_session_content_update kind=added managerSessionCount=1
+  captureProbeCount=1`.
+- The delayed content used the expected E2A/E2B flat HEIC layout:
+  `locked_camera_session_capture_found reason=session_content_update
+  layout=flat-heic captureID=468AA86A-EFFE-436C-8024-F6BB19B085F0`.
+- Packaging/import then succeeded:
+  `locked_camera_session_staging_packaged`,
+  `store locked ingest created`,
+  `locked_camera_session_import_succeeded`, and
+  `locked_camera_session_content_invalidated`.
+- A later no-direct-open capture also imported normally as flat HEIC:
+  `captureID=B4BB4358-E3E7-4144-BF3A-5C4E00264B81`,
+  `layout=flat-heic`, package/import success, and invalidation.
+- This pasted log does not include extension-side `open_application_prepare`,
+  `open_application_minimal_handoff`, `open_application_call`,
+  `locked_camera_scene_content_invoked`, or `locked_camera_root_init` probes.
+
+Interpretation:
+
+- E2B is confirmed failed and matches the E1 family behavior. The data shape is
+  not the blocker: flat HEIC migrates, packages, imports, invalidates, and shows
+  in TAP Library once `sessionContentUpdates` arrives.
+- The blocker remains the direct-open lifecycle boundary. `openApplication(for:)`
+  can wake the containing app before `LockedCameraCaptureManager` exposes the
+  saved session content, producing Library waiting/delayed visibility.
+- The user-observed next-launch freeze is still correlated with saved-placeholder
+  direct-open, but this log cannot classify where freeze starts because
+  extension-side scene/root/open-application probes were not captured.
+- Do not add another Library/camera/neutral first-route variant yet. The next
+  useful experiments are E3 launch-only stress and E5 extension-log visibility,
+  so freeze can be classified independently of data transfer and app route.
