@@ -268,19 +268,34 @@ These are contradictions or over-strong assumptions in the current PRD:
    placeholder's only responsibility opening the containing app. Use
    `tapAction=openTAPMainAppOnly`; route to camera/default; do not present TAP
    Library awaiting import; do not call a handoff-time `sessionContentURLs`
-   scan. Pass condition is app open plus eventual independent import without
-   next-launch freeze.
-9. Keep the new TAP Library presentation probe: pending record count, latest
+   scan. This is confirmed failed as a UX/stability target: it ruled out
+   Library waiting/import work as the cause, but the session content still
+   arrived later and the next locked launch froze once.
+9. E3B system-only `openApplication(for:)` experiment: keep the
+   `lockscreen_test` flat HEIC write/import line, but strip the lower-left open
+   down to the public system call. The extension creates a plain
+   `NSUserActivityTypeLockedCameraCapture` activity with no TAPCam
+   `tapAction`, no `reason`, and no source marker, then passes it to
+   `LockedCameraCaptureSession.openApplication(for:)`. The main app ignores
+   this empty activity instead of saving a handoff or presenting Library. This
+   is the most likely success path because `lockscreen_test` proves the content
+   transfer line, and this experiment removes app-owned routing from the open
+   line.
+10. E3C app-owned activity is a later fallback only. It may isolate whether
+   `NSUserActivityTypeLockedCameraCapture` itself is involved, but it is heavier
+   than Apple's recommended activity type and should not be the current main
+   path.
+11. Keep the new TAP Library presentation probe: pending record count, latest
    capture IDs, merged item count, and whether the locked capture ID is present.
-10. Keep the app-level `sessionContentUpdates` runtime as the only normal import
+12. Keep the app-level `sessionContentUpdates` runtime as the only normal import
    trigger.
-11. Run an extension-launch-only experiment:
+13. Run an extension-launch-only experiment:
    launch locked UI, do not capture, do not tap placeholder, dismiss, and relaunch
    three times. This separates secure-capture presentation freeze from content
    migration.
-12. Do not use `.tbd`-only symbols until they appear in public Swift interface
+14. Do not use `.tbd`-only symbols until they appear in public Swift interface
    and Apple documentation.
-13. Do not treat a neutral/direct-open route as a transfer-complete boundary.
+15. Do not treat a neutral/direct-open route as a transfer-complete boundary.
    If the app opens before content is visible, the evidence so far points to
    system-owned migration timing rather than a missing TAP Library refresh.
 

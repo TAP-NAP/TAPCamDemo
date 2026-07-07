@@ -194,11 +194,7 @@ struct LockedCaptureRootView: View {
     private var bottomBar: some View {
         HStack(alignment: .center) {
             Button {
-                controller.openHostApplication(
-                    session: session,
-                    tapAction: TAPCamLockedCameraHandoff.openTAPMainAppOnly,
-                    reason: "open_only_placeholder"
-                )
+                controller.openHostApplicationSystemOnly(session: session)
             } label: {
                 Image(systemName: lockedAlbumPlaceholderIcon)
                     .font(.system(size: 22, weight: .semibold))

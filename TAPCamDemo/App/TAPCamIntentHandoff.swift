@@ -62,6 +62,11 @@ extension TAPCamIntentHandoff {
 
         let tapAction = activity.userInfo?[TAPCamLockedCameraHandoff.tapActionKey] as? String
         let reason = activity.userInfo?[TAPCamLockedCameraHandoff.reasonKey] as? String
+        let source = activity.userInfo?[TAPCamLockedCameraHandoff.sourceKey] as? String
+        guard tapAction != nil || reason != nil || source != nil else {
+            return nil
+        }
+
         let destination: TAPCamIntentHandoffDestination
         switch tapAction {
         case TAPCamLockedCameraHandoff.openTAPCamera:

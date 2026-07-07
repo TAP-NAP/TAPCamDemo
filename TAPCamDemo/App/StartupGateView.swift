@@ -58,6 +58,13 @@ struct StartupGateView: View {
 
     private func handleLockedCameraHandoff(_ activity: NSUserActivity) {
         guard let handoff = TAPCamIntentHandoff(lockedCameraActivity: activity) else {
+            let keys = activity.userInfo?.keys
+                .compactMap { $0 as? String }
+                .sorted()
+                .joined(separator: "|") ?? "none"
+            LockedCameraDiagnostics.logger.info(
+                "locked_camera_handoff_ignored activityType=\(activity.activityType, privacy: .public) userInfoKeys=\(keys, privacy: .public) managerSessionCount=\(LockedCameraCaptureManager.shared.sessionContentURLs.count, privacy: .public)"
+            )
             return
         }
         LockedCameraDiagnostics.logger.info(

@@ -312,6 +312,30 @@ nonisolated final class LockedCaptureCameraController: NSObject, ObservableObjec
         }
     }
 
+    @MainActor
+    func openHostApplicationSystemOnly(session: LockedCameraCaptureSession) {
+        let contentSnapshot = LockedSessionContentDirectoryProbe.snapshot(
+            in: session.sessionContentURL
+        )
+        Self.logger.info(
+            "open_application_system_only_prepare sessionRunning=\(self.captureSession.isRunning, privacy: .public) lastFrameAge=\(self.lastFrameAgeDescription(), privacy: .public) captureDirectoryCount=\(contentSnapshot.captureDirectoryCount, privacy: .public) flatHEICFileCount=\(contentSnapshot.flatHEICFileCount, privacy: .public) metadataFileCount=\(contentSnapshot.metadataFileCount, privacy: .public) unsignedHEICFileCount=\(contentSnapshot.unsignedHEICFileCount, privacy: .public) latestCaptureID=\(contentSnapshot.latestCaptureID ?? "none", privacy: .public)"
+        )
+        let activity = NSUserActivity(activityType: TAPCamLockedCameraHandoff.activityType)
+        activity.title = "TAPCam Locked Camera"
+        Task { [weak self] in
+            do {
+                Self.logger.info("open_application_system_only_call")
+                try await session.openApplication(for: activity)
+                Self.logger.info("open_application_system_only_requested")
+            } catch {
+                Self.logger.error("open_application_system_only_failed error=\(Self.describe(error), privacy: .public)")
+                await MainActor.run {
+                    self?.setUnavailable("Open app failed: \(Self.describe(error))")
+                }
+            }
+        }
+    }
+
     private nonisolated static func isMinimalRuntimeImportHandoff(_ tapAction: String) -> Bool {
         tapAction == TAPCamLockedCameraHandoff.openTAPLibraryRuntimeImport
             || tapAction == TAPCamLockedCameraHandoff.openTAPCameraRuntimeImport

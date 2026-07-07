@@ -1108,19 +1108,20 @@ Code contract:
 - Extension writes flat `TAPCam-<captureID>.heic` files in
   `sessionContentURL`, matching the stable `lockscreen_test` transfer shape.
 - The lower-left placeholder calls `LockedCameraCaptureSession.openApplication`
-  with `tapAction=openTAPMainAppOnly`.
-- The main app maps `openTAPMainAppOnly` to the default camera route.
+  with a plain `NSUserActivityTypeLockedCameraCapture` activity and no TAPCam
+  `tapAction` / `reason` userInfo.
+- The main app ignores that empty locked-camera activity instead of saving a
+  handoff route.
 - The main app must not present TAP Library awaiting import from this handoff.
 - The main app must not run a handoff-time `sessionContentURLs` scan or
   `beginDelayingAppearance()` flow for this action.
 
 Expected smoke evidence:
 
-- Extension logs `open_application_call tapAction=openTAPMainAppOnly`.
-- App logs
-  `locked_camera_handoff_received ... tapAction=openTAPMainAppOnly
-  destination=camera`.
-- App logs `locked_camera_handoff_apply destination=camera`.
+- Extension logs `open_application_system_only_call`.
+- App logs `locked_camera_handoff_ignored ... userInfoKeys=none` if the activity
+  is delivered to SwiftUI.
+- App does not log `locked_camera_handoff_apply` for the lower-left open.
 - No `tap_library_present ... awaitingLockedCaptureImport=true` appears from
   the handoff.
 - Session content later arrives through
@@ -1131,8 +1132,9 @@ Expected smoke evidence:
 
 Interpretation:
 
-- If E3A passes, the target public-API UX is viable with split
-  responsibilities: left placeholder opens the app, while session content import
+- If E3B passes, the target public-API UX is viable with split
+  responsibilities: left placeholder opens the app through the system API only,
+  while session content import
   remains independent.
-- If E3A still freezes, `openApplication(for:)` itself remains suspicious even
+- If E3B still freezes, `openApplication(for:)` itself remains suspicious even
   when the app route performs no Library/import work.
