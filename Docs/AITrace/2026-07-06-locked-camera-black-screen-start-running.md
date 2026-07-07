@@ -930,3 +930,50 @@ Interpretation:
 - The current anti-black-screen root/controller/lifecycle design should remain
   in place. Do not restore historical `lockScreen` UI/lifecycle code just
   because its flat-file transfer shape is now validated.
+
+### 2026-07-07 E2A Stability Smoke Result
+
+User-reported operation:
+
+- Opened the main app and captured one normal app photo.
+- From the lock screen, entered the locked extension and captured.
+- During the run, manually locked the device several times, used attestation
+  flow and extension capture, and timed lock-screen behavior.
+- No black screen was observed. Each time the system lock timeout elapsed, the
+  device returned to the native lock screen normally. After each capture, the
+  lock timeout counter restarted.
+- No freeze was observed in this run.
+
+Log evidence:
+
+- The app received migrated locked session content:
+  `locked_camera_session_content_update kind=added managerSessionCount=2
+  captureProbeCount=2`.
+- Three flat HEIC captures were detected:
+  - `93206694-870C-42D3-8046-56E617F495D9` from
+    `TAPCam-93206694-870C-42D3-8046-56E617F495D9.heic`
+  - `CC818648-6D49-445B-9674-32C96C3AD093` from
+    `TAPCam-CC818648-6D49-445B-9674-32C96C3AD093.heic`
+  - `584F3AC1-E3E6-4CDC-AE51-45B8E8607EF2` from
+    `TAPCam-584F3AC1-E3E6-4CDC-AE51-45B8E8607EF2.heic`
+- The importer classified them as flat HEIC staging:
+  `layout=flat-heic`, `importableCount=0`, `stagingCount=2` for the first
+  session and `stagingCount=1` for the second session.
+- All imported successfully:
+  `locked_camera_session_import_finish reason=session_content_update sessions=2
+  found=3 imported=3 skipped=0 failed=0 invalidated=2`.
+- TAP Library saw the pending captures:
+  `locked_camera_pending_snapshot ... visiblePendingCount=4`, followed by
+  `tap_library_snapshot_loaded ... itemSources=pending:4|owned:37|photos:650`.
+
+Interpretation:
+
+- E2A is stable for the no-direct-open flow in this smoke: flat root HEIC
+  migration, app-side packaging, pending ingest, invalidation, and Library
+  visibility all worked.
+- The current anti-black-screen UI/lifecycle design appears to be holding under
+  repeated lock/timeout behavior. This reinforces the decision to keep the POC
+  lifecycle design and only reuse the historical flat-file transfer shape.
+- Remaining risk is not file transfer. The next separate decision is whether to
+  run E3 as a pure launch stress test, then E2B to reintroduce direct-open on
+  top of the now-confirmed flat HEIC transfer path.

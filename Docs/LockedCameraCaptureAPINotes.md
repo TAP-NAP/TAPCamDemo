@@ -253,11 +253,12 @@ These are contradictions or over-strong assumptions in the current PRD:
    main-app packaging stack, so E2A packages the flat HEIC into an unsigned TAP
    artifact app-side before pending-store ingest. This validates the historical
    root-file transfer/counter strategy first; E2B can later combine it with
-   direct-open. E2A is now confirmed for the no-direct-open transfer path: the
-   second smoke logged `locked_camera_session_capture_found
-   reason=session_content_update layout=flat-heic` for two captures, and both
-   were packaged, ingested, and invalidated during the first manual main-app
-   open.
+   direct-open. E2A is now confirmed for the no-direct-open transfer path:
+   repeated smokes logged `locked_camera_session_capture_found
+   reason=session_content_update layout=flat-heic`, including a later run with
+   three captures across two sessions and summary `found=3 imported=3 skipped=0
+   failed=0 invalidated=2`. The same stability smoke did not reproduce freeze or
+   the historical black screen under repeated manual locks and lock timeout.
 7. Keep the new TAP Library presentation probe: pending record count, latest
    capture IDs, merged item count, and whether the locked capture ID is present.
 8. Keep the app-level `sessionContentUpdates` runtime as the only normal import
