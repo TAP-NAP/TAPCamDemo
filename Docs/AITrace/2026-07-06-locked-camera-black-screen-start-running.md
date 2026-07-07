@@ -925,8 +925,8 @@ Interpretation:
   `layout=flat-heic`, packaged app-side, and ingested into the normal pending
   queue on the first manual main-app open.
 - This resolves the file-transfer shape question for the non-direct-open flow.
-- E2A still does not prove direct-open UX is safe; E2B should wait until E3
-  classifies the first/next locked-extension launch freeze.
+- E2A still does not prove direct-open UX is safe; E2B is the next direct-open
+  experiment, while E3 remains a later pure launch stress test.
 - The current anti-black-screen root/controller/lifecycle design should remain
   in place. Do not restore historical `lockScreen` UI/lifecycle code just
   because its flat-file transfer shape is now validated.
@@ -974,6 +974,53 @@ Interpretation:
 - The current anti-black-screen UI/lifecycle design appears to be holding under
   repeated lock/timeout behavior. This reinforces the decision to keep the POC
   lifecycle design and only reuse the historical flat-file transfer shape.
-- Remaining risk is not file transfer. The next separate decision is whether to
-  run E3 as a pure launch stress test, then E2B to reintroduce direct-open on
-  top of the now-confirmed flat HEIC transfer path.
+- Remaining risk is not file transfer. The next step is E2B: reintroduce
+  direct-open on top of the now-confirmed flat HEIC transfer path. E3 remains a
+  later pure launch stress test.
+
+### 2026-07-07 E2B Implementation Contract
+
+Scope:
+
+- E2B restores the desired direct-open UX before running E3 stress testing, per
+  product decision.
+- E2B keeps E2A's flat `TAPCam-<captureID>.heic` transfer shape unchanged.
+- The lower-left placeholder calls `LockedCameraCaptureSession.openApplication`
+  through `tapAction=openTAPLibraryRuntimeImport`.
+- The extension uses distinct reasons:
+  - `e2b_flat_heic_runtime_import_after_saved_capture`
+  - `e2b_flat_heic_runtime_import_placeholder`
+- The main app still routes `openTAPLibraryRuntimeImport` to TAP Library
+  awaiting import, but import ownership remains the long-lived app-level
+  `sessionContentUpdates` runtime.
+- E2B must not restore `beginDelayingAppearance()` handoff polling as a
+  migration-complete signal.
+- E2B must keep the current anti-black-screen root/controller/lifecycle design.
+
+Expected smoke evidence:
+
+- Extension:
+  `open_application_prepare tapAction=openTAPLibraryRuntimeImport` with
+  `flatHEICFileCount>0` after capture, then
+  `open_application_minimal_handoff tapAction=openTAPLibraryRuntimeImport` and
+  `open_application_call tapAction=openTAPLibraryRuntimeImport`.
+- App handoff:
+  `locked_camera_handoff_received ... tapAction=openTAPLibraryRuntimeImport
+  reason=e2b_flat_heic_runtime_import_after_saved_capture`.
+- Import:
+  `locked_camera_session_capture_found reason=session_content_update
+  layout=flat-heic`, `locked_camera_session_staging_packaged`,
+  `store locked ingest created`, `locked_camera_session_import_succeeded`, and
+  session invalidation.
+- UI/lifecycle:
+  TAP Library shows the imported pending capture without a second locked
+  extension round trip, and the next locked launch does not freeze or black
+  screen.
+
+Interpretation:
+
+- If E2B passes, the historical flat-file transfer shape plus current
+  anti-black-screen lifecycle design is compatible with the target direct-open
+  UX.
+- If E2B fails like E1B, the direct-open lifecycle remains the dominant issue,
+  independent of data-transfer shape.

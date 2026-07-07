@@ -194,7 +194,13 @@ struct LockedCaptureRootView: View {
     private var bottomBar: some View {
         HStack(alignment: .center) {
             Button {
-                controller.recordStatusPlaceholderTap(session: session)
+                controller.openHostApplication(
+                    session: session,
+                    tapAction: TAPCamLockedCameraHandoff.openTAPLibraryRuntimeImport,
+                    reason: controller.lastCaptureSucceeded
+                        ? "e2b_flat_heic_runtime_import_after_saved_capture"
+                        : "e2b_flat_heic_runtime_import_placeholder"
+                )
             } label: {
                 Image(systemName: lockedAlbumPlaceholderIcon)
                     .font(.system(size: 22, weight: .semibold))
@@ -205,7 +211,7 @@ struct LockedCaptureRootView: View {
             .buttonStyle(.plain)
             .disabled(!controller.state.canCapture)
             .accessibilityLabel(
-                Text(controller.lastCaptureSucceeded ? "Saved Capture" : "Capture Status")
+                Text(controller.lastCaptureSucceeded ? "Open TAP Library" : "Open TAPCam")
             )
 
             Spacer()

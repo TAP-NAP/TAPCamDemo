@@ -259,17 +259,27 @@ These are contradictions or over-strong assumptions in the current PRD:
    three captures across two sessions and summary `found=3 imported=3 skipped=0
    failed=0 invalidated=2`. The same stability smoke did not reproduce freeze or
    the historical black screen under repeated manual locks and lock timeout.
-7. Keep the new TAP Library presentation probe: pending record count, latest
+7. E2B flat-HEIC plus direct-open experiment: keep E2A's flat HEIC data layout
+   and restore the lower-left placeholder direct-open using
+   `tapAction=openTAPLibraryRuntimeImport`. The extension must log
+   `open_application_call tapAction=openTAPLibraryRuntimeImport`; the user
+   activity reason must be `e2b_flat_heic_runtime_import_after_saved_capture`
+   after capture or `e2b_flat_heic_runtime_import_placeholder` before capture.
+   This route should use the minimal runtime-import handoff branch rather than
+   extension-side pre-open teardown. The app should still rely on app-level
+   `sessionContentUpdates`; direct-open must not reintroduce transition-delay
+   polling as a migration-complete signal.
+8. Keep the new TAP Library presentation probe: pending record count, latest
    capture IDs, merged item count, and whether the locked capture ID is present.
-8. Keep the app-level `sessionContentUpdates` runtime as the only normal import
+9. Keep the app-level `sessionContentUpdates` runtime as the only normal import
    trigger.
-9. Run an extension-launch-only experiment:
+10. Run an extension-launch-only experiment:
    launch locked UI, do not capture, do not tap placeholder, dismiss, and relaunch
    three times. This separates secure-capture presentation freeze from content
    migration.
-10. Do not use `.tbd`-only symbols until they appear in public Swift interface
+11. Do not use `.tbd`-only symbols until they appear in public Swift interface
    and Apple documentation.
-11. Do not treat a neutral/direct-open route as a transfer-complete boundary.
+12. Do not treat a neutral/direct-open route as a transfer-complete boundary.
    If the app opens before content is visible, the evidence so far points to
    system-owned migration timing rather than a missing TAP Library refresh.
 
