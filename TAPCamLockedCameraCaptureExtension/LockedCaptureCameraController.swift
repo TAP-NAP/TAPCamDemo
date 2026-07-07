@@ -322,7 +322,15 @@ nonisolated final class LockedCaptureCameraController: NSObject, ObservableObjec
         )
         let activity = NSUserActivity(activityType: TAPCamLockedCameraHandoff.activityType)
         activity.title = "TAPCam Locked Camera"
+
+        setState(.recovering("Opening TAPCam."))
+        isActive = false
+        isPreviewHostVisible = false
+        frameWatchdogTask?.cancel()
+        frameWatchdogTask = nil
+
         Task { [weak self] in
+            await self?.prepareForHostApplicationHandoff(tapAction: "systemOnly")
             do {
                 Self.logger.info("open_application_system_only_call")
                 try await session.openApplication(for: activity)

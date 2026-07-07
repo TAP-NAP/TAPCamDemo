@@ -1139,6 +1139,73 @@ Interpretation:
 - If E3B still freezes, `openApplication(for:)` itself remains suspicious even
   when the app route performs no Library/import work.
 
+### 2026-07-07 E3B Result After Signing Server Fix
+
+Observed in the latest real-device log:
+
+- The signing/export queue is no longer the blocker. Old retry records such as
+  `EC195079-4B14-41AD-8CE5-F6A406565CC9`,
+  `3C3F4EC0-E0BF-4459-B8D5-7840B1E2E11C`,
+  `D3BF733B-33B1-4F22-9FE5-5B5708BECD4A`, and
+  `0311696F-98AB-4F04-8C6B-4CEF028681AE` all reached `sign success` and
+  `export success`.
+- New locked session imports also reached the app pipeline. The log showed
+  `locked_camera_session_content_update kind=added managerSessionCount=1`,
+  `layout=flat-heic`, `locked_camera_session_import_succeeded`, and
+  `locked_camera_pending_snapshot`.
+- The lower-left E3B system-only open reached the main app as an empty locked
+  camera activity: `locked_camera_handoff_ignored
+  activityType=NSUserActivityTypeLockedCameraCapture userInfoKeys=
+  managerSessionCount=0`.
+- The user still observed the same next-launch freeze pattern.
+
+Interpretation:
+
+- E7A / signing failure / retry queue suppression are no longer valid primary
+  explanations for the freeze.
+- E3B rules out TAPCam-owned route metadata and Library awaiting state because
+  the main app ignored the empty activity.
+- The remaining open question is whether the extension had cleanly drained its
+  local camera lifecycle before asking the system to open the containing app.
+
+### 2026-07-07 E3B2 System-Only Open After Local Teardown
+
+Reason for the experiment:
+
+- The current E3B code requests `openApplication(for:)` while the locked
+  extension still owns an active preview host, `AVCaptureSession`, video output
+  delegate, frame watchdog, and capture inputs/outputs.
+- Earlier E1 variants mixed teardown with TAPCam-owned handoff routes. E3B2
+  isolates teardown by keeping the same E3B empty activity and app behavior.
+
+Implementation contract:
+
+- The lower-left placeholder still creates a plain
+  `NSUserActivityTypeLockedCameraCapture` activity.
+- The activity still has no TAPCam `tapAction`, `reason`, or source userInfo.
+- Before calling `openApplication(for:)`, the extension enters a visible
+  recovering/opening state, hides the preview host, cancels the watchdog, clears
+  the video sample-buffer delegate, stops `AVCaptureSession`, and removes all
+  inputs/outputs.
+- The main app still ignores the empty activity and relies on app-level
+  `sessionContentUpdates` for import.
+
+Expected smoke evidence:
+
+- Extension logs `open_application_system_only_prepare`.
+- Extension logs `open_application_teardown_begin tapAction=systemOnly`.
+- Extension logs `open_application_teardown_end tapAction=systemOnly
+  wasRunning=true isRunning=false inputCount=0 outputCount=0`.
+- Extension logs `open_application_system_only_call`.
+- Main app logs `locked_camera_handoff_ignored ... userInfoKeys=`.
+- No `locked_camera_handoff_apply` and no handoff-time Library awaiting route.
+- If the next locked launch no longer freezes, the missing piece was local
+  camera/preview lifecycle drain before the system open request.
+- If the next locked launch still freezes, public `openApplication(for:)` itself
+  remains the likely boundary; stop route/queue variants and consider keeping
+  the left placeholder status-only or using the separate AppIntent open-app
+  control as an alternate UX.
+
 ### 2026-07-07 E6A AppIntent Open-App Control Contract
 
 Reason for the new experiment:

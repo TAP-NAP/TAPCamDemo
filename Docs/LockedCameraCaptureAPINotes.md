@@ -304,16 +304,26 @@ These are contradictions or over-strong assumptions in the current PRD:
    `tapAction`, no `reason`, and no source marker, then passes it to
    `LockedCameraCaptureSession.openApplication(for:)`. The main app ignores
    this empty activity instead of saving a handoff or presenting Library. This
-   is the most likely success path because `lockscreen_test` proves the content
-   transfer line, and this experiment removes app-owned routing from the open
-   line.
-10. E3C app-owned activity is a later fallback only. It may isolate whether
+   is now confirmed failed after the signing/export server fix: the queue can
+   sign/export normally, but the empty activity still reproduces the delayed
+   session-content exposure / next-launch freeze shape.
+10. E3B2 system-only plus local teardown tests the remaining lifecycle
+   hypothesis. The extension still creates the same empty
+   `NSUserActivityTypeLockedCameraCapture` activity and the main app still
+   ignores it, but before calling `openApplication(for:)` the extension hides
+   the preview host, cancels the frame watchdog, removes preview/session
+   outputs and inputs, clears the video sample-buffer delegate, and stops
+   `AVCaptureSession`. Required logs are
+   `open_application_teardown_begin tapAction=systemOnly`,
+   `open_application_teardown_end tapAction=systemOnly ... isRunning=false`,
+   then `open_application_system_only_call`.
+11. E3C app-owned activity is a later fallback only. It may isolate whether
    `NSUserActivityTypeLockedCameraCapture` itself is involved, but it is heavier
    than Apple's recommended activity type and should not be the current main
    path.
-11. Keep the new TAP Library presentation probe: pending record count, latest
+12. Keep the new TAP Library presentation probe: pending record count, latest
    capture IDs, merged item count, and whether the locked capture ID is present.
-12. Keep the app-level `sessionContentUpdates` runtime as the only normal import
+13. Keep the app-level `sessionContentUpdates` runtime as the only normal import
    trigger.
 13. Run an extension-launch-only experiment:
    launch locked UI, do not capture, do not tap placeholder, dismiss, and relaunch
