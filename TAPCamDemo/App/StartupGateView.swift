@@ -62,8 +62,9 @@ struct StartupGateView: View {
                 .compactMap { $0 as? String }
                 .sorted()
                 .joined(separator: "|") ?? "none"
+            let title = activity.title ?? "none"
             LockedCameraDiagnostics.logger.info(
-                "locked_camera_handoff_ignored activityType=\(activity.activityType, privacy: .public) userInfoKeys=\(keys, privacy: .public) managerSessionCount=\(LockedCameraCaptureManager.shared.sessionContentURLs.count, privacy: .public)"
+                "locked_camera_handoff_ignored activityType=\(activity.activityType, privacy: .public) activityTitle=\(title, privacy: .public) userInfoKeys=\(keys, privacy: .public) managerSessionCount=\(LockedCameraCaptureManager.shared.sessionContentURLs.count, privacy: .public)"
             )
             return
         }

@@ -1197,7 +1197,8 @@ Expected smoke evidence:
 - Extension logs `open_application_teardown_end tapAction=systemOnly
   wasRunning=true isRunning=false inputCount=0 outputCount=0`.
 - Extension logs `open_application_system_only_call`.
-- Main app logs `locked_camera_handoff_ignored ... userInfoKeys=`.
+- Main app logs `locked_camera_handoff_ignored ...
+  activityTitle=TAPCam Locked Camera E3B2 Teardown Complete userInfoKeys=`.
 - No `locked_camera_handoff_apply` and no handoff-time Library awaiting route.
 - If the next locked launch no longer freezes, the missing piece was local
   camera/preview lifecycle drain before the system open request.
@@ -1205,6 +1206,36 @@ Expected smoke evidence:
   remains the likely boundary; stop route/queue variants and consider keeping
   the left placeholder status-only or using the separate AppIntent open-app
   control as an alternate UX.
+
+### 2026-07-07 E3B2 First Smoke Evidence Gap
+
+Observed in the latest real-device log:
+
+- The user-facing behavior remained the same: after lower-left open, Library did
+  not show the just-captured locked photo immediately, and the next locked
+  extension launch froze once before manual recovery.
+- App-side content transfer still worked later. Logs showed
+  `locked_camera_session_content_update kind=added`, `layout=flat-heic`,
+  `locked_camera_session_import_succeeded`, `locked_camera_pending_snapshot`,
+  then `sign success` and `export success` for the imported locked capture.
+- The main app received an empty locked-camera activity and ignored it:
+  `locked_camera_handoff_ignored activityType=NSUserActivityTypeLockedCameraCapture
+  userInfoKeys= managerSessionCount=0`.
+- The log did not include the required extension-side E3B2 probes:
+  `open_application_system_only_prepare`, `open_application_teardown_begin`,
+  `open_application_teardown_end`, or `open_application_system_only_call`.
+
+Interpretation:
+
+- This smoke is behaviorally consistent with E3B2 failing, but it is not a
+  strict proof that local teardown failed to help because extension-side logs
+  were missing.
+- Add an app-visible but route-neutral marker: after E3B2 teardown completes and
+  before `openApplication(for:)`, set the activity title to
+  `TAPCam Locked Camera E3B2 Teardown Complete`; the main app logs ignored
+  activity titles.
+- If the next log shows that title and the next launch still freezes, E3B2 is
+  confirmed failed even if extension OSLog lines are still absent from the paste.
 
 ### 2026-07-07 E6A AppIntent Open-App Control Contract
 

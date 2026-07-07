@@ -316,7 +316,11 @@ These are contradictions or over-strong assumptions in the current PRD:
    `AVCaptureSession`. Required logs are
    `open_application_teardown_begin tapAction=systemOnly`,
    `open_application_teardown_end tapAction=systemOnly ... isRunning=false`,
-   then `open_application_system_only_call`.
+   then `open_application_system_only_call`. Because extension OSLog lines have
+   been missing from some pasted logs, E3B2 also sets the ignored activity title
+   to `TAPCam Locked Camera E3B2 Teardown Complete` after teardown and before
+   `openApplication(for:)`; the main app logs `activityTitle` for ignored empty
+   locked-camera activities without changing routing.
 11. E3C app-owned activity is a later fallback only. It may isolate whether
    `NSUserActivityTypeLockedCameraCapture` itself is involved, but it is heavier
    than Apple's recommended activity type and should not be the current main

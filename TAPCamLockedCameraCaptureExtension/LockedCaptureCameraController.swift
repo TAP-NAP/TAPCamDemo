@@ -332,6 +332,7 @@ nonisolated final class LockedCaptureCameraController: NSObject, ObservableObjec
         Task { [weak self] in
             await self?.prepareForHostApplicationHandoff(tapAction: "systemOnly")
             do {
+                activity.title = "TAPCam Locked Camera E3B2 Teardown Complete"
                 Self.logger.info("open_application_system_only_call")
                 try await session.openApplication(for: activity)
                 Self.logger.info("open_application_system_only_requested")
