@@ -738,3 +738,55 @@ Interpretation:
   create `CameraView`, does not fetch Photos, and does not present TAP Library.
   If that still freezes, the remaining suspect is the system/direct-open
   lifecycle itself rather than our app's first route.
+
+### 2026-07-07 E1D Neutral Direct-Open Result
+
+User-reported operation:
+
+- Opened the main app and captured normally.
+- Locked the phone, launched the extension, saw one freeze, then launched again,
+  captured, manually locked/unlocked, and opened the main app Library. This
+  natural path imported normally.
+- Locked the phone again, launched the extension, captured, then tapped the
+  lower-left placeholder. The main app opened through the neutral handoff route,
+  but Library still showed the waiting/delayed state. The next locked-extension
+  launch froze; after another lock/unlock cycle, the photo was imported.
+
+Log evidence:
+
+- The handoff is confirmed to be E1D:
+  `locked_camera_handoff_received destination=lockedImportNeutral
+  tapAction=openTAPNeutralRuntimeImport
+  reason=e1d_neutral_route_after_saved_capture managerSessionCount=0`.
+- The transition-delay path was skipped:
+  `locked_camera_transition_delay_skipped destination=lockedImportNeutral`.
+- The app rendered the neutral route:
+  `locked_camera_neutral_handoff_presented` and
+  `locked_camera_neutral_handoff_appear`, both with `managerSessionCount=0`.
+- The first direct-open did not expose the just-written session content to the
+  app. Later, after another lifecycle turn, the app saw:
+  `locked_camera_handoff_received ... reason=e1d_neutral_route_placeholder
+  managerSessionCount=1`, then `locked_camera_session_content_update kind=added
+  managerSessionCount=1 captureProbeCount=1`.
+- That later update imported successfully:
+  `locked_camera_session_staging_packaged
+  captureID=13DC8812-9611-49DE-941F-983884D10D44`, followed by
+  `store locked ingest created`, `locked_camera_session_import_succeeded`, and
+  session content invalidation.
+
+Interpretation:
+
+- E1D rules out TAP Library awaiting state, immediate Photos fetch, transition
+  delay/import polling, and first-route `CameraView` construction as sufficient
+  causes of the saved-placeholder failure.
+- The remaining E1-class suspect is the direct `openApplication(for:)` lifecycle
+  itself: it can open the containing app before Apple's secure-capture session
+  content migration is visible, and it can be followed by a frozen next
+  locked-extension launch.
+- Further E1 route variants are unlikely to be useful. The investigation should
+  split into E2A and E3:
+  - E2A: reproduce the historical `lockScreen_test` flat-HEIC data-transfer
+    layout without direct-open, to understand why historical imports were
+    visible reliably.
+  - E3: launch the locked extension without capture or placeholder handoff, to
+    classify the first/next-launch freeze independently of content transfer.

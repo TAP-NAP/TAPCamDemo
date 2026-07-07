@@ -239,9 +239,11 @@ These are contradictions or over-strong assumptions in the current PRD:
 4. E1D neutral direct-open: use `tapAction=openTAPNeutralRuntimeImport` and
    `reason=e1d_neutral_route_after_saved_capture`, and show a neutral root view
    instead of constructing `CameraView` or TAP Library. This removes app-side
-   camera startup from the direct-open transition. If E1D passes, main-app
-   first-route work is implicated; if it fails, direct-open itself is the likely
-   system lifecycle boundary.
+   camera startup from the direct-open transition. The latest smoke confirmed
+   E1D still fails: the neutral handoff reached the app with
+   `managerSessionCount=0`, the user still saw delayed Library visibility, and
+   the following locked launch froze before a later lifecycle turn imported the
+   photo. E1 route variants are now considered exhausted for Phase 1.
 5. Keep the status-only placeholder baseline as a committed rollback point and
    negative control. It is not the target UX.
 6. E2A historical-transfer experiment: extension writes flat
@@ -254,15 +256,15 @@ These are contradictions or over-strong assumptions in the current PRD:
    capture IDs, merged item count, and whether the locked capture ID is present.
 8. Keep the app-level `sessionContentUpdates` runtime as the only normal import
    trigger.
-9. If E1D still freezes, run an extension-launch-only experiment:
+9. Run an extension-launch-only experiment:
    launch locked UI, do not capture, do not tap placeholder, dismiss, and relaunch
    three times. This separates secure-capture presentation freeze from content
    migration.
 10. Do not use `.tbd`-only symbols until they appear in public Swift interface
    and Apple documentation.
-11. If E1D opens the app before content is visible, treat that as a UX
-   waiting-state problem unless the following `sessionContentUpdates` import
-   never arrives.
+11. Do not treat a neutral/direct-open route as a transfer-complete boundary.
+   If the app opens before content is visible, the evidence so far points to
+   system-owned migration timing rather than a missing TAP Library refresh.
 
 ## Source References
 
