@@ -229,8 +229,10 @@ These are contradictions or over-strong assumptions in the current PRD:
    still fails: direct-open reached the app with `managerSessionCount=0` and the
    next locked launch froze.
 3. E1C light-route direct-open: keep the same minimal extension-side
-   `openApplication(for:)`, but route the main app to camera/default instead of
-   TAP Library awaiting import. This avoids Photos fetches and pending-worker
+   `openApplication(for:)`, but use `tapAction=openTAPCameraRuntimeImport` and
+   route the main app to camera/default instead of TAP Library awaiting import.
+   The handoff reason is `e1c_light_route_after_saved_capture` or
+   `e1c_light_route_placeholder`. This avoids Photos fetches and pending-worker
    retries during the system-owned secure-capture transition. If E1C passes,
    the Library/Photos/pending-worker route is part of the freeze trigger; if it
    fails, direct-open itself is the likely lifecycle boundary problem.

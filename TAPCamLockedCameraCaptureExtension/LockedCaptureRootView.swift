@@ -196,10 +196,10 @@ struct LockedCaptureRootView: View {
             Button {
                 controller.openHostApplication(
                     session: session,
-                    tapAction: TAPCamLockedCameraHandoff.openTAPLibraryRuntimeImport,
+                    tapAction: TAPCamLockedCameraHandoff.openTAPCameraRuntimeImport,
                     reason: controller.lastCaptureSucceeded
-                        ? "e1b_minimal_runtime_import_after_saved_capture"
-                        : "e1b_minimal_runtime_import_placeholder"
+                        ? "e1c_light_route_after_saved_capture"
+                        : "e1c_light_route_placeholder"
                 )
             } label: {
                 Image(systemName: lockedAlbumPlaceholderIcon)

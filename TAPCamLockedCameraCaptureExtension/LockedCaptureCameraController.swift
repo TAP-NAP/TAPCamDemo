@@ -272,7 +272,7 @@ nonisolated final class LockedCaptureCameraController: NSObject, ObservableObjec
         }
         activity.userInfo = userInfo
 
-        if tapAction == TAPCamLockedCameraHandoff.openTAPLibraryRuntimeImport {
+        if Self.isMinimalRuntimeImportHandoff(tapAction) {
             Self.logger.info(
                 "open_application_minimal_handoff tapAction=\(tapAction, privacy: .public) sessionRunning=\(self.captureSession.isRunning, privacy: .public) previewInWindow=\(self.previewLayerInWindow, privacy: .public) previewHasSuperlayer=\(self.previewLayerHasSuperlayer, privacy: .public)"
             )
@@ -310,6 +310,11 @@ nonisolated final class LockedCaptureCameraController: NSObject, ObservableObjec
                 }
             }
         }
+    }
+
+    private nonisolated static func isMinimalRuntimeImportHandoff(_ tapAction: String) -> Bool {
+        tapAction == TAPCamLockedCameraHandoff.openTAPLibraryRuntimeImport
+            || tapAction == TAPCamLockedCameraHandoff.openTAPCameraRuntimeImport
     }
 
     @MainActor
