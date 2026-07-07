@@ -194,7 +194,7 @@ struct LockedCaptureRootView: View {
     private var bottomBar: some View {
         HStack(alignment: .center) {
             Button {
-                controller.openHostApplicationAppOwnedOpenOnly(session: session)
+                controller.recordStatusPlaceholderTap(session: session)
             } label: {
                 Image(systemName: lockedAlbumPlaceholderIcon)
                     .font(.system(size: 22, weight: .semibold))
@@ -203,9 +203,8 @@ struct LockedCaptureRootView: View {
                     .foregroundStyle(controller.lastCaptureSucceeded ? .green : .white)
             }
             .buttonStyle(.plain)
-            .disabled(!controller.state.canCapture)
             .accessibilityLabel(
-                Text("Open TAPCam")
+                Text("Locked capture status")
             )
 
             Spacer()

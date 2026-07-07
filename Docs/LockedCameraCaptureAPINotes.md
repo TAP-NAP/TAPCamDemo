@@ -192,6 +192,31 @@ app without the next-launch freeze seen after `openApplication(for:)`, then the
 problem is likely specific to the secure-capture extension handoff boundary,
 not to "opening the app from the lock screen" in general.
 
+E6B tightens this into the active experiment:
+
+1. The secure locked extension can capture and write session content.
+2. The extension lower-left placeholder is a status/progress control only. A
+   tap logs `locked_album_placeholder_tapped_status_only`; it must not call
+   `LockedCameraCaptureSession.openApplication(for:)`.
+3. Opening the containing app is tested only through the separate
+   `Open TAPCam` WidgetKit control, which runs
+   `TAPCamOpenAppFromLockScreenIntent`.
+4. That intent has no route payload, does not read `sessionContentURLs`, and
+   does not touch TAP Library or the signing queue.
+5. The app still imports locked captures only from the long-lived
+   `LockedCameraCaptureManager.sessionContentUpdates` runtime.
+
+Smoke interpretation:
+
+- If E6B avoids the next-launch freeze, the strongest remaining conclusion is
+  that in-extension `openApplication(for:)` was the freeze trigger.
+- If E6B still freezes after a capture and no `open_application_*` extension log
+  appears, the cause is broader than direct open and the next investigation must
+  return to control launch, secure-capture scene setup, session content
+  migration, or camera startup.
+- If photos fail to appear but `sessionContentUpdates` never emits `.added`, the
+  issue is system migration timing, not the AppIntent open-app control.
+
 ## SDK Symbols We Must Not Use
 
 The iPhoneOS 26.5 SDK `.tbd` exports these symbols:

@@ -1463,3 +1463,60 @@ Current conclusion:
   `openApplication(for:)` secure-capture transition boundary, or an OS/framework
   bug on this build, until a public API or a reliable external app-opening UX
   proves otherwise.
+
+### 2026-07-07 E6B Status-Only Placeholder and External Open Control
+
+Reason for the experiment:
+
+- E3B/E3C show that route metadata, Library awaiting state, and local camera
+  teardown do not make in-extension `openApplication(for:)` reliable.
+- `lockScreen_test` treated the lower-left locked album area as progress/status,
+  not as a direct app-open control.
+- The repo already has a separate `Open TAPCam` WidgetKit control backed by
+  `TAPCamOpenAppFromLockScreenIntent`.
+
+Implementation contract:
+
+- In `LockedCaptureRootView`, the lower-left placeholder calls only
+  `recordStatusPlaceholderTap(session:)`.
+- The placeholder must not call `LockedCameraCaptureSession.openApplication`.
+- The external `Open TAPCam` control remains the only active open-app experiment.
+- `TAPCamOpenAppFromLockScreenIntent.perform()` logs
+  `locked_camera_open_app_intent_perform source=lock_screen_control` and returns
+  `.result()`; it must not route, import, scan, or sign.
+- Locked session import continues to rely on the app-level
+  `LockedCameraCaptureManager.sessionContentUpdates` runtime.
+
+Default E6B smoke:
+
+1. Open the main app once so locked camera context is published.
+2. Lock the device.
+3. Launch `TAPCam` locked camera control.
+4. Capture one photo.
+5. Optionally tap the lower-left placeholder; it should only log status.
+6. Leave/dismiss the extension or allow the system to lock/suspend it.
+7. Tap the separate `Open TAPCam` control.
+8. Confirm the app opens, locked content imports through
+   `sessionContentUpdates`, and the next `TAPCam` locked camera launch does not
+   freeze.
+
+Expected logs:
+
+- `locked_album_placeholder_tapped_status_only` if the placeholder is tapped.
+- `locked_camera_open_app_intent_perform source=lock_screen_control` when using
+  the external open control.
+- No `open_application_app_owned_call`, `open_application_system_only_call`, or
+  `open_application_call` for the placeholder.
+- No `locked_camera_handoff_apply` from the external open control.
+- `locked_camera_session_content_update kind=added` followed by normal
+  `locked_camera_session_import_succeeded` when Apple exposes the content.
+
+Interpretation:
+
+- Pass: AppIntent open works, import arrives, and the next secure-capture launch
+  does not freeze. Treat the in-extension `openApplication(for:)` path as the
+  dominant freeze trigger and keep it out of saved-placeholder UX.
+- Fail with no `open_application_*` logs: freeze is not caused solely by direct
+  open; investigate launch/control/scene/camera startup and session migration.
+- Fail because `Open TAPCam` cannot be added or invoked: investigate WidgetKit /
+  AppIntent registration independently from locked capture.
