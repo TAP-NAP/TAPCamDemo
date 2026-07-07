@@ -6,6 +6,7 @@
 //
 
 import Combine
+import OSLog
 import SwiftUI
 import UIKit
 
@@ -67,10 +68,18 @@ struct DepthAlbumPickerView: View {
                 .help("Close the analyzer and return to the camera.")
             }
         }
-        .task {
-            await viewModel.loadIfNeeded()
+        .task(id: routeStore.isDepthAlbumPresented) {
+            guard routeStore.isDepthAlbumPresented else {
+                return
+            }
+            let lockedImportReason = routeStore.consumePendingLockedImportReason()
+            await viewModel.loadForPresentation(lockedImportReason: lockedImportReason)
         }
         .onReceive(NotificationCenter.default.publisher(for: .tapLibraryDidChange).receive(on: RunLoop.main)) { _ in
+            viewModel.scheduleRefresh()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .tapCamLockedCaptureImportDidAddPendingCaptures).receive(on: RunLoop.main)) { _ in
+            routeStore.finishAwaitingLockedCaptureImport()
             viewModel.scheduleRefresh()
         }
         .navigationDestination(isPresented: $isAnalysisPresented) {
@@ -85,8 +94,15 @@ struct DepthAlbumPickerView: View {
     @ViewBuilder
     private func albumContent(thumbnailPixelLength: Int, returnScrollRowStride: CGFloat) -> some View {
         ScrollView {
-            if viewModel.isLoading {
-                ProgressView("Loading TAPCamDepth...")
+            if routeStore.isAwaitingLockedCaptureImport {
+                lockedImportWaitingBanner
+                    .padding(.horizontal, 12)
+                    .padding(.top, 12)
+                    .padding(.bottom, 6)
+            }
+
+            if viewModel.shouldShowLoading {
+                ProgressView(viewModel.loadingMessage)
                     .frame(maxWidth: .infinity, minHeight: 260)
             } else if let errorMessage = viewModel.errorMessage {
                 ContentUnavailableView("Unable to load album", systemImage: "photo.on.rectangle.angled", description: Text(errorMessage))
@@ -135,6 +151,27 @@ struct DepthAlbumPickerView: View {
                 clearAfterDelay: false
             )
         }
+    }
+
+    private var lockedImportWaitingBanner: some View {
+        HStack(spacing: 10) {
+            ProgressView()
+                .controlSize(.small)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Waiting for locked captures")
+                    .font(.footnote.weight(.semibold))
+                Text("TAP Library will refresh when iOS finishes the transfer.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
     }
 
     private func returnToCameraWithoutAnimation() {
@@ -388,11 +425,16 @@ private struct DepthAlbumAnalysisRoute: Hashable {
 final class DepthAlbumPickerViewModel: ObservableObject {
     @Published private(set) var items: [TAPLibraryItem] = []
     @Published private(set) var isLoading = false
+    @Published private(set) var loadingMessage = "Loading TAP Library..."
     @Published private(set) var errorMessage: String?
 
     private let itemProvider: DepthAlbumItemProvider
     private var refreshTask: Task<Void, Never>?
     private var hasLoadedSnapshot = false
+
+    var shouldShowLoading: Bool {
+        isLoading || !hasLoadedSnapshot
+    }
 
     init(itemProvider: DepthAlbumItemProvider? = nil) {
         self.itemProvider = itemProvider ?? DepthAlbumItemProvider()
@@ -402,26 +444,52 @@ final class DepthAlbumPickerViewModel: ObservableObject {
         refreshTask?.cancel()
     }
 
-    func load(showLoadingIndicator: Bool = true) async {
+    func load(
+        showLoadingIndicator: Bool = true,
+        lockedImportReason: String? = nil
+    ) async {
+        LockedCameraDiagnostics.logger.info(
+            "tap_library_load_begin showLoading=\(showLoadingIndicator, privacy: .public) lockedImportReason=\(lockedImportReason ?? "none", privacy: .public)"
+        )
         if showLoadingIndicator {
+            loadingMessage = lockedImportReason == nil
+                ? "Loading TAP Library..."
+                : "Importing locked captures..."
             isLoading = true
         }
         defer {
             hasLoadedSnapshot = true
             if showLoadingIndicator {
                 isLoading = false
+                loadingMessage = "Loading TAP Library..."
             }
         }
 
         do {
+            if let lockedImportReason {
+                let summary = await LockedCaptureSessionContentImportCoordinator.shared
+                    .importAvailableSessionContentAfterSessionContentSettles(reason: lockedImportReason)
+                LockedCameraDiagnostics.logger.info(
+                    "tap_library_locked_import_before_snapshot reason=\(lockedImportReason, privacy: .public) sessions=\(summary.scannedSessionCount, privacy: .public) found=\(summary.foundCaptureCount, privacy: .public) imported=\(summary.importedCount, privacy: .public) skipped=\(summary.skippedCount, privacy: .public) failed=\(summary.failedCount, privacy: .public) invalidated=\(summary.invalidatedSessionCount, privacy: .public)"
+                )
+            }
+            if showLoadingIndicator, lockedImportReason != nil {
+                loadingMessage = "Loading TAP Library..."
+            }
             let snapshot = try await itemProvider.loadSnapshot()
             items = snapshot.items
             errorMessage = snapshot.photoAssetsError.flatMap { error in
                 items.isEmpty ? DepthAnalysisErrorPresentation.emptyAlbumPhotosErrorMessage(for: error) : nil
             }
+            LockedCameraDiagnostics.logger.info(
+                "tap_library_load_finish itemCount=\(self.items.count, privacy: .public) itemSources=\(Self.itemSourceCountsDescription(self.items), privacy: .public) photoAssetsErrorPresent=\(snapshot.photoAssetsError != nil, privacy: .public)"
+            )
         } catch {
             items = []
             errorMessage = DepthAnalysisErrorPresentation.albumLoadErrorMessage(for: error)
+            LockedCameraDiagnostics.logger.error(
+                "tap_library_load_failed error=\(Self.describe(error), privacy: .public)"
+            )
         }
     }
 
@@ -434,8 +502,13 @@ final class DepthAlbumPickerViewModel: ObservableObject {
         await load()
     }
 
+    func loadForPresentation(lockedImportReason: String? = nil) async {
+        await load(lockedImportReason: lockedImportReason)
+    }
+
     func scheduleRefresh() {
         refreshTask?.cancel()
+        LockedCameraDiagnostics.logger.info("tap_library_refresh_scheduled")
         refreshTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 150_000_000)
             guard !Task.isCancelled else {
@@ -443,6 +516,28 @@ final class DepthAlbumPickerViewModel: ObservableObject {
             }
             await self?.load(showLoadingIndicator: false)
         }
+    }
+
+    private static func itemSourceCountsDescription(_ items: [TAPLibraryItem]) -> String {
+        var pendingCount = 0
+        var ownedPhotoCount = 0
+        var photosCount = 0
+        for item in items {
+            switch item.source {
+            case .pending:
+                pendingCount += 1
+            case .ownedPhoto:
+                ownedPhotoCount += 1
+            case .photos:
+                photosCount += 1
+            }
+        }
+        return "pending:\(pendingCount)|owned:\(ownedPhotoCount)|photos:\(photosCount)"
+    }
+
+    private static func describe(_ error: Error) -> String {
+        let nsError = error as NSError
+        return "\(nsError.domain)(\(nsError.code))"
     }
 }
 

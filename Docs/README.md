@@ -15,6 +15,8 @@ flowchart TD
     Docs --> CredentialRetry["Credential signing\nretry design"]
     Docs --> ProBuild["Pro controls\nbuild isolation"]
     Docs --> LiveBrowser["Live Photo\nbrowser verification"]
+    Docs --> LockedPOC["Locked Camera\ncapture POC"]
+    Docs --> LockedAPI["Locked Camera\nAPI notes"]
     Docs --> Scorecard["ProjectScorecard\ndated score"]
     Docs --> AITrace["AITrace\ncollaboration trace"]
     AppAttest --> Backend["BackendContract.md"]
@@ -27,6 +29,8 @@ flowchart TD
     click CredentialRetry "CredentialSigningRetryDesign.md"
     click ProBuild "CameraProControlsBuildIsolationPlan.md"
     click LiveBrowser "LivePhotoBrowserVerification.md"
+    click LockedPOC "LockedCameraCapturePOC.md"
+    click LockedAPI "LockedCameraCaptureAPINotes.md"
     click Scorecard "ProjectScorecard.md"
     click AITrace "AITrace/README.md"
     click Startup "Startup/FirstLaunch.md"
@@ -45,6 +49,8 @@ flowchart TD
 | Credential signing retry state machine | [CredentialSigningRetryDesign.md](CredentialSigningRetryDesign.md) |
 | Basic EV and Pro Controls build isolation | [CameraProControlsBuildIsolationPlan.md](CameraProControlsBuildIsolationPlan.md) |
 | Live Photo browser verification contract | [LivePhotoBrowserVerification.md](LivePhotoBrowserVerification.md) |
+| Locked Camera Capture POC PRD | [LockedCameraCapturePOC.md](LockedCameraCapturePOC.md) |
+| Locked Camera Capture API and handoff notes | [LockedCameraCaptureAPINotes.md](LockedCameraCaptureAPINotes.md) |
 | AI collaboration trace | [AITrace/README.md](AITrace/README.md) |
 | Output profile contract | [../TAPCamDemo/CameraCapture/Output/README.md](../TAPCamDemo/CameraCapture/Output/README.md) |
 | First-install startup flow | [Startup/FirstLaunch.md](Startup/FirstLaunch.md) |

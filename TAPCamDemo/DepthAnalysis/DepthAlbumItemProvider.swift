@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import OSLog
 import Photos
 
 /// Snapshot of the TAP Library grid after pending records and Photos assets are
@@ -76,7 +77,35 @@ struct DepthAlbumItemProvider {
             photoAssets: photoAssets,
             exportedAssetResolver: exportedAssetResolver
         )
+        LockedCameraDiagnostics.logger.info(
+            "tap_library_snapshot_loaded visiblePendingCount=\(pendingRecords.count, privacy: .public) exportedRecordCount=\(exportedRecords.count, privacy: .public) photoAssetCount=\(photoAssets.count, privacy: .public) itemCount=\(items.count, privacy: .public) itemSources=\(Self.itemSourceCountsDescription(items), privacy: .public) latestPending=\(Self.pendingRecordsDescription(pendingRecords), privacy: .public) photoAssetsErrorPresent=\(photoAssetsError != nil, privacy: .public)"
+        )
         return DepthAlbumItemSnapshot(items: items, photoAssetsError: photoAssetsError)
+    }
+
+    private static func pendingRecordsDescription(_ records: [TAPPendingCaptureRecord]) -> String {
+        let value = records
+            .prefix(6)
+            .map { "\($0.captureID):\($0.status.rawValue)" }
+            .joined(separator: "|")
+        return value.isEmpty ? "none" : value
+    }
+
+    private static func itemSourceCountsDescription(_ items: [TAPLibraryItem]) -> String {
+        var pendingCount = 0
+        var ownedPhotoCount = 0
+        var photosCount = 0
+        for item in items {
+            switch item.source {
+            case .pending:
+                pendingCount += 1
+            case .ownedPhoto:
+                ownedPhotoCount += 1
+            case .photos:
+                photosCount += 1
+            }
+        }
+        return "pending:\(pendingCount)|owned:\(ownedPhotoCount)|photos:\(photosCount)"
     }
 }
 

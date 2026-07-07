@@ -7,4 +7,7 @@ import Foundation
 
 nonisolated extension Notification.Name {
     static let tapLibraryDidChange = Notification.Name("tapLibraryDidChange")
+    static let tapCamLockedCaptureImportDidAddPendingCaptures = Notification.Name(
+        "tapCamLockedCaptureImportDidAddPendingCaptures"
+    )
 }

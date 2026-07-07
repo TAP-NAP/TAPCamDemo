@@ -26,6 +26,7 @@ final class TAPCamAppDelegate: NSObject, UIApplicationDelegate {
 @main
 struct TAPCamDemoApp: App {
     @UIApplicationDelegateAdaptor(TAPCamAppDelegate.self) private var appDelegate
+    @StateObject private var lockedCaptureImportRuntime = LockedCaptureSessionContentImportRuntime()
 
     var body: some Scene {
         WindowGroup {
@@ -38,6 +39,12 @@ struct TAPCamDemoApp: App {
             } else {
                 StartupGateView()
                     .preferredColorScheme(.dark)
+                    .onAppear {
+                        lockedCaptureImportRuntime.start()
+                    }
+                    .onDisappear {
+                        lockedCaptureImportRuntime.stop()
+                    }
             }
             #else
             if ProcessInfo.processInfo.isXCTestHost {
@@ -45,6 +52,12 @@ struct TAPCamDemoApp: App {
             } else {
                 StartupGateView()
                     .preferredColorScheme(.dark)
+                    .onAppear {
+                        lockedCaptureImportRuntime.start()
+                    }
+                    .onDisappear {
+                        lockedCaptureImportRuntime.stop()
+                    }
             }
             #endif
         }

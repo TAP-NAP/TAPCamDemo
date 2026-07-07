@@ -48,6 +48,7 @@ flowchart TD
     Tests --> ExposureControl["TAPCameraExposureControlStateTests.swift"]
     Tests --> ManualBoundary["TAPCameraManualControlBoundaryGuardTests.swift"]
     Tests --> ControlService["TAPCameraControlServiceTests.swift"]
+    Tests --> LockedCamera["TAPLockedCameraSessionContentTests.swift"]
     Tests --> Route["TAPLibraryRouteTests.swift"]
     Tests --> Storage["TAPLibraryStorageTests.swift"]
     Tests --> Processing["TAPLibraryProcessingTests.swift"]
@@ -73,6 +74,7 @@ flowchart TD
     ManualCommandPlan --> Unit
     ManualBoundary --> Unit
     ControlService --> Unit
+    LockedCamera --> Unit
     Route --> Unit
     Storage --> Unit
     Processing --> Unit
@@ -121,6 +123,7 @@ flowchart TD
     click ExposureControl "TAPCameraExposureControlStateTests.swift"
     click ManualBoundary "TAPCameraManualControlBoundaryGuardTests.swift"
     click ControlService "TAPCameraControlServiceTests.swift"
+    click LockedCamera "TAPLockedCameraSessionContentTests.swift"
     click Route "TAPLibraryRouteTests.swift"
     click Storage "TAPLibraryStorageTests.swift"
     click Processing "TAPLibraryProcessingTests.swift"
@@ -131,6 +134,24 @@ The app-hosted test path renders a minimal black host view instead of entering
 first-launch permissions, camera startup, pending-capture signing credential
 warmup, or pending queue processing. This avoids the AI/CI hang pattern caused
 by app startup side effects during tests.
+
+[TAPLockedCameraSessionContentTests.swift](TAPLockedCameraSessionContentTests.swift)
+is the simulator-safe Locked Camera Capture POC test entry. It covers the shared
+session-content path policy, direct and legacy layout recognition, and locked
+final-artifact-marked ingest into the existing pending queue semantics. It also
+asserts that raw depth HEIC staging is rejected at the pending-store boundary
+unless the importer first upgrades it to a final TAP artifact. The same suite
+guards duplicate locked ingest returning the existing pending record, AppContext
+projection from enabled main-app FOV options, the locked extension lens/FOV
+selector source boundary, startup scheduling of `sessionContentUpdates`,
+App-level locked import runtime ownership, locked fallback handoff action
+routing, foreground-resume import guardrails, per-presentation Library reload guardrails,
+locked-import pending-worker wakeup, missing-first-frame watchdog guardrails,
+the shared lock-camera UI state visibility/capture gates, and metadata persistence of the resolved
+capture-device position. It does not replace real-device lock-screen launch,
+camera stream, depth capture, black-screen soak, first-entry TAP Library visual
+confirmation, or positive real-depth HEIC import-time manifest/proof-slot
+validation.
 
 ## Shared Fixtures
 
@@ -162,7 +183,7 @@ suite.
 | Physical-device JPG capture/export/readback audit | `jpgPhysicalDeviceCaptureExportsAndReadsBackFromPhotos` in [TAPDeviceCaptureArtifactAuditTests.swift](TAPDeviceCaptureArtifactAuditTests.swift) runs only on physical devices. It sets the output preference to JPG for the test, configures the real camera through `CameraViewModel`, captures into an injected pending store, signs with an App-Attest-shaped test proof, exports through the live Photos writer, reads original JPG bytes back from Photos, validates the same artifact and capture-score contract, and writes `TAPDeviceCaptureJPEGAudit.json` in app tmp. |
 | CameraCapture chrome, lifecycle, preview-stage, first-stage preferences, direct adjustment controls, and Debug presentation state | `captureLifecycleCoordinatorKeepsPendingSigningWarmupAndRetryPoliciesExplicit`, shutter feedback preference checks, route foreground preference checks, guide/EV/LiDAR-focus/depth-hint/keep-awake preference checks, EV launch reset and clamp checks, temporary focus EV clamp checks, mode-strip availability checks, flash/Live Photo default policy and chrome checks, adjustment-control state checks, preview focus-point crop mapping checks, idle-timer policy checks, `cameraCaptureControlsStateLocksLibraryWhileCaptureWrites`, `cameraCaptureControlsStateDoesNotNameSensitiveInputs`, `cameraPreviewStageStateDoesNotNameCaptureSecurityOrOutputInputs`, `cameraViewfinderChromeStateDoesNotNameCaptureSecurityOrOutputInputs`, `cameraFocalLengthDisplayOptionDoesNotNameHardwarePlanningInputs`, and Debug overlay display-state reflection tests in [TAPCameraCapturePresentationTests.swift](TAPCameraCapturePresentationTests.swift). |
 | Camera status presentation and capture metrics failure text | `cameraCaptureStatusPresentationOmitsRawIdentifiersAndPaths`, `cameraCaptureStatusPresentationRedactsAssociatedReasons`, `cameraCaptureStatusPresentationRedactsNSErrorDescriptionURLAndPath`, `cameraCaptureStatusPresentationKeepsGenericRecoverableMessages`, and `capturePipelineMetricsUsePublicSafeFailureReason` in [TAPCameraStatusPresentationTests.swift](TAPCameraStatusPresentationTests.swift). |
-| Durable TAP Library route context, top-start picker boundary, clicked-item return bookmarks, cached picker loading, item merge rules, album error presentation, and thumbnail cache-key privacy | `cameraRouteStoreDefaultsToCamera`, `cameraRouteStoreReturnsToCameraWithoutDroppingAlbumAnchor`, `cameraRouteStorePersistsAlbumAnchorsAcrossInstances`, `cameraRouteStoreClearsUnavailablePersistedAlbumAnchors`, `cameraRouteStoreMigratesPersistedPendingAnchorToOwnedPhotoAnchor`, `cameraRouteContextPersistsTokensWithoutRawAlbumIdentifiers`, `cameraRouteContextPersistsOnlyHexTokenValues`, item merge/provider tests, `depthAlbumPickerReturnScrollBookmarkRestoresClickedItemViewportPosition`, `depthAlbumPickerReturnScrollBookmarkMatchesPendingItemAfterOwnedExport`, `depthAlbumPickerLoadIfNeededReusesCachedSnapshot`, `depthAlbumPickerLoadIfNeededCachesEmptySnapshot`, `depthAlbumPickerLoadIfNeededCachesFailedSnapshotAttempt`, `depthAlbumPickerShowsPhotosErrorOnlyWhenNoItemsSurvive`, `depthAlbumPickerUsesFixedErrorWhenStoreLoadFails`, and Photos, owned-export, plus pending thumbnail cache-key privacy tests in [TAPLibraryRouteTests.swift](TAPLibraryRouteTests.swift) |
+| Durable TAP Library route context, top-start picker boundary, clicked-item return bookmarks, cached picker loading, item merge rules, album error presentation, and thumbnail cache-key privacy | `cameraRouteStoreDefaultsToCamera`, `cameraRouteStoreReturnsToCameraWithoutDroppingAlbumAnchor`, `cameraRouteStorePersistsAlbumAnchorsAcrossInstances`, `cameraRouteStoreClearsUnavailablePersistedAlbumAnchors`, `cameraRouteStoreMigratesPersistedPendingAnchorToOwnedPhotoAnchor`, `cameraRouteContextPersistsTokensWithoutRawAlbumIdentifiers`, `cameraRouteContextPersistsOnlyHexTokenValues`, item merge/provider tests, `depthAlbumPickerReturnScrollBookmarkRestoresClickedItemViewportPosition`, `depthAlbumPickerReturnScrollBookmarkMatchesPendingItemAfterOwnedExport`, `depthAlbumPickerLoadIfNeededReusesCachedSnapshot`, `depthAlbumPickerLoadIfNeededCachesEmptySnapshot`, `depthAlbumPickerPresentationLoadRefreshesCachedEmptySnapshot`, `depthAlbumPickerLoadIfNeededCachesFailedSnapshotAttempt`, `depthAlbumPickerShowsPhotosErrorOnlyWhenNoItemsSurvive`, `depthAlbumPickerUsesFixedErrorWhenStoreLoadFails`, and Photos, owned-export, plus pending thumbnail cache-key privacy tests in [TAPLibraryRouteTests.swift](TAPLibraryRouteTests.swift) |
 | Manual camera control pure capability and intent model | Capability naming, no-op versus explicit auto, supported request acceptance, unsupported/out-of-range rejection, non-finite rejection, and depth-safe zoom rejection in [TAPCameraManualControlIntentTests.swift](TAPCameraManualControlIntentTests.swift) |
 | Manual camera control public-safe status presentation | No-op/ready/blocked copy, fixed control-group labels, blocked value redaction, hostile device-string redaction, reader-description separation, depth-unsafe zoom status, and Runtime error status copy in [TAPCameraManualControlPresentationTests.swift](TAPCameraManualControlPresentationTests.swift) |
 | Manual camera control field-row summary | No-change versus explicit-auto rows, executable requested rows, blocked row mapping, raw identifier redaction, zoom-only summary, and stored-field privacy checks in [TAPCameraManualControlSummaryTests.swift](TAPCameraManualControlSummaryTests.swift) |

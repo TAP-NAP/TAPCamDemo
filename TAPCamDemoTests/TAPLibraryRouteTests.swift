@@ -39,6 +39,23 @@ struct TAPLibraryRouteTests {
         #expect(!routeStore.isDepthAlbumPresented)
     }
 
+    @Test @MainActor func cameraRouteStoreTracksAwaitingLockedCaptureImport() throws {
+        let routeStore = try Self.makeRouteStore()
+
+        routeStore.presentDepthAlbum(awaitingLockedCaptureImport: true)
+
+        #expect(routeStore.destination == .depthAlbum)
+        #expect(routeStore.isAwaitingLockedCaptureImport)
+        #expect(routeStore.consumePendingLockedImportReason() == nil)
+
+        routeStore.finishAwaitingLockedCaptureImport()
+        #expect(!routeStore.isAwaitingLockedCaptureImport)
+
+        routeStore.presentDepthAlbum(awaitingLockedCaptureImport: true)
+        routeStore.returnToCamera()
+        #expect(!routeStore.isAwaitingLockedCaptureImport)
+    }
+
     @Test @MainActor func cameraRouteStoreTracksVisibleAndSelectedAlbumAnchors() throws {
         let routeStore = try Self.makeRouteStore()
 
@@ -560,6 +577,38 @@ struct TAPLibraryRouteTests {
         #expect(loadCount == 1)
         #expect(viewModel.items.isEmpty)
         #expect(viewModel.errorMessage == nil)
+    }
+
+    @Test @MainActor func depthAlbumPickerPresentationLoadRefreshesCachedEmptySnapshot() async throws {
+        let pendingRecord = TAPCamDemoTestFixtures.samplePendingRecord(
+            captureID: "locked-import-pending",
+            capturedAt: Date(timeIntervalSince1970: 100)
+        )
+        var loadCount = 0
+        let provider = DepthAlbumItemProvider(
+            pendingRecordsLoader: {
+                defer { loadCount += 1 }
+                return loadCount == 0 ? [] : [pendingRecord]
+            },
+            exportedRecordsLoader: { [] },
+            photoAssetsLoader: { [] },
+            exportedAssetResolver: { _ in nil }
+        )
+        let viewModel = DepthAlbumPickerViewModel(itemProvider: provider)
+
+        #expect(viewModel.shouldShowLoading)
+
+        await viewModel.loadIfNeeded()
+
+        #expect(loadCount == 1)
+        #expect(viewModel.items.isEmpty)
+        #expect(!viewModel.shouldShowLoading)
+
+        await viewModel.loadForPresentation()
+
+        #expect(loadCount == 2)
+        #expect(viewModel.items.map(\.id) == ["pending:locked-import-pending"])
+        #expect(!viewModel.shouldShowLoading)
     }
 
     @Test @MainActor func depthAlbumPickerLoadIfNeededCachesFailedSnapshotAttempt() async throws {

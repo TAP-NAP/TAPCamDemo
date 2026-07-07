@@ -10,29 +10,35 @@ open follow-ups.
 
 ## Read First
 
-1. [2026-07-05-analysis-viewer-carousel-3d-linkage.md](2026-07-05-analysis-viewer-carousel-3d-linkage.md)
+1. [2026-07-06-locked-camera-black-screen-start-running.md](2026-07-06-locked-camera-black-screen-start-running.md)
+   records the real-device Locked Camera Capture black-screen investigation:
+   the UI flashed and then the secure capture surface stayed black because the
+   extension aborted in `AVCaptureSession.startRunning()` before the session
+   configuration was committed. It records the crash-log evidence, the fix, and
+   the validation evidence after reinstalling to the physical iPhone.
+2. [2026-07-05-analysis-viewer-carousel-3d-linkage.md](2026-07-05-analysis-viewer-carousel-3d-linkage.md)
    records the Analysis viewer native-photo redesign implementation, including
    stable bottom chrome, `previous/current/next` carousel slots,
    thumbnail-first Photos loading with original download progress, 2D overlay
    plus per-photo Plane state, native SceneKit 3D projection, RGB color
    back-projection, and 2D Plane selection blinking in 3D.
-2. [2026-07-02-live-photo-implementation.md](2026-07-02-live-photo-implementation.md)
+3. [2026-07-02-live-photo-implementation.md](2026-07-02-live-photo-implementation.md)
    records the app-side Live Photo capture/sign/export implementation, the
    `depth-manifest:v2` plus `content-binding:v3` extension contract, and the
    browser/server repository boundary. It also records the TAPCam
    verification-original export path for still photos and Live Photo ZIP
    packages, plus the HEIC/MOV hash-chain documentation intended to seed later
    verifier work and technical whitepapers.
-3. [2026-07-02-basic-ev-pro-controls-build-isolation.md](2026-07-02-basic-ev-pro-controls-build-isolation.md)
+4. [2026-07-02-basic-ev-pro-controls-build-isolation.md](2026-07-02-basic-ev-pro-controls-build-isolation.md)
    records the decision to separate ordinary Basic EV from experimental Pro
    Controls at compile time, using `TAP_ENABLE_PRO_CAMERA_CONTROLS`, with no
    runtime Pro Controls toggle and a Release fail-build guard.
-4. [2026-07-02-manual-control-device-limits.md](2026-07-02-manual-control-device-limits.md)
+5. [2026-07-02-manual-control-device-limits.md](2026-07-02-manual-control-device-limits.md)
    records the decision that missing ISO/shutter/MF support on the tested
    iPhone 15 Pro camera path is an Apple active-device capability limit, not a
    TAPCam UI gap; it also separates Phase 1 preview-only LiDAR zoom from the
    future source-switching roadmap.
-5. [2026-06-30-camera-ux-stage-one-shell.md](2026-06-30-camera-ux-stage-one-shell.md)
+6. [2026-06-30-camera-ux-stage-one-shell.md](2026-06-30-camera-ux-stage-one-shell.md)
    records the first-stage camera UX shell and control wiring, including the
    agreed `CameraControlsDesign` vocabulary, Dynamic Island shoulder chrome,
    global EV writes, flash handoff, basic tap focus, temporary focus EV, AE/AF
@@ -41,25 +47,25 @@ open follow-ups.
    No Depth output behavior, first-stage analysis scoring, App Intents
    latest/selected-score surface plus Camera/TAP Library handoff, and scorecard
    update.
-6. [2026-06-22-multi-format-photo-implementation.md](2026-06-22-multi-format-photo-implementation.md)
+7. [2026-06-22-multi-format-photo-implementation.md](2026-06-22-multi-format-photo-implementation.md)
    records the implementation for HEIC/JPG TAP depth photo output, max photo
    dimensions, Settings preference, storage/provenance/analysis generalization,
    validation status, and the plan-specific score.
-7. [2026-06-22-multi-format-photo-research.md](2026-06-22-multi-format-photo-research.md)
+8. [2026-06-22-multi-format-photo-research.md](2026-06-22-multi-format-photo-research.md)
    records the research for HEIC/JPEG output support, max photo dimensions, and
    how selected-camera capabilities should shape the implementation plan.
-8. [2026-06-21-tap-library-scroll-memory.md](2026-06-21-tap-library-scroll-memory.md)
+9. [2026-06-21-tap-library-scroll-memory.md](2026-06-21-tap-library-scroll-memory.md)
    records the current TAP Library scroll-memory plan, the foreground-return
    preference decision, and the plan-specific score rubric for this user journey.
-9. [2026-06-21-assert-verification-panel-sync.md](2026-06-21-assert-verification-panel-sync.md)
+10. [2026-06-21-assert-verification-panel-sync.md](2026-06-21-assert-verification-panel-sync.md)
    records the current `assert` branch verification-panel sync goal, how AI work
    is being traced, and which validation evidence is still pending.
-10. [2026-06-21-refactor-trace.md](2026-06-21-refactor-trace.md) records the
+11. [2026-06-21-refactor-trace.md](2026-06-21-refactor-trace.md) records the
    current readability/security refactor goal, iteration history, AI tool use,
    validation status, and next-round candidates.
-11. [../ProjectScorecard.md](../ProjectScorecard.md) defines the score formula,
+12. [../ProjectScorecard.md](../ProjectScorecard.md) defines the score formula,
    strict gaps, current score, and from-scratch reading order.
-12. [../FutureCameraSpecs.md](../FutureCameraSpecs.md) explains the refactor
+13. [../FutureCameraSpecs.md](../FutureCameraSpecs.md) explains the refactor
    boundary status before future camera features are added.
 
 ## What To Record

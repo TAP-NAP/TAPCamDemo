@@ -11,6 +11,8 @@
 		F2A0A0052FA0000000000005 /* AppAttestKit in Frameworks */ = {isa = PBXBuildFile; productRef = F2A0A0042FA0000000000004 /* AppAttestKit */; };
 		F2A0B0032FB0000000000003 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = F2A0B0022FB0000000000002 /* ZIPFoundation */; };
 		F2A0B0052FB0000000000005 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = F2A0B0042FB0000000000004 /* ZIPFoundation */; };
+		F2E300022FC0000000000002 /* TAPCamLockedCameraControlExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = F2E200012FC0000000000001 /* TAPCamLockedCameraControlExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		F2E300032FC0000000000003 /* TAPCamLockedCameraCaptureExtension.appex in Embed ExtensionKit Extensions */ = {isa = PBXBuildFile; fileRef = F2E100012FC0000000000001 /* TAPCamLockedCameraCaptureExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -21,6 +23,20 @@
 			remoteGlobalIDString = F2F5FDEE2F9B320F00F5071A;
 			remoteInfo = TAPCamDemo;
 		};
+		F2E1000B2FC00000000000B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = F2F5FDE72F9B320F00F5071A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = F2E100062FC0000000000006;
+			remoteInfo = TAPCamLockedCameraCaptureExtension;
+		};
+		F2E2000B2FC00000000000B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = F2F5FDE72F9B320F00F5071A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = F2E200062FC0000000000006;
+			remoteInfo = TAPCamLockedCameraControlExtension;
+		};
 		F2F5FDFD2F9B321100F5071A /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = F2F5FDE72F9B320F00F5071A /* Project object */;
@@ -30,8 +46,35 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		F2E300012FC0000000000001 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				F2E300022FC0000000000002 /* TAPCamLockedCameraControlExtension.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F2E300042FC0000000000004 /* Embed ExtensionKit Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Extensions";
+			dstSubfolderSpec = 16;
+			files = (
+				F2E300032FC0000000000003 /* TAPCamLockedCameraCaptureExtension.appex in Embed ExtensionKit Extensions */,
+			);
+			name = "Embed ExtensionKit Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		F2B001002FA8000000000100 /* TAPCamDemoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TAPCamDemoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		F2E100012FC0000000000001 /* TAPCamLockedCameraCaptureExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = TAPCamLockedCameraCaptureExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		F2E200012FC0000000000001 /* TAPCamLockedCameraControlExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = TAPCamLockedCameraControlExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		F2F5FDEF2F9B320F00F5071A /* TAPCamDemo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TAPCamDemo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F2F5FDFC2F9B321100F5071A /* TAPCamDemoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TAPCamDemoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -71,12 +114,47 @@
 			);
 			target = F2F5FDFB2F9B321100F5071A /* TAPCamDemoTests */;
 		};
+		F2E1000A2FC00000000000A /* Exceptions for "TAPCamLockedCameraCaptureExtension" folder in "TAPCamLockedCameraCaptureExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = F2E100062FC0000000000006 /* TAPCamLockedCameraCaptureExtension */;
+		};
+		F2E2000A2FC00000000000A /* Exceptions for "TAPCamLockedCameraControlExtension" folder in "TAPCamLockedCameraControlExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = F2E200062FC0000000000006 /* TAPCamLockedCameraControlExtension */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		F2B001022FA8000000000102 /* TAPCamDemoUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = TAPCamDemoUITests;
+			sourceTree = "<group>";
+		};
+		F2E100022FC0000000000002 /* TAPCamLockedCameraCaptureExtension */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				F2E1000A2FC00000000000A /* Exceptions for "TAPCamLockedCameraCaptureExtension" folder in "TAPCamLockedCameraCaptureExtension" target */,
+			);
+			path = TAPCamLockedCameraCaptureExtension;
+			sourceTree = "<group>";
+		};
+		F2E200022FC0000000000002 /* TAPCamLockedCameraControlExtension */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				F2E2000A2FC00000000000A /* Exceptions for "TAPCamLockedCameraControlExtension" folder in "TAPCamLockedCameraControlExtension" target */,
+			);
+			path = TAPCamLockedCameraControlExtension;
+			sourceTree = "<group>";
+		};
+		F2E400012FC0000000000001 /* TAPCamLockedCameraIntents */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = TAPCamLockedCameraIntents;
 			sourceTree = "<group>";
 		};
 		F2F5FDF12F9B320F00F5071A /* TAPCamDemo */ = {
@@ -99,6 +177,20 @@
 
 /* Begin PBXFrameworksBuildPhase section */
 		F2B001032FA8000000000103 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F2E100042FC0000000000004 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F2E200042FC0000000000004 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -130,6 +222,9 @@
 			isa = PBXGroup;
 			children = (
 				F2F5FDF12F9B320F00F5071A /* TAPCamDemo */,
+				F2E400012FC0000000000001 /* TAPCamLockedCameraIntents */,
+				F2E100022FC0000000000002 /* TAPCamLockedCameraCaptureExtension */,
+				F2E200022FC0000000000002 /* TAPCamLockedCameraControlExtension */,
 				F2F5FDFF2F9B321100F5071A /* TAPCamDemoTests */,
 				F2B001022FA8000000000102 /* TAPCamDemoUITests */,
 				F2F5FDF02F9B320F00F5071A /* Products */,
@@ -140,6 +235,8 @@
 			isa = PBXGroup;
 			children = (
 				F2F5FDEF2F9B320F00F5071A /* TAPCamDemo.app */,
+				F2E100012FC0000000000001 /* TAPCamLockedCameraCaptureExtension.appex */,
+				F2E200012FC0000000000001 /* TAPCamLockedCameraControlExtension.appex */,
 				F2F5FDFC2F9B321100F5071A /* TAPCamDemoTests.xctest */,
 				F2B001002FA8000000000100 /* TAPCamDemoUITests.xctest */,
 			);
@@ -172,6 +269,52 @@
 			productReference = F2B001002FA8000000000100 /* TAPCamDemoUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		F2E100062FC0000000000006 /* TAPCamLockedCameraCaptureExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F2E100072FC0000000000007 /* Build configuration list for PBXNativeTarget "TAPCamLockedCameraCaptureExtension" */;
+			buildPhases = (
+				F2E100032FC0000000000003 /* Sources */,
+				F2E100042FC0000000000004 /* Frameworks */,
+				F2E100052FC0000000000005 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				F2E100022FC0000000000002 /* TAPCamLockedCameraCaptureExtension */,
+				F2E400012FC0000000000001 /* TAPCamLockedCameraIntents */,
+			);
+			name = TAPCamLockedCameraCaptureExtension;
+			packageProductDependencies = (
+			);
+			productName = TAPCamLockedCameraCaptureExtension;
+			productReference = F2E100012FC0000000000001 /* TAPCamLockedCameraCaptureExtension.appex */;
+			productType = "com.apple.product-type.extensionkit-extension";
+		};
+		F2E200062FC0000000000006 /* TAPCamLockedCameraControlExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F2E200072FC0000000000007 /* Build configuration list for PBXNativeTarget "TAPCamLockedCameraControlExtension" */;
+			buildPhases = (
+				F2E200032FC0000000000003 /* Sources */,
+				F2E200042FC0000000000004 /* Frameworks */,
+				F2E200052FC0000000000005 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				F2E200022FC0000000000002 /* TAPCamLockedCameraControlExtension */,
+				F2E400012FC0000000000001 /* TAPCamLockedCameraIntents */,
+			);
+			name = TAPCamLockedCameraControlExtension;
+			packageProductDependencies = (
+			);
+			productName = TAPCamLockedCameraControlExtension;
+			productReference = F2E200012FC0000000000001 /* TAPCamLockedCameraControlExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		F2F5FDEE2F9B320F00F5071A /* TAPCamDemo */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = F2F5FE102F9B321100F5071A /* Build configuration list for PBXNativeTarget "TAPCamDemo" */;
@@ -179,12 +322,17 @@
 				F2F5FDEB2F9B320F00F5071A /* Sources */,
 				F2F5FDEC2F9B320F00F5071A /* Frameworks */,
 				F2F5FDED2F9B320F00F5071A /* Resources */,
+				F2E300012FC0000000000001 /* Embed App Extensions */,
+				F2E300042FC0000000000004 /* Embed ExtensionKit Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				F2E1000C2FC00000000000C /* PBXTargetDependency */,
+				F2E2000C2FC00000000000C /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
+				F2E400012FC0000000000001 /* TAPCamLockedCameraIntents */,
 				F2F5FDF12F9B320F00F5071A /* TAPCamDemo */,
 			);
 			name = TAPCamDemo;
@@ -235,6 +383,12 @@
 						CreatedOnToolsVersion = 26.4.1;
 						TestTargetID = F2F5FDEE2F9B320F00F5071A;
 					};
+					F2E100062FC0000000000006 = {
+						CreatedOnToolsVersion = 26.4.1;
+					};
+					F2E200062FC0000000000006 = {
+						CreatedOnToolsVersion = 26.4.1;
+					};
 					F2F5FDEE2F9B320F00F5071A = {
 						CreatedOnToolsVersion = 26.4.1;
 					};
@@ -263,6 +417,8 @@
 			projectRoot = "";
 			targets = (
 				F2F5FDEE2F9B320F00F5071A /* TAPCamDemo */,
+				F2E100062FC0000000000006 /* TAPCamLockedCameraCaptureExtension */,
+				F2E200062FC0000000000006 /* TAPCamLockedCameraControlExtension */,
 				F2F5FDFB2F9B321100F5071A /* TAPCamDemoTests */,
 				F2B001062FA8000000000106 /* TAPCamDemoUITests */,
 			);
@@ -271,6 +427,20 @@
 
 /* Begin PBXResourcesBuildPhase section */
 		F2B001042FA8000000000104 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F2E100052FC0000000000005 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F2E200052FC0000000000005 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -301,6 +471,20 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		F2E100032FC0000000000003 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F2E200032FC0000000000003 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		F2F5FDEB2F9B320F00F5071A /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -322,6 +506,16 @@
 			isa = PBXTargetDependency;
 			target = F2F5FDEE2F9B320F00F5071A /* TAPCamDemo */;
 			targetProxy = F2B001072FA8000000000107 /* PBXContainerItemProxy */;
+		};
+		F2E1000C2FC00000000000C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = F2E100062FC0000000000006 /* TAPCamLockedCameraCaptureExtension */;
+			targetProxy = F2E1000B2FC00000000000B /* PBXContainerItemProxy */;
+		};
+		F2E2000C2FC00000000000C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = F2E200062FC0000000000006 /* TAPCamLockedCameraControlExtension */;
+			targetProxy = F2E2000B2FC00000000000B /* PBXContainerItemProxy */;
 		};
 		F2F5FDFE2F9B321100F5071A /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -370,6 +564,126 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = TAPCamDemo;
+			};
+			name = Release;
+		};
+		F2E100082FC0000000000008 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = UD3269PSCB;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = TAPCamLockedCameraCaptureExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.2;
+				PRODUCT_BUNDLE_IDENTIFIER = "TAP-NAP.TAPCamDemo.LockedCapture";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		F2E100092FC0000000000009 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = UD3269PSCB;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = TAPCamLockedCameraCaptureExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.2;
+				PRODUCT_BUNDLE_IDENTIFIER = "TAP-NAP.TAPCamDemo.LockedCapture";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		F2E200082FC0000000000008 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = UD3269PSCB;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = TAPCamLockedCameraControlExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.2;
+				PRODUCT_BUNDLE_IDENTIFIER = "TAP-NAP.TAPCamDemo.Controls";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		F2E200092FC0000000000009 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = UD3269PSCB;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = TAPCamLockedCameraControlExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.2;
+				PRODUCT_BUNDLE_IDENTIFIER = "TAP-NAP.TAPCamDemo.Controls";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};
@@ -612,6 +926,24 @@
 			buildConfigurations = (
 				F2B0010A2FA800000000010A /* Debug */,
 				F2B0010B2FA800000000010B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		F2E100072FC0000000000007 /* Build configuration list for PBXNativeTarget "TAPCamLockedCameraCaptureExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F2E100082FC0000000000008 /* Debug */,
+				F2E100092FC0000000000009 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		F2E200072FC0000000000007 /* Build configuration list for PBXNativeTarget "TAPCamLockedCameraControlExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F2E200082FC0000000000008 /* Debug */,
+				F2E200092FC0000000000009 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

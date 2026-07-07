@@ -6,6 +6,9 @@
 //
 
 @preconcurrency import AVFoundation
+import Combine
+import LockedCameraCapture
+import OSLog
 import SwiftUI
 import UIKit
 
@@ -150,6 +153,12 @@ struct CameraView: View {
             isSettingsPresented: isShowingSettings
         )
         .onAppear(perform: applyPendingIntentHandoff)
+        .onReceive(NotificationCenter.default.publisher(for: .tapCamIntentHandoffDidChange)) { _ in
+            applyPendingIntentHandoff()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .tapCamLockedCaptureImportDidAddPendingCaptures).receive(on: RunLoop.main)) { _ in
+            retryPendingCapturesAfterLockedImport()
+        }
         #if !TAP_ENABLE_PRO_CAMERA_CONTROLS
         .onDisappear {
             persistRememberedViewfinderControlStateIfNeeded()
@@ -358,12 +367,17 @@ struct CameraView: View {
         guard let handoff = intentHandoffStore.loadAndClearHandoff() else {
             return
         }
+        LockedCameraDiagnostics.logger.info(
+            "locked_camera_handoff_apply destination=\(handoff.destination.rawValue, privacy: .public) tapAction=\(handoff.tapAction ?? "none", privacy: .public) reason=\(handoff.reason ?? "none", privacy: .public) managerSessionCount=\(LockedCameraCaptureManager.shared.sessionContentURLs.count, privacy: .public) routeDepthAlbumPresented=\(routeStore.isDepthAlbumPresented, privacy: .public) routeAwaitingImport=\(routeStore.isAwaitingLockedCaptureImport, privacy: .public)"
+        )
 
         switch handoff.destination {
         case .camera:
             routeStore.returnToCamera()
         case .tapLibrary:
-            routeStore.presentDepthAlbum()
+            presentTAPLibrary()
+        case .tapLibraryAwaitingLockedImport:
+            presentTAPLibrary(awaitingLockedCaptureImport: true)
         }
     }
 
@@ -1295,11 +1309,38 @@ struct CameraView: View {
             return
         }
 
+        presentTAPLibrary()
+    }
+
+    private func presentTAPLibrary(
+        lockedImportReason: String? = nil,
+        awaitingLockedCaptureImport: Bool = false
+    ) {
+        LockedCameraDiagnostics.logger.info(
+            "tap_library_present requestedLockedImportReason=\(lockedImportReason ?? "none", privacy: .public) awaitingLockedCaptureImport=\(awaitingLockedCaptureImport, privacy: .public) managerSessionCount=\(LockedCameraCaptureManager.shared.sessionContentURLs.count, privacy: .public)"
+        )
         #if !TAP_ENABLE_PRO_CAMERA_CONTROLS
         isBasicEVStripVisible = false
         #endif
+
         viewModel.pauseForAnalysis()
-        routeStore.presentDepthAlbum()
+        routeStore.presentDepthAlbum(
+            lockedImportReason: lockedImportReason,
+            awaitingLockedCaptureImport: awaitingLockedCaptureImport
+        )
+    }
+
+    private func retryPendingCapturesAfterLockedImport() {
+        LockedCameraDiagnostics.logger.info(
+            "locked_camera_import_notification_received routeDepthAlbumPresented=\(routeStore.isDepthAlbumPresented, privacy: .public) routeAwaitingImport=\(routeStore.isAwaitingLockedCaptureImport, privacy: .public)"
+        )
+        routeStore.finishAwaitingLockedCaptureImport()
+        Task {
+            await lifecycleCoordinator.retryPendingCaptures(
+                viewModel: viewModel,
+                appAttestController: appAttestController
+            )
+        }
     }
 
     private func switchCameraPosition() {

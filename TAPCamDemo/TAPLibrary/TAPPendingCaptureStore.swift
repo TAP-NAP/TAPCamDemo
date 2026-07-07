@@ -6,6 +6,25 @@
 import Foundation
 import OSLog
 
+nonisolated struct TAPPendingLockedCaptureImport: Sendable {
+    let captureID: String
+    let capturedAt: Date
+    let unsignedPhotoURL: URL
+    let metadata: TAPCamLockedRawCaptureMetadata
+
+    init(
+        captureID: String,
+        capturedAt: Date,
+        unsignedPhotoURL: URL,
+        metadata: TAPCamLockedRawCaptureMetadata
+    ) {
+        self.captureID = captureID
+        self.capturedAt = capturedAt
+        self.unsignedPhotoURL = unsignedPhotoURL
+        self.metadata = metadata
+    }
+}
+
 /// App-private staging store for unsigned/signed TAP depth photo files.
 ///
 /// Each pending bundle stores one fixed container chosen at capture time. HEIC
@@ -89,6 +108,79 @@ actor TAPPendingCaptureStore {
         Self.postLibraryDidChange()
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.pendingCapture.info("store ingest created captureID=\(captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public) unsignedBytes=\(artifact.photoData.count, privacy: .public) hasThumbnail=\(thumbnailFilename != nil, privacy: .public) hasPairedVideo=\(pairedVideoFilename != nil, privacy: .public)")
+        #endif
+        return record
+    }
+
+    func ingestLockedCapture(_ lockedCapture: TAPPendingLockedCaptureImport) throws -> TAPPendingCaptureRecord {
+        guard lockedCapture.captureID == lockedCapture.metadata.captureID else {
+            throw TAPDepthCaptureError.invalidPendingCaptureBundlePath("locked metadata captureID must match import captureID")
+        }
+        guard lockedCapture.metadata.photoFileName == CapturePhotoFileContainer.heic.unsignedFilename else {
+            throw TAPDepthCaptureError.invalidPendingCaptureBundlePath("locked import must use unsigned.heic")
+        }
+        guard lockedCapture.metadata.artifactKind == TAPCamLockedSessionContentPathPolicy.unsignedTAPArtifactKind else {
+            throw TAPDepthCaptureError.invalidPendingCaptureBundlePath("locked import must be an unsigned TAP artifact")
+        }
+        guard lockedCapture.metadata.depthDataPresent == true else {
+            throw TAPDepthCaptureError.missingDepthData
+        }
+
+        try storage.ensureRootDirectoryExists()
+
+        let captureID = lockedCapture.captureID
+        let finalURL = try storage.bundleURL(captureID: captureID)
+        if storage.bundleExists(at: finalURL),
+           let existing = try? readRecord(captureID: captureID) {
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.pendingCapture.info("store locked ingest existing captureID=\(captureID, privacy: .private) status=\(existing.status.rawValue, privacy: .public) retryCount=\(existing.retryCount, privacy: .public)")
+            #endif
+            return existing
+        }
+
+        let photoData = try Data(contentsOf: lockedCapture.unsignedPhotoURL)
+        let temporaryURL = storage.temporaryBundleURL()
+        try storage.createFreshTemporaryBundle(at: temporaryURL)
+        try storage.writeUnsignedPhoto(photoData, fileContainer: .heic, to: temporaryURL)
+
+        let thumbnailFilename: String?
+        if let thumbnailData = TAPPendingCaptureThumbnailRenderer.thumbnailData(from: photoData) {
+            try storage.writeThumbnail(thumbnailData, to: temporaryURL)
+            thumbnailFilename = TAPPendingCaptureBundlePathPolicy.thumbnailFilename
+        } else {
+            thumbnailFilename = nil
+        }
+
+        let now = Date()
+        let record = TAPPendingCaptureRecord(
+            captureID: captureID,
+            packageID: UUID(uuidString: captureID) ?? UUID(),
+            capturedAt: lockedCapture.capturedAt,
+            createdAt: now,
+            updatedAt: now,
+            status: .pending,
+            photoFileContainer: .heic,
+            photoQualityLevel: .quality,
+            captureScoreSummary: CaptureScoreSummary.make(
+                depthAvailability: .available,
+                fileContainer: .heic,
+                photoQualityLevel: .quality,
+                signatureStatus: .pending(reason: "Queued for App Attest signing.")
+            ),
+            unsignedPhotoFilename: CapturePhotoFileContainer.heic.unsignedFilename,
+            signedPhotoFilename: nil,
+            pairedVideoFilename: nil,
+            thumbnailFilename: thumbnailFilename,
+            assetLocalIdentifier: nil,
+            failureReason: nil,
+            retryCount: 0,
+            location: nil
+        )
+        try storage.writeRecord(record, in: temporaryURL)
+        try storage.commitTemporaryBundle(at: temporaryURL, to: finalURL)
+        Self.postLibraryDidChange()
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.pendingCapture.info("store locked ingest created captureID=\(captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public) unsignedBytes=\(photoData.count, privacy: .public) hasThumbnail=\(thumbnailFilename != nil, privacy: .public)")
         #endif
         return record
     }
@@ -324,6 +416,12 @@ actor TAPPendingCaptureStore {
     }
 
     private nonisolated static func postLibraryDidChange() {
-        NotificationCenter.default.post(name: .tapLibraryDidChange, object: nil)
+        if Thread.isMainThread {
+            NotificationCenter.default.post(name: .tapLibraryDidChange, object: nil)
+        } else {
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: .tapLibraryDidChange, object: nil)
+            }
+        }
     }
 }

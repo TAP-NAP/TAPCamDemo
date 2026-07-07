@@ -147,6 +147,45 @@ Camera UX stage-one shell review path:
    mode availability, Flash/Live Photo default policy and chrome state, adjustment draft memory,
    idle-timer policy, and UI state privacy.
 
+Locked Camera Capture POC review path:
+
+1. Start with this scorecard snapshot to confirm this is a POC with simulator
+   compile/unit evidence and earlier real-device crash evidence, not completed
+   lock-screen soak acceptance.
+2. Read [LockedCameraCapturePOC.md](LockedCameraCapturePOC.md) for the PRD,
+   SDK minimums, lock-screen privacy boundaries, Phase 1 checklist, and current
+   staging-versus-final-artifact split.
+3. Read [AITrace/2026-07-06-locked-camera-black-screen-start-running.md](AITrace/2026-07-06-locked-camera-black-screen-start-running.md)
+   for the real-device black-screen root cause: `AVCaptureSession.startRunning`
+   was called before `commitConfiguration()`, plus the later first-entry
+   Library miss where device logs showed handoff/Library imports running while
+   `LockedCameraCaptureManager.sessionContentURLs` was still empty.
+4. Read [../TAPCamLockedCameraIntents/TAPCamLockedCameraIntent.swift](../TAPCamLockedCameraIntents/TAPCamLockedCameraIntent.swift)
+   for the shared `CameraCaptureIntent`, app context, metadata schema, and
+   session-content path policy, plus the shared lock-camera UI state model.
+5. Read [../TAPCamLockedCameraCaptureExtension/LockedCaptureRootView.swift](../TAPCamLockedCameraCaptureExtension/LockedCaptureRootView.swift)
+   and [../TAPCamLockedCameraCaptureExtension/LockedCaptureCameraController.swift](../TAPCamLockedCameraCaptureExtension/LockedCaptureCameraController.swift)
+   for the always-visible root UI, long-lived controller, viewfinder/session
+   state machine, missing-first-frame/frame-stall watchdog recovery,
+   depth-required photo settings, and session-content writer.
+6. Read [../TAPCamDemo/App/LockedCameraAppContextPublisher.swift](../TAPCamDemo/App/LockedCameraAppContextPublisher.swift)
+   and [../TAPCamDemo/App/LockedCaptureSessionContentImporter.swift](../TAPCamDemo/App/LockedCaptureSessionContentImporter.swift)
+   for main-app context publication, session-content import probing,
+   App-level `sessionContentUpdates` runtime scheduling, and the current
+   no-Library-handoff locked placeholder model.
+7. Read [../TAPCamDemo/TAPLibrary/TAPPendingCaptureStore.swift](../TAPCamDemo/TAPLibrary/TAPPendingCaptureStore.swift)
+   for the thin locked-import wrapper that writes final locked unsigned TAP
+   artifacts into the same pending queue semantics.
+8. Read [../TAPCamDemoTests/TAPLockedCameraSessionContentTests.swift](../TAPCamDemoTests/TAPLockedCameraSessionContentTests.swift)
+   for simulator-safe coverage of path policy, importer layout recognition, and
+   pending-store ingest/idempotency, AppContext projection, startup update
+   scheduling, locked lens/FOV selector source boundaries, shared UI state
+   behavior, App-level import-runtime ownership, foreground-resume
+   import guardrails, missing-first-frame watchdog guardrails, pending-worker
+   wakeup, and metadata capture-device-position persistence. Real lock-screen launch, camera
+   stream, depth capture, artifact manifest/proof-slot validation, and
+   black-screen soak remain physical-device evidence.
+
 DepthAnalysis readability review path:
 
 1. Start with this scorecard snapshot to confirm this is saved/pending TAP photo
@@ -494,7 +533,7 @@ Manual camera control model and test review path:
 
 ## Snapshot
 
-Date: 2026-06-30
+Date: 2026-07-07
 
 Score formula for this goal: Professional camera capabilities 10%, core depth
 plus App Attest 20%, extensibility 20%, security 25%, readability 15%, docs
@@ -503,7 +542,7 @@ average.
 
 | Area | Score | Strict read |
 | --- | ---: | --- |
-| Professional camera capabilities | 6.1 / 10 | FOV chips, front/back switch, touch-down shutter, Settings HEIC/JPG format selection, largest standard still-photo dimension selection, first-stage viewfinder chrome, Settings-owned guides, raised shutter row, disabled non-rotating `VIDEO` mode strip, Dynamic Island shoulder Settings placement, top Flash/Live Photo toolbar entry with Settings-owned startup policies, global EV exposure-bias writes through the Runtime manual-control boundary, additive temporary focus EV, flash mode handoff into `AVCapturePhotoSettings`, Debug-only LiDAR Focus Assist preference, tap focus plus TAPCam-owned metering, long-press AF/AE lock surface with exposure writes constrained by the current `A/A` / `M/A` / `A/M` / `M/M` state, implemented ISO/S exposure-priority controls with capability gating, manual-focus lens-position controls, focus-only MF tap assist, Debug-only Focus Magnifier duration picker, Debug-only manual-control readback strings, session-local per-control-device adjustment draft memory, keep-screen-awake policy, first-stage local analysis scoring, App Intents Camera/TAP Library open handoff plus latest/selected capture-score shortcuts, debug zoom/depth, default foreground return to camera, best-effort durable TAP Library scroll/return context, a read-only manual-control capability snapshot, a pure manual-control intent model, a pure exposure-control model, an internal queue-guarded manual-control application boundary, and app-side silent Live Photo capture/sign/export support exist. Scoring calibration, real Shortcuts/Siri invocation evidence, adjustable aperture, LiDAR-assisted focus behavior, video, Live Photo real-device fixture/browser-verifier evidence, RAW/ProRAW, lock-screen launch, durable album filters, real-device interactive camera-control evidence, formula-sign confirmation, UX tuning for metering/risk-zone behavior, and rendered UI regression coverage are still missing. |
+| Professional camera capabilities | 6.1 / 10 | FOV chips, front/back switch, touch-down shutter, Settings HEIC/JPG format selection, largest standard still-photo dimension selection, first-stage viewfinder chrome, Settings-owned guides, raised shutter row, disabled non-rotating `VIDEO` mode strip, Dynamic Island shoulder Settings placement, top Flash/Live Photo toolbar entry with Settings-owned startup policies, global EV exposure-bias writes through the Runtime manual-control boundary, additive temporary focus EV, flash mode handoff into `AVCapturePhotoSettings`, Debug-only LiDAR Focus Assist preference, tap focus plus TAPCam-owned metering, long-press AF/AE lock surface with exposure writes constrained by the current `A/A` / `M/A` / `A/M` / `M/M` state, implemented ISO/S exposure-priority controls with capability gating, manual-focus lens-position controls, focus-only MF tap assist, Debug-only Focus Magnifier duration picker, Debug-only manual-control readback strings, session-local per-control-device adjustment draft memory, keep-screen-awake policy, first-stage local analysis scoring, App Intents Camera/TAP Library open handoff plus latest/selected capture-score shortcuts, first Locked Camera Capture POC targets/context/importer/tests, debug zoom/depth, default foreground return to camera, best-effort durable TAP Library scroll/return context, a read-only manual-control capability snapshot, a pure manual-control intent model, a pure exposure-control model, an internal queue-guarded manual-control application boundary, and app-side silent Live Photo capture/sign/export support exist. Scoring calibration, real Shortcuts/Siri invocation evidence, adjustable aperture, LiDAR-assisted focus behavior, video, Live Photo real-device fixture/browser-verifier evidence, RAW/ProRAW, full lock-screen launch/capture/soak acceptance, durable album filters, real-device interactive camera-control evidence, formula-sign confirmation, UX tuning for metering/risk-zone behavior, and rendered UI regression coverage are still missing. |
 | Core depth plus App Attest capture | 8.6 / 10 | Capture requests a depth-capable HEIC/JPG path, supports reviewed TAP photo artifacts without hidden format fallback, stages unsigned private artifacts, records per-shot `depthAvailability`, allows No Depth captures to continue through pending signing/export validation without pretending they are depth verified, reserves one fixed proof slot, signs queued output with App Attest before Photos export, revalidates the signed photo file before Photos, and exposes App Attest entitlements in the checkout. Physical-device audit evidence now covers HEIC and JPG Photos round-trip with original bytes, depth, manifest, dimensions, and proof count; production App Attest/backend acceptance and real-device No Depth trigger evidence still need stronger proof. |
 | Extensibility | 10.0 / 10 | `CapturePhotoQualityPolicy`, `CaptureOutputProfileCatalog`, `CaptureOutputProfileSelectionIntent`, `CaptureOutputProfileSelectionPresentation`, `CaptureOutputProfile`, `ResolvedCaptureOutputProfile`, `CapturePhotoOutputCapabilitySnapshot`, `CaptureOutputResourcePlan`, capture planning, `PreCaptureConfigurationBuilder`, `CameraControlCapabilitySnapshot`, `CameraManualControlIntent`, `CameraManualControlResolutionPresentation`, `CameraManualControlSummary`, `CameraManualControlCommandPlan`, `CameraControlService`, provenance writer, pending record model, pending bundle path policy, pending bundle storage, pending store, pending artifact writer, pending processing policy, worker readiness, retry classifier, pending failure-reason presentation, startup gate policy, startup security preflight retry policy, backend preflight execution boundary, diagnostic/UI presentation privacy, App Attest credential presentation, App Intents score surface, App Intents fixed-destination handoff, CameraCapture status presentation, CameraCapture screen shell, CameraCapture preview stage, CameraCapture Debug overlay, CameraCapture controls view, DepthAnalysis input loader, DepthAnalysis input validation, DepthAnalysis error presentation, DepthAnalysis rectangular region-selection state, DepthAnalysis plane-selection state, DepthAnalysis plane-region detector, DepthAnalysis plane-region request coordinator, Planes estimator facade, plane fitting helpers, seed/BFS growth helpers, region output-product helpers, DepthAnalysis item provider, DepthAnalysis thumbnail pipeline, DepthAnalysis view-mode model, stage view, controls view, panel content adapter, debug metadata HUD, panel support, inspector strip, adaptive panel layer, pure panel height metrics, shared region-stats presentation, inspector content files, `CameraRouteStore`, `CameraRouteContextStore`, `CaptureLifecycleCoordinator`, and module READMEs give future work clear seams. Output quality policy/profile catalog/selection/presentation/resolved execution token/photo-output capability snapshot/contract violations, resource-plan validation through the resolved embedded TAP depth photo packaging gate, final export validation, tokenized route context, worker readiness, startup preflight policy, App Attest UI presentation, App Intents open-camera/open-library/latest-score/selected-score intents, CameraCapture public-safe status presentation, TAP Library queue record/path-policy/bundle-storage/store/adapter/helper boundaries, public-safe persisted failure reasons, CameraCapture field-level controls state, pre-capture crop snapshot, CameraCapture preview-stage state, display-only FOV chips, display-only Debug depth/zoom rows, DepthAnalysis source routing, input byte/pixel/sample/calibration contracts, fixed album/analyzer/Planes error presentation, rectangular selection products, Planes seed/strictness presentation state, async plane request freshness/cache reuse, plane geometry building/seed-region calculation, view-mode labels/debug flags, per-mode inspector route lists, panel support, pure adaptive panel metrics, shared region-stats presentation, inspector field-level inputs, merge/dedupe/partial-failure rules, cache-key privacy, thumbnail protection, manual-control intent resolution, public-safe presentation, field-row summary, Runtime command plan, queue-guarded Runtime command application, first-stage ISO/S exposure-priority and focus adjustment controls, Live Photo v2/v3 manifest/content-binding extension, and session-local adjustment draft memory now make future RAW/quality/24 MP deferred delivery, route-state, protected-data, diagnostics, startup security, App Attest status UI, camera status UI, App Shortcuts/widgets/controls, pending queue UI, analysis-reader, region-analysis, plane-analysis, camera chrome, preview overlays, stage/control/panel UI, and manual-control work explicit. Durable album filters, protected-data UI policy, real Shortcuts/Siri invocation evidence, and rendered UI/layout regression evidence are still not extracted. Multi-resource output modeling now has a pure resource-plan boundary plus a narrow Live Photo paired-MOV extension, but real RAW/general-video/C2PA packagers, validators, and readers are still absent. |
 | Security | 9.6 / 10 | Startup security preflight remains strict, signed export does not silently fall back to unsigned, and the App Attest binding is now C2PA-style: it signs format-native HEIC/JPG bytes excluding exactly one locatable fixed proof slot plus canonical manifest payload bytes, without relying on platform-decoded pixels or converted depth buffers. Local artifacts have a shared protection policy, AppAttestKit is pinned to a reviewed revision, and App Attest entitlements are visible. The reviewed HEIC/JPG output profiles reject cross-container fallback and unsupported file type, codec, depth, quality, or dimension combinations; provider/package/manifest paths consume one resolved output execution token; the final Photos gate re-reads signed bytes, revalidates Release output facts, and mints `ValidatedTAPDepthPhoto` only inside the provenance writer before Photos save. Durable route context stores fixed-length HMAC tokens instead of raw Photos or capture identifiers, pending bundle filenames stay allow-listed, public diagnostics and visible errors omit raw IDs, proofs, backend payloads, photo bytes, private paths, and localized errors, and focused tests cover content-binding canonical JSON, proof-slot exclusion, duplicate proof-slot rejection, App Attest assertion shape, pending-signing identity, single-proof enforcement, export-gate rejection paths, OSLog privacy, queue failure-reason presentation, and local analysis input hardening. Full external C2PA manifest/assertion compatibility, broader real-device format/device matrix evidence, unified-log runtime capture evidence, unopened legacy bundle cleanup evidence, legacy exported-location cleanup evidence, thumbnail retention policy, and production App Attest signing/protected-data/backend evidence still need stronger proof. |
@@ -527,8 +566,9 @@ state, local `DepthAnalysisScoreSummary`, App Intents latest/selected
 capture-score shortcuts plus Camera/TAP Library handoff, session-local
 adjustment draft memory, and camera controls design make the agreed layout,
 first real controls, and first system score entry point reviewable.
-HEIC/JPG output selection and the format-native App Attest binding evidence
-from the previous score still anchor the overall 9.0. The professional-camera
+HEIC/JPG output selection, the format-native App Attest binding evidence, and
+the current Locked Camera Capture POC source/build/install progress still anchor
+the overall 9.0. The professional-camera
 subscore rises because EV, flash, tap focus, focus EV, TAPCam-owned metering policy, first-stage
 exposure-priority controls, session-local adjustment draft memory, and the first
 system-facing scoring and handoff entry points are no longer UI-only,
@@ -536,7 +576,8 @@ but the overall score stays at 9.0 after rounding because production App
 Attest/backend acceptance, unsupported-device matrix coverage, calibrated score
 rubrics, real Shortcuts/Siri invocation evidence, LiDAR-assisted focus
 behavior, physical camera-control and real-device No Depth acceptance evidence,
-and broader rendered UI/layout evidence remain incomplete.
+full lock-screen launch/capture/soak acceptance, and broader rendered UI/layout
+evidence remain incomplete.
 
 ## Current Strengths
 
@@ -823,9 +864,37 @@ and broader rendered UI/layout evidence remain incomplete.
   lens-position SwiftUI controls with session-local per-control-device draft memory. They still need
   physical camera-control acceptance and UI regression coverage before broader
   focus, white balance, or aperture controls should be user-facing.
-- Lock-screen launch needs a separate extension target and real-device
-  validation. Keeping the app awake indefinitely while locked should not be the
-  design assumption.
+- Lock-screen capture now has separate intent/control/secure-capture extension
+  targets, app-context publication, always-visible locked UI, depth-required
+  `AVCapturePhotoOutput` staging, session-content import probing, import-time
+  TAP manifest plus empty proof-slot packaging, a pending queue import wrapper,
+  `sessionContentUpdates` scheduling, AppContext-backed locked lens/FOV selector,
+  `NSUserActivityTypeLockedCameraCapture` fallback handoff for unavailable,
+  a lightweight locked saved placeholder that can experiment with
+  `openTAPCamera` into the containing app's camera/default route, explicit
+  preview/session teardown before `openApplication(for:)`, iOS 18.1+
+  transition delay with `beginDelayingAppearance` / `endDelayingAppearance`,
+  long-lived App-level
+  `sessionContentUpdates` import scheduling without foreground-resume or
+  normal-Library scan,
+  missing-first-frame watchdog
+  recovery to visible unavailable, explicit Flash-off capture defaults logging,
+  pending-worker wakeup after locked import, repeated successful real-device
+  no-immediate-handoff transfer/import observations, and focused simulator-safe
+  path/import/idempotency/AppContext/state tests. It
+  still needs repeated real-device lock-screen launch/capture/soak evidence
+  after the latest changes, confirmation that no black-screen condition remains, and a
+  later decision on whether final TAP artifact packaging should move from
+  main-app import into the extension. The 2026-07-07 device install path now
+  works with direct device ids `00008130-001A4CEE26D0001C` and
+  `8104D5C9-6503-5A80-BBE3-6BBF1EB04CE7`. After the latest reconnect,
+  physical-device Debug build, reinstall, and Mac-side main-app launch
+  succeeded; built-app inspection confirms the secure capture extension and control
+  extension are embedded with the expected extension points. Attended
+  lock-screen smoke still needs user-side control launch, first-frame/live
+  confirmation, capture, unlock-to-TAP-Library, and first-presentation pending
+  visibility evidence. Keeping the app awake indefinitely while locked should
+  not be the design assumption.
 - App Attest entitlement setup is visible and build-checked, but still needs
   attended real-device validation against the Apple Developer account and
   backend. The saved-photo verification panel also needs real Photos asset and
@@ -861,22 +930,26 @@ and broader rendered UI/layout evidence remain incomplete.
 The next refactor iteration should raise the score most by adding one of these
 boundaries before adding user-visible controls:
 
-1. Pro-control real-device acceptance evidence that continues to
+1. Locked Camera Capture POC completion: rerun real-device lock-screen
+   launch/capture/soak against the import-time TAP packaging path with unified
+   logs and crash-log checks, then decide whether final manifest/proof-slot
+   packaging must move from main-app import into the extension.
+2. Pro-control real-device acceptance evidence that continues to
    consume `CameraManualControlIntent`,
    `CameraManualControlResolutionPresentation`, `CameraManualControlSummary`,
    `CameraManualControlCommandPlan`, `CameraControlCapabilitySnapshot`, and
    `CameraControlService` without touching AVFoundation directly from SwiftUI.
-2. Real-device unified-log redaction evidence for the diagnostics and
+3. Real-device unified-log redaction evidence for the diagnostics and
    presentation privacy boundaries.
-3. Output export evidence: add attended production App Attest/backend
+4. Output export evidence: add attended production App Attest/backend
    acceptance notes for the final signed-export gate, and expand the physical
    format/device matrix beyond the current iPhone 15 Pro HEIC/JPG audit.
-4. App Attest hardening: real-device entitlement/backend acceptance validation,
+5. App Attest hardening: real-device entitlement/backend acceptance validation,
    including the saved-photo verification panel path.
-5. Protected-data UI policy and real-device validation on top of
+6. Protected-data UI policy and real-device validation on top of
    `TAPPendingCaptureWorkerReadiness` and `CaptureLifecycleCoordinator`.
-6. UI regression and real-device evidence for TAP Library route restoration.
-7. Rendered UI/layout regression evidence for CameraCapture viewfinder chrome,
+7. UI regression and real-device evidence for TAP Library route restoration.
+8. Rendered UI/layout regression evidence for CameraCapture viewfinder chrome,
    mode strip, guide overlay, controls, preview/debug overlays, DepthAnalysis
    stage, metadata HUD, adaptive panel, inspector bodies, and TAP Library route
    restoration.
