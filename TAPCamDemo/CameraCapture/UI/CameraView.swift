@@ -157,7 +157,7 @@ struct CameraView: View {
             applyPendingIntentHandoff()
         }
         .onReceive(NotificationCenter.default.publisher(for: .tapCamLockedCaptureImportDidAddPendingCaptures).receive(on: RunLoop.main)) { _ in
-            retryPendingCapturesAfterLockedImport()
+            handleLockedCaptureImportNotification()
         }
         #if !TAP_ENABLE_PRO_CAMERA_CONTROLS
         .onDisappear {
@@ -1332,17 +1332,11 @@ struct CameraView: View {
         )
     }
 
-    private func retryPendingCapturesAfterLockedImport() {
+    private func handleLockedCaptureImportNotification() {
         LockedCameraDiagnostics.logger.info(
-            "locked_camera_import_notification_received routeDepthAlbumPresented=\(routeStore.isDepthAlbumPresented, privacy: .public) routeAwaitingImport=\(routeStore.isAwaitingLockedCaptureImport, privacy: .public)"
+            "locked_camera_import_notification_received routeDepthAlbumPresented=\(routeStore.isDepthAlbumPresented, privacy: .public) routeAwaitingImport=\(routeStore.isAwaitingLockedCaptureImport, privacy: .public) autoRetryPendingCaptures=false experiment=E7A"
         )
         routeStore.finishAwaitingLockedCaptureImport()
-        Task {
-            await lifecycleCoordinator.retryPendingCaptures(
-                viewModel: viewModel,
-                appAttestController: appAttestController
-            )
-        }
     }
 
     private func switchCameraPosition() {

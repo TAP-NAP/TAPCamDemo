@@ -1182,3 +1182,62 @@ Interpretation:
 - E6A cannot fully replace the in-extension lower-left placeholder because it
   requires the user to leave or avoid the secure capture UI before tapping a
   separate lock-screen control.
+
+### 2026-07-07 E7A Queue-Quiet Locked Import Contract
+
+Reason for the new experiment:
+
+- The latest log proves locked photos were not lost:
+  `locked_camera_session_import_succeeded` appeared for
+  `D3BF733B-33B1-4F22-9FE5-5B5708BECD4A` and
+  `0311696F-98AB-4F04-8C6B-4CEF028681AE`.
+- TAP Library snapshots also saw the records:
+  `itemSources=pending:4|owned:37|photos:650`, then
+  `itemSources=pending:5|owned:37|photos:650`.
+- At the same time, App Attest returned repeated
+  `AppAttestKit.AppAttestError code=2`, and the pending worker repeatedly
+  cycled older captures through `failedRetryable -> signing -> failedRetryable`
+  with retry counts up to 8.
+- This means data migration/import is working, but the pending signing queue may
+  be making the first visible Library state noisy and may be amplifying the
+  next-launch freeze symptom.
+
+Implementation contract:
+
+- Locked session import remains unchanged: flat HEIC content is packaged,
+  ingested into `TAPPendingCaptureStore`, invalidated after success, and
+  reported through `tapCamLockedCaptureImportDidAddPendingCaptures`.
+- `CameraView` handles that notification by ending the awaiting-import UI state
+  only. It logs `autoRetryPendingCaptures=false experiment=E7A` and does not
+  start `lifecycleCoordinator.retryPendingCaptures`.
+- Automatic app-side pending processing now passes
+  `allowsRetryBacklogProcessing=false`.
+- The processor still handles fresh `.pending` / `.signing` captures and
+  `.signed` / `.exporting` work.
+- The processor skips already-failed sign-then-export backlog when
+  `retryCount > 0` and logs `nextProcessingCandidate skipped retry backlog`.
+- Explicit/manual retry can be restored later by passing
+  `allowsRetryBacklogProcessing=true`; the low-level processor API keeps that
+  path available for tests and future UI.
+
+Expected smoke evidence:
+
+- After locked import, logs still show `locked_camera_session_import_succeeded`
+  and `locked_camera_pending_snapshot`.
+- Library logs show the new capture in `latestPending` and `itemSources`
+  includes pending items.
+- Logs show `locked_camera_import_notification_received ... autoRetryPendingCaptures=false experiment=E7A`.
+- Automatic worker logs show `processPendingCaptures requested ...
+  allowsRetryBacklog=false`.
+- Old `failedRetryable` records no longer loop continuously through
+  `signing` on every import/Library refresh.
+- If the next locked extension launch no longer freezes, the retry storm is a
+  material amplifier. If freeze still occurs while the queue is quiet, the
+  primary issue remains the secure-capture open/lifecycle boundary.
+
+Pitfall recorded:
+
+- "The photo is not visible" was too ambiguous. In the latest log, the photo was
+  visible to the data model as a pending Library item. The remaining question is
+  whether the UI cell ordering/badge/thumbnail makes that obvious to the user,
+  and whether queue churn destabilizes the handoff experience.
