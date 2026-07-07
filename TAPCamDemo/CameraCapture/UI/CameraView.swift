@@ -378,6 +378,8 @@ struct CameraView: View {
             presentTAPLibrary()
         case .tapLibraryAwaitingLockedImport:
             presentTAPLibrary(awaitingLockedCaptureImport: true)
+        case .lockedImportNeutral:
+            routeStore.returnToCamera()
         }
     }
 

@@ -4,6 +4,7 @@
 //
 
 import LockedCameraCapture
+import Combine
 import OSLog
 import SwiftUI
 
@@ -12,10 +13,27 @@ struct StartupGateView: View {
     private var didCompleteFirstInstallSetup = false
 
     @StateObject private var startupCoordinator = StartupGateCoordinator()
+    @State private var neutralLockedCameraHandoff: TAPCamIntentHandoff?
 
     var body: some View {
         Group {
-            if didCompleteFirstInstallSetup {
+            if let neutralLockedCameraHandoff {
+                LockedCameraNeutralHandoffView(
+                    handoff: neutralLockedCameraHandoff,
+                    onOpenCamera: {
+                        self.neutralLockedCameraHandoff = nil
+                    },
+                    onOpenLibrary: {
+                        self.neutralLockedCameraHandoff = nil
+                        TAPCamIntentHandoffStore().saveHandoff(TAPCamIntentHandoff(
+                            destination: .tapLibrary,
+                            tapAction: TAPCamLockedCameraHandoff.openTAPLibrary,
+                            reason: "e1d_manual_library"
+                        ))
+                        NotificationCenter.default.post(name: .tapCamIntentHandoffDidChange, object: nil)
+                    }
+                )
+            } else if didCompleteFirstInstallSetup {
                 CameraView()
             } else {
                 WelcomeStartupSetupView(coordinator: startupCoordinator) {
@@ -47,6 +65,14 @@ struct StartupGateView: View {
         )
 
         let delaysAppearance = beginLockedCameraTransitionDelayIfNeeded(for: handoff)
+
+        if handoff.destination == .lockedImportNeutral {
+            neutralLockedCameraHandoff = handoff
+            LockedCameraDiagnostics.logger.info(
+                "locked_camera_neutral_handoff_presented tapAction=\(handoff.tapAction ?? "none", privacy: .public) reason=\(handoff.reason ?? "none", privacy: .public) managerSessionCount=\(LockedCameraCaptureManager.shared.sessionContentURLs.count, privacy: .public)"
+            )
+            return
+        }
 
         TAPCamIntentHandoffStore().saveHandoff(handoff)
         NotificationCenter.default.post(name: .tapCamIntentHandoffDidChange, object: nil)
@@ -108,6 +134,49 @@ struct StartupGateView: View {
             LockedCameraCaptureManager.shared.endDelayingAppearance()
             LockedCameraDiagnostics.logger.info(
                 "locked_camera_transition_delay_end destination=\(handoff.destination.rawValue, privacy: .public) imported=\(importedCount, privacy: .public) sessions=\(sessionCount, privacy: .public)"
+            )
+        }
+    }
+}
+
+private struct LockedCameraNeutralHandoffView: View {
+    let handoff: TAPCamIntentHandoff
+    let onOpenCamera: () -> Void
+    let onOpenLibrary: () -> Void
+
+    @State private var didImportLockedCapture = false
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            VStack(spacing: 18) {
+                Text("TAPCam")
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(.white)
+
+                Text(didImportLockedCapture ? "Locked capture imported" : "Waiting for locked capture")
+                    .font(.subheadline)
+                    .foregroundStyle(.white.opacity(0.72))
+
+                HStack(spacing: 12) {
+                    Button("Camera", action: onOpenCamera)
+                        .buttonStyle(.borderedProminent)
+                    Button("Library", action: onOpenLibrary)
+                        .buttonStyle(.bordered)
+                }
+            }
+            .padding(24)
+        }
+        .onAppear {
+            LockedCameraDiagnostics.logger.info(
+                "locked_camera_neutral_handoff_appear tapAction=\(handoff.tapAction ?? "none", privacy: .public) reason=\(handoff.reason ?? "none", privacy: .public) managerSessionCount=\(LockedCameraCaptureManager.shared.sessionContentURLs.count, privacy: .public)"
+            )
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .tapCamLockedCaptureImportDidAddPendingCaptures).receive(on: RunLoop.main)) { _ in
+            didImportLockedCapture = true
+            LockedCameraDiagnostics.logger.info(
+                "locked_camera_neutral_handoff_import_notification managerSessionCount=\(LockedCameraCaptureManager.shared.sessionContentURLs.count, privacy: .public)"
             )
         }
     }

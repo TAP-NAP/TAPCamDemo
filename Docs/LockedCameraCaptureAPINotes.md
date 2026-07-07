@@ -236,25 +236,31 @@ These are contradictions or over-strong assumptions in the current PRD:
    retries during the system-owned secure-capture transition. If E1C passes,
    the Library/Photos/pending-worker route is part of the freeze trigger; if it
    fails, direct-open itself is the likely lifecycle boundary problem.
-4. Keep the status-only placeholder baseline as a committed rollback point and
+4. E1D neutral direct-open: use `tapAction=openTAPNeutralRuntimeImport` and
+   `reason=e1d_neutral_route_after_saved_capture`, and show a neutral root view
+   instead of constructing `CameraView` or TAP Library. This removes app-side
+   camera startup from the direct-open transition. If E1D passes, main-app
+   first-route work is implicated; if it fails, direct-open itself is the likely
+   system lifecycle boundary.
+5. Keep the status-only placeholder baseline as a committed rollback point and
    negative control. It is not the target UX.
-5. E2A historical-transfer experiment: extension writes flat
+6. E2A historical-transfer experiment: extension writes flat
    `TAPCam-<UUID>.heic` unsigned TAP artifacts directly under
    `sessionContentURL`, and the main app importer enumerates `.heic` files like
    `lockScreen_test`. This requires checking extension-safe target membership
    for the shared packaging stack before code migration. This is the experiment
    that validates the `lockScreen` / `lockScreen_test` data-transfer logic.
-6. Keep the new TAP Library presentation probe: pending record count, latest
+7. Keep the new TAP Library presentation probe: pending record count, latest
    capture IDs, merged item count, and whether the locked capture ID is present.
-7. Keep the app-level `sessionContentUpdates` runtime as the only normal import
+8. Keep the app-level `sessionContentUpdates` runtime as the only normal import
    trigger.
-8. If E1C still freezes, run an extension-launch-only experiment:
+9. If E1D still freezes, run an extension-launch-only experiment:
    launch locked UI, do not capture, do not tap placeholder, dismiss, and relaunch
    three times. This separates secure-capture presentation freeze from content
    migration.
-9. Do not use `.tbd`-only symbols until they appear in public Swift interface
+10. Do not use `.tbd`-only symbols until they appear in public Swift interface
    and Apple documentation.
-10. If E1C opens the app before content is visible, treat that as a UX
+11. If E1D opens the app before content is visible, treat that as a UX
    waiting-state problem unless the following `sessionContentUpdates` import
    never arrives.
 

@@ -315,6 +315,7 @@ nonisolated final class LockedCaptureCameraController: NSObject, ObservableObjec
     private nonisolated static func isMinimalRuntimeImportHandoff(_ tapAction: String) -> Bool {
         tapAction == TAPCamLockedCameraHandoff.openTAPLibraryRuntimeImport
             || tapAction == TAPCamLockedCameraHandoff.openTAPCameraRuntimeImport
+            || tapAction == TAPCamLockedCameraHandoff.openTAPNeutralRuntimeImport
     }
 
     @MainActor

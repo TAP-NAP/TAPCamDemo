@@ -9,6 +9,7 @@ nonisolated enum TAPCamIntentHandoffDestination: String, Codable, Equatable, Sen
     case camera
     case tapLibrary
     case tapLibraryAwaitingLockedImport
+    case lockedImportNeutral
 }
 
 nonisolated struct TAPCamIntentHandoff: Codable, Equatable, Sendable {
@@ -73,6 +74,8 @@ extension TAPCamIntentHandoff {
             destination = .tapLibraryAwaitingLockedImport
         case TAPCamLockedCameraHandoff.openTAPCameraRuntimeImport:
             destination = .camera
+        case TAPCamLockedCameraHandoff.openTAPNeutralRuntimeImport:
+            destination = .lockedImportNeutral
         case TAPCamLockedCameraHandoff.openTAPLibraryAfterLockedCapture:
             destination = .tapLibrary
         case TAPCamLockedCameraHandoff.regenerateLockedCameraContext:
