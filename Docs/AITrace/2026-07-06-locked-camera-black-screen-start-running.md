@@ -1385,3 +1385,81 @@ Pitfall recorded:
 - "The photo is not visible" was too ambiguous. Earlier logs showed photos could
   be visible to the data model as pending Library items while signing/export
   failures made the user-facing state confusing.
+
+### 2026-07-07 E3C Result and Public Lifecycle Boundary
+
+Observed smoke:
+
+1. Opened the main app and verified normal capture.
+2. Launched the locked extension, captured, and tapped the lower-left
+   placeholder.
+3. The main app opened, but TAP Library did not initially show the locked
+   capture.
+4. The next locked-extension launch froze once; after manually locking again,
+   the extension launched normally.
+
+Log evidence:
+
+- The main app received the E3C app-owned activity:
+  `locked_camera_open_only_handoff_ignored
+  activityType=TAP-NAP.TAPCamDemo.lockedCamera.openAppOnly
+  activityTitle=TAPCam Locked Camera E3C App-Owned Open Only
+  userInfoKeys= managerSessionCount=0`.
+- TAP Library presented and loaded with no pending locked capture while
+  `managerSessionCount=0`.
+- Later, Apple delivered the session content:
+  `locked_camera_session_content_update kind=added managerSessionCount=1`.
+- The importer found the flat HEIC, imported it to pending, invalidated the
+  Apple session content, and the normal signing/export worker succeeded.
+
+Interpretation:
+
+- E3C rules out TAPCam route metadata, TAP Library awaiting state, signing
+  failure, and the special `NSUserActivityTypeLockedCameraCapture` activity
+  type as the only causes.
+- The direct lower-left open path still uses the public
+  `LockedCameraCaptureSession.openApplication(for:)` transition. The failure
+  remains correlated with that transition even after local camera teardown.
+- Apple DocC describes `openApplication(for:)` as a request to open the
+  containing app. It does not describe it as a session-content migration
+  barrier.
+- Apple DocC describes `sessionContentURL` as a temporary extension-container
+  directory whose contents are copied to the containing app when the extension
+  is suspended. This matches the observed delay: app opens first, session
+  content appears later through `sessionContentUpdates`.
+
+Public API boundary checked in the local iPhoneOS 26.5 SDK:
+
+- Public on `LockedCameraCaptureSession`: `sessionContentURL`,
+  `openApplication(for:)`, and `invalidateSessionContent()`.
+- Public on `LockedCameraCaptureManager`: `sessionContentURLs`,
+  `sessionContentUpdates`, `invalidateSessionContent(at:)`,
+  `beginDelayingAppearance()`, and `endDelayingAppearance()`.
+- No public `finish`, `dismiss`, `completeTransition`, or
+  `openAfterSessionContentMigration` API is exposed.
+- The `.tbd` contains tempting transition symbols such as
+  `openApplicationAfterTransitionCompletion(for:)` and
+  `applicationDidCompleteTransition()`, but they are absent from the public Swift
+  interface and DocC. They must not be used.
+
+Pitfall recorded:
+
+| Idea | Why it looked plausible | Evidence against it | Decision |
+| --- | --- | --- | --- |
+| Stop local AVFoundation resources before `openApplication(for:)`. | A running capture session or attached preview could keep the secure-capture extension alive. | E3B2/E3C stop the session, remove inputs/outputs, hide preview, and still reproduce the delayed import / next-launch freeze pattern. | Keep teardown for hygiene, but do not treat it as a lifecycle-completion API. |
+| Use an app-owned activity type instead of `NSUserActivityTypeLockedCameraCapture`. | Maybe the special locked-camera activity type had extra transition behavior. | E3C used `TAP-NAP.TAPCamDemo.lockedCamera.openAppOnly` and still failed. | Activity type is not the decisive variable. |
+| Make lower-left tap open-only and move import to `sessionContentUpdates`. | This matches `lockScreen_test` separation of responsibilities. | It removes app-route complexity, but does not change the system open/suspend/copy timing. | Correct architecture, but not enough to make direct in-extension open reliable. |
+| Manually end the locked extension lifecycle before opening the app. | The freeze feels like the next launch finishes the previous extension's lifecycle. | No public API exists to force extension suspend/dismiss/transition completion. | Cannot implement with public API. Only local teardown is available. |
+
+Current conclusion:
+
+- Our extension design can break lifecycle if it creates transient camera
+  objects, does heavy work on the open tap, or invalidates session content too
+  early. Those are real design risks and should stay out of the POC.
+- The current E3C code has already removed the main self-inflicted risks:
+  long-lived `@StateObject` controller, visible root UI, local camera teardown
+  before open, open-only activity, and app-level `sessionContentUpdates` import.
+- The remaining direct-open freeze should be treated as a public
+  `openApplication(for:)` secure-capture transition boundary, or an OS/framework
+  bug on this build, until a public API or a reliable external app-opening UX
+  proves otherwise.

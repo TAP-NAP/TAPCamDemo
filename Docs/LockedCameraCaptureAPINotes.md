@@ -34,6 +34,27 @@ Observed sequence from the attached log `a2a3225.../pasted-text.txt`:
 `sessionCount` is a count of Apple-exposed session directories, not a count of
 photos, pending records, or visible TAP Library cells.
 
+The later E3C smoke (`bdc7c2db.../pasted-text.txt`) narrowed the issue further:
+
+1. The lower-left placeholder used an app-owned activity type,
+   `TAP-NAP.TAPCamDemo.lockedCamera.openAppOnly`, not
+   `NSUserActivityTypeLockedCameraCapture`.
+2. The extension still performed local handoff teardown before the open request:
+   preview hidden, watchdog canceled, `AVCaptureSession.stopRunning()`, and all
+   session inputs/outputs removed.
+3. The main app received the open-only activity while
+   `LockedCameraCaptureManager.shared.sessionContentURLs.count == 0`.
+4. TAP Library loaded before Apple exposed the just-captured session directory.
+5. Only later did `sessionContentUpdates` emit `.added`, after which the app
+   imported, signed, exported, and invalidated the capture successfully.
+6. The user still observed the next locked launch freeze.
+
+E3C therefore rules out TAPCam route metadata, Library awaiting state, signing
+queue failure, and special `NSUserActivityTypeLockedCameraCapture` routing as
+the only causes. The remaining public-API suspect is the secure-capture
+`LockedCameraCaptureSession.openApplication(for:)` transition itself, or an iOS
+framework bug around that transition.
+
 ## Historical `lockScreen` Transfer Strategy
 
 The old `lockScreen` / `lockScreen_test` branches used the same Apple
@@ -143,6 +164,12 @@ merged that pending record (`tap_library_snapshot_loaded`).
 | `ControlWidgetButton(action:) where Action: AppIntent` | iOS 18.0+ | WidgetKit control extension | Lets a lock-screen/control-center control run an App Intent. | Use a second control kind, `TAP-NAP.TAPCamDemo.open-app`, so the existing locked camera capture control remains intact. |
 | `OpenIntent` | iOS 16.0+ | App Intents | Opens an app-defined `AppValue` target. | Not used in the first alternate experiment because TAPCam only needs "open app", not "open a system-resolvable entity". Revisit if we model Library/capture records as `AppValue`. |
 
+There is no public `finish`, `dismiss`, `completeTransition`, or
+`openAfterSessionContentMigration` API on `LockedCameraCaptureSession`. Stopping
+our camera graph can reduce local AVFoundation ownership, but it cannot force
+the system to suspend the extension, copy `sessionContentURL`, and complete the
+secure-capture transition before opening the app.
+
 ## Alternate AppIntent/OpenIntent System Entry
 
 This experiment is intentionally separate from
@@ -180,6 +207,10 @@ do not call them, do not use private symbol tricks, and do not include them in
 the experiment matrix. Re-evaluate only if a future Xcode exposes an equivalent
 API in the public Swift interface and documentation.
 
+These hidden symbols are also why the failure shape is tempting: the names look
+like the transition-completion primitive this UX wants. Because they are not
+public API, they cannot be used in the product or POC.
+
 ## Why `openApplication(for:)` Is Suspicious Here
 
 Apple documents `openApplication(for:)` as a request to open the containing app,
@@ -201,6 +232,23 @@ The current public API does not expose a "wait until migration complete, then
 open app" call. `beginDelayingAppearance()` helps with UI appearance timing, but
 the latest smoke shows it does not make `sessionContentURLs` available during
 the handoff.
+
+## Extension Lifecycle Risk Audit
+
+The extension can still harm lifecycle if it does any of the following:
+
+| Risky design | Why it matters | Current status |
+| --- | --- | --- |
+| Creating `AVCaptureSession`, preview host, or controller inside SwiftUI `body` or a temporary view. | SwiftUI recomposition can release or recreate camera ownership during a secure-capture scene transition. | Current POC uses `@StateObject private var controller` in `LockedCaptureRootView`; keep this. |
+| Leaving the preview layer and sample-buffer delegate attached while requesting app open. | The extension may still own camera/preview resources while the system starts the containing app transition. | E3B2/E3C explicitly hide preview, clear the delegate, stop the session, and remove inputs/outputs before open; this did not eliminate the freeze. |
+| Running packaging, signing, network, or Library import work from the lower-left tap. | It couples user intent to heavy work and makes lifecycle attribution impossible. | Current E3C open-only path does not attach TAPCam route metadata and does not do import/signing from the tap. |
+| Invalidating session content in the extension after a successful capture. | This deletes the only Apple-managed migration source before the app can import it. | Current POC does not call extension-side `invalidateSessionContent()` for successful captures. |
+| Treating `openApplication(for:)` as a session-content migration barrier. | Apple documents it as an app-open request; `sessionContentURL` is copied when the extension is suspended, not when `openApplication(for:)` returns. | This is the active failure mode. Do not design Library immediacy around this assumption. |
+
+Conclusion: our earlier heavy handoff designs were risky and have been removed
+from E3C. The remaining failure is not explained by our signing queue or Library
+route code. It is still possible that any in-extension direct-open request keeps
+the secure-capture lifecycle in a bad transition state on this OS build.
 
 ## Library Semantics To Keep Separate
 
