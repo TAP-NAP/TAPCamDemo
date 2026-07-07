@@ -222,7 +222,10 @@ These are contradictions or over-strong assumptions in the current PRD:
    call `openApplication(for:)` directly from the extension without the POC's
    pre-open teardown (`isPreviewHostVisible = false`, watchdog cancel,
    `stopRunning()`, and input/output removal). This checks whether the handoff
-   API was being used too aggressively inside the extension.
+   API was being used too aggressively inside the extension. Main-app logs must
+   show `reason=e1b_minimal_runtime_import_after_saved_capture` or
+   `reason=e1b_minimal_runtime_import_placeholder`; otherwise the log cannot
+   distinguish E1B from the earlier E1A build.
 3. Keep the status-only placeholder baseline as a committed rollback point and
    negative control. It is not the target UX.
 4. E2A historical-transfer experiment: extension writes flat

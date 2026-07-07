@@ -607,3 +607,48 @@ Interpretation:
   watchdog, stopping `AVCaptureSession`, or removing inputs/outputs. That
   isolates whether our pre-open teardown is interfering with the system-owned
   secure-capture transition.
+
+### 2026-07-07 E1B Minimal Direct-Open First Smoke
+
+User-reported operation:
+
+- Opened the main app and captured normally.
+- Locked the phone, launched the extension, captured, then manually locked /
+  unlocked and opened the main app Library. This natural path imported normally.
+- Locked the phone again, launched the extension, captured, then tapped the
+  lower-left placeholder. The main app opened to Library but remained in the
+  waiting-for-locked-capture state. After the next lock-screen launch froze and
+  the user locked/unlocked again, the photo was imported.
+
+Log evidence:
+
+- Natural path again succeeded first:
+  `locked_camera_session_content_update kind=added managerSessionCount=1
+  captureProbeCount=1`, then import succeeded for
+  `4B626FB3-2438-45B6-9693-5313966A467B`.
+- Direct-open again arrived in the main app before session content was exposed:
+  `locked_camera_handoff_received destination=tapLibraryAwaitingLockedImport
+  tapAction=openTAPLibraryRuntimeImport reason=runtime_import_after_saved_capture
+  managerSessionCount=0`.
+- The old transition-delay path was still skipped:
+  `locked_camera_transition_delay_skipped ... openTAPLibraryRuntimeImport`.
+- Library entered awaiting state with `managerSessionCount=0`, then repeatedly
+  loaded a snapshot with `visiblePendingCount=3`.
+- The new locked content arrived only later:
+  `locked_camera_session_content_update kind=added managerSessionCount=1
+  captureProbeCount=1`, then import succeeded for
+  `6EE842C6-C8A0-4AE1-BEDE-2F571118563A`, and Library refreshed to
+  `visiblePendingCount=4`.
+
+Interpretation:
+
+- Behaviorally, E1B still failed the direct-open UX in the same way as E1A.
+- The pasted log did not include extension-process probes such as
+  `open_application_minimal_handoff`, `open_application_prepare`, or
+  `open_application_call`. It also still showed the E1A-era reason string
+  `runtime_import_after_saved_capture`, so this log cannot independently prove
+  whether the minimal extension branch ran.
+- The next patch changes only the `NSUserActivity.reason` values for the
+  runtime-import handoff to `e1b_minimal_runtime_import_*`, so the main-app log
+  can prove which handoff variant is installed even when extension-process logs
+  are absent.
