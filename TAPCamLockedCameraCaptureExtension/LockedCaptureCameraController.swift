@@ -260,11 +260,6 @@ nonisolated final class LockedCaptureCameraController: NSObject, ObservableObjec
         Self.logger.info(
             "open_application_prepare tapAction=\(tapAction, privacy: .public) sessionRunning=\(self.captureSession.isRunning, privacy: .public) lastFrameAge=\(self.lastFrameAgeDescription(), privacy: .public) captureDirectoryCount=\(contentSnapshot.captureDirectoryCount, privacy: .public) flatHEICFileCount=\(contentSnapshot.flatHEICFileCount, privacy: .public) metadataFileCount=\(contentSnapshot.metadataFileCount, privacy: .public) unsignedHEICFileCount=\(contentSnapshot.unsignedHEICFileCount, privacy: .public) latestCaptureID=\(contentSnapshot.latestCaptureID ?? "none", privacy: .public)"
         )
-        setState(.recovering("Opening TAPCam."))
-        isActive = false
-        isPreviewHostVisible = false
-        frameWatchdogTask?.cancel()
-        frameWatchdogTask = nil
 
         let activity = NSUserActivity(activityType: TAPCamLockedCameraHandoff.activityType)
         activity.title = "TAPCam Locked Camera"
@@ -276,6 +271,31 @@ nonisolated final class LockedCaptureCameraController: NSObject, ObservableObjec
             userInfo[TAPCamLockedCameraHandoff.reasonKey] = reason
         }
         activity.userInfo = userInfo
+
+        if tapAction == TAPCamLockedCameraHandoff.openTAPLibraryRuntimeImport {
+            Self.logger.info(
+                "open_application_minimal_handoff tapAction=\(tapAction, privacy: .public) sessionRunning=\(self.captureSession.isRunning, privacy: .public) previewInWindow=\(self.previewLayerInWindow, privacy: .public) previewHasSuperlayer=\(self.previewLayerHasSuperlayer, privacy: .public)"
+            )
+            Task { [weak self] in
+                do {
+                    Self.logger.info("open_application_call tapAction=\(tapAction, privacy: .public)")
+                    try await session.openApplication(for: activity)
+                    Self.logger.info("open_application_requested tapAction=\(tapAction, privacy: .public)")
+                } catch {
+                    Self.logger.error("open_application_failed error=\(Self.describe(error), privacy: .public)")
+                    await MainActor.run {
+                        self?.setUnavailable("Open app failed: \(Self.describe(error))")
+                    }
+                }
+            }
+            return
+        }
+
+        setState(.recovering("Opening TAPCam."))
+        isActive = false
+        isPreviewHostVisible = false
+        frameWatchdogTask?.cancel()
+        frameWatchdogTask = nil
 
         Task { [weak self] in
             await self?.prepareForHostApplicationHandoff(tapAction: tapAction)

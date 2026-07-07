@@ -561,3 +561,49 @@ Separate presentation issue to validate:
 - Treat this separately from the historical post-live black screen. Capture
   scenePhase, extension process lifetime, root init/body, preview layer state,
   and controller active transition logs before changing camera session logic.
+
+### 2026-07-07 E1A Direct-Open Runtime-Import Result
+
+User-reported operation:
+
+- Opened the main app and captured normally.
+- Locked the phone, launched the extension, captured, then manually locked /
+  unlocked and opened the main app Library. This natural path imported normally.
+- Locked the phone again, launched the extension, captured, then tapped the
+  lower-left placeholder. The main app opened to Library but remained in the
+  waiting-for-locked-capture state. After the next lock-screen launch froze and
+  the user locked/unlocked again, the photo was imported.
+
+Log evidence:
+
+- Natural path succeeded first:
+  `locked_camera_session_content_update kind=added managerSessionCount=1
+  captureProbeCount=1`, then import succeeded for
+  `721213DC-4137-4629-828D-7ED35F8B7109`.
+- E1A direct-open path was active:
+  `locked_camera_handoff_received destination=tapLibraryAwaitingLockedImport
+  tapAction=openTAPLibraryRuntimeImport
+  reason=runtime_import_after_saved_capture managerSessionCount=0`.
+- The app skipped the old transition-delay path as intended:
+  `locked_camera_transition_delay_skipped ... openTAPLibraryRuntimeImport`.
+- The app opened Library awaiting import with no session content exposed yet:
+  `tap_library_present ... awaitingLockedCaptureImport=true
+  managerSessionCount=0`.
+- The actual session content arrived only later:
+  `locked_camera_session_content_update kind=added managerSessionCount=1
+  captureProbeCount=1`, then import succeeded for
+  `448DD9E8-1FC7-4232-8910-6CAC5890B7FC` and Library refreshed to
+  `visiblePendingCount=4`.
+
+Interpretation:
+
+- E1A failed the UX goal: direct-open still opened the app before iOS exposed
+  the extension's `sessionContentURL`, and the next locked launch still froze.
+- E1A did prove the old `beginDelayingAppearance()` / handoff-time import path
+  is not the only cause. The failure remains when transition delay and
+  handoff-time `sessionContentURLs` scanning are removed.
+- The next direct-open experiment should simplify the extension-side API use:
+  call `openApplication(for:)` without first hiding the preview, cancelling the
+  watchdog, stopping `AVCaptureSession`, or removing inputs/outputs. That
+  isolates whether our pre-open teardown is interfering with the system-owned
+  secure-capture transition.
