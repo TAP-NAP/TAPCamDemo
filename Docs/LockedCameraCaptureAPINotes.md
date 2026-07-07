@@ -202,37 +202,42 @@ These are contradictions or over-strong assumptions in the current PRD:
 
 | Document claim | Why it is questionable now | Proposed discussion |
 | --- | --- | --- |
-| Q35/Q36 allow saved-placeholder `openTAPCamera` as a current experiment. | The latest smoke shows this path still gives no immediate useful Library result and can be followed by next-launch freeze. | Decide whether Phase 1 should return the left placeholder to status-only except for `unavailable` recovery. |
+| Q35/Q36 previously drifted toward status-only as the main path. | Status-only is useful as a baseline/negative control, but it does not satisfy the required UX: the lower-left placeholder must directly open the containing app. | Keep the baseline commit for rollback, then run direct-open experiments that change only the handoff/import mechanics. |
 | Q33 says main App startup/import should not block UI. | True for app responsiveness, but it means "open app" does not guarantee the first visible Library snapshot includes just-migrated locked content. | Define whether immediate visibility means pending-store visibility after natural `sessionContentUpdates`, or a hard requirement for the same tap that opens the app. |
 | Q36 implies transition-delay APIs may solve the saved handoff. | `beginDelayingAppearance()` delays app appearance, not session-content migration. Latest smoke saw `sessionCount=0` during the delayed transition. | Mark transition delay as diagnostic-only unless a future public API provides migration-complete semantics. |
 | "lib has no extension photo" is ambiguous. | Pending store, TAP Library grid, and Photos/exported album are separate layers. The log proves pending ingest happened, while signing/export failed. | Add exact acceptance language: after locked import, the capture must appear as a TAP Library pending item even if signing/export later fails. |
 
 ## Recommended Next Experiments
 
-1. Status-only placeholder baseline: lower-left locked placeholder does not call
-   `LockedCameraCaptureSession.openApplication(for:)`. Capture while locked,
-   tap the placeholder only to emit a status log, then manually dismiss/unlock
-   and open the main app. This isolates whether the saved-placeholder handoff is
-   causing both delayed session migration and next-launch freeze.
-2. Run a historical-transfer experiment: extension writes flat
+1. E1A direct-open/runtime-import: lower-left locked placeholder calls
+   `LockedCameraCaptureSession.openApplication(for:)` with
+   `tapAction=openTAPLibraryRuntimeImport`. The main app opens the TAP Library
+   awaiting state, skips `beginDelayingAppearance()` and any handoff-time
+   `sessionContentURLs` scan, then lets the long-lived
+   `sessionContentUpdates` runtime import content when Apple exposes it. This
+   validates the historical import lifecycle only, not the historical file
+   layout.
+2. Keep the status-only placeholder baseline as a committed rollback point and
+   negative control. It is not the target UX.
+3. E2A historical-transfer experiment: extension writes flat
    `TAPCam-<UUID>.heic` unsigned TAP artifacts directly under
    `sessionContentURL`, and the main app importer enumerates `.heic` files like
    `lockScreen_test`. This requires checking extension-safe target membership
-   for the shared packaging stack before code migration.
-3. Keep `openApplication(for:)` only for `unavailable` / regenerate-context
-   recovery, where there is no just-saved session content to race.
+   for the shared packaging stack before code migration. This is the experiment
+   that validates the `lockScreen` / `lockScreen_test` data-transfer logic.
 4. Keep the new TAP Library presentation probe: pending record count, latest
    capture IDs, merged item count, and whether the locked capture ID is present.
 5. Keep the app-level `sessionContentUpdates` runtime as the only normal import
    trigger.
-6. If status-only still freezes, run an extension-launch-only experiment:
+6. If E1A still freezes, run an extension-launch-only experiment:
    launch locked UI, do not capture, do not tap placeholder, dismiss, and relaunch
    three times. This separates secure-capture presentation freeze from content
    migration.
 7. Do not use `.tbd`-only symbols until they appear in public Swift interface
    and Apple documentation.
-8. Revisit direct saved-placeholder handoff only if Apple exposes a public
-   transition-complete or migration-complete API in a future SDK.
+8. If E1A still opens Library before content is visible, treat that as a UX
+   waiting-state problem unless the following `sessionContentUpdates` import
+   never arrives.
 
 ## Source References
 

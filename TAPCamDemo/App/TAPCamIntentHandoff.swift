@@ -69,6 +69,8 @@ extension TAPCamIntentHandoff {
             destination = .tapLibrary
         case TAPCamLockedCameraHandoff.openTAPLibraryAwaitingLockedImport:
             destination = .tapLibraryAwaitingLockedImport
+        case TAPCamLockedCameraHandoff.openTAPLibraryRuntimeImport:
+            destination = .tapLibraryAwaitingLockedImport
         case TAPCamLockedCameraHandoff.openTAPLibraryAfterLockedCapture:
             destination = .tapLibrary
         case TAPCamLockedCameraHandoff.regenerateLockedCameraContext:

@@ -79,6 +79,9 @@ struct StartupGateView: View {
 
     private func beginLockedCameraTransitionDelayIfNeeded(for handoff: TAPCamIntentHandoff) -> Bool {
         guard handoff.shouldDelayAppearanceForLockedContent else {
+            LockedCameraDiagnostics.logger.info(
+                "locked_camera_transition_delay_skipped destination=\(handoff.destination.rawValue, privacy: .public) tapAction=\(handoff.tapAction ?? "none", privacy: .public) reason=\(handoff.reason ?? "none", privacy: .public)"
+            )
             return false
         }
 

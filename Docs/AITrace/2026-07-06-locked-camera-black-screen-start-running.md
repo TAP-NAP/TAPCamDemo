@@ -385,12 +385,20 @@ Conclusion:
 
 Follow-up experiment:
 
-- E1 changes the lower-left placeholder to status-only. The tap now logs
-  `locked_album_placeholder_tapped_status_only` with current session-content
-  counters, but it does not call `openApplication(for:)`.
-- Passing E1 means: no `open_application_call` after placeholder tap,
-  manual dismiss/unlock causes `session_content_update kind=added`, Library
-  gains the pending item, and the next locked launch does not freeze.
+- Baseline commit keeps the lower-left placeholder status-only as a rollback
+  and negative-control state.
+- E1A restores the required UX: the lower-left placeholder calls
+  `openApplication(for:)` with `tapAction=openTAPLibraryRuntimeImport`.
+- E1A deliberately opens TAP Library awaiting import but does not call
+  `beginDelayingAppearance()` and does not do handoff-time
+  `sessionContentURLs` scanning. Import ownership stays with the app-level
+  `sessionContentUpdates` runtime. This validates only the historical
+  runtime-import lifecycle, not the historical flat-HEIC transfer layout.
+- Passing E1A means: `open_application_call` appears for
+  `openTAPLibraryRuntimeImport`, the main app logs
+  `locked_camera_transition_delay_skipped`, Library enters awaiting state, a
+  later `session_content_update kind=added` imports the pending item, and the
+  next locked launch does not freeze.
 
 ### 2026-07-07 Successful No-Immediate-Handoff Transfer
 
