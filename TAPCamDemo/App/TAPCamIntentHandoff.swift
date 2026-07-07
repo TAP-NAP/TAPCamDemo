@@ -76,6 +76,8 @@ extension TAPCamIntentHandoff {
             destination = .camera
         case TAPCamLockedCameraHandoff.openTAPNeutralRuntimeImport:
             destination = .lockedImportNeutral
+        case TAPCamLockedCameraHandoff.openTAPMainAppOnly:
+            destination = .camera
         case TAPCamLockedCameraHandoff.openTAPLibraryAfterLockedCapture:
             destination = .tapLibrary
         case TAPCamLockedCameraHandoff.regenerateLockedCameraContext:

@@ -147,6 +147,7 @@ nonisolated enum TAPCamLockedCameraHandoff {
     static let openTAPLibraryRuntimeImport = "openTAPLibraryRuntimeImport"
     static let openTAPCameraRuntimeImport = "openTAPCameraRuntimeImport"
     static let openTAPNeutralRuntimeImport = "openTAPNeutralRuntimeImport"
+    static let openTAPMainAppOnly = "openTAPMainAppOnly"
     static let regenerateLockedCameraContext = "regenerateLockedCameraContext"
 }
 

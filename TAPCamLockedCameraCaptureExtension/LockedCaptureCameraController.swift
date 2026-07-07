@@ -316,6 +316,7 @@ nonisolated final class LockedCaptureCameraController: NSObject, ObservableObjec
         tapAction == TAPCamLockedCameraHandoff.openTAPLibraryRuntimeImport
             || tapAction == TAPCamLockedCameraHandoff.openTAPCameraRuntimeImport
             || tapAction == TAPCamLockedCameraHandoff.openTAPNeutralRuntimeImport
+            || tapAction == TAPCamLockedCameraHandoff.openTAPMainAppOnly
     }
 
     @MainActor

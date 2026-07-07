@@ -139,7 +139,7 @@ merged that pending record (`tap_library_snapshot_loaded`).
 | `LockedCameraCaptureManager.beginDelayingAppearance()` | iOS 18.1+ | App | Tells the system the app wants to delay app launch/appearance during an extension-to-app transition. | It delays appearance only. It does not guarantee `sessionContentURLs` is non-empty. Latest smoke did not make saved-placeholder handoff reliable. |
 | `LockedCameraCaptureManager.endDelayingAppearance()` | iOS 18.1+ | App | Ends the delayed app appearance. | Must pair with `beginDelayingAppearance()` if used. Not a content-transfer completion signal. |
 
-## SDK Symbols Not Safe To Use Yet
+## SDK Symbols We Must Not Use
 
 The iPhoneOS 26.5 SDK `.tbd` exports these symbols:
 
@@ -149,10 +149,10 @@ The iPhoneOS 26.5 SDK `.tbd` exports these symbols:
 - `LockedCameraCaptureSession.hasActiveSession`
 
 However, they are absent from the public Swift interface and Apple DocC pages
-visible in this Xcode installation. Treat them as unavailable for production and
-do not call them via private symbol tricks. If a future Xcode exposes them in
-the public Swift interface, they are worth re-evaluating because their names
-match the lifecycle problem we are seeing.
+visible in this Xcode installation. They are recorded here only as a pitfall:
+do not call them, do not use private symbol tricks, and do not include them in
+the experiment matrix. Re-evaluate only if a future Xcode exposes an equivalent
+API in the public Swift interface and documentation.
 
 ## Why `openApplication(for:)` Is Suspicious Here
 
@@ -202,7 +202,7 @@ These are contradictions or over-strong assumptions in the current PRD:
 
 | Document claim | Why it is questionable now | Proposed discussion |
 | --- | --- | --- |
-| Q35/Q36 previously drifted toward status-only as the main path. | Status-only is useful as a baseline/negative control, but it does not satisfy the desired UX if a safe public direct-open path exists. E2A temporarily used status-only to isolate flat-HEIC transfer from direct-open lifecycle; E2B then restored direct-open and still failed with delayed content exposure plus next-launch freeze. | Keep status-only/no-direct-open as the currently stable rollback path. Do not treat saved-placeholder direct-open as usable until a new public API boundary or system timing strategy is validated. |
+| Q35/Q36 previously drifted toward status-only as the main path. | Status-only is useful as a baseline/negative control, but it does not satisfy the desired UX. The better split is: shutter saves, importer imports, and the lower-left placeholder only opens the main app. E2B failed because it opened TAP Library awaiting import, not because the button must own import. | Test E3A as open-only: `openApplication(for:)` should only open the containing app's default route. It must not trigger Library waiting/import logic. |
 | Q33 says main App startup/import should not block UI. | True for app responsiveness, but it means "open app" does not guarantee the first visible Library snapshot includes just-migrated locked content. | Define whether immediate visibility means pending-store visibility after natural `sessionContentUpdates`, or a hard requirement for the same tap that opens the app. |
 | Q36 implies transition-delay APIs may solve the saved handoff. | `beginDelayingAppearance()` delays app appearance, not session-content migration. Latest smoke saw `sessionCount=0` during the delayed transition. | Mark transition delay as diagnostic-only unless a future public API provides migration-complete semantics. |
 | "lib has no extension photo" is ambiguous. | Pending store, TAP Library grid, and Photos/exported album are separate layers. The log proves pending ingest happened, while signing/export failed. | Add exact acceptance language: after locked import, the capture must appear as a TAP Library pending item even if signing/export later fails. |
@@ -263,17 +263,24 @@ These are contradictions or over-strong assumptions in the current PRD:
    and the next locked launch froze once before recovery. This rules out current
    staging bundle shape as the cause and keeps direct-open lifecycle as the main
    risk.
-8. Keep the new TAP Library presentation probe: pending record count, latest
+8. E3A open-only split-responsibility experiment: keep the E2A flat HEIC write
+   and app-level `sessionContentUpdates` import model, but make the left
+   placeholder's only responsibility opening the containing app. Use
+   `tapAction=openTAPMainAppOnly`; route to camera/default; do not present TAP
+   Library awaiting import; do not call a handoff-time `sessionContentURLs`
+   scan. Pass condition is app open plus eventual independent import without
+   next-launch freeze.
+9. Keep the new TAP Library presentation probe: pending record count, latest
    capture IDs, merged item count, and whether the locked capture ID is present.
-9. Keep the app-level `sessionContentUpdates` runtime as the only normal import
+10. Keep the app-level `sessionContentUpdates` runtime as the only normal import
    trigger.
-10. Run an extension-launch-only experiment:
+11. Run an extension-launch-only experiment:
    launch locked UI, do not capture, do not tap placeholder, dismiss, and relaunch
    three times. This separates secure-capture presentation freeze from content
    migration.
-11. Do not use `.tbd`-only symbols until they appear in public Swift interface
+12. Do not use `.tbd`-only symbols until they appear in public Swift interface
    and Apple documentation.
-12. Do not treat a neutral/direct-open route as a transfer-complete boundary.
+13. Do not treat a neutral/direct-open route as a transfer-complete boundary.
    If the app opens before content is visible, the evidence so far points to
    system-owned migration timing rather than a missing TAP Library refresh.
 

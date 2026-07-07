@@ -196,10 +196,8 @@ struct LockedCaptureRootView: View {
             Button {
                 controller.openHostApplication(
                     session: session,
-                    tapAction: TAPCamLockedCameraHandoff.openTAPLibraryRuntimeImport,
-                    reason: controller.lastCaptureSucceeded
-                        ? "e2b_flat_heic_runtime_import_after_saved_capture"
-                        : "e2b_flat_heic_runtime_import_placeholder"
+                    tapAction: TAPCamLockedCameraHandoff.openTAPMainAppOnly,
+                    reason: "open_only_placeholder"
                 )
             } label: {
                 Image(systemName: lockedAlbumPlaceholderIcon)
@@ -211,7 +209,7 @@ struct LockedCaptureRootView: View {
             .buttonStyle(.plain)
             .disabled(!controller.state.canCapture)
             .accessibilityLabel(
-                Text(controller.lastCaptureSucceeded ? "Open TAP Library" : "Open TAPCam")
+                Text("Open TAPCam")
             )
 
             Spacer()

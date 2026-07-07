@@ -1090,3 +1090,49 @@ Interpretation:
 - Do not add another Library/camera/neutral first-route variant yet. The next
   useful experiments are E3 launch-only stress and E5 extension-log visibility,
   so freeze can be classified independently of data transfer and app route.
+
+### 2026-07-07 E3A Open-Only Contract
+
+Product decision:
+
+- The lower-left locked placeholder's only job is to open the containing app.
+- It must not own capture write, packaging, migration, Library presentation,
+  or pending import.
+- Capture write remains the shutter's job.
+- Locked session migration/import remains the app-level `sessionContentUpdates`
+  runtime's job.
+- `.tbd`-only or otherwise unpublished symbols are out of scope.
+
+Code contract:
+
+- Extension writes flat `TAPCam-<captureID>.heic` files in
+  `sessionContentURL`, matching the stable `lockscreen_test` transfer shape.
+- The lower-left placeholder calls `LockedCameraCaptureSession.openApplication`
+  with `tapAction=openTAPMainAppOnly`.
+- The main app maps `openTAPMainAppOnly` to the default camera route.
+- The main app must not present TAP Library awaiting import from this handoff.
+- The main app must not run a handoff-time `sessionContentURLs` scan or
+  `beginDelayingAppearance()` flow for this action.
+
+Expected smoke evidence:
+
+- Extension logs `open_application_call tapAction=openTAPMainAppOnly`.
+- App logs
+  `locked_camera_handoff_received ... tapAction=openTAPMainAppOnly
+  destination=camera`.
+- App logs `locked_camera_handoff_apply destination=camera`.
+- No `tap_library_present ... awaitingLockedCaptureImport=true` appears from
+  the handoff.
+- Session content later arrives through
+  `locked_camera_session_content_update kind=added`, then imports as
+  `layout=flat-heic`.
+- User can open Library and see the pending capture after import.
+- No next locked launch freeze and no black screen.
+
+Interpretation:
+
+- If E3A passes, the target public-API UX is viable with split
+  responsibilities: left placeholder opens the app, while session content import
+  remains independent.
+- If E3A still freezes, `openApplication(for:)` itself remains suspicious even
+  when the app route performs no Library/import work.
