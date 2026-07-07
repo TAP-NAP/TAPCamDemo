@@ -695,3 +695,46 @@ Interpretation:
 - Next useful experiments should change a different variable: either avoid
   presenting TAP Library / Photos / pending-worker surfaces during direct open
   (E1C), or verify the historical flat-HEIC transfer layout (E2A/E2B).
+
+### 2026-07-07 E1C Light-Route Direct-Open Result
+
+User-reported operation:
+
+- Opened the main app and captured normally.
+- Locked the phone, launched the extension, captured, then manually locked /
+  unlocked and opened the main app Library. This natural path imported normally.
+- Locked the phone again, launched the extension, captured, then tapped the
+  lower-left placeholder. The user still observed the old pattern: the just
+  captured photo was not immediately visible, the next locked-extension launch
+  froze, and the photo appeared after another lock/unlock cycle.
+
+Log evidence:
+
+- The handoff is confirmed to be E1C:
+  `locked_camera_handoff_received destination=camera
+  tapAction=openTAPCameraRuntimeImport reason=e1c_light_route_after_saved_capture
+  managerSessionCount=0`.
+- The transition-delay path was skipped:
+  `locked_camera_transition_delay_skipped destination=camera
+  tapAction=openTAPCameraRuntimeImport`.
+- The app did not enter the awaiting Library route. `locked_camera_handoff_apply`
+  showed `routeAwaitingImport=false`, and later `tap_library_present` logs used
+  `awaitingLockedCaptureImport=false`.
+- The app still saw no session content at handoff time:
+  `managerSessionCount=0`.
+- The session content arrived only later:
+  `locked_camera_session_content_update kind=added managerSessionCount=1
+  captureProbeCount=1`, then import succeeded for
+  `7AA1782E-ED10-4BE3-A8D1-783DEE95D217`.
+
+Interpretation:
+
+- E1C rules out TAP Library awaiting state as the root cause.
+- E1C does not rule out main-app camera startup as a variable: after the handoff,
+  logs immediately show main-app camera capture-output/photo-settings
+  configuration, which means the main app likely grabbed camera resources while
+  the system was still unwinding the secure-capture transition.
+- The next experiment should direct-open to a neutral app route that does not
+  create `CameraView`, does not fetch Photos, and does not present TAP Library.
+  If that still freezes, the remaining suspect is the system/direct-open
+  lifecycle itself rather than our app's first route.
