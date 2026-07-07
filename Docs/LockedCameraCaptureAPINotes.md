@@ -202,7 +202,7 @@ These are contradictions or over-strong assumptions in the current PRD:
 
 | Document claim | Why it is questionable now | Proposed discussion |
 | --- | --- | --- |
-| Q35/Q36 previously drifted toward status-only as the main path. | Status-only is useful as a baseline/negative control, but it does not satisfy the required UX: the lower-left placeholder must directly open the containing app. | Keep the baseline commit for rollback, then run direct-open experiments that change only the handoff/import mechanics. |
+| Q35/Q36 previously drifted toward status-only as the main path. | Status-only is useful as a baseline/negative control, but it does not satisfy the required UX: the lower-left placeholder must directly open the containing app. E2A temporarily uses status-only again only to isolate flat-HEIC transfer from direct-open lifecycle. | Keep status-only as rollback/negative-control and E2A isolation only. The final UX still requires a direct-open solution, to be retested as E2B after flat-HEIC transfer is proven. |
 | Q33 says main App startup/import should not block UI. | True for app responsiveness, but it means "open app" does not guarantee the first visible Library snapshot includes just-migrated locked content. | Define whether immediate visibility means pending-store visibility after natural `sessionContentUpdates`, or a hard requirement for the same tap that opens the app. |
 | Q36 implies transition-delay APIs may solve the saved handoff. | `beginDelayingAppearance()` delays app appearance, not session-content migration. Latest smoke saw `sessionCount=0` during the delayed transition. | Mark transition delay as diagnostic-only unless a future public API provides migration-complete semantics. |
 | "lib has no extension photo" is ambiguous. | Pending store, TAP Library grid, and Photos/exported album are separate layers. The log proves pending ingest happened, while signing/export failed. | Add exact acceptance language: after locked import, the capture must appear as a TAP Library pending item even if signing/export later fails. |
@@ -247,11 +247,13 @@ These are contradictions or over-strong assumptions in the current PRD:
 5. Keep the status-only placeholder baseline as a committed rollback point and
    negative control. It is not the target UX.
 6. E2A historical-transfer experiment: extension writes flat
-   `TAPCam-<UUID>.heic` unsigned TAP artifacts directly under
-   `sessionContentURL`, and the main app importer enumerates `.heic` files like
-   `lockScreen_test`. This requires checking extension-safe target membership
-   for the shared packaging stack before code migration. This is the experiment
-   that validates the `lockScreen` / `lockScreen_test` data-transfer logic.
+   `TAPCam-<captureID>.heic` depth HEIC staging files directly under
+   `sessionContentURL`, and the main app importer enumerates root `.heic` files
+   like `lockScreen_test`. The current extension target does not own the full
+   main-app packaging stack, so E2A packages the flat HEIC into an unsigned TAP
+   artifact app-side before pending-store ingest. This validates the historical
+   root-file transfer/counter strategy first; E2B can later combine it with
+   direct-open.
 7. Keep the new TAP Library presentation probe: pending record count, latest
    capture IDs, merged item count, and whether the locked capture ID is present.
 8. Keep the app-level `sessionContentUpdates` runtime as the only normal import

@@ -174,6 +174,7 @@ nonisolated struct LockedCaptureSessionContentImporter: Sendable {
     }
 
     static func inspectCaptures(in sessionURL: URL) -> [LockedCaptureSessionContentCaptureProbe] {
+        let flatHEICCaptures = flatHEICFiles(in: sessionURL)
         let directCaptureDirectories = captureDirectories(
             in: sessionURL,
             excludingNames: [TAPCamLockedSessionContentPathPolicy.legacyCapturesDirectoryName],
@@ -184,7 +185,7 @@ nonisolated struct LockedCaptureSessionContentImporter: Sendable {
         )
         let legacyCaptureDirectories = captureDirectories(in: capturesURL, layout: "legacy-captures")
 
-        return (directCaptureDirectories + legacyCaptureDirectories)
+        let directoryCaptures: [LockedCaptureSessionContentCaptureProbe] = (directCaptureDirectories + legacyCaptureDirectories)
             .compactMap { candidate in
                 let directory = candidate.url
                 let metadataURL = TAPCamLockedSessionContentPathPolicy.metadataURL(in: directory)
@@ -204,6 +205,8 @@ nonisolated struct LockedCaptureSessionContentImporter: Sendable {
                     layout: candidate.layout
                 )
             }
+
+        return (flatHEICCaptures + directoryCaptures)
             .sorted { $0.metadata.capturedAt < $1.metadata.capturedAt }
     }
 
@@ -232,6 +235,74 @@ nonisolated struct LockedCaptureSessionContentImporter: Sendable {
         }
     }
 
+    private static func flatHEICFiles(in sessionURL: URL) -> [LockedCaptureSessionContentCaptureProbe] {
+        guard let urls = try? FileManager.default.contentsOfDirectory(
+            at: sessionURL,
+            includingPropertiesForKeys: [.isRegularFileKey, .creationDateKey, .contentModificationDateKey, .fileSizeKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return []
+        }
+
+        return urls.compactMap { url in
+            guard url.pathExtension.caseInsensitiveCompare("heic") == .orderedSame,
+                  url.lastPathComponent.hasPrefix(TAPCamLockedSessionContentPathPolicy.flatHEICFilePrefix) else {
+                return nil
+            }
+            let resourceValues = try? url.resourceValues(
+                forKeys: [.isRegularFileKey, .creationDateKey, .contentModificationDateKey, .fileSizeKey]
+            )
+            guard resourceValues?.isRegularFile == true else {
+                return nil
+            }
+
+            let capturedAt = resourceValues?.creationDate
+                ?? resourceValues?.contentModificationDate
+                ?? Date(timeIntervalSince1970: 0)
+            let captureID = flatHEICCaptureID(from: url) ?? UUID().uuidString
+            let metadata = TAPCamLockedRawCaptureMetadata(
+                captureID: captureID,
+                capturedAt: capturedAt,
+                artifactKind: TAPCamLockedSessionContentPathPolicy.depthHEICStagingArtifactKind,
+                lens: flatHEICFallbackLens(),
+                photoFileName: url.lastPathComponent,
+                byteCount: resourceValues?.fileSize ?? fileSize(at: url) ?? 0,
+                depthDataPresent: true,
+                source: "locked-camera-capture-e2a-flat-heic"
+            )
+            return LockedCaptureSessionContentCaptureProbe(
+                metadata: metadata,
+                metadataURL: url,
+                photoURL: url,
+                layout: "flat-heic"
+            )
+        }
+    }
+
+    private static func flatHEICCaptureID(from fileURL: URL) -> String? {
+        let filename = fileURL.deletingPathExtension().lastPathComponent
+        let prefix = TAPCamLockedSessionContentPathPolicy.flatHEICFilePrefix
+        guard filename.hasPrefix(prefix) else {
+            return nil
+        }
+        let captureID = String(filename.dropFirst(prefix.count))
+        return captureID.isEmpty ? nil : captureID
+    }
+
+    private static func flatHEICFallbackLens() -> TAPCamLockedCameraLensRecord {
+        TAPCamLockedCameraLensRecord(
+            id: "locked-flat-heic-unknown",
+            displayName: "Locked Camera",
+            numericLabel: "1",
+            unitLabel: "x",
+            equivalentFocalLength35mmMillimeters: 24,
+            captureDeviceUniqueID: "locked-flat-heic-unknown",
+            captureDeviceTypeRawValue: AVCaptureDevice.DeviceType.builtInWideAngleCamera.rawValue,
+            captureDevicePosition: "back",
+            zoomFactor: 1
+        )
+    }
+
     private static func fileSize(at url: URL) -> Int? {
         guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
               let size = attributes[.size] as? NSNumber else {
@@ -248,8 +319,8 @@ nonisolated struct LockedCaptureSessionContentImporter: Sendable {
     }
 
     private static func isPackageableLockedCaptureStaging(_ result: LockedCaptureSessionContentCaptureProbe) -> Bool {
-        result.layout == "direct"
-            && result.metadata.photoFileName == TAPCamLockedSessionContentPathPolicy.unsignedHEICFileName
+        (result.layout == "direct" || result.layout == "flat-heic")
+            && (result.layout == "flat-heic" || result.metadata.photoFileName == TAPCamLockedSessionContentPathPolicy.unsignedHEICFileName)
             && result.metadata.depthDataPresent == true
             && result.metadata.artifactKind == TAPCamLockedSessionContentPathPolicy.depthHEICStagingArtifactKind
     }
@@ -561,6 +632,7 @@ private nonisolated enum LockedCaptureTAPArtifactPackager {
 
         var metadata = probe.metadata
         metadata.artifactKind = TAPCamLockedSessionContentPathPolicy.unsignedTAPArtifactKind
+        metadata.photoFileName = TAPCamLockedSessionContentPathPolicy.unsignedHEICFileName
         metadata.byteCount = finalData.count
         metadata.depthDataPresent = true
         metadata.depthDataType = finalDepthData.depthDataType

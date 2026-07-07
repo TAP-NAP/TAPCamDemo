@@ -22,13 +22,16 @@ struct TAPLockedCameraSessionContentTests {
         #expect(TAPCamLockedSessionContentPathPolicy.metadataURL(in: captureDirectory).lastPathComponent == "metadata.json")
         #expect(TAPCamLockedSessionContentPathPolicy.unsignedPhotoURL(in: captureDirectory).lastPathComponent == "unsigned.heic")
         #expect(!captureDirectory.pathComponents.contains("captures"))
+        #expect(TAPCamLockedSessionContentPathPolicy.flatHEICFileName(captureID: captureID) == "TAPCam-capture-123.heic")
+        #expect(TAPCamLockedSessionContentPathPolicy.flatHEICURL(sessionContentURL: sessionURL, captureID: captureID) == sessionURL.appendingPathComponent("TAPCam-capture-123.heic"))
     }
 
     @Test
-    func importerRecognizesDirectAndLegacyCaptureLayouts() throws {
+    func importerRecognizesDirectLegacyAndFlatHEICCaptureLayouts() throws {
         let root = try TemporaryDirectory()
         let directCaptureID = "direct-capture"
         let legacyCaptureID = "legacy-capture"
+        let flatCaptureID = "flat-capture"
         let lens = makeLensRecord()
 
         try writeCapture(
@@ -53,15 +56,29 @@ struct TAPLockedCameraSessionContentTests {
             artifactKind: nil,
             depthDataPresent: nil
         )
+        try Data([0x04, 0x05, 0x06]).write(
+            to: TAPCamLockedSessionContentPathPolicy.flatHEICURL(
+                sessionContentURL: root.url,
+                captureID: flatCaptureID
+            ),
+            options: [.atomic]
+        )
 
         let probes = LockedCaptureSessionContentImporter.inspectCaptures(in: root.url)
+        let probesByID = Dictionary(uniqueKeysWithValues: probes.map { ($0.metadata.captureID, $0) })
+        let directProbe = try #require(probesByID[directCaptureID])
+        let legacyProbe = try #require(probesByID[legacyCaptureID])
+        let flatProbe = try #require(probesByID[flatCaptureID])
 
-        #expect(probes.map(\.metadata.captureID) == [directCaptureID, legacyCaptureID])
-        #expect(probes[0].layout == "direct")
-        #expect(probes[0].metadata.photoFileName == "unsigned.heic")
-        #expect(probes[0].metadata.depthDataPresent == true)
-        #expect(probes[1].layout == "legacy-captures")
-        #expect(probes[1].metadata.photoFileName == "photo.heic")
+        #expect(probes.count == 3)
+        #expect(directProbe.layout == "direct")
+        #expect(directProbe.metadata.photoFileName == "unsigned.heic")
+        #expect(directProbe.metadata.depthDataPresent == true)
+        #expect(legacyProbe.layout == "legacy-captures")
+        #expect(legacyProbe.metadata.photoFileName == "photo.heic")
+        #expect(flatProbe.layout == "flat-heic")
+        #expect(flatProbe.metadata.photoFileName == "TAPCam-flat-capture.heic")
+        #expect(flatProbe.metadata.artifactKind == TAPCamLockedSessionContentPathPolicy.depthHEICStagingArtifactKind)
     }
 
     @Test
@@ -394,13 +411,6 @@ struct TAPLockedCameraSessionContentTests {
         let previewSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamLockedCameraCaptureExtension/LockedCapturePreviewHost.swift"
         )
-        let teardownBeforeOpenIndex = try #require(
-            controllerSource.range(of: "await self?.prepareForHostApplicationHandoff(tapAction: tapAction)")?.lowerBound
-        )
-        let openApplicationIndex = try #require(
-            controllerSource.range(of: "session.openApplication(for: activity)")?.lowerBound
-        )
-
         #expect(rootSource.contains("ForEach(controller.availableLenses)"))
         #expect(rootSource.contains("controller.selectLens(lens)"))
         #expect(rootSource.contains("controller.selectedLensID == lens.id"))
@@ -409,8 +419,10 @@ struct TAPLockedCameraSessionContentTests {
         #expect(!rootSource.contains("TAPCamLockedCameraHandoff.openTAPLibraryAfterLockedCapture"))
         #expect(!rootSource.contains("TAPCamLockedCameraHandoff.openTAPLibraryAwaitingLockedImport"))
         #expect(!rootSource.contains("TAPCamLockedCameraHandoff.openTAPLibrary"))
-        #expect(rootSource.contains("TAPCamLockedCameraHandoff.openTAPCamera"))
-        #expect(rootSource.contains("Open TAPCam with saved capture"))
+        #expect(!rootSource.contains("TAPCamLockedCameraHandoff.openTAPCamera"))
+        #expect(!rootSource.contains("TAPCamLockedCameraHandoff.openTAPNeutralRuntimeImport"))
+        #expect(rootSource.contains("controller.recordStatusPlaceholderTap(session: session)"))
+        #expect(rootSource.contains("Saved Capture"))
         #expect(!rootSource.contains(".disabled(!controller.lastCaptureSucceeded)"))
         #expect(rootSource.contains(".disabled(!controller.state.canCapture)"))
         #expect(rootSource.contains("TAPCamLockedCameraHandoff.regenerateLockedCameraContext"))
@@ -421,7 +433,6 @@ struct TAPLockedCameraSessionContentTests {
         #expect(controllerSource.contains("videoOutput.setSampleBufferDelegate(nil, queue: nil)"))
         #expect(controllerSource.contains("captureSession.removeOutput(output)"))
         #expect(controllerSource.contains("captureSession.removeInput(input)"))
-        #expect(teardownBeforeOpenIndex < openApplicationIndex)
         #expect(rootSource.contains("controller.isPreviewHostVisible"))
         #expect(previewSource.contains("dismantleUIView"))
         #expect(previewSource.contains("previewLayer.session = nil"))

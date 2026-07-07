@@ -944,41 +944,24 @@ nonisolated private final class LockedPhotoCaptureDelegate: NSObject, AVCaptureP
 
     private func writeCapture(photo: LockedProcessedPhoto) throws -> LockedPhotoCaptureOutput {
         let fileManager = FileManager.default
-        let captureDirectory = TAPCamLockedSessionContentPathPolicy.captureDirectory(
-            sessionContentURL: request.sessionContentURL,
-            captureID: request.captureID
-        )
         try fileManager.createDirectory(
-            at: captureDirectory,
+            at: request.sessionContentURL,
             withIntermediateDirectories: true
         )
 
-        let photoFileName = TAPCamLockedSessionContentPathPolicy.unsignedHEICFileName
-        let photoURL = TAPCamLockedSessionContentPathPolicy.unsignedPhotoURL(in: captureDirectory)
-        let metadataURL = TAPCamLockedSessionContentPathPolicy.metadataURL(in: captureDirectory)
-        try photo.data.write(to: photoURL, options: [.atomic])
-
-        let metadata = TAPCamLockedRawCaptureMetadata(
-            captureID: request.captureID,
-            capturedAt: request.capturedAt,
-            artifactKind: TAPCamLockedSessionContentPathPolicy.depthHEICStagingArtifactKind,
-            lens: request.lens,
-            photoFileName: photoFileName,
-            byteCount: photo.data.count,
-            depthDataPresent: true,
-            depthDataType: photo.depthDataType,
-            isDepthDataFiltered: photo.isDepthDataFiltered,
-            resolvedPhotoWidth: photo.resolvedPhotoWidth,
-            resolvedPhotoHeight: photo.resolvedPhotoHeight,
-            source: "locked-camera-capture-poc-depth-heic"
+        let photoFileName = TAPCamLockedSessionContentPathPolicy.flatHEICFileName(
+            captureID: request.captureID
         )
-        let encodedMetadata = try JSONEncoder.tapLockedCamera.encode(metadata)
-        try encodedMetadata.write(to: metadataURL, options: [.atomic])
+        let photoURL = TAPCamLockedSessionContentPathPolicy.flatHEICURL(
+            sessionContentURL: request.sessionContentURL,
+            captureID: request.captureID
+        )
+        try photo.data.write(to: photoURL, options: [.atomic])
 
         return LockedPhotoCaptureOutput(
             sessionContentURL: request.sessionContentURL,
             photoURL: photoURL,
-            metadataURL: metadataURL,
+            metadataURL: photoURL,
             photoFileName: photoFileName,
             byteCount: photo.data.count
         )

@@ -228,6 +228,7 @@ nonisolated enum TAPCamLockedCameraViewState: Equatable, Sendable {
 nonisolated enum TAPCamLockedSessionContentPathPolicy {
     static let metadataFileName = "metadata.json"
     static let unsignedHEICFileName = "unsigned.heic"
+    static let flatHEICFilePrefix = "TAPCam-"
     static let legacyCapturesDirectoryName = "captures"
     static let depthHEICStagingArtifactKind = "locked-depth-heic-staging"
     static let unsignedTAPArtifactKind = "locked-unsigned-tap-artifact"
@@ -242,6 +243,14 @@ nonisolated enum TAPCamLockedSessionContentPathPolicy {
 
     static func unsignedPhotoURL(in captureDirectory: URL) -> URL {
         captureDirectory.appendingPathComponent(unsignedHEICFileName)
+    }
+
+    static func flatHEICFileName(captureID: String) -> String {
+        "\(flatHEICFilePrefix)\(captureID).heic"
+    }
+
+    static func flatHEICURL(sessionContentURL: URL, captureID: String) -> URL {
+        sessionContentURL.appendingPathComponent(flatHEICFileName(captureID: captureID))
     }
 
     static func legacyCapturesDirectory(sessionContentURL: URL) -> URL {

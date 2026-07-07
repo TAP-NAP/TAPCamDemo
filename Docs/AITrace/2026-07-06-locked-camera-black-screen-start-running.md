@@ -790,3 +790,48 @@ Interpretation:
     visible reliably.
   - E3: launch the locked extension without capture or placeholder handoff, to
     classify the first/next-launch freeze independently of content transfer.
+
+### 2026-07-07 E2A Implementation Contract
+
+Scope:
+
+- E2A is a data-transfer experiment, not another direct-open route experiment.
+- The locked placeholder is status-only for this experiment so
+  `openApplication(for:)` cannot affect the transfer result.
+- The extension writes one root-level `TAPCam-<captureID>.heic` file in
+  `LockedCameraCaptureSession.sessionContentURL`.
+- The extension does not write `<captureID>/metadata.json` or
+  `<captureID>/unsigned.heic` during E2A.
+- The app importer enumerates root `.heic` files with the `TAPCam-` prefix and
+  marks them as `layout=flat-heic`.
+- Because the current extension target does not contain the full main-app
+  packaging stack, E2A treats the flat HEIC as depth-HEIC staging and performs
+  TAP manifest/proof-slot packaging app-side before pending-store ingest.
+
+Expected smoke evidence:
+
+- Extension save log:
+  `photo_capture_saved ... captureDirectoryCount=0 flatHEICFileCount=1
+  metadataFileCount=0 unsignedHEICFileCount=0`.
+- Placeholder tap, if used, must only log
+  `locked_album_placeholder_tapped_status_only`; it must not log
+  `open_application_call`.
+- Main-app import log after manual dismiss/unlock:
+  `locked_camera_session_capture_found layout=flat-heic`, followed by
+  `locked_camera_session_scan_result ... stagingCount=1`,
+  `locked_camera_session_staging_packaged`, and
+  `locked_camera_session_import_succeeded`.
+
+Interpretation:
+
+- If E2A passes, the historical root-file transfer/counter strategy is stronger
+  than the current directory+metadata staging path for the no-direct-open flow.
+- If E2A fails in the same delayed way, the transfer delay is probably not
+  caused by the current staging directory shape.
+- E2A does not answer whether the desired direct-open UX is safe. That is E2B,
+  after flat HEIC import is proven independently.
+- E2A also does not clear the older `lockScreen` black-screen pitfall. During
+  E2A smoke, still watch root/viewfinder probes (`first_frame`,
+  `frame_watchdog_*`, `session_interrupted`, `session_runtime_error`) and treat
+  any pure-black locked UI without fallback as a separate failure even if flat
+  HEIC import succeeds.
