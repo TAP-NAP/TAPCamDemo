@@ -652,3 +652,46 @@ Interpretation:
   runtime-import handoff to `e1b_minimal_runtime_import_*`, so the main-app log
   can prove which handoff variant is installed even when extension-process logs
   are absent.
+
+### 2026-07-07 E1B Minimal Direct-Open Confirmed Failure
+
+User-reported operation:
+
+- Opened the main app and captured normally.
+- Locked the phone, launched the extension, captured, then manually locked /
+  unlocked and opened the main app Library. This natural path imported normally.
+- Locked the phone again, launched the extension, captured, then tapped the
+  lower-left placeholder. The main app opened to Library but remained in the
+  waiting-for-locked-capture state. After the next lock-screen launch froze and
+  the user locked/unlocked again, the photo was imported.
+
+Log evidence:
+
+- The handoff is confirmed to be the E1B build because the main-app log includes
+  `reason=e1b_minimal_runtime_import_after_saved_capture`.
+- At handoff, the app still saw no exposed session content:
+  `locked_camera_handoff_received ... tapAction=openTAPLibraryRuntimeImport
+  reason=e1b_minimal_runtime_import_after_saved_capture managerSessionCount=0`.
+- The old transition-delay path was still skipped:
+  `locked_camera_transition_delay_skipped ... e1b_minimal_runtime_import`.
+- Library entered awaiting state with no session content exposed:
+  `tap_library_present ... awaitingLockedCaptureImport=true
+  managerSessionCount=0`.
+- The pasted log contains the successful natural import before the handoff:
+  `locked_camera_session_content_update kind=added`, import succeeded for
+  `F2DBB483-91E8-4800-9C65-91D477C87679`, and Library reached
+  `visiblePendingCount=7`.
+- The pasted log segment does not include a later `session_content_update
+  kind=added` for the direct-open capture before it ends; user observation says
+  that import happened only after the following lock/unlock cycle.
+
+Interpretation:
+
+- E1B is now confirmed failed. Removing extension-side pre-open teardown did not
+  make `openApplication(for:)` a migration-complete boundary.
+- The remaining direct-open failure is not explained by
+  `beginDelayingAppearance()`, handoff-time import scans, or our manual
+  `AVCaptureSession` teardown.
+- Next useful experiments should change a different variable: either avoid
+  presenting TAP Library / Photos / pending-worker surfaces during direct open
+  (E1C), or verify the historical flat-HEIC transfer layout (E2A/E2B).

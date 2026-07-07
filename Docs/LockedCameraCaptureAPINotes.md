@@ -225,26 +225,34 @@ These are contradictions or over-strong assumptions in the current PRD:
    API was being used too aggressively inside the extension. Main-app logs must
    show `reason=e1b_minimal_runtime_import_after_saved_capture` or
    `reason=e1b_minimal_runtime_import_placeholder`; otherwise the log cannot
-   distinguish E1B from the earlier E1A build.
-3. Keep the status-only placeholder baseline as a committed rollback point and
+   distinguish E1B from the earlier E1A build. The latest smoke confirmed E1B
+   still fails: direct-open reached the app with `managerSessionCount=0` and the
+   next locked launch froze.
+3. E1C light-route direct-open: keep the same minimal extension-side
+   `openApplication(for:)`, but route the main app to camera/default instead of
+   TAP Library awaiting import. This avoids Photos fetches and pending-worker
+   retries during the system-owned secure-capture transition. If E1C passes,
+   the Library/Photos/pending-worker route is part of the freeze trigger; if it
+   fails, direct-open itself is the likely lifecycle boundary problem.
+4. Keep the status-only placeholder baseline as a committed rollback point and
    negative control. It is not the target UX.
-4. E2A historical-transfer experiment: extension writes flat
+5. E2A historical-transfer experiment: extension writes flat
    `TAPCam-<UUID>.heic` unsigned TAP artifacts directly under
    `sessionContentURL`, and the main app importer enumerates `.heic` files like
    `lockScreen_test`. This requires checking extension-safe target membership
    for the shared packaging stack before code migration. This is the experiment
    that validates the `lockScreen` / `lockScreen_test` data-transfer logic.
-5. Keep the new TAP Library presentation probe: pending record count, latest
+6. Keep the new TAP Library presentation probe: pending record count, latest
    capture IDs, merged item count, and whether the locked capture ID is present.
-6. Keep the app-level `sessionContentUpdates` runtime as the only normal import
+7. Keep the app-level `sessionContentUpdates` runtime as the only normal import
    trigger.
-7. If E1B still freezes, run an extension-launch-only experiment:
+8. If E1C still freezes, run an extension-launch-only experiment:
    launch locked UI, do not capture, do not tap placeholder, dismiss, and relaunch
    three times. This separates secure-capture presentation freeze from content
    migration.
-8. Do not use `.tbd`-only symbols until they appear in public Swift interface
+9. Do not use `.tbd`-only symbols until they appear in public Swift interface
    and Apple documentation.
-9. If E1B still opens Library before content is visible, treat that as a UX
+10. If E1C opens the app before content is visible, treat that as a UX
    waiting-state problem unless the following `sessionContentUpdates` import
    never arrives.
 
