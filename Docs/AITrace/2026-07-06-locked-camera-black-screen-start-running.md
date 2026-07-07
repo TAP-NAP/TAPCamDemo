@@ -886,3 +886,47 @@ Interpretation:
   auto-lock in this run, which supports retaining the current root
   view/controller/lifecycle design. The first locked-launch freeze still
   reproduced and should be isolated as E3, separate from file transfer.
+
+### 2026-07-07 E2A Layout-Confirmed Smoke Result
+
+User-reported operation:
+
+- Opened the main app and captured normally.
+- Locked the phone, launched the extension once, captured, manually locked /
+  unlocked, opened the main app Library, and saw the locked capture normally.
+
+Log evidence:
+
+- The second E2A smoke confirmed the missing flat-layout proof:
+  `locked_camera_session_capture_found reason=session_content_update
+  layout=flat-heic`.
+- Two flat HEIC captures were visible to the app during the first manual
+  main-app open:
+  - `ECE0A0B7-96EC-49DC-A03A-996BF18332DE` from
+    `TAPCam-ECE0A0B7-96EC-49DC-A03A-996BF18332DE.heic`
+  - `3FE22174-3B8A-41BD-A021-C7A7463E7B61` from
+    `TAPCam-3FE22174-3B8A-41BD-A021-C7A7463E7B61.heic`
+- Both were classified as staging:
+  `importableCount=0 stagingCount=1 skippedProbeCount=0`.
+- Both were packaged, ingested, and invalidated:
+  `locked_camera_session_staging_packaged`, `store locked ingest created`,
+  `locked_camera_session_import_succeeded`, and
+  `locked_camera_session_content_invalidated`.
+- The aggregate import summary was successful:
+  `locked_camera_session_import_finish reason=session_content_update sessions=2
+  found=2 imported=2 skipped=0 failed=0 invalidated=2`.
+- TAP Library pending visibility reflected the import:
+  `locked_camera_pending_snapshot ... visiblePendingCount=6`.
+
+Interpretation:
+
+- E2A is now confirmed for the no-direct-open transfer path. The historical
+  flat root-file shape is correctly migrated by Apple, detected as
+  `layout=flat-heic`, packaged app-side, and ingested into the normal pending
+  queue on the first manual main-app open.
+- This resolves the file-transfer shape question for the non-direct-open flow.
+- E2A still does not prove direct-open UX is safe; E2B should wait until E3
+  classifies the first/next locked-extension launch freeze.
+- The current anti-black-screen root/controller/lifecycle design should remain
+  in place. Do not restore historical `lockScreen` UI/lifecycle code just
+  because its flat-file transfer shape is now validated.
