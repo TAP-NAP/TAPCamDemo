@@ -1138,3 +1138,47 @@ Interpretation:
   remains independent.
 - If E3B still freezes, `openApplication(for:)` itself remains suspicious even
   when the app route performs no Library/import work.
+
+### 2026-07-07 E6A AppIntent Open-App Control Contract
+
+Reason for the new experiment:
+
+- E1/E2/E3 all kept the open action inside the secure capture extension through
+  `LockedCameraCaptureSession.openApplication(for:)`.
+- E3B removed TAPCam-owned routing and still matched the delayed-import /
+  next-launch-freeze pattern.
+- The next useful comparison is a different public system entry: a WidgetKit
+  control that runs an AppIntent with `openAppWhenRun = true`.
+
+Implementation contract:
+
+- Keep the existing `TAPCam` control unchanged; it still runs
+  `TAPCamLockedCameraIntent` and starts locked camera capture.
+- Add a second control, `Open TAPCam`, with kind
+  `TAP-NAP.TAPCamDemo.open-app`.
+- `Open TAPCam` runs `TAPCamOpenAppFromLockScreenIntent`.
+- The intent sets `openAppWhenRun = true` and
+  `authenticationPolicy = .requiresAuthentication`.
+- `perform()` logs only `locked_camera_open_app_intent_perform
+  source=lock_screen_control`; it must not write a route handoff, read
+  `sessionContentURLs`, wait for import, or touch TAP Library.
+
+Expected smoke evidence:
+
+- Tapping `Open TAPCam` on the lock screen authenticates and opens the main app.
+- Logs include `locked_camera_open_app_intent_perform`.
+- Logs do not include extension `open_application_*` probes for this action.
+- Main app does not receive/apply a locked-camera user-activity route:
+  no `locked_camera_handoff_apply` and no TAP Library awaiting-import state.
+- The next `TAPCam` locked-camera control launch does not freeze.
+
+Interpretation:
+
+- If E6A passes, keep it as an alternate UX candidate and evidence that the
+  freeze is specific to secure-capture `openApplication(for:)`, not to every
+  lock-screen app-opening path.
+- If E6A fails, investigate WidgetKit/AppIntent control registration and app
+  launch/authentication behavior independently from locked capture storage.
+- E6A cannot fully replace the in-extension lower-left placeholder because it
+  requires the user to leave or avoid the secure capture UI before tapping a
+  separate lock-screen control.

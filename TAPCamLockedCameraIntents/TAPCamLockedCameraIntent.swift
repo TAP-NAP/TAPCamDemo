@@ -276,3 +276,22 @@ nonisolated struct TAPCamLockedCameraIntent: CameraCaptureIntent {
         return .result()
     }
 }
+
+nonisolated struct TAPCamOpenAppFromLockScreenIntent: AppIntent {
+    private static let logger = TAPCamLockedCameraDiagnostics.logger(
+        category: "LockedCameraOpenAppIntent"
+    )
+
+    static let title: LocalizedStringResource = "Open TAPCam"
+    static let description = IntentDescription(
+        "Unlock and open TAPCam from a Lock Screen control without starting locked camera capture."
+    )
+    static let openAppWhenRun = true
+    static var authenticationPolicy: IntentAuthenticationPolicy { .requiresAuthentication }
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        Self.logger.info("locked_camera_open_app_intent_perform source=lock_screen_control")
+        return .result()
+    }
+}

@@ -138,6 +138,32 @@ merged that pending record (`tap_library_snapshot_loaded`).
 | `LockedCameraCaptureManager.invalidateSessionContent(at:)` | iOS 18.0+ | App | Tells the system the app no longer needs a migrated session directory. Apple ignores URLs outside `sessionContentURLs`. | Call only after successful pending-store import. Current code's app-side use is correct in principle. |
 | `LockedCameraCaptureManager.beginDelayingAppearance()` | iOS 18.1+ | App | Tells the system the app wants to delay app launch/appearance during an extension-to-app transition. | It delays appearance only. It does not guarantee `sessionContentURLs` is non-empty. Latest smoke did not make saved-placeholder handoff reliable. |
 | `LockedCameraCaptureManager.endDelayingAppearance()` | iOS 18.1+ | App | Ends the delayed app appearance. | Must pair with `beginDelayingAppearance()` if used. Not a content-transfer completion signal. |
+| `AppIntent.openAppWhenRun` | iOS 16.0+ | App / App Intents / WidgetKit control | Opens the containing app after the intent runs. Deprecated in iOS 26 in favor of `supportedModes`, but still public and compatible with the current iOS 18.6 deployment target. | Use for the new alternate system-entry experiment. Keep `perform()` side-effect free: log only, then let the app open normally. |
+| `AppIntent.authenticationPolicy` | iOS 16.0+ | App / App Intents / WidgetKit control | Controls whether an intent can run locked or needs authentication. | The alternate open-app control uses `.requiresAuthentication` because its UX is "authenticate, then open TAPCam", not "capture while locked". |
+| `ControlWidgetButton(action:) where Action: AppIntent` | iOS 18.0+ | WidgetKit control extension | Lets a lock-screen/control-center control run an App Intent. | Use a second control kind, `TAP-NAP.TAPCamDemo.open-app`, so the existing locked camera capture control remains intact. |
+| `OpenIntent` | iOS 16.0+ | App Intents | Opens an app-defined `AppValue` target. | Not used in the first alternate experiment because TAPCam only needs "open app", not "open a system-resolvable entity". Revisit if we model Library/capture records as `AppValue`. |
+
+## Alternate AppIntent/OpenIntent System Entry
+
+This experiment is intentionally separate from
+`LockedCameraCaptureSession.openApplication(for:)`.
+
+The new path adds a second lock-screen control:
+
+1. `TAPCam` continues to invoke `TAPCamLockedCameraIntent` and launches the
+   secure locked camera UI.
+2. `Open TAPCam` invokes `TAPCamOpenAppFromLockScreenIntent`, requires
+   authentication, and opens the containing app through App Intents.
+3. The intent does not scan `sessionContentURLs`, does not wait for locked
+   capture import, does not route TAP Library, and does not write handoff
+   state.
+
+This cannot fully replace the in-extension lower-left placeholder because the
+user must first leave the secure capture UI and return to the lock screen
+control surface. Its value is diagnostic and UX-oriented: if it opens the main
+app without the next-launch freeze seen after `openApplication(for:)`, then the
+problem is likely specific to the secure-capture extension handoff boundary,
+not to "opening the app from the lock screen" in general.
 
 ## SDK Symbols We Must Not Use
 

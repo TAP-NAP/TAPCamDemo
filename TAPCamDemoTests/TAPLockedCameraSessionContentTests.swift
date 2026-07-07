@@ -479,6 +479,9 @@ struct TAPLockedCameraSessionContentTests {
         let controlSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamLockedCameraControlExtension/TAPCamLockedCameraControlExtension.swift"
         )
+        let intentSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamLockedCameraIntents/TAPCamLockedCameraIntent.swift"
+        )
         let rootSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamLockedCameraCaptureExtension/LockedCaptureRootView.swift"
         )
@@ -491,6 +494,15 @@ struct TAPLockedCameraSessionContentTests {
 
         #expect(controlSource.contains("locked_camera_control_widget_init"))
         #expect(controlSource.contains("locked_camera_control_widget_button_label_init"))
+        #expect(controlSource.contains("TAPCamLockedCameraControlBundle"))
+        #expect(controlSource.contains("TAPCamOpenAppControlExtension"))
+        #expect(controlSource.contains("TAP-NAP.TAPCamDemo.open-app"))
+        #expect(controlSource.contains("TAPCamOpenAppFromLockScreenIntent"))
+        #expect(controlSource.contains("locked_camera_open_app_control_widget_init"))
+        #expect(intentSource.contains("struct TAPCamOpenAppFromLockScreenIntent: AppIntent"))
+        #expect(intentSource.contains("static let openAppWhenRun = true"))
+        #expect(intentSource.contains("static var authenticationPolicy: IntentAuthenticationPolicy { .requiresAuthentication }"))
+        #expect(intentSource.contains("locked_camera_open_app_intent_perform"))
         #expect(extensionSource.contains("locked_camera_scene_content_invoked"))
         #expect(rootSource.contains("locked_camera_root_lifecycle event="))
         #expect(rootSource.contains("locked_camera_root_scene_phase_changed"))
