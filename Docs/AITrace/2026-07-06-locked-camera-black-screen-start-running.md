@@ -835,3 +835,54 @@ Interpretation:
   `frame_watchdog_*`, `session_interrupted`, `session_runtime_error`) and treat
   any pure-black locked UI without fallback as a separate failure even if flat
   HEIC import succeeds.
+
+### 2026-07-07 E2A First Smoke Result
+
+User-reported operation:
+
+- Opened the main app and captured normally.
+- Locked the phone and launched the extension. The first launch froze; after
+  retrying, the extension opened and captured. Manual lock/unlock into the main
+  app Library showed the locked capture normally.
+- Locked the phone again, launched the extension, captured, then tapped the
+  lower-left placeholder. It did not jump to the main app. This is expected for
+  E2A because the placeholder is intentionally status-only to isolate transfer.
+- Launched the extension again, captured, then allowed the system lock timeout
+  to occur. The user observed that the system returned to the normal lock state
+  instead of the previous pure-black UI.
+
+Log evidence:
+
+- The app imported two locked captures from system `sessionContentUpdates`:
+  `6C8E2C4E-3A78-4B62-B753-75D4FC43B119` and
+  `DA2DEB4F-CD14-400F-8A57-6AF7E3D42D7D`.
+- Both imports followed the expected app-side staging path:
+  `locked_camera_session_scan_result ... captureProbeCount=1
+  importableCount=0 stagingCount=1 skippedProbeCount=0`,
+  then `locked_camera_session_staging_packaged`, `store locked ingest created`,
+  `locked_camera_session_import_succeeded`, and
+  `locked_camera_session_content_invalidated`.
+- TAP Library visibility followed pending-store ingest:
+  `locked_camera_pending_snapshot ... visiblePendingCount=2` after the first
+  import, then `visiblePendingCount=3` after the second import.
+- The pasted log did not contain extension-side probes such as
+  `photo_capture_saved`, nor did it contain per-probe
+  `locked_camera_session_capture_found layout=flat-heic` because the runtime
+  import path did not yet log each probe layout.
+
+Interpretation:
+
+- E2A is positive for the no-direct-open transfer behavior: session content was
+  exposed by Apple, packaged, ingested, and invalidated without requiring the
+  left placeholder to open the app.
+- The layout proof in this pasted log is incomplete. The code now logs each
+  import probe with `locked_camera_session_capture_found
+  reason=session_content_update layout=...`, so the next E2A run should confirm
+  `layout=flat-heic` explicitly.
+- The lower-left placeholder not jumping is expected for E2A and should not be
+  treated as a regression. E2B will restore direct-open only after E2A's flat
+  layout is confirmed.
+- The old long-running black-screen symptom did not reproduce during system
+  auto-lock in this run, which supports retaining the current root
+  view/controller/lifecycle design. The first locked-launch freeze still
+  reproduced and should be isolated as E3, separate from file transfer.

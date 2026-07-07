@@ -41,10 +41,7 @@ nonisolated struct LockedCaptureSessionContentImporter: Sendable {
         LockedCameraCaptureManager.shared.sessionContentURLs.map { sessionURL in
             let readResults = Self.inspectCaptures(in: sessionURL)
             for result in readResults {
-                let diskByteCount = Self.fileSize(at: result.photoURL)
-                LockedCameraDiagnostics.logger.info(
-                    "locked_camera_session_capture_found layout=\(result.layout, privacy: .public) captureID=\(result.metadata.captureID, privacy: .public) photo=\(result.metadata.photoFileName, privacy: .public) metadataBytes=\(result.metadata.byteCount, privacy: .public) diskBytes=\(diskByteCount ?? -1, privacy: .public) depth=\(result.metadata.depthDataPresent ?? false, privacy: .public) artifactKind=\(result.metadata.artifactKind ?? "legacy", privacy: .public)"
-                )
+                Self.logCaptureProbe(result, reason: "inspect")
             }
             let captures = readResults.map(\.metadata)
             LockedCameraDiagnostics.logger.info(
@@ -76,6 +73,9 @@ nonisolated struct LockedCaptureSessionContentImporter: Sendable {
             let importableCount = readResults.filter(Self.isImportableLockedCapture).count
             let stagingCount = readResults.filter(Self.isPackageableLockedCaptureStaging).count
             let skippedProbeCount = readResults.count - importableCount - stagingCount
+            for result in readResults {
+                Self.logCaptureProbe(result, reason: reason)
+            }
             LockedCameraDiagnostics.logger.info(
                 "locked_camera_session_scan_result reason=\(reason, privacy: .public) sessionIndex=\(index + 1, privacy: .public) sessionURLCount=\(sessionURLs.count, privacy: .public) captureProbeCount=\(readResults.count, privacy: .public) importableCount=\(importableCount, privacy: .public) stagingCount=\(stagingCount, privacy: .public) skippedProbeCount=\(skippedProbeCount, privacy: .public) url=\(sessionURL.path, privacy: .private(mask: .hash))"
             )
@@ -309,6 +309,16 @@ nonisolated struct LockedCaptureSessionContentImporter: Sendable {
             return nil
         }
         return size.intValue
+    }
+
+    private static func logCaptureProbe(
+        _ result: LockedCaptureSessionContentCaptureProbe,
+        reason: String
+    ) {
+        let diskByteCount = Self.fileSize(at: result.photoURL)
+        LockedCameraDiagnostics.logger.info(
+            "locked_camera_session_capture_found reason=\(reason, privacy: .public) layout=\(result.layout, privacy: .public) captureID=\(result.metadata.captureID, privacy: .public) photo=\(result.metadata.photoFileName, privacy: .public) metadataBytes=\(result.metadata.byteCount, privacy: .public) diskBytes=\(diskByteCount ?? -1, privacy: .public) depth=\(result.metadata.depthDataPresent ?? false, privacy: .public) artifactKind=\(result.metadata.artifactKind ?? "legacy", privacy: .public)"
+        )
     }
 
     private static func isImportableLockedCapture(_ result: LockedCaptureSessionContentCaptureProbe) -> Bool {
