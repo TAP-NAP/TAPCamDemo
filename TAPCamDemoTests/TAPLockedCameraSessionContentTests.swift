@@ -387,9 +387,9 @@ struct TAPLockedCameraSessionContentTests {
         #expect(importerSource.contains("if summary.didImportCaptures"))
         #expect(importerSource.contains("name: .tapCamLockedCaptureImportDidAddPendingCaptures"))
         #expect(cameraSource.contains(".tapCamLockedCaptureImportDidAddPendingCaptures"))
-        #expect(cameraSource.contains("handleLockedCaptureImportNotification()"))
-        #expect(cameraSource.contains("autoRetryPendingCaptures=false experiment=E7A"))
-        #expect(!cameraSource.contains("retryPendingCapturesAfterLockedImport()"))
+        #expect(cameraSource.contains("retryPendingCapturesAfterLockedImport()"))
+        #expect(cameraSource.contains("lifecycleCoordinator.retryPendingCaptures"))
+        #expect(cameraSource.contains("appAttestController: appAttestController"))
     }
 
     @Test

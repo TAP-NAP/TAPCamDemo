@@ -408,42 +408,6 @@ struct TAPLibraryProcessingTests {
         }
     }
 
-    @Test func pendingCaptureProcessorSkipsRetryBacklogWhenAutomaticRetryIsDisabled() async throws {
-        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
-        let store = TAPPendingCaptureStore(rootURL: rootURL)
-        let retryRecord = try await store.ingest(TAPCamDemoTestFixtures.samplePendingArtifact(
-            photoData: Data("retry".utf8),
-            captureID: "retry-capture",
-            capturedAt: Date(timeIntervalSince1970: 0)
-        ))
-        _ = try await store.updateStatus(
-            captureID: retryRecord.captureID,
-            status: .failedRetryable,
-            failureReason: .retryableProcessingFailure,
-            incrementsRetryCount: true
-        )
-        let pendingRecord = try await store.ingest(TAPCamDemoTestFixtures.samplePendingArtifact(
-            photoData: Data("pending".utf8),
-            captureID: "pending-capture",
-            capturedAt: Date(timeIntervalSince1970: 1)
-        ))
-        let signer = RecordingPendingCaptureSigner()
-        let exporter = RecordingPendingCaptureExporter()
-        let processor = TAPPendingCaptureProcessor()
-
-        await processor.processPendingCaptures(
-            store: store,
-            signer: signer,
-            exporter: exporter,
-            protectedDataIsAvailable: { true },
-            allowsRetryBacklogProcessing: false
-        )
-
-        #expect(await signer.signedCaptureIDs() == [pendingRecord.captureID])
-        #expect(await exporter.exportedCaptureIDs() == [pendingRecord.captureID])
-        #expect(try await store.readRecord(captureID: pendingRecord.captureID).status == .exported)
-        #expect(try await store.readRecord(captureID: retryRecord.captureID).status == .failedRetryable)
-    }
 }
 
 private actor RecordingPendingCaptureSigner: TAPPendingCaptureSigning {

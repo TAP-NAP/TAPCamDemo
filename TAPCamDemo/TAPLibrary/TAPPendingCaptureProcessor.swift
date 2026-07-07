@@ -36,15 +36,13 @@ actor TAPPendingCaptureProcessor {
 
     func processPendingCaptures(
         store: TAPPendingCaptureStore = .shared,
-        appAttestClient: any AppAttestClient,
-        allowsRetryBacklogProcessing: Bool = false
+        appAttestClient: any AppAttestClient
     ) async {
         await processPendingCaptures(
             store: store,
             signer: AppAttestPendingCaptureSigner(appAttestClient: appAttestClient),
             exporter: PhotoLibraryPendingCaptureExporter(),
-            protectedDataIsAvailable: Self.defaultProtectedDataIsAvailable,
-            allowsRetryBacklogProcessing: allowsRetryBacklogProcessing
+            protectedDataIsAvailable: Self.defaultProtectedDataIsAvailable
         )
     }
 
@@ -52,11 +50,10 @@ actor TAPPendingCaptureProcessor {
         store: TAPPendingCaptureStore,
         signer: any TAPPendingCaptureSigning,
         exporter: any TAPPendingCaptureExporting,
-        protectedDataIsAvailable: @escaping @Sendable () async -> Bool,
-        allowsRetryBacklogProcessing: Bool = true
+        protectedDataIsAvailable: @escaping @Sendable () async -> Bool
     ) async {
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.pendingCapture.info("processPendingCaptures requested workerActive=\(self.workerTask != nil, privacy: .public) allowsRetryBacklog=\(allowsRetryBacklogProcessing, privacy: .public)")
+        TAPDiagnostics.pendingCapture.info("processPendingCaptures requested workerActive=\(self.workerTask != nil, privacy: .public)")
         #endif
         while let currentWorkerTask = workerTask {
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
@@ -70,8 +67,7 @@ actor TAPPendingCaptureProcessor {
                 store: store,
                 signer: signer,
                 exporter: exporter,
-                protectedDataIsAvailable: protectedDataIsAvailable,
-                allowsRetryBacklogProcessing: allowsRetryBacklogProcessing
+                protectedDataIsAvailable: protectedDataIsAvailable
             )
         }
         workerTask = task
@@ -82,8 +78,7 @@ actor TAPPendingCaptureProcessor {
         store: TAPPendingCaptureStore,
         signer: any TAPPendingCaptureSigning,
         exporter: any TAPPendingCaptureExporting,
-        protectedDataIsAvailable: @escaping @Sendable () async -> Bool,
-        allowsRetryBacklogProcessing: Bool
+        protectedDataIsAvailable: @escaping @Sendable () async -> Bool
     ) async {
         defer { workerTask = nil }
         let workerID = UUID().uuidString
@@ -115,11 +110,7 @@ actor TAPPendingCaptureProcessor {
         }
 
         var processedCaptureIDs = Set<String>()
-        while let candidate = await nextProcessingCandidate(
-            store: store,
-            excludingCaptureIDs: processedCaptureIDs,
-            allowsRetryBacklogProcessing: allowsRetryBacklogProcessing
-        ) {
+        while let candidate = await nextProcessingCandidate(store: store, excludingCaptureIDs: processedCaptureIDs) {
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.pendingCapture.info("worker candidate workerID=\(workerID, privacy: .public) captureID=\(candidate.captureID, privacy: .private) status=\(candidate.status.rawValue, privacy: .public) retryCount=\(candidate.retryCount, privacy: .public) container=\(candidate.photoFileContainer.rawValue, privacy: .public) signedPhoto=\(candidate.signedPhotoFilename != nil, privacy: .public)")
             #endif
@@ -141,29 +132,10 @@ actor TAPPendingCaptureProcessor {
 
     private func nextProcessingCandidate(
         store: TAPPendingCaptureStore,
-        excludingCaptureIDs: Set<String>,
-        allowsRetryBacklogProcessing: Bool
+        excludingCaptureIDs: Set<String>
     ) async -> TAPPendingCaptureRecord? {
         do {
-            let candidates = try await store.processingCandidates()
-            let selected = candidates.first { record in
-                guard !excludingCaptureIDs.contains(record.captureID) else {
-                    return false
-                }
-                return allowsRetryBacklogProcessing || !record.isAutomaticRetryBacklogCandidate
-            }
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            if selected == nil {
-                let skippedRetryBacklogCount = candidates.filter { record in
-                    !excludingCaptureIDs.contains(record.captureID)
-                        && record.isAutomaticRetryBacklogCandidate
-                }.count
-                if skippedRetryBacklogCount > 0 {
-                    TAPDiagnostics.pendingCapture.info("nextProcessingCandidate skipped retry backlog count=\(skippedRetryBacklogCount, privacy: .public) allowsRetryBacklog=false")
-                }
-            }
-            #endif
-            return selected
+            return try await store.nextProcessingCandidate(excludingCaptureIDs: excludingCaptureIDs)
         } catch {
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.pendingCapture.error("nextProcessingCandidate failed excludedCount=\(excludingCaptureIDs.count, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
@@ -250,14 +222,6 @@ actor TAPPendingCaptureProcessor {
         await MainActor.run {
             UIApplication.shared.isProtectedDataAvailable
         }
-    }
-}
-
-nonisolated private extension TAPPendingCaptureRecord {
-    var isAutomaticRetryBacklogCandidate: Bool {
-        retryCount > 0
-            && (status == .failedRetryable || status == .waitingNetwork)
-            && processingRoute == .signThenExport
     }
 }
 
