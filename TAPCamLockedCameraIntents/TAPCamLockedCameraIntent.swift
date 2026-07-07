@@ -136,6 +136,7 @@ nonisolated struct TAPCamLockedRawCaptureMetadata: Codable, Equatable, Sendable 
 
 nonisolated enum TAPCamLockedCameraHandoff {
     static let activityType = NSUserActivityTypeLockedCameraCapture
+    static let openOnlyActivityType = "TAP-NAP.TAPCamDemo.lockedCamera.openAppOnly"
     static let sourceKey = "source"
     static let tapActionKey = "tapAction"
     static let reasonKey = "reason"

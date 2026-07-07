@@ -1237,6 +1237,64 @@ Interpretation:
 - If the next log shows that title and the next launch still freezes, E3B2 is
   confirmed failed even if extension OSLog lines are still absent from the paste.
 
+### 2026-07-07 E3B2 Confirmed Failed
+
+Observed in the next real-device log:
+
+- The main app received the E3B2 marker:
+  `locked_camera_handoff_ignored
+  activityType=NSUserActivityTypeLockedCameraCapture activityTitle=TAPCam
+  Locked Camera E3B2 Teardown Complete userInfoKeys= managerSessionCount=0`.
+- That marker is only set after `prepareForHostApplicationHandoff` returns, so
+  the open request came from the post-teardown path even though extension OSLog
+  lines were still absent from the paste.
+- The first Library presentation still happened before Apple exposed the session
+  content: `tap_library_snapshot_loaded ... itemSources=pending:0|...`.
+- The session content arrived later through
+  `locked_camera_session_content_update kind=added managerSessionCount=1`, then
+  imported, signed, and exported successfully.
+- The user still observed the next locked extension launch freeze once before
+  recovery.
+
+Interpretation:
+
+- Local extension teardown before `openApplication(for:)` is not sufficient.
+- Signing/export, Library awaiting state, TAPCam route metadata, and local
+  preview/session teardown are now all ruled out as sufficient causes.
+- The next narrow experiment is E3C: keep the same public
+  `LockedCameraCaptureSession.openApplication(for:)` call and local teardown,
+  but use an app-owned user activity type instead of
+  `NSUserActivityTypeLockedCameraCapture`. This isolates whether the special
+  locked-camera activity type / system transition is involved.
+
+### 2026-07-07 E3C App-Owned Open-Only Activity Contract
+
+Implementation contract:
+
+- Lower-left placeholder still has one responsibility: open the containing app.
+- It still performs local teardown before the open request.
+- It creates `NSUserActivity(activityType:
+  TAP-NAP.TAPCamDemo.lockedCamera.openAppOnly)`.
+- It does not attach TAPCam `tapAction`, `reason`, source, or any other
+  `userInfo`.
+- The main app registers an `onContinueUserActivity` handler only to log and
+  ignore this app-owned open-only activity.
+- Import remains driven only by the app-level `sessionContentUpdates` runtime.
+
+Expected smoke evidence:
+
+- Extension logs `open_application_app_owned_prepare`,
+  `open_application_teardown_begin tapAction=appOwnedOpenOnly`,
+  `open_application_teardown_end tapAction=appOwnedOpenOnly`, and
+  `open_application_app_owned_call`, if extension logs are captured.
+- Main app logs `locked_camera_open_only_handoff_ignored
+  activityType=TAP-NAP.TAPCamDemo.lockedCamera.openAppOnly`.
+- Main app does not log `locked_camera_handoff_apply`.
+- Main app does not present TAP Library awaiting import from this handoff.
+- If E3C still freezes, `openApplication(for:)` itself is the likely boundary.
+- If E3C does not freeze, the special locked-camera activity type / transition
+  is likely the problematic variable.
+
 ### 2026-07-07 E6A AppIntent Open-App Control Contract
 
 Reason for the new experiment:

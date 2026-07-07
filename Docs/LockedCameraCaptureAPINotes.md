@@ -321,18 +321,30 @@ These are contradictions or over-strong assumptions in the current PRD:
    to `TAPCam Locked Camera E3B2 Teardown Complete` after teardown and before
    `openApplication(for:)`; the main app logs `activityTitle` for ignored empty
    locked-camera activities without changing routing.
-11. E3C app-owned activity is a later fallback only. It may isolate whether
-   `NSUserActivityTypeLockedCameraCapture` itself is involved, but it is heavier
-   than Apple's recommended activity type and should not be the current main
-   path.
+11. E3C app-owned activity is the current narrow test. It isolates whether
+   `NSUserActivityTypeLockedCameraCapture` itself is involved by switching to
+   `TAP-NAP.TAPCamDemo.lockedCamera.openAppOnly` while keeping the same local
+   teardown and open-only behavior.
 12. Keep the new TAP Library presentation probe: pending record count, latest
    capture IDs, merged item count, and whether the locked capture ID is present.
 13. Keep the app-level `sessionContentUpdates` runtime as the only normal import
    trigger.
-13. Run an extension-launch-only experiment:
+14. Run an extension-launch-only experiment:
    launch locked UI, do not capture, do not tap placeholder, dismiss, and relaunch
    three times. This separates secure-capture presentation freeze from content
    migration.
+
+Latest E3B2 result:
+
+- The real-device log included `activityTitle=TAPCam Locked Camera E3B2
+  Teardown Complete`, so the lower-left open request had passed the local
+  teardown marker.
+- The user still observed the same immediate-empty-Library and next-launch
+  freeze behavior.
+- E3C is now the active narrow test: use the app-owned activity type
+  `TAP-NAP.TAPCamDemo.lockedCamera.openAppOnly` with no userInfo, and let the
+  main app log and ignore it. This isolates the activity type from the
+  `LockedCameraCaptureSession.openApplication(for:)` call itself.
 14. Do not use `.tbd`-only symbols until they appear in public Swift interface
    and Apple documentation.
 15. Do not treat a neutral/direct-open route as a transfer-complete boundary.

@@ -47,6 +47,9 @@ struct StartupGateView: View {
         .onContinueUserActivity(TAPCamLockedCameraHandoff.activityType) { activity in
             handleLockedCameraHandoff(activity)
         }
+        .onContinueUserActivity(TAPCamLockedCameraHandoff.openOnlyActivityType) { activity in
+            handleLockedCameraOpenOnlyActivity(activity)
+        }
     }
 
     private func completeFirstInstallSetupIfReady() {
@@ -109,6 +112,17 @@ struct StartupGateView: View {
         Task {
             await LockedCameraAppContextPublisher.publishCurrentContextIfAvailable()
         }
+    }
+
+    private func handleLockedCameraOpenOnlyActivity(_ activity: NSUserActivity) {
+        let keys = activity.userInfo?.keys
+            .compactMap { $0 as? String }
+            .sorted()
+            .joined(separator: "|") ?? "none"
+        let title = activity.title ?? "none"
+        LockedCameraDiagnostics.logger.info(
+            "locked_camera_open_only_handoff_ignored activityType=\(activity.activityType, privacy: .public) activityTitle=\(title, privacy: .public) userInfoKeys=\(keys, privacy: .public) managerSessionCount=\(LockedCameraCaptureManager.shared.sessionContentURLs.count, privacy: .public)"
+        )
     }
 
     private func beginLockedCameraTransitionDelayIfNeeded(for handoff: TAPCamIntentHandoff) -> Bool {

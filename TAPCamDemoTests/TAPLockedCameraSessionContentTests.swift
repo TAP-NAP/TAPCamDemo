@@ -268,6 +268,7 @@ struct TAPLockedCameraSessionContentTests {
             TAPCamLockedCameraHandoff.tapActionKey: TAPCamLockedCameraHandoff.openTAPMainAppOnly
         ]
         let systemOnlyOpenActivity = NSUserActivity(activityType: TAPCamLockedCameraHandoff.activityType)
+        let appOwnedOpenActivity = NSUserActivity(activityType: TAPCamLockedCameraHandoff.openOnlyActivityType)
         let regenerateActivity = NSUserActivity(activityType: TAPCamLockedCameraHandoff.activityType)
         regenerateActivity.userInfo = [
             TAPCamLockedCameraHandoff.tapActionKey: TAPCamLockedCameraHandoff.regenerateLockedCameraContext
@@ -288,6 +289,7 @@ struct TAPLockedCameraSessionContentTests {
         #expect(TAPCamIntentHandoff(lockedCameraActivity: openOnlyActivity)?.destination == .camera)
         #expect(TAPCamIntentHandoff(lockedCameraActivity: openOnlyActivity)?.shouldDelayAppearanceForLockedContent == false)
         #expect(TAPCamIntentHandoff(lockedCameraActivity: systemOnlyOpenActivity) == nil)
+        #expect(TAPCamIntentHandoff(lockedCameraActivity: appOwnedOpenActivity) == nil)
         #expect(TAPCamIntentHandoff(lockedCameraActivity: regenerateActivity)?.destination == .camera)
         #expect(TAPCamIntentHandoff(lockedCameraActivity: regenerateActivity)?.shouldRegenerateLockedCameraContext == true)
         #expect(TAPCamIntentHandoff(lockedCameraActivity: unknownActivity)?.destination == .camera)
@@ -297,7 +299,7 @@ struct TAPLockedCameraSessionContentTests {
                 relativePath: "TAPCamLockedCameraIntents/TAPCamLockedCameraIntent.swift"
             )
             #expect(intentSource.contains("static let activityType = NSUserActivityTypeLockedCameraCapture"))
-            #expect(!intentSource.contains("openOnlyActivityType"))
+            #expect(intentSource.contains("static let openOnlyActivityType"))
             #expect(intentSource.contains("static let openTAPCamera = \"openTAPCamera\""))
             #expect(intentSource.contains("static let openTAPLibrary = \"openTAPLibrary\""))
             #expect(intentSource.contains("openTAPLibraryAwaitingLockedImport"))
@@ -353,7 +355,8 @@ struct TAPLockedCameraSessionContentTests {
         #expect(startupSource.contains("locked_camera_handoff_ignored"))
         #expect(startupSource.contains("activityTitle="))
         #expect(startupSource.contains("userInfoKeys="))
-        #expect(!startupSource.contains(".onContinueUserActivity(TAPCamLockedCameraHandoff.openOnlyActivityType)"))
+        #expect(startupSource.contains(".onContinueUserActivity(TAPCamLockedCameraHandoff.openOnlyActivityType)"))
+        #expect(startupSource.contains("locked_camera_open_only_handoff_ignored"))
         #expect(routeStoreSource.contains("@Published private(set) var pendingLockedImportReason"))
         #expect(routeStoreSource.contains("@Published private(set) var isAwaitingLockedCaptureImport"))
         #expect(routeStoreSource.contains("awaitingLockedCaptureImport: Bool = false"))
@@ -439,8 +442,7 @@ struct TAPLockedCameraSessionContentTests {
         #expect(!rootSource.contains("e2b_flat_heic_runtime_import_after_saved_capture"))
         #expect(!rootSource.contains("e2b_flat_heic_runtime_import_placeholder"))
         #expect(!rootSource.contains("controller.recordStatusPlaceholderTap(session: session)"))
-        #expect(rootSource.contains("controller.openHostApplicationSystemOnly(session: session)"))
-        #expect(!rootSource.contains("activityType: TAPCamLockedCameraHandoff.openOnlyActivityType"))
+        #expect(rootSource.contains("controller.openHostApplicationAppOwnedOpenOnly(session: session)"))
         #expect(!rootSource.contains("TAPCamLockedCameraHandoff.openTAPMainAppOnly"))
         #expect(!rootSource.contains("app_activity_open_only_placeholder"))
         #expect(rootSource.contains("Open TAPCam"))
@@ -448,6 +450,10 @@ struct TAPLockedCameraSessionContentTests {
         #expect(rootSource.contains(".disabled(!controller.state.canCapture)"))
         #expect(rootSource.contains("TAPCamLockedCameraHandoff.regenerateLockedCameraContext"))
         #expect(controllerSource.contains("open_application_system_only_prepare"))
+        #expect(controllerSource.contains("open_application_app_owned_prepare"))
+        #expect(controllerSource.contains("open_application_app_owned_call"))
+        #expect(controllerSource.contains("TAPCamLockedCameraHandoff.openOnlyActivityType"))
+        #expect(controllerSource.contains("TAPCam Locked Camera E3C App-Owned Open Only"))
         #expect(controllerSource.contains("setState(.recovering(\"Opening TAPCam.\"))"))
         #expect(controllerSource.contains("isPreviewHostVisible = false"))
         #expect(controllerSource.contains("await self?.prepareForHostApplicationHandoff(tapAction: \"systemOnly\")"))

@@ -1092,6 +1092,18 @@ Current experiment sequence:
 
 Flow matrix for the current delayed-import/freeze investigation:
 
+Current update:
+
+- E3B2 is confirmed failed. The latest log includes
+  `activityTitle=TAPCam Locked Camera E3B2 Teardown Complete`, which proves the
+  lower-left open request came after local preview/session teardown. The same
+  delayed `sessionContentUpdates` arrival and next-launch freeze still occurred.
+- E3C is now the active experiment. It keeps teardown-before-open and the
+  left-placeholder open-only responsibility, but replaces
+  `NSUserActivityTypeLockedCameraCapture` with app-owned activity type
+  `TAP-NAP.TAPCamDemo.lockedCamera.openAppOnly`. The main app logs and ignores
+  that activity without saving a handoff or opening Library.
+
 | Flow | User action | Expected system/content behavior | What the latest logs showed | Interpretation | Next evidence needed |
 | --- | --- | --- | --- | --- | --- |
 | A. Capture, then tap locked placeholder using E1D | Neutral direct-open experiment. | Placeholder calls `openApplication(for:)` with `tapAction=openTAPNeutralRuntimeImport` and reason `e1d_neutral_route_after_saved_capture`; the main app renders `LockedCameraNeutralHandoffView`, skips transition-delay import, and waits for App-level `sessionContentUpdates`. The extension does not run pre-open teardown. | The handoff hit `locked_camera_neutral_handoff_presented` / `locked_camera_neutral_handoff_appear` with `managerSessionCount=0`. The user still saw waiting/delayed Library visibility, then next locked-extension launch freeze, and the photo imported only after a later lifecycle turn where `session_content_update kind=added` arrived. | E1D rules out Library awaiting, first-route CameraView construction, Photos fetches, and transition-delay import as sufficient root causes. The remaining E1 variable is direct-open lifecycle itself. | Stop E1 route variants. For data transfer, run E2A historical flat-HEIC without direct-open. For freeze, run E3 launch-only. |

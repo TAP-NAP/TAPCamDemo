@@ -194,7 +194,7 @@ struct LockedCaptureRootView: View {
     private var bottomBar: some View {
         HStack(alignment: .center) {
             Button {
-                controller.openHostApplicationSystemOnly(session: session)
+                controller.openHostApplicationAppOwnedOpenOnly(session: session)
             } label: {
                 Image(systemName: lockedAlbumPlaceholderIcon)
                     .font(.system(size: 22, weight: .semibold))
