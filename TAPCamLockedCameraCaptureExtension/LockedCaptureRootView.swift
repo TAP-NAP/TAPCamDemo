@@ -6,6 +6,7 @@
 import LockedCameraCapture
 import OSLog
 import SwiftUI
+import UIKit
 
 struct LockedCaptureRootView: View {
     private static let logger = TAPCamLockedCameraDiagnostics.logger()
@@ -15,6 +16,7 @@ struct LockedCaptureRootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var controller = LockedCaptureCameraController()
     @State private var showsBootDiagnostics = true
+    @State private var extensionContext: NSExtensionContext?
 
     init(session: LockedCameraCaptureSession) {
         self.session = session
@@ -25,6 +27,13 @@ struct LockedCaptureRootView: View {
         ZStack {
             Color(red: 0.025, green: 0.027, blue: 0.032)
                 .ignoresSafeArea()
+
+            LockedExtensionContextReader { context in
+                extensionContext = context
+                controller.recordExtensionContextResolved(hasContext: context != nil)
+            }
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
 
             if controller.isPreviewHostVisible {
                 LockedCapturePreviewHost(
@@ -194,7 +203,10 @@ struct LockedCaptureRootView: View {
     private var bottomBar: some View {
         HStack(alignment: .center) {
             Button {
-                controller.recordStatusPlaceholderTap(session: session)
+                controller.openHostApplicationWithExtensionContextURL(
+                    session: session,
+                    extensionContext: extensionContext
+                )
             } label: {
                 Image(systemName: lockedAlbumPlaceholderIcon)
                     .font(.system(size: 22, weight: .semibold))
@@ -204,7 +216,7 @@ struct LockedCaptureRootView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(
-                Text("Locked capture status")
+                Text("Open TAPCam")
             )
 
             Spacer()
@@ -235,5 +247,72 @@ struct LockedCaptureRootView: View {
 
     private var lockedAlbumPlaceholderIcon: String {
         controller.lastCaptureSucceeded ? "checkmark.circle.fill" : "photo.stack"
+    }
+}
+
+private struct LockedExtensionContextReader: UIViewControllerRepresentable {
+    let onResolve: (NSExtensionContext?) -> Void
+
+    func makeUIViewController(context: Context) -> LockedExtensionContextReaderViewController {
+        LockedExtensionContextReaderViewController(onResolve: onResolve)
+    }
+
+    func updateUIViewController(
+        _ uiViewController: LockedExtensionContextReaderViewController,
+        context: Context
+    ) {
+        uiViewController.onResolve = onResolve
+    }
+}
+
+private final class LockedExtensionContextReaderViewController: UIViewController {
+    var onResolve: (NSExtensionContext?) -> Void
+    private var didReport = false
+
+    init(onResolve: @escaping (NSExtensionContext?) -> Void) {
+        self.onResolve = onResolve
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        reportExtensionContext(force: true)
+    }
+
+    override func didMove(toParent parent: UIViewController?) {
+        super.didMove(toParent: parent)
+        DispatchQueue.main.async { [weak self] in
+            self?.reportExtensionContext(force: false)
+        }
+    }
+
+    private func reportExtensionContext(force: Bool) {
+        guard !didReport else {
+            return
+        }
+
+        let context = nearestExtensionContext()
+        guard context != nil || force else {
+            return
+        }
+
+        didReport = true
+        onResolve(context)
+    }
+
+    private func nearestExtensionContext() -> NSExtensionContext? {
+        var current: UIViewController? = self
+        while let controller = current {
+            if let extensionContext = controller.extensionContext {
+                return extensionContext
+            }
+            current = controller.parent
+        }
+        return nil
     }
 }

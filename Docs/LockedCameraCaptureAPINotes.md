@@ -217,6 +217,31 @@ Smoke interpretation:
 - If photos fail to appear but `sessionContentUpdates` never emits `.added`, the
   issue is system migration timing, not the AppIntent open-app control.
 
+E6B result from `f1ad4abe.../pasted-text.txt`:
+
+- No freeze was reported.
+- The app imported two locked captures through `sessionContentUpdates`.
+- No `open_application_*` extension log appeared.
+- No `locked_camera_open_app_intent_perform` log appeared, so the separate
+  WidgetKit `Open TAPCam` control was not invoked in this run.
+
+This confirms the diagnostic value of removing in-extension direct open, but it
+does not provide the desired in-extension "enter main app" mechanism.
+
+E6C is the next mechanism experiment:
+
+1. Register a containing-app URL scheme.
+2. In the locked extension, use `NSExtensionContext.openURL` through a captured
+   extension context instead of `LockedCameraCaptureSession.openApplication`.
+3. Keep the tap side-effect small: log, request URL open, and let the app import
+   content through `sessionContentUpdates`.
+4. The main app logs the URL open and routes to the normal camera/default
+   surface. It must not perform handoff-time locked-session scans.
+
+E6C is a public-API experiment, not a settled product decision. It is less
+specific than Apple's locked-camera `openApplication(for:)` API, so if it works
+we still need a policy discussion before treating it as the target UX.
+
 ## SDK Symbols We Must Not Use
 
 The iPhoneOS 26.5 SDK `.tbd` exports these symbols:

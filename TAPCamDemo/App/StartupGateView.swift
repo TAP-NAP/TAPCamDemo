@@ -50,6 +50,9 @@ struct StartupGateView: View {
         .onContinueUserActivity(TAPCamLockedCameraHandoff.openOnlyActivityType) { activity in
             handleLockedCameraOpenOnlyActivity(activity)
         }
+        .onOpenURL { url in
+            handleLockedCameraOpenURL(url)
+        }
     }
 
     private func completeFirstInstallSetupIfReady() {
@@ -122,6 +125,19 @@ struct StartupGateView: View {
         let title = activity.title ?? "none"
         LockedCameraDiagnostics.logger.info(
             "locked_camera_open_only_handoff_ignored activityType=\(activity.activityType, privacy: .public) activityTitle=\(title, privacy: .public) userInfoKeys=\(keys, privacy: .public) managerSessionCount=\(LockedCameraCaptureManager.shared.sessionContentURLs.count, privacy: .public)"
+        )
+    }
+
+    private func handleLockedCameraOpenURL(_ url: URL) {
+        guard let route = TAPCamLockedCameraHandoff.lockedCameraRoute(from: url) else {
+            LockedCameraDiagnostics.logger.info(
+                "locked_camera_url_open_ignored scheme=\(url.scheme ?? "none", privacy: .public) host=\(url.host ?? "none", privacy: .public) path=\(url.path, privacy: .public)"
+            )
+            return
+        }
+
+        LockedCameraDiagnostics.logger.info(
+            "locked_camera_url_open_received route=\(route, privacy: .public) managerSessionCount=\(LockedCameraCaptureManager.shared.sessionContentURLs.count, privacy: .public)"
         )
     }
 

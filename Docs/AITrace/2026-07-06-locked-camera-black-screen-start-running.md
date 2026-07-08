@@ -1520,3 +1520,57 @@ Interpretation:
   open; investigate launch/control/scene/camera startup and session migration.
 - Fail because `Open TAPCam` cannot be added or invoked: investigate WidgetKit /
   AppIntent registration independently from locked capture.
+
+### 2026-07-08 E6B Smoke Result and E6C URL-Open Contract
+
+Observed E6B smoke from `f1ad4abe.../pasted-text.txt`:
+
+- The user reported no freeze.
+- The app imported two locked captures through Apple session content updates:
+  `locked_camera_session_content_update kind=added managerSessionCount=2`,
+  then `locked_camera_session_import_succeeded` twice and
+  `locked_camera_session_import_finish ... imported=2 failed=0 invalidated=2`.
+- No `open_application_*` log appeared.
+- No `locked_camera_open_app_intent_perform` log appeared, so the separate
+  `Open TAPCam` WidgetKit control was not invoked.
+
+Interpretation:
+
+- E6B supports the current diagnosis: removing in-extension
+  `LockedCameraCaptureSession.openApplication(for:)` also removed the observed
+  next-launch freeze in this run.
+- E6B is not a sufficient UX because it leaves no in-extension mechanism to
+  enter the main app.
+
+E6C experiment:
+
+- Add a containing-app URL scheme for a narrow locked-camera open route.
+- The locked extension captures an `NSExtensionContext` from its UIKit hosting
+  hierarchy and uses `extensionContext.openURL(...)`.
+- The lower-left placeholder attempts this URL-open path instead of
+  `LockedCameraCaptureSession.openApplication(for:)`.
+- The main app handles/logs the URL and stays on camera/default; it must not
+  scan `sessionContentURLs` synchronously or show Library waiting UI.
+
+Expected E6C logs:
+
+- Extension context resolution:
+  `locked_camera_extension_context_resolved hasContext=true`.
+- Placeholder URL-open request:
+  `open_application_url_prepare route=lockedCaptureOpen`.
+- URL-open completion:
+  `open_application_url_result success=true` or `success=false`.
+- Main app URL handling if the system opens it:
+  `locked_camera_url_open_received route=lockedCaptureOpen`.
+- Locked content still arrives only through
+  `locked_camera_session_content_update kind=added`.
+
+Pass / fail:
+
+- Pass: URL-open reaches the main app, locked captures import through
+  `sessionContentUpdates`, and the next locked launch does not freeze.
+- Fail: `extensionContext` is unavailable, URL-open completion is false, the app
+  does not receive the URL, or the next locked launch freezes.
+- If E6C fails, the remaining public in-extension app-entry mechanism is again
+  Apple's `openApplication(for:)`, which we have already classified as the
+  likely freeze boundary.

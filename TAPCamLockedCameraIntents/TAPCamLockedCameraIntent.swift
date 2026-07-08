@@ -137,6 +137,10 @@ nonisolated struct TAPCamLockedRawCaptureMetadata: Codable, Equatable, Sendable 
 nonisolated enum TAPCamLockedCameraHandoff {
     static let activityType = NSUserActivityTypeLockedCameraCapture
     static let openOnlyActivityType = "TAP-NAP.TAPCamDemo.lockedCamera.openAppOnly"
+    static let urlScheme = "tapcamdemo"
+    static let urlHost = "locked-camera"
+    static let urlOpenPath = "/open"
+    static let urlOpenRouteName = "lockedCaptureOpen"
     static let sourceKey = "source"
     static let tapActionKey = "tapAction"
     static let reasonKey = "reason"
@@ -150,6 +154,20 @@ nonisolated enum TAPCamLockedCameraHandoff {
     static let openTAPNeutralRuntimeImport = "openTAPNeutralRuntimeImport"
     static let openTAPMainAppOnly = "openTAPMainAppOnly"
     static let regenerateLockedCameraContext = "regenerateLockedCameraContext"
+
+    static var lockedCaptureOpenURL: URL {
+        URL(string: "\(urlScheme)://\(urlHost)\(urlOpenPath)")!
+    }
+
+    static func lockedCameraRoute(from url: URL) -> String? {
+        guard url.scheme == urlScheme,
+              url.host == urlHost,
+              url.path == urlOpenPath else {
+            return nil
+        }
+
+        return urlOpenRouteName
+    }
 }
 
 nonisolated enum TAPCamLockedCameraViewState: Equatable, Sendable {
