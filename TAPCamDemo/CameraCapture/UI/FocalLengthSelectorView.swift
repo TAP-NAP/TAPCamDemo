@@ -78,7 +78,6 @@ struct FocalLengthSelectorView: View {
         }
         .frame(width: selectorWidth)
         .frame(height: 52)
-        .background(.black.opacity(0.44), in: Capsule())
     }
 
     private var contentWidth: CGFloat {
