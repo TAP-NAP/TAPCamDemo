@@ -731,13 +731,10 @@ private struct AnalysisLivePhotoSoundButtonOverlay: View {
                     Image(systemName: isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
                         .font(.callout.weight(.semibold))
                         .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(.white)
                         .frame(width: 42, height: 42)
-                        .background(.thinMaterial, in: Circle())
-                        .overlay {
-                            Circle()
-                                .stroke(.white.opacity(0.18), lineWidth: 1)
-                        }
+                        .contentShape(Circle())
+                        .shadow(color: .black.opacity(0.72), radius: 2, y: 1)
                 }
                 .buttonStyle(.plain)
                 .position(buttonPosition)
