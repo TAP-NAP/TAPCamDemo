@@ -17,6 +17,8 @@ struct LockedCaptureRootView: View {
     @StateObject private var controller = LockedCaptureCameraController()
     @State private var showsBootDiagnostics = true
     @State private var extensionContext: NSExtensionContext?
+    @State private var openButtonStatus: String?
+    @State private var openButtonTapCount = 0
 
     init(session: LockedCameraCaptureSession) {
         self.session = session
@@ -65,10 +67,20 @@ struct LockedCaptureRootView: View {
                         .padding(.top, 8)
                 }
                 Spacer()
+                if let openButtonStatus {
+                    Text(openButtonStatus)
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(.black.opacity(0.62), in: RoundedRectangle(cornerRadius: 8))
+                }
                 bottomBar
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 22)
+            .zIndex(20)
         }
         .task {
             await controller.start()
@@ -203,16 +215,7 @@ struct LockedCaptureRootView: View {
     private var bottomBar: some View {
         HStack(alignment: .center) {
             Button {
-                Self.logger.info("locked_album_placeholder_button_pressed_e6c")
-                print("locked_album_placeholder_button_pressed_e6c")
-                controller.recordURLPlaceholderButtonTap(
-                    session: session,
-                    hasExtensionContext: extensionContext != nil
-                )
-                controller.openHostApplicationWithExtensionContextURL(
-                    session: session,
-                    extensionContext: extensionContext
-                )
+                handleOpenButtonTap()
             } label: {
                 VStack(spacing: 5) {
                     Image(systemName: lockedAlbumPlaceholderIcon)
@@ -230,6 +233,13 @@ struct LockedCaptureRootView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .contentShape(Rectangle())
+            .simultaneousGesture(
+                TapGesture().onEnded {
+                    Self.logger.info("locked_album_placeholder_button_simultaneous_tap_e6c")
+                    print("locked_album_placeholder_button_simultaneous_tap_e6c")
+                }
+            )
             .accessibilityLabel(
                 Text("Open TAPCam")
             )
@@ -269,6 +279,28 @@ struct LockedCaptureRootView: View {
 
     private var lockedAlbumPlaceholderIcon: String {
         controller.lastCaptureSucceeded ? "checkmark.circle.fill" : "photo.stack"
+    }
+
+    private func handleOpenButtonTap() {
+        openButtonTapCount += 1
+        let tapCount = openButtonTapCount
+        let hasContext = extensionContext != nil
+        openButtonStatus = "Open tap \(tapCount): received"
+        Self.logger.info(
+            "locked_album_placeholder_button_pressed_e6c tapCount=\(tapCount, privacy: .public) hasExtensionContext=\(hasContext, privacy: .public)"
+        )
+        print("locked_album_placeholder_button_pressed_e6c tapCount=\(tapCount) hasExtensionContext=\(hasContext)")
+        controller.recordURLPlaceholderButtonTap(
+            session: session,
+            hasExtensionContext: hasContext
+        )
+        let didRequestOpen = controller.openHostApplicationWithExtensionContextURL(
+            session: session,
+            extensionContext: extensionContext
+        )
+        openButtonStatus = didRequestOpen
+            ? "Open tap \(tapCount): URL requested"
+            : "Open tap \(tapCount): no extension context"
     }
 }
 

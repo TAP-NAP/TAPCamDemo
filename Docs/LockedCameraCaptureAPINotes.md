@@ -245,6 +245,13 @@ failure. The E6C smoke build should show an explicit lower-left `Open` button
 and emit `locked_album_placeholder_button_pressed_e6c` before attempting URL
 open.
 
+Follow-up pitfall: if the user sees the button but tapping appears to do nothing,
+do not immediately attribute that to URL routing. First prove the local hit path:
+the button should update in-extension UI to `Open tap N: received`, then either
+`Open tap N: no extension context` or `Open tap N: URL requested`. Missing
+`locked_album_placeholder_button_pressed_e6c` means the tap action did not fire
+or the log capture is not attached to the secure-capture extension process.
+
 E6C is a public-API experiment, not a settled product decision. It is less
 specific than Apple's locked-camera `openApplication(for:)` API, so if it works
 we still need a policy discussion before treating it as the target UX.

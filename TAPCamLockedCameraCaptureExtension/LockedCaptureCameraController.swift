@@ -277,10 +277,11 @@ nonisolated final class LockedCaptureCameraController: NSObject, ObservableObjec
     }
 
     @MainActor
+    @discardableResult
     func openHostApplicationWithExtensionContextURL(
         session: LockedCameraCaptureSession,
         extensionContext: NSExtensionContext?
-    ) {
+    ) -> Bool {
         let contentSnapshot = LockedSessionContentDirectoryProbe.snapshot(
             in: session.sessionContentURL
         )
@@ -295,7 +296,7 @@ nonisolated final class LockedCaptureCameraController: NSObject, ObservableObjec
         guard let extensionContext else {
             Self.stdoutProbe("open_application_url_failed reason=missingExtensionContext")
             Self.logger.error("open_application_url_failed reason=missingExtensionContext")
-            return
+            return false
         }
 
         let url = TAPCamLockedCameraHandoff.lockedCaptureOpenURL
@@ -309,6 +310,7 @@ nonisolated final class LockedCaptureCameraController: NSObject, ObservableObjec
                 "open_application_url_result route=\(route, privacy: .public) success=\(success, privacy: .public)"
             )
         }
+        return true
     }
 
     @MainActor
