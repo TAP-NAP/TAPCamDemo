@@ -29,6 +29,7 @@ struct DepthAnalysisView: View {
     @State private var selectedTool = AnalysisViewerTool.raw
     @State private var sharePayload: DepthAnalysisSystemSharePayload?
     @State private var isPreparingShare = false
+    @State private var pendingDeleteRequest: DepthAnalysisPendingDeleteRequest?
     @State private var deleteAlert: DepthAnalysisDeleteAlert?
     @AppStorage(CameraViewfinderHighlightPreference.storageKey)
     private var viewfinderHighlightRawValue = CameraViewfinderHighlightPreference.defaultValue.rawValue
@@ -67,6 +68,21 @@ struct DepthAnalysisView: View {
         .ignoresSafeArea(.container, edges: .all)
         .sheet(item: $sharePayload) { payload in
             VerificationExportActivityView(activityItems: [payload.export.fileURL])
+        }
+        .alert(item: $pendingDeleteRequest) { request in
+            Alert(
+                title: Text("Delete unsaved photo?"),
+                message: Text("This capture has not finished exporting to Photos. Deleting it removes the local TAP copy and cannot be undone."),
+                primaryButton: .destructive(Text("Delete")) {
+                    performDelete(
+                        source: request.source,
+                        displayPixelLength: request.displayPixelLength,
+                        loadCurrentAnalysis: request.loadCurrentAnalysis,
+                        prewarmCurrentPlaneGeometry: request.prewarmCurrentPlaneGeometry
+                    )
+                },
+                secondaryButton: .cancel()
+            )
         }
         .alert(item: $deleteAlert) { alert in
             Alert(
@@ -114,7 +130,9 @@ struct DepthAnalysisView: View {
                     },
                     onShareTapped: presentSystemShareSheet,
                     onToolTapped: handleToolTapped,
-                    onDeleteTapped: deleteCurrentItem
+                    onDeleteTapped: {
+                        deleteCurrentItem(displayPixelLength: displayPixelLength)
+                    }
                 )
                 .zIndex(2)
             }
@@ -154,15 +172,49 @@ struct DepthAnalysisView: View {
         }
     }
 
-    private func deleteCurrentItem() {
+    private func deleteCurrentItem(displayPixelLength: Int) {
         guard let source = carouselStore.currentEntry?.source else {
             return
         }
 
+        let loadCurrentAnalysis = selectedTool != .raw
+        let prewarmCurrentPlaneGeometry = selectedTool == .threeD
+        if case .pendingCapture = source {
+            pendingDeleteRequest = DepthAnalysisPendingDeleteRequest(
+                source: source,
+                displayPixelLength: displayPixelLength,
+                loadCurrentAnalysis: loadCurrentAnalysis,
+                prewarmCurrentPlaneGeometry: prewarmCurrentPlaneGeometry
+            )
+            return
+        }
+
+        performDelete(
+            source: source,
+            displayPixelLength: displayPixelLength,
+            loadCurrentAnalysis: loadCurrentAnalysis,
+            prewarmCurrentPlaneGeometry: prewarmCurrentPlaneGeometry
+        )
+    }
+
+    private func performDelete(
+        source: DepthAnalysisSource,
+        displayPixelLength: Int,
+        loadCurrentAnalysis: Bool,
+        prewarmCurrentPlaneGeometry: Bool
+    ) {
         Task { @MainActor in
             do {
                 try await DepthAnalysisDeletionService.delete(source: source)
-                dismiss()
+                if let nextEntry = carouselStore.advanceAfterDeletingCurrent(
+                    pixelLength: displayPixelLength,
+                    loadCurrentAnalysis: loadCurrentAnalysis,
+                    prewarmCurrentPlaneGeometry: prewarmCurrentPlaneGeometry
+                ) {
+                    handleCurrentEntryChanged(nextEntry)
+                } else {
+                    dismiss()
+                }
             } catch {
                 #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
                 TAPDiagnostics.photoLibrary.error("analysis delete failed error=\(TAPDiagnostics.describe(error), privacy: .public)")
@@ -186,6 +238,14 @@ struct DepthAnalysisView: View {
         let scaledLength = Int(ceil(viewportMaxLength * max(displayScale, 1)))
         return min(max(scaledLength, 960), 4096)
     }
+}
+
+private struct DepthAnalysisPendingDeleteRequest: Identifiable {
+    let id = UUID()
+    let source: DepthAnalysisSource
+    let displayPixelLength: Int
+    let loadCurrentAnalysis: Bool
+    let prewarmCurrentPlaneGeometry: Bool
 }
 
 private struct DepthAnalysisDeleteAlert: Identifiable {

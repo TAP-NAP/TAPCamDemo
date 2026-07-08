@@ -421,6 +421,11 @@ struct TAPDepthAnalysisPresentationTests {
 
         #expect(analysisSource.contains("PhotoLibraryWriter.deleteAsset"))
         #expect(analysisSource.contains("TAPPendingCaptureStore.shared.removeRecord"))
+        #expect(analysisSource.contains("DepthAnalysisPendingDeleteRequest"))
+        #expect(analysisSource.contains("Delete unsaved photo?"))
+        #expect(analysisSource.contains("This capture has not finished exporting to Photos."))
+        #expect(analysisSource.contains("case .pendingCapture = source"))
+        #expect(analysisSource.contains("advanceAfterDeletingCurrent"))
         #expect(!analysisSource.contains("DepthAnalysisDeleteConfirmationDialog"))
         #expect(!analysisSource.contains("Toggle(\"Don't Ask Again\", isOn: $dontAskAgain)"))
         #expect(!analysisSource.contains("AnalysisCheckboxToggleStyle"))
@@ -562,6 +567,71 @@ struct TAPDepthAnalysisPresentationTests {
         #expect(movedEntry.albumEntry?.id == second.id)
         #expect(movedEntry.albumEntry?.routeAnchor == second.routeAnchor)
         #expect(store.currentItemID == second.id)
+    }
+
+    @Test @MainActor func analysisCarouselStoreSelectsNextEntryAfterDeletingCurrent() throws {
+        let first = try analysisAlbumEntry(id: "first", source: .photosAsset("asset-first"))
+        let second = try analysisAlbumEntry(id: "second", source: .pendingCapture("capture-second"))
+        let third = try analysisAlbumEntry(id: "third", source: .photosAsset("asset-third"))
+        let context = DepthAnalysisAlbumContext(
+            currentItemID: second.id,
+            entries: [first, second, third]
+        )
+        let store = DepthAnalysisCarouselStore(
+            source: second.source,
+            albumContext: context,
+            loader: .noop
+        )
+
+        let nextEntry = try #require(store.advanceAfterDeletingCurrent())
+
+        #expect(nextEntry.id == third.id)
+        #expect(store.currentEntry?.id == third.id)
+        #expect(store.windowEntries().map(\.entry.id) == ["first", "third"])
+        #expect(store.entry(offset: -1)?.id == first.id)
+        #expect(store.entry(offset: 1) == nil)
+    }
+
+    @Test @MainActor func analysisCarouselStoreSelectsPreviousEntryAfterDeletingLast() throws {
+        let first = try analysisAlbumEntry(id: "first", source: .photosAsset("asset-first"))
+        let second = try analysisAlbumEntry(id: "second", source: .photosAsset("asset-second"))
+        let third = try analysisAlbumEntry(id: "third", source: .pendingCapture("capture-third"))
+        let context = DepthAnalysisAlbumContext(
+            currentItemID: third.id,
+            entries: [first, second, third]
+        )
+        let store = DepthAnalysisCarouselStore(
+            source: third.source,
+            albumContext: context,
+            loader: .noop
+        )
+
+        let previousEntry = try #require(store.advanceAfterDeletingCurrent())
+
+        #expect(previousEntry.id == second.id)
+        #expect(store.currentEntry?.id == second.id)
+        #expect(store.windowEntries().map(\.entry.id) == ["first", "second"])
+        #expect(store.entry(offset: -1)?.id == first.id)
+        #expect(store.entry(offset: 1) == nil)
+    }
+
+    @Test @MainActor func analysisCarouselStoreReturnsNilAfterDeletingOnlyEntry() throws {
+        let only = try analysisAlbumEntry(id: "only", source: .pendingCapture("capture-only"))
+        let context = DepthAnalysisAlbumContext(
+            currentItemID: only.id,
+            entries: [only]
+        )
+        let store = DepthAnalysisCarouselStore(
+            source: only.source,
+            albumContext: context,
+            loader: .noop
+        )
+
+        let nextEntry = store.advanceAfterDeletingCurrent()
+
+        #expect(nextEntry == nil)
+        #expect(store.currentEntry == nil)
+        #expect(store.windowEntries().isEmpty)
     }
 
     @Test @MainActor func analysisCarouselStoreEvictsSlotsOutsideVisibleWindow() throws {

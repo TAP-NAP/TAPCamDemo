@@ -808,6 +808,7 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
 @MainActor
 final class DepthAnalysisCarouselStore: ObservableObject {
     @Published private(set) var currentItemID: String
+    @Published private var removedEntryIDs: Set<String> = []
 
     let entries: [DepthAnalysisCarouselEntry]
     private let loader: DepthAnalysisProgressivePhotoLoader
@@ -830,11 +831,16 @@ final class DepthAnalysisCarouselStore: ObservableObject {
         self.loader = loader
     }
 
+    private var activeEntries: [DepthAnalysisCarouselEntry] {
+        entries.filter { !removedEntryIDs.contains($0.id) }
+    }
+
     var currentIndex: Int? {
-        entries.firstIndex { $0.id == currentItemID }
+        activeEntries.firstIndex { $0.id == currentItemID }
     }
 
     var currentEntry: DepthAnalysisCarouselEntry? {
+        let entries = activeEntries
         guard let currentIndex else {
             return entries.first
         }
@@ -853,6 +859,7 @@ final class DepthAnalysisCarouselStore: ObservableObject {
     }
 
     func entry(offset: Int) -> DepthAnalysisCarouselEntry? {
+        let entries = activeEntries
         guard let currentIndex else {
             return nil
         }
@@ -894,6 +901,40 @@ final class DepthAnalysisCarouselStore: ObservableObject {
             prewarmCurrentPlaneGeometry: prewarmCurrentPlaneGeometry
         )
         return entry
+    }
+
+    @discardableResult
+    func advanceAfterDeletingCurrent(
+        pixelLength: Int = 960,
+        loadCurrentAnalysis: Bool = false,
+        prewarmCurrentPlaneGeometry: Bool = false
+    ) -> DepthAnalysisCarouselEntry? {
+        let entries = activeEntries
+        let deletedIndex = entries.firstIndex { $0.id == currentItemID } ?? 0
+        guard entries.indices.contains(deletedIndex) else {
+            return nil
+        }
+
+        let deletedEntry = entries[deletedIndex]
+        removedEntryIDs.insert(deletedEntry.id)
+        discardSlot(id: deletedEntry.id)
+
+        let remainingEntries = entries.filter { $0.id != deletedEntry.id }
+        guard !remainingEntries.isEmpty else {
+            currentItemID = ""
+            pruneSlots(keeping: [])
+            return nil
+        }
+
+        let nextIndex = min(deletedIndex, remainingEntries.count - 1)
+        let nextEntry = remainingEntries[nextIndex]
+        currentItemID = nextEntry.id
+        ensureVisibleWindowLoaded(
+            pixelLength: pixelLength,
+            loadCurrentAnalysis: loadCurrentAnalysis,
+            prewarmCurrentPlaneGeometry: prewarmCurrentPlaneGeometry
+        )
+        return nextEntry
     }
 
     func slot(for entry: DepthAnalysisCarouselEntry) -> AnalysisPhotoSlot {
@@ -938,6 +979,14 @@ final class DepthAnalysisCarouselStore: ObservableObject {
             }
         }
         pruneSlots(keeping: windowIDs)
+    }
+
+    private func discardSlot(id: String) {
+        retainedSlotStates.removeValue(forKey: id)
+        guard let slot = slots.removeValue(forKey: id) else {
+            return
+        }
+        slot.prepareForEviction()
     }
 
     private func pruneSlots(keeping retainedIDs: Set<String>) {
