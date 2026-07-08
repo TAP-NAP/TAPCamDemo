@@ -203,6 +203,8 @@ struct LockedCaptureRootView: View {
     private var bottomBar: some View {
         HStack(alignment: .center) {
             Button {
+                Self.logger.info("locked_album_placeholder_button_pressed_e6c")
+                print("locked_album_placeholder_button_pressed_e6c")
                 controller.recordURLPlaceholderButtonTap(
                     session: session,
                     hasExtensionContext: extensionContext != nil
@@ -212,11 +214,20 @@ struct LockedCaptureRootView: View {
                     extensionContext: extensionContext
                 )
             } label: {
-                Image(systemName: lockedAlbumPlaceholderIcon)
-                    .font(.system(size: 22, weight: .semibold))
-                    .frame(width: 52, height: 52)
-                    .background(.white.opacity(0.14), in: RoundedRectangle(cornerRadius: 8))
-                    .foregroundStyle(controller.lastCaptureSucceeded ? .green : .white)
+                VStack(spacing: 5) {
+                    Image(systemName: lockedAlbumPlaceholderIcon)
+                        .font(.system(size: 21, weight: .semibold))
+                    Text("Open")
+                        .font(.caption2.weight(.semibold))
+                }
+                .foregroundStyle(controller.lastCaptureSucceeded ? .green : .white)
+                .frame(width: 72, height: 58)
+                .background(.black.opacity(0.58), in: RoundedRectangle(cornerRadius: 8))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(.white.opacity(0.5), lineWidth: 1)
+                }
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(
@@ -251,7 +262,7 @@ struct LockedCaptureRootView: View {
             Spacer()
 
             Color.clear
-                .frame(width: 52, height: 52)
+                .frame(width: 72, height: 58)
                 .accessibilityHidden(true)
         }
     }

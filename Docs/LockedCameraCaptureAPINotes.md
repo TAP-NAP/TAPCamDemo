@@ -238,6 +238,13 @@ E6C is the next mechanism experiment:
 4. The main app logs the URL open and routes to the normal camera/default
    surface. It must not perform handoff-time locked-session scans.
 
+Implementation pitfall: the lower-left control must be visibly tappable during
+the experiment. The initial icon-only placeholder was too subtle on the live
+viewfinder and made it easy to confuse "no visible control" with an open/lifecycle
+failure. The E6C smoke build should show an explicit lower-left `Open` button
+and emit `locked_album_placeholder_button_pressed_e6c` before attempting URL
+open.
+
 E6C is a public-API experiment, not a settled product decision. It is less
 specific than Apple's locked-camera `openApplication(for:)` API, so if it works
 we still need a policy discussion before treating it as the target UX.
