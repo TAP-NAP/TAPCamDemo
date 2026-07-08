@@ -623,6 +623,8 @@ nonisolated enum TAPDepthProjectionInteractionPolicy {
     static let usesSceneKitDefaultCameraControl = false
     static let minimumScale: Float = 0.6
     static let maximumScale: Float = 3.2
+    static let motionParallaxPitchScale: Float = 0.06
+    static let motionParallaxRollScale: Float = 0.08
 
     static func interactionPivotPosition(targetDepth: Float) -> SCNVector3 {
         SCNVector3(0, 0, -safeTargetDepth(targetDepth))
@@ -638,6 +640,19 @@ nonisolated enum TAPDepthProjectionInteractionPolicy {
 
     static func rollAngle(startAngle: Float, gestureRotation: CGFloat) -> Float {
         startAngle - Float(gestureRotation)
+    }
+
+    static func motionParallaxEulerAngles(
+        pitch: Double,
+        roll: Double,
+        baselinePitch: Double,
+        baselineRoll: Double
+    ) -> SCNVector3 {
+        SCNVector3(
+            Float(normalizedAngleDelta(pitch - baselinePitch)) * motionParallaxPitchScale,
+            Float(normalizedAngleDelta(roll - baselineRoll)) * motionParallaxRollScale,
+            0
+        )
     }
 
     static func scenePanOffset(
@@ -658,6 +673,10 @@ nonisolated enum TAPDepthProjectionInteractionPolicy {
 
     private static func safeTargetDepth(_ targetDepth: Float) -> Float {
         max(targetDepth, 0.25)
+    }
+
+    private static func normalizedAngleDelta(_ delta: Double) -> Double {
+        atan2(sin(delta), cos(delta))
     }
 }
 
@@ -1224,6 +1243,8 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
         private var translationStartPosition = SCNVector3(0, 0, 0)
         private var pinchStartScale: Float = 1
         private var rollStartAngle: Float = 0
+        private var motionParallaxBaseline: MotionParallaxAttitude?
+        private var shouldRecenterMotionParallax = true
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         private weak var sceneView: SCNView?
         private var lastLayoutProbeSize: CGSize = .zero
@@ -1387,6 +1408,7 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
                 return
             }
             resetInteractionTransform(animated: true)
+            recenterMotionParallaxBaseline(animated: true)
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDepthProjectionProbeReport.append(
                 event: "resetGesture",
@@ -1652,9 +1674,22 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
             SCNTransaction.commit()
         }
 
+        private func recenterMotionParallaxBaseline(animated: Bool) {
+            shouldRecenterMotionParallax = true
+            let attitude = currentMotionParallaxAttitude()
+            if let attitude {
+                motionParallaxBaseline = attitude
+                shouldRecenterMotionParallax = false
+            }
+            applyMotionParallax(attitude: attitude, animated: animated)
+        }
+
         private func syncMotionParallax(enabled: Bool) {
             guard enabled, motionManager.isDeviceMotionAvailable else {
                 motionManager.stopDeviceMotionUpdates()
+                motionParallaxBaseline = nil
+                shouldRecenterMotionParallax = true
+                applyMotionParallax(attitude: nil, animated: false)
                 return
             }
 
@@ -1670,17 +1705,79 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
                     return
                 }
 
-                SCNTransaction.begin()
-                SCNTransaction.animationDuration = 0.08
-                projectionRootNode.eulerAngles.x = Float(motion.attitude.pitch) * 0.06
-                projectionRootNode.eulerAngles.y = Float(motion.attitude.roll) * 0.08
-                SCNTransaction.commit()
+                let attitude = MotionParallaxAttitude(motion: motion)
+                if self.motionParallaxBaseline == nil || self.shouldRecenterMotionParallax {
+                    self.motionParallaxBaseline = attitude
+                    self.shouldRecenterMotionParallax = false
+                }
+                self.applyMotionParallax(
+                    attitude: attitude,
+                    projectionRootNode: projectionRootNode,
+                    animated: true
+                )
                 #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
                 self.logMotionParallax(
                     pitch: motion.attitude.pitch,
                     roll: motion.attitude.roll
                 )
                 #endif
+            }
+        }
+
+        private func currentMotionParallaxAttitude() -> MotionParallaxAttitude? {
+            guard let motion = motionManager.deviceMotion else {
+                return nil
+            }
+            return MotionParallaxAttitude(motion: motion)
+        }
+
+        private func applyMotionParallax(attitude: MotionParallaxAttitude?, animated: Bool) {
+            guard let projectionRootNode else {
+                return
+            }
+            applyMotionParallax(attitude: attitude, projectionRootNode: projectionRootNode, animated: animated)
+        }
+
+        private func applyMotionParallax(
+            attitude: MotionParallaxAttitude?,
+            projectionRootNode: SCNNode,
+            animated: Bool
+        ) {
+            let baseline = motionParallaxBaseline ?? attitude
+            let eulerAngles: SCNVector3
+            if let attitude, let baseline {
+                eulerAngles = TAPDepthProjectionInteractionPolicy.motionParallaxEulerAngles(
+                    pitch: attitude.pitch,
+                    roll: attitude.roll,
+                    baselinePitch: baseline.pitch,
+                    baselineRoll: baseline.roll
+                )
+            } else {
+                eulerAngles = SCNVector3(0, 0, 0)
+            }
+
+            let updates = {
+                projectionRootNode.eulerAngles = eulerAngles
+            }
+
+            guard animated else {
+                updates()
+                return
+            }
+
+            SCNTransaction.begin()
+            SCNTransaction.animationDuration = 0.08
+            updates()
+            SCNTransaction.commit()
+        }
+
+        private struct MotionParallaxAttitude {
+            let pitch: Double
+            let roll: Double
+
+            init(motion: CMDeviceMotion) {
+                pitch = motion.attitude.pitch
+                roll = motion.attitude.roll
             }
         }
 
