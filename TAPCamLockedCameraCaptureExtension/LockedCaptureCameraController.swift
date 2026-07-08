@@ -49,6 +49,7 @@ nonisolated final class LockedCaptureCameraController: NSObject, ObservableObjec
     override init() {
         super.init()
         Self.logger.info("locked_camera_controller_init")
+        Self.stdoutProbe("locked_camera_controller_init")
     }
 
     deinit {
@@ -243,6 +244,9 @@ nonisolated final class LockedCaptureCameraController: NSObject, ObservableObjec
         let contentSnapshot = LockedSessionContentDirectoryProbe.snapshot(
             in: session.sessionContentURL
         )
+        Self.stdoutProbe(
+            "locked_album_placeholder_tapped_status_only lastCaptureSucceeded=\(self.lastCaptureSucceeded) state=\(self.state.title) sessionRunning=\(self.captureSession.isRunning) flatHEICFileCount=\(contentSnapshot.flatHEICFileCount) latestCaptureID=\(contentSnapshot.latestCaptureID ?? "none")"
+        )
         Self.logger.info(
             "locked_album_placeholder_tapped_status_only lastCaptureSucceeded=\(self.lastCaptureSucceeded, privacy: .public) state=\(self.state.title, privacy: .public) sessionRunning=\(self.captureSession.isRunning, privacy: .public) lastFrameAge=\(self.lastFrameAgeDescription(), privacy: .public) captureDirectoryCount=\(contentSnapshot.captureDirectoryCount, privacy: .public) flatHEICFileCount=\(contentSnapshot.flatHEICFileCount, privacy: .public) metadataFileCount=\(contentSnapshot.metadataFileCount, privacy: .public) unsignedHEICFileCount=\(contentSnapshot.unsignedHEICFileCount, privacy: .public) latestCaptureID=\(contentSnapshot.latestCaptureID ?? "none", privacy: .public)"
         )
@@ -250,8 +254,25 @@ nonisolated final class LockedCaptureCameraController: NSObject, ObservableObjec
 
     @MainActor
     func recordExtensionContextResolved(hasContext: Bool) {
+        Self.stdoutProbe("locked_camera_extension_context_resolved hasContext=\(hasContext)")
         Self.logger.info(
             "locked_camera_extension_context_resolved hasContext=\(hasContext, privacy: .public)"
+        )
+    }
+
+    @MainActor
+    func recordURLPlaceholderButtonTap(
+        session: LockedCameraCaptureSession,
+        hasExtensionContext: Bool
+    ) {
+        let contentSnapshot = LockedSessionContentDirectoryProbe.snapshot(
+            in: session.sessionContentURL
+        )
+        Self.stdoutProbe(
+            "locked_album_placeholder_button_tap_e6c hasExtensionContext=\(hasExtensionContext) lastCaptureSucceeded=\(self.lastCaptureSucceeded) state=\(self.state.title) sessionRunning=\(self.captureSession.isRunning) flatHEICFileCount=\(contentSnapshot.flatHEICFileCount) latestCaptureID=\(contentSnapshot.latestCaptureID ?? "none")"
+        )
+        Self.logger.info(
+            "locked_album_placeholder_button_tap_e6c hasExtensionContext=\(hasExtensionContext, privacy: .public) lastCaptureSucceeded=\(self.lastCaptureSucceeded, privacy: .public) state=\(self.state.title, privacy: .public) sessionRunning=\(self.captureSession.isRunning, privacy: .public) lastFrameAge=\(self.lastFrameAgeDescription(), privacy: .public) captureDirectoryCount=\(contentSnapshot.captureDirectoryCount, privacy: .public) flatHEICFileCount=\(contentSnapshot.flatHEICFileCount, privacy: .public) metadataFileCount=\(contentSnapshot.metadataFileCount, privacy: .public) unsignedHEICFileCount=\(contentSnapshot.unsignedHEICFileCount, privacy: .public) latestCaptureID=\(contentSnapshot.latestCaptureID ?? "none", privacy: .public)"
         )
     }
 
@@ -264,20 +285,26 @@ nonisolated final class LockedCaptureCameraController: NSObject, ObservableObjec
             in: session.sessionContentURL
         )
         let route = TAPCamLockedCameraHandoff.urlOpenRouteName
+        Self.stdoutProbe(
+            "open_application_url_prepare route=\(route) hasExtensionContext=\(extensionContext != nil) sessionRunning=\(self.captureSession.isRunning) flatHEICFileCount=\(contentSnapshot.flatHEICFileCount) latestCaptureID=\(contentSnapshot.latestCaptureID ?? "none")"
+        )
         Self.logger.info(
             "open_application_url_prepare route=\(route, privacy: .public) hasExtensionContext=\(extensionContext != nil, privacy: .public) sessionRunning=\(self.captureSession.isRunning, privacy: .public) lastFrameAge=\(self.lastFrameAgeDescription(), privacy: .public) captureDirectoryCount=\(contentSnapshot.captureDirectoryCount, privacy: .public) flatHEICFileCount=\(contentSnapshot.flatHEICFileCount, privacy: .public) metadataFileCount=\(contentSnapshot.metadataFileCount, privacy: .public) unsignedHEICFileCount=\(contentSnapshot.unsignedHEICFileCount, privacy: .public) latestCaptureID=\(contentSnapshot.latestCaptureID ?? "none", privacy: .public)"
         )
 
         guard let extensionContext else {
+            Self.stdoutProbe("open_application_url_failed reason=missingExtensionContext")
             Self.logger.error("open_application_url_failed reason=missingExtensionContext")
             return
         }
 
         let url = TAPCamLockedCameraHandoff.lockedCaptureOpenURL
+        Self.stdoutProbe("open_application_url_call route=\(route) url=\(url.absoluteString)")
         Self.logger.info(
             "open_application_url_call route=\(route, privacy: .public)"
         )
         extensionContext.open(url) { success in
+            Self.stdoutProbe("open_application_url_result route=\(route) success=\(success)")
             Self.logger.info(
                 "open_application_url_result route=\(route, privacy: .public) success=\(success, privacy: .public)"
             )
@@ -418,6 +445,10 @@ nonisolated final class LockedCaptureCameraController: NSObject, ObservableObjec
             || tapAction == TAPCamLockedCameraHandoff.openTAPCameraRuntimeImport
             || tapAction == TAPCamLockedCameraHandoff.openTAPNeutralRuntimeImport
             || tapAction == TAPCamLockedCameraHandoff.openTAPMainAppOnly
+    }
+
+    private nonisolated static func stdoutProbe(_ message: String) {
+        print(message)
     }
 
     @MainActor

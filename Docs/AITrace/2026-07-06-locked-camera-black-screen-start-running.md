@@ -1574,3 +1574,45 @@ Pass / fail:
 - If E6C fails, the remaining public in-extension app-entry mechanism is again
   Apple's `openApplication(for:)`, which we have already classified as the
   likely freeze boundary.
+
+### 2026-07-08 E6C Probe Hardening
+
+The first E6C smoke reported that tapping the lower-left placeholder had no
+visible effect. The pasted log did not contain any E6C extension probes:
+
+- no `locked_camera_extension_context_resolved`;
+- no `locked_album_placeholder_button_tap_e6c`;
+- no `open_application_url_prepare`;
+- no `open_application_url_result`;
+- no app-side `locked_camera_url_open_received`.
+
+This means the log could not distinguish these cases:
+
+1. The button action did not fire.
+2. The button fired but extension logs were not captured.
+3. The extension context reader reported nil too early and stopped retrying.
+4. `NSExtensionContext.openURL` was called but returned false.
+5. URL open succeeded but the main app URL handler did not run.
+
+Probe changes:
+
+- Key E6C probes now use both `OSLog` and `print` so they are more likely to
+  appear in Xcode device logs.
+- The lower-left button logs `locked_album_placeholder_button_tap_e6c` before
+  attempting URL open.
+- The context reader logs lifecycle and retry probes:
+  `locked_camera_extension_context_reader_lifecycle` and
+  `locked_camera_extension_context_probe`.
+- The context reader no longer treats an initial nil context as final; it keeps
+  retrying briefly and reports again if the context later becomes available.
+
+Next smoke interpretation:
+
+- If `locked_album_placeholder_button_tap_e6c` is absent after tapping, the UI
+  hit target/action is the problem.
+- If tap logs appear with `hasExtensionContext=false`, the context acquisition
+  strategy is the problem.
+- If `open_application_url_result ... success=false`, the secure-capture host
+  is refusing this public URL-open path.
+- If URL result is true but `locked_camera_url_open_received` is absent, the app
+  URL route / scheme handling is the problem.

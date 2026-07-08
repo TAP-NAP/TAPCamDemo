@@ -203,6 +203,10 @@ struct LockedCaptureRootView: View {
     private var bottomBar: some View {
         HStack(alignment: .center) {
             Button {
+                controller.recordURLPlaceholderButtonTap(
+                    session: session,
+                    hasExtensionContext: extensionContext != nil
+                )
                 controller.openHostApplicationWithExtensionContextURL(
                     session: session,
                     extensionContext: extensionContext
@@ -218,6 +222,13 @@ struct LockedCaptureRootView: View {
             .accessibilityLabel(
                 Text("Open TAPCam")
             )
+            .onAppear {
+                let hasContext = extensionContext != nil
+                Self.logger.info(
+                    "locked_album_placeholder_button_appear_e6c hasExtensionContext=\(hasContext, privacy: .public)"
+                )
+                print("locked_album_placeholder_button_appear_e6c hasExtensionContext=\(hasContext)")
+            }
 
             Spacer()
 
@@ -266,8 +277,12 @@ private struct LockedExtensionContextReader: UIViewControllerRepresentable {
 }
 
 private final class LockedExtensionContextReaderViewController: UIViewController {
+    private static let logger = TAPCamLockedCameraDiagnostics.logger()
+
     var onResolve: (NSExtensionContext?) -> Void
-    private var didReport = false
+    private var lastReportedHasContext: Bool?
+    private var retryCount = 0
+    private let maxRetryCount = 12
 
     init(onResolve: @escaping (NSExtensionContext?) -> Void) {
         self.onResolve = onResolve
@@ -279,33 +294,76 @@ private final class LockedExtensionContextReaderViewController: UIViewController
         fatalError("init(coder:) has not been implemented")
     }
 
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        logLifecycle("viewDidLoad")
+        reportExtensionContext(reason: "viewDidLoad")
+    }
+
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        reportExtensionContext(force: true)
+        logLifecycle("viewDidAppear")
+        reportExtensionContext(reason: "viewDidAppear")
     }
 
     override func didMove(toParent parent: UIViewController?) {
         super.didMove(toParent: parent)
+        logLifecycle("didMoveToParent")
         DispatchQueue.main.async { [weak self] in
-            self?.reportExtensionContext(force: false)
+            self?.reportExtensionContext(reason: "didMoveToParent.async")
         }
     }
 
-    private func reportExtensionContext(force: Bool) {
-        guard !didReport else {
-            return
-        }
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        logLifecycle("viewDidLayoutSubviews")
+        reportExtensionContext(reason: "viewDidLayoutSubviews")
+    }
 
+    private func reportExtensionContext(reason: String) {
         let context = nearestExtensionContext()
-        guard context != nil || force else {
+        let hasContext = context != nil
+        let parentType = parent.map { String(describing: type(of: $0)) } ?? "none"
+        let windowAttached = view.window != nil
+        Self.logger.info(
+            "locked_camera_extension_context_probe reason=\(reason, privacy: .public) hasContext=\(hasContext, privacy: .public) retryCount=\(self.retryCount, privacy: .public) parent=\(parentType, privacy: .public) windowAttached=\(windowAttached, privacy: .public)"
+        )
+        print(
+            "locked_camera_extension_context_probe reason=\(reason) hasContext=\(hasContext) retryCount=\(retryCount) parent=\(parentType) windowAttached=\(windowAttached)"
+        )
+
+        if lastReportedHasContext != hasContext {
+            lastReportedHasContext = hasContext
+            onResolve(context)
+        }
+
+        guard !hasContext, retryCount < maxRetryCount else {
             return
         }
 
-        didReport = true
-        onResolve(context)
+        retryCount += 1
+        let nextRetry = retryCount
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            self?.reportExtensionContext(reason: "retry\(nextRetry)")
+        }
+    }
+
+    private func logLifecycle(_ event: String) {
+        let parentType = parent.map { String(describing: type(of: $0)) } ?? "none"
+        let windowAttached = view.window != nil
+        Self.logger.info(
+            "locked_camera_extension_context_reader_lifecycle event=\(event, privacy: .public) parent=\(parentType, privacy: .public) windowAttached=\(windowAttached, privacy: .public)"
+        )
+        print(
+            "locked_camera_extension_context_reader_lifecycle event=\(event) parent=\(parentType) windowAttached=\(windowAttached)"
+        )
     }
 
     private func nearestExtensionContext() -> NSExtensionContext? {
+        if let context = extensionContext {
+            return context
+        }
+
         var current: UIViewController? = self
         while let controller = current {
             if let extensionContext = controller.extensionContext {
@@ -313,6 +371,15 @@ private final class LockedExtensionContextReaderViewController: UIViewController
             }
             current = controller.parent
         }
+
+        current = view.window?.rootViewController
+        while let controller = current {
+            if let extensionContext = controller.extensionContext {
+                return extensionContext
+            }
+            current = controller.presentedViewController
+        }
+
         return nil
     }
 }
