@@ -1409,18 +1409,6 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
             }
             resetInteractionTransform(animated: true)
             recenterMotionParallaxBaseline(animated: true)
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDepthProjectionProbeReport.append(
-                event: "resetGesture",
-                fields: [
-                    "label": "recognized",
-                    "gestureState": gesture.state.rawValue
-                ]
-            )
-            if let sceneView {
-                logSceneState(label: "resetGesture", view: sceneView, force: true)
-            }
-            #endif
         }
 
         func gestureRecognizer(
