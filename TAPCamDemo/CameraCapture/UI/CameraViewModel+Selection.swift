@@ -161,6 +161,12 @@ extension CameraViewModel {
 
         configurationGeneration += 1
         let generation = configurationGeneration
+        isConfiguringSession = true
+        defer {
+            if generation == configurationGeneration {
+                isConfiguringSession = false
+            }
+        }
         isDepthCaptureReady = false
         focalLengthOptions = currentFocalLengthOptions
         #if DEBUG

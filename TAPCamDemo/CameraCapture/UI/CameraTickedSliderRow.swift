@@ -4,7 +4,6 @@
 //
 
 import SwiftUI
-import UIKit
 
 struct CameraTickedSliderRow: View {
     let title: String
@@ -21,6 +20,7 @@ struct CameraTickedSliderRow: View {
     let onEditingBegan: () -> Void
     let onEditingEnded: () -> Void
 
+    @Environment(\.cameraHapticFeedbackController) private var hapticFeedbackController
     @State private var lastHapticStepIndex: Int?
     @State private var isDragging = false
 
@@ -264,6 +264,7 @@ struct CameraTickedSliderRow: View {
             return
         }
         isDragging = true
+        hapticFeedbackController.prepareAdjustmentFeedback()
         onEditingBegan()
     }
 
@@ -285,22 +286,22 @@ struct CameraTickedSliderRow: View {
     }
 
     private func triggerHaptic(for value: Double) {
-        guard isEVIntegerHapticsEnabled else {
-            UISelectionFeedbackGenerator().selectionChanged()
-            return
-        }
+        hapticFeedbackController.adjustmentChanged(style: adjustmentHapticStyle(for: value))
+    }
 
+    private func adjustmentHapticStyle(for value: Double) -> CameraAdjustmentHapticStyle {
+        guard isEVIntegerHapticsEnabled else {
+            return .selection
+        }
         if isZeroValue(value) {
-            UIImpactFeedbackGenerator(style: .heavy).impactOccurred(intensity: 1)
-            return
+            return .zeroTick
         }
 
         if isIntegerValue(value) {
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred(intensity: 0.78)
-            return
+            return .integerTick
         }
 
-        UISelectionFeedbackGenerator().selectionChanged()
+        return .selection
     }
 
     private func hapticStepIndex(for value: Double) -> Int {

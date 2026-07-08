@@ -29,13 +29,17 @@ enum CameraFeedbackPreferences {
 /// - Tag: CameraCaptureRootView
 struct CameraView: View {
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.openURL) private var openURL
     private let startsAutomatically: Bool
+    private let initialReadinessGate: CameraInitialReadinessGate
     @StateObject private var lifecycleCoordinator: CaptureLifecycleCoordinator
     @StateObject private var viewModel: CameraViewModel
     @StateObject private var routeStore: CameraRouteStore
     @StateObject private var chromeOrientation: CameraChromeOrientationController
     @StateObject private var appAttestController: AppAttestRuntimeController
+    @StateObject private var hapticFeedbackController: CameraHapticFeedbackController
     private let intentHandoffStore: TAPCamIntentHandoffStore
+    @State private var didCompleteInitialReadinessGate = false
     @State private var isShowingSettings = false
     @State private var selectedMode: CameraCaptureModeOption = .photo
     @State private var flashMode: CameraFlashControlMode
@@ -99,15 +103,19 @@ struct CameraView: View {
         routeStore: CameraRouteStore? = nil,
         appAttestController: AppAttestRuntimeController? = nil,
         lifecycleCoordinator: CaptureLifecycleCoordinator = CaptureLifecycleCoordinator(),
+        hapticFeedbackController: CameraHapticFeedbackController = CameraHapticFeedbackController(),
         intentHandoffStore: TAPCamIntentHandoffStore = TAPCamIntentHandoffStore(),
+        initialReadinessGate: CameraInitialReadinessGate = .disabled,
         startsAutomatically: Bool = true
     ) {
         let initialGlobalEVBias = CameraEVPreferences.resolvedLaunchBias()
         let initialFlashMode = CameraFlashControlMode.resolvedStartupMode()
         let initialLivePhotoEnabled = CameraLivePhotoPreferences.resolvedStartupIsEnabled()
         self.startsAutomatically = startsAutomatically
+        self.initialReadinessGate = initialReadinessGate
         self.intentHandoffStore = intentHandoffStore
         _lifecycleCoordinator = StateObject(wrappedValue: lifecycleCoordinator)
+        _hapticFeedbackController = StateObject(wrappedValue: hapticFeedbackController)
         let resolvedViewModel = viewModel ?? CameraViewModel()
         resolvedViewModel.requestedGlobalAutoExposureBias = initialGlobalEVBias
         _viewModel = StateObject(wrappedValue: resolvedViewModel)
@@ -137,6 +145,7 @@ struct CameraView: View {
                 }
         }
         .statusBarHidden(true)
+        .environment(\.cameraHapticFeedbackController, hapticFeedbackController)
         .sheet(isPresented: $isShowingSettings) {
             DepthAnalyzerSettingsView(
                 appAttestController: appAttestController,
@@ -152,7 +161,17 @@ struct CameraView: View {
             appAttestController: appAttestController,
             isSettingsPresented: isShowingSettings
         )
-        .onAppear(perform: applyPendingIntentHandoff)
+        .overlay {
+            if initialReadinessState.blocksInteraction {
+                CameraInitialReadinessOverlayView(
+                    state: initialReadinessState,
+                    onRetry: retryInitialCameraReadiness,
+                    onOpenSettings: openAppSettings
+                )
+                .transition(.opacity)
+            }
+        }
+        .onAppear(perform: cameraViewDidAppear)
         .onReceive(NotificationCenter.default.publisher(for: .tapCamIntentHandoffDidChange)) { _ in
             applyPendingIntentHandoff()
         }
@@ -213,6 +232,9 @@ struct CameraView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase != .active {
                 persistRememberedViewfinderControlStateIfNeeded()
+            } else {
+                hapticFeedbackController.prepareForCameraInteraction()
+                completeInitialReadinessGateIfReady()
             }
         }
         .onChange(of: viewModel.latestCaptureDepthHint) { _, hint in
@@ -248,6 +270,15 @@ struct CameraView: View {
                 viewfinderHint = nil
             }
         }
+        .onChange(of: viewModel.isDepthCaptureReady) { _, _ in
+            completeInitialReadinessGateIfReady()
+        }
+        .onChange(of: viewModel.isConfiguringSession) { _, _ in
+            completeInitialReadinessGateIfReady()
+        }
+        .onChange(of: hapticFeedbackController.hasPreparedCameraInteraction) { _, _ in
+            completeInitialReadinessGateIfReady()
+        }
     }
 
     private var cameraSurface: some View {
@@ -263,6 +294,51 @@ struct CameraView: View {
         }
         .background(Color.black.ignoresSafeArea())
         .ignoresSafeArea(.container, edges: .top)
+    }
+
+    private var initialReadinessState: CameraInteractiveReadinessState {
+        CameraInteractiveReadinessState.resolve(
+            isGateEnabled: initialReadinessGate.isEnabled,
+            didCompleteGate: didCompleteInitialReadinessGate,
+            cameraAuthorizationStatus: AVCaptureDevice.authorizationStatus(for: .video),
+            isConfiguringSession: viewModel.isConfiguringSession,
+            hasActiveSessionConfiguration: viewModel.activeSessionConfiguration != nil,
+            isDepthCaptureReady: viewModel.isDepthCaptureReady,
+            hasPreparedHaptics: hapticFeedbackController.hasPreparedCameraInteraction,
+            statusMessage: viewModel.statusMessage
+        )
+    }
+
+    private func cameraViewDidAppear() {
+        hapticFeedbackController.prepareForCameraInteraction()
+        applyPendingIntentHandoff()
+        completeInitialReadinessGateIfReady()
+    }
+
+    private func completeInitialReadinessGateIfReady() {
+        guard initialReadinessGate.isEnabled,
+              !didCompleteInitialReadinessGate,
+              initialReadinessState == .ready else {
+            return
+        }
+
+        didCompleteInitialReadinessGate = true
+        initialReadinessGate.onReady()
+    }
+
+    private func retryInitialCameraReadiness() {
+        hapticFeedbackController.prepareForCameraInteraction()
+        Task {
+            await viewModel.start()
+            completeInitialReadinessGateIfReady()
+        }
+    }
+
+    private func openAppSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else {
+            return
+        }
+        openURL(url)
     }
 
     private var viewfinderHighlightColor: Color {
@@ -1354,8 +1430,6 @@ struct CameraView: View {
             return
         }
 
-        let generator = UIImpactFeedbackGenerator(style: .medium)
-        generator.prepare()
-        generator.impactOccurred()
+        hapticFeedbackController.shutterAccepted()
     }
 }

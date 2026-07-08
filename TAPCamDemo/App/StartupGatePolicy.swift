@@ -54,6 +54,11 @@ nonisolated struct StartupGateStatusSnapshot: Equatable, Sendable {
     }
 }
 
+nonisolated enum StartupFirstInstallContinueAction: Equatable, Sendable {
+    case stayOnWelcome
+    case enterCameraReadiness
+}
+
 nonisolated enum StartupGatePolicy {
     static let requiredRequirements: [StartupGateRequirementKind] = [
         .securityPreflight,
@@ -76,6 +81,12 @@ nonisolated enum StartupGatePolicy {
         snapshot.securityPreflight == .denied
             || snapshot.camera == .denied
             || snapshot.photoLibrary == .denied
+    }
+
+    static func firstInstallContinueAction(
+        for snapshot: StartupGateStatusSnapshot
+    ) -> StartupFirstInstallContinueAction {
+        hasCompletedRequiredStartupChecks(snapshot) ? .enterCameraReadiness : .stayOnWelcome
     }
 }
 

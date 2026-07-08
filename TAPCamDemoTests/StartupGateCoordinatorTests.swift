@@ -50,6 +50,26 @@ struct StartupGateCoordinatorTests {
         ))
     }
 
+    @Test func startupGateContinueEntersCameraReadinessOnlyAfterRequiredSetup() {
+        let completedSnapshot = StartupGateStatusSnapshot(
+            securityPreflight: .granted,
+            camera: .granted,
+            photoLibrary: .granted,
+            location: .idle,
+            microphone: .idle
+        )
+        let incompleteSnapshot = StartupGateStatusSnapshot(
+            securityPreflight: .granted,
+            camera: .idle,
+            photoLibrary: .granted,
+            location: .idle,
+            microphone: .idle
+        )
+
+        #expect(StartupGatePolicy.firstInstallContinueAction(for: completedSnapshot) == .enterCameraReadiness)
+        #expect(StartupGatePolicy.firstInstallContinueAction(for: incompleteSnapshot) == .stayOnWelcome)
+    }
+
     @Test func startupGateStoredKeyPreservesExistingInstallMarker() {
         #expect(StartupGateDefaults.didCompleteFirstInstallSetupKey == "TAPCamDemo.StartupGate.didCompleteFirstInstallPermissions")
     }

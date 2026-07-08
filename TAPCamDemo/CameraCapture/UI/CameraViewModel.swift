@@ -30,6 +30,7 @@ final class CameraViewModel: ObservableObject {
     @Published var pendingJobCount = 0
     @Published var recentMetrics: [CaptureJobMetrics] = []
     @Published var isDepthCaptureReady = false
+    @Published var isConfiguringSession = false
     @Published var isPausedForAnalysis = false
     @Published var nativePreviewAspectRatio = 3.0 / 4.0
     @Published var previewCropRectNormalized = CropRectNormalized.fullFrame
@@ -195,12 +196,14 @@ final class CameraViewModel: ObservableObject {
     }
 
     func stop() {
+        isConfiguringSession = false
         isPausedForAnalysis = false
         sessionController.stop()
     }
 
     func pauseForAnalysis() {
         configurationGeneration += 1
+        isConfiguringSession = false
         isPausedForAnalysis = true
         isDepthCaptureReady = false
         activeSessionConfiguration = nil

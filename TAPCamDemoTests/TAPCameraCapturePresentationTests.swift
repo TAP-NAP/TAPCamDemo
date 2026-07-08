@@ -3,6 +3,7 @@
 //  TAPCamDemoTests
 //
 
+import AVFoundation
 import Foundation
 import SwiftUI
 import Testing
@@ -162,6 +163,64 @@ struct TAPCameraCapturePresentationTests {
     @Test func shutterSoundPreferenceDefaultsToEnabled() throws {
         #expect(CameraFeedbackPreferences.defaultShutterSoundEnabled)
         #expect(!CameraFeedbackPreferences.shutterSoundEnabledKey.isEmpty)
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func cameraInitialReadinessGateBlocksFirstInstallUntilCameraIsInteractive() throws {
+        let startupSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/App/StartupGateView.swift"
+        )
+        let cameraSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraView.swift"
+        )
+        let readinessSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraInitialReadinessGate.swift"
+        )
+
+        #expect(startupSource.contains("isPreparingFirstInstallCameraReadiness"))
+        #expect(startupSource.contains("CameraView(initialReadinessGate: .firstInstall"))
+        #expect(startupSource.contains("completeFirstInstallSetupAfterCameraReadiness"))
+        #expect(cameraSource.contains("initialReadinessGate: CameraInitialReadinessGate = .disabled"))
+        #expect(cameraSource.contains("CameraInitialReadinessOverlayView("))
+        #expect(cameraSource.contains("initialReadinessState.blocksInteraction"))
+        #expect(cameraSource.contains("activeSessionConfiguration != nil"))
+        #expect(readinessSource.contains("hasActiveSessionConfiguration, isDepthCaptureReady, hasPreparedHaptics"))
+        #expect(readinessSource.contains(#".accessibilityIdentifier("camera.initialReadiness.overlay")"#))
+    }
+
+    @Test func initialCameraReadinessRequiresSessionDepthAndPreparedHaptics() {
+        #expect(CameraInteractiveReadinessState.resolve(
+            isGateEnabled: true,
+            didCompleteGate: false,
+            cameraAuthorizationStatus: .authorized,
+            isConfiguringSession: false,
+            hasActiveSessionConfiguration: true,
+            isDepthCaptureReady: true,
+            hasPreparedHaptics: true,
+            statusMessage: "Ready"
+        ) == .ready)
+
+        #expect(CameraInteractiveReadinessState.resolve(
+            isGateEnabled: true,
+            didCompleteGate: false,
+            cameraAuthorizationStatus: .authorized,
+            isConfiguringSession: false,
+            hasActiveSessionConfiguration: true,
+            isDepthCaptureReady: true,
+            hasPreparedHaptics: false,
+            statusMessage: "Ready"
+        ).blocksInteraction)
+
+        #expect(CameraInteractiveReadinessState.resolve(
+            isGateEnabled: true,
+            didCompleteGate: false,
+            cameraAuthorizationStatus: .denied,
+            isConfiguringSession: false,
+            hasActiveSessionConfiguration: false,
+            isDepthCaptureReady: false,
+            hasPreparedHaptics: true,
+            statusMessage: "Camera access denied"
+        ) == .failed(message: "Camera access denied", canOpenSettings: true))
     }
 
     @Test func cameraRouteForegroundPreferenceDefaultsToDisabled() throws {
@@ -616,6 +675,12 @@ struct TAPCameraCapturePresentationTests {
         let sliderSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/CameraCapture/UI/CameraTickedSliderRow.swift"
         )
+        let cameraSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraView.swift"
+        )
+        let hapticSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraHapticFeedbackController.swift"
+        )
 
         #expect(adjustmentSource.contains("tickValueStep: CameraEVPreferences.adjustmentStep"))
         #expect(adjustmentSource.contains("isEVIntegerHapticsEnabled: true"))
@@ -630,9 +695,26 @@ struct TAPCameraCapturePresentationTests {
         #expect(sliderSource.contains("static let cursorTriangleBaseOffset"))
         #expect(sliderSource.contains("tickX(for: index, count: descriptors.count, width: proxy.size.width)"))
         #expect(sliderSource.contains(#".accessibilityIdentifier("camera.tickedAdjustmentStrip.valueCursor")"#))
-        #expect(sliderSource.contains("UISelectionFeedbackGenerator"))
-        #expect(sliderSource.contains("UIImpactFeedbackGenerator(style: .heavy)"))
-        #expect(sliderSource.contains("UIImpactFeedbackGenerator(style: .medium)"))
+        #expect(sliderSource.contains("@Environment(\\.cameraHapticFeedbackController)"))
+        #expect(sliderSource.contains("hapticFeedbackController.adjustmentChanged(style: adjustmentHapticStyle(for: value))"))
+        #expect(sliderSource.contains("return .zeroTick"))
+        #expect(sliderSource.contains("return .integerTick"))
+        #expect(sliderSource.contains("return .selection"))
+        #expect(!sliderSource.contains("UISelectionFeedbackGenerator"))
+        #expect(!sliderSource.contains("UIImpactFeedbackGenerator"))
+        #expect(hapticSource.contains("final class CameraHapticFeedbackController"))
+        #expect(hapticSource.contains("UISelectionFeedbackGenerator"))
+        #expect(hapticSource.contains("UIImpactFeedbackGenerator(style: .heavy)"))
+        #expect(hapticSource.contains("UIImpactFeedbackGenerator(style: .medium)"))
+        #expect(hapticSource.contains("enum CameraAdjustmentHapticStyle"))
+        #expect(hapticSource.contains("case zeroTick"))
+        #expect(hapticSource.contains("case integerTick"))
+        #expect(hapticSource.contains("case selection"))
+        #expect(cameraSource.contains("@StateObject private var hapticFeedbackController"))
+        #expect(cameraSource.contains(".environment(\\.cameraHapticFeedbackController, hapticFeedbackController)"))
+        #expect(cameraSource.contains("hapticFeedbackController.prepareForCameraInteraction()"))
+        #expect(cameraSource.contains("hapticFeedbackController.shutterAccepted()"))
+        #expect(!cameraSource.contains("UIImpactFeedbackGenerator(style: .medium)"))
         #expect(sliderSource.contains("lastHapticStepIndex"))
         #expect(sliderSource.contains("triggerSelectionHapticIfNeeded"))
         #expect(sliderSource.contains("position(x: portraitAdjustmentCenterline"))
