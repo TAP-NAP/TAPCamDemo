@@ -148,6 +148,51 @@ struct TAPLibraryStorageTests {
         #expect(!FileManager.default.fileExists(atPath: pairedVideoURL.path))
     }
 
+    @Test func pendingCaptureStorePersistsAndCleansTAPVideoArtifact() async throws {
+        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        let videoDirectory = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        let videoURL = videoDirectory.appendingPathComponent("source.mp4")
+        let depthPreviewURL = videoDirectory.appendingPathComponent("depth-preview.mp4")
+        try Data("unsigned-video".utf8).write(to: videoURL)
+        try Data("debug-depth-preview".utf8).write(to: depthPreviewURL)
+        let store = TAPPendingCaptureStore(rootURL: rootURL)
+
+        let record = try await store.ingestVideo(TAPPendingVideoCaptureArtifact(
+            captureID: "video-capture",
+            packageID: UUID(uuidString: "00000000-0000-0000-0000-000000000777")!,
+            capturedAt: Date(timeIntervalSince1970: 1_779_897_600),
+            unsignedVideoURL: videoURL,
+            debugDepthPreviewVideoURL: depthPreviewURL
+        ))
+        let bundleURL = rootURL.appendingPathComponent(record.captureID, isDirectory: true)
+        let unsignedVideoURL = bundleURL.appendingPathComponent(TAPPendingCaptureBundlePathPolicy.unsignedVideoFilename)
+        let signedVideoURL = bundleURL.appendingPathComponent(TAPPendingCaptureBundlePathPolicy.signedVideoFilename)
+        let storedDepthPreviewURL = bundleURL.appendingPathComponent(
+            TAPPendingCaptureBundlePathPolicy.debugDepthPreviewVideoFilename
+        )
+
+        #expect(record.artifactKind == .tapVideo)
+        #expect(record.unsignedPhotoFilename == nil)
+        #expect(record.unsignedVideoFilename == TAPPendingCaptureBundlePathPolicy.unsignedVideoFilename)
+        #expect(record.debugDepthPreviewVideoFilename == TAPPendingCaptureBundlePathPolicy.debugDepthPreviewVideoFilename)
+        #expect(record.pairedVideoFilename == nil)
+        #expect(FileManager.default.fileExists(atPath: unsignedVideoURL.path))
+        #expect(FileManager.default.fileExists(atPath: storedDepthPreviewURL.path))
+        #expect(try await store.unsignedVideoData(captureID: record.captureID) == Data("unsigned-video".utf8))
+
+        let signedRecord = try await store.storeSignedVideo(Data("signed-video".utf8), captureID: record.captureID)
+
+        #expect(signedRecord.signedVideoFilename == TAPPendingCaptureBundlePathPolicy.signedVideoFilename)
+        #expect(FileManager.default.fileExists(atPath: signedVideoURL.path))
+        #expect(try await store.signedVideoData(captureID: record.captureID) == Data("signed-video".utf8))
+
+        _ = try await store.markExported(captureID: record.captureID, assetLocalIdentifier: "video-asset-id")
+
+        #expect(!FileManager.default.fileExists(atPath: unsignedVideoURL.path))
+        #expect(!FileManager.default.fileExists(atPath: signedVideoURL.path))
+        #expect(FileManager.default.fileExists(atPath: storedDepthPreviewURL.path))
+    }
+
     @Test func pendingCaptureStoreRejectsUnsafeCaptureIDsBeforeBundlePathUse() async throws {
         let unsafeCaptureIDs = [
             "",
@@ -225,6 +270,9 @@ struct TAPLibraryStorageTests {
         #expect(source.contains(#"static let signedHEICFilename = "signed.heic""#))
         #expect(source.contains(#"static let unsignedJPEGFilename = "unsigned.jpg""#))
         #expect(source.contains(#"static let signedJPEGFilename = "signed.jpg""#))
+        #expect(source.contains(#"static let unsignedVideoFilename = "unsigned.mp4""#))
+        #expect(source.contains(#"static let signedVideoFilename = "signed.mp4""#))
+        #expect(source.contains(#"static let debugDepthPreviewVideoFilename = "depth-preview.mp4""#))
         #expect(source.contains(#"static let pairedVideoFilename = "paired-video.mov""#))
         #expect(source.contains(#"static let thumbnailFilename = "thumbnail.jpg""#))
         #expect(source.contains(#"""
@@ -233,6 +281,9 @@ struct TAPLibraryStorageTests {
         signedHEICFilename,
         unsignedJPEGFilename,
         signedJPEGFilename,
+        unsignedVideoFilename,
+        signedVideoFilename,
+        debugDepthPreviewVideoFilename,
         pairedVideoFilename,
         thumbnailFilename
     ]
@@ -250,6 +301,9 @@ struct TAPLibraryStorageTests {
             TAPPendingCaptureBundlePathPolicy.signedHEICFilename,
             TAPPendingCaptureBundlePathPolicy.unsignedJPEGFilename,
             TAPPendingCaptureBundlePathPolicy.signedJPEGFilename,
+            TAPPendingCaptureBundlePathPolicy.unsignedVideoFilename,
+            TAPPendingCaptureBundlePathPolicy.signedVideoFilename,
+            TAPPendingCaptureBundlePathPolicy.debugDepthPreviewVideoFilename,
             TAPPendingCaptureBundlePathPolicy.pairedVideoFilename,
             TAPPendingCaptureBundlePathPolicy.thumbnailFilename
         ]

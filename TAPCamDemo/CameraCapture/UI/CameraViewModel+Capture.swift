@@ -146,11 +146,44 @@ extension CameraViewModel {
             return
         }
 
-        guard let asset = PhotoLibraryWriter.latestDepthAssetIfAuthorized() else {
+        guard let assetID = await PhotoLibraryWriter.latestDepthAssetIdentifierIfAuthorized() else {
             return
         }
 
-        loadRecentDepthAssetPreview(assetID: asset.localIdentifier)
+        loadRecentDepthAssetPreview(assetID: assetID)
+    }
+
+    func scheduleRecentTAPLibraryPreviewRefresh(afterNanoseconds delay: UInt64 = 900_000_000) {
+        recentLibraryPreviewRefreshTask?.cancel()
+        recentLibraryPreviewRefreshTask = Task { [weak self] in
+            if delay > 0 {
+                try? await Task.sleep(nanoseconds: delay)
+            }
+            guard !Task.isCancelled else {
+                return
+            }
+            await self?.loadRecentTAPLibraryPreviewIfIdle()
+        }
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.pendingCapture.info("recent TAP Library preview refresh scheduled delayNs=\(delay, privacy: .public)")
+        #endif
+    }
+
+    private func loadRecentTAPLibraryPreviewIfIdle() async {
+        guard !isBusyForNonCaptureStartupWork else {
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.pendingCapture.info("recent TAP Library preview refresh skipped cameraBusy=true configuring=\(self.isConfiguringSession, privacy: .public) recording=\(self.isVideoRecording, privacy: .public) paused=\(self.isPausedForAnalysis, privacy: .public)")
+            #endif
+            return
+        }
+
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.pendingCapture.info("recent TAP Library preview refresh start")
+        #endif
+        await loadRecentTAPLibraryPreviewIfAvailable()
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.pendingCapture.info("recent TAP Library preview refresh finish")
+        #endif
     }
 
     @discardableResult
@@ -169,7 +202,10 @@ extension CameraViewModel {
             return false
         }
 
-        for record in records where recordCanBeDisplayedInTAPLibrary(record) {
+        for record in records {
+            guard await recordCanBeDisplayedInTAPLibrary(record) else {
+                continue
+            }
             if await loadRecentPendingCapturePreview(captureID: record.captureID) {
                 return true
             }
@@ -177,14 +213,14 @@ extension CameraViewModel {
         return false
     }
 
-    private func recordCanBeDisplayedInTAPLibrary(_ record: TAPPendingCaptureRecord) -> Bool {
+    private func recordCanBeDisplayedInTAPLibrary(_ record: TAPPendingCaptureRecord) async -> Bool {
         guard record.status == .exported else {
             return true
         }
         guard let assetID = record.assetLocalIdentifier else {
             return false
         }
-        return PhotoLibraryWriter.asset(localIdentifier: assetID) != nil
+        return await PhotoLibraryWriter.assetExists(localIdentifier: assetID)
     }
 
     func retryPendingCaptures(pendingCaptureWorkerClient: any AppAttestClient) async {
@@ -195,7 +231,7 @@ extension CameraViewModel {
             store: pendingCaptureStore,
             appAttestClient: pendingCaptureWorkerClient
         )
-        await loadRecentTAPLibraryPreviewIfAvailable()
+        scheduleRecentTAPLibraryPreviewRefresh(afterNanoseconds: 300_000_000)
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.pendingCapture.info("viewModel retryPendingCaptures finish")
         #endif

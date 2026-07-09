@@ -50,8 +50,6 @@ struct CameraViewLifecycleModifier: ViewModifier {
                     startsAutomatically: startsAutomatically,
                     viewModel: viewModel
                 )
-            }
-            .task {
                 await lifecycleCoordinator.warmPendingCaptureSigningCredentialAndRetryIfNeeded(
                     startsAutomatically: startsAutomatically,
                     viewModel: viewModel,

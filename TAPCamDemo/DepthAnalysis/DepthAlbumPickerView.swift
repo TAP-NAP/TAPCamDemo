@@ -23,7 +23,9 @@ struct DepthAlbumPickerView: View {
     @State private var pendingReturnScrollBookmark: DepthAlbumReturnScrollBookmark?
     @State private var latestReturnScrollRowStride: CGFloat = 0
     @State private var selectedAnalysisRoute: DepthAlbumAnalysisRoute?
+    @State private var selectedVideoRoute: TAPVideoPlaybackRoute?
     @State private var isAnalysisPresented = false
+    @State private var isVideoPresented = false
     @State private var returnScrollRestoreToken = UUID()
 
     private static let columnCount = 5
@@ -85,8 +87,14 @@ struct DepthAlbumPickerView: View {
         .navigationDestination(isPresented: $isAnalysisPresented) {
             analysisDestination()
         }
+        .navigationDestination(isPresented: $isVideoPresented) {
+            videoDestination()
+        }
         .onChange(of: isAnalysisPresented) { _, isPresented in
             handleAnalysisPresentationChange(isPresented: isPresented)
+        }
+        .onChange(of: isVideoPresented) { _, isPresented in
+            handleVideoPresentationChange(isPresented: isPresented)
         }
         .modifier(DepthAlbumEdgeBackModifier(onReturn: returnToCameraWithoutAnimation))
     }
@@ -201,8 +209,38 @@ struct DepthAlbumPickerView: View {
         }
     }
 
+    @ViewBuilder
+    private func videoDestination() -> some View {
+        if let selectedVideoRoute {
+            TAPVideoDepthPlaybackView(
+                source: selectedVideoRoute.source,
+                albumContext: TAPVideoAlbumContext(
+                    currentItemID: selectedVideoRoute.itemID,
+                    items: viewModel.items
+                ),
+                onCurrentAlbumEntryChanged: { entry in
+                    updatePresentedVideoRoute(entry)
+                }
+            )
+            .id(selectedVideoRoute.itemID)
+        } else {
+            EmptyView()
+        }
+    }
+
     private func updatePresentedAnalysisRoute(_ entry: DepthAnalysisAlbumContext.Entry) {
         selectedAnalysisRoute = DepthAlbumAnalysisRoute(entry: entry)
+        routeStore.openDepthAlbumItem(entry.routeAnchor)
+        pendingReturnScrollBookmark = DepthAlbumReturnScrollBookmark(
+            itemID: entry.id,
+            routeAnchor: entry.routeAnchor,
+            itemViewportY: itemViewportYByID[entry.id] ?? 0
+        )
+        returnScrollRestoreToken = UUID()
+    }
+
+    private func updatePresentedVideoRoute(_ entry: TAPVideoAlbumContext.Entry) {
+        selectedVideoRoute = TAPVideoPlaybackRoute(entry: entry)
         routeStore.openDepthAlbumItem(entry.routeAnchor)
         pendingReturnScrollBookmark = DepthAlbumReturnScrollBookmark(
             itemID: entry.id,
@@ -220,9 +258,15 @@ struct DepthAlbumPickerView: View {
             itemViewportY: itemViewportYByID[item.id] ?? 0
         )
         returnScrollRestoreToken = UUID()
-        selectedAnalysisRoute = DepthAlbumAnalysisRoute(item: item)
         routeStore.openDepthAlbumItem(item.routeAnchor)
-        isAnalysisPresented = true
+        if item.isVideo,
+           let videoRoute = TAPVideoPlaybackRoute(item: item) {
+            selectedVideoRoute = videoRoute
+            isVideoPresented = true
+        } else {
+            selectedAnalysisRoute = DepthAlbumAnalysisRoute(item: item)
+            isAnalysisPresented = true
+        }
     }
 
     private func handleAnalysisPresentationChange(isPresented: Bool) {
@@ -234,9 +278,19 @@ struct DepthAlbumPickerView: View {
         scheduleReturnScrollRestore(clearAfterDelay: true)
     }
 
+    private func handleVideoPresentationChange(isPresented: Bool) {
+        guard !isPresented else {
+            return
+        }
+
+        selectedVideoRoute = nil
+        scheduleReturnScrollRestore(clearAfterDelay: true)
+    }
+
     private func restorePendingReturnScrollPosition(rowStride: CGFloat, clearAfterDelay: Bool) {
         guard pendingReturnScrollBookmark != nil,
-              !isAnalysisPresented else {
+              !isAnalysisPresented,
+              !isVideoPresented else {
             return
         }
 
@@ -264,6 +318,7 @@ struct DepthAlbumPickerView: View {
             guard pendingReturnScrollBookmark == bookmark,
                   returnScrollRestoreToken == token,
                   !isAnalysisPresented,
+                  !isVideoPresented,
                   let offsetY = Self.returnScrollOffsetY(
                     bookmark: bookmark,
                     items: viewModel.items,
@@ -281,7 +336,8 @@ struct DepthAlbumPickerView: View {
             try? await Task.sleep(nanoseconds: 300_000_000)
             guard pendingReturnScrollBookmark == bookmark,
                   returnScrollRestoreToken == token,
-                  !isAnalysisPresented else {
+                  !isAnalysisPresented,
+                  !isVideoPresented else {
                 return
             }
             pendingReturnScrollBookmark = nil
@@ -559,7 +615,7 @@ private struct TAPLibraryItemCell: View {
                     .aspectRatio(1, contentMode: .fill)
                     .clipped()
             } else {
-                Image(systemName: "photo")
+                Image(systemName: item.isVideo ? "video" : "photo")
                     .font(.title2)
                     .foregroundStyle(.secondary)
             }
@@ -569,6 +625,22 @@ private struct TAPLibraryItemCell: View {
                     HStack {
                         Spacer()
                         DepthAnalysisLivePhotoBadge(size: .thumbnail)
+                    }
+                    Spacer()
+                }
+                .padding(5)
+                .allowsHitTesting(false)
+            }
+
+            if item.isVideo {
+                VStack {
+                    HStack {
+                        Spacer()
+                        Image(systemName: "video.fill")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 24, height: 18)
+                            .background(.black.opacity(0.58), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
                     }
                     Spacer()
                 }
@@ -630,6 +702,13 @@ private struct TAPLibraryItemCell: View {
             guard let phAsset = asset.phAsset else {
                 return nil
             }
+            if asset.isVideo {
+                return await DepthAlbumThumbnailLoader.shared.videoData(
+                    for: phAsset,
+                    cacheKey: cacheKey,
+                    pixelLength: thumbnailPixelLength
+                )
+            }
             return await DepthAlbumThumbnailLoader.shared.data(
                 for: phAsset,
                 cacheKey: cacheKey,
@@ -642,12 +721,27 @@ private struct TAPLibraryItemCell: View {
             guard let phAsset = asset.phAsset else {
                 return nil
             }
+            if item.isVideo {
+                return await DepthAlbumThumbnailLoader.shared.videoData(
+                    for: phAsset,
+                    cacheKey: cacheKey,
+                    pixelLength: thumbnailPixelLength
+                )
+            }
             return await DepthAlbumThumbnailLoader.shared.data(
                 for: phAsset,
                 cacheKey: cacheKey,
                 pixelLength: thumbnailPixelLength
             )
         case .pending(let record):
+            if item.isVideo,
+               let videoURL = try? await TAPPendingCaptureStore.shared.bestAvailableVideoURL(captureID: record.captureID) {
+                return await DepthAlbumThumbnailLoader.shared.videoData(
+                    for: videoURL,
+                    cacheKey: cacheKey,
+                    pixelLength: thumbnailPixelLength
+                )
+            }
             return try? await TAPPendingCaptureStore.shared.thumbnailData(captureID: record.captureID)
         }
     }

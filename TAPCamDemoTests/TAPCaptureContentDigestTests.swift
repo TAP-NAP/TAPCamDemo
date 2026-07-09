@@ -83,6 +83,48 @@ struct TAPCaptureContentDigestTests {
         #expect(try String(data: digest.canonicalJSONData(), encoding: .utf8)?.contains("\"signedResources\"") == true)
     }
 
+    @Test func videoContentBindingHashesMP4BytesExcludingBMFFProofSlot() throws {
+        let manifest = Self.sampleVideoManifest(depthSampleCount: 2)
+        let emptySlotData = try TAPProofSlot.ensuringEmptyBMFFSlot(in: Self.syntheticMP4Data())
+        let proofSlotData = try TAPProofSlot.writeProofEnvelope(
+            Data("proof-envelope".utf8),
+            intoBMFF: emptySlotData
+        )
+
+        let emptyDigest = try CaptureContentDigest.makeVideo(
+            manifest: manifest,
+            mp4Data: emptySlotData
+        )
+        let proofDigest = try CaptureContentDigest.makeVideo(
+            manifest: manifest,
+            mp4Data: proofSlotData
+        )
+
+        #expect(emptyDigest.schemaID == CaptureContentBinding.videoSchemaIdentifier)
+        #expect(emptyDigest.manifestSchemaID == TAPVideoManifest.schemaIdentifier)
+        #expect(emptyDigest.assetHash.fileContainer == "mp4")
+        #expect(emptyDigest.assetHash.value == proofDigest.assetHash.value)
+        #expect(emptyDigest.metadataHash.mediaType == "application/vnd.tapnap.video-manifest.payload+json;version=1")
+        #expect(emptyDigest.depthResource.presence == "captured")
+        #expect(try TAPProofSlot.proofEnvelopeData(fromBMFF: proofSlotData) == Data("proof-envelope".utf8))
+    }
+
+    @Test func videoContentBindingRecordsZeroDepthCoverageWithoutChangingVerificationFamily() throws {
+        let manifest = Self.sampleVideoManifest(depthSampleCount: 0)
+        let mp4Data = try TAPProofSlot.ensuringEmptyBMFFSlot(in: Self.syntheticMP4Data())
+
+        let digest = try CaptureContentDigest.makeVideo(
+            manifest: manifest,
+            mp4Data: mp4Data
+        )
+
+        #expect(digest.schemaID == "urn:tapnap:tapcam:content-binding:v4")
+        #expect(digest.manifestSchemaID == "urn:tapnap:tapcam:video-manifest:v1")
+        #expect(digest.depthResource.presence == "no-samples")
+        #expect(digest.depthResource.binding == "coverage-recorded-in-manifest")
+        #expect(digest.signedResources == nil)
+    }
+
     @Test func bmffProofSlotIsFixedSizeAndExcludedFromAssetHash() throws {
         let baseData = Self.syntheticBMFFData()
         let emptySlotData = try TAPProofSlot.ensuringEmptySlot(
@@ -163,6 +205,82 @@ struct TAPCaptureContentDigestTests {
         bmffBox("ftyp", payload: Data("heic".utf8))
             + bmffBox("meta", payload: Data([0x00, 0x00, 0x00, 0x00, 0x69, 0x69, 0x64, 0x00]))
             + bmffBox("mdat", payload: Data("primary-image-bytes-and-depth-aux-bytes".utf8))
+    }
+
+    private static func syntheticMP4Data() -> Data {
+        bmffBox("ftyp", payload: Data("mp42".utf8))
+            + bmffBox("moov", payload: Data("movie-metadata".utf8))
+            + bmffBox("mdat", payload: Data("rgb-audio-depth-track-bytes".utf8))
+    }
+
+    private static func sampleVideoManifest(depthSampleCount: Int) -> TAPVideoManifest {
+        TAPVideoManifest(payload: TAPVideoManifest.Payload(
+            id: "video-capture",
+            capturedAt: "2026-07-09T12:00:00Z",
+            selectedCameraPlan: TAPVideoManifest.SelectedCameraPlan(
+                deviceUniqueID: "device-1",
+                deviceType: "BuiltInLiDARDepthCamera",
+                localizedName: "Back Camera",
+                position: "back",
+                requestedFocalLengthLabel: "24mm",
+                resolvedFocalLengthLabel: "24mm",
+                resolvedZoomFactor: 1,
+                depthCapable: true
+            ),
+            container: TAPVideoManifest.Container(
+                fileType: "mp4",
+                mediaType: "video/mp4",
+                durationSeconds: 1,
+                timeScale: 600,
+                trackCount: depthSampleCount > 0 ? 2 : 1
+            ),
+            rgbTrack: TAPVideoManifest.RGBTrack(
+                trackID: 1,
+                codec: "avc1",
+                width: 1920,
+                height: 1080,
+                nominalFrameRate: 30,
+                frameCount: 30,
+                transform: "identity"
+            ),
+            audioTrack: TAPVideoManifest.AudioTrack(
+                status: .notCaptured,
+                trackID: nil,
+                codec: nil,
+                sampleRate: nil,
+                channelCount: nil
+            ),
+            depthCoverage: TAPVideoManifest.DepthCoverage(
+                track: depthSampleCount > 0 ? "tap-depth-klv" : nil,
+                sampleCount: depthSampleCount,
+                format: depthSampleCount > 0
+                    ? TAPVideoManifest.DepthFormat(
+                        kind: "depth",
+                        pixelFormat: "DepthFloat32",
+                        width: 256,
+                        height: 192,
+                        rowStride: 1024,
+                        compression: "none",
+                        calibrationReference: "cameraCalibrationData"
+                    )
+                    : nil
+            ),
+            synchronization: TAPVideoManifest.Synchronization(
+                timing: "sample-timestamps",
+                rgbToDepthMapping: "nearest-rgb-frame",
+                maxObservedDeltaSeconds: nil
+            ),
+            stop: TAPVideoManifest.Stop(
+                reason: .userStop,
+                recordedDurationSeconds: 1
+            ),
+            software: TAPVideoManifest.Software(
+                appIdentifier: "net.tapcam.demo",
+                appVersion: "1.0",
+                buildNumber: "1",
+                schemaWriter: "TAPVideoManifestEncoder"
+            )
+        ))
     }
 
     private static func bmffBox(_ type: String, payload: Data) -> Data {

@@ -39,10 +39,10 @@ final class CameraControlsRegressionUITests: XCTestCase {
         tapButton("camera.lowerToolbar.focus", in: app)
         XCTAssertTrue(waitForStatus(in: app, containing: "AF restored"))
 
-        let videoMode = app.buttons["VIDEO mode coming soon"]
+        let videoMode = app.buttons["VIDEO mode"]
         XCTAssertTrue(videoMode.waitForExistence(timeout: 2))
         videoMode.tap()
-        XCTAssertTrue(waitForStatus(in: app, containing: "Coming soon"))
+        XCTAssertTrue(waitForStatus(in: app, containing: "VIDEO selected"))
     }
 
     private func tapButton(_ identifier: String, in app: XCUIApplication) {

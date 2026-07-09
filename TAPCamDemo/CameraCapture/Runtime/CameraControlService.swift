@@ -86,6 +86,17 @@ nonisolated enum CameraControlService {
         ))
     }
 
+    static func applyActiveDepthDataFormat(
+        _ depthFormat: AVCaptureDevice.Format?,
+        to device: AVCaptureDevice
+    ) throws {
+        try requireSessionQueueAccess()
+        try device.lockForConfiguration()
+        defer { device.unlockForConfiguration() }
+
+        device.activeDepthDataFormat = depthFormat
+    }
+
     static func applyExposureTargetBias(_ exposureBias: Double, to device: AVCaptureDevice) throws {
         try requireSessionQueueAccess()
         try device.lockForConfiguration()

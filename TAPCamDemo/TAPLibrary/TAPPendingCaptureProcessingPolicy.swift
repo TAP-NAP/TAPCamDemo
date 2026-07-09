@@ -22,7 +22,7 @@ nonisolated extension TAPPendingCaptureRecord {
     var processingRoute: TAPPendingCaptureProcessingRoute {
         switch status {
         case .pending, .waitingNetwork, .signing, .failedRetryable:
-            if signedPhotoFilename != nil {
+            if signedPhotoFilename != nil || signedVideoFilename != nil {
                 return .exportSigned
             }
             return .signThenExport

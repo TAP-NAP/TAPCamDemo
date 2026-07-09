@@ -32,6 +32,8 @@ struct CameraControlsUITestHarnessView: View {
                     isShutterEnabled: true,
                     isLibraryWriteInProgress: false,
                     selectedMode: selectedMode,
+                    isRecordingMovie: false,
+                    isPreparingMovie: false,
                     adjustmentControlState: adjustmentState,
                     contentRotation: .zero
                 ),

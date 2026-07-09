@@ -17,6 +17,9 @@ nonisolated enum TAPPendingCaptureBundlePathPolicy {
     static let signedHEICFilename = "signed.heic"
     static let unsignedJPEGFilename = "unsigned.jpg"
     static let signedJPEGFilename = "signed.jpg"
+    static let unsignedVideoFilename = "unsigned.mp4"
+    static let signedVideoFilename = "signed.mp4"
+    static let debugDepthPreviewVideoFilename = "depth-preview.mp4"
     static let pairedVideoFilename = "paired-video.mov"
     static let thumbnailFilename = "thumbnail.jpg"
 
@@ -41,6 +44,9 @@ nonisolated enum TAPPendingCaptureBundlePathPolicy {
 
         try validateOptionalArtifactFilename(record.unsignedPhotoFilename)
         try validateOptionalArtifactFilename(record.signedPhotoFilename)
+        try validateOptionalArtifactFilename(record.unsignedVideoFilename)
+        try validateOptionalArtifactFilename(record.signedVideoFilename)
+        try validateOptionalArtifactFilename(record.debugDepthPreviewVideoFilename)
         try validateOptionalArtifactFilename(record.pairedVideoFilename)
         try validateOptionalArtifactFilename(record.thumbnailFilename)
     }
@@ -85,6 +91,9 @@ nonisolated enum TAPPendingCaptureBundlePathPolicy {
         signedHEICFilename,
         unsignedJPEGFilename,
         signedJPEGFilename,
+        unsignedVideoFilename,
+        signedVideoFilename,
+        debugDepthPreviewVideoFilename,
         pairedVideoFilename,
         thumbnailFilename
     ]

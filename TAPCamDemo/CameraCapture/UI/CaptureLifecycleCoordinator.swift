@@ -4,6 +4,7 @@
 //
 
 import Combine
+import OSLog
 import SwiftUI
 
 /// Coordinates camera-screen lifecycle side effects.
@@ -15,6 +16,8 @@ import SwiftUI
 /// retry staged pending captures.
 final class CaptureLifecycleCoordinator: ObservableObject {
     nonisolated let objectWillChange = ObservableObjectPublisher()
+    nonisolated static let startupCredentialWarmupDelayNanoseconds: UInt64 = 1_500_000_000
+    nonisolated static let startupPendingRetryDelayNanoseconds: UInt64 = 1_500_000_000
 
     nonisolated enum LifecycleAction: Equatable {
         case startCamera
@@ -56,6 +59,18 @@ final class CaptureLifecycleCoordinator: ObservableObject {
         for action in Self.launchCredentialActions(startsAutomatically: startsAutomatically) {
             switch action {
             case .warmPendingCaptureSigningCredential:
+                if startsAutomatically {
+                    try? await Task.sleep(nanoseconds: Self.startupCredentialWarmupDelayNanoseconds)
+                    guard !Task.isCancelled else {
+                        return
+                    }
+                }
+                guard !viewModel.isBusyForNonCaptureStartupWork else {
+                    #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                    TAPDiagnostics.pendingCapture.info("credential warmup skipped cameraBusy=true configuring=\(viewModel.isConfiguringSession, privacy: .public) recording=\(viewModel.isVideoRecording, privacy: .public) paused=\(viewModel.isPausedForAnalysis, privacy: .public)")
+                    #endif
+                    return
+                }
                 await appAttestController.warmPendingCaptureSigningCredential()
             case .retryPendingCaptures:
                 await retryPendingCaptures(
@@ -65,6 +80,17 @@ final class CaptureLifecycleCoordinator: ObservableObject {
             default:
                 break
             }
+        }
+
+        if startsAutomatically {
+            try? await Task.sleep(nanoseconds: Self.startupPendingRetryDelayNanoseconds)
+            guard !Task.isCancelled else {
+                return
+            }
+            await retryPendingCaptures(
+                viewModel: viewModel,
+                appAttestController: appAttestController
+            )
         }
     }
 
@@ -129,7 +155,7 @@ final class CaptureLifecycleCoordinator: ObservableObject {
             case .restoreCameraRoute:
                 restoreCameraRouteWithoutAnimation(routeStore: routeStore)
             case .loadRecentTAPLibraryPreview:
-                await viewModel.loadRecentTAPLibraryPreviewIfAvailable()
+                viewModel.scheduleRecentTAPLibraryPreviewRefresh()
             case .retryPendingCaptures:
                 await retryPendingCaptures(
                     viewModel: viewModel,
@@ -174,9 +200,14 @@ final class CaptureLifecycleCoordinator: ObservableObject {
         viewModel: CameraViewModel,
         appAttestController: AppAttestRuntimeController
     ) async {
+        let isCameraBusy = viewModel.isBusyForNonCaptureStartupWork
         guard Self.pendingCaptureRetryActions(
-            isCredentialPreparationActive: appAttestController.isPreparingCredential
+            isCredentialPreparationActive: appAttestController.isPreparingCredential,
+            isCameraBusy: isCameraBusy
         ).contains(.retryPendingCaptures) else {
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.pendingCapture.info("retryPendingCaptures skipped credentialPreparing=\(appAttestController.isPreparingCredential, privacy: .public) cameraBusy=\(isCameraBusy, privacy: .public) configuring=\(viewModel.isConfiguringSession, privacy: .public) recording=\(viewModel.isVideoRecording, privacy: .public) paused=\(viewModel.isPausedForAnalysis, privacy: .public)")
+            #endif
             return
         }
 
@@ -195,7 +226,7 @@ final class CaptureLifecycleCoordinator: ObservableObject {
         startsAutomatically: Bool
     ) -> [LifecycleAction] {
         startsAutomatically
-            ? [.warmPendingCaptureSigningCredential, .retryPendingCaptures]
+            ? [.warmPendingCaptureSigningCredential]
             : [.retryPendingCaptures]
     }
 
@@ -237,9 +268,10 @@ final class CaptureLifecycleCoordinator: ObservableObject {
     }
 
     nonisolated static func pendingCaptureRetryActions(
-        isCredentialPreparationActive: Bool
+        isCredentialPreparationActive: Bool,
+        isCameraBusy: Bool = false
     ) -> [LifecycleAction] {
-        isCredentialPreparationActive ? [] : [.retryPendingCaptures]
+        isCredentialPreparationActive || isCameraBusy ? [] : [.retryPendingCaptures]
     }
 
     nonisolated static func shouldRestoreCamera(
@@ -278,10 +310,12 @@ final class CaptureLifecycleCoordinator: ObservableObject {
     }
 
     nonisolated static func shouldRetryPendingCaptures(
-        isCredentialPreparationActive: Bool
+        isCredentialPreparationActive: Bool,
+        isCameraBusy: Bool = false
     ) -> Bool {
         pendingCaptureRetryActions(
-            isCredentialPreparationActive: isCredentialPreparationActive
+            isCredentialPreparationActive: isCredentialPreparationActive,
+            isCameraBusy: isCameraBusy
         ).contains(.retryPendingCaptures)
     }
 

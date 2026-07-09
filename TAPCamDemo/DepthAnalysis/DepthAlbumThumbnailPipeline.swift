@@ -3,6 +3,7 @@
 //  TAPCamDemo
 //
 
+@preconcurrency import AVFoundation
 import CryptoKit
 import Foundation
 import Photos
@@ -13,7 +14,7 @@ import UIKit
 /// `DepthAlbumPickerView` should read as album UI. Keep Photos thumbnail
 /// requests, JPEG normalization, and protected disk-cache writes here.
 nonisolated enum DepthAlbumThumbnailCacheKey {
-    private static let version = "grid-v3-opaque-jpeg"
+    private static let version = "grid-v4-video-frame-jpeg"
 
     static func make(for asset: PHAsset, pixelLength: Int) -> String {
         make(
@@ -46,7 +47,9 @@ nonisolated enum DepthAlbumThumbnailCacheKey {
         captureID: String,
         pixelLength: Int,
         capturedAt: Date,
-        thumbnailFilename: String?
+        thumbnailFilename: String?,
+        videoFilename: String? = nil,
+        updatedAt: Date? = nil
     ) -> String {
         makeHash(from: [
             version,
@@ -54,7 +57,9 @@ nonisolated enum DepthAlbumThumbnailCacheKey {
             captureID,
             "\(pixelLength)px",
             String(capturedAt.timeIntervalSince1970),
-            thumbnailFilename ?? "no-thumbnail"
+            thumbnailFilename ?? "no-thumbnail",
+            videoFilename ?? "no-video",
+            String((updatedAt ?? capturedAt).timeIntervalSince1970)
         ])
     }
 
@@ -81,6 +86,57 @@ actor DepthAlbumThumbnailLoader {
             }
 
             guard let image = await Self.requestImage(for: asset, pixelLength: pixelLength),
+                  let data = DepthAlbumThumbnailJPEGRenderer.data(from: image, pixelLength: pixelLength) else {
+                return nil
+            }
+
+            await DepthAlbumThumbnailDiskCache.shared.store(data, for: cacheKey)
+            return data
+        }
+
+        inFlight[cacheKey] = task
+        let data = await task.value
+        inFlight[cacheKey] = nil
+        return data
+    }
+
+    func videoData(for asset: PHAsset, cacheKey: String, pixelLength: Int) async -> Data? {
+        if let task = inFlight[cacheKey] {
+            return await task.value
+        }
+
+        let task = Task<Data?, Never>.detached(priority: .utility) {
+            if let cachedData = await DepthAlbumThumbnailDiskCache.shared.data(for: cacheKey) {
+                return cachedData
+            }
+
+            guard let image = await Self.requestVideoImage(for: asset, pixelLength: pixelLength),
+                  let data = DepthAlbumThumbnailJPEGRenderer.data(from: image, pixelLength: pixelLength) else {
+                return nil
+            }
+
+            await DepthAlbumThumbnailDiskCache.shared.store(data, for: cacheKey)
+            return data
+        }
+
+        inFlight[cacheKey] = task
+        let data = await task.value
+        inFlight[cacheKey] = nil
+        return data
+    }
+
+    func videoData(for fileURL: URL, cacheKey: String, pixelLength: Int) async -> Data? {
+        if let task = inFlight[cacheKey] {
+            return await task.value
+        }
+
+        let task = Task<Data?, Never>.detached(priority: .utility) {
+            if let cachedData = await DepthAlbumThumbnailDiskCache.shared.data(for: cacheKey) {
+                return cachedData
+            }
+
+            let asset = AVURLAsset(url: fileURL)
+            guard let image = Self.image(from: asset, pixelLength: pixelLength),
                   let data = DepthAlbumThumbnailJPEGRenderer.data(from: image, pixelLength: pixelLength) else {
                 return nil
             }
@@ -130,6 +186,54 @@ actor DepthAlbumThumbnailLoader {
                 continuation.resume(returning: image)
             }
         }
+    }
+
+    private nonisolated static func requestVideoImage(for asset: PHAsset, pixelLength: Int) async -> UIImage? {
+        guard let avAsset = await requestAVAsset(for: asset) else {
+            return nil
+        }
+        return image(from: avAsset, pixelLength: pixelLength)
+    }
+
+    private nonisolated static func requestAVAsset(for asset: PHAsset) async -> AVAsset? {
+        await withCheckedContinuation { continuation in
+            var didResume = false
+            let options = PHVideoRequestOptions()
+            options.deliveryMode = .fastFormat
+            options.isNetworkAccessAllowed = false
+            PHImageManager.default().requestAVAsset(forVideo: asset, options: options) { avAsset, _, info in
+                guard !didResume else {
+                    return
+                }
+
+                if info?[PHImageCancelledKey] as? Bool == true || info?[PHImageErrorKey] != nil {
+                    didResume = true
+                    continuation.resume(returning: nil)
+                    return
+                }
+
+                guard let avAsset else {
+                    didResume = true
+                    continuation.resume(returning: nil)
+                    return
+                }
+
+                didResume = true
+                continuation.resume(returning: avAsset)
+            }
+        }
+    }
+
+    private nonisolated static func image(from asset: AVAsset, pixelLength: Int) -> UIImage? {
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        let maximumPixelLength = CGFloat(max(pixelLength * 2, 1))
+        generator.maximumSize = CGSize(width: maximumPixelLength, height: maximumPixelLength)
+        let time = CMTime(seconds: 0.12, preferredTimescale: 600)
+        guard let cgImage = try? generator.copyCGImage(at: time, actualTime: nil) else {
+            return nil
+        }
+        return UIImage(cgImage: cgImage)
     }
 }
 

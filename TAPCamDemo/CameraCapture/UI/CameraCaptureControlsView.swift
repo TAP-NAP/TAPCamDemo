@@ -16,6 +16,8 @@ struct CameraCaptureControlsState {
     let isShutterEnabled: Bool
     let isLibraryWriteInProgress: Bool
     let selectedMode: CameraCaptureModeOption
+    let isRecordingMovie: Bool
+    let isPreparingMovie: Bool
     #if TAP_ENABLE_PRO_CAMERA_CONTROLS
     let adjustmentControlState: CameraAdjustmentControlState?
     #else
@@ -211,6 +213,24 @@ struct CameraCaptureControlsView: View {
             Circle()
                 .fill(state.isShutterEnabled ? Color.white : Color.gray)
                 .frame(width: 62, height: 62)
+                .opacity(state.selectedMode == .video ? 0 : 1)
+
+            if state.selectedMode == .video {
+                if state.isPreparingMovie {
+                    ProgressView()
+                        .controlSize(.regular)
+                        .tint(.white)
+                        .frame(width: 58, height: 58)
+                } else if state.isRecordingMovie {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color.red)
+                        .frame(width: 34, height: 34)
+                } else {
+                    Circle()
+                        .fill(state.isShutterEnabled ? Color.red : Color.gray)
+                        .frame(width: 58, height: 58)
+                }
+            }
         }
         .frame(width: 78, height: 78)
         .scaleEffect(isShutterTouchActive && state.isShutterEnabled ? 0.96 : 1)
@@ -227,11 +247,23 @@ struct CameraCaptureControlsView: View {
                 }
         )
         .accessibilityElement()
-        .accessibilityLabel("Capture depth photo")
+        .accessibilityLabel(shutterAccessibilityLabel)
         .accessibilityIdentifier("camera.capture.shutter")
         .accessibilityAddTraits(.isButton)
         .accessibilityAction {
             onCapture()
+        }
+    }
+
+    private var shutterAccessibilityLabel: String {
+        switch state.selectedMode {
+        case .photo:
+            return "Capture depth photo"
+        case .video:
+            if state.isPreparingMovie {
+                return "Preparing TAP video"
+            }
+            return state.isRecordingMovie ? "Stop TAP video recording" : "Start TAP video recording"
         }
     }
 

@@ -16,6 +16,11 @@ nonisolated enum TAPPendingCaptureStatus: String, Codable, Equatable, Sendable {
     case failedRetryable
 }
 
+nonisolated enum TAPPendingCaptureArtifactKind: String, Codable, Equatable, Sendable {
+    case photoDepth
+    case tapVideo
+}
+
 nonisolated struct TAPPendingCaptureLocation: Codable, Equatable, Sendable {
     let latitude: Double
     let longitude: Double
@@ -51,11 +56,15 @@ nonisolated struct TAPPendingCaptureRecord: Codable, Equatable, Identifiable, Se
     let createdAt: Date
     var updatedAt: Date
     var status: TAPPendingCaptureStatus
+    var artifactKind: TAPPendingCaptureArtifactKind
     var photoFileContainer: CapturePhotoFileContainer
     var photoQualityLevel: CapturePhotoQualityLevel
     var captureScoreSummary: CaptureScoreSummary
     var unsignedPhotoFilename: String?
     var signedPhotoFilename: String?
+    var unsignedVideoFilename: String?
+    var signedVideoFilename: String?
+    var debugDepthPreviewVideoFilename: String?
     var pairedVideoFilename: String?
     var thumbnailFilename: String?
     var assetLocalIdentifier: String?
@@ -103,11 +112,15 @@ nonisolated struct TAPPendingCaptureRecord: Codable, Equatable, Identifiable, Se
         createdAt: Date,
         updatedAt: Date,
         status: TAPPendingCaptureStatus,
+        artifactKind: TAPPendingCaptureArtifactKind = .photoDepth,
         photoFileContainer: CapturePhotoFileContainer = .heic,
         photoQualityLevel: CapturePhotoQualityLevel = .quality,
         captureScoreSummary: CaptureScoreSummary = .unknown,
         unsignedPhotoFilename: String? = nil,
         signedPhotoFilename: String? = nil,
+        unsignedVideoFilename: String? = nil,
+        signedVideoFilename: String? = nil,
+        debugDepthPreviewVideoFilename: String? = nil,
         pairedVideoFilename: String? = nil,
         unsignedHEICFilename: String? = nil,
         signedHEICFilename: String? = nil,
@@ -123,11 +136,15 @@ nonisolated struct TAPPendingCaptureRecord: Codable, Equatable, Identifiable, Se
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.status = status
+        self.artifactKind = artifactKind
         self.photoFileContainer = photoFileContainer
         self.photoQualityLevel = photoQualityLevel
         self.captureScoreSummary = captureScoreSummary
         self.unsignedPhotoFilename = unsignedPhotoFilename ?? unsignedHEICFilename
         self.signedPhotoFilename = signedPhotoFilename ?? signedHEICFilename
+        self.unsignedVideoFilename = unsignedVideoFilename
+        self.signedVideoFilename = signedVideoFilename
+        self.debugDepthPreviewVideoFilename = debugDepthPreviewVideoFilename
         self.pairedVideoFilename = pairedVideoFilename
         self.thumbnailFilename = thumbnailFilename
         self.assetLocalIdentifier = assetLocalIdentifier
@@ -143,11 +160,15 @@ nonisolated struct TAPPendingCaptureRecord: Codable, Equatable, Identifiable, Se
         case createdAt
         case updatedAt
         case status
+        case artifactKind
         case photoFileContainer
         case photoQualityLevel
         case captureScoreSummary
         case unsignedPhotoFilename
         case signedPhotoFilename
+        case unsignedVideoFilename
+        case signedVideoFilename
+        case debugDepthPreviewVideoFilename
         case pairedVideoFilename
         case unsignedHEICFilename
         case signedHEICFilename
@@ -172,6 +193,10 @@ nonisolated struct TAPPendingCaptureRecord: Codable, Equatable, Identifiable, Se
             createdAt: try container.decode(Date.self, forKey: .createdAt),
             updatedAt: try container.decode(Date.self, forKey: .updatedAt),
             status: try container.decode(TAPPendingCaptureStatus.self, forKey: .status),
+            artifactKind: try container.decodeIfPresent(
+                TAPPendingCaptureArtifactKind.self,
+                forKey: .artifactKind
+            ) ?? .photoDepth,
             photoFileContainer: photoFileContainer,
             photoQualityLevel: try container.decodeIfPresent(
                 CapturePhotoQualityLevel.self,
@@ -183,6 +208,9 @@ nonisolated struct TAPPendingCaptureRecord: Codable, Equatable, Identifiable, Se
             ) ?? .unknown,
             unsignedPhotoFilename: try container.decodeIfPresent(String.self, forKey: .unsignedPhotoFilename),
             signedPhotoFilename: try container.decodeIfPresent(String.self, forKey: .signedPhotoFilename),
+            unsignedVideoFilename: try container.decodeIfPresent(String.self, forKey: .unsignedVideoFilename),
+            signedVideoFilename: try container.decodeIfPresent(String.self, forKey: .signedVideoFilename),
+            debugDepthPreviewVideoFilename: try container.decodeIfPresent(String.self, forKey: .debugDepthPreviewVideoFilename),
             pairedVideoFilename: try container.decodeIfPresent(String.self, forKey: .pairedVideoFilename),
             unsignedHEICFilename: try container.decodeIfPresent(String.self, forKey: .unsignedHEICFilename),
             signedHEICFilename: try container.decodeIfPresent(String.self, forKey: .signedHEICFilename),
@@ -202,11 +230,15 @@ nonisolated struct TAPPendingCaptureRecord: Codable, Equatable, Identifiable, Se
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(updatedAt, forKey: .updatedAt)
         try container.encode(status, forKey: .status)
+        try container.encode(artifactKind, forKey: .artifactKind)
         try container.encode(photoFileContainer, forKey: .photoFileContainer)
         try container.encode(photoQualityLevel, forKey: .photoQualityLevel)
         try container.encode(captureScoreSummary, forKey: .captureScoreSummary)
         try container.encodeIfPresent(unsignedPhotoFilename, forKey: .unsignedPhotoFilename)
         try container.encodeIfPresent(signedPhotoFilename, forKey: .signedPhotoFilename)
+        try container.encodeIfPresent(unsignedVideoFilename, forKey: .unsignedVideoFilename)
+        try container.encodeIfPresent(signedVideoFilename, forKey: .signedVideoFilename)
+        try container.encodeIfPresent(debugDepthPreviewVideoFilename, forKey: .debugDepthPreviewVideoFilename)
         try container.encodeIfPresent(pairedVideoFilename, forKey: .pairedVideoFilename)
         try container.encodeIfPresent(thumbnailFilename, forKey: .thumbnailFilename)
         try container.encodeIfPresent(assetLocalIdentifier, forKey: .assetLocalIdentifier)

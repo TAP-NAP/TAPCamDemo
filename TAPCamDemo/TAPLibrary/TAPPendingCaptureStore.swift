@@ -6,6 +6,34 @@
 import Foundation
 import OSLog
 
+nonisolated struct TAPPendingVideoCaptureArtifact: Sendable {
+    let captureID: String
+    let packageID: UUID
+    let capturedAt: Date
+    let unsignedVideoURL: URL
+    let debugDepthPreviewVideoURL: URL?
+    let captureScoreSummary: CaptureScoreSummary
+    let location: TAPPendingCaptureLocation?
+
+    init(
+        captureID: String,
+        packageID: UUID = UUID(),
+        capturedAt: Date,
+        unsignedVideoURL: URL,
+        debugDepthPreviewVideoURL: URL? = nil,
+        captureScoreSummary: CaptureScoreSummary = .unknown,
+        location: TAPPendingCaptureLocation? = nil
+    ) {
+        self.captureID = captureID
+        self.packageID = packageID
+        self.capturedAt = capturedAt
+        self.unsignedVideoURL = unsignedVideoURL
+        self.debugDepthPreviewVideoURL = debugDepthPreviewVideoURL
+        self.captureScoreSummary = captureScoreSummary
+        self.location = location
+    }
+}
+
 nonisolated struct TAPPendingLockedCaptureImport: Sendable {
     let captureID: String
     let capturedAt: Date
@@ -108,6 +136,65 @@ actor TAPPendingCaptureStore {
         Self.postLibraryDidChange()
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.pendingCapture.info("store ingest created captureID=\(captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public) unsignedBytes=\(artifact.photoData.count, privacy: .public) hasThumbnail=\(thumbnailFilename != nil, privacy: .public) hasPairedVideo=\(pairedVideoFilename != nil, privacy: .public)")
+        #endif
+        return record
+    }
+
+    func ingestVideo(_ artifact: TAPPendingVideoCaptureArtifact) throws -> TAPPendingCaptureRecord {
+        try storage.ensureRootDirectoryExists()
+
+        let captureID = artifact.captureID
+        let finalURL = try storage.bundleURL(captureID: captureID)
+        if storage.bundleExists(at: finalURL),
+           let existing = try? readRecord(captureID: captureID) {
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.pendingCapture.info("store video ingest existing captureID=\(captureID, privacy: .private) status=\(existing.status.rawValue, privacy: .public) retryCount=\(existing.retryCount, privacy: .public)")
+            #endif
+            return existing
+        }
+
+        let temporaryURL = storage.temporaryBundleURL()
+        try storage.createFreshTemporaryBundle(at: temporaryURL)
+        try storage.copyUnsignedVideo(from: artifact.unsignedVideoURL, to: temporaryURL)
+        let debugDepthPreviewVideoFilename: String?
+        if let debugDepthPreviewVideoURL = artifact.debugDepthPreviewVideoURL {
+            try storage.copyDebugDepthPreviewVideo(from: debugDepthPreviewVideoURL, to: temporaryURL)
+            debugDepthPreviewVideoFilename = TAPPendingCaptureBundlePathPolicy.debugDepthPreviewVideoFilename
+        } else {
+            debugDepthPreviewVideoFilename = nil
+        }
+
+        let now = Date()
+        let record = TAPPendingCaptureRecord(
+            captureID: captureID,
+            packageID: artifact.packageID,
+            capturedAt: artifact.capturedAt,
+            createdAt: now,
+            updatedAt: now,
+            status: .pending,
+            artifactKind: .tapVideo,
+            captureScoreSummary: artifact.captureScoreSummary,
+            unsignedPhotoFilename: nil,
+            signedPhotoFilename: nil,
+            unsignedVideoFilename: TAPPendingCaptureBundlePathPolicy.unsignedVideoFilename,
+            signedVideoFilename: nil,
+            debugDepthPreviewVideoFilename: debugDepthPreviewVideoFilename,
+            pairedVideoFilename: nil,
+            thumbnailFilename: nil,
+            assetLocalIdentifier: nil,
+            failureReason: nil,
+            retryCount: 0,
+            location: artifact.location
+        )
+        try storage.writeRecord(record, in: temporaryURL)
+
+        try storage.commitTemporaryBundle(at: temporaryURL, to: finalURL)
+        Self.postLibraryDidChange()
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        let byteCount = (try? Data(contentsOf: artifact.unsignedVideoURL).count) ?? 0
+        let depthPreviewByteCount = artifact.debugDepthPreviewVideoURL
+            .flatMap { try? Data(contentsOf: $0).count } ?? 0
+        TAPDiagnostics.pendingCapture.info("store video ingest created captureID=\(captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public) unsignedVideoBytes=\(byteCount, privacy: .public) hasDebugDepthPreview=\(debugDepthPreviewVideoFilename != nil, privacy: .public) debugDepthPreviewBytes=\(depthPreviewByteCount, privacy: .public)")
         #endif
         return record
     }
@@ -250,6 +337,37 @@ actor TAPPendingCaptureStore {
         try signedPhotoData(captureID: captureID)
     }
 
+    func unsignedVideoData(captureID: String) throws -> Data {
+        let record = try readRecord(captureID: captureID)
+        guard let filename = record.unsignedVideoFilename else {
+            throw TAPDepthCaptureError.pendingCaptureDataMissing
+        }
+        return try storage.videoData(filename: filename, captureID: captureID)
+    }
+
+    func signedVideoData(captureID: String) throws -> Data {
+        let record = try readRecord(captureID: captureID)
+        guard let filename = record.signedVideoFilename else {
+            throw TAPDepthCaptureError.pendingCaptureDataMissing
+        }
+        return try storage.videoData(filename: filename, captureID: captureID)
+    }
+
+    func bestAvailableVideoURL(captureID: String) throws -> URL {
+        let record = try readRecord(captureID: captureID)
+        if let filename = record.signedVideoFilename {
+            if let url = try storage.videoURLIfPresent(filename: filename, captureID: captureID) {
+                return url
+            }
+        }
+        if let filename = record.unsignedVideoFilename {
+            if let url = try storage.videoURLIfPresent(filename: filename, captureID: captureID) {
+                return url
+            }
+        }
+        throw TAPDepthCaptureError.pendingCaptureDataMissing
+    }
+
     func bestAvailablePhotoData(captureID: String) throws -> Data {
         let record = try readRecord(captureID: captureID)
         if let filename = record.signedPhotoFilename {
@@ -377,6 +495,24 @@ actor TAPPendingCaptureStore {
 
     func storeSignedHEIC(_ data: Data, captureID: String) throws -> TAPPendingCaptureRecord {
         try storeSignedPhoto(data, captureID: captureID)
+    }
+
+    func storeSignedVideo(_ data: Data, captureID: String) throws -> TAPPendingCaptureRecord {
+        var record = try readRecord(captureID: captureID)
+        guard record.artifactKind == .tapVideo else {
+            throw TAPDepthCaptureError.invalidPendingCaptureBundlePath("signed video can only be stored for TAP video artifacts")
+        }
+        try storage.writeSignedVideo(data, captureID: captureID)
+        record.signedVideoFilename = TAPPendingCaptureBundlePathPolicy.signedVideoFilename
+        record.status = .signed
+        record.failureReason = nil
+        record.updatedAt = Date()
+        try storage.writeRecord(record)
+        Self.postLibraryDidChange()
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.pendingCapture.info("store signedVideo stored captureID=\(captureID, privacy: .private) bytes=\(data.count, privacy: .public) status=\(record.status.rawValue, privacy: .public)")
+        #endif
+        return record
     }
 
     func markExported(captureID: String, assetLocalIdentifier: String) throws -> TAPPendingCaptureRecord {

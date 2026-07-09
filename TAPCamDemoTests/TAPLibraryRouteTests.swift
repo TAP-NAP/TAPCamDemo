@@ -353,6 +353,50 @@ struct TAPLibraryRouteTests {
         #expect(changedSizeKey != originalKey)
     }
 
+    @Test func depthAlbumPendingVideoThumbnailCacheKeyTracksVideoVersion() throws {
+        let originalKey = DepthAlbumThumbnailCacheKey.makePending(
+            captureID: "video-capture",
+            pixelLength: 240,
+            capturedAt: Date(timeIntervalSince1970: 1_000),
+            thumbnailFilename: nil,
+            videoFilename: TAPPendingCaptureBundlePathPolicy.unsignedVideoFilename,
+            updatedAt: Date(timeIntervalSince1970: 1_001)
+        )
+        let signedKey = DepthAlbumThumbnailCacheKey.makePending(
+            captureID: "video-capture",
+            pixelLength: 240,
+            capturedAt: Date(timeIntervalSince1970: 1_000),
+            thumbnailFilename: nil,
+            videoFilename: TAPPendingCaptureBundlePathPolicy.signedVideoFilename,
+            updatedAt: Date(timeIntervalSince1970: 1_002)
+        )
+
+        #expect(signedKey != originalKey)
+        #expect(!originalKey.contains("video-capture"))
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func depthAlbumVideoThumbnailsUseVideoFrameGenerator() throws {
+        let pipelineSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAlbumThumbnailPipeline.swift"
+        )
+        let pickerSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAlbumPickerView.swift"
+        )
+        let photoWriterSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/Output/PhotoLibraryWriter.swift"
+        )
+
+        #expect(pipelineSource.contains("requestAVAsset(forVideo: asset"))
+        #expect(pipelineSource.contains("AVAssetImageGenerator(asset: asset)"))
+        #expect(pipelineSource.contains("generator.appliesPreferredTrackTransform = true"))
+        #expect(pickerSource.contains("DepthAlbumThumbnailLoader.shared.videoData"))
+        #expect(pickerSource.contains("TAPPendingCaptureStore.shared.bestAvailableVideoURL"))
+        #expect(photoWriterSource.contains("static func originalVideoFileURL(localIdentifier: String) async throws -> URL"))
+        #expect(photoWriterSource.contains("try await Task.detached(priority: .userInitiated)"))
+        #expect(photoWriterSource.contains("return try await originalVideoFileURL(for: asset)"))
+    }
+
     @Test func depthAlbumItemsPreferOwnedExportsOverDuplicatePhotos() throws {
         let pendingRecord = TAPCamDemoTestFixtures.samplePendingRecord(
             captureID: "pending-1",

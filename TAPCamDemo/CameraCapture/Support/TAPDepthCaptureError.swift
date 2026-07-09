@@ -16,6 +16,9 @@ enum TAPDepthCaptureError: LocalizedError {
     case noDepthCameraAvailable
     case unableToAddCameraInput
     case unableToAddPhotoOutput
+    case unableToAddVideoOutput
+    case unableToAddAudioOutput
+    case unableToAddDepthOutput
     case depthDeliveryUnsupported
     case unsupportedZoomFactor
     case missingDepthData
@@ -49,6 +52,9 @@ enum TAPDepthCaptureError: LocalizedError {
     case cameraControlTargetDeviceChanged
     case cameraControlTargetSurfaceChanged
     case cameraControlUnsupportedCommand
+    case videoRecordingAlreadyActive
+    case videoRecordingNotActive
+    case videoRecordingFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -60,6 +66,12 @@ enum TAPDepthCaptureError: LocalizedError {
             "Unable to add the selected camera input to the capture session."
         case .unableToAddPhotoOutput:
             "Unable to add AVCapturePhotoOutput to the capture session."
+        case .unableToAddVideoOutput:
+            "Unable to add AVCaptureVideoDataOutput to the capture session."
+        case .unableToAddAudioOutput:
+            "Unable to add AVCaptureAudioDataOutput to the capture session."
+        case .unableToAddDepthOutput:
+            "Unable to add AVCaptureDepthDataOutput to the capture session."
         case .depthDeliveryUnsupported:
             "The current session configuration does not support depth photo delivery."
         case .unsupportedZoomFactor:
@@ -126,6 +138,12 @@ enum TAPDepthCaptureError: LocalizedError {
             "The active camera controls changed before manual controls could be applied."
         case .cameraControlUnsupportedCommand:
             "The manual camera control request includes an unsupported command."
+        case .videoRecordingAlreadyActive:
+            "A TAP video recording is already active."
+        case .videoRecordingNotActive:
+            "No TAP video recording is active."
+        case .videoRecordingFailed(let reason):
+            "The TAP video recording failed: \(reason)"
         }
     }
 }

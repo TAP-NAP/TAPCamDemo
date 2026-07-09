@@ -29,7 +29,7 @@ nonisolated struct DepthAnalysisAlbumContext: Equatable {
     init(currentItemID: String, items: [TAPLibraryItem]) {
         self.init(
             currentItemID: currentItemID,
-            entries: items.map(Entry.init(item:))
+            entries: items.compactMap(Entry.init(item:))
         )
     }
 
@@ -54,13 +54,25 @@ nonisolated struct DepthAnalysisAlbumContext: Equatable {
 }
 
 private extension DepthAnalysisAlbumContext.Entry {
-    nonisolated init(item: TAPLibraryItem) {
+    nonisolated init?(item: TAPLibraryItem) {
         id = item.id
         routeAnchor = item.routeAnchor
         switch item.source {
-        case .photos(let asset), .ownedPhoto(_, let asset):
+        case .photos(let asset):
+            guard !asset.isVideo else {
+                return nil
+            }
+            source = .photosAsset(asset.localIdentifier)
+        case .ownedPhoto(let record, let asset):
+            guard record.artifactKind != .tapVideo,
+                  !asset.isVideo else {
+                return nil
+            }
             source = .photosAsset(asset.localIdentifier)
         case .pending(let record):
+            guard record.artifactKind != .tapVideo else {
+                return nil
+            }
             source = .pendingCapture(record.captureID)
         }
     }

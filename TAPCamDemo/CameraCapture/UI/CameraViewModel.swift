@@ -38,6 +38,8 @@ final class CameraViewModel: ObservableObject {
     @Published var latestCaptureDepthHint: CameraCaptureDepthHint?
     @Published var focusRuntimeEvent: CameraFocusRuntimeEvent?
     @Published var exposureRuntimeEvent: CameraExposureRuntimeEvent?
+    @Published var isVideoRecording = false
+    @Published var isPreparingVideoMode = false
     #if TAP_ENABLE_PRO_CAMERA_CONTROLS
     @Published var latestManualControlReadback: CameraManualControlReadbackSnapshot?
     #endif
@@ -63,6 +65,11 @@ final class CameraViewModel: ObservableObject {
     var configurationGeneration = 0
     var depthSelectionMode: DepthSelectionMode = .automatic
     var requestedGlobalAutoExposureBias = CameraEVPreferences.defaultGlobalBias
+    var activeVideoRecordingCaptureID: String?
+    var videoRecordingTemporaryDirectoryURL: URL?
+    var videoDurationLimitTask: Task<Void, Never>?
+    var videoThermalObserver: NSObjectProtocol?
+    var recentLibraryPreviewRefreshTask: Task<Void, Never>?
 
     var session: AVCaptureSession {
         sessionController.session
@@ -73,11 +80,25 @@ final class CameraViewModel: ObservableObject {
     }
 
     var canCapture: Bool {
-        !isPausedForAnalysis && isDepthCaptureReady && pendingJobCount < CaptureJobQueue.defaultMaximumPendingJobs
+        !isPausedForAnalysis
+            && isDepthCaptureReady
+            && pendingJobCount < CaptureJobQueue.defaultMaximumPendingJobs
+    }
+
+    var canUseVideoShutter: Bool {
+        isVideoRecording
+            || (!isPreparingVideoMode
+                && !isPausedForAnalysis
+                && activeSessionConfiguration != nil
+                && pendingJobCount < CaptureJobQueue.defaultMaximumPendingJobs)
     }
 
     var isCaptureWriteInProgress: Bool {
         pendingJobCount > 0
+    }
+
+    var isBusyForNonCaptureStartupWork: Bool {
+        isConfiguringSession || isVideoRecording || isPreparingVideoMode || isPausedForAnalysis
     }
 
     var shouldShowFocalLengthSelector: Bool {
@@ -167,7 +188,7 @@ final class CameraViewModel: ObservableObject {
             if CameraCaptureDataUsePreferences.usesLocationData() {
                 locationProvider.warmLocationCache()
             }
-            await loadRecentTAPLibraryPreviewIfAvailable()
+            scheduleRecentTAPLibraryPreviewRefresh()
         case .notDetermined:
             let granted = await AVCaptureDevice.requestAccess(for: .video)
             if granted {
@@ -175,7 +196,7 @@ final class CameraViewModel: ObservableObject {
                 if CameraCaptureDataUsePreferences.usesLocationData() {
                     locationProvider.warmLocationCache()
                 }
-                await loadRecentTAPLibraryPreviewIfAvailable()
+                scheduleRecentTAPLibraryPreviewRefresh()
             } else {
                 statusMessage = CameraCaptureStatusPresentation.message(
                     for: TAPDepthCaptureError.cameraAccessDenied,
@@ -196,14 +217,20 @@ final class CameraViewModel: ObservableObject {
     }
 
     func stop() {
+        recentLibraryPreviewRefreshTask?.cancel()
+        recentLibraryPreviewRefreshTask = nil
         isConfiguringSession = false
         isPausedForAnalysis = false
+        isPreparingVideoMode = false
         sessionController.stop()
     }
 
     func pauseForAnalysis() {
+        recentLibraryPreviewRefreshTask?.cancel()
+        recentLibraryPreviewRefreshTask = nil
         configurationGeneration += 1
         isConfiguringSession = false
+        isPreparingVideoMode = false
         isPausedForAnalysis = true
         isDepthCaptureReady = false
         activeSessionConfiguration = nil
@@ -227,7 +254,7 @@ final class CameraViewModel: ObservableObject {
             if CameraCaptureDataUsePreferences.usesLocationData() {
                 locationProvider.warmLocationCache()
             }
-            await loadRecentTAPLibraryPreviewIfAvailable()
+            scheduleRecentTAPLibraryPreviewRefresh()
         case .notDetermined:
             await start()
         case .denied, .restricted:

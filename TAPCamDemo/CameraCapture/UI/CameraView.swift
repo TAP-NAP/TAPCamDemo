@@ -232,6 +232,11 @@ struct CameraView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase != .active {
                 persistRememberedViewfinderControlStateIfNeeded()
+                Task {
+                    await viewModel.stopActiveVideoRecordingForLifecycleIfNeeded(
+                        pendingCaptureWorkerClient: appAttestController.runtime.client
+                    )
+                }
             } else {
                 hapticFeedbackController.prepareForCameraInteraction()
                 completeInitialReadinessGateIfReady()
@@ -391,9 +396,11 @@ struct CameraView: View {
         #if TAP_ENABLE_PRO_CAMERA_CONTROLS
         CameraCaptureControlsView(
             state: CameraCaptureControlsState(
-                isShutterEnabled: viewModel.canCapture,
-                isLibraryWriteInProgress: viewModel.isCaptureWriteInProgress,
+                isShutterEnabled: shutterIsEnabled,
+                isLibraryWriteInProgress: viewModel.isCaptureWriteInProgress || viewModel.isVideoRecording || viewModel.isPreparingVideoMode,
                 selectedMode: selectedMode,
+                isRecordingMovie: viewModel.isVideoRecording,
+                isPreparingMovie: viewModel.isPreparingVideoMode,
                 adjustmentControlState: adjustmentControlState,
                 contentRotation: chromeOrientation.angle
             ),
@@ -415,9 +422,11 @@ struct CameraView: View {
         #else
         CameraCaptureControlsView(
             state: CameraCaptureControlsState(
-                isShutterEnabled: viewModel.canCapture,
-                isLibraryWriteInProgress: viewModel.isCaptureWriteInProgress,
+                isShutterEnabled: shutterIsEnabled,
+                isLibraryWriteInProgress: viewModel.isCaptureWriteInProgress || viewModel.isVideoRecording || viewModel.isPreparingVideoMode,
                 selectedMode: selectedMode,
+                isRecordingMovie: viewModel.isVideoRecording,
+                isPreparingMovie: viewModel.isPreparingVideoMode,
                 basicEVControlState: basicEVControlState,
                 contentRotation: chromeOrientation.angle
             ),
@@ -437,6 +446,15 @@ struct CameraView: View {
             get: { routeStore.isDepthAlbumPresented },
             set: { routeStore.setDepthAlbumPresented($0) }
         )
+    }
+
+    private var shutterIsEnabled: Bool {
+        switch selectedMode {
+        case .photo:
+            return viewModel.canCapture
+        case .video:
+            return viewModel.canUseVideoShutter
+        }
     }
 
     private func applyPendingIntentHandoff() {
@@ -635,7 +653,18 @@ struct CameraView: View {
             showViewfinderHint("Coming soon")
             return
         }
+        guard !viewModel.isVideoRecording else {
+            return
+        }
         selectedMode = mode
+        Task {
+            switch mode {
+            case .photo:
+                await viewModel.teardownPreparedVideoModeIfNeeded()
+            case .video:
+                await viewModel.prepareVideoModeIfNeeded()
+            }
+        }
     }
 
     private func cycleFlashMode() {
@@ -1355,22 +1384,29 @@ struct CameraView: View {
     }
 
     private func triggerShutter() {
-        guard viewModel.canCapture else {
+        guard shutterIsEnabled else {
             return
         }
 
         performShutterHaptic()
         let pendingCaptureWorkerClient = appAttestController.runtime.client
         Task {
-            await viewModel.capture(
-                pendingCaptureWorkerClient: pendingCaptureWorkerClient,
-                suppressesShutterSound: !isShutterSoundEnabled,
-                flashMode: flashMode.captureFlashMode,
-                livePhotoRequest: CaptureLivePhotoRequest(
-                    isEnabled: isLivePhotoEnabled && viewModel.isLivePhotoCaptureSupported,
-                    capturesAudio: shouldCaptureLivePhotoAudio
+            switch selectedMode {
+            case .photo:
+                await viewModel.capture(
+                    pendingCaptureWorkerClient: pendingCaptureWorkerClient,
+                    suppressesShutterSound: !isShutterSoundEnabled,
+                    flashMode: flashMode.captureFlashMode,
+                    livePhotoRequest: CaptureLivePhotoRequest(
+                        isEnabled: isLivePhotoEnabled && viewModel.isLivePhotoCaptureSupported,
+                        capturesAudio: shouldCaptureLivePhotoAudio
+                    )
                 )
-            )
+            case .video:
+                await viewModel.toggleVideoRecording(
+                    pendingCaptureWorkerClient: pendingCaptureWorkerClient
+                )
+            }
         }
     }
 
@@ -1383,7 +1419,9 @@ struct CameraView: View {
     }
 
     private func openTAPLibrary() {
-        guard !viewModel.isCaptureWriteInProgress else {
+        guard !viewModel.isCaptureWriteInProgress,
+              !viewModel.isVideoRecording,
+              !viewModel.isPreparingVideoMode else {
             return
         }
 

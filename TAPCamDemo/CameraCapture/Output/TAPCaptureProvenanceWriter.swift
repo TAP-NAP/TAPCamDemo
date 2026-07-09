@@ -125,6 +125,50 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
         )
     }
 
+    /// Pending-queue helper for TAP signed video.
+    ///
+    /// The unsigned MP4 must already contain a TAP video manifest box and one
+    /// empty TAP BMFF proof slot. Signing fills only that proof slot.
+    func signedVideoData(
+        from unsignedVideoData: Data,
+        expectedCaptureID: String,
+        assertionSigner: any CaptureAssertionSigning
+    ) async throws -> TAPCaptureProvenanceSignedVideoResult {
+        let unsignedVideoDataWithSlot = try TAPProofSlot.ensuringEmptyBMFFSlot(in: unsignedVideoData)
+        let manifest = try TAPVideoManifestBox.decodedManifest(from: unsignedVideoDataWithSlot)
+        try validateVideoManifestSchema(manifest)
+        try validateManifestID(manifest.payload.id, expectedCaptureID: expectedCaptureID)
+        try validateVideoManifestCarriesNoProofBody(manifest)
+
+        let digest = try CaptureContentDigest.makeVideo(
+            manifest: manifest,
+            mp4Data: unsignedVideoDataWithSlot
+        )
+        let assertionProof = try await assertionSigner.sign(contentDigest: digest)
+        let videoProof = TAPVideoManifest.Proof(
+            type: assertionProof.proof.type,
+            algorithm: assertionProof.proof.algorithm,
+            keyID: assertionProof.proof.keyID,
+            createdAt: assertionProof.proof.createdAt,
+            value: assertionProof.proof.value
+        )
+        let proofEnvelope = try JSONEncoder.tapCaptureCanonical.encode(videoProof)
+        let signedVideoData = try TAPProofSlot.writeProofEnvelope(
+            proofEnvelope,
+            intoBMFF: unsignedVideoDataWithSlot
+        )
+        _ = try validateSignedExportVideo(
+            signedVideoData,
+            expectedCaptureID: expectedCaptureID
+        )
+
+        return TAPCaptureProvenanceSignedVideoResult(
+            data: signedVideoData,
+            manifest: manifest,
+            keyID: assertionProof.keyID
+        )
+    }
+
     /// Backward-compatible pending-queue helper for existing HEIC call sites.
     func signedHEICData(
         from unsignedHEICData: Data,
@@ -293,6 +337,34 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
         )
     }
 
+    /// Final fail-closed gate before a signed TAP video may leave pending
+    /// storage. This recomputes the byte binding from the exact MP4 bytes that
+    /// will be exported to Photos.
+    func validateSignedExportVideo(
+        _ signedVideoData: Data,
+        expectedCaptureID: String
+    ) throws -> ValidatedTAPVideo {
+        let manifest = try TAPVideoManifestBox.decodedManifest(from: signedVideoData)
+        try validateVideoManifestSchema(manifest)
+        try validateManifestID(manifest.payload.id, expectedCaptureID: expectedCaptureID)
+        try validateVideoManifestCarriesNoProofBody(manifest)
+
+        let proof = try decodedVideoCaptureProof(from: signedVideoData)
+        let proofValue = try decodedVideoCaptureProofValue(proof, expectedCaptureID: expectedCaptureID)
+
+        let recomputedDigest = try CaptureContentDigest.makeVideo(
+            manifest: manifest,
+            mp4Data: signedVideoData
+        )
+        try validateVideoCaptureProof(
+            proof,
+            proofValue: proofValue,
+            recomputedDigest: recomputedDigest
+        )
+
+        return ValidatedTAPVideo(data: signedVideoData, manifest: manifest)
+    }
+
     /// Backward-compatible final gate for existing HEIC call sites.
     func validateSignedExportHEIC(
         _ signedHEICData: Data,
@@ -318,6 +390,12 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
         }
     }
 
+    private func validateVideoManifestSchema(_ manifest: TAPVideoManifest) throws {
+        guard manifest.schema == TAPVideoManifest.Schema() else {
+            throw TAPDepthCaptureError.invalidTAPManifest("unexpected video schema metadata")
+        }
+    }
+
     private func validateManifestLivePhotoPayload(_ manifest: TAPDepthManifest) throws {
         guard let livePhoto = manifest.payload.livePhoto,
               livePhoto.presence == "paired-video",
@@ -329,6 +407,12 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
     private func validateManifestCarriesNoProofBody(_ manifest: TAPDepthManifest) throws {
         guard manifest.proofs.isEmpty else {
             throw TAPDepthCaptureError.pendingCaptureProofInvalid("manifest proofs must not carry capture proof bodies")
+        }
+    }
+
+    private func validateVideoManifestCarriesNoProofBody(_ manifest: TAPVideoManifest) throws {
+        guard manifest.proofs.isEmpty else {
+            throw TAPDepthCaptureError.pendingCaptureProofInvalid("video manifest proofs must not carry capture proof bodies")
         }
     }
 
@@ -399,6 +483,45 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
         return proofValue
     }
 
+    private func decodedVideoCaptureProof(
+        from videoData: Data
+    ) throws -> TAPVideoManifest.Proof {
+        let proofData = try TAPProofSlot.proofEnvelopeData(fromBMFF: videoData)
+        return try JSONDecoder().decode(TAPVideoManifest.Proof.self, from: proofData)
+    }
+
+    private func decodedVideoCaptureProofValue(
+        _ proof: TAPVideoManifest.Proof,
+        expectedCaptureID: String
+    ) throws -> CaptureAssertionProofValue {
+        guard proof.type == "appAttestAssertion" else {
+            throw TAPDepthCaptureError.pendingCaptureProofInvalid("unexpected proof type")
+        }
+        guard proof.algorithm == "TAPCam.AppAttestCaptureSignature.v1" else {
+            throw TAPDepthCaptureError.pendingCaptureProofInvalid("unexpected proof algorithm")
+        }
+        guard let keyID = proof.keyID, !keyID.isEmpty else {
+            throw TAPDepthCaptureError.pendingCaptureProofInvalid("missing key id")
+        }
+        guard let encodedValue = proof.value, !encodedValue.isEmpty else {
+            throw TAPDepthCaptureError.pendingCaptureProofInvalid("missing proof value")
+        }
+
+        let proofValueData = try AppAttestBase64URL.decode(encodedValue, field: "proof.value")
+        let proofValue = try JSONDecoder().decode(CaptureAssertionProofValue.self, from: proofValueData)
+        guard proofValue.keyId == keyID else {
+            throw TAPDepthCaptureError.pendingCaptureProofInvalid("proof key id mismatch")
+        }
+        guard !proofValue.assertionObject.isEmpty else {
+            throw TAPDepthCaptureError.pendingCaptureProofInvalid("missing assertion object")
+        }
+        guard proofValue.contentDigest.captureID == expectedCaptureID,
+              proofValue.signingBinding.captureID == expectedCaptureID else {
+            throw TAPDepthCaptureError.pendingCaptureProofInvalid("proof capture id mismatch")
+        }
+        return proofValue
+    }
+
     private func validateCaptureProof(
         _ proof: TAPDepthManifest.Proof,
         proofValue: CaptureAssertionProofValue,
@@ -413,6 +536,23 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
         let expectedSigningBinding = try CaptureSigningBinding(contentDigest: recomputedDigest)
         guard proofValue.signingBinding == expectedSigningBinding else {
             throw TAPDepthCaptureError.pendingCaptureProofInvalid("proof signing binding does not match exported bytes")
+        }
+    }
+
+    private func validateVideoCaptureProof(
+        _ proof: TAPVideoManifest.Proof,
+        proofValue: CaptureAssertionProofValue,
+        recomputedDigest: CaptureContentDigest
+    ) throws {
+        guard proof.createdAt == recomputedDigest.capturedAt else {
+            throw TAPDepthCaptureError.pendingCaptureProofInvalid("proof timestamp does not match capture digest")
+        }
+        guard proofValue.contentDigest == recomputedDigest else {
+            throw TAPDepthCaptureError.pendingCaptureProofInvalid("proof digest does not match exported video bytes")
+        }
+        let expectedSigningBinding = try CaptureSigningBinding(contentDigest: recomputedDigest)
+        guard proofValue.signingBinding == expectedSigningBinding else {
+            throw TAPDepthCaptureError.pendingCaptureProofInvalid("proof signing binding does not match exported video bytes")
         }
     }
 
@@ -508,6 +648,12 @@ nonisolated struct TAPCaptureProvenanceSignedPhotoResult: Sendable {
     let fileContainer: CapturePhotoFileContainer
 }
 
+nonisolated struct TAPCaptureProvenanceSignedVideoResult: Sendable {
+    let data: Data
+    let manifest: TAPVideoManifest
+    let keyID: String
+}
+
 nonisolated struct TAPCaptureProvenanceSignedHEICResult: Sendable {
     let data: Data
     let manifest: TAPDepthManifest
@@ -533,6 +679,11 @@ nonisolated struct ValidatedTAPDepthPhoto: Sendable {
 nonisolated struct ValidatedTAPLivePhoto: Sendable {
     let photo: ValidatedTAPDepthPhoto
     let pairedVideoURL: URL
+}
+
+nonisolated struct ValidatedTAPVideo: Sendable {
+    let data: Data
+    let manifest: TAPVideoManifest
 }
 
 nonisolated struct ValidatedTAPDepthHEIC: Sendable {

@@ -112,7 +112,7 @@ actor TAPPendingCaptureProcessor {
         var processedCaptureIDs = Set<String>()
         while let candidate = await nextProcessingCandidate(store: store, excludingCaptureIDs: processedCaptureIDs) {
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.pendingCapture.info("worker candidate workerID=\(workerID, privacy: .public) captureID=\(candidate.captureID, privacy: .private) status=\(candidate.status.rawValue, privacy: .public) retryCount=\(candidate.retryCount, privacy: .public) container=\(candidate.photoFileContainer.rawValue, privacy: .public) signedPhoto=\(candidate.signedPhotoFilename != nil, privacy: .public)")
+            TAPDiagnostics.pendingCapture.info("worker candidate workerID=\(workerID, privacy: .public) captureID=\(candidate.captureID, privacy: .private) status=\(candidate.status.rawValue, privacy: .public) artifactKind=\(candidate.artifactKind.rawValue, privacy: .public) retryCount=\(candidate.retryCount, privacy: .public) container=\(candidate.photoFileContainer.rawValue, privacy: .public) signedPhoto=\(candidate.signedPhotoFilename != nil, privacy: .public) signedVideo=\(candidate.signedVideoFilename != nil, privacy: .public)")
             #endif
             processedCaptureIDs.insert(candidate.captureID)
             await process(candidate, store: store, signer: signer, exporter: exporter)
@@ -246,26 +246,48 @@ private struct AppAttestPendingCaptureSigner: TAPPendingCaptureSigning {
         TAPDiagnostics.pendingCapture.info("sign status updated captureID=\(record.captureID, privacy: .private) status=\(TAPPendingCaptureStatus.signing.rawValue, privacy: .public)")
         #endif
 
-        let unsignedData = try await store.unsignedPhotoData(captureID: record.captureID)
-        let pairedVideoURL = try await store.pairedVideoURL(captureID: record.captureID)
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.pendingCapture.info("sign unsigned data loaded captureID=\(record.captureID, privacy: .private) bytes=\(unsignedData.count, privacy: .public) hasPairedVideo=\(pairedVideoURL != nil, privacy: .public)")
-        #endif
-        let signedPhoto = try await provenanceWriter.signedPhotoData(
-            from: unsignedData,
-            expectedCaptureID: record.captureID,
-            expectedProfile: record.outputProfile,
-            assertionSigner: signer,
-            pairedVideoURL: pairedVideoURL
-        )
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.pendingCapture.info("sign provenance ready captureID=\(record.captureID, privacy: .private) container=\(signedPhoto.fileContainer.rawValue, privacy: .public) manifestID=\(signedPhoto.manifest.payload.id, privacy: .private) keyID=\(signedPhoto.keyID, privacy: .private)")
-        #endif
-        let signedRecord = try await store.storeSignedPhoto(signedPhoto.data, captureID: record.captureID)
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.pendingCapture.info("sign success captureID=\(record.captureID, privacy: .private) signedBytes=\(signedPhoto.data.count, privacy: .public)")
-        #endif
-        return signedRecord
+        switch record.artifactKind {
+        case .photoDepth:
+            let unsignedData = try await store.unsignedPhotoData(captureID: record.captureID)
+            let pairedVideoURL = try await store.pairedVideoURL(captureID: record.captureID)
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.pendingCapture.info("sign unsigned photo data loaded captureID=\(record.captureID, privacy: .private) bytes=\(unsignedData.count, privacy: .public) hasPairedVideo=\(pairedVideoURL != nil, privacy: .public)")
+            #endif
+            let signedPhoto = try await provenanceWriter.signedPhotoData(
+                from: unsignedData,
+                expectedCaptureID: record.captureID,
+                expectedProfile: record.outputProfile,
+                assertionSigner: signer,
+                pairedVideoURL: pairedVideoURL
+            )
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.pendingCapture.info("sign photo provenance ready captureID=\(record.captureID, privacy: .private) container=\(signedPhoto.fileContainer.rawValue, privacy: .public) manifestID=\(signedPhoto.manifest.payload.id, privacy: .private) keyID=\(signedPhoto.keyID, privacy: .private)")
+            #endif
+            let signedRecord = try await store.storeSignedPhoto(signedPhoto.data, captureID: record.captureID)
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.pendingCapture.info("sign photo success captureID=\(record.captureID, privacy: .private) signedBytes=\(signedPhoto.data.count, privacy: .public)")
+            #endif
+            return signedRecord
+
+        case .tapVideo:
+            let unsignedData = try await store.unsignedVideoData(captureID: record.captureID)
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.pendingCapture.info("sign unsigned video data loaded captureID=\(record.captureID, privacy: .private) bytes=\(unsignedData.count, privacy: .public)")
+            #endif
+            let signedVideo = try await provenanceWriter.signedVideoData(
+                from: unsignedData,
+                expectedCaptureID: record.captureID,
+                assertionSigner: signer
+            )
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.pendingCapture.info("sign video provenance ready captureID=\(record.captureID, privacy: .private) manifestID=\(signedVideo.manifest.payload.id, privacy: .private) keyID=\(signedVideo.keyID, privacy: .private) depthSamples=\(signedVideo.manifest.payload.depthCoverage.sampleCount, privacy: .public)")
+            #endif
+            let signedRecord = try await store.storeSignedVideo(signedVideo.data, captureID: record.captureID)
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.pendingCapture.info("sign video success captureID=\(record.captureID, privacy: .private) signedBytes=\(signedVideo.data.count, privacy: .public)")
+            #endif
+            return signedRecord
+        }
     }
 }
 
@@ -362,12 +384,31 @@ struct PhotoLibraryPendingCaptureExporter: TAPPendingCaptureExporting {
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.pendingCapture.info("export status updated captureID=\(record.captureID, privacy: .private) status=\(TAPPendingCaptureStatus.exporting.rawValue, privacy: .public)")
         #endif
-        let signedData = try await store.signedPhotoData(captureID: record.captureID)
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.pendingCapture.info("export signed data loaded captureID=\(record.captureID, privacy: .private) bytes=\(signedData.count, privacy: .public)")
-        #endif
-        let pairedVideoURL = try await store.pairedVideoURL(captureID: record.captureID)
-        let assetID = try await actions.saveValidatedSignedPhoto(signedData, record, pairedVideoURL)
+        let assetID: String
+        switch record.artifactKind {
+        case .photoDepth:
+            let signedData = try await store.signedPhotoData(captureID: record.captureID)
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.pendingCapture.info("export signed photo data loaded captureID=\(record.captureID, privacy: .private) bytes=\(signedData.count, privacy: .public)")
+            #endif
+            let pairedVideoURL = try await store.pairedVideoURL(captureID: record.captureID)
+            assetID = try await actions.saveValidatedSignedPhoto(signedData, record, pairedVideoURL)
+
+        case .tapVideo:
+            let signedData = try await store.signedVideoData(captureID: record.captureID)
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.pendingCapture.info("export signed video data loaded captureID=\(record.captureID, privacy: .private) bytes=\(signedData.count, privacy: .public)")
+            #endif
+            let validatedVideo = try TAPCaptureProvenanceWriter().validateSignedExportVideo(
+                signedData,
+                expectedCaptureID: record.captureID
+            )
+            assetID = try await PhotoLibraryWriter.saveTAPVideo(
+                validatedVideo,
+                capturedAt: record.capturedAt,
+                location: record.location?.clLocation
+            )
+        }
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.pendingCapture.info("export validation and save passed captureID=\(record.captureID, privacy: .private)")
         #endif

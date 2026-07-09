@@ -104,6 +104,24 @@ nonisolated struct TAPPendingCaptureBundleStorage {
         try fileManager.copyItem(at: sourceURL, to: destinationURL)
     }
 
+    func copyUnsignedVideo(from sourceURL: URL, to bundleURL: URL) throws {
+        let destinationURL = bundleURL.appendingPathComponent(TAPPendingCaptureBundlePathPolicy.unsignedVideoFilename)
+        if fileManager.fileExists(atPath: destinationURL.path) {
+            try fileManager.removeItem(at: destinationURL)
+        }
+        try fileManager.copyItem(at: sourceURL, to: destinationURL)
+    }
+
+    func copyDebugDepthPreviewVideo(from sourceURL: URL, to bundleURL: URL) throws {
+        let destinationURL = bundleURL.appendingPathComponent(
+            TAPPendingCaptureBundlePathPolicy.debugDepthPreviewVideoFilename
+        )
+        if fileManager.fileExists(atPath: destinationURL.path) {
+            try fileManager.removeItem(at: destinationURL)
+        }
+        try fileManager.copyItem(at: sourceURL, to: destinationURL)
+    }
+
     func writeSignedPhoto(
         _ data: Data,
         fileContainer: CapturePhotoFileContainer,
@@ -122,6 +140,18 @@ nonisolated struct TAPPendingCaptureBundleStorage {
 
     func writeSignedHEIC(_ data: Data, captureID: String) throws {
         try writeSignedPhoto(data, fileContainer: .heic, captureID: captureID)
+    }
+
+    func writeSignedVideo(_ data: Data, captureID: String) throws {
+        try storagePolicy.write(
+            data,
+            to: TAPPendingCaptureBundlePathPolicy.artifactURL(
+                rootURL: rootURL,
+                captureID: captureID,
+                filename: TAPPendingCaptureBundlePathPolicy.signedVideoFilename
+            ),
+            fileManager: fileManager
+        )
     }
 
     func readRecord(captureID: String) throws -> TAPPendingCaptureRecord {
@@ -207,6 +237,30 @@ nonisolated struct TAPPendingCaptureBundleStorage {
         return url
     }
 
+    func videoData(filename: String, captureID: String) throws -> Data {
+        let url = try videoURL(filename: filename, captureID: captureID)
+        return try Data(contentsOf: url)
+    }
+
+    func videoURLIfPresent(filename: String, captureID: String) throws -> URL? {
+        let url = try TAPPendingCaptureBundlePathPolicy.artifactURL(
+            rootURL: rootURL,
+            captureID: captureID,
+            filename: filename
+        )
+        guard fileManager.fileExists(atPath: url.path) else {
+            return nil
+        }
+        return url
+    }
+
+    func videoURL(filename: String, captureID: String) throws -> URL {
+        guard let url = try videoURLIfPresent(filename: filename, captureID: captureID) else {
+            throw TAPDepthCaptureError.pendingCaptureDataMissing
+        }
+        return url
+    }
+
     func writeRecord(_ record: TAPPendingCaptureRecord) throws {
         try writeRecord(record, in: try bundleURL(captureID: record.captureID))
     }
@@ -225,6 +279,8 @@ nonisolated struct TAPPendingCaptureBundleStorage {
         for filename in [
             record.unsignedPhotoFilename,
             record.signedPhotoFilename,
+            record.unsignedVideoFilename,
+            record.signedVideoFilename,
             record.pairedVideoFilename
         ].compactMap({ $0 }) {
             let url = try TAPPendingCaptureBundlePathPolicy.artifactURL(

@@ -13,6 +13,7 @@ flowchart TD
     Docs --> ManualLimits["Manual control\ndevice limits"]
     Docs --> ViewerRedesign["Analysis viewer\nredesign"]
     Docs --> CredentialRetry["Credential signing\nretry design"]
+    Docs --> DepthVideo["Depth video\nrecording design"]
     Docs --> ProBuild["Pro controls\nbuild isolation"]
     Docs --> LiveBrowser["Live Photo\nbrowser verification"]
     Docs --> LockedPOC["Locked Camera\ncapture POC"]
@@ -27,6 +28,7 @@ flowchart TD
     click ManualLimits "CameraManualControlDeviceLimits.md"
     click ViewerRedesign "DepthAnalysisViewerRedesign.md"
     click CredentialRetry "CredentialSigningRetryDesign.md"
+    click DepthVideo "DepthVideoRecordingDesign.md"
     click ProBuild "CameraProControlsBuildIsolationPlan.md"
     click LiveBrowser "LivePhotoBrowserVerification.md"
     click LockedPOC "LockedCameraCapturePOC.md"
@@ -47,6 +49,7 @@ flowchart TD
 | Professional camera-control device limits | [CameraManualControlDeviceLimits.md](CameraManualControlDeviceLimits.md) |
 | Analysis viewer and tool drawer redesign | [DepthAnalysisViewerRedesign.md](DepthAnalysisViewerRedesign.md) |
 | Credential signing retry state machine | [CredentialSigningRetryDesign.md](CredentialSigningRetryDesign.md) |
+| Depth video recording design | [DepthVideoRecordingDesign.md](DepthVideoRecordingDesign.md) |
 | Basic EV and Pro Controls build isolation | [CameraProControlsBuildIsolationPlan.md](CameraProControlsBuildIsolationPlan.md) |
 | Live Photo browser verification contract | [LivePhotoBrowserVerification.md](LivePhotoBrowserVerification.md) |
 | Locked Camera Capture POC PRD | [LockedCameraCapturePOC.md](LockedCameraCapturePOC.md) |

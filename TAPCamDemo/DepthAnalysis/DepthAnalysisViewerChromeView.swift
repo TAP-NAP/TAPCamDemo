@@ -19,6 +19,45 @@ struct DepthAnalysisViewerChromeView: View {
     let onDeleteTapped: () -> Void
 
     var body: some View {
+        DepthViewerChromeView(
+            selectedModeID: selectedTool.rawValue,
+            modeItems: AnalysisViewerTool.allCases.map(\.modeItem),
+            overlayOpacity: $heatmapOpacity,
+            showsOpacityControl: selectedTool == .twoD,
+            isSharePreparing: isSharePreparing,
+            shareAccessibilityLabel: isSharePreparing ? "Preparing share" : "Share photo",
+            deleteAccessibilityLabel: "Delete photo",
+            topSafeArea: topSafeArea,
+            bottomSafeArea: bottomSafeArea,
+            onBackTapped: onBackTapped,
+            onShareTapped: onShareTapped,
+            onModeTapped: { itemID in
+                guard let tool = AnalysisViewerTool(rawValue: itemID) else {
+                    return
+                }
+                onToolTapped(tool)
+            },
+            onDeleteTapped: onDeleteTapped
+        )
+    }
+}
+
+struct DepthViewerChromeView: View {
+    let selectedModeID: String
+    let modeItems: [DepthViewerModeItem]
+    @Binding var overlayOpacity: Double
+    let showsOpacityControl: Bool
+    let isSharePreparing: Bool
+    let shareAccessibilityLabel: String
+    let deleteAccessibilityLabel: String
+    let topSafeArea: CGFloat
+    let bottomSafeArea: CGFloat
+    let onBackTapped: () -> Void
+    let onShareTapped: () -> Void
+    let onModeTapped: (String) -> Void
+    let onDeleteTapped: () -> Void
+
+    var body: some View {
         VStack(spacing: 10) {
             HStack {
                 Button(action: onBackTapped) {
@@ -42,8 +81,8 @@ struct DepthAnalysisViewerChromeView: View {
 
             Spacer(minLength: 0)
 
-            if selectedTool == .twoD {
-                AnalysisOpacityControl(opacity: $heatmapOpacity)
+            if showsOpacityControl {
+                AnalysisOpacityControl(opacity: $overlayOpacity)
                     .frame(maxWidth: 340)
                     .padding(.horizontal, 16)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -52,7 +91,7 @@ struct DepthAnalysisViewerChromeView: View {
             HStack(alignment: .center, spacing: 12) {
                 chromeActionButton(
                     systemImage: isSharePreparing ? "clock" : "square.and.arrow.up",
-                    accessibilityLabel: isSharePreparing ? "Preparing share" : "Share photo",
+                    accessibilityLabel: shareAccessibilityLabel,
                     foregroundStyle: .primary,
                     isEnabled: !isSharePreparing,
                     action: onShareTapped
@@ -60,16 +99,17 @@ struct DepthAnalysisViewerChromeView: View {
 
                 Spacer(minLength: 0)
 
-                DepthAnalysisControlsView(
-                    selectedTool: selectedTool,
-                    onToolTapped: onToolTapped
+                DepthViewerModeCapsule(
+                    selectedItemID: selectedModeID,
+                    items: modeItems,
+                    onItemTapped: onModeTapped
                 )
 
                 Spacer(minLength: 0)
 
                 chromeActionButton(
                     systemImage: "trash",
-                    accessibilityLabel: "Delete photo",
+                    accessibilityLabel: deleteAccessibilityLabel,
                     foregroundStyle: .red,
                     action: onDeleteTapped
                 )
@@ -78,7 +118,8 @@ struct DepthAnalysisViewerChromeView: View {
             .padding(.bottom, max(12, bottomSafeArea + 8))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .animation(.snappy(duration: 0.18), value: selectedTool)
+        .animation(.snappy(duration: 0.18), value: selectedModeID)
+        .animation(.snappy(duration: 0.18), value: showsOpacityControl)
         .accessibilityElement(children: .contain)
     }
 

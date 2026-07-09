@@ -109,6 +109,32 @@ nonisolated enum PhotoLibraryWriter {
         return assetID
     }
 
+    /// Saves a validated TAP signed video to Photos as a standard video asset.
+    static func saveTAPVideo(
+        _ validatedVideo: ValidatedTAPVideo,
+        capturedAt: Date,
+        location: CLLocation?
+    ) async throws -> String {
+        let data = validatedVideo.data
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.photoLibrary.info("saveTAPVideo start bytes=\(data.count, privacy: .public) hasLocation=\(location != nil, privacy: .public) depthSamples=\(validatedVideo.manifest.payload.depthCoverage.sampleCount, privacy: .public)")
+        #endif
+        let authorizationStatus = try await requestReadWriteAccess()
+        let album: PHAssetCollection? = authorizationStatus == .authorized
+            ? try await fetchOrCreateAlbum()
+            : nil
+        let assetID = try await createVideoAsset(
+            data: data,
+            capturedAt: capturedAt,
+            location: location,
+            album: album
+        )
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.photoLibrary.info("saveTAPVideo success assetID=\(assetID, privacy: .private)")
+        #endif
+        return assetID
+    }
+
     /// Backward-compatible HEIC save wrapper.
     static func saveDepthHEIC(
         _ validatedHEIC: ValidatedTAPDepthHEIC,
@@ -162,6 +188,50 @@ nonisolated enum PhotoLibraryWriter {
                     }
                 }
             )
+        }
+    }
+
+    static func originalVideoFileURL(localIdentifier: String) async throws -> URL {
+        try await Task.detached(priority: .userInitiated) {
+            guard let asset = asset(localIdentifier: localIdentifier) else {
+                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                TAPDiagnostics.photoLibrary.error("originalVideoFileURL missing asset assetID=\(localIdentifier, privacy: .private)")
+                #endif
+                throw TAPDepthCaptureError.assetNotFound
+            }
+            return try await originalVideoFileURL(for: asset)
+        }.value
+    }
+
+    static func originalVideoFileURL(for asset: PHAsset) async throws -> URL {
+        guard let resource = PHAssetResource.assetResources(for: asset).first(where: { $0.type == .video }) else {
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.photoLibrary.error("originalVideoFileURL missing video resource assetID=\(asset.localIdentifier, privacy: .private)")
+            #endif
+            throw TAPDepthCaptureError.assetCreationFailed
+        }
+
+        let temporaryDirectoryURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TAPVideoPlayback-\(UUID().uuidString)", isDirectory: true)
+        let resourceFilename = resource.originalFilename.isEmpty
+            ? "tap-depth-video.mp4"
+            : resource.originalFilename
+        let fileURL = temporaryDirectoryURL.appendingPathComponent(resourceFilename)
+        try FileManager.default.createDirectory(
+            at: temporaryDirectoryURL,
+            withIntermediateDirectories: true
+        )
+        do {
+            try await writeResource(
+                resource,
+                to: fileURL,
+                assetLocalIdentifier: asset.localIdentifier,
+                label: "originalVideoFile"
+            )
+            return fileURL
+        } catch {
+            try? FileManager.default.removeItem(at: temporaryDirectoryURL)
+            throw error
         }
     }
 
@@ -255,6 +325,12 @@ nonisolated enum PhotoLibraryWriter {
         PHAsset.fetchAssets(withLocalIdentifiers: [localIdentifier], options: nil).firstObject
     }
 
+    static func assetExists(localIdentifier: String) async -> Bool {
+        await Task.detached(priority: .utility) {
+            asset(localIdentifier: localIdentifier) != nil
+        }.value
+    }
+
     static func deleteAsset(localIdentifier: String) async throws {
         try await requestReadWriteAccess()
         guard let asset = asset(localIdentifier: localIdentifier) else {
@@ -277,6 +353,12 @@ nonisolated enum PhotoLibraryWriter {
         options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
         options.fetchLimit = 1
         return PHAsset.fetchAssets(in: album, options: options).firstObject
+    }
+
+    static func latestDepthAssetIdentifierIfAuthorized() async -> String? {
+        await Task.detached(priority: .utility) {
+            latestDepthAssetIfAuthorized()?.localIdentifier
+        }.value
     }
 
     static func depthAlbumAssets() async throws -> [PHAsset] {
@@ -545,6 +627,60 @@ nonisolated enum PhotoLibraryWriter {
 
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.photoLibrary.info("createAsset success assetID=\(localIdentifier, privacy: .private)")
+        #endif
+        return localIdentifier
+    }
+
+    private static func createVideoAsset(
+        data: Data,
+        capturedAt: Date,
+        location: CLLocation?,
+        album: PHAssetCollection?
+    ) async throws -> String {
+        var placeholder: PHObjectPlaceholder?
+        let resourceFilename = "tap-depth-video.mp4"
+        let resourceURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TAPVideoLibraryWriter-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent(resourceFilename)
+
+        try FileManager.default.createDirectory(
+            at: resourceURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try data.write(to: resourceURL, options: .atomic)
+        defer {
+            try? FileManager.default.removeItem(at: resourceURL.deletingLastPathComponent())
+        }
+
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.photoLibrary.info("createVideoAsset start bytes=\(data.count, privacy: .public) album=\(album != nil, privacy: .public)")
+        #endif
+        try await PHPhotoLibrary.shared().performChanges {
+            let creationRequest = PHAssetCreationRequest.forAsset()
+            creationRequest.creationDate = capturedAt
+            creationRequest.location = location
+
+            let options = PHAssetResourceCreationOptions()
+            options.uniformTypeIdentifier = UTType.mpeg4Movie.identifier
+            options.originalFilename = resourceFilename
+            options.shouldMoveFile = false
+            creationRequest.addResource(with: .video, fileURL: resourceURL, options: options)
+
+            placeholder = creationRequest.placeholderForCreatedAsset
+
+            if let album,
+               let albumChangeRequest = PHAssetCollectionChangeRequest(for: album),
+               let placeholder {
+                albumChangeRequest.addAssets([placeholder] as NSArray)
+            }
+        }
+
+        guard let localIdentifier = placeholder?.localIdentifier else {
+            throw TAPDepthCaptureError.assetCreationFailed
+        }
+
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.photoLibrary.info("createVideoAsset success assetID=\(localIdentifier, privacy: .private)")
         #endif
         return localIdentifier
     }

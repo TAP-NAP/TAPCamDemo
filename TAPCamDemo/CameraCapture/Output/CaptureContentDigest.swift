@@ -19,6 +19,7 @@ typealias CaptureContentDigest = CaptureContentBinding
 nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
     static let schemaIdentifier = "urn:tapnap:tapcam:content-binding:v2"
     static let livePhotoSchemaIdentifier = "urn:tapnap:tapcam:content-binding:v3"
+    static let videoSchemaIdentifier = "urn:tapnap:tapcam:content-binding:v4"
 
     let schemaID: String
     let manifestSchemaID: String
@@ -93,6 +94,35 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
             depthData: depthData,
             pairedVideoURL: pairedVideoURL
         ).digest
+    }
+
+    static func makeVideo(
+        manifest: TAPVideoManifest,
+        mp4Data: Data
+    ) throws -> CaptureContentBinding {
+        let slot = try TAPProofSlot.locateBMFF(in: mp4Data)
+        let assetHash = try AssetHash(
+            fileContainerIdentifier: "mp4",
+            byteCount: mp4Data.count,
+            slot: slot,
+            value: TAPContentBindingHash.sha256Base64URL(
+                data: mp4Data,
+                excluding: slot.containerRange
+            )
+        )
+        let payloadData = try TAPVideoManifestEncoder.payloadDataExcludingProofs(manifest.payload)
+        let metadataHash = MetadataHash(videoPayloadData: payloadData, schemaVersion: manifest.schema.version)
+
+        return CaptureContentBinding(
+            schemaID: CaptureContentBinding.videoSchemaIdentifier,
+            manifestSchemaID: manifest.schema.id,
+            captureID: manifest.payload.id,
+            capturedAt: manifest.payload.capturedAt,
+            assetHash: assetHash,
+            metadataHash: metadataHash,
+            proofSlot: ProofSlot(slot),
+            depthResource: depthResource(for: manifest.payload.depthCoverage)
+        )
     }
 
     static func makeWithMetrics(
@@ -202,6 +232,15 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
         }
     }
 
+    private static func depthResource(for coverage: TAPVideoManifest.DepthCoverage) -> DepthResource {
+        DepthResource(
+            presence: coverage.sampleCount > 0 ? "captured" : "no-samples",
+            binding: coverage.sampleCount > 0 ? "covered-by-assetHash" : "coverage-recorded-in-manifest",
+            interpretation: "not-part-of-base-signature",
+            platformPresenceCheck: "TAPVideoManifest.depthCoverage"
+        )
+    }
+
     private static func signedResources(
         pairedVideoURL: URL,
         fileContainer: CapturePhotoFileContainer,
@@ -260,8 +299,22 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
             slot: TAPProofSlot.Location,
             value: String
         ) {
+            self.init(
+                fileContainerIdentifier: fileContainer.rawValue,
+                byteCount: byteCount,
+                slot: slot,
+                value: value
+            )
+        }
+
+        nonisolated init(
+            fileContainerIdentifier: String,
+            byteCount: Int,
+            slot: TAPProofSlot.Location,
+            value: String
+        ) {
             self.kind = "c2pa-style-format-native-byte-ranges"
-            self.fileContainer = fileContainer.rawValue
+            self.fileContainer = fileContainerIdentifier
             self.algorithm = "SHA-256"
             self.byteCount = byteCount
             self.value = value
@@ -309,6 +362,13 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
             self.mediaType = "application/vnd.tapnap.depth-manifest.payload+json;version=\(schemaVersion)"
             self.algorithm = "SHA-256"
             self.value = TAPContentBindingHash.sha256Base64URL(data: payloadData)
+        }
+
+        nonisolated init(videoPayloadData: Data, schemaVersion: Int) {
+            self.kind = "canonical-json"
+            self.mediaType = "application/vnd.tapnap.video-manifest.payload+json;version=\(schemaVersion)"
+            self.algorithm = "SHA-256"
+            self.value = TAPContentBindingHash.sha256Base64URL(data: videoPayloadData)
         }
     }
 
@@ -451,6 +511,17 @@ nonisolated enum TAPProofSlot {
         }
     }
 
+    static func ensuringEmptyBMFFSlot(in data: Data) throws -> Data {
+        do {
+            _ = try locateBMFF(in: data)
+            return data
+        } catch TAPDepthCaptureError.pendingCaptureProofMissing {
+            return data + bmffProofBox(payload: emptyPayload())
+        } catch {
+            throw error
+        }
+    }
+
     static func writeProofEnvelope(
         _ envelope: Data,
         into photoData: Data,
@@ -459,6 +530,17 @@ nonisolated enum TAPProofSlot {
         let slot = try locate(in: photoData, fileContainer: fileContainer)
         let payload = try payload(envelope: envelope)
         var output = photoData
+        output.replaceSubrange(slot.payloadRange, with: payload)
+        return output
+    }
+
+    static func writeProofEnvelope(
+        _ envelope: Data,
+        intoBMFF data: Data
+    ) throws -> Data {
+        let slot = try locateBMFF(in: data)
+        let payload = try payload(envelope: envelope)
+        var output = data
         output.replaceSubrange(slot.payloadRange, with: payload)
         return output
     }
@@ -472,6 +554,12 @@ nonisolated enum TAPProofSlot {
         return try envelopeData(fromPayload: payload)
     }
 
+    static func proofEnvelopeData(fromBMFF data: Data) throws -> Data {
+        let slot = try locateBMFF(in: data)
+        let payload = data.subdata(in: slot.payloadRange)
+        return try envelopeData(fromPayload: payload)
+    }
+
     static func locate(
         in photoData: Data,
         fileContainer: CapturePhotoFileContainer
@@ -482,6 +570,10 @@ nonisolated enum TAPProofSlot {
         case .jpeg:
             return try locateJPEGSlot(in: photoData)
         }
+    }
+
+    static func locateBMFF(in data: Data) throws -> Location {
+        try locateBMFFSlot(in: data)
     }
 
     private static func emptyPayload() -> Data {

@@ -52,7 +52,7 @@ struct TAPCameraCapturePresentationTests {
         #expect(uiTestSource.contains(#"tapButton("camera.lowerToolbar.shutter""#))
         #expect(uiTestSource.contains(#"tapButton("camera.lowerToolbar.focus""#))
         #expect(uiTestSource.contains("camera.tickedAdjustmentStrip"))
-        #expect(uiTestSource.contains("VIDEO mode coming soon"))
+        #expect(uiTestSource.contains("VIDEO selected"))
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
@@ -77,8 +77,7 @@ struct TAPCameraCapturePresentationTests {
         #expect(CaptureLifecycleCoordinator.initialCameraActions(startsAutomatically: false) == [])
 
         #expect(CaptureLifecycleCoordinator.launchCredentialActions(startsAutomatically: true) == [
-            .warmPendingCaptureSigningCredential,
-            .retryPendingCaptures
+            .warmPendingCaptureSigningCredential
         ])
         #expect(CaptureLifecycleCoordinator.launchCredentialActions(startsAutomatically: false) == [
             .retryPendingCaptures
@@ -126,6 +125,10 @@ struct TAPCameraCapturePresentationTests {
 
         #expect(CaptureLifecycleCoordinator.pendingCaptureRetryActions(isCredentialPreparationActive: false) == [.retryPendingCaptures])
         #expect(CaptureLifecycleCoordinator.pendingCaptureRetryActions(isCredentialPreparationActive: true) == [])
+        #expect(CaptureLifecycleCoordinator.pendingCaptureRetryActions(
+            isCredentialPreparationActive: false,
+            isCameraBusy: true
+        ) == [])
 
         #expect(!CaptureLifecycleCoordinator.shouldRestoreCamera(for: .active))
         #expect(CaptureLifecycleCoordinator.shouldRestoreCamera(
@@ -140,6 +143,10 @@ struct TAPCameraCapturePresentationTests {
 
         #expect(CaptureLifecycleCoordinator.shouldRetryPendingCaptures(isCredentialPreparationActive: false))
         #expect(!CaptureLifecycleCoordinator.shouldRetryPendingCaptures(isCredentialPreparationActive: true))
+        #expect(!CaptureLifecycleCoordinator.shouldRetryPendingCaptures(
+            isCredentialPreparationActive: false,
+            isCameraBusy: true
+        ))
 
         #expect(CaptureLifecycleCoordinator.shouldRetryPendingCapturesAfterCredentialPreparationChange(
             wasPreparing: true,
@@ -283,6 +290,8 @@ struct TAPCameraCapturePresentationTests {
             isShutterEnabled: true,
             isLibraryWriteInProgress: false,
             selectedMode: .photo,
+            isRecordingMovie: false,
+            isPreparingMovie: false,
             adjustmentControlState: nil,
             contentRotation: .zero
         )
@@ -291,6 +300,8 @@ struct TAPCameraCapturePresentationTests {
             isShutterEnabled: true,
             isLibraryWriteInProgress: false,
             selectedMode: .photo,
+            isRecordingMovie: false,
+            isPreparingMovie: false,
             basicEVControlState: CameraBasicEVControlState(bias: 0, isStripVisible: false),
             contentRotation: .zero
         )
@@ -305,6 +316,8 @@ struct TAPCameraCapturePresentationTests {
             isShutterEnabled: true,
             isLibraryWriteInProgress: true,
             selectedMode: .photo,
+            isRecordingMovie: false,
+            isPreparingMovie: false,
             adjustmentControlState: nil,
             contentRotation: .zero
         )
@@ -313,6 +326,8 @@ struct TAPCameraCapturePresentationTests {
             isShutterEnabled: true,
             isLibraryWriteInProgress: true,
             selectedMode: .photo,
+            isRecordingMovie: false,
+            isPreparingMovie: false,
             basicEVControlState: CameraBasicEVControlState(bias: 0, isStripVisible: false),
             contentRotation: .zero
         )
@@ -329,6 +344,8 @@ struct TAPCameraCapturePresentationTests {
             isShutterEnabled: true,
             isLibraryWriteInProgress: false,
             selectedMode: .photo,
+            isRecordingMovie: false,
+            isPreparingMovie: false,
             adjustmentControlState: nil,
             contentRotation: .zero
         )
@@ -337,6 +354,8 @@ struct TAPCameraCapturePresentationTests {
             isShutterEnabled: true,
             isLibraryWriteInProgress: false,
             selectedMode: .photo,
+            isRecordingMovie: false,
+            isPreparingMovie: false,
             basicEVControlState: CameraBasicEVControlState(bias: 0, isStripVisible: false),
             contentRotation: .zero
         )
@@ -827,9 +846,9 @@ struct TAPCameraCapturePresentationTests {
         #expect(CameraViewfinderHighlightPreference.titian.title == "Titian")
     }
 
-    @Test func cameraCaptureModeOptionKeepsOnlyPhotoAvailableInStageOne() throws {
+    @Test func cameraCaptureModeOptionEnablesPhotoAndVideo() throws {
         #expect(CameraCaptureModeOption.photo.isAvailableInStageOne)
-        #expect(!CameraCaptureModeOption.video.isAvailableInStageOne)
+        #expect(CameraCaptureModeOption.video.isAvailableInStageOne)
         #expect(CameraCaptureModeOption.allCases.map(\.title) == ["PHOTO", "VIDEO"])
     }
 

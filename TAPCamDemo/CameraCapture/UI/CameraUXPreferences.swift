@@ -564,6 +564,6 @@ nonisolated enum CameraCaptureModeOption: String, CaseIterable, Identifiable, Se
     }
 
     var isAvailableInStageOne: Bool {
-        self == .photo
+        true
     }
 }

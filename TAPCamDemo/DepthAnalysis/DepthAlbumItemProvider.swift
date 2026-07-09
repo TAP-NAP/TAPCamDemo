@@ -120,6 +120,7 @@ nonisolated struct DepthAlbumPhotoAsset {
     let pixelWidth: Int
     let pixelHeight: Int
     let isLivePhoto: Bool
+    let isVideo: Bool
     let phAsset: PHAsset?
 
     init(asset: PHAsset) {
@@ -129,6 +130,7 @@ nonisolated struct DepthAlbumPhotoAsset {
         self.pixelWidth = asset.pixelWidth
         self.pixelHeight = asset.pixelHeight
         self.isLivePhoto = asset.mediaSubtypes.contains(.photoLive)
+        self.isVideo = asset.mediaType == .video
         self.phAsset = asset
     }
 
@@ -139,6 +141,7 @@ nonisolated struct DepthAlbumPhotoAsset {
         pixelWidth: Int = 0,
         pixelHeight: Int = 0,
         isLivePhoto: Bool = false,
+        isVideo: Bool = false,
         phAsset: PHAsset? = nil
     ) {
         self.localIdentifier = localIdentifier
@@ -147,6 +150,7 @@ nonisolated struct DepthAlbumPhotoAsset {
         self.pixelWidth = pixelWidth
         self.pixelHeight = pixelHeight
         self.isLivePhoto = isLivePhoto
+        self.isVideo = isVideo
         self.phAsset = phAsset
     }
 }
@@ -183,7 +187,9 @@ nonisolated struct TAPLibraryItem: Identifiable {
                 captureID: record.captureID,
                 pixelLength: pixelLength,
                 capturedAt: record.capturedAt,
-                thumbnailFilename: record.thumbnailFilename
+                thumbnailFilename: record.thumbnailFilename,
+                videoFilename: record.signedVideoFilename ?? record.unsignedVideoFilename,
+                updatedAt: record.updatedAt
             )
         }
     }
@@ -276,11 +282,23 @@ extension TAPLibraryItem {
     var isLivePhoto: Bool {
         switch source {
         case .photos(let asset):
-            return asset.isLivePhoto
+            return asset.isLivePhoto && !asset.isVideo
         case .ownedPhoto(let record, let asset):
-            return asset.isLivePhoto || record.pairedVideoFilename != nil
+            return record.artifactKind != .tapVideo
+                && (asset.isLivePhoto || record.pairedVideoFilename != nil)
         case .pending(let record):
-            return record.pairedVideoFilename != nil
+            return record.artifactKind != .tapVideo && record.pairedVideoFilename != nil
+        }
+    }
+
+    var isVideo: Bool {
+        switch source {
+        case .photos(let asset):
+            return asset.isVideo
+        case .ownedPhoto(let record, let asset):
+            return record.artifactKind == .tapVideo || asset.isVideo
+        case .pending(let record):
+            return record.artifactKind == .tapVideo
         }
     }
 
@@ -310,11 +328,17 @@ extension TAPLibraryItem {
     var accessibilityLabel: String {
         switch source {
         case .photos, .ownedPhoto:
+            if isVideo {
+                return "Open saved TAP video"
+            }
             if isLivePhoto {
                 return "Open saved Live Photo"
             }
             return "Open saved depth photo"
         case .pending(let record):
+            if isVideo {
+                return "Open pending TAP video, \(record.status.rawValue)"
+            }
             if isLivePhoto {
                 return "Open pending Live Photo, \(record.status.rawValue)"
             }

@@ -37,6 +37,8 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     private var subjectAreaChangeObserver: NSObjectProtocol?
     private var focusAdjustingObservation: NSKeyValueObservation?
     private var exposureAdjustingObservation: NSKeyValueObservation?
+    private var activeVideoRecordingGraph: ActiveVideoRecordingGraph?
+    private var preparedVideoRecordingGraph: PreparedVideoRecordingGraph?
 
     init() {
         CameraControlService.registerSessionQueue(sessionQueue)
@@ -80,6 +82,10 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         try await withCheckedThrowingContinuation { continuation in
             sessionQueue.async { [self, session, photoOutput] in
                 do {
+                    discardPreparedVideoRecordingGraphLocked(
+                        session: session,
+                        reason: "configure"
+                    )
                     let result = try Self.configureSession(
                         session: session,
                         photoOutput: photoOutput,
@@ -147,8 +153,12 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     }
 
     func stop() {
-        sessionQueue.async { [session, photoOutput] in
+        sessionQueue.async { [self, session, photoOutput] in
             guard session.isRunning else { return }
+            discardPreparedVideoRecordingGraphLocked(
+                session: session,
+                reason: "stop"
+            )
             photoOutput.setPreparedPhotoSettingsArray([], completionHandler: nil)
             session.stopRunning()
         }
@@ -174,6 +184,428 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             }
 
             photoOutput.capturePhoto(with: settings, delegate: delegate)
+        }
+    }
+
+    func prepareVideoRecording(
+        configuration: SessionConfigurationResult,
+        recordsAudio: Bool,
+        videoRotationAngle: CGFloat?,
+        isVideoMirrored: Bool
+    ) async throws {
+        try await withCheckedThrowingContinuation { continuation in
+            sessionQueue.async { [self, session] in
+                do {
+                    guard activeVideoRecordingGraph == nil else {
+                        throw TAPDepthCaptureError.videoRecordingAlreadyActive
+                    }
+                    if let preparedVideoRecordingGraph,
+                       preparedVideoRecordingGraph.matches(
+                        configuration: configuration,
+                        recordsAudio: recordsAudio,
+                        videoRotationAngle: videoRotationAngle,
+                        isVideoMirrored: isVideoMirrored
+                       ) {
+                        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                        TAPDiagnostics.cameraCapture.info("video recording graph warmup reused recordsAudio=\(recordsAudio, privacy: .public) recordsDepth=\(preparedVideoRecordingGraph.recordsDepth, privacy: .public)")
+                        #endif
+                        continuation.resume()
+                        return
+                    }
+
+                    if preparedVideoRecordingGraph != nil {
+                        discardPreparedVideoRecordingGraphLocked(
+                            session: session,
+                            reason: "warmup-replace"
+                        )
+                    }
+
+                    let videoOutput = Self.makeVideoRecordingVideoOutput()
+                    let audioOutput = recordsAudio ? AVCaptureAudioDataOutput() : nil
+                    let depthOutput = Self.makeVideoRecordingDepthOutput()
+
+                    session.beginConfiguration()
+                    var addedOutputs: [AVCaptureOutput] = []
+                    var addedAudioInput: AVCaptureDeviceInput?
+                    let previousActiveDepthDataFormat = configuration.device.activeDepthDataFormat
+                    var didApplyVideoDepthDataFormat = false
+                    do {
+                        guard session.canAddOutput(videoOutput) else {
+                            throw TAPDepthCaptureError.unableToAddVideoOutput
+                        }
+                        session.addOutput(videoOutput)
+                        addedOutputs.append(videoOutput)
+
+                        if let connection = videoOutput.connection(with: .video) {
+                            if connection.isVideoMirroringSupported {
+                                connection.automaticallyAdjustsVideoMirroring = false
+                                connection.isVideoMirrored = isVideoMirrored
+                            }
+                            if let videoRotationAngle,
+                               connection.isVideoRotationAngleSupported(videoRotationAngle) {
+                                connection.videoRotationAngle = videoRotationAngle
+                            }
+                        }
+
+                        var actualRecordsAudio = false
+                        if let audioOutput {
+                            if !Self.hasLivePhotoAudioInput(session),
+                               let audioInput = try? Self.makeLivePhotoAudioInput(),
+                               session.canAddInput(audioInput) {
+                                session.addInput(audioInput)
+                                addedAudioInput = audioInput
+                            }
+                            if session.canAddOutput(audioOutput) {
+                                session.addOutput(audioOutput)
+                                addedOutputs.append(audioOutput)
+                                actualRecordsAudio = true
+                            }
+                        }
+
+                        var recordsDepth = false
+                        if configuration.depthDeliverySupported,
+                           !Self.activeFormatRejectsDepthDataOutput(configuration.device.activeFormat),
+                           session.canAddOutput(depthOutput) {
+                            if let depthFormat = Self.videoRecordingDepthFormat(for: configuration) {
+                                try CameraControlService.applyActiveDepthDataFormat(
+                                    depthFormat,
+                                    to: configuration.device
+                                )
+                                didApplyVideoDepthDataFormat = true
+                                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                                TAPDiagnostics.cameraCapture.info("video warmup depth format configured format=\(Self.depthFormatDescription(depthFormat), privacy: .public) previous=\(Self.depthFormatDescription(previousActiveDepthDataFormat), privacy: .public)")
+                                #endif
+                            } else {
+                                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                                TAPDiagnostics.cameraCapture.info("video warmup depth format not configured reason=no-compatible-active-depth-format")
+                                #endif
+                            }
+                            session.addOutput(depthOutput)
+                            addedOutputs.append(depthOutput)
+                            recordsDepth = true
+                        } else if configuration.depthDeliverySupported {
+                            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                            TAPDiagnostics.cameraCapture.info("video warmup depth output not added unsupportedByActiveFormat=\(Self.activeFormatRejectsDepthDataOutput(configuration.device.activeFormat), privacy: .public) canAddOutput=\(session.canAddOutput(depthOutput), privacy: .public)")
+                            #endif
+                        }
+
+                        let videoSettings = videoOutput.recommendedVideoSettingsForAssetWriter(writingTo: .mp4)
+                            ?? Self.fallbackVideoSettings(for: configuration.device)
+
+                        preparedVideoRecordingGraph = PreparedVideoRecordingGraph(
+                            outputs: addedOutputs,
+                            videoOutput: videoOutput,
+                            audioOutput: actualRecordsAudio ? audioOutput : nil,
+                            depthOutput: recordsDepth ? depthOutput : nil,
+                            audioInputAddedByRecording: addedAudioInput,
+                            device: configuration.device,
+                            recordsAudio: actualRecordsAudio,
+                            requestedRecordsAudio: recordsAudio,
+                            recordsDepth: recordsDepth,
+                            videoRotationAngle: videoRotationAngle,
+                            isVideoMirrored: isVideoMirrored,
+                            videoSettings: videoSettings,
+                            previousActiveDepthDataFormat: previousActiveDepthDataFormat,
+                            didApplyVideoDepthDataFormat: didApplyVideoDepthDataFormat
+                        )
+                        session.commitConfiguration()
+                        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                        TAPDiagnostics.cameraCapture.info("video recording graph warmup complete recordsAudio=\(actualRecordsAudio, privacy: .public) recordsDepth=\(recordsDepth, privacy: .public) previewSizedVideo=\(Self.previewSizedDescription(videoOutput), privacy: .public)")
+                        #endif
+                        continuation.resume()
+                    } catch {
+                        for output in addedOutputs {
+                            session.removeOutput(output)
+                        }
+                        if let addedAudioInput {
+                            session.removeInput(addedAudioInput)
+                        }
+                        session.commitConfiguration()
+                        throw error
+                    }
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    func discardPreparedVideoRecording(reason: String) async {
+        await withCheckedContinuation { continuation in
+            sessionQueue.async { [self, session] in
+                discardPreparedVideoRecordingGraphLocked(
+                    session: session,
+                    reason: reason
+                )
+                continuation.resume()
+            }
+        }
+    }
+
+    func startVideoRecording(
+        request: TAPVideoRecordingRequest,
+        configuration: SessionConfigurationResult,
+        location: TAPPendingCaptureLocation?
+    ) async throws -> TAPVideoRecorder {
+        try await withCheckedThrowingContinuation { continuation in
+            sessionQueue.async { [self, session] in
+                do {
+                    guard activeVideoRecordingGraph == nil else {
+                        throw TAPDepthCaptureError.videoRecordingAlreadyActive
+                    }
+
+                    if let preparedGraph = preparedVideoRecordingGraph,
+                       preparedGraph.matches(
+                        configuration: configuration,
+                        recordsAudio: request.recordsAudio,
+                        videoRotationAngle: request.videoRotationAngle,
+                        isVideoMirrored: request.isVideoMirrored
+                       ) {
+                        preparedVideoRecordingGraph = nil
+                        let recorder = try TAPVideoRecorder(
+                            request: request,
+                            sessionConfiguration: configuration,
+                            videoSettings: preparedGraph.videoSettings,
+                            recordsAudio: preparedGraph.recordsAudio,
+                            recordsDepth: preparedGraph.recordsDepth,
+                            location: location
+                        )
+
+                        let dataOutputSynchronizer: AVCaptureDataOutputSynchronizer?
+                        if preparedGraph.recordsDepth,
+                           let depthOutput = preparedGraph.depthOutput {
+                            recorder.useSynchronizedOutputs(
+                                videoOutput: preparedGraph.videoOutput,
+                                depthOutput: depthOutput
+                            )
+                            let synchronizer = AVCaptureDataOutputSynchronizer(
+                                dataOutputs: [preparedGraph.videoOutput, depthOutput]
+                            )
+                            synchronizer.setDelegate(recorder, queue: recorder.callbackQueue)
+                            dataOutputSynchronizer = synchronizer
+                        } else {
+                            preparedGraph.videoOutput.setSampleBufferDelegate(
+                                recorder,
+                                queue: recorder.callbackQueue
+                            )
+                            dataOutputSynchronizer = nil
+                        }
+                        preparedGraph.audioOutput?.setSampleBufferDelegate(
+                            recorder,
+                            queue: recorder.callbackQueue
+                        )
+
+                        activeVideoRecordingGraph = ActiveVideoRecordingGraph(
+                            recorder: recorder,
+                            outputs: preparedGraph.outputs,
+                            audioInputAddedByRecording: preparedGraph.audioInputAddedByRecording,
+                            dataOutputSynchronizer: dataOutputSynchronizer,
+                            device: preparedGraph.device,
+                            previousActiveDepthDataFormat: preparedGraph.previousActiveDepthDataFormat,
+                            didApplyVideoDepthDataFormat: preparedGraph.didApplyVideoDepthDataFormat
+                        )
+                        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                        TAPDiagnostics.cameraCapture.info("video recording graph started captureID=\(request.captureID, privacy: .private) warmupReused=true recordsAudio=\(preparedGraph.recordsAudio, privacy: .public) recordsDepth=\(preparedGraph.recordsDepth, privacy: .public) synchronizedDepth=\(dataOutputSynchronizer != nil, privacy: .public) previewSizedVideo=\(Self.previewSizedDescription(preparedGraph.videoOutput), privacy: .public)")
+                        #endif
+                        continuation.resume(returning: recorder)
+                        return
+                    }
+
+                    if preparedVideoRecordingGraph != nil {
+                        discardPreparedVideoRecordingGraphLocked(
+                            session: session,
+                            reason: "start-mismatch"
+                        )
+                    }
+
+                    let videoOutput = Self.makeVideoRecordingVideoOutput()
+
+                    let audioOutput = request.recordsAudio ? AVCaptureAudioDataOutput() : nil
+                    let depthOutput = Self.makeVideoRecordingDepthOutput()
+
+                    session.beginConfiguration()
+                    var addedOutputs: [AVCaptureOutput] = []
+                    var addedAudioInput: AVCaptureDeviceInput?
+                    let previousActiveDepthDataFormat = configuration.device.activeDepthDataFormat
+                    var didApplyVideoDepthDataFormat = false
+                    do {
+                        guard session.canAddOutput(videoOutput) else {
+                            throw TAPDepthCaptureError.unableToAddVideoOutput
+                        }
+                        session.addOutput(videoOutput)
+                        addedOutputs.append(videoOutput)
+
+                        if let connection = videoOutput.connection(with: .video) {
+                            if connection.isVideoMirroringSupported {
+                                connection.automaticallyAdjustsVideoMirroring = false
+                                connection.isVideoMirrored = request.isVideoMirrored
+                            }
+                            if let videoRotationAngle = request.videoRotationAngle,
+                               connection.isVideoRotationAngleSupported(videoRotationAngle) {
+                                connection.videoRotationAngle = videoRotationAngle
+                            }
+                        }
+
+                        var recordsAudio = false
+                        if let audioOutput {
+                            if !Self.hasLivePhotoAudioInput(session),
+                               let audioInput = try? Self.makeLivePhotoAudioInput(),
+                               session.canAddInput(audioInput) {
+                                session.addInput(audioInput)
+                                addedAudioInput = audioInput
+                            }
+                            if session.canAddOutput(audioOutput) {
+                                session.addOutput(audioOutput)
+                                addedOutputs.append(audioOutput)
+                                recordsAudio = true
+                            }
+                        }
+
+                        var recordsDepth = false
+                        if configuration.depthDeliverySupported,
+                           !Self.activeFormatRejectsDepthDataOutput(configuration.device.activeFormat),
+                           session.canAddOutput(depthOutput) {
+                            if let depthFormat = Self.videoRecordingDepthFormat(for: configuration) {
+                                try CameraControlService.applyActiveDepthDataFormat(
+                                    depthFormat,
+                                    to: configuration.device
+                                )
+                                didApplyVideoDepthDataFormat = true
+                                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                                TAPDiagnostics.cameraCapture.info("video depth format configured captureID=\(request.captureID, privacy: .private) format=\(Self.depthFormatDescription(depthFormat), privacy: .public) previous=\(Self.depthFormatDescription(previousActiveDepthDataFormat), privacy: .public)")
+                                #endif
+                            } else {
+                                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                                TAPDiagnostics.cameraCapture.info("video depth format not configured captureID=\(request.captureID, privacy: .private) reason=no-compatible-active-depth-format")
+                                #endif
+                            }
+                            session.addOutput(depthOutput)
+                            addedOutputs.append(depthOutput)
+                            recordsDepth = true
+                        } else if configuration.depthDeliverySupported {
+                            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                            TAPDiagnostics.cameraCapture.info("video depth output not added captureID=\(request.captureID, privacy: .private) unsupportedByActiveFormat=\(Self.activeFormatRejectsDepthDataOutput(configuration.device.activeFormat), privacy: .public) canAddOutput=\(session.canAddOutput(depthOutput), privacy: .public)")
+                            #endif
+                        }
+
+                        let videoSettings = videoOutput.recommendedVideoSettingsForAssetWriter(writingTo: .mp4)
+                            ?? Self.fallbackVideoSettings(for: configuration.device)
+                        let recorder = try TAPVideoRecorder(
+                            request: request,
+                            sessionConfiguration: configuration,
+                            videoSettings: videoSettings,
+                            recordsAudio: recordsAudio,
+                            recordsDepth: recordsDepth,
+                            location: location
+                        )
+
+                        let dataOutputSynchronizer: AVCaptureDataOutputSynchronizer?
+                        if recordsDepth {
+                            recorder.useSynchronizedOutputs(videoOutput: videoOutput, depthOutput: depthOutput)
+                            let synchronizer = AVCaptureDataOutputSynchronizer(dataOutputs: [videoOutput, depthOutput])
+                            synchronizer.setDelegate(recorder, queue: recorder.callbackQueue)
+                            dataOutputSynchronizer = synchronizer
+                        } else {
+                            videoOutput.setSampleBufferDelegate(recorder, queue: recorder.callbackQueue)
+                            dataOutputSynchronizer = nil
+                        }
+                        audioOutput?.setSampleBufferDelegate(recorder, queue: recorder.callbackQueue)
+
+                        activeVideoRecordingGraph = ActiveVideoRecordingGraph(
+                            recorder: recorder,
+                            outputs: addedOutputs,
+                            audioInputAddedByRecording: addedAudioInput,
+                            dataOutputSynchronizer: dataOutputSynchronizer,
+                            device: configuration.device,
+                            previousActiveDepthDataFormat: previousActiveDepthDataFormat,
+                            didApplyVideoDepthDataFormat: didApplyVideoDepthDataFormat
+                        )
+                        session.commitConfiguration()
+                        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                        TAPDiagnostics.cameraCapture.info("video recording graph started captureID=\(request.captureID, privacy: .private) recordsAudio=\(recordsAudio, privacy: .public) recordsDepth=\(recordsDepth, privacy: .public) synchronizedDepth=\(dataOutputSynchronizer != nil, privacy: .public) previewSizedVideo=\(Self.previewSizedDescription(videoOutput), privacy: .public)")
+                        #endif
+                        continuation.resume(returning: recorder)
+                    } catch {
+                        for output in addedOutputs {
+                            session.removeOutput(output)
+                        }
+                        if let addedAudioInput {
+                            session.removeInput(addedAudioInput)
+                        }
+                        if didApplyVideoDepthDataFormat {
+                            try? CameraControlService.applyActiveDepthDataFormat(
+                                previousActiveDepthDataFormat,
+                                to: configuration.device
+                            )
+                        }
+                        session.commitConfiguration()
+                        throw error
+                    }
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    func stopVideoRecording(
+        reason: TAPVideoManifest.StopReason
+    ) async throws -> TAPVideoRecordingArtifact {
+        let recorder = try await detachActiveVideoRecording()
+        return try await recorder.finish(reason: reason)
+    }
+
+    private func detachActiveVideoRecording() async throws -> TAPVideoRecorder {
+        try await withCheckedThrowingContinuation { continuation in
+            sessionQueue.async { [self, session] in
+                guard let graph = activeVideoRecordingGraph else {
+                    continuation.resume(throwing: TAPDepthCaptureError.videoRecordingNotActive)
+                    return
+                }
+                activeVideoRecordingGraph = nil
+                graph.dataOutputSynchronizer?.setDelegate(nil, queue: nil)
+
+                for output in graph.outputs {
+                    if let videoOutput = output as? AVCaptureVideoDataOutput {
+                        videoOutput.setSampleBufferDelegate(nil, queue: nil)
+                    }
+                    if let audioOutput = output as? AVCaptureAudioDataOutput {
+                        audioOutput.setSampleBufferDelegate(nil, queue: nil)
+                    }
+                    if let depthOutput = output as? AVCaptureDepthDataOutput {
+                        depthOutput.setDelegate(nil, callbackQueue: nil)
+                    }
+                }
+
+                session.beginConfiguration()
+                for output in graph.outputs where session.outputs.contains(output) {
+                    session.removeOutput(output)
+                }
+                if let audioInput = graph.audioInputAddedByRecording,
+                   session.inputs.contains(audioInput) {
+                    session.removeInput(audioInput)
+                }
+                if graph.didApplyVideoDepthDataFormat {
+                    do {
+                        try CameraControlService.applyActiveDepthDataFormat(
+                            graph.previousActiveDepthDataFormat,
+                            to: graph.device
+                        )
+                        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                        TAPDiagnostics.cameraCapture.info("video depth format restored previous=\(Self.depthFormatDescription(graph.previousActiveDepthDataFormat), privacy: .public)")
+                        #endif
+                    } catch {
+                        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                        TAPDiagnostics.cameraCapture.error("video depth format restore failed error=\(TAPDiagnostics.describe(error), privacy: .public)")
+                        #endif
+                    }
+                }
+                session.commitConfiguration()
+                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                TAPDiagnostics.cameraCapture.info("video recording graph stopped")
+                #endif
+                continuation.resume(returning: graph.recorder)
+            }
         }
     }
 
@@ -548,6 +980,126 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             .contains { $0.hasMediaType(.audio) }
     }
 
+    private static func makeVideoRecordingVideoOutput() -> AVCaptureVideoDataOutput {
+        let videoOutput = AVCaptureVideoDataOutput()
+        videoOutput.alwaysDiscardsLateVideoFrames = true
+        if #available(iOS 13.0, *) {
+            videoOutput.automaticallyConfiguresOutputBufferDimensions = false
+            videoOutput.deliversPreviewSizedOutputBuffers = true
+        }
+        videoOutput.videoSettings = [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
+        ]
+        return videoOutput
+    }
+
+    private static func makeVideoRecordingDepthOutput() -> AVCaptureDepthDataOutput {
+        let depthOutput = AVCaptureDepthDataOutput()
+        depthOutput.isFilteringEnabled = false
+        depthOutput.alwaysDiscardsLateDepthData = true
+        return depthOutput
+    }
+
+    private func discardPreparedVideoRecordingGraphLocked(
+        session: AVCaptureSession,
+        reason: String
+    ) {
+        guard let graph = preparedVideoRecordingGraph else {
+            return
+        }
+        preparedVideoRecordingGraph = nil
+        graph.videoOutput.setSampleBufferDelegate(nil, queue: nil)
+        graph.audioOutput?.setSampleBufferDelegate(nil, queue: nil)
+        graph.depthOutput?.setDelegate(nil, callbackQueue: nil)
+
+        session.beginConfiguration()
+        for output in graph.outputs where session.outputs.contains(output) {
+            session.removeOutput(output)
+        }
+        if let audioInput = graph.audioInputAddedByRecording,
+           session.inputs.contains(audioInput) {
+            session.removeInput(audioInput)
+        }
+        if graph.didApplyVideoDepthDataFormat {
+            do {
+                try CameraControlService.applyActiveDepthDataFormat(
+                    graph.previousActiveDepthDataFormat,
+                    to: graph.device
+                )
+                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                TAPDiagnostics.cameraCapture.info("video warmup depth format restored reason=\(reason, privacy: .public) previous=\(Self.depthFormatDescription(graph.previousActiveDepthDataFormat), privacy: .public)")
+                #endif
+            } catch {
+                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                TAPDiagnostics.cameraCapture.error("video warmup depth format restore failed reason=\(reason, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
+                #endif
+            }
+        }
+        session.commitConfiguration()
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.cameraCapture.info("video recording graph warmup discarded reason=\(reason, privacy: .public)")
+        #endif
+    }
+
+    private static func fallbackVideoSettings(for device: AVCaptureDevice) -> [String: Any] {
+        let dimensions = CMVideoFormatDescriptionGetDimensions(device.activeFormat.formatDescription)
+        return [
+            AVVideoCodecKey: AVVideoCodecType.h264,
+            AVVideoWidthKey: Int(dimensions.width),
+            AVVideoHeightKey: Int(dimensions.height),
+            AVVideoCompressionPropertiesKey: [
+                AVVideoAverageBitRateKey: 10_000_000,
+                AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel
+            ]
+        ]
+    }
+
+    private static func videoRecordingDepthFormat(
+        for configuration: SessionConfigurationResult
+    ) -> AVCaptureDevice.Format? {
+        guard let requestedDepthFormat = configuration.capturePlan.formatSelection?.depthFormat else {
+            return nil
+        }
+        return configuration.device.activeFormat.supportedDepthDataFormats.first { candidate in
+            formatsHaveSameDepthSignature(candidate, requestedDepthFormat)
+        }
+    }
+
+    private static func formatsHaveSameDepthSignature(
+        _ lhs: AVCaptureDevice.Format,
+        _ rhs: AVCaptureDevice.Format
+    ) -> Bool {
+        let lhsDescription = lhs.formatDescription
+        let rhsDescription = rhs.formatDescription
+        let lhsDimensions = CMVideoFormatDescriptionGetDimensions(lhsDescription)
+        let rhsDimensions = CMVideoFormatDescriptionGetDimensions(rhsDescription)
+        return CMFormatDescriptionGetMediaSubType(lhsDescription) == CMFormatDescriptionGetMediaSubType(rhsDescription)
+            && lhsDimensions.width == rhsDimensions.width
+            && lhsDimensions.height == rhsDimensions.height
+    }
+
+    private static func depthFormatDescription(_ format: AVCaptureDevice.Format?) -> String {
+        guard let format else {
+            return "none"
+        }
+        let description = format.formatDescription
+        let dimensions = CMVideoFormatDescriptionGetDimensions(description)
+        return "\(TAPFourCharCode.string(from: CMFormatDescriptionGetMediaSubType(description)))@\(dimensions.width)x\(dimensions.height)"
+    }
+
+    private static func activeFormatRejectsDepthDataOutput(_ format: AVCaptureDevice.Format) -> Bool {
+        format.unsupportedCaptureOutputClasses.contains { outputClass in
+            outputClass == AVCaptureDepthDataOutput.self
+        }
+    }
+
+    private static func previewSizedDescription(_ output: AVCaptureVideoDataOutput) -> String {
+        if #available(iOS 13.0, *) {
+            return output.deliversPreviewSizedOutputBuffers ? "yes" : "no"
+        }
+        return "unavailable"
+    }
+
     private static func formatsHaveSamePhotoDepthPreviewSignature(
         _ activeFormat: AVCaptureDevice.Format,
         _ requestedFormat: AVCaptureDevice.Format
@@ -650,6 +1202,56 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         }
 
         return min(width, height) / max(width, height)
+    }
+}
+
+private struct ActiveVideoRecordingGraph {
+    let recorder: TAPVideoRecorder
+    let outputs: [AVCaptureOutput]
+    let audioInputAddedByRecording: AVCaptureDeviceInput?
+    let dataOutputSynchronizer: AVCaptureDataOutputSynchronizer?
+    let device: AVCaptureDevice
+    let previousActiveDepthDataFormat: AVCaptureDevice.Format?
+    let didApplyVideoDepthDataFormat: Bool
+}
+
+private nonisolated struct PreparedVideoRecordingGraph {
+    let outputs: [AVCaptureOutput]
+    let videoOutput: AVCaptureVideoDataOutput
+    let audioOutput: AVCaptureAudioDataOutput?
+    let depthOutput: AVCaptureDepthDataOutput?
+    let audioInputAddedByRecording: AVCaptureDeviceInput?
+    let device: AVCaptureDevice
+    let recordsAudio: Bool
+    let requestedRecordsAudio: Bool
+    let recordsDepth: Bool
+    let videoRotationAngle: CGFloat?
+    let isVideoMirrored: Bool
+    let videoSettings: [String: Any]
+    let previousActiveDepthDataFormat: AVCaptureDevice.Format?
+    let didApplyVideoDepthDataFormat: Bool
+
+    func matches(
+        configuration: SessionConfigurationResult,
+        recordsAudio: Bool,
+        videoRotationAngle: CGFloat?,
+        isVideoMirrored: Bool
+    ) -> Bool {
+        device.uniqueID == configuration.device.uniqueID
+            && requestedRecordsAudio == recordsAudio
+            && self.isVideoMirrored == isVideoMirrored
+            && Self.sameRotation(self.videoRotationAngle, videoRotationAngle)
+    }
+
+    private static func sameRotation(_ lhs: CGFloat?, _ rhs: CGFloat?) -> Bool {
+        switch (lhs, rhs) {
+        case (.none, .none):
+            return true
+        case (.some(let lhs), .some(let rhs)):
+            return abs(Double(lhs - rhs)) < 0.01
+        case (.none, .some), (.some, .none):
+            return false
+        }
     }
 }
 

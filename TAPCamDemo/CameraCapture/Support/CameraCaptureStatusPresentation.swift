@@ -39,6 +39,12 @@ nonisolated enum CameraCaptureStatusPresentation {
             return "Unable to add the selected camera input to the capture session."
         case .unableToAddPhotoOutput:
             return "Unable to add photo output to the capture session."
+        case .unableToAddVideoOutput:
+            return "Unable to add video output to the capture session."
+        case .unableToAddAudioOutput:
+            return "Unable to add audio output to the capture session."
+        case .unableToAddDepthOutput:
+            return "Unable to add depth output to the capture session."
         case .depthDeliveryUnsupported:
             return "The current session configuration does not support depth photo delivery."
         case .unsupportedZoomFactor:
@@ -84,7 +90,10 @@ nonisolated enum CameraCaptureStatusPresentation {
              .pendingCaptureManifestIDMismatch,
              .pendingCaptureProofMissing,
              .pendingCaptureProofInvalid,
-             .releasePackagingStrategyRejected:
+             .releasePackagingStrategyRejected,
+             .videoRecordingAlreadyActive,
+             .videoRecordingNotActive,
+             .videoRecordingFailed:
             return context.fallbackMessage
         }
     }

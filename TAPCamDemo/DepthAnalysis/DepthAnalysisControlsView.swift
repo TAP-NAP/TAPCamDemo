@@ -16,27 +16,40 @@ struct DepthAnalysisControlsView: View {
     let onToolTapped: (AnalysisViewerTool) -> Void
 
     var body: some View {
-        AnalysisBottomNavBar(
-            selectedTool: selectedTool,
-            onToolTapped: onToolTapped
+        DepthViewerModeCapsule(
+            selectedItemID: selectedTool.rawValue,
+            items: AnalysisViewerTool.allCases.map(\.modeItem),
+            onItemTapped: { itemID in
+                guard let tool = AnalysisViewerTool(rawValue: itemID) else {
+                    return
+                }
+                onToolTapped(tool)
+            }
         )
         .animation(.snappy(duration: 0.18), value: selectedTool)
     }
 }
 
-private struct AnalysisBottomNavBar: View {
-    let selectedTool: AnalysisViewerTool
-    let onToolTapped: (AnalysisViewerTool) -> Void
+nonisolated struct DepthViewerModeItem: Identifiable, Equatable {
+    let id: String
+    let systemImage: String
+    let accessibilityLabel: String
+}
+
+struct DepthViewerModeCapsule: View {
+    let selectedItemID: String
+    let items: [DepthViewerModeItem]
+    let onItemTapped: (String) -> Void
 
     var body: some View {
         HStack(spacing: 4) {
-            ForEach(AnalysisViewerTool.allCases) { tool in
+            ForEach(items) { item in
                 iconButton(
-                    systemImage: tool.systemImage,
-                    accessibilityLabel: tool.accessibilityLabel,
-                    isSelected: selectedTool == tool,
+                    systemImage: item.systemImage,
+                    accessibilityLabel: item.accessibilityLabel,
+                    isSelected: selectedItemID == item.id,
                     action: {
-                        onToolTapped(tool)
+                        onItemTapped(item.id)
                     }
                 )
             }
@@ -48,6 +61,7 @@ private struct AnalysisBottomNavBar: View {
                 .stroke(.white.opacity(0.18), lineWidth: 1)
         }
         .shadow(color: .black.opacity(0.16), radius: 12, y: 4)
+        .animation(.snappy(duration: 0.18), value: selectedItemID)
     }
 
     private func iconButton(
@@ -72,5 +86,15 @@ private struct AnalysisBottomNavBar: View {
 
     private func toolBackground(isSelected: Bool) -> Color {
         isSelected ? Color.primary.opacity(0.16) : Color.clear
+    }
+}
+
+extension AnalysisViewerTool {
+    var modeItem: DepthViewerModeItem {
+        DepthViewerModeItem(
+            id: rawValue,
+            systemImage: systemImage,
+            accessibilityLabel: accessibilityLabel
+        )
     }
 }
