@@ -191,6 +191,7 @@ struct TAPCameraCapturePresentationTests {
         #expect(cameraSource.contains("CameraInitialReadinessOverlayView("))
         #expect(cameraSource.contains("initialReadinessState.blocksInteraction"))
         #expect(cameraSource.contains("activeSessionConfiguration != nil"))
+        #expect(readinessSource.contains("nonisolated enum CameraInteractiveReadinessState"))
         #expect(readinessSource.contains("hasActiveSessionConfiguration, isDepthCaptureReady, hasPreparedHaptics"))
         #expect(readinessSource.contains(#".accessibilityIdentifier("camera.initialReadiness.overlay")"#))
     }
@@ -563,6 +564,28 @@ struct TAPCameraCapturePresentationTests {
         #expect(controllerSource.contains(#"device.observe(\.isAdjustingFocus"#))
         #expect(controlServiceSource.contains("device.isSubjectAreaChangeMonitoringEnabled = true"))
         #expect(controlServiceSource.contains("device.isSubjectAreaChangeMonitoringEnabled = false"))
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func videoRecordingDelegatesUseNonisolatedOutputAdapter() throws {
+        let controllerSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/Runtime/CaptureSessionController.swift"
+        )
+        let recorderSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/Runtime/TAPVideoRecorder.swift"
+        )
+
+        #expect(recorderSource.contains("nonisolated final class TAPVideoRecorderOutputDelegate"))
+        #expect(recorderSource.contains("AVCaptureVideoDataOutputSampleBufferDelegate"))
+        #expect(recorderSource.contains("AVCaptureAudioDataOutputSampleBufferDelegate"))
+        #expect(recorderSource.contains("AVCaptureDataOutputSynchronizerDelegate"))
+        #expect(recorderSource.contains("AVCaptureDepthDataOutputDelegate"))
+        #expect(recorderSource.contains("private weak var recorder: TAPVideoRecorder?"))
+        #expect(controllerSource.contains("synchronizer.setDelegate(recorder.outputDelegate"))
+        #expect(controllerSource.contains("setSampleBufferDelegate(recorder.outputDelegate"))
+        #expect(!controllerSource.contains("synchronizer.setDelegate(recorder, queue: recorder.callbackQueue)"))
+        #expect(!controllerSource.contains("setSampleBufferDelegate(recorder, queue: recorder.callbackQueue)"))
+        #expect(!recorderSource.contains("extension TAPVideoRecorder: AVCaptureAudioDataOutputSampleBufferDelegate"))
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))

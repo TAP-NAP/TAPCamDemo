@@ -390,6 +390,8 @@ struct TAPLibraryRouteTests {
         #expect(pipelineSource.contains("requestAVAsset(forVideo: asset"))
         #expect(pipelineSource.contains("AVAssetImageGenerator(asset: asset)"))
         #expect(pipelineSource.contains("generator.appliesPreferredTrackTransform = true"))
+        #expect(pipelineSource.contains("generateCGImageAsynchronously(for: time)"))
+        #expect(!pipelineSource.contains("copyCGImage(at: time"))
         #expect(pickerSource.contains("DepthAlbumThumbnailLoader.shared.videoData"))
         #expect(pickerSource.contains("TAPPendingCaptureStore.shared.bestAvailableVideoURL"))
         #expect(photoWriterSource.contains("static func originalVideoFileURL(localIdentifier: String) async throws -> URL"))

@@ -136,7 +136,7 @@ actor DepthAlbumThumbnailLoader {
             }
 
             let asset = AVURLAsset(url: fileURL)
-            guard let image = Self.image(from: asset, pixelLength: pixelLength),
+            guard let image = await Self.image(from: asset, pixelLength: pixelLength),
                   let data = DepthAlbumThumbnailJPEGRenderer.data(from: image, pixelLength: pixelLength) else {
                 return nil
             }
@@ -192,7 +192,7 @@ actor DepthAlbumThumbnailLoader {
         guard let avAsset = await requestAVAsset(for: asset) else {
             return nil
         }
-        return image(from: avAsset, pixelLength: pixelLength)
+        return await image(from: avAsset, pixelLength: pixelLength)
     }
 
     private nonisolated static func requestAVAsset(for asset: PHAsset) async -> AVAsset? {
@@ -224,16 +224,21 @@ actor DepthAlbumThumbnailLoader {
         }
     }
 
-    private nonisolated static func image(from asset: AVAsset, pixelLength: Int) -> UIImage? {
+    private nonisolated static func image(from asset: AVAsset, pixelLength: Int) async -> UIImage? {
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
         let maximumPixelLength = CGFloat(max(pixelLength * 2, 1))
         generator.maximumSize = CGSize(width: maximumPixelLength, height: maximumPixelLength)
         let time = CMTime(seconds: 0.12, preferredTimescale: 600)
-        guard let cgImage = try? generator.copyCGImage(at: time, actualTime: nil) else {
-            return nil
+        return await withCheckedContinuation { continuation in
+            generator.generateCGImageAsynchronously(for: time) { cgImage, _, error in
+                guard error == nil, let cgImage else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                continuation.resume(returning: UIImage(cgImage: cgImage))
+            }
         }
-        return UIImage(cgImage: cgImage)
     }
 }
 

@@ -381,17 +381,17 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                             let synchronizer = AVCaptureDataOutputSynchronizer(
                                 dataOutputs: [preparedGraph.videoOutput, depthOutput]
                             )
-                            synchronizer.setDelegate(recorder, queue: recorder.callbackQueue)
+                            synchronizer.setDelegate(recorder.outputDelegate, queue: recorder.callbackQueue)
                             dataOutputSynchronizer = synchronizer
                         } else {
                             preparedGraph.videoOutput.setSampleBufferDelegate(
-                                recorder,
+                                recorder.outputDelegate,
                                 queue: recorder.callbackQueue
                             )
                             dataOutputSynchronizer = nil
                         }
                         preparedGraph.audioOutput?.setSampleBufferDelegate(
-                            recorder,
+                            recorder.outputDelegate,
                             queue: recorder.callbackQueue
                         )
 
@@ -503,13 +503,13 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                         if recordsDepth {
                             recorder.useSynchronizedOutputs(videoOutput: videoOutput, depthOutput: depthOutput)
                             let synchronizer = AVCaptureDataOutputSynchronizer(dataOutputs: [videoOutput, depthOutput])
-                            synchronizer.setDelegate(recorder, queue: recorder.callbackQueue)
+                            synchronizer.setDelegate(recorder.outputDelegate, queue: recorder.callbackQueue)
                             dataOutputSynchronizer = synchronizer
                         } else {
-                            videoOutput.setSampleBufferDelegate(recorder, queue: recorder.callbackQueue)
+                            videoOutput.setSampleBufferDelegate(recorder.outputDelegate, queue: recorder.callbackQueue)
                             dataOutputSynchronizer = nil
                         }
-                        audioOutput?.setSampleBufferDelegate(recorder, queue: recorder.callbackQueue)
+                        audioOutput?.setSampleBufferDelegate(recorder.outputDelegate, queue: recorder.callbackQueue)
 
                         activeVideoRecordingGraph = ActiveVideoRecordingGraph(
                             recorder: recorder,

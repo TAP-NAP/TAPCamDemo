@@ -2128,7 +2128,7 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
 }
 
 #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-private enum TAPDepthProjectionProbeReport {
+nonisolated private enum TAPDepthProjectionProbeReport {
     private static let sessionID = UUID().uuidString
     private static let maxFileSize = 4_000_000
 

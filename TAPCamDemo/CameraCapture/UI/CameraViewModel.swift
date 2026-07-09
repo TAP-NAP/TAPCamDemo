@@ -166,14 +166,14 @@ final class CameraViewModel: ObservableObject {
             metricsStore: metricsStore
         )
         sessionController.setFocusRuntimeEventHandler { [weak self] event in
-            Task { @MainActor in
+            Task { @MainActor [weak self, event] in
                 self?.focusRuntimeEvent = CameraFocusRuntimeEvent(
                     kind: CameraFocusRuntimeEvent.Kind(captureSessionEvent: event)
                 )
             }
         }
         sessionController.setExposureRuntimeEventHandler { [weak self] event in
-            Task { @MainActor in
+            Task { @MainActor [weak self, event] in
                 self?.exposureRuntimeEvent = CameraExposureRuntimeEvent(
                     kind: CameraExposureRuntimeEvent.Kind(captureSessionEvent: event)
                 )

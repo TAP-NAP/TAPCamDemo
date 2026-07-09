@@ -17,7 +17,7 @@ struct CameraInitialReadinessGate {
     }
 }
 
-enum CameraInteractiveReadinessState: Equatable {
+nonisolated enum CameraInteractiveReadinessState: Equatable {
     case inactive
     case preparing(message: String)
     case ready

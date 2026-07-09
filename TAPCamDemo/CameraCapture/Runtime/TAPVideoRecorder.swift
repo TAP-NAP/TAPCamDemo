@@ -71,6 +71,13 @@ nonisolated final class TAPVideoRecorder: NSObject, @unchecked Sendable {
     private static let depthMetadataIdentifier = AVMetadataIdentifier(rawValue: "mdta/com.tapnap.depth.klv")
 
     let callbackQueue: DispatchQueue
+    private var outputDelegateStorage: TAPVideoRecorderOutputDelegate?
+    var outputDelegate: TAPVideoRecorderOutputDelegate {
+        guard let outputDelegateStorage else {
+            preconditionFailure("TAPVideoRecorder output delegate accessed before initialization completed.")
+        }
+        return outputDelegateStorage
+    }
 
     private let request: TAPVideoRecordingRequest
     private let sessionConfiguration: SessionConfigurationResult
@@ -196,6 +203,7 @@ nonisolated final class TAPVideoRecorder: NSObject, @unchecked Sendable {
         }
 
         super.init()
+        self.outputDelegateStorage = TAPVideoRecorderOutputDelegate(recorder: self)
     }
 
     func useSynchronizedOutputs(
@@ -212,6 +220,86 @@ nonisolated final class TAPVideoRecorder: NSObject, @unchecked Sendable {
                 self.finishOnCallbackQueue(reason: reason, continuation: continuation)
             }
         }
+    }
+
+    fileprivate func handleDroppedSampleBuffer(
+        _ output: AVCaptureOutput,
+        sampleBuffer: CMSampleBuffer,
+        connection: AVCaptureConnection
+    ) {
+        _ = output
+        _ = sampleBuffer
+        _ = connection
+    }
+
+    fileprivate func handleOutputSampleBuffer(
+        _ output: AVCaptureOutput,
+        sampleBuffer: CMSampleBuffer,
+        connection: AVCaptureConnection
+    ) {
+        _ = connection
+        if output is AVCaptureAudioDataOutput {
+            appendAudioSample(sampleBuffer)
+        } else {
+            appendVideoSample(sampleBuffer)
+        }
+    }
+
+    fileprivate func handleSynchronizedDataCollection(
+        _ synchronizer: AVCaptureDataOutputSynchronizer,
+        synchronizedDataCollection: AVCaptureSynchronizedDataCollection
+    ) {
+        _ = synchronizer
+
+        if let synchronizedVideoOutput,
+           let videoData = synchronizedDataCollection.synchronizedData(for: synchronizedVideoOutput)
+            as? AVCaptureSynchronizedSampleBufferData {
+            if videoData.sampleBufferWasDropped {
+                videoDropCount += 1
+            } else {
+                appendVideoSample(videoData.sampleBuffer)
+            }
+        }
+
+        if let synchronizedDepthOutput,
+           let synchronizedDepthData = synchronizedDataCollection.synchronizedData(for: synchronizedDepthOutput)
+            as? AVCaptureSynchronizedDepthData {
+            if synchronizedDepthData.depthDataWasDropped {
+                depthOutputDropCount += 1
+                logDepthDropIfNeeded(reason: synchronizedDepthData.droppedReason)
+            } else {
+                appendDepthSample(
+                    synchronizedDepthData.depthData,
+                    timestamp: synchronizedDepthData.timestamp
+                )
+            }
+        }
+    }
+
+    fileprivate func handleDepthData(
+        _ output: AVCaptureDepthDataOutput,
+        depthData: AVDepthData,
+        timestamp: CMTime,
+        connection: AVCaptureConnection
+    ) {
+        _ = output
+        _ = connection
+        appendDepthSample(depthData, timestamp: timestamp)
+    }
+
+    fileprivate func handleDroppedDepthData(
+        _ output: AVCaptureDepthDataOutput,
+        depthData: AVDepthData,
+        timestamp: CMTime,
+        connection: AVCaptureConnection,
+        reason: AVCaptureOutput.DataDroppedReason
+    ) {
+        _ = output
+        _ = depthData
+        _ = timestamp
+        _ = connection
+        depthOutputDropCount += 1
+        logDepthDropIfNeeded(reason: reason)
     }
 
     private func finishOnCallbackQueue(
@@ -658,17 +746,29 @@ nonisolated final class TAPVideoRecorder: NSObject, @unchecked Sendable {
     }
 }
 
-extension TAPVideoRecorder: AVCaptureVideoDataOutputSampleBufferDelegate {}
+nonisolated final class TAPVideoRecorderOutputDelegate: NSObject,
+    AVCaptureVideoDataOutputSampleBufferDelegate,
+    AVCaptureAudioDataOutputSampleBufferDelegate,
+    AVCaptureDataOutputSynchronizerDelegate,
+    AVCaptureDepthDataOutputDelegate,
+    @unchecked Sendable {
+    private weak var recorder: TAPVideoRecorder?
 
-extension TAPVideoRecorder: AVCaptureAudioDataOutputSampleBufferDelegate {
+    init(recorder: TAPVideoRecorder) {
+        self.recorder = recorder
+        super.init()
+    }
+
     func captureOutput(
         _ output: AVCaptureOutput,
         didDrop sampleBuffer: CMSampleBuffer,
         from connection: AVCaptureConnection
     ) {
-        _ = output
-        _ = sampleBuffer
-        _ = connection
+        recorder?.handleDroppedSampleBuffer(
+            output,
+            sampleBuffer: sampleBuffer,
+            connection: connection
+        )
     }
 
     func captureOutput(
@@ -676,57 +776,35 @@ extension TAPVideoRecorder: AVCaptureAudioDataOutputSampleBufferDelegate {
         didOutput sampleBuffer: CMSampleBuffer,
         from connection: AVCaptureConnection
     ) {
-        if output is AVCaptureAudioDataOutput {
-            appendAudioSample(sampleBuffer)
-        } else {
-            appendVideoSample(sampleBuffer)
-        }
+        recorder?.handleOutputSampleBuffer(
+            output,
+            sampleBuffer: sampleBuffer,
+            connection: connection
+        )
     }
-}
 
-extension TAPVideoRecorder: AVCaptureDataOutputSynchronizerDelegate {
     func dataOutputSynchronizer(
         _ synchronizer: AVCaptureDataOutputSynchronizer,
         didOutput synchronizedDataCollection: AVCaptureSynchronizedDataCollection
     ) {
-        _ = synchronizer
-
-        if let synchronizedVideoOutput,
-           let videoData = synchronizedDataCollection.synchronizedData(for: synchronizedVideoOutput)
-            as? AVCaptureSynchronizedSampleBufferData {
-            if videoData.sampleBufferWasDropped {
-                videoDropCount += 1
-            } else {
-                appendVideoSample(videoData.sampleBuffer)
-            }
-        }
-
-        if let synchronizedDepthOutput,
-           let synchronizedDepthData = synchronizedDataCollection.synchronizedData(for: synchronizedDepthOutput)
-            as? AVCaptureSynchronizedDepthData {
-            if synchronizedDepthData.depthDataWasDropped {
-                depthOutputDropCount += 1
-                logDepthDropIfNeeded(reason: synchronizedDepthData.droppedReason)
-            } else {
-                appendDepthSample(
-                    synchronizedDepthData.depthData,
-                    timestamp: synchronizedDepthData.timestamp
-                )
-            }
-        }
+        recorder?.handleSynchronizedDataCollection(
+            synchronizer,
+            synchronizedDataCollection: synchronizedDataCollection
+        )
     }
-}
 
-extension TAPVideoRecorder: AVCaptureDepthDataOutputDelegate {
     func depthDataOutput(
         _ output: AVCaptureDepthDataOutput,
         didOutput depthData: AVDepthData,
         timestamp: CMTime,
         connection: AVCaptureConnection
     ) {
-        _ = output
-        _ = connection
-        appendDepthSample(depthData, timestamp: timestamp)
+        recorder?.handleDepthData(
+            output,
+            depthData: depthData,
+            timestamp: timestamp,
+            connection: connection
+        )
     }
 
     func depthDataOutput(
@@ -736,16 +814,17 @@ extension TAPVideoRecorder: AVCaptureDepthDataOutputDelegate {
         connection: AVCaptureConnection,
         reason: AVCaptureOutput.DataDroppedReason
     ) {
-        _ = output
-        _ = depthData
-        _ = timestamp
-        _ = connection
-        depthOutputDropCount += 1
-        logDepthDropIfNeeded(reason: reason)
+        recorder?.handleDroppedDepthData(
+            output,
+            depthData: depthData,
+            timestamp: timestamp,
+            connection: connection,
+            reason: reason
+        )
     }
 }
 
-private final class TAPDepthPreviewSidecarWriter: @unchecked Sendable {
+nonisolated private final class TAPDepthPreviewSidecarWriter: @unchecked Sendable {
     private let outputURL: URL
     private let writerURL: URL
     private var assetWriter: AVAssetWriter?
@@ -825,10 +904,14 @@ private final class TAPDepthPreviewSidecarWriter: @unchecked Sendable {
         }
 
         videoInput.markAsFinished()
-        assetWriter.finishWriting { [writerURL, outputURL] in
-            guard assetWriter.status == .completed else {
-                let reason = assetWriter.error.map(TAPDiagnostics.describe)
-                    ?? "depth preview writer status \(assetWriter.status.rawValue)"
+        assetWriter.finishWriting { [weak self, writerURL, outputURL] in
+            guard let self else {
+                completion(.success(nil))
+                return
+            }
+            guard self.assetWriter?.status == .completed else {
+                let reason = self.assetWriter?.error.map(TAPDiagnostics.describe)
+                    ?? "depth preview writer status \(self.assetWriter?.status.rawValue ?? -1)"
                 try? FileManager.default.removeItem(at: writerURL)
                 completion(.failure(TAPDepthCaptureError.videoRecordingFailed(reason)))
                 return
@@ -991,7 +1074,7 @@ private final class TAPDepthPreviewSidecarWriter: @unchecked Sendable {
     }
 }
 
-private enum TAPDepthVideoSampleEncoder {
+nonisolated private enum TAPDepthVideoSampleEncoder {
     static func encode(depthData: AVDepthData, frameIndex: Int, timestamp: CMTime) throws -> Data {
         let map = depthData.depthDataMap
         let pixelBytes = try copyPixelBytes(from: map)
@@ -1082,7 +1165,7 @@ private enum TAPDepthVideoSampleEncoder {
     }
 }
 
-private extension AVCaptureDevice.Position {
+nonisolated private extension AVCaptureDevice.Position {
     var tapManifestValue: String {
         switch self {
         case .front:
@@ -1097,7 +1180,7 @@ private extension AVCaptureDevice.Position {
     }
 }
 
-private extension Data {
+nonisolated private extension Data {
     mutating func appendUInt32BE(_ value: UInt32) {
         append(contentsOf: [
             UInt8((value >> 24) & 0xff),

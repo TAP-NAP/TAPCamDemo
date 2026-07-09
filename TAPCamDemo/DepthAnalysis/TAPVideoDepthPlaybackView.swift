@@ -119,9 +119,12 @@ struct TAPVideoDepthPlaybackView: View {
         GeometryReader { geometry in
             let viewportSize = geometry.size
             let safeAreaInsets = geometry.safeAreaInsets
+            let systemControlsBottomInset = TAPVideoPlaybackContentLayout.systemControlsBottomInset(
+                showsOpacityControl: selectedLayer == .twoD
+            )
 
             ZStack(alignment: .bottom) {
-                content
+                content(systemControlsBottomInset: systemControlsBottomInset)
                     .frame(width: viewportSize.width, height: viewportSize.height)
                     .background(Color.black)
 
@@ -151,7 +154,7 @@ struct TAPVideoDepthPlaybackView: View {
     }
 
     @ViewBuilder
-    private var content: some View {
+    private func content(systemControlsBottomInset: CGFloat) -> some View {
         switch viewModel.state {
         case .idle, .loading:
             ProgressView()
@@ -165,30 +168,33 @@ struct TAPVideoDepthPlaybackView: View {
             .foregroundStyle(.white)
             .padding()
         case .ready:
-            playbackSurface
+            playbackSurface(systemControlsBottomInset: systemControlsBottomInset)
         }
     }
 
     @ViewBuilder
-    private var playbackSurface: some View {
+    private func playbackSurface(systemControlsBottomInset: CGFloat) -> some View {
         ZStack {
             Color.black
+
             switch selectedLayer {
             case .rgb:
-                playerView
+                playerView(systemControlsBottomInset: systemControlsBottomInset)
             case .twoD:
                 ZStack {
-                    playerView
+                    playerView(systemControlsBottomInset: systemControlsBottomInset)
                     if let depthImage = viewModel.depthFrameImage {
                         Image(uiImage: depthImage)
                             .resizable()
                             .interpolation(.none)
                             .scaledToFit()
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .opacity(depthOverlayOpacity)
                             .allowsHitTesting(false)
                     }
                 }
             }
+
             if selectedLayer == .twoD,
                viewModel.isPreparingTwoDPlayback {
                 twoDPreparationOverlay
@@ -200,9 +206,13 @@ struct TAPVideoDepthPlaybackView: View {
     }
 
     @ViewBuilder
-    private var playerView: some View {
+    private func playerView(systemControlsBottomInset: CGFloat) -> some View {
         if let player = viewModel.player {
-            VideoPlayer(player: player)
+            TAPSystemVideoPlayerView(
+                player: player,
+                controlsBottomInset: systemControlsBottomInset
+            )
+                .clipped()
         } else {
             ProgressView()
                 .tint(.white)
@@ -384,6 +394,40 @@ private enum TAPVideoPlaybackLayer: String, CaseIterable, Identifiable {
     }
 }
 
+nonisolated enum TAPVideoPlaybackContentLayout {
+    private static let baseBottomChromeClearance: CGFloat = 84
+    private static let opacityControlClearance: CGFloat = 56
+
+    static func systemControlsBottomInset(showsOpacityControl: Bool) -> CGFloat {
+        baseBottomChromeClearance
+            + (showsOpacityControl ? opacityControlClearance : 0)
+    }
+}
+
+private struct TAPSystemVideoPlayerView: UIViewControllerRepresentable {
+    let player: AVPlayer
+    let controlsBottomInset: CGFloat
+
+    func makeUIViewController(context: Context) -> AVPlayerViewController {
+        let controller = AVPlayerViewController()
+        controller.player = player
+        controller.showsPlaybackControls = true
+        controller.videoGravity = .resizeAspect
+        controller.view.backgroundColor = .black
+        return controller
+    }
+
+    func updateUIViewController(_ controller: AVPlayerViewController, context: Context) {
+        if controller.player !== player {
+            controller.player = player
+        }
+        controller.showsPlaybackControls = true
+        controller.videoGravity = .resizeAspect
+        controller.additionalSafeAreaInsets.bottom = max(0, controlsBottomInset)
+        controller.view.backgroundColor = .black
+    }
+}
+
 nonisolated struct TAPVideoAlbumContext: Equatable {
     nonisolated struct Entry: Identifiable, Equatable {
         let id: String
@@ -482,9 +526,32 @@ nonisolated enum TAPVideoDepthDisplayOrientation {
         }
     }
 
+    static func displaySize(width: Int32, height: Int32, transform: String?) -> CGSize? {
+        guard width > 0,
+              height > 0 else {
+            return nil
+        }
+        let rotation = rotationDegrees(from: transform)
+        let isSideways = rotation == 90 || rotation == 270
+        return isSideways
+            ? CGSize(width: CGFloat(height), height: CGFloat(width))
+            : CGSize(width: CGFloat(width), height: CGFloat(height))
+    }
+
     private static func normalizedDegrees(_ degrees: Double) -> Int {
         let rounded = Int(degrees.rounded())
         return ((rounded % 360) + 360) % 360
+    }
+
+    private static func rotationDegrees(from transform: String?) -> Int {
+        guard let transform else {
+            return 0
+        }
+        return transform.split(separator: ";")
+            .map(String.init)
+            .first { $0.hasPrefix("rotation:") }
+            .flatMap { Double($0.dropFirst("rotation:".count)) }
+            .map { normalizedDegrees($0) } ?? 0
     }
 }
 
@@ -501,6 +568,7 @@ private final class TAPVideoDepthPlaybackViewModel: ObservableObject {
     @Published private(set) var player: AVPlayer?
     @Published private(set) var depthFrameImage: UIImage?
     @Published private(set) var depthFrameOrientation: CGImagePropertyOrientation = .up
+    @Published private(set) var videoAspectRatio: CGFloat?
     @Published private(set) var isPlaying = false
     @Published private(set) var hasReachedEnd = false
     @Published private(set) var currentTimeSeconds: Double = 0
@@ -568,18 +636,19 @@ private final class TAPVideoDepthPlaybackViewModel: ObservableObject {
 
         do {
             let resource = try await Self.resolveResource(source: source)
-            let depthFrameOrientation = await Self.depthFrameOrientation(for: resource.fileURL)
+            let presentation = await Self.videoPresentation(for: resource.fileURL)
             temporaryDirectoryURL = resource.temporaryDirectoryURL
             resolvedFileURL = resource.fileURL
-            self.depthFrameOrientation = depthFrameOrientation
+            self.depthFrameOrientation = presentation.depthFrameOrientation
+            self.videoAspectRatio = presentation.aspectRatio
             let item = AVPlayerItem(url: resource.fileURL)
             let metadataOutput = TAPVideoDepthMetadataOutput(
-                displayOrientation: depthFrameOrientation
+                displayOrientation: presentation.depthFrameOrientation
             ) { [weak self] frame in
                 self?.storeDepthFrame(frame)
                 #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
                 if frame.frameIndex == 0 {
-                    LockedCameraDiagnostics.logger.info("tap_video_depth_playback_first_frame width=\(frame.width, privacy: .public) height=\(frame.height, privacy: .public) pixelFormat=\(frame.pixelFormat, privacy: .public) presentationTime=\(frame.presentationTimeSeconds, privacy: .public) orientation=\(String(describing: depthFrameOrientation), privacy: .public)")
+                    LockedCameraDiagnostics.logger.info("tap_video_depth_playback_first_frame width=\(frame.width, privacy: .public) height=\(frame.height, privacy: .public) pixelFormat=\(frame.pixelFormat, privacy: .public) presentationTime=\(frame.presentationTimeSeconds, privacy: .public) orientation=\(String(describing: presentation.depthFrameOrientation), privacy: .public)")
                 }
                 #endif
             }
@@ -866,18 +935,52 @@ private final class TAPVideoDepthPlaybackViewModel: ObservableObject {
         }
     }
 
-    private static func depthFrameOrientation(for fileURL: URL) async -> CGImagePropertyOrientation {
+    private static func videoPresentation(for fileURL: URL) async -> TAPVideoPlaybackPresentation {
         await Task.detached(priority: .utility) {
             do {
                 let data = try Data(contentsOf: fileURL)
                 let manifest = try TAPVideoManifestBox.decodedManifest(from: data)
-                return TAPVideoDepthDisplayOrientation.cgImageOrientation(
-                    from: manifest.payload.rgbTrack.transform
+                let displaySize = TAPVideoDepthDisplayOrientation.displaySize(
+                    width: manifest.payload.rgbTrack.width,
+                    height: manifest.payload.rgbTrack.height,
+                    transform: manifest.payload.rgbTrack.transform
+                )
+                return TAPVideoPlaybackPresentation(
+                    depthFrameOrientation: TAPVideoDepthDisplayOrientation.cgImageOrientation(
+                        from: manifest.payload.rgbTrack.transform
+                    ),
+                    aspectRatio: Self.aspectRatio(for: displaySize)
                 )
             } catch {
-                return .up
+                let displaySize = await Self.assetVideoDisplaySize(for: fileURL)
+                return TAPVideoPlaybackPresentation(
+                    depthFrameOrientation: .up,
+                    aspectRatio: Self.aspectRatio(for: displaySize)
+                )
             }
         }.value
+    }
+
+    private nonisolated static func assetVideoDisplaySize(for fileURL: URL) async -> CGSize? {
+        let asset = AVURLAsset(url: fileURL)
+        guard let videoTrack = try? await asset.loadTracks(withMediaType: .video).first,
+              let naturalSize = try? await videoTrack.load(.naturalSize),
+              let preferredTransform = try? await videoTrack.load(.preferredTransform) else {
+            return nil
+        }
+        let transformedSize = naturalSize.applying(preferredTransform)
+        return CGSize(width: abs(transformedSize.width), height: abs(transformedSize.height))
+    }
+
+    private nonisolated static func aspectRatio(for displaySize: CGSize?) -> CGFloat? {
+        guard let displaySize,
+              displaySize.width.isFinite,
+              displaySize.height.isFinite,
+              displaySize.width > 0,
+              displaySize.height > 0 else {
+            return nil
+        }
+        return displaySize.width / displaySize.height
     }
 
     private static func sourceLabel(_ source: TAPVideoPlaybackSource) -> String {
@@ -908,6 +1011,11 @@ private final class TAPVideoDepthPlaybackViewModel: ObservableObject {
 private struct TAPVideoPlaybackResolvedResource {
     let fileURL: URL
     let temporaryDirectoryURL: URL?
+}
+
+private struct TAPVideoPlaybackPresentation {
+    let depthFrameOrientation: CGImagePropertyOrientation
+    let aspectRatio: CGFloat?
 }
 
 @MainActor
