@@ -1,6 +1,6 @@
 # Locked Camera Capture POC PRD v3
 
-状态：R0 真机基线通过；R1 初步真机 smoke 通过，完整循环验收待完成
+状态：R0 真机基线通过；R1 生命周期 smoke 通过，硬件事件和定量循环待确认
 
 本 PRD 是 `codex/locked-camera-official-restart` 的实现契约。旧分支、旧 PRD、实验日志和历史代码只用于说明曾经观察到的现象，不再定义当前实现。
 
@@ -183,6 +183,8 @@ R1 没有 `AVCaptureVideoDataOutput`，所以没有逐帧 callback，也不能�
 
 用户从 Xcode 安装 build `5` 后确认当前行为正常：可以进入自定义锁屏 camera UI，没有观察到 freeze 或无信息纯黑。无操作一段时间后，系统会结束当前 secure-capture presentation 并回到原生锁屏界面；它不再像部分历史实现那样持续常亮数分钟。
 
+用户随后确认：每次系统自然回到原生锁屏后，再次点击 Control 都可以正常进入 Extension，没有出现 freeze，也不需要再次按侧键锁屏恢复。该结果通过了 R1 最关键的“上一轮 system dismissal 不污染下一轮 launch”生命周期 gate。
+
 该现象当前归类为可接受的 system dismissal，而不是黑屏故障，依据是最终可见状态为原生锁屏，而不是 Extension 外壳仍占前台但内容变黑。R1 源码没有 `UIApplication.isIdleTimerDisabled`、`scenePhase`、`stopRunning()`、主动 dismiss 或 app-open 路径，因此没有证据表明 TAPCam 主动改变了系统 idle timeout。
 
 Apple 文档说明 capture extension 被 dismiss 后由系统 suspend，并要求 Extension 在活动期间保持有效 camera view；文档没有说明无操作时的固定常亮时长，也没有提供让 Extension 控制 secure-capture idle timeout 的公开契约。本次“自动回到原生锁屏”因此只能结合可见行为推断为 system-owned presentation policy，而不能从公开 API 证明具体 timeout 原因。因此：
@@ -192,7 +194,7 @@ Apple 文档说明 capture extension 被 dismiss 后由系统 suspend，并要�
 - 系统自然回锁屏本身不是失败；
 - 只有停在缩小动画、Extension UI freeze、无信息纯黑，或下一次无法一次进入，才判定为生命周期失败。
 
-用户提供的本次日志主要来自主 App，没有 `r1_*`、`LockedCameraR1`、Extension process、session interruption/runtime error 或 deinit marker。因此本次只能把“正常进入、无异常后自然回锁屏”记录为用户可见 smoke 证据，不能从该日志证明 Extension 的精确 suspend/terminate 时间线。完整 R1 通过仍需要文档规定的重复启动和 soak 结果。
+用户提供的本次日志主要来自主 App，没有 `r1_*`、`LockedCameraR1`、Extension process、session interruption/runtime error 或 deinit marker。因此本次只能把“正常进入、无异常后自然回锁屏、下一轮仍可一次进入”记录为用户可见 smoke 证据，不能从该日志证明 Extension 的精确 suspend/terminate 时间线。R1 lifecycle gate 已通过；完整 R1 仍需要确认 hardware capture event 和定量循环结果。
 
 ### R2：depth capture 与 session content
 

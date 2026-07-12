@@ -6,7 +6,7 @@
 
 基线：`edbd24c`（锁屏 clean-rebuild 实验之前的主 App commit）
 
-阶段：R0 真机通过；R1 初步真机 smoke 通过，完整循环待验收
+阶段：R0 真机通过；R1 生命周期 smoke 通过，硬件事件和定量循环待确认
 
 ## 重启原因
 
@@ -269,6 +269,7 @@ Simulator 只执行 source-contract test，不作为 camera、secure-capture sce
 3. 没有观察到 Extension 外壳留在前台的无信息纯黑；
 4. 无操作一段时间后，secure-capture presentation 会自然结束并回到原生锁屏；
 5. 与部分历史实现相比，当前版本不会在无操作时持续常亮数分钟。
+6. 用户确认系统自然回锁屏后再次启动 Extension 仍能一次进入，没有 freeze，也不需要再次侧键锁屏恢复。
 
 ### 自动回锁屏的判定
 
@@ -279,7 +280,7 @@ Simulator 只执行 source-contract test，不作为 camera、secure-capture sce
 - Apple 公开文档描述 Extension 被 dismiss 后由系统 suspend，但没有说明无操作时固定的 secure-capture 常亮时长；
 - 当前产品不能把某个固定 idle duration 当作可控制或可承诺的 API 行为。
 
-因此不为延长常亮增加保活逻辑。后续验收只要求：系统 dismissal 必须自然回到锁屏，并且下一次启动仍可一次进入；不能停在 Extension 黑壳、缩小动画或需要再次侧键锁屏才能恢复。
+因此不为延长常亮增加保活逻辑。后续验收只要求：系统 dismissal 必须自然回到锁屏，并且下一次启动仍可一次进入；不能停在 Extension 黑壳、缩小动画或需要再次侧键锁屏才能恢复。用户本轮确认已经满足这项生命周期要求。
 
 ### 本次日志分析
 
@@ -298,4 +299,4 @@ Simulator 只执行 source-contract test，不作为 camera、secure-capture sce
 
 ### 当前 gate
 
-R1 获得一次用户可见 smoke 通过，但尚未收到精确的 10 轮启动计数、hardware event 结果和完整 soak 记录，因此暂不写成最终 R1 acceptance，也不开始 R2 photo output/storage。
+R1 的核心生命周期 gate 已通过：进入正常、系统自然 dismissal 正常、dismissal 后下一次启动不 freeze。当前尚未收到精确的 10 轮启动计数和 hardware event 白闪结果，因此暂不把整个 R1 写成最终 acceptance，也不开始 R2 photo output/storage。
