@@ -6,7 +6,7 @@
 
 基线：`edbd24c`（锁屏 clean-rebuild 实验之前的主 App commit）
 
-阶段：R0 真机通过；R1 代码完成，真机待验收
+阶段：R0 真机通过；R1 初步真机 smoke 通过，完整循环待验收
 
 ## 重启原因
 
@@ -259,3 +259,43 @@ Simulator 只执行 source-contract test，不作为 camera、secure-capture sce
 4. 确认每轮一次进入 `TAPCam R1 / LIVE`，hardware event 有白闪且没有照片；
 5. 再执行 5 分钟 live soak；
 6. 若异常，记录精确时间与最后一个 R1 marker，不先加入 storage 或 app-open 代码。
+
+## R1 初步真机结果
+
+用户安装 build `5` 后报告：
+
+1. 当前锁屏 Extension 行为正常，可以进入自定义 camera UI；
+2. 没有观察到缩小动画 freeze；
+3. 没有观察到 Extension 外壳留在前台的无信息纯黑；
+4. 无操作一段时间后，secure-capture presentation 会自然结束并回到原生锁屏；
+5. 与部分历史实现相比，当前版本不会在无操作时持续常亮数分钟。
+
+### 自动回锁屏的判定
+
+当前把它记录为 system dismissal，不记录为 camera interruption 或黑屏：
+
+- 用户最终看到的是原生锁屏界面；
+- R1 没有 `scenePhase`、`stopRunning()`、idle-timer override、主动 dismiss 或 app-open 代码；
+- Apple 公开文档描述 Extension 被 dismiss 后由系统 suspend，但没有说明无操作时固定的 secure-capture 常亮时长；
+- 当前产品不能把某个固定 idle duration 当作可控制或可承诺的 API 行为。
+
+因此不为延长常亮增加保活逻辑。后续验收只要求：系统 dismissal 必须自然回到锁屏，并且下一次启动仍可一次进入；不能停在 Extension 黑壳、缩小动画或需要再次侧键锁屏才能恢复。
+
+### 本次日志分析
+
+附件：`aa04002a-7e8a-487e-95b0-ed097801508a/pasted-text.txt`
+
+| 日志证据 | 判定 |
+| --- | --- |
+| 没有任何 `r1_*` / `LockedCameraR1` marker | 这份输出未包含 Capture Extension 的日志流 |
+| 没有 `r1_session_interrupted` / `r1_session_runtime_error` | 不能把自动回锁屏归因到 AVFoundation interruption 或 runtime error |
+| 没有 model/service/preview deinit marker | 不能从这份日志证明 scene 是 suspend、process termination 还是 presentation dismissal |
+| `Protected data is unavailable`，pending worker 停止 | 主 App 正确识别设备处于锁定、受保护数据不可访问状态；与 R1 camera graph 无直接因果关系 |
+| 后续 worker reconcile 完成 | 主 App 后续重新获得受保护数据访问；不代表 locked session migration，因为 R1 尚未写 session content |
+| `Fig*`、CoreHaptics、AudioSession、Accounts 和 network 输出 | 均出现在主 App camera/credential/Library 时间线；没有伴随 R1 fatal、crash 或 Extension transition marker，不能单独作为 R1 故障证据 |
+
+本次日志不改变代码。若后续重新出现 freeze/黑屏，采集必须包含 process `TAPCamLockedCameraCaptureExtension` 或 subsystem `TAP-NAP.TAPCamDemo` / category `LockedCameraR1*`，并同时保留 SpringBoard、ExtensionKit 和 RunningBoard 时间线。
+
+### 当前 gate
+
+R1 获得一次用户可见 smoke 通过，但尚未收到精确的 10 轮启动计数、hardware event 结果和完整 soak 记录，因此暂不写成最终 R1 acceptance，也不开始 R2 photo output/storage。
