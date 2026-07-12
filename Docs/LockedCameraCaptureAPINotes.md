@@ -1,5 +1,12 @@
 # Locked Camera Capture API Notes
 
+> Current branch note (2026-07-12): the active implementation contract is
+> `LockedCameraCapturePOC.md` v3 and the R0 trace in
+> `AITrace/2026-07-12-locked-camera-official-restart.md`. Everything below is a
+> historical experiment archive. R0 deliberately contains no app-open API,
+> session-content transfer, AppContext, importer, or custom AVCaptureSession.
+> Do not copy an API variant from this archive into R0.
+
 This note records the public API surface, the current handoff failure, and the
 document assumptions that need discussion before the next code change.
 

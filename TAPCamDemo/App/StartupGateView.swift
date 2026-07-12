@@ -46,9 +46,6 @@ struct StartupGateView: View {
                 }
             }
         }
-        .task {
-            await LockedCameraAppContextPublisher.publishCurrentContextIfAvailable()
-        }
         .onContinueUserActivity(TAPCamLockedCameraHandoff.activityType) { activity in
             handleLockedCameraHandoff(activity)
         }
@@ -116,16 +113,9 @@ struct StartupGateView: View {
             }
         }
 
-        guard handoff.shouldRegenerateLockedCameraContext else {
-            LockedCameraDiagnostics.logger.info(
-                "locked_camera_handoff_route_no_context_refresh destination=\(handoff.destination.rawValue, privacy: .public) tapAction=\(handoff.tapAction ?? "none", privacy: .public) reason=\(handoff.reason ?? "none", privacy: .public)"
-            )
-            return
-        }
-
-        Task {
-            await LockedCameraAppContextPublisher.publishCurrentContextIfAvailable()
-        }
+        LockedCameraDiagnostics.logger.info(
+            "locked_camera_handoff_context_publish_disabled_r0 destination=\(handoff.destination.rawValue, privacy: .public)"
+        )
     }
 
     private func handleLockedCameraOpenOnlyActivity(_ activity: NSUserActivity) {
