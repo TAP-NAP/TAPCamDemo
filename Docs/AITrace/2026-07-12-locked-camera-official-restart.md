@@ -6,7 +6,7 @@
 
 基线：`edbd24c`（锁屏 clean-rebuild 实验之前的主 App commit）
 
-阶段：R0，等待真机 smoke
+阶段：R0 真机通过，R1 待实施
 
 ## 重启原因
 
@@ -134,6 +134,26 @@ Capture/Control Extension 没有 `extract.packagedata`，target dependency graph
 - R0 使用系统 `UIImagePickerController`，不能判断自定义 AVFoundation graph；
 - build number 和新 control kind 同时变化，因此若入口恢复，只能证明清理后的 R0 bundle 可用，不能单独证明旧问题是版本缓存还是 OpenIntent metadata。
 
+## R0 真机结果
+
+用户从 Xcode 安装 build `4` 并使用新的 `TAPCam R0` control：
+
+1. 首次点击可以正常进入 Capture Extension；
+2. 继续进行锁屏、启动、退出和再次启动，当前未观察到异常；
+3. 没有出现缩小动画 freeze；
+4. 没有出现进入后的纯黑屏；
+5. 没有出现必须再按一次侧键才能恢复下一次启动。
+
+用户未提供精确循环次数，因此 trace 不写成虚假的 `10/10` 计数；按当前重复 smoke 结果，R0 判定通过。
+
+### 结果解释
+
+- 当前设备和 iOS 版本能够正常运行公开 LockedCameraCapture 基线；
+- App、Capture Extension、Control Extension 的当前签名和 bundle 组合可用；
+- 旧版本“完全无法进入”不是设备永久状态，也不是 LockedCameraCapture 在该设备上普遍不可用；
+- R0 一次移除了多个旧变量，不能单独证明根因是 OpenIntent metadata、旧 control cache、自定义 UI，还是它们的组合；
+- 后续不得为了寻找历史单一根因而把这些变量重新混入稳定基线。每次只从 R0 增加一个能力。
+
 ## 下一步门槛
 
-只有 R0 真机 10/10 重复启动通过，才开始 R1 minimal custom viewfinder。R0 失败时继续查 Control/ExtensionKit/signing/installed metadata，不加入拍照、importer 或 open API。
+R0 已通过。下一阶段是 R1 minimal custom viewfinder：只替换系统 `UIImagePickerController`，加入长期持有的最小 AVFoundation preview 和公开 capture-event interaction；仍不加入 photo output、session-content write、importer 或 app-open API。

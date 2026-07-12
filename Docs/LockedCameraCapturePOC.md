@@ -1,6 +1,6 @@
 # Locked Camera Capture POC PRD v3
 
-状态：R0 official-template restart
+状态：R0 真机基线通过，准备进入 R1
 
 本 PRD 是 `codex/locked-camera-official-restart` 的实现契约。旧分支、旧 PRD、实验日志和历史代码只用于说明曾经观察到的现象，不再定义当前实现。
 
@@ -112,6 +112,12 @@ Capture Extension 的 Swift source 只能包含模板 scene、template viewfinde
 - 退出后下一次不复用未完成 transition。
 
 R0 不验证拍照文件。`UIImagePickerController` 出现快门不代表照片已经进入 TAPCam storage。
+
+### R0 真机结果
+
+用户从 Xcode 安装 build `4`，使用新的 `TAPCam R0` control 后，Extension 可以正常进入。随后继续执行锁屏、启动、退出和再次启动，当前未观察到缩小动画 freeze、纯黑屏或必须再次锁屏才能恢复的现象。
+
+该结果将 R0 判定为通过，可以进入 R1。由于 R0 同时使用了新的 build number、新 control kind、清理后的单一 CameraCaptureIntent metadata 和 Xcode template viewfinder，不能据此把旧入口失败归因到其中某一个单独变量。能够确认的是：当前设备、签名和公开 LockedCameraCapture 基础入口在最小实现下可用。
 
 ## R0 故障归因
 
