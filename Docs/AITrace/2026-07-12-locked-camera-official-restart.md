@@ -6,7 +6,7 @@
 
 基线：`edbd24c`（锁屏 clean-rebuild 实验之前的主 App commit）
 
-阶段：R0 真机通过，R1 待实施
+阶段：R0 真机通过；R1 代码完成，真机待验收
 
 ## 重启原因
 
@@ -156,4 +156,106 @@ Capture/Control Extension 没有 `extract.packagedata`，target dependency graph
 
 ## 下一步门槛
 
-R0 已通过。下一阶段是 R1 minimal custom viewfinder：只替换系统 `UIImagePickerController`，加入长期持有的最小 AVFoundation preview 和公开 capture-event interaction；仍不加入 photo output、session-content write、importer 或 app-open API。
+R0 已通过。R1 minimal custom viewfinder 已完成实现：只替换系统 `UIImagePickerController`，加入长期持有的最小 AVFoundation preview 和公开 capture-event interaction；仍不加入 photo output、session-content write、importer 或 app-open API。
+
+## R1 官方参考
+
+2026-07-12 重新下载并检查 Apple 当前 `AVCam: Building a camera app` sample。该 sample 更新于 2026-05-23，Capture Extension 的关键结构是：
+
+1. Extension scene 用 `@State private var camera = CameraModel()` 长期持有 model；
+2. scene content 只渲染 camera view，并在 `.task` 内 `await camera.start()`；
+3. `@MainActor @Observable CameraModel` 长期持有 `CaptureService`；
+4. `CaptureService` 是 actor，使用 `DispatchSerialQueue` 作为 custom executor，并且只持有一个 `AVCaptureSession`；
+5. preview 使用 `AVCaptureVideoPreviewLayer` backing view 和 `PreviewSource`/`PreviewTarget` 边界；
+6. SwiftUI view 通过 `onCameraCaptureEvent` 处理硬件 camera capture event；
+7. session interruption、interruption ended 和 media-services reset 都在 capture service 内处理。
+
+参考地址：
+
+- https://developer.apple.com/documentation/avfoundation/avcam-building-a-camera-app
+- https://developer.apple.com/documentation/avkit/avcaptureeventinteraction
+- https://developer.apple.com/videos/play/wwdc2025/253/
+
+当前工程仍维持 minimum iOS 18.6。iOS 18 的 `onCameraCaptureEvent` 是同步 action；iOS 26 新增 async action 和 default-sound control。R1 使用 iOS 18 已公开的同步入口，避免仅为了诊断 probe 提升 deployment target。
+
+## R1 实现
+
+| 文件 | R1 职责 |
+| --- | --- |
+| `TAPCamLockedCameraCaptureExtension.swift` | scene 以 `@State` 持有唯一 camera model，并只保留一个 `.task` 启动入口 |
+| `TAPCamLockedCameraModel.swift` | `starting/live/interrupted/unavailable` UI 状态、service event 消费、hardware-event 白闪 probe |
+| `TAPCamLockedCaptureService.swift` | custom-executor actor、唯一 session、depth-capable rear device、interruption/runtime recovery |
+| `TAPCamLockedCameraPreview.swift` | 稳定 preview layer、session connection、window/layer attachment 日志 |
+| `TAPCamLockedCameraViewFinder.swift` | 永远存在的 root、preview、可见状态 chrome、公开 `onCameraCaptureEvent` |
+| `TAPLockedCameraSessionContentTests.swift` | R1 source boundary，阻止 storage/open/importer/manual teardown 混入 |
+
+R1 build number 为 `5`。Control kind、Control 可见名称和唯一 `CameraCaptureIntent` 保持 R0 不变，确保本轮唯一运行变量是自定义 camera viewfinder。
+
+### 生命周期取舍
+
+R1 不监听 `scenePhase`，不在 `onDisappear` 中 stop session，也不在任何 transition 前主动 teardown camera。这不是遗漏，而是为了保持 Apple scene 模板的系统所有权边界。Extension dismiss/suspend 由系统完成；camera actor 只处理 camera-domain interruption 和 runtime reset。
+
+Model 不设置一次性 `hasStarted` gate。若系统复用 Extension 进程并再次执行 scene `.task`，`start()` 会重新进入 capture actor：session 仍运行时幂等返回，session 已停止时重新 `startRunning()`。这样不会把“model 仍存活”错误等同于“camera session 仍存活”。
+
+Notification observer task 弱持有 capture actor，model 的 event consumer 弱持有 model，避免 observer task 反向永久保活 Extension camera graph。对象释放时日志分别为 `r1_camera_model_deinit`、`r1_capture_service_deinit` 和 `r1_preview_deinit`。
+
+### R1 诊断 marker
+
+- Extension/model：`r1_capture_extension_init`、`r1_camera_model_init`、`r1_camera_model_start_begin`、`r1_camera_model_start_finish`；
+- session：`r1_capture_service_init`、`r1_session_configure_begin`、`r1_session_configure_finish`、`r1_session_start_finish`；
+- preview：`r1_preview_make`、`r1_preview_session_connected`、`r1_preview_window`；
+- event：`r1_capture_event_ended`；
+- fault：`r1_session_interrupted`、`r1_session_interruption_ended`、`r1_session_runtime_error`；
+- release：`r1_camera_model_deinit`、`r1_capture_service_deinit`、`r1_preview_deinit`。
+
+R1 没有 video-data output，因此没有 first-frame/last-frame timestamp。它只能证明 session running、preview layer 已连接、UI 可见以及系统 interruption。frame-level liveness 需要独立阶段，不在本轮偷偷加入第二个 output。
+
+### R1 明确排除
+
+- `UIImagePickerController`；
+- `AVCapturePhotoOutput` 和 `AVCaptureVideoDataOutput`；
+- `sessionContentURL` 和任何文件写入；
+- `LockedCameraCaptureManager` 和主 App importer；
+- `openApplication(for:)`、OpenIntent、URL route；
+- AppContext、网络、签名和 pending queue；
+- `scenePhase` 驱动的 start/stop；
+- UI rotation、zoom、lens selector、flash 和缩略图。
+
+### R1 当前验证
+
+- Capture Extension Debug generic-device compile：通过；
+- Debug simulator `build-for-testing`：通过；
+- `TAPLockedCameraR1SourceContractTests`：4/4 case 通过；
+- unsigned Release generic-device build：通过；
+- automatic-signing Release generic-device build：通过；
+- `git diff --check`：通过；
+- final App、Capture Extension、Control Extension 的 `CFBundleVersion` 均为 `5`，minimum OS 均为 iOS 18.6；
+- Capture/Control `extract.actionsdata` 都只包含 `TAPCamLockedCameraIntent`，没有 `extract.packagedata`；
+- `codesign --verify --deep --strict` 在系统信任环境中返回 `valid on disk` 和 `satisfies its Designated Requirement`；
+- Capture Extension application identifier 为 `UD3269PSCB.TAP-NAP.TAPCamDemo.LockedCapture`；
+- Control Extension application identifier 为 `UD3269PSCB.TAP-NAP.TAPCamDemo.Controls`；
+- 真机安装：由用户从 Xcode 执行，Agent 未主动安装。
+
+Simulator 只执行 source-contract test，不作为 camera、secure-capture scene 或 lock-screen transition 的行为证据。
+
+### R1 风险与约束表
+
+| 设计点 | 本阶段做法 | 防止的问题 | 仍需真机回答 |
+| --- | --- | --- | --- |
+| session ownership | scene `@State` -> model -> actor -> single session；start 可重复、graph 配置幂等 | SwiftUI 重建导致 session/controller 释放，或一次性 gate 阻止第二次启动 | scene 重复进入时是否始终恢复到 live |
+| session serialization | `DispatchSerialQueue` custom executor | main-thread blocking、并行 graph mutation | 真机启动耗时和 interruption recovery |
+| preview ownership | stable preview-layer backing view | preview host 临时化、layer 脱离 tree | layer connected 后是否持续有真实画面 |
+| root fallback | black base + persistent header + explicit status | preview 异常时只剩无信息纯黑 | 黑流发生时 status/chrome 是否仍可见 |
+| scene transition | 不监听 `scenePhase`，不主动 stop/teardown | app 自行干预 secure transition，引入下一次 freeze | 系统退出后下一次启动是否继续稳定 |
+| hardware input | public `onCameraCaptureEvent`，仅白闪/log | 未安装 capture interaction 被系统判定为无有效相机体验 | hardware event 是否稳定送达且不改变退出行为 |
+| depth choice | 只选择有 depth formats 的 rear RGB device，不改 active format | R1 误选无 depth 路径或提前引入 format/zoom 变量 | 当前设备是否选到预期 virtual camera |
+| frame diagnosis | 不加 video-data output | 为 watchdog 新增 output，改变 graph 后无法归因 | 当前只能靠可见 preview；逐帧健康需后续单变量实验 |
+
+### R1 真机步骤
+
+1. Xcode 选择当前分支、Release configuration，安装 build `5`；
+2. 保留现有 `TAPCam R0` control，不删除/重加；
+3. 执行 10 轮“锁屏 -> 单击 control -> 观察 10 秒 -> hardware capture event -> 系统方式退出”；
+4. 确认每轮一次进入 `TAPCam R1 / LIVE`，hardware event 有白闪且没有照片；
+5. 再执行 5 分钟 live soak；
+6. 若异常，记录精确时间与最后一个 R1 marker，不先加入 storage 或 app-open 代码。

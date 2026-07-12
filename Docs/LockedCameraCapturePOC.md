@@ -1,6 +1,6 @@
 # Locked Camera Capture POC PRD v3
 
-状态：R0 真机基线通过，准备进入 R1
+状态：R0 真机基线通过；R1 代码完成，等待真机验收
 
 本 PRD 是 `codex/locked-camera-official-restart` 的实现契约。旧分支、旧 PRD、实验日志和历史代码只用于说明曾经观察到的现象，不再定义当前实现。
 
@@ -18,6 +18,8 @@
 - https://developer.apple.com/documentation/lockedcameracapture/lockedcameracapturesession
 - https://developer.apple.com/documentation/lockedcameracapture/lockedcameracapturemanager/sessioncontentupdates
 - https://developer.apple.com/documentation/appintents/cameracaptureintent
+- https://developer.apple.com/documentation/avfoundation/avcam-building-a-camera-app
+- https://developer.apple.com/documentation/avkit/avcaptureeventinteraction
 
 ## 为什么重新开始
 
@@ -134,11 +136,48 @@ R0 不验证拍照文件。`UIImagePickerController` 出现快门不代表照片
 
 ### R1：最小自定义 live camera
 
-- 用长期持有的 camera model 替换 `UIImagePickerController`；
-- 只配置 depth-capable device、preview 和公开 `AVCaptureEventInteraction`；
-- 不添加 photo output 和存储；
-- root 永远可见，状态限定为 `starting/live/interrupted/unavailable`；
-- 先重复 R0 的 10 次启动，再执行 5 分钟 live soak。
+- Capture Extension scene 以 `@State` 长期持有一个 `@Observable` camera model，和 Apple 当前 AVCam Capture Extension 示例一致；
+- scene `.task` 每次激活都可以重新请求 `start()`；不使用一次性 `hasStarted` gate，capture actor 在 session 已运行时幂等返回、已停止时重新启动；
+- camera model 长期持有一个 capture service；capture service 是使用 `DispatchSerialQueue` 自定义 executor 的 actor；
+- `AVCaptureSession` 只在 capture service 内创建一次，所有配置、启动和恢复都在同一个串行 executor 上执行；
+- preview 使用稳定的 `AVCaptureVideoPreviewLayer` backing view，通过 `PreviewSource`/`PreviewTarget` 边界连接 session，不在 SwiftUI `body` 中创建 session；
+- 只选择至少存在一个 `supportedDepthDataFormats` 的 rear RGB camera device，不主动修改 active format、zoom 或方向；
+- 公开硬件拍摄入口使用 SwiftUI `onCameraCaptureEvent`，这是 `AVCaptureEventInteraction` 的 SwiftUI 接口；
+- R1 收到 `.ended` 事件时只显示 90 ms 白闪并记录日志，用于证明事件被处理，不生成或保存照片；
+- root 永远保留黑色基底、preview 和可见 chrome，状态限定为 `starting/live/interrupted/unavailable`；
+- 监听 `wasInterrupted`、`interruptionEnded` 和 `runtimeError`；interruption ended 与 media-services reset 在同一 capture actor 内恢复 session；
+- 不监听 `scenePhase`，不在 view disappear 时调用 `stopRunning()`，不在系统 transition 前手动 teardown。scene 的退出和 suspend 交给 Locked Camera Capture 系统管理；
+- 不添加 photo/video data output、文件存储、importer、AppContext 或 app-open API；
+- 不实现 UI rotation 或方向切换。
+
+R1 使用 build number `5`。Control kind 和可见名称仍保持 R0 的 `TAP-NAP.TAPCamDemo.locked-camera.r0` / `TAPCam R0`，因为本阶段只允许替换 viewfinder；不能通过同时换 Control descriptor 掩盖自定义 camera graph 的问题。
+
+R1 没有 `AVCaptureVideoDataOutput`，所以没有逐帧 callback，也不能记录 first/last frame timestamp。当前证据边界是 `startRunning/isRunning`、preview-layer attachment、可见画面和系统 notification。若 session 报告 live 但画面停止，顶部 `TAPCam R1 / LIVE` chrome 仍保持可见，用户不会只看到无信息纯黑；frame-level watchdog 必须作为后续独立实验评估，不能混进本阶段。
+
+#### R1 真机验收
+
+安装 build `5` 后继续使用现有 `TAPCam R0` control，不删除或重新添加 control。
+
+基础循环执行 10 次：
+
+1. 锁屏后只点击一次 control；
+2. 确认直接进入带 `TAPCam R1` chrome 的自定义 viewfinder；
+3. 确认状态从 `STARTING` 进入 `LIVE`，预览持续可见至少 10 秒；
+4. 每轮触发一次系统支持的 camera capture hardware event，确认出现短暂白闪；
+5. 使用侧键或系统手势退出；
+6. 立即开始下一轮。
+
+随后执行一次 5 分钟 live soak：保持 Extension 前台，在系统允许的时间内观察 preview；如果系统按自身锁屏策略自然 dismiss，记录为 system dismissal，不把它误报为黑屏。
+
+通过条件：
+
+- 10/10 次均一次进入，不停在锁屏缩小动画；
+- 没有需要再次侧键锁屏才能恢复的 freeze；
+- 每次进入都能从 `STARTING` 到 `LIVE` 并看到真实 camera preview；
+- preview 异常时仍能看到状态 chrome/fallback，不出现无信息纯黑；
+- hardware event 每次只产生白闪和 `r1_capture_event_ended`，不会产生照片；
+- soak 期间没有卡死、无 UI 黑屏或不可恢复 interruption；
+- 日志能把 session interruption/runtime error 与 preview attachment 分开定位。
 
 ### R2：depth capture 与 session content
 

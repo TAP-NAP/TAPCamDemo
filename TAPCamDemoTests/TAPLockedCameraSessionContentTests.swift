@@ -6,43 +6,87 @@
 import Foundation
 import Testing
 
-@Suite("Locked camera R0 source contract")
-struct TAPLockedCameraR0SourceContractTests {
+@Suite("Locked camera R1 source contract")
+struct TAPLockedCameraR1SourceContractTests {
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func captureExtensionMatchesTheXcodeViewfinderTemplate() throws {
+    func captureExtensionOwnsOneLongLivedCameraModel() throws {
         let extensionSource = try source(
             "TAPCamLockedCameraCaptureExtension/TAPCamLockedCameraCaptureExtension.swift"
+        )
+        let modelSource = try source(
+            "TAPCamLockedCameraCaptureExtension/TAPCamLockedCameraModel.swift"
+        )
+        let serviceSource = try source(
+            "TAPCamLockedCameraCaptureExtension/TAPCamLockedCaptureService.swift"
+        )
+
+        #expect(extensionSource.contains("@State private var camera = TAPCamLockedCameraModel()"))
+        #expect(extensionSource.contains("LockedCameraCaptureUIScene"))
+        #expect(extensionSource.contains("TAPCamLockedCameraViewFinder(camera: camera)"))
+        #expect(extensionSource.contains("await camera.start()"))
+
+        #expect(modelSource.contains("@Observable"))
+        #expect(modelSource.contains("final class TAPCamLockedCameraModel"))
+        #expect(modelSource.contains("private let captureService: TAPCamLockedCaptureService"))
+        #expect(modelSource.contains("case starting"))
+        #expect(modelSource.contains("case live"))
+        #expect(modelSource.contains("case interrupted"))
+        #expect(modelSource.contains("case unavailable"))
+        #expect(!modelSource.contains("hasStarted"))
+
+        #expect(serviceSource.contains("actor TAPCamLockedCaptureService"))
+        #expect(serviceSource.contains("private let captureSession = AVCaptureSession()"))
+        #expect(serviceSource.contains("DispatchSerialQueue"))
+        #expect(serviceSource.contains("asUnownedSerialExecutor()"))
+        #expect(serviceSource.contains("captureSession.startRunning()"))
+        #expect(serviceSource.contains("guard !captureSession.isRunning else"))
+        #expect(serviceSource.contains("AVCaptureSession.wasInterruptedNotification"))
+        #expect(serviceSource.contains("AVCaptureSession.interruptionEndedNotification"))
+        #expect(serviceSource.contains("AVCaptureSession.runtimeErrorNotification"))
+        #expect(serviceSource.contains("error?.code == .mediaServicesWereReset"))
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func previewAndCaptureEventStayVisibleWithoutPersistingMedia() throws {
+        let previewSource = try source(
+            "TAPCamLockedCameraCaptureExtension/TAPCamLockedCameraPreview.swift"
         )
         let viewfinderSource = try source(
             "TAPCamLockedCameraCaptureExtension/TAPCamLockedCameraViewFinder.swift"
         )
         let captureSources = try TAPCamDemoTestSourceInspection
             .swiftSourceRelativePaths(under: "TAPCamLockedCameraCaptureExtension")
-
-        #expect(extensionSource.contains("LockedCameraCaptureUIScene { session in"))
-        #expect(extensionSource.contains("TAPCamLockedCameraViewFinder(session: session)"))
-        #expect(viewfinderSource.contains("UIViewControllerRepresentable"))
-        #expect(viewfinderSource.contains("UIImagePickerController()"))
-        #expect(viewfinderSource.contains("imagePicker.sourceType = sourceType"))
-        #expect(viewfinderSource.contains("imagePicker.cameraDevice = .rear"))
-        #expect(viewfinderSource.contains("UTType.image.identifier"))
-        #expect(viewfinderSource.contains("UTType.movie.identifier"))
-
-        #expect(!captureSources.contains("TAPCamLockedCameraCaptureExtension/LockedCaptureCameraController.swift"))
-        #expect(!captureSources.contains("TAPCamLockedCameraCaptureExtension/LockedCapturePreviewHost.swift"))
-        #expect(!captureSources.contains("TAPCamLockedCameraCaptureExtension/LockedCaptureRootView.swift"))
-
         let combinedSource = try captureSources
             .map(source)
             .joined(separator: "\n")
-        #expect(!combinedSource.contains("openApplication(for:"))
-        #expect(!combinedSource.contains("AVCaptureSession"))
+
+        #expect(previewSource.contains("UIViewRepresentable"))
+        #expect(previewSource.contains("AVCaptureVideoPreviewLayer.self"))
+        #expect(previewSource.contains("previewLayer.session = session"))
+        #expect(previewSource.contains("previewLayer.videoGravity = .resizeAspectFill"))
+        #expect(viewfinderSource.contains("Color.black"))
+        #expect(viewfinderSource.contains("TAPCamLockedCameraPreview(source: camera.previewSource)"))
+        #expect(viewfinderSource.contains("onCameraCaptureEvent"))
+        #expect(viewfinderSource.contains("event.phase == .ended"))
+        #expect(viewfinderSource.contains("TAPCamLockedCameraChrome(phase: camera.phase)"))
+        #expect(viewfinderSource.contains("locked-camera-r1-root"))
+        #expect(combinedSource.contains("Starting Camera"))
+        #expect(combinedSource.contains("Camera Paused"))
+        #expect(combinedSource.contains("Unlock to Continue"))
+
+        #expect(!combinedSource.contains("UIImagePickerController"))
+        #expect(!combinedSource.contains("AVCapturePhotoOutput"))
+        #expect(!combinedSource.contains("AVCaptureVideoDataOutput"))
         #expect(!combinedSource.contains("sessionContentURL"))
+        #expect(!combinedSource.contains("openApplication(for:"))
         #expect(!combinedSource.contains("LockedCameraCaptureManager"))
+        #expect(!combinedSource.contains("URLSession"))
+        #expect(!combinedSource.contains("scenePhase"))
+        #expect(!combinedSource.contains("stopRunning()"))
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func controlPublishesOnlyTheR0CameraCaptureAction() throws {
+    func controlAndIntentMetadataRemainAtThePassedR0Baseline() throws {
         let controlSource = try source(
             "TAPCamLockedCameraControlExtension/TAPCamLockedCameraControlExtension.swift"
         )
@@ -68,7 +112,7 @@ struct TAPLockedCameraR0SourceContractTests {
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func mainAppDoesNotStartLockedCaptureImportOrPublishContextInR0() throws {
+    func mainAppStillDoesNotStartLockedCaptureImportOrPublishContext() throws {
         let appSource = try source("TAPCamDemo/App/TAPCamDemoApp.swift")
         let startupSource = try source("TAPCamDemo/App/StartupGateView.swift")
         let infoPlistSource = try source("TAPCamDemo-Info.plist")

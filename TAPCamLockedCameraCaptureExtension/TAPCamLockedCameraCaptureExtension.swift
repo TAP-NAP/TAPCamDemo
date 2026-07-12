@@ -10,13 +10,20 @@ import SwiftUI
 
 @main
 struct TAPCamLockedCameraCaptureExtension: LockedCameraCaptureExtension {
+    @State private var camera = TAPCamLockedCameraModel()
+
     init() {
-        TAPCamLockedCameraDiagnostics.logger().info("r0_capture_extension_init")
+        TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR1")
+            .info("r1_capture_extension_init")
     }
 
     var body: some LockedCameraCaptureExtensionScene {
-        LockedCameraCaptureUIScene { session in
-            TAPCamLockedCameraViewFinder(session: session)
+        LockedCameraCaptureUIScene { _ in
+            TAPCamLockedCameraViewFinder(camera: camera)
+                .statusBarHidden(true)
+                .task {
+                    await camera.start()
+                }
         }
     }
 }
