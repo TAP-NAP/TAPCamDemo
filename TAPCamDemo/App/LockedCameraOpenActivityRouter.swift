@@ -23,16 +23,8 @@ enum LockedCameraOpenActivityRouter {
             "r4_app_activity_received destination=\(TAPCamLockedCameraOpenActivity.tapLibraryDestination, privacy: .public) source=\(source, privacy: .public)"
         )
 
-        TAPCamIntentHandoffStore().saveHandoff(
-            TAPCamIntentHandoff(
-                destination: .tapLibrary,
-                tapAction: TAPCamLockedCameraOpenActivity.tapLibraryDestination,
-                reason: TAPCamLockedCameraOpenActivity.sourceValue
-            )
-        )
-        NotificationCenter.default.post(name: .tapCamIntentHandoffDidChange, object: nil)
         LockedCameraDiagnostics.logger.notice(
-            "r4_app_route_published destination=\(TAPCamLockedCameraOpenActivity.tapLibraryDestination, privacy: .public)"
+            "r4b_app_activity_validated destination=\(TAPCamLockedCameraOpenActivity.tapLibraryDestination, privacy: .public) routeSideEffects=none"
         )
         return true
     }

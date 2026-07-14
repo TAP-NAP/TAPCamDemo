@@ -28,6 +28,11 @@ nonisolated enum CaptureSessionExposureRuntimeEvent: Equatable, Sendable {
 /// through value requests and capture calls, keeping all format, depth-delivery,
 /// and zoom mutation serialized on the session queue.
 nonisolated final class CaptureSessionController: @unchecked Sendable {
+    private static let lifecycleLogger = Logger(
+        subsystem: "TAP-NAP.TAPCamDemo",
+        category: "MainCameraLifecycle"
+    )
+
     let session = AVCaptureSession()
     let photoOutput = AVCapturePhotoOutput()
 
@@ -153,14 +158,25 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     }
 
     func stop() {
+        Self.lifecycleLogger.notice(
+            "r4b_main_session_stop_enqueued running=\(self.session.isRunning)"
+        )
         sessionQueue.async { [self, session, photoOutput] in
-            guard session.isRunning else { return }
+            guard session.isRunning else {
+                Self.lifecycleLogger.notice(
+                    "r4b_main_session_stop_finished running=false action=alreadyStopped"
+                )
+                return
+            }
             discardPreparedVideoRecordingGraphLocked(
                 session: session,
                 reason: "stop"
             )
             photoOutput.setPreparedPhotoSettingsArray([], completionHandler: nil)
             session.stopRunning()
+            Self.lifecycleLogger.notice(
+                "r4b_main_session_stop_finished running=\(session.isRunning) action=stopped"
+            )
         }
     }
 

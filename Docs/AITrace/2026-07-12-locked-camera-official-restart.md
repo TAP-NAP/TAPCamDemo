@@ -596,3 +596,78 @@ r3_session_update kind=added
 `.tbd` 中存在但 Swift interface 未公开的 transition-completion symbol。按照项目约束，它不用于探索、链接或运行时反射。
 
 R4 判定失败。下一实验命名为 R4B，单变量是主 App landing：activity 直接切换到一个不创建 `CameraView`、不持有主 App camera `AVCaptureSession` 的 TAP Library host。Extension open、capture、session-content storage 和 R3 importer 不变。R4B 若仍 freeze，即可把当前产品所需的 direct-open 组合收敛为 iOS 26.5.2 framework blocker，并转入最小 Feedback 工程与 sysdiagnose；不再尝试 stop/remove graph、sleep/poll、appearance delay 或非公开 API。
+
+## R4B：无 CameraView 的 App landing
+
+### 单变量
+
+R4 的 Extension 代码保持原样：同一个可见按钮、同一个 `NSUserActivityTypeLockedCameraCapture`、同一处公开 `session.openApplication(for:)`。R4B 不改变 capture graph、flat HEIC writer、R3 importer、pending queue 或 signing/export。
+
+唯一行为变化位于 App activity route。旧顺序是：
+
+```text
+StartupGateView -> CameraView already hosted
+-> activity writes TAPCamIntentHandoff
+-> notification reaches CameraView
+-> CameraView.pauseForAnalysis()
+-> CameraView navigationDestination presents Library
+```
+
+R4B 顺序是：
+
+```text
+StartupGateView validates activity
+-> root switches away from CameraView
+-> CameraView onDisappear requests main camera stop
+-> root hosts NavigationStack + DepthAlbumPickerView directly
+```
+
+`LockedCameraOpenActivityRouter` 现在只校验 activity 并记录 marker，不再写 handoff file 或发 route notification。`StartupGateView` 自己持有 `CameraRouteStore`，因此 Library 的返回按钮仍能恢复普通 CameraView。直接 Library host 不依赖 `.added`，也不宣称系统 migration 已完成。
+
+### 探针
+
+App root：
+
+- `r4b_app_scene_phase`；
+- `r4b_app_activity_validated`；
+- `r4b_app_direct_library_route`；
+- `r4b_app_camera_host_appear|disappear`；
+- `r4b_app_library_host_appear|disappear`。
+
+主 App camera：
+
+- `r4b_main_camera_start_begin|finish`；
+- `r4b_main_camera_pause_requested`；
+- `r4b_main_camera_stop_requested`；
+- `r4b_main_session_stop_enqueued|finished`。
+
+Extension root：
+
+- `r4b_extension_root_appear|disappear`。
+
+这些 marker 只建立我们自己的对象/AVCaptureSession 顺序，不能替代 SpringBoard、ExtensionKit、RunningBoard 或 `sessionContentUpdates` 对系统 transition 的证据。
+
+### 判定
+
+先执行无照片流程，因为它已经排除 storage/import/signing：
+
+1. 普通打开 App，确认 `r4b_app_camera_host_appear`；
+2. 锁屏进入 Extension，不拍照，点击 `OPEN` 并认证；
+3. 确认 App 出现 direct Library marker，且 camera host disappear/stop marker 出现；
+4. 再次锁屏并第一次启动 Extension。
+
+若第 4 步仍 freeze，R4B 判失败，主 App CameraView landing 不是必要条件；结合 thread `822735`，下一步是最小 Feedback 工程和 freeze 时刻 sysdiagnose。若不 freeze，再补拍照场景和 10 轮重复测试，确认不是偶然通过。
+
+### 本地验证
+
+2026-07-15 对 R4B build `10` 完成以下验证，未安装到设备：
+
+- `build-for-testing`（generic iOS Simulator、`CODE_SIGNING_ALLOWED=NO`）通过；R4B source-contract tests 已编译，但因当前没有 Booted simulator，未执行测试进程；
+- Release generic iOS device build（`CODE_SIGNING_ALLOWED=NO`）通过；
+- 最终 App、Capture Extension、Control Extension 的 `CFBundleVersion` 均为 `10`；
+- 最终 Capture Extension metadata 为 `EXAppExtensionAttributes.EXExtensionPointIdentifier = com.apple.securecapture`，`MinimumOSVersion = 18.6`；
+- source scan 只发现一处 Extension `openApplication(for:)` 调用，且没有使用非公开 transition-completion API；
+- App Intents metadata 保留工程原有 `OpenTAPCameraIntent` 与 `TAPCamLockedCameraIntent`，R4B 没有新增第二个 open 入口；
+- Release `.app` 内没有打包 Markdown/TXT 实验文档。
+
+设备结论仍由用户从 Xcode 安装 build `10` 后执行上述无照片 smoke 得出；本地构建通过不能代替 secure-capture 生命周期的真机判定。

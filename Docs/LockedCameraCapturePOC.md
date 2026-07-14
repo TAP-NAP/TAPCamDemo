@@ -354,6 +354,31 @@ Apple Developer Forums 的 2026 年 4 月问题 `FB21966835` 报告了 iOS 26 �
 
 R4 不通过，不能进入 R5。下一步 R4B 只排除一个剩余的 App-owned 变量：locked activity 到达后直接展示不创建 `CameraView`/主 App `AVCaptureSession` 的 Library host；Extension 的公开 open 调用、camera graph、storage 和 R3 importer 均保持不变。若 R4B 仍复现，POC 将把该组合视为 iOS 26.5.2 framework blocker，并准备最小 Feedback 工程和 sysdiagnose，而不是继续叠加 teardown、wait 或私有 API workaround。
 
+#### R4B：主 App 无 CameraView landing
+
+R4B 使用 build `10`，只修改 containing App 的 activity landing：
+
+1. `StartupGateView` 长期持有一个 `CameraRouteStore`；普通启动仍创建原有 `CameraView`；
+2. 收到并验证 locked-camera activity 后，根视图直接切换为 `NavigationStack + DepthAlbumPickerView`；该分支不创建 `CameraView`、`CameraViewModel` 或主 App `AVCaptureSession`；
+3. 原 CameraView 被移出根视图时走既有 `onDisappear -> viewModel.stop() -> session.stopRunning()`；R4B 只增加顺序日志，不在 Extension 侧主动 teardown；
+4. 返回按钮把 route 改回 camera，根视图再创建正常 `CameraView`；
+5. R4 的 file-backed `TAPCamIntentHandoff` 不再用于 locked activity，避免先通知 CameraView、再由 CameraView push Library。其他 App Intent handoff 代码保持不变；
+6. R3 importer 继续由 App root 独立运行，Library 仍只响应真正的 `.added`/pending notification，不等待、不轮询。
+
+关键 marker：
+
+- `r4b_app_activity_validated`；
+- `r4b_app_direct_library_route ... cameraHostRequested=false`；
+- `r4b_app_camera_host_disappear`；
+- `r4b_main_camera_stop_requested`；
+- `r4b_main_session_stop_enqueued` / `r4b_main_session_stop_finished`；
+- `r4b_app_library_host_appear cameraViewCreated=false`；
+- Extension 侧 `r4b_extension_root_appear` / `r4b_extension_root_disappear`。
+
+真机 smoke 仍先执行“不拍照 -> OPEN -> 再次启动 Extension”。若仍 freeze，照片和 importer 继续保持排除，同时主 App CameraView landing 也被排除；再执行“拍照 -> SAVED -> OPEN”只用于确认 `.added` 是否仍延迟。若不再 freeze，再验证 10 轮并检查每轮 camera host stop 是否早于 Library host appear，之后才讨论把该结构产品化。
+
+本地 gate 已通过：build `10` 的 Simulator `build-for-testing` 与 Release generic-device build 均成功；最终三个 bundle build number 一致，Capture Extension 最终 metadata 仍是 `com.apple.securecapture`、最低 iOS 18.6，且包体没有实验文档。当前无 Booted simulator，因此 source-contract tests 只完成编译、尚未执行。R4B 是否有效必须由真机的下一次 Extension 首次启动结果决定。
+
 iOS 26 `OpenIntent` 不再作为 secure-capture 内打开 containing App 的替代方案。它曾改变 Extension metadata 并破坏更早的 Control dispatch gate。
 
 ### R5：产品 UI 与压力测试

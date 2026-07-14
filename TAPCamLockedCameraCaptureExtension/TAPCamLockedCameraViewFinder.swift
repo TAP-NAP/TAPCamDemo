@@ -5,6 +5,7 @@
 
 import AVKit
 import LockedCameraCapture
+import OSLog
 import SwiftUI
 
 struct TAPCamLockedCameraViewFinder: View {
@@ -42,6 +43,14 @@ struct TAPCamLockedCameraViewFinder: View {
             )
         }
         .accessibilityIdentifier("locked-camera-r4-root")
+        .onAppear {
+            TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR4B")
+                .notice("r4b_extension_root_appear")
+        }
+        .onDisappear {
+            TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR4B")
+                .notice("r4b_extension_root_disappear")
+        }
     }
 }
 
