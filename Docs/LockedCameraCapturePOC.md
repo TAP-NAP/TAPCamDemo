@@ -1,6 +1,6 @@
 # Locked Camera Capture POC PRD v3
 
-状态：R0、R1、R2A、R2B 真机通过；R3 主 App importer 核心真机路径通过；R4 公开 App-open 路径已实现，等待真机验收
+状态：R0、R1、R2A、R2B 真机通过；R3 主 App importer 核心真机路径通过；R4 公开 App-open 路径在 iOS 26.5.2 真机失败；等待 R4B 排除主 App camera host 竞争
 
 本 PRD 是 `codex/locked-camera-official-restart` 的实现契约。旧分支、旧 PRD、实验日志和历史代码只用于说明曾经观察到的现象，不再定义当前实现。
 
@@ -334,6 +334,25 @@ R4 不使用 `beginDelayingAppearance/endDelayingAppearance` 来强制顺序，�
 8. 若无法打开，记录 `r4_open_request_failed` 的 domain/code 和屏幕上的 `TRY AGAIN`；不要通过 stop camera、invalidate session 或第二个 AppIntent 补偿。
 
 通过条件：无照片和有照片两种点击都能由系统认证并打开 TAP Library；最新照片在同一次 App presentation 可见；下一次 Extension 第一次启动；无 freeze/黑屏；R3 自然迁移路径仍通过。
+
+#### R4 真机结果：失败
+
+2026-07-15，iPhone 15 Pro、iOS 26.5.2（23F84）对 build `9` 的两组测试均失败：
+
+1. 不拍照，点击 `OPEN` 并认证后可进入 TAP Library，但下一次 Extension 启动停在系统缩小 transition；再次按侧键锁屏后才能正常进入；
+2. 拍照并出现 `SAVED` 后点击 `OPEN`，App 当次 Library 不出现照片，下一次 Extension 同样 freeze；只有后续手动结束 Extension presentation 后，系统才发出 `.added`，R3 随即完成 ingest、invalidate、sign 和 export。
+
+日志已经证明 `r4_app_activity_received -> r4_app_route_published -> locked_camera_handoff_apply -> tap_library_present` 完成，因此 tap、认证、activity type 和 App route 不是失败点。不拍照也能稳定触发下一次 freeze，因此 capture、session-content writer、importer、签名和 Photos export 不是 freeze 的必要条件。
+
+照片场景中，首次 Library load 发生时没有 `.added`；手动结束后才出现 `r3_session_update kind=added`。这符合“App 已打开，但 secure-capture transition 尚未完成 suspend/content delivery”的观察模型。它是日志支持的时序结论，不等同于已经证明系统内部根因。
+
+Apple Developer Forums 的 2026 年 4 月问题 `FB21966835` 报告了 iOS 26 上几乎相同的 `openApplication(for:) -> next launch freeze -> sessionContentUpdates delayed` 行为。该帖子是外部复现证据，不是 Apple 已确认的 framework bug：
+
+- https://developer.apple.com/forums/thread/822735
+
+当前 Xcode SDK 的公开 Swift interface 仍只有 `openApplication(for:)`，没有公开的 `finish`、`dismiss` 或 transition-completion open API。二进制符号表中的非公开 symbol 不进入任何实验或产品实现。
+
+R4 不通过，不能进入 R5。下一步 R4B 只排除一个剩余的 App-owned 变量：locked activity 到达后直接展示不创建 `CameraView`/主 App `AVCaptureSession` 的 Library host；Extension 的公开 open 调用、camera graph、storage 和 R3 importer 均保持不变。若 R4B 仍复现，POC 将把该组合视为 iOS 26.5.2 framework blocker，并准备最小 Feedback 工程和 sysdiagnose，而不是继续叠加 teardown、wait 或私有 API workaround。
 
 iOS 26 `OpenIntent` 不再作为 secure-capture 内打开 containing App 的替代方案。它曾改变 Extension metadata 并破坏更早的 Control dispatch gate。
 

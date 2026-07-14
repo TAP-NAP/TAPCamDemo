@@ -544,3 +544,55 @@ R4 顺手移除 `CameraView` 两条旧日志中的 `managerSessionCount`，因�
 - source scan 确认 Capture Extension 只有一处 `openApplication(for:)`，位于 R4 Open 控件；该控件源码不含 `sessionContentURL`、capture、stop、invalidate 或 sleep；
 - CoreSimulator device-list service 本轮未返回可用设备，因此没有声称 focused source-contract 已执行。真机认证、activity continuation、content 到达顺序和下一次 Extension launch 仍由用户从 Xcode 安装 Release build `9` 后验证；
 - 构建期间连接真机处于密码锁定状态，Xcode 重复报告 notification-proxy 无法启动，但两个构建命令最终均为 exit 0；未安装或操作设备。
+
+### R4 真机失败证据
+
+2026-07-15，连接设备确认为 iPhone 15 Pro、iOS 26.5.2（23F84）。用户分别执行了无照片和有照片的 direct-open 流程：
+
+| 场景 | `OPEN` 当次结果 | 下一次 Extension | 后续恢复 |
+| --- | --- | --- | --- |
+| 不拍照 | Face ID 后进入 TAP Library | 停在缩小 transition，用户观察为 freeze | 再次侧键锁屏后可进入 |
+| 拍照并 `SAVED` | Face ID 后进入 TAP Library，但没有本次照片 | 同样 freeze | 手动结束两次 Extension presentation 后 `.added` 到达，照片完成导入 |
+
+App 日志给出的严格时序为：
+
+```text
+r4_app_activity_received
+-> r4_app_route_published
+-> locked_camera_handoff_apply destination=tapLibrary
+-> tap_library_present
+-> tap_library_snapshot_loaded visiblePendingCount=0
+...
+用户后续手动结束 Extension presentation
+...
+r3_session_update kind=added
+-> r3_scan_finished captureCount=1
+-> r3_capture_imported status=pending
+-> r3_session_invalidated
+-> r3_session_update kind=removed
+-> sign/export success
+```
+
+由此可以确认：
+
+- `openApplication(for:)` 已成功触发认证和 containing App continuation；
+- App route 和 Library presentation 已执行；
+- R3 在系统真正发出 `.added` 后立即正常工作，照片没有丢失；
+- 不拍照也会引发下一次 freeze，因此文件写入、迁移内容、pending queue、签名和 Photos export 均不是 freeze 的必要条件；
+- App 首次出现不是“session content 已迁移”的 barrier。Apple 文档本来也只承诺最新目录可能在 App launch 后稍晚可用。
+
+尚不能仅凭 App 进程日志证明系统内部是哪个 transition 状态未完成，也不能证明主 App 相机一定参与了竞争。本轮 log 开头的主 App camera configure 发生在 activity 之前，但该段也包含用户最初主动打开主 App 的正常启动，因此不能把时间先后误写成因果关系。
+
+外部对照：Apple Developer Forums thread `822735`（Feedback `FB21966835`）在 iOS 26 报告了相同组合：调用 `openApplication(for:)` 后下一次 Extension 假启动，且 `sessionContentUpdates` 往往要等 App 或 Extension 再次打开才到达。该内容是第三方可重复性信号，不是 Apple 工程师确认：
+
+- https://developer.apple.com/forums/thread/822735
+
+本机 iOS 26.5 SDK 公共 `.swiftinterface` 只公开：
+
+- `LockedCameraCaptureSession.openApplication(for:)`；
+- `sessionContentURL` / `invalidateSessionContent()`；
+- App-side `sessionContentUpdates`、`invalidateSessionContent(at:)` 和 appearance delay pair。
+
+`.tbd` 中存在但 Swift interface 未公开的 transition-completion symbol。按照项目约束，它不用于探索、链接或运行时反射。
+
+R4 判定失败。下一实验命名为 R4B，单变量是主 App landing：activity 直接切换到一个不创建 `CameraView`、不持有主 App camera `AVCaptureSession` 的 TAP Library host。Extension open、capture、session-content storage 和 R3 importer 不变。R4B 若仍 freeze，即可把当前产品所需的 direct-open 组合收敛为 iOS 26.5.2 framework blocker，并转入最小 Feedback 工程与 sysdiagnose；不再尝试 stop/remove graph、sleep/poll、appearance delay 或非公开 API。
