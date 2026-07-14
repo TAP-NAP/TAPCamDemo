@@ -1,6 +1,6 @@
 # Locked Camera Capture POC PRD v3
 
-状态：R0、R1、R2A、R2B 真机通过；R3 主 App importer 核心真机路径通过；下一阶段为 R4 公开 App-open 路径
+状态：R0、R1、R2A、R2B 真机通过；R3 主 App importer 核心真机路径通过；R4 公开 App-open 路径已实现，等待真机验收
 
 本 PRD 是 `codex/locked-camera-official-restart` 的实现契约。旧分支、旧 PRD、实验日志和历史代码只用于说明曾经观察到的现象，不再定义当前实现。
 
@@ -303,6 +303,37 @@ R3 暂时无法从 flat HEIC 恢复完整的主 App lens selection context，因
 - 点击前不 stop camera、不扫描文件、不等待 migration、不导入、不签名；
 - 主 App route 和 importer 独立处理；
 - 必须同时验证打开成功、最新 session delivery 和下一次 Extension launch。
+
+R4 使用 build `9`，实现边界如下：
+
+1. `LockedCameraCaptureUIScene` 将当前系统提供的 `LockedCameraCaptureSession` 只读传给 viewfinder；不缓存为全局对象；
+2. 左下角 `OPEN` 控件构造 `NSUserActivityTypeLockedCameraCapture` activity，context 只包含 `destination=tapLibrary` 与 source marker；
+3. 点击直接调用 `session.openApplication(for:)`。按钮不接收 `sessionContentURL`，也不访问 camera model、capture service、manager、pending store 或 signing；
+4. 主 App `StartupGateView` 接收同类型 activity，经独立 router 写入现有 App-side Library route；它不调用 importer、manager、delay 或文件 API；
+5. R3 runtime 仍独立监听 `sessionContentUpdates`。Library 已展示时，后到的 pending ingest notification 会触发同一页面刷新；
+6. Open 控件在 camera `starting/interrupted/unavailable` fallback 上仍保持可见，因此相机不可用时用户仍可请求认证并进入主 App。
+
+系统不保证 activity continuation 与最新 `.added` 的固定先后顺序。以下两种顺序都正确：
+
+```text
+activity -> App route/Library -> .added -> pending visible
+.added -> pending ingest -> activity -> App route/Library
+```
+
+R4 不使用 `beginDelayingAppearance/endDelayingAppearance` 来强制顺序，也不把 `openApplication(for:)` 当 migration barrier。
+
+#### R4 真机 smoke
+
+1. 从 Xcode 安装 Release build `9`，打开主 App 后锁屏进入 Extension；
+2. 不拍照，点击左下角 `OPEN`：必须记录 `r4_open_tap_received` 和 `r4_open_request_begin`，系统应触发认证并进入 TAP Library；
+3. App 应记录 `r4_app_activity_received`、`r4_app_route_published`、`locked_camera_handoff_apply destination=tapLibrary` 和 `tap_library_present`；Extension 可能在切换时被 suspend，因此不能强制要求 `r4_open_request_accepted` 一定落盘；
+4. 再次锁屏，Extension 必须第一次就进入，不 freeze；
+5. 在 Extension 拍一张并出现 `SAVED`，立即点击 `OPEN`。认证后进入 Library；无论 `.added` 在 activity 前或后到达，本次照片都应在当前 Library presentation 中出现；
+6. 日志应完整出现 R3 的 `.added -> ingest -> invalidate -> .removed`，且下一次 Extension 仍第一次启动成功；
+7. 再做一轮“拍摄后等待系统自然结束 -> 手动解锁”，确认 R3 基线没有被 R4 回归；
+8. 若无法打开，记录 `r4_open_request_failed` 的 domain/code 和屏幕上的 `TRY AGAIN`；不要通过 stop camera、invalidate session 或第二个 AppIntent 补偿。
+
+通过条件：无照片和有照片两种点击都能由系统认证并打开 TAP Library；最新照片在同一次 App presentation 可见；下一次 Extension 第一次启动；无 freeze/黑屏；R3 自然迁移路径仍通过。
 
 iOS 26 `OpenIntent` 不再作为 secure-capture 内打开 containing App 的替代方案。它曾改变 Extension metadata 并破坏更早的 Control dispatch gate。
 

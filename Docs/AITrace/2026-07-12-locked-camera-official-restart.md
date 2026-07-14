@@ -490,3 +490,57 @@ Build number 为 `8`。核心 marker：
 - 日志中的 `managerSessionCount=12` 与本轮实际新增 session/capture 数不一致，再次证明 `sessionContentURLs.count` 不应作为 delivery、照片数量或等待完成的计数器。R3 已不读取该值，仅保留旧 UI 日志中的观测输出。
 
 Fig/FigSandbox 与短暂 Network.framework 行没有对应业务失败，不能解释为本轮 locked-camera lifecycle 问题。R3 核心真机 gate 判定通过；失败 session 保留与下次 `.initial` 幂等重试继续作为鲁棒性用例，不阻塞进入 R4。
+
+## R4：公开 App-open 单变量实现
+
+### 官方依据
+
+- `LockedCameraCaptureSession.openApplication(for:)` 是 Extension 请求打开 containing App 的公开方法；系统在需要时负责认证；
+- activity 使用 `NSUserActivityTypeLockedCameraCapture`，App 会收到 continuation callback，可用 `userInfo` 恢复具体 UI；
+- Apple WWDC24 明确要求只因用户与 Extension UI 交互而调用该方法；
+- Apple 同时说明最新 session directory 可能在 App 启动后稍晚到达，推荐消费 `sessionContentUpdates`。因此 activity 与 `.added` 没有固定顺序，不能通过 wait、poll 或 appearance delay 人为绑定。
+
+参考：
+
+- https://developer.apple.com/documentation/lockedcameracapture/lockedcameracapturesession/openapplication(for:)
+- https://developer.apple.com/documentation/lockedcameracapture/nsuseractivitytypelockedcameracapture
+- https://developer.apple.com/videos/play/wwdc2024/10204/?time=1111
+
+### 实现边界
+
+Build number 为 `9`。新增共享 `TAPCamLockedCameraOpenActivity`，只表达 `tapLibrary` destination。Capture Extension 的 `TAPCamLockedCameraOpenControl`：
+
+- 只持有当前 scene 的 `LockedCameraCaptureSession`；
+- 不持有 session-content URL、camera model、capture service 或 App-side store；
+- tap 后直接构造系统 activity 并 `await session.openApplication(for:)`；
+- requesting 时防重复点击；失败后显示 `TRY AGAIN`，不清理或停止任何资源；
+- 在非-live fallback 上仍显示。
+
+主 App 的 `LockedCameraOpenActivityRouter` 只验证 destination，保存 `.tapLibrary` route 并发 notification。`StartupGateView` 恢复一个且仅一个系统 activity handler，但没有恢复 R3 删除的 coordinator、wait/poll、neutral screen 或 appearance delay。
+
+R4 顺手移除 `CameraView` 两条旧日志中的 `managerSessionCount`，因为 R3 真机已证明该 directory snapshot 不等于照片数或 delivery 状态；这只是消除误导性观测，不改变 route/importer 行为。
+
+### R4 marker
+
+- Extension tap：`r4_open_tap_received`；
+- API 调用前：`r4_open_request_begin`；
+- API 正常返回：`r4_open_request_accepted`；
+- API 抛错：`r4_open_request_failed domain=... code=...`；
+- App continuation：`r4_app_activity_received`；
+- App route 发布：`r4_app_route_published`；
+- 随后的 route、Library 和 content migration 继续使用 `locked_camera_handoff_apply`、`tap_library_present` 与 `r3_*` marker。
+
+`r4_app_activity_received` 是 App 确实收到 continuation 的权威 marker。Extension 在成功切换时可能先被系统 suspend，故缺少 `r4_open_request_accepted` 本身不能判为 open 失败；若 tap marker 也缺失，才应先检查触控路径。
+
+### R4 本地验证
+
+- 第一次 `build-for-testing` 发现 Open 控件内部枚举名 `State` 遮蔽 SwiftUI `@State` property wrapper；仅改名为 `OpenState` 后重新构建通过。该问题是编译期命名冲突，不是 lifecycle 现象；
+- `xcodebuild build-for-testing` 针对 `iPhone 17` Simulator 完成，App、Capture/Control Extension 与 R4 source-contract 测试源码编译通过；
+- Release generic iOS device build 在 `CODE_SIGNING_ALLOWED=NO` 下完成；
+- Release 产物中 App、Capture Extension、Control Extension 的 `CFBundleVersion` 均为 `9`；
+- Capture Extension 保持 `EXExtensionPointIdentifier=com.apple.securecapture`、`MinimumOSVersion=18.6`；
+- Capture Extension `Metadata.appintents/extract.actionsdata` 仍只有 `TAPCamLockedCameraIntent` 与 CameraCapture system protocol，没有生成第二个 action 或 `OpenIntent`；
+- Release `.app` 内没有打包 Markdown 文档；
+- source scan 确认 Capture Extension 只有一处 `openApplication(for:)`，位于 R4 Open 控件；该控件源码不含 `sessionContentURL`、capture、stop、invalidate 或 sleep；
+- CoreSimulator device-list service 本轮未返回可用设备，因此没有声称 focused source-contract 已执行。真机认证、activity continuation、content 到达顺序和下一次 Extension launch 仍由用户从 Xcode 安装 Release build `9` 后验证；
+- 构建期间连接真机处于密码锁定状态，Xcode 重复报告 notification-proxy 无法启动，但两个构建命令最终均为 exit 0；未安装或操作设备。

@@ -4,10 +4,12 @@
 //
 
 import AVKit
+import LockedCameraCapture
 import SwiftUI
 
 struct TAPCamLockedCameraViewFinder: View {
     let camera: TAPCamLockedCameraModel
+    let session: LockedCameraCaptureSession
     let sessionContentURL: URL
 
     var body: some View {
@@ -35,22 +37,24 @@ struct TAPCamLockedCameraViewFinder: View {
 
             TAPCamLockedCameraChrome(
                 camera: camera,
+                session: session,
                 sessionContentURL: sessionContentURL
             )
         }
-        .accessibilityIdentifier("locked-camera-r2b-root")
+        .accessibilityIdentifier("locked-camera-r4-root")
     }
 }
 
 private struct TAPCamLockedCameraChrome: View {
     let camera: TAPCamLockedCameraModel
+    let session: LockedCameraCaptureSession
     let sessionContentURL: URL
 
     var body: some View {
         ZStack {
             VStack(spacing: 0) {
                 HStack(spacing: 8) {
-                    Text("TAPCam R2B")
+                    Text("TAPCam R4")
                         .font(.headline)
 
                     Spacer(minLength: 12)
@@ -69,19 +73,48 @@ private struct TAPCamLockedCameraChrome: View {
 
                 Spacer(minLength: 0)
 
-                if camera.phase == .live {
-                    TAPCamLockedPhotoControls(
-                        camera: camera,
-                        sessionContentURL: sessionContentURL
-                    )
-                        .padding(.bottom, 28)
-                }
+                TAPCamLockedBottomControls(
+                    camera: camera,
+                    session: session,
+                    sessionContentURL: sessionContentURL
+                )
+                .padding(.bottom, 28)
             }
 
             if camera.phase != .live {
                 TAPCamLockedCameraStatusView(phase: camera.phase)
             }
         }
+    }
+}
+
+private struct TAPCamLockedBottomControls: View {
+    let camera: TAPCamLockedCameraModel
+    let session: LockedCameraCaptureSession
+    let sessionContentURL: URL
+
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            if camera.phase == .live {
+                TAPCamLockedPhotoControls(
+                    camera: camera,
+                    sessionContentURL: sessionContentURL
+                )
+            }
+
+            HStack {
+                TAPCamLockedCameraOpenControl(session: session)
+
+                Spacer(minLength: 0)
+
+                Color.clear
+                    .frame(width: 72, height: 78)
+                    .accessibilityHidden(true)
+            }
+            .padding(.horizontal, 28)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 104)
     }
 }
 
@@ -112,7 +145,7 @@ private struct TAPCamLockedPhotoControls: View {
             .buttonStyle(TAPCamLockedShutterButtonStyle())
             .disabled(!camera.isPhotoCaptureEnabled)
             .accessibilityLabel("Capture depth photo")
-            .accessibilityIdentifier("locked-camera-r2b-shutter")
+            .accessibilityIdentifier("locked-camera-r4-shutter")
 
             Text(camera.photoCaptureState.shortLabel)
                 .font(.caption.monospacedDigit().weight(.semibold))
@@ -166,6 +199,6 @@ private struct TAPCamLockedCameraStatusView: View {
         }
         .foregroundStyle(.white)
         .padding(.horizontal, 32)
-        .accessibilityIdentifier("locked-camera-r2b-status")
+        .accessibilityIdentifier("locked-camera-r4-status")
     }
 }

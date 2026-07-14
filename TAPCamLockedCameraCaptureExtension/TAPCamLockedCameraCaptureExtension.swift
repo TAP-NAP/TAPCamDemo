@@ -21,6 +21,7 @@ struct TAPCamLockedCameraCaptureExtension: LockedCameraCaptureExtension {
         LockedCameraCaptureUIScene { session in
             TAPCamLockedCameraViewFinder(
                 camera: camera,
+                session: session,
                 sessionContentURL: session.sessionContentURL
             )
                 .statusBarHidden(true)

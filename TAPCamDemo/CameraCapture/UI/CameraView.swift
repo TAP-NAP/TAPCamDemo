@@ -7,7 +7,6 @@
 
 @preconcurrency import AVFoundation
 import Combine
-import LockedCameraCapture
 import OSLog
 import SwiftUI
 import UIKit
@@ -462,7 +461,7 @@ struct CameraView: View {
             return
         }
         LockedCameraDiagnostics.logger.info(
-            "locked_camera_handoff_apply destination=\(handoff.destination.rawValue, privacy: .public) tapAction=\(handoff.tapAction ?? "none", privacy: .public) reason=\(handoff.reason ?? "none", privacy: .public) managerSessionCount=\(LockedCameraCaptureManager.shared.sessionContentURLs.count, privacy: .public) routeDepthAlbumPresented=\(routeStore.isDepthAlbumPresented, privacy: .public) routeAwaitingImport=\(routeStore.isAwaitingLockedCaptureImport, privacy: .public)"
+            "locked_camera_handoff_apply destination=\(handoff.destination.rawValue, privacy: .public) tapAction=\(handoff.tapAction ?? "none", privacy: .public) reason=\(handoff.reason ?? "none", privacy: .public) routeDepthAlbumPresented=\(routeStore.isDepthAlbumPresented, privacy: .public) routeAwaitingImport=\(routeStore.isAwaitingLockedCaptureImport, privacy: .public)"
         )
 
         switch handoff.destination {
@@ -1433,7 +1432,7 @@ struct CameraView: View {
         awaitingLockedCaptureImport: Bool = false
     ) {
         LockedCameraDiagnostics.logger.info(
-            "tap_library_present requestedLockedImportReason=\(lockedImportReason ?? "none", privacy: .public) awaitingLockedCaptureImport=\(awaitingLockedCaptureImport, privacy: .public) managerSessionCount=\(LockedCameraCaptureManager.shared.sessionContentURLs.count, privacy: .public)"
+            "tap_library_present requestedLockedImportReason=\(lockedImportReason ?? "none", privacy: .public) awaitingLockedCaptureImport=\(awaitingLockedCaptureImport, privacy: .public)"
         )
         #if !TAP_ENABLE_PRO_CAMERA_CONTROLS
         isBasicEVStripVisible = false

@@ -6,8 +6,8 @@
 import Foundation
 import Testing
 
-@Suite("Locked camera R3 source contract")
-struct TAPLockedCameraR3SourceContractTests {
+@Suite("Locked camera R4 source contract")
+struct TAPLockedCameraR4SourceContractTests {
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
     func captureExtensionOwnsOneLongLivedCameraModel() throws {
         let extensionSource = try source(
@@ -24,6 +24,7 @@ struct TAPLockedCameraR3SourceContractTests {
         #expect(extensionSource.contains("LockedCameraCaptureUIScene"))
         #expect(extensionSource.contains("LockedCameraCaptureUIScene { session in"))
         #expect(extensionSource.contains("TAPCamLockedCameraViewFinder("))
+        #expect(extensionSource.contains("session: session"))
         #expect(extensionSource.contains("sessionContentURL: session.sessionContentURL"))
         #expect(extensionSource.contains("await camera.start()"))
 
@@ -56,6 +57,9 @@ struct TAPLockedCameraR3SourceContractTests {
         let viewfinderSource = try source(
             "TAPCamLockedCameraCaptureExtension/TAPCamLockedCameraViewFinder.swift"
         )
+        let openControlSource = try source(
+            "TAPCamLockedCameraCaptureExtension/TAPCamLockedCameraOpenControl.swift"
+        )
         let captureSources = try TAPCamDemoTestSourceInspection
             .swiftSourceRelativePaths(under: "TAPCamLockedCameraCaptureExtension")
         let combinedSource = try captureSources
@@ -72,9 +76,10 @@ struct TAPLockedCameraR3SourceContractTests {
         #expect(viewfinderSource.contains("trigger: .hardwareEvent"))
         #expect(viewfinderSource.contains("trigger: .shutterButton"))
         #expect(viewfinderSource.contains("sessionContentURL: sessionContentURL"))
-        #expect(viewfinderSource.contains("locked-camera-r2b-shutter"))
+        #expect(viewfinderSource.contains("locked-camera-r4-shutter"))
         #expect(viewfinderSource.contains("TAPCamLockedCameraChrome("))
-        #expect(viewfinderSource.contains("locked-camera-r2b-root"))
+        #expect(viewfinderSource.contains("locked-camera-r4-root"))
+        #expect(viewfinderSource.contains("TAPCamLockedCameraOpenControl(session: session)"))
         #expect(combinedSource.contains("Starting Camera"))
         #expect(combinedSource.contains("Camera Paused"))
         #expect(combinedSource.contains("Unlock to Continue"))
@@ -97,7 +102,21 @@ struct TAPLockedCameraR3SourceContractTests {
         #expect(combinedSource.contains("r2b_session_write_succeeded"))
         #expect(combinedSource.contains("SAVED "))
         #expect(!combinedSource.contains("AVCaptureVideoDataOutput"))
-        #expect(!combinedSource.contains("openApplication(for:"))
+        #expect(openControlSource.contains("TAPCamLockedCameraOpenActivity.makeTapLibraryActivity()"))
+        #expect(openControlSource.contains("session.openApplication(for: activity)"))
+        #expect(openControlSource.contains("r4_open_tap_received"))
+        #expect(openControlSource.contains("r4_open_request_begin"))
+        #expect(openControlSource.contains("r4_open_request_accepted"))
+        #expect(openControlSource.contains("r4_open_request_failed"))
+        #expect(!openControlSource.contains("captureDepthPhoto"))
+        #expect(!openControlSource.contains("sessionContentURL"))
+        #expect(!openControlSource.contains("stopRunning"))
+        #expect(!openControlSource.contains("invalidateSessionContent"))
+        #expect(!openControlSource.contains("Task.sleep"))
+        let openApplicationCallCount = combinedSource
+            .components(separatedBy: "openApplication(for:")
+            .count - 1
+        #expect(openApplicationCallCount == 1)
         #expect(!combinedSource.contains("LockedCameraCaptureManager"))
         #expect(!combinedSource.contains("URLSession"))
         #expect(!combinedSource.contains("scenePhase"))
@@ -131,7 +150,7 @@ struct TAPLockedCameraR3SourceContractTests {
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func mainAppConsumesSessionUpdatesWithoutLegacyWaitingOrHandoffWork() throws {
+    func mainAppKeepsR3ImporterIndependentFromR4OpenRoute() throws {
         let appSource = try source("TAPCamDemo/App/TAPCamDemoApp.swift")
         let importerSource = try source(
             "TAPCamDemo/App/LockedCaptureSessionContentImporter.swift"
@@ -140,6 +159,12 @@ struct TAPLockedCameraR3SourceContractTests {
             "TAPCamDemo/App/LockedCaptureTAPArtifactPackager.swift"
         )
         let startupSource = try source("TAPCamDemo/App/StartupGateView.swift")
+        let activitySource = try source(
+            "TAPCamLockedCameraIntents/TAPCamLockedCameraOpenActivity.swift"
+        )
+        let routerSource = try source(
+            "TAPCamDemo/App/LockedCameraOpenActivityRouter.swift"
+        )
         let librarySource = try source(
             "TAPCamDemo/DepthAnalysis/DepthAlbumPickerView.swift"
         )
@@ -166,7 +191,22 @@ struct TAPLockedCameraR3SourceContractTests {
         #expect(!importerSource.contains("endDelayingAppearance"))
         #expect(!importerSource.contains("lateSessionContentPoll"))
         #expect(!importerSource.contains("waitForInitialSessionContentUpdate"))
-        #expect(!startupSource.contains("onContinueUserActivity"))
+        #expect(activitySource.contains("NSUserActivityTypeLockedCameraCapture"))
+        #expect(activitySource.contains("TAPCamLockedCameraDestination"))
+        #expect(activitySource.contains("tapLibraryDestination"))
+        #expect(startupSource.contains("onContinueUserActivity(NSUserActivityTypeLockedCameraCapture)"))
+        #expect(startupSource.contains("LockedCameraOpenActivityRouter.handle(activity)"))
+        #expect(routerSource.contains("TAPCamLockedCameraOpenActivity.requestsTapLibrary"))
+        #expect(routerSource.contains("destination: .tapLibrary"))
+        #expect(routerSource.contains("TAPCamIntentHandoffStore().saveHandoff"))
+        #expect(routerSource.contains("tapCamIntentHandoffDidChange"))
+        #expect(routerSource.contains("r4_app_activity_received"))
+        #expect(routerSource.contains("r4_app_route_published"))
+        #expect(!routerSource.contains("LockedCaptureSessionContentImporter"))
+        #expect(!routerSource.contains("LockedCameraCaptureManager"))
+        #expect(!routerSource.contains("beginDelayingAppearance"))
+        #expect(!routerSource.contains("endDelayingAppearance"))
+        #expect(!routerSource.contains("Task.sleep"))
         #expect(!startupSource.contains("beginDelayingAppearance"))
         #expect(!librarySource.contains("LockedCaptureSessionContentImportCoordinator"))
         #expect(!startupSource.contains("LockedCameraAppContextPublisher"))

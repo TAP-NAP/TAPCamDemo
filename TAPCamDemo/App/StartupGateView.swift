@@ -3,6 +3,7 @@
 //  TAPCamDemo
 //
 
+import LockedCameraCapture
 import SwiftUI
 
 struct StartupGateView: View {
@@ -25,6 +26,9 @@ struct StartupGateView: View {
                     beginFirstInstallCameraReadinessIfReady()
                 }
             }
+        }
+        .onContinueUserActivity(NSUserActivityTypeLockedCameraCapture) { activity in
+            LockedCameraOpenActivityRouter.handle(activity)
         }
     }
 
