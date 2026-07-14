@@ -523,10 +523,8 @@ final class DepthAlbumPickerViewModel: ObservableObject {
 
         do {
             if let lockedImportReason {
-                let summary = await LockedCaptureSessionContentImportCoordinator.shared
-                    .importAvailableSessionContentAfterSessionContentSettles(reason: lockedImportReason)
                 LockedCameraDiagnostics.logger.info(
-                    "tap_library_locked_import_before_snapshot reason=\(lockedImportReason, privacy: .public) sessions=\(summary.scannedSessionCount, privacy: .public) found=\(summary.foundCaptureCount, privacy: .public) imported=\(summary.importedCount, privacy: .public) skipped=\(summary.skippedCount, privacy: .public) failed=\(summary.failedCount, privacy: .public) invalidated=\(summary.invalidatedSessionCount, privacy: .public)"
+                    "tap_library_locked_import_owned_by_r3_runtime reason=\(lockedImportReason, privacy: .public)"
                 )
             }
             if showLoadingIndicator, lockedImportReason != nil {

@@ -44,7 +44,7 @@ Capture Extension target 删除：
 - 主 App 启动时的 locked importer runtime；
 - Capture Extension 内所有 `openApplication`、session-content write、scan、packaging、watchdog、recovery 和 custom UI。
 
-旧 importer/handoff models 仍在 App target 内保留 compile-time compatibility，但 R0 没有启动入口。它们不进入 Capture/Control Extension target，后续 R3 必须删除或重写。
+旧 importer/handoff models 在 R0-R2B 期间仍保留 compile-time compatibility，但没有启动入口，也不进入 Capture/Control Extension target。R3 已删除旧执行路径并重写为 update-driven importer。
 
 ## R0 新增结构
 
@@ -414,3 +414,62 @@ R2B 尚未真机验收。构建成功只证明 API、并发边界和 bundle 产�
 - R2B 没有 importer，故该 session directory 此时不进入 Library 是预期行为。
 
 R2B 判定通过。R3 将从新的最小 app-side consumer 开始，不启用旧 importer 中的固定等待、轮询、handoff appearance delay 或把 session count 当照片数的逻辑。
+
+## R3 设计：系统 update 驱动的最小 importer
+
+### 先删除什么
+
+R3 没有修补旧 coordinator。旧执行路径的以下行为全部移除：
+
+- handoff 到达后主动扫描 `sessionContentURLs`；
+- 等待 initial update 的 continuation + timeout；
+- 500ms fixed interval late polling；
+- Library presentation 前阻塞导入；
+- `beginDelayingAppearance/endDelayingAppearance`；
+- 把 manager directory count 当 capture delivery 状态。
+
+`StartupGateView` 恢复为普通首次启动 gate，不再处理实验性的 locked handoff、URL route 或 neutral waiting UI。R4 需要 app-open 时必须从公开 API 的最小 route 重新加入，不能复活上述导入耦合。
+
+### 新数据流
+
+```text
+LockedCameraCaptureManager.sessionContentUpdates
+  -> .initial(urls) / .added(url)
+  -> scan flat TAPCam-<UUID>.heic
+  -> validate HEIC + auxiliary depth
+  -> add TAP manifest and proof slot in the main App
+  -> idempotent TAPPendingCaptureStore ingest using filename UUID
+  -> Library/worker notification
+  -> invalidateSessionContent(at:) only when the whole directory succeeded
+```
+
+该顺序解决两个独立问题：
+
+1. 系统 migration 的到达时机只由 `sessionContentUpdates` 表达，App 不再猜测 suspend/copy 何时完成；
+2. 文件名 UUID 同时作为 pending `captureID`，即使进程在 ingest 后、invalidate 前退出，下一次 `.initial` 也只返回已有 record，不会重复生成照片。
+
+隐藏 `.tmp` 由 scanner 跳过。任何可见但不符合 R2B 命名协议的 entry、HEIC/depth/manifest 打包失败或 pending ingest 失败都会保留 session directory，避免在未确认数据已接管时删除系统副本。空且无异常 entry 的 session 可以清理。
+
+R3 不在 importer 内直接持有 App Attest client，也不等待 signing/export。`ingestLockedCapture` 完成后发 notification，现有 `CameraView` lifecycle worker 按正常异步队列继续处理。
+
+### R3 可观测点
+
+Build number 为 `8`。核心 marker：
+
+- `r3_runtime_start`；
+- `r3_session_update kind=initial|added|removed`；
+- `r3_import_begin`；
+- `r3_scan_finished captureCount=... unexpectedEntryCount=...`；
+- `r3_capture_imported` / `r3_capture_import_failed`；
+- `r3_session_invalidated` / `r3_session_retained` / `r3_session_invalidate_failed`。
+
+当前 manifest 的 lens identity 使用明确 fallback，因为 R2B flat HEIC 没有保存完整 selection context。这不会改变真实 HEIC auxiliary depth 的读取和签名队列验证；精确 lens context 属于后续产品化阶段，不应与 R3 migration gate 混测。
+
+### R3 本地验证
+
+- `xcodebuild build-for-testing` 针对 `iPhone 17` Simulator 完成，测试源码与 App/Extension targets 编译通过；
+- Release generic iOS device build 在 `CODE_SIGNING_ALLOWED=NO` 下完成；
+- 构建产物确认 App、Capture Extension、Control Extension 的 `CFBundleVersion` 均为 `8`，最低系统版本仍为 `18.6`；
+- Capture/Control Extension 的 App Intents metadata 仍只有 `TAPCamLockedCameraIntent`，没有重新加入独立 OpenIntent route；
+- focused test runner 两次未能在 Simulator 中 materialize/launch，断言没有开始执行，因此不能记为测试通过或测试失败。该阻塞属于本机 Simulator runner 环境，R3 仍需真机 smoke 验收；
+- R3 不安装到实机，继续由用户从 Xcode 安装 Release build 并收集完整系统/Extension/App 日志。

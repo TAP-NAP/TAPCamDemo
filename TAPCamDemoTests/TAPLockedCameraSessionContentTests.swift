@@ -6,8 +6,8 @@
 import Foundation
 import Testing
 
-@Suite("Locked camera R2B source contract")
-struct TAPLockedCameraR2BSourceContractTests {
+@Suite("Locked camera R3 source contract")
+struct TAPLockedCameraR3SourceContractTests {
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
     func captureExtensionOwnsOneLongLivedCameraModel() throws {
         let extensionSource = try source(
@@ -131,12 +131,44 @@ struct TAPLockedCameraR2BSourceContractTests {
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func mainAppStillDoesNotStartLockedCaptureImportOrPublishContext() throws {
+    func mainAppConsumesSessionUpdatesWithoutLegacyWaitingOrHandoffWork() throws {
         let appSource = try source("TAPCamDemo/App/TAPCamDemoApp.swift")
+        let importerSource = try source(
+            "TAPCamDemo/App/LockedCaptureSessionContentImporter.swift"
+        )
+        let packagerSource = try source(
+            "TAPCamDemo/App/LockedCaptureTAPArtifactPackager.swift"
+        )
         let startupSource = try source("TAPCamDemo/App/StartupGateView.swift")
+        let librarySource = try source(
+            "TAPCamDemo/DepthAnalysis/DepthAlbumPickerView.swift"
+        )
         let infoPlistSource = try source("TAPCamDemo-Info.plist")
 
-        #expect(!appSource.contains("LockedCaptureSessionContentImportRuntime"))
+        #expect(appSource.contains("@StateObject private var lockedCaptureImportRuntime"))
+        #expect(appSource.contains("lockedCaptureImportRuntime.start()"))
+        #expect(importerSource.contains("for await update in manager.sessionContentUpdates"))
+        #expect(importerSource.contains("case .initial(let urls)"))
+        #expect(importerSource.contains("case .added(let url)"))
+        #expect(importerSource.contains("importSessionContent(at: url"))
+        #expect(importerSource.contains("TAPPendingCaptureStore"))
+        #expect(importerSource.contains("ingestLockedCapture"))
+        #expect(importerSource.contains("invalidateSessionContent"))
+        #expect(importerSource.contains("tapCamLockedCaptureImportDidAddPendingCaptures"))
+        #expect(importerSource.contains("flatHEICCaptureID"))
+        #expect(packagerSource.contains("TAPDepthPhotoFileReader.validateContainer"))
+        #expect(packagerSource.contains("TAPDepthPhotoFileReader.depthData"))
+        #expect(packagerSource.contains("writeManifest"))
+        #expect(packagerSource.contains("TAPProofSlot.locate"))
+        #expect(!importerSource.contains("sessionContentURLs"))
+        #expect(!importerSource.contains("Task.sleep"))
+        #expect(!importerSource.contains("beginDelayingAppearance"))
+        #expect(!importerSource.contains("endDelayingAppearance"))
+        #expect(!importerSource.contains("lateSessionContentPoll"))
+        #expect(!importerSource.contains("waitForInitialSessionContentUpdate"))
+        #expect(!startupSource.contains("onContinueUserActivity"))
+        #expect(!startupSource.contains("beginDelayingAppearance"))
+        #expect(!librarySource.contains("LockedCaptureSessionContentImportCoordinator"))
         #expect(!startupSource.contains("LockedCameraAppContextPublisher"))
         #expect(!infoPlistSource.contains("CFBundleURLTypes"))
         #expect(!infoPlistSource.contains("tapcamdemo"))

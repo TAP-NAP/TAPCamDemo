@@ -136,21 +136,14 @@ warmup, or pending queue processing. This avoids the AI/CI hang pattern caused
 by app startup side effects during tests.
 
 [TAPLockedCameraSessionContentTests.swift](TAPLockedCameraSessionContentTests.swift)
-is the simulator-safe Locked Camera Capture POC test entry. It covers the shared
-session-content path policy, direct and legacy layout recognition, and locked
-final-artifact-marked ingest into the existing pending queue semantics. It also
-asserts that raw depth HEIC staging is rejected at the pending-store boundary
-unless the importer first upgrades it to a final TAP artifact. The same suite
-guards duplicate locked ingest returning the existing pending record, AppContext
-projection from enabled main-app FOV options, the locked extension lens/FOV
-selector source boundary, startup scheduling of `sessionContentUpdates`,
-App-level locked import runtime ownership, locked fallback handoff action
-routing, foreground-resume import guardrails, per-presentation Library reload guardrails,
-locked-import pending-worker wakeup, missing-first-frame watchdog guardrails,
-the shared lock-camera UI state visibility/capture gates, and metadata persistence of the resolved
-capture-device position. It does not replace real-device lock-screen launch,
-camera stream, depth capture, black-screen soak, first-entry TAP Library visual
-confirmation, or positive real-depth HEIC import-time manifest/proof-slot
+is the simulator-safe Locked Camera Capture POC source-contract entry. R3 keeps
+the passed R1/R2B camera and atomic flat-HEIC storage boundaries, then requires
+the main App to consume `.initial` and `.added` from `sessionContentUpdates`,
+upgrade each depth HEIC to an unsigned TAP artifact, ingest the existing pending
+store, and invalidate only after successful ingest. The suite explicitly rejects
+the previous session-URL polling, fixed sleeps, appearance-delay calls, and
+handoff-triggered Library import. It does not replace real-device session migration,
+positive depth-HEIC packaging, first-entry Library visibility, or signing/export
 validation.
 
 ## Shared Fixtures

@@ -1,6 +1,6 @@
 # Locked Camera Capture POC PRD v3
 
-状态：R0、R1、R2A、R2B 真机通过；下一阶段为 R3 主 App importer
+状态：R0、R1、R2A、R2B 真机通过；R3 主 App importer 已实现，等待真机验收
 
 本 PRD 是 `codex/locked-camera-official-restart` 的实现契约。旧分支、旧 PRD、实验日志和历史代码只用于说明曾经观察到的现象，不再定义当前实现。
 
@@ -71,7 +71,7 @@ R0 只回答一个问题：在没有 TAPCam 拍摄、传输和 handoff 业务代
 - Library route、pending queue、签名、网络或 Photos export；
 - 左下角占位符和自定义相机 UI。
 
-旧 importer/handoff 类型暂时只作为主 App compile-time compatibility 留在源码中。R0 已移除它们的启动入口，真机测试期间不执行。进入 R3 前必须删除或按新契约重写，不能默认复用旧流程。
+R0-R2B 期间旧 importer/handoff 类型只作为主 App compile-time compatibility 留在源码中，且没有启动入口。R3 已删除旧 coordinator、wait/poll 和 appearance-delay 执行路径，并按本 PRD 的 update-driven 契约重写；后续不能恢复旧流程。
 
 ## R0 产物契约
 
@@ -266,6 +266,32 @@ R2B 使用 build `7`，选择“最小 flat depth HEIC”作为唯一 artifact�
 - 成功导入同一个 `TAPPendingCaptureStore` 后才 invalidate session directory；
 - signing/export 继续异步，不能阻塞相机或导入；
 - Library 通过 pending-store notification 更新，不要求用户第二次进入。
+
+R3 build number 为 `8`。具体实现契约：
+
+1. `TAPCamDemoApp` 长期持有一个 `LockedCaptureSessionContentImportRuntime`，正常 App root 首次出现时只启动一次；
+2. consumer 直接处理 update 携带的 URL，不读取或轮询 `sessionContentURLs`；
+3. importer 仅识别 R2B 的 flat `TAPCam-<UUID>.heic`，隐藏 `.tmp` 不会进入扫描结果；
+4. 主 App 校验 HEIC 与辅助深度，补入 TAP manifest/proof slot，再以文件名 UUID 作为稳定 `captureID` 幂等写入 `TAPPendingCaptureStore`；
+5. pending ingest 后立即发出 Library/worker notification；签名与 Photos export 仍由现有异步 worker 完成；
+6. 该 session 中全部可见 artifact 导入成功后才调用 `invalidateSessionContent(at:)`。扫描、打包或 ingest 失败时保留整个 session，等待下次 `.initial` 重试；
+7. `.removed` 只记录系统状态，不触发扫描；空且无异常文件的 session 可以直接 invalidate；
+8. 旧版 handoff-triggered import、固定等待、late polling、`beginDelayingAppearance/endDelayingAppearance` 已从执行路径删除。
+
+R3 暂时无法从 flat HEIC 恢复完整的主 App lens selection context，因此 manifest 中相机/lens 身份使用明确的 locked-camera fallback。真实深度尺寸、类型、过滤状态和照片尺寸仍从 HEIC 本身读取。镜头 context 投影属于 R5，不应重新耦合到本阶段 migration 验证。
+
+#### R3 真机 smoke
+
+1. 从 Xcode 安装 Release build `8`，先打开主 App，确认出现 `r3_runtime_start`；
+2. 锁屏一次进入 Extension，拍摄并确认 `SAVED <depthWidth>x<depthHeight> #N`；
+3. 使用系统自然回锁屏或侧键结束 secure capture，再手动解锁进入主 App；R3 尚未加入左下角 app-open；
+4. 首次打开 Library 时应看到该 capture 的 pending 或已导出状态，不应要求第二次进入 App/Extension；
+5. 日志应出现 `r3_session_update kind=initial|added`、`r3_scan_finished`、`r3_capture_imported`、`r3_session_invalidated`；随后现有 worker 可以继续签名/export；
+6. 同一 Extension session 连拍 3 张，确认一次 update 导入 3 个不同 UUID；
+7. 再执行 5 轮单张流程，确认下一次 Extension 都能一次启动，无 freeze/黑屏；
+8. 若导入失败，保留 `r3_capture_import_failed`/`r3_session_retained` 日志并重新启动主 App，确认 `.initial` 可重试且不会产生 duplicate pending record。
+
+通过条件：系统 update 到达后同一轮主 App 可见照片；每张 flat HEIC 只对应一个 pending `captureID`；成功 session 被 invalidate；失败 session 保留；R1/R2B 的自动回锁屏、preview 和连续启动行为无回归。
 
 ### R4：认证并打开主 App
 
