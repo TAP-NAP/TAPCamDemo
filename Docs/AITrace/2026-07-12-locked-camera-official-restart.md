@@ -671,3 +671,44 @@ Extension root：
 - Release `.app` 内没有打包 Markdown/TXT 实验文档。
 
 设备结论仍由用户从 Xcode 安装 build `10` 后执行上述无照片 smoke 得出；本地构建通过不能代替 secure-capture 生命周期的真机判定。
+
+### R4B 真机结果：失败
+
+2026-07-15，用户在 iPhone 15 Pro、iOS 26.5.2（23F84）上执行无照片流程：打开主 App、锁屏进入 Extension、点击 `OPEN` 并认证进入 App，随后再次锁屏第一次启动 Extension。第二次启动仍停在系统缩小 transition；再次侧键锁屏后才能恢复。
+
+App 日志确认 R4B 的单变量已经生效：
+
+```text
+r4_app_activity_received
+-> r4b_app_activity_validated routeSideEffects=none
+-> r4b_app_direct_library_route cameraHostRequested=false
+-> r4b_app_library_host_appear cameraViewCreated=false
+-> r4b_main_camera_stop_requested running=false
+-> r4b_main_session_stop_finished running=false action=alreadyStopped
+-> r4b_app_camera_host_disappear directLibrary=true
+```
+
+因此可以继续排除：
+
+- locked activity 校验和 direct route 没有失败；
+- R4 的 file-backed handoff 与 notification 不是 freeze 的必要条件；
+- direct landing 没有创建新的 `CameraView`；
+- 原主 App camera host 退出时，`AVCaptureSession` 已经停止，主相机会话竞争不是必要条件；
+- 本轮没有拍照，capture、session-content 写入、R3 ingest、pending signing 和 Photos export 仍不是必要条件。
+
+但日志同时暴露了 R4B 设计文档中的过强假设：R4B 并不是“无 App 工作”的 landing。`DepthAlbumPickerView` 出现后立即执行：
+
+```text
+tap_library_load_begin
+requestReadWriteAccess
+depthAlbumAssets fetched count=784
+tap_library_snapshot_loaded itemCount=784
+```
+
+CameraView 从 background 恢复到 activity 到达之间还排入了一次 pending-worker/recent-preview 工作。它们未被证明是 freeze 原因，但意味着 R4B 失败后不能直接把 containing App 的所有实现排除，也不能仅凭本轮升级为已确认 framework blocker。先前“R4B 若失败便直接进入 Feedback”的判定过强，现修正为继续做一次减法实验。
+
+日志中的 `Fig`/`FigCaptureSourceRemote` 错误也出现在普通主 App camera 启动和 scene transition 附近；没有与 freeze 边界一一对应，不能单独作为根因证据。当前日志主要来自 App 进程，缺少下一次失败启动时的 ExtensionKit/RunningBoard 边界，因此也不能根据缺少 `r4b_extension_root_appear` 判断 Extension 是否已创建。
+
+R4B 判定失败。下一实验 R4C 仅替换 App activity landing：展示一个静态 SwiftUI host，不创建 `DepthAlbumPickerView`，不访问 PhotoKit，不启动 Library view model，也不从 landing 触发 pending worker。Extension 的公开 `openApplication(for:)`、R3 app-level `sessionContentUpdates` runtime、normal CameraView 和所有签名/导入代码保持不变。
+
+R4C 仍先执行无照片流程。若仍 freeze，Library presentation workload 被排除；此时剩余 App-owned 变量主要是长期运行的 R3 manager stream，以及 activity 到达前 CameraView 对 `.active` 的短暂响应，二者必须继续分别验证，不能合并修改。若 R4C 不 freeze，再逐层恢复 Library 数据加载以找出最小失败边界。

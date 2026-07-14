@@ -379,6 +379,21 @@ R4B 使用 build `10`，只修改 containing App 的 activity landing：
 
 本地 gate 已通过：build `10` 的 Simulator `build-for-testing` 与 Release generic-device build 均成功；最终三个 bundle build number 一致，Capture Extension 最终 metadata 仍是 `com.apple.securecapture`、最低 iOS 18.6，且包体没有实验文档。当前无 Booted simulator，因此 source-contract tests 只完成编译、尚未执行。R4B 是否有效必须由真机的下一次 Extension 首次启动结果决定。
 
+#### R4B 真机结果与判定修正
+
+Build `10` 的无照片流程仍 freeze。日志确认 direct Library route 已生效，且原 CameraView 消失时主 App `AVCaptureSession` 已经是 `running=false`。因此主 App camera landing 不是 freeze 的必要条件。
+
+先前“R4B 若失败即可直接判为 framework blocker”的表述不够严谨。R4B 的 direct host 仍创建了 `DepthAlbumPickerView`，并立即读取 PhotoKit 的 784 个 assets；activity 到达前后还出现了 recent-preview 与空 pending-worker 工作。它们不等于根因，但属于尚未排除的 containing-App 副作用。PRD 修正为先执行 R4C，再决定是否进入最小 Feedback：
+
+1. R4C 的 locked activity landing 只显示静态 SwiftUI 内容；
+2. 不创建 `DepthAlbumPickerView`、Library view model 或 NavigationStack，不访问 PhotoKit；
+3. 不从该 landing 触发 pending retry、signing 或 import；
+4. R3 `sessionContentUpdates` runtime 继续保持启动，以确保 R4C 只移除 Library presentation workload；
+5. Extension 的 Open 控件、activity、camera、storage 均与 R4B 完全相同；
+6. 首先只做“不拍照 -> OPEN -> 再次第一次启动 Extension”。
+
+R4C 若仍 freeze，只能判定 Library presentation workload 不是必要条件。之后还要分别排除 R3 manager stream，以及 App 在 activity 到达前收到 `.active` 时的短暂 CameraView lifecycle 工作；不得一次同时关闭两者。R4C 若通过，则按 Library shell、pending records、PhotoKit assets 的顺序逐项恢复，寻找最小失败组合。
+
 iOS 26 `OpenIntent` 不再作为 secure-capture 内打开 containing App 的替代方案。它曾改变 Extension metadata 并破坏更早的 Control dispatch gate。
 
 ### R5：产品 UI 与压力测试
