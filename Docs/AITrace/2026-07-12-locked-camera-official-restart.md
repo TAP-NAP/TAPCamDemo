@@ -357,3 +357,46 @@ R2A build number 为 `6`，minimum OS 仍为 iOS 18.6，Control descriptor 和�
 2026-07-15，用户按 PRD 中的 R2A 真机验收流程报告“一切正常，符合预期”。R2A 判定通过：屏幕与硬件入口能够完成真实 depth photo capture，连续拍摄和系统自然 dismissal 后的下一次启动未观察到 freeze、纯黑或卡在 `CAPTURING`。
 
 这一结果只证明 camera graph + photo delegate 的稳定性。R2A 没有写 `sessionContentURL`，因此不能据此推断系统 migration、主 App importer 或 Library 可见性已经通过。
+
+## R2B 设计：最小 session content 原子写入
+
+### 官方契约与历史参考
+
+- iOS 26.5 SDK 的公开 interface 表明 `LockedCameraCaptureUIScene` closure 直接提供系统创建的 `LockedCameraCaptureSession`；
+- Apple 要求需要跨 Extension 生命周期保留的数据写入当前 `sessionContentURL`，并由系统在 Extension suspend 后复制到 containing app 的 data container；
+- Apple 同时说明最新 session directory 在主 App 启动后可能稍晚才可用，因此 R2B 不把“App 首帧即可看见”当成 Extension writer 的职责；
+- `lockScreen_test` 的 `SessionContentArtifactWriter` 采用 flat `TAPCam-<UUID>.heic`，证明最小 HEIC artifact 与现有 importer 方向兼容；旧分支的相机选择、packaging 和主动 stop 不进入本次实现。
+
+官方参考：
+
+- https://developer.apple.com/documentation/lockedcameracapture/creating-a-camera-experience-for-the-lock-screen
+- https://developer.apple.com/documentation/lockedcameracapture/lockedcameracapturesession/sessioncontenturl
+- https://developer.apple.com/documentation/lockedcameracapture/lockedcameracapturemanager/sessioncontentupdates
+
+### 单变量边界
+
+| 层 | R2B 变化 | 明确不做 |
+| --- | --- | --- |
+| scene | 将当前 session 的 `sessionContentURL` 传给当前 viewfinder | 不缓存 session/URL，不监听 `scenePhase` |
+| capture actor | R2A delegate 返回完整 depth HEIC data；拍摄成功后调用独立 writer | 不 stop/teardown，不访问 manager |
+| writer | 后台写同目录隐藏 staging 文件，再 rename 为 flat `TAPCam-<UUID>.heic` | 不写 App Group、Photos、network、manifest 或签名 |
+| UI | 只有 rename 成功后显示 `SAVED` | 不加 Library/open button |
+| app | 无变化 | 不启动 `sessionContentUpdates` consumer 或 importer |
+
+把当前 scene URL 按请求传递是刻意的生命周期约束：如果系统复用 Extension 进程或长期 camera model，下一次 scene 仍使用它自己收到的目录，不会误写到上一次 session。
+
+R2B build number 为 `7`。关键 marker：`r2b_photo_trigger`、`r2b_photo_capture_requested`、`r2b_photo_processed`、`r2b_session_write_begin`、`r2b_session_write_succeeded`、`r2b_session_write_failed`。本阶段只验证 Extension 写入和生命周期稳定性；系统 migration 的 app-side observation 从 R3 开始。
+
+### R2B 提交前验证
+
+- Debug capture-extension simulator build：通过；
+- `TAPLockedCameraR2BSourceContractTests`：4/4 通过；
+- Release generic-device build（iOS 26.5 SDK）：通过；
+- Release 产物核验：主 App、Capture Extension、Control Extension 的 `CFBundleVersion` 均为 `7`，`MinimumOSVersion` 均为 `18.6`；
+- Capture/Control Extension 的 `Metadata.appintents` 仍只包含 R0 的 `TAPCamLockedCameraIntent`，没有新增 `OpenIntent`；
+- Capture Extension 源码不包含 `openApplication(for:)`、`LockedCameraCaptureManager`、`scenePhase`、`stopRunning()`、`URLSession` 或 App Group 路径；
+- `git diff --check`：通过。
+
+首次编译发现顶层 viewfinder 已接收 session URL，但屏幕快门所在的 nested controls 未显式接收该值。已改为 `ViewFinder -> Chrome -> PhotoControls` 的只读值传递；hardware event 和屏幕快门现在都把当前 scene URL 传给同一个 model capture 方法。没有引入全局缓存、environment 单例或 scene lifecycle hook。
+
+R2B 尚未真机验收。构建成功只证明 API、并发边界和 bundle 产物成立，不能代替锁屏下的真实文件保护、系统 suspend 或 relaunch 验证。

@@ -235,13 +235,26 @@ R2A 使用 build `6`，Control kind/name 继续保持 R0 baseline。它只回答
 
 ### R2B：session content 原子写入
 
-- R2A 真机通过后才把完整 depth HEIC 写入当前 `sessionContentURL`；
+- 将 `LockedCameraCaptureUIScene` 当前提供的 `session.sessionContentURL` 按拍摄请求传入，不把 URL 缓存在长期 camera actor 中；
+- 把 R2A 已生成的完整 depth HEIC 写入当前 `sessionContentURL`；
 - 每张照片先写同目录临时文件，再原子 rename 成最终 flat artifact；
+- 最终文件名为 `TAPCam-<UUID>.heic`，临时文件为隐藏 `.tmp`，后续 importer 只识别最终 HEIC；
 - Extension 只保存本地 unsigned transfer artifact；
 - 不在 Extension 中签名、联网、访问 App Group 或等待主 App；
 - capture/storage 与 app-open 完全解耦。
 
-R2B 开始前再决定 Extension 写完整 unsigned TAP artifact，还是只写最小 depth HEIC + metadata。旧 PRD 提前把完整 manifest/proof-slot packaging 定为 Phase 1 必须项是不合理约束，现已撤销。
+R2B 使用 build `7`，选择“最小 flat depth HEIC”作为唯一 artifact，不写 metadata、manifest 或 proof slot。原始 HEIC 已包含 RGB 与 depth auxiliary data；进入主 App pending queue 后再按正常流程补齐 manifest 和签名。旧 PRD 提前把完整 packaging 定为 Extension 必须项是不合理约束，现已撤销。
+
+#### R2B 真机验收
+
+1. 从 Xcode 安装 Release build `7`，保留现有 `TAPCam R0` control；
+2. 锁屏启动后分别使用屏幕快门和 hardware capture event，确认每次从 `CAPTURING` 进入 `SAVED <depthWidth>x<depthHeight> #N`；
+3. 同一 Extension 会话连续拍摄 5 张，确认序号递增且没有卡在写入阶段；
+4. 连续 10 轮执行“锁屏 -> 一次进入 -> 拍摄 -> 系统方式退出 -> 再次启动”；
+5. 至少一次等待系统自然回锁屏，再确认下一次可以一次进入；
+6. 日志中每次拍摄应依次出现 `r2b_photo_processed`、`r2b_session_write_begin`、`r2b_session_write_succeeded`，且最终文件名唯一。
+
+通过条件：每次 capture 都完成 depth HEIC rename；preview 在写入前后持续可用；无 freeze、纯黑、卡在 `CAPTURING` 或需要再次侧键恢复。R2B 尚未启动主 App importer，因此 Library 不出现照片是预期行为；系统 suspend 后是否发出 `.initial/.added` 留给 R3 验证。
 
 ### R3：主 App importer 与 pending queue
 

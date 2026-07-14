@@ -8,6 +8,7 @@ import SwiftUI
 
 struct TAPCamLockedCameraViewFinder: View {
     let camera: TAPCamLockedCameraModel
+    let sessionContentURL: URL
 
     var body: some View {
         ZStack {
@@ -19,7 +20,10 @@ struct TAPCamLockedCameraViewFinder: View {
                 .onCameraCaptureEvent(isEnabled: camera.phase == .live) { event in
                     guard event.phase == .ended else { return }
                     Task {
-                        await camera.captureDepthPhoto(trigger: .hardwareEvent)
+                        await camera.captureDepthPhoto(
+                            trigger: .hardwareEvent,
+                            sessionContentURL: sessionContentURL
+                        )
                     }
                 }
 
@@ -29,20 +33,24 @@ struct TAPCamLockedCameraViewFinder: View {
                     .allowsHitTesting(false)
             }
 
-            TAPCamLockedCameraChrome(camera: camera)
+            TAPCamLockedCameraChrome(
+                camera: camera,
+                sessionContentURL: sessionContentURL
+            )
         }
-        .accessibilityIdentifier("locked-camera-r2a-root")
+        .accessibilityIdentifier("locked-camera-r2b-root")
     }
 }
 
 private struct TAPCamLockedCameraChrome: View {
     let camera: TAPCamLockedCameraModel
+    let sessionContentURL: URL
 
     var body: some View {
         ZStack {
             VStack(spacing: 0) {
                 HStack(spacing: 8) {
-                    Text("TAPCam R2A")
+                    Text("TAPCam R2B")
                         .font(.headline)
 
                     Spacer(minLength: 12)
@@ -62,7 +70,10 @@ private struct TAPCamLockedCameraChrome: View {
                 Spacer(minLength: 0)
 
                 if camera.phase == .live {
-                    TAPCamLockedPhotoControls(camera: camera)
+                    TAPCamLockedPhotoControls(
+                        camera: camera,
+                        sessionContentURL: sessionContentURL
+                    )
                         .padding(.bottom, 28)
                 }
             }
@@ -76,12 +87,16 @@ private struct TAPCamLockedCameraChrome: View {
 
 private struct TAPCamLockedPhotoControls: View {
     let camera: TAPCamLockedCameraModel
+    let sessionContentURL: URL
 
     var body: some View {
         VStack(spacing: 10) {
             Button {
                 Task {
-                    await camera.captureDepthPhoto(trigger: .shutterButton)
+                    await camera.captureDepthPhoto(
+                        trigger: .shutterButton,
+                        sessionContentURL: sessionContentURL
+                    )
                 }
             } label: {
                 ZStack {
@@ -97,7 +112,7 @@ private struct TAPCamLockedPhotoControls: View {
             .buttonStyle(TAPCamLockedShutterButtonStyle())
             .disabled(!camera.isPhotoCaptureEnabled)
             .accessibilityLabel("Capture depth photo")
-            .accessibilityIdentifier("locked-camera-r2a-shutter")
+            .accessibilityIdentifier("locked-camera-r2b-shutter")
 
             Text(camera.photoCaptureState.shortLabel)
                 .font(.caption.monospacedDigit().weight(.semibold))
@@ -151,6 +166,6 @@ private struct TAPCamLockedCameraStatusView: View {
         }
         .foregroundStyle(.white)
         .padding(.horizontal, 32)
-        .accessibilityIdentifier("locked-camera-r2a-status")
+        .accessibilityIdentifier("locked-camera-r2b-status")
     }
 }

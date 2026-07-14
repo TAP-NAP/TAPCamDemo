@@ -15,15 +15,39 @@ nonisolated struct TAPCamLockedPhotoCaptureResult: Equatable, Sendable {
     let depthHeight: Int
     let depthPixelFormat: OSType
     let isDepthDataFiltered: Bool
+    let storedFileName: String
+}
+
+nonisolated struct TAPCamLockedPhotoCapturePayload: Sendable {
+    let photoData: Data
+    let photoWidth: Int
+    let photoHeight: Int
+    let depthWidth: Int
+    let depthHeight: Int
+    let depthPixelFormat: OSType
+    let isDepthDataFiltered: Bool
+
+    func stored(fileName: String) -> TAPCamLockedPhotoCaptureResult {
+        TAPCamLockedPhotoCaptureResult(
+            photoByteCount: photoData.count,
+            photoWidth: photoWidth,
+            photoHeight: photoHeight,
+            depthWidth: depthWidth,
+            depthHeight: depthHeight,
+            depthPixelFormat: depthPixelFormat,
+            isDepthDataFiltered: isDepthDataFiltered,
+            storedFileName: fileName
+        )
+    }
 }
 
 nonisolated final class TAPCamLockedPhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate, @unchecked Sendable {
     typealias Completion = @Sendable (
-        Result<TAPCamLockedPhotoCaptureResult, TAPCamLockedCaptureServiceError>
+        Result<TAPCamLockedPhotoCapturePayload, TAPCamLockedCaptureServiceError>
     ) -> Void
 
     private let completion: Completion
-    private var processedResult: Result<TAPCamLockedPhotoCaptureResult, TAPCamLockedCaptureServiceError>?
+    private var processedResult: Result<TAPCamLockedPhotoCapturePayload, TAPCamLockedCaptureServiceError>?
     private var didComplete = false
 
     init(completion: @escaping Completion) {
@@ -52,8 +76,8 @@ nonisolated final class TAPCamLockedPhotoCaptureDelegate: NSObject, AVCapturePho
         let photoDimensions = photo.resolvedSettings.photoDimensions
         let depthMap = depthData.depthDataMap
         processedResult = .success(
-            TAPCamLockedPhotoCaptureResult(
-                photoByteCount: photoData.count,
+            TAPCamLockedPhotoCapturePayload(
+                photoData: photoData,
                 photoWidth: Int(photoDimensions.width),
                 photoHeight: Int(photoDimensions.height),
                 depthWidth: CVPixelBufferGetWidth(depthMap),

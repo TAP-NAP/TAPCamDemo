@@ -65,7 +65,7 @@ enum TAPCamLockedCameraPhase: Equatable, Sendable {
 enum TAPCamLockedPhotoCaptureState: Equatable, Sendable {
     case ready
     case capturing
-    case captured(sequence: Int, result: TAPCamLockedPhotoCaptureResult)
+    case saved(sequence: Int, result: TAPCamLockedPhotoCaptureResult)
     case failed(reason: String)
 
     var shortLabel: String {
@@ -74,8 +74,8 @@ enum TAPCamLockedPhotoCaptureState: Equatable, Sendable {
             "DEPTH READY"
         case .capturing:
             "CAPTURING"
-        case let .captured(sequence, result):
-            "DEPTH \(result.depthWidth)x\(result.depthHeight)  #\(sequence)"
+        case let .saved(sequence, result):
+            "SAVED \(result.depthWidth)x\(result.depthHeight)  #\(sequence)"
         case .failed:
             "CAPTURE FAILED"
         }
@@ -149,24 +149,29 @@ final class TAPCamLockedCameraModel {
         }
     }
 
-    func captureDepthPhoto(trigger: TAPCamLockedCaptureTrigger) async {
+    func captureDepthPhoto(
+        trigger: TAPCamLockedCaptureTrigger,
+        sessionContentURL: URL
+    ) async {
         guard isPhotoCaptureEnabled else {
-            TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR2APhoto")
+            TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR2BPhoto")
                 .info(
-                    "r2a_photo_capture_ignored trigger=\(trigger.rawValue, privacy: .public) cameraPhase=\(self.phase.shortLabel, privacy: .public) captureState=\(self.photoCaptureState.shortLabel, privacy: .public)"
+                    "r2b_photo_capture_ignored trigger=\(trigger.rawValue, privacy: .public) cameraPhase=\(self.phase.shortLabel, privacy: .public) captureState=\(self.photoCaptureState.shortLabel, privacy: .public)"
                 )
             return
         }
 
         photoCaptureState = .capturing
         flashCaptureFeedback()
-        TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR2APhoto")
-            .notice("r2a_photo_trigger trigger=\(trigger.rawValue, privacy: .public)")
+        TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR2BPhoto")
+            .notice("r2b_photo_trigger trigger=\(trigger.rawValue, privacy: .public)")
 
         do {
-            let result = try await captureService.captureDepthPhoto()
+            let result = try await captureService.captureDepthPhoto(
+                sessionContentURL: sessionContentURL
+            )
             successfulPhotoCount += 1
-            photoCaptureState = .captured(sequence: successfulPhotoCount, result: result)
+            photoCaptureState = .saved(sequence: successfulPhotoCount, result: result)
         } catch {
             photoCaptureState = .failed(reason: error.localizedDescription)
         }

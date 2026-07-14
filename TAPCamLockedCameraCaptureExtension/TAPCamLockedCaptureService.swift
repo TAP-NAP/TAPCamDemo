@@ -20,6 +20,7 @@ nonisolated enum TAPCamLockedCaptureServiceError: LocalizedError, Sendable {
     case missingPhotoData
     case missingDepthData
     case photoCaptureFailed(String)
+    case sessionContentWriteFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -47,6 +48,8 @@ nonisolated enum TAPCamLockedCaptureServiceError: LocalizedError, Sendable {
             "The capture completed without depth data."
         case let .photoCaptureFailed(reason):
             "Photo capture failed: \(reason)"
+        case let .sessionContentWriteFailed(reason):
+            "The captured photo could not be stored: \(reason)"
         }
     }
 }
@@ -63,6 +66,7 @@ actor TAPCamLockedCaptureService {
 
     private let captureSession = AVCaptureSession()
     private let photoOutput = AVCapturePhotoOutput()
+    private let sessionContentWriter = TAPCamLockedSessionContentWriter()
     private let sessionQueue = DispatchSerialQueue(
         label: "TAP-NAP.TAPCamDemo.LockedCameraR1.session"
     )
@@ -109,7 +113,33 @@ actor TAPCamLockedCaptureService {
         return device.localizedName
     }
 
-    func captureDepthPhoto() async throws -> TAPCamLockedPhotoCaptureResult {
+    func captureDepthPhoto(sessionContentURL: URL) async throws -> TAPCamLockedPhotoCaptureResult {
+        let payload = try await captureDepthPhotoPayload()
+        TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR2BStorage")
+            .notice(
+                "r2b_session_write_begin bytes=\(payload.photoData.count) depth=\(payload.depthWidth)x\(payload.depthHeight)"
+            )
+
+        let fileURL: URL
+        do {
+            fileURL = try await sessionContentWriter.write(payload.photoData, to: sessionContentURL)
+        } catch {
+            TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR2BStorage")
+                .error(
+                    "r2b_session_write_failed error=\(error.localizedDescription, privacy: .public)"
+                )
+            throw TAPCamLockedCaptureServiceError.sessionContentWriteFailed(error.localizedDescription)
+        }
+
+        let result = payload.stored(fileName: fileURL.lastPathComponent)
+        TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR2BStorage")
+            .notice(
+                "r2b_session_write_succeeded file=\(result.storedFileName, privacy: .public) bytes=\(result.photoByteCount) photo=\(result.photoWidth)x\(result.photoHeight) depth=\(result.depthWidth)x\(result.depthHeight) depthFormat=\(result.depthPixelFormat) filtered=\(result.isDepthDataFiltered)"
+            )
+        return result
+    }
+
+    private func captureDepthPhotoPayload() async throws -> TAPCamLockedPhotoCapturePayload {
         guard captureSession.isRunning,
               isConfigured,
               photoOutput.isDepthDataDeliveryEnabled else {
@@ -121,9 +151,9 @@ actor TAPCamLockedCaptureService {
 
         let settings = makeDepthPhotoSettings()
         let uniqueID = settings.uniqueID
-        TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR2APhoto")
+        TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR2BPhoto")
             .notice(
-                "r2a_photo_capture_requested id=\(uniqueID) running=\(self.captureSession.isRunning) depthEnabled=\(self.photoOutput.isDepthDataDeliveryEnabled)"
+                "r2b_photo_capture_requested id=\(uniqueID) running=\(self.captureSession.isRunning) depthEnabled=\(self.photoOutput.isDepthDataDeliveryEnabled)"
             )
 
         return try await withCheckedThrowingContinuation { continuation in
@@ -205,9 +235,9 @@ actor TAPCamLockedCaptureService {
             .info(
                 "r1_session_configure_finish device=\(device.localizedName, privacy: .public) type=\(device.deviceType.rawValue, privacy: .public) depthFormatCount=\(depthFormatCount)"
             )
-        TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR2APhoto")
+        TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR2BPhoto")
             .notice(
-                "r2a_photo_output_configured depthSupported=\(self.photoOutput.isDepthDataDeliverySupported) depthEnabled=\(self.photoOutput.isDepthDataDeliveryEnabled)"
+                "r2b_photo_output_configured depthSupported=\(self.photoOutput.isDepthDataDeliverySupported) depthEnabled=\(self.photoOutput.isDepthDataDeliveryEnabled)"
             )
         return device
     }
@@ -231,22 +261,22 @@ actor TAPCamLockedCaptureService {
 
     private func finishPhotoCapture(
         uniqueID: Int64,
-        result: Result<TAPCamLockedPhotoCaptureResult, TAPCamLockedCaptureServiceError>,
-        continuation: CheckedContinuation<TAPCamLockedPhotoCaptureResult, Error>
+        result: Result<TAPCamLockedPhotoCapturePayload, TAPCamLockedCaptureServiceError>,
+        continuation: CheckedContinuation<TAPCamLockedPhotoCapturePayload, Error>
     ) {
         inFlightPhotoDelegates[uniqueID] = nil
 
         switch result {
         case let .success(capture):
-            TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR2APhoto")
+            TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR2BPhoto")
                 .notice(
-                    "r2a_photo_capture_succeeded id=\(uniqueID) bytes=\(capture.photoByteCount) photo=\(capture.photoWidth)x\(capture.photoHeight) depth=\(capture.depthWidth)x\(capture.depthHeight) depthFormat=\(capture.depthPixelFormat) filtered=\(capture.isDepthDataFiltered)"
+                    "r2b_photo_processed id=\(uniqueID) bytes=\(capture.photoData.count) photo=\(capture.photoWidth)x\(capture.photoHeight) depth=\(capture.depthWidth)x\(capture.depthHeight) depthFormat=\(capture.depthPixelFormat) filtered=\(capture.isDepthDataFiltered)"
                 )
             continuation.resume(returning: capture)
         case let .failure(error):
-            TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR2APhoto")
+            TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR2BPhoto")
                 .error(
-                    "r2a_photo_capture_failed id=\(uniqueID) error=\(error.localizedDescription, privacy: .public)"
+                    "r2b_photo_capture_failed id=\(uniqueID) error=\(error.localizedDescription, privacy: .public)"
                 )
             continuation.resume(throwing: error)
         }

@@ -18,8 +18,11 @@ struct TAPCamLockedCameraCaptureExtension: LockedCameraCaptureExtension {
     }
 
     var body: some LockedCameraCaptureExtensionScene {
-        LockedCameraCaptureUIScene { _ in
-            TAPCamLockedCameraViewFinder(camera: camera)
+        LockedCameraCaptureUIScene { session in
+            TAPCamLockedCameraViewFinder(
+                camera: camera,
+                sessionContentURL: session.sessionContentURL
+            )
                 .statusBarHidden(true)
                 .task {
                     await camera.start()

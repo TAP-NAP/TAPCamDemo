@@ -6,8 +6,8 @@
 import Foundation
 import Testing
 
-@Suite("Locked camera R2A source contract")
-struct TAPLockedCameraR2ASourceContractTests {
+@Suite("Locked camera R2B source contract")
+struct TAPLockedCameraR2BSourceContractTests {
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
     func captureExtensionOwnsOneLongLivedCameraModel() throws {
         let extensionSource = try source(
@@ -22,7 +22,9 @@ struct TAPLockedCameraR2ASourceContractTests {
 
         #expect(extensionSource.contains("@State private var camera = TAPCamLockedCameraModel()"))
         #expect(extensionSource.contains("LockedCameraCaptureUIScene"))
-        #expect(extensionSource.contains("TAPCamLockedCameraViewFinder(camera: camera)"))
+        #expect(extensionSource.contains("LockedCameraCaptureUIScene { session in"))
+        #expect(extensionSource.contains("TAPCamLockedCameraViewFinder("))
+        #expect(extensionSource.contains("sessionContentURL: session.sessionContentURL"))
         #expect(extensionSource.contains("await camera.start()"))
 
         #expect(modelSource.contains("@Observable"))
@@ -47,7 +49,7 @@ struct TAPLockedCameraR2ASourceContractTests {
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func photoAndHardwareTriggersCaptureDepthWithoutPersistingMedia() throws {
+    func photoAndHardwareTriggersAtomicallyStoreFlatDepthHEIC() throws {
         let previewSource = try source(
             "TAPCamLockedCameraCaptureExtension/TAPCamLockedCameraPreview.swift"
         )
@@ -67,11 +69,12 @@ struct TAPLockedCameraR2ASourceContractTests {
         #expect(viewfinderSource.contains("Color.black"))
         #expect(viewfinderSource.contains("TAPCamLockedCameraPreview(source: camera.previewSource)"))
         #expect(viewfinderSource.contains("onCameraCaptureEvent"))
-        #expect(viewfinderSource.contains("camera.captureDepthPhoto(trigger: .hardwareEvent)"))
-        #expect(viewfinderSource.contains("camera.captureDepthPhoto(trigger: .shutterButton)"))
-        #expect(viewfinderSource.contains("locked-camera-r2a-shutter"))
-        #expect(viewfinderSource.contains("TAPCamLockedCameraChrome(camera: camera)"))
-        #expect(viewfinderSource.contains("locked-camera-r2a-root"))
+        #expect(viewfinderSource.contains("trigger: .hardwareEvent"))
+        #expect(viewfinderSource.contains("trigger: .shutterButton"))
+        #expect(viewfinderSource.contains("sessionContentURL: sessionContentURL"))
+        #expect(viewfinderSource.contains("locked-camera-r2b-shutter"))
+        #expect(viewfinderSource.contains("TAPCamLockedCameraChrome("))
+        #expect(viewfinderSource.contains("locked-camera-r2b-root"))
         #expect(combinedSource.contains("Starting Camera"))
         #expect(combinedSource.contains("Camera Paused"))
         #expect(combinedSource.contains("Unlock to Continue"))
@@ -84,11 +87,16 @@ struct TAPLockedCameraR2ASourceContractTests {
         #expect(combinedSource.contains("photoOutput.capturePhoto(with: settings"))
         #expect(combinedSource.contains("photo.fileDataRepresentation()"))
         #expect(combinedSource.contains("photo.depthData"))
-        #expect(combinedSource.contains("r2a_photo_capture_succeeded"))
+        #expect(combinedSource.contains("session.sessionContentURL"))
+        #expect(combinedSource.contains("TAPCamLockedSessionContentWriter"))
+        #expect(combinedSource.contains("TAPCam-\\(UUID().uuidString).heic"))
+        #expect(combinedSource.contains(".tmp"))
+        #expect(combinedSource.contains("photoData.write(to: stagingURL"))
+        #expect(combinedSource.contains("moveItem(at: stagingURL, to: finalURL)"))
+        #expect(combinedSource.contains("Task.detached(priority: .userInitiated)"))
+        #expect(combinedSource.contains("r2b_session_write_succeeded"))
+        #expect(combinedSource.contains("SAVED "))
         #expect(!combinedSource.contains("AVCaptureVideoDataOutput"))
-        #expect(!combinedSource.contains("sessionContentURL"))
-        #expect(!combinedSource.contains("write(to:"))
-        #expect(!combinedSource.contains("FileManager.default"))
         #expect(!combinedSource.contains("openApplication(for:"))
         #expect(!combinedSource.contains("LockedCameraCaptureManager"))
         #expect(!combinedSource.contains("URLSession"))
