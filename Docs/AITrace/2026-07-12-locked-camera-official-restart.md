@@ -304,3 +304,50 @@ Simulator 只执行 source-contract test，不作为 camera、secure-capture sce
 白闪是 R1 的 event-delivery probe，不是曝光或文件保存结果。它证明可见 viewfinder 上的公开 `onCameraCaptureEvent` 收到了完整 `.ended` 事件。R1 没有 `AVCapturePhotoOutput`，因此本阶段预期不生成照片。
 
 R1 最终判定通过，可以进入 R2。当前稳定基线的关键约束继续保留：scene `@State` 长期持有 model、actor 独占 session、preview layer 稳定连接、不监听 `scenePhase`、不主动 stop/teardown、不加入 app-open 或 storage。
+
+## R2A 设计：真实 depth capture，不落盘
+
+### 为什么先拆 R2A
+
+旧 R2 定义同时加入 `AVCapturePhotoOutput`、depth capture、文件编码和 `sessionContentURL` 写入。若下一次启动回归 freeze，将无法区分是 camera graph、photo delegate、文件 I/O 还是系统 session-content 迁移。因此拆分为：
+
+- R2A：只验证 `AVCapturePhotoOutput` + depth capture；
+- R2B：R2A 通过后才验证 `sessionContentURL` 原子写入。
+
+### 官方实现依据
+
+- Apple 当前 AVCam 用一个 capture-service actor 长期持有 session 和 photo output，并以一次性 delegate + checked continuation 包装 `capturePhoto(with:delegate:)`；
+- Apple `Capturing photos with depth` 要求先把 photo output 接入 session，再启用 output-level depth delivery；每次 request 还要在新 settings 上启用 depth delivery；
+- `fileDataRepresentation()` 在 `embedsDepthDataInPhoto` 开启时生成包含 depth auxiliary data 的文件数据；
+- R2A 不触碰 `LockedCameraCaptureSession.sessionContentURL`，因此系统复制/migration 不是本轮变量。
+
+参考：
+
+- https://developer.apple.com/documentation/avfoundation/avcam-building-a-camera-app
+- https://developer.apple.com/documentation/avfoundation/capturing-photos-with-depth
+- https://developer.apple.com/documentation/lockedcameracapture/lockedcameracapturesession/sessioncontenturl
+
+### 实现边界
+
+| 层 | R2A 变化 | 明确不做 |
+| --- | --- | --- |
+| capture actor | 新增唯一 `AVCapturePhotoOutput`、depth capability validation、一次性 delegate retention | 不增加 video-data output，不 stop/teardown session |
+| model | 单一 async capture 入口、可见 capture state、短白闪 | 不把 counter 用作 scene/lifecycle gate |
+| viewfinder | 最小屏幕快门；hardware event 与快门共用 capture 入口 | 不加 Library/open button、rotation、lens/flash UI |
+| data | 读取 HEIC byte count、photo/depth dimensions 后立即丢弃 | 不写文件、manifest、pending queue 或 Photos |
+| app | 无变化 | 不启动 importer，不解析 handoff |
+
+关键 marker：`r2a_photo_output_configured`、`r2a_photo_trigger`、`r2a_photo_capture_requested`、`r2a_photo_capture_succeeded`、`r2a_photo_capture_failed`。成功 marker 必须同时包含非零 photo/depth dimensions；白闪本身不再算成功证据。
+
+R2A build number 为 `6`，minimum OS 仍为 iOS 18.6，Control descriptor 和唯一 `CameraCaptureIntent` 不变。
+
+### R2A 提交前验证
+
+- Debug capture-extension simulator build：通过；
+- `TAPLockedCameraR2ASourceContractTests`：4/4 通过；
+- Release generic-device build（iOS 26.5 SDK）：通过；
+- Release 产物核验：主 App、Capture Extension、Control Extension 的 `CFBundleVersion` 均为 `6`，`MinimumOSVersion` 均为 `18.6`；
+- Capture/Control Extension 的 `Metadata.appintents` 均只包含 `TAPCamLockedCameraIntent`，没有新增 `OpenIntent`；
+- `git diff --check`：通过。
+
+构建期间出现的 `DTDKRemoteDeviceConnection ... device is passcode protected` 来自 Xcode 探测已锁定的连接真机；最终 simulator test 和 generic-device build 均成功，因此它不是本次源码或产物失败。R2A 尚未真机验收，不得把以上构建结果记为 depth capture 已通过。

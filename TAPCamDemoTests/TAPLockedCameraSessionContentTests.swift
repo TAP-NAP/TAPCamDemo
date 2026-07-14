@@ -6,8 +6,8 @@
 import Foundation
 import Testing
 
-@Suite("Locked camera R1 source contract")
-struct TAPLockedCameraR1SourceContractTests {
+@Suite("Locked camera R2A source contract")
+struct TAPLockedCameraR2ASourceContractTests {
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
     func captureExtensionOwnsOneLongLivedCameraModel() throws {
         let extensionSource = try source(
@@ -47,7 +47,7 @@ struct TAPLockedCameraR1SourceContractTests {
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func previewAndCaptureEventStayVisibleWithoutPersistingMedia() throws {
+    func photoAndHardwareTriggersCaptureDepthWithoutPersistingMedia() throws {
         let previewSource = try source(
             "TAPCamLockedCameraCaptureExtension/TAPCamLockedCameraPreview.swift"
         )
@@ -67,17 +67,28 @@ struct TAPLockedCameraR1SourceContractTests {
         #expect(viewfinderSource.contains("Color.black"))
         #expect(viewfinderSource.contains("TAPCamLockedCameraPreview(source: camera.previewSource)"))
         #expect(viewfinderSource.contains("onCameraCaptureEvent"))
-        #expect(viewfinderSource.contains("event.phase == .ended"))
-        #expect(viewfinderSource.contains("TAPCamLockedCameraChrome(phase: camera.phase)"))
-        #expect(viewfinderSource.contains("locked-camera-r1-root"))
+        #expect(viewfinderSource.contains("camera.captureDepthPhoto(trigger: .hardwareEvent)"))
+        #expect(viewfinderSource.contains("camera.captureDepthPhoto(trigger: .shutterButton)"))
+        #expect(viewfinderSource.contains("locked-camera-r2a-shutter"))
+        #expect(viewfinderSource.contains("TAPCamLockedCameraChrome(camera: camera)"))
+        #expect(viewfinderSource.contains("locked-camera-r2a-root"))
         #expect(combinedSource.contains("Starting Camera"))
         #expect(combinedSource.contains("Camera Paused"))
         #expect(combinedSource.contains("Unlock to Continue"))
 
         #expect(!combinedSource.contains("UIImagePickerController"))
-        #expect(!combinedSource.contains("AVCapturePhotoOutput"))
+        #expect(combinedSource.contains("AVCapturePhotoOutput"))
+        #expect(combinedSource.contains("isDepthDataDeliverySupported"))
+        #expect(combinedSource.contains("isDepthDataDeliveryEnabled = true"))
+        #expect(combinedSource.contains("embedsDepthDataInPhoto = true"))
+        #expect(combinedSource.contains("photoOutput.capturePhoto(with: settings"))
+        #expect(combinedSource.contains("photo.fileDataRepresentation()"))
+        #expect(combinedSource.contains("photo.depthData"))
+        #expect(combinedSource.contains("r2a_photo_capture_succeeded"))
         #expect(!combinedSource.contains("AVCaptureVideoDataOutput"))
         #expect(!combinedSource.contains("sessionContentURL"))
+        #expect(!combinedSource.contains("write(to:"))
+        #expect(!combinedSource.contains("FileManager.default"))
         #expect(!combinedSource.contains("openApplication(for:"))
         #expect(!combinedSource.contains("LockedCameraCaptureManager"))
         #expect(!combinedSource.contains("URLSession"))

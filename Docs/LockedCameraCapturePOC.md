@@ -208,16 +208,38 @@ Apple 文档说明 capture extension 被 dismiss 后由系统 suspend，并要�
 
 R1 判定通过。后续阶段必须保留这一生命周期结构，不加入 `scenePhase` teardown、主动 stop/dismiss 或把 app-open 与 camera cleanup 绑定。
 
-### R2：depth capture 与 session content
+### R2A：真实 depth photo capture，不落盘
 
-- 加入 `AVCapturePhotoOutput` 和真实 depth capture；
-- 缺少 depth 的结果不提交为成功照片；
-- 每次 capture 原子写入 `sessionContentURL`；
-- Extension 只保存本地 raw/unsigned transfer artifact；
+- 在 R1 的唯一 capture actor 内加入一个长期持有的 `AVCapturePhotoOutput`；
+- output 接入 session 后检查并启用 `isDepthDataDeliveryEnabled`；
+- 每次拍摄创建新的 HEVC `AVCapturePhotoSettings`，请求并嵌入 filtered depth；
+- 屏幕快门和 hardware capture event 只调用同一个 async capture 方法；
+- delegate 必须同时取得 `fileDataRepresentation()` 和非空 `depthData` 才报告成功；
+- R2A 只在内存中读取 byte count、photo dimensions 和 depth dimensions，随后丢弃数据；
+- 不取得 `LockedCameraCaptureSession`，不写 `sessionContentURL`，不启动 importer，不打开主 App；
+- 不修改 R1 的 scene/session 生命周期结构，也不加入主动 stop/teardown。
+
+R2A 使用 build `6`，Control kind/name 继续保持 R0 baseline。它只回答“增加真实 photo/depth capture graph 后，锁屏 Extension 是否仍稳定”，不回答内容迁移或 Library 可见性。
+
+#### R2A 真机验收
+
+1. 从 Xcode 安装 Release build `6`，保留现有 `TAPCam R0` control；
+2. 连续 10 轮执行“锁屏 -> 一次进入 Extension -> 屏幕快门拍一张 -> hardware event 再拍一张 -> 系统方式退出”；
+3. 每次成功后确认底部状态显示非零 depth dimensions；
+4. 另在同一次 Extension 会话连续拍摄 5 张，确认每次从 `CAPTURING` 回到 `DEPTH ...`；
+5. 最后一轮等待系统自然回锁屏，再确认下一次仍可一次进入。
+
+通过条件：所有请求都有 depth 成功结果；preview 在拍摄前后持续可见；没有 freeze、无信息纯黑、卡在 `CAPTURING` 或需要再次侧键恢复。主 App Library 没有这些照片是 R2A 的预期行为。
+
+### R2B：session content 原子写入
+
+- R2A 真机通过后才把完整 depth HEIC 写入当前 `sessionContentURL`；
+- 每张照片先写同目录临时文件，再原子 rename 成最终 flat artifact；
+- Extension 只保存本地 unsigned transfer artifact；
 - 不在 Extension 中签名、联网、访问 App Group 或等待主 App；
-- capture 与 app-open 完全解耦。
+- capture/storage 与 app-open 完全解耦。
 
-R2 开始前再决定 Extension 写完整 unsigned TAP artifact，还是只写最小 depth HEIC + metadata。旧 PRD 提前把完整 manifest/proof-slot packaging 定为 Phase 1 必须项是不合理约束，现已撤销。
+R2B 开始前再决定 Extension 写完整 unsigned TAP artifact，还是只写最小 depth HEIC + metadata。旧 PRD 提前把完整 manifest/proof-slot packaging 定为 Phase 1 必须项是不合理约束，现已撤销。
 
 ### R3：主 App importer 与 pending queue
 

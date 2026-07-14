@@ -62,17 +62,56 @@ enum TAPCamLockedCameraPhase: Equatable, Sendable {
     }
 }
 
+enum TAPCamLockedPhotoCaptureState: Equatable, Sendable {
+    case ready
+    case capturing
+    case captured(sequence: Int, result: TAPCamLockedPhotoCaptureResult)
+    case failed(reason: String)
+
+    var shortLabel: String {
+        switch self {
+        case .ready:
+            "DEPTH READY"
+        case .capturing:
+            "CAPTURING"
+        case let .captured(sequence, result):
+            "DEPTH \(result.depthWidth)x\(result.depthHeight)  #\(sequence)"
+        case .failed:
+            "CAPTURE FAILED"
+        }
+    }
+
+    var isCapturing: Bool {
+        if case .capturing = self {
+            true
+        } else {
+            false
+        }
+    }
+}
+
+enum TAPCamLockedCaptureTrigger: String, Sendable {
+    case shutterButton = "shutter"
+    case hardwareEvent = "hardware"
+}
+
 @MainActor
 @Observable
 final class TAPCamLockedCameraModel {
     private(set) var phase = TAPCamLockedCameraPhase.starting
-    private(set) var shouldFlashCaptureProbe = false
+    private(set) var photoCaptureState = TAPCamLockedPhotoCaptureState.ready
+    private(set) var shouldFlashCaptureFeedback = false
+
+    var isPhotoCaptureEnabled: Bool {
+        phase == .live && !photoCaptureState.isCapturing
+    }
 
     let previewSource: any TAPCamLockedCameraPreviewSource
 
     private let captureService: TAPCamLockedCaptureService
     private var eventTask: Task<Void, Never>?
-    private var captureProbeTask: Task<Void, Never>?
+    private var captureFeedbackTask: Task<Void, Never>?
+    private var successfulPhotoCount = 0
 
     init(captureService: TAPCamLockedCaptureService = TAPCamLockedCaptureService()) {
         self.captureService = captureService
@@ -110,18 +149,36 @@ final class TAPCamLockedCameraModel {
         }
     }
 
-    func registerCaptureEvent() {
-        guard phase == .live else { return }
+    func captureDepthPhoto(trigger: TAPCamLockedCaptureTrigger) async {
+        guard isPhotoCaptureEnabled else {
+            TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR2APhoto")
+                .info(
+                    "r2a_photo_capture_ignored trigger=\(trigger.rawValue, privacy: .public) cameraPhase=\(self.phase.shortLabel, privacy: .public) captureState=\(self.photoCaptureState.shortLabel, privacy: .public)"
+                )
+            return
+        }
 
-        TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR1")
-            .info("r1_capture_event_ended")
+        photoCaptureState = .capturing
+        flashCaptureFeedback()
+        TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR2APhoto")
+            .notice("r2a_photo_trigger trigger=\(trigger.rawValue, privacy: .public)")
 
-        captureProbeTask?.cancel()
-        shouldFlashCaptureProbe = true
-        captureProbeTask = Task { [weak self] in
+        do {
+            let result = try await captureService.captureDepthPhoto()
+            successfulPhotoCount += 1
+            photoCaptureState = .captured(sequence: successfulPhotoCount, result: result)
+        } catch {
+            photoCaptureState = .failed(reason: error.localizedDescription)
+        }
+    }
+
+    private func flashCaptureFeedback() {
+        captureFeedbackTask?.cancel()
+        shouldFlashCaptureFeedback = true
+        captureFeedbackTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(90))
             guard !Task.isCancelled else { return }
-            self?.shouldFlashCaptureProbe = false
+            self?.shouldFlashCaptureFeedback = false
         }
     }
 

@@ -18,38 +18,40 @@ struct TAPCamLockedCameraViewFinder: View {
                 .ignoresSafeArea()
                 .onCameraCaptureEvent(isEnabled: camera.phase == .live) { event in
                     guard event.phase == .ended else { return }
-                    camera.registerCaptureEvent()
+                    Task {
+                        await camera.captureDepthPhoto(trigger: .hardwareEvent)
+                    }
                 }
 
-            if camera.shouldFlashCaptureProbe {
+            if camera.shouldFlashCaptureFeedback {
                 Color.white
                     .ignoresSafeArea()
                     .allowsHitTesting(false)
             }
 
-            TAPCamLockedCameraChrome(phase: camera.phase)
+            TAPCamLockedCameraChrome(camera: camera)
         }
-        .accessibilityIdentifier("locked-camera-r1-root")
+        .accessibilityIdentifier("locked-camera-r2a-root")
     }
 }
 
 private struct TAPCamLockedCameraChrome: View {
-    let phase: TAPCamLockedCameraPhase
+    let camera: TAPCamLockedCameraModel
 
     var body: some View {
         ZStack {
             VStack(spacing: 0) {
                 HStack(spacing: 8) {
-                    Text("TAPCam R1")
+                    Text("TAPCam R2A")
                         .font(.headline)
 
                     Spacer(minLength: 12)
 
                     Circle()
-                        .fill(phase == .live ? Color.green : Color.orange)
+                        .fill(camera.phase == .live ? Color.green : Color.orange)
                         .frame(width: 8, height: 8)
 
-                    Text(phase.shortLabel)
+                    Text(camera.phase.shortLabel)
                         .font(.caption.weight(.semibold))
                 }
                 .foregroundStyle(.white)
@@ -58,12 +60,68 @@ private struct TAPCamLockedCameraChrome: View {
                 .padding(.top, 16)
 
                 Spacer(minLength: 0)
+
+                if camera.phase == .live {
+                    TAPCamLockedPhotoControls(camera: camera)
+                        .padding(.bottom, 28)
+                }
             }
 
-            if phase != .live {
-                TAPCamLockedCameraStatusView(phase: phase)
+            if camera.phase != .live {
+                TAPCamLockedCameraStatusView(phase: camera.phase)
             }
         }
+    }
+}
+
+private struct TAPCamLockedPhotoControls: View {
+    let camera: TAPCamLockedCameraModel
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Button {
+                Task {
+                    await camera.captureDepthPhoto(trigger: .shutterButton)
+                }
+            } label: {
+                ZStack {
+                    Circle()
+                        .stroke(.white, lineWidth: 4)
+                    Circle()
+                        .fill(.white)
+                        .padding(7)
+                }
+                .frame(width: 72, height: 72)
+                .contentShape(Circle())
+            }
+            .buttonStyle(TAPCamLockedShutterButtonStyle())
+            .disabled(!camera.isPhotoCaptureEnabled)
+            .accessibilityLabel("Capture depth photo")
+            .accessibilityIdentifier("locked-camera-r2a-shutter")
+
+            Text(camera.photoCaptureState.shortLabel)
+                .font(.caption.monospacedDigit().weight(.semibold))
+                .foregroundStyle(captureStatusColor)
+                .frame(height: 18)
+                .shadow(color: .black.opacity(0.8), radius: 3)
+        }
+    }
+
+    private var captureStatusColor: Color {
+        if case .failed = camera.photoCaptureState {
+            .red
+        } else {
+            .white
+        }
+    }
+}
+
+private struct TAPCamLockedShutterButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.88 : 1)
+            .opacity(configuration.isPressed ? 0.82 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 
@@ -93,6 +151,6 @@ private struct TAPCamLockedCameraStatusView: View {
         }
         .foregroundStyle(.white)
         .padding(.horizontal, 32)
-        .accessibilityIdentifier("locked-camera-r1-status")
+        .accessibilityIdentifier("locked-camera-r2a-status")
     }
 }
