@@ -762,3 +762,56 @@ StartupGateView validates activity
 - Release `.app` 内没有打包 Markdown/TXT 实验文档。
 
 构建期间连接设备处于密码锁定，Xcode 重复报告 notification-proxy 无法启动；两个构建命令最终均为 exit 0。该警告不作为 R4C lifecycle 证据。
+
+### R4C 真机结果：失败，但系统捕获暴露了新的 App 生命周期变量
+
+2026-07-15，用户按无照片路径完成 R4C smoke：Extension 的 Open 可以进入静态 TAPCam landing，但下一次启动 Extension 仍出现 shrink/freeze，需要再次锁屏后才能恢复。因此，R4C 判定失败；Library view、PhotoKit fetch 和 landing 触发的 pending worker 都不是该现象的必要条件。
+
+同轮 App 日志确认 locked activity 到达时：
+
+```text
+r4c_app_activity_validated ... routeSideEffects=none
+r4c_app_inert_landing_route ... cameraHostRequested=false libraryRequested=false
+r4c_app_inert_host_appear cameraViewCreated=false libraryViewCreated=false photoKitRequested=false
+r4c_main_session_stop_finished running=false action=alreadyStopped
+```
+
+activity 后没有 `tap_library_load_begin`、`requestReadWriteAccess` 或 `depthAlbumAssets fetched`。这完成了 R4C 对 landing workload 的排除，但只说明 App 自己的静态 landing 没有发起这些工作，不能证明 SpringBoard 已完成 secure-capture transition。
+
+另外使用 `idevicesyslog` 捕获了设备级日志：iPhone 15 Pro、iOS 26.5.2（23F84），原始文件 SHA-256 为 `2254a30b1d20f704cdc3d260d8dae8fc808005fddbb3934f266c10b17ce673ae`。该系统捕获必须与上面的 App handoff 日志分开解释：它没有覆盖到一次完整的 `openApplication(for:)` 调用，而是覆盖到随后一次系统边缘下拉/恢复动作。
+
+捕获到的边界是：
+
+```text
+SBFluidSwitcherScreenEdgePanGestureRecognizer (DeckGrabberTongue)
+-> App scene inactive
+-> No capture application found
+-> launchCameraCapture: NO
+-> isCaptureApplication: YES
+-> App scene active
+```
+
+在这次动作中，系统没有创建新的 Capture Extension PID、secure-capture scene、ExtensionKit request 或 RunningBoard assertion。因此屏幕上的停滞不是“新 Extension UI 已创建后卡住”。日志还显示 containing App 一直被分类为 `running-active-Visible`，`cameracaptured` 继续把其原始 capture session 识别为 active client，并持续产生 camera frames。
+
+当前实现与该观测相符：`CaptureLifecycleCoordinator.scenePhaseActions` 对 `.inactive` 和 `.background` 返回空动作；主相机只在 `CameraView` 的 `onDisappear` 路径停止。系统遮罩、锁屏和认证 transition 不保证 SwiftUI camera root 从树中消失，因此 `onDisappear` 不能作为 containing App 释放 camera 的唯一生命周期边界。
+
+本次系统捕获还存在一个测试干扰项：Xcode developer-tools assertion 在整个捕获期间保持 active。它不能单独解释 R4C 的重复用户 smoke，因为此前同类安装方式也有通过的 R1-R3 流程；但后续系统级对照应在 Xcode 安装后停止 debugger，并使用独立 device log capture，避免把调试 assertion 与产品行为混合。
+
+## R4D：Containing App camera 跟随 scene 生命周期
+
+R4D 的单变量是 containing App camera ownership。Extension、公开 `openApplication(for:)`、R3 `sessionContentUpdates`、静态 landing、状态栏和 safe-area UI 全部保持 R4C 原样。
+
+实验契约：
+
+1. `CameraView` 所在 scene 离开 `.active` 时，请求停止主 App capture session，并等待 serial session queue 确认 `stopRunning()` 完成；
+2. stop 完成日志必须包含 transition ID、scene phase、session identity、调用前后 `isRunning`；
+3. scene 回到 `.active` 且 CameraView 仍存在时才允许重新启动 camera；
+4. 快速 `.inactive -> .active` 或 `.inactive -> .background -> .active` 必须由 generation/desired-state gate 避免旧 transition 反向覆盖最新状态；
+5. R4D 不主动 teardown Capture Extension，也不在 `openApplication(for:)` 前后加入 sleep、poll、文件迁移等待或私有 API。
+
+测试必须拆成两个场景，不能混为一个结论：
+
+- **R4D-L（真实锁屏）**：主 App -> 侧键锁屏 -> 锁屏 Control -> Extension -> Open -> App 静态 landing -> 再次侧键锁屏 -> 第一次启动 Extension；这是 direct-open freeze 的判定路径。
+- **R4D-U（已解锁系统遮罩）**：主 App -> 下拉通知/系统遮罩 -> 点击 Control；这是 `CameraCaptureIntent.perform()` 的 containing-App 路径，不用于证明 Locked Capture Extension 是否启动。
+
+R4D-L 通过条件是：主 App 离开 active 后系统日志确认其 camera client 不再 active，并且 Open 返回后连续十轮第一次启动 Extension 都不 freeze。若 camera 已确定释放但仍 freeze，才继续隔离 R3 manager stream 或 App status-bar/safe-area；不得同时修改这些变量。
