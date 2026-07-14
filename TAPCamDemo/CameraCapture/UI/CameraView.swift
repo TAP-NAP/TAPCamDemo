@@ -231,11 +231,6 @@ struct CameraView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase != .active {
                 persistRememberedViewfinderControlStateIfNeeded()
-                Task {
-                    await viewModel.stopActiveVideoRecordingForLifecycleIfNeeded(
-                        pendingCaptureWorkerClient: appAttestController.runtime.client
-                    )
-                }
             } else {
                 hapticFeedbackController.prepareForCameraInteraction()
                 completeInitialReadinessGateIfReady()

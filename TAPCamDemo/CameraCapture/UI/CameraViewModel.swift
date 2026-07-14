@@ -232,10 +232,57 @@ final class CameraViewModel: ObservableObject {
         )
         recentLibraryPreviewRefreshTask?.cancel()
         recentLibraryPreviewRefreshTask = nil
+        configurationGeneration += 1
         isConfiguringSession = false
         isPausedForAnalysis = false
         isPreparingVideoMode = false
         sessionController.stop()
+    }
+
+    func stopForSceneTransition(
+        transitionID: String,
+        phaseLabel: String
+    ) async {
+        let sessionID = sessionController.sessionDiagnosticID
+        LockedCameraDiagnostics.logger.notice(
+            "r4d_main_camera_scene_stop_begin transitionID=\(transitionID, privacy: .public) phase=\(phaseLabel, privacy: .public) session=\(sessionID, privacy: .public) running=\(self.sessionController.session.isRunning, privacy: .public)"
+        )
+
+        recentLibraryPreviewRefreshTask?.cancel()
+        recentLibraryPreviewRefreshTask = nil
+        configurationGeneration += 1
+        isConfiguringSession = false
+        isPreparingVideoMode = false
+        isDepthCaptureReady = false
+        activeSessionConfiguration = nil
+
+        let snapshot = await sessionController.stopAndWait()
+        LockedCameraDiagnostics.logger.notice(
+            "r4d_main_camera_scene_stop_finish transitionID=\(transitionID, privacy: .public) phase=\(phaseLabel, privacy: .public) session=\(snapshot.sessionID, privacy: .public) runningBefore=\(snapshot.wasRunning, privacy: .public) runningAfter=\(snapshot.isRunning, privacy: .public) action=\(snapshot.action.rawValue, privacy: .public)"
+        )
+    }
+
+    func restartAfterSceneTransition() async {
+        guard AVCaptureDevice.authorizationStatus(for: .video) == .authorized else {
+            await start()
+            return
+        }
+
+        let usesExistingSelection = selectedRGBSourceID != nil
+        LockedCameraDiagnostics.logger.notice(
+            "r4d_main_camera_scene_restart_path usesExistingSelection=\(usesExistingSelection, privacy: .public) paused=\(self.isPausedForAnalysis, privacy: .public)"
+        )
+
+        if usesExistingSelection {
+            await configureCurrentSelection()
+        } else {
+            await configureDefaultSelection()
+        }
+
+        if CameraCaptureDataUsePreferences.usesLocationData() {
+            locationProvider.warmLocationCache()
+        }
+        scheduleRecentTAPLibraryPreviewRefresh()
     }
 
     func pauseForAnalysis() {

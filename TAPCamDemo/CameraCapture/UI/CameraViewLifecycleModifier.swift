@@ -105,10 +105,14 @@ struct CameraViewLifecycleModifier: ViewModifier {
             for: phase,
             returnsToCameraOnForeground: CameraRoutePreferences.returnToCameraOnForeground()
         )
+        let transition = lifecycleCoordinator.prepareSceneTransition(
+            phase,
+            startsAutomatically: startsAutomatically,
+            shouldReturnToCameraOnForeground: shouldReturnToCameraOnForeground
+        )
         Task {
-            await lifecycleCoordinator.scenePhaseDidChange(
-                phase,
-                shouldReturnToCameraOnForeground: shouldReturnToCameraOnForeground,
+            await lifecycleCoordinator.performSceneTransition(
+                transition,
                 routeStore: routeStore,
                 viewModel: viewModel,
                 appAttestController: appAttestController

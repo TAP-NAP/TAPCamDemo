@@ -19,7 +19,12 @@ final class CaptureLifecycleCoordinator: ObservableObject {
     nonisolated static let startupCredentialWarmupDelayNanoseconds: UInt64 = 1_500_000_000
     nonisolated static let startupPendingRetryDelayNanoseconds: UInt64 = 1_500_000_000
 
-    nonisolated enum LifecycleAction: Equatable {
+    private static let sceneLogger = Logger(
+        subsystem: "TAP-NAP.TAPCamDemo",
+        category: "MainCameraSceneLifecycle"
+    )
+
+    nonisolated enum LifecycleAction: Equatable, Sendable {
         case startCamera
         case warmPendingCaptureSigningCredential
         case retryPendingCaptures
@@ -31,7 +36,16 @@ final class CaptureLifecycleCoordinator: ObservableObject {
         case stopCamera
     }
 
+    nonisolated struct SceneTransition: Sendable {
+        let generation: Int
+        let transitionID: String
+        let phaseLabel: String
+        let actions: [LifecycleAction]
+    }
+
     private var didLeaveActiveScene = false
+    private var cameraSceneTransitionGeneration = 0
+    private var cameraRequiresRestart = false
 
     nonisolated init() {}
 
@@ -43,7 +57,7 @@ final class CaptureLifecycleCoordinator: ObservableObject {
         for action in Self.initialCameraActions(startsAutomatically: startsAutomatically) {
             switch action {
             case .startCamera:
-                await viewModel.start()
+                await viewModel.restartAfterSceneTransition()
             default:
                 break
             }
@@ -106,6 +120,8 @@ final class CaptureLifecycleCoordinator: ObservableObject {
         viewModel: CameraViewModel,
         chromeOrientation: CameraChromeOrientationController
     ) {
+        cameraSceneTransitionGeneration += 1
+        cameraRequiresRestart = false
         for action in Self.viewDidDisappearActions() {
             switch action {
             case .stopChromeOrientation:
@@ -140,18 +156,82 @@ final class CaptureLifecycleCoordinator: ObservableObject {
     }
 
     @MainActor
-    func scenePhaseDidChange(
+    func prepareSceneTransition(
         _ phase: ScenePhase,
-        shouldReturnToCameraOnForeground: Bool,
+        startsAutomatically: Bool,
+        shouldReturnToCameraOnForeground: Bool
+    ) -> SceneTransition {
+        cameraSceneTransitionGeneration += 1
+        let generation = cameraSceneTransitionGeneration
+        let transitionID = UUID().uuidString
+        let phaseLabel = Self.label(for: phase)
+        let shouldResumeCamera: Bool
+
+        if phase == .active {
+            shouldResumeCamera = startsAutomatically && cameraRequiresRestart
+            cameraRequiresRestart = false
+        } else {
+            cameraRequiresRestart = startsAutomatically
+            shouldResumeCamera = false
+        }
+
+        Self.sceneLogger.notice(
+            "r4d_scene_transition_received transitionID=\(transitionID, privacy: .public) phase=\(phaseLabel, privacy: .public) generation=\(generation, privacy: .public) shouldResumeCamera=\(shouldResumeCamera, privacy: .public)"
+        )
+
+        return SceneTransition(
+            generation: generation,
+            transitionID: transitionID,
+            phaseLabel: phaseLabel,
+            actions: Self.scenePhaseActions(
+                for: phase,
+                shouldReturnToCameraOnForeground: shouldReturnToCameraOnForeground,
+                shouldResumeCamera: shouldResumeCamera
+            )
+        )
+    }
+
+    @MainActor
+    func performSceneTransition(
+        _ transition: SceneTransition,
         routeStore: CameraRouteStore,
         viewModel: CameraViewModel,
         appAttestController: AppAttestRuntimeController
     ) async {
-        for action in Self.scenePhaseActions(
-            for: phase,
-            shouldReturnToCameraOnForeground: shouldReturnToCameraOnForeground
-        ) {
+        for action in transition.actions {
+            let generation = transition.generation
+            let transitionID = transition.transitionID
+            let phaseLabel = transition.phaseLabel
+
+            guard generation == cameraSceneTransitionGeneration else {
+                logSupersededTransition(
+                    transitionID: transitionID,
+                    phaseLabel: phaseLabel,
+                    generation: generation,
+                    stage: "beforeAction"
+                )
+                return
+            }
+
             switch action {
+            case .startCamera:
+                Self.sceneLogger.notice(
+                    "r4d_scene_camera_restart_begin transitionID=\(transitionID, privacy: .public) phase=\(phaseLabel, privacy: .public) session=\(viewModel.sessionController.sessionDiagnosticID, privacy: .public) running=\(viewModel.sessionController.isSessionRunning, privacy: .public)"
+                )
+                await viewModel.restartAfterSceneTransition()
+                let isCurrentTransition = generation == cameraSceneTransitionGeneration
+                Self.sceneLogger.notice(
+                    "r4d_scene_camera_restart_finish transitionID=\(transitionID, privacy: .public) phase=\(phaseLabel, privacy: .public) session=\(viewModel.sessionController.sessionDiagnosticID, privacy: .public) running=\(viewModel.sessionController.isSessionRunning, privacy: .public) current=\(isCurrentTransition, privacy: .public)"
+                )
+                guard isCurrentTransition else {
+                    logSupersededTransition(
+                        transitionID: transitionID,
+                        phaseLabel: phaseLabel,
+                        generation: generation,
+                        stage: "afterStart"
+                    )
+                    return
+                }
             case .restoreCameraRoute:
                 restoreCameraRouteWithoutAnimation(routeStore: routeStore)
             case .loadRecentTAPLibraryPreview:
@@ -161,10 +241,38 @@ final class CaptureLifecycleCoordinator: ObservableObject {
                     viewModel: viewModel,
                     appAttestController: appAttestController
                 )
+            case .stopCamera:
+                await viewModel.stopActiveVideoRecordingForLifecycleIfNeeded(
+                    pendingCaptureWorkerClient: nil
+                )
+                guard generation == cameraSceneTransitionGeneration else {
+                    logSupersededTransition(
+                        transitionID: transitionID,
+                        phaseLabel: phaseLabel,
+                        generation: generation,
+                        stage: "beforeStop"
+                    )
+                    return
+                }
+                await viewModel.stopForSceneTransition(
+                    transitionID: transitionID,
+                    phaseLabel: phaseLabel
+                )
             default:
                 break
             }
         }
+    }
+
+    private func logSupersededTransition(
+        transitionID: String,
+        phaseLabel: String,
+        generation: Int,
+        stage: String
+    ) {
+        Self.sceneLogger.notice(
+            "r4d_scene_transition_superseded transitionID=\(transitionID, privacy: .public) phase=\(phaseLabel, privacy: .public) generation=\(generation, privacy: .public) currentGeneration=\(self.cameraSceneTransitionGeneration, privacy: .public) stage=\(stage, privacy: .public)"
+        )
     }
 
     @MainActor
@@ -246,18 +354,35 @@ final class CaptureLifecycleCoordinator: ObservableObject {
 
     nonisolated static func scenePhaseActions(
         for phase: ScenePhase,
-        shouldReturnToCameraOnForeground: Bool = false
+        shouldReturnToCameraOnForeground: Bool = false,
+        shouldResumeCamera: Bool = false
     ) -> [LifecycleAction] {
         guard phase == .active else {
-            return []
+            return [.stopCamera]
         }
 
         var actions: [LifecycleAction] = []
         if shouldReturnToCameraOnForeground {
             actions.append(.restoreCameraRoute)
         }
+        if shouldResumeCamera {
+            actions.append(.startCamera)
+        }
         actions.append(contentsOf: [.loadRecentTAPLibraryPreview, .retryPendingCaptures])
         return actions
+    }
+
+    nonisolated private static func label(for phase: ScenePhase) -> String {
+        switch phase {
+        case .active:
+            "active"
+        case .inactive:
+            "inactive"
+        case .background:
+            "background"
+        @unknown default:
+            "unknown"
+        }
     }
 
     nonisolated static func credentialPreparationActions(

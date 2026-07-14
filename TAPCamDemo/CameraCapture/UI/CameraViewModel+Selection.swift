@@ -7,6 +7,7 @@
 
 @preconcurrency import AVFoundation
 import Foundation
+import OSLog
 
 /// Selection planning for the SingleCam screen.
 ///
@@ -206,7 +207,9 @@ extension CameraViewModel {
             ))
 
             guard generation == configurationGeneration, !isPausedForAnalysis else {
-                sessionController.stop()
+                LockedCameraDiagnostics.logger.notice(
+                    "r4d_main_camera_stale_config_ignored generation=\(generation, privacy: .public) currentGeneration=\(self.configurationGeneration, privacy: .public) paused=\(self.isPausedForAnalysis, privacy: .public)"
+                )
                 return
             }
 

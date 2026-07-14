@@ -815,3 +815,51 @@ R4D 的单变量是 containing App camera ownership。Extension、公开 `openAp
 - **R4D-U（已解锁系统遮罩）**：主 App -> 下拉通知/系统遮罩 -> 点击 Control；这是 `CameraCaptureIntent.perform()` 的 containing-App 路径，不用于证明 Locked Capture Extension 是否启动。
 
 R4D-L 通过条件是：主 App 离开 active 后系统日志确认其 camera client 不再 active，并且 Open 返回后连续十轮第一次启动 Extension 都不 freeze。若 camera 已确定释放但仍 freeze，才继续隔离 R3 manager stream 或 App status-bar/safe-area；不得同时修改这些变量。
+
+### R4D 实现：build 12
+
+R4D 已按上述单变量实现，没有修改 Capture Extension、Open 控件、activity、R3 importer、静态 landing 或状态栏布局：
+
+- `CaptureLifecycleCoordinator.scenePhaseActions` 在 `.inactive` 和 `.background` 返回 `.stopCamera`；
+- scene callback 同步生成 UUID、递增 generation 并冻结 transition token，异步 Task 只执行该 token；每个 action 前以及异步 camera restart 返回后都再次校验 generation，较旧的 transition 不再继续改 route、刷新 preview 或启动 pending worker，只记录 `r4d_scene_transition_superseded`；
+- 录像场景先完成本地 recording finalization/ingest，再释放 session，但 lifecycle stop 不等待签名或网络 worker；
+- `CaptureSessionController.stopAndWait()` 把 `stopRunning()` 排入唯一 serial session queue，并在它返回后才恢复 continuation；
+- stop snapshot 记录同一个 session identity、`runningBefore`、`runningAfter` 和 `stopped|alreadyStopped`；
+- scene 恢复 active 且 camera root 仍存在时，使用当前 lens/FOV selection 重建 session，不强制切回默认镜头；
+- 被新 generation 取代的旧 configure completion 只丢弃结果并记录 `r4d_main_camera_stale_config_ignored`，不再向 serial queue 追加一个可能停掉新 session 的过期 stop；
+- `CameraView.onChange(scenePhase)` 只保留 UI 状态与 haptic/readiness 行为，不再并行发起第二条录像 stop 路径。
+
+期望的主 App 相机日志顺序：
+
+```text
+r4d_scene_transition_received ... phase=inactive|background generation=N
+-> r4d_main_camera_scene_stop_begin ... session=0x... running=true|false
+-> r4d_main_camera_scene_stop_finish ... same session ... runningAfter=false
+```
+
+普通系统遮罩关闭且 CameraView 仍是当前 root 时，可以随后出现：
+
+```text
+r4d_scene_transition_received ... phase=active generation=N+1 shouldResumeCamera=true
+-> r4d_scene_camera_restart_begin ... running=false
+-> r4d_main_camera_scene_restart_path usesExistingSelection=true|false
+-> r4d_scene_camera_restart_finish ... running=true current=true
+```
+
+Locked activity 已把 root 切到 R4C 静态 landing 后，不应再出现来自旧 CameraView 的 restart marker。连续的 `.inactive -> .background` 可能产生第二个 `alreadyStopped`，这是幂等确认，不是失败。
+
+R4D 对 UI 假设的处理是“保留但后置”，不是排除。主 App 当前确实隐藏 status bar 并占用顶部 safe area；但设备日志已经给出更直接的 camera ownership 证据，代码中也存在对应生命周期缺口。因此 build 12 先只修 camera ownership。若 R4D 日志确认 camera client 已释放而 freeze 仍复现，才把状态栏/Dynamic Island 邻域布局作为后续单变量实验。
+
+### R4D 本地验证
+
+2026-07-15 对 build `12` 完成以下本地检查，未安装或操作设备：
+
+- generic iOS Simulator `build-for-testing` 在 `CODE_SIGNING_ALLOWED=NO` 下通过；
+- lifecycle policy/source-contract tests 已编译；CoreSimulatorService 当前不可访问，因此未执行测试进程；
+- Release generic iOS device build 在 `CODE_SIGNING_ALLOWED=NO` 下通过；
+- `git diff --check` 通过；
+- 最终主 App、Capture Extension、Control Extension 的 `CFBundleVersion` 均为 `12`，`MinimumOSVersion` 均为 `18.6`；
+- 最终 Capture Extension metadata 为 `EXAppExtensionAttributes.EXExtensionPointIdentifier = com.apple.securecapture`；
+- source scan 仍只有 `TAPCamLockedCameraOpenControl` 中一处公开 `openApplication(for:)`，没有非公开 transition-completion API；
+- Release 主 App 二进制包含完整 `r4d_*` stop/restart marker，且 `.app` 中没有 Markdown/TXT 实验文档；
+- 真机结论仍必须使用 R4D-L 流程从 Xcode 安装 Release 后取得，不能由本地编译代替。

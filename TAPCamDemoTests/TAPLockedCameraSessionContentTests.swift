@@ -6,8 +6,8 @@
 import Foundation
 import Testing
 
-@Suite("Locked camera R4C source contract")
-struct TAPLockedCameraR4CSourceContractTests {
+@Suite("Locked camera R4D source contract")
+struct TAPLockedCameraR4DSourceContractTests {
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
     func captureExtensionOwnsOneLongLivedCameraModel() throws {
         let extensionSource = try source(
@@ -226,6 +226,46 @@ struct TAPLockedCameraR4CSourceContractTests {
         #expect(!startupSource.contains("LockedCameraAppContextPublisher"))
         #expect(!infoPlistSource.contains("CFBundleURLTypes"))
         #expect(!infoPlistSource.contains("tapcamdemo"))
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func containingAppAwaitsCameraStopWhenItsSceneLeavesActive() throws {
+        let lifecycleSource = try source(
+            "TAPCamDemo/CameraCapture/UI/CaptureLifecycleCoordinator.swift"
+        )
+        let viewModelSource = try source(
+            "TAPCamDemo/CameraCapture/UI/CameraViewModel.swift"
+        )
+        let sessionSource = try source(
+            "TAPCamDemo/CameraCapture/Runtime/CaptureSessionController.swift"
+        )
+        let cameraViewSource = try source(
+            "TAPCamDemo/CameraCapture/UI/CameraView.swift"
+        )
+        let selectionSource = try source(
+            "TAPCamDemo/CameraCapture/UI/CameraViewModel+Selection.swift"
+        )
+
+        #expect(lifecycleSource.contains("guard phase == .active else"))
+        #expect(lifecycleSource.contains("return [.stopCamera]"))
+        #expect(lifecycleSource.contains("cameraSceneTransitionGeneration"))
+        #expect(lifecycleSource.contains("func prepareSceneTransition("))
+        #expect(lifecycleSource.contains("func performSceneTransition("))
+        #expect(lifecycleSource.contains("generation == cameraSceneTransitionGeneration"))
+        #expect(lifecycleSource.contains("stage: \"beforeAction\""))
+        #expect(lifecycleSource.contains("stage: \"afterStart\""))
+        #expect(lifecycleSource.contains("await viewModel.stopForSceneTransition("))
+        #expect(lifecycleSource.contains("await viewModel.restartAfterSceneTransition()"))
+        #expect(lifecycleSource.contains("r4d_scene_transition_superseded"))
+        #expect(viewModelSource.contains("await sessionController.stopAndWait()"))
+        #expect(viewModelSource.contains("r4d_main_camera_scene_stop_finish"))
+        #expect(viewModelSource.contains("await configureCurrentSelection()"))
+        #expect(viewModelSource.contains("await configureDefaultSelection()"))
+        #expect(sessionSource.contains("func stopAndWait() async -> CaptureSessionStopSnapshot"))
+        #expect(sessionSource.contains("withCheckedContinuation"))
+        #expect(sessionSource.contains("session.stopRunning()"))
+        #expect(!cameraViewSource.contains("stopActiveVideoRecordingForLifecycleIfNeeded"))
+        #expect(selectionSource.contains("r4d_main_camera_stale_config_ignored"))
     }
 
     private func source(_ relativePath: String) throws -> String {

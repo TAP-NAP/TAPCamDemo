@@ -101,14 +101,24 @@ struct TAPCameraCapturePresentationTests {
         ])
         #expect(CaptureLifecycleCoordinator.scenePhaseActions(
             for: .active,
-            shouldReturnToCameraOnForeground: true
+            shouldReturnToCameraOnForeground: true,
+            shouldResumeCamera: true
         ) == [
             .restoreCameraRoute,
+            .startCamera,
             .loadRecentTAPLibraryPreview,
             .retryPendingCaptures
         ])
-        #expect(CaptureLifecycleCoordinator.scenePhaseActions(for: .inactive) == [])
-        #expect(CaptureLifecycleCoordinator.scenePhaseActions(for: .background) == [])
+        #expect(CaptureLifecycleCoordinator.scenePhaseActions(
+            for: .active,
+            shouldResumeCamera: true
+        ) == [
+            .startCamera,
+            .loadRecentTAPLibraryPreview,
+            .retryPendingCaptures
+        ])
+        #expect(CaptureLifecycleCoordinator.scenePhaseActions(for: .inactive) == [.stopCamera])
+        #expect(CaptureLifecycleCoordinator.scenePhaseActions(for: .background) == [.stopCamera])
 
         #expect(CaptureLifecycleCoordinator.credentialPreparationActions(
             wasPreparing: true,

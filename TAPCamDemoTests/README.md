@@ -136,7 +136,7 @@ warmup, or pending queue processing. This avoids the AI/CI hang pattern caused
 by app startup side effects during tests.
 
 [TAPLockedCameraSessionContentTests.swift](TAPLockedCameraSessionContentTests.swift)
-is the simulator-safe Locked Camera Capture POC source-contract entry. R4C keeps
+is the simulator-safe Locked Camera Capture POC source-contract entry. R4D keeps
 the passed R1/R2B camera, atomic flat-HEIC storage, and R3 importer boundaries,
 while requiring the main App to consume `.initial` and `.added` from `sessionContentUpdates`,
 upgrade each depth HEIC to an unsigned TAP artifact, ingest the existing pending
@@ -144,11 +144,14 @@ store, and invalidate only after successful ingest. The suite explicitly rejects
 the previous session-URL polling, fixed sleeps, appearance-delay calls, and
 handoff-triggered Library import. R4C additionally permits exactly one public
 `openApplication(for:)` call behind the visible Open control, verifies the system
-locked-camera activity type, and requires the App root to use a static diagnostic
+locked-camera activity type, requires the App root to use a static diagnostic
 landing that creates neither `CameraView` nor `DepthAlbumPickerView`. It rejects
 PhotoKit, Library loading, pending-worker work, camera stop, file work, importer
 access, delays, or session invalidation from that landing or the Extension button. It
-does not replace real-device authentication, App transition, subsequent Extension
+also requires the containing App camera to await `stopRunning()` on its serial
+session queue when the camera scene leaves active, and uses a transition generation
+gate before restarting on active. The suite does not replace real-device
+authentication, App transition, subsequent Extension
 launch, session migration, positive depth-HEIC packaging, or signing/export validation.
 
 ## Shared Fixtures

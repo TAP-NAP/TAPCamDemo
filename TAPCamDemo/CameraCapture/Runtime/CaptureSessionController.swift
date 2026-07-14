@@ -21,6 +21,18 @@ nonisolated enum CaptureSessionExposureRuntimeEvent: Equatable, Sendable {
     case exposureSettled
 }
 
+nonisolated struct CaptureSessionStopSnapshot: Equatable, Sendable {
+    nonisolated enum Action: String, Equatable, Sendable {
+        case stopped
+        case alreadyStopped
+    }
+
+    let sessionID: String
+    let wasRunning: Bool
+    let isRunning: Bool
+    let action: Action
+}
+
 /// Owns the managed SingleCam `AVCaptureSession` and its mutation queue.
 ///
 /// This is the only production type that changes the AVFoundation session
@@ -59,6 +71,14 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
 
     var isShutterSoundSuppressionSupported: Bool {
         photoOutput.isShutterSoundSuppressionSupported
+    }
+
+    var sessionDiagnosticID: String {
+        Self.diagnosticID(for: session)
+    }
+
+    var isSessionRunning: Bool {
+        session.isRunning
     }
 
     func setFocusRuntimeEventHandler(
@@ -162,22 +182,48 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             "r4c_main_session_stop_enqueued running=\(self.session.isRunning)"
         )
         sessionQueue.async { [self, session, photoOutput] in
-            guard session.isRunning else {
-                Self.lifecycleLogger.notice(
-                    "r4c_main_session_stop_finished running=false action=alreadyStopped"
-                )
-                return
+            let snapshot = stopSessionLocked(session: session, photoOutput: photoOutput)
+            Self.lifecycleLogger.notice(
+                "r4c_main_session_stop_finished running=\(snapshot.isRunning) action=\(snapshot.action.rawValue, privacy: .public)"
+            )
+        }
+    }
+
+    func stopAndWait() async -> CaptureSessionStopSnapshot {
+        await withCheckedContinuation { continuation in
+            sessionQueue.async { [self, session, photoOutput] in
+                continuation.resume(returning: stopSessionLocked(
+                    session: session,
+                    photoOutput: photoOutput
+                ))
             }
+        }
+    }
+
+    private func stopSessionLocked(
+        session: AVCaptureSession,
+        photoOutput: AVCapturePhotoOutput
+    ) -> CaptureSessionStopSnapshot {
+        let wasRunning = session.isRunning
+        if wasRunning {
             discardPreparedVideoRecordingGraphLocked(
                 session: session,
                 reason: "stop"
             )
             photoOutput.setPreparedPhotoSettingsArray([], completionHandler: nil)
             session.stopRunning()
-            Self.lifecycleLogger.notice(
-                "r4c_main_session_stop_finished running=\(session.isRunning) action=stopped"
-            )
         }
+
+        return CaptureSessionStopSnapshot(
+            sessionID: Self.diagnosticID(for: session),
+            wasRunning: wasRunning,
+            isRunning: session.isRunning,
+            action: wasRunning ? .stopped : .alreadyStopped
+        )
+    }
+
+    private static func diagnosticID(for session: AVCaptureSession) -> String {
+        String(describing: Unmanaged.passUnretained(session).toOpaque())
     }
 
     func capturePhoto(
