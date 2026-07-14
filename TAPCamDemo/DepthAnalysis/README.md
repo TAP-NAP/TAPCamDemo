@@ -27,6 +27,13 @@ queue for signing, Photos export, retry, and cleanup. The user-facing TAP
 Library grid and viewer path is `DepthAlbumPickerView` -> `DepthAnalysisView`
 inside this module.
 
+Photo and TAP Video viewers intentionally share one interaction vocabulary:
+Back, Share, Delete, and the centered icon-only `RAW` / `2D` / `3D` capsule
+come from the same chrome components. Video adds an app-owned transport above
+that row, enables `2D` only when registration is complete, and keeps `3D`
+visible but disabled. Its visual surface is `AVPlayerLayer`-backed; it does not
+embed interactive SwiftUI controls in an `AVPlayerViewController` overlay.
+
 ## Code Map
 
 | Responsibility | Code |
@@ -39,9 +46,11 @@ inside this module.
 | TAP Library item loading, pending/exported/Photos merge, route anchors, and item cache keys | [DepthAlbumItemProvider.swift](DepthAlbumItemProvider.swift) |
 | Main analysis screen shell, UIKit paged-scroll carousel, centered `RAW` / `2D` / `3D` surfaces, RAW zoom scroll view, 18pt page gap, left-edge return, and route callbacks | [DepthAnalysisView.swift](DepthAnalysisView.swift) |
 | Pure viewer policy for left-edge return thresholds, native page spacing, centered aspect-fit tool containers, and aspect-fit rects | [DepthAnalysisViewerInteractionPolicy.swift](DepthAnalysisViewerInteractionPolicy.swift) |
-| Stable full-screen viewer chrome above the photo carousel | [DepthAnalysisViewerChromeView.swift](DepthAnalysisViewerChromeView.swift) |
+| Stable full-screen viewer chrome shared by Photo and TAP Video, including Back, Share, Delete, a generic bottom accessory slot, and the shared mode capsule | [DepthAnalysisViewerChromeView.swift](DepthAnalysisViewerChromeView.swift), [DepthAnalysisControlsView.swift](DepthAnalysisControlsView.swift) |
+| TAP Video viewer state, shared Photo/Video chrome composition, RAW/2D/disabled-3D policy, custom Play/Pause and scrubber transport, Share/Delete, and PiP/AirPlay fallback to RAW | [TAPVideoDepthPlaybackView.swift](TAPVideoDepthPlaybackView.swift) |
+| Noninteractive `AVPlayerLayer` video surface, `videoRect`-aligned depth overlay, PiP player-layer seam, and external-playback observation | [TAPVideoDepthPlaybackSupport.swift](TAPVideoDepthPlaybackSupport.swift) |
 | Central visual stage for RGB, heatmap, mask, planes, internal point projection, region gestures, and plane seed taps | [DepthAnalysisStageView.swift](DepthAnalysisStageView.swift) |
-| Bottom-left Share, centered icon-only `RAW` / `2D` / `3D` capsule, and bottom-right Delete | [DepthAnalysisViewerChromeView.swift](DepthAnalysisViewerChromeView.swift), [DepthAnalysisControlsView.swift](DepthAnalysisControlsView.swift) |
+| Bottom-left Share, centered icon-only `RAW` / `2D` / `3D` capsule, and bottom-right Delete shared by Photo and TAP Video | [DepthAnalysisViewerChromeView.swift](DepthAnalysisViewerChromeView.swift), [DepthAnalysisControlsView.swift](DepthAnalysisControlsView.swift) |
 | System share entry for verification-original exports | [DepthAnalysisView.swift](DepthAnalysisView.swift), [VerificationExportActivityView.swift](VerificationExportActivityView.swift) |
 | App Attest capture-signature verification service and public-safe report model | [AppAttestSignatureVerification.swift](AppAttestSignatureVerification.swift) |
 | App Attest capture-signature verification panel | [AppAttestSignatureVerificationPanel.swift](AppAttestSignatureVerificationPanel.swift) |

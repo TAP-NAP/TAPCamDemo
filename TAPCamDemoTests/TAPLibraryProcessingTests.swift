@@ -300,6 +300,44 @@ struct TAPLibraryProcessingTests {
         #expect(TAPPendingCaptureRetryClassifier.status(for: localizedOnlyError) == .failedRetryable)
     }
 
+    @Test func photoLibraryRequestIDBridgeCancelsOnceWhenCancellationPrecedesInstall() {
+        let recorder = PhotoLibraryRequestCancellationRecorder()
+        let bridge = PhotoLibraryRequestIDCancellationBridge<Int>(
+            cancelRequest: { recorder.record($0) }
+        )
+
+        bridge.requestCancellation()
+        bridge.requestCancellation()
+        bridge.install(requestID: 41)
+        bridge.install(requestID: 99)
+        bridge.requestCancellation()
+
+        #expect(recorder.requestIDs == [41])
+    }
+
+    @Test func photoLibraryRequestIDBridgeCancelsOnceWhenFinishPrecedesInstall() {
+        let recorder = PhotoLibraryRequestCancellationRecorder()
+        let bridge = PhotoLibraryRequestIDCancellationBridge<Int>(
+            cancelRequest: { recorder.record($0) }
+        )
+
+        bridge.markFinished()
+        bridge.markFinished()
+        bridge.install(requestID: 52)
+        bridge.install(requestID: 73)
+        bridge.requestCancellation()
+
+        #expect(recorder.requestIDs == [52])
+
+        let installFirstRecorder = PhotoLibraryRequestCancellationRecorder()
+        let installFirstBridge = PhotoLibraryRequestIDCancellationBridge<Int>(
+            cancelRequest: { installFirstRecorder.record($0) }
+        )
+        installFirstBridge.install(requestID: 84)
+        installFirstBridge.markFinished()
+        #expect(installFirstRecorder.requestIDs.isEmpty)
+    }
+
     @Test func pendingCaptureFailureReasonPresentationOmitsRawIdentifiersAndPaths() throws {
         let reasons = [
             TAPPendingCaptureFailureReasonPresentation.persistedFailureReason(
@@ -408,6 +446,282 @@ struct TAPLibraryProcessingTests {
         }
     }
 
+    @Test func videoReadbackTransportFailureKeepsCommittedAssetInRecovery() async throws {
+        let store = TAPPendingCaptureStore(rootURL: try TAPCamDemoTestFixtures.makeTemporaryDirectory())
+        let pending = try await TAPCamDemoTestFixtures.ingestPendingTAPVideo(
+            store: store,
+            captureID: "video-readback-transport"
+        )
+        _ = try await store.markVideoSigned(captureID: pending.captureID)
+        _ = try await store.markVideoPhotosExportIntent(captureID: pending.captureID)
+        _ = try await store.markVideoPhotosCommitAmbiguous(captureID: pending.captureID)
+        let committed = try await store.markVideoPhotosCommit(
+            captureID: pending.captureID,
+            assetLocalIdentifier: "committed-video-asset"
+        )
+        let videoActions = RecordingVideoExportActions(
+            candidates: ["must-not-query-candidates"],
+            readbackResult: .transportFailure
+        )
+        let processor = TAPPendingCaptureProcessor()
+
+        await processor.processPendingCaptures(
+            store: store,
+            signer: RecordingPendingCaptureSigner(),
+            exporter: PhotoLibraryPendingCaptureExporter(videoActions: videoActions.actions()),
+            protectedDataIsAvailable: { true }
+        )
+
+        let recovered = try await store.readRecord(captureID: committed.captureID)
+        #expect(recovered.status == .exporting)
+        #expect(recovered.assetLocalIdentifier == "committed-video-asset")
+        #expect(recovered.retryCount == 1)
+        #expect(await videoActions.candidatePackageIDs().isEmpty)
+        #expect(await videoActions.savedCaptureIDs().isEmpty)
+        #expect(await videoActions.validatedAssetIDs() == ["committed-video-asset"])
+    }
+
+    @Test func videoReadbackDecodingFailureIsTerminalIntegrityFailure() async throws {
+        let store = TAPPendingCaptureStore(rootURL: try TAPCamDemoTestFixtures.makeTemporaryDirectory())
+        let pending = try await TAPCamDemoTestFixtures.ingestPendingTAPVideo(
+            store: store,
+            captureID: "video-readback-integrity"
+        )
+        _ = try await store.markVideoSigned(captureID: pending.captureID)
+        _ = try await store.markVideoPhotosExportIntent(captureID: pending.captureID)
+        _ = try await store.markVideoPhotosCommitAmbiguous(captureID: pending.captureID)
+        _ = try await store.markVideoPhotosCommit(
+            captureID: pending.captureID,
+            assetLocalIdentifier: "corrupt-video-asset"
+        )
+        let videoActions = RecordingVideoExportActions(
+            candidates: [],
+            readbackResult: .decodingIntegrityFailure
+        )
+
+        await TAPPendingCaptureProcessor().processPendingCaptures(
+            store: store,
+            signer: RecordingPendingCaptureSigner(),
+            exporter: PhotoLibraryPendingCaptureExporter(videoActions: videoActions.actions()),
+            protectedDataIsAvailable: { true }
+        )
+
+        let failed = try await store.readRecord(captureID: pending.captureID)
+        #expect(failed.status == .failedTerminal)
+        #expect(failed.failureCode == .photosReadbackFailed)
+        #expect(failed.assetLocalIdentifier == "corrupt-video-asset")
+        #expect(await videoActions.savedCaptureIDs().isEmpty)
+    }
+
+    @Test func interruptedVideoExportWithNoCandidateNeverCreatesAnotherAsset() async throws {
+        let store = TAPPendingCaptureStore(rootURL: try TAPCamDemoTestFixtures.makeTemporaryDirectory())
+        let pending = try await TAPCamDemoTestFixtures.ingestPendingTAPVideo(
+            store: store,
+            captureID: "video-empty-recovery"
+        )
+        _ = try await store.markVideoSigned(captureID: pending.captureID)
+        _ = try await store.markVideoPhotosExportIntent(captureID: pending.captureID)
+        _ = try await store.markVideoPhotosCommitAmbiguous(captureID: pending.captureID)
+        let videoActions = RecordingVideoExportActions(
+            candidates: [],
+            readbackResult: .success
+        )
+
+        await TAPPendingCaptureProcessor().processPendingCaptures(
+            store: store,
+            signer: RecordingPendingCaptureSigner(),
+            exporter: PhotoLibraryPendingCaptureExporter(videoActions: videoActions.actions()),
+            protectedDataIsAvailable: { true }
+        )
+
+        let recovery = try await store.readRecord(captureID: pending.captureID)
+        #expect(recovery.status == .exporting)
+        #expect(recovery.assetLocalIdentifier == nil)
+        #expect(recovery.retryCount == 1)
+        #expect(await videoActions.candidatePackageIDs() == [pending.packageID])
+        #expect(await videoActions.savedCaptureIDs().isEmpty)
+        #expect(await videoActions.validatedAssetIDs().isEmpty)
+    }
+
+    @Test func interruptedVideoExportChoosesEarliestValidCandidateAndWarnsOnDuplicates() async throws {
+        let store = TAPPendingCaptureStore(rootURL: try TAPCamDemoTestFixtures.makeTemporaryDirectory())
+        let pending = try await TAPCamDemoTestFixtures.ingestPendingTAPVideo(
+            store: store,
+            captureID: "video-duplicate-recovery"
+        )
+        _ = try await store.markVideoSigned(captureID: pending.captureID)
+        _ = try await store.markVideoPhotosExportIntent(captureID: pending.captureID)
+        _ = try await store.markVideoPhotosCommitAmbiguous(captureID: pending.captureID)
+        let videoActions = RecordingVideoExportActions(
+            candidates: ["earliest-valid-asset", "later-valid-asset"],
+            readbackResult: .success
+        )
+
+        await TAPPendingCaptureProcessor().processPendingCaptures(
+            store: store,
+            signer: RecordingPendingCaptureSigner(),
+            exporter: PhotoLibraryPendingCaptureExporter(videoActions: videoActions.actions()),
+            protectedDataIsAvailable: { true }
+        )
+
+        let exported = try await store.readRecord(captureID: pending.captureID)
+        #expect(exported.status == .exported)
+        #expect(exported.assetLocalIdentifier == "earliest-valid-asset")
+        #expect(exported.duplicateExportWarning != nil)
+        #expect(await videoActions.candidatePackageIDs() == [pending.packageID])
+        #expect(await videoActions.savedCaptureIDs().isEmpty)
+        #expect(await videoActions.validatedAssetIDs() == [
+            "earliest-valid-asset",
+            "later-valid-asset"
+        ])
+    }
+
+    @Test func preCommitVideoExportCrashCanSafelyCreateAfterRestart() async throws {
+        let store = TAPPendingCaptureStore(rootURL: try TAPCamDemoTestFixtures.makeTemporaryDirectory())
+        let pending = try await TAPCamDemoTestFixtures.ingestPendingTAPVideo(
+            store: store,
+            captureID: "video-pre-commit-crash"
+        )
+        _ = try await store.markVideoSigned(captureID: pending.captureID)
+        let interruptedActions = RecordingVideoExportActions(
+            candidates: ["must-not-recover-before-commit"],
+            readbackResult: .success,
+            saveResult: .transportFailureBeforeCommit
+        )
+
+        await TAPPendingCaptureProcessor().processPendingCaptures(
+            store: store,
+            signer: RecordingPendingCaptureSigner(),
+            exporter: PhotoLibraryPendingCaptureExporter(
+                videoActions: interruptedActions.actions()
+            ),
+            protectedDataIsAvailable: { true }
+        )
+
+        let intent = try await store.readRecord(captureID: pending.captureID)
+        #expect(intent.status == .waitingNetwork)
+        #expect(intent.videoPhotosExportPhase == .preCommitIntent)
+        #expect(intent.assetLocalIdentifier == nil)
+        #expect(!intent.shouldAttemptExistingAssetRecoveryBeforeExport)
+        #expect(await interruptedActions.candidatePackageIDs().isEmpty)
+        #expect(await interruptedActions.savedCaptureIDs() == [pending.captureID])
+
+        let restartedActions = RecordingVideoExportActions(
+            candidates: ["must-still-not-recover-before-commit"],
+            readbackResult: .success
+        )
+        await TAPPendingCaptureProcessor().processPendingCaptures(
+            store: store,
+            signer: RecordingPendingCaptureSigner(),
+            exporter: PhotoLibraryPendingCaptureExporter(
+                videoActions: restartedActions.actions()
+            ),
+            protectedDataIsAvailable: { true }
+        )
+
+        let exported = try await store.readRecord(captureID: pending.captureID)
+        #expect(exported.status == .exported)
+        #expect(exported.videoPhotosExportPhase == .committed)
+        #expect(exported.assetLocalIdentifier == "created-\(pending.captureID)")
+        #expect(await restartedActions.candidatePackageIDs().isEmpty)
+        #expect(await restartedActions.savedCaptureIDs() == [pending.captureID])
+        #expect(await restartedActions.validatedAssetIDs() == ["created-\(pending.captureID)"])
+    }
+
+    @Test func postCommitVideoExportCrashOnlyRecoversAndNeverCreatesAgain() async throws {
+        let store = TAPPendingCaptureStore(rootURL: try TAPCamDemoTestFixtures.makeTemporaryDirectory())
+        let pending = try await TAPCamDemoTestFixtures.ingestPendingTAPVideo(
+            store: store,
+            captureID: "video-post-commit-crash"
+        )
+        _ = try await store.markVideoSigned(captureID: pending.captureID)
+        let interruptedActions = RecordingVideoExportActions(
+            candidates: [],
+            readbackResult: .success,
+            saveResult: .transportFailureAfterCommit
+        )
+
+        await TAPPendingCaptureProcessor().processPendingCaptures(
+            store: store,
+            signer: RecordingPendingCaptureSigner(),
+            exporter: PhotoLibraryPendingCaptureExporter(
+                videoActions: interruptedActions.actions()
+            ),
+            protectedDataIsAvailable: { true }
+        )
+
+        let ambiguous = try await store.readRecord(captureID: pending.captureID)
+        #expect(ambiguous.status == .exporting)
+        #expect(ambiguous.videoPhotosExportPhase == .commitAmbiguous)
+        #expect(ambiguous.assetLocalIdentifier == nil)
+        #expect(ambiguous.shouldAttemptExistingAssetRecoveryBeforeExport)
+        #expect(await interruptedActions.savedCaptureIDs() == [pending.captureID])
+
+        let restartedActions = RecordingVideoExportActions(
+            candidates: ["recovered-post-commit-asset"],
+            readbackResult: .success
+        )
+        await TAPPendingCaptureProcessor().processPendingCaptures(
+            store: store,
+            signer: RecordingPendingCaptureSigner(),
+            exporter: PhotoLibraryPendingCaptureExporter(
+                videoActions: restartedActions.actions()
+            ),
+            protectedDataIsAvailable: { true }
+        )
+
+        let exported = try await store.readRecord(captureID: pending.captureID)
+        #expect(exported.status == .exported)
+        #expect(exported.videoPhotosExportPhase == .committed)
+        #expect(exported.assetLocalIdentifier == "recovered-post-commit-asset")
+        #expect(await restartedActions.candidatePackageIDs() == [pending.packageID])
+        #expect(await restartedActions.savedCaptureIDs().isEmpty)
+        #expect(await restartedActions.validatedAssetIDs() == ["recovered-post-commit-asset"])
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable))
+    func reconcileNeverUsesSignedPhotoLookupForTAPVideo() throws {
+        let source = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/TAPLibrary/TAPPendingCaptureProcessor.swift"
+        )
+        let reconcile = try #require(TAPCamDemoTestSourceInspection.substring(
+            in: source,
+            from: "func reconcile(",
+            to: "private func process("
+        ))
+
+        #expect(reconcile.contains("if record.artifactKind == .photoDepth,"))
+        #expect(reconcile.contains("let assetID = try? await PhotoLibraryWriter.depthAssetIdentifier("))
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable))
+    func videoCommitAmbiguousBoundaryImmediatelyPrecedesPhotosPerformChanges() throws {
+        let source = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/Output/PhotoLibraryWriter.swift"
+        )
+        let createVideoAsset = try #require(TAPCamDemoTestSourceInspection.substring(
+            in: source,
+            from: "private static func createVideoAsset(",
+            to: "private static func fetchAlbum("
+        ))
+
+        #expect(createVideoAsset.contains(
+            "try await commitWillBegin()\n        try await PHPhotoLibrary.shared().performChanges {"
+        ))
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable))
+    func photoLibraryWriterResourceRequestInstallBridgesShareCancellationState() throws {
+        let source = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/Output/PhotoLibraryWriter.swift"
+        )
+        let installSignature = "private func install(requestID: PHAssetResourceDataRequestID)"
+        let bridgeDelegation = "requestIDBridge.install(requestID: requestID)"
+
+        #expect(source.components(separatedBy: installSignature).count - 1 == 2)
+        #expect(source.components(separatedBy: bridgeDelegation).count - 1 == 2)
+    }
+
 }
 
 private actor RecordingPendingCaptureSigner: TAPPendingCaptureSigning {
@@ -498,6 +812,126 @@ private actor RecordingPhotoLibraryExportActions {
 
     private func recordSave(_ captureID: String) {
         savedIDs.append(captureID)
+    }
+}
+
+private enum RecordingVideoReadbackResult: Sendable {
+    case success
+    case transportFailure
+    case decodingIntegrityFailure
+}
+
+private enum RecordingVideoSaveResult: Sendable {
+    case success
+    case transportFailureBeforeCommit
+    case transportFailureAfterCommit
+}
+
+private actor RecordingVideoExportActions {
+    private let candidates: [String]
+    private let readbackResult: RecordingVideoReadbackResult
+    private let saveResult: RecordingVideoSaveResult
+    private var candidatePackages: [UUID] = []
+    private var savedCaptures: [String] = []
+    private var validatedAssets: [String] = []
+
+    init(
+        candidates: [String],
+        readbackResult: RecordingVideoReadbackResult,
+        saveResult: RecordingVideoSaveResult = .success
+    ) {
+        self.candidates = candidates
+        self.readbackResult = readbackResult
+        self.saveResult = saveResult
+    }
+
+    nonisolated func actions() -> PhotoLibraryPendingVideoExportActions {
+        PhotoLibraryPendingVideoExportActions(
+            candidateIdentifiers: { packageID in
+                await self.recordCandidateLookup(packageID)
+            },
+            validateLocalFile: { fileURL, _ in
+                ValidatedTAPVideoFile(
+                    fileURL: fileURL,
+                    manifest: try TAPVideoManifestBox.decodedManifest(fromFileAt: fileURL)
+                )
+            },
+            saveVideoFile: { _, record, _, commitWillBegin in
+                try await self.recordSave(
+                    record.captureID,
+                    commitWillBegin: commitWillBegin
+                )
+            },
+            validateReadback: { assetID, _ in
+                try await self.recordValidation(assetID)
+            }
+        )
+    }
+
+    func candidatePackageIDs() -> [UUID] {
+        candidatePackages
+    }
+
+    func savedCaptureIDs() -> [String] {
+        savedCaptures
+    }
+
+    func validatedAssetIDs() -> [String] {
+        validatedAssets
+    }
+
+    private func recordCandidateLookup(_ packageID: UUID) -> [String] {
+        candidatePackages.append(packageID)
+        return candidates
+    }
+
+    private func recordSave(
+        _ captureID: String,
+        commitWillBegin: PhotoLibraryPendingVideoCommitBoundary
+    ) async throws -> String {
+        savedCaptures.append(captureID)
+        switch saveResult {
+        case .success:
+            try await commitWillBegin()
+            return "created-\(captureID)"
+        case .transportFailureBeforeCommit:
+            throw URLError(.networkConnectionLost)
+        case .transportFailureAfterCommit:
+            try await commitWillBegin()
+            throw URLError(.networkConnectionLost)
+        }
+    }
+
+    private func recordValidation(_ assetID: String) throws {
+        validatedAssets.append(assetID)
+        switch readbackResult {
+        case .success:
+            return
+        case .transportFailure:
+            throw URLError(.networkConnectionLost)
+        case .decodingIntegrityFailure:
+            throw DecodingError.dataCorrupted(.init(
+                codingPath: [],
+                debugDescription: "signed video manifest JSON is corrupt"
+            ))
+        }
+    }
+}
+
+nonisolated private final class PhotoLibraryRequestCancellationRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recordedRequestIDs: [Int] = []
+
+    var requestIDs: [Int] {
+        lock.lock()
+        defer { lock.unlock() }
+        return recordedRequestIDs
+    }
+
+    func record(_ requestID: Int) {
+        lock.lock()
+        recordedRequestIDs.append(requestID)
+        lock.unlock()
     }
 }
 

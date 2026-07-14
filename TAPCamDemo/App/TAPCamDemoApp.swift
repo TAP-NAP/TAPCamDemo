@@ -27,39 +27,61 @@ final class TAPCamAppDelegate: NSObject, UIApplicationDelegate {
 struct TAPCamDemoApp: App {
     @UIApplicationDelegateAdaptor(TAPCamAppDelegate.self) private var appDelegate
     @StateObject private var lockedCaptureImportRuntime = LockedCaptureSessionContentImportRuntime()
+    @State private var libraryStore: LibraryMediaStore
+    private let libraryMediaFetcher: any LibraryMediaFetching
+    private let videoPosterBackfillService = LibraryVideoPosterBackfillService.pendingCaptureStore(
+        TAPPendingCaptureStore.shared
+    )
+
+    init() {
+        let photoKitClient = PhotoKitLibraryMediaFetcher()
+        self.libraryMediaFetcher = photoKitClient
+        _libraryStore = State(
+            initialValue: LibraryMediaStore(photoCatalog: photoKitClient)
+        )
+    }
 
     var body: some Scene {
         WindowGroup {
-            #if DEBUG && TAP_ENABLE_PRO_CAMERA_CONTROLS
-            if ProcessInfo.processInfo.isCameraControlsUITestHarness {
-                CameraControlsUITestHarnessView()
+            #if DEBUG
+            if let videoFixtureConfiguration = TAPVideoPlaybackFixtureLaunchConfiguration.current {
+                TAPVideoPlaybackFixtureHarnessView(configuration: videoFixtureConfiguration)
                     .preferredColorScheme(.dark)
-            } else if ProcessInfo.processInfo.isXCTestHost {
-                XCTestHostView()
             } else {
-                StartupGateView()
-                    .preferredColorScheme(.dark)
-                    .onAppear {
-                        lockedCaptureImportRuntime.start()
-                    }
-                    .onDisappear {
-                        lockedCaptureImportRuntime.stop()
-                    }
+                #if TAP_ENABLE_PRO_CAMERA_CONTROLS
+                if ProcessInfo.processInfo.isCameraControlsUITestHarness {
+                    CameraControlsUITestHarnessView()
+                        .preferredColorScheme(.dark)
+                } else {
+                    standardAppContent
+                }
+                #else
+                standardAppContent
+                #endif
             }
             #else
-            if ProcessInfo.processInfo.isXCTestHost {
-                XCTestHostView()
-            } else {
-                StartupGateView()
-                    .preferredColorScheme(.dark)
-                    .onAppear {
-                        lockedCaptureImportRuntime.start()
-                    }
-                    .onDisappear {
-                        lockedCaptureImportRuntime.stop()
-                    }
-            }
+            standardAppContent
             #endif
+        }
+    }
+
+    @ViewBuilder
+    private var standardAppContent: some View {
+        if ProcessInfo.processInfo.isXCTestHost {
+            XCTestHostView()
+        } else {
+            StartupGateView(
+                libraryStore: libraryStore,
+                libraryMediaFetcher: libraryMediaFetcher,
+                videoPosterBackfillService: videoPosterBackfillService
+            )
+                .preferredColorScheme(.dark)
+                .onAppear {
+                    lockedCaptureImportRuntime.start()
+                }
+                .onDisappear {
+                    lockedCaptureImportRuntime.stop()
+                }
         }
     }
 }

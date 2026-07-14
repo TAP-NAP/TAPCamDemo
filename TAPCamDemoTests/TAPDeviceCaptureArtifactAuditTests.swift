@@ -37,7 +37,8 @@ struct TAPDeviceCaptureArtifactAuditTests {
         let processor = TAPPendingCaptureProcessor()
         let viewModel = CameraViewModel(
             pendingCaptureStore: store,
-            pendingCaptureProcessor: processor
+            pendingCaptureProcessor: processor,
+            libraryStore: LibraryMediaStore(observesChanges: false)
         )
         defer {
             viewModel.stop()

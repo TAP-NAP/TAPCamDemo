@@ -30,6 +30,7 @@ enum CameraFeedbackPreferences {
 struct CameraView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openURL) private var openURL
+    private let libraryStore: LibraryMediaStore
     private let startsAutomatically: Bool
     private let initialReadinessGate: CameraInitialReadinessGate
     @StateObject private var lifecycleCoordinator: CaptureLifecycleCoordinator
@@ -99,6 +100,8 @@ struct CameraView: View {
     private var usesMicrophoneData = CameraCaptureDataUsePreferences.defaultUsesMicrophoneData
 
     init(
+        libraryStore: LibraryMediaStore,
+        libraryMediaFetcher: any LibraryMediaFetching = PhotoKitLibraryMediaFetcher(),
         viewModel: CameraViewModel? = nil,
         routeStore: CameraRouteStore? = nil,
         appAttestController: AppAttestRuntimeController? = nil,
@@ -116,7 +119,12 @@ struct CameraView: View {
         self.intentHandoffStore = intentHandoffStore
         _lifecycleCoordinator = StateObject(wrappedValue: lifecycleCoordinator)
         _hapticFeedbackController = StateObject(wrappedValue: hapticFeedbackController)
-        let resolvedViewModel = viewModel ?? CameraViewModel()
+        let resolvedLibraryStore = viewModel?.libraryStore ?? libraryStore
+        self.libraryStore = resolvedLibraryStore
+        let resolvedViewModel = viewModel ?? CameraViewModel(
+            libraryStore: resolvedLibraryStore,
+            libraryMediaFetcher: libraryMediaFetcher
+        )
         resolvedViewModel.requestedGlobalAutoExposureBias = initialGlobalEVBias
         _viewModel = StateObject(wrappedValue: resolvedViewModel)
         _flashMode = State(initialValue: initialFlashMode)
@@ -140,7 +148,11 @@ struct CameraView: View {
             cameraSurface
                 .toolbar(.hidden, for: .navigationBar)
                 .navigationDestination(isPresented: depthAlbumPresentedBinding) {
-                    DepthAlbumPickerView(routeStore: routeStore)
+                    DepthAlbumPickerView(
+                        routeStore: routeStore,
+                        libraryStore: libraryStore,
+                        mediaFetcher: viewModel.libraryMediaFetcher
+                    )
                         .toolbar(.visible, for: .navigationBar)
                 }
         }
@@ -406,6 +418,7 @@ struct CameraView: View {
             ),
             highlightColor: viewfinderHighlightColor,
             recentThumbnail: viewModel.recentThumbnail,
+            recentLibraryPresentation: viewModel.recentLibraryPresentation,
             onOpenTAPLibrary: openTAPLibrary,
             onCapture: triggerShutter,
             onSwitchCamera: switchCameraPosition,
@@ -432,6 +445,7 @@ struct CameraView: View {
             ),
             highlightColor: viewfinderHighlightColor,
             recentThumbnail: viewModel.recentThumbnail,
+            recentLibraryPresentation: viewModel.recentLibraryPresentation,
             onOpenTAPLibrary: openTAPLibrary,
             onCapture: triggerShutter,
             onSwitchCamera: switchCameraPosition,

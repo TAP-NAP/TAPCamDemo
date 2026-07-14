@@ -14,11 +14,36 @@ nonisolated enum TAPPendingCaptureStatus: String, Codable, Equatable, Sendable {
     case exporting
     case exported
     case failedRetryable
+    case failedTerminal
 }
 
 nonisolated enum TAPPendingCaptureArtifactKind: String, Codable, Equatable, Sendable {
     case photoDepth
     case tapVideo
+}
+
+nonisolated enum TAPPendingVideoArtifactState: String, Codable, Equatable, Sendable {
+    case unsigned
+    case signed
+}
+
+/// Durable boundary around the non-transactional handoff to Photos.
+///
+/// `preCommitIntent` is safe to repeat because Photos asset creation has not
+/// started. Once `commitAmbiguous` is persisted, a crash may have happened on
+/// either side of the Photos commit and recovery must never create again.
+nonisolated enum TAPPendingVideoPhotosExportPhase: String, Codable, Equatable, Sendable {
+    case preCommitIntent
+    case commitAmbiguous
+    case committed
+}
+
+nonisolated enum TAPPendingCaptureFailureCode: String, Codable, Equatable, Sendable {
+    case missingDepthData
+    case invalidVideoArtifact
+    case proofExternalMutation
+    case proofValidationFailed
+    case photosReadbackFailed
 }
 
 nonisolated struct TAPPendingCaptureLocation: Codable, Equatable, Sendable {
@@ -62,9 +87,15 @@ nonisolated struct TAPPendingCaptureRecord: Codable, Equatable, Identifiable, Se
     var captureScoreSummary: CaptureScoreSummary
     var unsignedPhotoFilename: String?
     var signedPhotoFilename: String?
-    var unsignedVideoFilename: String?
-    var signedVideoFilename: String?
-    var debugDepthPreviewVideoFilename: String?
+    var videoArtifactFilename: String?
+    var videoFormatRevision: Int?
+    var videoArtifactState: TAPPendingVideoArtifactState?
+    var videoPhotosExportPhase: TAPPendingVideoPhotosExportPhase?
+    var posterRevision: Int?
+    var exportResourceFilename: String?
+    var preSignContentBinding: CaptureContentBinding?
+    var failureCode: TAPPendingCaptureFailureCode?
+    var duplicateExportWarning: String?
     var pairedVideoFilename: String?
     var thumbnailFilename: String?
     var assetLocalIdentifier: String?
@@ -118,9 +149,15 @@ nonisolated struct TAPPendingCaptureRecord: Codable, Equatable, Identifiable, Se
         captureScoreSummary: CaptureScoreSummary = .unknown,
         unsignedPhotoFilename: String? = nil,
         signedPhotoFilename: String? = nil,
-        unsignedVideoFilename: String? = nil,
-        signedVideoFilename: String? = nil,
-        debugDepthPreviewVideoFilename: String? = nil,
+        videoArtifactFilename: String? = nil,
+        videoFormatRevision: Int? = nil,
+        videoArtifactState: TAPPendingVideoArtifactState? = nil,
+        videoPhotosExportPhase: TAPPendingVideoPhotosExportPhase? = nil,
+        posterRevision: Int? = nil,
+        exportResourceFilename: String? = nil,
+        preSignContentBinding: CaptureContentBinding? = nil,
+        failureCode: TAPPendingCaptureFailureCode? = nil,
+        duplicateExportWarning: String? = nil,
         pairedVideoFilename: String? = nil,
         unsignedHEICFilename: String? = nil,
         signedHEICFilename: String? = nil,
@@ -142,9 +179,15 @@ nonisolated struct TAPPendingCaptureRecord: Codable, Equatable, Identifiable, Se
         self.captureScoreSummary = captureScoreSummary
         self.unsignedPhotoFilename = unsignedPhotoFilename ?? unsignedHEICFilename
         self.signedPhotoFilename = signedPhotoFilename ?? signedHEICFilename
-        self.unsignedVideoFilename = unsignedVideoFilename
-        self.signedVideoFilename = signedVideoFilename
-        self.debugDepthPreviewVideoFilename = debugDepthPreviewVideoFilename
+        self.videoArtifactFilename = videoArtifactFilename
+        self.videoFormatRevision = videoFormatRevision
+        self.videoArtifactState = videoArtifactState
+        self.videoPhotosExportPhase = videoPhotosExportPhase
+        self.posterRevision = posterRevision
+        self.exportResourceFilename = exportResourceFilename
+        self.preSignContentBinding = preSignContentBinding
+        self.failureCode = failureCode
+        self.duplicateExportWarning = duplicateExportWarning
         self.pairedVideoFilename = pairedVideoFilename
         self.thumbnailFilename = thumbnailFilename
         self.assetLocalIdentifier = assetLocalIdentifier
@@ -166,9 +209,15 @@ nonisolated struct TAPPendingCaptureRecord: Codable, Equatable, Identifiable, Se
         case captureScoreSummary
         case unsignedPhotoFilename
         case signedPhotoFilename
-        case unsignedVideoFilename
-        case signedVideoFilename
-        case debugDepthPreviewVideoFilename
+        case videoArtifactFilename
+        case videoFormatRevision
+        case videoArtifactState
+        case videoPhotosExportPhase
+        case posterRevision
+        case exportResourceFilename
+        case preSignContentBinding
+        case failureCode
+        case duplicateExportWarning
         case pairedVideoFilename
         case unsignedHEICFilename
         case signedHEICFilename
@@ -208,9 +257,18 @@ nonisolated struct TAPPendingCaptureRecord: Codable, Equatable, Identifiable, Se
             ) ?? .unknown,
             unsignedPhotoFilename: try container.decodeIfPresent(String.self, forKey: .unsignedPhotoFilename),
             signedPhotoFilename: try container.decodeIfPresent(String.self, forKey: .signedPhotoFilename),
-            unsignedVideoFilename: try container.decodeIfPresent(String.self, forKey: .unsignedVideoFilename),
-            signedVideoFilename: try container.decodeIfPresent(String.self, forKey: .signedVideoFilename),
-            debugDepthPreviewVideoFilename: try container.decodeIfPresent(String.self, forKey: .debugDepthPreviewVideoFilename),
+            videoArtifactFilename: try container.decodeIfPresent(String.self, forKey: .videoArtifactFilename),
+            videoFormatRevision: try container.decodeIfPresent(Int.self, forKey: .videoFormatRevision),
+            videoArtifactState: try container.decodeIfPresent(TAPPendingVideoArtifactState.self, forKey: .videoArtifactState),
+            videoPhotosExportPhase: try container.decodeIfPresent(
+                TAPPendingVideoPhotosExportPhase.self,
+                forKey: .videoPhotosExportPhase
+            ),
+            posterRevision: try container.decodeIfPresent(Int.self, forKey: .posterRevision),
+            exportResourceFilename: try container.decodeIfPresent(String.self, forKey: .exportResourceFilename),
+            preSignContentBinding: try container.decodeIfPresent(CaptureContentBinding.self, forKey: .preSignContentBinding),
+            failureCode: try container.decodeIfPresent(TAPPendingCaptureFailureCode.self, forKey: .failureCode),
+            duplicateExportWarning: try container.decodeIfPresent(String.self, forKey: .duplicateExportWarning),
             pairedVideoFilename: try container.decodeIfPresent(String.self, forKey: .pairedVideoFilename),
             unsignedHEICFilename: try container.decodeIfPresent(String.self, forKey: .unsignedHEICFilename),
             signedHEICFilename: try container.decodeIfPresent(String.self, forKey: .signedHEICFilename),
@@ -236,9 +294,15 @@ nonisolated struct TAPPendingCaptureRecord: Codable, Equatable, Identifiable, Se
         try container.encode(captureScoreSummary, forKey: .captureScoreSummary)
         try container.encodeIfPresent(unsignedPhotoFilename, forKey: .unsignedPhotoFilename)
         try container.encodeIfPresent(signedPhotoFilename, forKey: .signedPhotoFilename)
-        try container.encodeIfPresent(unsignedVideoFilename, forKey: .unsignedVideoFilename)
-        try container.encodeIfPresent(signedVideoFilename, forKey: .signedVideoFilename)
-        try container.encodeIfPresent(debugDepthPreviewVideoFilename, forKey: .debugDepthPreviewVideoFilename)
+        try container.encodeIfPresent(videoArtifactFilename, forKey: .videoArtifactFilename)
+        try container.encodeIfPresent(videoFormatRevision, forKey: .videoFormatRevision)
+        try container.encodeIfPresent(videoArtifactState, forKey: .videoArtifactState)
+        try container.encodeIfPresent(videoPhotosExportPhase, forKey: .videoPhotosExportPhase)
+        try container.encodeIfPresent(posterRevision, forKey: .posterRevision)
+        try container.encodeIfPresent(exportResourceFilename, forKey: .exportResourceFilename)
+        try container.encodeIfPresent(preSignContentBinding, forKey: .preSignContentBinding)
+        try container.encodeIfPresent(failureCode, forKey: .failureCode)
+        try container.encodeIfPresent(duplicateExportWarning, forKey: .duplicateExportWarning)
         try container.encodeIfPresent(pairedVideoFilename, forKey: .pairedVideoFilename)
         try container.encodeIfPresent(thumbnailFilename, forKey: .thumbnailFilename)
         try container.encodeIfPresent(assetLocalIdentifier, forKey: .assetLocalIdentifier)

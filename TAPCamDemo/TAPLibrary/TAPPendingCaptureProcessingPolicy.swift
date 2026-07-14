@@ -22,13 +22,13 @@ nonisolated extension TAPPendingCaptureRecord {
     var processingRoute: TAPPendingCaptureProcessingRoute {
         switch status {
         case .pending, .waitingNetwork, .signing, .failedRetryable:
-            if signedPhotoFilename != nil || signedVideoFilename != nil {
+            if signedPhotoFilename != nil || videoArtifactState == .signed {
                 return .exportSigned
             }
             return .signThenExport
         case .signed, .exporting:
             return .exportSigned
-        case .exported:
+        case .exported, .failedTerminal:
             return .skip
         }
     }
@@ -41,7 +41,7 @@ nonisolated extension TAPPendingCaptureRecord {
             return 1
         case .failedRetryable, .waitingNetwork:
             return 2
-        case .exported:
+        case .exported, .failedTerminal:
             return nil
         }
     }
@@ -50,7 +50,21 @@ nonisolated extension TAPPendingCaptureRecord {
         processingPriority != nil
     }
 
+    var requiresVideoPhotosReadbackRecovery: Bool {
+        guard artifactKind == .tapVideo else {
+            return false
+        }
+        return videoPhotosExportPhase == .commitAmbiguous
+            || videoPhotosExportPhase == .committed
+            || assetLocalIdentifier != nil
+    }
+
     var shouldAttemptExistingAssetRecoveryBeforeExport: Bool {
-        status == .exporting
+        switch artifactKind {
+        case .photoDepth:
+            return status == .exporting
+        case .tapVideo:
+            return requiresVideoPhotosReadbackRecovery
+        }
     }
 }

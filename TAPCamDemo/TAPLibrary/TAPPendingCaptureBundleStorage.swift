@@ -39,6 +39,26 @@ nonisolated struct TAPPendingCaptureBundleStorage {
         rootURL.appendingPathComponent(".tmp-\(UUID().uuidString)", isDirectory: true)
     }
 
+    func videoCaptureWorkspaceURL(captureID: String) throws -> URL {
+        try TAPPendingCaptureBundlePathPolicy.videoCaptureWorkspaceURL(
+            rootURL: rootURL,
+            captureID: captureID
+        )
+    }
+
+    func createFreshVideoCaptureWorkspace(captureID: String) throws -> URL {
+        let workspaceURL = try videoCaptureWorkspaceURL(captureID: captureID)
+        try createFreshTemporaryBundle(at: workspaceURL)
+        return workspaceURL
+    }
+
+    func removeVideoCaptureWorkspace(captureID: String) throws {
+        let workspaceURL = try videoCaptureWorkspaceURL(captureID: captureID)
+        if fileManager.fileExists(atPath: workspaceURL.path) {
+            try fileManager.removeItem(at: workspaceURL)
+        }
+    }
+
     func createFreshTemporaryBundle(at temporaryURL: URL) throws {
         if fileManager.fileExists(atPath: temporaryURL.path) {
             try fileManager.removeItem(at: temporaryURL)
@@ -69,6 +89,37 @@ nonisolated struct TAPPendingCaptureBundleStorage {
         )
         .filter { url in
             (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+        }
+    }
+
+    func videoCaptureWorkspaceURLs() throws -> [URL] {
+        guard fileManager.fileExists(atPath: rootURL.path) else {
+            return []
+        }
+        return try fileManager.contentsOfDirectory(
+            at: rootURL,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: []
+        )
+        .filter { url in
+            url.lastPathComponent.hasPrefix(
+                TAPPendingCaptureBundlePathPolicy.videoCaptureWorkspacePrefix
+            ) && (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+        }
+    }
+
+    func removeVideoCaptureWorkspace(at workspaceURL: URL) throws {
+        guard workspaceURL.deletingLastPathComponent().standardizedFileURL
+                == rootURL.standardizedFileURL,
+              workspaceURL.lastPathComponent.hasPrefix(
+                TAPPendingCaptureBundlePathPolicy.videoCaptureWorkspacePrefix
+              ) else {
+            throw TAPDepthCaptureError.invalidPendingCaptureBundlePath(
+                "stale video workspace must remain inside the pending root"
+            )
+        }
+        if fileManager.fileExists(atPath: workspaceURL.path) {
+            try fileManager.removeItem(at: workspaceURL)
         }
     }
 
@@ -104,24 +155,6 @@ nonisolated struct TAPPendingCaptureBundleStorage {
         try fileManager.copyItem(at: sourceURL, to: destinationURL)
     }
 
-    func copyUnsignedVideo(from sourceURL: URL, to bundleURL: URL) throws {
-        let destinationURL = bundleURL.appendingPathComponent(TAPPendingCaptureBundlePathPolicy.unsignedVideoFilename)
-        if fileManager.fileExists(atPath: destinationURL.path) {
-            try fileManager.removeItem(at: destinationURL)
-        }
-        try fileManager.copyItem(at: sourceURL, to: destinationURL)
-    }
-
-    func copyDebugDepthPreviewVideo(from sourceURL: URL, to bundleURL: URL) throws {
-        let destinationURL = bundleURL.appendingPathComponent(
-            TAPPendingCaptureBundlePathPolicy.debugDepthPreviewVideoFilename
-        )
-        if fileManager.fileExists(atPath: destinationURL.path) {
-            try fileManager.removeItem(at: destinationURL)
-        }
-        try fileManager.copyItem(at: sourceURL, to: destinationURL)
-    }
-
     func writeSignedPhoto(
         _ data: Data,
         fileContainer: CapturePhotoFileContainer,
@@ -140,18 +173,6 @@ nonisolated struct TAPPendingCaptureBundleStorage {
 
     func writeSignedHEIC(_ data: Data, captureID: String) throws {
         try writeSignedPhoto(data, fileContainer: .heic, captureID: captureID)
-    }
-
-    func writeSignedVideo(_ data: Data, captureID: String) throws {
-        try storagePolicy.write(
-            data,
-            to: TAPPendingCaptureBundlePathPolicy.artifactURL(
-                rootURL: rootURL,
-                captureID: captureID,
-                filename: TAPPendingCaptureBundlePathPolicy.signedVideoFilename
-            ),
-            fileManager: fileManager
-        )
     }
 
     func readRecord(captureID: String) throws -> TAPPendingCaptureRecord {
@@ -237,11 +258,6 @@ nonisolated struct TAPPendingCaptureBundleStorage {
         return url
     }
 
-    func videoData(filename: String, captureID: String) throws -> Data {
-        let url = try videoURL(filename: filename, captureID: captureID)
-        return try Data(contentsOf: url)
-    }
-
     func videoURLIfPresent(filename: String, captureID: String) throws -> URL? {
         let url = try TAPPendingCaptureBundlePathPolicy.artifactURL(
             rootURL: rootURL,
@@ -279,8 +295,7 @@ nonisolated struct TAPPendingCaptureBundleStorage {
         for filename in [
             record.unsignedPhotoFilename,
             record.signedPhotoFilename,
-            record.unsignedVideoFilename,
-            record.signedVideoFilename,
+            record.videoArtifactFilename,
             record.pairedVideoFilename
         ].compactMap({ $0 }) {
             let url = try TAPPendingCaptureBundlePathPolicy.artifactURL(

@@ -18,6 +18,96 @@ enum TAPCamDemoTestFixtures {
         return url
     }
 
+    static func ingestPendingTAPVideo(
+        store: TAPPendingCaptureStore,
+        captureID: String,
+        packageID: UUID = UUID(uuidString: "00000000-0000-0000-0000-000000000779")!
+    ) async throws -> TAPPendingCaptureRecord {
+        let workspace = try await store.beginVideoCaptureWorkspace(captureID: captureID)
+        var baseMP4 = Data([0, 0, 0, 12])
+        baseMP4.append(Data("ftyp".utf8))
+        baseMP4.append(Data("mp42".utf8))
+        try baseMP4.write(to: workspace.artifactURL)
+
+        let manifest = TAPVideoManifest(payload: TAPVideoManifest.Payload(
+            id: captureID,
+            packageID: packageID.uuidString,
+            capturedAt: "2026-07-11T00:00:00Z",
+            selectedCameraPlan: .init(
+                deviceUniqueID: "test-device",
+                deviceType: "BuiltInLiDARDepthCamera",
+                localizedName: "Back Camera",
+                position: "back",
+                requestedFocalLengthLabel: "24mm",
+                resolvedFocalLengthLabel: "24mm",
+                resolvedZoomFactor: 1,
+                depthCapable: true
+            ),
+            container: .init(
+                fileType: "mp4",
+                mediaType: "video/mp4",
+                durationSeconds: 1,
+                timeScale: 600,
+                trackCount: 2
+            ),
+            rgbTrack: .init(
+                trackID: 1,
+                codec: "avc1",
+                width: 1_920,
+                height: 1_080,
+                durationSeconds: 1,
+                timeScale: 600,
+                nominalFrameRate: 30,
+                frameCount: 30,
+                transform: "rotation:0;not-mirrored"
+            ),
+            audioTrack: .init(
+                status: .notCaptured,
+                trackID: nil,
+                codec: nil,
+                durationSeconds: nil,
+                timeScale: nil,
+                sampleRate: nil,
+                channelCount: nil
+            ),
+            depthCoverage: .init(
+                trackID: 3,
+                trackCodec: "mebx",
+                trackDurationSeconds: 1,
+                trackTimeScale: 600,
+                sampleCount: 1,
+                format: .init(
+                    kind: "depth",
+                    pixelFormat: "hdep",
+                    width: 256,
+                    height: 192,
+                    packedRowStride: 512,
+                    sourceRowStride: 544,
+                    bytesPerSample: 2,
+                    uncompressedFrameByteCount: 98_304
+                )
+            ),
+            spatialRegistration: .unavailable,
+            synchronization: .init(
+                timing: "capture-relative-presentation-timestamps",
+                rgbToDepthMapping: "independent-timed-metadata",
+                maxObservedDeltaSeconds: 0,
+                nominalDepthIntervalSeconds: 1.0 / 30.0
+            ),
+            stop: .init(reason: .userStop, recordedDurationSeconds: 1),
+            software: .current
+        ))
+        try TAPVideoManifestBox.appendManifest(manifest, toFileAt: workspace.artifactURL)
+        _ = try TAPProofSlot.ensureEmptyBMFFSlot(inFileAt: workspace.artifactURL)
+
+        return try await store.ingestVideo(TAPPendingVideoCaptureArtifact(
+            captureID: captureID,
+            packageID: packageID,
+            capturedAt: Date(timeIntervalSince1970: 1_779_897_600),
+            videoURL: workspace.artifactURL
+        ))
+    }
+
     static var sampleLocation: TAPDepthManifest.Location {
         TAPDepthManifest.Location(
             latitude: 31.2304,

@@ -20,6 +20,7 @@ import UIKit
 /// surface between RAW, 2D, and 3D.
 struct DepthAnalysisView: View {
     private let onCurrentAlbumEntryChanged: ((DepthAnalysisAlbumContext.Entry) -> Void)?
+    private let mediaFetcher: any LibraryMediaFetching
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.displayScale) private var displayScale
@@ -39,15 +40,18 @@ struct DepthAnalysisView: View {
     init(
         source: DepthAnalysisSource,
         albumContext: DepthAnalysisAlbumContext? = nil,
-        onCurrentAlbumEntryChanged: ((DepthAnalysisAlbumContext.Entry) -> Void)? = nil
+        onCurrentAlbumEntryChanged: ((DepthAnalysisAlbumContext.Entry) -> Void)? = nil,
+        mediaFetcher: any LibraryMediaFetching = PhotoKitLibraryMediaFetcher()
     ) {
         _carouselStore = StateObject(
             wrappedValue: DepthAnalysisCarouselStore(
                 source: source,
-                albumContext: albumContext
+                albumContext: albumContext,
+                mediaFetcher: mediaFetcher
             )
         )
         self.onCurrentAlbumEntryChanged = onCurrentAlbumEntryChanged
+        self.mediaFetcher = mediaFetcher
     }
 
     init(assetID: String) {
@@ -77,7 +81,6 @@ struct DepthAnalysisView: View {
                     performDelete(
                         source: request.source,
                         displayPixelLength: request.displayPixelLength,
-                        loadCurrentAnalysis: request.loadCurrentAnalysis,
                         prewarmCurrentPlaneGeometry: request.prewarmCurrentPlaneGeometry
                     )
                 },
@@ -90,6 +93,16 @@ struct DepthAnalysisView: View {
                 message: Text(alert.message),
                 dismissButton: .default(Text("OK"))
             )
+        }
+        .onDisappear {
+            carouselStore.cancelViewerRequests()
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: UIApplication.didEnterBackgroundNotification
+            )
+        ) { _ in
+            carouselStore.cancelViewerRequests()
         }
     }
 
@@ -111,6 +124,7 @@ struct DepthAnalysisView: View {
                     comparisonPosition: $twoDComparisonPosition,
                     highlightPalette: highlightPalette,
                     isPlaneGridAnimationEnabled: isPlaneGridAnimationEnabled,
+                    mediaFetcher: mediaFetcher,
                     onCurrentEntryChanged: handleCurrentEntryChanged,
                     onEdgeBack: {
                         dismiss()
@@ -177,13 +191,11 @@ struct DepthAnalysisView: View {
             return
         }
 
-        let loadCurrentAnalysis = selectedTool != .raw
         let prewarmCurrentPlaneGeometry = selectedTool == .threeD
         if case .pendingCapture = source {
             pendingDeleteRequest = DepthAnalysisPendingDeleteRequest(
                 source: source,
                 displayPixelLength: displayPixelLength,
-                loadCurrentAnalysis: loadCurrentAnalysis,
                 prewarmCurrentPlaneGeometry: prewarmCurrentPlaneGeometry
             )
             return
@@ -192,7 +204,6 @@ struct DepthAnalysisView: View {
         performDelete(
             source: source,
             displayPixelLength: displayPixelLength,
-            loadCurrentAnalysis: loadCurrentAnalysis,
             prewarmCurrentPlaneGeometry: prewarmCurrentPlaneGeometry
         )
     }
@@ -200,7 +211,6 @@ struct DepthAnalysisView: View {
     private func performDelete(
         source: DepthAnalysisSource,
         displayPixelLength: Int,
-        loadCurrentAnalysis: Bool,
         prewarmCurrentPlaneGeometry: Bool
     ) {
         Task { @MainActor in
@@ -208,7 +218,6 @@ struct DepthAnalysisView: View {
                 try await DepthAnalysisDeletionService.delete(source: source)
                 if let nextEntry = carouselStore.advanceAfterDeletingCurrent(
                     pixelLength: displayPixelLength,
-                    loadCurrentAnalysis: loadCurrentAnalysis,
                     prewarmCurrentPlaneGeometry: prewarmCurrentPlaneGeometry
                 ) {
                     handleCurrentEntryChanged(nextEntry)
@@ -244,7 +253,6 @@ private struct DepthAnalysisPendingDeleteRequest: Identifiable {
     let id = UUID()
     let source: DepthAnalysisSource
     let displayPixelLength: Int
-    let loadCurrentAnalysis: Bool
     let prewarmCurrentPlaneGeometry: Bool
 }
 
@@ -288,6 +296,7 @@ private struct AnalysisPhotoCarouselView: View {
     @Binding var comparisonPosition: Double
     let highlightPalette: AnalysisHighlightPalette
     let isPlaneGridAnimationEnabled: Bool
+    let mediaFetcher: any LibraryMediaFetching
     let onCurrentEntryChanged: (DepthAnalysisCarouselEntry) -> Void
     let onEdgeBack: () -> Void
 
@@ -300,6 +309,7 @@ private struct AnalysisPhotoCarouselView: View {
             comparisonPosition: $comparisonPosition,
             highlightPalette: highlightPalette,
             isPlaneGridAnimationEnabled: isPlaneGridAnimationEnabled,
+            mediaFetcher: mediaFetcher,
             onCurrentEntryChanged: onCurrentEntryChanged,
             onEdgeBack: onEdgeBack
         )
@@ -308,7 +318,6 @@ private struct AnalysisPhotoCarouselView: View {
         .task(id: "\(selectedTool.rawValue)-\(displayPixelLength)") {
             store.ensureVisibleWindowLoaded(
                 pixelLength: displayPixelLength,
-                loadCurrentAnalysis: selectedTool != .raw,
                 prewarmCurrentPlaneGeometry: selectedTool == .threeD
             )
         }
@@ -323,6 +332,7 @@ private struct AnalysisNativePagingView: UIViewRepresentable {
     @Binding var comparisonPosition: Double
     let highlightPalette: AnalysisHighlightPalette
     let isPlaneGridAnimationEnabled: Bool
+    let mediaFetcher: any LibraryMediaFetching
     let onCurrentEntryChanged: (DepthAnalysisCarouselEntry) -> Void
     let onEdgeBack: () -> Void
 
@@ -440,7 +450,8 @@ private struct AnalysisNativePagingView: UIViewRepresentable {
                         heatmapOpacity: parent.$heatmapOpacity,
                         comparisonPosition: parent.$comparisonPosition,
                         highlightPalette: parent.highlightPalette,
-                        isPlaneGridAnimationEnabled: parent.isPlaneGridAnimationEnabled
+                        isPlaneGridAnimationEnabled: parent.isPlaneGridAnimationEnabled,
+                        mediaFetcher: parent.mediaFetcher
                     )
                 )
             }
@@ -494,7 +505,6 @@ private struct AnalysisNativePagingView: UIViewRepresentable {
             guard let entry = parent.store.move(
                 offset: offset,
                 pixelLength: parent.displayPixelLength,
-                loadCurrentAnalysis: parent.selectedTool != .raw,
                 prewarmCurrentPlaneGeometry: parent.selectedTool == .threeD
             ) else {
                 configure(scrollView: scrollView, parent: parent, forceResetOffset: true)
@@ -595,6 +605,7 @@ private struct AnalysisNativePageView: View {
     @Binding var comparisonPosition: Double
     let highlightPalette: AnalysisHighlightPalette
     let isPlaneGridAnimationEnabled: Bool
+    let mediaFetcher: any LibraryMediaFetching
     @State private var isLivePhotoMuted = true
 
     var body: some View {
@@ -622,7 +633,8 @@ private struct AnalysisNativePageView: View {
                 isCurrent: isCurrent,
                 viewportSize: viewportSize,
                 displayedImageSize: displayedImageSize,
-                displayedImageOrientation: displayedImageOrientation
+                displayedImageOrientation: displayedImageOrientation,
+                mediaFetcher: mediaFetcher
             )
 
             if tool == .raw {
@@ -632,8 +644,19 @@ private struct AnalysisNativePageView: View {
                     viewportSize: viewportSize,
                     displayedImageSize: displayedImageSize,
                     displayedImageOrientation: displayedImageOrientation,
+                    mediaFetcher: mediaFetcher,
                     isMuted: $isLivePhotoMuted
                 )
+            }
+
+            if isCurrent {
+                LibraryMediaFetchOverlay(
+                    kind: .photo,
+                    state: LibraryMediaFetchOverlayState(slot.mediaFetchPhase),
+                    onCancel: slot.cancelCurrentMediaFetch,
+                    onRetry: slot.retryLastMediaFetch
+                )
+                .zIndex(4)
             }
         }
         .frame(width: viewportSize.width, height: viewportSize.height)
@@ -650,10 +673,12 @@ private struct AnalysisNativePageView: View {
     private var rawContent: some View {
         ZStack {
             AnalysisRawZoomScrollView(
+                slot: slot,
                 source: slot.source,
                 image: rawImage,
                 imageIdentifier: rawImageIdentifier,
                 isCurrent: isCurrent,
+                mediaFetcher: mediaFetcher,
                 isLivePhotoMuted: $isLivePhotoMuted
             )
             .frame(width: viewportSize.width, height: viewportSize.height)
@@ -722,6 +747,7 @@ private struct AnalysisLivePhotoBadgeOverlay: View {
     let viewportSize: CGSize
     let displayedImageSize: CGSize?
     let displayedImageOrientation: CGImagePropertyOrientation
+    let mediaFetcher: any LibraryMediaFetching
     @State private var isLivePhoto = false
 
     var body: some View {
@@ -765,7 +791,10 @@ private struct AnalysisLivePhotoBadgeOverlay: View {
             return
         }
 
-        let resolvedIsLivePhoto = await DepthAnalysisLivePhotoSourceResolver.isLivePhoto(source: source)
+        let resolvedIsLivePhoto = await DepthAnalysisLivePhotoSourceResolver.isLivePhoto(
+            source: source,
+            mediaFetcher: mediaFetcher
+        )
         guard !Task.isCancelled else {
             return
         }
@@ -779,6 +808,7 @@ private struct AnalysisLivePhotoSoundButtonOverlay: View {
     let viewportSize: CGSize
     let displayedImageSize: CGSize?
     let displayedImageOrientation: CGImagePropertyOrientation
+    let mediaFetcher: any LibraryMediaFetching
     @Binding var isMuted: Bool
     @State private var isLivePhoto = false
 
@@ -835,7 +865,10 @@ private struct AnalysisLivePhotoSoundButtonOverlay: View {
             return
         }
 
-        let resolvedIsLivePhoto = await DepthAnalysisLivePhotoSourceResolver.isLivePhoto(source: source)
+        let resolvedIsLivePhoto = await DepthAnalysisLivePhotoSourceResolver.isLivePhoto(
+            source: source,
+            mediaFetcher: mediaFetcher
+        )
         guard !Task.isCancelled else {
             return
         }
@@ -844,13 +877,21 @@ private struct AnalysisLivePhotoSoundButtonOverlay: View {
 }
 
 private enum DepthAnalysisLivePhotoSourceResolver {
-    static func isLivePhoto(source: DepthAnalysisSource) async -> Bool {
+    static func isLivePhoto(
+        source: DepthAnalysisSource,
+        mediaFetcher: any LibraryMediaFetching
+    ) async -> Bool {
         switch source {
         case .photosAsset(let assetID):
-            let asset = await Task.detached(priority: .utility) {
-                PhotoLibraryWriter.asset(localIdentifier: assetID)
-            }.value
-            return asset?.mediaSubtypes.contains(.photoLive) == true
+            let request = LibraryMediaAssetRequest(
+                key: MediaFetchRequestKey(
+                    itemID: .photosAsset(assetID),
+                    generation: 0,
+                    purpose: .livePhotoPlayback
+                ),
+                assetLocalIdentifier: assetID
+            )
+            return (try? await mediaFetcher.mediaKind(for: request)) == .livePhoto
         case .pendingCapture(let captureID):
             guard let record = try? await TAPPendingCaptureStore.shared.readRecord(captureID: captureID) else {
                 return false
@@ -861,14 +902,16 @@ private enum DepthAnalysisLivePhotoSourceResolver {
 }
 
 private struct AnalysisRawZoomScrollView: UIViewRepresentable {
+    let slot: AnalysisPhotoSlot
     let source: DepthAnalysisSource
     let image: UIImage?
     let imageIdentifier: String
     let isCurrent: Bool
+    let mediaFetcher: any LibraryMediaFetching
     @Binding var isLivePhotoMuted: Bool
 
     func makeCoordinator() -> Coordinator {
-        Coordinator()
+        Coordinator(slot: slot, mediaFetcher: mediaFetcher)
     }
 
     func makeUIView(context: Context) -> UIScrollView {
@@ -896,15 +939,27 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
     func updateUIView(_ scrollView: UIScrollView, context: Context) {
         context.coordinator.update(
             scrollView: scrollView,
+            slot: slot,
             source: source,
-                image: image,
-                imageIdentifier: imageIdentifier,
-                isCurrent: isCurrent,
-                isLivePhotoMuted: isLivePhotoMuted
-            )
+            image: image,
+            imageIdentifier: imageIdentifier,
+            isCurrent: isCurrent,
+            isLivePhotoMuted: isLivePhotoMuted
+        )
     }
 
+    static func dismantleUIView(_ uiView: UIScrollView, coordinator: Coordinator) {
+        if let rawScrollView = uiView as? AnalysisRawZoomUIScrollView {
+            rawScrollView.onLayout = nil
+        }
+        uiView.delegate = nil
+        coordinator.dismantle()
+    }
+
+    @MainActor
     final class Coordinator: NSObject, UIScrollViewDelegate, UIGestureRecognizerDelegate {
+        private let mediaFetcher: any LibraryMediaFetching
+        private weak var slot: AnalysisPhotoSlot?
         private let contentView = UIView()
         private let imageView = UIImageView()
         private let livePhotoView = PHLivePhotoView()
@@ -912,11 +967,24 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
         private var lastBoundsSize: CGSize = .zero
         private var livePhotoRequestCancellation: LivePhotoRequestCancellation?
         private var livePhotoPreparationTask: Task<Void, Never>?
+        private var scheduledLivePhotoRequestKey: String?
         private var livePhotoRequestKey: String?
+        private var livePhotoMediaRequestKey: MediaFetchRequestKey?
+        private var livePhotoCoordinatorGeneration: UInt64 = 0
         private var livePhotoReadyKey: String?
         private var livePhotoUnavailableKey: String?
+        private var lastLivePhotoRequest: LivePhotoRequestContext?
         private var isPressingForLivePhoto = false
         private var isLivePhotoMuted = true
+
+        init(
+            slot: AnalysisPhotoSlot,
+            mediaFetcher: any LibraryMediaFetching
+        ) {
+            self.slot = slot
+            self.mediaFetcher = mediaFetcher
+            super.init()
+        }
 
         func installImageView(in scrollView: UIScrollView) {
             contentView.backgroundColor = .black
@@ -954,12 +1022,17 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
 
         func update(
             scrollView: UIScrollView,
+            slot: AnalysisPhotoSlot,
             source: DepthAnalysisSource,
             image: UIImage?,
             imageIdentifier: String,
             isCurrent: Bool,
             isLivePhotoMuted: Bool
         ) {
+            if self.slot !== slot {
+                clearLivePhoto()
+                self.slot = slot
+            }
             scrollView.isUserInteractionEnabled = isCurrent
             self.isLivePhotoMuted = isLivePhotoMuted
             livePhotoView.isMuted = isLivePhotoMuted
@@ -978,6 +1051,11 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
                 source: source,
                 isCurrent: isCurrent
             )
+        }
+
+        func dismantle() {
+            clearLivePhoto()
+            slot = nil
         }
 
         func handleLayout(in scrollView: UIScrollView) {
@@ -1114,16 +1192,69 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
 
             let targetSize = livePhotoTargetSize(in: scrollView)
             let key = "\(source.loadID)|\(Int(targetSize.width))x\(Int(targetSize.height))"
-            if livePhotoReadyKey == key || livePhotoRequestKey == key || livePhotoUnavailableKey == key {
+            if livePhotoReadyKey == key
+                || scheduledLivePhotoRequestKey == key
+                || livePhotoRequestKey == key
+                || livePhotoUnavailableKey == key {
                 return
             }
 
-            requestLivePhoto(source: source, targetSize: targetSize, key: key)
+            scheduleLivePhotoRequest(source: source, targetSize: targetSize, key: key)
+        }
+
+        /// Defers slot publication until after `updateUIView` returns. Writing
+        /// an observed slot synchronously from a representable update would
+        /// mutate SwiftUI state during view reconciliation.
+        private func scheduleLivePhotoRequest(
+            source: DepthAnalysisSource,
+            targetSize: CGSize,
+            key: String
+        ) {
+            scheduledLivePhotoRequestKey = key
+            Task { @MainActor [weak self] in
+                guard let self,
+                      self.scheduledLivePhotoRequestKey == key else {
+                    return
+                }
+                self.scheduledLivePhotoRequestKey = nil
+                self.requestLivePhoto(source: source, targetSize: targetSize, key: key)
+            }
         }
 
         private func requestLivePhoto(source: DepthAnalysisSource, targetSize: CGSize, key: String) {
-            cancelLivePhotoRequest()
+            cancelLivePhotoRequest(notifySlot: true, preserveCloudState: false)
+            guard let slot else {
+                return
+            }
+            livePhotoCoordinatorGeneration &+= 1
+            let coordinatorGeneration = livePhotoCoordinatorGeneration
+            let mediaRequestKey = slot.beginLivePhotoFetch(
+                onCancel: { [weak self] in
+                    self?.cancelLivePhotoRequest(
+                        notifySlot: false,
+                        preserveCloudState: true,
+                        suppressAutomaticRetry: true,
+                        expectedCoordinatorGeneration: coordinatorGeneration
+                    )
+                },
+                onRetry: { [weak self] in
+                    self?.retryLivePhotoRequest()
+                }
+            )
+            guard livePhotoCoordinatorGeneration == coordinatorGeneration else {
+                slot.cancelLivePhotoFetch(
+                    requestKey: mediaRequestKey,
+                    preserveCloudState: false
+                )
+                return
+            }
+            lastLivePhotoRequest = LivePhotoRequestContext(
+                source: source,
+                targetSize: targetSize,
+                presentationKey: key
+            )
             livePhotoRequestKey = key
+            livePhotoMediaRequestKey = mediaRequestKey
             livePhotoReadyKey = nil
             livePhotoUnavailableKey = nil
             livePhotoView.livePhoto = nil
@@ -1135,63 +1266,117 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
                 }
                 switch source {
                 case .photosAsset(let assetID):
-                    await self.requestPhotosAssetLivePhoto(assetID: assetID, targetSize: targetSize, key: key)
+                    await self.requestPhotosAssetLivePhoto(
+                        assetID: assetID,
+                        targetSize: targetSize,
+                        key: key,
+                        requestKey: mediaRequestKey
+                    )
                 case .pendingCapture(let captureID):
-                    await self.requestPendingCaptureLivePhoto(captureID: captureID, targetSize: targetSize, key: key)
-                }
-            }
-        }
-
-        private func requestPhotosAssetLivePhoto(assetID: String, targetSize: CGSize, key: String) async {
-            let asset = await Task.detached(priority: .utility) {
-                PhotoLibraryWriter.asset(localIdentifier: assetID)
-            }.value
-            guard livePhotoRequestKey == key else {
-                return
-            }
-            guard let asset,
-                  asset.mediaSubtypes.contains(.photoLive) else {
-                markLivePhotoUnavailable(key: key)
-                return
-            }
-
-            let options = PHLivePhotoRequestOptions()
-            options.deliveryMode = .highQualityFormat
-            options.isNetworkAccessAllowed = true
-            let requestID = PHImageManager.default().requestLivePhoto(
-                for: asset,
-                targetSize: targetSize,
-                contentMode: .aspectFit,
-                options: options
-            ) { [weak self] livePhoto, info in
-                Task { @MainActor in
-                    self?.handlePhotosAssetLivePhotoResult(
-                        livePhoto,
-                        info: info,
-                        key: key
+                    await self.requestPendingCaptureLivePhoto(
+                        captureID: captureID,
+                        targetSize: targetSize,
+                        key: key,
+                        requestKey: mediaRequestKey
                     )
                 }
             }
-            livePhotoRequestCancellation = .photosAsset(requestID)
         }
 
-        private func requestPendingCaptureLivePhoto(captureID: String, targetSize: CGSize, key: String) async {
+        private func requestPhotosAssetLivePhoto(
+            assetID: String,
+            targetSize: CGSize,
+            key: String,
+            requestKey: MediaFetchRequestKey
+        ) async {
+            let request = LibraryMediaAssetRequest(
+                key: requestKey,
+                assetLocalIdentifier: assetID
+            )
+            do {
+                let kind = try await mediaFetcher.mediaKind(for: request)
+                guard isCurrentLivePhotoRequest(key: key, requestKey: requestKey) else {
+                    return
+                }
+                guard kind == .livePhoto else {
+                    markLivePhotoUnavailable(
+                        key: key,
+                        requestKey: requestKey,
+                        failure: nil
+                    )
+                    return
+                }
+                let progressSlot = slot
+                progressSlot?.markLivePhotoFetchResolving(requestKey: requestKey)
+                let livePhoto = try await mediaFetcher.livePhoto(
+                    for: request,
+                    targetSize: targetSize,
+                    progress: { progress in
+                        Task { @MainActor in
+                            progressSlot?.applyLivePhotoICloudProgress(
+                                progress,
+                                requestKey: requestKey
+                            )
+                        }
+                    }
+                )
+                guard !Task.isCancelled,
+                      isCurrentLivePhotoRequest(key: key, requestKey: requestKey) else {
+                    return
+                }
+                handleLivePhotoResult(
+                    livePhoto.value,
+                    isCancelled: false,
+                    error: nil,
+                    isDegraded: false,
+                    key: key,
+                    requestKey: requestKey
+                )
+            } catch is CancellationError {
+                return
+            } catch {
+                guard isCurrentLivePhotoRequest(key: key, requestKey: requestKey) else {
+                    return
+                }
+                markLivePhotoUnavailable(
+                    key: key,
+                    requestKey: requestKey,
+                    failure: error
+                )
+            }
+        }
+
+        private func requestPendingCaptureLivePhoto(
+            captureID: String,
+            targetSize: CGSize,
+            key: String,
+            requestKey: MediaFetchRequestKey
+        ) async {
             let resources: PendingLivePhotoResources
             do {
                 let photoURL = try await TAPPendingCaptureStore.shared.bestAvailablePhotoURL(captureID: captureID)
                 guard let pairedVideoURL = try await TAPPendingCaptureStore.shared.pairedVideoURL(captureID: captureID) else {
-                    markLivePhotoUnavailable(key: key)
+                    markLivePhotoUnavailable(
+                        key: key,
+                        requestKey: requestKey,
+                        failure: nil
+                    )
                     return
                 }
                 resources = PendingLivePhotoResources(photoURL: photoURL, pairedVideoURL: pairedVideoURL)
             } catch {
-                markLivePhotoUnavailable(key: key)
+                markLivePhotoUnavailable(
+                    key: key,
+                    requestKey: requestKey,
+                    failure: nil
+                )
                 return
             }
 
-            guard livePhotoRequestKey == key else {
+            guard isCurrentLivePhotoRequest(key: key, requestKey: requestKey) else {
                 return
             }
+            slot?.markLivePhotoFetchResolving(requestKey: requestKey)
 
             let requestID = PHLivePhoto.request(
                 withResourceFileURLs: [resources.photoURL, resources.pairedVideoURL],
@@ -1203,39 +1388,34 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
                     self?.handleLocalResourceLivePhotoResult(
                         livePhoto,
                         info: info,
-                        key: key
+                        key: key,
+                        requestKey: requestKey
                     )
                 }
             }
             livePhotoRequestCancellation = .pendingResources(requestID)
         }
 
-        private func handlePhotosAssetLivePhotoResult(
-            _ livePhoto: PHLivePhoto?,
-            info: [AnyHashable: Any]?,
-            key: String
-        ) {
-            handleLivePhotoResult(
-                livePhoto,
-                isCancelled: info?[PHImageCancelledKey] as? Bool == true,
-                error: info?[PHImageErrorKey],
-                isDegraded: info?[PHImageResultIsDegradedKey] as? Bool == true,
-                key: key
-            )
-        }
-
         private func handleLocalResourceLivePhotoResult(
             _ livePhoto: PHLivePhoto?,
             info: [AnyHashable: Any],
-            key: String
+            key: String,
+            requestKey: MediaFetchRequestKey
         ) {
             handleLivePhotoResult(
                 livePhoto,
                 isCancelled: info[PHLivePhotoInfoCancelledKey] as? Bool == true,
                 error: info[PHLivePhotoInfoErrorKey],
                 isDegraded: info[PHLivePhotoInfoIsDegradedKey] as? Bool == true,
-                key: key
+                key: key,
+                requestKey: requestKey
             )
+        }
+
+        private struct LivePhotoRequestContext {
+            let source: DepthAnalysisSource
+            let targetSize: CGSize
+            let presentationKey: String
         }
 
         private struct PendingLivePhotoResources {
@@ -1244,13 +1424,10 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
         }
 
         private enum LivePhotoRequestCancellation {
-            case photosAsset(PHImageRequestID)
             case pendingResources(PHLivePhotoRequestID)
 
             func cancel() {
                 switch self {
-                case .photosAsset(let requestID):
-                    PHImageManager.default().cancelImageRequest(requestID)
                 case .pendingResources(let requestID):
                     PHLivePhoto.cancelRequest(withRequestID: requestID)
                 }
@@ -1262,16 +1439,32 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
             isCancelled: Bool,
             error: Any?,
             isDegraded: Bool,
-            key: String
+            key: String,
+            requestKey: MediaFetchRequestKey
         ) {
-            guard livePhotoRequestKey == key else {
+            guard isCurrentLivePhotoRequest(key: key, requestKey: requestKey) else {
                 return
             }
-            if isCancelled || error != nil {
-                markLivePhotoUnavailable(key: key)
+            if isCancelled {
+                cancelLivePhotoRequest(notifySlot: true, preserveCloudState: false)
+                return
+            }
+            if let error = error as? Error {
+                markLivePhotoUnavailable(
+                    key: key,
+                    requestKey: requestKey,
+                    failure: error
+                )
                 return
             }
             guard let livePhoto else {
+                if !isDegraded {
+                    markLivePhotoUnavailable(
+                        key: key,
+                        requestKey: requestKey,
+                        failure: MediaFetchFailure.decode
+                    )
+                }
                 return
             }
 
@@ -1290,7 +1483,10 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
                 return
             }
             livePhotoRequestCancellation = nil
+            livePhotoPreparationTask = nil
             livePhotoRequestKey = nil
+            livePhotoMediaRequestKey = nil
+            slot?.completeLivePhotoFetch(requestKey: requestKey)
         }
 
         private func livePhotoTargetSize(in scrollView: UIScrollView) -> CGSize {
@@ -1310,19 +1506,35 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
             livePhotoView.startPlayback(with: .full)
         }
 
-        private func markLivePhotoUnavailable(key: String) {
+        private func markLivePhotoUnavailable(
+            key: String,
+            requestKey: MediaFetchRequestKey,
+            failure: Error?
+        ) {
+            guard isCurrentLivePhotoRequest(key: key, requestKey: requestKey) else {
+                return
+            }
             livePhotoRequestCancellation = nil
+            livePhotoPreparationTask = nil
             livePhotoRequestKey = nil
+            livePhotoMediaRequestKey = nil
             livePhotoReadyKey = nil
             livePhotoUnavailableKey = key
             livePhotoView.livePhoto = nil
             livePhotoView.isHidden = true
+            if let failure {
+                slot?.failLivePhotoFetch(failure, requestKey: requestKey)
+            } else {
+                slot?.completeLivePhotoFetch(requestKey: requestKey)
+            }
         }
 
         private func clearLivePhoto() {
             isPressingForLivePhoto = false
             livePhotoView.stopPlayback()
-            cancelLivePhotoRequest()
+            scheduledLivePhotoRequestKey = nil
+            cancelLivePhotoRequest(notifySlot: true, preserveCloudState: false)
+            lastLivePhotoRequest = nil
             livePhotoReadyKey = nil
             livePhotoUnavailableKey = nil
             livePhotoView.livePhoto = nil
@@ -1330,12 +1542,56 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
             livePhotoView.isHidden = true
         }
 
-        private func cancelLivePhotoRequest() {
+        private func retryLivePhotoRequest() {
+            guard let lastLivePhotoRequest else {
+                return
+            }
+            livePhotoUnavailableKey = nil
+            requestLivePhoto(
+                source: lastLivePhotoRequest.source,
+                targetSize: lastLivePhotoRequest.targetSize,
+                key: lastLivePhotoRequest.presentationKey
+            )
+        }
+
+        private func isCurrentLivePhotoRequest(
+            key: String,
+            requestKey: MediaFetchRequestKey
+        ) -> Bool {
+            livePhotoRequestKey == key && livePhotoMediaRequestKey == requestKey
+        }
+
+        private func cancelLivePhotoRequest(
+            notifySlot: Bool,
+            preserveCloudState: Bool,
+            suppressAutomaticRetry: Bool = false,
+            expectedCoordinatorGeneration: UInt64? = nil
+        ) {
+            if let expectedCoordinatorGeneration,
+               expectedCoordinatorGeneration != livePhotoCoordinatorGeneration {
+                return
+            }
+            livePhotoCoordinatorGeneration &+= 1
+            let presentationKey = livePhotoRequestKey
+            let mediaRequestKey = livePhotoMediaRequestKey
             livePhotoPreparationTask?.cancel()
             livePhotoPreparationTask = nil
             livePhotoRequestCancellation?.cancel()
             livePhotoRequestCancellation = nil
             livePhotoRequestKey = nil
+            livePhotoMediaRequestKey = nil
+            if suppressAutomaticRetry, let presentationKey {
+                livePhotoUnavailableKey = presentationKey
+            }
+            if notifySlot, let mediaRequestKey {
+                let requestSlot = slot
+                Task { @MainActor in
+                    requestSlot?.cancelLivePhotoFetch(
+                        requestKey: mediaRequestKey,
+                        preserveCloudState: preserveCloudState
+                    )
+                }
+            }
         }
     }
 }

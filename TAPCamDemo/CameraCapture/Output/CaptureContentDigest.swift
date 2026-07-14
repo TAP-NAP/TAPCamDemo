@@ -98,15 +98,19 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
 
     static func makeVideo(
         manifest: TAPVideoManifest,
-        mp4Data: Data
+        mp4FileURL: URL
     ) throws -> CaptureContentBinding {
-        let slot = try TAPProofSlot.locateBMFF(in: mp4Data)
+        let slot = try TAPProofSlot.locateBMFF(inFileAt: mp4FileURL)
+        let byteCount = try TAPBMFFStreamingFile.byteCount(of: mp4FileURL)
+        guard byteCount <= UInt64(Int.max) else {
+            throw TAPDepthCaptureError.pendingCaptureProofInvalid("video file is too large to describe")
+        }
         let assetHash = try AssetHash(
             fileContainerIdentifier: "mp4",
-            byteCount: mp4Data.count,
+            byteCount: Int(byteCount),
             slot: slot,
-            value: TAPContentBindingHash.sha256Base64URL(
-                data: mp4Data,
+            value: TAPBMFFStreamingFile.sha256Base64URL(
+                of: mp4FileURL,
                 excluding: slot.containerRange
             )
         )
@@ -326,6 +330,26 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
                 )
             ]
         }
+
+        nonisolated init(
+            fileContainerIdentifier: String,
+            byteCount: Int,
+            slot: TAPProofSlot.FileLocation,
+            value: String
+        ) {
+            self.kind = "c2pa-style-format-native-byte-ranges"
+            self.fileContainer = fileContainerIdentifier
+            self.algorithm = "SHA-256"
+            self.byteCount = byteCount
+            self.value = value
+            self.excludedRanges = [
+                ExcludedRange(
+                    offset: Int(slot.containerRange.offset),
+                    length: Int(slot.containerRange.length),
+                    reason: "tap-proof-slot"
+                )
+            ]
+        }
     }
 
     nonisolated struct ExcludedRange: Codable, Equatable, Sendable {
@@ -386,6 +410,16 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
             self.length = slot.containerRange.count
             self.payloadOffset = slot.payloadRange.lowerBound
             self.payloadLength = slot.payloadRange.count
+            self.padding = "zero-filled-after-envelope"
+        }
+
+
+        nonisolated init(_ slot: TAPProofSlot.FileLocation) {
+            self.kind = slot.kind.rawValue
+            self.offset = Int(slot.containerRange.offset)
+            self.length = Int(slot.containerRange.length)
+            self.payloadOffset = Int(slot.payloadRange.offset)
+            self.payloadLength = Int(slot.payloadRange.length)
             self.padding = "zero-filled-after-envelope"
         }
     }
@@ -492,6 +526,12 @@ nonisolated enum TAPProofSlot {
         let payloadRange: Range<Int>
     }
 
+    struct FileLocation: Equatable, Sendable {
+        let kind: Kind
+        let containerRange: TAPFileByteRange
+        let payloadRange: TAPFileByteRange
+    }
+
     static func ensuringEmptySlot(
         in photoData: Data,
         fileContainer: CapturePhotoFileContainer
@@ -511,14 +551,21 @@ nonisolated enum TAPProofSlot {
         }
     }
 
-    static func ensuringEmptyBMFFSlot(in data: Data) throws -> Data {
+    static func ensureEmptyBMFFSlot(inFileAt fileURL: URL) throws -> FileLocation {
         do {
-            _ = try locateBMFF(in: data)
-            return data
+            return try locateBMFF(inFileAt: fileURL)
         } catch TAPDepthCaptureError.pendingCaptureProofMissing {
-            return data + bmffProofBox(payload: emptyPayload())
-        } catch {
-            throw error
+            let boxes = try TAPBMFFStreamingFile.topLevelBoxes(at: fileURL)
+            guard boxes.last?.usesToEndSize != true else {
+                throw TAPDepthCaptureError.pendingCaptureProofInvalid(
+                    "cannot append TAP proof slot after a BMFF size-zero box"
+                )
+            }
+            try TAPBMFFStreamingFile.append(
+                bmffProofBox(payload: emptyPayload()),
+                to: fileURL
+            )
+            return try locateBMFF(inFileAt: fileURL)
         }
     }
 
@@ -536,13 +583,23 @@ nonisolated enum TAPProofSlot {
 
     static func writeProofEnvelope(
         _ envelope: Data,
-        intoBMFF data: Data
-    ) throws -> Data {
-        let slot = try locateBMFF(in: data)
-        let payload = try payload(envelope: envelope)
-        var output = data
-        output.replaceSubrange(slot.payloadRange, with: payload)
-        return output
+        intoBMFFFileAt fileURL: URL
+    ) throws {
+        let slot = try locateBMFF(inFileAt: fileURL)
+        try TAPBMFFStreamingFile.overwrite(
+            try payload(envelope: envelope),
+            in: slot.payloadRange,
+            at: fileURL
+        )
+    }
+
+    static func resetBMFFProofSlot(inFileAt fileURL: URL) throws {
+        let slot = try locateBMFF(inFileAt: fileURL)
+        try TAPBMFFStreamingFile.overwrite(
+            emptyPayload(),
+            in: slot.payloadRange,
+            at: fileURL
+        )
     }
 
     static func proofEnvelopeData(
@@ -554,9 +611,13 @@ nonisolated enum TAPProofSlot {
         return try envelopeData(fromPayload: payload)
     }
 
-    static func proofEnvelopeData(fromBMFF data: Data) throws -> Data {
-        let slot = try locateBMFF(in: data)
-        let payload = data.subdata(in: slot.payloadRange)
+    static func proofEnvelopeData(fromBMFFFileAt fileURL: URL) throws -> Data {
+        let slot = try locateBMFF(inFileAt: fileURL)
+        let payload = try TAPBMFFStreamingFile.read(
+            slot.payloadRange,
+            from: fileURL,
+            maximumByteCount: payloadByteCount
+        )
         return try envelopeData(fromPayload: payload)
     }
 
@@ -572,8 +633,23 @@ nonisolated enum TAPProofSlot {
         }
     }
 
-    static func locateBMFF(in data: Data) throws -> Location {
-        try locateBMFFSlot(in: data)
+    static func locateBMFF(inFileAt fileURL: URL) throws -> FileLocation {
+        let matches = try TAPVideoContainerLayout.read(from: fileURL).topLevelBoxes
+            .filter { $0.type == "uuid" && $0.userType == bmffUUID }
+        guard !matches.isEmpty else {
+            throw TAPDepthCaptureError.pendingCaptureProofMissing
+        }
+        guard matches.count == 1, let match = matches.first else {
+            throw TAPDepthCaptureError.pendingCaptureProofInvalid("expected exactly one TAP proof slot")
+        }
+        guard match.payloadRange.length == UInt64(payloadByteCount) else {
+            throw TAPDepthCaptureError.pendingCaptureProofInvalid("unexpected proof slot length")
+        }
+        return FileLocation(
+            kind: .bmffUUIDBox,
+            containerRange: match.range,
+            payloadRange: match.payloadRange
+        )
     }
 
     private static func emptyPayload() -> Data {

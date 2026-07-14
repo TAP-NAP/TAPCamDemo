@@ -56,6 +56,8 @@ nonisolated struct CaptureScoreIntentSnapshot: Equatable, Identifiable, Sendable
             "Exported"
         case .failedRetryable:
             "Needs retry"
+        case .failedTerminal:
+            "Validation failed"
         }
     }
 

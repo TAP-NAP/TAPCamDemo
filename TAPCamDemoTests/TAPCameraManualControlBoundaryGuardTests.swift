@@ -28,13 +28,13 @@ struct TAPCameraManualControlBoundaryGuardTests {
         }
     }
 
-    @Test func cameraCaptureUIFilesDoNotReferenceManualCommandPlanOrDeviceWriters() throws {
+    @Test func cameraCaptureUIFilesDoNotConstructManualCommandPlansOrReferenceDeviceWriters() throws {
         let sources = try TAPCamDemoTestSourceInspection.swiftSourceRelativePaths(under: "TAPCamDemo/CameraCapture/UI")
             .map { try TAPCamDemoTestSourceInspection.source(relativePath: $0) }
             .joined(separator: "\n")
 
         for forbidden in [
-            "CameraManualControlCommandPlan",
+            "CameraManualControlCommandPlan(resolution:",
             "CameraControlService",
             "applyManualControlCommandPlan",
             "lockForConfiguration",

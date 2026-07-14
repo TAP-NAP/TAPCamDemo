@@ -433,7 +433,7 @@ struct TAPCaptureOutputProfileTests {
         let createAssetSource = try #require(Self.substring(
             in: photoLibrarySource,
             from: "private static func createAsset",
-            to: "private static func fetchAlbum"
+            to: "private static func createVideoAsset"
         ))
 
         #expect(photoLibrarySource.contains("static func saveDepthPhoto(\n        _ validatedPhoto: ValidatedTAPDepthPhoto"))

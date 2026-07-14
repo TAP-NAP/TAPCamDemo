@@ -17,6 +17,7 @@ nonisolated enum TAPPendingCaptureFailureReasonPresentation {
     enum Reason: Equatable, Sendable {
         case waitingNetwork
         case retryableProcessingFailure
+        case terminalFailure
     }
 
     static func reason(for status: TAPPendingCaptureStatus) -> Reason? {
@@ -25,6 +26,8 @@ nonisolated enum TAPPendingCaptureFailureReasonPresentation {
             return .waitingNetwork
         case .failedRetryable:
             return .retryableProcessingFailure
+        case .failedTerminal:
+            return .terminalFailure
         case .pending, .signing, .signed, .exporting, .exported:
             return nil
         }
@@ -36,6 +39,8 @@ nonisolated enum TAPPendingCaptureFailureReasonPresentation {
             return "Network unavailable. Capture will retry."
         case .retryableProcessingFailure:
             return "Capture processing failed. It will retry."
+        case .terminalFailure:
+            return "Capture validation failed. The original artifact was preserved."
         }
     }
 

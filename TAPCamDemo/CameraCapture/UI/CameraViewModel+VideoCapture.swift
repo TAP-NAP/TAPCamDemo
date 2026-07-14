@@ -17,6 +17,13 @@ extension CameraViewModel {
               let activeSessionConfiguration else {
             return
         }
+        guard activeSessionConfiguration.depthDeliverySupported else {
+            statusMessage = CameraCaptureStatusPresentation.message(
+                for: TAPDepthCaptureError.depthDeliveryUnsupported,
+                context: .capture
+            )
+            return
+        }
 
         isPreparingVideoMode = true
         statusMessage = "Preparing TAP video..."
@@ -34,9 +41,7 @@ extension CameraViewModel {
                 videoRotationAngle: videoRotationAngle,
                 isVideoMirrored: isVideoMirrored
             )
-            statusMessage = activeSessionConfiguration.depthDeliverySupported
-                ? "TAP video ready."
-                : "TAP video ready · depth unavailable"
+            statusMessage = "TAP video ready."
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.cameraCapture.info("video mode warmup complete recordsAudio=\(recordsAudio, privacy: .public) depthDeliverySupported=\(activeSessionConfiguration.depthDeliverySupported, privacy: .public)")
             #endif
@@ -101,6 +106,13 @@ extension CameraViewModel {
             )
             return
         }
+        guard activeSessionConfiguration.depthDeliverySupported else {
+            statusMessage = CameraCaptureStatusPresentation.message(
+                for: TAPDepthCaptureError.depthDeliveryUnsupported,
+                context: .capture
+            )
+            return
+        }
         guard pendingJobCount < CaptureJobQueue.defaultMaximumPendingJobs else {
             statusMessage = CameraCaptureStatusPresentation.message(
                 for: TAPDepthCaptureError.captureBackpressureLimitReached,
@@ -110,12 +122,6 @@ extension CameraViewModel {
         }
 
         let captureID = UUID().uuidString
-        let temporaryDirectoryURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("TAPVideoRecording-\(captureID)", isDirectory: true)
-        let outputURL = temporaryDirectoryURL
-            .appendingPathComponent(TAPPendingCaptureBundlePathPolicy.unsignedVideoFilename)
-        let debugDepthPreviewURL = temporaryDirectoryURL
-            .appendingPathComponent(TAPPendingCaptureBundlePathPolicy.debugDepthPreviewVideoFilename)
         let capturedAt = Date()
         let recordsAudio = CameraCaptureDataUsePreferences.usesMicrophoneData()
             && AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
@@ -124,15 +130,14 @@ extension CameraViewModel {
             : nil
 
         do {
-            try FileManager.default.createDirectory(
-                at: temporaryDirectoryURL,
-                withIntermediateDirectories: true
+            let workspace = try await pendingCaptureStore.beginVideoCaptureWorkspace(
+                captureID: captureID
             )
+            videoRecordingTemporaryDirectoryURL = workspace.bundleURL
             let request = TAPVideoRecordingRequest(
                 captureID: captureID,
                 capturedAt: capturedAt,
-                outputURL: outputURL,
-                debugDepthPreviewURL: debugDepthPreviewURL,
+                outputURL: workspace.artifactURL,
                 maximumDuration: TAPVideoRecordingRequest.defaultMaximumDuration,
                 videoRotationAngle: Self.videoRotationAngleForHorizonLevelCapture(
                     device: activeSessionConfiguration.device
@@ -147,11 +152,8 @@ extension CameraViewModel {
             )
 
             activeVideoRecordingCaptureID = captureID
-            videoRecordingTemporaryDirectoryURL = temporaryDirectoryURL
             isVideoRecording = true
-            statusMessage = activeSessionConfiguration.depthDeliverySupported
-                ? "Recording TAP video..."
-                : "Recording TAP video · depth unavailable"
+            statusMessage = "Recording TAP video..."
             installVideoRecordingLimitTask(pendingCaptureWorkerClient: pendingCaptureWorkerClient)
             installVideoThermalObserver(pendingCaptureWorkerClient: pendingCaptureWorkerClient)
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
@@ -161,7 +163,7 @@ extension CameraViewModel {
             isVideoRecording = false
             activeVideoRecordingCaptureID = nil
             videoRecordingTemporaryDirectoryURL = nil
-            try? FileManager.default.removeItem(at: temporaryDirectoryURL)
+            try? await pendingCaptureStore.abortVideoCaptureWorkspace(captureID: captureID)
             statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .capture)
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.cameraCapture.error("video recording start failed captureID=\(captureID, privacy: .private) error=\(TAPDiagnostics.describe(error), privacy: .public)")
@@ -187,14 +189,19 @@ extension CameraViewModel {
 
         do {
             let artifact = try await sessionController.stopVideoRecording(reason: reason)
-            let record = try await pendingCaptureStore.ingestVideo(artifact.pendingArtifact)
-            statusMessage = "TAP video queued for signing · depth samples \(artifact.manifest.payload.depthCoverage.sampleCount)"
+            let hasRecordedDepth = artifact.manifest.payload.depthCoverage.sampleCount > 0
+            let record = try await pendingCaptureStore.ingestVideo(
+                artifact.pendingArtifact,
+                terminalFailureCode: hasRecordedDepth ? nil : .missingDepthData
+            )
+            statusMessage = hasRecordedDepth
+                ? "TAP video queued for signing · depth samples \(artifact.manifest.payload.depthCoverage.sampleCount)"
+                : "TAP video stopped · no depth samples were recorded"
             activeVideoRecordingCaptureID = nil
-            if let directoryURL = videoRecordingTemporaryDirectoryURL {
-                try? FileManager.default.removeItem(at: directoryURL)
-            }
             videoRecordingTemporaryDirectoryURL = nil
-            if let pendingCaptureWorkerClient {
+            await persistVideoPosterIfPossible(for: record)
+            scheduleRecentTAPLibraryPreviewRefresh(afterNanoseconds: 0)
+            if hasRecordedDepth, let pendingCaptureWorkerClient {
                 await retryPendingCaptures(pendingCaptureWorkerClient: pendingCaptureWorkerClient)
             }
             if reason == .userStop {
@@ -205,13 +212,53 @@ extension CameraViewModel {
             #endif
         } catch {
             activeVideoRecordingCaptureID = nil
-            if let directoryURL = videoRecordingTemporaryDirectoryURL {
-                try? FileManager.default.removeItem(at: directoryURL)
+            if let captureID {
+                try? await pendingCaptureStore.abortVideoCaptureWorkspace(captureID: captureID)
             }
             videoRecordingTemporaryDirectoryURL = nil
             statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .capture)
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.cameraCapture.error("video recording stop failed captureID=\(captureID ?? "none", privacy: .private) error=\(TAPDiagnostics.describe(error), privacy: .public)")
+            #endif
+        }
+    }
+
+    /// Poster generation is derivative-only and deliberately completes before
+    /// export cleanup can remove the pending MP4. Any failure leaves the record
+    /// usable and lets startup backfill retry while the artifact still exists.
+    private func persistVideoPosterIfPossible(
+        for record: TAPPendingCaptureRecord
+    ) async {
+        guard record.artifactKind == .tapVideo,
+              record.thumbnailFilename == nil else {
+            return
+        }
+        do {
+            let videoURL = try await pendingCaptureStore.videoArtifactURL(
+                captureID: record.captureID
+            )
+            let cacheKey = DepthAlbumThumbnailCacheKey.make(
+                mediaID: .tapCapture(record.captureID),
+                version: "video-poster-v1|\(record.videoFormatRevision ?? 0)|\(record.updatedAt.timeIntervalSince1970)",
+                pixelLength: 512
+            )
+            let data = try await videoPosterGenerator.posterData(
+                for: videoURL,
+                cacheKey: cacheKey,
+                pixelLength: 512
+            )
+            _ = try await pendingCaptureStore.storeVideoPoster(
+                data,
+                captureID: record.captureID,
+                posterRevision: 1
+            )
+        } catch is CancellationError {
+            return
+        } catch {
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.pendingCapture.error(
+                "video poster generation failed captureID=\(record.captureID, privacy: .private) error=\(TAPDiagnostics.describe(error), privacy: .public)"
+            )
             #endif
         }
     }

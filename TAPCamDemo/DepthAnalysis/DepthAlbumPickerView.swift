@@ -17,7 +17,9 @@ import UIKit
 struct DepthAlbumPickerView: View {
     @Environment(\.displayScale) private var displayScale
     @ObservedObject private var routeStore: CameraRouteStore
-    @StateObject private var viewModel = DepthAlbumPickerViewModel()
+    @StateObject private var viewModel: DepthAlbumPickerViewModel
+    private let libraryStore: LibraryMediaStore
+    private let mediaFetcher: any LibraryMediaFetching
     @State private var albumScrollPosition = ScrollPosition(idType: String.self)
     @State private var itemViewportYByID: [String: CGFloat] = [:]
     @State private var pendingReturnScrollBookmark: DepthAlbumReturnScrollBookmark?
@@ -41,8 +43,18 @@ struct DepthAlbumPickerView: View {
         )
     }
 
-    init(routeStore: CameraRouteStore) {
+    init(
+        routeStore: CameraRouteStore,
+        libraryStore: LibraryMediaStore? = nil,
+        mediaFetcher: any LibraryMediaFetching = PhotoKitLibraryMediaFetcher()
+    ) {
         self.routeStore = routeStore
+        self.mediaFetcher = mediaFetcher
+        let resolvedLibraryStore = libraryStore ?? LibraryMediaStore(observesChanges: false)
+        self.libraryStore = resolvedLibraryStore
+        _viewModel = StateObject(
+            wrappedValue: DepthAlbumPickerViewModel(libraryStore: resolvedLibraryStore)
+        )
     }
 
     var body: some View {
@@ -76,9 +88,6 @@ struct DepthAlbumPickerView: View {
             }
             let lockedImportReason = routeStore.consumePendingLockedImportReason()
             await viewModel.loadForPresentation(lockedImportReason: lockedImportReason)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .tapLibraryDidChange).receive(on: RunLoop.main)) { _ in
-            viewModel.scheduleRefresh()
         }
         .onReceive(NotificationCenter.default.publisher(for: .tapCamLockedCaptureImportDidAddPendingCaptures).receive(on: RunLoop.main)) { _ in
             routeStore.finishAwaitingLockedCaptureImport()
@@ -115,18 +124,19 @@ struct DepthAlbumPickerView: View {
             } else if let errorMessage = viewModel.errorMessage {
                 ContentUnavailableView("Unable to load album", systemImage: "photo.on.rectangle.angled", description: Text(errorMessage))
                     .frame(minHeight: 320)
-            } else if viewModel.items.isEmpty {
+            } else if libraryStore.items.isEmpty {
                 ContentUnavailableView("No depth photos yet", systemImage: "photo.stack", description: Text("Capture a TAP depth photo first, then return here to analyze it."))
                     .frame(minHeight: 320)
             } else {
                 LazyVGrid(columns: columns, spacing: Self.gridSpacing) {
-                    ForEach(viewModel.items) { item in
+                    ForEach(libraryStore.items) { item in
                         Button {
                             openAlbumItem(item, returnScrollRowStride: returnScrollRowStride)
                         } label: {
                             TAPLibraryItemCell(
                                 item: item,
-                                thumbnailPixelLength: thumbnailPixelLength
+                                thumbnailPixelLength: thumbnailPixelLength,
+                                mediaFetcher: mediaFetcher
                             )
                         }
                         .buttonStyle(.plain)
@@ -146,7 +156,7 @@ struct DepthAlbumPickerView: View {
         }
         .scrollPosition($albumScrollPosition)
         .coordinateSpace(name: Self.scrollViewportCoordinateSpaceName)
-        .onChange(of: viewModel.items.map(\.id)) { _, _ in
+        .onChange(of: libraryStore.items.map(\.id)) { _, _ in
             pruneTrackedItemViewportPositions()
             restorePendingReturnScrollPosition(
                 rowStride: returnScrollRowStride,
@@ -198,11 +208,12 @@ struct DepthAlbumPickerView: View {
                 source: selectedAnalysisRoute.source,
                 albumContext: DepthAnalysisAlbumContext(
                     currentItemID: selectedAnalysisRoute.itemID,
-                    items: viewModel.items
+                    items: libraryStore.items
                 ),
                 onCurrentAlbumEntryChanged: { entry in
                     updatePresentedAnalysisRoute(entry)
-                }
+                },
+                mediaFetcher: mediaFetcher
             )
         } else {
             EmptyView()
@@ -216,11 +227,12 @@ struct DepthAlbumPickerView: View {
                 source: selectedVideoRoute.source,
                 albumContext: TAPVideoAlbumContext(
                     currentItemID: selectedVideoRoute.itemID,
-                    items: viewModel.items
+                    items: libraryStore.items
                 ),
                 onCurrentAlbumEntryChanged: { entry in
                     updatePresentedVideoRoute(entry)
-                }
+                },
+                mediaFetcher: mediaFetcher
             )
             .id(selectedVideoRoute.itemID)
         } else {
@@ -321,7 +333,7 @@ struct DepthAlbumPickerView: View {
                   !isVideoPresented,
                   let offsetY = Self.returnScrollOffsetY(
                     bookmark: bookmark,
-                    items: viewModel.items,
+                    items: libraryStore.items,
                     rowStride: rowStride
                   ) else {
                 return
@@ -345,7 +357,7 @@ struct DepthAlbumPickerView: View {
     }
 
     private func pruneTrackedItemViewportPositions() {
-        let currentItemIDs = Set(viewModel.items.map(\.id))
+        let currentItemIDs = Set(libraryStore.items.map(\.id))
         itemViewportYByID = itemViewportYByID.filter { currentItemIDs.contains($0.key) }
     }
 
@@ -479,21 +491,30 @@ private struct DepthAlbumAnalysisRoute: Hashable {
 
 @MainActor
 final class DepthAlbumPickerViewModel: ObservableObject {
-    @Published private(set) var items: [TAPLibraryItem] = []
     @Published private(set) var isLoading = false
     @Published private(set) var loadingMessage = "Loading TAP Library..."
     @Published private(set) var errorMessage: String?
 
-    private let itemProvider: DepthAlbumItemProvider
+    private let libraryStore: LibraryMediaStore
     private var refreshTask: Task<Void, Never>?
     private var hasLoadedSnapshot = false
+
+    var items: [TAPLibraryItem] {
+        libraryStore.items
+    }
 
     var shouldShowLoading: Bool {
         isLoading || !hasLoadedSnapshot
     }
 
-    init(itemProvider: DepthAlbumItemProvider? = nil) {
-        self.itemProvider = itemProvider ?? DepthAlbumItemProvider()
+    init(
+        itemProvider: DepthAlbumItemProvider? = nil,
+        libraryStore: LibraryMediaStore? = nil
+    ) {
+        self.libraryStore = libraryStore ?? LibraryMediaStore(
+            itemProvider: itemProvider,
+            observesChanges: false
+        )
     }
 
     deinit {
@@ -532,16 +553,17 @@ final class DepthAlbumPickerViewModel: ObservableObject {
             if showLoadingIndicator, lockedImportReason != nil {
                 loadingMessage = "Loading TAP Library..."
             }
-            let snapshot = try await itemProvider.loadSnapshot()
-            items = snapshot.items
-            errorMessage = snapshot.photoAssetsError.flatMap { error in
+            let snapshot = await libraryStore.refresh()
+            if let loadError = libraryStore.loadError {
+                throw loadError
+            }
+            errorMessage = snapshot?.photoAssetsError.flatMap { error in
                 items.isEmpty ? DepthAnalysisErrorPresentation.emptyAlbumPhotosErrorMessage(for: error) : nil
             }
             LockedCameraDiagnostics.logger.info(
-                "tap_library_load_finish itemCount=\(self.items.count, privacy: .public) itemSources=\(Self.itemSourceCountsDescription(self.items), privacy: .public) photoAssetsErrorPresent=\(snapshot.photoAssetsError != nil, privacy: .public)"
+                "tap_library_load_finish itemCount=\(self.items.count, privacy: .public) itemSources=\(Self.itemSourceCountsDescription(self.items), privacy: .public) photoAssetsErrorPresent=\(snapshot?.photoAssetsError != nil, privacy: .public)"
             )
         } catch {
-            items = []
             errorMessage = DepthAnalysisErrorPresentation.albumLoadErrorMessage(for: error)
             LockedCameraDiagnostics.logger.error(
                 "tap_library_load_failed error=\(Self.describe(error), privacy: .public)"
@@ -600,7 +622,8 @@ final class DepthAlbumPickerViewModel: ObservableObject {
 private struct TAPLibraryItemCell: View {
     let item: TAPLibraryItem
     let thumbnailPixelLength: Int
-    @State private var thumbnail: UIImage?
+    let mediaFetcher: any LibraryMediaFetching
+    @State private var fetchPhase: MediaFetchPhase<MediaPoster, MediaPoster> = .idle(nil)
 
     var body: some View {
         ZStack {
@@ -608,8 +631,8 @@ private struct TAPLibraryItemCell: View {
                 .fill(Color(uiColor: .secondarySystemBackground))
                 .aspectRatio(1, contentMode: .fit)
 
-            if let thumbnail {
-                Image(uiImage: thumbnail)
+            if let posterImage = displayedPoster?.image {
+                Image(uiImage: posterImage)
                     .resizable()
                     .scaledToFill()
                     .aspectRatio(1, contentMode: .fill)
@@ -648,6 +671,42 @@ private struct TAPLibraryItemCell: View {
                 .allowsHitTesting(false)
             }
 
+            if isCloudOnly {
+                VStack {
+                    HStack {
+                        Image(systemName: "icloud.and.arrow.down")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 24, height: 18)
+                            .background(.black.opacity(0.58), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                            .accessibilityLabel(LibraryMediaCopy.storedInICloud)
+                        Spacer()
+                    }
+                    Spacer()
+                }
+                .padding(5)
+                .allowsHitTesting(false)
+            } else if isResolving {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(.secondary)
+                    .allowsHitTesting(false)
+            } else if hasFailure {
+                VStack {
+                    HStack {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 22, height: 18)
+                            .background(.black.opacity(0.58), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                        Spacer()
+                    }
+                    Spacer()
+                }
+                .padding(5)
+                .allowsHitTesting(false)
+            }
+
             if let badge = item.pendingBadge {
                 VStack {
                     Spacer()
@@ -673,76 +732,154 @@ private struct TAPLibraryItemCell: View {
             await loadThumbnail()
         }
         .accessibilityLabel(item.accessibilityLabel)
+        .accessibilityValue(isCloudOnly ? LibraryMediaCopy.storedInICloud : "")
     }
 
     private var thumbnailTaskID: String {
-        "\(item.id)|\(thumbnailPixelLength)"
+        // Stable media identity deliberately survives pending -> exported. The
+        // revision-bearing cache key still changes when the poster/source does.
+        item.thumbnailCacheKey(pixelLength: thumbnailPixelLength)
     }
 
     private func loadThumbnail() async {
         let cacheKey = item.thumbnailCacheKey(pixelLength: thumbnailPixelLength)
-        if let cachedThumbnail = DepthAlbumThumbnailMemoryCache.shared.image(for: cacheKey) {
-            thumbnail = cachedThumbnail
+        fetchPhase = .resolving(nil)
+        if let cachedPoster = DepthAlbumThumbnailMemoryCache.shared.poster(for: cacheKey) {
+            fetchPhase = .ready(cachedPoster)
             return
         }
 
-        guard let data = await thumbnailData(cacheKey: cacheKey),
-              !Task.isCancelled,
-              let image = UIImage(data: data) else {
+        do {
+            let phase = try await thumbnailPhase(cacheKey: cacheKey)
+            guard !Task.isCancelled else {
+                return
+            }
+            if case .ready(let poster) = phase {
+                DepthAlbumThumbnailMemoryCache.shared.insert(poster)
+            }
+            fetchPhase = phase
+        } catch is CancellationError {
             return
+        } catch {
+            guard !Task.isCancelled else {
+                return
+            }
+            fetchPhase = .failed(nil, reason: .decode, retryable: false)
         }
-
-        DepthAlbumThumbnailMemoryCache.shared.insert(image, for: cacheKey)
-        thumbnail = image
     }
 
-    private func thumbnailData(cacheKey: String) async -> Data? {
+    private func thumbnailPhase(
+        cacheKey: String
+    ) async throws -> MediaFetchPhase<MediaPoster, MediaPoster> {
         switch item.source {
-        case .photos(let asset):
-            guard let phAsset = asset.phAsset else {
-                return nil
-            }
-            if asset.isVideo {
-                return await DepthAlbumThumbnailLoader.shared.videoData(
-                    for: phAsset,
-                    cacheKey: cacheKey,
-                    pixelLength: thumbnailPixelLength
-                )
-            }
-            return await DepthAlbumThumbnailLoader.shared.data(
-                for: phAsset,
-                cacheKey: cacheKey,
+        case .photos:
+            guard let request = LibraryMediaPosterRequest(
+                summary: item.summary,
                 pixelLength: thumbnailPixelLength
+            ) else {
+                return .failed(nil, reason: .assetRemoved, retryable: false)
+            }
+            let phase = try await mediaFetcher.posterPhase(
+                for: request,
+                allowsNetworkAccess: false,
+                progress: { _ in }
             )
-        case .ownedPhoto(let record, let asset):
+            return posterPhase(from: phase, cacheKey: cacheKey)
+        case .ownedPhoto(let record, _):
             if let data = try? await TAPPendingCaptureStore.shared.thumbnailData(captureID: record.captureID) {
-                return data
+                return .ready(MediaPoster(cacheKey: cacheKey, jpegData: data))
             }
-            guard let phAsset = asset.phAsset else {
-                return nil
-            }
-            if item.isVideo {
-                return await DepthAlbumThumbnailLoader.shared.videoData(
-                    for: phAsset,
-                    cacheKey: cacheKey,
-                    pixelLength: thumbnailPixelLength
-                )
-            }
-            return await DepthAlbumThumbnailLoader.shared.data(
-                for: phAsset,
-                cacheKey: cacheKey,
+            guard let request = LibraryMediaPosterRequest(
+                summary: item.summary,
                 pixelLength: thumbnailPixelLength
+            ) else {
+                return .failed(nil, reason: .assetRemoved, retryable: false)
+            }
+            let phase = try await mediaFetcher.posterPhase(
+                for: request,
+                allowsNetworkAccess: false,
+                progress: { _ in }
             )
+            return posterPhase(from: phase, cacheKey: cacheKey)
         case .pending(let record):
-            if item.isVideo,
-               let videoURL = try? await TAPPendingCaptureStore.shared.bestAvailableVideoURL(captureID: record.captureID) {
-                return await DepthAlbumThumbnailLoader.shared.videoData(
+            if let data = try? await TAPPendingCaptureStore.shared.thumbnailData(captureID: record.captureID) {
+                return .ready(MediaPoster(cacheKey: cacheKey, jpegData: data))
+            }
+            guard item.isVideo,
+                  let videoURL = try? await TAPPendingCaptureStore.shared.bestAvailableVideoURL(
+                    captureID: record.captureID
+                  ),
+                  let data = await DepthAlbumThumbnailLoader.shared.videoData(
                     for: videoURL,
                     cacheKey: cacheKey,
                     pixelLength: thumbnailPixelLength
-                )
+                  ) else {
+                return .failed(nil, reason: .decode, retryable: false)
             }
-            return try? await TAPPendingCaptureStore.shared.thumbnailData(captureID: record.captureID)
+            return .ready(MediaPoster(cacheKey: cacheKey, jpegData: data))
         }
+    }
+
+    private func posterPhase(
+        from phase: MediaFetchPhase<Data, Data>,
+        cacheKey: String
+    ) -> MediaFetchPhase<MediaPoster, MediaPoster> {
+        switch phase {
+        case .idle(let preview):
+            return .idle(preview.map { MediaPoster(cacheKey: cacheKey, jpegData: $0) })
+        case .resolving(let preview):
+            return .resolving(preview.map { MediaPoster(cacheKey: cacheKey, jpegData: $0) })
+        case .localPreview(let preview):
+            return .localPreview(MediaPoster(cacheKey: cacheKey, jpegData: preview))
+        case .cloudOnly(let preview):
+            return .cloudOnly(preview.map { MediaPoster(cacheKey: cacheKey, jpegData: $0) })
+        case .downloadingFromICloud(let preview, let progress):
+            return .downloadingFromICloud(
+                preview.map { MediaPoster(cacheKey: cacheKey, jpegData: $0) },
+                progress: progress
+            )
+        case .ready(let value):
+            return .ready(MediaPoster(cacheKey: cacheKey, jpegData: value))
+        case .failed(let preview, let reason, let retryable):
+            return .failed(
+                preview.map { MediaPoster(cacheKey: cacheKey, jpegData: $0) },
+                reason: reason,
+                retryable: retryable
+            )
+        }
+    }
+
+    private var displayedPoster: MediaPoster? {
+        switch fetchPhase {
+        case .idle(let preview),
+             .resolving(let preview),
+             .cloudOnly(let preview),
+             .downloadingFromICloud(let preview, _),
+             .failed(let preview, _, _):
+            return preview
+        case .localPreview(let preview), .ready(let preview):
+            return preview
+        }
+    }
+
+    private var isCloudOnly: Bool {
+        if case .cloudOnly = fetchPhase {
+            return true
+        }
+        return false
+    }
+
+    private var isResolving: Bool {
+        if case .resolving = fetchPhase {
+            return true
+        }
+        return false
+    }
+
+    private var hasFailure: Bool {
+        if case .failed = fetchPhase {
+            return true
+        }
+        return false
     }
 }

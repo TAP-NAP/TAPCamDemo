@@ -29,6 +29,31 @@ enum TAPCamDemoTestSourceInspection {
             .sorted()
     }
 
+    static func swiftSourceRelativePathsRecursively(
+        under relativeDirectory: String
+    ) throws -> [String] {
+        let directoryURL = sourceRoot.appendingPathComponent(relativeDirectory, isDirectory: true)
+        guard let enumerator = FileManager.default.enumerator(
+            at: directoryURL,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return []
+        }
+        let directoryPrefix = directoryURL.standardizedFileURL.path + "/"
+        var relativePaths: [String] = []
+        for case let fileURL as URL in enumerator where fileURL.pathExtension == "swift" {
+            let standardizedPath = fileURL.standardizedFileURL.path
+            guard standardizedPath.hasPrefix(directoryPrefix) else {
+                continue
+            }
+            relativePaths.append(
+                "\(relativeDirectory)/\(standardizedPath.dropFirst(directoryPrefix.count))"
+            )
+        }
+        return relativePaths.sorted()
+    }
+
     static func reflectedNames(in value: Any, depth: Int = 0) -> [String] {
         guard depth < 6 else {
             return []

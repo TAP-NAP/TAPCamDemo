@@ -9,6 +9,17 @@ import Testing
 @testable import TAPCamDemo
 
 struct TAPVideoManifestTests {
+    @Test func calibrationCoverageRejectsOverflowWithoutTrapping() {
+        let coverage = TAPVideoManifest.CalibrationCoverage(
+            indexedSampleCount: .max,
+            missingCalibrationSampleCount: 1,
+            overflowUnindexedSampleCount: 0,
+            tableOverflowed: false
+        )
+
+        #expect(coverage.accountedSampleCount == nil)
+    }
+
     @Test func videoManifestCanonicalPayloadIsStableAndUsesUnifiedSchema() throws {
         let payload = Self.samplePayload(depthCoverage: .none)
         let manifest = TAPVideoManifest(payload: payload)
@@ -21,22 +32,26 @@ struct TAPVideoManifestTests {
 
         #expect(first == second)
         #expect(decoded == payload)
-        #expect(manifest.schema.id == "urn:tapnap:tapcam:video-manifest:v1")
-        #expect(manifest.schema.mediaType == "application/vnd.tapnap.video-manifest+json;version=1")
-        #expect(payloadJSON.contains(#""depthCoverage":{"format":null,"gapCount":0,"gaps":[],"sampleCount":0,"track":null}"#))
+        #expect(manifest.schema.id == "urn:tapnap:tapcam:video-manifest:v2")
+        #expect(manifest.schema.mediaType == "application/vnd.tapnap.video-manifest+json;version=2")
+        #expect(payloadJSON.contains(#""depthCoverage":{"deliveredSampleCount":0,"encodingDropCount":0,"format":null,"gapCount":0,"gaps":[],"metadataDropCount":0,"outputDropCount":0,"sampleCount":0,"trackCodec":null,"trackDurationSeconds":null,"trackID":null,"trackTimeScale":null}"#))
         #expect(manifestJSON.contains(#""proofs":[]"#))
         #expect(!manifestJSON.contains("depth-video-manifest"))
     }
 
     @Test func videoManifestRecordsDepthGapRangesWithoutPerFrameBitmap() throws {
         let gap = TAPVideoManifest.DepthGap(
-            startTime: "PT12.340S",
-            endTime: "PT12.520S",
+            reason: .metadataBackpressure,
+            startPTS: TAPVideoManifest.MediaTime(value: 7_404, timescale: 600),
+            endPTS: TAPVideoManifest.MediaTime(value: 7_512, timescale: 600),
             nearestStartRGBFrame: 370,
             nearestEndRGBFrame: 376
         )
         let coverage = TAPVideoManifest.DepthCoverage(
-            track: "tap-depth-klv",
+            trackID: 3,
+            trackCodec: "mebx",
+            trackDurationSeconds: 9.98,
+            trackTimeScale: 600,
             sampleCount: 1234,
             gaps: [gap],
             format: TAPVideoManifest.DepthFormat(
@@ -44,9 +59,10 @@ struct TAPVideoManifestTests {
                 pixelFormat: "DepthFloat32",
                 width: 256,
                 height: 192,
-                rowStride: 1024,
-                compression: "lzfse",
-                calibrationReference: "cameraCalibrationData"
+                packedRowStride: 1_024,
+                sourceRowStride: 1_088,
+                bytesPerSample: 4,
+                uncompressedFrameByteCount: 196_608
             )
         )
         let payloadData = try TAPVideoManifestEncoder.payloadDataExcludingProofs(
@@ -57,7 +73,15 @@ struct TAPVideoManifestTests {
         #expect(payloadJSON.contains(#""gapCount":1"#))
         #expect(payloadJSON.contains(#""nearestStartRGBFrame":370"#))
         #expect(payloadJSON.contains(#""nearestEndRGBFrame":376"#))
+        #expect(payloadJSON.contains(#""reason":"metadataBackpressure""#))
+        #expect(payloadJSON.contains(#""startPTS":{"timescale":600,"value":7404}"#))
+        #expect(payloadJSON.contains(#""compressionPolicy":"per-frame:zstd1|raw""#))
+        #expect(payloadJSON.contains(#""packedRowStride":1024"#))
+        #expect(payloadJSON.contains(#""sourceRowStride":1088"#))
         #expect(payloadJSON.contains(#""sampleCount":1234"#))
+        #expect(payloadJSON.contains(#""trackCodec":"mebx""#))
+        #expect(payloadJSON.contains(#""trackDurationSeconds":9.98"#))
+        #expect(payloadJSON.contains(#""trackTimeScale":600"#))
         #expect(!payloadJSON.contains("perFrame"))
         #expect(!payloadJSON.contains("bitmap"))
     }
@@ -100,23 +124,194 @@ struct TAPVideoManifestTests {
 
     @Test func videoManifestBoxAppendsAndReadsSingleBMFFUUIDBox() throws {
         let manifest = TAPVideoManifest(payload: Self.samplePayload(depthCoverage: .none))
-        let baseMP4 = Self.bmffBox(type: "ftyp", payload: Data("isomtap ".utf8))
+        let fileURL = try Self.makeTemporaryFile(
+            data: Self.bmffBox(type: "ftyp", payload: Data("isomtap ".utf8))
+        )
 
-        let withManifest = try TAPVideoManifestBox.appendingManifest(manifest, to: baseMP4)
-        let decoded = try TAPVideoManifestBox.decodedManifest(from: withManifest)
+        try TAPVideoManifestBox.appendManifest(manifest, toFileAt: fileURL)
+        let decoded = try TAPVideoManifestBox.decodedManifest(fromFileAt: fileURL)
 
         #expect(decoded == manifest)
-        #expect(withManifest.count > baseMP4.count)
         #expect(throws: TAPDepthCaptureError.self) {
-            _ = try TAPVideoManifestBox.appendingManifest(manifest, to: withManifest)
+            try TAPVideoManifestBox.appendManifest(manifest, toFileAt: fileURL)
         }
     }
 
+    @Test func videoManifestBoxRejectsOversizedPayloadBeforeMutatingFile() throws {
+        let calibration = TAPVideoManifest.CameraCalibration(
+            intrinsicMatrix: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+            intrinsicMatrixReferenceDimensions: .init(width: 1_920, height: 1_080),
+            extrinsicMatrix: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+            pixelSizeMillimeters: 0.0014,
+            lensDistortionCenter: .init(x: 960, y: 540),
+            lensDistortionLookupTable: Data(
+                repeating: 0xab,
+                count: TAPBMFFStreamingFile.maximumManifestByteCount
+            ),
+            inverseLensDistortionLookupTable: nil
+        )
+        let registration = TAPVideoManifest.SpatialRegistration(
+            status: .registered,
+            mapping: "oversized-test",
+            rgbReferenceDimensions: .init(width: 1_920, height: 1_080),
+            depthReferenceDimensions: .init(width: 256, height: 192),
+            rgbCleanAperture: .init(x: 0, y: 0, width: 1_920, height: 1_080),
+            recordedTransform: "rotation:0;not-mirrored",
+            calibration: calibration
+        )
+        let manifest = TAPVideoManifest(payload: Self.samplePayload(
+            depthCoverage: .none,
+            spatialRegistration: registration
+        ))
+        let fileURL = try Self.makeTemporaryFile(
+            data: Self.bmffBox(type: "ftyp", payload: Data("isomtap ".utf8))
+        )
+        let originalByteCount = try TAPBMFFStreamingFile.byteCount(of: fileURL)
+
+        #expect(throws: TAPDepthCaptureError.self) {
+            try TAPVideoManifestBox.appendManifest(manifest, toFileAt: fileURL)
+        }
+        #expect(try TAPBMFFStreamingFile.byteCount(of: fileURL) == originalByteCount)
+    }
+
+    @Test func videoManifestCarriesConcreteSpatialCalibration() throws {
+        let calibration = TAPVideoManifest.CameraCalibration(
+            intrinsicMatrix: [1, 0, 0, 0, 1, 0, 12, 14, 1],
+            intrinsicMatrixReferenceDimensions: .init(width: 1_920, height: 1_080),
+            extrinsicMatrix: [1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 3, 4],
+            pixelSizeMillimeters: 0.0014,
+            lensDistortionCenter: .init(x: 960, y: 540),
+            lensDistortionLookupTable: Data([1, 2]),
+            inverseLensDistortionLookupTable: Data([3, 4])
+        )
+        let registration = TAPVideoManifest.SpatialRegistration(
+            status: .registered,
+            mapping: "AVDepthData.cameraCalibrationData",
+            rgbReferenceDimensions: .init(width: 1_920, height: 1_080),
+            depthReferenceDimensions: .init(width: 256, height: 192),
+            rgbCleanAperture: .init(x: 0, y: 0, width: 1_920, height: 1_080),
+            recordedTransform: "rotation:90",
+            calibration: calibration
+        )
+        let payload = Self.samplePayload(depthCoverage: .none, spatialRegistration: registration)
+
+        let decoded = try JSONDecoder().decode(
+            TAPVideoManifest.Payload.self,
+            from: TAPVideoManifestEncoder.payloadDataExcludingProofs(payload)
+        )
+
+        #expect(decoded.spatialRegistration == registration)
+        #expect(decoded.spatialRegistration.calibration?.extrinsicMatrix.count == 12)
+        #expect(decoded.spatialRegistration.calibrationTable == [calibration])
+    }
+
+    @Test func videoManifestSeparates2DRegistrationFromMetricCalibrationCoverage() throws {
+        let registration = TAPVideoManifest.SpatialRegistration(
+            status: .registered,
+            mapping: TAPVideoManifest.RegistrationDescriptor.schemaID,
+            rgbReferenceDimensions: .init(width: 1_920, height: 1_080),
+            depthReferenceDimensions: .init(width: 256, height: 192),
+            rgbCleanAperture: .init(x: 0, y: 0, width: 1_920, height: 1_080),
+            recordedTransform: "rotation:0;not-mirrored",
+            calibrationTable: [],
+            calibrationCoverage: .init(
+                indexedSampleCount: 0,
+                missingCalibrationSampleCount: 5,
+                overflowUnindexedSampleCount: 0,
+                tableOverflowed: false
+            ),
+            descriptor: TAPVideoManifest.RegistrationDescriptor(
+                alignedRGBCodedDimensions: .init(width: 1_920, height: 1_080),
+                encodedRGBCodedDimensions: .init(width: 1_920, height: 1_080),
+                depthDimensions: .init(width: 256, height: 192),
+                depthToAlignedRGBPixelCenterAffine: [
+                    7.5, 0, 3.25,
+                    0, 5.625, 2.3125
+                ],
+                connectionTransform: "rotation:0;not-mirrored",
+                isEncodedHorizontallyMirrored: false,
+                rgbCleanAperture: .init(x: 0, y: 0, width: 1_920, height: 1_080),
+                videoStabilizationMode: "off"
+            )
+        )
+        let payload = Self.samplePayload(
+            depthCoverage: TAPVideoManifest.DepthCoverage(
+                trackID: 2,
+                sampleCount: 5,
+                format: TAPVideoManifest.DepthFormat(
+                    kind: "depth",
+                    pixelFormat: "fdep",
+                    width: 256,
+                    height: 192,
+                    packedRowStride: 1_024,
+                    bytesPerSample: 4,
+                    uncompressedFrameByteCount: 196_608
+                )
+            ),
+            spatialRegistration: registration
+        )
+
+        let decoded = try JSONDecoder().decode(
+            TAPVideoManifest.Payload.self,
+            from: TAPVideoManifestEncoder.payloadDataExcludingProofs(payload)
+        )
+
+        #expect(decoded.spatialRegistration.status == .registered)
+        #expect(decoded.spatialRegistration.calibrationTable.isEmpty)
+        #expect(decoded.spatialRegistration.calibrationCoverage.accountedSampleCount == 5)
+        #expect(!decoded.spatialRegistration.calibrationCoverage.tableOverflowed)
+        #expect(decoded.spatialRegistration.descriptor != nil)
+    }
+
+    @Test func verifierGoldenVectorCarriesPerTrackTimingAndMetadataCodec() throws {
+        let rootURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let data = try Data(contentsOf: rootURL.appendingPathComponent(
+            "Docs/Fixtures/TAPVideoManifestV2GoldenVectors.json"
+        ))
+        let root = try #require(
+            try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        let manifest = try #require(root["manifest"] as? [String: Any])
+        let payload = try #require(manifest["payload"] as? [String: Any])
+        let rgbTrack = try #require(payload["rgbTrack"] as? [String: Any])
+        let audioTrack = try #require(payload["audioTrack"] as? [String: Any])
+        let depthCoverage = try #require(payload["depthCoverage"] as? [String: Any])
+
+        #expect(rgbTrack["durationSeconds"] as? Int == 1)
+        #expect(rgbTrack["timeScale"] as? Int == 600)
+        #expect(audioTrack["durationSeconds"] is NSNull)
+        #expect(audioTrack["timeScale"] is NSNull)
+        #expect(depthCoverage["trackCodec"] as? String == "mebx")
+        #expect(depthCoverage["trackDurationSeconds"] as? Int == 1)
+        #expect(depthCoverage["trackTimeScale"] as? Int == 600)
+
+        let decodedManifest = try JSONDecoder().decode(
+            TAPVideoManifest.self,
+            from: JSONSerialization.data(withJSONObject: manifest)
+        )
+        let calibrationCoverage = decodedManifest.payload.spatialRegistration
+            .calibrationCoverage
+        #expect(calibrationCoverage.indexedSampleCount == 1)
+        #expect(calibrationCoverage.accountedSampleCount == 1)
+        #expect(decodedManifest.payload.spatialRegistration.calibrationTable.count == 1)
+
+        let depthFrame = try #require(root["depthFrame"] as? [String: Any])
+        let klvBase64 = try #require(depthFrame["klvV2Base64"] as? String)
+        let klvData = try #require(Data(base64Encoded: klvBase64))
+        let frame = try TAPDepthKLVFrame.decode(klvData)
+        let calibrationIndex = try #require(frame.calibrationIndex)
+        #expect(Int(calibrationIndex) < decodedManifest.payload.spatialRegistration.calibrationTable.count)
+    }
+
     private static func samplePayload(
-        depthCoverage: TAPVideoManifest.DepthCoverage
+        depthCoverage: TAPVideoManifest.DepthCoverage,
+        spatialRegistration: TAPVideoManifest.SpatialRegistration = .unavailable
     ) -> TAPVideoManifest.Payload {
         TAPVideoManifest.Payload(
             id: "video-capture",
+            packageID: "00000000-0000-0000-0000-000000000777",
             capturedAt: "2026-07-09T12:00:00Z",
             selectedCameraPlan: TAPVideoManifest.SelectedCameraPlan(
                 deviceUniqueID: "device-1",
@@ -140,6 +335,8 @@ struct TAPVideoManifestTests {
                 codec: "avc1",
                 width: 1920,
                 height: 1080,
+                durationSeconds: 10,
+                timeScale: 600,
                 nominalFrameRate: 30,
                 frameCount: 300,
                 transform: "identity"
@@ -148,10 +345,13 @@ struct TAPVideoManifestTests {
                 status: .notCaptured,
                 trackID: nil,
                 codec: nil,
+                durationSeconds: nil,
+                timeScale: nil,
                 sampleRate: nil,
                 channelCount: nil
             ),
             depthCoverage: depthCoverage,
+            spatialRegistration: spatialRegistration,
             synchronization: TAPVideoManifest.Synchronization(
                 timing: "sample-timestamps",
                 rgbToDepthMapping: "nearest-rgb-frame",
@@ -176,6 +376,15 @@ struct TAPVideoManifestTests {
         data.append(Data(type.utf8))
         data.append(payload)
         return data
+    }
+
+    private static func makeTemporaryFile(data: Data) throws -> URL {
+        let directoryURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TAPVideoManifestTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        let fileURL = directoryURL.appendingPathComponent("artifact.mp4")
+        try data.write(to: fileURL)
+        return fileURL
     }
 }
 

@@ -1,0 +1,148 @@
+{
+  "format": "tap-video-golden-vectors:v1",
+  "generator": {
+    "zstd": "1.5.7",
+    "zstdLevel": 1,
+    "contentChecksum": false
+  },
+  "depthFrame": {
+    "description": "Opaque packed Float16 bit-pattern bytes; decoders must preserve every bit.",
+    "frameIndex": 17,
+    "pts": {
+      "value": 12345,
+      "timescale": 600
+    },
+    "calibrationIndex": 0,
+    "codec": "zstd1",
+    "uncompressedByteCount": 40,
+    "uncompressedSHA256": "7c7aac9b0b5a993e0b748bdb28e437ced469c7854e1d33ee5b18469e7c87f811",
+    "uncompressedBase64": "VEFQX0RFUFRIX1ZFQ1RPUl9WMjpUQVBfREVQVEhfVkVDVE9SX1YyOg==",
+    "compressedByteCount": 35,
+    "compressedBase64": "KLUv/SAo1QAAoFRBUF9ERVBUSF9WRUNUT1JfVjI6AQCOnkw=",
+    "klvV2Base64": "VFZFUgAAAAQAAAACRlJBTQAAAAQAAAARUFRTIAAAAAwAAAAAAAAwOQAAAlhDT01QAAAABXpzdGQxAAAAVUxFTgAAAAQAAAAoQ0FMSQAAAAQAAAAARFBUSAAAACMotS/9ICjVAACgVEFQX0RFUFRIX1ZFQ1RPUl9WMjoBAI6eTAA="
+  },
+  "manifest": {
+    "schema": {
+      "id": "urn:tapnap:tapcam:video-manifest:v2",
+      "version": 2,
+      "mediaType": "application/vnd.tapnap.video-manifest+json;version=2"
+    },
+    "payload": {
+      "id": "golden-capture-v2",
+      "packageID": "00000000-0000-0000-0000-000000000777",
+      "capturedAt": "2026-07-11T00:00:00Z",
+      "selectedCameraPlan": {
+        "deviceUniqueID": null,
+        "deviceType": "fixture",
+        "localizedName": "Golden Vector",
+        "position": "back",
+        "requestedFocalLengthLabel": "24mm",
+        "resolvedFocalLengthLabel": "24mm",
+        "resolvedZoomFactor": 1,
+        "depthCapable": true
+      },
+      "container": {
+        "fileType": "mp4",
+        "mediaType": "video/mp4",
+        "durationSeconds": 1,
+        "timeScale": 600,
+        "trackCount": 2
+      },
+      "rgbTrack": {
+        "trackID": 1,
+        "codec": "avc1",
+        "width": 1920,
+        "height": 1080,
+        "durationSeconds": 1,
+        "timeScale": 600,
+        "nominalFrameRate": 30,
+        "frameCount": 30,
+        "transform": "rotation:0;not-mirrored"
+      },
+      "audioTrack": {
+        "status": "notCaptured",
+        "trackID": null,
+        "codec": null,
+        "durationSeconds": null,
+        "timeScale": null,
+        "sampleRate": null,
+        "channelCount": null
+      },
+      "depthCoverage": {
+        "trackID": 3,
+        "trackCodec": "mebx",
+        "trackDurationSeconds": 1,
+        "trackTimeScale": 600,
+        "sampleCount": 1,
+        "deliveredSampleCount": 1,
+        "outputDropCount": 0,
+        "encodingDropCount": 0,
+        "metadataDropCount": 0,
+        "gapCount": 0,
+        "gaps": [],
+        "format": {
+          "kind": "depth",
+          "pixelFormat": "hdep",
+          "width": 20,
+          "height": 1,
+          "packedRowStride": 40,
+          "sourceRowStride": 64,
+          "bytesPerSample": 2,
+          "byteOrder": "little-endian",
+          "uncompressedFrameByteCount": 40,
+          "compressionPolicy": "per-frame:zstd1|raw"
+        }
+      },
+      "spatialRegistration": {
+        "status": "unavailable",
+        "mapping": "unavailable",
+        "rgbReferenceDimensions": null,
+        "depthReferenceDimensions": null,
+        "rgbCleanAperture": null,
+        "recordedTransform": null,
+        "calibrationTable": [
+          {
+            "intrinsicMatrix": [1, 0, 0, 0, 1, 0, 10, 0.5, 1],
+            "intrinsicMatrixReferenceDimensions": {
+              "width": 20,
+              "height": 1
+            },
+            "extrinsicMatrix": [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+            "pixelSizeMillimeters": 0.001,
+            "lensDistortionCenter": {
+              "x": 10,
+              "y": 0.5
+            },
+            "lensDistortionLookupTable": null,
+            "inverseLensDistortionLookupTable": null
+          }
+        ],
+        "calibrationCoverage": {
+          "indexedSampleCount": 1,
+          "missingCalibrationSampleCount": 0,
+          "overflowUnindexedSampleCount": 0,
+          "tableOverflowed": false
+        },
+        "descriptor": null
+      },
+      "synchronization": {
+        "timing": "sample-timestamps",
+        "rgbToDepthMapping": "nearest-rgb-frame",
+        "maxObservedDeltaSeconds": 0,
+        "maxObservedDepthIntervalSeconds": 0.03333333333333333,
+        "nominalDepthIntervalSeconds": 0.03333333333333333
+      },
+      "stop": {
+        "reason": "userStop",
+        "recordedDurationSeconds": 1
+      },
+      "software": {
+        "appIdentifier": "net.tapnap.tapcam.fixture",
+        "appVersion": "1",
+        "buildNumber": "1",
+        "schemaWriter": "TAPVideoManifestEncoder"
+      }
+    },
+    "proofs": []
+  }
+}

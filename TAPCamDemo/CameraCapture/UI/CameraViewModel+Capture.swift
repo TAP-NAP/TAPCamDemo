@@ -111,15 +111,14 @@ extension CameraViewModel {
                         if let hint = writeResult.depthAvailability.viewfinderHint {
                             self.latestCaptureDepthHint = CameraCaptureDepthHint(message: hint)
                         }
-                        if let pendingCaptureID = writeResult.pendingCaptureID {
+                        if writeResult.pendingCaptureID != nil || writeResult.assetLocalIdentifier != nil {
+                            self.scheduleRecentTAPLibraryPreviewRefresh(afterNanoseconds: 0)
+                        }
+                        if writeResult.pendingCaptureID != nil,
+                           let pendingCaptureWorkerClient {
                             Task {
-                                await self.loadRecentPendingCapturePreview(captureID: pendingCaptureID)
-                                if let pendingCaptureWorkerClient {
-                                    await self.retryPendingCaptures(pendingCaptureWorkerClient: pendingCaptureWorkerClient)
-                                }
+                                await self.retryPendingCaptures(pendingCaptureWorkerClient: pendingCaptureWorkerClient)
                             }
-                        } else if let assetID = writeResult.assetLocalIdentifier {
-                            self.loadRecentDepthAssetPreview(assetID: assetID)
                         }
                     case .failure(let error):
                         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
@@ -142,15 +141,16 @@ extension CameraViewModel {
     /// access. Exported captures keep their small app-private thumbnail so the
     /// camera affordance is stable even when Photos is in limited-library mode.
     func loadRecentTAPLibraryPreviewIfAvailable() async {
-        if await loadRecentStoredCapturePreviewIfAvailable() {
+        let loadedSnapshot = await libraryStore.refresh()
+        guard !Task.isCancelled else {
             return
         }
-
-        guard let assetID = await PhotoLibraryWriter.latestDepthAssetIdentifierIfAuthorized() else {
+        guard loadedSnapshot != nil || libraryStore.loadError == nil else {
+            clearRecentLibraryPresentation()
             return
         }
-
-        loadRecentDepthAssetPreview(assetID: assetID)
+        lastHandledLibrarySnapshotRevision = libraryStore.snapshot.revision
+        await loadRecentLibraryCoverFromCanonicalSnapshot()
     }
 
     func scheduleRecentTAPLibraryPreviewRefresh(afterNanoseconds delay: UInt64 = 900_000_000) {
@@ -188,39 +188,266 @@ extension CameraViewModel {
 
     @discardableResult
     func loadRecentPendingCapturePreview(captureID: String) async -> Bool {
-        guard let data = try? await pendingCaptureStore.thumbnailData(captureID: captureID),
-              let image = UIImage(data: data) else {
-            return false
-        }
-
-        recentThumbnail = image
-        return true
+        await loadRecentTAPLibraryPreviewIfAvailable()
+        return recentLibraryPresentation.itemID == .tapCapture(captureID)
     }
 
-    private func loadRecentStoredCapturePreviewIfAvailable() async -> Bool {
-        guard let records = try? await pendingCaptureStore.allRecords() else {
-            return false
+    func loadRecentLibraryCoverFromCanonicalSnapshot() async {
+        recentLibraryFetchGeneration &+= 1
+        let generation = recentLibraryFetchGeneration
+        guard let item = libraryStore.latestItem else {
+            clearRecentLibraryPresentation()
+            return
         }
 
-        for record in records {
-            guard await recordCanBeDisplayedInTAPLibrary(record) else {
-                continue
-            }
-            if await loadRecentPendingCapturePreview(captureID: record.captureID) {
-                return true
-            }
+        let request = MediaFetchRequestKey(
+            itemID: item.mediaID,
+            generation: generation,
+            purpose: .recentCover
+        )
+        let kind = item.summary.kind
+        publishRecentLibraryPhase(.resolving(nil), request: request, kind: kind)
+
+        let pixelLength = 256
+        let cacheKey = item.thumbnailCacheKey(pixelLength: pixelLength)
+        if let poster = DepthAlbumThumbnailMemoryCache.shared.poster(for: cacheKey) {
+            publishRecentLibraryPhase(.ready(poster), request: request, kind: kind)
+            return
         }
-        return false
+        if let data = await DepthAlbumThumbnailDiskCache.shared.data(for: cacheKey),
+           !Task.isCancelled {
+            let poster = MediaPoster(cacheKey: cacheKey, jpegData: data)
+            publishRecentLibraryPhase(.ready(poster), request: request, kind: kind)
+            return
+        }
+
+        do {
+            var phase = try await localRecentPosterPhase(
+                for: item,
+                cacheKey: cacheKey,
+                pixelLength: pixelLength
+            )
+            guard !Task.isCancelled, isCurrentRecentLibraryRequest(request) else {
+                return
+            }
+
+            if case .cloudOnly(let preview) = phase,
+               LibraryMediaFetchPolicy.allowsNetworkAccess(
+                purpose: .recentCover,
+                item: item.summary,
+                currentItemID: libraryStore.snapshot.latest?.id
+               ),
+               let posterRequest = LibraryMediaPosterRequest(
+                summary: item.summary,
+                pixelLength: pixelLength
+               ) {
+                publishRecentLibraryPhase(
+                    .downloadingFromICloud(preview, progress: nil),
+                    request: request,
+                    kind: kind
+                )
+                let progress: @Sendable (Double?) -> Void = { [weak self] value in
+                    Task { @MainActor [weak self] in
+                        guard let self,
+                              self.isCurrentRecentLibraryRequest(request) else {
+                            return
+                        }
+                        self.publishRecentLibraryPhase(
+                            .downloadingFromICloud(preview, progress: value),
+                            request: request,
+                            kind: kind
+                        )
+                    }
+                }
+                let downloaded = try await libraryMediaFetcher.posterPhase(
+                    for: posterRequest,
+                    allowsNetworkAccess: true,
+                    progress: progress
+                )
+                phase = recentPosterPhase(from: downloaded, cacheKey: cacheKey)
+                    .preservingFailurePreview(preview)
+            } else if case .cloudOnly(let preview) = phase {
+                phase = .failed(preview, reason: .download, retryable: false)
+            }
+
+            guard !Task.isCancelled, isCurrentRecentLibraryRequest(request) else {
+                return
+            }
+            publishRecentLibraryPhase(phase, request: request, kind: kind)
+        } catch is CancellationError {
+            return
+        } catch let failure as MediaFetchFailure {
+            guard isCurrentRecentLibraryRequest(request) else {
+                return
+            }
+            publishRecentLibraryPhase(
+                .failed(nil, reason: failure, retryable: failure.isRetryable),
+                request: request,
+                kind: kind
+            )
+        } catch {
+            guard isCurrentRecentLibraryRequest(request) else {
+                return
+            }
+            publishRecentLibraryPhase(
+                .failed(nil, reason: .download, retryable: true),
+                request: request,
+                kind: kind
+            )
+        }
     }
 
-    private func recordCanBeDisplayedInTAPLibrary(_ record: TAPPendingCaptureRecord) async -> Bool {
-        guard record.status == .exported else {
-            return true
+    private func localRecentPosterPhase(
+        for item: TAPLibraryItem,
+        cacheKey: String,
+        pixelLength: Int
+    ) async throws -> MediaFetchPhase<MediaPoster, MediaPoster> {
+        switch item.source {
+        case .pending(let record):
+            if let data = try await pendingCaptureStore.thumbnailData(captureID: record.captureID) {
+                return .ready(MediaPoster(cacheKey: cacheKey, jpegData: data))
+            }
+            guard item.isVideo else {
+                return .failed(nil, reason: .decode, retryable: false)
+            }
+            let videoURL = try await pendingCaptureStore.bestAvailableVideoURL(captureID: record.captureID)
+            let data = try await videoPosterGenerator.posterData(
+                for: videoURL,
+                cacheKey: cacheKey,
+                pixelLength: pixelLength
+            )
+            return .ready(MediaPoster(cacheKey: cacheKey, jpegData: data))
+        case .ownedPhoto(let record, _):
+            if let data = try await pendingCaptureStore.thumbnailData(captureID: record.captureID) {
+                return .ready(MediaPoster(cacheKey: cacheKey, jpegData: data))
+            }
+            if item.isVideo,
+               let videoURL = try? await pendingCaptureStore.bestAvailableVideoURL(captureID: record.captureID),
+               let data = try? await videoPosterGenerator.posterData(
+                for: videoURL,
+                cacheKey: cacheKey,
+                pixelLength: pixelLength
+               ) {
+                return .ready(MediaPoster(cacheKey: cacheKey, jpegData: data))
+            }
+            guard let request = LibraryMediaPosterRequest(
+                summary: item.summary,
+                pixelLength: pixelLength
+            ) else {
+                return .failed(nil, reason: .assetRemoved, retryable: false)
+            }
+            let phase = try await libraryMediaFetcher.posterPhase(
+                for: request,
+                allowsNetworkAccess: false,
+                progress: { _ in }
+            )
+            return recentPosterPhase(from: phase, cacheKey: cacheKey)
+        case .photos:
+            guard let request = LibraryMediaPosterRequest(
+                summary: item.summary,
+                pixelLength: pixelLength
+            ) else {
+                return .failed(nil, reason: .assetRemoved, retryable: false)
+            }
+            let phase = try await libraryMediaFetcher.posterPhase(
+                for: request,
+                allowsNetworkAccess: false,
+                progress: { _ in }
+            )
+            return recentPosterPhase(from: phase, cacheKey: cacheKey)
         }
-        guard let assetID = record.assetLocalIdentifier else {
-            return false
+    }
+
+    private func recentPosterPhase(
+        from phase: MediaFetchPhase<Data, Data>,
+        cacheKey: String
+    ) -> MediaFetchPhase<MediaPoster, MediaPoster> {
+        switch phase {
+        case .idle(let preview):
+            return .idle(preview.map { MediaPoster(cacheKey: cacheKey, jpegData: $0) })
+        case .resolving(let preview):
+            return .resolving(preview.map { MediaPoster(cacheKey: cacheKey, jpegData: $0) })
+        case .localPreview(let preview):
+            return .localPreview(MediaPoster(cacheKey: cacheKey, jpegData: preview))
+        case .cloudOnly(let preview):
+            return .cloudOnly(preview.map { MediaPoster(cacheKey: cacheKey, jpegData: $0) })
+        case .downloadingFromICloud(let preview, let progress):
+            return .downloadingFromICloud(
+                preview.map { MediaPoster(cacheKey: cacheKey, jpegData: $0) },
+                progress: progress
+            )
+        case .ready(let value):
+            return .ready(MediaPoster(cacheKey: cacheKey, jpegData: value))
+        case .failed(let preview, let reason, let retryable):
+            return .failed(
+                preview.map { MediaPoster(cacheKey: cacheKey, jpegData: $0) },
+                reason: reason,
+                retryable: retryable
+            )
         }
-        return await PhotoLibraryWriter.assetExists(localIdentifier: assetID)
+    }
+
+    private func publishRecentLibraryPhase(
+        _ phase: MediaFetchPhase<MediaPoster, MediaPoster>,
+        request: MediaFetchRequestKey,
+        kind: LibraryMediaKind
+    ) {
+        guard isCurrentRecentLibraryRequest(request) else {
+            return
+        }
+        recentLibraryFetchState = IdentifiedMediaFetchState(request: request, phase: phase)
+        switch phase {
+        case .idle, .resolving:
+            recentLibraryPresentation = .resolving(itemID: request.itemID, kind: kind)
+        case .localPreview(let poster), .ready(let poster):
+            guard poster.image != nil else {
+                recentLibraryPresentation = .failed(
+                    itemID: request.itemID,
+                    kind: kind,
+                    preview: nil,
+                    retryable: false
+                )
+                return
+            }
+            DepthAlbumThumbnailMemoryCache.shared.insert(poster)
+            recentLibraryPresentation = .ready(
+                itemID: request.itemID,
+                kind: kind,
+                poster: poster
+            )
+        case .cloudOnly(let preview):
+            recentLibraryPresentation = .loading(
+                itemID: request.itemID,
+                kind: kind,
+                preview: preview,
+                progress: nil
+            )
+        case .downloadingFromICloud(let preview, let progress):
+            recentLibraryPresentation = .loading(
+                itemID: request.itemID,
+                kind: kind,
+                preview: preview,
+                progress: progress
+            )
+        case .failed(let preview, _, let retryable):
+            recentLibraryPresentation = .failed(
+                itemID: request.itemID,
+                kind: kind,
+                preview: preview,
+                retryable: retryable
+            )
+        }
+    }
+
+    private func isCurrentRecentLibraryRequest(_ request: MediaFetchRequestKey) -> Bool {
+        request.generation == recentLibraryFetchGeneration
+            && request.itemID == libraryStore.snapshot.latest?.id
+    }
+
+    private func clearRecentLibraryPresentation() {
+        recentLibraryFetchGeneration &+= 1
+        recentLibraryFetchState = nil
+        recentLibraryPresentation = .empty
     }
 
     func retryPendingCaptures(pendingCaptureWorkerClient: any AppAttestClient) async {
@@ -241,41 +468,7 @@ extension CameraViewModel {
     /// write. The full analysis flow still lives in `DepthAnalysisView`; the camera
     /// screen only owns the small thumbnail affordance and the sheet presentation.
     func loadRecentDepthAssetPreview(assetID: String) {
-        guard let asset = PhotoLibraryWriter.asset(localIdentifier: assetID) else {
-            recentThumbnail = nil
-            return
-        }
-
-        let options = PHImageRequestOptions()
-        options.deliveryMode = .highQualityFormat
-        options.resizeMode = .exact
-        options.isNetworkAccessAllowed = true
-
-        var didReceiveFinalImage = false
-        PHImageManager.default().requestImage(
-            for: asset,
-            targetSize: CGSize(width: 256, height: 256),
-            contentMode: .aspectFill,
-            options: options
-        ) { [weak self] image, info in
-            guard !didReceiveFinalImage else {
-                return
-            }
-
-            if info?[PHImageCancelledKey] as? Bool == true || info?[PHImageErrorKey] != nil {
-                didReceiveFinalImage = true
-                return
-            }
-
-            guard info?[PHImageResultIsDegradedKey] as? Bool != true else {
-                return
-            }
-
-            didReceiveFinalImage = true
-            Task { @MainActor in
-                self?.recentThumbnail = image
-            }
-        }
+        scheduleRecentTAPLibraryPreviewRefresh(afterNanoseconds: 0)
     }
 }
 

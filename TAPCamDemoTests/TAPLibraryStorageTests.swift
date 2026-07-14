@@ -150,47 +150,172 @@ struct TAPLibraryStorageTests {
 
     @Test func pendingCaptureStorePersistsAndCleansTAPVideoArtifact() async throws {
         let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
-        let videoDirectory = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
-        let videoURL = videoDirectory.appendingPathComponent("source.mp4")
-        let depthPreviewURL = videoDirectory.appendingPathComponent("depth-preview.mp4")
-        try Data("unsigned-video".utf8).write(to: videoURL)
-        try Data("debug-depth-preview".utf8).write(to: depthPreviewURL)
         let store = TAPPendingCaptureStore(rootURL: rootURL)
+        let captureID = "video-capture"
+        let packageID = UUID(uuidString: "00000000-0000-0000-0000-000000000777")!
+        let workspace = try await store.beginVideoCaptureWorkspace(captureID: captureID)
+        let videoURL = workspace.artifactURL
+        try Self.writePendingVideoArtifact(
+            to: videoURL,
+            captureID: captureID,
+            packageID: packageID
+        )
+        let workspaceURL = workspace.bundleURL
 
         let record = try await store.ingestVideo(TAPPendingVideoCaptureArtifact(
-            captureID: "video-capture",
-            packageID: UUID(uuidString: "00000000-0000-0000-0000-000000000777")!,
+            captureID: captureID,
+            packageID: packageID,
             capturedAt: Date(timeIntervalSince1970: 1_779_897_600),
-            unsignedVideoURL: videoURL,
-            debugDepthPreviewVideoURL: depthPreviewURL
+            videoURL: videoURL
         ))
         let bundleURL = rootURL.appendingPathComponent(record.captureID, isDirectory: true)
-        let unsignedVideoURL = bundleURL.appendingPathComponent(TAPPendingCaptureBundlePathPolicy.unsignedVideoFilename)
-        let signedVideoURL = bundleURL.appendingPathComponent(TAPPendingCaptureBundlePathPolicy.signedVideoFilename)
-        let storedDepthPreviewURL = bundleURL.appendingPathComponent(
-            TAPPendingCaptureBundlePathPolicy.debugDepthPreviewVideoFilename
-        )
+        let artifactURL = bundleURL.appendingPathComponent(TAPPendingCaptureBundlePathPolicy.videoArtifactFilename)
 
         #expect(record.artifactKind == .tapVideo)
         #expect(record.unsignedPhotoFilename == nil)
-        #expect(record.unsignedVideoFilename == TAPPendingCaptureBundlePathPolicy.unsignedVideoFilename)
-        #expect(record.debugDepthPreviewVideoFilename == TAPPendingCaptureBundlePathPolicy.debugDepthPreviewVideoFilename)
+        #expect(record.videoArtifactFilename == TAPPendingCaptureBundlePathPolicy.videoArtifactFilename)
+        #expect(record.videoFormatRevision == 2)
+        #expect(record.videoArtifactState == .unsigned)
         #expect(record.pairedVideoFilename == nil)
-        #expect(FileManager.default.fileExists(atPath: unsignedVideoURL.path))
-        #expect(FileManager.default.fileExists(atPath: storedDepthPreviewURL.path))
-        #expect(try await store.unsignedVideoData(captureID: record.captureID) == Data("unsigned-video".utf8))
+        #expect(!FileManager.default.fileExists(atPath: workspaceURL.path))
+        #expect(FileManager.default.fileExists(atPath: artifactURL.path))
+        #expect(try await store.videoArtifactURL(captureID: record.captureID) == artifactURL)
 
-        let signedRecord = try await store.storeSignedVideo(Data("signed-video".utf8), captureID: record.captureID)
+        let byteCountBeforeSigning = try artifactURL.resourceValues(forKeys: [.fileSizeKey]).fileSize
+        let signedRecord = try await store.markVideoSigned(captureID: record.captureID)
 
-        #expect(signedRecord.signedVideoFilename == TAPPendingCaptureBundlePathPolicy.signedVideoFilename)
-        #expect(FileManager.default.fileExists(atPath: signedVideoURL.path))
-        #expect(try await store.signedVideoData(captureID: record.captureID) == Data("signed-video".utf8))
+        #expect(signedRecord.videoArtifactState == .signed)
+        #expect(signedRecord.processingRoute == .exportSigned)
+        #expect(try artifactURL.resourceValues(forKeys: [.fileSizeKey]).fileSize == byteCountBeforeSigning)
+        let recoveredRetry = try await store.updateStatus(
+            captureID: record.captureID,
+            status: .failedRetryable,
+            failureReason: .retryableProcessingFailure,
+            incrementsRetryCount: true
+        )
+        #expect(recoveredRetry.processingRoute == .exportSigned)
+        await #expect(throws: TAPDepthCaptureError.self) {
+            try await store.markVideoPhotosCommit(
+                captureID: record.captureID,
+                assetLocalIdentifier: "premature-video-asset-id"
+            )
+        }
 
-        _ = try await store.markExported(captureID: record.captureID, assetLocalIdentifier: "video-asset-id")
+        let exportIntent = try await store.markVideoPhotosExportIntent(
+            captureID: record.captureID
+        )
+        #expect(exportIntent.status == .exporting)
+        #expect(exportIntent.videoPhotosExportPhase == .preCommitIntent)
+        #expect(!exportIntent.shouldAttemptExistingAssetRecoveryBeforeExport)
+        let commitAmbiguous = try await store.markVideoPhotosCommitAmbiguous(
+            captureID: record.captureID
+        )
+        #expect(commitAmbiguous.videoPhotosExportPhase == .commitAmbiguous)
+        #expect(commitAmbiguous.shouldAttemptExistingAssetRecoveryBeforeExport)
 
-        #expect(!FileManager.default.fileExists(atPath: unsignedVideoURL.path))
-        #expect(!FileManager.default.fileExists(atPath: signedVideoURL.path))
-        #expect(FileManager.default.fileExists(atPath: storedDepthPreviewURL.path))
+        let committedRecord = try await store.markVideoPhotosCommit(
+            captureID: record.captureID,
+            assetLocalIdentifier: "video-asset-id"
+        )
+        #expect(committedRecord.status == .exporting)
+        #expect(committedRecord.videoPhotosExportPhase == .committed)
+        #expect(committedRecord.assetLocalIdentifier == "video-asset-id")
+        #expect(committedRecord.shouldAttemptExistingAssetRecoveryBeforeExport)
+        let repeatedCommit = try await store.markVideoPhotosCommit(
+            captureID: record.captureID,
+            assetLocalIdentifier: "video-asset-id"
+        )
+        #expect(repeatedCommit.status == .exporting)
+        await #expect(throws: TAPDepthCaptureError.self) {
+            try await store.markVideoPhotosCommit(
+                captureID: record.captureID,
+                assetLocalIdentifier: "different-video-asset-id"
+            )
+        }
+        #expect(
+            try await store.readRecord(captureID: record.captureID).assetLocalIdentifier
+                == "video-asset-id"
+        )
+
+        let readbackRetry = try await store.updateStatus(
+            captureID: record.captureID,
+            status: .failedRetryable,
+            failureReason: .retryableProcessingFailure,
+            incrementsRetryCount: true
+        )
+        #expect(readbackRetry.shouldAttemptExistingAssetRecoveryBeforeExport)
+
+        let exported = try await store.markExported(
+            captureID: record.captureID,
+            assetLocalIdentifier: "video-asset-id"
+        )
+        let staleRepeatedCommit = try await store.markVideoPhotosCommit(
+            captureID: record.captureID,
+            assetLocalIdentifier: "video-asset-id"
+        )
+        #expect(staleRepeatedCommit.status == .exported)
+        #expect(staleRepeatedCommit.updatedAt == exported.updatedAt)
+        await #expect(throws: TAPDepthCaptureError.self) {
+            try await store.markVideoPhotosCommit(
+                captureID: record.captureID,
+                assetLocalIdentifier: "different-video-asset-id"
+            )
+        }
+
+        #expect(!FileManager.default.fileExists(atPath: artifactURL.path))
+    }
+
+    @Test func zeroDepthVideoPersistsAsTerminalRecordInsteadOfBeingDiscarded() async throws {
+        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        let store = TAPPendingCaptureStore(rootURL: rootURL)
+        let captureID = "zero-depth-video"
+        let packageID = UUID(uuidString: "00000000-0000-0000-0000-000000000778")!
+        let workspace = try await store.beginVideoCaptureWorkspace(captureID: captureID)
+        try Self.writePendingVideoArtifact(
+            to: workspace.artifactURL,
+            captureID: captureID,
+            packageID: packageID,
+            hasDepth: false
+        )
+
+        let record = try await store.ingestVideo(
+            TAPPendingVideoCaptureArtifact(
+                captureID: captureID,
+                packageID: packageID,
+                capturedAt: Date(timeIntervalSince1970: 1_779_897_600),
+                videoURL: workspace.artifactURL
+            ),
+            terminalFailureCode: .missingDepthData
+        )
+
+        #expect(record.status == .failedTerminal)
+        #expect(record.failureCode == .missingDepthData)
+        #expect(record.videoArtifactState == .unsigned)
+        #expect(FileManager.default.fileExists(
+            atPath: try await store.videoArtifactURL(captureID: captureID).path
+        ))
+        #expect(!(try await store.processingCandidates()).contains { $0.captureID == captureID })
+    }
+
+    @Test func pendingCaptureStoreRemovesOnlyUnownedInterruptedVideoWorkspaces() async throws {
+        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        let store = TAPPendingCaptureStore(rootURL: rootURL)
+        let active = try await store.beginVideoCaptureWorkspace(captureID: "active-video")
+        let staleURL = rootURL.appendingPathComponent(".recording-stale-video", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: staleURL,
+            withIntermediateDirectories: true
+        )
+        try Data("partial".utf8).write(
+            to: staleURL.appendingPathComponent("artifact.mp4")
+        )
+
+        let removedCount = try await store.removeStaleVideoCaptureWorkspaces()
+
+        #expect(removedCount == 1)
+        #expect(!FileManager.default.fileExists(atPath: staleURL.path))
+        #expect(FileManager.default.fileExists(atPath: active.bundleURL.path))
+        try await store.abortVideoCaptureWorkspace(captureID: active.captureID)
     }
 
     @Test func pendingCaptureStoreRejectsUnsafeCaptureIDsBeforeBundlePathUse() async throws {
@@ -270,9 +395,7 @@ struct TAPLibraryStorageTests {
         #expect(source.contains(#"static let signedHEICFilename = "signed.heic""#))
         #expect(source.contains(#"static let unsignedJPEGFilename = "unsigned.jpg""#))
         #expect(source.contains(#"static let signedJPEGFilename = "signed.jpg""#))
-        #expect(source.contains(#"static let unsignedVideoFilename = "unsigned.mp4""#))
-        #expect(source.contains(#"static let signedVideoFilename = "signed.mp4""#))
-        #expect(source.contains(#"static let debugDepthPreviewVideoFilename = "depth-preview.mp4""#))
+        #expect(source.contains(#"static let videoArtifactFilename = "artifact.mp4""#))
         #expect(source.contains(#"static let pairedVideoFilename = "paired-video.mov""#))
         #expect(source.contains(#"static let thumbnailFilename = "thumbnail.jpg""#))
         #expect(source.contains(#"""
@@ -281,9 +404,7 @@ struct TAPLibraryStorageTests {
         signedHEICFilename,
         unsignedJPEGFilename,
         signedJPEGFilename,
-        unsignedVideoFilename,
-        signedVideoFilename,
-        debugDepthPreviewVideoFilename,
+        videoArtifactFilename,
         pairedVideoFilename,
         thumbnailFilename
     ]
@@ -291,6 +412,14 @@ struct TAPLibraryStorageTests {
         #expect(!source.contains("alternatePhoto"))
         #expect(!source.contains("sidecar"))
         #expect(!source.contains("rawFilename"))
+    }
+
+    @Test func exportedCommitDefersCleanupFailureAndRejectsStatusDowngrade() throws {
+        let source = try Self.source(relativePath: "TAPCamDemo/TAPLibrary/TAPPendingCaptureStore.swift")
+
+        #expect(source.contains("record.status != .exported || status == .exported"))
+        #expect(source.contains("store exported cleanup deferred"))
+        #expect(source.contains("storage.cleanupLargeFiles(for: record)"))
     }
 
     @Test func pendingCaptureBundlePathPolicyAllowsOnlyCurrentArtifactFilenames() throws {
@@ -301,9 +430,7 @@ struct TAPLibraryStorageTests {
             TAPPendingCaptureBundlePathPolicy.signedHEICFilename,
             TAPPendingCaptureBundlePathPolicy.unsignedJPEGFilename,
             TAPPendingCaptureBundlePathPolicy.signedJPEGFilename,
-            TAPPendingCaptureBundlePathPolicy.unsignedVideoFilename,
-            TAPPendingCaptureBundlePathPolicy.signedVideoFilename,
-            TAPPendingCaptureBundlePathPolicy.debugDepthPreviewVideoFilename,
+            TAPPendingCaptureBundlePathPolicy.videoArtifactFilename,
             TAPPendingCaptureBundlePathPolicy.pairedVideoFilename,
             TAPPendingCaptureBundlePathPolicy.thumbnailFilename
         ]
@@ -691,6 +818,16 @@ struct TAPLibraryStorageTests {
         #expect(exportedRecord.processingRoute == .skip)
         #expect(exportedRecord.processingPriority == nil)
         #expect(!exportedRecord.isProcessingCandidate)
+
+        let staleFailureUpdate = try await store.updateStatus(
+            captureID: pendingRecord.captureID,
+            status: .failedRetryable,
+            failureReason: .retryableProcessingFailure,
+            incrementsRetryCount: true
+        )
+        #expect(staleFailureUpdate.status == .exported)
+        #expect(staleFailureUpdate.assetLocalIdentifier == "asset-id")
+        #expect(staleFailureUpdate.retryCount == exportedRecord.retryCount)
     }
 
     @Test func pendingCaptureStoreKeepsExportedThumbnailIndex() async throws {
@@ -798,6 +935,104 @@ struct TAPLibraryStorageTests {
             pendingRecord.captureID
         ])
         #expect(thirdCandidate?.captureID == retryRecord.captureID)
+    }
+
+    private static func writePendingVideoArtifact(
+        to fileURL: URL,
+        captureID: String,
+        packageID: UUID,
+        hasDepth: Bool = true
+    ) throws {
+        var baseMP4 = Data()
+        baseMP4.append(contentsOf: [0, 0, 0, 12])
+        baseMP4.append(Data("ftyp".utf8))
+        baseMP4.append(Data("mp42".utf8))
+        try baseMP4.write(to: fileURL)
+        try TAPVideoManifestBox.appendManifest(
+            pendingVideoManifest(
+                captureID: captureID,
+                packageID: packageID,
+                hasDepth: hasDepth
+            ),
+            toFileAt: fileURL
+        )
+        _ = try TAPProofSlot.ensureEmptyBMFFSlot(inFileAt: fileURL)
+    }
+
+    private static func pendingVideoManifest(
+        captureID: String,
+        packageID: UUID,
+        hasDepth: Bool = true
+    ) -> TAPVideoManifest {
+        TAPVideoManifest(payload: TAPVideoManifest.Payload(
+            id: captureID,
+            packageID: packageID.uuidString,
+            capturedAt: "2026-07-09T12:00:00Z",
+            selectedCameraPlan: .init(
+                deviceUniqueID: "device",
+                deviceType: "BuiltInLiDARDepthCamera",
+                localizedName: "Back Camera",
+                position: "back",
+                requestedFocalLengthLabel: "24mm",
+                resolvedFocalLengthLabel: "24mm",
+                resolvedZoomFactor: 1,
+                depthCapable: true
+            ),
+            container: .init(
+                fileType: "mp4",
+                mediaType: "video/mp4",
+                durationSeconds: 1,
+                timeScale: 600,
+                trackCount: hasDepth ? 2 : 1
+            ),
+            rgbTrack: .init(
+                trackID: 1,
+                codec: "avc1",
+                width: 1_920,
+                height: 1_080,
+                durationSeconds: 1,
+                timeScale: 600,
+                nominalFrameRate: 30,
+                frameCount: 30,
+                transform: "rotation:0;not-mirrored"
+            ),
+            audioTrack: .init(
+                status: .notCaptured,
+                trackID: nil,
+                codec: nil,
+                durationSeconds: nil,
+                timeScale: nil,
+                sampleRate: nil,
+                channelCount: nil
+            ),
+            depthCoverage: hasDepth
+                ? .init(
+                    trackID: 3,
+                    trackCodec: "mebx",
+                    trackDurationSeconds: 1,
+                    trackTimeScale: 600,
+                    sampleCount: 1,
+                    format: .init(
+                        kind: "depth",
+                        pixelFormat: "hdep",
+                        width: 256,
+                        height: 192,
+                        packedRowStride: 512,
+                        sourceRowStride: 544,
+                        bytesPerSample: 2,
+                        uncompressedFrameByteCount: 98_304
+                    )
+                )
+                : .none,
+            spatialRegistration: .unavailable,
+            synchronization: .init(
+                timing: "capture-output-presentation-timestamps",
+                rgbToDepthMapping: "independent-timed-metadata",
+                maxObservedDeltaSeconds: nil
+            ),
+            stop: .init(reason: .userStop, recordedDurationSeconds: 1),
+            software: .current
+        ))
     }
 
     private static func source(relativePath: String) throws -> String {

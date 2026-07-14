@@ -7,8 +7,13 @@ import LockedCameraCapture
 import Combine
 import OSLog
 import SwiftUI
+import UIKit
 
 struct StartupGateView: View {
+    let libraryStore: LibraryMediaStore
+    let libraryMediaFetcher: any LibraryMediaFetching
+    let videoPosterBackfillService: LibraryVideoPosterBackfillService
+
     @AppStorage(StartupGateDefaults.didCompleteFirstInstallSetupKey)
     private var didCompleteFirstInstallSetup = false
 
@@ -35,11 +40,18 @@ struct StartupGateView: View {
                     }
                 )
             } else if isPreparingFirstInstallCameraReadiness {
-                CameraView(initialReadinessGate: .firstInstall {
+                CameraView(
+                    libraryStore: libraryStore,
+                    libraryMediaFetcher: libraryMediaFetcher,
+                    initialReadinessGate: .firstInstall {
                     completeFirstInstallSetupAfterCameraReadiness()
-                })
+                    }
+                )
             } else if didCompleteFirstInstallSetup {
-                CameraView()
+                CameraView(
+                    libraryStore: libraryStore,
+                    libraryMediaFetcher: libraryMediaFetcher
+                )
             } else {
                 WelcomeStartupSetupView(coordinator: startupCoordinator) {
                     beginFirstInstallCameraReadinessIfReady()
@@ -48,6 +60,22 @@ struct StartupGateView: View {
         }
         .task {
             await LockedCameraAppContextPublisher.publishCurrentContextIfAvailable()
+            do {
+                try await videoPosterBackfillService.run()
+                await libraryStore.refresh()
+            } catch is CancellationError {
+                return
+            } catch {
+                // Poster backfill is a derivative-only maintenance task. A
+                // missing/corrupt poster must never gate camera readiness.
+            }
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: UIApplication.didReceiveMemoryWarningNotification
+            )
+        ) { _ in
+            DepthAlbumThumbnailMemoryCache.shared.removeAll()
         }
         .onContinueUserActivity(TAPCamLockedCameraHandoff.activityType) { activity in
             handleLockedCameraHandoff(activity)

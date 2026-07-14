@@ -90,6 +90,7 @@ nonisolated enum CameraCaptureStatusPresentation {
              .pendingCaptureManifestIDMismatch,
              .pendingCaptureProofMissing,
              .pendingCaptureProofInvalid,
+             .pendingCaptureProofExternalMutation,
              .releasePackagingStrategyRejected,
              .videoRecordingAlreadyActive,
              .videoRecordingNotActive,

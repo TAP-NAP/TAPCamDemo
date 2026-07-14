@@ -9,6 +9,7 @@ import Foundation
 import Testing
 @testable import TAPCamDemo
 
+@Suite(.serialized)
 struct AppAttestRuntimeTests {
     @Test func defaultPhotoCredentialNameIsStable() {
         #expect(AppAttestRuntimeDefaults.photoCredentialName == "photo_keyid")

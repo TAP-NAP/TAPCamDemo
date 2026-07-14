@@ -19,6 +19,11 @@ import UniformTypeIdentifiers
 /// `TAPDepthPhotoFileReader`.
 nonisolated enum PhotoLibraryWriter {
     static let albumName = "TAPCamDepth"
+    typealias ResourceProgressHandler = @Sendable (Double?) -> Void
+
+    nonisolated static func tapVideoResourceFilename(packageID: UUID) -> String {
+        "tap-\(packageID.uuidString.lowercased()).mp4"
+    }
 
     nonisolated struct SignatureVerificationResources: Sendable {
         let photoData: Data
@@ -109,28 +114,34 @@ nonisolated enum PhotoLibraryWriter {
         return assetID
     }
 
-    /// Saves a validated TAP signed video to Photos as a standard video asset.
-    static func saveTAPVideo(
-        _ validatedVideo: ValidatedTAPVideo,
+    /// Saves a validated TAP video without materializing the complete MP4 in
+    /// memory or creating a second app-owned staging copy.
+    static func saveTAPVideoFile(
+        at fileURL: URL,
+        packageID: UUID,
+        manifest: TAPVideoManifest,
         capturedAt: Date,
-        location: CLLocation?
+        location: CLLocation?,
+        commitWillBegin: @Sendable () async throws -> Void
     ) async throws -> String {
-        let data = validatedVideo.data
+        let byteCount = try fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.photoLibrary.info("saveTAPVideo start bytes=\(data.count, privacy: .public) hasLocation=\(location != nil, privacy: .public) depthSamples=\(validatedVideo.manifest.payload.depthCoverage.sampleCount, privacy: .public)")
+        TAPDiagnostics.photoLibrary.info("saveTAPVideoFile start bytes=\(byteCount, privacy: .public) hasLocation=\(location != nil, privacy: .public) depthSamples=\(manifest.payload.depthCoverage.sampleCount, privacy: .public)")
         #endif
         let authorizationStatus = try await requestReadWriteAccess()
         let album: PHAssetCollection? = authorizationStatus == .authorized
             ? try await fetchOrCreateAlbum()
             : nil
         let assetID = try await createVideoAsset(
-            data: data,
+            fileURL: fileURL,
+            resourceFilename: tapVideoResourceFilename(packageID: packageID),
             capturedAt: capturedAt,
             location: location,
-            album: album
+            album: album,
+            commitWillBegin: commitWillBegin
         )
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.photoLibrary.info("saveTAPVideo success assetID=\(assetID, privacy: .private)")
+        TAPDiagnostics.photoLibrary.info("saveTAPVideoFile success assetID=\(assetID, privacy: .private)")
         #endif
         return assetID
     }
@@ -152,7 +163,7 @@ nonisolated enum PhotoLibraryWriter {
         )
     }
 
-    static func originalPhotoData(for asset: PHAsset) async throws -> Data {
+    private static func originalPhotoData(for asset: PHAsset) async throws -> Data {
         guard let resource = PHAssetResource.assetResources(for: asset).first(where: { $0.type == .photo }) else {
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.photoLibrary.error("originalPhotoData missing photo resource assetID=\(asset.localIdentifier, privacy: .private)")
@@ -191,7 +202,10 @@ nonisolated enum PhotoLibraryWriter {
         }
     }
 
-    static func originalVideoFileURL(localIdentifier: String) async throws -> URL {
+    static func originalVideoFileURL(
+        localIdentifier: String,
+        progressHandler: @escaping ResourceProgressHandler = { _ in }
+    ) async throws -> URL {
         try await Task.detached(priority: .userInitiated) {
             guard let asset = asset(localIdentifier: localIdentifier) else {
                 #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
@@ -199,11 +213,14 @@ nonisolated enum PhotoLibraryWriter {
                 #endif
                 throw TAPDepthCaptureError.assetNotFound
             }
-            return try await originalVideoFileURL(for: asset)
+            return try await originalVideoFileURL(for: asset, progressHandler: progressHandler)
         }.value
     }
 
-    static func originalVideoFileURL(for asset: PHAsset) async throws -> URL {
+    static func originalVideoFileURL(
+        for asset: PHAsset,
+        progressHandler: @escaping ResourceProgressHandler = { _ in }
+    ) async throws -> URL {
         guard let resource = PHAssetResource.assetResources(for: asset).first(where: { $0.type == .video }) else {
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.photoLibrary.error("originalVideoFileURL missing video resource assetID=\(asset.localIdentifier, privacy: .private)")
@@ -222,11 +239,12 @@ nonisolated enum PhotoLibraryWriter {
             withIntermediateDirectories: true
         )
         do {
-            try await writeResource(
+            try await writeResourceCancellable(
                 resource,
                 to: fileURL,
                 assetLocalIdentifier: asset.localIdentifier,
-                label: "originalVideoFile"
+                label: "originalVideoFile",
+                progressHandler: progressHandler
             )
             return fileURL
         } catch {
@@ -235,7 +253,35 @@ nonisolated enum PhotoLibraryWriter {
         }
     }
 
-    static func signatureVerificationResources(for asset: PHAsset) async throws -> SignatureVerificationResources {
+    /// Streams the original Photos video resource through a cancellable
+    /// request. This is the readback seam used by the video byte-binding
+    /// validator so Photos does not need to be copied into a whole-file Data.
+    static func readOriginalVideoResource(
+        localIdentifier: String,
+        progressHandler: @escaping ResourceProgressHandler = { _ in },
+        dataReceivedHandler: @escaping @Sendable (Data) throws -> Void
+    ) async throws {
+        guard let asset = asset(localIdentifier: localIdentifier) else {
+            throw TAPDepthCaptureError.assetNotFound
+        }
+        guard let resource = PHAssetResource.assetResources(for: asset)
+            .first(where: { $0.type == .video }) else {
+            throw TAPDepthCaptureError.assetCreationFailed
+        }
+        let request = PhotoResourceDataRequest(
+            assetLocalIdentifier: localIdentifier,
+            label: "originalVideoReadback",
+            progressHandler: progressHandler,
+            dataReceivedHandler: dataReceivedHandler
+        )
+        try await withTaskCancellationHandler {
+            try await request.start(resource: resource)
+        } onCancel: {
+            request.cancel()
+        }
+    }
+
+    private static func signatureVerificationResources(for asset: PHAsset) async throws -> SignatureVerificationResources {
         let resources = PHAssetResource.assetResources(for: asset)
         guard let photoResource = resources.first(where: { $0.type == .photo }) else {
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
@@ -321,7 +367,7 @@ nonisolated enum PhotoLibraryWriter {
         }.value
     }
 
-    static func asset(localIdentifier: String) -> PHAsset? {
+    private static func asset(localIdentifier: String) -> PHAsset? {
         PHAsset.fetchAssets(withLocalIdentifiers: [localIdentifier], options: nil).firstObject
     }
 
@@ -342,7 +388,7 @@ nonisolated enum PhotoLibraryWriter {
         }
     }
 
-    static func latestDepthAssetIfAuthorized() -> PHAsset? {
+    private static func latestDepthAssetIfAuthorized() -> PHAsset? {
         let current = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         guard current == .authorized || current == .limited,
               let album = fetchAlbum() else {
@@ -361,54 +407,75 @@ nonisolated enum PhotoLibraryWriter {
         }.value
     }
 
-    static func depthAlbumAssets() async throws -> [PHAsset] {
+    static func depthAssetIdentifier(captureID: String) async throws -> String? {
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.photoLibrary.info("depthAssetIdentifier lookup start captureID=\(captureID, privacy: .private)")
+        #endif
         try await requestReadWriteAccess()
-        let assets: [PHAsset] = await Task.detached(priority: .userInitiated) {
+        return await Task.detached(priority: .userInitiated) {
             guard let album = fetchAlbum() else {
-                return [PHAsset]()
+                return nil
             }
 
             let options = PHFetchOptions()
             options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
             let result = PHAsset.fetchAssets(in: album, options: options)
+            let provenanceWriter = TAPCaptureProvenanceWriter()
+            for index in 0..<result.count {
+                let asset = result.object(at: index)
+                guard let data = try? await originalPhotoData(for: asset),
+                      let expectedProfile = expectedProfile(for: data),
+                      (try? provenanceWriter.validateSignedExportPhoto(
+                        data,
+                        expectedCaptureID: captureID,
+                        expectedProfile: expectedProfile
+                      )) != nil else {
+                    continue
+                }
+                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                TAPDiagnostics.photoLibrary.info("depthAssetIdentifier found captureID=\(captureID, privacy: .private) assetID=\(asset.localIdentifier, privacy: .private)")
+                #endif
+                return asset.localIdentifier
+            }
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.photoLibrary.info("depthAssetIdentifier not found captureID=\(captureID, privacy: .private) scannedCount=\(result.count, privacy: .public)")
+            #endif
+            return nil
+        }.value
+    }
+
+    /// Returns deterministic, oldest-first recovery candidates. The resource
+    /// filename is only an index hint; callers must still validate the signed
+    /// manifest and byte binding before accepting any candidate.
+    static func tapVideoAssetCandidateIdentifiers(packageID: UUID) async throws -> [String] {
+        let expectedFilename = tapVideoResourceFilename(packageID: packageID)
+        return await Task.detached(priority: .utility) {
+            let result = PHAsset.fetchAssets(with: .video, options: nil)
             var assets: [PHAsset] = []
             assets.reserveCapacity(result.count)
             result.enumerateObjects { asset, _, _ in
                 assets.append(asset)
             }
             return assets
+                .filter { asset in
+                    PHAssetResource.assetResources(for: asset).contains { resource in
+                        resource.type == .video && resource.originalFilename == expectedFilename
+                    }
+                }
+                .sorted { lhs, rhs in
+                    // TAP preserves capturedAt as Photos creationDate, so that
+                    // field cannot distinguish duplicate export attempts. Photos'
+                    // modificationDate is the closest available import-order
+                    // signal; the opaque identifier remains a deterministic tie.
+                    let lhsDate = lhs.modificationDate ?? lhs.creationDate ?? .distantFuture
+                    let rhsDate = rhs.modificationDate ?? rhs.creationDate ?? .distantFuture
+                    if lhsDate != rhsDate {
+                        return lhsDate < rhsDate
+                    }
+                    return lhs.localIdentifier < rhs.localIdentifier
+                }
+                .map(\.localIdentifier)
         }.value
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.photoLibrary.info("depthAlbumAssets fetched count=\(assets.count, privacy: .public)")
-        #endif
-        return assets
-    }
-
-    static func depthAssetIdentifier(captureID: String) async throws -> String? {
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.photoLibrary.info("depthAssetIdentifier lookup start captureID=\(captureID, privacy: .private)")
-        #endif
-        let assets = try await depthAlbumAssets()
-        let provenanceWriter = TAPCaptureProvenanceWriter()
-        for asset in assets {
-            guard let data = try? await originalPhotoData(for: asset),
-                  let expectedProfile = expectedProfile(for: data),
-                  (try? provenanceWriter.validateSignedExportPhoto(
-                    data,
-                    expectedCaptureID: captureID,
-                    expectedProfile: expectedProfile
-                  )) != nil else {
-                continue
-            }
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.photoLibrary.info("depthAssetIdentifier found captureID=\(captureID, privacy: .private) assetID=\(asset.localIdentifier, privacy: .private)")
-            #endif
-            return asset.localIdentifier
-        }
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.photoLibrary.info("depthAssetIdentifier not found captureID=\(captureID, privacy: .private) scannedCount=\(assets.count, privacy: .public)")
-        #endif
-        return nil
     }
 
     private static func expectedProfile(for signedPhotoData: Data) -> CaptureOutputProfile? {
@@ -486,6 +553,27 @@ nonisolated enum PhotoLibraryWriter {
                     }
                 }
             )
+        }
+    }
+
+    private static func writeResourceCancellable(
+        _ resource: PHAssetResource,
+        to fileURL: URL,
+        assetLocalIdentifier: String,
+        label: String,
+        progressHandler: @escaping ResourceProgressHandler
+    ) async throws {
+        try Data().write(to: fileURL, options: .atomic)
+        let request = try PhotoResourceFileRequest(
+            fileURL: fileURL,
+            assetLocalIdentifier: assetLocalIdentifier,
+            label: label,
+            progressHandler: progressHandler
+        )
+        try await withTaskCancellationHandler {
+            try await request.start(resource: resource)
+        } onCancel: {
+            request.cancel()
         }
     }
 
@@ -632,29 +720,25 @@ nonisolated enum PhotoLibraryWriter {
     }
 
     private static func createVideoAsset(
-        data: Data,
+        fileURL: URL,
+        resourceFilename: String,
         capturedAt: Date,
         location: CLLocation?,
-        album: PHAssetCollection?
+        album: PHAssetCollection?,
+        commitWillBegin: @Sendable () async throws -> Void
     ) async throws -> String {
-        var placeholder: PHObjectPlaceholder?
-        let resourceFilename = "tap-depth-video.mp4"
-        let resourceURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("TAPVideoLibraryWriter-\(UUID().uuidString)", isDirectory: true)
-            .appendingPathComponent(resourceFilename)
-
-        try FileManager.default.createDirectory(
-            at: resourceURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        try data.write(to: resourceURL, options: .atomic)
-        defer {
-            try? FileManager.default.removeItem(at: resourceURL.deletingLastPathComponent())
+        guard fileURL.isFileURL,
+              FileManager.default.fileExists(atPath: fileURL.path) else {
+            throw TAPDepthCaptureError.assetCreationFailed
         }
 
+        var placeholder: PHObjectPlaceholder?
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.photoLibrary.info("createVideoAsset start bytes=\(data.count, privacy: .public) album=\(album != nil, privacy: .public)")
+        let byteCount = try fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+        TAPDiagnostics.photoLibrary.info("createVideoAsset file start bytes=\(byteCount, privacy: .public) album=\(album != nil, privacy: .public)")
         #endif
+        try Task.checkCancellation()
+        try await commitWillBegin()
         try await PHPhotoLibrary.shared().performChanges {
             let creationRequest = PHAssetCreationRequest.forAsset()
             creationRequest.creationDate = capturedAt
@@ -664,10 +748,9 @@ nonisolated enum PhotoLibraryWriter {
             options.uniformTypeIdentifier = UTType.mpeg4Movie.identifier
             options.originalFilename = resourceFilename
             options.shouldMoveFile = false
-            creationRequest.addResource(with: .video, fileURL: resourceURL, options: options)
+            creationRequest.addResource(with: .video, fileURL: fileURL, options: options)
 
             placeholder = creationRequest.placeholderForCreatedAsset
-
             if let album,
                let albumChangeRequest = PHAssetCollectionChangeRequest(for: album),
                let placeholder {
@@ -678,9 +761,8 @@ nonisolated enum PhotoLibraryWriter {
         guard let localIdentifier = placeholder?.localIdentifier else {
             throw TAPDepthCaptureError.assetCreationFailed
         }
-
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.photoLibrary.info("createVideoAsset success assetID=\(localIdentifier, privacy: .private)")
+        TAPDiagnostics.photoLibrary.info("createVideoAsset file success assetID=\(localIdentifier, privacy: .private)")
         #endif
         return localIdentifier
     }
@@ -689,6 +771,313 @@ nonisolated enum PhotoLibraryWriter {
         let options = PHFetchOptions()
         options.predicate = NSPredicate(format: "title = %@", albumName)
         return PHAssetCollection.fetchAssetCollections(with: .album, subtype: .albumRegular, options: options).firstObject
+    }
+}
+
+/// Bridges cancellation/finish state across PhotoKit APIs that return their
+/// request identifier only after callbacks may already have fired.
+///
+/// The injected cancellation closure keeps the race logic independently
+/// testable without issuing a real PhotoKit request.
+nonisolated final class PhotoLibraryRequestIDCancellationBridge<RequestID: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private let cancelRequest: @Sendable (RequestID) -> Void
+    private var installedRequestID: RequestID?
+    private var cancellationRequested = false
+    private var finishedBeforeInstall = false
+    private var cancellationDelivered = false
+
+    init(cancelRequest: @escaping @Sendable (RequestID) -> Void) {
+        self.cancelRequest = cancelRequest
+    }
+
+    func install(requestID: RequestID) {
+        let requestIDToCancel: RequestID?
+        lock.lock()
+        if installedRequestID == nil {
+            installedRequestID = requestID
+        }
+        if !cancellationDelivered,
+           cancellationRequested || finishedBeforeInstall {
+            cancellationDelivered = true
+            requestIDToCancel = installedRequestID
+        } else {
+            requestIDToCancel = nil
+        }
+        lock.unlock()
+
+        if let requestIDToCancel {
+            cancelRequest(requestIDToCancel)
+        }
+    }
+
+    func requestCancellation() {
+        let requestIDToCancel: RequestID?
+        lock.lock()
+        cancellationRequested = true
+        if !cancellationDelivered,
+           let installedRequestID {
+            cancellationDelivered = true
+            requestIDToCancel = installedRequestID
+        } else {
+            requestIDToCancel = nil
+        }
+        lock.unlock()
+
+        if let requestIDToCancel {
+            cancelRequest(requestIDToCancel)
+        }
+    }
+
+    func markFinished() {
+        lock.lock()
+        if installedRequestID == nil {
+            finishedBeforeInstall = true
+        }
+        lock.unlock()
+    }
+}
+
+nonisolated private final class PhotoResourceFileRequest: @unchecked Sendable {
+    private let lock = NSLock()
+    private let manager = PHAssetResourceManager.default()
+    private let requestIDBridge = PhotoLibraryRequestIDCancellationBridge<PHAssetResourceDataRequestID>(
+        cancelRequest: { requestID in
+            PHAssetResourceManager.default().cancelDataRequest(requestID)
+        }
+    )
+    private let fileURL: URL
+    private let assetLocalIdentifier: String
+    private let label: String
+    private let progressHandler: PhotoLibraryWriter.ResourceProgressHandler
+    private var fileHandle: FileHandle?
+    private var continuation: CheckedContinuation<Void, any Error>?
+    private var cancellationRequested = false
+    private var finished = false
+
+    init(
+        fileURL: URL,
+        assetLocalIdentifier: String,
+        label: String,
+        progressHandler: @escaping PhotoLibraryWriter.ResourceProgressHandler
+    ) throws {
+        self.fileURL = fileURL
+        self.assetLocalIdentifier = assetLocalIdentifier
+        self.label = label
+        self.progressHandler = progressHandler
+        self.fileHandle = try FileHandle(forWritingTo: fileURL)
+    }
+
+    func start(resource: PHAssetResource) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+            lock.lock()
+            guard !finished else {
+                lock.unlock()
+                continuation.resume(throwing: CancellationError())
+                return
+            }
+            self.continuation = continuation
+            let shouldCancelBeforeStart = cancellationRequested
+            lock.unlock()
+
+            guard !shouldCancelBeforeStart else {
+                finish(throwing: CancellationError())
+                return
+            }
+
+            let options = PHAssetResourceRequestOptions()
+            options.isNetworkAccessAllowed = true
+            options.progressHandler = { [weak self] progress in
+                self?.progressHandler(progress.isFinite ? progress : nil)
+            }
+            let requestID = manager.requestData(
+                for: resource,
+                options: options,
+                dataReceivedHandler: { [weak self] data in
+                    self?.receive(data)
+                },
+                completionHandler: { [weak self] error in
+                    self?.finish(throwing: error)
+                }
+            )
+            install(requestID: requestID)
+        }
+    }
+
+    func cancel() {
+        lock.lock()
+        cancellationRequested = true
+        lock.unlock()
+        requestIDBridge.requestCancellation()
+        finish(throwing: CancellationError())
+    }
+
+    private func install(requestID: PHAssetResourceDataRequestID) {
+        requestIDBridge.install(requestID: requestID)
+    }
+
+    private func receive(_ data: Data) {
+        var writeError: (any Error)?
+        lock.lock()
+        if !finished, !cancellationRequested {
+            do {
+                try fileHandle?.write(contentsOf: data)
+            } catch {
+                writeError = error
+            }
+        }
+        lock.unlock()
+        if let writeError {
+            requestIDBridge.requestCancellation()
+            finish(throwing: writeError)
+        }
+    }
+
+    private func finish(throwing error: (any Error)?) {
+        requestIDBridge.markFinished()
+        lock.lock()
+        guard !finished else {
+            lock.unlock()
+            return
+        }
+        finished = true
+        let continuation = self.continuation
+        self.continuation = nil
+        let fileHandle = self.fileHandle
+        self.fileHandle = nil
+        lock.unlock()
+
+        try? fileHandle?.close()
+        if let error {
+            try? FileManager.default.removeItem(at: fileURL)
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.photoLibrary.error("\(self.label, privacy: .public) request failed assetID=\(self.assetLocalIdentifier, privacy: .private) error=\(TAPDiagnostics.describe(error), privacy: .public)")
+            #endif
+            continuation?.resume(throwing: error)
+        } else {
+            progressHandler(1)
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.photoLibrary.info("\(self.label, privacy: .public) request success assetID=\(self.assetLocalIdentifier, privacy: .private)")
+            #endif
+            continuation?.resume(returning: ())
+        }
+    }
+}
+
+nonisolated private final class PhotoResourceDataRequest: @unchecked Sendable {
+    private let lock = NSLock()
+    private let manager = PHAssetResourceManager.default()
+    private let requestIDBridge = PhotoLibraryRequestIDCancellationBridge<PHAssetResourceDataRequestID>(
+        cancelRequest: { requestID in
+            PHAssetResourceManager.default().cancelDataRequest(requestID)
+        }
+    )
+    private let assetLocalIdentifier: String
+    private let label: String
+    private let progressHandler: PhotoLibraryWriter.ResourceProgressHandler
+    private let dataReceivedHandler: @Sendable (Data) throws -> Void
+    private var continuation: CheckedContinuation<Void, any Error>?
+    private var cancellationRequested = false
+    private var finished = false
+
+    init(
+        assetLocalIdentifier: String,
+        label: String,
+        progressHandler: @escaping PhotoLibraryWriter.ResourceProgressHandler,
+        dataReceivedHandler: @escaping @Sendable (Data) throws -> Void
+    ) {
+        self.assetLocalIdentifier = assetLocalIdentifier
+        self.label = label
+        self.progressHandler = progressHandler
+        self.dataReceivedHandler = dataReceivedHandler
+    }
+
+    func start(resource: PHAssetResource) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+            lock.lock()
+            guard !finished else {
+                lock.unlock()
+                continuation.resume(throwing: CancellationError())
+                return
+            }
+            self.continuation = continuation
+            let shouldCancelBeforeStart = cancellationRequested
+            lock.unlock()
+            guard !shouldCancelBeforeStart else {
+                finish(throwing: CancellationError())
+                return
+            }
+
+            let options = PHAssetResourceRequestOptions()
+            options.isNetworkAccessAllowed = true
+            options.progressHandler = { [weak self] progress in
+                self?.progressHandler(progress.isFinite ? progress : nil)
+            }
+            let requestID = manager.requestData(
+                for: resource,
+                options: options,
+                dataReceivedHandler: { [weak self] data in
+                    self?.receive(data)
+                },
+                completionHandler: { [weak self] error in
+                    self?.finish(throwing: error)
+                }
+            )
+            install(requestID: requestID)
+        }
+    }
+
+    func cancel() {
+        lock.lock()
+        cancellationRequested = true
+        lock.unlock()
+        requestIDBridge.requestCancellation()
+        finish(throwing: CancellationError())
+    }
+
+    private func install(requestID: PHAssetResourceDataRequestID) {
+        requestIDBridge.install(requestID: requestID)
+    }
+
+    private func receive(_ data: Data) {
+        lock.lock()
+        let shouldReceive = !finished && !cancellationRequested
+        lock.unlock()
+        guard shouldReceive else {
+            return
+        }
+        do {
+            try dataReceivedHandler(data)
+        } catch {
+            requestIDBridge.requestCancellation()
+            finish(throwing: error)
+        }
+    }
+
+    private func finish(throwing error: (any Error)?) {
+        requestIDBridge.markFinished()
+        lock.lock()
+        guard !finished else {
+            lock.unlock()
+            return
+        }
+        finished = true
+        let continuation = self.continuation
+        self.continuation = nil
+        lock.unlock()
+
+        if let error {
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.photoLibrary.error("\(self.label, privacy: .public) request failed assetID=\(self.assetLocalIdentifier, privacy: .private) error=\(TAPDiagnostics.describe(error), privacy: .public)")
+            #endif
+            continuation?.resume(throwing: error)
+        } else {
+            progressHandler(1)
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.photoLibrary.info("\(self.label, privacy: .public) request success assetID=\(self.assetLocalIdentifier, privacy: .private)")
+            #endif
+            continuation?.resume(returning: ())
+        }
     }
 }
 

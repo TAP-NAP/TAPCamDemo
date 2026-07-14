@@ -14,6 +14,7 @@ flowchart TD
     Docs --> ViewerRedesign["Analysis viewer\nredesign"]
     Docs --> CredentialRetry["Credential signing\nretry design"]
     Docs --> DepthVideo["Depth video\nrecording design"]
+    Docs --> VideoLibrary["Video Library\nrelease-readiness PRD"]
     Docs --> ProBuild["Pro controls\nbuild isolation"]
     Docs --> LiveBrowser["Live Photo\nbrowser verification"]
     Docs --> LockedPOC["Locked Camera\ncapture POC"]
@@ -29,6 +30,7 @@ flowchart TD
     click ViewerRedesign "DepthAnalysisViewerRedesign.md"
     click CredentialRetry "CredentialSigningRetryDesign.md"
     click DepthVideo "DepthVideoRecordingDesign.md"
+    click VideoLibrary "TAPVideoLibraryPRD.md"
     click ProBuild "CameraProControlsBuildIsolationPlan.md"
     click LiveBrowser "LivePhotoBrowserVerification.md"
     click LockedPOC "LockedCameraCapturePOC.md"
@@ -50,6 +52,9 @@ flowchart TD
 | Analysis viewer and tool drawer redesign | [DepthAnalysisViewerRedesign.md](DepthAnalysisViewerRedesign.md) |
 | Credential signing retry state machine | [CredentialSigningRetryDesign.md](CredentialSigningRetryDesign.md) |
 | Depth video recording design | [DepthVideoRecordingDesign.md](DepthVideoRecordingDesign.md) |
+| Video Library release-readiness PRD | [TAPVideoLibraryPRD.md](TAPVideoLibraryPRD.md) |
+| Video Library implementation and PR 7 runtime evidence | [AITrace/2026-07-11-video-library-refactor-implementation.md](AITrace/2026-07-11-video-library-refactor-implementation.md) · [AITrace/2026-07-12-video-library-pr7-runtime-evidence.md](AITrace/2026-07-12-video-library-pr7-runtime-evidence.md) |
+| TAP Video manifest v2 / Zstd / KLV golden vectors | [Fixtures/TAPVideoManifestV2GoldenVectors.json](Fixtures/TAPVideoManifestV2GoldenVectors.json) |
 | Basic EV and Pro Controls build isolation | [CameraProControlsBuildIsolationPlan.md](CameraProControlsBuildIsolationPlan.md) |
 | Live Photo browser verification contract | [LivePhotoBrowserVerification.md](LivePhotoBrowserVerification.md) |
 | Locked Camera Capture POC PRD | [LockedCameraCapturePOC.md](LockedCameraCapturePOC.md) |

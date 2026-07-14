@@ -112,14 +112,14 @@ actor TAPPendingCaptureProcessor {
         var processedCaptureIDs = Set<String>()
         while let candidate = await nextProcessingCandidate(store: store, excludingCaptureIDs: processedCaptureIDs) {
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.pendingCapture.info("worker candidate workerID=\(workerID, privacy: .public) captureID=\(candidate.captureID, privacy: .private) status=\(candidate.status.rawValue, privacy: .public) artifactKind=\(candidate.artifactKind.rawValue, privacy: .public) retryCount=\(candidate.retryCount, privacy: .public) container=\(candidate.photoFileContainer.rawValue, privacy: .public) signedPhoto=\(candidate.signedPhotoFilename != nil, privacy: .public) signedVideo=\(candidate.signedVideoFilename != nil, privacy: .public)")
+            TAPDiagnostics.pendingCapture.info("worker candidate workerID=\(workerID, privacy: .public) captureID=\(candidate.captureID, privacy: .private) status=\(candidate.status.rawValue, privacy: .public) artifactKind=\(candidate.artifactKind.rawValue, privacy: .public) retryCount=\(candidate.retryCount, privacy: .public) container=\(candidate.photoFileContainer.rawValue, privacy: .public) signedPhoto=\(candidate.signedPhotoFilename != nil, privacy: .public) videoState=\(candidate.videoArtifactState?.rawValue ?? "none", privacy: .public)")
             #endif
             processedCaptureIDs.insert(candidate.captureID)
             await process(candidate, store: store, signer: signer, exporter: exporter)
         }
 
         do {
-            try await store.cleanupExportedLargeFiles()
+            try await cleanupExportedLargeFilesWithTrace(store: store)
         } catch {
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.pendingCapture.error("worker cleanup failed workerID=\(workerID, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
@@ -145,21 +145,51 @@ actor TAPPendingCaptureProcessor {
     }
 
     func reconcile(store: TAPPendingCaptureStore = .shared) async throws {
+        try await store.removeStaleVideoCaptureWorkspaces()
+        try await store.removeUnshippedLegacyVideoBundles()
         try await store.normalizePersistedFailureReasons()
         let records = try await store.allRecords()
         for record in records {
             switch record.status {
-            case .exported:
+            case .exported, .failedTerminal:
                 continue
             case .exporting:
-                if let assetID = try? await PhotoLibraryWriter.depthAssetIdentifier(captureID: record.captureID) {
-                    _ = try await store.markExported(captureID: record.captureID, assetLocalIdentifier: assetID)
+                // Photo recovery has a dedicated signed-photo lookup. TAP
+                // video recovery must stay in the exporter so deterministic
+                // filename candidates receive full manifest/proof readback.
+                if record.artifactKind == .photoDepth,
+                   let assetID = try? await PhotoLibraryWriter.depthAssetIdentifier(
+                    captureID: record.captureID
+                   ) {
+                    _ = try await store.markExported(
+                        captureID: record.captureID,
+                        assetLocalIdentifier: assetID
+                    )
                 }
             case .pending, .waitingNetwork, .signing, .signed, .failedRetryable:
                 continue
             }
         }
-        try await store.cleanupExportedLargeFiles()
+        try await cleanupExportedLargeFilesWithTrace(store: store)
+    }
+
+    private func cleanupExportedLargeFilesWithTrace(
+        store: TAPPendingCaptureStore
+    ) async throws {
+        let trace = TAPVideoPerformanceTrace.beginPendingCleanup()
+        do {
+            try await store.cleanupExportedLargeFiles()
+            TAPVideoPerformanceTrace.endPendingCleanup(trace, succeeded: true)
+            TAPVideoPerformanceTrace.emitRuntimeCheckpoint(
+                stage: "pending-cleanup-finished"
+            )
+        } catch {
+            TAPVideoPerformanceTrace.endPendingCleanup(trace, succeeded: false)
+            TAPVideoPerformanceTrace.emitRuntimeCheckpoint(
+                stage: "pending-cleanup-failed"
+            )
+            throw error
+        }
     }
 
     private func process(
@@ -204,7 +234,23 @@ actor TAPPendingCaptureProcessor {
             TAPDiagnostics.pendingCapture.info("process success captureID=\(record.captureID, privacy: .private) previousStatus=\(record.status.rawValue, privacy: .public)")
             #endif
         } catch {
-            let status = TAPPendingCaptureRetryClassifier.status(for: error)
+            if let terminalCode = Self.terminalFailureCode(for: error, record: record) {
+                _ = try? await store.markTerminalFailure(
+                    captureID: record.captureID,
+                    code: terminalCode
+                )
+                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                TAPDiagnostics.pendingCapture.error("process terminal failure captureID=\(record.captureID, privacy: .private) code=\(terminalCode.rawValue, privacy: .public)")
+                #endif
+                return
+            }
+            let persistedRecord = try? await store.readRecord(captureID: record.captureID)
+            let mustRemainInVideoRecovery = record.artifactKind == .tapVideo
+                && (record.requiresVideoPhotosReadbackRecovery
+                    || persistedRecord?.requiresVideoPhotosReadbackRecovery == true)
+            let status: TAPPendingCaptureStatus = mustRemainInVideoRecovery
+                ? .exporting
+                : TAPPendingCaptureRetryClassifier.status(for: error)
             let failureReason = TAPPendingCaptureFailureReasonPresentation.reason(for: status)
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.pendingCapture.error("process failed captureID=\(record.captureID, privacy: .private) previousStatus=\(record.status.rawValue, privacy: .public) nextStatus=\(status.rawValue, privacy: .public) retryCount=\(record.retryCount + 1, privacy: .public) vpnHint=\(TAPDiagnostics.errorLooksVPNRelated(error), privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
@@ -215,6 +261,30 @@ actor TAPPendingCaptureProcessor {
                 failureReason: failureReason,
                 incrementsRetryCount: true
             )
+        }
+    }
+
+    private nonisolated static func terminalFailureCode(
+        for error: Error,
+        record: TAPPendingCaptureRecord
+    ) -> TAPPendingCaptureFailureCode? {
+        guard record.artifactKind == .tapVideo,
+              let captureError = error as? TAPDepthCaptureError else {
+            return nil
+        }
+        switch captureError {
+        case .missingDepthData:
+            return .missingDepthData
+        case .pendingCaptureProofExternalMutation:
+            return .proofExternalMutation
+        case .pendingCaptureProofInvalid,
+             .pendingCaptureProofMissing:
+            return .proofValidationFailed
+        case .invalidTAPManifest,
+             .pendingCaptureManifestIDMismatch:
+            return .invalidVideoArtifact
+        default:
+            return nil
         }
     }
 
@@ -270,21 +340,30 @@ private struct AppAttestPendingCaptureSigner: TAPPendingCaptureSigning {
             return signedRecord
 
         case .tapVideo:
-            let unsignedData = try await store.unsignedVideoData(captureID: record.captureID)
+            let videoFileURL = try await store.videoArtifactURL(captureID: record.captureID)
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.pendingCapture.info("sign unsigned video data loaded captureID=\(record.captureID, privacy: .private) bytes=\(unsignedData.count, privacy: .public)")
+            let byteCount = (try? videoFileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            TAPDiagnostics.pendingCapture.info("sign video file loaded captureID=\(record.captureID, privacy: .private) bytes=\(byteCount, privacy: .public)")
             #endif
-            let signedVideo = try await provenanceWriter.signedVideoData(
-                from: unsignedData,
+            let signedVideo = try await provenanceWriter.signedVideoFile(
+                at: videoFileURL,
                 expectedCaptureID: record.captureID,
+                expectedPackageID: record.packageID,
+                expectedPreSignContentBinding: record.preSignContentBinding,
+                contentBindingPrepared: { binding in
+                    _ = try await store.persistVideoPreSignContentBinding(
+                        binding,
+                        captureID: record.captureID
+                    )
+                },
                 assertionSigner: signer
             )
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.pendingCapture.info("sign video provenance ready captureID=\(record.captureID, privacy: .private) manifestID=\(signedVideo.manifest.payload.id, privacy: .private) keyID=\(signedVideo.keyID, privacy: .private) depthSamples=\(signedVideo.manifest.payload.depthCoverage.sampleCount, privacy: .public)")
             #endif
-            let signedRecord = try await store.storeSignedVideo(signedVideo.data, captureID: record.captureID)
+            let signedRecord = try await store.markVideoSigned(captureID: record.captureID)
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.pendingCapture.info("sign video success captureID=\(record.captureID, privacy: .private) signedBytes=\(signedVideo.data.count, privacy: .public)")
+            TAPDiagnostics.pendingCapture.info("sign video success captureID=\(record.captureID, privacy: .private) file=\(signedVideo.fileURL.lastPathComponent, privacy: .public)")
             #endif
             return signedRecord
         }
@@ -360,61 +439,250 @@ nonisolated struct PhotoLibraryPendingCaptureExportActions: Sendable {
     }
 }
 
+typealias PhotoLibraryPendingVideoCommitBoundary = @Sendable () async throws -> Void
+
+nonisolated struct PhotoLibraryPendingVideoExportActions: Sendable {
+    let candidateIdentifiers: @Sendable (UUID) async throws -> [String]
+    let validateLocalFile: @Sendable (URL, TAPPendingCaptureRecord) async throws -> ValidatedTAPVideoFile
+    let saveVideoFile: @Sendable (
+        URL,
+        TAPPendingCaptureRecord,
+        TAPVideoManifest,
+        PhotoLibraryPendingVideoCommitBoundary
+    ) async throws -> String
+    let validateReadback: @Sendable (String, TAPPendingCaptureRecord) async throws -> Void
+
+    static func live() -> Self {
+        Self(
+            candidateIdentifiers: { packageID in
+                try await PhotoLibraryWriter.tapVideoAssetCandidateIdentifiers(packageID: packageID)
+            },
+            validateLocalFile: { fileURL, record in
+                try await TAPCaptureProvenanceWriter().validateSignedExportVideoFile(
+                    at: fileURL,
+                    expectedCaptureID: record.captureID,
+                    expectedPackageID: record.packageID
+                )
+            },
+            saveVideoFile: { fileURL, record, manifest, commitWillBegin in
+                try await PhotoLibraryWriter.saveTAPVideoFile(
+                    at: fileURL,
+                    packageID: record.packageID,
+                    manifest: manifest,
+                    capturedAt: record.capturedAt,
+                    location: record.location?.clLocation,
+                    commitWillBegin: commitWillBegin
+                )
+            },
+            validateReadback: { assetID, record in
+                _ = try await TAPVideoPhotosReadbackValidator.validate(
+                    assetLocalIdentifier: assetID,
+                    captureID: record.captureID,
+                    packageID: record.packageID
+                )
+            }
+        )
+    }
+}
+
 struct PhotoLibraryPendingCaptureExporter: TAPPendingCaptureExporting {
     private let actions: PhotoLibraryPendingCaptureExportActions
+    private let videoActions: PhotoLibraryPendingVideoExportActions
 
-    init(actions: PhotoLibraryPendingCaptureExportActions = .live()) {
+    init(
+        actions: PhotoLibraryPendingCaptureExportActions = .live(),
+        videoActions: PhotoLibraryPendingVideoExportActions = .live()
+    ) {
         self.actions = actions
+        self.videoActions = videoActions
     }
 
     func export(_ record: TAPPendingCaptureRecord, store: TAPPendingCaptureStore) async throws {
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.pendingCapture.info("export start captureID=\(record.captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public)")
         #endif
-        if record.shouldAttemptExistingAssetRecoveryBeforeExport,
-           let existingAssetID = try? await actions.existingAssetIdentifier(record.captureID) {
-            _ = try await store.markExported(captureID: record.captureID, assetLocalIdentifier: existingAssetID)
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.pendingCapture.info("export skipped existing asset captureID=\(record.captureID, privacy: .private) assetID=\(existingAssetID, privacy: .private)")
-            #endif
-            return
+        if record.shouldAttemptExistingAssetRecoveryBeforeExport {
+            switch record.artifactKind {
+            case .photoDepth:
+                if let existingAssetID = try? await actions.existingAssetIdentifier(record.captureID) {
+                    _ = try await store.markExported(
+                        captureID: record.captureID,
+                        assetLocalIdentifier: existingAssetID
+                    )
+                    return
+                }
+            case .tapVideo:
+                if try await recoverExistingVideoAsset(record, store: store) {
+                    return
+                }
+                // Photos may not expose a just-committed asset immediately.
+                // Remaining in recovery is safer than creating a duplicate.
+                throw TAPDepthCaptureError.assetNotFound
+            }
         }
 
-        _ = try await store.updateStatus(captureID: record.captureID, status: .exporting)
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.pendingCapture.info("export status updated captureID=\(record.captureID, privacy: .private) status=\(TAPPendingCaptureStatus.exporting.rawValue, privacy: .public)")
-        #endif
-        let assetID: String
         switch record.artifactKind {
         case .photoDepth:
+            _ = try await store.updateStatus(captureID: record.captureID, status: .exporting)
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.pendingCapture.info("export status updated captureID=\(record.captureID, privacy: .private) status=\(TAPPendingCaptureStatus.exporting.rawValue, privacy: .public)")
+            #endif
             let signedData = try await store.signedPhotoData(captureID: record.captureID)
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.pendingCapture.info("export signed photo data loaded captureID=\(record.captureID, privacy: .private) bytes=\(signedData.count, privacy: .public)")
             #endif
             let pairedVideoURL = try await store.pairedVideoURL(captureID: record.captureID)
-            assetID = try await actions.saveValidatedSignedPhoto(signedData, record, pairedVideoURL)
+            let assetID = try await actions.saveValidatedSignedPhoto(signedData, record, pairedVideoURL)
+            _ = try await store.markExported(captureID: record.captureID, assetLocalIdentifier: assetID)
 
         case .tapVideo:
-            let signedData = try await store.signedVideoData(captureID: record.captureID)
+            _ = try await store.markVideoPhotosExportIntent(captureID: record.captureID)
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.pendingCapture.info("export signed video data loaded captureID=\(record.captureID, privacy: .private) bytes=\(signedData.count, privacy: .public)")
+            TAPDiagnostics.pendingCapture.info("video export intent persisted captureID=\(record.captureID, privacy: .private) phase=\(TAPPendingVideoPhotosExportPhase.preCommitIntent.rawValue, privacy: .public)")
             #endif
-            let validatedVideo = try TAPCaptureProvenanceWriter().validateSignedExportVideo(
-                signedData,
-                expectedCaptureID: record.captureID
-            )
-            assetID = try await PhotoLibraryWriter.saveTAPVideo(
+            let videoFileURL = try await store.videoArtifactURL(captureID: record.captureID)
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            let byteCount = (try? videoFileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            TAPDiagnostics.pendingCapture.info("export signed video file loaded captureID=\(record.captureID, privacy: .private) bytes=\(byteCount, privacy: .public)")
+            #endif
+            let validatedVideo = try await videoActions.validateLocalFile(videoFileURL, record)
+            let expectedFilename = PhotoLibraryWriter.tapVideoResourceFilename(packageID: record.packageID)
+            guard record.exportResourceFilename == expectedFilename else {
+                _ = try await store.markTerminalFailure(
+                    captureID: record.captureID,
+                    code: .invalidVideoArtifact
+                )
+                return
+            }
+            let assetID = try await saveVideoWithTrace(
                 validatedVideo,
-                capturedAt: record.capturedAt,
-                location: record.location?.clLocation
+                record: record,
+                store: store
             )
+            _ = try await store.markVideoPhotosCommit(
+                captureID: record.captureID,
+                assetLocalIdentifier: assetID
+            )
+            do {
+                try await validateReadbackWithTrace(assetID: assetID, record: record)
+            } catch {
+                if Self.isTerminalVideoReadbackValidationError(error) {
+                    _ = try await store.markTerminalFailure(
+                        captureID: record.captureID,
+                        code: .photosReadbackFailed,
+                        assetLocalIdentifier: assetID
+                    )
+                    return
+                }
+                throw error
+            }
+            _ = try await store.markExported(captureID: record.captureID, assetLocalIdentifier: assetID)
         }
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.pendingCapture.info("export validation and save passed captureID=\(record.captureID, privacy: .private)")
         #endif
-        _ = try await store.markExported(captureID: record.captureID, assetLocalIdentifier: assetID)
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.pendingCapture.info("export success captureID=\(record.captureID, privacy: .private) assetID=\(assetID, privacy: .private)")
-        #endif
+    }
+
+    private func recoverExistingVideoAsset(
+        _ record: TAPPendingCaptureRecord,
+        store: TAPPendingCaptureStore
+    ) async throws -> Bool {
+        let candidateIDs: [String]
+        if let committedAssetID = record.assetLocalIdentifier {
+            candidateIDs = [committedAssetID]
+        } else {
+            candidateIDs = try await videoActions.candidateIdentifiers(record.packageID)
+        }
+        guard !candidateIDs.isEmpty else {
+            return false
+        }
+        var validCandidateIDs: [String] = []
+        for candidateID in candidateIDs {
+            do {
+                try await validateReadbackWithTrace(assetID: candidateID, record: record)
+                validCandidateIDs.append(candidateID)
+            } catch {
+                if Self.isTerminalVideoReadbackValidationError(error) {
+                    continue
+                }
+                throw error
+            }
+        }
+        if let earliestValidID = validCandidateIDs.first {
+            let duplicateWarning = validCandidateIDs.count > 1
+                ? "Multiple fully valid TAP video assets matched this package. The earliest was retained."
+                : nil
+            _ = try await store.markExported(
+                captureID: record.captureID,
+                assetLocalIdentifier: earliestValidID,
+                duplicateExportWarning: duplicateWarning
+            )
+        } else {
+            _ = try await store.markTerminalFailure(
+                captureID: record.captureID,
+                code: .photosReadbackFailed,
+                assetLocalIdentifier: candidateIDs.first
+            )
+        }
+        return true
+    }
+
+    private static func isTerminalVideoReadbackValidationError(_ error: Error) -> Bool {
+        if error is DecodingError {
+            return true
+        }
+        guard let captureError = error as? TAPDepthCaptureError else {
+            return false
+        }
+        switch captureError {
+        case .invalidTAPManifest,
+             .pendingCaptureManifestIDMismatch,
+             .pendingCaptureProofMissing,
+             .pendingCaptureProofInvalid,
+             .pendingCaptureProofExternalMutation,
+             .missingDepthData:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func saveVideoWithTrace(
+        _ validatedVideo: ValidatedTAPVideoFile,
+        record: TAPPendingCaptureRecord,
+        store: TAPPendingCaptureStore
+    ) async throws -> String {
+        let trace = TAPVideoPerformanceTrace.beginPhotosExport()
+        do {
+            let assetID = try await videoActions.saveVideoFile(
+                validatedVideo.fileURL,
+                record,
+                validatedVideo.manifest,
+                {
+                    _ = try await store.markVideoPhotosCommitAmbiguous(
+                        captureID: record.captureID
+                    )
+                }
+            )
+            TAPVideoPerformanceTrace.endPhotosExport(trace, succeeded: true)
+            return assetID
+        } catch {
+            TAPVideoPerformanceTrace.endPhotosExport(trace, succeeded: false)
+            throw error
+        }
+    }
+
+    private func validateReadbackWithTrace(
+        assetID: String,
+        record: TAPPendingCaptureRecord
+    ) async throws {
+        let trace = TAPVideoPerformanceTrace.beginPhotosReadback()
+        do {
+            try await videoActions.validateReadback(assetID, record)
+            TAPVideoPerformanceTrace.endPhotosReadback(trace, succeeded: true)
+        } catch {
+            TAPVideoPerformanceTrace.endPhotosReadback(trace, succeeded: false)
+            throw error
+        }
     }
 }

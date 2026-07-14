@@ -12,14 +12,13 @@ import Foundation
 /// or filename into an arbitrary filesystem path.
 nonisolated enum TAPPendingCaptureBundlePathPolicy {
     static let recordsDirectoryName = "Pending"
+    static let videoCaptureWorkspacePrefix = ".recording-"
     static let recordFilename = "bundle.json"
     static let unsignedHEICFilename = "unsigned.heic"
     static let signedHEICFilename = "signed.heic"
     static let unsignedJPEGFilename = "unsigned.jpg"
     static let signedJPEGFilename = "signed.jpg"
-    static let unsignedVideoFilename = "unsigned.mp4"
-    static let signedVideoFilename = "signed.mp4"
-    static let debugDepthPreviewVideoFilename = "depth-preview.mp4"
+    static let videoArtifactFilename = "artifact.mp4"
     static let pairedVideoFilename = "paired-video.mov"
     static let thumbnailFilename = "thumbnail.jpg"
 
@@ -29,6 +28,13 @@ nonisolated enum TAPPendingCaptureBundlePathPolicy {
 
     static func recordURL(bundleURL: URL) -> URL {
         bundleURL.appendingPathComponent(recordFilename)
+    }
+
+    static func videoCaptureWorkspaceURL(rootURL: URL, captureID: String) throws -> URL {
+        rootURL.appendingPathComponent(
+            videoCaptureWorkspacePrefix + (try validatedCaptureID(captureID)),
+            isDirectory: true
+        )
     }
 
     static func artifactURL(rootURL: URL, captureID: String, filename: String) throws -> URL {
@@ -44,9 +50,7 @@ nonisolated enum TAPPendingCaptureBundlePathPolicy {
 
         try validateOptionalArtifactFilename(record.unsignedPhotoFilename)
         try validateOptionalArtifactFilename(record.signedPhotoFilename)
-        try validateOptionalArtifactFilename(record.unsignedVideoFilename)
-        try validateOptionalArtifactFilename(record.signedVideoFilename)
-        try validateOptionalArtifactFilename(record.debugDepthPreviewVideoFilename)
+        try validateOptionalArtifactFilename(record.videoArtifactFilename)
         try validateOptionalArtifactFilename(record.pairedVideoFilename)
         try validateOptionalArtifactFilename(record.thumbnailFilename)
     }
@@ -91,9 +95,7 @@ nonisolated enum TAPPendingCaptureBundlePathPolicy {
         signedHEICFilename,
         unsignedJPEGFilename,
         signedJPEGFilename,
-        unsignedVideoFilename,
-        signedVideoFilename,
-        debugDepthPreviewVideoFilename,
+        videoArtifactFilename,
         pairedVideoFilename,
         thumbnailFilename
     ]

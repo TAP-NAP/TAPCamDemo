@@ -5,13 +5,16 @@
 
 import Foundation
 import OSLog
-import Photos
 
 /// Snapshot of the TAP Library grid after pending records and Photos assets are
 /// reconciled.
 nonisolated struct DepthAlbumItemSnapshot {
     let items: [TAPLibraryItem]
     let photoAssetsError: Error?
+
+    var summaries: [LibraryMediaSummary] {
+        items.map(\.summary)
+    }
 }
 
 /// Reads the sources that can appear in the TAP Library grid.
@@ -23,13 +26,11 @@ nonisolated struct DepthAlbumItemSnapshot {
 struct DepthAlbumItemProvider {
     typealias PendingRecordsLoader = () async throws -> [TAPPendingCaptureRecord]
     typealias ExportedRecordsLoader = () async throws -> [TAPPendingCaptureRecord]
-    typealias PhotoAssetsLoader = () async throws -> [DepthAlbumPhotoAsset]
-    typealias ExportedAssetResolver = (String) -> DepthAlbumPhotoAsset?
+    typealias PhotoCatalogLoader = (Set<String>) async throws -> DepthAlbumPhotoCatalogSnapshot
 
     private let pendingRecordsLoader: PendingRecordsLoader
     private let exportedRecordsLoader: ExportedRecordsLoader
-    private let photoAssetsLoader: PhotoAssetsLoader
-    private let exportedAssetResolver: ExportedAssetResolver
+    private let photoCatalogLoader: PhotoCatalogLoader
 
     init(
         pendingRecordsLoader: @escaping PendingRecordsLoader = {
@@ -38,47 +39,54 @@ struct DepthAlbumItemProvider {
         exportedRecordsLoader: @escaping ExportedRecordsLoader = {
             try TAPPendingCaptureStore.shared.exportedRecords()
         },
-        photoAssetsLoader: @escaping PhotoAssetsLoader = {
-            let assets = try await PhotoLibraryWriter.depthAlbumAssets()
-            return assets.map { asset in
-                DepthAlbumPhotoAsset(asset: asset)
-            }
-        },
-        exportedAssetResolver: @escaping ExportedAssetResolver = { assetID in
-            guard let asset = PhotoLibraryWriter.asset(localIdentifier: assetID) else {
-                return nil
-            }
-            return DepthAlbumPhotoAsset(asset: asset)
-        }
+        photoCatalog: any DepthAlbumPhotoCataloging = PhotoKitLibraryMediaFetcher()
     ) {
         self.pendingRecordsLoader = pendingRecordsLoader
         self.exportedRecordsLoader = exportedRecordsLoader
-        self.photoAssetsLoader = photoAssetsLoader
-        self.exportedAssetResolver = exportedAssetResolver
+        self.photoCatalogLoader = { exportedAssetLocalIdentifiers in
+            try await photoCatalog.depthAlbumPhotoCatalogSnapshot(
+                exportedAssetLocalIdentifiers: exportedAssetLocalIdentifiers
+            )
+        }
+    }
+
+    /// Closure-based catalog injection keeps deterministic tests lightweight
+    /// without reintroducing PhotoKit objects or synchronous per-item lookup.
+    init(
+        pendingRecordsLoader: @escaping PendingRecordsLoader,
+        exportedRecordsLoader: @escaping ExportedRecordsLoader,
+        photoCatalogLoader: @escaping PhotoCatalogLoader
+    ) {
+        self.pendingRecordsLoader = pendingRecordsLoader
+        self.exportedRecordsLoader = exportedRecordsLoader
+        self.photoCatalogLoader = photoCatalogLoader
     }
 
     func loadSnapshot() async throws -> DepthAlbumItemSnapshot {
         let pendingRecords = try await pendingRecordsLoader()
         let exportedRecords = try await exportedRecordsLoader()
 
-        let photoAssets: [DepthAlbumPhotoAsset]
+        let photoCatalogSnapshot: DepthAlbumPhotoCatalogSnapshot
         let photoAssetsError: Error?
         do {
-            photoAssets = try await photoAssetsLoader()
+            let exportedAssetLocalIdentifiers = Set(
+                (pendingRecords + exportedRecords).compactMap(\.assetLocalIdentifier)
+            )
+            photoCatalogSnapshot = try await photoCatalogLoader(exportedAssetLocalIdentifiers)
             photoAssetsError = nil
         } catch {
-            photoAssets = []
+            photoCatalogSnapshot = .empty
             photoAssetsError = error
         }
 
         let items = TAPLibraryItem.merged(
             pendingRecords: pendingRecords,
             exportedRecords: exportedRecords,
-            photoAssets: photoAssets,
-            exportedAssetResolver: exportedAssetResolver
+            photoAssets: photoCatalogSnapshot.albumAssets,
+            photoAssetsByLocalIdentifier: photoCatalogSnapshot.assetsByLocalIdentifier
         )
         LockedCameraDiagnostics.logger.info(
-            "tap_library_snapshot_loaded visiblePendingCount=\(pendingRecords.count, privacy: .public) exportedRecordCount=\(exportedRecords.count, privacy: .public) photoAssetCount=\(photoAssets.count, privacy: .public) itemCount=\(items.count, privacy: .public) itemSources=\(Self.itemSourceCountsDescription(items), privacy: .public) latestPending=\(Self.pendingRecordsDescription(pendingRecords), privacy: .public) photoAssetsErrorPresent=\(photoAssetsError != nil, privacy: .public)"
+            "tap_library_snapshot_loaded visiblePendingCount=\(pendingRecords.count, privacy: .public) exportedRecordCount=\(exportedRecords.count, privacy: .public) photoAssetCount=\(photoCatalogSnapshot.albumAssets.count, privacy: .public) itemCount=\(items.count, privacy: .public) itemSources=\(Self.itemSourceCountsDescription(items), privacy: .public) latestPending=\(Self.pendingRecordsDescription(pendingRecords), privacy: .public) photoAssetsErrorPresent=\(photoAssetsError != nil, privacy: .public)"
         )
         return DepthAlbumItemSnapshot(items: items, photoAssetsError: photoAssetsError)
     }
@@ -109,52 +117,6 @@ struct DepthAlbumItemProvider {
     }
 }
 
-/// A lightweight Photos asset reference for album ordering, identity, and tests.
-///
-/// Real UI paths keep the underlying `PHAsset` for thumbnail requests. Tests can
-/// build this value without Photos by leaving `phAsset` nil.
-nonisolated struct DepthAlbumPhotoAsset {
-    let localIdentifier: String
-    let creationDate: Date?
-    let modificationDate: Date?
-    let pixelWidth: Int
-    let pixelHeight: Int
-    let isLivePhoto: Bool
-    let isVideo: Bool
-    let phAsset: PHAsset?
-
-    init(asset: PHAsset) {
-        self.localIdentifier = asset.localIdentifier
-        self.creationDate = asset.creationDate
-        self.modificationDate = asset.modificationDate
-        self.pixelWidth = asset.pixelWidth
-        self.pixelHeight = asset.pixelHeight
-        self.isLivePhoto = asset.mediaSubtypes.contains(.photoLive)
-        self.isVideo = asset.mediaType == .video
-        self.phAsset = asset
-    }
-
-    init(
-        localIdentifier: String,
-        creationDate: Date? = nil,
-        modificationDate: Date? = nil,
-        pixelWidth: Int = 0,
-        pixelHeight: Int = 0,
-        isLivePhoto: Bool = false,
-        isVideo: Bool = false,
-        phAsset: PHAsset? = nil
-    ) {
-        self.localIdentifier = localIdentifier
-        self.creationDate = creationDate
-        self.modificationDate = modificationDate
-        self.pixelWidth = pixelWidth
-        self.pixelHeight = pixelHeight
-        self.isLivePhoto = isLivePhoto
-        self.isVideo = isVideo
-        self.phAsset = phAsset
-    }
-}
-
 nonisolated struct TAPLibraryItem: Identifiable {
     enum Source {
         case pending(TAPPendingCaptureRecord)
@@ -167,50 +129,50 @@ nonisolated struct TAPLibraryItem: Identifiable {
     /// This value can contain Photos or pending capture identifiers. Treat it as
     /// private input for UI diffing and route-token derivation, not as a public
     /// log field, filename, or persisted payload.
-    let id: String
+    let mediaID: LibraryMediaID
     let source: Source
     let capturedAt: Date
     let routeAnchor: CameraRouteAlbumAnchor
 
-    func thumbnailCacheKey(pixelLength: Int) -> String {
-        switch source {
-        case .photos(let asset), .ownedPhoto(_, let asset):
-            DepthAlbumThumbnailCacheKey.make(
-                assetLocalIdentifier: asset.localIdentifier,
-                pixelLength: pixelLength,
-                pixelWidth: asset.pixelWidth,
-                pixelHeight: asset.pixelHeight,
-                versionDate: asset.modificationDate ?? asset.creationDate ?? .distantPast
-            )
-        case .pending(let record):
-            DepthAlbumThumbnailCacheKey.makePending(
-                captureID: record.captureID,
-                pixelLength: pixelLength,
-                capturedAt: record.capturedAt,
-                thumbnailFilename: record.thumbnailFilename,
-                videoFilename: record.signedVideoFilename ?? record.unsignedVideoFilename,
-                updatedAt: record.updatedAt
-            )
-        }
+    var id: String {
+        mediaID.storageValue
     }
 
-    private init?(id: String, source: Source, capturedAt: Date) {
+    var summary: LibraryMediaSummary {
+        LibraryMediaSummary(
+            id: mediaID,
+            capturedAt: capturedAt,
+            kind: mediaKind,
+            source: mediaSource,
+            version: mediaVersion
+        )
+    }
+
+    func thumbnailCacheKey(pixelLength: Int) -> String {
+        DepthAlbumThumbnailCacheKey.make(
+            mediaID: mediaID,
+            version: mediaVersion.posterRevision,
+            pixelLength: pixelLength
+        )
+    }
+
+    private init?(mediaID: LibraryMediaID, source: Source, capturedAt: Date) {
         let routeAnchor: CameraRouteAlbumAnchor?
         switch source {
         case .pending(let record):
             routeAnchor = CameraRouteAlbumAnchor(
-                itemID: id,
+                itemID: mediaID.storageValue,
                 captureID: record.captureID
             )
         case .ownedPhoto(let record, let asset):
             routeAnchor = CameraRouteAlbumAnchor(
-                itemID: id,
+                itemID: mediaID.storageValue,
                 captureID: record.captureID,
                 assetLocalIdentifier: asset.localIdentifier
             )
         case .photos(let asset):
             routeAnchor = CameraRouteAlbumAnchor(
-                itemID: id,
+                itemID: mediaID.storageValue,
                 assetLocalIdentifier: asset.localIdentifier
             )
         }
@@ -219,7 +181,7 @@ nonisolated struct TAPLibraryItem: Identifiable {
             return nil
         }
 
-        self.id = id
+        self.mediaID = mediaID
         self.source = source
         self.capturedAt = capturedAt
         self.routeAnchor = routeAnchor
@@ -229,43 +191,82 @@ nonisolated struct TAPLibraryItem: Identifiable {
         pendingRecords: [TAPPendingCaptureRecord],
         exportedRecords: [TAPPendingCaptureRecord],
         photoAssets: [DepthAlbumPhotoAsset],
-        exportedAssetResolver: (String) -> DepthAlbumPhotoAsset?
+        photoAssetsByLocalIdentifier: [String: DepthAlbumPhotoAsset] = [:]
     ) -> [TAPLibraryItem] {
+        var resolvedPhotoAssetsByID: [String: DepthAlbumPhotoAsset] = [:]
+        resolvedPhotoAssetsByID.reserveCapacity(
+            photoAssets.count + photoAssetsByLocalIdentifier.count
+        )
+        for asset in photoAssets {
+            resolvedPhotoAssetsByID[asset.localIdentifier] = asset
+        }
+        resolvedPhotoAssetsByID.merge(photoAssetsByLocalIdentifier) { _, catalogAsset in
+            catalogAsset
+        }
+
         let pendingItems = pendingRecords
             .filter(\.isVisiblePendingItem)
             .compactMap { record in
                 TAPLibraryItem(
-                    id: "pending:\(record.captureID)",
+                    mediaID: .tapCapture(record.captureID),
                     source: .pending(record),
                     capturedAt: record.capturedAt
                 )
             }
 
         let ownedPhotoItems = exportedRecords.compactMap { record -> TAPLibraryItem? in
-            guard let assetID = record.assetLocalIdentifier,
-                  let asset = exportedAssetResolver(assetID) else {
+            guard let assetID = record.assetLocalIdentifier else {
                 return nil
             }
 
+            // Photos can be temporarily unavailable while authorization,
+            // iCloud, or its change journal settles. Keep the app-owned scalar
+            // identity in the canonical catalog instead of making the item
+            // disappear until Photos catalog resolution succeeds.
+            let asset = resolvedPhotoAssetsByID[assetID] ?? DepthAlbumPhotoAsset(
+                localIdentifier: assetID,
+                creationDate: record.capturedAt,
+                modificationDate: record.updatedAt,
+                isLivePhoto: record.artifactKind != .tapVideo && record.pairedVideoFilename != nil,
+                isVideo: record.artifactKind == .tapVideo
+            )
+
             return TAPLibraryItem(
-                id: "owned:\(asset.localIdentifier)",
+                mediaID: .tapCapture(record.captureID),
                 source: .ownedPhoto(record, asset),
-                capturedAt: asset.creationDate ?? record.capturedAt
+                capturedAt: record.capturedAt
             )
         }
-        let ownedAssetIDs = Set(ownedPhotoItems.compactMap(\.assetLocalIdentifier))
+        // A Photos commit can succeed before readback validation finishes. In
+        // that window (and after a terminal readback failure), the visible
+        // pending record already owns a Photos asset identifier. Exclude every
+        // app-owned asset from the Photos-only lane so one capture never gains
+        // a second `.photosAsset` identity while its canonical `.tapCapture`
+        // item is still pending.
+        let ownedAssetIDs = Set(
+            (pendingRecords + exportedRecords).compactMap(\.assetLocalIdentifier)
+        )
 
         let photoItems = photoAssets
             .filter { !ownedAssetIDs.contains($0.localIdentifier) }
             .compactMap { asset in
                 TAPLibraryItem(
-                    id: "photos:\(asset.localIdentifier)",
+                    mediaID: .photosAsset(asset.localIdentifier),
                     source: .photos(asset),
                     capturedAt: asset.creationDate ?? .distantPast
                 )
             }
 
-        return (pendingItems + ownedPhotoItems + photoItems).sorted { $0.capturedAt > $1.capturedAt }
+        var itemsByID: [LibraryMediaID: TAPLibraryItem] = [:]
+        for item in pendingItems + ownedPhotoItems + photoItems where itemsByID[item.mediaID] == nil {
+            itemsByID[item.mediaID] = item
+        }
+        return itemsByID.values.sorted { lhs, rhs in
+            if lhs.capturedAt != rhs.capturedAt {
+                return lhs.capturedAt > rhs.capturedAt
+            }
+            return lhs.id < rhs.id
+        }
     }
 
     private var assetLocalIdentifier: String? {
@@ -276,9 +277,67 @@ nonisolated struct TAPLibraryItem: Identifiable {
             nil
         }
     }
+
+    private var mediaKind: LibraryMediaKind {
+        if isVideo {
+            return .tapVideo
+        }
+        return isLivePhoto ? .livePhoto : .photo
+    }
+
+    private var mediaSource: LibraryMediaSource {
+        switch source {
+        case .pending(let record):
+            return .pending(captureID: record.captureID)
+        case .ownedPhoto(let record, let asset):
+            return .ownedPhotosAsset(captureID: record.captureID, assetID: asset.localIdentifier)
+        case .photos(let asset):
+            return .photosOnly(assetID: asset.localIdentifier)
+        }
+    }
+
+    private var mediaVersion: LibraryMediaVersion {
+        switch source {
+        case .pending(let record):
+            let content = [
+                record.artifactKind.rawValue,
+                record.signedPhotoFilename ?? record.unsignedPhotoFilename ?? "no-photo",
+                record.videoArtifactFilename ?? "no-video",
+                String(record.updatedAt.timeIntervalSince1970)
+            ].joined(separator: "|")
+            let poster = [
+                record.thumbnailFilename ?? "no-thumbnail",
+                String(record.updatedAt.timeIntervalSince1970)
+            ].joined(separator: "|")
+            return LibraryMediaVersion(contentRevision: content, posterRevision: poster)
+        case .ownedPhoto(let record, let asset):
+            let assetVersion = asset.modificationDate ?? asset.creationDate ?? record.capturedAt
+            return LibraryMediaVersion(
+                contentRevision: [
+                    record.artifactKind.rawValue,
+                    String(assetVersion.timeIntervalSince1970),
+                    "\(asset.pixelWidth)x\(asset.pixelHeight)"
+                ].joined(separator: "|"),
+                posterRevision: [
+                    record.thumbnailFilename ?? "no-thumbnail",
+                    String(record.updatedAt.timeIntervalSince1970),
+                    String(assetVersion.timeIntervalSince1970)
+                ].joined(separator: "|")
+            )
+        case .photos(let asset):
+            let versionDate = asset.modificationDate ?? asset.creationDate ?? .distantPast
+            let version = [
+                String(versionDate.timeIntervalSince1970),
+                "\(asset.pixelWidth)x\(asset.pixelHeight)",
+                asset.isVideo ? "video" : "photo",
+                asset.isLivePhoto ? "live" : "still"
+            ].joined(separator: "|")
+            return LibraryMediaVersion(contentRevision: version, posterRevision: version)
+        }
+    }
 }
 
-extension TAPLibraryItem {
+nonisolated extension TAPLibraryItem {
     var isLivePhoto: Bool {
         switch source {
         case .photos(let asset):
@@ -320,6 +379,8 @@ extension TAPLibraryItem {
             return "SAVE"
         case .failedRetryable:
             return "RETRY"
+        case .failedTerminal:
+            return "FAILED"
         case .exported:
             return nil
         }

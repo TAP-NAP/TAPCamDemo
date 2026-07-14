@@ -15,6 +15,28 @@ nonisolated enum TAPVideoPlaybackSource: Hashable {
     case pendingCapture(String)
     case ownedCapture(captureID: String, assetLocalIdentifier: String)
     case photosAsset(String)
+    #if DEBUG
+    case fixtureFile(
+        URL,
+        automaticSeekScheduleSeconds: [Double],
+        autoPlay: Bool
+    )
+    #endif
+}
+
+nonisolated private extension TAPVideoPlaybackSource {
+    var libraryMediaID: LibraryMediaID {
+        switch self {
+        case .pendingCapture(let captureID), .ownedCapture(let captureID, _):
+            .tapCapture(captureID)
+        case .photosAsset(let assetID):
+            .photosAsset(assetID)
+        #if DEBUG
+        case .fixtureFile(let fileURL, _, _):
+            .photosAsset("fixture:\(fileURL.lastPathComponent)")
+        #endif
+        }
+    }
 }
 
 nonisolated struct TAPVideoPlaybackRoute: Hashable {
@@ -57,24 +79,45 @@ struct TAPVideoDepthPlaybackView: View {
     private let onCurrentAlbumEntryChanged: ((TAPVideoAlbumContext.Entry) -> Void)?
 
     @Environment(\.dismiss) private var dismiss
+    @AppStorage("tap.video.playback.didExplainSystemRGBFallback")
+    private var didExplainSystemRGBFallback = false
     @StateObject private var viewModel: TAPVideoDepthPlaybackViewModel
-    @State private var selectedLayer = TAPVideoPlaybackLayer.twoD
+    @State private var selectedTool = AnalysisViewerTool.raw
     @State private var depthOverlayOpacity = 0.58
     @State private var sharePayload: TAPVideoSystemSharePayload?
     @State private var isPreparingShare = false
     @State private var pendingDeleteRequest: TAPVideoPendingDeleteRequest?
     @State private var deleteAlert: TAPVideoDeleteAlert?
     @State private var removedVideoEntryIDs: Set<String> = []
+    @State private var systemPlaybackNotice: String?
+    @State private var mediaFetchRequestKey: MediaFetchRequestKey?
+    @State private var mediaFetchGeneration: UInt64 = 1
+    @State private var shouldResumeFetchAfterBackground = false
 
     init(
         source: TAPVideoPlaybackSource,
         albumContext: TAPVideoAlbumContext? = nil,
-        onCurrentAlbumEntryChanged: ((TAPVideoAlbumContext.Entry) -> Void)? = nil
+        onCurrentAlbumEntryChanged: ((TAPVideoAlbumContext.Entry) -> Void)? = nil,
+        registrationAdapter: any TAPVideoDepthRegistrationAdapting = TAPVideoManifestDepthRegistrationAdapter(),
+        mediaFetcher: any LibraryMediaFetching = PhotoKitLibraryMediaFetcher()
     ) {
         self.source = source
         self.albumContext = albumContext
         self.onCurrentAlbumEntryChanged = onCurrentAlbumEntryChanged
-        _viewModel = StateObject(wrappedValue: TAPVideoDepthPlaybackViewModel(source: source))
+        _viewModel = StateObject(
+            wrappedValue: TAPVideoDepthPlaybackViewModel(
+                source: source,
+                registrationAdapter: registrationAdapter,
+                mediaFetcher: mediaFetcher
+            )
+        )
+        _mediaFetchRequestKey = State(
+            initialValue: MediaFetchRequestKey(
+                itemID: source.libraryMediaID,
+                generation: 1,
+                purpose: .videoOriginal
+            )
+        )
     }
 
     var body: some View {
@@ -101,17 +144,56 @@ struct TAPVideoDepthPlaybackView: View {
                 dismissButton: .default(Text("OK"))
             )
         }
-        .task {
-            await viewModel.loadIfNeeded()
-            if selectedLayer.usesDepthFrames {
+        .task(id: mediaFetchRequestKey) {
+            guard let mediaFetchRequestKey else {
+                return
+            }
+            await viewModel.startPlaybackSession(requestKey: mediaFetchRequestKey)
+            if selectedTool == .twoD {
                 viewModel.prepareTwoDPlaybackGate()
             }
         }
-        .onChange(of: selectedLayer) { _, layer in
-            handleLayerChanged(layer)
+        .task(id: systemPlaybackNotice) {
+            guard systemPlaybackNotice != nil else {
+                return
+            }
+            do {
+                try await Task.sleep(nanoseconds: 4_000_000_000)
+            } catch {
+                return
+            }
+            systemPlaybackNotice = nil
+        }
+        .onChange(of: selectedTool) { _, tool in
+            handleToolChanged(tool)
         }
         .onDisappear {
+            shouldResumeFetchAfterBackground = false
+            if let mediaFetchRequestKey {
+                viewModel.cancelFetch(requestKey: mediaFetchRequestKey)
+            }
             viewModel.stopPlayback()
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: UIApplication.didEnterBackgroundNotification
+            )
+        ) { _ in
+            cancelActiveFetchForBackground()
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: UIApplication.willEnterForegroundNotification
+            )
+        ) { _ in
+            resumeCanceledFetchAfterBackground()
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: UIApplication.didReceiveMemoryWarningNotification
+            )
+        ) { _ in
+            viewModel.handleMemoryWarning()
         }
     }
 
@@ -119,83 +201,181 @@ struct TAPVideoDepthPlaybackView: View {
         GeometryReader { geometry in
             let viewportSize = geometry.size
             let safeAreaInsets = geometry.safeAreaInsets
-            let systemControlsBottomInset = TAPVideoPlaybackContentLayout.systemControlsBottomInset(
-                showsOpacityControl: selectedLayer == .twoD
-            )
 
-            ZStack(alignment: .bottom) {
-                content(systemControlsBottomInset: systemControlsBottomInset)
+            ZStack {
+                content
                     .frame(width: viewportSize.width, height: viewportSize.height)
                     .background(Color.black)
 
-                DepthViewerChromeView(
-                    selectedModeID: selectedLayer.rawValue,
-                    modeItems: TAPVideoPlaybackLayer.allCases.map(\.modeItem),
-                    overlayOpacity: $depthOverlayOpacity,
-                    showsOpacityControl: selectedLayer == .twoD,
-                    isSharePreparing: isPreparingShare,
-                    shareAccessibilityLabel: isPreparingShare ? "Preparing share" : "Share video",
-                    deleteAccessibilityLabel: "Delete video",
+                videoChrome(
                     topSafeArea: safeAreaInsets.top,
-                    bottomSafeArea: safeAreaInsets.bottom,
-                    onBackTapped: {
-                        dismiss()
-                    },
-                    onShareTapped: presentSystemShareSheet,
-                    onModeTapped: handleModeTapped,
-                    onDeleteTapped: deleteCurrentVideo
+                    bottomSafeArea: safeAreaInsets.bottom
                 )
-                .zIndex(2)
+                .frame(width: viewportSize.width, height: viewportSize.height)
+                .zIndex(5)
+
+                playbackNoticeOverlay(
+                    topSafeArea: safeAreaInsets.top,
+                    availableWidth: viewportSize.width
+                )
+                .frame(width: viewportSize.width, height: viewportSize.height)
+                .zIndex(6)
             }
-            .contentShape(Rectangle())
-            .simultaneousGesture(videoSwipeGesture)
+            .animation(.snappy(duration: 0.2), value: systemPlaybackNotice)
         }
         .background(Color.black)
     }
 
+    private func playbackNoticeOverlay(
+        topSafeArea: CGFloat,
+        availableWidth: CGFloat
+    ) -> some View {
+        let noticeContentMaxWidth = TAPVideoViewerChromeLayout
+            .noticeContentMaxWidth(availableWidth: availableWidth)
+
+        return VStack(spacing: 10) {
+            if let systemPlaybackNotice {
+                Text(systemPlaybackNotice)
+                    .font(.footnote.weight(.semibold))
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: noticeContentMaxWidth)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .padding(.horizontal, 24)
+                    .allowsHitTesting(false)
+                    .accessibilityAddTraits(.isStaticText)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+
+            if selectedTool == .twoD,
+               let depthGapNotice = viewModel.depthGapNotice {
+                Label(depthGapNotice, systemImage: "waveform.path.ecg.rectangle")
+                    .font(.footnote.weight(.semibold))
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: noticeContentMaxWidth)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .padding(.horizontal, 24)
+                    .allowsHitTesting(false)
+                    .accessibilityAddTraits(.isStaticText)
+                    .accessibilityIdentifier("tap.video.playback.depthGapNotice")
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.top, TAPVideoViewerChromeLayout.noticeTopPadding(topSafeArea: topSafeArea))
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .allowsHitTesting(false)
+    }
+
     @ViewBuilder
-    private func content(systemControlsBottomInset: CGFloat) -> some View {
-        switch viewModel.state {
-        case .idle, .loading:
-            ProgressView()
-                .tint(.white)
-        case .failed(let message):
-            ContentUnavailableView(
-                "Unable to play video",
-                systemImage: "video.slash",
-                description: Text(message)
+    private func videoChrome(
+        topSafeArea: CGFloat,
+        bottomSafeArea: CGFloat
+    ) -> some View {
+        if let player = viewModel.player {
+            DepthViewerChromeView(
+                selectedModeID: selectedTool.rawValue,
+                modeItems: TAPVideoViewerModePolicy.items(
+                    availability: viewModel.registeredDepthAvailability,
+                    selectedTool: selectedTool,
+                    isTwoDPlaybackReady: viewModel.isTwoDPlaybackReady
+                ),
+                overlayOpacity: $depthOverlayOpacity,
+                showsOpacityControl: selectedTool == .twoD
+                    && viewModel.isRegisteredDepthAvailable,
+                isSharePreparing: isPreparingShare,
+                shareAccessibilityLabel: isPreparingShare
+                    ? "Preparing share"
+                    : "Share video",
+                deleteAccessibilityLabel: "Delete video",
+                topSafeArea: topSafeArea,
+                bottomSafeArea: bottomSafeArea,
+                bottomAccessory: TAPVideoPlaybackTransportView(player: player),
+                onBackTapped: {
+                    dismiss()
+                },
+                onShareTapped: presentSystemShareSheet,
+                onModeTapped: handleModeTapped,
+                onDeleteTapped: deleteCurrentVideo
             )
-            .foregroundStyle(.white)
-            .padding()
-        case .ready:
-            playbackSurface(systemControlsBottomInset: systemControlsBottomInset)
+        } else {
+            DepthViewerChromeView(
+                selectedModeID: selectedTool.rawValue,
+                modeItems: TAPVideoViewerModePolicy.items(
+                    availability: viewModel.registeredDepthAvailability,
+                    selectedTool: selectedTool,
+                    isTwoDPlaybackReady: false
+                ),
+                overlayOpacity: $depthOverlayOpacity,
+                showsOpacityControl: false,
+                isSharePreparing: true,
+                shareAccessibilityLabel: "Preparing video",
+                deleteAccessibilityLabel: "Delete video",
+                topSafeArea: topSafeArea,
+                bottomSafeArea: bottomSafeArea,
+                bottomAccessory: EmptyView(),
+                onBackTapped: {
+                    dismiss()
+                },
+                onShareTapped: {},
+                onModeTapped: handleModeTapped,
+                onDeleteTapped: deleteCurrentVideo
+            )
         }
     }
 
     @ViewBuilder
-    private func playbackSurface(systemControlsBottomInset: CGFloat) -> some View {
-        ZStack {
-            Color.black
-
-            switch selectedLayer {
-            case .rgb:
-                playerView(systemControlsBottomInset: systemControlsBottomInset)
-            case .twoD:
-                ZStack {
-                    playerView(systemControlsBottomInset: systemControlsBottomInset)
-                    if let depthImage = viewModel.depthFrameImage {
-                        Image(uiImage: depthImage)
-                            .resizable()
-                            .interpolation(.none)
-                            .scaledToFit()
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .opacity(depthOverlayOpacity)
-                            .allowsHitTesting(false)
-                    }
+    private var content: some View {
+        switch viewModel.state {
+        case .idle, .loading:
+            ZStack {
+                Color.black
+                LibraryMediaFetchOverlay(
+                    kind: .tapVideo,
+                    state: LibraryMediaFetchOverlayState(viewModel.mediaFetchPhase),
+                    onCancel: cancelCurrentFetch,
+                    onRetry: retryCurrentFetch
+                )
+            }
+        case .failed(let message):
+            ZStack {
+                Color.black
+                if LibraryMediaFetchOverlayState(viewModel.mediaFetchPhase) == .hidden {
+                    ContentUnavailableView(
+                        "Unable to play video",
+                        systemImage: "video.slash",
+                        description: Text(message)
+                    )
+                    .foregroundStyle(.white)
+                    .padding()
+                } else {
+                    LibraryMediaFetchOverlay(
+                        kind: .tapVideo,
+                        state: LibraryMediaFetchOverlayState(viewModel.mediaFetchPhase),
+                        onCancel: cancelCurrentFetch,
+                        onRetry: retryCurrentFetch
+                    )
                 }
             }
+        case .ready:
+            playbackSurface
+        }
+    }
 
-            if selectedLayer == .twoD,
+    @ViewBuilder
+    private var playbackSurface: some View {
+        ZStack {
+            Color.black
+            playerView
+
+            if selectedTool == .twoD,
                viewModel.isPreparingTwoDPlayback {
                 twoDPreparationOverlay
                     .zIndex(3)
@@ -206,13 +386,18 @@ struct TAPVideoDepthPlaybackView: View {
     }
 
     @ViewBuilder
-    private func playerView(systemControlsBottomInset: CGFloat) -> some View {
+    private var playerView: some View {
         if let player = viewModel.player {
-            TAPSystemVideoPlayerView(
+            TAPVideoPlayerSurfaceView(
                 player: player,
-                controlsBottomInset: systemControlsBottomInset
+                overlayStore: viewModel.overlayStore,
+                showsRegisteredDepth: selectedTool == .twoD,
+                overlayOpacity: depthOverlayOpacity,
+                onSystemPlaybackRequiresRGB: forceRawForSystemPlayback
             )
-                .clipped()
+            .contentShape(Rectangle())
+            .gesture(videoSwipeGesture)
+            .clipped()
         } else {
             ProgressView()
                 .tint(.white)
@@ -226,9 +411,10 @@ struct TAPVideoDepthPlaybackView: View {
                 .controlSize(.large)
                 .tint(.white)
                 .accessibilityLabel("Preparing 2D playback")
+                .accessibilityIdentifier("tap.video.playback.2d.preparing")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .allowsHitTesting(true)
+        .allowsHitTesting(false)
     }
 
     private var videoSwipeGesture: some Gesture {
@@ -245,18 +431,34 @@ struct TAPVideoDepthPlaybackView: View {
     }
 
     private func handleModeTapped(_ itemID: String) {
-        guard let layer = TAPVideoPlaybackLayer(rawValue: itemID) else {
+        guard let tool = AnalysisViewerTool(rawValue: itemID),
+              tool != .threeD else {
             return
         }
-        selectedLayer = layer
+        guard tool == .raw || viewModel.isRegisteredDepthAvailable else {
+            return
+        }
+        selectedTool = tool
     }
 
-    private func handleLayerChanged(_ layer: TAPVideoPlaybackLayer) {
-        if layer.usesDepthFrames {
+    private func handleToolChanged(_ tool: AnalysisViewerTool) {
+        if tool == .twoD {
             viewModel.prepareTwoDPlaybackGate()
         } else {
             viewModel.cancelTwoDPlaybackGate()
         }
+    }
+
+    private func forceRawForSystemPlayback() {
+        guard selectedTool != .raw else {
+            return
+        }
+        selectedTool = .raw
+        guard !didExplainSystemRGBFallback else {
+            return
+        }
+        didExplainSystemRGBFallback = true
+        systemPlaybackNotice = "Picture in Picture and AirPlay show RAW video because the 2D overlay stays on this device."
     }
 
     private func presentSystemShareSheet() {
@@ -318,8 +520,48 @@ struct TAPVideoDepthPlaybackView: View {
         guard let entry = adjacentVideoEntry(offset: offset) else {
             return
         }
+        cancelCurrentFetch()
         viewModel.stopPlayback()
         onCurrentAlbumEntryChanged?(entry)
+    }
+
+    private func cancelCurrentFetch() {
+        guard let requestKey = mediaFetchRequestKey else {
+            return
+        }
+        viewModel.cancelFetch(requestKey: requestKey)
+        mediaFetchRequestKey = nil
+    }
+
+    private func cancelActiveFetchForBackground() {
+        // A ready player must survive backgrounding so automatic PiP can take
+        // ownership. Only an unresolved/local-or-iCloud fetch is cancellable
+        // here; dismiss and item replacement still stop the full session.
+        guard viewModel.hasActiveMediaFetch else {
+            return
+        }
+        shouldResumeFetchAfterBackground = true
+        cancelCurrentFetch()
+    }
+
+    private func resumeCanceledFetchAfterBackground() {
+        guard shouldResumeFetchAfterBackground,
+              mediaFetchRequestKey == nil else {
+            return
+        }
+        shouldResumeFetchAfterBackground = false
+        retryCurrentFetch()
+    }
+
+    private func retryCurrentFetch() {
+        shouldResumeFetchAfterBackground = false
+        viewModel.prepareForRetry()
+        mediaFetchGeneration &+= 1
+        mediaFetchRequestKey = MediaFetchRequestKey(
+            itemID: source.libraryMediaID,
+            generation: mediaFetchGeneration,
+            purpose: .videoOriginal
+        )
     }
 
     private func adjacentVideoEntry(offset: Int) -> TAPVideoAlbumContext.Entry? {
@@ -352,79 +594,462 @@ struct TAPVideoDepthPlaybackView: View {
     }
 }
 
-private enum TAPVideoPlaybackLayer: String, CaseIterable, Identifiable {
-    case rgb
-    case twoD
+nonisolated private enum TAPVideoViewerChromeLayout {
+    /// Full-screen GeometryReader can report a zero safe-area inset after the
+    /// root ignores the container safe area. Keep status notices below the
+    /// shared 42-point Back control in that path as well.
+    static func noticeTopPadding(topSafeArea: CGFloat) -> CGFloat {
+        max(topSafeArea + 66, 116)
+    }
 
-    var id: String { rawValue }
+    /// Leaves 24 points outside and 14 points inside the notice on each side,
+    /// so accessibility-sized localized copy cannot widen the full-screen root.
+    static func noticeContentMaxWidth(availableWidth: CGFloat) -> CGFloat {
+        max(0, availableWidth - 76)
+    }
+}
 
-    var usesDepthFrames: Bool {
-        switch self {
-        case .rgb:
-            false
-        case .twoD:
-            true
+nonisolated enum TAPVideoViewerModePolicy {
+    static func items(
+        availability: TAPVideoRegisteredDepthAvailability,
+        selectedTool: AnalysisViewerTool,
+        isTwoDPlaybackReady: Bool
+    ) -> [DepthViewerModeItem] {
+        AnalysisViewerTool.allCases.map { tool in
+            let isEnabled: Bool
+            let accessibilityValue: String?
+            switch tool {
+            case .raw:
+                isEnabled = true
+                accessibilityValue = selectedTool == .raw ? "Selected" : nil
+            case .twoD:
+                isEnabled = availability.isAvailable
+                switch availability {
+                case .checking:
+                    accessibilityValue = "Preparing registered depth"
+                case .unavailable:
+                    accessibilityValue = "Registered depth unavailable"
+                case .available:
+                    if selectedTool == .twoD {
+                        accessibilityValue = isTwoDPlaybackReady
+                            ? "Selected, Ready"
+                            : "Selected, Preparing"
+                    } else {
+                        accessibilityValue = "Available"
+                    }
+                }
+            case .threeD:
+                isEnabled = false
+                accessibilityValue = "Unavailable for video"
+            }
+            return DepthViewerModeItem(
+                id: tool.rawValue,
+                systemImage: tool.systemImage,
+                accessibilityLabel: accessibilityLabel(for: tool),
+                accessibilityIdentifier: accessibilityIdentifier(for: tool),
+                isEnabled: isEnabled,
+                accessibilityValue: accessibilityValue
+            )
         }
     }
 
-    var modeItem: DepthViewerModeItem {
-        DepthViewerModeItem(
-            id: rawValue,
-            systemImage: systemImage,
-            accessibilityLabel: accessibilityLabel
+    private static func accessibilityLabel(for tool: AnalysisViewerTool) -> String {
+        switch tool {
+        case .raw:
+            "Raw video"
+        case .twoD:
+            "2D analysis"
+        case .threeD:
+            "3D projection"
+        }
+    }
+
+    private static func accessibilityIdentifier(for tool: AnalysisViewerTool) -> String {
+        switch tool {
+        case .raw:
+            "tap.viewer.mode.raw"
+        case .twoD:
+            "tap.viewer.mode.2d"
+        case .threeD:
+            "tap.viewer.mode.3d"
+        }
+    }
+}
+
+nonisolated enum TAPVideoPlaybackTransportPolicy {
+    static func hasActivePlaybackIntent(
+        status: AVPlayer.TimeControlStatus
+    ) -> Bool {
+        status != .paused
+    }
+}
+
+@MainActor
+enum TAPVideoPlaybackAudioSession {
+    @discardableResult
+    static func activate() -> Bool {
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playback, mode: .moviePlayback)
+            try session.setActive(true)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    static func deactivate() {
+        try? AVAudioSession.sharedInstance().setActive(
+            false,
+            options: .notifyOthersOnDeactivation
+        )
+    }
+}
+
+@MainActor
+final class TAPVideoPlaybackTransportModel: ObservableObject {
+    @Published private(set) var hasActivePlaybackIntent = false
+    @Published private(set) var elapsedSeconds: Double = 0
+    @Published private(set) var confirmedElapsedSeconds: Double = 0
+    @Published private(set) var durationSeconds: Double = 0
+
+    private let player: AVPlayer
+    private var periodicTimeObserver: Any?
+    private var timeControlStatusObservation: NSKeyValueObservation?
+    private var durationObservation: NSKeyValueObservation?
+    private var playbackEndObserver: NSObjectProtocol?
+    private var seekTask: Task<Void, Never>?
+    private var seekGeneration: UInt64 = 0
+    private var isScrubbing = false
+    private var shouldResumeAfterScrubbing = false
+    private var ownsPlaybackAudioSession = false
+    private var isInvalidated = false
+
+    init(player: AVPlayer) {
+        self.player = player
+        installObservers()
+    }
+
+    deinit {
+        seekTask?.cancel()
+        player.currentItem?.cancelPendingSeeks()
+        if let periodicTimeObserver {
+            player.removeTimeObserver(periodicTimeObserver)
+        }
+        timeControlStatusObservation?.invalidate()
+        durationObservation?.invalidate()
+        if let playbackEndObserver {
+            NotificationCenter.default.removeObserver(playbackEndObserver)
+        }
+        if ownsPlaybackAudioSession {
+            try? AVAudioSession.sharedInstance().setActive(
+                false,
+                options: .notifyOthersOnDeactivation
+            )
+        }
+    }
+
+    func togglePlayback() {
+        guard !isInvalidated else {
+            return
+        }
+        if hasActivePlaybackIntent {
+            cancelPendingSeek()
+            shouldResumeAfterScrubbing = false
+            player.pause()
+            return
+        }
+        if durationSeconds > 0,
+           elapsedSeconds >= durationSeconds - 0.05 {
+            performSeek(to: .zero, resumeAfterSeek: true)
+            return
+        }
+        cancelPendingSeek()
+        activatePlaybackAudioSessionIfNeeded()
+        player.play()
+    }
+
+    func previewSeek(to seconds: Double) {
+        guard seconds.isFinite else {
+            return
+        }
+        elapsedSeconds = min(max(seconds, 0), max(durationSeconds, 0))
+    }
+
+    func setScrubbing(_ scrubbing: Bool) {
+        guard !isInvalidated else {
+            return
+        }
+        guard scrubbing != isScrubbing else {
+            return
+        }
+        if scrubbing {
+            shouldResumeAfterScrubbing = TAPVideoPlaybackTransportPolicy
+                .hasActivePlaybackIntent(status: player.timeControlStatus)
+            cancelPendingSeek()
+            isScrubbing = true
+            player.pause()
+            return
+        }
+        isScrubbing = false
+        let target = CMTime(seconds: elapsedSeconds, preferredTimescale: 600)
+        let shouldResume = shouldResumeAfterScrubbing
+        shouldResumeAfterScrubbing = false
+        performSeek(to: target, resumeAfterSeek: shouldResume)
+    }
+
+    private func performSeek(to target: CMTime, resumeAfterSeek: Bool) {
+        cancelPendingSeek()
+        guard let expectedItem = player.currentItem else {
+            elapsedSeconds = confirmedElapsedSeconds
+            return
+        }
+        seekGeneration &+= 1
+        let generation = seekGeneration
+        let player = player
+        seekTask = Task { @MainActor [weak self] in
+            let didFinish = await player.seek(
+                to: target,
+                toleranceBefore: .zero,
+                toleranceAfter: .zero
+            )
+            guard let self,
+                  !isInvalidated,
+                  generation == seekGeneration else {
+                return
+            }
+            seekTask = nil
+            guard !Task.isCancelled,
+                  didFinish,
+                  !isScrubbing,
+                  player.currentItem === expectedItem else {
+                elapsedSeconds = confirmedElapsedSeconds
+                return
+            }
+            updateConfirmedElapsedTime(player.currentTime())
+            if resumeAfterSeek {
+                activatePlaybackAudioSessionIfNeeded()
+                player.play()
+            }
+        }
+    }
+
+    func invalidate() {
+        guard !isInvalidated else {
+            return
+        }
+        isInvalidated = true
+        player.pause()
+        tearDown()
+    }
+
+    private func cancelPendingSeek() {
+        seekGeneration &+= 1
+        seekTask?.cancel()
+        seekTask = nil
+        player.currentItem?.cancelPendingSeeks()
+    }
+
+    private func installObservers() {
+        updateDuration(player.currentItem?.duration ?? .invalid)
+        updateConfirmedElapsedTime(player.currentTime())
+        timeControlStatusObservation = player.observe(
+            \.timeControlStatus,
+            options: [.initial, .new]
+        ) { [weak self] player, _ in
+            Task { @MainActor [weak self] in
+                self?.hasActivePlaybackIntent = TAPVideoPlaybackTransportPolicy
+                    .hasActivePlaybackIntent(status: player.timeControlStatus)
+            }
+        }
+        if let item = player.currentItem {
+            durationObservation = item.observe(\.duration, options: [.initial, .new]) {
+                [weak self] item, _ in
+                Task { @MainActor [weak self] in
+                    self?.updateDuration(item.duration)
+                }
+            }
+            playbackEndObserver = NotificationCenter.default.addObserver(
+                forName: .AVPlayerItemDidPlayToEndTime,
+                object: item,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    guard let self else {
+                        return
+                    }
+                    cancelPendingSeek()
+                    hasActivePlaybackIntent = false
+                    elapsedSeconds = durationSeconds
+                    confirmedElapsedSeconds = durationSeconds
+                }
+            }
+        }
+        periodicTimeObserver = player.addPeriodicTimeObserver(
+            forInterval: CMTime(seconds: 0.25, preferredTimescale: 600),
+            queue: .main
+        ) { [weak self] time in
+            Task { @MainActor [weak self] in
+                guard let self,
+                      !isScrubbing else {
+                    return
+                }
+                updateConfirmedElapsedTime(time)
+            }
+        }
+    }
+
+    private func updateConfirmedElapsedTime(_ time: CMTime) {
+        let seconds = CMTimeGetSeconds(time)
+        guard seconds.isFinite else {
+            return
+        }
+        let bounded = min(max(seconds, 0), max(durationSeconds, 0))
+        confirmedElapsedSeconds = bounded
+        elapsedSeconds = bounded
+    }
+
+    private func updateDuration(_ duration: CMTime) {
+        let seconds = CMTimeGetSeconds(duration)
+        durationSeconds = seconds.isFinite && seconds > 0 ? seconds : 0
+        confirmedElapsedSeconds = min(confirmedElapsedSeconds, durationSeconds)
+        elapsedSeconds = min(elapsedSeconds, durationSeconds)
+    }
+
+    private func activatePlaybackAudioSessionIfNeeded() {
+        guard !ownsPlaybackAudioSession else {
+            return
+        }
+        ownsPlaybackAudioSession = TAPVideoPlaybackAudioSession.activate()
+    }
+
+    private func tearDown() {
+        cancelPendingSeek()
+        if let periodicTimeObserver {
+            player.removeTimeObserver(periodicTimeObserver)
+            self.periodicTimeObserver = nil
+        }
+        timeControlStatusObservation?.invalidate()
+        timeControlStatusObservation = nil
+        durationObservation?.invalidate()
+        durationObservation = nil
+        if let playbackEndObserver {
+            NotificationCenter.default.removeObserver(playbackEndObserver)
+            self.playbackEndObserver = nil
+        }
+        if ownsPlaybackAudioSession {
+            TAPVideoPlaybackAudioSession.deactivate()
+            ownsPlaybackAudioSession = false
+        }
+    }
+}
+
+private struct TAPVideoPlaybackTransportView: View {
+    @StateObject private var model: TAPVideoPlaybackTransportModel
+
+    init(player: AVPlayer) {
+        _model = StateObject(
+            wrappedValue: TAPVideoPlaybackTransportModel(player: player)
         )
     }
 
-    private var systemImage: String {
-        switch self {
-        case .rgb:
-            "video"
-        case .twoD:
-            "square.on.square"
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            transportRow(showsTimeLabels: true)
+            transportRow(showsTimeLabels: false)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .frame(maxWidth: 460)
+        .background(.thinMaterial, in: Capsule())
+        .overlay {
+            Capsule()
+                .stroke(.white.opacity(0.18), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.16), radius: 12, y: 4)
+        .padding(.horizontal, 16)
+        .accessibilityElement(children: .contain)
+        .onDisappear {
+            model.invalidate()
         }
     }
 
-    private var accessibilityLabel: String {
-        switch self {
-        case .rgb:
-            "RGB video"
-        case .twoD:
-            "2D video"
+    private func transportRow(showsTimeLabels: Bool) -> some View {
+        HStack(spacing: 10) {
+            Button(action: model.togglePlayback) {
+                Image(
+                    systemName: model.hasActivePlaybackIntent
+                        ? "pause.fill"
+                        : "play.fill"
+                )
+                    .font(.callout.weight(.semibold))
+                    .frame(width: 32, height: 32)
+                    .contentShape(Circle())
+                    .dynamicTypeSize(.large)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(
+                model.hasActivePlaybackIntent ? "Pause video" : "Play video"
+            )
+            .accessibilityIdentifier("tap.video.playback.transport.playPause")
+
+            if showsTimeLabels {
+                timeLabel(
+                    model.elapsedSeconds,
+                    confirmedSeconds: model.confirmedElapsedSeconds,
+                    identifier: "tap.video.playback.transport.elapsed",
+                    accessibilityLabel: "Elapsed time"
+                )
+            }
+
+            Slider(
+                value: Binding(
+                    get: { model.elapsedSeconds },
+                    set: model.previewSeek(to:)
+                ),
+                in: 0...max(model.durationSeconds, 0.01),
+                onEditingChanged: model.setScrubbing
+            )
+            .tint(.primary)
+            .accessibilityLabel("Video position")
+            .accessibilityValue(
+                "\(Self.timecode(model.elapsedSeconds)) of "
+                    + Self.timecode(model.durationSeconds)
+            )
+            .accessibilityIdentifier("tap.video.playback.transport.scrubber")
+
+            if showsTimeLabels {
+                timeLabel(
+                    model.durationSeconds,
+                    confirmedSeconds: model.durationSeconds,
+                    identifier: "tap.video.playback.transport.duration",
+                    accessibilityLabel: "Video duration"
+                )
+            }
         }
     }
-}
 
-nonisolated enum TAPVideoPlaybackContentLayout {
-    private static let baseBottomChromeClearance: CGFloat = 84
-    private static let opacityControlClearance: CGFloat = 56
-
-    static func systemControlsBottomInset(showsOpacityControl: Bool) -> CGFloat {
-        baseBottomChromeClearance
-            + (showsOpacityControl ? opacityControlClearance : 0)
-    }
-}
-
-private struct TAPSystemVideoPlayerView: UIViewControllerRepresentable {
-    let player: AVPlayer
-    let controlsBottomInset: CGFloat
-
-    func makeUIViewController(context: Context) -> AVPlayerViewController {
-        let controller = AVPlayerViewController()
-        controller.player = player
-        controller.showsPlaybackControls = true
-        controller.videoGravity = .resizeAspect
-        controller.view.backgroundColor = .black
-        return controller
+    private func timeLabel(
+        _ seconds: Double,
+        confirmedSeconds: Double,
+        identifier: String,
+        accessibilityLabel: String
+    ) -> some View {
+        Text(Self.timecode(seconds))
+            .font(.caption.monospacedDigit())
+            .foregroundStyle(.primary)
+            .frame(minWidth: 34)
+            .accessibilityLabel(accessibilityLabel)
+            .accessibilityValue(Self.timecode(confirmedSeconds))
+            .accessibilityIdentifier(identifier)
     }
 
-    func updateUIViewController(_ controller: AVPlayerViewController, context: Context) {
-        if controller.player !== player {
-            controller.player = player
+    private static func timecode(_ seconds: Double) -> String {
+        guard seconds.isFinite, seconds >= 0 else {
+            return "0:00"
         }
-        controller.showsPlaybackControls = true
-        controller.videoGravity = .resizeAspect
-        controller.additionalSafeAreaInsets.bottom = max(0, controlsBottomInset)
-        controller.view.backgroundColor = .black
+        let wholeSeconds = Int(seconds.rounded(.down))
+        return "\(wholeSeconds / 60):\(String(format: "%02d", wholeSeconds % 60))"
     }
 }
 
@@ -486,6 +1111,10 @@ nonisolated private enum TAPVideoDeletionService {
         case .ownedCapture(_, let assetID), .photosAsset(let assetID):
             try await PhotoLibraryWriter.deleteAsset(localIdentifier: assetID)
             NotificationCenter.default.post(name: .tapLibraryDidChange, object: nil)
+        #if DEBUG
+        case .fixtureFile:
+            return
+        #endif
         }
     }
 }
@@ -565,106 +1194,217 @@ private final class TAPVideoDepthPlaybackViewModel: ObservableObject {
     }
 
     @Published private(set) var state: LoadState = .idle
+    @Published private(set) var mediaFetchPhase: MediaFetchPhase<Bool, Bool> = .idle(false)
     @Published private(set) var player: AVPlayer?
-    @Published private(set) var depthFrameImage: UIImage?
-    @Published private(set) var depthFrameOrientation: CGImagePropertyOrientation = .up
-    @Published private(set) var videoAspectRatio: CGFloat?
-    @Published private(set) var isPlaying = false
-    @Published private(set) var hasReachedEnd = false
-    @Published private(set) var currentTimeSeconds: Double = 0
-    @Published private(set) var durationSeconds: Double = 0
+    @Published private(set) var registeredDepthAvailability: TAPVideoRegisteredDepthAvailability = .checking
     @Published private(set) var isPreparingTwoDPlayback = false
+    @Published private(set) var depthGapNotice: String?
+    private var currentTimeSeconds: Double = 0
 
-    private static let depthFrameLeadToleranceSeconds = 0.08
-    private static let depthFrameStaleToleranceSeconds = 1.25
-    private static let maxDepthFrameCacheCount = 900
     private static let preferredTwoDBufferDurationSeconds: TimeInterval = 3
-    private static let twoDPlaybackGateNanoseconds: UInt64 = 2_000_000_000
 
     private let source: TAPVideoPlaybackSource
+    private let registrationAdapter: any TAPVideoDepthRegistrationAdapting
+    private let mediaFetcher: any LibraryMediaFetching
+    let overlayStore = TAPVideoDepthOverlayStore()
     private var metadataOutput: TAPVideoDepthMetadataOutput?
     private var temporaryDirectoryURL: URL?
+    private var managedTemporaryFile: LibraryManagedTemporaryFile?
     private var resolvedFileURL: URL?
-    private var playbackEndObserver: NSObjectProtocol?
+    private var currentRequestKey: MediaFetchRequestKey?
+    private var playbackTimeJumpObserver: NSObjectProtocol?
     private var timeObserverToken: Any?
     private var playerStatusObservation: NSKeyValueObservation?
-    private var twoDPlaybackGateTask: Task<Void, Never>?
-    private var depthFrameCache: [TAPDecodedDepthVideoFrame] = []
+    private let depthFrameCache = TAPVideoDepthFrameCache()
     private var currentDepthFrameTimeSeconds: Double?
+    private var depthFrameStaleToleranceSeconds = TAPVideoDepthPlaybackBudget
+        .failSafeFrameStaleToleranceSeconds
     private var depthFrameSelectionMissCount = 0
     private var lastDepthFrameMissLogTimeSeconds: Double?
+    private var isTwoDPresentationRequested = false
+    private var twoDReadinessTrace: OSSignpostIntervalState?
+    private var depthPipelineGeneration: UInt64 = 0
+    #if DEBUG
+    private var fixtureSeekTask: Task<Void, Never>?
+    #endif
 
-    init(source: TAPVideoPlaybackSource) {
+    init(
+        source: TAPVideoPlaybackSource,
+        registrationAdapter: any TAPVideoDepthRegistrationAdapting,
+        mediaFetcher: any LibraryMediaFetching
+    ) {
         self.source = source
+        self.registrationAdapter = registrationAdapter
+        self.mediaFetcher = mediaFetcher
     }
 
     deinit {
         temporaryDirectoryURL.map { try? FileManager.default.removeItem(at: $0) }
     }
 
-    var playbackProgress: Double {
-        guard durationSeconds.isFinite,
-              durationSeconds > 0 else {
-            return 0
+    var isRegisteredDepthAvailable: Bool {
+        registeredDepthAvailability.isAvailable
+    }
+
+    var hasActiveMediaFetch: Bool {
+        state == .loading
+    }
+
+    var isTwoDPlaybackReady: Bool {
+        isTwoDPresentationRequested
+            && !isPreparingTwoDPlayback
+            && currentDepthFrameTimeSeconds != nil
+    }
+
+    func startPlaybackSession(requestKey: MediaFetchRequestKey) async {
+        currentRequestKey = requestKey
+        await loadIfNeeded(requestKey: requestKey)
+        guard currentRequestKey == requestKey else {
+            return
         }
-        return min(max(currentTimeSeconds / durationSeconds, 0), 1)
-    }
-
-    var primaryPlaybackSystemImageName: String {
-        if hasReachedEnd {
-            return "arrow.counterclockwise"
+        guard state == .ready,
+              let player,
+              let item = player.currentItem else {
+            return
         }
-        return isPlaying ? "pause.fill" : "play.fill"
-    }
-
-    var primaryPlaybackAccessibilityLabel: String {
-        if hasReachedEnd {
-            return "Replay TAP video"
+        installPlaybackObservers(player: player, item: item)
+        if let metadataOutput {
+            depthPipelineGeneration = metadataOutput.beginNewGeneration()
         }
-        return isPlaying ? "Pause TAP video" : "Play TAP video"
+        warmPlayback(player: player)
+        #if DEBUG
+        if case .fixtureFile(_, _, let autoPlay) = source,
+           autoPlay {
+            player.play()
+        }
+        scheduleFixtureSeekIfNeeded(player: player)
+        #endif
     }
 
-    var timecodeText: String {
-        "\(Self.timecode(currentTimeSeconds)) / \(Self.timecode(durationSeconds))"
-    }
-
-    func loadIfNeeded() async {
+    private func loadIfNeeded(requestKey: MediaFetchRequestKey) async {
         guard state == .idle else {
             return
         }
+        let playerOpenTrace = TAPVideoPerformanceTrace.beginPlayerOpen(
+            source: Self.sourceLabel(source)
+        )
+        var didOpenPlayer = false
+        defer {
+            TAPVideoPerformanceTrace.endPlayerOpen(
+                playerOpenTrace,
+                succeeded: didOpenPlayer
+            )
+        }
         state = .loading
+        mediaFetchPhase = .resolving(false)
+        var uncommittedResource: TAPVideoPlaybackResolvedResource?
 
         do {
-            let resource = try await Self.resolveResource(source: source)
-            let presentation = await Self.videoPresentation(for: resource.fileURL)
-            temporaryDirectoryURL = resource.temporaryDirectoryURL
-            resolvedFileURL = resource.fileURL
-            self.depthFrameOrientation = presentation.depthFrameOrientation
-            self.videoAspectRatio = presentation.aspectRatio
-            let item = AVPlayerItem(url: resource.fileURL)
-            let metadataOutput = TAPVideoDepthMetadataOutput(
-                displayOrientation: presentation.depthFrameOrientation
-            ) { [weak self] frame in
-                self?.storeDepthFrame(frame)
-                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-                if frame.frameIndex == 0 {
-                    LockedCameraDiagnostics.logger.info("tap_video_depth_playback_first_frame width=\(frame.width, privacy: .public) height=\(frame.height, privacy: .public) pixelFormat=\(frame.pixelFormat, privacy: .public) presentationTime=\(frame.presentationTimeSeconds, privacy: .public) orientation=\(String(describing: presentation.depthFrameOrientation), privacy: .public)")
+            let resource = try await Self.resolveResource(
+                source: source,
+                requestKey: requestKey,
+                mediaFetcher: mediaFetcher
+            ) { [weak self] progress in
+                Task { @MainActor [weak self] in
+                    guard let self,
+                          self.currentRequestKey == requestKey else {
+                        return
+                    }
+                    self.mediaFetchPhase = .downloadingFromICloud(
+                        false,
+                        progress: progress
+                    )
                 }
-                #endif
             }
-            metadataOutput.attach(to: item)
-            self.metadataOutput = metadataOutput
+            uncommittedResource = resource
+            guard currentRequestKey == requestKey else {
+                Self.cleanup(resource)
+                return
+            }
+            try Task.checkCancellation()
+            let presentation = await Self.videoPresentation(
+                for: resource.fileURL,
+                registrationAdapter: registrationAdapter
+            )
+            try Task.checkCancellation()
+            guard currentRequestKey == requestKey else {
+                Self.cleanup(resource)
+                return
+            }
+            if let descriptor = presentation.registrationDescriptor,
+               descriptor.supportsRegisteredOverlay,
+               presentation.depthFormat != nil {
+                registeredDepthAvailability = .available(descriptor)
+                depthFrameStaleToleranceSeconds = TAPVideoDepthGapPolicy.staleToleranceSeconds(
+                    nominalDepthFrameIntervalSeconds: descriptor.nominalDepthFrameIntervalSeconds
+                )
+            } else {
+                registeredDepthAvailability = .unavailable
+                depthFrameStaleToleranceSeconds = TAPVideoDepthPlaybackBudget
+                    .failSafeFrameStaleToleranceSeconds
+            }
+            let item = AVPlayerItem(url: resource.fileURL)
+            if isRegisteredDepthAvailable,
+               let depthFormat = presentation.depthFormat {
+                let metadataOutput = TAPVideoDepthMetadataOutput(
+                    displayOrientation: presentation.depthFrameOrientation,
+                    depthFormat: depthFormat,
+                    depthTrackID: presentation.depthTrackID
+                ) { [weak self] event in
+                    self?.handleDepthPipelineEvent(event)
+                }
+                self.metadataOutput = metadataOutput
+            } else {
+                self.metadataOutput = nil
+            }
 
             let player = AVPlayer(playerItem: item)
+            #if DEBUG
+            if case .fixtureFile = source {
+                // Simulator evidence must stay on-device. Otherwise an
+                // external playback route can immediately invoke the product
+                // RGB fallback and make 2D performance runs nondeterministic.
+                player.allowsExternalPlayback = false
+            }
+            #endif
+            temporaryDirectoryURL = resource.temporaryDirectoryURL
+            managedTemporaryFile = resource.managedTemporaryFile
+            resolvedFileURL = resource.fileURL
+            uncommittedResource = nil
             self.player = player
-            installPlaybackObservers(player: player, item: item)
             state = .ready
-            warmPlayback(player: player)
+            mediaFetchPhase = .ready(true)
+            didOpenPlayer = true
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             LockedCameraDiagnostics.logger.info("tap_video_playback_loaded source=\(Self.sourceLabel(self.source), privacy: .public) fileURL=\(resource.fileURL.lastPathComponent, privacy: .public) autoPlay=false")
             #endif
+        } catch is CancellationError {
+            guard currentRequestKey == requestKey else {
+                uncommittedResource.map(Self.cleanup)
+                return
+            }
+            uncommittedResource.map(Self.cleanup)
+            releasePlaybackResources()
+            state = .idle
+            if case .downloadingFromICloud = mediaFetchPhase {
+                mediaFetchPhase = .cloudOnly(false)
+            } else {
+                mediaFetchPhase = .idle(false)
+            }
         } catch {
+            guard currentRequestKey == requestKey else {
+                uncommittedResource.map(Self.cleanup)
+                return
+            }
+            uncommittedResource.map(Self.cleanup)
+            releasePlaybackResources()
             state = .failed(DepthAnalysisErrorPresentation.albumLoadErrorMessage(for: error))
+            let failure = (error as? MediaFetchFailure) ?? .decode
+            mediaFetchPhase = .failed(
+                false,
+                reason: failure,
+                retryable: failure.isRetryable
+            )
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             LockedCameraDiagnostics.logger.error("tap_video_playback_load_failed source=\(Self.sourceLabel(self.source), privacy: .public) error=\(Self.describe(error), privacy: .public)")
             #endif
@@ -673,78 +1413,247 @@ private final class TAPVideoDepthPlaybackViewModel: ObservableObject {
 
     func stopPlayback() {
         cancelTwoDPlaybackGate()
-        pause()
-        removePlaybackObservers()
+        releasePlaybackResources()
+        registeredDepthAvailability = .checking
+        state = .idle
+        currentRequestKey = nil
+        if case .cloudOnly = mediaFetchPhase {
+            // Cancellation intentionally leaves an explicit cloud-only state.
+        } else {
+            mediaFetchPhase = .idle(false)
+        }
+    }
+
+    func cancelFetch(requestKey: MediaFetchRequestKey) {
+        guard currentRequestKey == requestKey else {
+            return
+        }
+        let wasCloudFetch: Bool
+        switch mediaFetchPhase {
+        case .cloudOnly, .downloadingFromICloud:
+            wasCloudFetch = true
+        default:
+            wasCloudFetch = false
+        }
+        currentRequestKey = nil
+        releasePlaybackResources()
+        state = .idle
+        mediaFetchPhase = wasCloudFetch ? .cloudOnly(false) : .idle(false)
+    }
+
+    func prepareForRetry() {
+        currentRequestKey = nil
+        releasePlaybackResources()
+        state = .idle
+        mediaFetchPhase = .idle(false)
+    }
+
+    func handleMemoryWarning() {
+        finishTwoDReadiness(outcome: "memory-warning")
+        resetDepthFrameClockSelection(beginNewGeneration: true)
+        guard isTwoDPresentationRequested,
+              state == .ready,
+              isRegisteredDepthAvailable,
+              metadataOutput != nil,
+              resolvedFileURL != nil else {
+            isPreparingTwoDPlayback = false
+            return
+        }
+        beginTwoDReadiness(outcomeForPreviousAttempt: "memory-warning")
+        requestCurrentDepthProbe(playbackTimeSeconds: currentTimeSeconds)
     }
 
     func shareableFileURL() async throws -> URL {
         if let resolvedFileURL {
             return resolvedFileURL
         }
-        let resource = try await Self.resolveResource(source: source)
-        temporaryDirectoryURL = resource.temporaryDirectoryURL
-        resolvedFileURL = resource.fileURL
-        return resource.fileURL
+        throw MediaFetchFailure.download
     }
 
     func prepareTwoDPlaybackGate() {
-        guard state == .ready else {
+        guard state == .ready,
+              isRegisteredDepthAvailable,
+              metadataOutput != nil,
+              resolvedFileURL != nil else {
+            isPreparingTwoDPlayback = false
+            isTwoDPresentationRequested = false
             return
         }
-        twoDPlaybackGateTask?.cancel()
-        isPreparingTwoDPlayback = true
-        pause()
+        isTwoDPresentationRequested = true
+        beginTwoDReadiness(outcomeForPreviousAttempt: "restarted")
         if let player {
+            if let item = player.currentItem,
+               let metadataOutput {
+                metadataOutput.attach(to: item)
+                depthPipelineGeneration = metadataOutput.beginNewGeneration()
+            }
             player.currentItem?.preferredForwardBufferDuration = Self.preferredTwoDBufferDurationSeconds
             prerollIfReady(player: player)
         }
 
-        twoDPlaybackGateTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: Self.twoDPlaybackGateNanoseconds)
-            guard !Task.isCancelled,
-                  let self else {
-                return
-            }
-            self.isPreparingTwoDPlayback = false
-            self.twoDPlaybackGateTask = nil
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            LockedCameraDiagnostics.logger.info("tap_video_depth_2d_gate_ready source=\(Self.sourceLabel(self.source), privacy: .public)")
-            #endif
+        updateDepthFrame(for: currentTimeSeconds)
+        guard isPreparingTwoDPlayback else {
+            return
         }
+        requestCurrentDepthProbe(playbackTimeSeconds: currentTimeSeconds)
     }
 
     func cancelTwoDPlaybackGate() {
-        twoDPlaybackGateTask?.cancel()
-        twoDPlaybackGateTask = nil
+        finishTwoDReadiness(outcome: "cancelled")
+        isTwoDPresentationRequested = false
         isPreparingTwoDPlayback = false
-    }
-
-    func togglePlayback() {
-        if isPlaying {
-            pause()
+        depthGapNotice = nil
+        if let metadataOutput {
+            depthPipelineGeneration = metadataOutput.beginNewGeneration()
+            metadataOutput.detach()
         } else {
-            play()
+            depthPipelineGeneration &+= 1
         }
+        depthFrameCache.clear()
+        currentDepthFrameTimeSeconds = nil
+        overlayStore.clear()
     }
 
-    private func play() {
-        guard let player else {
+    private func beginTwoDReadiness(outcomeForPreviousAttempt: String) {
+        finishTwoDReadiness(outcome: outcomeForPreviousAttempt)
+        twoDReadinessTrace = TAPVideoPerformanceTrace.beginTwoDReadiness()
+        isPreparingTwoDPlayback = true
+    }
+
+    private func requestCurrentDepthProbe(playbackTimeSeconds: Double) {
+        guard isTwoDPresentationRequested,
+              isPreparingTwoDPlayback,
+              let metadataOutput,
+              let resolvedFileURL else {
             return
         }
-        if hasReachedEnd {
-            player.seek(to: .zero)
-            currentTimeSeconds = 0
-            hasReachedEnd = false
-            resetDepthFrameClockSelection()
-        }
-        player.play()
-        isPlaying = true
+        metadataOutput.probe(
+            fileURL: resolvedFileURL,
+            playbackTimeSeconds: max(0, playbackTimeSeconds),
+            staleToleranceSeconds: depthFrameStaleToleranceSeconds,
+            leadToleranceSeconds: TAPVideoDepthPlaybackBudget.frameLeadToleranceSeconds
+        )
     }
 
-    private func pause() {
-        player?.pause()
-        isPlaying = false
+    private func restartTwoDReadinessAfterDiscontinuity(
+        playbackTimeSeconds: Double
+    ) {
+        guard isTwoDPresentationRequested,
+              state == .ready,
+              isRegisteredDepthAvailable else {
+            return
+        }
+        beginTwoDReadiness(outcomeForPreviousAttempt: "discontinuity")
+        requestCurrentDepthProbe(playbackTimeSeconds: playbackTimeSeconds)
     }
+
+    private func handleDepthPipelineEvent(_ event: TAPVideoDepthPipelineEvent) {
+        guard isTwoDPresentationRequested,
+              TAPVideoDepthPipelineGenerationPolicy.accepts(
+            eventGeneration: event.generation,
+            currentGeneration: depthPipelineGeneration
+        ) else {
+            return
+        }
+        switch event.payload {
+        case .frame(let frame):
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            if frame.frameIndex == 0 {
+                LockedCameraDiagnostics.logger.info("tap_video_depth_playback_first_frame width=\(frame.width, privacy: .public) height=\(frame.height, privacy: .public) pixelFormat=\(frame.pixelFormat, privacy: .public) presentationTime=\(frame.presentationTimeSeconds, privacy: .public)")
+            }
+            #endif
+            storeDepthFrame(frame)
+        case .noSample:
+            finishDepthPipelineUnavailable(outcome: "no-sample")
+        case .decodeFailed(let reason, _):
+            finishDepthPipelineUnavailable(outcome: "decode-failed-\(reason.rawValue)")
+        }
+    }
+
+    private func finishDepthPipelineUnavailable(outcome: String) {
+        currentDepthFrameTimeSeconds = nil
+        overlayStore.clear()
+        guard isTwoDPresentationRequested else {
+            return
+        }
+        isPreparingTwoDPlayback = false
+        if depthGapNotice == nil {
+            depthGapNotice = String(
+                localized: "video.depth.gap",
+                defaultValue: "Depth data is unavailable at this moment."
+            )
+        }
+        finishTwoDReadiness(outcome: outcome)
+    }
+
+    private func releasePlaybackResources() {
+        #if DEBUG
+        fixtureSeekTask?.cancel()
+        fixtureSeekTask = nil
+        #endif
+        removePlaybackObservers()
+        if let metadataOutput {
+            depthPipelineGeneration = metadataOutput.beginNewGeneration()
+        } else {
+            depthPipelineGeneration &+= 1
+        }
+        metadataOutput?.detach()
+        metadataOutput = nil
+        player?.pause()
+        player?.replaceCurrentItem(with: nil)
+        player = nil
+        depthFrameCache.clear()
+        overlayStore.clear()
+        depthGapNotice = nil
+        currentDepthFrameTimeSeconds = nil
+        currentTimeSeconds = 0
+        depthFrameStaleToleranceSeconds = TAPVideoDepthPlaybackBudget
+            .failSafeFrameStaleToleranceSeconds
+        depthFrameSelectionMissCount = 0
+        lastDepthFrameMissLogTimeSeconds = nil
+        if let temporaryDirectoryURL {
+            try? FileManager.default.removeItem(at: temporaryDirectoryURL)
+        }
+        managedTemporaryFile?.cleanup()
+        managedTemporaryFile = nil
+        temporaryDirectoryURL = nil
+        resolvedFileURL = nil
+    }
+
+    #if DEBUG
+    private func scheduleFixtureSeekIfNeeded(player: AVPlayer) {
+        guard case .fixtureFile(_, let seekScheduleSeconds, let autoPlay) = source,
+              !seekScheduleSeconds.isEmpty else {
+            return
+        }
+        fixtureSeekTask?.cancel()
+        fixtureSeekTask = Task { @MainActor [weak self, weak player] in
+            for (index, seekSeconds) in seekScheduleSeconds.enumerated() {
+                do {
+                    try await Task.sleep(
+                        nanoseconds: index == 0 ? 900_000_000 : 500_000_000
+                    )
+                } catch {
+                    return
+                }
+                guard let self,
+                      let player,
+                      self.player === player else {
+                    return
+                }
+                _ = await player.seek(
+                    to: CMTime(seconds: seekSeconds, preferredTimescale: 600),
+                    toleranceBefore: .zero,
+                    toleranceAfter: .zero
+                )
+                if autoPlay {
+                    player.play()
+                }
+            }
+            self?.fixtureSeekTask = nil
+        }
+    }
+    #endif
 
     private func warmPlayback(player: AVPlayer) {
         player.currentItem?.preferredForwardBufferDuration = Self.preferredTwoDBufferDurationSeconds
@@ -782,48 +1691,50 @@ private final class TAPVideoDepthPlaybackViewModel: ObservableObject {
 
     private func installPlaybackObservers(player: AVPlayer, item: AVPlayerItem) {
         removePlaybackObservers()
-        playbackEndObserver = NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemDidPlayToEndTime,
+        playbackTimeJumpObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemTimeJumped,
             object: item,
             queue: .main
-        ) { _ in
-            Task { @MainActor [weak self] in
+        ) { [weak player] _ in
+            Task { @MainActor [weak self, weak player] in
                 guard let self else {
                     return
                 }
-                self.isPlaying = false
-                self.hasReachedEnd = true
+                let jumpedTime = player.map { CMTimeGetSeconds($0.currentTime()) }
+                    .flatMap { $0.isFinite ? max(0, $0) : nil }
+                    ?? self.currentTimeSeconds
+                self.currentTimeSeconds = jumpedTime
+                self.resetDepthFrameClockSelection(beginNewGeneration: true)
+                self.restartTwoDReadinessAfterDiscontinuity(
+                    playbackTimeSeconds: jumpedTime
+                )
             }
         }
         timeObserverToken = player.addPeriodicTimeObserver(
             forInterval: CMTime(value: 1, timescale: 30),
             queue: .main
         ) { time in
-            Task { @MainActor [weak self, weak item] in
+            Task { @MainActor [weak self] in
                 guard let self else {
                     return
                 }
                 let playbackTimeSeconds = max(0, CMTimeGetSeconds(time))
-                if playbackTimeSeconds + 1 < self.currentTimeSeconds {
-                    self.resetDepthFrameClockSelection()
+                if abs(playbackTimeSeconds - self.currentTimeSeconds) > 1 {
+                    self.resetDepthFrameClockSelection(beginNewGeneration: true)
+                    self.restartTwoDReadinessAfterDiscontinuity(
+                        playbackTimeSeconds: playbackTimeSeconds
+                    )
                 }
                 self.currentTimeSeconds = playbackTimeSeconds
-                if let item {
-                    let duration = CMTimeGetSeconds(item.duration)
-                    if duration.isFinite, duration > 0 {
-                        self.durationSeconds = duration
-                    }
-                }
                 self.updateDepthFrame(for: playbackTimeSeconds)
-                self.isPlaying = self.player?.rate != 0
             }
         }
     }
 
     private func removePlaybackObservers() {
-        if let playbackEndObserver {
-            NotificationCenter.default.removeObserver(playbackEndObserver)
-            self.playbackEndObserver = nil
+        if let playbackTimeJumpObserver {
+            NotificationCenter.default.removeObserver(playbackTimeJumpObserver)
+            self.playbackTimeJumpObserver = nil
         }
         if let timeObserverToken,
            let player {
@@ -835,40 +1746,76 @@ private final class TAPVideoDepthPlaybackViewModel: ObservableObject {
     }
 
     private func storeDepthFrame(_ frame: TAPDecodedDepthVideoFrame) {
-        if let index = depthFrameCache.firstIndex(where: { $0.cacheMatches(frame) }) {
-            depthFrameCache[index] = frame
-        } else {
-            depthFrameCache.append(frame)
-            depthFrameCache.sort { $0.presentationTimeSeconds < $1.presentationTimeSeconds }
+        guard isTwoDPresentationRequested,
+              depthFrameCache.insert(frame, around: currentTimeSeconds) else {
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            LockedCameraDiagnostics.logger.info("tap_video_depth_cache_reject frameIndex=\(frame.frameIndex, privacy: .public) bytes=\(frame.retainedByteCount, privacy: .public) retained=\(self.depthFrameCache.retainedByteCount, privacy: .public) budget=\(self.depthFrameCache.maximumRetainedBytes, privacy: .public)")
+            #endif
+            return
         }
-        pruneDepthFrameCache(around: currentTimeSeconds)
         updateDepthFrame(for: currentTimeSeconds)
     }
 
     private func updateDepthFrame(for playbackTimeSeconds: Double) {
-        guard playbackTimeSeconds.isFinite else {
+        guard isTwoDPresentationRequested,
+              playbackTimeSeconds.isFinite else {
             return
         }
-        let earliest = playbackTimeSeconds - Self.depthFrameStaleToleranceSeconds
-        let latest = playbackTimeSeconds + Self.depthFrameLeadToleranceSeconds
-        let frame = depthFrameCache
-            .filter({ frame in
-                frame.presentationTimeSeconds >= earliest
-                    && frame.presentationTimeSeconds <= latest
-            })
-            .min(by: { lhs, rhs in
-                abs(lhs.presentationTimeSeconds - playbackTimeSeconds)
-                    < abs(rhs.presentationTimeSeconds - playbackTimeSeconds)
-            })
+        depthFrameCache.prune(around: playbackTimeSeconds)
+        let frame = depthFrameCache.nearestFrame(
+            to: playbackTimeSeconds,
+            staleToleranceSeconds: depthFrameStaleToleranceSeconds
+        )
         guard let frame else {
             logDepthFrameSelectionMiss(playbackTimeSeconds: playbackTimeSeconds)
+            let clearedDisplayedFrame = currentDepthFrameTimeSeconds != nil
+            currentDepthFrameTimeSeconds = nil
+            overlayStore.clear()
+            if clearedDisplayedFrame {
+                TAPVideoPerformanceTrace.emitPlaybackGapCleared()
+            }
+            if isTwoDPresentationRequested,
+               !isPreparingTwoDPlayback,
+               playbackTimeSeconds >= depthFrameStaleToleranceSeconds {
+                if depthGapNotice == nil {
+                    depthGapNotice = String(
+                        localized: "video.depth.gap",
+                        defaultValue: "Depth data is unavailable at this moment."
+                    )
+                }
+            }
             return
         }
         guard currentDepthFrameTimeSeconds != frame.presentationTimeSeconds else {
             return
         }
         currentDepthFrameTimeSeconds = frame.presentationTimeSeconds
-        depthFrameImage = frame.image
+        if depthGapNotice != nil {
+            depthGapNotice = nil
+        }
+        guard case .available(let registrationDescriptor) = registeredDepthAvailability else {
+            overlayStore.clear()
+            return
+        }
+        overlayStore.present(
+            frame.image,
+            registrationDescriptor: registrationDescriptor
+        )
+        if isTwoDPresentationRequested {
+            isPreparingTwoDPlayback = false
+            finishTwoDReadiness(outcome: "frame")
+        }
+    }
+
+    private func finishTwoDReadiness(outcome: String) {
+        guard let twoDReadinessTrace else {
+            return
+        }
+        self.twoDReadinessTrace = nil
+        TAPVideoPerformanceTrace.endTwoDReadiness(
+            twoDReadinessTrace,
+            outcome: outcome
+        )
     }
 
     private func logDepthFrameSelectionMiss(playbackTimeSeconds: Double) {
@@ -884,103 +1831,122 @@ private final class TAPVideoDepthPlaybackViewModel: ObservableObject {
             return
         }
         lastDepthFrameMissLogTimeSeconds = playbackTimeSeconds
-        let nearestDelta = depthFrameCache
+        let nearestDelta = depthFrameCache.frames
             .map { abs($0.presentationTimeSeconds - playbackTimeSeconds) }
             .min() ?? -1
-        LockedCameraDiagnostics.logger.info("tap_video_depth_pipeline_miss source=\(Self.sourceLabel(self.source), privacy: .public) playbackTime=\(playbackTimeSeconds, privacy: .public) cacheCount=\(self.depthFrameCache.count, privacy: .public) nearestDelta=\(nearestDelta, privacy: .public) missCount=\(self.depthFrameSelectionMissCount, privacy: .public)")
+        LockedCameraDiagnostics.logger.info("tap_video_depth_pipeline_miss source=\(Self.sourceLabel(self.source), privacy: .public) playbackTime=\(playbackTimeSeconds, privacy: .public) cacheCount=\(self.depthFrameCache.frames.count, privacy: .public) cacheBytes=\(self.depthFrameCache.retainedByteCount, privacy: .public) nearestDelta=\(nearestDelta, privacy: .public) missCount=\(self.depthFrameSelectionMissCount, privacy: .public)")
         #endif
     }
 
-    private func pruneDepthFrameCache(around playbackTimeSeconds: Double) {
-        guard depthFrameCache.count > Self.maxDepthFrameCacheCount else {
-            return
-        }
-        depthFrameCache.sort { lhs, rhs in
-            abs(lhs.presentationTimeSeconds - playbackTimeSeconds)
-                < abs(rhs.presentationTimeSeconds - playbackTimeSeconds)
-        }
-        depthFrameCache = Array(depthFrameCache.prefix(Self.maxDepthFrameCacheCount))
-        depthFrameCache.sort { $0.presentationTimeSeconds < $1.presentationTimeSeconds }
-    }
-
-    private func resetDepthFrameClockSelection() {
+    private func resetDepthFrameClockSelection(beginNewGeneration: Bool = false) {
         currentDepthFrameTimeSeconds = nil
-        depthFrameImage = nil
+        depthFrameCache.clear()
+        overlayStore.clear()
+        if beginNewGeneration {
+            if let metadataOutput {
+                depthPipelineGeneration = metadataOutput.beginNewGeneration()
+            } else {
+                depthPipelineGeneration &+= 1
+            }
+        }
     }
 
     private static func resolveResource(
-        source: TAPVideoPlaybackSource
+        source: TAPVideoPlaybackSource,
+        requestKey: MediaFetchRequestKey,
+        mediaFetcher: any LibraryMediaFetching,
+        progress: @escaping @Sendable (Double?) -> Void
     ) async throws -> TAPVideoPlaybackResolvedResource {
         switch source {
         case .pendingCapture(let captureID):
             let fileURL = try await TAPPendingCaptureStore.shared.bestAvailableVideoURL(captureID: captureID)
-            return TAPVideoPlaybackResolvedResource(fileURL: fileURL, temporaryDirectoryURL: nil)
+            return TAPVideoPlaybackResolvedResource(
+                fileURL: fileURL,
+                temporaryDirectoryURL: nil,
+                managedTemporaryFile: nil
+            )
         case .ownedCapture(let captureID, let assetID):
             do {
                 let fileURL = try await TAPPendingCaptureStore.shared.bestAvailableVideoURL(captureID: captureID)
-                return TAPVideoPlaybackResolvedResource(fileURL: fileURL, temporaryDirectoryURL: nil)
-            } catch {
-                let fileURL = try await PhotoLibraryWriter.originalVideoFileURL(localIdentifier: assetID)
                 return TAPVideoPlaybackResolvedResource(
                     fileURL: fileURL,
-                    temporaryDirectoryURL: fileURL.deletingLastPathComponent()
+                    temporaryDirectoryURL: nil,
+                    managedTemporaryFile: nil
+                )
+            } catch {
+                let request = LibraryMediaAssetRequest(
+                    key: requestKey,
+                    assetLocalIdentifier: assetID
+                )
+                let file = try await mediaFetcher.videoOriginalFile(
+                    for: request,
+                    progress: progress
+                )
+                return TAPVideoPlaybackResolvedResource(
+                    fileURL: file.fileURL,
+                    temporaryDirectoryURL: nil,
+                    managedTemporaryFile: file
                 )
             }
         case .photosAsset(let assetID):
-            let fileURL = try await PhotoLibraryWriter.originalVideoFileURL(localIdentifier: assetID)
+            let request = LibraryMediaAssetRequest(
+                key: requestKey,
+                assetLocalIdentifier: assetID
+            )
+            let file = try await mediaFetcher.videoOriginalFile(
+                for: request,
+                progress: progress
+            )
+            return TAPVideoPlaybackResolvedResource(
+                fileURL: file.fileURL,
+                temporaryDirectoryURL: nil,
+                managedTemporaryFile: file
+            )
+        #if DEBUG
+        case .fixtureFile(let fileURL, _, _):
             return TAPVideoPlaybackResolvedResource(
                 fileURL: fileURL,
-                temporaryDirectoryURL: fileURL.deletingLastPathComponent()
+                // The harness owns this reusable artifact. Dismissing one
+                // player must not delete the source needed by later lifecycle
+                // cycles in the same process.
+                temporaryDirectoryURL: nil,
+                managedTemporaryFile: nil
             )
+        #endif
         }
     }
 
-    private static func videoPresentation(for fileURL: URL) async -> TAPVideoPlaybackPresentation {
+    private static func cleanup(_ resource: TAPVideoPlaybackResolvedResource) {
+        resource.managedTemporaryFile?.cleanup()
+        if let temporaryDirectoryURL = resource.temporaryDirectoryURL {
+            try? FileManager.default.removeItem(at: temporaryDirectoryURL)
+        }
+    }
+
+    private static func videoPresentation(
+        for fileURL: URL,
+        registrationAdapter: any TAPVideoDepthRegistrationAdapting
+    ) async -> TAPVideoPlaybackPresentation {
         await Task.detached(priority: .utility) {
             do {
-                let data = try Data(contentsOf: fileURL)
-                let manifest = try TAPVideoManifestBox.decodedManifest(from: data)
-                let displaySize = TAPVideoDepthDisplayOrientation.displaySize(
-                    width: manifest.payload.rgbTrack.width,
-                    height: manifest.payload.rgbTrack.height,
-                    transform: manifest.payload.rgbTrack.transform
-                )
+                let manifest = try TAPVideoManifestBox.decodedManifest(fromFileAt: fileURL)
                 return TAPVideoPlaybackPresentation(
                     depthFrameOrientation: TAPVideoDepthDisplayOrientation.cgImageOrientation(
                         from: manifest.payload.rgbTrack.transform
                     ),
-                    aspectRatio: Self.aspectRatio(for: displaySize)
+                    registrationDescriptor: registrationAdapter.registrationDescriptor(for: manifest),
+                    depthFormat: manifest.payload.depthCoverage.format,
+                    depthTrackID: manifest.payload.depthCoverage.trackID
                 )
             } catch {
-                let displaySize = await Self.assetVideoDisplaySize(for: fileURL)
                 return TAPVideoPlaybackPresentation(
                     depthFrameOrientation: .up,
-                    aspectRatio: Self.aspectRatio(for: displaySize)
+                    registrationDescriptor: nil,
+                    depthFormat: nil,
+                    depthTrackID: nil
                 )
             }
         }.value
-    }
-
-    private nonisolated static func assetVideoDisplaySize(for fileURL: URL) async -> CGSize? {
-        let asset = AVURLAsset(url: fileURL)
-        guard let videoTrack = try? await asset.loadTracks(withMediaType: .video).first,
-              let naturalSize = try? await videoTrack.load(.naturalSize),
-              let preferredTransform = try? await videoTrack.load(.preferredTransform) else {
-            return nil
-        }
-        let transformedSize = naturalSize.applying(preferredTransform)
-        return CGSize(width: abs(transformedSize.width), height: abs(transformedSize.height))
-    }
-
-    private nonisolated static func aspectRatio(for displaySize: CGSize?) -> CGFloat? {
-        guard let displaySize,
-              displaySize.width.isFinite,
-              displaySize.height.isFinite,
-              displaySize.width > 0,
-              displaySize.height > 0 else {
-            return nil
-        }
-        return displaySize.width / displaySize.height
     }
 
     private static func sourceLabel(_ source: TAPVideoPlaybackSource) -> String {
@@ -991,6 +1957,10 @@ private final class TAPVideoDepthPlaybackViewModel: ObservableObject {
             "owned"
         case .photosAsset:
             "photos"
+        #if DEBUG
+        case .fixtureFile:
+            "fixture"
+        #endif
         }
     }
 
@@ -999,57 +1969,359 @@ private final class TAPVideoDepthPlaybackViewModel: ObservableObject {
         return "\(nsError.domain)(\(nsError.code))"
     }
 
-    private static func timecode(_ seconds: Double) -> String {
-        guard seconds.isFinite, seconds >= 0 else {
-            return "0:00"
-        }
-        let rounded = Int(seconds.rounded(.down))
-        return "\(rounded / 60):\(String(format: "%02d", rounded % 60))"
-    }
 }
 
 private struct TAPVideoPlaybackResolvedResource {
     let fileURL: URL
     let temporaryDirectoryURL: URL?
+    let managedTemporaryFile: LibraryManagedTemporaryFile?
 }
 
 private struct TAPVideoPlaybackPresentation {
     let depthFrameOrientation: CGImagePropertyOrientation
-    let aspectRatio: CGFloat?
+    let registrationDescriptor: TAPVideoDepthRegistrationDescriptor?
+    let depthFormat: TAPVideoManifest.DepthFormat?
+    let depthTrackID: CMPersistentTrackID?
+}
+
+nonisolated enum TAPVideoDepthPipelineDecodeFailureReason: String, Sendable {
+    case metadataRead
+    case decode
+    case backpressure
+}
+
+nonisolated struct TAPVideoDepthPipelineEvent {
+    nonisolated enum Payload {
+        case frame(TAPDecodedDepthVideoFrame)
+        case noSample(playbackTimeSeconds: Double)
+        case decodeFailed(
+            reason: TAPVideoDepthPipelineDecodeFailureReason,
+            presentationTimeSeconds: Double
+        )
+    }
+
+    let generation: UInt64
+    let payload: Payload
+}
+
+nonisolated private enum TAPVideoDepthMetadataProbeResult {
+    case frame(TAPDecodedDepthVideoFrame)
+    case noSample
+}
+
+nonisolated private struct TAPVideoDepthMetadataProbeFailure: Error {
+    let reason: TAPVideoDepthPipelineDecodeFailureReason
+}
+
+nonisolated private enum TAPVideoDepthMetadataProbe {
+    private static let metadataIdentifier = AVMetadataIdentifier(
+        rawValue: "mdta/com.tapnap.depth.klv"
+    )
+
+    static func readNearestFrame(
+        fileURL: URL,
+        trackID: CMPersistentTrackID,
+        playbackTimeSeconds: Double,
+        staleToleranceSeconds: Double,
+        leadToleranceSeconds: Double,
+        depthFormat: TAPVideoManifest.DepthFormat,
+        displayOrientation: CGImagePropertyOrientation,
+        shouldContinue: @escaping @Sendable () -> Bool
+    ) async throws -> TAPVideoDepthMetadataProbeResult {
+        guard shouldContinue() else {
+            throw CancellationError()
+        }
+        let asset = AVURLAsset(url: fileURL)
+        let duration = try await asset.load(.duration)
+        let durationSeconds = CMTimeGetSeconds(duration)
+        guard let window = TAPVideoDepthMetadataProbePolicy.window(
+            playbackTimeSeconds: playbackTimeSeconds,
+            staleToleranceSeconds: staleToleranceSeconds,
+            leadToleranceSeconds: leadToleranceSeconds,
+            assetDurationSeconds: durationSeconds
+        ) else {
+            return .noSample
+        }
+        let metadataTracks = try await asset.loadTracks(withMediaType: .metadata)
+        guard shouldContinue() else {
+            throw CancellationError()
+        }
+        guard let metadataTrack = metadataTracks.first(where: { $0.trackID == trackID }) else {
+            return .noSample
+        }
+
+        let reader: AVAssetReader
+        do {
+            reader = try AVAssetReader(asset: asset)
+        } catch {
+            throw TAPVideoDepthMetadataProbeFailure(reason: .metadataRead)
+        }
+        let output = AVAssetReaderTrackOutput(track: metadataTrack, outputSettings: nil)
+        guard reader.canAdd(output) else {
+            throw TAPVideoDepthMetadataProbeFailure(reason: .metadataRead)
+        }
+        reader.add(output)
+        let preferredTimeScale: CMTimeScale = 600
+        reader.timeRange = CMTimeRange(
+            start: CMTime(
+                seconds: window.startSeconds,
+                preferredTimescale: preferredTimeScale
+            ),
+            end: CMTime(
+                seconds: window.endSeconds,
+                preferredTimescale: preferredTimeScale
+            )
+        )
+        let adaptor = AVAssetReaderOutputMetadataAdaptor(
+            assetReaderTrackOutput: output
+        )
+        guard reader.startReading() else {
+            throw TAPVideoDepthMetadataProbeFailure(reason: .metadataRead)
+        }
+        defer {
+            if reader.status == .reading {
+                reader.cancelReading()
+            }
+        }
+
+        var candidateItems: [AVMetadataItem] = []
+        var candidateTimestamps: [Double] = []
+        candidateItems.reserveCapacity(16)
+        candidateTimestamps.reserveCapacity(16)
+        var groupCount = 0
+        while let group = adaptor.nextTimedMetadataGroup() {
+            guard shouldContinue() else {
+                throw CancellationError()
+            }
+            groupCount += 1
+            guard groupCount <= TAPVideoDepthMetadataProbePolicy.maximumMetadataGroupCount else {
+                throw TAPVideoDepthMetadataProbeFailure(reason: .metadataRead)
+            }
+            let timestamp = CMTimeGetSeconds(group.timeRange.start)
+            guard timestamp.isFinite,
+                  timestamp >= window.startSeconds,
+                  timestamp <= window.endSeconds,
+                  let item = group.items.first(where: {
+                      $0.identifier == metadataIdentifier
+                  }) else {
+                continue
+            }
+            candidateTimestamps.append(timestamp)
+            candidateItems.append(item)
+        }
+        if reader.status == .failed {
+            throw TAPVideoDepthMetadataProbeFailure(reason: .metadataRead)
+        }
+        guard shouldContinue() else {
+            throw CancellationError()
+        }
+        guard let nearestIndex = TAPVideoDepthMetadataProbePolicy.nearestCandidateIndex(
+            timestamps: candidateTimestamps,
+            playbackTimeSeconds: playbackTimeSeconds,
+            window: window
+        ) else {
+            return .noSample
+        }
+        let nearestItem = candidateItems[nearestIndex]
+        let nearestTimestamp = candidateTimestamps[nearestIndex]
+
+        let data: Data
+        do {
+            guard let loadedData = try await nearestItem.load(.dataValue) else {
+                throw TAPVideoDepthMetadataProbeFailure(reason: .metadataRead)
+            }
+            data = loadedData
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let failure as TAPVideoDepthMetadataProbeFailure {
+            throw failure
+        } catch {
+            throw TAPVideoDepthMetadataProbeFailure(reason: .metadataRead)
+        }
+        do {
+            return .frame(try TAPDepthVideoFrameDecoder.decode(
+                data,
+                presentationTimeSeconds: nearestTimestamp,
+                depthFormat: depthFormat,
+                displayOrientation: displayOrientation,
+                shouldContinue: shouldContinue
+            ))
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw TAPVideoDepthMetadataProbeFailure(reason: .decode)
+        }
+    }
 }
 
 @MainActor
 private final class TAPVideoDepthMetadataOutput: NSObject, AVPlayerItemMetadataOutputPushDelegate {
     private nonisolated static let depthMetadataIdentifierRawValue = "mdta/com.tapnap.depth.klv"
-    private nonisolated static let depthMetadataAdvanceIntervalSeconds: TimeInterval = 2
-    private nonisolated static let maxPendingDepthDecodeCount = 90
+    private nonisolated static let decodeAdmission = TAPVideoDepthDecodeAdmission()
 
     private nonisolated let displayOrientation: CGImagePropertyOrientation
+    private nonisolated let depthFormat: TAPVideoManifest.DepthFormat
+    private nonisolated let depthTrackID: CMPersistentTrackID?
+    private nonisolated let decodeOwner: TAPVideoDepthDecodeAdmission.Owner
     private let metadataQueue = DispatchQueue(label: "com.tapnap.video-depth.metadata", qos: .userInitiated)
-    private nonisolated let decodeQueue = DispatchQueue(
-        label: "com.tapnap.video-depth.decode",
-        qos: .userInitiated,
-        attributes: .concurrent
-    )
-    private nonisolated let decodeBackpressure: TAPVideoDepthDecodeBackpressure
-    private let onFrame: (TAPDecodedDepthVideoFrame) -> Void
+    private let onEvent: (TAPVideoDepthPipelineEvent) -> Void
+    private weak var attachedItem: AVPlayerItem?
+    private var attachedOutput: AVPlayerItemMetadataOutput?
+    private var activeGeneration: UInt64 = 0
+    private var probeTask: Task<Void, Never>?
+    private var probeSequence: UInt64 = 0
 
     init(
         displayOrientation: CGImagePropertyOrientation,
-        onFrame: @escaping (TAPDecodedDepthVideoFrame) -> Void
+        depthFormat: TAPVideoManifest.DepthFormat,
+        depthTrackID: CMPersistentTrackID?,
+        onEvent: @escaping (TAPVideoDepthPipelineEvent) -> Void
     ) {
         self.displayOrientation = displayOrientation
-        self.decodeBackpressure = TAPVideoDepthDecodeBackpressure(
-            maxPendingCount: TAPVideoDepthMetadataOutput.maxPendingDepthDecodeCount
-        )
-        self.onFrame = onFrame
+        self.depthFormat = depthFormat
+        self.depthTrackID = depthTrackID
+        self.decodeOwner = Self.decodeAdmission.makeOwner()
+        self.onEvent = onEvent
+    }
+
+    deinit {
+        Self.decodeAdmission.invalidate(decodeOwner)
     }
 
     func attach(to item: AVPlayerItem) {
+        detach()
         let output = AVPlayerItemMetadataOutput(identifiers: [Self.depthMetadataIdentifierRawValue])
-        output.advanceIntervalForDelegateInvocation = Self.depthMetadataAdvanceIntervalSeconds
+        output.advanceIntervalForDelegateInvocation = TAPVideoDepthPlaybackBudget.metadataAdvanceIntervalSeconds
         output.setDelegate(self, queue: metadataQueue)
         item.add(output)
+        attachedItem = item
+        attachedOutput = output
+    }
+
+    func detach() {
+        probeTask?.cancel()
+        probeTask = nil
+        probeSequence &+= 1
+        guard let attachedOutput else {
+            attachedItem = nil
+            return
+        }
+        attachedOutput.setDelegate(nil, queue: nil)
+        attachedItem?.remove(attachedOutput)
+        self.attachedOutput = nil
+        attachedItem = nil
+    }
+
+    @discardableResult
+    func beginNewGeneration() -> UInt64 {
+        probeTask?.cancel()
+        probeTask = nil
+        probeSequence &+= 1
+        let generation = Self.decodeAdmission.beginNewGeneration(for: decodeOwner)
+        activeGeneration = generation
+        return generation
+    }
+
+    func probe(
+        fileURL: URL,
+        playbackTimeSeconds: Double,
+        staleToleranceSeconds: Double,
+        leadToleranceSeconds: Double
+    ) {
+        probeTask?.cancel()
+        probeTask = nil
+        probeSequence &+= 1
+        let probeID = probeSequence
+        guard let depthTrackID else {
+            publish(
+                .noSample(playbackTimeSeconds: playbackTimeSeconds),
+                generation: activeGeneration
+            )
+            return
+        }
+        let decodeAdmission = Self.decodeAdmission
+        let decodeOwner = self.decodeOwner
+        let expectedGeneration = activeGeneration
+        let task = Task.detached(priority: .userInitiated) {
+            [weak output = self, decodeAdmission, depthFormat = self.depthFormat,
+             displayOrientation = self.displayOrientation] in
+            guard let token = await decodeAdmission.admitWhenAvailable(
+                for: decodeOwner,
+                expectedGeneration: expectedGeneration
+            ) else {
+                return
+            }
+            defer {
+                decodeAdmission.finish(token)
+            }
+            do {
+                let result = try await TAPVideoDepthMetadataProbe.readNearestFrame(
+                    fileURL: fileURL,
+                    trackID: depthTrackID,
+                    playbackTimeSeconds: playbackTimeSeconds,
+                    staleToleranceSeconds: staleToleranceSeconds,
+                    leadToleranceSeconds: leadToleranceSeconds,
+                    depthFormat: depthFormat,
+                    displayOrientation: displayOrientation,
+                    shouldContinue: {
+                        !Task.isCancelled && decodeAdmission.isCurrent(token)
+                    }
+                )
+                guard decodeAdmission.isCurrent(token) else {
+                    return
+                }
+                await MainActor.run { [weak output] in
+                    guard decodeAdmission.isCurrent(token) else {
+                        return
+                    }
+                    switch result {
+                    case .frame(let frame):
+                        output?.publishProbe(
+                            .frame(frame),
+                            generation: token.generation,
+                            probeID: probeID
+                        )
+                    case .noSample:
+                        output?.publishProbe(
+                            .noSample(playbackTimeSeconds: playbackTimeSeconds),
+                            generation: token.generation,
+                            probeID: probeID
+                        )
+                    }
+                }
+            } catch is CancellationError {
+                return
+            } catch let failure as TAPVideoDepthMetadataProbeFailure {
+                await MainActor.run { [weak output] in
+                    guard decodeAdmission.isCurrent(token) else {
+                        return
+                    }
+                    output?.publishProbe(
+                        .decodeFailed(
+                            reason: failure.reason,
+                            presentationTimeSeconds: playbackTimeSeconds
+                        ),
+                        generation: token.generation,
+                        probeID: probeID
+                    )
+                }
+            } catch {
+                await MainActor.run { [weak output] in
+                    guard decodeAdmission.isCurrent(token) else {
+                        return
+                    }
+                    output?.publishProbe(
+                        .decodeFailed(
+                            reason: .metadataRead,
+                            presentationTimeSeconds: playbackTimeSeconds
+                        ),
+                        generation: token.generation,
+                        probeID: probeID
+                    )
+                }
+            }
+        }
+        probeTask = task
     }
 
     nonisolated func metadataOutput(
@@ -1075,95 +2347,145 @@ private final class TAPVideoDepthMetadataOutput: NSObject, AVPlayerItemMetadataO
         _ item: AVMetadataItem,
         presentationTimeSeconds: Double
     ) {
-        Task.detached(priority: .userInitiated) { [weak self] in
-            guard let data = try? await item.load(.dataValue) else {
-                return
-            }
-            self?.enqueueDepthPayload(
-                data,
-                presentationTimeSeconds: presentationTimeSeconds
-            )
-        }
-    }
-
-    private nonisolated func enqueueDepthPayload(
-        _ data: Data,
-        presentationTimeSeconds: Double
-    ) {
-        guard decodeBackpressure.begin() else {
+        let decodeAdmission = Self.decodeAdmission
+        let decodeOwner = self.decodeOwner
+        guard let token = decodeAdmission.admit(for: decodeOwner) else {
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            LockedCameraDiagnostics.logger.info("tap_video_depth_pipeline_backpressure_drop presentationTime=\(presentationTimeSeconds, privacy: .public) pending=\(self.decodeBackpressure.pendingCount, privacy: .public)")
+            LockedCameraDiagnostics.logger.info("tap_video_depth_pipeline_backpressure_drop presentationTime=\(presentationTimeSeconds, privacy: .public) pending=\(decodeAdmission.activeDecodeCount, privacy: .public)")
             #endif
+            let generation = decodeAdmission.currentGeneration(for: decodeOwner) ?? 0
+            Task { @MainActor [weak self] in
+                self?.publish(
+                    .decodeFailed(
+                        reason: .backpressure,
+                        presentationTimeSeconds: presentationTimeSeconds
+                    ),
+                    generation: generation
+                )
+            }
             return
         }
 
         let frameOrientation = displayOrientation
-        decodeQueue.async { [weak self, decodeBackpressure] in
+        Task.detached(priority: .userInitiated) {
+            [weak output = self, decodeAdmission, depthFormat = self.depthFormat] in
             defer {
-                decodeBackpressure.end()
+                decodeAdmission.finish(token)
             }
-            guard let frame = try? TAPDepthVideoFrameDecoder.decode(
-                data,
-                presentationTimeSeconds: presentationTimeSeconds,
-                displayOrientation: frameOrientation
-            ) else {
+            guard decodeAdmission.isCurrent(token) else {
                 return
             }
-            Task { @MainActor [weak self] in
-                self?.publish(frame)
+            let data: Data
+            do {
+                guard let loadedData = try await item.load(.dataValue) else {
+                    throw TAPVideoDepthMetadataProbeFailure(reason: .metadataRead)
+                }
+                data = loadedData
+            } catch {
+                await MainActor.run { [weak output] in
+                    guard decodeAdmission.isCurrent(token) else {
+                        return
+                    }
+                    output?.publish(
+                        .decodeFailed(
+                            reason: .metadataRead,
+                            presentationTimeSeconds: presentationTimeSeconds
+                        ),
+                        generation: token.generation
+                    )
+                }
+                return
+            }
+            guard decodeAdmission.isCurrent(token) else {
+                return
+            }
+            let frame: TAPDecodedDepthVideoFrame
+            do {
+                frame = try TAPDepthVideoFrameDecoder.decode(
+                    data,
+                    presentationTimeSeconds: presentationTimeSeconds,
+                    depthFormat: depthFormat,
+                    displayOrientation: frameOrientation,
+                    shouldContinue: {
+                        decodeAdmission.isCurrent(token)
+                    }
+                )
+            } catch is CancellationError {
+                return
+            } catch {
+                await MainActor.run { [weak output] in
+                    guard decodeAdmission.isCurrent(token) else {
+                        return
+                    }
+                    output?.publish(
+                        .decodeFailed(
+                            reason: .decode,
+                            presentationTimeSeconds: presentationTimeSeconds
+                        ),
+                        generation: token.generation
+                    )
+                }
+                return
+            }
+            guard decodeAdmission.isCurrent(token) else {
+                return
+            }
+            await MainActor.run { [weak output] in
+                guard decodeAdmission.isCurrent(token) else {
+                    return
+                }
+                output?.publishFrameFromPush(
+                    frame,
+                    generation: token.generation
+                )
             }
         }
     }
 
-    private func publish(_ frame: TAPDecodedDepthVideoFrame) {
-        onFrame(frame)
+    private func publishFrameFromPush(
+        _ frame: TAPDecodedDepthVideoFrame,
+        generation: UInt64
+    ) {
+        probeTask?.cancel()
+        probeTask = nil
+        probeSequence &+= 1
+        publish(.frame(frame), generation: generation)
+    }
+
+    private func publishProbe(
+        _ payload: TAPVideoDepthPipelineEvent.Payload,
+        generation: UInt64,
+        probeID: UInt64
+    ) {
+        guard probeID == probeSequence else {
+            return
+        }
+        probeTask = nil
+        publish(payload, generation: generation)
+    }
+
+    private func publish(
+        _ payload: TAPVideoDepthPipelineEvent.Payload,
+        generation: UInt64
+    ) {
+        guard generation == activeGeneration else {
+            return
+        }
+        onEvent(TAPVideoDepthPipelineEvent(
+            generation: generation,
+            payload: payload
+        ))
     }
 }
 
-nonisolated private final class TAPVideoDepthDecodeBackpressure: @unchecked Sendable {
-    private let maxPendingCount: Int
-    private let lock = NSLock()
-    private var pending = 0
-
-    init(maxPendingCount: Int) {
-        self.maxPendingCount = maxPendingCount
-    }
-
-    var pendingCount: Int {
-        lock.lock()
-        defer {
-            lock.unlock()
-        }
-        return pending
-    }
-
-    func begin() -> Bool {
-        lock.lock()
-        defer {
-            lock.unlock()
-        }
-        guard pending < maxPendingCount else {
-            return false
-        }
-        pending += 1
-        return true
-    }
-
-    func end() {
-        lock.lock()
-        pending = max(0, pending - 1)
-        lock.unlock()
-    }
-}
-
-nonisolated private struct TAPDecodedDepthVideoFrame {
+nonisolated struct TAPDecodedDepthVideoFrame {
     let frameIndex: Int
     let presentationTimeSeconds: Double
     let width: Int
     let height: Int
     let pixelFormat: String
-    let depthMap: TAPMetricDepthMap
     let image: UIImage
+    let retainedByteCount: Int
 
     func cacheMatches(_ other: TAPDecodedDepthVideoFrame) -> Bool {
         frameIndex == other.frameIndex
@@ -1171,39 +2493,75 @@ nonisolated private struct TAPDecodedDepthVideoFrame {
     }
 }
 
-nonisolated private enum TAPDepthVideoFrameDecoder {
+nonisolated enum TAPDepthVideoFrameDecoder {
     static func decode(
         _ data: Data,
         presentationTimeSeconds: Double,
-        displayOrientation: CGImagePropertyOrientation
+        depthFormat: TAPVideoManifest.DepthFormat,
+        displayOrientation: CGImagePropertyOrientation,
+        shouldContinue: @escaping @Sendable () -> Bool = { true }
     ) throws -> TAPDecodedDepthVideoFrame {
-        let records = try TAPDepthKLV.decode(data)
-        let payloadByKey = Dictionary(uniqueKeysWithValues: records.map { ($0.key, $0.payload) })
-
-        guard let dimensionsPayload = payloadByKey[.dimensions],
-              dimensionsPayload.count == 8 else {
-            throw TAPDepthCaptureError.invalidTAPManifest("missing TAP depth video dimensions")
+        guard shouldContinue() else {
+            throw CancellationError()
         }
-        let width = Int(dimensionsPayload.tapInt32BE(at: 0))
-        let height = Int(dimensionsPayload.tapInt32BE(at: 4))
-
-        guard let rowStridePayload = payloadByKey[.rowStride],
-              rowStridePayload.count == 4 else {
-            throw TAPDepthCaptureError.invalidTAPManifest("missing TAP depth video row stride")
+        let encodedFrame = try TAPDepthKLVFrame.decode(data)
+        let decodeTrace = TAPVideoPerformanceTrace.beginDepthDecode(
+            frameIndex: Int(encodedFrame.frameIndex)
+        )
+        var didDecode = false
+        var decodedOutputByteCount = 0
+        defer {
+            TAPVideoPerformanceTrace.endDepthDecode(
+                decodeTrace,
+                succeeded: didDecode,
+                outputByteCount: decodedOutputByteCount
+            )
         }
-        let rowStride = Int(rowStridePayload.tapUInt32BE(at: 0))
-
-        guard let pixelFormatPayload = payloadByKey[.pixelFormat],
-              let pixelFormat = String(data: pixelFormatPayload, encoding: .ascii),
-              let depthPayload = payloadByKey[.depthPayload] else {
-            throw TAPDepthCaptureError.invalidTAPManifest("missing TAP depth video payload")
+        guard shouldContinue() else {
+            throw CancellationError()
         }
-
-        let frameIndex: Int
-        if let framePayload = payloadByKey[.frameIndex], framePayload.count == 4 {
-            frameIndex = Int(framePayload.tapUInt32BE(at: 0))
-        } else {
-            frameIndex = 0
+        let width = Int(depthFormat.width)
+        let height = Int(depthFormat.height)
+        let rowStride = depthFormat.packedRowStride
+        let pixelFormat = depthFormat.pixelFormat
+        let expectedBytesPerSample: Int
+        switch pixelFormat {
+        case "fdep", "fdis":
+            expectedBytesPerSample = 4
+        case "hdep", "hdis":
+            expectedBytesPerSample = 2
+        default:
+            throw TAPDepthCaptureError.invalidTAPManifest(
+                "unsupported TAP depth video pixel format"
+            )
+        }
+        let (expectedRowStride, rowStrideOverflow) = width.multipliedReportingOverflow(
+            by: expectedBytesPerSample
+        )
+        let (expectedFrameByteCount, frameByteCountOverflow) = rowStride.multipliedReportingOverflow(
+            by: height
+        )
+        let (pixelCount, pixelCountOverflow) = width.multipliedReportingOverflow(by: height)
+        let (renderedByteCount, renderedByteCountOverflow) = pixelCount.multipliedReportingOverflow(
+            by: 4
+        )
+        guard width > 0,
+              height > 0,
+              !rowStrideOverflow,
+              !frameByteCountOverflow,
+              !pixelCountOverflow,
+              !renderedByteCountOverflow,
+              depthFormat.bytesPerSample == expectedBytesPerSample,
+              rowStride == expectedRowStride,
+              expectedFrameByteCount == depthFormat.uncompressedFrameByteCount,
+              renderedByteCount <= TAPVideoDepthPlaybackBudget.maximumRetainedFrameBytes,
+              depthFormat.byteOrder == "little-endian",
+              encodedFrame.uncompressedByteCount == depthFormat.uncompressedFrameByteCount else {
+            throw TAPDepthCaptureError.invalidTAPManifest("depth frame does not match manifest format")
+        }
+        let depthPayload = try encodedFrame.decodedPackedBytes()
+        guard depthPayload.count == depthFormat.uncompressedFrameByteCount else {
+            throw TAPDepthCaptureError.invalidTAPManifest("depth frame does not match manifest format")
         }
 
         let rendered = try TAPDepthFrameRenderer.render(
@@ -1212,23 +2570,26 @@ nonisolated private enum TAPDepthVideoFrameDecoder {
             width: width,
             height: height,
             rowStride: rowStride,
-            displayOrientation: displayOrientation
+            displayOrientation: displayOrientation,
+            shouldContinue: shouldContinue
         )
+        decodedOutputByteCount = rendered.retainedByteCount
+        didDecode = true
         return TAPDecodedDepthVideoFrame(
-            frameIndex: frameIndex,
+            frameIndex: Int(encodedFrame.frameIndex),
             presentationTimeSeconds: presentationTimeSeconds,
             width: width,
             height: height,
             pixelFormat: pixelFormat,
-            depthMap: rendered.depthMap,
-            image: rendered.image
+            image: rendered.image,
+            retainedByteCount: rendered.retainedByteCount
         )
     }
 }
 
 nonisolated private struct TAPDepthFrameRenderResult {
-    let depthMap: TAPMetricDepthMap
     let image: UIImage
+    let retainedByteCount: Int
 }
 
 nonisolated private enum TAPDepthFrameRenderer {
@@ -1238,7 +2599,8 @@ nonisolated private enum TAPDepthFrameRenderer {
         width: Int,
         height: Int,
         rowStride: Int,
-        displayOrientation: CGImagePropertyOrientation
+        displayOrientation: CGImagePropertyOrientation,
+        shouldContinue: @escaping @Sendable () -> Bool
     ) throws -> TAPDepthFrameRenderResult {
         guard width > 0,
               height > 0,
@@ -1247,75 +2609,162 @@ nonisolated private enum TAPDepthFrameRenderer {
             throw TAPDepthCaptureError.invalidTAPManifest("invalid TAP depth video frame shape")
         }
 
-        let values: [Float]
-        switch pixelFormat {
-        case "fdep", "fdis":
-            values = try float32Values(payload: payload, width: width, height: height, rowStride: rowStride)
-        case "hdep", "hdis":
-            values = try float16Values(payload: payload, width: width, height: height, rowStride: rowStride)
-        default:
-            throw TAPDepthCaptureError.invalidTAPManifest("unsupported TAP depth video pixel format")
+        let bytesPerSample = try bytesPerSample(pixelFormat: pixelFormat)
+        guard rowStride >= width * bytesPerSample else {
+            throw TAPDepthCaptureError.invalidTAPManifest("invalid TAP depth video row stride")
         }
-
-        let depthMap = TAPMetricDepthMap(width: width, height: height, samples: values, calibration: nil)
-        let heatmap = try TAPDepthHeatmapRenderer.heatmap(for: depthMap)
+        let range = try depthRange(
+            payload: payload,
+            pixelFormat: pixelFormat,
+            width: width,
+            height: height,
+            rowStride: rowStride,
+            bytesPerSample: bytesPerSample,
+            shouldContinue: shouldContinue
+        )
+        let pixels = try heatmapPixels(
+            payload: payload,
+            pixelFormat: pixelFormat,
+            width: width,
+            height: height,
+            rowStride: rowStride,
+            bytesPerSample: bytesPerSample,
+            range: range,
+            shouldContinue: shouldContinue
+        )
+        let heatmap = try TAPDepthRGBAImageRenderer.image(
+            pixels: pixels,
+            width: width,
+            height: height
+        )
         return TAPDepthFrameRenderResult(
-            depthMap: depthMap,
             image: UIImage(
-                cgImage: heatmap.image,
+                cgImage: heatmap,
                 scale: 1,
                 orientation: displayOrientation.uiImageOrientation
-            )
+            ),
+            retainedByteCount: heatmap.bytesPerRow * heatmap.height
         )
     }
 
-    private static func float32Values(
+    private static func depthRange(
         payload: Data,
+        pixelFormat: String,
         width: Int,
         height: Int,
-        rowStride: Int
-    ) throws -> [Float] {
-        let bytes = [UInt8](payload)
-        var values: [Float] = []
-        values.reserveCapacity(width * height)
-        for y in 0..<height {
-            let rowOffset = y * rowStride
-            for x in 0..<width {
-                let offset = rowOffset + x * 4
-                guard offset + 4 <= bytes.count else {
-                    throw TAPDepthCaptureError.invalidTAPManifest("truncated TAP depth float32 row")
+        rowStride: Int,
+        bytesPerSample: Int,
+        shouldContinue: @escaping @Sendable () -> Bool
+    ) throws -> ClosedRange<Float> {
+        var minimum = Float.greatestFiniteMagnitude
+        var maximum = -Float.greatestFiniteMagnitude
+        var hasValidValue = false
+        try payload.withUnsafeBytes { bytes in
+            for y in 0..<height {
+                guard shouldContinue() else {
+                    throw CancellationError()
                 }
-                let bits = UInt32(bytes[offset])
-                    | UInt32(bytes[offset + 1]) << 8
-                    | UInt32(bytes[offset + 2]) << 16
-                    | UInt32(bytes[offset + 3]) << 24
-                values.append(Float(bitPattern: bits))
+                let rowOffset = y * rowStride
+                for x in 0..<width {
+                    let value = try sampleValue(
+                        bytes: bytes,
+                        offset: rowOffset + x * bytesPerSample,
+                        pixelFormat: pixelFormat
+                    )
+                    guard value.isFinite, value > 0 else {
+                        continue
+                    }
+                    minimum = min(minimum, value)
+                    maximum = max(maximum, value)
+                    hasValidValue = true
+                }
             }
         }
-        return values
+        guard hasValidValue else {
+            throw TAPDepthAnalysisError.noValidDepthSamples
+        }
+        return minimum...maximum
     }
 
-    private static func float16Values(
+    private static func heatmapPixels(
         payload: Data,
+        pixelFormat: String,
         width: Int,
         height: Int,
-        rowStride: Int
-    ) throws -> [Float] {
-        let bytes = [UInt8](payload)
-        var values: [Float] = []
-        values.reserveCapacity(width * height)
-        for y in 0..<height {
-            let rowOffset = y * rowStride
-            for x in 0..<width {
-                let offset = rowOffset + x * 2
-                guard offset + 2 <= bytes.count else {
-                    throw TAPDepthCaptureError.invalidTAPManifest("truncated TAP depth float16 row")
+        rowStride: Int,
+        bytesPerSample: Int,
+        range: ClosedRange<Float>,
+        shouldContinue: @escaping @Sendable () -> Bool
+    ) throws -> [UInt8] {
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        let span = max(range.upperBound - range.lowerBound, 0.001)
+        try pixels.withUnsafeMutableBytes { output in
+            try payload.withUnsafeBytes { input in
+                for y in 0..<height {
+                    guard shouldContinue() else {
+                        throw CancellationError()
+                    }
+                    let rowOffset = y * rowStride
+                    for x in 0..<width {
+                        let value = try sampleValue(
+                            bytes: input,
+                            offset: rowOffset + x * bytesPerSample,
+                            pixelFormat: pixelFormat
+                        )
+                        guard value.isFinite, value > 0 else {
+                            continue
+                        }
+                        let normalized = min(max((value - range.lowerBound) / span, 0), 1)
+                        let color = TAPDepthHeatmapRenderer.viridisColor(normalized: normalized)
+                        let outputOffset = (y * width + x) * 4
+                        output[outputOffset] = color.red
+                        output[outputOffset + 1] = color.green
+                        output[outputOffset + 2] = color.blue
+                        output[outputOffset + 3] = color.alpha
+                    }
                 }
-                let bits = UInt16(bytes[offset]) | UInt16(bytes[offset + 1]) << 8
-                values.append(Float(Float16(bitPattern: bits)))
             }
         }
-        return values
+        return pixels
+    }
+
+    private static func bytesPerSample(pixelFormat: String) throws -> Int {
+        switch pixelFormat {
+        case "fdep", "fdis":
+            4
+        case "hdep", "hdis":
+            2
+        default:
+            throw TAPDepthCaptureError.invalidTAPManifest("unsupported TAP depth video pixel format")
+        }
+    }
+
+    private static func sampleValue(
+        bytes: UnsafeRawBufferPointer,
+        offset: Int,
+        pixelFormat: String
+    ) throws -> Float {
+        switch pixelFormat {
+        case "fdep", "fdis":
+            guard offset >= 0,
+                  offset + 4 <= bytes.count else {
+                throw TAPDepthCaptureError.invalidTAPManifest("truncated TAP depth float32 row")
+            }
+            let bits = UInt32(bytes[offset])
+                | UInt32(bytes[offset + 1]) << 8
+                | UInt32(bytes[offset + 2]) << 16
+                | UInt32(bytes[offset + 3]) << 24
+            return Float(bitPattern: bits)
+        case "hdep", "hdis":
+            guard offset >= 0,
+                  offset + 2 <= bytes.count else {
+                throw TAPDepthCaptureError.invalidTAPManifest("truncated TAP depth float16 row")
+            }
+            let bits = UInt16(bytes[offset]) | UInt16(bytes[offset + 1]) << 8
+            return Float(Float16(bitPattern: bits))
+        default:
+            throw TAPDepthCaptureError.invalidTAPManifest("unsupported TAP depth video pixel format")
+        }
     }
 }
 

@@ -43,6 +43,7 @@ enum TAPDepthCaptureError: LocalizedError {
     case pendingCaptureManifestIDMismatch(expected: String, actual: String)
     case pendingCaptureProofMissing
     case pendingCaptureProofInvalid(String)
+    case pendingCaptureProofExternalMutation
     case releasePackagingStrategyRejected
     case captureBackpressureLimitReached
     case incompatibleRGBDepthPairing
@@ -120,6 +121,8 @@ enum TAPDepthCaptureError: LocalizedError {
             "The pending TAP capture does not contain an App Attest proof."
         case .pendingCaptureProofInvalid(let reason):
             "The pending TAP capture App Attest proof is not valid: \(reason)"
+        case .pendingCaptureProofExternalMutation:
+            "The pending TAP video changed outside its fixed proof slot after signing began."
         case .releasePackagingStrategyRejected:
             "Release builds only support embedded single-photo artifacts."
         case .captureBackpressureLimitReached:

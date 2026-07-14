@@ -206,6 +206,10 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                         videoRotationAngle: videoRotationAngle,
                         isVideoMirrored: isVideoMirrored
                        ) {
+                        guard preparedVideoRecordingGraph.recordsDepth,
+                              preparedVideoRecordingGraph.depthOutput != nil else {
+                            throw TAPDepthCaptureError.unableToAddDepthOutput
+                        }
                         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
                         TAPDiagnostics.cameraCapture.info("video recording graph warmup reused recordsAudio=\(recordsAudio, privacy: .public) recordsDepth=\(preparedVideoRecordingGraph.recordsDepth, privacy: .public)")
                         #endif
@@ -237,6 +241,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                         addedOutputs.append(videoOutput)
 
                         if let connection = videoOutput.connection(with: .video) {
+                            connection.preferredVideoStabilizationMode = .off
                             if connection.isVideoMirroringSupported {
                                 connection.automaticallyAdjustsVideoMirroring = false
                                 connection.isVideoMirrored = isVideoMirrored
@@ -282,11 +287,18 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                             }
                             session.addOutput(depthOutput)
                             addedOutputs.append(depthOutput)
+                            guard Self.configureCanonicalVideoDepthConnection(depthOutput) else {
+                                throw TAPDepthCaptureError.unableToAddDepthOutput
+                            }
                             recordsDepth = true
                         } else if configuration.depthDeliverySupported {
                             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
                             TAPDiagnostics.cameraCapture.info("video warmup depth output not added unsupportedByActiveFormat=\(Self.activeFormatRejectsDepthDataOutput(configuration.device.activeFormat), privacy: .public) canAddOutput=\(session.canAddOutput(depthOutput), privacy: .public)")
                             #endif
+                        }
+
+                        guard recordsDepth else {
+                            throw TAPDepthCaptureError.unableToAddDepthOutput
                         }
 
                         let videoSettings = videoOutput.recommendedVideoSettingsForAssetWriter(writingTo: .mp4)
@@ -361,6 +373,14 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                         videoRotationAngle: request.videoRotationAngle,
                         isVideoMirrored: request.isVideoMirrored
                        ) {
+                        guard preparedGraph.recordsDepth,
+                              preparedGraph.depthOutput != nil else {
+                            discardPreparedVideoRecordingGraphLocked(
+                                session: session,
+                                reason: "start-missing-depth"
+                            )
+                            throw TAPDepthCaptureError.unableToAddDepthOutput
+                        }
                         preparedVideoRecordingGraph = nil
                         let recorder = try TAPVideoRecorder(
                             request: request,
@@ -436,6 +456,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                         addedOutputs.append(videoOutput)
 
                         if let connection = videoOutput.connection(with: .video) {
+                            connection.preferredVideoStabilizationMode = .off
                             if connection.isVideoMirroringSupported {
                                 connection.automaticallyAdjustsVideoMirroring = false
                                 connection.isVideoMirrored = request.isVideoMirrored
@@ -481,11 +502,18 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                             }
                             session.addOutput(depthOutput)
                             addedOutputs.append(depthOutput)
+                            guard Self.configureCanonicalVideoDepthConnection(depthOutput) else {
+                                throw TAPDepthCaptureError.unableToAddDepthOutput
+                            }
                             recordsDepth = true
                         } else if configuration.depthDeliverySupported {
                             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
                             TAPDiagnostics.cameraCapture.info("video depth output not added captureID=\(request.captureID, privacy: .private) unsupportedByActiveFormat=\(Self.activeFormatRejectsDepthDataOutput(configuration.device.activeFormat), privacy: .public) canAddOutput=\(session.canAddOutput(depthOutput), privacy: .public)")
                             #endif
+                        }
+
+                        guard recordsDepth else {
+                            throw TAPDepthCaptureError.unableToAddDepthOutput
                         }
 
                         let videoSettings = videoOutput.recommendedVideoSettingsForAssetWriter(writingTo: .mp4)
@@ -998,6 +1026,26 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         depthOutput.isFilteringEnabled = false
         depthOutput.alwaysDiscardsLateDepthData = true
         return depthOutput
+    }
+
+    /// Registration descriptors use an unrotated, unmirrored depth grid and
+    /// carry the RGB connection transform separately. Pin the depth connection
+    /// instead of relying on device-specific AVFoundation defaults.
+    private static func configureCanonicalVideoDepthConnection(
+        _ depthOutput: AVCaptureDepthDataOutput
+    ) -> Bool {
+        guard let connection = depthOutput.connection(with: .depthData) else {
+            return false
+        }
+        if connection.isVideoMirroringSupported {
+            connection.automaticallyAdjustsVideoMirroring = false
+            connection.isVideoMirrored = false
+        }
+        if connection.isVideoRotationAngleSupported(0) {
+            connection.videoRotationAngle = 0
+        }
+        return !connection.isVideoMirrored
+            && connection.videoRotationAngle == 0
     }
 
     private func discardPreparedVideoRecordingGraphLocked(

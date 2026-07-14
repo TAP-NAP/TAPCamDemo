@@ -7,6 +7,37 @@
 import AppAttestKit
 import Foundation
 
+/// Makes the trust boundary explicit for an already-signed file: authenticate
+/// the bounded manifest/proof and streaming content hash before AVFoundation is
+/// allowed to parse timed metadata from a Photos or recovery candidate.
+nonisolated enum TAPVideoSignedFileValidationOrder {
+    enum Phase: Equatable, Sendable {
+        case authenticateProofAndContentBinding
+        case validateActualTracks
+    }
+
+    static func phases(validatesDepthTrack: Bool) -> [Phase] {
+        validatesDepthTrack
+            ? [.authenticateProofAndContentBinding, .validateActualTracks]
+            : [.authenticateProofAndContentBinding]
+    }
+
+    static func run(
+        validatesDepthTrack: Bool,
+        authenticate: () throws -> Void,
+        validateActualTracks: () async throws -> Void
+    ) async throws {
+        for phase in phases(validatesDepthTrack: validatesDepthTrack) {
+            switch phase {
+            case .authenticateProofAndContentBinding:
+                try authenticate()
+            case .validateActualTracks:
+                try await validateActualTracks()
+            }
+        }
+    }
+}
+
 /// Writes TAP provenance into embedded photo-depth artifacts.
 ///
 /// This is the code entry for provenance work. It owns the current TAP XMP
@@ -129,41 +160,95 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
     ///
     /// The unsigned MP4 must already contain a TAP video manifest box and one
     /// empty TAP BMFF proof slot. Signing fills only that proof slot.
-    func signedVideoData(
-        from unsignedVideoData: Data,
+    func signedVideoFile(
+        at videoFileURL: URL,
         expectedCaptureID: String,
+        expectedPackageID: UUID,
+        expectedPreSignContentBinding: CaptureContentBinding? = nil,
+        contentBindingPrepared: @escaping @Sendable (CaptureContentBinding) async throws -> Void = { _ in },
         assertionSigner: any CaptureAssertionSigning
-    ) async throws -> TAPCaptureProvenanceSignedVideoResult {
-        let unsignedVideoDataWithSlot = try TAPProofSlot.ensuringEmptyBMFFSlot(in: unsignedVideoData)
-        let manifest = try TAPVideoManifestBox.decodedManifest(from: unsignedVideoDataWithSlot)
+    ) async throws -> TAPSignedVideoFile {
+        _ = try TAPProofSlot.ensureEmptyBMFFSlot(inFileAt: videoFileURL)
+        let manifest = try TAPVideoManifestBox.decodedManifest(fromFileAt: videoFileURL)
         try validateVideoManifestSchema(manifest)
         try validateManifestID(manifest.payload.id, expectedCaptureID: expectedCaptureID)
+        try validateVideoPackageID(manifest.payload.packageID, expectedPackageID: expectedPackageID)
         try validateVideoManifestCarriesNoProofBody(manifest)
+        let preSignValidationTrace = TAPVideoPerformanceTrace.beginLocalValidation(
+            purpose: "pre-sign-track-validation",
+            validatesDepthTrack: true
+        )
+        do {
+            try await TAPVideoDepthTrackValidator.validate(
+                fileURL: videoFileURL,
+                manifest: manifest
+            )
+            TAPVideoPerformanceTrace.endLocalValidation(
+                preSignValidationTrace,
+                purpose: "pre-sign-track-validation",
+                validatesDepthTrack: true,
+                succeeded: true
+            )
+        } catch {
+            TAPVideoPerformanceTrace.endLocalValidation(
+                preSignValidationTrace,
+                purpose: "pre-sign-track-validation",
+                validatesDepthTrack: true,
+                succeeded: false
+            )
+            throw error
+        }
+        try TAPProofSlot.resetBMFFProofSlot(inFileAt: videoFileURL)
 
-        let digest = try CaptureContentDigest.makeVideo(
+        let digest = try makeTracedVideoContentDigest(
             manifest: manifest,
-            mp4Data: unsignedVideoDataWithSlot
+            videoFileURL: videoFileURL,
+            purpose: "pre-sign"
         )
-        let assertionProof = try await assertionSigner.sign(contentDigest: digest)
-        let videoProof = TAPVideoManifest.Proof(
-            type: assertionProof.proof.type,
-            algorithm: assertionProof.proof.algorithm,
-            keyID: assertionProof.proof.keyID,
-            createdAt: assertionProof.proof.createdAt,
-            value: assertionProof.proof.value
-        )
-        let proofEnvelope = try JSONEncoder.tapCaptureCanonical.encode(videoProof)
-        let signedVideoData = try TAPProofSlot.writeProofEnvelope(
-            proofEnvelope,
-            intoBMFF: unsignedVideoDataWithSlot
-        )
-        _ = try validateSignedExportVideo(
-            signedVideoData,
-            expectedCaptureID: expectedCaptureID
+        if let expectedPreSignContentBinding,
+           expectedPreSignContentBinding != digest {
+            throw TAPDepthCaptureError.pendingCaptureProofExternalMutation
+        }
+        try await contentBindingPrepared(digest)
+        let proofTrace = TAPVideoPerformanceTrace.beginProofGeneration()
+        let assertionProof: CaptureAssertionProof
+        var assertionFinished = false
+        do {
+            assertionProof = try await assertionSigner.sign(contentDigest: digest)
+            assertionFinished = true
+            TAPVideoPerformanceTrace.emitAssertionFinished(succeeded: true)
+            let videoProof = TAPVideoManifest.Proof(
+                type: assertionProof.proof.type,
+                algorithm: assertionProof.proof.algorithm,
+                keyID: assertionProof.proof.keyID,
+                createdAt: assertionProof.proof.createdAt,
+                value: assertionProof.proof.value
+            )
+            let proofEnvelope = try JSONEncoder.tapCaptureCanonical.encode(videoProof)
+            try TAPProofSlot.writeProofEnvelope(
+                proofEnvelope,
+                intoBMFFFileAt: videoFileURL
+            )
+            TAPVideoPerformanceTrace.emitProofWritten(byteCount: proofEnvelope.count)
+            TAPVideoPerformanceTrace.endProofGeneration(proofTrace, succeeded: true)
+            TAPVideoPerformanceTrace.emitRuntimeCheckpoint(stage: "proof-written")
+        } catch {
+            if !assertionFinished {
+                TAPVideoPerformanceTrace.emitAssertionFinished(succeeded: false)
+            }
+            TAPVideoPerformanceTrace.endProofGeneration(proofTrace, succeeded: false)
+            TAPVideoPerformanceTrace.emitRuntimeCheckpoint(stage: "proof-failed")
+            throw error
+        }
+        _ = try await validateSignedExportVideoFile(
+            at: videoFileURL,
+            expectedCaptureID: expectedCaptureID,
+            expectedPackageID: expectedPackageID,
+            validatesDepthTrack: false
         )
 
-        return TAPCaptureProvenanceSignedVideoResult(
-            data: signedVideoData,
+        return TAPSignedVideoFile(
+            fileURL: videoFileURL,
             manifest: manifest,
             keyID: assertionProof.keyID
         )
@@ -340,29 +425,65 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
     /// Final fail-closed gate before a signed TAP video may leave pending
     /// storage. This recomputes the byte binding from the exact MP4 bytes that
     /// will be exported to Photos.
-    func validateSignedExportVideo(
-        _ signedVideoData: Data,
-        expectedCaptureID: String
-    ) throws -> ValidatedTAPVideo {
-        let manifest = try TAPVideoManifestBox.decodedManifest(from: signedVideoData)
+    func validateSignedExportVideoFile(
+        at videoFileURL: URL,
+        expectedCaptureID: String,
+        expectedPackageID: UUID,
+        validatesDepthTrack: Bool = true
+    ) async throws -> ValidatedTAPVideoFile {
+        let validationPurpose = validatesDepthTrack
+            ? "signed-export-full"
+            : "post-proof-authentication"
+        let validationTrace = TAPVideoPerformanceTrace.beginLocalValidation(
+            purpose: validationPurpose,
+            validatesDepthTrack: validatesDepthTrack
+        )
+        var validationSucceeded = false
+        defer {
+            TAPVideoPerformanceTrace.endLocalValidation(
+                validationTrace,
+                purpose: validationPurpose,
+                validatesDepthTrack: validatesDepthTrack,
+                succeeded: validationSucceeded
+            )
+            TAPVideoPerformanceTrace.emitRuntimeCheckpoint(
+                stage: validationSucceeded ? "local-validation-finished" : "local-validation-failed"
+            )
+        }
+        let manifest = try TAPVideoManifestBox.decodedManifest(fromFileAt: videoFileURL)
         try validateVideoManifestSchema(manifest)
         try validateManifestID(manifest.payload.id, expectedCaptureID: expectedCaptureID)
+        try validateVideoPackageID(manifest.payload.packageID, expectedPackageID: expectedPackageID)
         try validateVideoManifestCarriesNoProofBody(manifest)
-
-        let proof = try decodedVideoCaptureProof(from: signedVideoData)
-        let proofValue = try decodedVideoCaptureProofValue(proof, expectedCaptureID: expectedCaptureID)
-
-        let recomputedDigest = try CaptureContentDigest.makeVideo(
-            manifest: manifest,
-            mp4Data: signedVideoData
+        try await TAPVideoSignedFileValidationOrder.run(
+            validatesDepthTrack: validatesDepthTrack,
+            authenticate: {
+                let proof = try decodedVideoCaptureProof(fromFileAt: videoFileURL)
+                let proofValue = try decodedVideoCaptureProofValue(
+                    proof,
+                    expectedCaptureID: expectedCaptureID
+                )
+                let recomputedDigest = try makeTracedVideoContentDigest(
+                    manifest: manifest,
+                    videoFileURL: videoFileURL,
+                    purpose: "proof-validation"
+                )
+                try validateVideoCaptureProof(
+                    proof,
+                    proofValue: proofValue,
+                    recomputedDigest: recomputedDigest
+                )
+            },
+            validateActualTracks: {
+                try await TAPVideoDepthTrackValidator.validate(
+                    fileURL: videoFileURL,
+                    manifest: manifest
+                )
+            }
         )
-        try validateVideoCaptureProof(
-            proof,
-            proofValue: proofValue,
-            recomputedDigest: recomputedDigest
-        )
 
-        return ValidatedTAPVideo(data: signedVideoData, manifest: manifest)
+        validationSucceeded = true
+        return ValidatedTAPVideoFile(fileURL: videoFileURL, manifest: manifest)
     }
 
     /// Backward-compatible final gate for existing HEIC call sites.
@@ -394,6 +515,116 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
         guard manifest.schema == TAPVideoManifest.Schema() else {
             throw TAPDepthCaptureError.invalidTAPManifest("unexpected video schema metadata")
         }
+        let rgbTrack = manifest.payload.rgbTrack
+        guard rgbTrack.trackID != nil,
+              !rgbTrack.codec.isEmpty,
+              rgbTrack.width > 0,
+              rgbTrack.height > 0,
+              rgbTrack.durationSeconds.isFinite,
+              rgbTrack.durationSeconds >= 0,
+              rgbTrack.timeScale > 0 else {
+            throw TAPDepthCaptureError.invalidTAPManifest(
+                "video manifest RGB track facts are incomplete"
+            )
+        }
+
+        let audioTrack = manifest.payload.audioTrack
+        if audioTrack.status == .captured {
+            guard audioTrack.trackID != nil,
+                  audioTrack.codec?.isEmpty == false,
+                  let audioDurationSeconds = audioTrack.durationSeconds,
+                  audioDurationSeconds.isFinite,
+                  audioDurationSeconds >= 0,
+                  let audioTimeScale = audioTrack.timeScale,
+                  audioTimeScale > 0 else {
+                throw TAPDepthCaptureError.invalidTAPManifest(
+                    "video manifest audio track facts are incomplete"
+                )
+            }
+        }
+
+        let depthCoverage = manifest.payload.depthCoverage
+        guard depthCoverage.sampleCount > 0,
+              depthCoverage.trackID != nil,
+              depthCoverage.trackCodec?.isEmpty == false,
+              let depthDurationSeconds = depthCoverage.trackDurationSeconds,
+              depthDurationSeconds.isFinite,
+              depthDurationSeconds >= 0,
+              let depthTimeScale = depthCoverage.trackTimeScale,
+              depthTimeScale > 0,
+              depthCoverage.format != nil else {
+            throw TAPDepthCaptureError.missingDepthData
+        }
+        guard Set([
+            rgbTrack.trackID,
+            audioTrack.trackID,
+            depthCoverage.trackID
+        ].compactMap { $0 }).count == [
+            rgbTrack.trackID,
+            audioTrack.trackID,
+            depthCoverage.trackID
+        ].compactMap({ $0 }).count,
+              manifest.payload.container.trackCount >= 2,
+              manifest.payload.container.durationSeconds.isFinite,
+              manifest.payload.container.durationSeconds >= 0,
+              manifest.payload.container.timeScale > 0,
+              depthCoverage.deliveredSampleCount >= depthCoverage.sampleCount,
+              depthCoverage.outputDropCount >= 0,
+              depthCoverage.encodingDropCount >= 0,
+              depthCoverage.metadataDropCount >= 0,
+              depthCoverage.gapCount == depthCoverage.gaps.count,
+              depthCoverage.gaps.count <= TAPVideoManifest.DepthCoverage.maximumGapCount,
+              depthCoverage.gaps.allSatisfy({
+                  Self.isValidDepthGap(
+                      $0,
+                      durationSeconds: manifest.payload.container.durationSeconds
+                  )
+              }) else {
+            throw TAPDepthCaptureError.invalidTAPManifest(
+                "video manifest track, counter, or depth-gap facts are inconsistent"
+            )
+        }
+
+        let registration = manifest.payload.spatialRegistration
+        let calibrationCoverage = registration.calibrationCoverage
+        guard registration.calibrationTable.count
+                <= TAPVideoManifest.SpatialRegistration.maximumCalibrationCount,
+              calibrationCoverage.indexedSampleCount >= 0,
+              calibrationCoverage.missingCalibrationSampleCount >= 0,
+              calibrationCoverage.overflowUnindexedSampleCount >= 0,
+              calibrationCoverage.accountedSampleCount == depthCoverage.sampleCount,
+              calibrationCoverage.indexedSampleCount == 0
+                || !registration.calibrationTable.isEmpty,
+              calibrationCoverage.tableOverflowed
+                || calibrationCoverage.overflowUnindexedSampleCount == 0,
+              !calibrationCoverage.tableOverflowed
+                || registration.calibrationTable.count
+                    == TAPVideoManifest.SpatialRegistration.maximumCalibrationCount,
+              registration.status != .approximate,
+              registration.status != .registered
+                || registration.descriptor != nil,
+              registration.status != .unavailable || registration.descriptor == nil else {
+            throw TAPDepthCaptureError.invalidTAPManifest(
+                "video registration descriptor is inconsistent"
+            )
+        }
+    }
+
+    private static func isValidDepthGap(
+        _ gap: TAPVideoManifest.DepthGap,
+        durationSeconds: Double
+    ) -> Bool {
+        guard gap.startPTS.timescale > 0,
+              gap.endPTS.timescale > 0 else {
+            return false
+        }
+        let start = Double(gap.startPTS.value) / Double(gap.startPTS.timescale)
+        let end = Double(gap.endPTS.value) / Double(gap.endPTS.timescale)
+        return start.isFinite
+            && end.isFinite
+            && start >= 0
+            && end >= start
+            && end <= durationSeconds + 0.1
     }
 
     private func validateManifestLivePhotoPayload(_ manifest: TAPDepthManifest) throws {
@@ -484,9 +715,9 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
     }
 
     private func decodedVideoCaptureProof(
-        from videoData: Data
+        fromFileAt videoFileURL: URL
     ) throws -> TAPVideoManifest.Proof {
-        let proofData = try TAPProofSlot.proofEnvelopeData(fromBMFF: videoData)
+        let proofData = try TAPProofSlot.proofEnvelopeData(fromBMFFFileAt: videoFileURL)
         return try JSONDecoder().decode(TAPVideoManifest.Proof.self, from: proofData)
     }
 
@@ -633,6 +864,48 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
             )
         }
     }
+
+    private func makeTracedVideoContentDigest(
+        manifest: TAPVideoManifest,
+        videoFileURL: URL,
+        purpose: String
+    ) throws -> CaptureContentDigest {
+        let trace = TAPVideoPerformanceTrace.beginContentHash(purpose: purpose)
+        do {
+            let digest = try CaptureContentDigest.makeVideo(
+                manifest: manifest,
+                mp4FileURL: videoFileURL
+            )
+            TAPVideoPerformanceTrace.endContentHash(
+                trace,
+                purpose: purpose,
+                succeeded: true
+            )
+            TAPVideoPerformanceTrace.emitRuntimeCheckpoint(
+                stage: "content-hash-\(purpose)-finished"
+            )
+            return digest
+        } catch {
+            TAPVideoPerformanceTrace.endContentHash(
+                trace,
+                purpose: purpose,
+                succeeded: false
+            )
+            TAPVideoPerformanceTrace.emitRuntimeCheckpoint(
+                stage: "content-hash-\(purpose)-failed"
+            )
+            throw error
+        }
+    }
+
+    private func validateVideoPackageID(
+        _ manifestPackageID: String,
+        expectedPackageID: UUID
+    ) throws {
+        guard UUID(uuidString: manifestPackageID) == expectedPackageID else {
+            throw TAPDepthCaptureError.invalidTAPManifest("video package id mismatch")
+        }
+    }
 }
 
 nonisolated struct TAPCaptureProvenanceManifestResult: Sendable {
@@ -648,8 +921,8 @@ nonisolated struct TAPCaptureProvenanceSignedPhotoResult: Sendable {
     let fileContainer: CapturePhotoFileContainer
 }
 
-nonisolated struct TAPCaptureProvenanceSignedVideoResult: Sendable {
-    let data: Data
+nonisolated struct TAPSignedVideoFile: Sendable {
+    let fileURL: URL
     let manifest: TAPVideoManifest
     let keyID: String
 }
@@ -681,8 +954,8 @@ nonisolated struct ValidatedTAPLivePhoto: Sendable {
     let pairedVideoURL: URL
 }
 
-nonisolated struct ValidatedTAPVideo: Sendable {
-    let data: Data
+nonisolated struct ValidatedTAPVideoFile: Sendable {
+    let fileURL: URL
     let manifest: TAPVideoManifest
 }
 

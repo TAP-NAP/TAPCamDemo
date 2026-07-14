@@ -85,43 +85,46 @@ struct TAPCaptureContentDigestTests {
 
     @Test func videoContentBindingHashesMP4BytesExcludingBMFFProofSlot() throws {
         let manifest = Self.sampleVideoManifest(depthSampleCount: 2)
-        let emptySlotData = try TAPProofSlot.ensuringEmptyBMFFSlot(in: Self.syntheticMP4Data())
-        let proofSlotData = try TAPProofSlot.writeProofEnvelope(
-            Data("proof-envelope".utf8),
-            intoBMFF: emptySlotData
-        )
+        let fileURL = try Self.makeTemporaryVideoFile()
+        let slot = try TAPProofSlot.ensureEmptyBMFFSlot(inFileAt: fileURL)
 
         let emptyDigest = try CaptureContentDigest.makeVideo(
             manifest: manifest,
-            mp4Data: emptySlotData
+            mp4FileURL: fileURL
+        )
+        try TAPProofSlot.writeProofEnvelope(
+            Data("proof-envelope".utf8),
+            intoBMFFFileAt: fileURL
         )
         let proofDigest = try CaptureContentDigest.makeVideo(
             manifest: manifest,
-            mp4Data: proofSlotData
+            mp4FileURL: fileURL
         )
 
         #expect(emptyDigest.schemaID == CaptureContentBinding.videoSchemaIdentifier)
         #expect(emptyDigest.manifestSchemaID == TAPVideoManifest.schemaIdentifier)
         #expect(emptyDigest.assetHash.fileContainer == "mp4")
         #expect(emptyDigest.assetHash.value == proofDigest.assetHash.value)
-        #expect(emptyDigest.metadataHash.mediaType == "application/vnd.tapnap.video-manifest.payload+json;version=1")
+        #expect(emptyDigest.metadataHash.mediaType == "application/vnd.tapnap.video-manifest.payload+json;version=2")
         #expect(emptyDigest.depthResource.presence == "captured")
-        #expect(try TAPProofSlot.proofEnvelopeData(fromBMFF: proofSlotData) == Data("proof-envelope".utf8))
+        #expect(emptyDigest.proofSlot.offset == Int(slot.containerRange.offset))
+        #expect(try TAPProofSlot.proofEnvelopeData(fromBMFFFileAt: fileURL) == Data("proof-envelope".utf8))
     }
 
-    @Test func videoContentBindingRecordsZeroDepthCoverageWithoutChangingVerificationFamily() throws {
-        let manifest = Self.sampleVideoManifest(depthSampleCount: 0)
-        let mp4Data = try TAPProofSlot.ensuringEmptyBMFFSlot(in: Self.syntheticMP4Data())
+    @Test func videoContentBindingUsesV2ManifestAndCapturedDepthCoverage() throws {
+        let manifest = Self.sampleVideoManifest(depthSampleCount: 1)
+        let fileURL = try Self.makeTemporaryVideoFile()
+        _ = try TAPProofSlot.ensureEmptyBMFFSlot(inFileAt: fileURL)
 
         let digest = try CaptureContentDigest.makeVideo(
             manifest: manifest,
-            mp4Data: mp4Data
+            mp4FileURL: fileURL
         )
 
         #expect(digest.schemaID == "urn:tapnap:tapcam:content-binding:v4")
-        #expect(digest.manifestSchemaID == "urn:tapnap:tapcam:video-manifest:v1")
-        #expect(digest.depthResource.presence == "no-samples")
-        #expect(digest.depthResource.binding == "coverage-recorded-in-manifest")
+        #expect(digest.manifestSchemaID == "urn:tapnap:tapcam:video-manifest:v2")
+        #expect(digest.depthResource.presence == "captured")
+        #expect(digest.depthResource.binding == "covered-by-assetHash")
         #expect(digest.signedResources == nil)
     }
 
@@ -216,6 +219,7 @@ struct TAPCaptureContentDigestTests {
     private static func sampleVideoManifest(depthSampleCount: Int) -> TAPVideoManifest {
         TAPVideoManifest(payload: TAPVideoManifest.Payload(
             id: "video-capture",
+            packageID: "00000000-0000-0000-0000-000000000777",
             capturedAt: "2026-07-09T12:00:00Z",
             selectedCameraPlan: TAPVideoManifest.SelectedCameraPlan(
                 deviceUniqueID: "device-1",
@@ -239,6 +243,8 @@ struct TAPCaptureContentDigestTests {
                 codec: "avc1",
                 width: 1920,
                 height: 1080,
+                durationSeconds: 1,
+                timeScale: 600,
                 nominalFrameRate: 30,
                 frameCount: 30,
                 transform: "identity"
@@ -247,11 +253,16 @@ struct TAPCaptureContentDigestTests {
                 status: .notCaptured,
                 trackID: nil,
                 codec: nil,
+                durationSeconds: nil,
+                timeScale: nil,
                 sampleRate: nil,
                 channelCount: nil
             ),
             depthCoverage: TAPVideoManifest.DepthCoverage(
-                track: depthSampleCount > 0 ? "tap-depth-klv" : nil,
+                trackID: depthSampleCount > 0 ? 3 : nil,
+                trackCodec: depthSampleCount > 0 ? "mebx" : nil,
+                trackDurationSeconds: depthSampleCount > 0 ? 1 : nil,
+                trackTimeScale: depthSampleCount > 0 ? 600 : nil,
                 sampleCount: depthSampleCount,
                 format: depthSampleCount > 0
                     ? TAPVideoManifest.DepthFormat(
@@ -259,9 +270,10 @@ struct TAPCaptureContentDigestTests {
                         pixelFormat: "DepthFloat32",
                         width: 256,
                         height: 192,
-                        rowStride: 1024,
-                        compression: "none",
-                        calibrationReference: "cameraCalibrationData"
+                        packedRowStride: 1_024,
+                        sourceRowStride: 1_088,
+                        bytesPerSample: 4,
+                        uncompressedFrameByteCount: 196_608
                     )
                     : nil
             ),
@@ -289,6 +301,13 @@ struct TAPCaptureContentDigestTests {
         box.append(Data(type.utf8))
         box.append(payload)
         return box
+    }
+
+    private static func makeTemporaryVideoFile() throws -> URL {
+        let directoryURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        let fileURL = directoryURL.appendingPathComponent("artifact.mp4")
+        try syntheticMP4Data().write(to: fileURL)
+        return fileURL
     }
 
     private static func sha256Base64URL(_ data: Data, excluding excludedRange: Range<Int>? = nil) throws -> String {

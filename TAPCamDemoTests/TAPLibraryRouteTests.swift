@@ -257,8 +257,7 @@ struct TAPLibraryRouteTests {
         let items = TAPLibraryItem.merged(
             pendingRecords: records,
             exportedRecords: [],
-            photoAssets: [],
-            exportedAssetResolver: { _ in nil }
+            photoAssets: []
         )
         #expect(items.count == 8)
         let clickedItem = items[6]
@@ -281,8 +280,7 @@ struct TAPLibraryRouteTests {
         let pendingItem = try #require(TAPLibraryItem.merged(
             pendingRecords: [pendingRecord],
             exportedRecords: [],
-            photoAssets: [],
-            exportedAssetResolver: { _ in nil }
+            photoAssets: []
         ).first)
         let bookmark = DepthAlbumReturnScrollBookmark(
             itemID: pendingItem.id,
@@ -300,10 +298,10 @@ struct TAPLibraryRouteTests {
             pendingRecords: [],
             exportedRecords: [exportedRecord],
             photoAssets: [ownedAsset],
-            exportedAssetResolver: { $0 == ownedAsset.localIdentifier ? ownedAsset : nil }
+            photoAssetsByLocalIdentifier: [ownedAsset.localIdentifier: ownedAsset]
         )
 
-        #expect(currentItems.map(\.id) == ["owned:asset-migrated"])
+        #expect(currentItems.map(\.id) == ["capture:capture-migrated"])
         #expect(DepthAlbumPickerView.returnScrollBookmarkItemIndex(bookmark: bookmark, items: currentItems) == 0)
         #expect(DepthAlbumPickerView.returnScrollOffsetY(bookmark: bookmark, items: [], rowStride: 80) == nil)
     }
@@ -359,7 +357,7 @@ struct TAPLibraryRouteTests {
             pixelLength: 240,
             capturedAt: Date(timeIntervalSince1970: 1_000),
             thumbnailFilename: nil,
-            videoFilename: TAPPendingCaptureBundlePathPolicy.unsignedVideoFilename,
+            videoFilename: TAPPendingCaptureBundlePathPolicy.videoArtifactFilename,
             updatedAt: Date(timeIntervalSince1970: 1_001)
         )
         let signedKey = DepthAlbumThumbnailCacheKey.makePending(
@@ -367,7 +365,7 @@ struct TAPLibraryRouteTests {
             pixelLength: 240,
             capturedAt: Date(timeIntervalSince1970: 1_000),
             thumbnailFilename: nil,
-            videoFilename: TAPPendingCaptureBundlePathPolicy.signedVideoFilename,
+            videoFilename: TAPPendingCaptureBundlePathPolicy.videoArtifactFilename,
             updatedAt: Date(timeIntervalSince1970: 1_002)
         )
 
@@ -387,16 +385,20 @@ struct TAPLibraryRouteTests {
             relativePath: "TAPCamDemo/CameraCapture/Output/PhotoLibraryWriter.swift"
         )
 
-        #expect(pipelineSource.contains("requestAVAsset(forVideo: asset"))
+        #expect(!pipelineSource.contains("requestAVAsset(forVideo: asset"))
         #expect(pipelineSource.contains("AVAssetImageGenerator(asset: asset)"))
         #expect(pipelineSource.contains("generator.appliesPreferredTrackTransform = true"))
-        #expect(pipelineSource.contains("generateCGImageAsynchronously(for: time)"))
+        #expect(pipelineSource.contains("let result = try await generator.image("))
         #expect(!pipelineSource.contains("copyCGImage(at: time"))
+        #expect(pickerSource.contains("LibraryMediaPosterRequest("))
+        #expect(pickerSource.contains("mediaFetcher.posterPhase("))
         #expect(pickerSource.contains("DepthAlbumThumbnailLoader.shared.videoData"))
         #expect(pickerSource.contains("TAPPendingCaptureStore.shared.bestAvailableVideoURL"))
-        #expect(photoWriterSource.contains("static func originalVideoFileURL(localIdentifier: String) async throws -> URL"))
+        #expect(photoWriterSource.contains("static func originalVideoFileURL(\n        localIdentifier: String,"))
+        #expect(photoWriterSource.contains("typealias ResourceProgressHandler = @Sendable (Double?) -> Void"))
+        #expect(photoWriterSource.contains("progressHandler: @escaping ResourceProgressHandler = { _ in }"))
         #expect(photoWriterSource.contains("try await Task.detached(priority: .userInitiated)"))
-        #expect(photoWriterSource.contains("return try await originalVideoFileURL(for: asset)"))
+        #expect(photoWriterSource.contains("return try await originalVideoFileURL(for: asset,"))
     }
 
     @Test func depthAlbumItemsPreferOwnedExportsOverDuplicatePhotos() throws {
@@ -427,12 +429,12 @@ struct TAPLibraryRouteTests {
             pendingRecords: [pendingRecord, exportedRecord],
             exportedRecords: [exportedRecord],
             photoAssets: [ownedAsset, photosOnlyAsset],
-            exportedAssetResolver: { $0 == ownedAsset.localIdentifier ? ownedAsset : nil }
+            photoAssetsByLocalIdentifier: [ownedAsset.localIdentifier: ownedAsset]
         )
 
         #expect(items.map(\.id) == [
-            "pending:pending-1",
-            "owned:asset-owned",
+            "capture:pending-1",
+            "capture:exported-1",
             "photos:asset-plain"
         ])
     }
@@ -460,8 +462,7 @@ struct TAPLibraryRouteTests {
             modificationDate: nil,
             pixelWidth: 0,
             pixelHeight: 0,
-            isLivePhoto: false,
-            phAsset: nil
+            isLivePhoto: false
         )
         let photosLiveAsset = DepthAlbumPhotoAsset(
             localIdentifier: "asset-live",
@@ -469,23 +470,22 @@ struct TAPLibraryRouteTests {
             modificationDate: nil,
             pixelWidth: 0,
             pixelHeight: 0,
-            isLivePhoto: true,
-            phAsset: nil
+            isLivePhoto: true
         )
 
         let items = TAPLibraryItem.merged(
             pendingRecords: [livePending, plainPending],
             exportedRecords: [exportedLiveRecord],
             photoAssets: [photosLiveAsset],
-            exportedAssetResolver: { $0 == ownedAsset.localIdentifier ? ownedAsset : nil }
+            photoAssetsByLocalIdentifier: [ownedAsset.localIdentifier: ownedAsset]
         )
         let livePhotoFlags: [String: Bool] = Dictionary(
             uniqueKeysWithValues: items.map { ($0.id, $0.isLivePhoto) }
         )
 
-        #expect(livePhotoFlags["pending:pending-live"] == true)
-        #expect(livePhotoFlags["pending:pending-plain"] == false)
-        #expect(livePhotoFlags["owned:asset-owned"] == true)
+        #expect(livePhotoFlags["capture:pending-live"] == true)
+        #expect(livePhotoFlags["capture:pending-plain"] == false)
+        #expect(livePhotoFlags["capture:exported-live"] == true)
         #expect(livePhotoFlags["photos:asset-live"] == true)
     }
 
@@ -513,13 +513,13 @@ struct TAPLibraryRouteTests {
             pendingRecords: [oldPending],
             exportedRecords: [exportedRecord],
             photoAssets: [newestPhotosAsset],
-            exportedAssetResolver: { $0 == ownedAsset.localIdentifier ? ownedAsset : nil }
+            photoAssetsByLocalIdentifier: [ownedAsset.localIdentifier: ownedAsset]
         )
 
         #expect(items.map(\.id) == [
             "photos:asset-newest",
-            "owned:asset-mid",
-            "pending:pending-old"
+            "capture:exported-mid",
+            "capture:pending-old"
         ])
     }
 
@@ -541,14 +541,14 @@ struct TAPLibraryRouteTests {
             pendingRecords: [pendingRecord],
             exportedRecords: [exportedRecord],
             photoAssets: [photosOnlyAsset],
-            exportedAssetResolver: { $0 == ownedAsset.localIdentifier ? ownedAsset : nil }
+            photoAssetsByLocalIdentifier: [ownedAsset.localIdentifier: ownedAsset]
         )
         let anchors = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0.routeAnchor) })
 
-        #expect(anchors["pending:capture-pending"]?.captureID == "capture-pending")
-        #expect(anchors["pending:capture-pending"]?.assetLocalIdentifier == nil)
-        #expect(anchors["owned:asset-owned"]?.captureID == "capture-exported")
-        #expect(anchors["owned:asset-owned"]?.assetLocalIdentifier == "asset-owned")
+        #expect(anchors["capture:capture-pending"]?.captureID == "capture-pending")
+        #expect(anchors["capture:capture-pending"]?.assetLocalIdentifier == nil)
+        #expect(anchors["capture:capture-exported"]?.captureID == "capture-exported")
+        #expect(anchors["capture:capture-exported"]?.assetLocalIdentifier == "asset-owned")
         #expect(anchors["photos:asset-plain"]?.captureID == nil)
         #expect(anchors["photos:asset-plain"]?.assetLocalIdentifier == "asset-plain")
     }
@@ -561,18 +561,19 @@ struct TAPLibraryRouteTests {
         let provider = DepthAlbumItemProvider(
             pendingRecordsLoader: { [pendingRecord] },
             exportedRecordsLoader: { [] },
-            photoAssetsLoader: { throw DepthAlbumItemProviderTestError.photosUnavailable },
-            exportedAssetResolver: { _ in nil }
+            photoCatalogLoader: { _ in
+                throw DepthAlbumItemProviderTestError.photosUnavailable
+            }
         )
 
         let snapshot = try await provider.loadSnapshot()
 
-        #expect(snapshot.items.map(\.id) == ["pending:pending-offline"])
+        #expect(snapshot.items.map(\.id) == ["capture:pending-offline"])
         #expect(snapshot.photoAssetsError != nil)
 
         let viewModel = DepthAlbumPickerViewModel(itemProvider: provider)
         await viewModel.load()
-        #expect(viewModel.items.map(\.id) == ["pending:pending-offline"])
+        #expect(viewModel.items.map(\.id) == ["capture:pending-offline"])
         #expect(viewModel.errorMessage == nil)
     }
 
@@ -588,8 +589,7 @@ struct TAPLibraryRouteTests {
                 return [pendingRecord]
             },
             exportedRecordsLoader: { [] },
-            photoAssetsLoader: { [] },
-            exportedAssetResolver: { _ in nil }
+            photoCatalogLoader: { _ in .empty }
         )
         let viewModel = DepthAlbumPickerViewModel(itemProvider: provider)
 
@@ -597,7 +597,7 @@ struct TAPLibraryRouteTests {
         await viewModel.loadIfNeeded()
 
         #expect(loadCount == 1)
-        #expect(viewModel.items.map(\.id) == ["pending:cached-pending"])
+        #expect(viewModel.items.map(\.id) == ["capture:cached-pending"])
 
         await viewModel.load(showLoadingIndicator: false)
 
@@ -612,8 +612,7 @@ struct TAPLibraryRouteTests {
                 return []
             },
             exportedRecordsLoader: { [] },
-            photoAssetsLoader: { [] },
-            exportedAssetResolver: { _ in nil }
+            photoCatalogLoader: { _ in .empty }
         )
         let viewModel = DepthAlbumPickerViewModel(itemProvider: provider)
 
@@ -637,8 +636,7 @@ struct TAPLibraryRouteTests {
                 return loadCount == 0 ? [] : [pendingRecord]
             },
             exportedRecordsLoader: { [] },
-            photoAssetsLoader: { [] },
-            exportedAssetResolver: { _ in nil }
+            photoCatalogLoader: { _ in .empty }
         )
         let viewModel = DepthAlbumPickerViewModel(itemProvider: provider)
 
@@ -653,7 +651,7 @@ struct TAPLibraryRouteTests {
         await viewModel.loadForPresentation()
 
         #expect(loadCount == 2)
-        #expect(viewModel.items.map(\.id) == ["pending:locked-import-pending"])
+        #expect(viewModel.items.map(\.id) == ["capture:locked-import-pending"])
         #expect(!viewModel.shouldShowLoading)
     }
 
@@ -665,8 +663,7 @@ struct TAPLibraryRouteTests {
                 throw DepthAlbumItemProviderTestError.photosUnavailable
             },
             exportedRecordsLoader: { [] },
-            photoAssetsLoader: { [] },
-            exportedAssetResolver: { _ in nil }
+            photoCatalogLoader: { _ in .empty }
         )
         let viewModel = DepthAlbumPickerViewModel(itemProvider: provider)
 
@@ -682,8 +679,9 @@ struct TAPLibraryRouteTests {
         let provider = DepthAlbumItemProvider(
             pendingRecordsLoader: { [] },
             exportedRecordsLoader: { [] },
-            photoAssetsLoader: { throw DepthAlbumItemProviderTestError.photosUnavailable },
-            exportedAssetResolver: { _ in nil }
+            photoCatalogLoader: { _ in
+                throw DepthAlbumItemProviderTestError.photosUnavailable
+            }
         )
         let viewModel = DepthAlbumPickerViewModel(itemProvider: provider)
 
@@ -699,8 +697,7 @@ struct TAPLibraryRouteTests {
         let provider = DepthAlbumItemProvider(
             pendingRecordsLoader: { throw DepthAlbumItemProviderTestError.sensitiveStoreFailure(sensitivePath) },
             exportedRecordsLoader: { [] },
-            photoAssetsLoader: { [] },
-            exportedAssetResolver: { _ in nil }
+            photoCatalogLoader: { _ in .empty }
         )
         let viewModel = DepthAlbumPickerViewModel(itemProvider: provider)
 
@@ -731,7 +728,7 @@ struct TAPLibraryRouteTests {
             pendingRecords: [],
             exportedRecords: [exportedRecord],
             photoAssets: [],
-            exportedAssetResolver: { $0 == assetID ? ownedAsset : nil }
+            photoAssetsByLocalIdentifier: [assetID: ownedAsset]
         ).first)
         let cacheKey = item.thumbnailCacheKey(pixelLength: 240)
 
@@ -755,8 +752,7 @@ struct TAPLibraryRouteTests {
         let item = try #require(TAPLibraryItem.merged(
             pendingRecords: [pendingRecord],
             exportedRecords: [],
-            photoAssets: [],
-            exportedAssetResolver: { _ in nil }
+            photoAssets: []
         ).first)
         let cacheKey = item.thumbnailCacheKey(pixelLength: 240)
 

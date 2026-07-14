@@ -2,6 +2,12 @@
 
 Status: design accepted; first app-integrated vertical slice implemented.
 
+Release-readiness follow-up: the vertical slice exposed unresolved Library
+cover, iCloud state, overlay registration, memory/storage, compression,
+manifest, and recovery risks. Review
+[TAPVideoLibraryPRD.md](TAPVideoLibraryPRD.md) before extending this design or
+treating the current branch as release-ready.
+
 This document records the agreed first-version design for TAP signed stereo
 video recording. It is intentionally narrower than a general video-export
 framework: the product goal is one Photos-saveable video file that ordinary
@@ -103,13 +109,14 @@ instead of expanding still-photo code until it becomes a general video system.
 ## Depth Encoding
 
 First-version depth is lossless relative to the captured `AVDepthData` payload.
-Each timed depth sample is a TAP KLV payload modeled after GPMF rather than a
-JSON blob:
+Each timed depth sample is a TAP KLV v2 payload modeled after GPMF rather than
+a JSON blob:
 
 - 32-bit aligned records.
-- FourCC keys for stream identity, depth frame payload, dimensions, row stride,
-  pixel format, depth/disparity mode, compression, calibration reference, and
-  frame counters.
+- FourCC keys for the KLV version, frame index, capture-relative PTS,
+  compression codec, original byte length, calibration-table index, and depth
+  payload. Fixed dimensions, packed stride, byte order, pixel format, and
+  codec policy live once in `video-manifest:v2`.
 - Big-endian integer fields unless the field explicitly carries opaque native
   sample bytes.
 - Unknown keys can be skipped by future parsers.
@@ -120,31 +127,30 @@ JSON blob:
 - Preserve the pixel format and sample type instead of forcing a project-wide
   Float16 representation.
 - Preserve dimensions, row stride, timing, orientation, and camera calibration.
-- Use reversible compression such as LZFSE or zlib if needed.
+- Use the pinned Zstandard level-1 codec when the release corpus gate passes;
+  retain a lossless per-frame raw fallback whenever compression fails or does
+  not reduce the payload. LZFSE is the whole-build fallback only if Zstandard
+  fails the measured release gate.
 - Include enough per-frame or stream-level metadata for TAP to reconstruct the
   original depth frame bytes and interpret them later.
 - Store only real captured depth samples. Do not synthesize, interpolate, or
   duplicate depth frames to match the RGB frame rate in the signed original
   resource.
 
-During the bring-up phase, the app may additionally write an app-private
-`depth-preview.mp4` sidecar from the delivered depth callbacks. This sidecar is
-a diagnostic grayscale visualization only: it is not saved to Photos, not
-included in the signed content binding, and not used as proof of the original
-depth bytes. Its purpose is to confirm that `AVCaptureDepthDataOutput` is
-delivering frames while the signed MP4's TAP-private KLV metadata track is being
-hardened.
+The manifest-v2 production path never writes a `depth-preview.mp4` sidecar.
+Debug playback fixtures are generated at runtime and are not capture artifacts;
+the signed MP4's TAP-private KLV metadata track is the only stored depth stream.
 
 Do not adopt GPMF branding or GoPro-specific key meanings as the TAP public
 format. The intended reuse is the proven architecture: time-indexed metadata
 track plus compact KLV payload. The TAP format owns its own FourCC namespace and
 schema version.
 
-Depth absence and gaps are recorded, not treated as an automatic export failure
-or product split. The selected camera path is expected to be depth-capable, but
-the signed artifact is still one TAP video format even if some or all depth
-samples are missing. The manifest records where depth is missing so TAP playback
-and analysis can surface the gap instead of pretending the stream is complete.
+TAP Video requires depth. Recording is disabled when the selected path cannot
+deliver it, and a completed recording with zero valid depth samples is not
+signed or exported. Non-zero recordings may contain bounded gaps; the manifest
+signs their reasons and time ranges so playback clears the overlay instead of
+freezing or inventing a depth frame.
 
 If recording stops early because of thermal or system pressure, the captured
 segment can be kept and signed with a `stopReason`. The manifest records depth

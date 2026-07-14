@@ -6,12 +6,17 @@
 import Foundation
 import OSLog
 
+nonisolated struct TAPVideoRecordingWorkspace: Equatable, Sendable {
+    let captureID: String
+    let bundleURL: URL
+    let artifactURL: URL
+}
+
 nonisolated struct TAPPendingVideoCaptureArtifact: Sendable {
     let captureID: String
     let packageID: UUID
     let capturedAt: Date
-    let unsignedVideoURL: URL
-    let debugDepthPreviewVideoURL: URL?
+    let videoURL: URL
     let captureScoreSummary: CaptureScoreSummary
     let location: TAPPendingCaptureLocation?
 
@@ -19,16 +24,14 @@ nonisolated struct TAPPendingVideoCaptureArtifact: Sendable {
         captureID: String,
         packageID: UUID = UUID(),
         capturedAt: Date,
-        unsignedVideoURL: URL,
-        debugDepthPreviewVideoURL: URL? = nil,
+        videoURL: URL,
         captureScoreSummary: CaptureScoreSummary = .unknown,
         location: TAPPendingCaptureLocation? = nil
     ) {
         self.captureID = captureID
         self.packageID = packageID
         self.capturedAt = capturedAt
-        self.unsignedVideoURL = unsignedVideoURL
-        self.debugDepthPreviewVideoURL = debugDepthPreviewVideoURL
+        self.videoURL = videoURL
         self.captureScoreSummary = captureScoreSummary
         self.location = location
     }
@@ -62,6 +65,7 @@ actor TAPPendingCaptureStore {
     static let shared = TAPPendingCaptureStore()
 
     private let storage: TAPPendingCaptureBundleStorage
+    private var activeVideoCaptureIDs: Set<String> = []
 
     init(
         rootURL: URL = TAPPendingCaptureStore.defaultRootURL(),
@@ -71,6 +75,24 @@ actor TAPPendingCaptureStore {
             rootURL: rootURL,
             storagePolicy: storagePolicy
         )
+    }
+
+    func beginVideoCaptureWorkspace(captureID: String) throws -> TAPVideoRecordingWorkspace {
+        try storage.ensureRootDirectoryExists()
+        let workspaceURL = try storage.createFreshVideoCaptureWorkspace(captureID: captureID)
+        activeVideoCaptureIDs.insert(captureID)
+        return TAPVideoRecordingWorkspace(
+            captureID: captureID,
+            bundleURL: workspaceURL,
+            artifactURL: workspaceURL.appendingPathComponent(
+                TAPPendingCaptureBundlePathPolicy.videoArtifactFilename
+            )
+        )
+    }
+
+    func abortVideoCaptureWorkspace(captureID: String) throws {
+        defer { activeVideoCaptureIDs.remove(captureID) }
+        try storage.removeVideoCaptureWorkspace(captureID: captureID)
     }
 
     func ingest(_ artifact: PackagedCaptureArtifact) throws -> TAPPendingCaptureRecord {
@@ -140,29 +162,54 @@ actor TAPPendingCaptureStore {
         return record
     }
 
-    func ingestVideo(_ artifact: TAPPendingVideoCaptureArtifact) throws -> TAPPendingCaptureRecord {
+    func ingestVideo(
+        _ artifact: TAPPendingVideoCaptureArtifact,
+        terminalFailureCode: TAPPendingCaptureFailureCode? = nil
+    ) throws -> TAPPendingCaptureRecord {
         try storage.ensureRootDirectoryExists()
 
         let captureID = artifact.captureID
+        let workspaceURL = try storage.videoCaptureWorkspaceURL(captureID: captureID)
+        let expectedArtifactURL = workspaceURL.appendingPathComponent(
+            TAPPendingCaptureBundlePathPolicy.videoArtifactFilename
+        )
+        guard artifact.videoURL.standardizedFileURL == expectedArtifactURL.standardizedFileURL else {
+            throw TAPDepthCaptureError.invalidPendingCaptureBundlePath(
+                "video recorder output must be inside its pending capture workspace"
+            )
+        }
+        let manifest = try TAPVideoManifestBox.decodedManifest(fromFileAt: artifact.videoURL)
+        guard manifest.schema == TAPVideoManifest.Schema(),
+              manifest.payload.id == captureID,
+              UUID(uuidString: manifest.payload.packageID) == artifact.packageID else {
+            throw TAPDepthCaptureError.invalidTAPManifest("pending video identity does not match its manifest")
+        }
+        let hasRecordedDepth = manifest.payload.depthCoverage.sampleCount > 0
+            && manifest.payload.depthCoverage.trackID != nil
+            && manifest.payload.depthCoverage.format != nil
+        if hasRecordedDepth {
+            guard terminalFailureCode == nil else {
+                throw TAPDepthCaptureError.invalidTAPManifest(
+                    "video with recorded depth cannot enter a terminal ingest state"
+                )
+            }
+        } else {
+            guard terminalFailureCode == .missingDepthData else {
+                throw TAPDepthCaptureError.missingDepthData
+            }
+        }
         let finalURL = try storage.bundleURL(captureID: captureID)
         if storage.bundleExists(at: finalURL),
            let existing = try? readRecord(captureID: captureID) {
+            try? storage.removeVideoCaptureWorkspace(captureID: captureID)
+            activeVideoCaptureIDs.remove(captureID)
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.pendingCapture.info("store video ingest existing captureID=\(captureID, privacy: .private) status=\(existing.status.rawValue, privacy: .public) retryCount=\(existing.retryCount, privacy: .public)")
             #endif
             return existing
         }
 
-        let temporaryURL = storage.temporaryBundleURL()
-        try storage.createFreshTemporaryBundle(at: temporaryURL)
-        try storage.copyUnsignedVideo(from: artifact.unsignedVideoURL, to: temporaryURL)
-        let debugDepthPreviewVideoFilename: String?
-        if let debugDepthPreviewVideoURL = artifact.debugDepthPreviewVideoURL {
-            try storage.copyDebugDepthPreviewVideo(from: debugDepthPreviewVideoURL, to: temporaryURL)
-            debugDepthPreviewVideoFilename = TAPPendingCaptureBundlePathPolicy.debugDepthPreviewVideoFilename
-        } else {
-            debugDepthPreviewVideoFilename = nil
-        }
+        let byteCount = (try? artifact.videoURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
 
         let now = Date()
         let record = TAPPendingCaptureRecord(
@@ -171,32 +218,60 @@ actor TAPPendingCaptureStore {
             capturedAt: artifact.capturedAt,
             createdAt: now,
             updatedAt: now,
-            status: .pending,
+            status: terminalFailureCode == nil ? .pending : .failedTerminal,
             artifactKind: .tapVideo,
             captureScoreSummary: artifact.captureScoreSummary,
             unsignedPhotoFilename: nil,
             signedPhotoFilename: nil,
-            unsignedVideoFilename: TAPPendingCaptureBundlePathPolicy.unsignedVideoFilename,
-            signedVideoFilename: nil,
-            debugDepthPreviewVideoFilename: debugDepthPreviewVideoFilename,
+            videoArtifactFilename: TAPPendingCaptureBundlePathPolicy.videoArtifactFilename,
+            videoFormatRevision: 2,
+            videoArtifactState: .unsigned,
+            posterRevision: 1,
+            exportResourceFilename: PhotoLibraryWriter.tapVideoResourceFilename(
+                packageID: artifact.packageID
+            ),
+            failureCode: terminalFailureCode,
             pairedVideoFilename: nil,
             thumbnailFilename: nil,
             assetLocalIdentifier: nil,
-            failureReason: nil,
+            failureReason: terminalFailureCode == nil
+                ? nil
+                : TAPPendingCaptureFailureReasonPresentation.persistedFailureReason(
+                    for: .terminalFailure
+                ),
             retryCount: 0,
             location: artifact.location
         )
-        try storage.writeRecord(record, in: temporaryURL)
+        try storage.writeRecord(record, in: workspaceURL)
 
-        try storage.commitTemporaryBundle(at: temporaryURL, to: finalURL)
+        try storage.commitTemporaryBundle(at: workspaceURL, to: finalURL)
+        activeVideoCaptureIDs.remove(captureID)
         Self.postLibraryDidChange()
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        let byteCount = (try? Data(contentsOf: artifact.unsignedVideoURL).count) ?? 0
-        let depthPreviewByteCount = artifact.debugDepthPreviewVideoURL
-            .flatMap { try? Data(contentsOf: $0).count } ?? 0
-        TAPDiagnostics.pendingCapture.info("store video ingest created captureID=\(captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public) unsignedVideoBytes=\(byteCount, privacy: .public) hasDebugDepthPreview=\(debugDepthPreviewVideoFilename != nil, privacy: .public) debugDepthPreviewBytes=\(depthPreviewByteCount, privacy: .public)")
+        TAPDiagnostics.pendingCapture.info("store video ingest created captureID=\(captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public) videoBytes=\(byteCount, privacy: .public) formatRevision=2")
         #endif
         return record
+    }
+
+    /// On a fresh launch there are no in-memory owners, so any hidden video
+    /// workspace is an interrupted recording. During the same process active
+    /// capture IDs are excluded to avoid racing the recorder.
+    @discardableResult
+    func removeStaleVideoCaptureWorkspaces() throws -> Int {
+        var removedCount = 0
+        for workspaceURL in try storage.videoCaptureWorkspaceURLs() {
+            let name = workspaceURL.lastPathComponent
+            let captureID = String(name.dropFirst(
+                TAPPendingCaptureBundlePathPolicy.videoCaptureWorkspacePrefix.count
+            ))
+            guard !captureID.isEmpty,
+                  !activeVideoCaptureIDs.contains(captureID) else {
+                continue
+            }
+            try storage.removeVideoCaptureWorkspace(at: workspaceURL)
+            removedCount += 1
+        }
+        return removedCount
     }
 
     func ingestLockedCapture(_ lockedCapture: TAPPendingLockedCaptureImport) throws -> TAPPendingCaptureRecord {
@@ -290,6 +365,45 @@ actor TAPPendingCaptureStore {
         }
     }
 
+    func tapVideoRecordsMissingPoster() throws -> [TAPPendingCaptureRecord] {
+        try allRecords().filter { record in
+            guard record.artifactKind == .tapVideo,
+                  record.status != .exported,
+                  record.thumbnailFilename == nil,
+                  record.videoArtifactFilename != nil else {
+                return false
+            }
+            return (try? storage.videoURL(
+                filename: TAPPendingCaptureBundlePathPolicy.videoArtifactFilename,
+                captureID: record.captureID
+            )) != nil
+        }
+    }
+
+    func storeVideoPoster(
+        _ data: Data,
+        captureID: String,
+        posterRevision: Int
+    ) throws -> TAPPendingCaptureRecord {
+        guard posterRevision > 0 else {
+            throw TAPDepthCaptureError.invalidTAPManifest("video poster revision must be positive")
+        }
+        var record = try readRecord(captureID: captureID)
+        guard record.artifactKind == .tapVideo else {
+            throw TAPDepthCaptureError.invalidPendingCaptureBundlePath(
+                "video posters require a TAP video record"
+            )
+        }
+        let bundleURL = try storage.bundleURL(captureID: captureID)
+        try storage.writeThumbnail(data, to: bundleURL)
+        record.thumbnailFilename = TAPPendingCaptureBundlePathPolicy.thumbnailFilename
+        record.posterRevision = posterRevision
+        record.updatedAt = Date()
+        try storage.writeRecord(record)
+        Self.postLibraryDidChange()
+        return record
+    }
+
     func processingCandidates() throws -> [TAPPendingCaptureRecord] {
         try allRecords()
             .filter(\.isProcessingCandidate)
@@ -337,35 +451,16 @@ actor TAPPendingCaptureStore {
         try signedPhotoData(captureID: captureID)
     }
 
-    func unsignedVideoData(captureID: String) throws -> Data {
+    func videoArtifactURL(captureID: String) throws -> URL {
         let record = try readRecord(captureID: captureID)
-        guard let filename = record.unsignedVideoFilename else {
+        guard let filename = record.videoArtifactFilename else {
             throw TAPDepthCaptureError.pendingCaptureDataMissing
         }
-        return try storage.videoData(filename: filename, captureID: captureID)
-    }
-
-    func signedVideoData(captureID: String) throws -> Data {
-        let record = try readRecord(captureID: captureID)
-        guard let filename = record.signedVideoFilename else {
-            throw TAPDepthCaptureError.pendingCaptureDataMissing
-        }
-        return try storage.videoData(filename: filename, captureID: captureID)
+        return try storage.videoURL(filename: filename, captureID: captureID)
     }
 
     func bestAvailableVideoURL(captureID: String) throws -> URL {
-        let record = try readRecord(captureID: captureID)
-        if let filename = record.signedVideoFilename {
-            if let url = try storage.videoURLIfPresent(filename: filename, captureID: captureID) {
-                return url
-            }
-        }
-        if let filename = record.unsignedVideoFilename {
-            if let url = try storage.videoURLIfPresent(filename: filename, captureID: captureID) {
-                return url
-            }
-        }
-        throw TAPDepthCaptureError.pendingCaptureDataMissing
+        try videoArtifactURL(captureID: captureID)
     }
 
     func bestAvailablePhotoData(captureID: String) throws -> Data {
@@ -422,14 +517,22 @@ actor TAPPendingCaptureStore {
         captureID: String,
         status: TAPPendingCaptureStatus,
         failureReason: TAPPendingCaptureFailureReasonPresentation.Reason? = nil,
+        failureCode: TAPPendingCaptureFailureCode? = nil,
         incrementsRetryCount: Bool = false
     ) throws -> TAPPendingCaptureRecord {
         var record = try readRecord(captureID: captureID)
+        // Export is a durable terminal commit. A later cleanup or stale worker
+        // error must never put the record back on an export route and create a
+        // duplicate Photos asset.
+        guard record.status != .exported || status == .exported else {
+            return record
+        }
         record.status = status
         record.failureReason = TAPPendingCaptureFailureReasonPresentation.normalizedPersistedFailureReason(
             failureReason,
             status: status
         )
+        record.failureCode = status == .failedTerminal ? failureCode : nil
         record.updatedAt = Date()
         if incrementsRetryCount {
             record.retryCount += 1
@@ -497,44 +600,250 @@ actor TAPPendingCaptureStore {
         try storeSignedPhoto(data, captureID: captureID)
     }
 
-    func storeSignedVideo(_ data: Data, captureID: String) throws -> TAPPendingCaptureRecord {
+    func markVideoSigned(captureID: String) throws -> TAPPendingCaptureRecord {
         var record = try readRecord(captureID: captureID)
         guard record.artifactKind == .tapVideo else {
-            throw TAPDepthCaptureError.invalidPendingCaptureBundlePath("signed video can only be stored for TAP video artifacts")
+            throw TAPDepthCaptureError.invalidPendingCaptureBundlePath("video signing state requires a TAP video artifact")
         }
-        try storage.writeSignedVideo(data, captureID: captureID)
-        record.signedVideoFilename = TAPPendingCaptureBundlePathPolicy.signedVideoFilename
+        _ = try videoArtifactURL(captureID: captureID)
+        record.videoArtifactState = .signed
         record.status = .signed
         record.failureReason = nil
+        record.failureCode = nil
         record.updatedAt = Date()
         try storage.writeRecord(record)
         Self.postLibraryDidChange()
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.pendingCapture.info("store signedVideo stored captureID=\(captureID, privacy: .private) bytes=\(data.count, privacy: .public) status=\(record.status.rawValue, privacy: .public)")
+        TAPDiagnostics.pendingCapture.info("store video signed in place captureID=\(captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public)")
         #endif
         return record
     }
 
-    func markExported(captureID: String, assetLocalIdentifier: String) throws -> TAPPendingCaptureRecord {
+    func persistVideoPreSignContentBinding(
+        _ binding: CaptureContentBinding,
+        captureID: String
+    ) throws -> TAPPendingCaptureRecord {
         var record = try readRecord(captureID: captureID)
-        record.status = .exported
+        guard record.artifactKind == .tapVideo,
+              binding.captureID == captureID else {
+            throw TAPDepthCaptureError.invalidTAPManifest("video pre-sign binding identity mismatch")
+        }
+        if let existing = record.preSignContentBinding, existing != binding {
+            throw TAPDepthCaptureError.pendingCaptureProofExternalMutation
+        }
+        record.preSignContentBinding = binding
+        record.updatedAt = Date()
+        try storage.writeRecord(record)
+        Self.postLibraryDidChange()
+        return record
+    }
+
+    func markTerminalFailure(
+        captureID: String,
+        code: TAPPendingCaptureFailureCode,
+        assetLocalIdentifier: String? = nil
+    ) throws -> TAPPendingCaptureRecord {
+        var record = try readRecord(captureID: captureID)
+        record.status = .failedTerminal
+        record.failureCode = code
+        record.failureReason = TAPPendingCaptureFailureReasonPresentation.persistedFailureReason(
+            for: .terminalFailure
+        )
+        if let assetLocalIdentifier {
+            record.assetLocalIdentifier = assetLocalIdentifier
+        }
+        record.updatedAt = Date()
+        try storage.writeRecord(record)
+        Self.postLibraryDidChange()
+        return record
+    }
+
+    /// Persists safe-to-repeat export intent before any Photos asset creation
+    /// begins. A restart in this phase may validate and create again.
+    func markVideoPhotosExportIntent(
+        captureID: String
+    ) throws -> TAPPendingCaptureRecord {
+        var record = try readRecord(captureID: captureID)
+        guard record.artifactKind == .tapVideo,
+              record.videoArtifactState == .signed,
+              record.status != .failedTerminal,
+              record.status != .exported,
+              record.assetLocalIdentifier == nil else {
+            throw TAPDepthCaptureError.invalidPendingCaptureBundlePath(
+                "Photos export intent requires an uncommitted signed TAP video"
+            )
+        }
+        switch record.videoPhotosExportPhase {
+        case nil, .preCommitIntent:
+            record.videoPhotosExportPhase = .preCommitIntent
+        case .commitAmbiguous, .committed:
+            throw TAPDepthCaptureError.invalidPendingCaptureBundlePath(
+                "a TAP video beyond the Photos commit boundary cannot create again"
+            )
+        }
+        record.status = .exporting
+        record.failureReason = nil
+        record.failureCode = nil
+        record.updatedAt = Date()
+        try storage.writeRecord(record)
+        Self.postLibraryDidChange()
+        return record
+    }
+
+    /// Must be called immediately before entering Photos `performChanges`.
+    /// From this durable boundary onward, a missing completion callback is
+    /// commit-ambiguous and restart recovery may only probe/read back.
+    func markVideoPhotosCommitAmbiguous(
+        captureID: String
+    ) throws -> TAPPendingCaptureRecord {
+        var record = try readRecord(captureID: captureID)
+        guard record.artifactKind == .tapVideo,
+              record.videoArtifactState == .signed,
+              record.status != .failedTerminal,
+              record.status != .exported,
+              record.assetLocalIdentifier == nil else {
+            throw TAPDepthCaptureError.invalidPendingCaptureBundlePath(
+                "Photos commit boundary requires an uncommitted signed TAP video"
+            )
+        }
+        switch record.videoPhotosExportPhase {
+        case .preCommitIntent:
+            record.videoPhotosExportPhase = .commitAmbiguous
+        case .commitAmbiguous:
+            return record
+        case nil, .committed:
+            throw TAPDepthCaptureError.invalidPendingCaptureBundlePath(
+                "Photos commit boundary requires a persisted pre-commit intent"
+            )
+        }
+        record.status = .exporting
+        record.failureReason = nil
+        record.failureCode = nil
+        record.updatedAt = Date()
+        try storage.writeRecord(record)
+        Self.postLibraryDidChange()
+        return record
+    }
+
+    /// Persists the Photos identifier returned after the commit-ambiguous
+    /// boundary. Retries must only re-read this asset; they must never create a
+    /// second asset automatically.
+    func markVideoPhotosCommit(
+        captureID: String,
+        assetLocalIdentifier: String
+    ) throws -> TAPPendingCaptureRecord {
+        var record = try readRecord(captureID: captureID)
+        guard record.artifactKind == .tapVideo,
+              record.videoArtifactState == .signed,
+              !assetLocalIdentifier.isEmpty else {
+            throw TAPDepthCaptureError.invalidPendingCaptureBundlePath(
+                "Photos commit state requires a TAP video asset identifier"
+            )
+        }
+        if record.status == .exported {
+            guard record.assetLocalIdentifier == assetLocalIdentifier else {
+                throw TAPDepthCaptureError.invalidPendingCaptureBundlePath(
+                    "an exported TAP video Photos identifier cannot change"
+                )
+            }
+            return record
+        }
+        guard record.status != .failedTerminal else {
+            throw TAPDepthCaptureError.invalidPendingCaptureBundlePath(
+                "a terminal TAP video cannot re-enter Photos commit recovery"
+            )
+        }
+        if record.videoPhotosExportPhase == .committed {
+            guard record.assetLocalIdentifier == assetLocalIdentifier else {
+                throw TAPDepthCaptureError.invalidPendingCaptureBundlePath(
+                    "a TAP video Photos commit identifier cannot change"
+                )
+            }
+            return record
+        }
+        guard record.videoPhotosExportPhase == .commitAmbiguous else {
+            throw TAPDepthCaptureError.invalidPendingCaptureBundlePath(
+                "a TAP video Photos identifier requires the commit-ambiguous boundary"
+            )
+        }
+        if let existingAssetID = record.assetLocalIdentifier,
+           existingAssetID != assetLocalIdentifier {
+            throw TAPDepthCaptureError.invalidPendingCaptureBundlePath(
+                "a TAP video Photos commit identifier cannot change"
+            )
+        }
+        record.status = .exporting
+        record.videoPhotosExportPhase = .committed
         record.assetLocalIdentifier = assetLocalIdentifier
         record.failureReason = nil
+        record.failureCode = nil
+        record.updatedAt = Date()
+        try storage.writeRecord(record)
+        Self.postLibraryDidChange()
+        return record
+    }
+
+    func markExported(
+        captureID: String,
+        assetLocalIdentifier: String,
+        duplicateExportWarning: String? = nil
+    ) throws -> TAPPendingCaptureRecord {
+        var record = try readRecord(captureID: captureID)
+        record.status = .exported
+        if record.artifactKind == .tapVideo {
+            record.videoPhotosExportPhase = .committed
+        }
+        record.assetLocalIdentifier = assetLocalIdentifier
+        record.failureReason = nil
+        record.failureCode = nil
+        record.preSignContentBinding = nil
+        record.duplicateExportWarning = duplicateExportWarning
         record.location = nil
         record.updatedAt = Date()
         try storage.writeRecord(record)
-        try storage.cleanupLargeFiles(for: record)
+        // Return the exact persisted representation so a stale, idempotent
+        // Photos callback observes the same timestamp value after JSON
+        // round-trip instead of an in-memory sub-precision variant.
+        let persistedRecord = try readRecord(captureID: captureID)
+        do {
+            try storage.cleanupLargeFiles(for: persistedRecord)
+        } catch {
+            // The authoritative Photos readback has already passed and the
+            // exported state is persisted. Startup cleanup can retry local file
+            // removal; cleanup failure must not roll back the export commit.
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.pendingCapture.error(
+                "store exported cleanup deferred captureID=\(captureID, privacy: .private) error=\(TAPDiagnostics.describe(error), privacy: .public)"
+            )
+            #endif
+        }
         Self.postLibraryDidChange()
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.pendingCapture.info("store exported marked captureID=\(captureID, privacy: .private) assetID=\(assetLocalIdentifier, privacy: .private)")
         #endif
-        return record
+        return persistedRecord
     }
 
     func cleanupExportedLargeFiles() throws {
         for record in try allRecords() where record.status == .exported {
             try storage.cleanupLargeFiles(for: record)
         }
+    }
+
+    @discardableResult
+    func removeUnshippedLegacyVideoBundles() throws -> Int {
+        let legacyCaptureIDs = try allRecords().compactMap { record in
+            record.artifactKind == .tapVideo && record.videoFormatRevision != 2
+                ? record.captureID
+                : nil
+        }
+        for captureID in legacyCaptureIDs {
+            _ = try storage.removeBundle(captureID: captureID)
+        }
+        if !legacyCaptureIDs.isEmpty {
+            Self.postLibraryDidChange()
+        }
+        return legacyCaptureIDs.count
     }
 
     func removeRecord(captureID: String) throws {

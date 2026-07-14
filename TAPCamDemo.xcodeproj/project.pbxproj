@@ -11,6 +11,7 @@
 		F2A0A0052FA0000000000005 /* AppAttestKit in Frameworks */ = {isa = PBXBuildFile; productRef = F2A0A0042FA0000000000004 /* AppAttestKit */; };
 		F2A0B0032FB0000000000003 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = F2A0B0022FB0000000000002 /* ZIPFoundation */; };
 		F2A0B0052FB0000000000005 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = F2A0B0042FB0000000000004 /* ZIPFoundation */; };
+		F2C0C00330A0000000000003 /* CZstd in Frameworks */ = {isa = PBXBuildFile; productRef = F2C0C00230A0000000000002 /* CZstd */; };
 		F2E300022FC0000000000002 /* TAPCamLockedCameraControlExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = F2E200012FC0000000000001 /* TAPCamLockedCameraControlExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		F2E300032FC0000000000003 /* TAPCamLockedCameraCaptureExtension.appex in Embed ExtensionKit Extensions */ = {isa = PBXBuildFile; fileRef = F2E100012FC0000000000001 /* TAPCamLockedCameraCaptureExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
@@ -203,6 +204,7 @@
 			files = (
 				F2A0A0032FA0000000000003 /* AppAttestKit in Frameworks */,
 				F2A0B0032FB0000000000003 /* ZIPFoundation in Frameworks */,
+				F2C0C00330A0000000000003 /* CZstd in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -339,6 +341,7 @@
 			packageProductDependencies = (
 				F2A0A0022FA0000000000002 /* AppAttestKit */,
 				F2A0B0022FB0000000000002 /* ZIPFoundation */,
+				F2C0C00230A0000000000002 /* CZstd */,
 			);
 			productName = TAPCamDemo;
 			productReference = F2F5FDEF2F9B320F00F5071A /* TAPCamDemo.app */;
@@ -410,6 +413,7 @@
 			packageReferences = (
 				F2A0A0012FA0000000000001 /* XCRemoteSwiftPackageReference "AppAttestKit" */,
 				F2A0B0012FB0000000000001 /* XCRemoteSwiftPackageReference "ZIPFoundation" */,
+				F2C0C00130A0000000000001 /* XCLocalSwiftPackageReference "Packages/CZstd" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = F2F5FDF02F9B320F00F5071A /* Products */;
@@ -977,6 +981,13 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		F2C0C00130A0000000000001 /* XCLocalSwiftPackageReference "Packages/CZstd" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/CZstd;
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCRemoteSwiftPackageReference section */
 		F2A0A0012FA0000000000001 /* XCRemoteSwiftPackageReference "AppAttestKit" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -1016,6 +1027,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = F2A0B0012FB0000000000001 /* XCRemoteSwiftPackageReference "ZIPFoundation" */;
 			productName = ZIPFoundation;
+		};
+		F2C0C00230A0000000000002 /* CZstd */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F2C0C00130A0000000000001 /* XCLocalSwiftPackageReference "Packages/CZstd" */;
+			productName = CZstd;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

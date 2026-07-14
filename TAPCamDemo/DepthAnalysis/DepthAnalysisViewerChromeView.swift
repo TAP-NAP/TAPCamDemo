@@ -29,6 +29,7 @@ struct DepthAnalysisViewerChromeView: View {
             deleteAccessibilityLabel: "Delete photo",
             topSafeArea: topSafeArea,
             bottomSafeArea: bottomSafeArea,
+            bottomAccessory: EmptyView(),
             onBackTapped: onBackTapped,
             onShareTapped: onShareTapped,
             onModeTapped: { itemID in
@@ -42,7 +43,7 @@ struct DepthAnalysisViewerChromeView: View {
     }
 }
 
-struct DepthViewerChromeView: View {
+struct DepthViewerChromeView<BottomAccessory: View>: View {
     let selectedModeID: String
     let modeItems: [DepthViewerModeItem]
     @Binding var overlayOpacity: Double
@@ -52,6 +53,7 @@ struct DepthViewerChromeView: View {
     let deleteAccessibilityLabel: String
     let topSafeArea: CGFloat
     let bottomSafeArea: CGFloat
+    let bottomAccessory: BottomAccessory
     let onBackTapped: () -> Void
     let onShareTapped: () -> Void
     let onModeTapped: (String) -> Void
@@ -63,6 +65,7 @@ struct DepthViewerChromeView: View {
                 Button(action: onBackTapped) {
                     Image(systemName: "chevron.left")
                         .font(.headline.weight(.semibold))
+                        .dynamicTypeSize(.large)
                         .frame(width: 42, height: 42)
                         .background(.thinMaterial, in: Circle())
                         .overlay {
@@ -72,6 +75,7 @@ struct DepthViewerChromeView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Back to TAP Library")
+                .accessibilityIdentifier("tap.viewer.back")
                 .help("Back to TAP Library")
 
                 Spacer(minLength: 0)
@@ -80,6 +84,8 @@ struct DepthViewerChromeView: View {
             .padding(.top, ViewerChromeMetrics.backButtonTopPadding(topSafeArea: topSafeArea))
 
             Spacer(minLength: 0)
+
+            bottomAccessory
 
             if showsOpacityControl {
                 AnalysisOpacityControl(opacity: $overlayOpacity)
@@ -92,6 +98,7 @@ struct DepthViewerChromeView: View {
                 chromeActionButton(
                     systemImage: isSharePreparing ? "clock" : "square.and.arrow.up",
                     accessibilityLabel: shareAccessibilityLabel,
+                    accessibilityIdentifier: "tap.viewer.share",
                     foregroundStyle: .primary,
                     isEnabled: !isSharePreparing,
                     action: onShareTapped
@@ -110,6 +117,7 @@ struct DepthViewerChromeView: View {
                 chromeActionButton(
                     systemImage: "trash",
                     accessibilityLabel: deleteAccessibilityLabel,
+                    accessibilityIdentifier: "tap.viewer.delete",
                     foregroundStyle: .red,
                     action: onDeleteTapped
                 )
@@ -126,6 +134,7 @@ struct DepthViewerChromeView: View {
     private func chromeActionButton(
         systemImage: String,
         accessibilityLabel: String,
+        accessibilityIdentifier: String,
         foregroundStyle: Color,
         isEnabled: Bool = true,
         action: @escaping () -> Void
@@ -133,6 +142,7 @@ struct DepthViewerChromeView: View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .font(.callout.weight(.semibold))
+                .dynamicTypeSize(.large)
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(foregroundStyle)
                 .frame(width: 44, height: 44)
@@ -147,6 +157,7 @@ struct DepthViewerChromeView: View {
         .disabled(!isEnabled)
         .opacity(isEnabled ? 1 : 0.55)
         .accessibilityLabel(accessibilityLabel)
+        .accessibilityIdentifier(accessibilityIdentifier)
         .help(accessibilityLabel)
         .shadow(color: .black.opacity(0.16), radius: 12, y: 4)
     }
@@ -173,6 +184,7 @@ private struct AnalysisOpacityControl: View {
         HStack(spacing: 10) {
             Image(systemName: "photo")
                 .font(.caption.weight(.semibold))
+                .dynamicTypeSize(.large)
                 .symbolRenderingMode(.hierarchical)
 
             Slider(value: $opacity, in: 0...1)
@@ -180,6 +192,7 @@ private struct AnalysisOpacityControl: View {
 
             Image(systemName: "waveform.path.ecg.rectangle")
                 .font(.caption.monospacedDigit().weight(.semibold))
+                .dynamicTypeSize(.large)
                 .symbolRenderingMode(.hierarchical)
         }
         .padding(.horizontal, 12)

@@ -106,7 +106,7 @@ nonisolated struct TAPDepthPhotoFileWriteResult: Sendable {
 /// Minimal readback API for app-side verification and analysis.
 ///
 /// When the file lives in Photos, callers should first use
-/// `PhotoLibraryWriter.originalPhotoData(for:)` to obtain original resource
+/// `PhotoLibraryWriter.originalPhotoData(localIdentifier:)` to obtain original resource
 /// bytes, then pass those bytes into these functions. Reading a thumbnail or
 /// edited representation is not enough because Photos may transform metadata.
 nonisolated enum TAPDepthPhotoFileReader {

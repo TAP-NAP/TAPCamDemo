@@ -8,6 +8,7 @@
 @preconcurrency import AVFoundation
 import Combine
 import Foundation
+import Observation
 import Photos
 import UIKit
 
@@ -34,7 +35,8 @@ final class CameraViewModel: ObservableObject {
     @Published var isPausedForAnalysis = false
     @Published var nativePreviewAspectRatio = 3.0 / 4.0
     @Published var previewCropRectNormalized = CropRectNormalized.fullFrame
-    @Published var recentThumbnail: UIImage?
+    @Published var recentLibraryPresentation: RecentLibraryPresentation = .empty
+    @Published var recentLibraryFetchState: IdentifiedMediaFetchState<MediaPoster, MediaPoster>?
     @Published var latestCaptureDepthHint: CameraCaptureDepthHint?
     @Published var focusRuntimeEvent: CameraFocusRuntimeEvent?
     @Published var exposureRuntimeEvent: CameraExposureRuntimeEvent?
@@ -60,6 +62,9 @@ final class CameraViewModel: ObservableObject {
     let metricsStore = MetricsStore()
     let pendingCaptureStore: TAPPendingCaptureStore
     let pendingCaptureProcessor: TAPPendingCaptureProcessor
+    let libraryStore: LibraryMediaStore
+    let libraryMediaFetcher: any LibraryMediaFetching
+    let videoPosterGenerator: any LibraryVideoPosterGenerating
     let pipeline: CapturePipeline
     var activeSessionConfiguration: SessionConfigurationResult?
     var configurationGeneration = 0
@@ -70,9 +75,27 @@ final class CameraViewModel: ObservableObject {
     var videoDurationLimitTask: Task<Void, Never>?
     var videoThermalObserver: NSObjectProtocol?
     var recentLibraryPreviewRefreshTask: Task<Void, Never>?
+    var recentLibraryCoverTask: Task<Void, Never>?
+    var recentLibraryFetchGeneration: UInt64 = 0
+    var lastHandledLibrarySnapshotRevision: UInt64 = 0
 
     var session: AVCaptureSession {
         sessionController.session
+    }
+
+    var recentThumbnail: UIImage? {
+        recentLibraryPresentation.poster?.image
+    }
+
+    var recentLibraryStatusText: String? {
+        switch recentLibraryPresentation {
+        case .empty, .ready, .failed:
+            nil
+        case .resolving(_, let kind):
+            LibraryMediaCopy.preparing(kind)
+        case .loading(_, _, _, let progress):
+            LibraryMediaCopy.loadingFromICloud(progress: progress)
+        }
     }
 
     var isShutterSoundSuppressionSupported: Bool {
@@ -89,7 +112,7 @@ final class CameraViewModel: ObservableObject {
         isVideoRecording
             || (!isPreparingVideoMode
                 && !isPausedForAnalysis
-                && activeSessionConfiguration != nil
+                && activeSessionConfiguration?.depthDeliverySupported == true
                 && pendingJobCount < CaptureJobQueue.defaultMaximumPendingJobs)
     }
 
@@ -148,12 +171,19 @@ final class CameraViewModel: ObservableObject {
         capabilityMatrix: CapabilityMatrix = CameraCapabilityResolver.discover(),
         sessionController: CaptureSessionController = CaptureSessionController(),
         pendingCaptureStore: TAPPendingCaptureStore = .shared,
-        pendingCaptureProcessor: TAPPendingCaptureProcessor = .shared
+        pendingCaptureProcessor: TAPPendingCaptureProcessor = .shared,
+        libraryStore: LibraryMediaStore,
+        libraryMediaFetcher: any LibraryMediaFetching = PhotoKitLibraryMediaFetcher(),
+        videoPosterGenerator: any LibraryVideoPosterGenerating = AVAssetLibraryVideoPosterGenerator()
     ) {
         self.capabilityMatrix = capabilityMatrix
         self.sessionController = sessionController
         self.pendingCaptureStore = pendingCaptureStore
         self.pendingCaptureProcessor = pendingCaptureProcessor
+        self.libraryStore = libraryStore
+        self.libraryMediaFetcher = libraryMediaFetcher
+        self.videoPosterGenerator = videoPosterGenerator
+        self.lastHandledLibrarySnapshotRevision = libraryStore.snapshot.revision
         self.focalLengthOptions = capabilityMatrix.focalLengthOptions()
         #if DEBUG
         self.debugDepthDeviceOptions = capabilityMatrix.debugDepthDeviceOptions()
@@ -177,6 +207,29 @@ final class CameraViewModel: ObservableObject {
                 self?.exposureRuntimeEvent = CameraExposureRuntimeEvent(
                     kind: CameraExposureRuntimeEvent.Kind(captureSessionEvent: event)
                 )
+            }
+        }
+        beginObservingLibraryMediaStore()
+    }
+
+    private func beginObservingLibraryMediaStore() {
+        withObservationTracking {
+            _ = libraryStore.snapshot.revision
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self else {
+                    return
+                }
+                self.beginObservingLibraryMediaStore()
+                let revision = self.libraryStore.snapshot.revision
+                guard revision != self.lastHandledLibrarySnapshotRevision else {
+                    return
+                }
+                self.lastHandledLibrarySnapshotRevision = revision
+                self.recentLibraryCoverTask?.cancel()
+                self.recentLibraryCoverTask = Task { @MainActor [weak self] in
+                    await self?.loadRecentLibraryCoverFromCanonicalSnapshot()
+                }
             }
         }
     }
@@ -219,6 +272,9 @@ final class CameraViewModel: ObservableObject {
     func stop() {
         recentLibraryPreviewRefreshTask?.cancel()
         recentLibraryPreviewRefreshTask = nil
+        recentLibraryCoverTask?.cancel()
+        recentLibraryCoverTask = nil
+        recentLibraryFetchGeneration &+= 1
         isConfiguringSession = false
         isPausedForAnalysis = false
         isPreparingVideoMode = false
@@ -228,6 +284,9 @@ final class CameraViewModel: ObservableObject {
     func pauseForAnalysis() {
         recentLibraryPreviewRefreshTask?.cancel()
         recentLibraryPreviewRefreshTask = nil
+        recentLibraryCoverTask?.cancel()
+        recentLibraryCoverTask = nil
+        recentLibraryFetchGeneration &+= 1
         configurationGeneration += 1
         isConfiguringSession = false
         isPreparingVideoMode = false

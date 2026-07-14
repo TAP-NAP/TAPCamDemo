@@ -12,9 +12,9 @@ enum AnalysisViewerTool: String, CaseIterable, Identifiable, Equatable {
     case twoD
     case threeD
 
-    var id: String { rawValue }
+    nonisolated var id: String { rawValue }
 
-    var title: String {
+    nonisolated var title: String {
         switch self {
         case .raw:
             "RAW"
@@ -25,7 +25,7 @@ enum AnalysisViewerTool: String, CaseIterable, Identifiable, Equatable {
         }
     }
 
-    var accessibilityLabel: String {
+    nonisolated var accessibilityLabel: String {
         switch self {
         case .raw:
             "Raw photo"
@@ -36,7 +36,7 @@ enum AnalysisViewerTool: String, CaseIterable, Identifiable, Equatable {
         }
     }
 
-    var systemImage: String {
+    nonisolated var systemImage: String {
         switch self {
         case .raw:
             "photo"

@@ -10,6 +10,7 @@ import Testing
 import UIKit
 @testable import TAPCamDemo
 
+@Suite(.serialized)
 struct TAPDepthAnalysisPresentationTests {
     @Test func analysisViewModesAllPublishUserFacingExplanations() throws {
         for viewMode in DepthAnalysisViewMode.allCases {
@@ -182,6 +183,85 @@ struct TAPDepthAnalysisPresentationTests {
         #expect(AnalysisViewerTool.twoD.accessibilityLabel == "2D analysis")
         #expect(AnalysisViewerTool.threeD.accessibilityLabel == "3D projection")
         #expect(AnalysisViewerTool.allCases.map(\.systemImage) == ["photo", "square.on.square", "cube"])
+
+        let modeItems = AnalysisViewerTool.allCases.map(\.modeItem)
+        #expect(modeItems.map(\.id) == ["raw", "twoD", "threeD"])
+        #expect(modeItems.map(\.accessibilityIdentifier) == [
+            "tap.viewer.mode.raw",
+            "tap.viewer.mode.2d",
+            "tap.viewer.mode.3d"
+        ])
+        #expect(modeItems.allSatisfy { $0.isEnabled })
+    }
+
+    @Test func videoViewerModesKeepPhotoOrderAndFailClosedAvailability() throws {
+        let registeredDescriptor = TAPVideoDepthRegistrationDescriptor(
+            schemaID: "test.registered-rgb-presentation",
+            rgbPresentationWidth: 1,
+            rgbPresentationHeight: 1,
+            mapping: .preRegisteredRGBPresentation
+        )
+        let availableItems = TAPVideoViewerModePolicy.items(
+            availability: .available(registeredDescriptor),
+            selectedTool: .raw,
+            isTwoDPlaybackReady: false
+        )
+
+        #expect(availableItems.map(\.id) == ["raw", "twoD", "threeD"])
+        #expect(availableItems.map(\.accessibilityIdentifier) == [
+            "tap.viewer.mode.raw",
+            "tap.viewer.mode.2d",
+            "tap.viewer.mode.3d"
+        ])
+        #expect(availableItems.map(\.accessibilityLabel) == [
+            "Raw video",
+            "2D analysis",
+            "3D projection"
+        ])
+        #expect(availableItems.map(\.isEnabled) == [true, true, false])
+        #expect(availableItems.map(\.accessibilityValue) == [
+            "Selected",
+            "Available",
+            "Unavailable for video"
+        ])
+
+        let readyTwoDItems = TAPVideoViewerModePolicy.items(
+            availability: .available(registeredDescriptor),
+            selectedTool: .twoD,
+            isTwoDPlaybackReady: true
+        )
+        #expect(readyTwoDItems[1].accessibilityValue == "Selected, Ready")
+
+        let unavailableItems = TAPVideoViewerModePolicy.items(
+            availability: .unavailable,
+            selectedTool: .raw,
+            isTwoDPlaybackReady: false
+        )
+        #expect(unavailableItems.map(\.isEnabled) == [true, false, false])
+        #expect(unavailableItems[1].accessibilityValue == "Registered depth unavailable")
+
+        let incompleteDescriptor = TAPVideoDepthRegistrationDescriptor(
+            schemaID: "test.incomplete",
+            rgbPresentationWidth: 0,
+            rgbPresentationHeight: 0,
+            mapping: .preRegisteredRGBPresentation
+        )
+        let incompleteItems = TAPVideoViewerModePolicy.items(
+            availability: .available(incompleteDescriptor),
+            selectedTool: .raw,
+            isTwoDPlaybackReady: false
+        )
+        #expect(incompleteItems.map(\.isEnabled) == [true, false, false])
+    }
+
+    @Test func videoTransportTreatsBufferingAsActivePlaybackIntent() {
+        #expect(!TAPVideoPlaybackTransportPolicy.hasActivePlaybackIntent(status: .paused))
+        #expect(TAPVideoPlaybackTransportPolicy.hasActivePlaybackIntent(status: .playing))
+        #expect(
+            TAPVideoPlaybackTransportPolicy.hasActivePlaybackIntent(
+                status: .waitingToPlayAtSpecifiedRate
+            )
+        )
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
@@ -191,7 +271,11 @@ struct TAPDepthAnalysisPresentationTests {
         )
 
         #expect(controlsSource.contains("DepthViewerModeCapsule"))
-        #expect(controlsSource.contains("Image(systemName: systemImage)"))
+        #expect(controlsSource.contains("Image(systemName: item.systemImage)"))
+        #expect(controlsSource.contains(".disabled(!item.isEnabled)"))
+        #expect(controlsSource.contains(".opacity(item.isEnabled ? 1 : 0.35)"))
+        #expect(controlsSource.contains(".accessibilityAddTraits(isSelected ? .isSelected : [])"))
+        #expect(controlsSource.contains("button.accessibilityIdentifier(accessibilityIdentifier)"))
         #expect(!controlsSource.contains("square.and.arrow.up"))
         #expect(!controlsSource.contains("trash"))
         #expect(!controlsSource.contains("Text(tool.title)"))
@@ -210,6 +294,10 @@ struct TAPDepthAnalysisPresentationTests {
         #expect(chromeSource.contains("DepthViewerModeCapsule("))
         #expect(chromeSource.contains("HStack(alignment: .center"))
         #expect(chromeSource.contains("Circle()"))
+        #expect(chromeSource.contains(#".accessibilityIdentifier("tap.viewer.back")"#))
+        #expect(chromeSource.contains(#"accessibilityIdentifier: "tap.viewer.share""#))
+        #expect(chromeSource.contains(#"accessibilityIdentifier: "tap.viewer.delete""#))
+        #expect(chromeSource.contains("bottomAccessory: EmptyView()"))
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
@@ -405,44 +493,99 @@ struct TAPDepthAnalysisPresentationTests {
         #expect(analysisSource.contains("AnalysisLivePhotoBadgeOverlay"))
         #expect(analysisSource.contains("DepthAnalysisLivePhotoBadge(size: .viewer)"))
         #expect(analysisSource.contains("centeredToolContainerRect"))
-        #expect(itemProviderSource.contains("asset.mediaSubtypes.contains(.photoLive)"))
+        #expect(itemProviderSource.contains("return asset.isLivePhoto && !asset.isVideo"))
         #expect(itemProviderSource.contains("record.pairedVideoFilename != nil"))
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func videoDepthPlaybackDefaultsToPhotoStyleTwoDOverlayHeatmap() throws {
+    func videoDepthPlaybackUsesSharedChromeOwnedTransportAndBoundedRegisteredOverlay() throws {
         let videoSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/DepthAnalysis/TAPVideoDepthPlaybackView.swift"
+        )
+        let supportSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/TAPVideoDepthPlaybackSupport.swift"
+        )
+        let controlsSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisControlsView.swift"
+        )
+        let chromeSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisViewerChromeView.swift"
         )
         let albumSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/DepthAnalysis/DepthAlbumPickerView.swift"
         )
+        let fixtureHarnessSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/TAPVideoPlaybackFixtureHarness.swift"
+        )
+        let appInfoPlist = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo-Info.plist"
+        )
 
-        #expect(videoSource.contains("@State private var selectedLayer = TAPVideoPlaybackLayer.twoD"))
+        #expect(videoSource.contains("@State private var selectedTool = AnalysisViewerTool.raw"))
         #expect(videoSource.contains("@State private var depthOverlayOpacity = 0.58"))
-        #expect(videoSource.contains("case twoD"))
-        #expect(videoSource.contains(#""2D video""#))
-        #expect(!videoSource.contains(#""Overlay""#))
-        #expect(!videoSource.contains(#""Depth""#))
-        #expect(videoSource.contains("TAPSystemVideoPlayerView("))
-        #expect(videoSource.contains("AVPlayerViewController"))
-        #expect(videoSource.contains("controlsBottomInset: systemControlsBottomInset"))
-        #expect(videoSource.contains("controller.additionalSafeAreaInsets.bottom = max(0, controlsBottomInset)"))
-        #expect(videoSource.contains("controller.videoGravity = .resizeAspect"))
-        #expect(videoSource.contains("TAPVideoPlaybackContentLayout.systemControlsBottomInset("))
-        #expect(videoSource.contains("playerView(systemControlsBottomInset: systemControlsBottomInset)"))
-        #expect(!videoSource.contains("VideoPlayer(player: player)"))
-        #expect(!videoSource.contains("TAPVideoPlaybackContentLayout.contentFrame("))
-        #expect(!videoSource.contains(".position(x: contentFrame.midX, y: contentFrame.midY)"))
-        #expect(videoSource.contains("baseBottomChromeClearance"))
-        #expect(videoSource.contains("opacityControlClearance"))
-        #expect(videoSource.contains(".opacity(depthOverlayOpacity)"))
         #expect(videoSource.contains("DepthViewerChromeView("))
-        #expect(videoSource.contains("modeItems: TAPVideoPlaybackLayer.allCases.map(\\.modeItem)"))
-        #expect(videoSource.contains("showsOpacityControl: selectedLayer == .twoD"))
+        #expect(videoSource.contains("TAPVideoViewerModePolicy.items("))
+        #expect(videoSource.contains("bottomAccessory: TAPVideoPlaybackTransportView(player: player)"))
+        #expect(videoSource.contains("noticeContentMaxWidth(availableWidth: availableWidth)"))
+        #expect(videoSource.contains(".frame(width: viewportSize.width, height: viewportSize.height)"))
+        #expect(videoSource.contains("TAPVideoPlayerSurfaceView("))
+        #expect(videoSource.contains("cancelActiveFetchForBackground()"))
+        #expect(videoSource.contains("guard viewModel.hasActiveMediaFetch"))
+        #expect(videoSource.contains("UIApplication.willEnterForegroundNotification"))
+        #expect(videoSource.contains("resumeCanceledFetchAfterBackground()"))
+        #expect(videoSource.contains("shouldResumeFetchAfterBackground = true"))
+        #expect(videoSource.contains("tool != .threeD"))
+        #expect(videoSource.contains("tool == .raw || viewModel.isRegisteredDepthAvailable"))
+        #expect(!videoSource.contains("TAPVideoPlaybackTopChromeView"))
+        #expect(!videoSource.contains("TAPSystemVideoPlayerView"))
+        #expect(supportSource.contains("AVPlayerLayer"))
+        #expect(supportSource.contains("UIViewRepresentable"))
+        #expect(supportSource.contains("AVPlayerLayer.self"))
+        #expect(supportSource.contains("playerLayer.videoGravity = .resizeAspect"))
+        #expect(supportSource.contains("overlaySurfaceView.frame = playerLayer.videoRect"))
+        #expect(supportSource.contains("AVPictureInPictureController(playerLayer: playerLayer)"))
+        #expect(supportSource.contains("overlayStore.attach(self)"))
+        #expect(supportSource.contains("overlayStore.detach(self)"))
+        #expect(!supportSource.contains("AVPlayerViewController"))
+        #expect(!supportSource.contains("showsPlaybackControls"))
+        #expect(!supportSource.contains("contentOverlayView"))
+        #expect(!supportSource.contains("UIHostingController"))
+        #expect(supportSource.contains("isUserInteractionEnabled = false"))
+        #expect(!supportSource.contains("additionalSafeAreaInsets"))
+        #expect(!videoSource.contains("VideoPlayer(player: player)"))
+        #expect(chromeSource.contains(#".accessibilityIdentifier("tap.viewer.back")"#))
+        #expect(chromeSource.contains(#"accessibilityIdentifier: "tap.viewer.share""#))
+        #expect(chromeSource.contains(#"accessibilityIdentifier: "tap.viewer.delete""#))
+        #expect(controlsSource.contains(#""tap.viewer.mode.raw""#))
+        #expect(controlsSource.contains(#""tap.viewer.mode.2d""#))
+        #expect(controlsSource.contains(#""tap.viewer.mode.3d""#))
+        #expect(videoSource.contains(#""tap.video.playback.transport.playPause""#))
+        #expect(videoSource.contains(#""tap.video.playback.transport.scrubber""#))
+        #expect(videoSource.contains(#""tap.video.playback.transport.elapsed""#))
+        #expect(videoSource.contains(#""tap.video.playback.transport.duration""#))
+        #expect(videoSource.contains("confirmedElapsedSeconds"))
+        #expect(videoSource.contains("let didFinish = await player.seek("))
+        #expect(videoSource.contains("generation == seekGeneration"))
+        #expect(videoSource.contains("seekTask = Task { @MainActor [weak self] in"))
+        #expect(videoSource.contains("model.invalidate()"))
+        #expect(videoSource.contains("ownsPlaybackAudioSession"))
+        #expect(videoSource.contains("status != .paused"))
+        #expect(videoSource.contains("session.setCategory(.playback, mode: .moviePlayback)"))
+        #expect(videoSource.contains("session.setActive(true)"))
+        #expect(appInfoPlist.contains("<key>UIBackgroundModes</key>"))
+        #expect(appInfoPlist.contains("<string>audio</string>"))
+        #expect(videoSource.contains("metadataOutput.attach(to: item)"))
+        #expect(videoSource.contains("metadataOutput.detach()"))
+        #expect(videoSource.contains("guard isTwoDPresentationRequested,"))
+        #expect(videoSource.contains("depthFrameCache.clear()"))
+        #expect(videoSource.contains("currentDepthFrameTimeSeconds = nil"))
+        #expect(videoSource.contains(#"beginTwoDReadiness(outcomeForPreviousAttempt: "memory-warning")"#))
+        #expect(videoSource.contains("requestCurrentDepthProbe(playbackTimeSeconds: currentTimeSeconds)"))
+        #expect(!videoSource.contains("baseBottomChromeClearance"))
+        #expect(!videoSource.contains("opacityControlClearance"))
         #expect(videoSource.contains("viewModel.prepareTwoDPlaybackGate()"))
         #expect(videoSource.contains("isPreparingTwoDPlayback"))
-        #expect(videoSource.contains("twoDPlaybackGateNanoseconds: UInt64 = 2_000_000_000"))
+        #expect(!videoSource.contains("twoDPlaybackGateNanoseconds"))
         #expect(videoSource.contains("Preparing 2D playback"))
         #expect(videoSource.contains("preferredTwoDBufferDurationSeconds: TimeInterval = 3"))
         #expect(videoSource.contains("player.currentItem?.preferredForwardBufferDuration = Self.preferredTwoDBufferDurationSeconds"))
@@ -455,21 +598,27 @@ struct TAPDepthAnalysisPresentationTests {
         #expect(albumSource.contains("TAPVideoAlbumContext("))
         #expect(albumSource.contains("updatePresentedVideoRoute(entry)"))
         #expect(albumSource.contains(".id(selectedVideoRoute.itemID)"))
+        #expect(fixtureHarnessSource.contains("NavigationStack"))
+        #expect(fixtureHarnessSource.contains(".navigationDestination(isPresented: isArtifactPresented)"))
+        #expect(!fixtureHarnessSource.contains(".fullScreenCover(item: $presentedArtifact)"))
         #expect(!videoSource.contains("Picker(\"Playback layer\""))
         #expect(!videoSource.contains("layerPicker"))
-        #expect(!videoSource.contains("playbackControls"))
-        #expect(!videoSource.contains("viewModel.togglePlayback()"))
-        #expect(!videoSource.contains("Text(viewModel.timecodeText)"))
-        #expect(!videoSource.contains("ProgressView(value: viewModel.playbackProgress)"))
+        #expect(videoSource.contains("TAPVideoPlaybackTransportView"))
+        #expect(videoSource.contains("player.play()"))
+        #expect(videoSource.contains("player.pause()"))
+        #expect(videoSource.contains("player.seek("))
         #expect(videoSource.contains("AVPlayerItemMetadataOutput(identifiers: [Self.depthMetadataIdentifierRawValue])"))
-        #expect(videoSource.contains("depthMetadataAdvanceIntervalSeconds: TimeInterval = 2"))
-        #expect(videoSource.contains("output.advanceIntervalForDelegateInvocation = Self.depthMetadataAdvanceIntervalSeconds"))
+        #expect(supportSource.contains("maximumRetainedFrameBytes = 24 * 1024 * 1024"))
+        #expect(supportSource.contains("maximumConcurrentDecodes = 2"))
+        #expect(supportSource.contains("failSafeFrameStaleToleranceSeconds: TimeInterval = 0.1"))
+        #expect(supportSource.contains("nominalDepthFrameIntervalSeconds * 2"))
+        #expect(videoSource.contains("output.advanceIntervalForDelegateInvocation = TAPVideoDepthPlaybackBudget.metadataAdvanceIntervalSeconds"))
         #expect(videoSource.contains("output.setDelegate(self, queue: metadataQueue)"))
         #expect(videoSource.contains("Task.detached(priority: .userInitiated)"))
         #expect(videoSource.contains("item.load(.dataValue)"))
-        #expect(videoSource.contains("decodeQueue = DispatchQueue("))
-        #expect(videoSource.contains("TAPVideoDepthDecodeBackpressure"))
-        #expect(videoSource.contains("maxPendingDepthDecodeCount = 90"))
+        #expect(supportSource.contains("TAPVideoDepthDecodeAdmission"))
+        #expect(!videoSource.contains("TAPVideoDepthDecodeBackpressure"))
+        #expect(!videoSource.contains("maxPendingDepthDecodeCount"))
         #expect(videoSource.contains("tap_video_depth_pipeline_backpressure_drop"))
         #expect(videoSource.contains("tap_video_depth_pipeline_miss"))
         #expect(videoSource.contains("CMTimeGetSeconds(group.timeRange.start)"))
@@ -483,16 +632,35 @@ struct TAPDepthAnalysisPresentationTests {
         #expect(videoSource.contains("prerollIfReady(player: player)"))
         #expect(videoSource.contains("player.preroll(atRate: 1)"))
         #expect(!videoSource.contains("state = .ready\n            play()"))
-        #expect(videoSource.contains("TAPVideoManifestBox.decodedManifest(from: data)"))
-        #expect(videoSource.contains("manifest.payload.rgbTrack.width"))
-        #expect(videoSource.contains("TAPVideoDepthDisplayOrientation.displaySize"))
+        #expect(videoSource.contains("TAPVideoManifestBox.decodedManifest(fromFileAt: fileURL)"))
+        #expect(videoSource.contains("registrationAdapter.registrationDescriptor(for: manifest)"))
+        #expect(supportSource.contains("Calibration presence alone never enables an overlay"))
+        #expect(supportSource.contains("return nil"))
         #expect(videoSource.contains("manifest.payload.rgbTrack.transform"))
-        #expect(videoSource.contains("videoAspectRatio"))
-        #expect(videoSource.contains("asset.loadTracks(withMediaType: .video)"))
+        #expect(!videoSource.contains("@Published private(set) var depthFrameImage"))
+        #expect(!videoSource.contains("videoAspectRatio"))
         #expect(videoSource.contains("TAPVideoDepthDisplayOrientation.cgImageOrientation"))
-        #expect(videoSource.contains("TAPMetricDepthMap(width: width, height: height, samples: values, calibration: nil)"))
-        #expect(videoSource.contains("TAPDepthHeatmapRenderer.heatmap(for: depthMap)"))
+        #expect(!videoSource.contains("TAPMetricDepthMap(width: width, height: height, samples: values, calibration: nil)"))
+        #expect(videoSource.contains("encodedFrame.decodedPackedBytes()"))
         #expect(videoSource.contains("orientation: displayOrientation.uiImageOrientation"))
+        #expect(supportSource.contains("TAPVideoDepthMetalOverlayView"))
+        #expect(supportSource.contains("MTLCreateSystemDefaultDevice()"))
+        #expect(supportSource.contains("CIContext(mtlDevice: device)"))
+        #expect(supportSource.contains("\\.isExternalPlaybackActive"))
+        #expect(videoSource.contains("@AppStorage(\"tap.video.playback.didExplainSystemRGBFallback\")"))
+        #expect(videoSource.contains("systemPlaybackNotice"))
+        #expect(videoSource.contains("AirPlay show RAW video"))
+        #expect(videoSource.contains(".allowsHitTesting(false)"))
+        #expect(videoSource.contains("TAPVideoPerformanceTrace.beginPlayerOpen"))
+        #expect(videoSource.contains("TAPVideoPerformanceTrace.beginTwoDReadiness"))
+        #expect(videoSource.contains("TAPVideoPerformanceTrace.beginDepthDecode"))
+        #expect(videoSource.contains("TAPVideoPerformanceTrace.emitPlaybackGapCleared"))
+        #expect(videoSource.contains("depthGapNotice"))
+        #expect(videoSource.contains("video.depth.gap"))
+        #expect(videoSource.contains("metadataOutput?.detach()"))
+        #expect(videoSource.contains("player?.replaceCurrentItem(with: nil)"))
+        #expect(videoSource.contains("player = nil"))
+        #expect(videoSource.contains("FileManager.default.removeItem(at: temporaryDirectoryURL)"))
         #expect(!videoSource.contains("depth-preview.mp4"))
     }
 
@@ -752,7 +920,7 @@ struct TAPDepthAnalysisPresentationTests {
         #expect(abs(restoredFirstSlot.planeSelection.strictness - 0.9) < 0.0001)
     }
 
-    @Test @MainActor func analysisCarouselStoreLoadsDisplayBeforeCurrentAnalysis() async throws {
+    @Test @MainActor func analysisCarouselStoreLoadsCurrentOriginalAndAdjacentThumbnails() async throws {
         let first = try analysisAlbumEntry(id: "first", source: .photosAsset("asset-first"))
         let second = try analysisAlbumEntry(id: "second", source: .photosAsset("asset-second"))
         let third = try analysisAlbumEntry(id: "third", source: .photosAsset("asset-third"))
@@ -791,22 +959,16 @@ struct TAPDepthAnalysisPresentationTests {
         )
 
         store.ensureVisibleWindowLoaded(pixelLength: 80)
-        try await waitForLoaderEvents(events, thumbnailCount: 3, displayCount: 3, inputCount: 0)
+        try await waitForLoaderEvents(events, thumbnailCount: 3, displayCount: 1, inputCount: 1)
 
         var snapshot = await events.snapshot()
         #expect(Set(snapshot.thumbnails) == ["photos:asset-first", "photos:asset-second", "photos:asset-third"])
-        #expect(Set(snapshot.displays) == ["photos:asset-first", "photos:asset-second", "photos:asset-third"])
-        #expect(snapshot.inputs.isEmpty)
-
-        store.ensureVisibleWindowLoaded(pixelLength: 80, loadCurrentAnalysis: true)
-        try await waitForLoaderEvents(events, thumbnailCount: 3, displayCount: 3, inputCount: 1)
-
-        snapshot = await events.snapshot()
+        #expect(snapshot.displays == ["photos:asset-second"])
         #expect(snapshot.inputs == ["photos:asset-second"])
 
-        let movedEntry = try #require(store.move(offset: 1, loadCurrentAnalysis: true))
+        let movedEntry = try #require(store.move(offset: 1))
         #expect(movedEntry.id == third.id)
-        try await waitForLoaderEvents(events, thumbnailCount: 4, displayCount: 4, inputCount: 2)
+        try await waitForLoaderEvents(events, thumbnailCount: 4, displayCount: 2, inputCount: 2)
 
         snapshot = await events.snapshot()
         #expect(Set(snapshot.thumbnails) == [
@@ -815,13 +977,13 @@ struct TAPDepthAnalysisPresentationTests {
             "photos:asset-third",
             "photos:asset-fourth"
         ])
-        #expect(Set(snapshot.displays) == [
-            "photos:asset-first",
-            "photos:asset-second",
-            "photos:asset-third",
-            "photos:asset-fourth"
-        ])
+        #expect(snapshot.displays == ["photos:asset-second", "photos:asset-third"])
         #expect(snapshot.inputs == ["photos:asset-second", "photos:asset-third"])
+        let previousSlot = store.slot(for: DepthAnalysisCarouselEntry(albumEntry: second))
+        let currentSlot = store.slot(for: DepthAnalysisCarouselEntry(albumEntry: third))
+        try await waitForCondition { currentSlot.input != nil }
+        #expect(previousSlot.input == nil)
+        #expect(currentSlot.input != nil)
     }
 
     @Test @MainActor func analysisPhotoSlotPublishesThumbnailProgressAndDecodedInput() async throws {
@@ -853,6 +1015,238 @@ struct TAPDepthAnalysisPresentationTests {
         #expect(slot.displayPhoto?.image.size == thumbnail.size)
         #expect(slot.input?.depthMap.width == 2)
         #expect(slot.loadProgress == nil)
+    }
+
+    @Test @MainActor func currentPhotoKeepsDisplayPreviewDuringICloudOriginalDownload() async throws {
+        let image = try singlePixelUIImage()
+        let depthMap = TAPMetricDepthMap(
+            width: 2,
+            height: 2,
+            samples: [1, 1, 1, 1],
+            calibration: TAPCamDemoTestFixtures.sampleCalibration
+        )
+        let input = try TAPCamDemoTestFixtures.analysisInput(depthMap: depthMap)
+        let loader = DepthAnalysisProgressivePhotoLoader(
+            thumbnailLoader: { _, _ in image },
+            displayLoader: { _, _ in AnalysisDisplayPhoto(image: image) },
+            inputLoader: { _, progress in
+                await progress(0.42)
+                try await Task.sleep(nanoseconds: 300_000_000)
+                return input
+            }
+        )
+        let slot = AnalysisPhotoSlot(
+            entry: DepthAnalysisCarouselEntry(source: .photosAsset("icloud-original"))
+        )
+
+        slot.ensureLoading(loader: loader, pixelLength: 80, priority: .userInitiated)
+        try await waitForCondition {
+            guard slot.displayPhoto != nil,
+                  case .downloadingFromICloud(let hasPreview, let progress) = slot.mediaFetchPhase else {
+                return false
+            }
+            return hasPreview == true && progress == 0.42
+        }
+
+        #expect(slot.displayPhoto?.image.size == image.size)
+        #expect(slot.input == nil)
+        try await waitForCondition { slot.input != nil }
+        #expect(slot.mediaFetchPhase == .ready(true))
+    }
+
+    @Test @MainActor func livePhotoProgressAggregatesWithReadyOriginalAndCanonicalIdentity() async throws {
+        let image = try singlePixelUIImage()
+        let loader = DepthAnalysisProgressivePhotoLoader(
+            thumbnailLoader: { _, _ in image },
+            displayLoader: { _, _ in AnalysisDisplayPhoto(image: image) },
+            inputLoader: { _, _ in throw CancellationError() }
+        )
+        let slot = AnalysisPhotoSlot(
+            entry: DepthAnalysisCarouselEntry(source: .photosAsset("live-photo-progress"))
+        )
+
+        slot.ensureDisplayPhoto(loader: loader, pixelLength: 80, priority: .userInitiated)
+        try await waitForCondition { slot.mediaFetchPhase == .ready(true) }
+
+        let requestKey = slot.beginLivePhotoFetch(onCancel: {}, onRetry: {})
+        #expect(requestKey.itemID == .photosAsset("live-photo-progress"))
+        #expect(requestKey.purpose == .livePhotoPlayback)
+
+        slot.markLivePhotoFetchResolving(requestKey: requestKey)
+        #expect(slot.mediaFetchPhase == .resolving(true))
+        slot.applyLivePhotoICloudProgress(0.42, requestKey: requestKey)
+        #expect(slot.mediaFetchPhase == .downloadingFromICloud(true, progress: 0.42))
+
+        slot.completeLivePhotoFetch(requestKey: requestKey)
+        #expect(slot.mediaFetchPhase == .ready(true))
+    }
+
+    @Test @MainActor func staleLivePhotoCallbacksCannotOverrideReplacementRequestOrPreview() async throws {
+        let image = try singlePixelUIImage()
+        let loader = DepthAnalysisProgressivePhotoLoader(
+            thumbnailLoader: { _, _ in image },
+            displayLoader: { _, _ in AnalysisDisplayPhoto(image: image) },
+            inputLoader: { _, _ in throw CancellationError() }
+        )
+        let slot = AnalysisPhotoSlot(
+            entry: DepthAnalysisCarouselEntry(source: .photosAsset("live-photo-race"))
+        )
+        var cancellationCount = 0
+
+        slot.ensureDisplayPhoto(loader: loader, pixelLength: 80, priority: .userInitiated)
+        try await waitForCondition { slot.mediaFetchPhase == .ready(true) }
+
+        let staleKey = slot.beginLivePhotoFetch(
+            onCancel: { cancellationCount += 1 },
+            onRetry: {}
+        )
+        slot.applyLivePhotoICloudProgress(0.1, requestKey: staleKey)
+        let replacementKey = slot.beginLivePhotoFetch(onCancel: {}, onRetry: {})
+        #expect(cancellationCount == 1)
+        #expect(slot.mediaFetchPhase == .ready(true))
+
+        slot.applyLivePhotoICloudProgress(0.99, requestKey: staleKey)
+        slot.failLivePhotoFetch(MediaFetchFailure.download, requestKey: staleKey)
+        #expect(slot.mediaFetchPhase == .ready(true))
+
+        slot.applyLivePhotoICloudProgress(0.25, requestKey: replacementKey)
+        #expect(slot.mediaFetchPhase == .downloadingFromICloud(true, progress: 0.25))
+        slot.completeLivePhotoFetch(requestKey: replacementKey)
+
+        slot.applyLivePhotoICloudProgress(0.75, requestKey: staleKey)
+        #expect(slot.mediaFetchPhase == .ready(true))
+    }
+
+    @Test @MainActor func cancelAndRetryControlOriginalAndLivePhotoRequestsTogether() async throws {
+        let image = try singlePixelUIImage()
+        let loader = DepthAnalysisProgressivePhotoLoader(
+            thumbnailLoader: { _, _ in image },
+            displayLoader: { _, _ in AnalysisDisplayPhoto(image: image) },
+            inputLoader: { _, _ in throw CancellationError() }
+        )
+        let slot = AnalysisPhotoSlot(
+            entry: DepthAnalysisCarouselEntry(source: .photosAsset("live-photo-cancel"))
+        )
+        var cancellationCount = 0
+        var retryCount = 0
+
+        slot.ensureDisplayPhoto(loader: loader, pixelLength: 80, priority: .userInitiated)
+        try await waitForCondition { slot.mediaFetchPhase == .ready(true) }
+        let requestKey = slot.beginLivePhotoFetch(
+            onCancel: { cancellationCount += 1 },
+            onRetry: { retryCount += 1 }
+        )
+        slot.applyLivePhotoICloudProgress(0.3, requestKey: requestKey)
+
+        slot.cancelCurrentMediaFetch()
+        #expect(cancellationCount == 1)
+        #expect(slot.mediaFetchPhase == .cloudOnly(true))
+
+        slot.retryLastMediaFetch()
+        #expect(retryCount == 1)
+        #expect(slot.mediaFetchPhase == .resolving(true))
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func rawViewerDoesNotGateCurrentOriginalRequestOnSelectedTool() throws {
+        let stateSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisCarouselState.swift"
+        )
+        let viewSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisView.swift"
+        )
+
+        #expect(stateSource.contains("slot.ensureLoading("))
+        #expect(!stateSource.contains("loadCurrentAnalysis"))
+        #expect(!viewSource.contains("loadCurrentAnalysis: selectedTool != .raw"))
+    }
+
+    @Test @MainActor func cancelledDisplayTaskCannotClearReplacementTaskHandle() async throws {
+        let image = try singlePixelUIImage()
+        let calls = CancellationRaceLoaderCallRecorder()
+        let loader = DepthAnalysisProgressivePhotoLoader(
+            thumbnailLoader: { _, _ in nil },
+            displayLoader: { _, _ in
+                let call = await calls.beginCall()
+                if call == 1 {
+                    do {
+                        try await Task.sleep(nanoseconds: 5_000_000_000)
+                    } catch {
+                        await nonCancellableDelay(nanoseconds: 80_000_000)
+                        throw CancellationError()
+                    }
+                }
+                try await Task.sleep(nanoseconds: 400_000_000)
+                return AnalysisDisplayPhoto(image: image)
+            },
+            inputLoader: { _, _ in
+                throw CancellationError()
+            }
+        )
+        let slot = AnalysisPhotoSlot(
+            entry: DepthAnalysisCarouselEntry(source: .photosAsset("display-race"))
+        )
+
+        slot.ensureDisplayPhoto(loader: loader, pixelLength: 80, priority: .userInitiated)
+        try await waitForCancellationRaceCalls(calls, count: 1)
+        slot.cancelCurrentMediaFetch()
+        slot.retryLastMediaFetch()
+        try await waitForCancellationRaceCalls(calls, count: 2)
+
+        try await Task.sleep(nanoseconds: 120_000_000)
+        slot.ensureDisplayPhoto(loader: loader, pixelLength: 80, priority: .userInitiated)
+        try await Task.sleep(nanoseconds: 40_000_000)
+
+        let callCount = await calls.callCount()
+        #expect(callCount == 2)
+        slot.prepareForEviction()
+    }
+
+    @Test @MainActor func cancelledInputTaskCannotClearReplacementTaskHandle() async throws {
+        let image = try singlePixelUIImage()
+        let depthMap = TAPMetricDepthMap(
+            width: 2,
+            height: 2,
+            samples: [1, 1, 1, 1],
+            calibration: TAPCamDemoTestFixtures.sampleCalibration
+        )
+        let input = try TAPCamDemoTestFixtures.analysisInput(depthMap: depthMap)
+        let calls = CancellationRaceLoaderCallRecorder()
+        let loader = DepthAnalysisProgressivePhotoLoader(
+            thumbnailLoader: { _, _ in nil },
+            displayLoader: { _, _ in AnalysisDisplayPhoto(image: image) },
+            inputLoader: { _, _ in
+                let call = await calls.beginCall()
+                if call == 1 {
+                    do {
+                        try await Task.sleep(nanoseconds: 5_000_000_000)
+                    } catch {
+                        await nonCancellableDelay(nanoseconds: 80_000_000)
+                        throw CancellationError()
+                    }
+                }
+                try await Task.sleep(nanoseconds: 400_000_000)
+                return input
+            }
+        )
+        let slot = AnalysisPhotoSlot(
+            entry: DepthAnalysisCarouselEntry(source: .photosAsset("input-race"))
+        )
+
+        slot.ensureLoading(loader: loader, pixelLength: 80, priority: .userInitiated)
+        try await waitForCancellationRaceCalls(calls, count: 1)
+        try await waitForCondition { slot.displayPhoto != nil }
+        slot.cancelCurrentMediaFetch()
+        slot.retryLastMediaFetch()
+        try await waitForCancellationRaceCalls(calls, count: 2)
+
+        try await Task.sleep(nanoseconds: 120_000_000)
+        slot.ensureLoading(loader: loader, pixelLength: 80, priority: .userInitiated)
+        try await Task.sleep(nanoseconds: 40_000_000)
+
+        let callCount = await calls.callCount()
+        #expect(callCount == 2)
+        slot.prepareForEviction()
     }
 
     @Test func analyzerHelpPreferenceDefaultsToEnabled() throws {
@@ -976,8 +1370,16 @@ private func analysisAlbumEntry(
     source: DepthAnalysisSource
 ) throws -> DepthAnalysisAlbumContext.Entry {
     let anchor = try #require(CameraRouteAlbumAnchor(itemID: id))
+    let mediaID: LibraryMediaID
+    switch source {
+    case .photosAsset(let assetID):
+        mediaID = .photosAsset(assetID)
+    case .pendingCapture(let captureID):
+        mediaID = .tapCapture(captureID)
+    }
     return DepthAnalysisAlbumContext.Entry(
         id: id,
+        mediaID: mediaID,
         source: source,
         routeAnchor: anchor
     )
@@ -997,12 +1399,16 @@ private func waitForCondition(
     timeoutNanoseconds: UInt64 = 1_000_000_000,
     condition: @MainActor @escaping () -> Bool
 ) async throws {
-    let deadline = Date().addingTimeInterval(Double(timeoutNanoseconds) / 1_000_000_000)
-    while Date() < deadline {
+    let pollIntervalNanoseconds: UInt64 = 10_000_000
+    let maximumAttempts = max(1, Int(timeoutNanoseconds / pollIntervalNanoseconds))
+    for _ in 0..<maximumAttempts {
         if condition() {
             return
         }
-        try await Task.sleep(nanoseconds: 10_000_000)
+        try await Task.sleep(nanoseconds: pollIntervalNanoseconds)
+    }
+    if condition() {
+        return
     }
     Issue.record("Timed out waiting for condition.")
 }
@@ -1014,17 +1420,62 @@ private func waitForLoaderEvents(
     inputCount: Int,
     timeoutNanoseconds: UInt64 = 1_000_000_000
 ) async throws {
-    let deadline = Date().addingTimeInterval(Double(timeoutNanoseconds) / 1_000_000_000)
-    while Date() < deadline {
+    let pollIntervalNanoseconds: UInt64 = 10_000_000
+    let maximumAttempts = max(1, Int(timeoutNanoseconds / pollIntervalNanoseconds))
+    for _ in 0..<maximumAttempts {
         let snapshot = await events.snapshot()
         if snapshot.thumbnails.count >= thumbnailCount,
            snapshot.displays.count >= displayCount,
            snapshot.inputs.count >= inputCount {
             return
         }
-        try await Task.sleep(nanoseconds: 10_000_000)
+        try await Task.sleep(nanoseconds: pollIntervalNanoseconds)
+    }
+    let finalSnapshot = await events.snapshot()
+    if finalSnapshot.thumbnails.count >= thumbnailCount,
+       finalSnapshot.displays.count >= displayCount,
+       finalSnapshot.inputs.count >= inputCount {
+        return
     }
     Issue.record("Timed out waiting for loader events.")
+}
+
+private func waitForCancellationRaceCalls(
+    _ recorder: CancellationRaceLoaderCallRecorder,
+    count: Int,
+    timeoutNanoseconds: UInt64 = 1_000_000_000
+) async throws {
+    let pollIntervalNanoseconds: UInt64 = 10_000_000
+    let maximumAttempts = max(1, Int(timeoutNanoseconds / pollIntervalNanoseconds))
+    for _ in 0..<maximumAttempts {
+        if await recorder.callCount() >= count {
+            return
+        }
+        try await Task.sleep(nanoseconds: pollIntervalNanoseconds)
+    }
+    if await recorder.callCount() >= count {
+        return
+    }
+    Issue.record("Timed out waiting for cancellation-race loader calls.")
+}
+
+private func nonCancellableDelay(nanoseconds: UInt64) async {
+    await Task.detached(priority: .utility) {
+        try? await Task.sleep(nanoseconds: nanoseconds)
+    }.value
+}
+
+private actor CancellationRaceLoaderCallRecorder {
+    private var count = 0
+
+    func beginCall() -> Int {
+        count += 1
+        return count
+    }
+
+    func callCount() -> Int {
+        count
+    }
 }
 
 private actor AnalysisLoaderEventRecorder {

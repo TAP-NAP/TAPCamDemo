@@ -34,6 +34,25 @@ nonisolated struct DepthViewerModeItem: Identifiable, Equatable {
     let id: String
     let systemImage: String
     let accessibilityLabel: String
+    let accessibilityIdentifier: String?
+    let isEnabled: Bool
+    let accessibilityValue: String?
+
+    nonisolated init(
+        id: String,
+        systemImage: String,
+        accessibilityLabel: String,
+        accessibilityIdentifier: String? = nil,
+        isEnabled: Bool = true,
+        accessibilityValue: String? = nil
+    ) {
+        self.id = id
+        self.systemImage = systemImage
+        self.accessibilityLabel = accessibilityLabel
+        self.accessibilityIdentifier = accessibilityIdentifier
+        self.isEnabled = isEnabled
+        self.accessibilityValue = accessibilityValue
+    }
 }
 
 struct DepthViewerModeCapsule: View {
@@ -45,8 +64,7 @@ struct DepthViewerModeCapsule: View {
         HStack(spacing: 4) {
             ForEach(items) { item in
                 iconButton(
-                    systemImage: item.systemImage,
-                    accessibilityLabel: item.accessibilityLabel,
+                    item: item,
                     isSelected: selectedItemID == item.id,
                     action: {
                         onItemTapped(item.id)
@@ -64,15 +82,16 @@ struct DepthViewerModeCapsule: View {
         .animation(.snappy(duration: 0.18), value: selectedItemID)
     }
 
+    @ViewBuilder
     private func iconButton(
-        systemImage: String,
-        accessibilityLabel: String,
+        item: DepthViewerModeItem,
         isSelected: Bool,
         action: @escaping () -> Void
     ) -> some View {
-        Button(action: action) {
-            Image(systemName: systemImage)
+        let button = Button(action: action) {
+            Image(systemName: item.systemImage)
                 .font(.callout.weight(.semibold))
+                .dynamicTypeSize(.large)
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(.primary)
                 .frame(width: 42, height: 36)
@@ -80,12 +99,35 @@ struct DepthViewerModeCapsule: View {
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(accessibilityLabel)
-        .help(accessibilityLabel)
+        .disabled(!item.isEnabled)
+        .opacity(item.isEnabled ? 1 : 0.35)
+        .accessibilityLabel(item.accessibilityLabel)
+        .accessibilityValue(accessibilityValue(for: item, isSelected: isSelected))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .help(item.accessibilityLabel)
+
+        if let accessibilityIdentifier = item.accessibilityIdentifier {
+            button.accessibilityIdentifier(accessibilityIdentifier)
+        } else {
+            button
+        }
     }
 
     private func toolBackground(isSelected: Bool) -> Color {
         isSelected ? Color.primary.opacity(0.16) : Color.clear
+    }
+
+    private func accessibilityValue(
+        for item: DepthViewerModeItem,
+        isSelected: Bool
+    ) -> String {
+        if let accessibilityValue = item.accessibilityValue {
+            return accessibilityValue
+        }
+        if !item.isEnabled {
+            return "Unavailable"
+        }
+        return isSelected ? "Selected" : ""
     }
 }
 
@@ -94,7 +136,19 @@ extension AnalysisViewerTool {
         DepthViewerModeItem(
             id: rawValue,
             systemImage: systemImage,
-            accessibilityLabel: accessibilityLabel
+            accessibilityLabel: accessibilityLabel,
+            accessibilityIdentifier: modeAccessibilityIdentifier
         )
+    }
+
+    private var modeAccessibilityIdentifier: String {
+        switch self {
+        case .raw:
+            "tap.viewer.mode.raw"
+        case .twoD:
+            "tap.viewer.mode.2d"
+        case .threeD:
+            "tap.viewer.mode.3d"
+        }
     }
 }

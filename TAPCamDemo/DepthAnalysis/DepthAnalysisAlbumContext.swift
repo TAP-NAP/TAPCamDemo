@@ -14,6 +14,7 @@ import Foundation
 nonisolated struct DepthAnalysisAlbumContext: Equatable {
     nonisolated struct Entry: Identifiable, Equatable {
         let id: String
+        let mediaID: LibraryMediaID
         let source: DepthAnalysisSource
         let routeAnchor: CameraRouteAlbumAnchor
     }
@@ -56,6 +57,7 @@ nonisolated struct DepthAnalysisAlbumContext: Equatable {
 private extension DepthAnalysisAlbumContext.Entry {
     nonisolated init?(item: TAPLibraryItem) {
         id = item.id
+        mediaID = item.summary.id
         routeAnchor = item.routeAnchor
         switch item.source {
         case .photos(let asset):
