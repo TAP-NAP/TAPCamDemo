@@ -60,12 +60,12 @@ actor TAPCamLockedCaptureService {
         events = stream.stream
         eventContinuation = stream.continuation
         TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR1Session")
-            .info("r1_capture_service_init")
+            .notice("r1_capture_service_init")
     }
 
     func start() async throws -> String {
         TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR1Session")
-            .info("r1_session_start_begin configured=\(self.isConfigured) running=\(self.captureSession.isRunning)")
+            .notice("r1_session_start_begin configured=\(self.isConfigured) running=\(self.captureSession.isRunning)")
 
         guard await isAuthorized else {
             throw TAPCamLockedCaptureServiceError.cameraAccessDenied
@@ -82,7 +82,7 @@ actor TAPCamLockedCaptureService {
         }
 
         TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR1Session")
-            .info("r1_session_start_finish running=true device=\(device.localizedName, privacy: .public)")
+            .notice("r1_session_start_finish running=true device=\(device.localizedName, privacy: .public)")
         return device.localizedName
     }
 
@@ -102,7 +102,7 @@ actor TAPCamLockedCaptureService {
         }
 
         TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR1Session")
-            .info("r1_session_configure_begin")
+            .notice("r1_session_configure_begin")
 
         let device = try depthCapableRearCamera()
         let input: AVCaptureDeviceInput
@@ -129,7 +129,7 @@ actor TAPCamLockedCaptureService {
             !$0.supportedDepthDataFormats.isEmpty
         }.count
         TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR1Session")
-            .info(
+            .notice(
                 "r1_session_configure_finish device=\(device.localizedName, privacy: .public) type=\(device.deviceType.rawValue, privacy: .public) depthFormatCount=\(depthFormatCount)"
             )
         return device
@@ -252,6 +252,6 @@ actor TAPCamLockedCaptureService {
         notificationTasks.forEach { $0.cancel() }
         eventContinuation.finish()
         TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR1Session")
-            .info("r1_capture_service_deinit")
+            .notice("r1_capture_service_deinit")
     }
 }

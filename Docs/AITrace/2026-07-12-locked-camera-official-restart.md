@@ -189,7 +189,7 @@ R0 已通过。R1 minimal custom viewfinder 已完成实现：只替换系统 `U
 | `TAPCamLockedCameraViewFinder.swift` | 永远存在的 root、preview、可见状态 chrome、公开 `onCameraCaptureEvent` |
 | `TAPLockedCameraSessionContentTests.swift` | R1 source boundary，阻止 storage/open/importer/manual teardown 混入 |
 
-R1 build number 为 `5`。Control kind、Control 可见名称和唯一 `CameraCaptureIntent` 保持 R0 不变，确保本轮唯一运行变量是自定义 camera viewfinder。
+R1 首个真机 baseline build number 为 `5`。2026-07-14 hardware-event unified-log patch 将 App、Capture Extension 和 Control Extension 一并升到 build `6`；它只改变 diagnostics，不改变 camera graph。Control kind、Control 可见名称和唯一 `CameraCaptureIntent` 保持 R0 不变。
 
 ### 生命周期取舍
 
@@ -204,7 +204,7 @@ Notification observer task 弱持有 capture actor，model 的 event consumer �
 - Extension/model：`r1_capture_extension_init`、`r1_camera_model_init`、`r1_camera_model_start_begin`、`r1_camera_model_start_finish`；
 - session：`r1_capture_service_init`、`r1_session_configure_begin`、`r1_session_configure_finish`、`r1_session_start_finish`；
 - preview：`r1_preview_make`、`r1_preview_session_connected`、`r1_preview_window`；
-- event：`r1_capture_event_ended`；
+- event：`r1_capture_event_received`（记录 callback 序号及 `began/ended/cancelled`）、`r1_capture_event_ignored`、`r1_capture_probe_flash_begin`、`r1_capture_probe_flash_end`；
 - fault：`r1_session_interrupted`、`r1_session_interruption_ended`、`r1_session_runtime_error`；
 - release：`r1_camera_model_deinit`、`r1_capture_service_deinit`、`r1_preview_deinit`。
 
@@ -229,7 +229,7 @@ R1 没有 video-data output，因此没有 first-frame/last-frame timestamp。�
 - unsigned Release generic-device build：通过；
 - automatic-signing Release generic-device build：通过；
 - `git diff --check`：通过；
-- final App、Capture Extension、Control Extension 的 `CFBundleVersion` 均为 `5`，minimum OS 均为 iOS 18.6；
+- R1 baseline final App、Capture Extension、Control Extension 的 `CFBundleVersion` 均为 `5`，minimum OS 均为 iOS 18.6；
 - Capture/Control `extract.actionsdata` 都只包含 `TAPCamLockedCameraIntent`，没有 `extract.packagedata`；
 - `codesign --verify --deep --strict` 在系统信任环境中返回 `valid on disk` 和 `satisfies its Designated Requirement`；
 - Capture Extension application identifier 为 `UD3269PSCB.TAP-NAP.TAPCamDemo.LockedCapture`；
@@ -253,7 +253,7 @@ Simulator 只执行 source-contract test，不作为 camera、secure-capture sce
 
 ### R1 真机步骤
 
-1. Xcode 选择当前分支、Release configuration，安装 build `5`；
+1. Xcode 选择当前分支、Release configuration，安装 build `6`；
 2. 保留现有 `TAPCam R0` control，不删除/重加；
 3. 执行 10 轮“锁屏 -> 单击 control -> 观察 10 秒 -> hardware capture event -> 系统方式退出”；
 4. 确认每轮一次进入 `TAPCam R1 / LIVE`，hardware event 有白闪且没有照片；
@@ -295,8 +295,33 @@ Simulator 只执行 source-contract test，不作为 camera、secure-capture sce
 | 后续 worker reconcile 完成 | 主 App 后续重新获得受保护数据访问；不代表 locked session migration，因为 R1 尚未写 session content |
 | `Fig*`、CoreHaptics、AudioSession、Accounts 和 network 输出 | 均出现在主 App camera/credential/Library 时间线；没有伴随 R1 fatal、crash 或 Extension transition marker，不能单独作为 R1 故障证据 |
 
-本次日志不改变代码。若后续重新出现 freeze/黑屏，采集必须包含 process `TAPCamLockedCameraCaptureExtension` 或 subsystem `TAP-NAP.TAPCamDemo` / category `LockedCameraR1*`，并同时保留 SpringBoard、ExtensionKit 和 RunningBoard 时间线。
+若后续重新出现 freeze/黑屏，采集必须包含 process `TAPCamLockedCameraCaptureExtension` 或 subsystem `TAP-NAP.TAPCamDemo` / category `LockedCameraR1*`，并同时保留 SpringBoard、ExtensionKit 和 RunningBoard 时间线。
+
+### Hardware event probe 结果
+
+2026-07-14，用户按音量减键后观察到 Extension 90 ms 白闪，本轮未出现 freeze。结论边界如下：
+
+- 白闪由 TAPCam 的 `shouldFlashCaptureProbe` 产生，不是 sensor 曝光反馈；
+- 白闪只会在 `AVCaptureEvent.phase == .ended` 后触发，因此它证明公开 `onCameraCaptureEvent` 已收到一个完成事件；
+- R1 不包含 `AVCapturePhotoOutput`，所以这一步本来就不会拍照或写文件；
+- 用户所贴日志仍然只有主 App camera、credential、pending worker 和 Library 输出，没有任何 `r1_*`，不能用它还原 Extension 进程时间线；
+- 本轮未出现 freeze，继续支持“R1 最小 camera graph 的生命周期行为正常”，但单轮结果不替代定量循环。
+
+为避免关键事件只以 `Logger.info` 出现，R1 将 Extension init、model/service/session/preview 生命周期和 hardware-event probe marker 提升为 `Logger.notice`。硬件事件新增 callback 序号、`began/ended/cancelled` phase、camera phase 与 probe 序号；这只增加 unified logging，不增加 output、存储、scene callback 或 teardown。
+
+build `6` 的 unsigned Release Capture Extension 编译通过；产物 `CFBundleVersion` 为 `6`，release binary 中保留 `r1_capture_event_received`、`r1_capture_probe_flash_begin` 和 `r1_capture_probe_flash_end` marker。App、Capture Extension 和 Control Extension 的 Debug/Release project setting 也统一为 build `6`。
+
+Xcode 附着主 App 时不会可靠转发独立 Capture Extension 进程的日志。真机采集应在 macOS Console 选择该设备，按 subsystem `TAP-NAP.TAPCamDemo` 或 process `TAPCamLockedCameraCaptureExtension` 过滤。一次正常按键的预期 marker 是：
+
+1. `r1_capture_event_received ... eventPhase=began`；
+2. `r1_capture_event_received ... eventPhase=ended`；
+3. `r1_capture_probe_flash_begin probe=N`；
+4. `r1_capture_probe_flash_end probe=N`。
+
+当前使用单一 SwiftUI action，它统一处理系统交付的 primary/secondary capture event；`AVCaptureEvent` 本身不提供“音量减键”这样的物理来源字段。因此日志不能把来源硬编码为 volume-down，只能结合用户操作时间戳判断。
+
+“定量循环”不是新功能：它指按 R1 真机步骤记录 10 轮 launch/event/exit，以及一次 5 分钟 live soak，用于区别“本轮没复现”与“重复生命周期已达到可接受稳定度”。hardware-event 可见行为已经确认；当前只剩样本数量尚未精确记录。
 
 ### 当前 gate
 
-R1 的核心生命周期 gate 已通过：进入正常、系统自然 dismissal 正常、dismissal 后下一次启动不 freeze。当前尚未收到精确的 10 轮启动计数和 hardware event 白闪结果，因此暂不把整个 R1 写成最终 acceptance，也不开始 R2 photo output/storage。
+R1 的核心生命周期 gate 已通过：进入正常、系统自然 dismissal 正常、dismissal 后下一次启动不 freeze。hardware event 白闪也已确认；当前尚未收到精确的 10 轮启动和 soak 计数，因此暂不把整个 R1 写成最终 acceptance，也不开始 R2 photo output/storage。

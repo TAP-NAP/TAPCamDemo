@@ -19,7 +19,7 @@ struct TAPCamLockedCameraPreview: UIViewRepresentable {
         let preview = TAPCamLockedCameraPreviewView()
         source.connect(to: preview)
         TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR1Preview")
-            .info("r1_preview_make")
+            .notice("r1_preview_make")
         return preview
     }
 
@@ -50,21 +50,21 @@ final class TAPCamLockedCameraPreviewView: UIView, TAPCamLockedCameraPreviewTarg
             guard let self else { return }
             previewLayer.session = session
             TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR1Preview")
-                .info("r1_preview_session_connected")
+                .notice("r1_preview_session_connected")
         }
     }
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
         TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR1Preview")
-            .info(
+            .notice(
                 "r1_preview_window attached=\(self.window != nil) sessionAttached=\(self.previewLayer.session != nil)"
             )
     }
 
     deinit {
         TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR1Preview")
-            .info("r1_preview_deinit")
+            .notice("r1_preview_deinit")
     }
 }
 

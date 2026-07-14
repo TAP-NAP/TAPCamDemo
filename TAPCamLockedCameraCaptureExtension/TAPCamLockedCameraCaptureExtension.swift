@@ -14,7 +14,7 @@ struct TAPCamLockedCameraCaptureExtension: LockedCameraCaptureExtension {
 
     init() {
         TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR1")
-            .info("r1_capture_extension_init")
+            .notice("r1_capture_extension_init")
     }
 
     var body: some LockedCameraCaptureExtensionScene {

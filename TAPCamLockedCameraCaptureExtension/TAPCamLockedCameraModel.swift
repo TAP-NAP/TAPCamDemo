@@ -3,6 +3,7 @@
 //  TAPCamDemo
 //
 
+import AVKit
 import Foundation
 import Observation
 import OSLog
@@ -73,12 +74,14 @@ final class TAPCamLockedCameraModel {
     private let captureService: TAPCamLockedCaptureService
     private var eventTask: Task<Void, Never>?
     private var captureProbeTask: Task<Void, Never>?
+    private var captureEventCallbackCount = 0
+    private var captureProbeCount = 0
 
     init(captureService: TAPCamLockedCaptureService = TAPCamLockedCaptureService()) {
         self.captureService = captureService
         previewSource = captureService.previewSource
         TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR1")
-            .info("r1_camera_model_init")
+            .notice("r1_camera_model_init")
     }
 
     func start() async {
@@ -92,7 +95,7 @@ final class TAPCamLockedCameraModel {
         observeCaptureService()
 
         TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR1")
-            .info("r1_camera_model_start_begin phase=\(self.phase.shortLabel, privacy: .public)")
+            .notice("r1_camera_model_start_begin phase=\(self.phase.shortLabel, privacy: .public)")
 
         do {
             let device = try await captureService.start()
@@ -100,7 +103,7 @@ final class TAPCamLockedCameraModel {
                 phase = .live
             }
             TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR1")
-                .info(
+                .notice(
                     "r1_camera_model_start_finish device=\(device, privacy: .public) phase=\(self.phase.shortLabel, privacy: .public)"
                 )
         } catch {
@@ -110,18 +113,49 @@ final class TAPCamLockedCameraModel {
         }
     }
 
-    func registerCaptureEvent() {
-        guard phase == .live else { return }
+    func registerCaptureEvent(_ event: AVCaptureEvent) {
+        captureEventCallbackCount += 1
+
+        let eventPhase: String
+        switch event.phase {
+        case .began:
+            eventPhase = "began"
+        case .ended:
+            eventPhase = "ended"
+        case .cancelled:
+            eventPhase = "cancelled"
+        @unknown default:
+            eventPhase = "unknown"
+        }
 
         TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR1")
-            .info("r1_capture_event_ended")
+            .notice(
+                "r1_capture_event_received callback=\(self.captureEventCallbackCount) eventPhase=\(eventPhase, privacy: .public) cameraPhase=\(self.phase.shortLabel, privacy: .public)"
+            )
+
+        guard phase == .live else {
+            TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR1")
+                .notice(
+                    "r1_capture_event_ignored callback=\(self.captureEventCallbackCount) reason=camera_not_live"
+                )
+            return
+        }
+        guard event.phase == .ended else { return }
+
+        captureProbeCount += 1
+        let probe = captureProbeCount
 
         captureProbeTask?.cancel()
         shouldFlashCaptureProbe = true
+        TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR1")
+            .notice("r1_capture_probe_flash_begin probe=\(probe)")
         captureProbeTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(90))
             guard !Task.isCancelled else { return }
-            self?.shouldFlashCaptureProbe = false
+            guard let self else { return }
+            shouldFlashCaptureProbe = false
+            TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR1")
+                .notice("r1_capture_probe_flash_end probe=\(probe)")
         }
     }
 
@@ -150,6 +184,6 @@ final class TAPCamLockedCameraModel {
 
     deinit {
         TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR1")
-            .info("r1_camera_model_deinit")
+            .notice("r1_camera_model_deinit")
     }
 }
