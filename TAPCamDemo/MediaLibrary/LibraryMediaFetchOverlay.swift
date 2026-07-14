@@ -29,6 +29,77 @@ nonisolated enum LibraryMediaFetchOverlayState: Equatable, Sendable {
     }
 }
 
+/// Photo and video viewers share one active-loading treatment: keep any
+/// lightweight preview visible and place one circular original-download
+/// indicator above it. Cancellation remains owned by viewer navigation and
+/// lifecycle; only terminal states expose recovery actions here.
+struct LibraryMediaViewerFetchOverlay: View {
+    let kind: LibraryMediaKind
+    let state: LibraryMediaFetchOverlayState
+    let onRetry: () -> Void
+
+    var body: some View {
+        switch state {
+        case .preparing:
+            LibraryMediaProgressBadge(kind: kind, progress: nil)
+        case .downloading(let progress):
+            LibraryMediaProgressBadge(kind: kind, progress: progress)
+        case .hidden:
+            EmptyView()
+        case .cloudOnly, .failed:
+            LibraryMediaFetchOverlay(
+                kind: kind,
+                state: state,
+                onCancel: {},
+                onRetry: onRetry
+            )
+        }
+    }
+}
+
+private struct LibraryMediaProgressBadge: View {
+    let kind: LibraryMediaKind
+    let progress: Double?
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(.white.opacity(0.22), lineWidth: 4)
+                .frame(width: 44, height: 44)
+
+            if let clampedProgress {
+                Circle()
+                    .trim(from: 0, to: clampedProgress)
+                    .stroke(.white, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .frame(width: 44, height: 44)
+            } else {
+                ProgressView()
+                    .tint(.white)
+            }
+        }
+        .padding(10)
+        .background(.black.opacity(0.44), in: Circle())
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    private var clampedProgress: Double? {
+        guard let progress, progress.isFinite else {
+            return nil
+        }
+        return min(max(progress, 0), 1)
+    }
+
+    private var accessibilityLabel: String {
+        switch kind {
+        case .tapVideo:
+            "Downloading video"
+        case .photo, .livePhoto:
+            "Downloading photo"
+        }
+    }
+}
+
 struct LibraryMediaFetchOverlay: View {
     let kind: LibraryMediaKind
     let state: LibraryMediaFetchOverlayState

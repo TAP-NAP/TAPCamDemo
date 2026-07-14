@@ -462,7 +462,7 @@ actor PhotoKitLibraryMediaFetcher: LibraryMediaFetching, DepthAlbumPhotoCatalogi
                 let requestID = manager.requestImage(
                     for: asset,
                     targetSize: CGSize(width: pixelLength, height: pixelLength),
-                    contentMode: .aspectFill,
+                    contentMode: .aspectFit,
                     options: options
                 ) { image, info in
                     bridge.receive(image: image, info: info)
@@ -916,9 +916,9 @@ nonisolated private final class PhotoKitDisplayImageRequestBridge: @unchecked Se
             return
         }
         guard let image,
-              let data = DepthAlbumThumbnailJPEGRenderer.data(
+              let data = DepthAlbumThumbnailJPEGRenderer.aspectPreservingData(
                 from: image,
-                pixelLength: pixelLength
+                maximumPixelLength: pixelLength
               ) else {
             finish(.failure(MediaFetchFailure.decode))
             return

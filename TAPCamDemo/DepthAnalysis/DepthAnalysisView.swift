@@ -650,10 +650,9 @@ private struct AnalysisNativePageView: View {
             }
 
             if isCurrent {
-                LibraryMediaFetchOverlay(
+                LibraryMediaViewerFetchOverlay(
                     kind: .photo,
                     state: LibraryMediaFetchOverlayState(slot.mediaFetchPhase),
-                    onCancel: slot.cancelCurrentMediaFetch,
                     onRetry: slot.retryLastMediaFetch
                 )
                 .zIndex(4)
@@ -682,10 +681,6 @@ private struct AnalysisNativePageView: View {
                 isLivePhotoMuted: $isLivePhotoMuted
             )
             .frame(width: viewportSize.width, height: viewportSize.height)
-
-            if slot.displayPhase == .displayLoading, rawImage == nil {
-                AnalysisPhotoProgressBadge(progress: nil)
-            }
 
             if let errorMessage = slot.errorMessage, !slot.hasDisplayImage {
                 ContentUnavailableView(
@@ -1807,39 +1802,6 @@ private struct AnalysisToolPhotoStage: View {
     }
 }
 
-private struct AnalysisPhotoProgressBadge: View {
-    let progress: Double?
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .stroke(.white.opacity(0.22), lineWidth: 4)
-                .frame(width: 44, height: 44)
-
-            if let clampedProgress {
-                Circle()
-                    .trim(from: 0, to: clampedProgress)
-                    .stroke(.white, style: StrokeStyle(lineWidth: 4, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                    .frame(width: 44, height: 44)
-            } else {
-                ProgressView()
-                    .tint(.white)
-            }
-        }
-        .padding(10)
-        .background(.black.opacity(0.44), in: Circle())
-        .accessibilityLabel("Downloading photo")
-    }
-
-    private var clampedProgress: Double? {
-        guard let progress, progress.isFinite else {
-            return nil
-        }
-        return min(max(progress, 0), 1)
-    }
-}
-
 private struct AnalysisToolLoadingView: View {
     let slot: AnalysisPhotoSlot?
     let title: String
@@ -1884,27 +1846,27 @@ private struct AnalysisToolSlotLoadingView: View {
                     .opacity(0.54)
             }
 
-            VStack(spacing: 10) {
-                if slot.isOriginalLoading {
-                    AnalysisPhotoProgressBadge(progress: slot.loadProgress)
-                } else if let errorMessage = slot.errorMessage {
-                    Image(systemName: slot.errorSystemImage)
-                        .font(.title2.weight(.semibold))
-                    Text(errorMessage)
-                        .font(.caption)
-                        .multilineTextAlignment(.center)
-                        .foregroundStyle(.white.opacity(0.78))
-                } else {
-                    ProgressView()
-                        .tint(.white)
-                }
+            if !slot.isOriginalLoading || slot.errorMessage != nil {
+                VStack(spacing: 10) {
+                    if let errorMessage = slot.errorMessage {
+                        Image(systemName: slot.errorSystemImage)
+                            .font(.title2.weight(.semibold))
+                        Text(errorMessage)
+                            .font(.caption)
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(.white.opacity(0.78))
+                    } else {
+                        ProgressView()
+                            .tint(.white)
+                    }
 
-                Text(title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.8))
+                    Text(title)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.8))
+                }
+                .padding(18)
+                .background(.black.opacity(0.48), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
-            .padding(18)
-            .background(.black.opacity(0.48), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .frame(width: size.width, height: size.height)
         .frame(maxWidth: .infinity)
@@ -1919,10 +1881,10 @@ private struct AnalysisToolSlotLoadingView: View {
 private struct CredentialPendingPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("正在生成凭证", systemImage: "clock.badge.checkmark")
+            Label("Generating credential", systemImage: "clock.badge.checkmark")
                 .font(.subheadline.weight(.semibold))
 
-            Text("该照片仍在 TAPCam 队列中处理。生成完成后会显示该照片的凭证已生成。")
+            Text("This photo is still being processed in the TAPCam queue. Its credential will appear when processing finishes.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

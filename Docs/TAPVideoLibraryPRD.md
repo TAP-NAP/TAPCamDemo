@@ -34,7 +34,7 @@ should make these structural changes:
 | --- | --- | --- | --- |
 | CV-1 | The camera's lower-left Library cover shows an older photo after recording a video. | Video ingest stores `thumbnailFilename = nil`; the camera path only reads stored thumbnail data and falls through to an older photo. | The cover identity equals the first item in the Library's canonical sort, and a video shows a poster generated from that video. |
 | CV-2 | A stale cover can remain after deletion or a failed request. | `recentThumbnail` contains no item identity; empty/error paths do not clear it, and older PhotoKit callbacks can overwrite newer requests. | Empty Library shows the empty state; out-of-order callbacks cannot change a newer item. |
-| CV-3 | iCloud-only media is indistinguishable from idle, failed, or unavailable media. | Thumbnail requests disable network access and collapse all nil results into one placeholder; original-video loading has no progress or cancellation. | The current item visibly says `Loading from iCloud...` / `正在从 iCloud 中加载…`, reports progress when available, and supports cancel/retry. |
+| CV-3 | iCloud-only media is indistinguishable from idle, failed, or unavailable media. | Thumbnail requests disable network access and collapse all nil results into one placeholder; original-video loading has no progress or cancellation. | The current item keeps its local preview visible, reports original-download progress with the shared circular treatment, and exposes English recovery copy after a terminal failure. |
 | CV-4 | Player controls and custom chrome can overlap, and the video 2D control may render without receiving touches. | The pre-refactor `AVPlayerViewController` hierarchy and `DepthViewerChromeView` both owned interactive regions; fixed `84` / `56` point insets guessed at system-control geometry, while toolbar hit testing depended on `contentOverlayView` sibling ordering. | SwiftUI is the single interaction owner; Back, Share, Delete, the mode capsule, and custom transport remain hittable across safe areas, Dynamic Type, and orientation. |
 | CV-5 | A depth heatmap may not register to the displayed RGB frame. | The player fits RGB and depth independently; the newly computed video aspect ratio is not consumed, and recorded calibration is only a presence string. | Overlay placement is derived from the actual displayed video rect and a bound RGB-depth mapping/calibration contract. |
 
@@ -101,6 +101,10 @@ enum RecentLibraryPresentation: Equatable {
   `AVAssetImageGenerator` at the first useful frame.
 - Persist the poster as the bundle's small protected `thumbnail.jpg`, just as a
   photo pending record does. Keep it after successful Photos export.
+- Preserve the transformed photo/video aspect ratio in poster bytes and cap the
+  long edge. The Library grid alone places those bytes in a fixed `1:1`
+  aspect-fill, center-cropped cell; the photo viewer reuses the lightweight
+  preview with aspect-fit until its display/original upgrade arrives.
 - Use one cache key containing item identity, media version, and target pixel
   size. Never reuse a previous item's image as the new item's placeholder.
 - A failed poster extraction shows a video placeholder for the correct item; it
@@ -132,18 +136,19 @@ enum MediaFetchFailure {
 }
 ```
 
-Every request owns `itemID + generation + cancellation token`. A callback may
-publish only while both identity and generation still match. PhotoKit request
-IDs must be cancelled on cell reuse, swipe, dismissal, or replacement.
+Every request owns `itemID + generation + purpose + cancellation token`. Photo
+display and original-resource work use different purposes and progress state. A
+callback may publish only while the full request key still matches. PhotoKit
+request IDs must be cancelled on cell reuse, swipe, dismissal, or replacement.
 
 ### Surface policy
 
 | Surface | Network policy | Required UI |
 | --- | --- | --- |
-| Library grid | Probe local thumbnails first. Do not automatically download every iCloud original. Preheat only bounded visible/near-visible thumbnails. | Local poster, cloud badge/loading state, or typed retryable failure. |
+| Library grid | Probe local thumbnails first. Do not automatically download every iCloud original. Preheat only bounded visible/near-visible thumbnails. | Fixed `1:1` cells with center-cropped local posters, cloud badge/loading state, or typed retryable failure. |
 | Camera recent cover | Use the app-private poster for owned TAP items. Only request the canonical latest Photos-only poster. | Correct item kind and identity; never a stale older image. |
-| Photo viewer | Automatically load only the current original. Neighboring items may use local previews but must not start original downloads. | Visible `Loading from iCloud...` text even when a low-resolution preview is already visible, plus progress when PhotoKit supplies it. |
-| Video viewer | Download the current original to a temporary file before creating the player. | Progress, cancel, retry, typed failure, and temporary-file cleanup. |
+| Photo viewer | Automatically load only the current original. Neighboring items may use aspect-preserving local previews but must not start original downloads. Display-preview work may improve sharpness but cannot publish the main progress. | Keep the aspect-fit preview visible and show one centered circular indicator for current-original progress. Numeric progress is monotonic; after a numeric value arrives, later `nil` or lower values do not regress the indicator. |
+| Video viewer | Probe one local-only aspect-preserving poster, then download the current original to a temporary file before creating the player. The poster probe must not start a second iCloud download. | Match the photo viewer: keep the aspect-fit poster visible and show one centered circular original-progress indicator with monotonic numeric progress. No active-loading text card or cancel button; back, swipe, dismissal, and background lifecycle cancel the request. Terminal failure may show English recovery copy and retry. |
 
 Apple's PhotoKit contract supports this directly: image, video, and underlying
 resource request options expose network permission and progress handlers;
@@ -374,9 +379,9 @@ a generic launch trace still does not answer the video questions.
 | --- | --- |
 | Recent cover | Its item ID always equals the Library's first item after capture, export, delete, foreground, and Library dismissal. Pending video has a poster. Empty Library clears the cover. |
 | Request race | If request A is pending and item B becomes current, A cannot publish over B; A is cancelled when possible. |
-| Grid iCloud | Local-only probe never silently becomes a permanent generic icon. Cloud-only state is explicit and does not fan out original downloads. |
-| Photo iCloud | Selecting an iCloud-only photo shows localized loading text and progress even while a low-resolution preview is visible; swipe/dismiss cancels work. |
-| Video iCloud | Player creation waits for the current original; loading has progress/cancel/retry; cancellation removes partial temporary files. |
+| Grid geometry and iCloud | Photo/video poster bytes retain their transformed aspect ratio, but every cell remains square and center-cropped. Local-only probe never silently becomes a permanent generic icon; cloud-only state does not fan out original downloads. |
+| Photo iCloud | Selecting an iCloud-only photo keeps its aspect-fit low-resolution preview visible and shows a single circular current-original progress indicator. Display and original callbacks cannot overwrite each other; progress cannot regress; swipe/dismiss cancels work. |
+| Video iCloud | Player creation waits for the current original while an aspect-fit local poster remains visible under the same circular indicator used by photos. Progress cannot regress; navigation/lifecycle cancellation removes partial temporary files; terminal failure exposes English retry UI. |
 | Errors | Permission, offline/download, deleted asset, and decode failures have different public-safe copy and retry behavior. |
 | Player chrome | Photo and Video expose the same Back, Share, Delete, and `RAW` / `2D` / `3D` capsule. Video `RAW` is available, `2D` is physically hittable when registration is ready, and `3D` remains visible but disabled. Custom transport does not overlap the capsule or 2D opacity control across supported layouts. |
 | Spatial overlay | Test fixtures for rotation/mirroring/aspect ratios align RGB and depth to the same displayed rect; missing depth never leaves a stale overlay. |
@@ -388,10 +393,12 @@ a generic launch trace still does not answer the video questions.
 
 ## Test Strategy
 
-- Pure tests for canonical merge/sort, video poster selection, empty state, and
-  out-of-order completion rejection.
+- Pure tests for canonical merge/sort, aspect-preserving photo/video poster
+  output, square grid ownership, empty state, and out-of-order completion
+  rejection.
 - Injectable PhotoKit client tests for cloud-only -> downloading -> ready,
-  progress, cancellation, offline retry, asset deletion, and permission denial.
+  display/original progress isolation, monotonic original progress,
+  cancellation, offline retry, asset deletion, and permission denial.
 - Player layout tests against `AVPlayerLayer.videoRect`; rendered
   screenshot/device evidence for shared Photo/Video chrome and custom transport.
 - Source-contract tests require the shared chrome and reject

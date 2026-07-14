@@ -42,7 +42,9 @@ fixture 结果描述为该门槛已通过。
   `.tapCapture(captureID)`。
 - Camera cover 与 grid 读取同一排序快照；视频不会回退显示上一张照片。
 - 视频在 pending ingest 后、Photos cleanup 前生成 0.12 秒 poster，失败回退
-  0 秒；preferred transform、512 px 长边、JPEG 0.78、原子持久化。
+  0 秒；preferred transform、512 px 长边、JPEG 0.78、原子持久化。照片与视频
+  poster 数据都保留变换后的原始比例；Library grid 在显示层固定为 1:1 中心裁切，
+  Viewer 加载阶段则以 aspect-fit 显示同一比例的轻量 preview。
 - 启动补全仍有本地 MP4 的缺失 poster；memory/disk cache 分别限制为
   32 MiB/96 项和 128 MiB/30 天 LRU；memory warning 清空内存 cache。
 - 根部只创建一个注入式 PhotoKit actor，同一实例同时提供 catalog DTO 与媒体请求；
@@ -56,10 +58,16 @@ fixture 结果描述为该门槛已通过。
   finish-before-ID 和 handler/write failure，避免后台继续下载 iCloud 原件。
 - current item 才允许联网；相邻照片只加载 local thumbnail；dismiss、swipe、
   background、replacement 使用 request generation 取消旧结果。
+- 照片 display preview 与 original resource 使用独立 purpose/generation；只有
+  original resource 拥有 Viewer 主进度，数值按请求单调发布，避免两个 PhotoKit
+  progress 流交错导致圆环回退或在 determinate/indeterminate 之间抖动。
+- 视频 Viewer 也使用同一个圆形 loading overlay；原件准备期间保留 local-only、
+  aspect-fit poster，video original 进度单调发布。活动加载态不显示文字卡片或取消
+  按钮，返回、滑动、dismiss 和 background 继续承担取消职责。
 - Photo/Video/Live Photo 请求不把 `PHAsset` 放入 SwiftUI state；Live Photo slot
   统一拥有 `itemID + generation + purpose`，旧 cancel/progress/result 不能清掉替换
   请求；统一 overlay 明确区分 preparing、cloud-only、iCloud progress 和五类失败恢复。
-- `Localizable.xcstrings` 提供英文与简体中文。
+- 产品 UI 只发布英文文案；`Localizable.xcstrings` 不再包含简体中文翻译。
 
 ### PR 3–5：Manifest、单 artifact 与 Photos 回读
 

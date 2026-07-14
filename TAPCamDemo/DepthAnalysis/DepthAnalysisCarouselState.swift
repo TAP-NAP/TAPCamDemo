@@ -427,9 +427,13 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
     private var inputTask: Task<Void, Never>?
     private var wantsPlaneGeometryPrewarm = false
     private var hasRequestedPlaneGeometryPrewarm = false
-    private var fetchGeneration: UInt64 = 0
-    private var activeRequestKey: MediaFetchRequestKey?
+    private var displayFetchGeneration: UInt64 = 0
+    private var activeDisplayRequestKey: MediaFetchRequestKey?
+    private var displayMediaFetchPhase: MediaFetchPhase<Bool, Bool> = .idle(false)
+    private var originalFetchGeneration: UInt64 = 0
+    private var activeOriginalRequestKey: MediaFetchRequestKey?
     private var originalMediaFetchPhase: MediaFetchPhase<Bool, Bool> = .idle(false)
+    private var lastOriginalProgress: Double?
     private var livePhotoFetchGeneration: UInt64 = 0
     private var activeLivePhotoRequestKey: MediaFetchRequestKey?
     private var livePhotoMediaFetchPhase: MediaFetchPhase<Bool, Bool> = .idle(false)
@@ -448,11 +452,11 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
         if case .failed = analysisPhase {
             return .failed
         }
-        if case .failed = displayPhase {
-            return .failed
-        }
         if case .ready = analysisPhase {
             return .analysisReady
+        }
+        if case .failed = displayPhase {
+            return .failed
         }
         if case .loading(let progress) = analysisPhase {
             return .originalLoading(progress: progress)
@@ -606,9 +610,13 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
         input = nil
         displayPhase = .idle
         analysisPhase = .idle
-        activeRequestKey = nil
-        fetchGeneration &+= 1
+        activeDisplayRequestKey = nil
+        displayFetchGeneration &+= 1
+        displayMediaFetchPhase = .idle(false)
+        activeOriginalRequestKey = nil
+        originalFetchGeneration &+= 1
         originalMediaFetchPhase = .idle(false)
+        lastOriginalProgress = nil
         livePhotoMediaFetchPhase = .idle(false)
         mediaFetchPhase = .idle(false)
         errorMessage = nil
@@ -796,9 +804,9 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
         }
 
         let source = entry.source
-        let requestKey = currentOrNewRequestKey()
+        let requestKey = newDisplayRequestKey()
         displayPhase = .displayLoading
-        setOriginalMediaFetchPhase(.resolving(hasDisplayImage))
+        setDisplayMediaFetchPhase(.resolving(hasDisplayImage))
         errorMessage = nil
         displayTaskPixelLength = pixelLength
         displayTask = Task(priority: priority) { [weak self] in
@@ -808,49 +816,46 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
                     pixelLength: pixelLength,
                     requestKey: requestKey
                 ) { [weak self] progress in
-                    self?.applyICloudProgress(progress, requestKey: requestKey)
+                    self?.applyDisplayICloudProgress(progress, requestKey: requestKey)
                 }
                 guard !Task.isCancelled else {
                     return
                 }
                 await MainActor.run {
                     guard let self,
-                          self.activeRequestKey == requestKey else {
+                          self.activeDisplayRequestKey == requestKey else {
                         return
                     }
                     self.displayTask = nil
                     self.displayTaskPixelLength = nil
+                    self.activeDisplayRequestKey = nil
                     self.displayPhoto = loadedDisplayPhoto
                     self.displayPhase = .displayReady
-                    // A display-sized preview finishing must not hide the
-                    // explicit iCloud state while the analysis original is
-                    // still downloading.
-                    if self.inputTask == nil {
-                        self.setOriginalMediaFetchPhase(.ready(true))
-                    } else {
-                        self.markDisplayPreviewAvailableDuringOriginalFetch()
-                    }
+                    self.setDisplayMediaFetchPhase(.ready(true))
+                    self.markDisplayPreviewAvailableDuringOriginalFetch()
                     self.clearLoadErrorIfAnalysisIsHealthy()
                 }
             } catch {
                 guard !Task.isCancelled else {
                     await MainActor.run {
                         guard let self,
-                              self.activeRequestKey == requestKey else {
+                              self.activeDisplayRequestKey == requestKey else {
                             return
                         }
                         self.displayTask = nil
                         self.displayTaskPixelLength = nil
+                        self.activeDisplayRequestKey = nil
                     }
                     return
                 }
                 await MainActor.run {
                     guard let self,
-                          self.activeRequestKey == requestKey else {
+                          self.activeDisplayRequestKey == requestKey else {
                         return
                     }
                     self.displayTask = nil
                     self.displayTaskPixelLength = nil
+                    self.activeDisplayRequestKey = nil
                     self.applyDisplayLoadError(error)
                 }
             }
@@ -873,13 +878,9 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
         }
 
         let source = entry.source
-        let requestKey = currentOrNewRequestKey()
+        let requestKey = newOriginalRequestKey()
         analysisPhase = .loading(progress: nil)
-        if case .downloadingFromICloud = originalMediaFetchPhase {
-            // Preserve the explicit iCloud state supplied by the display request.
-        } else {
-            setOriginalMediaFetchPhase(.resolving(hasDisplayImage))
-        }
+        setOriginalMediaFetchPhase(.resolving(hasDisplayImage))
         errorMessage = nil
         inputTask = Task(priority: priority) { [weak self] in
             do {
@@ -887,28 +888,29 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
                     source: source,
                     requestKey: requestKey
                 ) { progress in
-                    guard self?.activeRequestKey == requestKey else {
+                    guard self?.activeOriginalRequestKey == requestKey else {
                         return
                     }
-                    self?.analysisPhase = .loading(progress: progress)
-                    self?.applyICloudProgress(progress, requestKey: requestKey)
+                    self?.applyOriginalICloudProgress(progress, requestKey: requestKey)
                 }
                 guard !Task.isCancelled else {
                     await MainActor.run {
                         guard let self,
-                              self.activeRequestKey == requestKey else {
+                              self.activeOriginalRequestKey == requestKey else {
                             return
                         }
                         self.inputTask = nil
+                        self.activeOriginalRequestKey = nil
                     }
                     return
                 }
                 await MainActor.run {
                     guard let self,
-                          self.activeRequestKey == requestKey else {
+                          self.activeOriginalRequestKey == requestKey else {
                         return
                     }
                     self.inputTask = nil
+                    self.activeOriginalRequestKey = nil
                     self.input = loadedInput
                     self.analysisPhase = .ready
                     self.setOriginalMediaFetchPhase(.ready(true))
@@ -923,19 +925,21 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
                 guard !Task.isCancelled else {
                     await MainActor.run {
                         guard let self,
-                              self.activeRequestKey == requestKey else {
+                              self.activeOriginalRequestKey == requestKey else {
                             return
                         }
                         self.inputTask = nil
+                        self.activeOriginalRequestKey = nil
                     }
                     return
                 }
                 await MainActor.run {
                     guard let self,
-                          self.activeRequestKey == requestKey else {
+                          self.activeOriginalRequestKey == requestKey else {
                         return
                     }
                     self.inputTask = nil
+                    self.activeOriginalRequestKey = nil
                     self.applyLoadError(error)
                 }
             }
@@ -956,12 +960,15 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
     }
 
     private func applyDisplayLoadError(_ error: Error) {
+        displayPhase = .failed
+        applyDisplayMediaFetchFailure(error)
+        guard inputTask == nil, input == nil else {
+            return
+        }
         let presentation = DepthAnalysisErrorPresentation.analysisLoadError(for: error)
         errorTitle = presentation.title
         errorSystemImage = presentation.systemImage
         errorMessage = presentation.message
-        displayPhase = .failed
-        applyMediaFetchFailure(error)
     }
 
     private func applyLoadError(_ error: Error) {
@@ -975,36 +982,78 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
         planeSelection.cancelDetection()
     }
 
-    private func currentOrNewRequestKey() -> MediaFetchRequestKey {
-        if let activeRequestKey {
-            return activeRequestKey
-        }
-        fetchGeneration &+= 1
+    private func newDisplayRequestKey() -> MediaFetchRequestKey {
+        activeDisplayRequestKey = nil
+        displayFetchGeneration &+= 1
         let requestKey = MediaFetchRequestKey(
             itemID: entry.mediaID,
-            generation: fetchGeneration,
-            purpose: .photoOriginal
+            generation: displayFetchGeneration,
+            purpose: .photoDisplay
         )
-        activeRequestKey = requestKey
+        activeDisplayRequestKey = requestKey
         return requestKey
     }
 
-    private func applyICloudProgress(
+    private func newOriginalRequestKey() -> MediaFetchRequestKey {
+        activeOriginalRequestKey = nil
+        originalFetchGeneration &+= 1
+        lastOriginalProgress = nil
+        let requestKey = MediaFetchRequestKey(
+            itemID: entry.mediaID,
+            generation: originalFetchGeneration,
+            purpose: .photoOriginal
+        )
+        activeOriginalRequestKey = requestKey
+        return requestKey
+    }
+
+    private func applyDisplayICloudProgress(
         _ progress: Double?,
         requestKey: MediaFetchRequestKey
     ) {
-        guard activeRequestKey == requestKey else {
+        guard activeDisplayRequestKey == requestKey else {
             return
         }
-        setOriginalMediaFetchPhase(.downloadingFromICloud(
+        setDisplayMediaFetchPhase(.downloadingFromICloud(
             hasDisplayImage,
             progress: progress.map { min(max($0, 0), 1) }
         ))
     }
 
+    private func applyOriginalICloudProgress(
+        _ progress: Double?,
+        requestKey: MediaFetchRequestKey
+    ) {
+        guard activeOriginalRequestKey == requestKey else {
+            return
+        }
+        let normalizedProgress = progress.map { min(max($0, 0), 1) }
+        if let normalizedProgress {
+            lastOriginalProgress = max(lastOriginalProgress ?? 0, normalizedProgress)
+        }
+        analysisPhase = .loading(progress: lastOriginalProgress)
+        setOriginalMediaFetchPhase(.downloadingFromICloud(
+            hasDisplayImage,
+            progress: lastOriginalProgress
+        ))
+    }
+
     private func markDisplayPreviewAvailableDuringOriginalFetch() {
+        displayMediaFetchPhase = phaseWithCurrentPreview(displayMediaFetchPhase)
         originalMediaFetchPhase = phaseWithCurrentPreview(originalMediaFetchPhase)
         refreshMediaFetchPhase()
+    }
+
+    private func applyDisplayMediaFetchFailure(_ error: Error) {
+        if error is CancellationError {
+            return
+        }
+        let failure = mediaFetchFailure(for: error)
+        setDisplayMediaFetchPhase(.failed(
+            hasDisplayImage,
+            reason: failure,
+            retryable: failure.isRetryable
+        ))
     }
 
     private func applyMediaFetchFailure(_ error: Error) {
@@ -1027,8 +1076,11 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
         default:
             wasCloudFetch = false
         }
-        activeRequestKey = nil
-        fetchGeneration &+= 1
+        activeDisplayRequestKey = nil
+        displayFetchGeneration &+= 1
+        activeOriginalRequestKey = nil
+        originalFetchGeneration &+= 1
+        lastOriginalProgress = nil
         displayTask?.cancel()
         displayTask = nil
         displayTaskPixelLength = nil
@@ -1039,6 +1091,13 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
         }
         if input == nil {
             analysisPhase = .idle
+        }
+        if displayPhoto != nil {
+            setDisplayMediaFetchPhase(.ready(true))
+        } else if thumbnailImage != nil {
+            setDisplayMediaFetchPhase(.localPreview(true))
+        } else {
+            setDisplayMediaFetchPhase(.idle(false))
         }
         if preserveCloudState, wasCloudFetch {
             setOriginalMediaFetchPhase(.cloudOnly(hasDisplayImage))
@@ -1085,8 +1144,14 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
         refreshMediaFetchPhase()
     }
 
+    private func setDisplayMediaFetchPhase(_ phase: MediaFetchPhase<Bool, Bool>) {
+        displayMediaFetchPhase = phase
+        refreshMediaFetchPhase()
+    }
+
     private func refreshMediaFetchPhase() {
         let originalPhase = phaseWithCurrentPreview(originalMediaFetchPhase)
+        let displayPhase = phaseWithCurrentPreview(displayMediaFetchPhase)
         let livePhotoPhase = phaseWithCurrentPreview(livePhotoMediaFetchPhase)
 
         switch originalPhase {
@@ -1098,12 +1163,19 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
             } else {
                 mediaFetchPhase = originalPhase
             }
-        case .idle, .localPreview, .ready:
+        case .ready:
             switch livePhotoPhase {
             case .failed, .downloadingFromICloud, .cloudOnly, .resolving:
                 mediaFetchPhase = livePhotoPhase
             case .idle, .localPreview, .ready:
                 mediaFetchPhase = originalPhase
+            }
+        case .idle, .localPreview:
+            switch livePhotoPhase {
+            case .failed, .downloadingFromICloud, .cloudOnly, .resolving:
+                mediaFetchPhase = livePhotoPhase
+            case .idle, .localPreview, .ready:
+                mediaFetchPhase = displayPhase
             }
         }
     }

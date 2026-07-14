@@ -626,105 +626,27 @@ private struct TAPLibraryItemCell: View {
     @State private var fetchPhase: MediaFetchPhase<MediaPoster, MediaPoster> = .idle(nil)
 
     var body: some View {
-        ZStack {
-            Rectangle()
-                .fill(Color(uiColor: .secondarySystemBackground))
-                .aspectRatio(1, contentMode: .fit)
+        GeometryReader { geometry in
+            ZStack {
+                Rectangle()
+                    .fill(Color(uiColor: .secondarySystemBackground))
 
-            if let posterImage = displayedPoster?.image {
-                Image(uiImage: posterImage)
-                    .resizable()
-                    .scaledToFill()
-                    .aspectRatio(1, contentMode: .fill)
-                    .clipped()
-            } else {
-                Image(systemName: item.isVideo ? "video" : "photo")
-                    .font(.title2)
-                    .foregroundStyle(.secondary)
-            }
+                if let posterImage = displayedPoster?.image {
+                    Image(uiImage: posterImage)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: geometry.size.width, height: geometry.size.width)
+                        .clipped()
+                } else {
+                    Image(systemName: item.isVideo ? "video" : "photo")
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+                }
 
-            if item.isLivePhoto {
-                VStack {
-                    HStack {
-                        Spacer()
-                        DepthAnalysisLivePhotoBadge(size: .thumbnail)
-                    }
-                    Spacer()
-                }
-                .padding(5)
-                .allowsHitTesting(false)
+                thumbnailBadges
             }
-
-            if item.isVideo {
-                VStack {
-                    HStack {
-                        Spacer()
-                        Image(systemName: "video.fill")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(.white)
-                            .frame(width: 24, height: 18)
-                            .background(.black.opacity(0.58), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
-                    }
-                    Spacer()
-                }
-                .padding(5)
-                .allowsHitTesting(false)
-            }
-
-            if isCloudOnly {
-                VStack {
-                    HStack {
-                        Image(systemName: "icloud.and.arrow.down")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .frame(width: 24, height: 18)
-                            .background(.black.opacity(0.58), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
-                            .accessibilityLabel(LibraryMediaCopy.storedInICloud)
-                        Spacer()
-                    }
-                    Spacer()
-                }
-                .padding(5)
-                .allowsHitTesting(false)
-            } else if isResolving {
-                ProgressView()
-                    .controlSize(.small)
-                    .tint(.secondary)
-                    .allowsHitTesting(false)
-            } else if hasFailure {
-                VStack {
-                    HStack {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .frame(width: 22, height: 18)
-                            .background(.black.opacity(0.58), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
-                        Spacer()
-                    }
-                    Spacer()
-                }
-                .padding(5)
-                .allowsHitTesting(false)
-            }
-
-            if let badge = item.pendingBadge {
-                VStack {
-                    Spacer()
-                    HStack {
-                        Text(badge)
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(.black)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 3)
-                            .background(.yellow, in: Capsule())
-                        Spacer()
-                    }
-                }
-                .padding(5)
-                .allowsHitTesting(false)
-            }
+            .frame(width: geometry.size.width, height: geometry.size.width)
+            .contentShape(Rectangle())
         }
         .aspectRatio(1, contentMode: .fit)
         .clipped()
@@ -733,6 +655,92 @@ private struct TAPLibraryItemCell: View {
         }
         .accessibilityLabel(item.accessibilityLabel)
         .accessibilityValue(isCloudOnly ? LibraryMediaCopy.storedInICloud : "")
+    }
+
+    @ViewBuilder
+    private var thumbnailBadges: some View {
+        if item.isLivePhoto {
+            VStack {
+                HStack {
+                    Spacer()
+                    DepthAnalysisLivePhotoBadge(size: .thumbnail)
+                }
+                Spacer()
+            }
+            .padding(5)
+            .allowsHitTesting(false)
+        }
+
+        if item.isVideo {
+            VStack {
+                HStack {
+                    Spacer()
+                    Image(systemName: "video.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 24, height: 18)
+                        .background(.black.opacity(0.58), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                }
+                Spacer()
+            }
+            .padding(5)
+            .allowsHitTesting(false)
+        }
+
+        if isCloudOnly {
+            VStack {
+                HStack {
+                    Image(systemName: "icloud.and.arrow.down")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 24, height: 18)
+                        .background(.black.opacity(0.58), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                        .accessibilityLabel(LibraryMediaCopy.storedInICloud)
+                    Spacer()
+                }
+                Spacer()
+            }
+            .padding(5)
+            .allowsHitTesting(false)
+        } else if isResolving {
+            ProgressView()
+                .controlSize(.small)
+                .tint(.secondary)
+                .allowsHitTesting(false)
+        } else if hasFailure {
+            VStack {
+                HStack {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 22, height: 18)
+                        .background(.black.opacity(0.58), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                    Spacer()
+                }
+                Spacer()
+            }
+            .padding(5)
+            .allowsHitTesting(false)
+        }
+
+        if let badge = item.pendingBadge {
+            VStack {
+                Spacer()
+                HStack {
+                    Text(badge)
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.black)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 3)
+                        .background(.yellow, in: Capsule())
+                    Spacer()
+                }
+            }
+            .padding(5)
+            .allowsHitTesting(false)
+        }
     }
 
     private var thumbnailTaskID: String {

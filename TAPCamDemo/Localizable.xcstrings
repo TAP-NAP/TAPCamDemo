@@ -143,9 +143,6 @@
     "Done" : {
 
     },
-    "Downloading photo" : {
-
-    },
     "Drag on the image to choose a region. The region heatmap uses only the selected valid depth samples to recalculate its color range." : {
 
     },
@@ -180,6 +177,9 @@
 
     },
     "Flash unavailable" : {
+
+    },
+    "Generating credential" : {
 
     },
     "Global depth legend" : {
@@ -219,12 +219,6 @@
             "state" : "translated",
             "value" : "Cancel"
           }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "取消"
-          }
         }
       }
     },
@@ -234,12 +228,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Retry"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "重试"
           }
         }
       }
@@ -251,12 +239,6 @@
             "state" : "translated",
             "value" : "Open Settings"
           }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "前往设置"
-          }
         }
       }
     },
@@ -266,12 +248,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "The downloaded media could not be decoded."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法解码已下载的媒体。"
           }
         }
       }
@@ -283,12 +259,6 @@
             "state" : "translated",
             "value" : "Unable to open item"
           }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法打开项目"
-          }
         }
       }
     },
@@ -298,12 +268,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "The iCloud download did not finish. Try again."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iCloud 下载未完成，请重试。"
           }
         }
       }
@@ -315,12 +279,6 @@
             "state" : "translated",
             "value" : "Unable to download"
           }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法下载"
-          }
         }
       }
     },
@@ -330,12 +288,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Connect to the internet to download this item from iCloud."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "请连接网络，以从 iCloud 下载此项目。"
           }
         }
       }
@@ -347,12 +299,6 @@
             "state" : "translated",
             "value" : "You’re offline"
           }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "当前处于离线状态"
-          }
         }
       }
     },
@@ -362,12 +308,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Allow Photos access in Settings, then try again."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "请在设置中允许访问照片，然后重试。"
           }
         }
       }
@@ -379,12 +319,6 @@
             "state" : "translated",
             "value" : "Photos access required"
           }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "需要照片访问权限"
-          }
         }
       }
     },
@@ -394,12 +328,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "This item was removed from Photos or is no longer shared with this device."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此项目已从照片中移除，或不再与此设备共享。"
           }
         }
       }
@@ -411,12 +339,6 @@
             "state" : "translated",
             "value" : "Item no longer available"
           }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "项目已不可用"
-          }
         }
       }
     },
@@ -426,12 +348,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Loading from iCloud…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在从 iCloud 中加载…"
           }
         }
       }
@@ -443,12 +359,6 @@
             "state" : "translated",
             "value" : "Stored in iCloud"
           }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已存储在 iCloud"
-          }
         }
       }
     },
@@ -459,12 +369,6 @@
             "state" : "translated",
             "value" : "Preparing photo…"
           }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在准备照片…"
-          }
         }
       }
     },
@@ -474,12 +378,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Preparing video…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在准备视频…"
           }
         }
       }
@@ -730,6 +628,9 @@
     "This is a local camera-coordinate point cloud preview. It is not cloud storage, cloud compute, or a semantic word cloud." : {
 
     },
+    "This photo is still being processed in the TAPCam queue. Its credential will appear when processing finishes." : {
+
+    },
     "This video has not finished exporting to Photos. Deleting it removes the local TAP copy and cannot be undone." : {
 
     },
@@ -785,12 +686,6 @@
             "state" : "translated",
             "value" : "Depth data is unavailable at this moment."
           }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此时刻没有可用的深度数据。"
-          }
         }
       }
     },
@@ -807,12 +702,6 @@
 
     },
     "Welcome to TAPCam" : {
-
-    },
-    "正在生成凭证" : {
-
-    },
-    "该照片仍在 TAPCam 队列中处理。生成完成后会显示该照片的凭证已生成。" : {
 
     }
   },

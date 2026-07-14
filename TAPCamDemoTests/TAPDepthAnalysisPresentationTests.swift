@@ -1054,6 +1054,40 @@ struct TAPDepthAnalysisPresentationTests {
         #expect(slot.mediaFetchPhase == .ready(true))
     }
 
+    @Test @MainActor func originalICloudProgressNeverRegressesOrReturnsToIndeterminate() async throws {
+        let image = try singlePixelUIImage()
+        let depthMap = TAPMetricDepthMap(
+            width: 2,
+            height: 2,
+            samples: [1, 1, 1, 1],
+            calibration: TAPCamDemoTestFixtures.sampleCalibration
+        )
+        let input = try TAPCamDemoTestFixtures.analysisInput(depthMap: depthMap)
+        let loader = DepthAnalysisProgressivePhotoLoader(
+            thumbnailLoader: { _, _ in image },
+            displayLoader: { _, _ in AnalysisDisplayPhoto(image: image) },
+            inputLoader: { _, progress in
+                await progress(0.64)
+                await progress(nil)
+                await progress(0.21)
+                try await Task.sleep(nanoseconds: 300_000_000)
+                return input
+            }
+        )
+        let slot = AnalysisPhotoSlot(
+            entry: DepthAnalysisCarouselEntry(source: .photosAsset("icloud-monotonic-progress"))
+        )
+
+        slot.ensureLoading(loader: loader, pixelLength: 80, priority: .userInitiated)
+        try await waitForCondition {
+            slot.mediaFetchPhase == .downloadingFromICloud(true, progress: 0.64)
+        }
+
+        #expect(slot.loadProgress == 0.64)
+        try await waitForCondition { slot.input != nil }
+        #expect(slot.mediaFetchPhase == .ready(true))
+    }
+
     @Test @MainActor func livePhotoProgressAggregatesWithReadyOriginalAndCanonicalIdentity() async throws {
         let image = try singlePixelUIImage()
         let loader = DepthAnalysisProgressivePhotoLoader(

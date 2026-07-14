@@ -335,18 +335,10 @@ struct TAPVideoDepthPlaybackView: View {
     private var content: some View {
         switch viewModel.state {
         case .idle, .loading:
-            ZStack {
-                Color.black
-                LibraryMediaFetchOverlay(
-                    kind: .tapVideo,
-                    state: LibraryMediaFetchOverlayState(viewModel.mediaFetchPhase),
-                    onCancel: cancelCurrentFetch,
-                    onRetry: retryCurrentFetch
-                )
-            }
+            videoLoadingSurface
         case .failed(let message):
             ZStack {
-                Color.black
+                loadingPreview
                 if LibraryMediaFetchOverlayState(viewModel.mediaFetchPhase) == .hidden {
                     ContentUnavailableView(
                         "Unable to play video",
@@ -356,16 +348,40 @@ struct TAPVideoDepthPlaybackView: View {
                     .foregroundStyle(.white)
                     .padding()
                 } else {
-                    LibraryMediaFetchOverlay(
+                    LibraryMediaViewerFetchOverlay(
                         kind: .tapVideo,
                         state: LibraryMediaFetchOverlayState(viewModel.mediaFetchPhase),
-                        onCancel: cancelCurrentFetch,
                         onRetry: retryCurrentFetch
                     )
                 }
             }
         case .ready:
             playbackSurface
+        }
+    }
+
+    private var videoLoadingSurface: some View {
+        ZStack {
+            loadingPreview
+            LibraryMediaViewerFetchOverlay(
+                kind: .tapVideo,
+                state: LibraryMediaFetchOverlayState(viewModel.mediaFetchPhase),
+                onRetry: retryCurrentFetch
+            )
+        }
+        .contentShape(Rectangle())
+        .gesture(videoSwipeGesture)
+    }
+
+    @ViewBuilder
+    private var loadingPreview: some View {
+        ZStack {
+            Color.black
+            if let loadingPreviewImage = viewModel.loadingPreviewImage {
+                Image(uiImage: loadingPreviewImage)
+                    .resizable()
+                    .scaledToFit()
+            }
         }
     }
 
@@ -1195,6 +1211,7 @@ private final class TAPVideoDepthPlaybackViewModel: ObservableObject {
 
     @Published private(set) var state: LoadState = .idle
     @Published private(set) var mediaFetchPhase: MediaFetchPhase<Bool, Bool> = .idle(false)
+    @Published private(set) var loadingPreviewImage: UIImage?
     @Published private(set) var player: AVPlayer?
     @Published private(set) var registeredDepthAvailability: TAPVideoRegisteredDepthAvailability = .checking
     @Published private(set) var isPreparingTwoDPlayback = false
@@ -1202,6 +1219,7 @@ private final class TAPVideoDepthPlaybackViewModel: ObservableObject {
     private var currentTimeSeconds: Double = 0
 
     private static let preferredTwoDBufferDurationSeconds: TimeInterval = 3
+    private static let loadingPreviewPixelLength = 640
 
     private let source: TAPVideoPlaybackSource
     private let registrationAdapter: any TAPVideoDepthRegistrationAdapting
@@ -1212,6 +1230,7 @@ private final class TAPVideoDepthPlaybackViewModel: ObservableObject {
     private var managedTemporaryFile: LibraryManagedTemporaryFile?
     private var resolvedFileURL: URL?
     private var currentRequestKey: MediaFetchRequestKey?
+    private var lastOriginalProgress: Double?
     private var playbackTimeJumpObserver: NSObjectProtocol?
     private var timeObserverToken: Any?
     private var playerStatusObservation: NSKeyValueObservation?
@@ -1258,6 +1277,7 @@ private final class TAPVideoDepthPlaybackViewModel: ObservableObject {
 
     func startPlaybackSession(requestKey: MediaFetchRequestKey) async {
         currentRequestKey = requestKey
+        async let previewLoad: Void = loadPreviewIfAvailable(requestKey: requestKey)
         await loadIfNeeded(requestKey: requestKey)
         guard currentRequestKey == requestKey else {
             return
@@ -1279,6 +1299,27 @@ private final class TAPVideoDepthPlaybackViewModel: ObservableObject {
         }
         scheduleFixtureSeekIfNeeded(player: player)
         #endif
+        _ = await previewLoad
+    }
+
+    private func loadPreviewIfAvailable(requestKey: MediaFetchRequestKey) async {
+        guard loadingPreviewImage == nil else {
+            refreshMediaFetchPreviewAvailability()
+            return
+        }
+        let data = await Self.loadingPreviewData(
+            source: source,
+            originalRequestKey: requestKey,
+            mediaFetcher: mediaFetcher
+        )
+        guard !Task.isCancelled,
+              currentRequestKey == requestKey,
+              let data,
+              let image = UIImage(data: data) else {
+            return
+        }
+        loadingPreviewImage = image
+        refreshMediaFetchPreviewAvailability()
     }
 
     private func loadIfNeeded(requestKey: MediaFetchRequestKey) async {
@@ -1296,7 +1337,8 @@ private final class TAPVideoDepthPlaybackViewModel: ObservableObject {
             )
         }
         state = .loading
-        mediaFetchPhase = .resolving(false)
+        lastOriginalProgress = nil
+        mediaFetchPhase = .resolving(hasLoadingPreview)
         var uncommittedResource: TAPVideoPlaybackResolvedResource?
 
         do {
@@ -1310,10 +1352,7 @@ private final class TAPVideoDepthPlaybackViewModel: ObservableObject {
                           self.currentRequestKey == requestKey else {
                         return
                     }
-                    self.mediaFetchPhase = .downloadingFromICloud(
-                        false,
-                        progress: progress
-                    )
+                    self.applyICloudProgress(progress, requestKey: requestKey)
                 }
             }
             uncommittedResource = resource
@@ -1387,9 +1426,9 @@ private final class TAPVideoDepthPlaybackViewModel: ObservableObject {
             releasePlaybackResources()
             state = .idle
             if case .downloadingFromICloud = mediaFetchPhase {
-                mediaFetchPhase = .cloudOnly(false)
+                mediaFetchPhase = .cloudOnly(hasLoadingPreview)
             } else {
-                mediaFetchPhase = .idle(false)
+                mediaFetchPhase = .idle(hasLoadingPreview)
             }
         } catch {
             guard currentRequestKey == requestKey else {
@@ -1401,13 +1440,60 @@ private final class TAPVideoDepthPlaybackViewModel: ObservableObject {
             state = .failed(DepthAnalysisErrorPresentation.albumLoadErrorMessage(for: error))
             let failure = (error as? MediaFetchFailure) ?? .decode
             mediaFetchPhase = .failed(
-                false,
+                hasLoadingPreview,
                 reason: failure,
                 retryable: failure.isRetryable
             )
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             LockedCameraDiagnostics.logger.error("tap_video_playback_load_failed source=\(Self.sourceLabel(self.source), privacy: .public) error=\(Self.describe(error), privacy: .public)")
             #endif
+        }
+    }
+
+    private var hasLoadingPreview: Bool {
+        loadingPreviewImage != nil
+    }
+
+    private func applyICloudProgress(
+        _ progress: Double?,
+        requestKey: MediaFetchRequestKey
+    ) {
+        guard currentRequestKey == requestKey else {
+            return
+        }
+        let normalizedProgress = progress.map { min(max($0, 0), 1) }
+        if let normalizedProgress {
+            lastOriginalProgress = max(lastOriginalProgress ?? 0, normalizedProgress)
+        }
+        mediaFetchPhase = .downloadingFromICloud(
+            hasLoadingPreview,
+            progress: lastOriginalProgress
+        )
+    }
+
+    private func refreshMediaFetchPreviewAvailability() {
+        switch mediaFetchPhase {
+        case .idle:
+            mediaFetchPhase = .idle(hasLoadingPreview)
+        case .resolving:
+            mediaFetchPhase = .resolving(hasLoadingPreview)
+        case .localPreview:
+            mediaFetchPhase = hasLoadingPreview ? .localPreview(true) : .idle(false)
+        case .cloudOnly:
+            mediaFetchPhase = .cloudOnly(hasLoadingPreview)
+        case .downloadingFromICloud(_, let progress):
+            mediaFetchPhase = .downloadingFromICloud(
+                hasLoadingPreview,
+                progress: progress
+            )
+        case .ready(let value):
+            mediaFetchPhase = .ready(value)
+        case .failed(_, let reason, let retryable):
+            mediaFetchPhase = .failed(
+                hasLoadingPreview,
+                reason: reason,
+                retryable: retryable
+            )
         }
     }
 
@@ -1420,7 +1506,7 @@ private final class TAPVideoDepthPlaybackViewModel: ObservableObject {
         if case .cloudOnly = mediaFetchPhase {
             // Cancellation intentionally leaves an explicit cloud-only state.
         } else {
-            mediaFetchPhase = .idle(false)
+            mediaFetchPhase = .idle(hasLoadingPreview)
         }
     }
 
@@ -1438,14 +1524,18 @@ private final class TAPVideoDepthPlaybackViewModel: ObservableObject {
         currentRequestKey = nil
         releasePlaybackResources()
         state = .idle
-        mediaFetchPhase = wasCloudFetch ? .cloudOnly(false) : .idle(false)
+        lastOriginalProgress = nil
+        mediaFetchPhase = wasCloudFetch
+            ? .cloudOnly(hasLoadingPreview)
+            : .idle(hasLoadingPreview)
     }
 
     func prepareForRetry() {
         currentRequestKey = nil
         releasePlaybackResources()
         state = .idle
-        mediaFetchPhase = .idle(false)
+        lastOriginalProgress = nil
+        mediaFetchPhase = .idle(hasLoadingPreview)
     }
 
     func handleMemoryWarning() {
@@ -1849,6 +1939,94 @@ private final class TAPVideoDepthPlaybackViewModel: ObservableObject {
                 depthPipelineGeneration &+= 1
             }
         }
+    }
+
+    private static func loadingPreviewData(
+        source: TAPVideoPlaybackSource,
+        originalRequestKey: MediaFetchRequestKey,
+        mediaFetcher: any LibraryMediaFetching
+    ) async -> Data? {
+        switch source {
+        case .pendingCapture(let captureID):
+            if let data = try? await TAPPendingCaptureStore.shared.thumbnailData(
+                captureID: captureID
+            ) {
+                return data
+            }
+            guard let fileURL = try? await TAPPendingCaptureStore.shared.bestAvailableVideoURL(
+                captureID: captureID
+            ) else {
+                return nil
+            }
+            return await DepthAlbumThumbnailLoader.shared.videoData(
+                for: fileURL,
+                cacheKey: loadingPreviewCacheKey(source: source),
+                pixelLength: loadingPreviewPixelLength
+            )
+        case .ownedCapture(let captureID, let assetID):
+            if let data = try? await TAPPendingCaptureStore.shared.thumbnailData(
+                captureID: captureID
+            ) {
+                return data
+            }
+            return await photoKitLoadingPreviewData(
+                assetID: assetID,
+                originalRequestKey: originalRequestKey,
+                mediaFetcher: mediaFetcher
+            )
+        case .photosAsset(let assetID):
+            return await photoKitLoadingPreviewData(
+                assetID: assetID,
+                originalRequestKey: originalRequestKey,
+                mediaFetcher: mediaFetcher
+            )
+        #if DEBUG
+        case .fixtureFile(let fileURL, _, _):
+            return await DepthAlbumThumbnailLoader.shared.videoData(
+                for: fileURL,
+                cacheKey: loadingPreviewCacheKey(source: source),
+                pixelLength: loadingPreviewPixelLength
+            )
+        #endif
+        }
+    }
+
+    private static func photoKitLoadingPreviewData(
+        assetID: String,
+        originalRequestKey: MediaFetchRequestKey,
+        mediaFetcher: any LibraryMediaFetching
+    ) async -> Data? {
+        let previewRequestKey = MediaFetchRequestKey(
+            itemID: originalRequestKey.itemID,
+            generation: originalRequestKey.generation,
+            purpose: .gridPoster
+        )
+        let request = LibraryMediaAssetRequest(
+            key: previewRequestKey,
+            assetLocalIdentifier: assetID
+        )
+        do {
+            let phase = try await mediaFetcher.previewPhase(
+                for: request,
+                pixelLength: loadingPreviewPixelLength,
+                allowsNetworkAccess: false,
+                progress: { _ in }
+            )
+            try Task.checkCancellation()
+            return phase.previewOrReadyValue
+        } catch {
+            return nil
+        }
+    }
+
+    private static func loadingPreviewCacheKey(
+        source: TAPVideoPlaybackSource
+    ) -> String {
+        DepthAlbumThumbnailCacheKey.make(
+            mediaID: source.libraryMediaID,
+            version: "video-viewer-preview-v1",
+            pixelLength: loadingPreviewPixelLength
+        )
     }
 
     private static func resolveResource(

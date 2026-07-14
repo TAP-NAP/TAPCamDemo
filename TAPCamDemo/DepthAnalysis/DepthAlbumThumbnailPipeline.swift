@@ -14,7 +14,7 @@ import UIKit
 /// `DepthAlbumPickerView` should read as album UI. Keep Photos thumbnail
 /// requests, JPEG normalization, and protected disk-cache writes here.
 nonisolated enum DepthAlbumThumbnailCacheKey {
-    private static let version = "library-poster-v5"
+    private static let version = "library-poster-v6"
 
     static func make(mediaID: LibraryMediaID, version mediaVersion: String, pixelLength: Int) -> String {
         makeHash(from: [
@@ -92,7 +92,7 @@ actor DepthAlbumThumbnailLoader {
 
             let asset = AVURLAsset(url: fileURL)
             guard let image = await Self.image(from: asset, pixelLength: pixelLength),
-                  let data = DepthAlbumThumbnailJPEGRenderer.videoPosterData(
+                  let data = DepthAlbumThumbnailJPEGRenderer.aspectPreservingData(
                     from: image,
                     maximumPixelLength: pixelLength
                   ) else {
@@ -220,7 +220,10 @@ nonisolated final class DepthAlbumPhotoKitImageRequestBridge: @unchecked Sendabl
         let isDegraded = info?[PHImageResultIsDegradedKey] as? Bool == true
         let isCloudOnly = info?[PHImageResultIsInCloudKey] as? Bool == true
         let imageData = image.flatMap {
-            DepthAlbumThumbnailJPEGRenderer.data(from: $0, pixelLength: pixelLength)
+            DepthAlbumThumbnailJPEGRenderer.aspectPreservingData(
+                from: $0,
+                maximumPixelLength: pixelLength
+            )
         }
 
         if isDegraded {
@@ -292,27 +295,15 @@ nonisolated final class DepthAlbumPhotoKitImageRequestBridge: @unchecked Sendabl
 nonisolated enum DepthAlbumThumbnailJPEGRenderer {
     private static let compressionQuality: CGFloat = 0.78
 
-    static func data(from image: UIImage, pixelLength: Int) -> Data? {
-        let pixelLength = max(pixelLength, 1)
-        let canvas = CGRect(x: 0, y: 0, width: pixelLength, height: pixelLength)
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = 1
-        format.opaque = true
-
-        return UIGraphicsImageRenderer(size: canvas.size, format: format)
-            .jpegData(withCompressionQuality: compressionQuality) { context in
-                context.cgContext.setFillColor(UIColor.black.cgColor)
-                context.cgContext.fill(canvas)
-                image.draw(in: aspectFillRect(imageSize: image.size, targetSize: canvas.size))
-            }
-    }
-
-    /// TAP Video posters preserve the transformed frame aspect ratio and cap
-    /// the long edge, leaving aspect-fill/cropping to the consuming UI.
-    static func videoPosterData(
+    /// Poster and display-preview bytes preserve the transformed media aspect
+    /// ratio. The Library grid owns its square center crop; the viewer uses the
+    /// same lightweight bytes with aspect-fit while the original resolves.
+    static func aspectPreservingData(
         from image: UIImage,
         maximumPixelLength: Int
     ) -> Data? {
+        // UIImage.size is already expressed in display orientation, including
+        // images whose backing CGImage carries a left/right orientation.
         let sourceSize = image.size
         guard sourceSize.width > 0, sourceSize.height > 0 else {
             return nil
@@ -328,24 +319,11 @@ nonisolated enum DepthAlbumThumbnailJPEGRenderer {
         format.scale = 1
         format.opaque = true
         return UIGraphicsImageRenderer(size: outputSize, format: format)
-            .jpegData(withCompressionQuality: compressionQuality) { _ in
+            .jpegData(withCompressionQuality: compressionQuality) { context in
+                context.cgContext.setFillColor(UIColor.black.cgColor)
+                context.cgContext.fill(canvas)
                 image.draw(in: canvas)
             }
-    }
-
-    private static func aspectFillRect(imageSize: CGSize, targetSize: CGSize) -> CGRect {
-        guard imageSize.width > 0, imageSize.height > 0 else {
-            return CGRect(origin: .zero, size: targetSize)
-        }
-
-        let scale = max(targetSize.width / imageSize.width, targetSize.height / imageSize.height)
-        let scaledSize = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
-        return CGRect(
-            x: (targetSize.width - scaledSize.width) / 2,
-            y: (targetSize.height - scaledSize.height) / 2,
-            width: scaledSize.width,
-            height: scaledSize.height
-        )
     }
 }
 

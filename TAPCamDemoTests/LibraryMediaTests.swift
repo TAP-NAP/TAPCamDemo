@@ -201,6 +201,16 @@ struct LibraryMediaTests {
             item: photos,
             currentItemID: photos.id
         ))
+        #expect(LibraryMediaFetchPolicy.allowsNetworkAccess(
+            purpose: .photoDisplay,
+            item: photos,
+            currentItemID: photos.id
+        ))
+        #expect(!LibraryMediaFetchPolicy.allowsNetworkAccess(
+            purpose: .photoDisplay,
+            item: photos,
+            currentItemID: .photosAsset("newer")
+        ))
     }
 
     @Test func unifiedFetchStatePreservesPreviewAndProgress() {
@@ -414,40 +424,125 @@ struct LibraryMediaTests {
         #expect(captureIDs == ["good"])
     }
 
-    @Test @MainActor func videoPosterPreservesAspectRatioWith512PixelLongEdge() throws {
+    @Test @MainActor func mediaPosterPreservesLandscapeAndPortraitAspectRatios() throws {
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
-        let image = UIGraphicsImageRenderer(
+        let landscapeImage = UIGraphicsImageRenderer(
             size: CGSize(width: 1_600, height: 900),
             format: format
         ).image { context in
             UIColor.red.setFill()
             context.cgContext.fill(CGRect(x: 0, y: 0, width: 1_600, height: 900))
         }
+        let portraitImage = UIGraphicsImageRenderer(
+            size: CGSize(width: 900, height: 1_600),
+            format: format
+        ).image { context in
+            UIColor.blue.setFill()
+            context.cgContext.fill(CGRect(x: 0, y: 0, width: 900, height: 1_600))
+        }
 
-        let data = try #require(DepthAlbumThumbnailJPEGRenderer.videoPosterData(
-            from: image,
+        let landscapeData = try #require(DepthAlbumThumbnailJPEGRenderer.aspectPreservingData(
+            from: landscapeImage,
+            maximumPixelLength: 512
+        ))
+        let portraitData = try #require(DepthAlbumThumbnailJPEGRenderer.aspectPreservingData(
+            from: portraitImage,
+            maximumPixelLength: 512
+        ))
+        let landscapePoster = try #require(UIImage(data: landscapeData)?.cgImage)
+        let portraitPoster = try #require(UIImage(data: portraitData)?.cgImage)
+
+        #expect(landscapePoster.width == 512)
+        #expect(landscapePoster.height == 288)
+        #expect(portraitPoster.width == 288)
+        #expect(portraitPoster.height == 512)
+    }
+
+    @Test @MainActor func mediaPosterNormalizesRotatedOrientationWithoutSquaring() throws {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let baseImage = UIGraphicsImageRenderer(
+            size: CGSize(width: 1_600, height: 900),
+            format: format
+        ).image { context in
+            UIColor.green.setFill()
+            context.cgContext.fill(CGRect(x: 0, y: 0, width: 1_600, height: 900))
+        }
+        let cgImage = try #require(baseImage.cgImage)
+        let rotatedImage = UIImage(cgImage: cgImage, scale: 1, orientation: .left)
+        let data = try #require(DepthAlbumThumbnailJPEGRenderer.aspectPreservingData(
+            from: rotatedImage,
             maximumPixelLength: 512
         ))
         let poster = try #require(UIImage(data: data)?.cgImage)
 
-        #expect(poster.width == 512)
-        #expect(poster.height == 288)
+        #expect(poster.width == 288)
+        #expect(poster.height == 512)
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func simplifiedChineseICloudCopyIsPresent() throws {
+    func gridOwnsSquareCropWhileViewerBytesPreserveAspectRatio() throws {
+        let gridSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAlbumPickerView.swift"
+        )
+        let fetcherSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/MediaLibrary/LibraryMediaFetching.swift"
+        )
+
+        #expect(gridSource.contains("GeometryReader { geometry in"))
+        #expect(gridSource.contains(".frame(width: geometry.size.width, height: geometry.size.width)"))
+        #expect(gridSource.contains(".scaledToFill()"))
+        #expect(fetcherSource.contains("DepthAlbumThumbnailJPEGRenderer.aspectPreservingData("))
+        #expect(fetcherSource.contains("contentMode: .aspectFit"))
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func uiCopyCatalogIsEnglishOnly() throws {
         let source = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/Localizable.xcstrings"
         )
+        let analysisSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisView.swift"
+        )
 
-        #expect(source.contains("正在从 iCloud 中加载…"))
-        #expect(source.contains("已存储在 iCloud"))
-        #expect(source.contains("前往设置"))
-        #expect(source.contains("当前处于离线状态"))
-        #expect(source.contains("项目已不可用"))
-        #expect(source.contains("无法下载"))
-        #expect(source.contains("无法打开项目"))
+        #expect(source.contains("Loading from iCloud…"))
+        #expect(source.contains("Stored in iCloud"))
+        #expect(source.contains("Open Settings"))
+        #expect(source.contains("You’re offline"))
+        #expect(source.contains("Item no longer available"))
+        #expect(source.contains("Unable to download"))
+        #expect(source.contains("Unable to open item"))
+        #expect(!source.contains("\"zh-Hans\""))
+        #expect(source.range(of: "\\p{Han}", options: .regularExpression) == nil)
+        #expect(analysisSource.range(of: "\\p{Han}", options: .regularExpression) == nil)
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func photoAndVideoViewersShareCircularEnglishLoadingUI() throws {
+        let overlaySource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/MediaLibrary/LibraryMediaFetchOverlay.swift"
+        )
+        let photoSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisView.swift"
+        )
+        let videoSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/TAPVideoDepthPlaybackView.swift"
+        )
+
+        #expect(overlaySource.contains("struct LibraryMediaViewerFetchOverlay"))
+        #expect(overlaySource.contains("LibraryMediaProgressBadge(kind: kind, progress: progress)"))
+        #expect(overlaySource.contains("\"Downloading video\""))
+        #expect(photoSource.contains("LibraryMediaViewerFetchOverlay("))
+        #expect(photoSource.contains("kind: .photo"))
+        #expect(videoSource.contains("LibraryMediaViewerFetchOverlay("))
+        #expect(videoSource.contains("kind: .tapVideo"))
+        #expect(videoSource.contains("loadingPreviewImage"))
+        #expect(videoSource.contains(".scaledToFit()"))
+        #expect(videoSource.contains("allowsNetworkAccess: false"))
+        #expect(videoSource.contains("lastOriginalProgress = max("))
+        #expect(videoSource.contains(".gesture(videoSwipeGesture)"))
+        #expect(!videoSource.contains("onCancel: cancelCurrentFetch"))
     }
 
     private static func summary(

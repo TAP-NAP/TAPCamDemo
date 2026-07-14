@@ -145,6 +145,7 @@ nonisolated extension MediaFetchPhase where Preview == Value {
 nonisolated enum MediaFetchPurpose: String, Equatable, Hashable, Sendable {
     case gridPoster
     case recentCover
+    case photoDisplay
     case photoOriginal
     case livePhotoPlayback
     case videoOriginal
@@ -167,7 +168,7 @@ nonisolated enum LibraryMediaFetchPolicy {
                 return true
             }
             return false
-        case .photoOriginal, .livePhotoPlayback, .videoOriginal:
+        case .photoDisplay, .photoOriginal, .livePhotoPlayback, .videoOriginal:
             return true
         }
     }
