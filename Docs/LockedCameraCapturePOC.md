@@ -1,6 +1,6 @@
 # Locked Camera Capture POC PRD v3
 
-状态：R0、R1、R2A、R2B 真机通过；R3 主 App importer 已实现，等待真机验收
+状态：R0、R1、R2A、R2B 真机通过；R3 主 App importer 核心真机路径通过；下一阶段为 R4 公开 App-open 路径
 
 本 PRD 是 `codex/locked-camera-official-restart` 的实现契约。旧分支、旧 PRD、实验日志和历史代码只用于说明曾经观察到的现象，不再定义当前实现。
 
@@ -292,6 +292,8 @@ R3 暂时无法从 flat HEIC 恢复完整的主 App lens selection context，因
 8. 若导入失败，保留 `r3_capture_import_failed`/`r3_session_retained` 日志并重新启动主 App，确认 `.initial` 可重试且不会产生 duplicate pending record。
 
 通过条件：系统 update 到达后同一轮主 App 可见照片；每张 flat HEIC 只对应一个 pending `captureID`；成功 session 被 invalidate；失败 session 保留；R1/R2B 的自动回锁屏、preview 和连续启动行为无回归。
+
+2026-07-15 真机结果：自然结束锁屏 Extension 后，主 App 收到 `.added` 并在同一轮将一张及同 session 两张 flat HEIC 写入 pending queue；Library 在 signing/export 尚未结束时已显示 pending 项，之后全部完成 Photos export。成功 session 随即 invalidate 并收到 `.removed`。R3 核心 migration、即时 Library 可见性和连拍目录导入通过；失败保留/重试仍作为后续鲁棒性用例，不阻塞进入 R4。
 
 ### R4：认证并打开主 App
 

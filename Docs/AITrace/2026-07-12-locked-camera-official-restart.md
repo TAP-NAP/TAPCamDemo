@@ -473,3 +473,20 @@ Build number 为 `8`。核心 marker：
 - Capture/Control Extension 的 App Intents metadata 仍只有 `TAPCamLockedCameraIntent`，没有重新加入独立 OpenIntent route；
 - focused test runner 两次未能在 Simulator 中 materialize/launch，断言没有开始执行，因此不能记为测试通过或测试失败。该阻塞属于本机 Simulator runner 环境，R3 仍需真机 smoke 验收；
 - R3 不安装到实机，继续由用户从 Xcode 安装 Release build 并收集完整系统/Extension/App 日志。
+
+### R3 真机结论
+
+2026-07-15，用户确认锁屏拍摄自然结束后，照片可在同一轮主 App Library 中看到。日志提供了两组完整证据：
+
+1. 单张 session：`.added -> captureCount=1 -> pending ingest -> r3_session_invalidated -> .removed -> sign/export success`；
+2. 两张 session：`.added -> captureCount=2 -> 两个不同 captureID ingest -> r3_session_invalidated -> .removed`。Library 首次 snapshot 已显示 `visiblePendingCount=2`，随后两张均 export success。
+
+两组均为 `unexpectedEntryCount=0`，没有 `r3_capture_import_failed`、`r3_session_retained`、`r3_session_invalidate_failed`、sign/export failure 或 retry-count 增长。该结果验证：
+
+- 系统 `.added` 足以触发导入，不需要主动轮询；
+- pending ingest 完成即允许 Library 可见，不需要等待签名/Photos export；
+- 多张照片共享一个 session directory 时会逐文件导入，session count 不能当照片 count；
+- invalidate 后系统发出 `.removed`，成功路径完成闭环；
+- 日志中的 `managerSessionCount=12` 与本轮实际新增 session/capture 数不一致，再次证明 `sessionContentURLs.count` 不应作为 delivery、照片数量或等待完成的计数器。R3 已不读取该值，仅保留旧 UI 日志中的观测输出。
+
+Fig/FigSandbox 与短暂 Network.framework 行没有对应业务失败，不能解释为本轮 locked-camera lifecycle 问题。R3 核心真机 gate 判定通过；失败 session 保留与下次 `.initial` 幂等重试继续作为鲁棒性用例，不阻塞进入 R4。
