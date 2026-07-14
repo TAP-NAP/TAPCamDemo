@@ -400,3 +400,17 @@ R2B build number 为 `7`。关键 marker：`r2b_photo_trigger`、`r2b_photo_capt
 首次编译发现顶层 viewfinder 已接收 session URL，但屏幕快门所在的 nested controls 未显式接收该值。已改为 `ViewFinder -> Chrome -> PhotoControls` 的只读值传递；hardware event 和屏幕快门现在都把当前 scene URL 传给同一个 model capture 方法。没有引入全局缓存、environment 单例或 scene lifecycle hook。
 
 R2B 尚未真机验收。构建成功只证明 API、并发边界和 bundle 产物成立，不能代替锁屏下的真实文件保护、系统 suspend 或 relaunch 验证。
+
+### R2B 真机结论
+
+2026-07-15，用户报告行为与 R2B 预期一致。Extension UI 进入 `SAVED`，按当前代码路径意味着 depth HEIC 已完成同目录 staging + rename；主 App 随后记录 `tap_library_present ... managerSessionCount=1`，说明系统已迁移并向 `LockedCameraCaptureManager` 暴露一个 session content directory。
+
+日志解释边界：
+
+- `managerSessionCount=1` 表示一个 session directory，不表示一张照片；
+- 所提供日志主要附着于主 App，没有 `r2b_*`，因此不能从该片段逐行还原 Extension callback；
+- `nw_endpoint_flow_failed...` 后续 credential assertion 成功，属于主 App 网络路径；
+- Fig/FigSandbox 行之后主 App capture、签名、Photos export 均成功，且用户未观察到 freeze/黑屏，因此不作为 R2B lifecycle failure；
+- R2B 没有 importer，故该 session directory 此时不进入 Library 是预期行为。
+
+R2B 判定通过。R3 将从新的最小 app-side consumer 开始，不启用旧 importer 中的固定等待、轮询、handoff appearance delay 或把 session count 当照片数的逻辑。

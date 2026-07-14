@@ -1,6 +1,6 @@
 # Locked Camera Capture POC PRD v3
 
-状态：R0、R1、R2A 真机通过；下一阶段为 R2B session content 原子写入
+状态：R0、R1、R2A、R2B 真机通过；下一阶段为 R3 主 App importer
 
 本 PRD 是 `codex/locked-camera-official-restart` 的实现契约。旧分支、旧 PRD、实验日志和历史代码只用于说明曾经观察到的现象，不再定义当前实现。
 
@@ -255,6 +255,8 @@ R2B 使用 build `7`，选择“最小 flat depth HEIC”作为唯一 artifact�
 6. 日志中每次拍摄应依次出现 `r2b_photo_processed`、`r2b_session_write_begin`、`r2b_session_write_succeeded`，且最终文件名唯一。
 
 通过条件：每次 capture 都完成 depth HEIC rename；preview 在写入前后持续可用；无 freeze、纯黑、卡在 `CAPTURING` 或需要再次侧键恢复。R2B 尚未启动主 App importer，因此 Library 不出现照片是预期行为；系统 suspend 后是否发出 `.initial/.added` 留给 R3 验证。
+
+真机结论（2026-07-15）：用户报告 R2B 行为全部符合预期。Extension 中的 `SAVED` 只会在最终 HEIC rename 成功后出现；随后主 App 日志显示 `managerSessionCount=1`，证明系统已向 containing app 暴露一个 session directory。这个值不是照片数量。所提供 Console 片段主要来自主 App，因此没有 `r2b_*` Extension marker；结合可见 `SAVED` 状态与 manager directory evidence，R2B 判定通过。
 
 ### R3：主 App importer 与 pending queue
 
