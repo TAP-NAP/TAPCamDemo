@@ -863,3 +863,84 @@ R4D 对 UI 假设的处理是“保留但后置”，不是排除。主 App 当�
 - source scan 仍只有 `TAPCamLockedCameraOpenControl` 中一处公开 `openApplication(for:)`，没有非公开 transition-completion API；
 - Release 主 App 二进制包含完整 `r4d_*` stop/restart marker，且 `.app` 中没有 Markdown/TXT 实验文档；
 - 真机结论仍必须使用 R4D-L 流程从 Xcode 安装 Release 后取得，不能由本地编译代替。
+
+### R4D 真机结果：camera ownership 被排除
+
+2026-07-15 的 R4D-L 真机 smoke 仍复现 freeze，但设备级日志确认 containing App camera 已在离开 `.active` 时完成同步停止：
+
+```text
+r4d_main_camera_scene_stop_begin ... running=true
+r4d_main_camera_scene_stop_finish ... runningBefore=true runningAfter=false action=stopped
+```
+
+随后 `openApplication(for:)` 的系统动作被 SpringBoard 接收，API 返回 accepted，Capture Extension scene 完成 `Logical Deactivate`，进程进入 `running-suspended-NotVisible`。下一次用户感知到 freeze 时，没有新的 Capture Extension PID、Secure Capture scene、Extension root marker 或 camera configuration。侧键锁屏后，系统才 invalidates/destroys 旧 scene；销毁完成后新的 Capture Extension PID 可以正常启动。
+
+因此需要修正之前“Extension 没有 suspend”的表述：Extension 已 suspend，但 Open 后保留的 Secure Capture scene/session 没有被下一次启动正常复用或替换。R4D 排除了 containing App AVCaptureSession 持续占用作为必要原因，也把 freeze 定位在新 Extension 代码执行之前。
+
+完整设备日志保存在测试机工作目录外的临时捕获 `/tmp/TAPCamDemo-R4D-device-console-20260715-065911+0800.log`，SHA-256 为 `22f5a2bf37fca0d3b5eda19bbd0d1caac5026fe7eb5ceadc0685330df1afcc9d`。该文件可能随系统清理而消失，hash 和关键时序是持久记录。
+
+用户随后再次 smoke 的 App 日志还暴露了一个 containing App 时序窗口：
+
+```text
+App active; inertLanding=false; shouldResumeCamera=true
+-> locked-camera activity received
+-> inertLanding=true
+-> previous active transition superseded beforeAction
+```
+
+generation gate 在这次运行中阻止了相机真正重启，但完整 `StartupGateView`、Camera root、R3 manager runtime 和其他 App-owned state 仍先于 locked-camera activity 存在。R4D 只能排除相机持续 running，不能排除 containing App 的其余启动/scene 集成。
+
+## R4E：Release containing App 最小静态 host
+
+R4E build `13` 是一次边界级减法实验，不是产品实现。它一次移除 containing App 的业务 runtime，用于快速判断“主 App 实现整体是否参与 freeze”：
+
+- Release 主 App 从进程启动起只创建 `LockedCameraR4EMinimalAppHost`；
+- 不创建 `StartupGateView`、`CameraView`、Library 或 depth projection UI；
+- 不启动 `LockedCaptureSessionContentImportRuntime`，不访问 `LockedCameraCaptureManager.sessionContentUpdates`；
+- 不访问 PhotoKit，不启动 pending/signing worker，不安装自定义 orientation AppDelegate；
+- 只使用 `onContinueUserActivity(NSUserActivityTypeLockedCameraCapture)` 接收 activity 并写日志；
+- Capture Extension、R4 Open 控件、activity 内容和公开 `openApplication(for:)` 完全不变；
+- Debug/test 构建仍保留正常主 App，R4E 只作用于用户手测所用的 Release 构建。
+
+R4E 故意把 manager stream 和其余 App runtime 作为一个边界整体移除。若通过，再逐项恢复以定位具体组件；若失败，就不再在 CameraView、Library、签名或 importer 内继续猜测。
+
+主 App marker：
+
+```text
+r4e_minimal_app_host_appear ...
+    cameraViewCreated=false
+    libraryViewCreated=false
+    photoKitRequested=false
+    managerStreamStarted=false
+    pendingWorkerStarted=false
+r4e_minimal_app_activity_received ...
+r4e_minimal_app_scene_phase ... sceneCount=N sceneIDs=...
+```
+
+R4E-C1 固定流程：
+
+1. Xcode Release 安装并打开主 App，确认只显示 `R4E MINIMAL APP`；
+2. 侧键锁屏，从 Lock Screen Control 启动 Capture Extension；
+3. 不拍照，点击 Extension 的 Open；
+4. 完成认证并回到最小主 App；
+5. 再次侧键锁屏，第一次点击 Control 启动 Capture Extension；
+6. 记录是否 freeze，以及日志中是否出现新的 Extension PID/root marker。
+
+判定：
+
+- **不再 freeze**：containing App runtime 参与故障；后续从 manager stream 开始逐项恢复，而不是直接恢复全量 App；
+- **仍 freeze**：运行时 Camera/Library/import/signing/manager 均被排除，剩余重点转向主 App target/scene 配置、entitlement/signing 以及 iOS 26 Secure Capture transition；
+- `UIApplicationSupportsMultipleScenes=true` 在 R4E 中暂时保持不变，所以 R4E 不能排除 scene manifest 配置。若 R4E 仍失败，下一轮应单独对照 single-scene/template-level containing App 配置。
+
+### R4E 本地验证
+
+2026-07-15 对 build `13` 完成以下本地检查，未安装或操作设备：
+
+- Release generic iOS device build 在 `CODE_SIGNING_ALLOWED=NO` 下通过；
+- Debug generic iOS Simulator `build-for-testing` 通过，包含新增 R4E source-contract test；
+- `git diff --check` 通过；
+- 最终主 App、Capture Extension、Control Extension 的 `CFBundleVersion` 均为 `13`，`MinimumOSVersion` 均为 `18.6`；
+- 最终 Capture Extension 仍为 `EXExtensionPointIdentifier = com.apple.securecapture`；
+- Release 主 App 二进制包含 `r4e_minimal_app_host_appear`、`r4e_minimal_app_activity_received` 和 `r4e_minimal_app_scene_phase` marker；
+- Release 主 App 二进制未找到 `r3_runtime_start` marker；完整业务源码仍属于 target，但 Release root 不创建这些对象；
+- 真机必须确认首屏显示 `R4E MINIMAL APP` 后再执行 R4E-C1，不能用旧主 App UI 的日志判定本实验。
