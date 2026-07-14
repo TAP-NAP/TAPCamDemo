@@ -1,6 +1,6 @@
 # Locked Camera Capture POC PRD v3
 
-状态：R0 真机基线通过；R1 生命周期 smoke 通过，硬件事件和定量循环待确认
+状态：R0、R1 真机通过；下一阶段为 R2A 真实 depth photo capture
 
 本 PRD 是 `codex/locked-camera-official-restart` 的实现契约。旧分支、旧 PRD、实验日志和历史代码只用于说明曾经观察到的现象，不再定义当前实现。
 
@@ -150,13 +150,13 @@ R0 不验证拍照文件。`UIImagePickerController` 出现快门不代表照片
 - 不添加 photo/video data output、文件存储、importer、AppContext 或 app-open API；
 - 不实现 UI rotation 或方向切换。
 
-R1 首个真机 baseline 使用 build number `5`。hardware-event unified-log patch 使用 build number `6`；它只增强 diagnostics，不改变 camera graph。Control kind 和可见名称仍保持 R0 的 `TAP-NAP.TAPCamDemo.locked-camera.r0` / `TAPCam R0`，因为本阶段只允许替换 viewfinder；不能通过同时换 Control descriptor 掩盖自定义 camera graph 的问题。
+R1 使用 build number `5`。Control kind 和可见名称仍保持 R0 的 `TAP-NAP.TAPCamDemo.locked-camera.r0` / `TAPCam R0`，因为本阶段只允许替换 viewfinder；不能通过同时换 Control descriptor 掩盖自定义 camera graph 的问题。
 
 R1 没有 `AVCaptureVideoDataOutput`，所以没有逐帧 callback，也不能记录 first/last frame timestamp。当前证据边界是 `startRunning/isRunning`、preview-layer attachment、可见画面和系统 notification。若 session 报告 live 但画面停止，顶部 `TAPCam R1 / LIVE` chrome 仍保持可见，用户不会只看到无信息纯黑；frame-level watchdog 必须作为后续独立实验评估，不能混进本阶段。
 
 #### R1 真机验收
 
-安装 build `6` 后继续使用现有 `TAPCam R0` control，不删除或重新添加 control。
+安装 build `5` 后继续使用现有 `TAPCam R0` control，不删除或重新添加 control。
 
 基础循环执行 10 次：
 
@@ -175,7 +175,7 @@ R1 没有 `AVCaptureVideoDataOutput`，所以没有逐帧 callback，也不能�
 - 没有需要再次侧键锁屏才能恢复的 freeze；
 - 每次进入都能从 `STARTING` 到 `LIVE` 并看到真实 camera preview；
 - preview 异常时仍能看到状态 chrome/fallback，不出现无信息纯黑；
-- hardware event 每次只产生白闪，以及 `r1_capture_event_received` / `r1_capture_probe_flash_*` 日志，不会产生照片；
+- hardware event 每次只产生白闪和 `r1_capture_event_ended`，不会产生照片；
 - soak 期间没有卡死、无 UI 黑屏或不可恢复 interruption；
 - 日志能把 session interruption/runtime error 与 preview attachment 分开定位。
 
@@ -194,18 +194,19 @@ Apple 文档说明 capture extension 被 dismiss 后由系统 suspend，并要�
 - 系统自然回锁屏本身不是失败；
 - 只有停在缩小动画、Extension UI freeze、无信息纯黑，或下一次无法一次进入，才判定为生命周期失败。
 
-用户提供的本次日志主要来自主 App，没有 `r1_*`、`LockedCameraR1`、Extension process、session interruption/runtime error 或 deinit marker。因此本次只能把“正常进入、无异常后自然回锁屏、下一轮仍可一次进入”记录为用户可见 smoke 证据，不能从该日志证明 Extension 的精确 suspend/terminate 时间线。
+用户提供的本次日志主要来自主 App，没有 `r1_*`、`LockedCameraR1`、Extension process、session interruption/runtime error 或 deinit marker。因此日志不能证明 Extension 的精确 suspend/terminate 时间线；R1 的验收依据是用户可见行为和定量循环。
 
-随后用户按音量减键，确认 Extension 出现 R1 设计的短暂白闪，并且本轮仍未出现 freeze。该结果证明可见 view 上的 `onCameraCaptureEvent` 收到了以 `.ended` 结束的 hardware capture event；它不证明已经曝光或保存照片，因为 R1 明确没有 `AVCapturePhotoOutput`。hardware-event 可见行为 gate 已通过，尚缺的是精确记录的 10 轮循环和 soak 样本。
+#### R1 最终真机结果
 
-Capture Extension 与主 App 是独立进程。Xcode 只附着主 App 时，不保证显示 Extension 的统一日志。R1 将关键 lifecycle 和 hardware-event marker 记录为 `Logger.notice`；采集时应在 macOS Console 中选择该 iPhone，并按 subsystem `TAP-NAP.TAPCamDemo` 或 process `TAPCamLockedCameraCaptureExtension` 过滤。一次完成的白闪 probe 应出现以下顺序：
+2026-07-14，用户完成连续 10 轮锁屏启动、hardware capture event 和退出循环：
 
-1. `r1_capture_event_received ... eventPhase=began`；
-2. `r1_capture_event_received ... eventPhase=ended`；
-3. `r1_capture_probe_flash_begin`；
-4. `r1_capture_probe_flash_end`。
+- 10/10 次均一次进入自定义 viewfinder；
+- 没有 freeze、无信息纯黑或需要再次按侧键恢复；
+- hardware capture event 每轮均触发短暂白闪；
+- 白闪只证明公开 capture-event interaction 收到 `.ended` 事件，R1 不包含 `AVCapturePhotoOutput`，因此不会生成照片；
+- Extension 由系统自然结束并回到原生锁屏后，下一轮仍可一次进入。
 
-如果只有 `began` 或出现 `cancelled`，说明系统没有交付一个完成的 capture event；如果有 `ended` 而没有 `flash_begin`，再检查事件到 model 的路由；如果四条齐全但视觉上没有白闪，故障边界才在 SwiftUI probe rendering。当前公开 combined action 不报告具体物理按键名称，因此日志只把它称为 hardware capture event，不能从 API 字段断言它是音量减键。
+R1 判定通过。后续阶段必须保留这一生命周期结构，不加入 `scenePhase` teardown、主动 stop/dismiss 或把 app-open 与 camera cleanup 绑定。
 
 ### R2：depth capture 与 session content
 

@@ -17,7 +17,8 @@ struct TAPCamLockedCameraViewFinder: View {
             TAPCamLockedCameraPreview(source: camera.previewSource)
                 .ignoresSafeArea()
                 .onCameraCaptureEvent(isEnabled: camera.phase == .live) { event in
-                    camera.registerCaptureEvent(event)
+                    guard event.phase == .ended else { return }
+                    camera.registerCaptureEvent()
                 }
 
             if camera.shouldFlashCaptureProbe {
