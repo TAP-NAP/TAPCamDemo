@@ -159,12 +159,12 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
 
     func stop() {
         Self.lifecycleLogger.notice(
-            "r4b_main_session_stop_enqueued running=\(self.session.isRunning)"
+            "r4c_main_session_stop_enqueued running=\(self.session.isRunning)"
         )
         sessionQueue.async { [self, session, photoOutput] in
             guard session.isRunning else {
                 Self.lifecycleLogger.notice(
-                    "r4b_main_session_stop_finished running=false action=alreadyStopped"
+                    "r4c_main_session_stop_finished running=false action=alreadyStopped"
                 )
                 return
             }
@@ -175,7 +175,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             photoOutput.setPreparedPhotoSettingsArray([], completionHandler: nil)
             session.stopRunning()
             Self.lifecycleLogger.notice(
-                "r4b_main_session_stop_finished running=\(session.isRunning) action=stopped"
+                "r4c_main_session_stop_finished running=\(session.isRunning) action=stopped"
             )
         }
     }

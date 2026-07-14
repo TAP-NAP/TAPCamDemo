@@ -712,3 +712,53 @@ CameraView 从 background 恢复到 activity 到达之间还排入了一次 pend
 R4B 判定失败。下一实验 R4C 仅替换 App activity landing：展示一个静态 SwiftUI host，不创建 `DepthAlbumPickerView`，不访问 PhotoKit，不启动 Library view model，也不从 landing 触发 pending worker。Extension 的公开 `openApplication(for:)`、R3 app-level `sessionContentUpdates` runtime、normal CameraView 和所有签名/导入代码保持不变。
 
 R4C 仍先执行无照片流程。若仍 freeze，Library presentation workload 被排除；此时剩余 App-owned 变量主要是长期运行的 R3 manager stream，以及 activity 到达前 CameraView 对 `.active` 的短暂响应，二者必须继续分别验证，不能合并修改。若 R4C 不 freeze，再逐层恢复 Library 数据加载以找出最小失败边界。
+
+## R4C：静态 App landing
+
+R4C 使用 build `11`。Extension 仍使用 R4/R4B 的同一个 Open 控件、activity 和唯一一处公开 `session.openApplication(for:)`；R3 `LockedCaptureSessionContentImportRuntime` 仍在 App root 启动。
+
+唯一行为变化是 containing App 对 locked activity 的可见落点：
+
+```text
+StartupGateView validates activity
+-> root removes CameraView
+-> root displays static SwiftUI host
+```
+
+静态 host 只包含黑色背景、系统 `photo.stack` 图标和 `TAPCam` 文本。它不创建 `NavigationStack`、`DepthAlbumPickerView` 或 Library view model，不读取 PhotoKit，不访问 pending store，也没有自动跳转。它是诊断页面，不是最终 UX；用户不应在本轮检查照片，只检查下一次 Extension 是否第一次启动。
+
+关键 marker：
+
+- `r4c_app_activity_validated ... routeSideEffects=none`；
+- `r4c_app_inert_landing_route ... cameraHostRequested=false libraryRequested=false`；
+- `r4c_app_inert_host_appear ... cameraViewCreated=false libraryViewCreated=false photoKitRequested=false`；
+- `r4c_app_camera_host_disappear`；
+- `r4c_main_camera_stop_requested` / `r4c_main_session_stop_finished`；
+- `r4c_extension_root_appear` / `r4c_extension_root_disappear`。
+
+本轮日志中不得在 activity 后出现 `tap_library_load_begin`、`requestReadWriteAccess` 或 `depthAlbumAssets fetched`。CameraView 在 activity 之前对 scene `.active` 的响应、以及 app-level `r3_runtime_start` 仍可能存在；它们是后续独立变量，不属于 R4C。
+
+真机流程：
+
+1. 从 Xcode 安装 Release build `11`，普通打开主 App；
+2. 锁屏进入 Extension，不拍照；
+3. 点击 `OPEN` 并认证，确认只出现静态 TAPCam 页面；
+4. 再次锁屏，第一次启动 Extension；
+5. 记录是否 freeze，以及上述 marker 和 activity 后是否出现 Library/PhotoKit marker。
+
+通过只表示 Library presentation workload 与 freeze 有关联，需要逐层恢复功能；失败只表示该 workload 不是必要条件，不能跳过后续 R3 stream 与 pre-activity resume 两个独立实验。
+
+### R4C 本地验证
+
+2026-07-15 对 build `11` 完成以下验证，未安装或操作设备：
+
+- shared scheme 仍包含 `TAPCamDemoTests` 与 `TAPCAM_XCTEST_HOST=1`；
+- generic iOS Simulator `build-for-testing` 通过，R4C source-contract tests 已编译；当前没有 Booted simulator，因此未执行测试进程；
+- Release generic iOS device build 在 `CODE_SIGNING_ALLOWED=NO` 下通过；
+- 最终 App、Capture Extension、Control Extension 的 `CFBundleVersion` 均为 `11`；
+- Capture Extension 最终 metadata 仍为 `EXAppExtensionAttributes.EXExtensionPointIdentifier = com.apple.securecapture`，`MinimumOSVersion = 18.6`；
+- Release 二进制包含 `r4c_app_activity_validated`、`r4c_app_inert_landing_route`、`r4c_app_inert_host_appear`、主相机 stop marker 与 Extension root marker；
+- source scan 仍只有 `TAPCamLockedCameraOpenControl` 的一处公开 `openApplication(for:)`，没有非公开 transition-completion API；
+- Release `.app` 内没有打包 Markdown/TXT 实验文档。
+
+构建期间连接设备处于密码锁定，Xcode 重复报告 notification-proxy 无法启动；两个构建命令最终均为 exit 0。该警告不作为 R4C lifecycle 证据。

@@ -6,8 +6,8 @@
 import Foundation
 import Testing
 
-@Suite("Locked camera R4B source contract")
-struct TAPLockedCameraR4BSourceContractTests {
+@Suite("Locked camera R4C source contract")
+struct TAPLockedCameraR4CSourceContractTests {
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
     func captureExtensionOwnsOneLongLivedCameraModel() throws {
         let extensionSource = try source(
@@ -150,7 +150,7 @@ struct TAPLockedCameraR4BSourceContractTests {
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func mainAppKeepsR3ImporterIndependentFromR4BNoCameraLanding() throws {
+    func mainAppKeepsR3ImporterIndependentFromR4CInertLanding() throws {
         let appSource = try source("TAPCamDemo/App/TAPCamDemoApp.swift")
         let importerSource = try source(
             "TAPCamDemo/App/LockedCaptureSessionContentImporter.swift"
@@ -197,17 +197,22 @@ struct TAPLockedCameraR4BSourceContractTests {
         #expect(startupSource.contains("onContinueUserActivity(NSUserActivityTypeLockedCameraCapture)"))
         #expect(startupSource.contains("guard LockedCameraOpenActivityRouter.handle(activity) else"))
         #expect(startupSource.contains("@StateObject private var routeStore = CameraRouteStore()"))
-        #expect(startupSource.contains("@State private var isLockedCameraLibraryLanding = false"))
-        #expect(startupSource.contains("isLockedCameraLibraryLanding = true"))
-        #expect(startupSource.contains("routeStore.presentDepthAlbum()"))
-        #expect(startupSource.contains("LockedCameraLibraryLandingView(routeStore: routeStore)"))
-        #expect(startupSource.contains("DepthAlbumPickerView(routeStore: routeStore)"))
+        #expect(startupSource.contains("@State private var isLockedCameraInertLanding = false"))
+        #expect(startupSource.contains("isLockedCameraInertLanding = true"))
+        #expect(startupSource.contains("LockedCameraOpenDiagnosticLandingView()"))
+        #expect(startupSource.contains("locked-camera-r4c-inert-app-landing"))
         #expect(startupSource.contains("CameraView(routeStore: routeStore)"))
-        #expect(startupSource.contains("r4b_app_direct_library_route"))
-        #expect(startupSource.contains("r4b_app_library_host_appear cameraViewCreated=false"))
+        #expect(startupSource.contains("r4c_app_inert_landing_route"))
+        #expect(startupSource.contains("r4c_app_inert_host_appear cameraViewCreated=false libraryViewCreated=false photoKitRequested=false"))
+        #expect(!startupSource.contains("routeStore.presentDepthAlbum()"))
+        #expect(!startupSource.contains("LockedCameraLibraryLandingView"))
+        #expect(!startupSource.contains("DepthAlbumPickerView"))
+        #expect(!startupSource.contains("NavigationStack"))
+        #expect(!startupSource.contains("PHPhotoLibrary"))
+        #expect(!startupSource.contains("retryPendingCaptures"))
         #expect(routerSource.contains("TAPCamLockedCameraOpenActivity.requestsTapLibrary"))
         #expect(routerSource.contains("r4_app_activity_received"))
-        #expect(routerSource.contains("r4b_app_activity_validated"))
+        #expect(routerSource.contains("r4c_app_activity_validated"))
         #expect(!routerSource.contains("TAPCamIntentHandoffStore"))
         #expect(!routerSource.contains("tapCamIntentHandoffDidChange"))
         #expect(!routerSource.contains("NotificationCenter"))

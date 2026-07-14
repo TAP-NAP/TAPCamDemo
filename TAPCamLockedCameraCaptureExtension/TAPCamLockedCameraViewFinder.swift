@@ -44,12 +44,12 @@ struct TAPCamLockedCameraViewFinder: View {
         }
         .accessibilityIdentifier("locked-camera-r4-root")
         .onAppear {
-            TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR4B")
-                .notice("r4b_extension_root_appear")
+            TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR4C")
+                .notice("r4c_extension_root_appear")
         }
         .onDisappear {
-            TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR4B")
-                .notice("r4b_extension_root_disappear")
+            TAPCamLockedCameraDiagnostics.logger(category: "LockedCameraR4C")
+                .notice("r4c_extension_root_disappear")
         }
     }
 }

@@ -24,7 +24,7 @@ enum LockedCameraOpenActivityRouter {
         )
 
         LockedCameraDiagnostics.logger.notice(
-            "r4b_app_activity_validated destination=\(TAPCamLockedCameraOpenActivity.tapLibraryDestination, privacy: .public) routeSideEffects=none"
+            "r4c_app_activity_validated destination=\(TAPCamLockedCameraOpenActivity.tapLibraryDestination, privacy: .public) routeSideEffects=none"
         )
         return true
     }

@@ -15,12 +15,12 @@ struct StartupGateView: View {
     @StateObject private var startupCoordinator = StartupGateCoordinator()
     @StateObject private var routeStore = CameraRouteStore()
     @State private var isPreparingFirstInstallCameraReadiness = false
-    @State private var isLockedCameraLibraryLanding = false
+    @State private var isLockedCameraInertLanding = false
 
     var body: some View {
         Group {
-            if isLockedCameraLibraryLanding, routeStore.isDepthAlbumPresented {
-                LockedCameraLibraryLandingView(routeStore: routeStore)
+            if isLockedCameraInertLanding {
+                LockedCameraOpenDiagnosticLandingView()
             } else if isPreparingFirstInstallCameraReadiness {
                 CameraView(routeStore: routeStore, initialReadinessGate: .firstInstall {
                     completeFirstInstallSetupAfterCameraReadiness()
@@ -40,14 +40,9 @@ struct StartupGateView: View {
         .onContinueUserActivity(NSUserActivityTypeLockedCameraCapture) { activity in
             handleLockedCameraActivity(activity)
         }
-        .onChange(of: routeStore.isDepthAlbumPresented) { _, isPresented in
-            guard !isPresented, isLockedCameraLibraryLanding else { return }
-            isLockedCameraLibraryLanding = false
-            LockedCameraDiagnostics.logger.notice("r4b_app_library_landing_finished")
-        }
         .onChange(of: scenePhase) { _, phase in
             LockedCameraDiagnostics.logger.notice(
-                "r4b_app_scene_phase phase=\(Self.label(for: phase), privacy: .public) directLibrary=\(isLockedCameraLibraryLanding)"
+                "r4c_app_scene_phase phase=\(Self.label(for: phase), privacy: .public) inertLanding=\(isLockedCameraInertLanding)"
             )
         }
     }
@@ -55,22 +50,21 @@ struct StartupGateView: View {
     private func handleLockedCameraActivity(_ activity: NSUserActivity) {
         guard LockedCameraOpenActivityRouter.handle(activity) else { return }
 
-        isLockedCameraLibraryLanding = true
-        routeStore.presentDepthAlbum()
+        isLockedCameraInertLanding = true
         LockedCameraDiagnostics.logger.notice(
-            "r4b_app_direct_library_route phase=\(Self.label(for: scenePhase), privacy: .public) cameraHostRequested=false"
+            "r4c_app_inert_landing_route phase=\(Self.label(for: scenePhase), privacy: .public) cameraHostRequested=false libraryRequested=false"
         )
     }
 
     private func logCameraHostAppear() {
         LockedCameraDiagnostics.logger.notice(
-            "r4b_app_camera_host_appear phase=\(Self.label(for: scenePhase), privacy: .public)"
+            "r4c_app_camera_host_appear phase=\(Self.label(for: scenePhase), privacy: .public)"
         )
     }
 
     private func logCameraHostDisappear() {
         LockedCameraDiagnostics.logger.notice(
-            "r4b_app_camera_host_disappear phase=\(Self.label(for: scenePhase), privacy: .public) directLibrary=\(isLockedCameraLibraryLanding)"
+            "r4c_app_camera_host_disappear phase=\(Self.label(for: scenePhase), privacy: .public) inertLanding=\(isLockedCameraInertLanding)"
         )
     }
 
@@ -101,21 +95,29 @@ struct StartupGateView: View {
     }
 }
 
-private struct LockedCameraLibraryLandingView: View {
-    @ObservedObject var routeStore: CameraRouteStore
-
+private struct LockedCameraOpenDiagnosticLandingView: View {
     var body: some View {
-        NavigationStack {
-            DepthAlbumPickerView(routeStore: routeStore)
-                .toolbar(.visible, for: .navigationBar)
+        ZStack {
+            Color.black
+                .ignoresSafeArea()
+
+            VStack(spacing: 12) {
+                Image(systemName: "photo.stack")
+                    .font(.system(size: 38, weight: .regular))
+
+                Text("TAPCam")
+                    .font(.headline)
+            }
+            .foregroundStyle(.white)
         }
+        .accessibilityIdentifier("locked-camera-r4c-inert-app-landing")
         .onAppear {
             LockedCameraDiagnostics.logger.notice(
-                "r4b_app_library_host_appear cameraViewCreated=false"
+                "r4c_app_inert_host_appear cameraViewCreated=false libraryViewCreated=false photoKitRequested=false"
             )
         }
         .onDisappear {
-            LockedCameraDiagnostics.logger.notice("r4b_app_library_host_disappear")
+            LockedCameraDiagnostics.logger.notice("r4c_app_inert_host_disappear")
         }
     }
 }

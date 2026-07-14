@@ -394,6 +394,12 @@ Build `10` 的无照片流程仍 freeze。日志确认 direct Library route 已�
 
 R4C 若仍 freeze，只能判定 Library presentation workload 不是必要条件。之后还要分别排除 R3 manager stream，以及 App 在 activity 到达前收到 `.active` 时的短暂 CameraView lifecycle 工作；不得一次同时关闭两者。R4C 若通过，则按 Library shell、pending records、PhotoKit assets 的顺序逐项恢复，寻找最小失败组合。
 
+R4C 实现为 build `11`。locked activity 只把 App root 切换到静态 TAPCam host；不调用 `routeStore.presentDepthAlbum()`，不创建 `DepthAlbumPickerView`，也不提供自动进入 Library 的第二条路径。该页面仅服务于一次无照片生命周期实验，不代表产品 UX 的调整。Extension Open、R3 runtime、normal CameraView 和 session-content contract 保持不变。
+
+R4C 的通过条件不是“看见照片”，而是静态页面出现后，下一次 Extension 第一次启动不 freeze；同时 activity 后不得出现 `tap_library_load_begin`、`requestReadWriteAccess` 或 `depthAlbumAssets fetched`。无论结果如何，最终产品目标仍是认证后直接进入可用 Library。
+
+本地 gate 已通过：build `11` 的 generic Simulator `build-for-testing` 与 Release generic-device build 均成功；最终三个 bundle build number 一致，Capture Extension 保持 `com.apple.securecapture`、最低 iOS 18.6，且包体没有实验文档。当前无 Booted simulator，因此 source-contract tests 只完成编译、尚未执行。R4C 的 freeze 判定仍只能来自真机物理锁屏流程。
+
 iOS 26 `OpenIntent` 不再作为 secure-capture 内打开 containing App 的替代方案。它曾改变 Extension metadata 并破坏更早的 Control dispatch gate。
 
 ### R5：产品 UI 与压力测试

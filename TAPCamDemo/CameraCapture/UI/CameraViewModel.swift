@@ -184,11 +184,11 @@ final class CameraViewModel: ObservableObject {
 
     func start() async {
         LockedCameraDiagnostics.logger.notice(
-            "r4b_main_camera_start_begin running=\(self.sessionController.session.isRunning) paused=\(self.isPausedForAnalysis) authorization=\(AVCaptureDevice.authorizationStatus(for: .video).rawValue)"
+            "r4c_main_camera_start_begin running=\(self.sessionController.session.isRunning) paused=\(self.isPausedForAnalysis) authorization=\(AVCaptureDevice.authorizationStatus(for: .video).rawValue)"
         )
         defer {
             LockedCameraDiagnostics.logger.notice(
-                "r4b_main_camera_start_finish running=\(self.sessionController.session.isRunning) paused=\(self.isPausedForAnalysis) configuring=\(self.isConfiguringSession)"
+                "r4c_main_camera_start_finish running=\(self.sessionController.session.isRunning) paused=\(self.isPausedForAnalysis) configuring=\(self.isConfiguringSession)"
             )
         }
 
@@ -228,7 +228,7 @@ final class CameraViewModel: ObservableObject {
 
     func stop() {
         LockedCameraDiagnostics.logger.notice(
-            "r4b_main_camera_stop_requested running=\(self.sessionController.session.isRunning) paused=\(self.isPausedForAnalysis)"
+            "r4c_main_camera_stop_requested running=\(self.sessionController.session.isRunning) paused=\(self.isPausedForAnalysis)"
         )
         recentLibraryPreviewRefreshTask?.cancel()
         recentLibraryPreviewRefreshTask = nil
@@ -240,7 +240,7 @@ final class CameraViewModel: ObservableObject {
 
     func pauseForAnalysis() {
         LockedCameraDiagnostics.logger.notice(
-            "r4b_main_camera_pause_requested running=\(self.sessionController.session.isRunning) paused=\(self.isPausedForAnalysis)"
+            "r4c_main_camera_pause_requested running=\(self.sessionController.session.isRunning) paused=\(self.isPausedForAnalysis)"
         )
         recentLibraryPreviewRefreshTask?.cancel()
         recentLibraryPreviewRefreshTask = nil
