@@ -6,7 +6,7 @@
 
 基线：`edbd24c`（锁屏 clean-rebuild 实验之前的主 App commit）
 
-阶段：R0、R1 真机通过；下一阶段 R2A
+阶段：R0、R1、R2A 真机通过；下一阶段 R2B
 
 ## 重启原因
 
@@ -350,4 +350,10 @@ R2A build number 为 `6`，minimum OS 仍为 iOS 18.6，Control descriptor 和�
 - Capture/Control Extension 的 `Metadata.appintents` 均只包含 `TAPCamLockedCameraIntent`，没有新增 `OpenIntent`；
 - `git diff --check`：通过。
 
-构建期间出现的 `DTDKRemoteDeviceConnection ... device is passcode protected` 来自 Xcode 探测已锁定的连接真机；最终 simulator test 和 generic-device build 均成功，因此它不是本次源码或产物失败。R2A 尚未真机验收，不得把以上构建结果记为 depth capture 已通过。
+构建期间出现的 `DTDKRemoteDeviceConnection ... device is passcode protected` 来自 Xcode 探测已锁定的连接真机；最终 simulator test 和 generic-device build 均成功，因此它不是本次源码或产物失败。
+
+### R2A 真机结论
+
+2026-07-15，用户按 PRD 中的 R2A 真机验收流程报告“一切正常，符合预期”。R2A 判定通过：屏幕与硬件入口能够完成真实 depth photo capture，连续拍摄和系统自然 dismissal 后的下一次启动未观察到 freeze、纯黑或卡在 `CAPTURING`。
+
+这一结果只证明 camera graph + photo delegate 的稳定性。R2A 没有写 `sessionContentURL`，因此不能据此推断系统 migration、主 App importer 或 Library 可见性已经通过。

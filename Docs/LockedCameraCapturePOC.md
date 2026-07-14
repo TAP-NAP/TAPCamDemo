@@ -1,6 +1,6 @@
 # Locked Camera Capture POC PRD v3
 
-状态：R0、R1 真机通过；下一阶段为 R2A 真实 depth photo capture
+状态：R0、R1、R2A 真机通过；下一阶段为 R2B session content 原子写入
 
 本 PRD 是 `codex/locked-camera-official-restart` 的实现契约。旧分支、旧 PRD、实验日志和历史代码只用于说明曾经观察到的现象，不再定义当前实现。
 
@@ -230,6 +230,8 @@ R2A 使用 build `6`，Control kind/name 继续保持 R0 baseline。它只回答
 5. 最后一轮等待系统自然回锁屏，再确认下一次仍可一次进入。
 
 通过条件：所有请求都有 depth 成功结果；preview 在拍摄前后持续可见；没有 freeze、无信息纯黑、卡在 `CAPTURING` 或需要再次侧键恢复。主 App Library 没有这些照片是 R2A 的预期行为。
+
+真机结论（2026-07-15）：用户按上述验收流程报告行为全部正常并符合预期。R2A 判定通过；真实 photo/depth capture graph 没有破坏 R1 的启动、拍摄、系统 dismissal 或下一次启动生命周期。
 
 ### R2B：session content 原子写入
 
