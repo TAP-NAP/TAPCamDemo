@@ -229,8 +229,9 @@ struct TAPLockedCameraR4DSourceContractTests {
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func releaseContainingAppUsesR4EMinimalHost() throws {
+    func releaseContainingAppUsesR4EMinimalHostAndR4FSingleScene() throws {
         let appSource = try source("TAPCamDemo/App/TAPCamDemoApp.swift")
+        let infoPlistSource = try source("TAPCamDemo-Info.plist")
 
         #expect(appSource.contains("#if !DEBUG"))
         #expect(appSource.contains("LockedCameraR4EMinimalAppHost()"))
@@ -239,6 +240,7 @@ struct TAPLockedCameraR4DSourceContractTests {
         #expect(appSource.contains("managerStreamStarted=false"))
         #expect(appSource.contains("cameraViewCreated=false"))
         #expect(appSource.contains("onContinueUserActivity(NSUserActivityTypeLockedCameraCapture)"))
+        #expect(infoPlistSource.contains("<key>UIApplicationSupportsMultipleScenes</key>\n\t\t<false/>"))
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))

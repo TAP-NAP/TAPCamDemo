@@ -944,3 +944,73 @@ R4E-C1 固定流程：
 - Release 主 App 二进制包含 `r4e_minimal_app_host_appear`、`r4e_minimal_app_activity_received` 和 `r4e_minimal_app_scene_phase` marker；
 - Release 主 App 二进制未找到 `r3_runtime_start` marker；完整业务源码仍属于 target，但 Release root 不创建这些对象；
 - 真机必须确认首屏显示 `R4E MINIMAL APP` 后再执行 R4E-C1，不能用旧主 App UI 的日志判定本实验。
+
+### R4E 真机结果：containing App 业务 runtime 被排除
+
+2026-07-15 的 R4E-C1 真机 smoke 仍复现 freeze。主 App 日志只有最小 host marker：
+
+```text
+r4e_minimal_app_host_appear ...
+    cameraViewCreated=false
+    libraryViewCreated=false
+    photoKitRequested=false
+    managerStreamStarted=false
+    pendingWorkerStarted=false
+    sceneCount=1
+r4e_minimal_app_activity_received count=1
+    activityType=NSUserActivityTypeLockedCameraCapture
+    sceneCount=1
+```
+
+整个流程始终只有同一个 containing App scene persistent identifier。`openApplication(for:)` 的 activity 已成功送达；之后日志只出现 `.inactive` 与 `.active` 往返，用户下一次从锁屏启动 Capture Extension 仍会 freeze。
+
+因此 R4E 排除以下因素是 freeze 的必要条件：
+
+- 主 App `CameraView` 或 `AVCaptureSession`；
+- Library、PhotoKit 查询和 depth projection UI；
+- `LockedCameraCaptureManager.sessionContentUpdates` importer；
+- pending/signing worker、credential preparation 和网络；
+- 自定义 orientation AppDelegate；
+- 多个 containing App scene 已经同时存在这一运行时现象。
+
+R4E 不能排除 target-level scene 声明。项目仍把 `UIApplicationSupportsMultipleScenes` 声明为 `true`；单一 `sceneCount` 只能证明本次没有同时创建第二个 scene，不能证明多 scene 路由能力声明没有参与系统 handoff 决策。
+
+## R4F：single-scene containing App 配置对照
+
+R4F build `14` 是 R4E 的严格单变量后续实验：
+
+- Release containing App 继续使用完全相同的 `LockedCameraR4EMinimalAppHost`；
+- Capture Extension、相机、Open 控件、activity 和 `openApplication(for:)` 均不修改；
+- 不恢复 manager、importer、PhotoKit、Library、signing 或主 App 相机；
+- 只把 `UIApplicationSceneManifest.UIApplicationSupportsMultipleScenes` 从 `true` 改为 `false`；
+- 保留 `UISceneConfigurations` 为空字典，避免同时改变 scene 配置结构。
+
+依据：当前 Xcode iOS `UIScene Lifecycle` 模板默认使用 `UIApplicationSupportsMultipleScenes=false`。Apple 对该 key 的定义是：只有 App 确实支持同时运行两个或更多 scene 时才设为 `true`；设为 `false` 时 UIKit 不会为 App 创建一个以上的 scene。TAPCam 当前没有多窗口产品需求，也没有实现多 scene 间共享相机、Library 或队列资源的协调，因此原来的 `true` 本身就是不准确的 capability 声明。
+
+R4F-C1 固定流程与 R4E-C1 相同：
+
+1. Xcode Release 安装 build `14` 并打开最小主 App；
+2. 侧键锁屏，从 Lock Screen Control 启动 Capture Extension；
+3. 不拍照，点击 Extension 的 Open，认证后进入最小主 App；
+4. 再次侧键锁屏，第一次点击 Control 启动 Capture Extension；
+5. 记录是否 freeze，以及新的 Extension PID/root marker 是否出现。
+
+判定：
+
+- **不再 freeze**：错误的多 scene capability 声明参与了 Secure Capture handoff；保留 single-scene 配置，再逐步恢复产品主 App runtime；
+- **仍 freeze**：排除 containing App runtime 与多 scene 声明，下一步制作与 Xcode Capture Extension 模板同构的 target/config 对照，重点检查 App Intents metadata、entitlement/signing 和 extension embedding，而不是继续修改业务 UI。
+
+### R4F 本地验证
+
+2026-07-15 对 build `14` 完成以下本地检查，未安装或操作设备：
+
+- `TAPCamDemo-Info.plist`、Capture Extension plist 和 Control Extension plist 均通过 `plutil -lint`；
+- Release generic iOS device build 在 `CODE_SIGNING_ALLOWED=NO` 下通过；
+- Debug generic iOS Simulator `build-for-testing` 在 `ARCHS=arm64 ONLY_ACTIVE_ARCH=YES` 下通过，包含 R4F single-scene source-contract；
+- `git diff --check` 通过；
+- 最终主 App、Capture Extension、Control Extension 的 `CFBundleVersion` 均为 `14`，`MinimumOSVersion` 均为 `18.6`；
+- 最终主 App `UIApplicationSceneManifest.UIApplicationSupportsMultipleScenes=false`；
+- 最终 Capture Extension 仍位于主 App 的 `Extensions/` 目录，metadata 仍为 `EXAppExtensionAttributes.EXExtensionPointIdentifier=com.apple.securecapture`；
+- 最终 Control Extension 仍位于主 App 的 `PlugIns/` 目录，extension point 仍为 `com.apple.widgetkit-extension`；
+- Capture Extension 和 Open activity 的源码未修改，仍只有一处公开 `openApplication(for:)` 调用；
+- 首次 Debug 双架构构建因 `/tmp` 空间耗尽在 `lipo` 阶段失败，不是编译错误；清理本轮临时 DerivedData 后，单一 arm64 架构重跑成功。
