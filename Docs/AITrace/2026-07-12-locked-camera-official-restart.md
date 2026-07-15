@@ -1014,3 +1014,84 @@ R4F-C1 固定流程与 R4E-C1 相同：
 - 最终 Control Extension 仍位于主 App 的 `PlugIns/` 目录，extension point 仍为 `com.apple.widgetkit-extension`；
 - Capture Extension 和 Open activity 的源码未修改，仍只有一处公开 `openApplication(for:)` 调用；
 - 首次 Debug 双架构构建因 `/tmp` 空间耗尽在 `lipo` 阶段失败，不是编译错误；清理本轮临时 DerivedData 后，单一 arm64 架构重跑成功。
+
+### R4F 真机结果：single-scene 声明被排除
+
+2026-07-15 的 R4F-C1 真机 smoke 仍复现 freeze。包含 App 始终只有同一个 scene：
+
+```text
+r4e_minimal_app_host_appear ... sceneCount=1 sceneIDs=E5F99BDA-...
+r4e_minimal_app_activity_received count=1
+    activityType=NSUserActivityTypeLockedCameraCapture
+    sceneCount=1 sceneIDs=E5F99BDA-...
+r4e_minimal_app_scene_phase phase=inactive sceneCount=1 sceneIDs=E5F99BDA-...
+r4e_minimal_app_scene_phase phase=active sceneCount=1 sceneIDs=E5F99BDA-...
+```
+
+activity 送达后，用户后续多次锁屏/启动尝试只造成同一个 App scene 在 `.inactive` 与 `.active` 间往返；日志没有出现新的 containing App scene。用户仍在下一次首次 Capture Extension 启动时看到 freeze。
+
+因此 R4F 排除 `UIApplicationSupportsMultipleScenes=true` 是该 freeze 的必要原因。项目保留正确的 single-scene 声明，但后续不再继续修改 containing App runtime 或 scene routing。R4E 与 R4F 合并后的边界是：即使 containing App 是静态空 host、没有相机/Library/import/signing，且 UIKit 被限制为单 scene，公开 Open handoff 后仍能触发下一次 Secure Capture 启动 freeze。
+
+## R4G：Xcode Capture Extension 模板相机 host
+
+R4G build `15` 将实验边界移到 Capture Extension。本轮保持以下内容不变：
+
+- Release containing App 仍是 R4E 最小静态 host；
+- `UIApplicationSupportsMultipleScenes=false`；
+- Control Widget、`CameraCaptureIntent`、Open activity 内容不变；
+- 左下角仍复用同一个 `TAPCamLockedCameraOpenControl`，并仍只有一处公开 `openApplication(for:)`；
+- 不增加等待、stop、invalidate、import、PhotoKit、签名或 URL 路由。
+
+唯一行为变量是相机 host：
+
+- Extension root 不再创建 `TAPCamLockedCameraModel`；
+- 不启动自定义 `AVCaptureSession`、preview layer、photo output 或 session-content writer；
+- 改用当前 Xcode `Capture Extension.xctemplate` 相同的 `UIImagePickerController` 配置：`.camera`、rear camera、image/movie media types；
+- `UIImagePickerController` 由系统拥有相机交互和生命周期；Open 控件只作为 SwiftUI overlay；
+- 增加 root appear/disappear 和 picker dismantle 探针，但不主动控制 picker 或 camera。
+
+R4G marker：
+
+```text
+r4g_capture_extension_init
+r4g_template_root_appear
+r4g_image_picker_make sourceType=camera
+r4_open_tap_received
+r4_open_request_begin
+r4_open_request_accepted
+r4g_template_root_disappear
+r4g_image_picker_dismantle
+```
+
+R4G-C1 固定流程：
+
+1. Xcode Release 安装 build `15` 并打开 `R4E MINIMAL APP`；
+2. 侧键锁屏，第一次启动 Capture Extension；
+3. 确认看到系统 `UIImagePickerController` 相机 UI 和左下区域的 Open 控件；
+4. 本轮不拍照，直接点击 Open，认证后进入最小主 App；
+5. 再次侧键锁屏，第一次点击 Control 启动 Capture Extension；
+6. 记录是否 freeze，以及第二次是否出现新的 `r4g_capture_extension_init`、`r4g_template_root_appear` 和 `r4g_image_picker_make`；
+7. 同时记录第一次 Open 后是否出现 `r4g_template_root_disappear` 与 `r4g_image_picker_dismantle`。
+
+判定：
+
+- **不再 freeze**：问题位于自定义 Extension 相机/UI runtime 与 Secure Capture Open transition 的交互；后续以官方 picker lifecycle 为基线，逐层恢复自定义 preview 与 capture；
+- **仍 freeze，且第一次 picker 已 dismantle**：自定义 Extension 相机 runtime 也被排除；下一步新建与 Xcode 模板同构的干净 target/project，检查 App Intents metadata、entitlement/signing、bundle identity 和 embedding；
+- **仍 freeze，且 picker 未 dismantle**：公开 Open 被 accepted 后，系统没有拆除官方模板 camera host；需要结合 SpringBoard/ExtensionKit/RunningBoard 日志判断是 stale Secure Capture scene，还是当前 target 配置阻止 teardown。
+
+R4G 仅验证无拍照的 C1 生命周期。`UIImagePickerController` 的 capture delegate 与 TAP session-content 保存未接入，本轮不能用于评价照片保存或导入；这不是产品实现，也不会替代后续自定义 depth capture。
+
+### R4G 本地验证
+
+2026-07-15 对 build `15` 完成以下本地检查，未安装或操作设备：
+
+- Debug generic iOS Simulator `build-for-testing` 在 `ARCHS=arm64 ONLY_ACTIVE_ARCH=YES` 下通过；
+- Release generic iOS device build 在 `CODE_SIGNING_ALLOWED=NO` 下通过；
+- 最终主 App、Capture Extension 和 Control Extension 的 `CFBundleVersion` 均为 `15`，`MinimumOSVersion` 均为 `18.6`；
+- 最终主 App 继续声明 `UIApplicationSupportsMultipleScenes=false`；
+- Capture Extension 继续嵌入主 App 的 `Extensions/`，extension point 为 `com.apple.securecapture`；
+- Control Extension 继续嵌入主 App 的 `PlugIns/`，extension point 为 `com.apple.widgetkit-extension`；
+- Release Capture Extension 二进制包含 `r4g_capture_extension_init`、`r4g_template_root_appear`、`r4g_image_picker_make sourceType=camera`、`r4g_template_root_disappear` 和 `r4g_image_picker_dismantle`；
+- active root 源码中只有一处 `openApplication(for:)`，且 Open 路径不包含 capture、session-content、import、PhotoKit、签名、等待或显式 stop；
+- 旧自定义相机源码仍属于 Capture Extension target，因此对应类型 metadata 仍可能出现在二进制中，但 active root 不创建这些类型。R4G 验证的是运行时宿主替换，不是 target 文件级清空；若 R4G 仍 freeze，下一轮应使用全新模板 target/project 做文件级与配置级净化；
+- 当前没有 Booted Simulator，因此没有执行 `test-without-building`；真机 C1 smoke 仍由用户从 Xcode Release 安装后完成。

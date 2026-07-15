@@ -6,102 +6,56 @@
 import Foundation
 import Testing
 
-@Suite("Locked camera R4D source contract")
-struct TAPLockedCameraR4DSourceContractTests {
+@Suite("Locked camera R4G source contract")
+struct TAPLockedCameraR4GSourceContractTests {
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func captureExtensionOwnsOneLongLivedCameraModel() throws {
+    func captureExtensionUsesTheXcodeTemplateCameraHost() throws {
         let extensionSource = try source(
             "TAPCamLockedCameraCaptureExtension/TAPCamLockedCameraCaptureExtension.swift"
         )
-        let modelSource = try source(
-            "TAPCamLockedCameraCaptureExtension/TAPCamLockedCameraModel.swift"
-        )
-        let serviceSource = try source(
-            "TAPCamLockedCameraCaptureExtension/TAPCamLockedCaptureService.swift"
+        let templateSource = try source(
+            "TAPCamLockedCameraCaptureExtension/TAPCamLockedCameraR4GTemplateHost.swift"
         )
 
-        #expect(extensionSource.contains("@State private var camera = TAPCamLockedCameraModel()"))
         #expect(extensionSource.contains("LockedCameraCaptureUIScene"))
         #expect(extensionSource.contains("LockedCameraCaptureUIScene { session in"))
-        #expect(extensionSource.contains("TAPCamLockedCameraViewFinder("))
-        #expect(extensionSource.contains("session: session"))
-        #expect(extensionSource.contains("sessionContentURL: session.sessionContentURL"))
-        #expect(extensionSource.contains("await camera.start()"))
+        #expect(extensionSource.contains("TAPCamLockedCameraR4GTemplateHost(session: session)"))
+        #expect(extensionSource.contains("r4g_capture_extension_init"))
+        #expect(!extensionSource.contains("TAPCamLockedCameraModel"))
+        #expect(!extensionSource.contains("TAPCamLockedCameraViewFinder"))
+        #expect(!extensionSource.contains("sessionContentURL"))
+        #expect(!extensionSource.contains("camera.start()"))
 
-        #expect(modelSource.contains("@Observable"))
-        #expect(modelSource.contains("final class TAPCamLockedCameraModel"))
-        #expect(modelSource.contains("private let captureService: TAPCamLockedCaptureService"))
-        #expect(modelSource.contains("case starting"))
-        #expect(modelSource.contains("case live"))
-        #expect(modelSource.contains("case interrupted"))
-        #expect(modelSource.contains("case unavailable"))
-        #expect(!modelSource.contains("hasStarted"))
-
-        #expect(serviceSource.contains("actor TAPCamLockedCaptureService"))
-        #expect(serviceSource.contains("private let captureSession = AVCaptureSession()"))
-        #expect(serviceSource.contains("DispatchSerialQueue"))
-        #expect(serviceSource.contains("asUnownedSerialExecutor()"))
-        #expect(serviceSource.contains("captureSession.startRunning()"))
-        #expect(serviceSource.contains("guard !captureSession.isRunning else"))
-        #expect(serviceSource.contains("AVCaptureSession.wasInterruptedNotification"))
-        #expect(serviceSource.contains("AVCaptureSession.interruptionEndedNotification"))
-        #expect(serviceSource.contains("AVCaptureSession.runtimeErrorNotification"))
-        #expect(serviceSource.contains("error?.code == .mediaServicesWereReset"))
+        #expect(templateSource.contains("UIViewControllerRepresentable"))
+        #expect(templateSource.contains("UIImagePickerController"))
+        #expect(templateSource.contains("imagePicker.sourceType = .camera"))
+        #expect(templateSource.contains("UTType.image.identifier"))
+        #expect(templateSource.contains("UTType.movie.identifier"))
+        #expect(templateSource.contains("imagePicker.cameraDevice = .rear"))
+        #expect(templateSource.contains("TAPCamLockedCameraOpenControl(session: session)"))
+        #expect(templateSource.contains("r4g_template_root_appear"))
+        #expect(templateSource.contains("r4g_template_root_disappear"))
+        #expect(templateSource.contains("r4g_image_picker_dismantle"))
+        #expect(!templateSource.contains("AVCaptureSession"))
+        #expect(!templateSource.contains("AVCapturePhotoOutput"))
+        #expect(!templateSource.contains("sessionContentURL"))
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func photoAndHardwareTriggersAtomicallyStoreFlatDepthHEIC() throws {
-        let previewSource = try source(
-            "TAPCamLockedCameraCaptureExtension/TAPCamLockedCameraPreview.swift"
+    func templateHostKeepsOpenAsItsOnlyCustomAction() throws {
+        let extensionSource = try source(
+            "TAPCamLockedCameraCaptureExtension/TAPCamLockedCameraCaptureExtension.swift"
         )
-        let viewfinderSource = try source(
-            "TAPCamLockedCameraCaptureExtension/TAPCamLockedCameraViewFinder.swift"
+        let templateSource = try source(
+            "TAPCamLockedCameraCaptureExtension/TAPCamLockedCameraR4GTemplateHost.swift"
         )
         let openControlSource = try source(
             "TAPCamLockedCameraCaptureExtension/TAPCamLockedCameraOpenControl.swift"
         )
-        let captureSources = try TAPCamDemoTestSourceInspection
-            .swiftSourceRelativePaths(under: "TAPCamLockedCameraCaptureExtension")
-        let combinedSource = try captureSources
-            .map(source)
+        let activeSource = [extensionSource, templateSource, openControlSource]
             .joined(separator: "\n")
 
-        #expect(previewSource.contains("UIViewRepresentable"))
-        #expect(previewSource.contains("AVCaptureVideoPreviewLayer.self"))
-        #expect(previewSource.contains("previewLayer.session = session"))
-        #expect(previewSource.contains("previewLayer.videoGravity = .resizeAspectFill"))
-        #expect(viewfinderSource.contains("Color.black"))
-        #expect(viewfinderSource.contains("TAPCamLockedCameraPreview(source: camera.previewSource)"))
-        #expect(viewfinderSource.contains("onCameraCaptureEvent"))
-        #expect(viewfinderSource.contains("trigger: .hardwareEvent"))
-        #expect(viewfinderSource.contains("trigger: .shutterButton"))
-        #expect(viewfinderSource.contains("sessionContentURL: sessionContentURL"))
-        #expect(viewfinderSource.contains("locked-camera-r4-shutter"))
-        #expect(viewfinderSource.contains("TAPCamLockedCameraChrome("))
-        #expect(viewfinderSource.contains("locked-camera-r4-root"))
-        #expect(viewfinderSource.contains("TAPCamLockedCameraOpenControl(session: session)"))
-        #expect(combinedSource.contains("Starting Camera"))
-        #expect(combinedSource.contains("Camera Paused"))
-        #expect(combinedSource.contains("Unlock to Continue"))
-
-        #expect(!combinedSource.contains("UIImagePickerController"))
-        #expect(combinedSource.contains("AVCapturePhotoOutput"))
-        #expect(combinedSource.contains("isDepthDataDeliverySupported"))
-        #expect(combinedSource.contains("isDepthDataDeliveryEnabled = true"))
-        #expect(combinedSource.contains("embedsDepthDataInPhoto = true"))
-        #expect(combinedSource.contains("photoOutput.capturePhoto(with: settings"))
-        #expect(combinedSource.contains("photo.fileDataRepresentation()"))
-        #expect(combinedSource.contains("photo.depthData"))
-        #expect(combinedSource.contains("session.sessionContentURL"))
-        #expect(combinedSource.contains("TAPCamLockedSessionContentWriter"))
-        #expect(combinedSource.contains("TAPCam-\\(UUID().uuidString).heic"))
-        #expect(combinedSource.contains(".tmp"))
-        #expect(combinedSource.contains("photoData.write(to: stagingURL"))
-        #expect(combinedSource.contains("moveItem(at: stagingURL, to: finalURL)"))
-        #expect(combinedSource.contains("Task.detached(priority: .userInitiated)"))
-        #expect(combinedSource.contains("r2b_session_write_succeeded"))
-        #expect(combinedSource.contains("SAVED "))
-        #expect(!combinedSource.contains("AVCaptureVideoDataOutput"))
+        #expect(templateSource.contains("TAPCamLockedCameraOpenControl(session: session)"))
         #expect(openControlSource.contains("TAPCamLockedCameraOpenActivity.makeTapLibraryActivity()"))
         #expect(openControlSource.contains("session.openApplication(for: activity)"))
         #expect(openControlSource.contains("r4_open_tap_received"))
@@ -113,14 +67,16 @@ struct TAPLockedCameraR4DSourceContractTests {
         #expect(!openControlSource.contains("stopRunning"))
         #expect(!openControlSource.contains("invalidateSessionContent"))
         #expect(!openControlSource.contains("Task.sleep"))
-        let openApplicationCallCount = combinedSource
+        let openApplicationCallCount = activeSource
             .components(separatedBy: "openApplication(for:")
             .count - 1
         #expect(openApplicationCallCount == 1)
-        #expect(!combinedSource.contains("LockedCameraCaptureManager"))
-        #expect(!combinedSource.contains("URLSession"))
-        #expect(!combinedSource.contains("scenePhase"))
-        #expect(!combinedSource.contains("stopRunning()"))
+        #expect(!activeSource.contains("LockedCameraCaptureManager"))
+        #expect(!activeSource.contains("URLSession"))
+        #expect(!activeSource.contains("scenePhase"))
+        #expect(!activeSource.contains("stopRunning"))
+        #expect(!activeSource.contains("sessionContentURL"))
+        #expect(!activeSource.contains("captureDepthPhoto"))
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
