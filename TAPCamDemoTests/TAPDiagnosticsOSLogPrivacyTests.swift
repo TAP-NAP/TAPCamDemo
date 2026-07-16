@@ -46,7 +46,6 @@ struct TAPDiagnosticsOSLogPrivacyTests {
         "controllerTargetX",
         "controllerTargetY",
         "controllerTargetZ",
-        "count",
         "current",
         "depthHeight",
         "depthMax",
@@ -331,6 +330,7 @@ struct TAPDiagnosticsOSLogPrivacyTests {
             "TAPCamDemo/CameraCapture/Runtime/AVFoundationSingleCamPhotoProvider.swift",
             "TAPCamDemo/CameraCapture/Runtime/CaptureSessionController.swift",
             "TAPCamDemo/CameraCapture/Runtime/TAPVideoRecorder.swift",
+            "TAPCamDemo/CameraCapture/Runtime/TAPVideoRecorderDiagnostics.swift",
             "TAPCamDemo/CameraCapture/UI/CameraViewModel+Capture.swift",
             "TAPCamDemo/CameraCapture/UI/CameraViewModel+VideoCapture.swift",
             "TAPCamDemo/CameraCapture/UI/CaptureLifecycleCoordinator.swift",
@@ -341,6 +341,9 @@ struct TAPDiagnosticsOSLogPrivacyTests {
             "TAPCamDemo/DepthAnalysis/DepthAnalysisView.swift",
             "TAPCamDemo/DepthAnalysis/TAPVideoDepthPlaybackView.swift",
             "TAPCamDemo/MediaLibrary/LibraryMediaFetching.swift",
+            "TAPCamDemo/TAPLibrary/AppAttestPendingCaptureSigner.swift",
+            "TAPCamDemo/TAPLibrary/PhotoLibraryPendingCaptureExporter.swift",
+            "TAPCamDemo/TAPLibrary/TAPPendingCaptureMaintenance.swift",
             "TAPCamDemo/TAPLibrary/TAPPendingCaptureProcessor.swift",
             "TAPCamDemo/TAPLibrary/TAPPendingCaptureStore.swift"
         ]

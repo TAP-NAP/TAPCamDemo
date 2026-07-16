@@ -199,41 +199,6 @@ struct TAPLibraryRouteTests {
         #expect(!albumStateNames.localizedCaseInsensitiveContains("offset"))
     }
 
-    @Test func depthAlbumPickerOwnsReturnScrollBookmarkLocally() throws {
-        let pickerSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/DepthAnalysis/DepthAlbumPickerView.swift"
-        )
-        let routeStoreSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/CameraCapture/UI/CameraRouteStore.swift"
-        )
-        let contextStoreSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/CameraCapture/UI/CameraRouteContextStore.swift"
-        )
-
-        #expect(pickerSource.contains("ScrollPosition(idType: String.self)"))
-        #expect(pickerSource.contains("onGeometryChange"))
-        #expect(pickerSource.contains("DepthAlbumReturnScrollBookmark"))
-        #expect(pickerSource.contains("pendingReturnScrollBookmark"))
-        #expect(pickerSource.contains("itemViewportYByID"))
-        #expect(pickerSource.contains("returnScrollBookmarkItemIndex"))
-        #expect(pickerSource.contains("albumScrollPosition.scrollTo(y: offsetY)"))
-        #expect(pickerSource.contains("loadIfNeeded()"))
-        #expect(pickerSource.contains("selectedAnalysisRoute"))
-        #expect(pickerSource.contains("handleAnalysisPresentationChange"))
-        #expect(pickerSource.contains("scheduleReturnScrollRestore(clearAfterDelay: true)"))
-        #expect(!pickerSource.contains("ScrollViewReader"))
-        #expect(!pickerSource.contains("validDepthAlbumRestoreAnchorID"))
-        #expect(!pickerSource.contains("latestObservedScrollOffsetY"))
-        #expect(!pickerSource.contains("pendingReturnScrollOffsetY"))
-        #expect(!pickerSource.contains("returnScrollCorrectionRowCount"))
-        #expect(!pickerSource.contains("contentOffset.y"))
-        #expect(!pickerSource.contains("NavigationLink {"))
-        #expect(!routeStoreSource.contains("pendingReturnScrollOffsetY"))
-        #expect(!routeStoreSource.contains("latestObservedScrollOffsetY"))
-        #expect(!contextStoreSource.contains("ScrollPosition"))
-        #expect(!contextStoreSource.contains("contentOffset"))
-    }
-
     @Test func depthAlbumPickerCameraReturnDisablesNavigationAnimation() throws {
         let pickerSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/DepthAnalysis/DepthAlbumPickerView.swift"
@@ -378,8 +343,8 @@ struct TAPLibraryRouteTests {
         let pipelineSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/DepthAnalysis/DepthAlbumThumbnailPipeline.swift"
         )
-        let pickerSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/DepthAnalysis/DepthAlbumPickerView.swift"
+        let cellSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/TAPLibraryItemCell.swift"
         )
         let photoWriterSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/CameraCapture/Output/PhotoLibraryWriter.swift"
@@ -390,10 +355,10 @@ struct TAPLibraryRouteTests {
         #expect(pipelineSource.contains("generator.appliesPreferredTrackTransform = true"))
         #expect(pipelineSource.contains("let result = try await generator.image("))
         #expect(!pipelineSource.contains("copyCGImage(at: time"))
-        #expect(pickerSource.contains("LibraryMediaPosterRequest("))
-        #expect(pickerSource.contains("mediaFetcher.posterPhase("))
-        #expect(pickerSource.contains("DepthAlbumThumbnailLoader.shared.videoData"))
-        #expect(pickerSource.contains("TAPPendingCaptureStore.shared.bestAvailableVideoURL"))
+        #expect(cellSource.contains("LibraryMediaPosterRequest("))
+        #expect(cellSource.contains("mediaFetcher.posterPhase("))
+        #expect(cellSource.contains("DepthAlbumThumbnailLoader.shared.videoData"))
+        #expect(cellSource.contains("TAPPendingCaptureStore.shared.bestAvailableVideoURL"))
         #expect(photoWriterSource.contains("static func originalVideoFileURL(\n        localIdentifier: String,"))
         #expect(photoWriterSource.contains("typealias ResourceProgressHandler = @Sendable (Double?) -> Void"))
         #expect(photoWriterSource.contains("progressHandler: @escaping ResourceProgressHandler = { _ in }"))

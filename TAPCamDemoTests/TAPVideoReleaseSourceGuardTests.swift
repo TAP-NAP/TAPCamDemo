@@ -15,8 +15,14 @@ struct TAPVideoReleaseSourceGuardTests {
         "TAPCamDemo/CameraCapture/Output/TAPDepthKLV.swift",
         "TAPCamDemo/CameraCapture/Output/TAPVideoDepthTrackValidator.swift",
         "TAPCamDemo/CameraCapture/Output/TAPVideoManifestBox.swift",
-        "TAPCamDemo/DepthAnalysis/TAPVideoDepthPlaybackSupport.swift",
         "TAPCamDemo/DepthAnalysis/TAPVideoDepthPlaybackView.swift",
+        "TAPCamDemo/DepthAnalysis/Playback/TAPVideoPlaybackResourceLoader.swift",
+        "TAPCamDemo/DepthAnalysis/Playback/TAPVideoPlaybackSession.swift",
+        "TAPCamDemo/DepthAnalysis/Playback/Depth/TAPDepthFrameDecoder.swift",
+        "TAPCamDemo/DepthAnalysis/Playback/Depth/TAPVideoDepthMetadataOutput.swift",
+        "TAPCamDemo/DepthAnalysis/Playback/Depth/TAPVideoDepthMetadataReader.swift",
+        "TAPCamDemo/DepthAnalysis/Playback/Depth/TAPVideoDepthPipeline.swift",
+        "TAPCamDemo/DepthAnalysis/Playback/Depth/TAPVideoDepthRegistration.swift",
         "TAPCamDemo/TAPLibrary/TAPVideoPhotosReadbackValidator.swift"
     ]
 
@@ -30,63 +36,6 @@ struct TAPVideoReleaseSourceGuardTests {
         #"\bdata\.subdata\s*\(\s*in:\s*0\s*\.\.<[^)]*(?:excluded|proof|slot)[^)]*lowerBound[^)]*\)"#,
         #"\bdata\.subdata\s*\(\s*in:[^)]*(?:excluded|proof|slot)[^)]*upperBound\s*\.\.<\s*data\.count[^)]*\)"#
     ]
-
-    @Test(.enabled(
-        if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable,
-        "Source tree is unavailable on this runtime."
-    ))
-    func twoDRegistrationDoesNotDependOnMetricCalibrationCompleteness() throws {
-        let source = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/CameraCapture/Runtime/TAPVideoRecorder.swift"
-        )
-        let registrationSource = try #require(TAPCamDemoTestSourceInspection.substring(
-            in: source,
-            from: "    private func spatialRegistration(",
-            to: "    private static func normalizedQuarterTurn("
-        ))
-
-        #expect(!registrationSource.contains("!depthCalibrationTable.didOverflow"))
-        #expect(!registrationSource.contains("sawDepthSampleWithoutCalibration"))
-        #expect(!registrationSource.contains("isValidCalibration"))
-        #expect(registrationSource.contains("calibrationCoverage: calibrationCoverage"))
-        #expect(registrationSource.contains("registrationFailures"))
-    }
-
-    @Test(.enabled(
-        if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable,
-        "Source tree is unavailable on this runtime."
-    ))
-    func videoRecordingGraphPinsStabilizationOffInWarmAndColdPaths() throws {
-        let source = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/CameraCapture/Runtime/CaptureSessionController.swift"
-        )
-        let marker = "connection.preferredVideoStabilizationMode = .off"
-        let occurrenceCount = source.components(separatedBy: marker).count - 1
-
-        #expect(occurrenceCount == 2)
-    }
-
-    @Test(.enabled(
-        if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable,
-        "Source tree is unavailable on this runtime."
-    ))
-    func calibrationTableCommitsOnlyAfterMetadataAppendSucceeds() throws {
-        let source = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/CameraCapture/Runtime/TAPVideoRecorder.swift"
-        )
-        let reservation = try #require(source.range(
-            of: "var committedCalibrationTable = depthCalibrationTable"
-        ))
-        let append = try #require(source.range(
-            of: "guard metadataAdaptor.append(group) else"
-        ))
-        let commit = try #require(source.range(
-            of: "depthCalibrationTable = committedCalibrationTable"
-        ))
-
-        #expect(reservation.lowerBound < append.lowerBound)
-        #expect(append.lowerBound < commit.lowerBound)
-    }
 
     @Test(.enabled(
         if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable,

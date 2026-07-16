@@ -14,7 +14,9 @@ nonisolated enum TAPDepthCodecBenchmarkCandidate: String, Codable, CaseIterable,
     case raw
 }
 
-nonisolated enum TAPDepthCodecProductionSelection: String, Codable, Sendable {
+/// A diagnostic recommendation only. Runtime policy changes require an
+/// explicit, reviewed edit to `TAPDepthCompressionProductionPolicy`.
+nonisolated enum TAPDepthCodecRecommendation: String, Codable, Sendable {
     case zstd1
     case lzfse
     case raw
@@ -54,7 +56,7 @@ nonisolated struct TAPDepthCodecBenchmarkReport: Codable, Equatable, Sendable {
     let dropCountersBefore: TAPVideoDropCounters
     let dropCountersAfter: TAPVideoDropCounters
     let results: [TAPDepthCodecBenchmarkResult]
-    let productionSelection: TAPDepthCodecProductionSelection
+    let recommendedSelection: TAPDepthCodecRecommendation
 
     var hasNoCompressionInducedDrops: Bool {
         dropCountersAfter.hasNoIncrease(comparedWith: dropCountersBefore)
@@ -91,17 +93,17 @@ nonisolated enum TAPDepthCodecBenchmark {
         let resultByCandidate = Dictionary(uniqueKeysWithValues: results.map { ($0.candidate, $0) })
         let noAddedDrops = dropCountersAfter.hasNoIncrease(comparedWith: dropCountersBefore)
 
-        let selection: TAPDepthCodecProductionSelection
+        let recommendation: TAPDepthCodecRecommendation
         if noAddedDrops,
            resultByCandidate[.zstd1]?.bitExactRoundTrip == true,
            resultByCandidate[.zstd1]?.meetsEncodeBudget == true {
-            selection = .zstd1
+            recommendation = .zstd1
         } else if noAddedDrops,
                   resultByCandidate[.lzfse]?.bitExactRoundTrip == true,
                   resultByCandidate[.lzfse]?.meetsEncodeBudget == true {
-            selection = .lzfse
+            recommendation = .lzfse
         } else {
-            selection = .raw
+            recommendation = .raw
         }
 
         return TAPDepthCodecBenchmarkReport(
@@ -109,7 +111,7 @@ nonisolated enum TAPDepthCodecBenchmark {
             dropCountersBefore: dropCountersBefore,
             dropCountersAfter: dropCountersAfter,
             results: results,
-            productionSelection: selection
+            recommendedSelection: recommendation
         )
     }
 

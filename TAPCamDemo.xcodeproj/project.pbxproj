@@ -102,7 +102,9 @@
 				CameraCapture/UI/README.md,
 				DepthAnalysis/AnalysisTools/README.md,
 				DepthAnalysis/Documentation/PlanesTechnicalDesign.md,
+				DepthAnalysis/Playback/PLAYBACK.md,
 				DepthAnalysis/README.md,
+				MediaLibrary/MEDIA_LIBRARY.md,
 				README.md,
 				TAPLibrary/README.md,
 			);

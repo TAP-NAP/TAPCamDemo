@@ -38,17 +38,18 @@ embed interactive SwiftUI controls in an `AVPlayerViewController` overlay.
 
 | Responsibility | Code |
 | --- | --- |
-| Photos album browser | [DepthAlbumPickerView.swift](DepthAlbumPickerView.swift) |
+| Photos album browser shell, loading model, navigation support, item cell, and route adaptation | [DepthAlbumPickerView.swift](DepthAlbumPickerView.swift), [DepthAlbumPickerViewModel.swift](DepthAlbumPickerViewModel.swift), [DepthAlbumPickerNavigationSupport.swift](DepthAlbumPickerNavigationSupport.swift), [TAPLibraryItemCell.swift](TAPLibraryItemCell.swift), [DepthAlbumRouteAdapter.swift](DepthAlbumRouteAdapter.swift) |
 | Ordered album context used for left/right photo switching inside Analysis | [DepthAnalysisAlbumContext.swift](DepthAnalysisAlbumContext.swift) |
 | Analysis photo source loading and decode handoff | [DepthAnalysisInputLoader.swift](DepthAnalysisInputLoader.swift) |
-| Stable Analysis carousel slots, progressive thumbnail/original loading, Photos progress, and per-photo Plane state | [DepthAnalysisCarouselState.swift](DepthAnalysisCarouselState.swift) |
+| Stable Analysis carousel window and focused display-fetch, analysis, and selection slot state | [DepthAnalysisCarouselState.swift](DepthAnalysisCarouselState.swift), [AnalysisPhotoSlot.swift](AnalysisPhotoSlot.swift), [AnalysisPhotoSlot+DisplayFetch.swift](AnalysisPhotoSlot+DisplayFetch.swift), [AnalysisPhotoSlot+Analysis.swift](AnalysisPhotoSlot+Analysis.swift), [AnalysisPhotoSlot+Selection.swift](AnalysisPhotoSlot+Selection.swift) |
 | Public-safe analysis, album, and Planes error copy | [DepthAnalysisErrorPresentation.swift](DepthAnalysisErrorPresentation.swift) |
 | TAP Library item loading, pending/exported/Photos merge, route anchors, and item cache keys | [DepthAlbumItemProvider.swift](DepthAlbumItemProvider.swift) |
 | Main analysis screen shell, UIKit paged-scroll carousel, centered `RAW` / `2D` / `3D` surfaces, RAW zoom scroll view, 18pt page gap, left-edge return, and route callbacks | [DepthAnalysisView.swift](DepthAnalysisView.swift) |
 | Pure viewer policy for left-edge return thresholds, native page spacing, centered aspect-fit tool containers, and aspect-fit rects | [DepthAnalysisViewerInteractionPolicy.swift](DepthAnalysisViewerInteractionPolicy.swift) |
 | Stable full-screen viewer chrome shared by Photo and TAP Video, including Back, Share, Delete, a generic bottom accessory slot, and the shared mode capsule | [DepthAnalysisViewerChromeView.swift](DepthAnalysisViewerChromeView.swift), [DepthAnalysisControlsView.swift](DepthAnalysisControlsView.swift) |
-| TAP Video viewer state, shared Photo/Video chrome composition, RAW/2D/disabled-3D policy, custom Play/Pause and scrubber transport, Share/Delete, and PiP/AirPlay fallback to RAW | [TAPVideoDepthPlaybackView.swift](TAPVideoDepthPlaybackView.swift) |
-| Noninteractive `AVPlayerLayer` video surface, `videoRect`-aligned depth overlay, PiP player-layer seam, and external-playback observation | [TAPVideoDepthPlaybackSupport.swift](TAPVideoDepthPlaybackSupport.swift) |
+| TAP Video route shell and playback module map | [TAPVideoDepthPlaybackView.swift](TAPVideoDepthPlaybackView.swift), [Playback/PLAYBACK.md](Playback/PLAYBACK.md) |
+| Playback session/resource lifecycle, stable chrome, transport, player surface, and depth metadata/decode/render pipeline | [Playback/](Playback/), [Playback/Depth/](Playback/Depth/) |
+| Debug-only runtime fixture specification, generator, and harness view | [DiagnosticsSupport/](DiagnosticsSupport/) |
 | Central visual stage for RGB, heatmap, mask, planes, internal point projection, region gestures, and plane seed taps | [DepthAnalysisStageView.swift](DepthAnalysisStageView.swift) |
 | Bottom-left Share, centered icon-only `RAW` / `2D` / `3D` capsule, and bottom-right Delete shared by Photo and TAP Video | [DepthAnalysisViewerChromeView.swift](DepthAnalysisViewerChromeView.swift), [DepthAnalysisControlsView.swift](DepthAnalysisControlsView.swift) |
 | System share entry for verification-original exports | [DepthAnalysisView.swift](DepthAnalysisView.swift), [VerificationExportActivityView.swift](VerificationExportActivityView.swift) |
@@ -105,17 +106,21 @@ If this module is new to you, read it in this order:
    Photos thumbnail requests, JPEG normalization, in-memory cache lookup, and
    protected disk-cache writes for the TAP Library grid.
 7. [DepthAlbumPickerView.swift](DepthAlbumPickerView.swift) owns the TAP Library
-   grid UI, fresh-entry top start, cached first album load, in-session
-   clicked-item scroll return, item selection, and navigation into analysis.
+   grid shell and model. [TAPLibraryItemCell.swift](TAPLibraryItemCell.swift)
+   owns one grid cell, while
+   [DepthAlbumRouteAdapter.swift](DepthAlbumRouteAdapter.swift) converts a
+   selected item into a photo or TAP Video route. The picker retains fresh-entry
+   top start, cached first album load, in-session clicked-item scroll return,
+   item selection, and navigation into analysis.
    [DepthAnalysisAlbumContext.swift](DepthAnalysisAlbumContext.swift) is the
    small ordered context passed into Analysis so left/right swipes can move
    through the same time flow and keep route/bookmark state current.
 8. [DepthAnalysisCarouselState.swift](DepthAnalysisCarouselState.swift) owns
-   the Analysis browser's `previous/current/next` slot model, progressive
-   thumbnail-first loading, Photos original download progress, decoded input,
-   per-photo selection state, and per-slot Plane region coordinator. Read this
-   before changing photo switching, iCloud loading behavior, or 2D/3D shared
-   analysis state.
+   the Analysis browser's `previous/current/next` window and stable item
+   identity. The `AnalysisPhotoSlot` files split progressive display fetching,
+   original analysis loading, and selection/Plane coordination without changing
+   that identity. Read those files before changing photo switching, iCloud
+   loading behavior, or 2D/3D shared analysis state.
 9. [DepthAnalysisRegionSelectionState.swift](DepthAnalysisRegionSelectionState.swift)
    owns rectangular region selection, clamping, region stats, local heatmap
    generation, and local plane estimate generation. It receives only a loaded

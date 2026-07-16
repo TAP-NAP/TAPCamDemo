@@ -280,20 +280,20 @@ Startup and foreground recovery reconcile partially completed work:
 
 ## Important Future TODO
 
-P1, intentionally not implemented in this slice: design the file format and
-manifest abstraction before adding RAW, general video, deferred 24 MP, or
-multi-camera capture formats.
+P1, intentionally not implemented in this slice: extend the file-format and
+manifest abstractions before adding RAW, arbitrary non-TAP media, deferred
+24 MP, or multi-camera capture formats.
 
 Future work should introduce a focused design for `CaptureFormatProfile`,
 format-agnostic semantic manifests, container adapters, and resource roles with
 UTType bundles. The current Live Photo support is deliberately narrower: one
-reviewed photo-depth file plus one Apple paired MOV resource.
+reviewed photo-depth file plus one Apple paired MOV resource. TAP Video already
+owns a separate MP4/KLV manifest, provenance, pending-export, and readback
+validation contract; it must not be folded into the still-photo resource plan.
 
-P2, intentionally not implemented in this slice: design a video-depth capture
-format if TAPCam needs synchronized video frames and depth frames. That design
-may use `AVCaptureDepthDataOutput`, `AVCaptureVideoDataOutput`, and
-`AVCaptureDataOutputSynchronizer`, but it needs its own resource model and must
-not be treated as the current Live Photo v2/v3 contract.
+P2, intentionally not implemented in this slice: promote diagnostic fixture
+generation into a dedicated support target. The fixture code currently remains
+Debug-only app support; production capture and playback do not depend on it.
 
 ## Verification
 

@@ -565,7 +565,7 @@ struct TAPVideoStreamingTests {
         #expect(report.results.map(\.candidate) == TAPDepthCodecBenchmarkCandidate.allCases)
         let allBitExact = report.results.allSatisfy { $0.bitExactRoundTrip }
         #expect(allBitExact)
-        #expect(report.productionSelection == .zstd1)
+        #expect(report.recommendedSelection == .zstd1)
 
         let reportWithAddedDrop = try TAPDepthCodecBenchmark.run(
             frames: frames,
@@ -573,7 +573,7 @@ struct TAPVideoStreamingTests {
             dropCountersBefore: .zero,
             dropCountersAfter: .init(rgb: 0, audio: 0, depth: 1)
         )
-        #expect(reportWithAddedDrop.productionSelection == .raw)
+        #expect(reportWithAddedDrop.recommendedSelection == .raw)
     }
     #endif
 

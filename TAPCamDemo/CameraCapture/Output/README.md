@@ -29,6 +29,26 @@ Output does not talk to Photos directly and does not own retry behavior.
 | Photo metadata customization | [TAPPhotoFileMetadataCustomizer.swift](TAPPhotoFileMetadataCustomizer.swift) |
 | App Attest capture digest and signer | [CaptureContentDigest.swift](CaptureContentDigest.swift), [AppAttestCaptureAssertionSigner.swift](AppAttestCaptureAssertionSigner.swift) |
 | Photos writer used by TAP Library | [PhotoLibraryWriter.swift](PhotoLibraryWriter.swift) |
+| Shared AVAsset track facts and reader used by recorder, validator, and fixtures | [TAPMediaTrackFacts.swift](TAPMediaTrackFacts.swift), [TAPMediaTrackFactsReader.swift](TAPMediaTrackFactsReader.swift) |
+| TAP Video manifest schema and BMFF box access | [TAPVideoManifestSchema.swift](TAPVideoManifestSchema.swift), [TAPVideoManifestBox.swift](TAPVideoManifestBox.swift) |
+| TAP Video validation facade and staged contract | [TAPVideoDepthTrackValidator.swift](TAPVideoDepthTrackValidator.swift), [TAPVideoDepthValidationContract.swift](TAPVideoDepthValidationContract.swift) |
+| Container, streamed sample, and timeline validation stages | [TAPVideoContainerValidator.swift](TAPVideoContainerValidator.swift), [TAPVideoDepthSampleValidator.swift](TAPVideoDepthSampleValidator.swift), [TAPVideoDepthTimelineValidator.swift](TAPVideoDepthTimelineValidator.swift) |
+
+## TAP Video Validation Boundary
+
+`TAPVideoManifestSchema.swift` is the named exception to the 600-line TAP Video
+production-file threshold. It is one pure `Codable` data/schema definition kept
+together so the manifest contract can be reviewed atomically; it owns no I/O,
+mutable runtime state, media decoding, or orchestration control flow.
+
+`TAPMediaTrackFactsReader` is the only AVAsset facts-loading implementation.
+Recorder postflight, validation, and debug fixture policy consume its value
+result and apply their own requirements afterward.
+
+`TAPVideoDepthTrackValidator` is a small facade over ordered stages: container
+and manifest consistency, metadata/sample streaming, calibration accounting,
+then timeline/gap validation. The sample validator retains at most one bounded
+depth frame payload at a time; no stage may read an entire MP4 into `Data`.
 
 ## Packaging Flow
 
@@ -202,8 +222,9 @@ Today it names one photo container with primary RGB, embedded Apple auxiliary
 depth, an embedded TAP manifest, and an App Attest proof record. The current
 Live Photo implementation adds a fixed paired MOV through the capture artifact,
 pending store, v2 manifest, and v3 content binding without changing that still
-photo resource plan. Future RAW, general video, sidecar, or C2PA work should
-extend this model before new packagers or Photos writers are added. The App
+photo resource plan. TAP Video uses its own MP4/KLV resource and validation
+contract. Future RAW, arbitrary non-TAP media, sidecar, or C2PA work should
+extend the relevant resource model before new packagers or Photos writers are added. The App
 Attest proof resource is
 required before export, but it is not itself an input to the App Attest content
 binding; the binding covers the current photo file bytes excluding the fixed
@@ -277,7 +298,7 @@ the asset but the Photos round-trip original lost `tapdepth:Manifest`.
 
 - Do not turn `releasePhotoDepthHEIC` or `releasePhotoDepthJPEG` into
   multi-format fallback profiles.
-- Add a new catalog profile for RAW, general video, 24 MP deferred delivery, or
+- Add a new catalog profile for RAW, arbitrary non-TAP media, 24 MP deferred delivery, or
   an alternative HEIC/JPG-depth path. The current Live Photo path is a fixed
   extension over the reviewed HEIC/JPG depth profiles, not a separate catalog
   profile.

@@ -4,5 +4,6 @@
   "release": "https://github.com/facebook/zstd/releases/tag/v1.5.7",
   "sourceArchive": "https://github.com/facebook/zstd/archive/refs/tags/v1.5.7.tar.gz",
   "sourceArchiveSHA256": "37d7284556b20954e56e1ca85b80226768902e2edabd3b649e9e72c0c9012ee3",
+  "localModuleMapSHA256": "233d49dab4241ba1088e769abff8d87ddce2cfe4227d7bb6b42f1a03e25856ac",
   "version": "1.5.7"
 }

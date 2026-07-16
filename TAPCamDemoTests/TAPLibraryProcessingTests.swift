@@ -156,6 +156,34 @@ struct TAPLibraryProcessingTests {
         #expect(try await store.readRecord(captureID: retryRecord.captureID).status == .exported)
     }
 
+    @Test func pendingCaptureProcessorRunsInjectedPipelineStagesInOrder() async throws {
+        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        let store = TAPPendingCaptureStore(rootURL: rootURL)
+        let record = try await store.ingest(TAPCamDemoTestFixtures.samplePendingArtifact(
+            photoData: Data("unsigned".utf8),
+            captureID: "injected-pipeline"
+        ))
+        let recorder = PendingCaptureStageRecorder()
+
+        await TAPPendingCaptureProcessor().processPendingCaptures(
+            store: store,
+            signer: StageRecordingPendingCaptureSigner(recorder: recorder),
+            exporter: StageRecordingPendingCaptureExporter(recorder: recorder),
+            readback: StageRecordingPendingCaptureReadback(recorder: recorder),
+            cleanup: StageRecordingPendingCaptureCleanup(recorder: recorder),
+            protectedDataIsAvailable: { true }
+        )
+
+        #expect(await recorder.recordedStages() == [
+            "cleanup",
+            "sign",
+            "export",
+            "readback",
+            "cleanup"
+        ])
+        #expect(try await store.readRecord(captureID: record.captureID).status == .exported)
+    }
+
     @Test func pendingCaptureProcessorClassifiesNetworkExportFailureAsWaitingNetwork() async throws {
         let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
         let store = TAPPendingCaptureStore(rootURL: rootURL)
@@ -469,6 +497,7 @@ struct TAPLibraryProcessingTests {
             store: store,
             signer: RecordingPendingCaptureSigner(),
             exporter: PhotoLibraryPendingCaptureExporter(videoActions: videoActions.actions()),
+            readback: PhotoLibraryPendingCaptureReadback(actions: videoActions.readbackActions()),
             protectedDataIsAvailable: { true }
         )
 
@@ -503,6 +532,7 @@ struct TAPLibraryProcessingTests {
             store: store,
             signer: RecordingPendingCaptureSigner(),
             exporter: PhotoLibraryPendingCaptureExporter(videoActions: videoActions.actions()),
+            readback: PhotoLibraryPendingCaptureReadback(actions: videoActions.readbackActions()),
             protectedDataIsAvailable: { true }
         )
 
@@ -531,6 +561,7 @@ struct TAPLibraryProcessingTests {
             store: store,
             signer: RecordingPendingCaptureSigner(),
             exporter: PhotoLibraryPendingCaptureExporter(videoActions: videoActions.actions()),
+            readback: PhotoLibraryPendingCaptureReadback(actions: videoActions.readbackActions()),
             protectedDataIsAvailable: { true }
         )
 
@@ -561,6 +592,7 @@ struct TAPLibraryProcessingTests {
             store: store,
             signer: RecordingPendingCaptureSigner(),
             exporter: PhotoLibraryPendingCaptureExporter(videoActions: videoActions.actions()),
+            readback: PhotoLibraryPendingCaptureReadback(actions: videoActions.readbackActions()),
             protectedDataIsAvailable: { true }
         )
 
@@ -595,6 +627,9 @@ struct TAPLibraryProcessingTests {
             exporter: PhotoLibraryPendingCaptureExporter(
                 videoActions: interruptedActions.actions()
             ),
+            readback: PhotoLibraryPendingCaptureReadback(
+                actions: interruptedActions.readbackActions()
+            ),
             protectedDataIsAvailable: { true }
         )
 
@@ -615,6 +650,9 @@ struct TAPLibraryProcessingTests {
             signer: RecordingPendingCaptureSigner(),
             exporter: PhotoLibraryPendingCaptureExporter(
                 videoActions: restartedActions.actions()
+            ),
+            readback: PhotoLibraryPendingCaptureReadback(
+                actions: restartedActions.readbackActions()
             ),
             protectedDataIsAvailable: { true }
         )
@@ -647,6 +685,9 @@ struct TAPLibraryProcessingTests {
             exporter: PhotoLibraryPendingCaptureExporter(
                 videoActions: interruptedActions.actions()
             ),
+            readback: PhotoLibraryPendingCaptureReadback(
+                actions: interruptedActions.readbackActions()
+            ),
             protectedDataIsAvailable: { true }
         )
 
@@ -666,6 +707,9 @@ struct TAPLibraryProcessingTests {
             signer: RecordingPendingCaptureSigner(),
             exporter: PhotoLibraryPendingCaptureExporter(
                 videoActions: restartedActions.actions()
+            ),
+            readback: PhotoLibraryPendingCaptureReadback(
+                actions: restartedActions.readbackActions()
             ),
             protectedDataIsAvailable: { true }
         )
@@ -751,6 +795,67 @@ private struct SensitiveFailingPendingCaptureSigner: TAPPendingCaptureSigning {
         throw TAPDepthCaptureError.pendingCaptureProofInvalid(
             "captureID=pending/private-capture-id actual=actual-manifest-id-2 keyID=prepared-key-id proof=secret-proof path=/private/var/mobile/Containers/Data/Application/secret/signed.heic"
         )
+    }
+}
+
+private actor PendingCaptureStageRecorder {
+    private var stages: [String] = []
+
+    func record(_ stage: String) {
+        stages.append(stage)
+    }
+
+    func recordedStages() -> [String] {
+        stages
+    }
+}
+
+private struct StageRecordingPendingCaptureSigner: TAPPendingCaptureSigning {
+    let recorder: PendingCaptureStageRecorder
+
+    func sign(
+        _ record: TAPPendingCaptureRecord,
+        store: TAPPendingCaptureStore
+    ) async throws -> TAPPendingCaptureRecord {
+        await recorder.record("sign")
+        return try await store.storeSignedHEIC(
+            Data("signed-\(record.captureID)".utf8),
+            captureID: record.captureID
+        )
+    }
+}
+
+private struct StageRecordingPendingCaptureExporter: TAPPendingCaptureExporting {
+    let recorder: PendingCaptureStageRecorder
+
+    func export(
+        _ record: TAPPendingCaptureRecord,
+        store: TAPPendingCaptureStore
+    ) async throws {
+        await recorder.record("export")
+        _ = try await store.markExported(
+            captureID: record.captureID,
+            assetLocalIdentifier: "asset-\(record.captureID)"
+        )
+    }
+}
+
+private struct StageRecordingPendingCaptureReadback: TAPPendingCaptureReadingBack {
+    let recorder: PendingCaptureStageRecorder
+
+    func readBack(
+        _ record: TAPPendingCaptureRecord,
+        store: TAPPendingCaptureStore
+    ) async throws {
+        await recorder.record("readback")
+    }
+}
+
+private struct StageRecordingPendingCaptureCleanup: TAPPendingCaptureCleaning {
+    let recorder: PendingCaptureStageRecorder
+
+    func cleanup(store: TAPPendingCaptureStore) async throws {
+        await recorder.record("cleanup")
     }
 }
 
@@ -847,9 +952,6 @@ private actor RecordingVideoExportActions {
 
     nonisolated func actions() -> PhotoLibraryPendingVideoExportActions {
         PhotoLibraryPendingVideoExportActions(
-            candidateIdentifiers: { packageID in
-                await self.recordCandidateLookup(packageID)
-            },
             validateLocalFile: { fileURL, _ in
                 ValidatedTAPVideoFile(
                     fileURL: fileURL,
@@ -861,6 +963,14 @@ private actor RecordingVideoExportActions {
                     record.captureID,
                     commitWillBegin: commitWillBegin
                 )
+            }
+        )
+    }
+
+    nonisolated func readbackActions() -> PhotoLibraryPendingVideoReadbackActions {
+        PhotoLibraryPendingVideoReadbackActions(
+            candidateIdentifiers: { packageID in
+                await self.recordCandidateLookup(packageID)
             },
             validateReadback: { assetID, _ in
                 try await self.recordValidation(assetID)

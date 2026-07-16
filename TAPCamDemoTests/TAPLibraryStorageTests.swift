@@ -414,14 +414,6 @@ struct TAPLibraryStorageTests {
         #expect(!source.contains("rawFilename"))
     }
 
-    @Test func exportedCommitDefersCleanupFailureAndRejectsStatusDowngrade() throws {
-        let source = try Self.source(relativePath: "TAPCamDemo/TAPLibrary/TAPPendingCaptureStore.swift")
-
-        #expect(source.contains("record.status != .exported || status == .exported"))
-        #expect(source.contains("store exported cleanup deferred"))
-        #expect(source.contains("storage.cleanupLargeFiles(for: record)"))
-    }
-
     @Test func pendingCaptureBundlePathPolicyAllowsOnlyCurrentArtifactFilenames() throws {
         let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
         let captureID = "artifact-policy-capture"

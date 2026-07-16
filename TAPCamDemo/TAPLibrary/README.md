@@ -19,7 +19,11 @@ will replace the current coarse retry status model.
 | TAP Library change notification | [TAPLibraryNotifications.swift](TAPLibraryNotifications.swift) |
 | Pending bundle path and filename validation | [TAPPendingCaptureBundlePathPolicy.swift](TAPPendingCaptureBundlePathPolicy.swift) |
 | Pending bundle filesystem, record IO, artifact IO, and cleanup | [TAPPendingCaptureBundleStorage.swift](TAPPendingCaptureBundleStorage.swift) |
-| Queue API, state mutation, actor serialization, and library notifications | [TAPPendingCaptureStore.swift](TAPPendingCaptureStore.swift) |
+| Serialized queue repository and public API | [TAPPendingCaptureStore.swift](TAPPendingCaptureStore.swift) |
+| Video workspace ownership and ingest validation | [TAPPendingVideoWorkspaceCoordinator.swift](TAPPendingVideoWorkspaceCoordinator.swift), [TAPPendingVideoIngestValidator.swift](TAPPendingVideoIngestValidator.swift) |
+| Pure video record transitions and focused maintenance | [TAPPendingVideoRecordTransitions.swift](TAPPendingVideoRecordTransitions.swift), [TAPPendingCaptureMaintenance.swift](TAPPendingCaptureMaintenance.swift) |
+| Locked-capture staging/import validation | [TAPPendingLockedCaptureImporter.swift](TAPPendingLockedCaptureImporter.swift) |
+| Shared artifact paths and Library notification/root policies | [TAPPendingCaptureArtifacts.swift](TAPPendingCaptureArtifacts.swift), [TAPLibraryNotifications.swift](TAPLibraryNotifications.swift) |
 | Queue record JSON encoding/decoding policy | [TAPPendingCaptureRecordCoding.swift](TAPPendingCaptureRecordCoding.swift) |
 | Processing route and candidate priority policy | [TAPPendingCaptureProcessingPolicy.swift](TAPPendingCaptureProcessingPolicy.swift) |
 | Worker protected-data readiness policy | [TAPPendingCaptureWorkerReadiness.swift](TAPPendingCaptureWorkerReadiness.swift) |
@@ -28,10 +32,10 @@ will replace the current coarse retry status model.
 | Local artifact write and file-protection policy | [TAPLocalArtifactStoragePolicy.swift](TAPLocalArtifactStoragePolicy.swift) |
 | Camera writer adapter | [TAPPendingCaptureArtifactWriter.swift](TAPPendingCaptureArtifactWriter.swift) |
 | Pending item thumbnail renderer | [TAPPendingCaptureThumbnailRenderer.swift](TAPPendingCaptureThumbnailRenderer.swift) |
-| Serial queue worker | [TAPPendingCaptureProcessor.swift](TAPPendingCaptureProcessor.swift) |
-| App Attest proof injection | [AppAttestPendingCaptureSigner](TAPPendingCaptureProcessor.swift) |
+| Serial orchestration worker and injected operation contracts | [TAPPendingCaptureProcessor.swift](TAPPendingCaptureProcessor.swift), [TAPPendingCaptureOperations.swift](TAPPendingCaptureOperations.swift) |
+| App Attest proof injection | [AppAttestPendingCaptureSigner.swift](AppAttestPendingCaptureSigner.swift) |
 | TAP manifest/provenance writer used by signing and export validation | [TAPCaptureProvenanceWriter.swift](../CameraCapture/Output/TAPCaptureProvenanceWriter.swift) |
-| Photos export adapter | [PhotoLibraryPendingCaptureExporter](TAPPendingCaptureProcessor.swift) |
+| Photos export/readback adapter | [PhotoLibraryPendingCaptureExporter.swift](PhotoLibraryPendingCaptureExporter.swift) |
 
 ## Queue Flow
 

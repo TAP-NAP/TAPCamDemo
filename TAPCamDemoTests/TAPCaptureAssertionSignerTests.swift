@@ -10,11 +10,20 @@ import Testing
 @testable import TAPCamDemo
 
 struct TAPCaptureAssertionSignerTests {
+    // The complete Swift Testing bundle runs hundreds of async cases concurrently.
+    // Keep these signer-shape tests independent from the production 30-second timeout
+    // so executor saturation cannot win the race before the immediate test double runs.
+    private static let operationTimeout: Duration = .seconds(180)
+
     @Test func appAttestCaptureAssertionSignerBuildsProofValue() async throws {
         let digest = TAPCaptureProvenanceTestFixtures.sampleContentDigest()
         let client = SucceedingAssertionAppAttestClient()
         let deviceService = RecordingCaptureAssertionDeviceService()
-        let signer = AppAttestCaptureAssertionSigner(client: client, deviceService: deviceService)
+        let signer = AppAttestCaptureAssertionSigner(
+            client: client,
+            deviceService: deviceService,
+            operationTimeout: Self.operationTimeout
+        )
         let credentialName = await MainActor.run { AppAttestRuntimeDefaults.photoCredentialName }
         let assertionProof = try await signer.sign(contentDigest: digest)
 
@@ -65,7 +74,11 @@ struct TAPCaptureAssertionSignerTests {
         let digest = TAPCaptureProvenanceTestFixtures.sampleContentDigest()
         let client = FailingPrepareIfNeededAppAttestClient()
         let deviceService = RecordingCaptureAssertionDeviceService()
-        let signer = AppAttestCaptureAssertionSigner(client: client, deviceService: deviceService)
+        let signer = AppAttestCaptureAssertionSigner(
+            client: client,
+            deviceService: deviceService,
+            operationTimeout: Self.operationTimeout
+        )
         let credentialName = await MainActor.run { AppAttestRuntimeDefaults.photoCredentialName }
 
         await #expect(throws: (any Error).self) {

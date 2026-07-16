@@ -179,11 +179,15 @@ suite.
 | App Attest capture-signature verification panel/service privacy and verification-original export | `signatureVerificationContextUsesPublicBackendSummary`, `signatureVerificationSuccessReportKeepsRawVerificationMaterialOutOfVisibleText`, `signatureVerificationFailureReportUsesGenericVisibleErrorText`, and `signatureVerificationPanelDoesNotRenderRawVerificationSections` in [TAPAppAttestSignatureVerificationTests.swift](TAPAppAttestSignatureVerificationTests.swift). Still-photo export, Live Photo ZIP export, missing-MOV primary-only fallback, MOV mismatch rejection, and sidecar privacy live in [TAPVerificationExportBuilderTests.swift](TAPVerificationExportBuilderTests.swift). |
 | Pending-signing provenance writer guardrails | `unsignedCaptureManifestKeepsProofsEmptyWhenSignerIsMissing`, `unsignedCaptureManifestUsesFixedReasonWhenProofCannotBeCreated`, and `pendingSigningRejectsManifestIDMismatchBeforeSignerCall` in [TAPCaptureProvenanceWriterSigningTests.swift](TAPCaptureProvenanceWriterSigningTests.swift) |
 | Final Photos preflight gate | `signedExportValidatorRejectsWrongContainerBeforePhotosSave`, `validatedTAPDepthPhotoRejectsRawContainerBeforePhotosWriterCanBeCalled`, `signedExportValidatorCoversReleaseResourcePlanBeforePhotosSave`, `signedExportValidatorRejectsMissingProofAfterContainerCheck`, `signedExportValidatorRejectsInvalidProofEnvelopeAfterContainerCheck`, `signedExportValidatorRejectsMultipleManifestProofsBeforePhotosSave`, `signedExportValidatorRejectsManifestMismatchAfterContainerCheck`, `signedExportValidatorRejectsReleaseOutputPolicyDriftBeforePhotosSave`, and `signedExportValidatorRejectsMissingAuxiliaryDepthAfterContainerCheck` in [TAPSignedExportValidatorTests.swift](TAPSignedExportValidatorTests.swift) |
+| TAP Video streaming container, KLV, bounded depth codec, validator stages, manifest vectors, and diagnostic recommendation | [TAPVideoStreamingTests.swift](TAPVideoStreamingTests.swift), [TAPVideoManifestTests.swift](TAPVideoManifestTests.swift) |
+| TAP Video runtime-generated fixtures and playback/depth policies | [TAPVideoPlaybackFixtureHarnessTests.swift](TAPVideoPlaybackFixtureHarnessTests.swift), [TAPVideoDepthPlaybackPolicyTests.swift](TAPVideoDepthPlaybackPolicyTests.swift) |
+| TAP Video whole-file memory and legacy-artifact bans | [TAPVideoReleaseSourceGuardTests.swift](TAPVideoReleaseSourceGuardTests.swift). These source scans are retained only for architecture/security bans that are not practical runtime assertions. |
 | Physical-device exported artifact audit | `exportedPhysicalDeviceCaptureArtifactsReadBackFromPhotos` in [TAPDeviceCaptureArtifactAuditTests.swift](TAPDeviceCaptureArtifactAuditTests.swift) runs only on physical devices with exported TAP records. It reads Photos original resources, validates container, manifest policy, depth, image dimensions, proof count, capture score fields, and writes a sanitized `TAPDeviceCaptureArtifactAudit.json` report in app tmp. |
 | Physical-device JPG capture/export/readback audit | `jpgPhysicalDeviceCaptureExportsAndReadsBackFromPhotos` in [TAPDeviceCaptureArtifactAuditTests.swift](TAPDeviceCaptureArtifactAuditTests.swift) runs only on physical devices. It sets the output preference to JPG for the test, configures the real camera through `CameraViewModel`, captures into an injected pending store, signs with an App-Attest-shaped test proof, exports through the live Photos writer, reads original JPG bytes back from Photos, validates the same artifact and capture-score contract, and writes `TAPDeviceCaptureJPEGAudit.json` in app tmp. |
 | CameraCapture chrome, lifecycle, preview-stage, first-stage preferences, direct adjustment controls, and Debug presentation state | `captureLifecycleCoordinatorKeepsPendingSigningWarmupAndRetryPoliciesExplicit`, shutter feedback preference checks, route foreground preference checks, guide/EV/LiDAR-focus/depth-hint/keep-awake preference checks, EV launch reset and clamp checks, temporary focus EV clamp checks, mode-strip availability checks, flash/Live Photo default policy and chrome checks, adjustment-control state checks, preview focus-point crop mapping checks, idle-timer policy checks, `cameraCaptureControlsStateLocksLibraryWhileCaptureWrites`, `cameraCaptureControlsStateDoesNotNameSensitiveInputs`, `cameraPreviewStageStateDoesNotNameCaptureSecurityOrOutputInputs`, `cameraViewfinderChromeStateDoesNotNameCaptureSecurityOrOutputInputs`, `cameraFocalLengthDisplayOptionDoesNotNameHardwarePlanningInputs`, and Debug overlay display-state reflection tests in [TAPCameraCapturePresentationTests.swift](TAPCameraCapturePresentationTests.swift). |
 | Camera status presentation and capture metrics failure text | `cameraCaptureStatusPresentationOmitsRawIdentifiersAndPaths`, `cameraCaptureStatusPresentationRedactsAssociatedReasons`, `cameraCaptureStatusPresentationRedactsNSErrorDescriptionURLAndPath`, `cameraCaptureStatusPresentationKeepsGenericRecoverableMessages`, and `capturePipelineMetricsUsePublicSafeFailureReason` in [TAPCameraStatusPresentationTests.swift](TAPCameraStatusPresentationTests.swift). |
 | Durable TAP Library route context, top-start picker boundary, clicked-item return bookmarks, cached picker loading, item merge rules, album error presentation, and thumbnail cache-key privacy | `cameraRouteStoreDefaultsToCamera`, `cameraRouteStoreReturnsToCameraWithoutDroppingAlbumAnchor`, `cameraRouteStorePersistsAlbumAnchorsAcrossInstances`, `cameraRouteStoreClearsUnavailablePersistedAlbumAnchors`, `cameraRouteStoreMigratesPersistedPendingAnchorToOwnedPhotoAnchor`, `cameraRouteContextPersistsTokensWithoutRawAlbumIdentifiers`, `cameraRouteContextPersistsOnlyHexTokenValues`, item merge/provider tests, `depthAlbumPickerReturnScrollBookmarkRestoresClickedItemViewportPosition`, `depthAlbumPickerReturnScrollBookmarkMatchesPendingItemAfterOwnedExport`, `depthAlbumPickerLoadIfNeededReusesCachedSnapshot`, `depthAlbumPickerLoadIfNeededCachesEmptySnapshot`, `depthAlbumPickerPresentationLoadRefreshesCachedEmptySnapshot`, `depthAlbumPickerLoadIfNeededCachesFailedSnapshotAttempt`, `depthAlbumPickerShowsPhotosErrorOnlyWhenNoItemsSurvive`, `depthAlbumPickerUsesFixedErrorWhenStoreLoadFails`, and Photos, owned-export, plus pending thumbnail cache-key privacy tests in [TAPLibraryRouteTests.swift](TAPLibraryRouteTests.swift) |
+| Shared PhotoKit request lifecycle, Data/file resource sinks, image/Live Photo result adapters, iCloud probes, and write-failure cleanup | Cancellation-before/after-install, error-after-cancel, concurrent terminal/install race, shared resource bridge, degraded image/Live Photo, cloud-only probe, and file write-failure tests in [LibraryMediaTests.swift](LibraryMediaTests.swift) |
 | Manual camera control pure capability and intent model | Capability naming, no-op versus explicit auto, supported request acceptance, unsupported/out-of-range rejection, non-finite rejection, and depth-safe zoom rejection in [TAPCameraManualControlIntentTests.swift](TAPCameraManualControlIntentTests.swift) |
 | Manual camera control public-safe status presentation | No-op/ready/blocked copy, fixed control-group labels, blocked value redaction, hostile device-string redaction, reader-description separation, depth-unsafe zoom status, and Runtime error status copy in [TAPCameraManualControlPresentationTests.swift](TAPCameraManualControlPresentationTests.swift) |
 | Manual camera control field-row summary | No-change versus explicit-auto rows, executable requested rows, blocked row mapping, raw identifier redaction, zoom-only summary, and stored-field privacy checks in [TAPCameraManualControlSummaryTests.swift](TAPCameraManualControlSummaryTests.swift) |
@@ -714,6 +718,17 @@ sequenceDiagram
 
 ## Automation Commands
 
+Run the production structure gate before the compile/test commands:
+
+```bash
+Scripts/lint-tap-video-refactor.sh
+```
+
+This is a scoped VideoBranchRefactorAudit gate, not a repository-wide style
+pass. `.swiftlint-tap-video.yml` checks only the production allowlist for
+function bodies over 80 lines or cyclomatic complexity over 10; unit/UI tests,
+Debug fixtures, benchmarks, and vendored zstd remain outside its scope.
+
 Use `build-for-testing` as the default compile gate:
 
 ```bash
@@ -725,17 +740,52 @@ UDID explicitly:
 
 ```bash
 xcrun simctl list devices booted
-xcodebuild test -project TAPCamDemo.xcodeproj -scheme TAPCamDemo -destination 'id=<BOOTED_SIMULATOR_UDID>'
+xcodebuild test -project TAPCamDemo.xcodeproj -scheme TAPCamDemo -destination 'id=<BOOTED_SIMULATOR_UDID>' -only-testing:TAPCamDemoTests
 ```
 
+The focused unit gate used for the TAP Video branch refactor is:
+
+```bash
+xcodebuild test-without-building \
+  -project TAPCamDemo.xcodeproj \
+  -scheme TAPCamDemo \
+  -destination 'id=<BOOTED_SIMULATOR_UDID>' \
+  -only-testing:TAPCamDemoTests/TAPVideoStreamingTests \
+  -only-testing:TAPCamDemoTests/TAPVideoManifestTests \
+  -only-testing:TAPCamDemoTests/TAPVideoPlaybackFixtureHarnessTests \
+  -only-testing:TAPCamDemoTests/TAPVideoDepthPlaybackPolicyTests \
+  -only-testing:TAPCamDemoTests/LibraryMediaTests \
+  -only-testing:TAPCamDemoTests/TAPLibraryStorageTests \
+  -only-testing:TAPCamDemoTests/TAPLibraryProcessingTests \
+  -only-testing:TAPCamDemoTests/TAPDepthAnalysisPresentationTests \
+  -only-testing:TAPCamDemoTests/TAPDepthAnalysisSelectionTests \
+  -only-testing:TAPCamDemoTests/DepthAlbumRouteAdapterTests \
+  -only-testing:TAPCamDemoTests/TAPLibraryRouteTests \
+  -only-testing:TAPCamDemoTests/TAPVideoReleaseSourceGuardTests
+```
+
+The corresponding attended TAP Video UI command is recorded separately so it
+cannot be mistaken for the default unit gate:
+
+```bash
+xcodebuild test-without-building \
+  -project TAPCamDemo.xcodeproj \
+  -scheme TAPCamDemo \
+  -destination 'id=<BOOTED_SIMULATOR_UDID>' \
+  -only-testing:TAPCamDemoUITests/TAPVideoPlaybackFixtureUITests
+```
+
+The focused UI suite was not rerun for the current refactor validation; its
+screenshot, interaction, and performance cases remain attended evidence.
+
 After `build-for-testing`, `test-without-building` can use the same
-`-destination 'id=<BOOTED_SIMULATOR_UDID>'` form. Using a shutdown destination
-by name can make Xcode create a temporary clone and wait on CoreSimulator
+`-destination 'id=<BOOTED_SIMULATOR_UDID>'` and
+`-only-testing:TAPCamDemoTests` arguments. Using a shutdown destination by name
+can make Xcode create a temporary clone and wait on CoreSimulator
 launch/migration before test functions run.
 
-## Removed Test Surface
+## Test Surfaces
 
-The old UI test target was removed because it only exercised an attended
-physical-device FOV flow and skipped on Simulator. Live App Attest backend
-acceptance is also not part of the default unit-test target; real-device
-camera/App Attest validation remains an attended path.
+The shared scheme still contains `TAPCamDemoUITests`, but the default automated
+unit gate selects only `TAPCamDemoTests`. UI tests, live App Attest backend
+acceptance, and real-device camera/App Attest validation remain attended paths.

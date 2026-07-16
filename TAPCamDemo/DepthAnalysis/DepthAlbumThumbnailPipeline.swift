@@ -150,70 +150,45 @@ actor DepthAlbumThumbnailLoader {
     }
 }
 
-/// PhotoKit may omit its result callback after cancellation. This bridge owns
-/// both the request identifier and continuation so cancellation always
-/// completes exactly once, including cancel-before-ID-assignment races.
+/// PhotoKit may omit its result callback after cancellation. The shared
+/// lifecycle owns continuation, request-ID, and terminal-delivery races while
+/// this bridge only interprets poster callbacks and retains a degraded preview.
 nonisolated final class DepthAlbumPhotoKitImageRequestBridge: @unchecked Sendable {
-    private let cancelRequest: (PHImageRequestID) -> Void
     private let pixelLength: Int
-    private let lock = NSLock()
-    private var continuation: CheckedContinuation<DepthAlbumPhotoKitPosterResult, Error>?
-    private var requestID: PHImageRequestID?
+    private let lifecycle: PhotoKitRequestLifecycle<PHImageRequestID, DepthAlbumPhotoKitPosterResult>
+    /// Accessed only from closures serialized by `lifecycle`.
     private var previewData: Data?
-    private var didFinish = false
-    private var cancellationRequested = false
 
     init(manager: PHImageManager, pixelLength: Int) {
-        self.cancelRequest = { requestID in
+        self.pixelLength = max(pixelLength, 1)
+        self.lifecycle = PhotoKitRequestLifecycle { requestID in
             manager.cancelImageRequest(requestID)
         }
-        self.pixelLength = max(pixelLength, 1)
     }
 
     init(
         pixelLength: Int,
-        cancelRequest: @escaping (PHImageRequestID) -> Void
+        cancelRequest: @escaping @Sendable (PHImageRequestID) -> Void
     ) {
-        self.cancelRequest = cancelRequest
         self.pixelLength = max(pixelLength, 1)
+        self.lifecycle = PhotoKitRequestLifecycle(cancelRequest: cancelRequest)
     }
 
     func install(continuation: CheckedContinuation<DepthAlbumPhotoKitPosterResult, Error>) {
-        lock.lock()
-        if cancellationRequested {
-            didFinish = true
-            lock.unlock()
-            continuation.resume(throwing: CancellationError())
-            return
-        }
-        self.continuation = continuation
-        lock.unlock()
+        lifecycle.install(continuation: continuation)
     }
 
     func install(requestID: PHImageRequestID) {
-        lock.lock()
-        self.requestID = requestID
-        let shouldCancel = cancellationRequested
-        lock.unlock()
-        if shouldCancel {
-            cancelRequest(requestID)
-        }
+        lifecycle.install(requestID: requestID)
     }
 
     func receive(image: UIImage?, info: [AnyHashable: Any]?) {
-        lock.lock()
-        let alreadyFinished = didFinish
-        lock.unlock()
-        guard !alreadyFinished else {
-            return
-        }
-
         if info?[PHImageCancelledKey] as? Bool == true {
-            finish(.failure(CancellationError()))
+            lifecycle.finish(.failure(CancellationError()))
             return
         }
         if let error = info?[PHImageErrorKey] as? Error {
-            finish(.failure(error))
+            lifecycle.finish(.failure(error))
             return
         }
 
@@ -228,67 +203,36 @@ nonisolated final class DepthAlbumPhotoKitImageRequestBridge: @unchecked Sendabl
 
         if isDegraded {
             if let imageData {
-                lock.lock()
-                if !didFinish {
+                lifecycle.process({
                     previewData = imageData
-                }
-                lock.unlock()
+                }, mapError: { $0 })
             }
             return
         }
 
-        lock.lock()
-        let previewData = self.previewData
-        lock.unlock()
         if let imageData {
-            finish(.success(DepthAlbumPhotoKitPosterResult(
-                previewData: previewData,
-                finalData: imageData,
-                isCloudOnly: false
-            )))
+            lifecycle.finish {
+                DepthAlbumPhotoKitPosterResult(
+                    previewData: previewData,
+                    finalData: imageData,
+                    isCloudOnly: false
+                )
+            }
         } else if isCloudOnly {
-            finish(.success(DepthAlbumPhotoKitPosterResult(
-                previewData: previewData,
-                finalData: nil,
-                isCloudOnly: true
-            )))
+            lifecycle.finish {
+                DepthAlbumPhotoKitPosterResult(
+                    previewData: previewData,
+                    finalData: nil,
+                    isCloudOnly: true
+                )
+            }
         } else {
-            finish(.failure(MediaFetchFailure.decode))
+            lifecycle.finish(.failure(MediaFetchFailure.decode))
         }
     }
 
     func cancel() {
-        lock.lock()
-        guard !cancellationRequested else {
-            lock.unlock()
-            return
-        }
-        cancellationRequested = true
-        let requestID = requestID
-        let continuation = continuation
-        if continuation != nil, !didFinish {
-            didFinish = true
-            self.continuation = nil
-        }
-        lock.unlock()
-
-        if let requestID {
-            cancelRequest(requestID)
-        }
-        continuation?.resume(throwing: CancellationError())
-    }
-
-    private func finish(_ result: Result<DepthAlbumPhotoKitPosterResult, Error>) {
-        lock.lock()
-        guard !didFinish else {
-            lock.unlock()
-            return
-        }
-        didFinish = true
-        let continuation = continuation
-        self.continuation = nil
-        lock.unlock()
-        continuation?.resume(with: result)
+        lifecycle.cancel()
     }
 }
 

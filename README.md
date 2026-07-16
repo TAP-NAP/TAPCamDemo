@@ -1,18 +1,20 @@
 # TAPCamDemo
 
-TAPCamDemo is an iOS SingleCam photo-depth capture app. Release capture exposes
+TAPCamDemo is an iOS SingleCam photo-depth and TAP Video capture app. Release capture exposes
 field-of-view choices such as `13mm`, `24mm`, `48mm`, and `77mm`; each choice is
 resolved into one Apple-compatible RGB source, depth source, and depth-safe raw
 `AVCaptureDevice.videoZoomFactor` before capture.
 
-The release artifact is one standard HEIC with the primary RGB image, Apple
-auxiliary depth/disparity, and a TAP XMP manifest. Capture first writes an
-unsigned HEIC into the app-private TAP Library queue. A serial queue worker then
-adds the App Attest capture proof and exports the signed HEIC to Photos.
+Photo capture produces a standard HEIC or JPG with primary RGB, Apple auxiliary
+depth/disparity, and a TAP XMP manifest. TAP Video produces an MP4 with RGB,
+optional audio, bounded KLV depth metadata, and an appended TAP manifest.
+Capture first stages an unsigned artifact in the app-private TAP Library queue;
+a serial worker adds the App Attest proof, validates the final artifact, exports
+it to Photos, and verifies TAP Video readback.
 
 Current non-goals: watermarking, destructive final crop, MultiCam capture,
-RGB/depth streaming synchronizer, RAW provider runtime, external session
-scaffolding, sidecar JSON, and debug bundles.
+RAW/ProRAW provider runtime, arbitrary non-TAP video formats, external session
+scaffolding, sidecar JSON, and Release debug bundles.
 
 ## Quick Links
 
@@ -21,8 +23,9 @@ scaffolding, sidecar JSON, and debug bundles.
 | App startup and App Attest runtime | [TAPCamDemo/App/README.md](TAPCamDemo/App/README.md) | [TAPCamDemoApp.swift](TAPCamDemo/App/TAPCamDemoApp.swift) |
 | SingleCam capture pipeline | [TAPCamDemo/CameraCapture/README.md](TAPCamDemo/CameraCapture/README.md) | [CameraView.swift](TAPCamDemo/CameraCapture/UI/CameraView.swift), [CameraViewModel.swift](TAPCamDemo/CameraCapture/UI/CameraViewModel.swift) |
 | Pending TAP Library queue | [TAPCamDemo/TAPLibrary/README.md](TAPCamDemo/TAPLibrary/README.md) | [TAPPendingCaptureStore.swift](TAPCamDemo/TAPLibrary/TAPPendingCaptureStore.swift), [TAPPendingCaptureProcessor.swift](TAPCamDemo/TAPLibrary/TAPPendingCaptureProcessor.swift) |
-| Saved HEIC depth analysis | [TAPCamDemo/DepthAnalysis/README.md](TAPCamDemo/DepthAnalysis/README.md) | [DepthAnalysisView.swift](TAPCamDemo/DepthAnalysis/DepthAnalysisView.swift), [DepthAnalysisReader.swift](TAPCamDemo/DepthAnalysis/DepthAnalysisReader.swift) |
+| Saved photo depth analysis and TAP Video playback | [TAPCamDemo/DepthAnalysis/README.md](TAPCamDemo/DepthAnalysis/README.md) | [DepthAnalysisView.swift](TAPCamDemo/DepthAnalysis/DepthAnalysisView.swift), [TAPVideoDepthPlaybackView.swift](TAPCamDemo/DepthAnalysis/TAPVideoDepthPlaybackView.swift) |
 | App Attest contract docs | [Docs/AppAttest/README.md](Docs/AppAttest/README.md) | [AppAttestRuntime.swift](TAPCamDemo/App/AppAttestRuntime.swift), [AppAttestCaptureAssertionSigner.swift](TAPCamDemo/CameraCapture/Output/AppAttestCaptureAssertionSigner.swift) |
+| Local SwiftPM zstd wrapper | [Packages/CZstd/README.md](Packages/CZstd/README.md) | [Package.swift](Packages/CZstd/Package.swift), [ZSTD_SOURCE.json](Packages/CZstd/ZSTD_SOURCE.json), [verify-vendored-zstd.sh](Packages/CZstd/Scripts/verify-vendored-zstd.sh) |
 | Tests and automation | [TAPCamDemoTests/README.md](TAPCamDemoTests/README.md) | Start with the test README for the automation gate, focused output/provenance suites, manual-control suites, TAP Library suites, and evidence limits. |
 | Source tree module index | [TAPCamDemo/README.md](TAPCamDemo/README.md) | [TAPCamDemo](TAPCamDemo) |
 | Dated project score and reading order | [Docs/ProjectScorecard.md](Docs/ProjectScorecard.md) | [Docs](Docs) |
@@ -49,15 +52,10 @@ flowchart TD
 
 ## Current Goal And Score Standard
 
-Current AI-assisted goal: implement TAP Library in-session scroll memory,
-cached return-to-library browsing, optional foreground return to Camera, and
-signed-export queue cleanup without creating a second route system.
-`DepthAlbumPickerView` starts each fresh TAP Library entry at the top, owns the
-clicked-item return bookmark and cached album snapshot for analysis-page back
-navigation; `CameraRouteStore` and `CameraRouteContextStore` keep route and
-tokenized item-anchor context without driving fresh-entry scroll position.
-TAP Library queue policy now prioritizes already signed/exporting work and keeps
-normal signed first export away from a full Photos asset scan.
+Current AI-assisted goal: complete the structural refactor and validation gates
+for the TAP Video branch. Recorder/validator, PhotoKit request bridging,
+playback/depth, Library carousel/picker, and pending orchestration now have
+focused ownership boundaries while preserving the existing photo path.
 
 Use [Docs/AITrace/2026-06-21-tap-library-scroll-memory.md](Docs/AITrace/2026-06-21-tap-library-scroll-memory.md)
 as the plan-specific scoring-standard document. It contains the 10-point rubric,
@@ -77,13 +75,14 @@ app-level quality policy plus Output contract in
 `CapturePhotoQualityPolicy`, `CaptureOutputProfileSelectionIntent`,
 `CaptureOutputProfileSelectionPresentation`, and `CaptureOutputProfile` are
 internal policy, selection, presentation, and validation models, not
-user-visible controls. Release still captures one HEIC with embedded depth and a
-TAP manifest.
+user-visible controls. Release supports the reviewed HEIC/JPG photo-depth
+contracts and the reviewed TAP Video MP4 contract; it does not select arbitrary
+media formats at runtime.
 Pending worker readiness is also an internal strategy model; it decides whether
 protected data permits reading private pending artifacts and does not add UI or
 change Release output.
 
-## Capture Flow
+## Photo Capture Flow
 
 ```mermaid
 sequenceDiagram
@@ -187,11 +186,23 @@ authority remain in the capture/output queue.
 
 ## Validation
 
-The shared `TAPCamDemo` scheme is the default automation entry point and only
-includes `TAPCamDemoTests`. The old UI test target was removed because it only
-proved a depth-capable physical-device FOV flow and skipped on Simulator.
+The shared `TAPCamDemo` scheme is the default automation entry point and
+contains both `TAPCamDemoTests` and `TAPCamDemoUITests`. The default automated
+unit gate selects `TAPCamDemoTests` explicitly; UI tests remain a separate,
+attended surface.
 The scheme sets `TAPCAM_XCTEST_HOST=1` so app-hosted unit tests do not enter
 the first-launch permission and camera startup flow.
+
+Before compiling, run the scoped TAP Video refactor structure gate:
+
+```bash
+Scripts/lint-tap-video-refactor.sh
+```
+
+The script uses `.swiftlint-tap-video.yml` to enforce function bodies at or
+below 80 lines and cyclomatic complexity at or below 10 on the explicit
+VideoBranchRefactorAudit production allowlist. It intentionally excludes tests,
+UI tests, Debug fixtures, benchmarks, vendored zstd, and unrelated legacy code.
 
 For AI/CI compilation verification, use:
 
@@ -205,14 +216,15 @@ destination during test launch.
 
 ```bash
 xcrun simctl list devices booted
-xcodebuild test -project TAPCamDemo.xcodeproj -scheme TAPCamDemo -destination 'id=<BOOTED_SIMULATOR_UDID>'
+xcodebuild test -project TAPCamDemo.xcodeproj -scheme TAPCamDemo -destination 'id=<BOOTED_SIMULATOR_UDID>' -only-testing:TAPCamDemoTests
 ```
 
 After `build-for-testing`, `test-without-building` can use the same
-`-destination 'id=<BOOTED_SIMULATOR_UDID>'` form. Running by device name can
-still depend on CoreSimulator boot and migration state. Real-device camera/App
-Attest acceptance remains an attended validation path, not a default unit-test
-target.
+`-destination 'id=<BOOTED_SIMULATOR_UDID>'` and
+`-only-testing:TAPCamDemoTests` arguments. Running by device name can still
+depend on CoreSimulator boot and migration state. UI tests and real-device
+camera/App Attest acceptance remain attended validation paths, not part of the
+default unit gate.
 
 ## Supporting Documents
 
@@ -231,9 +243,12 @@ target.
 
 ## Release Data Policy
 
-Release output is a single embedded photo artifact. Release builds must not
-write sidecar JSON, debug bundles, raw bundles, independent depth files,
-independent metadata files, metrics files, or intermediate capture artifacts.
+Release still-photo output is a single embedded photo artifact. TAP Video uses
+one MP4 artifact containing its RGB track, bounded KLV depth track, manifest,
+and proof contract. Release builds must not write sidecar JSON, debug bundles,
+raw bundles, independent depth files, independent metadata files, metrics
+files, or intermediate capture artifacts.
 
-If a requested RGB/depth pair cannot be embedded as a valid Apple photo-depth
-HEIC, capture is rejected instead of silently generating another file.
+If a requested still-photo RGB/depth pair cannot be embedded as a valid Apple
+photo-depth HEIC, capture is rejected instead of silently generating another
+file.

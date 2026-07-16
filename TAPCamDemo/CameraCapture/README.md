@@ -1,10 +1,11 @@
 # CameraCapture Module
 
-`TAPCamDemo/CameraCapture` owns the live camera surface and the SingleCam
-photo-depth capture path. Release UI chooses semantic field-of-view options;
-Planning resolves them into concrete AVFoundation-compatible sources; Runtime
-captures one Apple photo-depth result; Output builds an unsigned embedded TAP
-depth photo file and stages it in TAP Library.
+`TAPCamDemo/CameraCapture` owns the live camera surface, SingleCam photo-depth
+capture, and TAP Video recording. Release UI chooses semantic field-of-view
+options; Planning resolves them into concrete AVFoundation-compatible sources;
+Runtime captures either one Apple photo-depth result or a bounded RGB/audio/
+depth-metadata movie; Output builds the unsigned TAP artifact and stages it in
+TAP Library.
 
 The module does not run separate RGB/depth sessions, does not write sidecars,
 and does not export to Photos directly.
@@ -15,8 +16,8 @@ and does not export to Photos directly.
 | --- | --- | --- |
 | UI | Camera screen shell, preview stage, debug overlay, bottom chrome controls, FOV chips, preview bridge | [UI/README.md](UI/README.md) |
 | Planning | Device discovery, RGB/depth compatibility, zoom, capture plan | [Planning/README.md](Planning/README.md) |
-| Runtime | SingleCam session mutation and photo capture | [Runtime/README.md](Runtime/README.md) |
-| Output | Logical package, TAP manifest, TAP photo metadata injection, pending writer | [Output/README.md](Output/README.md) |
+| Runtime | SingleCam session mutation, photo capture, and TAP Video writer orchestration | [Runtime/README.md](Runtime/README.md) |
+| Output | Photo/video manifest, provenance, media facts, streaming validation, and pending handoff | [Output/README.md](Output/README.md) |
 | Support | Location, metrics, capture errors, public-safe status text | [Support/README.md](Support/README.md) |
 
 ## Layer Flow
@@ -29,6 +30,8 @@ flowchart TD
     Planning --> Runtime["Runtime\nCaptureSessionController"]
     Runtime --> Pipeline["CapturePipeline"]
     Pipeline --> Output["Output\nCapturePackage + EmbeddedPhotoPackager"]
+    Runtime --> Video["TAPVideoRecorder\nwriter + depth metadata"]
+    Video --> Output
     Output --> Pending["TAPLibrary\nTAPPendingCaptureArtifactWriter"]
 
     click UI "UI/CameraView.swift"
@@ -37,6 +40,7 @@ flowchart TD
     click Runtime "Runtime/CaptureSessionController.swift"
     click Pipeline "Runtime/CapturePipeline.swift"
     click Output "Output/EmbeddedPhotoPackager.swift"
+    click Video "Runtime/TAPVideoRecorder.swift"
     click Pending "../TAPLibrary/TAPPendingCaptureStore.swift"
 ```
 
@@ -95,7 +99,7 @@ Each option already carries the RGB source, depth source, and raw depth-safe
 zoom factor produced by Planning. This keeps nonstandard mappings such as
 `48mm -> raw 4.0` alive until Runtime applies `videoZoomFactor`.
 
-## Capture Sequence
+## Photo Capture Sequence
 
 ```mermaid
 sequenceDiagram
@@ -125,6 +129,33 @@ capture. The session controller is the only type that mutates
 `AVCaptureSession`; FOV-only changes reuse the current graph when the selected
 device, format, output, depth state, and plan are compatible.
 
+## TAP Video Sequence
+
+```mermaid
+sequenceDiagram
+    participant View as CameraViewModel
+    participant Session as CaptureSessionController
+    participant Recorder as TAPVideoRecorder
+    participant Writer as TAPVideoWriterSession
+    participant Encoder as TAPVideoDepthMetadataEncoder
+    participant Store as TAPPendingCaptureStore
+
+    View->>Session: prepare/start TAP Video
+    Session->>Recorder: synchronized RGB/audio/depth callbacks
+    Recorder->>Writer: append media samples
+    Recorder->>Encoder: pack/compress/append one depth frame
+    View->>Recorder: stop
+    Recorder->>Writer: finalize MP4
+    Recorder->>Recorder: inspect tracks + assemble manifest
+    Recorder->>Store: ingest pending TAP Video workspace
+```
+
+The recorder keeps callback routing, writer input ownership, depth encoding,
+metrics, manifest assembly, and postflight inspection in separate types. A
+single `TAPMediaTrackFactsReader` is shared by recorder postflight, validation,
+and debug fixtures. The validator streams depth metadata with bounded one-frame
+memory before the pending queue can sign or export the movie.
+
 ## Output Policy Handoff
 
 The format and quality boundary crosses layers in this order:
@@ -152,11 +183,12 @@ The format and quality boundary crosses layers in this order:
    Library later signs, validates, and exports it. Output does not export to
    Photos directly.
 
-This is still not a broad image-quality feature. The visible format choice is
+This is still not a broad image-quality feature. The visible photo format choice is
 limited to the two reviewed TAP depth photo profiles. Live Photo is a narrow
 extension on top of those profiles: when the active photo output supports it,
 the app captures one paired MOV resource and signs it through the v2/v3 Live
-Photo contract. Future RAW, general video, 24MP deferred delivery, or new
+Photo contract. TAP Video uses its own reviewed movie contract. Future RAW,
+arbitrary non-TAP video formats, 24MP deferred delivery, or new
 quality-level work should add a new profile/catalog entry plus validation,
 manifest, packaging, signing, reader, and test evidence before UI can request
 it.

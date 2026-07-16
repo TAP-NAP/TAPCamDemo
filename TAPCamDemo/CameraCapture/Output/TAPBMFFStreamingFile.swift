@@ -65,59 +65,100 @@ nonisolated enum TAPBMFFStreamingFile {
             guard boxes.count < maximumTopLevelBoxCount else {
                 throw TAPDepthCaptureError.invalidTAPManifest("BMFF top-level box count exceeds limit")
             }
-            guard fileByteCount - offset >= 8 else {
-                throw TAPDepthCaptureError.invalidTAPManifest("truncated BMFF box header")
-            }
-            try handle.seek(toOffset: offset)
-            let baseHeader = try readExactly(8, from: handle)
-            let size32 = baseHeader.tapUInt32BE(at: 0)
-            guard let type = String(data: baseHeader.subdata(in: 4..<8), encoding: .ascii) else {
-                throw TAPDepthCaptureError.invalidTAPManifest("invalid BMFF box type")
-            }
-
-            let headerByteCount: UInt64
-            let boxByteCount: UInt64
-            switch size32 {
-            case 0:
-                headerByteCount = 8
-                boxByteCount = fileByteCount - offset
-            case 1:
-                guard fileByteCount - offset >= 16 else {
-                    throw TAPDepthCaptureError.invalidTAPManifest("truncated BMFF large-size header")
-                }
-                let extendedSize = try readExactly(8, from: handle).tapUInt64BE(at: 0)
-                headerByteCount = 16
-                boxByteCount = extendedSize
-            default:
-                headerByteCount = 8
-                boxByteCount = UInt64(size32)
-            }
-
-            guard boxByteCount >= headerByteCount,
-                  boxByteCount <= fileByteCount - offset else {
-                throw TAPDepthCaptureError.invalidTAPManifest("invalid BMFF box length")
-            }
-
-            let userType: Data?
-            if type == "uuid" {
-                guard boxByteCount >= headerByteCount + 16 else {
-                    throw TAPDepthCaptureError.invalidTAPManifest("truncated BMFF uuid box")
-                }
-                userType = try readExactly(16, from: handle)
-            } else {
-                userType = nil
-            }
-
-            boxes.append(TAPBMFFTopLevelBox(
-                type: type,
-                range: TAPFileByteRange(offset: offset, length: boxByteCount),
-                headerByteCount: headerByteCount,
-                userType: userType,
-                usesToEndSize: size32 == 0
-            ))
-            offset += boxByteCount
+            let box = try readTopLevelBox(
+                at: offset,
+                fileByteCount: fileByteCount,
+                from: handle
+            )
+            boxes.append(box)
+            offset = box.range.upperBound
         }
         return boxes
+    }
+
+    private struct BoxSize {
+        let headerByteCount: UInt64
+        let boxByteCount: UInt64
+    }
+
+    private static func readTopLevelBox(
+        at offset: UInt64,
+        fileByteCount: UInt64,
+        from handle: FileHandle
+    ) throws -> TAPBMFFTopLevelBox {
+        guard fileByteCount - offset >= 8 else {
+            throw TAPDepthCaptureError.invalidTAPManifest("truncated BMFF box header")
+        }
+        try handle.seek(toOffset: offset)
+        let baseHeader = try readExactly(8, from: handle)
+        let size32 = baseHeader.tapUInt32BE(at: 0)
+        guard let type = String(
+            data: baseHeader.subdata(in: 4..<8),
+            encoding: .ascii
+        ) else {
+            throw TAPDepthCaptureError.invalidTAPManifest("invalid BMFF box type")
+        }
+        let size = try readBoxSize(
+            size32: size32,
+            offset: offset,
+            fileByteCount: fileByteCount,
+            from: handle
+        )
+        guard size.boxByteCount >= size.headerByteCount,
+              size.boxByteCount <= fileByteCount - offset else {
+            throw TAPDepthCaptureError.invalidTAPManifest("invalid BMFF box length")
+        }
+        let userType = try readUserType(
+            for: type,
+            boxSize: size,
+            from: handle
+        )
+        return TAPBMFFTopLevelBox(
+            type: type,
+            range: TAPFileByteRange(offset: offset, length: size.boxByteCount),
+            headerByteCount: size.headerByteCount,
+            userType: userType,
+            usesToEndSize: size32 == 0
+        )
+    }
+
+    private static func readBoxSize(
+        size32: UInt32,
+        offset: UInt64,
+        fileByteCount: UInt64,
+        from handle: FileHandle
+    ) throws -> BoxSize {
+        switch size32 {
+        case 0:
+            return BoxSize(
+                headerByteCount: 8,
+                boxByteCount: fileByteCount - offset
+            )
+        case 1:
+            guard fileByteCount - offset >= 16 else {
+                throw TAPDepthCaptureError.invalidTAPManifest("truncated BMFF large-size header")
+            }
+            return BoxSize(
+                headerByteCount: 16,
+                boxByteCount: try readExactly(8, from: handle).tapUInt64BE(at: 0)
+            )
+        default:
+            return BoxSize(headerByteCount: 8, boxByteCount: UInt64(size32))
+        }
+    }
+
+    private static func readUserType(
+        for type: String,
+        boxSize: BoxSize,
+        from handle: FileHandle
+    ) throws -> Data? {
+        guard type == "uuid" else {
+            return nil
+        }
+        guard boxSize.boxByteCount >= boxSize.headerByteCount + 16 else {
+            throw TAPDepthCaptureError.invalidTAPManifest("truncated BMFF uuid box")
+        }
+        return try readExactly(16, from: handle)
     }
 
     static func byteCount(of fileURL: URL) throws -> UInt64 {

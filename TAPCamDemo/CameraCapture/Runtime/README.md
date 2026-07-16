@@ -49,6 +49,26 @@ persist, log, or infer product state on its own.
 | Pure readback value handed to UI/Planning | [../Planning/CameraManualControlReadbackSnapshot.swift](../Planning/CameraManualControlReadbackSnapshot.swift) |
 | Photo-depth provider protocol | [SingleCamPhotoCaptureProvider.swift](SingleCamPhotoCaptureProvider.swift) |
 | AVFoundation provider | [AVFoundationSingleCamPhotoProvider.swift](AVFoundationSingleCamPhotoProvider.swift) |
+| TAP Video recorder state machine and callback adapter | [TAPVideoRecorder.swift](TAPVideoRecorder.swift), [TAPVideoRecorderCaptureCallbacks.swift](TAPVideoRecorderCaptureCallbacks.swift) |
+| Bounded writer input lifecycle | [TAPVideoWriterSession.swift](TAPVideoWriterSession.swift) |
+| Value-semantic counters, timestamps, gaps, and calibration coverage | [TAPVideoRecordingMetrics.swift](TAPVideoRecordingMetrics.swift) |
+| Per-frame depth packing/compression/KLV append | [TAPVideoDepthMetadataEncoder.swift](TAPVideoDepthMetadataEncoder.swift) |
+| Pure manifest and spatial-registration assembly | [TAPVideoManifestAssembler.swift](TAPVideoManifestAssembler.swift), [TAPVideoSpatialRegistrationAssembler.swift](TAPVideoSpatialRegistrationAssembler.swift) |
+| Public-safe recorder diagnostics | [TAPVideoRecorderDiagnostics.swift](TAPVideoRecorderDiagnostics.swift) |
+
+## TAP Video Runtime Boundary
+
+`TAPVideoRecorder` coordinates capture state only. `TAPVideoWriterSession`
+owns `AVAssetWriter` input setup and finalization,
+`TAPVideoDepthMetadataEncoder` owns the bounded per-frame metadata append, and
+`TAPVideoRecordingMetrics` owns counters and timing facts. Final manifest and
+spatial-registration values are assembled by pure collaborators after the
+single shared media-track facts reader has inspected the finished file.
+
+AVFoundation callbacks enter through one fully initialized
+`TAPVideoRecorderOutputDelegate`; the recorder cannot exist with an absent
+delegate. Callback routing, writer ownership, encoding, metrics, and manifest
+assembly therefore have separate review boundaries.
 
 ## Runtime Sequence
 

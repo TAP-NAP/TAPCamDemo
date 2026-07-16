@@ -52,7 +52,6 @@ struct TAPCameraCapturePresentationTests {
         #expect(uiTestSource.contains(#"tapButton("camera.lowerToolbar.shutter""#))
         #expect(uiTestSource.contains(#"tapButton("camera.lowerToolbar.focus""#))
         #expect(uiTestSource.contains("camera.tickedAdjustmentStrip"))
-        #expect(uiTestSource.contains("VIDEO selected"))
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
@@ -564,96 +563,6 @@ struct TAPCameraCapturePresentationTests {
         #expect(controllerSource.contains(#"device.observe(\.isAdjustingFocus"#))
         #expect(controlServiceSource.contains("device.isSubjectAreaChangeMonitoringEnabled = true"))
         #expect(controlServiceSource.contains("device.isSubjectAreaChangeMonitoringEnabled = false"))
-    }
-
-    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func videoRecordingDelegatesUseNonisolatedOutputAdapter() throws {
-        let controllerSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/CameraCapture/Runtime/CaptureSessionController.swift"
-        )
-        let recorderSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/CameraCapture/Runtime/TAPVideoRecorder.swift"
-        )
-
-        #expect(recorderSource.contains("nonisolated final class TAPVideoRecorderOutputDelegate"))
-        #expect(recorderSource.contains("AVCaptureVideoDataOutputSampleBufferDelegate"))
-        #expect(recorderSource.contains("AVCaptureAudioDataOutputSampleBufferDelegate"))
-        #expect(recorderSource.contains("AVCaptureDataOutputSynchronizerDelegate"))
-        #expect(recorderSource.contains("AVCaptureDepthDataOutputDelegate"))
-        #expect(recorderSource.contains("private weak var recorder: TAPVideoRecorder?"))
-        #expect(controllerSource.contains("synchronizer.setDelegate(recorder.outputDelegate"))
-        #expect(controllerSource.contains("setSampleBufferDelegate(recorder.outputDelegate"))
-        #expect(!controllerSource.contains("synchronizer.setDelegate(recorder, queue: recorder.callbackQueue)"))
-        #expect(!controllerSource.contains("setSampleBufferDelegate(recorder, queue: recorder.callbackQueue)"))
-        #expect(!recorderSource.contains("extension TAPVideoRecorder: AVCaptureAudioDataOutputSampleBufferDelegate"))
-    }
-
-    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func tapVideoReleaseEvidenceHasStableLifecycleAndMemoryCheckpoints() throws {
-        let traceSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/Support/TAPVideoPerformanceTrace.swift"
-        )
-        let recorderSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/CameraCapture/Runtime/TAPVideoRecorder.swift"
-        )
-        let provenanceSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/CameraCapture/Output/TAPCaptureProvenanceWriter.swift"
-        )
-        let processorSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/TAPLibrary/TAPPendingCaptureProcessor.swift"
-        )
-
-        for eventName in [
-            "TAPVideoCaptureStart",
-            "TAPVideoCaptureFirstRGB",
-            "TAPVideoCaptureFirstDepth",
-            "TAPVideoCaptureStop",
-            "TAPVideoWriterFinished",
-            "TAPVideoManifestAppended",
-            "TAPVideoAssertionFinished",
-            "TAPVideoProofWritten",
-            "TAPVideoPendingCleanupFinished",
-            "TAPVideoRuntimeCheckpoint"
-        ] {
-            #expect(traceSource.contains(eventName))
-        }
-        for intervalName in [
-            "TAPVideoContentHash",
-            "TAPVideoProofGeneration",
-            "TAPVideoLocalValidation",
-            "TAPVideoPhotosExport",
-            "TAPVideoPhotosReadbackValidation",
-            "TAPVideoPendingCleanup"
-        ] {
-            #expect(traceSource.contains(intervalName))
-        }
-
-        #expect(traceSource.contains("task_vm_info_data_t"))
-        #expect(traceSource.contains("rssBytes="))
-        #expect(traceSource.contains("physicalFootprintBytes="))
-        #expect(traceSource.contains("thermal="))
-        #expect(traceSource.contains("audioDrops="))
-        #expect(traceSource.contains("depthOutputDrops="))
-        #expect(traceSource.contains("depthMetadataDrops="))
-        #expect(traceSource.contains("depthEncodingDrops="))
-        #expect(!traceSource.contains("captureID="))
-
-        #expect(recorderSource.contains("TAPVideoPerformanceTrace.emitCaptureStart"))
-        #expect(recorderSource.contains("TAPVideoPerformanceTrace.emitCaptureFirstRGB"))
-        #expect(recorderSource.contains("TAPVideoPerformanceTrace.emitCaptureFirstDepth"))
-        #expect(recorderSource.contains("TAPVideoPerformanceTrace.emitCaptureStop"))
-        #expect(recorderSource.contains("audioDropCount += 1"))
-        #expect(recorderSource.contains("emitRuntimeCheckpoint(stage: \"recording-finalized\")"))
-
-        #expect(provenanceSource.contains("beginContentHash(purpose:"))
-        #expect(provenanceSource.contains("beginProofGeneration()"))
-        #expect(provenanceSource.contains("emitAssertionFinished(succeeded:"))
-        #expect(provenanceSource.contains("emitProofWritten(byteCount:"))
-        #expect(provenanceSource.contains("beginLocalValidation("))
-        #expect(processorSource.contains("beginPhotosExport()"))
-        #expect(processorSource.contains("beginPhotosReadback()"))
-        #expect(processorSource.contains("cleanupExportedLargeFilesWithTrace"))
-        #expect(processorSource.contains("beginPendingCleanup()"))
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))

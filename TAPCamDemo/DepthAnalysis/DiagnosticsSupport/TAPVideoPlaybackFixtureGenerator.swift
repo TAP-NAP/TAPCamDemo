@@ -1,5 +1,5 @@
 //
-//  TAPVideoPlaybackFixtureHarness.swift
+//  TAPVideoPlaybackFixtureGenerator.swift
 //  TAPCamDemo
 //
 
@@ -8,330 +8,6 @@
 import CoreGraphics
 import CoreVideo
 import Foundation
-import SwiftUI
-
-/// Runtime-authored TAP video fixtures. The encoded H.264 bytes may vary by
-/// OS encoder, but the pixels, timestamps, metadata, manifest, and test actions
-/// are deterministic for each scenario.
-nonisolated enum TAPVideoPlaybackFixtureScenario: String, CaseIterable, Identifiable, Sendable {
-    case rotation0 = "rotation-0"
-    case rotation90 = "rotation-90"
-    case rotation180 = "rotation-180"
-    case rotation270 = "rotation-270"
-    case mirrored = "mirrored"
-    case aspect4x3 = "aspect-4x3"
-    case aspect16x9 = "aspect-16x9"
-    case cleanAperture = "clean-aperture"
-    case depthGap = "depth-gap"
-    case seekDiscontinuity = "seek-discontinuity"
-    case performancePlayback15Seconds = "performance-playback-15s"
-    case metadataStress180Seconds = "metadata-stress-180s"
-
-    var id: String { rawValue }
-
-    var specification: TAPVideoPlaybackFixtureSpecification {
-        switch self {
-        case .rotation0:
-            .standard(scenario: self, rotationDegrees: 0)
-        case .rotation90:
-            .standard(scenario: self, rotationDegrees: 90)
-        case .rotation180:
-            .standard(scenario: self, rotationDegrees: 180)
-        case .rotation270:
-            .standard(scenario: self, rotationDegrees: 270)
-        case .mirrored:
-            .standard(scenario: self, mirrored: true)
-        case .aspect4x3:
-            TAPVideoPlaybackFixtureSpecification(
-                scenario: self,
-                codedWidth: 64,
-                codedHeight: 48,
-                presentationAperture: .init(x: 0, y: 0, width: 64, height: 48),
-                rotationDegrees: 0,
-                mirrored: false,
-                durationSeconds: 2,
-                videoFramesPerSecond: 15,
-                depthFramesPerSecond: 15,
-                depthGap: nil,
-                automaticSeekSeconds: nil
-            )
-        case .aspect16x9:
-            .standard(scenario: self)
-        case .cleanAperture:
-            TAPVideoPlaybackFixtureSpecification(
-                scenario: self,
-                codedWidth: 80,
-                codedHeight: 48,
-                presentationAperture: .init(x: 8, y: 6, width: 64, height: 36),
-                rotationDegrees: 0,
-                mirrored: false,
-                durationSeconds: 2,
-                videoFramesPerSecond: 15,
-                depthFramesPerSecond: 15,
-                depthGap: nil,
-                automaticSeekSeconds: nil
-            )
-        case .depthGap:
-            TAPVideoPlaybackFixtureSpecification(
-                scenario: self,
-                codedWidth: 64,
-                codedHeight: 36,
-                presentationAperture: .init(x: 0, y: 0, width: 64, height: 36),
-                rotationDegrees: 0,
-                mirrored: false,
-                durationSeconds: 3,
-                videoFramesPerSecond: 15,
-                depthFramesPerSecond: 15,
-                depthGap: .init(startSeconds: 1, endSeconds: 1.6),
-                automaticSeekSeconds: 1.3
-            )
-        case .seekDiscontinuity:
-            TAPVideoPlaybackFixtureSpecification(
-                scenario: self,
-                codedWidth: 64,
-                codedHeight: 36,
-                presentationAperture: .init(x: 0, y: 0, width: 64, height: 36),
-                rotationDegrees: 0,
-                mirrored: false,
-                durationSeconds: 6,
-                videoFramesPerSecond: 15,
-                depthFramesPerSecond: 15,
-                depthGap: nil,
-                automaticSeekSeconds: 4.5
-            )
-        case .performancePlayback15Seconds:
-            TAPVideoPlaybackFixtureSpecification(
-                scenario: self,
-                codedWidth: 64,
-                codedHeight: 36,
-                presentationAperture: .init(x: 0, y: 0, width: 64, height: 36),
-                rotationDegrees: 0,
-                mirrored: false,
-                durationSeconds: 15,
-                videoFramesPerSecond: 30,
-                depthFramesPerSecond: 30,
-                depthGap: nil,
-                automaticSeekSeconds: nil
-            )
-        case .metadataStress180Seconds:
-            TAPVideoPlaybackFixtureSpecification(
-                scenario: self,
-                codedWidth: 32,
-                codedHeight: 18,
-                presentationAperture: .init(x: 0, y: 0, width: 32, height: 18),
-                rotationDegrees: 0,
-                mirrored: false,
-                durationSeconds: 180,
-                videoFramesPerSecond: 1,
-                depthFramesPerSecond: 30,
-                depthGap: nil,
-                automaticSeekSeconds: nil
-            )
-        }
-    }
-}
-
-nonisolated struct TAPVideoPlaybackFixtureRect: Equatable, Sendable {
-    let x: Int
-    let y: Int
-    let width: Int
-    let height: Int
-}
-
-nonisolated struct TAPVideoPlaybackFixtureGap: Equatable, Sendable {
-    let startSeconds: Double
-    let endSeconds: Double
-
-    func contains(_ seconds: Double) -> Bool {
-        seconds >= startSeconds && seconds < endSeconds
-    }
-}
-
-nonisolated struct TAPVideoPlaybackFixtureSpecification: Equatable, Sendable {
-    let scenario: TAPVideoPlaybackFixtureScenario
-    let codedWidth: Int
-    let codedHeight: Int
-    let presentationAperture: TAPVideoPlaybackFixtureRect
-    let rotationDegrees: Int
-    let mirrored: Bool
-    let durationSeconds: Double
-    let videoFramesPerSecond: Int
-    let depthFramesPerSecond: Int
-    let depthGap: TAPVideoPlaybackFixtureGap?
-    let automaticSeekSeconds: Double?
-
-    var transformDescription: String {
-        mirrored
-            ? "rotation:\(rotationDegrees);mirrored"
-            : "rotation:\(rotationDegrees);not-mirrored"
-    }
-
-    var expectedVideoFrameCount: Int {
-        Int((durationSeconds * Double(videoFramesPerSecond)).rounded(.down))
-    }
-
-    var expectedDepthFrameCount: Int {
-        let candidateCount = Int((durationSeconds * Double(depthFramesPerSecond)).rounded(.down))
-        return (0..<candidateCount).reduce(into: 0) { count, index in
-            let seconds = Double(index) / Double(depthFramesPerSecond)
-            if depthGap?.contains(seconds) != true {
-                count += 1
-            }
-        }
-    }
-
-    var maxObservedStoredDepthIntervalSeconds: Double? {
-        let candidateCount = Int((durationSeconds * Double(depthFramesPerSecond)).rounded(.down))
-        var previousSeconds: Double?
-        var maximumInterval: Double?
-        for index in 0..<candidateCount {
-            let seconds = Double(index) / Double(depthFramesPerSecond)
-            guard depthGap?.contains(seconds) != true else {
-                continue
-            }
-            if let previousSeconds {
-                maximumInterval = max(maximumInterval ?? 0, seconds - previousSeconds)
-            }
-            previousSeconds = seconds
-        }
-        return maximumInterval
-    }
-
-    var preferredTransform: CGAffineTransform {
-        let width = CGFloat(codedWidth)
-        let height = CGFloat(codedHeight)
-        if mirrored {
-            return CGAffineTransform(a: -1, b: 0, c: 0, d: 1, tx: width, ty: 0)
-        }
-        switch rotationDegrees {
-        case 90:
-            return CGAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: height, ty: 0)
-        case 180:
-            return CGAffineTransform(a: -1, b: 0, c: 0, d: -1, tx: width, ty: height)
-        case 270:
-            return CGAffineTransform(a: 0, b: -1, c: 1, d: 0, tx: 0, ty: width)
-        default:
-            return .identity
-        }
-    }
-
-    fileprivate static func standard(
-        scenario: TAPVideoPlaybackFixtureScenario,
-        rotationDegrees: Int = 0,
-        mirrored: Bool = false
-    ) -> Self {
-        Self(
-            scenario: scenario,
-            codedWidth: 64,
-            codedHeight: 36,
-            presentationAperture: .init(x: 0, y: 0, width: 64, height: 36),
-            rotationDegrees: rotationDegrees,
-            mirrored: mirrored,
-            durationSeconds: 2,
-            videoFramesPerSecond: 15,
-            depthFramesPerSecond: 15,
-            depthGap: nil,
-            automaticSeekSeconds: nil
-        )
-    }
-}
-
-nonisolated struct TAPVideoPlaybackFixtureLaunchConfiguration: Equatable, Sendable {
-    static let enableArgument = "--tap-video-playback-fixture"
-    static let scenarioArgument = "--tap-video-fixture-scenario"
-    static let enableEnvironmentKey = "TAPCAM_UI_TEST_VIDEO_FIXTURE"
-    static let scenarioEnvironmentKey = "TAPCAM_UI_TEST_VIDEO_FIXTURE_SCENARIO"
-    static let autoPlayEnvironmentKey = "TAPCAM_UI_TEST_VIDEO_FIXTURE_AUTOPLAY"
-    static let seekScheduleEnvironmentKey = "TAPCAM_UI_TEST_VIDEO_FIXTURE_SEEK_SCHEDULE"
-    static let accessibilityDynamicTypeEnvironmentKey =
-        "TAPCAM_UI_TEST_VIDEO_FIXTURE_ACCESSIBILITY_DYNAMIC_TYPE"
-
-    let scenario: TAPVideoPlaybackFixtureScenario
-    let autoPlay: Bool
-    let seekScheduleSeconds: [Double]?
-    let usesAccessibilityDynamicType: Bool
-
-    static var current: Self? {
-        parse(
-            arguments: ProcessInfo.processInfo.arguments,
-            environment: ProcessInfo.processInfo.environment
-        )
-    }
-
-    static func parse(
-        arguments: [String],
-        environment: [String: String]
-    ) -> Self? {
-        let argumentValue = scenarioValue(in: arguments)
-        let environmentValue = environment[scenarioEnvironmentKey]
-        let autoPlay = environment[autoPlayEnvironmentKey] == "1"
-        let usesAccessibilityDynamicType =
-            environment[accessibilityDynamicTypeEnvironmentKey] == "1"
-        let seekScheduleSeconds: [Double]?
-        if let rawSchedule = environment[seekScheduleEnvironmentKey] {
-            guard let parsedSchedule = parseSeekSchedule(rawSchedule) else {
-                return nil
-            }
-            seekScheduleSeconds = parsedSchedule
-        } else {
-            seekScheduleSeconds = nil
-        }
-        let isEnabled = arguments.contains(enableArgument)
-            || environment[enableEnvironmentKey] == "1"
-            || argumentValue != nil
-            || environmentValue != nil
-        guard isEnabled else {
-            return nil
-        }
-        let rawScenario = argumentValue ?? environmentValue
-        guard let rawScenario else {
-            return Self(
-                scenario: .rotation0,
-                autoPlay: autoPlay,
-                seekScheduleSeconds: seekScheduleSeconds,
-                usesAccessibilityDynamicType: usesAccessibilityDynamicType
-            )
-        }
-        guard let scenario = TAPVideoPlaybackFixtureScenario(rawValue: rawScenario) else {
-            return nil
-        }
-        return Self(
-            scenario: scenario,
-            autoPlay: autoPlay,
-            seekScheduleSeconds: seekScheduleSeconds,
-            usesAccessibilityDynamicType: usesAccessibilityDynamicType
-        )
-    }
-
-    private static func scenarioValue(in arguments: [String]) -> String? {
-        if let inline = arguments.first(where: { $0.hasPrefix("\(scenarioArgument)=") }) {
-            return String(inline.dropFirst(scenarioArgument.count + 1))
-        }
-        guard let index = arguments.firstIndex(of: scenarioArgument),
-              arguments.indices.contains(index + 1) else {
-            return nil
-        }
-        return arguments[index + 1]
-    }
-
-    private static func parseSeekSchedule(_ rawValue: String) -> [Double]? {
-        let components = rawValue.split(separator: ",", omittingEmptySubsequences: false)
-        guard !components.isEmpty else {
-            return nil
-        }
-        var values: [Double] = []
-        values.reserveCapacity(components.count)
-        for component in components {
-            guard let value = Double(component.trimmingCharacters(in: .whitespaces)),
-                  value.isFinite,
-                  value >= 0 else {
-                return nil
-            }
-            values.append(value)
-        }
-        return values
-    }
-}
 
 nonisolated struct TAPVideoPlaybackFixtureArtifact: Identifiable, Sendable {
     let fileURL: URL
@@ -360,10 +36,10 @@ nonisolated enum TAPVideoPlaybackFixtureGenerator {
             )
         }.value
         do {
-            let recordedFacts = try await TAPVideoPlaybackFixtureRecordedFacts.load(
+            let recordedFacts = try await TAPMediaTrackFactsReader.read(
                 from: encodedFixture.fileURL
             )
-            let manifest = manifest(
+            let manifest = try manifest(
                 specification: specification,
                 videoFrameCount: encodedFixture.videoFrameCount,
                 depthFrameCount: encodedFixture.depthFrameCount,
@@ -735,8 +411,18 @@ nonisolated enum TAPVideoPlaybackFixtureGenerator {
         specification: TAPVideoPlaybackFixtureSpecification,
         videoFrameCount: Int,
         depthFrameCount: Int,
-        recordedFacts: TAPVideoPlaybackFixtureRecordedFacts
-    ) -> TAPVideoManifest {
+        recordedFacts: TAPMediaTrackFacts
+    ) throws -> TAPVideoManifest {
+        guard recordedFacts.videoTrackCount == 1,
+              recordedFacts.audioTrackCount == 0,
+              recordedFacts.metadataTrackCount == 1,
+              recordedFacts.trackCount == 2,
+              let metadata = recordedFacts.metadata,
+              let metadataCodec = metadata.codec else {
+            throw fixtureError(
+                "runtime fixture must contain exactly one video track, one metadata track, and no audio track"
+            )
+        }
         let aperture = specification.presentationAperture
         let gap = specification.depthGap.map {
             TAPVideoManifest.DepthGap(
@@ -836,13 +522,13 @@ nonisolated enum TAPVideoPlaybackFixtureGenerator {
                     trackCount: recordedFacts.trackCount
                 ),
                 rgbTrack: .init(
-                    trackID: recordedFacts.videoTrackID,
-                    codec: recordedFacts.videoCodec,
-                    width: recordedFacts.videoWidth,
-                    height: recordedFacts.videoHeight,
-                    durationSeconds: recordedFacts.videoDurationSeconds,
-                    timeScale: recordedFacts.videoTimeScale,
-                    nominalFrameRate: recordedFacts.nominalFrameRate,
+                    trackID: recordedFacts.video.trackID,
+                    codec: recordedFacts.video.codec,
+                    width: recordedFacts.video.width,
+                    height: recordedFacts.video.height,
+                    durationSeconds: recordedFacts.video.timing.durationSeconds,
+                    timeScale: recordedFacts.video.timing.timeScale,
+                    nominalFrameRate: recordedFacts.video.nominalFrameRate,
                     frameCount: videoFrameCount,
                     transform: specification.transformDescription
                 ),
@@ -856,10 +542,10 @@ nonisolated enum TAPVideoPlaybackFixtureGenerator {
                     channelCount: nil
                 ),
                 depthCoverage: .init(
-                    trackID: recordedFacts.depthMetadataTrackID,
-                    trackCodec: recordedFacts.depthMetadataCodec,
-                    trackDurationSeconds: recordedFacts.depthMetadataDurationSeconds,
-                    trackTimeScale: recordedFacts.depthMetadataTimeScale,
+                    trackID: metadata.trackID,
+                    trackCodec: metadataCodec,
+                    trackDurationSeconds: metadata.timing.durationSeconds,
+                    trackTimeScale: metadata.timing.timeScale,
                     sampleCount: depthFrameCount,
                     deliveredSampleCount: depthFrameCount,
                     gaps: gap.map { [$0] } ?? [],
@@ -899,205 +585,5 @@ nonisolated private struct TAPVideoPlaybackEncodedFixture: Sendable {
     let ownsDirectory: Bool
     let videoFrameCount: Int
     let depthFrameCount: Int
-}
-
-nonisolated private struct TAPVideoPlaybackFixtureRecordedFacts: Sendable {
-    let durationSeconds: Double
-    let timeScale: Int32
-    let trackCount: Int
-    let videoTrackID: Int32
-    let videoCodec: String
-    let videoWidth: Int32
-    let videoHeight: Int32
-    let videoDurationSeconds: Double
-    let videoTimeScale: Int32
-    let nominalFrameRate: Double?
-    let depthMetadataTrackID: Int32
-    let depthMetadataCodec: String
-    let depthMetadataDurationSeconds: Double
-    let depthMetadataTimeScale: Int32
-
-    static func load(from fileURL: URL) async throws -> Self {
-        let asset = AVURLAsset(url: fileURL)
-        async let allTracks = asset.load(.tracks)
-        async let videoTracks = asset.loadTracks(withMediaType: .video)
-        async let audioTracks = asset.loadTracks(withMediaType: .audio)
-        async let metadataTracks = asset.loadTracks(withMediaType: .metadata)
-        async let duration = asset.load(.duration)
-
-        let resolvedTracks = try await allTracks
-        let resolvedVideoTracks = try await videoTracks
-        let resolvedAudioTracks = try await audioTracks
-        let resolvedMetadataTracks = try await metadataTracks
-        guard resolvedVideoTracks.count == 1,
-              resolvedAudioTracks.isEmpty,
-              resolvedMetadataTracks.count == 1,
-              let videoTrack = resolvedVideoTracks.first,
-              let metadataTrack = resolvedMetadataTracks.first else {
-            throw TAPDepthCaptureError.videoRecordingFailed(
-                "runtime fixture must contain exactly one video track, one metadata track, and no audio track"
-            )
-        }
-
-        let resolvedDuration = try await duration
-        let videoDescriptions = try await videoTrack.load(.formatDescriptions)
-        guard let videoDescription = videoDescriptions.first else {
-            throw TAPDepthCaptureError.videoRecordingFailed(
-                "runtime fixture video format is unavailable"
-            )
-        }
-        let dimensions = CMVideoFormatDescriptionGetDimensions(videoDescription)
-        let videoTiming = try await trackTiming(videoTrack)
-        let nominalFrameRate = Double(try await videoTrack.load(.nominalFrameRate))
-        let metadataDescriptions = try await metadataTrack.load(.formatDescriptions)
-        guard let metadataDescription = metadataDescriptions.first else {
-            throw TAPDepthCaptureError.videoRecordingFailed(
-                "runtime fixture metadata format is unavailable"
-            )
-        }
-        let metadataTiming = try await trackTiming(metadataTrack)
-        return Self(
-            durationSeconds: max(0, CMTimeGetSeconds(resolvedDuration)),
-            timeScale: resolvedDuration.timescale,
-            trackCount: resolvedTracks.count,
-            videoTrackID: videoTrack.trackID,
-            videoCodec: TAPFourCharCode.string(
-                from: CMFormatDescriptionGetMediaSubType(videoDescription)
-            ),
-            videoWidth: dimensions.width,
-            videoHeight: dimensions.height,
-            videoDurationSeconds: videoTiming.durationSeconds,
-            videoTimeScale: videoTiming.timeScale,
-            nominalFrameRate: nominalFrameRate > 0 ? nominalFrameRate : nil,
-            depthMetadataTrackID: metadataTrack.trackID,
-            depthMetadataCodec: TAPFourCharCode.string(
-                from: CMFormatDescriptionGetMediaSubType(metadataDescription)
-            ),
-            depthMetadataDurationSeconds: metadataTiming.durationSeconds,
-            depthMetadataTimeScale: metadataTiming.timeScale
-        )
-    }
-
-    private static func trackTiming(_ track: AVAssetTrack) async throws -> TAPVideoPlaybackFixtureTrackTiming {
-        async let loadedTimeRange = track.load(.timeRange)
-        async let loadedNaturalTimeScale = track.load(.naturalTimeScale)
-        let timeRange = try await loadedTimeRange
-        let naturalTimeScale = try await loadedNaturalTimeScale
-        let durationSeconds = CMTimeGetSeconds(timeRange.duration)
-        let timeScale = naturalTimeScale > 0 ? naturalTimeScale : timeRange.duration.timescale
-        guard durationSeconds.isFinite,
-              durationSeconds >= 0,
-              timeScale > 0 else {
-            throw TAPDepthCaptureError.videoRecordingFailed(
-                "runtime fixture track timing is invalid"
-            )
-        }
-        return TAPVideoPlaybackFixtureTrackTiming(
-            durationSeconds: durationSeconds,
-            timeScale: timeScale
-        )
-    }
-}
-
-nonisolated private struct TAPVideoPlaybackFixtureTrackTiming: Sendable {
-    let durationSeconds: Double
-    let timeScale: Int32
-}
-
-@MainActor
-struct TAPVideoPlaybackFixtureHarnessView: View {
-    let configuration: TAPVideoPlaybackFixtureLaunchConfiguration
-
-    @State private var phase = Phase.generating
-    @State private var presentedArtifact: TAPVideoPlaybackFixtureArtifact?
-
-    var body: some View {
-        NavigationStack {
-            Group {
-                switch phase {
-                case .generating:
-                    ProgressView("Generating \(configuration.scenario.rawValue)")
-                        .tint(.white)
-                        .foregroundStyle(.white)
-                        .accessibilityIdentifier("tap.video.fixture.generating")
-                case .ready(let artifact):
-                    VStack(spacing: 18) {
-                        Label("Fixture ready", systemImage: "checkmark.circle.fill")
-                            .font(.headline)
-                            .foregroundStyle(.white)
-                            .accessibilityIdentifier("tap.video.fixture.ready")
-
-                        Text(artifact.scenario.rawValue)
-                            .font(.caption.monospaced())
-                            .foregroundStyle(.secondary)
-
-                        Button("Open fixture") {
-                            presentedArtifact = artifact
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .accessibilityIdentifier("tap.video.fixture.open")
-                    }
-                case .failed(let message):
-                    ContentUnavailableView(
-                        "Fixture generation failed",
-                        systemImage: "video.slash",
-                        description: Text(message)
-                    )
-                    .foregroundStyle(.white)
-                    .accessibilityIdentifier("tap.video.fixture.failed")
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color.black.ignoresSafeArea())
-            .navigationDestination(isPresented: isArtifactPresented) {
-                if let presentedArtifact {
-                    TAPVideoDepthPlaybackView(
-                        source: .fixtureFile(
-                            presentedArtifact.fileURL,
-                            automaticSeekScheduleSeconds: configuration.seekScheduleSeconds
-                                ?? presentedArtifact.specification.automaticSeekSeconds.map { [$0] }
-                                ?? [],
-                            autoPlay: configuration.autoPlay
-                        ),
-                        registrationAdapter: TAPVideoFixtureIdentityRegistrationAdapter()
-                    )
-                }
-            }
-        }
-        .dynamicTypeSize(
-            configuration.usesAccessibilityDynamicType ? .accessibility3 : .large
-        )
-        .task(id: configuration.scenario) {
-            phase = .generating
-            do {
-                phase = .ready(
-                    try await TAPVideoPlaybackFixtureGenerator.generate(
-                        scenario: configuration.scenario
-                    )
-                )
-            } catch is CancellationError {
-                return
-            } catch {
-                phase = .failed("\((error as NSError).domain)(\((error as NSError).code))")
-            }
-        }
-    }
-
-    private var isArtifactPresented: Binding<Bool> {
-        Binding(
-            get: { presentedArtifact != nil },
-            set: { isPresented in
-                if !isPresented {
-                    presentedArtifact = nil
-                }
-            }
-        )
-    }
-
-    private enum Phase {
-        case generating
-        case ready(TAPVideoPlaybackFixtureArtifact)
-        case failed(String)
-    }
 }
 #endif

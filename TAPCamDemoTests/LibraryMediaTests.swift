@@ -111,21 +111,9 @@ struct LibraryMediaTests {
         let providerSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/DepthAnalysis/DepthAlbumItemProvider.swift"
         )
-        let fetcherSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/MediaLibrary/LibraryMediaFetching.swift"
-        )
-        let appSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/App/TAPCamDemoApp.swift"
-        )
 
         #expect(!providerSource.contains("import Photos"))
         #expect(!providerSource.contains("PhotoLibraryWriter.depthAlbumAssets"))
-        #expect(!providerSource.contains("exportedAssetResolver"))
-        #expect(fetcherSource.contains("DepthAlbumPhotoCataloging"))
-        #expect(fetcherSource.contains("withLocalIdentifiers: exportedAssetLocalIdentifiers.sorted()"))
-        #expect(appSource.contains("LibraryMediaStore(photoCatalog: photoKitClient)"))
-        #expect(!fetcherSource.contains("LibraryAVAsset"))
-        #expect(!fetcherSource.contains("PhotoKitAVAssetRequestBridge"))
     }
 
     @Test func exportedScalarRecordSurvivesTemporaryPhotosResolutionFailure() throws {
@@ -268,21 +256,6 @@ struct LibraryMediaTests {
         )
     }
 
-    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func gridAndCameraUseRevisionAndPreviewPreservationContracts() throws {
-        let gridSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/DepthAnalysis/DepthAlbumPickerView.swift"
-        )
-        let cameraSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/CameraCapture/UI/CameraViewModel+Capture.swift"
-        )
-
-        #expect(gridSource.contains(
-            "item.thumbnailCacheKey(pixelLength: thumbnailPixelLength)"
-        ))
-        #expect(cameraSource.contains(".preservingFailurePreview(preview)"))
-    }
-
     @Test func fetchOverlayKeepsICloudAndFailureStatesDistinct() {
         #expect(
             LibraryMediaFetchOverlayState(
@@ -337,6 +310,347 @@ struct LibraryMediaTests {
         bridge.cancel()
         bridge.receive(image: nil, info: nil)
         #expect(recorder.requestIDs == [42])
+    }
+
+    @Test func photoKitBridgeCancelsInstalledRequestExactlyOnce() async {
+        let recorder = PhotoKitCancellationRecorder()
+        let bridge = DepthAlbumPhotoKitImageRequestBridge(
+            pixelLength: 64,
+            cancelRequest: { recorder.record($0) }
+        )
+
+        do {
+            let _: DepthAlbumPhotoKitPosterResult = try await withCheckedThrowingContinuation {
+                (continuation: CheckedContinuation<DepthAlbumPhotoKitPosterResult, any Error>) in
+                bridge.install(continuation: continuation)
+                bridge.install(requestID: 43)
+                bridge.cancel()
+                bridge.cancel()
+                bridge.receive(image: nil, info: [
+                    PHImageErrorKey: MediaFetchFailure.download
+                ])
+            }
+            Issue.record("Expected cancellation")
+        } catch is CancellationError {
+            // The installed request and continuation are cancelled once.
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
+
+        #expect(recorder.requestIDs == [43])
+    }
+
+    @Test func photoKitBridgeFinishesOnceBeforeLateRequestIDInstallation() async throws {
+        let recorder = PhotoKitCancellationRecorder()
+        let bridge = DepthAlbumPhotoKitImageRequestBridge(
+            pixelLength: 64,
+            cancelRequest: { recorder.record($0) }
+        )
+
+        let result: DepthAlbumPhotoKitPosterResult = try await withCheckedThrowingContinuation {
+            (continuation: CheckedContinuation<DepthAlbumPhotoKitPosterResult, any Error>) in
+            bridge.install(continuation: continuation)
+            bridge.receive(image: nil, info: [PHImageResultIsInCloudKey: true])
+            bridge.receive(image: nil, info: [
+                PHImageErrorKey: MediaFetchFailure.download
+            ])
+            bridge.install(requestID: 44)
+            bridge.cancel()
+        }
+
+        #expect(result.finalData == nil)
+        #expect(result.isCloudOnly)
+        #expect(recorder.requestIDs == [44])
+    }
+
+    @Test func requestLifecycleCancelsLateInstallAfterCancellationExactlyOnce() async {
+        let cancellations = PhotoKitCancellationRecorder()
+        let terminals = PhotoKitTerminalRecorder()
+        let lifecycle = PhotoKitRequestLifecycle<PHImageRequestID, Int>(
+            cancelRequest: { cancellations.record($0) },
+            onFinish: { _ in terminals.record() }
+        )
+
+        lifecycle.cancel()
+        do {
+            let _: Int = try await withCheckedThrowingContinuation {
+                (continuation: CheckedContinuation<Int, any Error>) in
+                #expect(!lifecycle.install(continuation: continuation))
+            }
+            Issue.record("Expected cancellation")
+        } catch is CancellationError {
+            // Cancellation is the expected terminal result.
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
+
+        lifecycle.install(requestID: 51)
+        lifecycle.finish(.failure(MediaFetchFailure.download))
+        lifecycle.cancel()
+
+        #expect(cancellations.requestIDs == [51])
+        #expect(terminals.count == 1)
+    }
+
+    @Test func requestLifecycleCancellationAfterInstallBeatsLaterError() async {
+        let cancellations = PhotoKitCancellationRecorder()
+        let terminals = PhotoKitTerminalRecorder()
+        let lifecycle = PhotoKitRequestLifecycle<PHImageRequestID, Int>(
+            cancelRequest: { cancellations.record($0) },
+            onFinish: { _ in terminals.record() }
+        )
+
+        do {
+            let _: Int = try await withCheckedThrowingContinuation {
+                (continuation: CheckedContinuation<Int, any Error>) in
+                #expect(lifecycle.install(continuation: continuation))
+                lifecycle.install(requestID: 52)
+                lifecycle.cancel()
+                lifecycle.finish(.failure(MediaFetchFailure.download))
+                lifecycle.cancel()
+            }
+            Issue.record("Expected cancellation")
+        } catch is CancellationError {
+            // Cancellation must remain the exactly-once terminal result.
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
+
+        #expect(cancellations.requestIDs == [52])
+        #expect(terminals.count == 1)
+    }
+
+    @Test func requestLifecycleFinishesOnceAndCancelsIDInstalledAfterFinish() async throws {
+        let cancellations = PhotoKitCancellationRecorder()
+        let terminals = PhotoKitTerminalRecorder()
+        let lifecycle = PhotoKitRequestLifecycle<PHImageRequestID, Int>(
+            cancelRequest: { cancellations.record($0) },
+            onFinish: { _ in terminals.record() }
+        )
+
+        let value: Int = try await withCheckedThrowingContinuation {
+            (continuation: CheckedContinuation<Int, any Error>) in
+            #expect(lifecycle.install(continuation: continuation))
+            lifecycle.finish(.success(7))
+            lifecycle.finish(.success(8))
+            lifecycle.install(requestID: 53)
+        }
+
+        #expect(value == 7)
+        #expect(cancellations.requestIDs == [53])
+        #expect(terminals.count == 1)
+    }
+
+    @Test func requestLifecycleSerializesConcurrentTerminalAndInstallRaces() async {
+        for offset in 0..<32 {
+            let requestID = PHImageRequestID(100 + offset)
+            let cancellations = PhotoKitCancellationRecorder()
+            let terminals = PhotoKitTerminalRecorder()
+            let lifecycle = PhotoKitRequestLifecycle<PHImageRequestID, Int>(
+                cancelRequest: { cancellations.record($0) },
+                onFinish: { _ in terminals.record() }
+            )
+            let waiter = Task {
+                try await withCheckedThrowingContinuation {
+                    (continuation: CheckedContinuation<Int, any Error>) in
+                    _ = lifecycle.install(continuation: continuation)
+                }
+            }
+
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask {
+                    lifecycle.install(requestID: requestID)
+                }
+                group.addTask {
+                    lifecycle.cancel()
+                }
+                group.addTask {
+                    lifecycle.finish(.success(7))
+                }
+            }
+
+            switch await waiter.result {
+            case .success(let value):
+                #expect(value == 7)
+            case .failure(let error):
+                #expect(error is CancellationError)
+            }
+            #expect(terminals.count == 1)
+            #expect(cancellations.requestIDs.count <= 1)
+            #expect(cancellations.requestIDs.allSatisfy { $0 == requestID })
+        }
+    }
+
+    @Test func resourceDataAndFileSinksShareTheRequestBridge() async throws {
+        let chunks = [Data([1, 2]), Data([3, 4, 5])]
+        let dataBridge = PhotoKitResourceRequestBridge(
+            sink: PhotoKitResourceDataSink(),
+            allowsNetworkAccess: false,
+            progress: { _ in },
+            cancelRequest: { _ in }
+        )
+        let data = try await dataBridge.startRequest { receive, completion in
+            for chunk in chunks {
+                receive(chunk)
+            }
+            completion(nil)
+            return 55
+        }
+
+        let directoryURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directoryURL) }
+        let fileURL = directoryURL.appendingPathComponent("resource.bin")
+        #expect(FileManager.default.createFile(atPath: fileURL.path, contents: nil))
+        let fileBridge = PhotoKitResourceRequestBridge(
+            sink: try PhotoKitResourceFileSink(fileURL: fileURL),
+            allowsNetworkAccess: false,
+            progress: { _ in },
+            cancelRequest: { _ in }
+        )
+        let _: Void = try await fileBridge.startRequest { receive, completion in
+            for chunk in chunks {
+                receive(chunk)
+            }
+            completion(nil)
+            return 56
+        }
+
+        let expected = Data([1, 2, 3, 4, 5])
+        #expect(data == expected)
+        #expect(try Data(contentsOf: fileURL) == expected)
+    }
+
+    @Test func resourceFileWriteFailureCancelsAndFinishesExactlyOnce() async throws {
+        let directoryURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directoryURL) }
+        let fileURL = directoryURL.appendingPathComponent("resource.bin")
+        #expect(FileManager.default.createFile(atPath: fileURL.path, contents: nil))
+        let sink = try PhotoKitResourceFileSink(
+            fileURL: fileURL,
+            writeChunk: { _, _ in throw PhotoKitSinkWriteFailure() }
+        )
+        let cancellations = PhotoKitCancellationRecorder()
+        let bridge = PhotoKitResourceRequestBridge(
+            sink: sink,
+            allowsNetworkAccess: false,
+            progress: { _ in },
+            cancelRequest: { cancellations.record($0) },
+        )
+
+        do {
+            let _: Void = try await bridge.startRequest { receive, completion in
+                receive(Data([1]))
+                completion(PhotoKitSinkWriteFailure())
+                completion(nil)
+                return 54
+            }
+            Issue.record("Expected write failure")
+        } catch {
+            #expect(error as? MediaFetchFailure == .download)
+        }
+        bridge.cancel()
+
+        #expect(cancellations.requestIDs == [54])
+        #expect(!FileManager.default.fileExists(atPath: fileURL.path))
+    }
+
+    @Test func resourceLocalProbePreservesNetworkAccessRequired() {
+        let error = NSError(
+            domain: PHPhotosErrorDomain,
+            code: PHPhotosError.networkAccessRequired.rawValue
+        )
+
+        #expect(
+            PhotoKitMediaFetchFailure.resourceError(error)
+                is PhotoKitNetworkAccessRequired
+        )
+    }
+
+    @Test @MainActor func displayImageAdapterKeepsDegradedAndCloudProbeResultsExplicit() {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let image = UIGraphicsImageRenderer(
+            size: CGSize(width: 8, height: 4),
+            format: format
+        ).image { _ in }
+
+        if let result = PhotoKitDisplayImageResultAdapter.result(
+            image: image,
+            info: [PHImageResultIsDegradedKey: true],
+            pixelLength: 8,
+            allowsNetworkAccess: false
+        ) {
+            Issue.record("Degraded callback must not finish: \(result)")
+        }
+
+        let cloudProbe = PhotoKitDisplayImageResultAdapter.result(
+            image: nil,
+            info: [PHImageResultIsInCloudKey: true],
+            pixelLength: 8,
+            allowsNetworkAccess: false
+        )
+        guard case .failure(let cloudError)? = cloudProbe else {
+            Issue.record("Expected local-only iCloud probe failure")
+            return
+        }
+        #expect(cloudError is PhotoKitNetworkAccessRequired)
+
+        let networkResult = PhotoKitDisplayImageResultAdapter.result(
+            image: nil,
+            info: [PHImageResultIsInCloudKey: true],
+            pixelLength: 8,
+            allowsNetworkAccess: true
+        )
+        guard case .failure(let networkError)? = networkResult else {
+            Issue.record("Expected decode failure for an empty network callback")
+            return
+        }
+        #expect(networkError as? MediaFetchFailure == .decode)
+    }
+
+    @Test func livePhotoAdapterKeepsItsOwnCallbackInterpretation() {
+        let degraded = PhotoKitLivePhotoResultAdapter.result(
+            livePhoto: nil,
+            info: [PHImageResultIsDegradedKey: true]
+        )
+        if let degraded {
+            Issue.record("Degraded Live Photo callback must not finish: \(degraded)")
+        }
+
+        let cancelled = PhotoKitLivePhotoResultAdapter.result(
+            livePhoto: nil,
+            info: [PHImageCancelledKey: true]
+        )
+        guard case .failure(let cancellationError)? = cancelled else {
+            Issue.record("Expected Live Photo cancellation")
+            return
+        }
+        #expect(cancellationError is CancellationError)
+
+        let offline = PhotoKitLivePhotoResultAdapter.result(
+            livePhoto: nil,
+            info: [
+                PHImageErrorKey: NSError(
+                    domain: NSURLErrorDomain,
+                    code: NSURLErrorNotConnectedToInternet
+                )
+            ]
+        )
+        guard case .failure(let offlineError)? = offline else {
+            Issue.record("Expected mapped Live Photo error")
+            return
+        }
+        #expect(offlineError as? MediaFetchFailure == .offline)
+
+        let emptyFinal = PhotoKitLivePhotoResultAdapter.result(
+            livePhoto: nil,
+            info: nil
+        )
+        guard case .failure(let decodeError)? = emptyFinal else {
+            Issue.record("Expected final Live Photo decode failure")
+            return
+        }
+        #expect(decodeError as? MediaFetchFailure == .decode)
     }
 
     @Test @MainActor func storeRejectsOutOfOrderRefreshCompletion() async throws {
@@ -481,70 +795,6 @@ struct LibraryMediaTests {
         #expect(poster.height == 512)
     }
 
-    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func gridOwnsSquareCropWhileViewerBytesPreserveAspectRatio() throws {
-        let gridSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/DepthAnalysis/DepthAlbumPickerView.swift"
-        )
-        let fetcherSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/MediaLibrary/LibraryMediaFetching.swift"
-        )
-
-        #expect(gridSource.contains("GeometryReader { geometry in"))
-        #expect(gridSource.contains(".frame(width: geometry.size.width, height: geometry.size.width)"))
-        #expect(gridSource.contains(".scaledToFill()"))
-        #expect(fetcherSource.contains("DepthAlbumThumbnailJPEGRenderer.aspectPreservingData("))
-        #expect(fetcherSource.contains("contentMode: .aspectFit"))
-    }
-
-    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func uiCopyCatalogIsEnglishOnly() throws {
-        let source = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/Localizable.xcstrings"
-        )
-        let analysisSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisView.swift"
-        )
-
-        #expect(source.contains("Loading from iCloud…"))
-        #expect(source.contains("Stored in iCloud"))
-        #expect(source.contains("Open Settings"))
-        #expect(source.contains("You’re offline"))
-        #expect(source.contains("Item no longer available"))
-        #expect(source.contains("Unable to download"))
-        #expect(source.contains("Unable to open item"))
-        #expect(!source.contains("\"zh-Hans\""))
-        #expect(source.range(of: "\\p{Han}", options: .regularExpression) == nil)
-        #expect(analysisSource.range(of: "\\p{Han}", options: .regularExpression) == nil)
-    }
-
-    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func photoAndVideoViewersShareCircularEnglishLoadingUI() throws {
-        let overlaySource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/MediaLibrary/LibraryMediaFetchOverlay.swift"
-        )
-        let photoSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisView.swift"
-        )
-        let videoSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/DepthAnalysis/TAPVideoDepthPlaybackView.swift"
-        )
-
-        #expect(overlaySource.contains("struct LibraryMediaViewerFetchOverlay"))
-        #expect(overlaySource.contains("LibraryMediaProgressBadge(kind: kind, progress: progress)"))
-        #expect(overlaySource.contains("\"Downloading video\""))
-        #expect(photoSource.contains("LibraryMediaViewerFetchOverlay("))
-        #expect(photoSource.contains("kind: .photo"))
-        #expect(videoSource.contains("LibraryMediaViewerFetchOverlay("))
-        #expect(videoSource.contains("kind: .tapVideo"))
-        #expect(videoSource.contains("loadingPreviewImage"))
-        #expect(videoSource.contains(".scaledToFit()"))
-        #expect(videoSource.contains("allowsNetworkAccess: false"))
-        #expect(videoSource.contains("lastOriginalProgress = max("))
-        #expect(videoSource.contains(".gesture(videoSwipeGesture)"))
-        #expect(!videoSource.contains("onCancel: cancelCurrentFetch"))
-    }
-
     private static func summary(
         id: LibraryMediaID,
         source: LibraryMediaSource
@@ -616,6 +866,25 @@ private nonisolated final class PhotoKitCancellationRecorder: @unchecked Sendabl
         lock.unlock()
     }
 }
+
+private nonisolated final class PhotoKitTerminalRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = 0
+
+    var count: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
+    }
+
+    func record() {
+        lock.lock()
+        value += 1
+        lock.unlock()
+    }
+}
+
+private nonisolated struct PhotoKitSinkWriteFailure: Error {}
 
 private nonisolated struct LibraryVideoBackfillSourceFake: LibraryVideoPosterBackfillSource {
     let candidates: [LibraryVideoPosterBackfillCandidate]

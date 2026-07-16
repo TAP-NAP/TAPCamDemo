@@ -334,6 +334,9 @@ struct TAPLockedCameraSessionContentTests {
         let librarySource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/DepthAnalysis/DepthAlbumPickerView.swift"
         )
+        let libraryModelSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAlbumPickerViewModel.swift"
+        )
         let cameraSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/CameraCapture/UI/CameraView.swift"
         )
@@ -363,7 +366,7 @@ struct TAPLockedCameraSessionContentTests {
         #expect(routeStoreSource.contains("finishAwaitingLockedCaptureImport()"))
         #expect(routeStoreSource.contains("consumePendingLockedImportReason()"))
         #expect(librarySource.contains("let lockedImportReason = routeStore.consumePendingLockedImportReason()"))
-        #expect(librarySource.contains("if let lockedImportReason"))
+        #expect(libraryModelSource.contains("if let lockedImportReason"))
         #expect(librarySource.contains("routeStore.isAwaitingLockedCaptureImport"))
         #expect(librarySource.contains("Waiting for locked captures"))
         #expect(librarySource.contains(".tapCamLockedCaptureImportDidAddPendingCaptures"))
@@ -374,10 +377,10 @@ struct TAPLockedCameraSessionContentTests {
         #expect(cameraSource.contains("awaitingLockedCaptureImport: Bool = false"))
         #expect(cameraSource.contains("routeStore.finishAwaitingLockedCaptureImport()"))
         #expect(!cameraSource.contains("presentTAPLibrary(lockedImportReason: \"locked_camera_handoff_route\")"))
-        #expect(librarySource.contains("func loadForPresentation(lockedImportReason: String? = nil)"))
-        #expect(librarySource.contains("loadForPresentation(lockedImportReason: lockedImportReason)"))
-        #expect(librarySource.contains("shouldShowLoading"))
-        #expect(librarySource.contains("Importing locked captures..."))
+        #expect(libraryModelSource.contains("func loadForPresentation(lockedImportReason: String? = nil)"))
+        #expect(librarySource.contains("viewModel.loadForPresentation(lockedImportReason: lockedImportReason)"))
+        #expect(librarySource.contains("viewModel.shouldShowLoading"))
+        #expect(libraryModelSource.contains("Importing locked captures..."))
         #expect(cameraSource.contains(".tapCamIntentHandoffDidChange"))
         #expect(!cameraSource.contains("presentTAPLibraryAndImportLockedContent"))
         #expect(!cameraSource.contains("tap_library_open"))
