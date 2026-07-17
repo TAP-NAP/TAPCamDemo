@@ -119,6 +119,17 @@ enum TAPCamDemoTestFixtures {
         )
     }
 
+    static var sampleHighPrecisionLocation: TAPDepthManifest.Location {
+        TAPDepthManifest.Location(
+            latitude: 12.34567890123456,
+            longitude: 65.43210987654321,
+            altitude: 123.45678901234567,
+            horizontalAccuracy: 98.76543210987654,
+            verticalAccuracy: 87.65432109876544,
+            timestamp: "2035-01-01T00:00:00.000Z"
+        )
+    }
+
     static func samplePayload(
         id: String = "sample-capture",
         capturedAt: String = "2026-04-25T00:00:00.000Z",

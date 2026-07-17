@@ -313,6 +313,46 @@ struct TAPSignedExportValidatorTests {
         #expect(digest.depthResource.presence == "unavailable")
         #expect(digest.depthResource.binding == "not-present")
     }
+
+    @Test func jpegSigningAndExportValidationPreserveHighPrecisionLocationMetadataHash() async throws {
+        let location = TAPCamDemoTestFixtures.sampleHighPrecisionLocation
+        let payload = TAPCamDemoTestFixtures.samplePayload(
+            location: location,
+            capture: TAPCamDemoTestFixtures.sampleManifestCapture(
+                requestedCodec: AVVideoCodecType.jpeg.rawValue,
+                depthAvailability: .unavailable
+            ),
+            depthAvailability: .unavailable
+        )
+        let unsignedData = try TAPDepthPhotoFileWriter.injectingManifest(
+            TAPDepthManifest(payload: payload),
+            into: TAPCamDemoTestFixtures.sampleThumbnailSourceData()
+        )
+        let signer = SuccessfulCaptureAssertionSigner()
+        let writer = TAPCaptureProvenanceWriter()
+
+        let signedPhoto = try await writer.signedPhotoData(
+            from: unsignedData,
+            expectedCaptureID: "sample-capture",
+            expectedProfile: .releasePhotoDepthJPEG,
+            assertionSigner: signer
+        )
+        let validated = try writer.validateSignedExportPhoto(
+            signedPhoto.data,
+            expectedCaptureID: "sample-capture",
+            expectedProfile: .releasePhotoDepthJPEG
+        )
+        let signedDigest = try #require(await signer.lastDigest())
+        let roundTrippedMetadataHash = try CaptureContentDigest.MetadataHash(
+            payload: validated.manifest.payload
+        )
+
+        #expect(signedPhoto.fileContainer == .jpeg)
+        #expect(validated.fileContainer == .jpeg)
+        #expect(validated.manifest.payload.location == location)
+        #expect(signedDigest.assetHash.fileContainer == CapturePhotoFileContainer.jpeg.rawValue)
+        #expect(signedDigest.metadataHash == roundTrippedMetadataHash)
+    }
 }
 
 private actor SuccessfulCaptureAssertionSigner: CaptureAssertionSigning {
