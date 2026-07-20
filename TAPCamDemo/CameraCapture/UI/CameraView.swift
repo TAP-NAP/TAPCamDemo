@@ -369,7 +369,8 @@ struct CameraView: View {
             state: CameraViewfinderChromeState(
                 flashMode: flashMode,
                 isFlashAvailable: viewModel.isFlashAvailable,
-                isLivePhotoAvailable: viewModel.isLivePhotoCaptureSupported,
+                isLivePhotoAvailable: selectedMode == .photo
+                    && viewModel.isLivePhotoCaptureSupported,
                 isLivePhotoEnabled: isLivePhotoEnabled,
                 contentRotation: chromeOrientation.angle
             ),
@@ -386,7 +387,8 @@ struct CameraView: View {
             state: CameraViewfinderChromeState(
                 flashMode: flashMode,
                 isFlashAvailable: viewModel.isFlashAvailable,
-                isLivePhotoAvailable: viewModel.isLivePhotoCaptureSupported,
+                isLivePhotoAvailable: selectedMode == .photo
+                    && viewModel.isLivePhotoCaptureSupported,
                 isLivePhotoEnabled: isLivePhotoEnabled,
                 basicEVState: basicEVControlState,
                 contentRotation: chromeOrientation.angle
