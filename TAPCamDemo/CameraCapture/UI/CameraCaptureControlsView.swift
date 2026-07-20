@@ -306,21 +306,6 @@ struct CameraCaptureControlsView: View {
                         .controlSize(.small)
                         .tint(.white)
                 }
-
-                if let recentLibraryStatusText {
-                    Text(recentLibraryStatusText)
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .multilineTextAlignment(.center)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.68)
-                        .frame(width: 118)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 4)
-                        .background(.black.opacity(0.64), in: Capsule())
-                        .offset(y: -48)
-                        .allowsHitTesting(false)
-                }
             }
         }
         .disabled(!state.canOpenTAPLibrary)
@@ -351,20 +336,6 @@ struct CameraCaptureControlsView: View {
                     .font(.system(size: 24, weight: .semibold))
                     .foregroundStyle(.white)
             }
-        }
-    }
-
-    private var recentLibraryStatusText: String? {
-        guard let recentLibraryPresentation else {
-            return nil
-        }
-        switch recentLibraryPresentation {
-        case .empty, .ready, .failed:
-            return nil
-        case .resolving(_, let kind):
-            return LibraryMediaCopy.preparing(kind)
-        case .loading(_, _, _, let progress):
-            return LibraryMediaCopy.loadingFromICloud(progress: progress)
         }
     }
 }
