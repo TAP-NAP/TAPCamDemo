@@ -4,7 +4,6 @@
 //
 
 @preconcurrency import AVFoundation
-import AVKit
 import CoreImage
 import ImageIO
 import MetalKit
@@ -101,6 +100,23 @@ nonisolated enum TAPVideoDepthGapPolicy {
             nominalDepthFrameIntervalSeconds * 2,
             TAPVideoDepthPlaybackBudget.failSafeFrameStaleToleranceSeconds
         )
+    }
+}
+
+/// A transient gap during ordinary playback may reuse the last rendered depth
+/// frame to avoid flashing the overlay. Timeline discontinuities must still
+/// clear it so depth from an unrelated time is never shown over the RGB frame.
+nonisolated enum TAPVideoDepthFrameHoldPolicy {
+    nonisolated enum Context: Equatable, Sendable {
+        case continuousPlaybackGap
+        case discontinuity
+    }
+
+    static func shouldHoldLastFrame(
+        hasDisplayedFrame: Bool,
+        context: Context
+    ) -> Bool {
+        hasDisplayedFrame && context == .continuousPlaybackGap
     }
 }
 

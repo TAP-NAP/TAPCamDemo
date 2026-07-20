@@ -576,6 +576,24 @@ actor TAPPendingCaptureStore {
         }
     }
 
+    /// Removes app-private exported records that refer to a Photos asset after
+    /// that asset has been deleted. Older viewer routes only retained the
+    /// Photos identifier, so lookup by asset ID keeps their cleanup complete.
+    @discardableResult
+    func removeExportedRecords(assetLocalIdentifier: String) throws -> Int {
+        let matchingCaptureIDs = try exportedRecords().compactMap { record in
+            record.assetLocalIdentifier == assetLocalIdentifier ? record.captureID : nil
+        }
+        var removedCount = 0
+        for captureID in matchingCaptureIDs where try storage.removeBundle(captureID: captureID) {
+            removedCount += 1
+        }
+        if removedCount > 0 {
+            TAPLibraryChangeNotifier.post()
+        }
+        return removedCount
+    }
+
     private func persistTransition(
         from source: TAPPendingCaptureRecord,
         to record: TAPPendingCaptureRecord

@@ -16,6 +16,14 @@ nonisolated enum TAPVideoPlaybackLoadState: Equatable {
 }
 
 @MainActor
+enum TAPVideoPlaybackBackgroundPolicy {
+    static func enforceForegroundOnly(on player: AVPlayer) {
+        player.audiovisualBackgroundPlaybackPolicy = .pauses
+        player.allowsExternalPlayback = false
+    }
+}
+
+@MainActor
 @Observable
 final class TAPVideoPlaybackSession {
     static let preferredTwoDBufferDurationSeconds: TimeInterval = 3
@@ -25,6 +33,7 @@ final class TAPVideoPlaybackSession {
     private(set) var player: AVPlayer?
     private(set) var registeredDepthAvailability: TAPVideoRegisteredDepthAvailability = .checking
     private(set) var isPreparingTwoDPlayback = false
+    private(set) var isTwoDPlaybackReady = false
     private(set) var depthGapNotice: String?
     private(set) var requestKey: MediaFetchRequestKey?
     private var fetchState = TAPVideoPlaybackFetchState()
@@ -55,6 +64,7 @@ final class TAPVideoPlaybackSession {
         )
         depthPipeline.onPresentationStateChange = { [weak self] state in
             self?.isPreparingTwoDPlayback = state.isPreparing
+            self?.isTwoDPlaybackReady = state.isReady
             self?.depthGapNotice = state.gapNotice
         }
     }
@@ -69,10 +79,6 @@ final class TAPVideoPlaybackSession {
 
     var hasActiveMediaFetch: Bool {
         state == .loading
-    }
-
-    var isTwoDPlaybackReady: Bool {
-        depthPipeline.isReady
     }
 
     var overlayStore: TAPVideoDepthOverlayStore {
@@ -118,8 +124,8 @@ final class TAPVideoPlaybackSession {
         )
     }
 
-    func cancelActiveFetchForBackground() {
-        // A ready player survives backgrounding so automatic PiP can own it.
+    func handleDidEnterBackground() {
+        player?.pause()
         guard hasActiveMediaFetch else {
             return
         }
@@ -282,11 +288,7 @@ final class TAPVideoPlaybackSession {
             fileURL: resource.fileURL
         )
         let player = AVPlayer(playerItem: AVPlayerItem(url: resource.fileURL))
-        #if DEBUG
-        if case .fixtureFile = source {
-            player.allowsExternalPlayback = false
-        }
-        #endif
+        TAPVideoPlaybackBackgroundPolicy.enforceForegroundOnly(on: player)
         return player
     }
 

@@ -165,7 +165,7 @@ only as the rejected alternative that motivated the decision:
 | Option | Design | Advantages | Cost |
 | --- | --- | --- | --- |
 | A: system player (rejected) | Keep `AVPlayerViewController`; put the noninteractive depth layer in its `contentOverlayView`; read `videoBounds` for the exact displayed rect; move TAP actions outside the system transport-control region. | Native controls, AirPlay, PiP behavior. | The private system-control hierarchy still competes with persistent shared chrome and made the rendered 2D action physically unhittable. |
-| **B: TAP player (locked)** | Render with `AVPlayerLayer`; use `videoRect` for the presented RGB rectangle; let one SwiftUI hierarchy own accessible Play/Pause, elapsed/duration, scrubbing, modes, Share, and Delete. | Exact geometry, reliable hit testing, shared Photo/Video chrome, and explicit gesture arbitration. | TAP must own transport accessibility and regression coverage, and must retain explicit PiP/AirPlay handoff behavior. |
+| **B: TAP player (locked)** | Render with `AVPlayerLayer`; use `videoRect` for the presented RGB rectangle; let one SwiftUI hierarchy own accessible Play/Pause, elapsed/duration, scrubbing, modes, Share, and Delete. | Exact geometry, reliable hit testing, shared Photo/Video chrome, and explicit gesture arbitration. | TAP must own transport accessibility and regression coverage and keep playback local and foreground-only. |
 
 Option C — system controls plus custom bottom chrome plus fixed clearance values —
 is rejected.
@@ -183,9 +183,8 @@ is rejected.
 - The app-owned transport is a separate bottom accessory above the shared
   Share/mode/Delete row. It exposes Play/Pause, elapsed time, duration, and an
   accessible scrubber without placing controls inside the `AVPlayerLayer` view.
-- Entering PiP or detecting AirPlay/other active external playback automatically
-  selects `RAW` and presents a one-time explanation. A later return to 2D is an
-  explicit user action after playback returns in-app.
+- AirPlay/external playback is disabled with `allowsExternalPlayback = false`.
+  PiP and background playback are also not product capabilities.
 
 ### Spatial registration
 
@@ -196,8 +195,9 @@ is rejected.
   mapping. `"AVCameraCalibrationData-present"` is not sufficient.
 - If the mapping cannot be proven, keep `2D` visible but disabled. Do not render
   an approximate or pseudo-registered overlay.
-- A missing depth sample at the current time clears or marks the overlay. It may
-  not leave a stale heatmap over a later RGB frame.
+- During continuous playback, a missing depth sample holds the last valid depth
+  overlay to avoid flicker. First-frame absence, seek/discontinuity, item change,
+  memory reset, and cancellation clear it so unrelated depth is never reused.
 - The preparation gate ends when the first usable depth frame or a typed
   no-depth result arrives; a fixed two-second timer is not readiness evidence.
 
@@ -378,6 +378,7 @@ a generic launch trace still does not answer the video questions.
 | Area | Acceptance |
 | --- | --- |
 | Recent cover | Its item ID always equals the Library's first item after capture, export, delete, foreground, and Library dismissal. Pending video has a poster. Empty Library clears the cover. |
+| Delete continuity | A successful delete removes the item from the presented grid immediately, removes the matching app-private exported record, and advances to the next item at the same canonical mixed-media index, otherwise the previous item. It must not skip an adjacent photo merely because the deleted item is a video. A successful PhotoKit catalog read prunes older exported records whose assets are absent, while a short post-export grace period and catalog failures retain them. |
 | Request race | If request A is pending and item B becomes current, A cannot publish over B; A is cancelled when possible. |
 | Grid geometry and iCloud | Photo/video poster bytes retain their transformed aspect ratio, but every cell remains square and center-cropped. Local-only probe never silently becomes a permanent generic icon; cloud-only state does not fan out original downloads. |
 | Photo iCloud | Selecting an iCloud-only photo keeps its aspect-fit low-resolution preview visible and shows a single circular current-original progress indicator. Display and original callbacks cannot overwrite each other; progress cannot regress; swipe/dismiss cancels work. |
@@ -406,8 +407,8 @@ a generic launch trace still does not answer the video questions.
 - UI tests perform coordinate-level taps on `2D`, verify selected accessibility
   state, verify `3D` remains visible and disabled, and exercise custom
   Play/Pause and scrubber hit testing.
-- PiP and external-playback tests verify automatic fallback to `RAW`; AirPlay,
-  PiP lifecycle, and route changes still require physical-device coverage.
+- Capability-policy tests verify local foreground-only playback by requiring
+  `.pauses` background policy and `allowsExternalPlayback == false`.
 - Streaming parser/hash/proof tests using sparse large fixtures so test memory is
   bounded.
 - Compression corpus tests with exact byte equality and corrupted/truncated
@@ -421,7 +422,6 @@ a generic launch trace still does not answer the video questions.
 ## Professional References
 
 - Apple: [AVPlayer](https://developer.apple.com/documentation/avfoundation/avplayer), [AVPlayerLayer](https://developer.apple.com/documentation/avfoundation/avplayerlayer), and [videoRect](https://developer.apple.com/documentation/avfoundation/avplayerlayer/videorect).
-- Apple: [AVPictureInPictureController player-layer initializer](https://developer.apple.com/documentation/avkit/avpictureinpicturecontroller/init%28playerlayer%3A%29?changes=_8%2C_8).
 - Apple: [Loading and Caching Assets and Thumbnails](https://developer.apple.com/documentation/photokit/loading-and-caching-assets-and-thumbnails), [PHImageRequestOptions network access](https://developer.apple.com/documentation/photos/phimagerequestoptions/isnetworkaccessallowed), [PHAssetResourceRequestOptions progress](https://developer.apple.com/documentation/photos/phassetresourcerequestoptions/progresshandler), and [cancelDataRequest](https://developer.apple.com/documentation/photos/phassetresourcemanager/canceldatarequest(_:)).
 - Apple: [Creating images from a video asset](https://developer.apple.com/documentation/avfoundation/creating-images-from-a-video-asset) and [PHAssetCreationRequest file-URL resources](https://developer.apple.com/documentation/photos/phassetcreationrequest/addresource(with:fileurl:options:)).
 - Apple: [Compression LZFSE](https://developer.apple.com/documentation/compression/compression_lzfse) and [Core Video bytes-per-row alignment](https://developer.apple.com/documentation/corevideo/kcvpixelbufferbytesperrowalignmentkey).
@@ -440,7 +440,8 @@ removal of the depth-preview sidecar; and Photos original-video readback before
 pending cleanup. The RSS comparison gates are also fixed by the implementation
 plan.
 
-What remains is evidence, not another product choice: physical-device codec
-throughput/drop measurements, RSS/dirty-memory/thermal traces, Photos and iCloud
-round trips, PiP/AirPlay behavior, VoiceOver traversal, and numeric registration
-landmark accuracy.
+What remains in the current release gate is evidence, not another product
+choice: physical-device codec throughput/drop measurements,
+RSS/dirty-memory/thermal traces, VoiceOver traversal, and numeric registration
+landmark accuracy. Real iCloud-only and broader device/format coverage are
+deferred; AirPlay is intentionally unsupported.

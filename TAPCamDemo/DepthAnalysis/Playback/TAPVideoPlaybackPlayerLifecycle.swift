@@ -51,7 +51,7 @@ final class TAPVideoPlaybackPlayerLifecycle {
     }
 
     func prerollIfReady() {
-        guard player.status == .readyToPlay else {
+        guard !isInvalidated, player.status == .readyToPlay else {
             return
         }
         player.preroll(atRate: 1) { _ in }
@@ -76,6 +76,7 @@ final class TAPVideoPlaybackPlayerLifecycle {
         }
         playerStatusObservation?.invalidate()
         playerStatusObservation = nil
+        player.cancelPendingPrerolls()
     }
 
     private func warmPlayback() {

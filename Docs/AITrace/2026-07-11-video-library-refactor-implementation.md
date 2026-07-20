@@ -2,6 +2,11 @@
 
 日期：2026-07-11
 
+> Superseded capability note (2026-07-20): PiP, background playback, and AirPlay
+> were intentionally removed from the product and implementation. References
+> below describe the historical state of this implementation trace; current TAP
+> Video playback is local and foreground-only.
+
 ## 目标与基线
 
 本轮实现以 [TAPVideoLibraryPRD.md](../TAPVideoLibraryPRD.md) 和

@@ -4,31 +4,25 @@
 //
 
 @preconcurrency import AVFoundation
-import AVKit
 import SwiftUI
 
 /// A presentation-only video surface. SwiftUI owns every interactive control;
-/// this view owns only AVPlayerLayer, the registered-depth overlay, and the PiP
-/// bridge required to switch back to RGB for system playback surfaces.
+/// this view owns only AVPlayerLayer and the registered-depth overlay.
 @MainActor
 struct TAPVideoPlayerSurfaceView: UIViewRepresentable {
     let player: AVPlayer
     let overlayStore: TAPVideoDepthOverlayStore
     let showsRegisteredDepth: Bool
     let overlayOpacity: Double
-    let onSystemPlaybackRequiresRGB: () -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(
-            overlayStore: overlayStore,
-            onSystemPlaybackRequiresRGB: onSystemPlaybackRequiresRGB
-        )
+        Coordinator(overlayStore: overlayStore)
     }
 
     func makeUIView(context: Context) -> TAPVideoPlayerSurfaceUIView {
         let surfaceView = TAPVideoPlayerSurfaceUIView()
         surfaceView.setPlayer(player)
-        context.coordinator.bind(to: surfaceView, player: player)
+        context.coordinator.bind(to: surfaceView)
         context.coordinator.update(
             showsRegisteredDepth: showsRegisteredDepth,
             overlayOpacity: overlayOpacity
@@ -42,7 +36,6 @@ struct TAPVideoPlayerSurfaceView: UIViewRepresentable {
     ) {
         if surfaceView.playerLayer.player !== player {
             surfaceView.setPlayer(player)
-            context.coordinator.observeExternalPlayback(on: player)
         }
         context.coordinator.update(
             showsRegisteredDepth: showsRegisteredDepth,
@@ -60,53 +53,29 @@ struct TAPVideoPlayerSurfaceView: UIViewRepresentable {
     }
 
     @MainActor
-    final class Coordinator: NSObject,
-        AVPictureInPictureControllerDelegate,
-        TAPVideoDepthOverlaySink {
+    final class Coordinator: NSObject, TAPVideoDepthOverlaySink {
         private let overlayStore: TAPVideoDepthOverlayStore
-        private let onSystemPlaybackRequiresRGB: () -> Void
         private weak var surfaceView: TAPVideoPlayerSurfaceUIView?
-        private weak var observedPlayer: AVPlayer?
-        private var externalPlaybackObservation: NSKeyValueObservation?
         private var playerLayerReadyObservation: NSKeyValueObservation?
-        private var pictureInPictureController: AVPictureInPictureController?
         private var showsRegisteredDepth = false
         private var overlayOpacity = 1.0
-        private var isPictureInPictureActive = false
 
-        init(
-            overlayStore: TAPVideoDepthOverlayStore,
-            onSystemPlaybackRequiresRGB: @escaping () -> Void
-        ) {
+        init(overlayStore: TAPVideoDepthOverlayStore) {
             self.overlayStore = overlayStore
-            self.onSystemPlaybackRequiresRGB = onSystemPlaybackRequiresRGB
             super.init()
         }
 
-        func bind(to surfaceView: TAPVideoPlayerSurfaceUIView, player: AVPlayer) {
+        func bind(to surfaceView: TAPVideoPlayerSurfaceUIView) {
             self.surfaceView = surfaceView
             overlayStore.attach(self)
-            observeExternalPlayback(on: player)
             observeReadiness(of: surfaceView.playerLayer)
-            configurePictureInPicture(for: surfaceView.playerLayer)
             surfaceView.refreshVideoGeometry()
         }
 
         func unbind() {
-            externalPlaybackObservation?.invalidate()
-            externalPlaybackObservation = nil
             playerLayerReadyObservation?.invalidate()
             playerLayerReadyObservation = nil
-            observedPlayer = nil
 
-            if let pictureInPictureController {
-                if pictureInPictureController.isPictureInPictureActive {
-                    pictureInPictureController.stopPictureInPicture()
-                }
-                pictureInPictureController.delegate = nil
-            }
-            pictureInPictureController = nil
-            isPictureInPictureActive = false
             overlayStore.detach(self)
             surfaceView?.present(nil)
             surfaceView = nil
@@ -119,66 +88,10 @@ struct TAPVideoPlayerSurfaceView: UIViewRepresentable {
                 showsRegisteredDepth: showsRegisteredDepth,
                 overlayOpacity: overlayOpacity
             )
-            if showsRegisteredDepth
-                && (observedPlayer?.isExternalPlaybackActive == true
-                    || isPictureInPictureActive) {
-                requireRGBForSystemPlayback()
-            }
         }
 
         func setRegisteredDepthOverlay(_ overlay: TAPVideoRegisteredDepthOverlay?) {
             surfaceView?.present(overlay)
-        }
-
-        func observeExternalPlayback(on player: AVPlayer) {
-            externalPlaybackObservation?.invalidate()
-            observedPlayer = player
-            externalPlaybackObservation = player.observe(
-                \.isExternalPlaybackActive,
-                options: [.initial, .new]
-            ) { [weak self] player, _ in
-                guard player.isExternalPlaybackActive else {
-                    return
-                }
-                Task { @MainActor [weak self, weak player] in
-                    guard let self,
-                          let player,
-                          observedPlayer === player else {
-                        return
-                    }
-                    requireRGBForSystemPlayback()
-                }
-            }
-        }
-
-        func pictureInPictureControllerWillStartPictureInPicture(
-            _ pictureInPictureController: AVPictureInPictureController
-        ) {
-            guard self.pictureInPictureController === pictureInPictureController else {
-                return
-            }
-            isPictureInPictureActive = true
-            requireRGBForSystemPlayback()
-        }
-
-        func pictureInPictureControllerDidStopPictureInPicture(
-            _ pictureInPictureController: AVPictureInPictureController
-        ) {
-            guard self.pictureInPictureController === pictureInPictureController else {
-                return
-            }
-            isPictureInPictureActive = false
-        }
-
-        func pictureInPictureController(
-            _ pictureInPictureController: AVPictureInPictureController,
-            failedToStartPictureInPictureWithError error: any Error
-        ) {
-            guard self.pictureInPictureController === pictureInPictureController else {
-                return
-            }
-            _ = error
-            isPictureInPictureActive = false
         }
 
         private func observeReadiness(of playerLayer: AVPlayerLayer) {
@@ -193,29 +106,5 @@ struct TAPVideoPlayerSurfaceView: UIViewRepresentable {
             }
         }
 
-        private func configurePictureInPicture(for playerLayer: AVPlayerLayer) {
-            guard AVPictureInPictureController.isPictureInPictureSupported(),
-                  let controller = AVPictureInPictureController(
-                    playerLayer: playerLayer
-                  ) else {
-                pictureInPictureController = nil
-                return
-            }
-            controller.delegate = self
-            controller.canStartPictureInPictureAutomaticallyFromInline = true
-            pictureInPictureController = controller
-        }
-
-        private func requireRGBForSystemPlayback() {
-            guard showsRegisteredDepth else {
-                return
-            }
-            showsRegisteredDepth = false
-            surfaceView?.update(
-                showsRegisteredDepth: false,
-                overlayOpacity: overlayOpacity
-            )
-            onSystemPlaybackRequiresRGB()
-        }
     }
 }

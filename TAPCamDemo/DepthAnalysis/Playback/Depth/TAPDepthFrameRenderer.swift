@@ -12,6 +12,34 @@ nonisolated struct TAPDepthFrameRenderResult {
     let retainedByteCount: Int
 }
 
+nonisolated enum TAPDepthFrameDisplayRangePolicy {
+    static let maximumSampleCount = 4_096
+    static let lowerPercentile = 0.01
+    static let upperPercentile = 0.99
+    static let minimumSpan: Float = 0.001
+
+    static func robustRange(
+        sampledValues: [Float],
+        fallbackRange: ClosedRange<Float>
+    ) -> ClosedRange<Float> {
+        let sorted = sampledValues
+            .filter { $0.isFinite && $0 > 0 }
+            .sorted()
+        guard sorted.count >= 2 else {
+            return fallbackRange
+        }
+        let lastIndex = sorted.count - 1
+        let lowerIndex = Int((Double(lastIndex) * lowerPercentile).rounded(.down))
+        let upperIndex = Int((Double(lastIndex) * upperPercentile).rounded(.up))
+        let lower = sorted[lowerIndex]
+        let upper = sorted[min(upperIndex, lastIndex)]
+        guard upper - lower >= minimumSpan else {
+            return fallbackRange
+        }
+        return lower...upper
+    }
+}
+
 nonisolated enum TAPDepthFrameRenderer {
     static func render(
         payload: Data,
@@ -83,6 +111,13 @@ nonisolated enum TAPDepthFrameRenderer {
         var minimum = Float.greatestFiniteMagnitude
         var maximum = -Float.greatestFiniteMagnitude
         var hasValidValue = false
+        let pixelCount = width * height
+        let sampleStride = max(
+            pixelCount / TAPDepthFrameDisplayRangePolicy.maximumSampleCount,
+            1
+        )
+        var sampledValues: [Float] = []
+        sampledValues.reserveCapacity(min(pixelCount, TAPDepthFrameDisplayRangePolicy.maximumSampleCount + 1))
         try payload.withUnsafeBytes { bytes in
             for y in 0..<height {
                 guard shouldContinue() else {
@@ -101,13 +136,19 @@ nonisolated enum TAPDepthFrameRenderer {
                     minimum = min(minimum, value)
                     maximum = max(maximum, value)
                     hasValidValue = true
+                    if (y * width + x).isMultiple(of: sampleStride) {
+                        sampledValues.append(value)
+                    }
                 }
             }
         }
         guard hasValidValue else {
             throw TAPDepthAnalysisError.noValidDepthSamples
         }
-        return minimum...maximum
+        return TAPDepthFrameDisplayRangePolicy.robustRange(
+            sampledValues: sampledValues,
+            fallbackRange: minimum...maximum
+        )
     }
 
     private static func heatmapPixels(

@@ -281,6 +281,9 @@ private enum DepthAnalysisDeletionService {
         switch source {
         case .photosAsset(let assetID):
             try await PhotoLibraryWriter.deleteAsset(localIdentifier: assetID)
+            try await TAPPendingCaptureStore.shared.removeExportedRecords(
+                assetLocalIdentifier: assetID
+            )
             NotificationCenter.default.post(name: .tapLibraryDidChange, object: nil)
         case .pendingCapture(let captureID):
             try await TAPPendingCaptureStore.shared.removeRecord(captureID: captureID)

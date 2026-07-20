@@ -2,6 +2,12 @@
 
 日期：2026-07-12
 
+> Superseded capability note (2026-07-21): PiP, background playback, and
+> AirPlay were intentionally removed. Current TAP Video playback is local and
+> foreground-only, with `allowsExternalPlayback` explicitly disabled. The
+> temporary automated performance harness was removed; regression and
+> performance automation are deferred to a later explicit refactor.
+
 ## 范围与证据边界
 
 本轮承接 [TAPVideoLibraryPRD.md](../TAPVideoLibraryPRD.md)、

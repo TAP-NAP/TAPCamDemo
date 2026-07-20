@@ -5,6 +5,7 @@
 
 @preconcurrency import AVFoundation
 import Observation
+import UIKit
 
 nonisolated enum TAPVideoPlaybackTransportPolicy {
     static func hasActivePlaybackIntent(
@@ -49,6 +50,7 @@ final class TAPVideoPlaybackTransportModel {
     @ObservationIgnored private var timeControlStatusObservation: NSKeyValueObservation?
     @ObservationIgnored private var durationObservation: NSKeyValueObservation?
     @ObservationIgnored private var playbackEndObserver: NSObjectProtocol?
+    @ObservationIgnored private var backgroundObserver: NSObjectProtocol?
     @ObservationIgnored private var seekTask: Task<Void, Never>?
     @ObservationIgnored private var seekGeneration: UInt64 = 0
     @ObservationIgnored private var isScrubbing = false
@@ -71,6 +73,9 @@ final class TAPVideoPlaybackTransportModel {
         durationObservation?.invalidate()
         if let playbackEndObserver {
             NotificationCenter.default.removeObserver(playbackEndObserver)
+        }
+        if let backgroundObserver {
+            NotificationCenter.default.removeObserver(backgroundObserver)
         }
         if ownsPlaybackAudioSession {
             try? AVAudioSession.sharedInstance().setActive(
@@ -224,6 +229,15 @@ final class TAPVideoPlaybackTransportModel {
                 updateConfirmedElapsedTime(time)
             }
         }
+        backgroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.pauseForBackground()
+            }
+        }
     }
 
     private func updateConfirmedElapsedTime(_ time: CMTime) {
@@ -264,6 +278,24 @@ final class TAPVideoPlaybackTransportModel {
             NotificationCenter.default.removeObserver(playbackEndObserver)
             self.playbackEndObserver = nil
         }
+        if let backgroundObserver {
+            NotificationCenter.default.removeObserver(backgroundObserver)
+            self.backgroundObserver = nil
+        }
+        if ownsPlaybackAudioSession {
+            TAPVideoPlaybackAudioSession.deactivate()
+            ownsPlaybackAudioSession = false
+        }
+    }
+
+    private func pauseForBackground() {
+        guard !isInvalidated else {
+            return
+        }
+        cancelPendingSeek()
+        shouldResumeAfterScrubbing = false
+        isScrubbing = false
+        player.pause()
         if ownsPlaybackAudioSession {
             TAPVideoPlaybackAudioSession.deactivate()
             ownsPlaybackAudioSession = false

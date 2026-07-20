@@ -27,10 +27,17 @@ struct DepthAlbumItemProvider {
     typealias PendingRecordsLoader = () async throws -> [TAPPendingCaptureRecord]
     typealias ExportedRecordsLoader = () async throws -> [TAPPendingCaptureRecord]
     typealias PhotoCatalogLoader = (Set<String>) async throws -> DepthAlbumPhotoCatalogSnapshot
+    typealias ExportedRecordRemover = (String) async throws -> Void
+    typealias DateProvider = () -> Date
+
+    nonisolated private static let missingExportedAssetGraceInterval: TimeInterval = 60
 
     private let pendingRecordsLoader: PendingRecordsLoader
     private let exportedRecordsLoader: ExportedRecordsLoader
     private let photoCatalogLoader: PhotoCatalogLoader
+    private let exportedRecordRemover: ExportedRecordRemover
+    private let dateProvider: DateProvider
+    private let missingExportedAssetGraceInterval: TimeInterval
 
     init(
         pendingRecordsLoader: @escaping PendingRecordsLoader = {
@@ -39,7 +46,12 @@ struct DepthAlbumItemProvider {
         exportedRecordsLoader: @escaping ExportedRecordsLoader = {
             try TAPPendingCaptureStore.shared.exportedRecords()
         },
-        photoCatalog: any DepthAlbumPhotoCataloging = PhotoKitLibraryMediaFetcher()
+        photoCatalog: any DepthAlbumPhotoCataloging = PhotoKitLibraryMediaFetcher(),
+        exportedRecordRemover: @escaping ExportedRecordRemover = { captureID in
+            try TAPPendingCaptureStore.shared.removeRecord(captureID: captureID)
+        },
+        dateProvider: @escaping DateProvider = Date.init,
+        missingExportedAssetGraceInterval: TimeInterval = Self.missingExportedAssetGraceInterval
     ) {
         self.pendingRecordsLoader = pendingRecordsLoader
         self.exportedRecordsLoader = exportedRecordsLoader
@@ -48,6 +60,9 @@ struct DepthAlbumItemProvider {
                 exportedAssetLocalIdentifiers: exportedAssetLocalIdentifiers
             )
         }
+        self.exportedRecordRemover = exportedRecordRemover
+        self.dateProvider = dateProvider
+        self.missingExportedAssetGraceInterval = missingExportedAssetGraceInterval
     }
 
     /// Closure-based catalog injection keeps deterministic tests lightweight
@@ -55,11 +70,17 @@ struct DepthAlbumItemProvider {
     init(
         pendingRecordsLoader: @escaping PendingRecordsLoader,
         exportedRecordsLoader: @escaping ExportedRecordsLoader,
-        photoCatalogLoader: @escaping PhotoCatalogLoader
+        photoCatalogLoader: @escaping PhotoCatalogLoader,
+        exportedRecordRemover: @escaping ExportedRecordRemover = { _ in },
+        dateProvider: @escaping DateProvider = Date.init,
+        missingExportedAssetGraceInterval: TimeInterval = Self.missingExportedAssetGraceInterval
     ) {
         self.pendingRecordsLoader = pendingRecordsLoader
         self.exportedRecordsLoader = exportedRecordsLoader
         self.photoCatalogLoader = photoCatalogLoader
+        self.exportedRecordRemover = exportedRecordRemover
+        self.dateProvider = dateProvider
+        self.missingExportedAssetGraceInterval = missingExportedAssetGraceInterval
     }
 
     func loadSnapshot() async throws -> DepthAlbumItemSnapshot {
@@ -68,20 +89,28 @@ struct DepthAlbumItemProvider {
 
         let photoCatalogSnapshot: DepthAlbumPhotoCatalogSnapshot
         let photoAssetsError: Error?
+        let reconciledExportedRecords: [TAPPendingCaptureRecord]
         do {
             let exportedAssetLocalIdentifiers = Set(
                 (pendingRecords + exportedRecords).compactMap(\.assetLocalIdentifier)
             )
             photoCatalogSnapshot = try await photoCatalogLoader(exportedAssetLocalIdentifiers)
             photoAssetsError = nil
+            reconciledExportedRecords = await reconcileExportedRecords(
+                exportedRecords,
+                resolvedAssetLocalIdentifiers: Set(
+                    photoCatalogSnapshot.assetsByLocalIdentifier.keys
+                )
+            )
         } catch {
             photoCatalogSnapshot = .empty
             photoAssetsError = error
+            reconciledExportedRecords = exportedRecords
         }
 
         let items = TAPLibraryItem.merged(
             pendingRecords: pendingRecords,
-            exportedRecords: exportedRecords,
+            exportedRecords: reconciledExportedRecords,
             photoAssets: photoCatalogSnapshot.albumAssets,
             photoAssetsByLocalIdentifier: photoCatalogSnapshot.assetsByLocalIdentifier
         )
@@ -89,6 +118,38 @@ struct DepthAlbumItemProvider {
             "tap_library_snapshot_loaded visiblePendingCount=\(pendingRecords.count, privacy: .public) exportedRecordCount=\(exportedRecords.count, privacy: .public) photoAssetCount=\(photoCatalogSnapshot.albumAssets.count, privacy: .public) itemCount=\(items.count, privacy: .public) itemSources=\(Self.itemSourceCountsDescription(items), privacy: .public) latestPending=\(Self.pendingRecordsDescription(pendingRecords), privacy: .public) photoAssetsErrorPresent=\(photoAssetsError != nil, privacy: .public)"
         )
         return DepthAlbumItemSnapshot(items: items, photoAssetsError: photoAssetsError)
+    }
+
+    /// A successful PhotoKit catalog read is authoritative for old exported
+    /// records. Recently exported records keep a short grace window for the
+    /// Photos change journal to settle; older missing assets are orphaned local
+    /// bundles left behind by an external or legacy delete.
+    private func reconcileExportedRecords(
+        _ records: [TAPPendingCaptureRecord],
+        resolvedAssetLocalIdentifiers: Set<String>
+    ) async -> [TAPPendingCaptureRecord] {
+        let cutoff = dateProvider().addingTimeInterval(-missingExportedAssetGraceInterval)
+        var retained: [TAPPendingCaptureRecord] = []
+        retained.reserveCapacity(records.count)
+
+        for record in records {
+            guard let assetID = record.assetLocalIdentifier,
+                  !resolvedAssetLocalIdentifiers.contains(assetID),
+                  record.updatedAt <= cutoff else {
+                retained.append(record)
+                continue
+            }
+
+            do {
+                try await exportedRecordRemover(record.captureID)
+            } catch {
+                let nsError = error as NSError
+                LockedCameraDiagnostics.logger.error(
+                    "tap_library_orphan_cleanup_failed domain=\(nsError.domain, privacy: .public) code=\(nsError.code, privacy: .public)"
+                )
+            }
+        }
+        return retained
     }
 
     private static func pendingRecordsDescription(_ records: [TAPPendingCaptureRecord]) -> String {

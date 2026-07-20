@@ -12,10 +12,10 @@ struct TAPVideoDepthPlaybackView: View {
     private let source: TAPVideoPlaybackSource
     private let albumContext: TAPVideoAlbumContext?
     private let onCurrentAlbumEntryChanged: ((TAPVideoAlbumContext.Entry) -> Void)?
+    private let deletionContext: DepthAlbumDeletionContext?
+    private let onDeletionCompleted: ((String, DepthAlbumDeletionContext.Entry?) -> Void)?
 
     @Environment(\.dismiss) private var dismiss
-    @AppStorage("tap.video.playback.didExplainSystemRGBFallback")
-    private var didExplainSystemRGBFallback = false
     @State private var session: TAPVideoPlaybackSession
     @State private var selectedTool = AnalysisViewerTool.raw
     @State private var depthOverlayOpacity = 0.58
@@ -24,12 +24,13 @@ struct TAPVideoDepthPlaybackView: View {
     @State private var pendingDeleteRequest: TAPVideoPendingDeleteRequest?
     @State private var deleteAlert: TAPVideoDeleteAlert?
     @State private var removedVideoEntryIDs: Set<String> = []
-    @State private var systemPlaybackNotice: String?
 
     init(
         source: TAPVideoPlaybackSource,
         albumContext: TAPVideoAlbumContext? = nil,
         onCurrentAlbumEntryChanged: ((TAPVideoAlbumContext.Entry) -> Void)? = nil,
+        deletionContext: DepthAlbumDeletionContext? = nil,
+        onDeletionCompleted: ((String, DepthAlbumDeletionContext.Entry?) -> Void)? = nil,
         registrationAdapter: any TAPVideoDepthRegistrationAdapting =
             TAPVideoManifestDepthRegistrationAdapter(),
         mediaFetcher: any LibraryMediaFetching = PhotoKitLibraryMediaFetcher()
@@ -37,6 +38,8 @@ struct TAPVideoDepthPlaybackView: View {
         self.source = source
         self.albumContext = albumContext
         self.onCurrentAlbumEntryChanged = onCurrentAlbumEntryChanged
+        self.deletionContext = deletionContext
+        self.onDeletionCompleted = onDeletionCompleted
         _session = State(initialValue: TAPVideoPlaybackSession(
             source: source,
             registrationAdapter: registrationAdapter,
@@ -50,12 +53,10 @@ struct TAPVideoDepthPlaybackView: View {
             selectedTool: $selectedTool,
             depthOverlayOpacity: $depthOverlayOpacity,
             isPreparingShare: isPreparingShare,
-            systemPlaybackNotice: systemPlaybackNotice,
             onBackTapped: { dismiss() },
             onShareTapped: presentSystemShareSheet,
             onModeTapped: handleModeTapped,
             onDeleteTapped: deleteCurrentVideo,
-            onSystemPlaybackRequiresRGB: forceRawForSystemPlayback,
             onMoveVideo: moveVideo
         )
         .toolbar(.hidden, for: .navigationBar)
@@ -86,17 +87,6 @@ struct TAPVideoDepthPlaybackView: View {
                 session.prepareTwoDPlaybackGate()
             }
         }
-        .task(id: systemPlaybackNotice) {
-            guard systemPlaybackNotice != nil else {
-                return
-            }
-            do {
-                try await Task.sleep(for: .seconds(4))
-            } catch {
-                return
-            }
-            systemPlaybackNotice = nil
-        }
         .onChange(of: selectedTool) { _, tool in
             if tool == .twoD {
                 session.prepareTwoDPlaybackGate()
@@ -110,7 +100,7 @@ struct TAPVideoDepthPlaybackView: View {
                 for: UIApplication.didEnterBackgroundNotification
             )
         ) { _ in
-            session.cancelActiveFetchForBackground()
+            session.handleDidEnterBackground()
         }
         .onReceive(
             NotificationCenter.default.publisher(
@@ -135,18 +125,6 @@ struct TAPVideoDepthPlaybackView: View {
             return
         }
         selectedTool = tool
-    }
-
-    private func forceRawForSystemPlayback() {
-        guard selectedTool != .raw else {
-            return
-        }
-        selectedTool = .raw
-        guard !didExplainSystemRGBFallback else {
-            return
-        }
-        didExplainSystemRGBFallback = true
-        systemPlaybackNotice = "Picture in Picture and AirPlay show RAW video because the 2D overlay stays on this device."
     }
 
     private func presentSystemShareSheet() {
@@ -180,10 +158,20 @@ struct TAPVideoDepthPlaybackView: View {
         Task { @MainActor in
             do {
                 try await TAPVideoDeletionService.delete(source: source)
-                if let currentItemID = albumContext?.currentItemID {
-                    removedVideoEntryIDs.insert(currentItemID)
-                }
-                if let nextEntry = albumContext?.entryAfterDeletingCurrent(
+                let deletedItemID = albumContext?.currentItemID
+                    ?? source.libraryMediaID.storageValue
+                removedVideoEntryIDs.insert(deletedItemID)
+
+                if let onDeletionCompleted {
+                    let nextEntry = deletionContext?.entryAfterDeletingCurrent(
+                        excluding: removedVideoEntryIDs
+                    )
+                    session.stopPlayback()
+                    onDeletionCompleted(deletedItemID, nextEntry)
+                    if nextEntry == nil {
+                        dismiss()
+                    }
+                } else if let nextEntry = albumContext?.entryAfterDeletingCurrent(
                     excluding: removedVideoEntryIDs
                 ) {
                     session.stopPlayback()
