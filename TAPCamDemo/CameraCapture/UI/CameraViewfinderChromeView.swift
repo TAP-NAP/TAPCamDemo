@@ -77,9 +77,11 @@ struct CameraViewfinderChromeView: View {
     private var topToolbar: some View {
         HStack(spacing: 10) {
             flashButton
-            if state.isLivePhotoAvailable {
-                livePhotoButton
-            }
+            livePhotoButton
+                .opacity(state.isLivePhotoAvailable ? 1 : 0)
+                .allowsHitTesting(state.isLivePhotoAvailable)
+                .accessibilityHidden(!state.isLivePhotoAvailable)
+                .animation(.easeInOut(duration: 0.2), value: state.isLivePhotoAvailable)
             Spacer(minLength: 0)
         }
     }
