@@ -114,7 +114,8 @@ struct DepthAlbumPickerView: View {
             }
 
             if viewModel.shouldShowLoading {
-                ProgressView(viewModel.loadingMessage)
+                ProgressView()
+                    .accessibilityLabel(viewModel.loadingMessage)
                     .frame(maxWidth: .infinity, minHeight: 260)
             } else if let errorMessage = viewModel.errorMessage {
                 ContentUnavailableView("Unable to load album", systemImage: "photo.on.rectangle.angled", description: Text(errorMessage))
