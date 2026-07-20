@@ -80,17 +80,27 @@ final class LibraryMediaStore: NSObject, PHPhotoLibraryChangeObserver {
         items.first
     }
 
-    /// Loads a new snapshot. Concurrent callers share the same in-flight load
-    /// so startup, camera-cover, and Library presentation work cannot each
-    /// enumerate the same PhotoKit catalog. Only the newest generation may
+    /// Starts a new snapshot generation. Only the newest generation may
     /// publish, so a slow Photos callback cannot restore a deleted or
     /// superseded item.
     @discardableResult
     func refresh() async -> DepthAlbumItemSnapshot? {
+        await startRefresh()
+    }
+
+    /// Shares the current load when multiple UI surfaces request the same
+    /// catalog at once. Callers that intentionally need a newer generation use
+    /// `refresh()` instead.
+    @discardableResult
+    func refreshSharingInFlightLoad() async -> DepthAlbumItemSnapshot? {
         if let inFlightRefreshTask {
             return await inFlightRefreshTask.value
         }
 
+        return await startRefresh()
+    }
+
+    private func startRefresh() async -> DepthAlbumItemSnapshot? {
         refreshGeneration &+= 1
         let generation = refreshGeneration
         isRefreshing = true

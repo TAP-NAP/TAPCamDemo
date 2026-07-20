@@ -71,7 +71,7 @@ final class DepthAlbumPickerViewModel: ObservableObject {
             if showLoadingIndicator, lockedImportReason != nil {
                 loadingMessage = "Loading TAP Library..."
             }
-            let snapshot = await libraryStore.refresh()
+            let snapshot = await libraryStore.refreshSharingInFlightLoad()
             if let loadError = libraryStore.loadError {
                 throw loadError
             }
