@@ -332,9 +332,11 @@ struct CameraCaptureControlsView: View {
                     .fill(.black.opacity(0.48))
                     .frame(width: 58, height: 58)
 
-                Image(systemName: recentLibraryPresentation?.kind == .tapVideo ? "video" : "photo.on.rectangle")
-                    .font(.system(size: 24, weight: .semibold))
-                    .foregroundStyle(.white)
+                if recentLibraryPresentation?.showsPlaceholderSymbol ?? true {
+                    Image(systemName: recentLibraryPresentation?.kind == .tapVideo ? "video" : "photo.on.rectangle")
+                        .font(.system(size: 24, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
             }
         }
     }

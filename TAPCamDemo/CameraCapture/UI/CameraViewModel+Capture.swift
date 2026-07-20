@@ -398,7 +398,9 @@ extension CameraViewModel {
         recentLibraryFetchState = IdentifiedMediaFetchState(request: request, phase: phase)
         switch phase {
         case .idle, .resolving:
-            recentLibraryPresentation = .resolving(itemID: request.itemID, kind: kind)
+            if recentLibraryPresentation.poster == nil {
+                recentLibraryPresentation = .resolving(itemID: request.itemID, kind: kind)
+            }
         case .localPreview(let poster), .ready(let poster):
             guard poster.image != nil else {
                 recentLibraryPresentation = .failed(
@@ -419,14 +421,14 @@ extension CameraViewModel {
             recentLibraryPresentation = .loading(
                 itemID: request.itemID,
                 kind: kind,
-                preview: preview,
+                preview: preview ?? recentLibraryPresentation.poster,
                 progress: nil
             )
         case .downloadingFromICloud(let preview, let progress):
             recentLibraryPresentation = .loading(
                 itemID: request.itemID,
                 kind: kind,
-                preview: preview,
+                preview: preview ?? recentLibraryPresentation.poster,
                 progress: progress
             )
         case .failed(let preview, _, let retryable):

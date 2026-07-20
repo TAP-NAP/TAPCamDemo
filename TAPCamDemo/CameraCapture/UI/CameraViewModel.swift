@@ -35,7 +35,7 @@ final class CameraViewModel: ObservableObject {
     @Published var isPausedForAnalysis = false
     @Published var nativePreviewAspectRatio = 3.0 / 4.0
     @Published var previewCropRectNormalized = CropRectNormalized.fullFrame
-    @Published var recentLibraryPresentation: RecentLibraryPresentation = .empty
+    @Published var recentLibraryPresentation: RecentLibraryPresentation = .unresolved
     @Published var recentLibraryFetchState: IdentifiedMediaFetchState<MediaPoster, MediaPoster>?
     @Published var latestCaptureDepthHint: CameraCaptureDepthHint?
     @Published var focusRuntimeEvent: CameraFocusRuntimeEvent?
@@ -89,7 +89,7 @@ final class CameraViewModel: ObservableObject {
 
     var recentLibraryStatusText: String? {
         switch recentLibraryPresentation {
-        case .empty, .ready, .failed:
+        case .unresolved, .empty, .ready, .failed:
             nil
         case .resolving(_, let kind):
             LibraryMediaCopy.preparing(kind)

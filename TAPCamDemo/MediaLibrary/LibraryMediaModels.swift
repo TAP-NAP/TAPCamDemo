@@ -187,9 +187,11 @@ nonisolated struct IdentifiedMediaFetchState<Preview: Sendable, Value: Sendable>
 
 extension IdentifiedMediaFetchState: Equatable where Preview: Equatable, Value: Equatable {}
 
-/// Identity-bearing camera presentation. A missing or failed poster can never
-/// silently reuse a previous item's image.
+/// Identity-bearing camera presentation. A previous poster may remain visible
+/// while a newer one is resolving, but an empty or failed result never silently
+/// reuses the old item's image.
 nonisolated enum RecentLibraryPresentation: Equatable, Sendable {
+    case unresolved
     case empty
     case resolving(itemID: LibraryMediaID, kind: LibraryMediaKind)
     case loading(
@@ -208,7 +210,7 @@ nonisolated enum RecentLibraryPresentation: Equatable, Sendable {
 
     var itemID: LibraryMediaID? {
         switch self {
-        case .empty:
+        case .unresolved, .empty:
             nil
         case .resolving(let itemID, _):
             itemID
@@ -221,7 +223,7 @@ nonisolated enum RecentLibraryPresentation: Equatable, Sendable {
 
     var kind: LibraryMediaKind? {
         switch self {
-        case .empty:
+        case .unresolved, .empty:
             nil
         case .resolving(_, let kind):
             kind
@@ -234,7 +236,7 @@ nonisolated enum RecentLibraryPresentation: Equatable, Sendable {
 
     var poster: MediaPoster? {
         switch self {
-        case .empty, .resolving:
+        case .unresolved, .empty, .resolving:
             nil
         case .loading(_, _, let preview, _):
             preview
@@ -250,5 +252,14 @@ nonisolated enum RecentLibraryPresentation: Equatable, Sendable {
             return true
         }
         return false
+    }
+
+    var showsPlaceholderSymbol: Bool {
+        switch self {
+        case .empty, .failed:
+            true
+        case .unresolved, .resolving, .loading, .ready:
+            false
+        }
     }
 }
