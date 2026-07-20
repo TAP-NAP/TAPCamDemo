@@ -625,7 +625,7 @@ struct CameraPreviewStageView: View {
         static let focusEVEdgeGap: CGFloat = 2
         static let previewEdgeInset: CGFloat = 12
         static let focusExposureScrubMinimumDistance: CGFloat = 8
-        static let focusExposureScrubPointsPerEV: CGFloat = 96
+        static let focusExposureScrubPointsPerEV: CGFloat = 144
         static let lockBadgeVerticalGap: CGFloat = 16
     }
 
