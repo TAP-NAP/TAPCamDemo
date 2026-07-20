@@ -6,9 +6,10 @@
 @preconcurrency import AVFoundation
 import AppAttestKit
 import Foundation
+import OSLog
 import UIKit
 
-/// Serial background processor for staged TAP depth HEIC captures.
+/// Serial background processor for staged TAP depth photo captures.
 ///
 /// The worker only reads bundle state from `TAPPendingCaptureStore`; it does not
 /// depend on the current camera UI selection. This is the important split that
@@ -17,153 +18,266 @@ import UIKit
 actor TAPPendingCaptureProcessor {
     static let shared = TAPPendingCaptureProcessor()
 
-    private var isProcessing = false
+    private var workerTask: Task<Void, Never>?
 
     func processPendingCaptures(
         store: TAPPendingCaptureStore = .shared,
         appAttestClient: any AppAttestClient
     ) async {
-        guard !isProcessing else {
-            return
-        }
-
-        isProcessing = true
-        defer { isProcessing = false }
-
-        guard await protectedDataIsAvailable() else {
-            return
-        }
-
-        try? await reconcile(store: store)
-
-        let candidates: [TAPPendingCaptureRecord]
-        do {
-            candidates = try await store.processingCandidates()
-        } catch {
-            return
-        }
-
-        let signer = AppAttestCaptureAssertionSigner(client: appAttestClient)
-        for candidate in candidates {
-            await process(candidate, store: store, signer: signer)
-        }
-
-        try? await store.cleanupExportedLargeFiles()
+        await processPendingCaptures(
+            store: store,
+            signer: AppAttestPendingCaptureSigner(appAttestClient: appAttestClient),
+            exporter: PhotoLibraryPendingCaptureExporter(),
+            readback: PhotoLibraryPendingCaptureReadback(),
+            cleanup: TAPPendingCaptureLargeFileCleanup(),
+            protectedDataIsAvailable: Self.defaultProtectedDataIsAvailable
+        )
     }
 
-    func reconcile(store: TAPPendingCaptureStore = .shared) async throws {
+    func processPendingCaptures(
+        store: TAPPendingCaptureStore,
+        signer: any TAPPendingCaptureSigning,
+        exporter: any TAPPendingCaptureExporting,
+        readback: any TAPPendingCaptureReadingBack = PhotoLibraryPendingCaptureReadback(),
+        cleanup: any TAPPendingCaptureCleaning = TAPPendingCaptureLargeFileCleanup(),
+        protectedDataIsAvailable: @escaping @Sendable () async -> Bool
+    ) async {
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.pendingCapture.info("processPendingCaptures requested workerActive=\(self.workerTask != nil, privacy: .public)")
+        #endif
+        while let currentWorkerTask = workerTask {
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.pendingCapture.info("processPendingCaptures waiting for active worker")
+            #endif
+            await currentWorkerTask.value
+        }
+
+        let task = Task { [store, signer, exporter, readback, cleanup, protectedDataIsAvailable] in
+            await self.runWorker(
+                store: store,
+                signer: signer,
+                exporter: exporter,
+                readback: readback,
+                cleanup: cleanup,
+                protectedDataIsAvailable: protectedDataIsAvailable
+            )
+        }
+        workerTask = task
+        await task.value
+    }
+
+    private func runWorker(
+        store: TAPPendingCaptureStore,
+        signer: any TAPPendingCaptureSigning,
+        exporter: any TAPPendingCaptureExporting,
+        readback: any TAPPendingCaptureReadingBack,
+        cleanup: any TAPPendingCaptureCleaning,
+        protectedDataIsAvailable: @escaping @Sendable () async -> Bool
+    ) async {
+        defer { workerTask = nil }
+        let workerID = UUID().uuidString
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.pendingCapture.info("worker start workerID=\(workerID, privacy: .public)")
+        #endif
+        let readiness = TAPPendingCaptureWorkerReadiness(
+            protectedDataIsAvailable: await protectedDataIsAvailable()
+        )
+        guard readiness.allowsPrivateArtifactAccess else {
+            let readinessDescription = readiness.diagnosticDescription
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.pendingCapture.info(
+                "worker stopped workerID=\(workerID, privacy: .public) readiness=\(readinessDescription, privacy: .public)"
+            )
+            #endif
+            return
+        }
+
+        do {
+            try await reconcile(store: store, cleanup: cleanup)
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.pendingCapture.info("worker reconcile complete workerID=\(workerID, privacy: .public)")
+            #endif
+        } catch {
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.pendingCapture.error("worker reconcile failed workerID=\(workerID, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
+            #endif
+        }
+
+        var processedCaptureIDs = Set<String>()
+        while let candidate = await nextProcessingCandidate(store: store, excludingCaptureIDs: processedCaptureIDs) {
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.pendingCapture.info("worker candidate workerID=\(workerID, privacy: .public) captureID=\(candidate.captureID, privacy: .private) status=\(candidate.status.rawValue, privacy: .public) artifactKind=\(candidate.artifactKind.rawValue, privacy: .public) retryCount=\(candidate.retryCount, privacy: .public) container=\(candidate.photoFileContainer.rawValue, privacy: .public) signedPhoto=\(candidate.signedPhotoFilename != nil, privacy: .public) videoState=\(candidate.videoArtifactState?.rawValue ?? "none", privacy: .public)")
+            #endif
+            processedCaptureIDs.insert(candidate.captureID)
+            await process(
+                candidate,
+                store: store,
+                signer: signer,
+                exporter: exporter,
+                readback: readback
+            )
+        }
+
+        do {
+            try await cleanup.cleanup(store: store)
+        } catch {
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.pendingCapture.error("worker cleanup failed workerID=\(workerID, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
+            #endif
+        }
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.pendingCapture.info("worker finish workerID=\(workerID, privacy: .public) processedCount=\(processedCaptureIDs.count, privacy: .public)")
+        #endif
+    }
+
+    private func nextProcessingCandidate(
+        store: TAPPendingCaptureStore,
+        excludingCaptureIDs: Set<String>
+    ) async -> TAPPendingCaptureRecord? {
+        do {
+            return try await store.nextProcessingCandidate(excludingCaptureIDs: excludingCaptureIDs)
+        } catch {
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.pendingCapture.error("nextProcessingCandidate failed excludedCount=\(excludingCaptureIDs.count, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
+            #endif
+            return nil
+        }
+    }
+
+    func reconcile(
+        store: TAPPendingCaptureStore = .shared,
+        cleanup: any TAPPendingCaptureCleaning = TAPPendingCaptureLargeFileCleanup()
+    ) async throws {
+        try await store.removeStaleVideoCaptureWorkspaces()
+        try await store.removeUnshippedLegacyVideoBundles()
+        try await store.normalizePersistedFailureReasons()
         let records = try await store.allRecords()
         for record in records {
             switch record.status {
-            case .exported:
+            case .exported, .failedTerminal:
                 continue
             case .exporting:
-                if let assetID = try? await PhotoLibraryWriter.depthAssetIdentifier(captureID: record.captureID) {
-                    _ = try await store.markExported(captureID: record.captureID, assetLocalIdentifier: assetID)
+                // Photo recovery has a dedicated signed-photo lookup. TAP
+                // video recovery must stay in the exporter so deterministic
+                // filename candidates receive full manifest/proof readback.
+                if record.artifactKind == .photoDepth,
+                   let assetID = try? await PhotoLibraryWriter.depthAssetIdentifier(
+                    captureID: record.captureID
+                   ) {
+                    _ = try await store.markExported(
+                        captureID: record.captureID,
+                        assetLocalIdentifier: assetID
+                    )
                 }
             case .pending, .waitingNetwork, .signing, .signed, .failedRetryable:
                 continue
             }
         }
-        try await store.cleanupExportedLargeFiles()
+        try await cleanup.cleanup(store: store)
     }
 
     private func process(
         _ record: TAPPendingCaptureRecord,
         store: TAPPendingCaptureStore,
-        signer: AppAttestCaptureAssertionSigner
+        signer: any TAPPendingCaptureSigning,
+        exporter: any TAPPendingCaptureExporting,
+        readback: any TAPPendingCaptureReadingBack
     ) async {
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.pendingCapture.info("process start captureID=\(record.captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public) retryCount=\(record.retryCount, privacy: .public)")
+        #endif
         do {
-            switch record.status {
-            case .pending, .waitingNetwork, .signing, .failedRetryable:
-                if record.signedHEICFilename != nil {
-                    try await export(record, store: store)
+            switch record.processingRoute {
+            case .signThenExport:
+                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                TAPDiagnostics.pendingCapture.info("process route signThenExport captureID=\(record.captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public)")
+                #endif
+                let signedRecord = try await signer.sign(record, store: store)
+                try await exporter.export(signedRecord, store: store)
+                try await readback.readBack(signedRecord, store: store)
+
+            case .exportSigned:
+                if record.signedPhotoFilename != nil,
+                   record.status != .signed,
+                   record.status != .exporting {
+                    #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                    TAPDiagnostics.pendingCapture.info("process route export existing signedPhoto captureID=\(record.captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public)")
+                    #endif
                 } else {
-                    let signedRecord = try await sign(record, store: store, signer: signer)
-                    try await export(signedRecord, store: store)
+                    #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                    TAPDiagnostics.pendingCapture.info("process route export captureID=\(record.captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public)")
+                    #endif
                 }
+                try await exporter.export(record, store: store)
+                try await readback.readBack(record, store: store)
 
-            case .signed, .exporting:
-                try await export(record, store: store)
-
-            case .exported:
+            case .skip:
+                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                TAPDiagnostics.pendingCapture.info("process skipped exported captureID=\(record.captureID, privacy: .private)")
+                #endif
                 return
             }
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.pendingCapture.info("process success captureID=\(record.captureID, privacy: .private) previousStatus=\(record.status.rawValue, privacy: .public)")
+            #endif
         } catch {
-            let status: TAPPendingCaptureStatus = Self.isNetworkUnavailable(error) ? .waitingNetwork : .failedRetryable
+            if let terminalCode = Self.terminalFailureCode(for: error, record: record) {
+                _ = try? await store.markTerminalFailure(
+                    captureID: record.captureID,
+                    code: terminalCode
+                )
+                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                TAPDiagnostics.pendingCapture.error("process terminal failure captureID=\(record.captureID, privacy: .private) code=\(terminalCode.rawValue, privacy: .public)")
+                #endif
+                return
+            }
+            let persistedRecord = try? await store.readRecord(captureID: record.captureID)
+            let mustRemainInVideoRecovery = record.artifactKind == .tapVideo
+                && (record.requiresVideoPhotosReadbackRecovery
+                    || persistedRecord?.requiresVideoPhotosReadbackRecovery == true)
+            let status: TAPPendingCaptureStatus = mustRemainInVideoRecovery
+                ? .exporting
+                : TAPPendingCaptureRetryClassifier.status(for: error)
+            let failureReason = TAPPendingCaptureFailureReasonPresentation.reason(for: status)
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.pendingCapture.error("process failed captureID=\(record.captureID, privacy: .private) previousStatus=\(record.status.rawValue, privacy: .public) nextStatus=\(status.rawValue, privacy: .public) retryCount=\(record.retryCount + 1, privacy: .public) vpnHint=\(TAPDiagnostics.errorLooksVPNRelated(error), privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
+            #endif
             _ = try? await store.updateStatus(
                 captureID: record.captureID,
                 status: status,
-                failureReason: error.localizedDescription,
+                failureReason: failureReason,
                 incrementsRetryCount: true
             )
         }
     }
 
-    private func sign(
-        _ record: TAPPendingCaptureRecord,
-        store: TAPPendingCaptureStore,
-        signer: AppAttestCaptureAssertionSigner
-    ) async throws -> TAPPendingCaptureRecord {
-        _ = try await store.updateStatus(captureID: record.captureID, status: .signing)
-
-        let unsignedData = try await store.unsignedHEICData(captureID: record.captureID)
-        let manifest = try TAPDepthHEICReader.decodedManifest(from: unsignedData)
-        guard let depthData = try TAPDepthHEICReader.depthData(from: unsignedData) else {
-            throw TAPDepthCaptureError.missingDepthData
+    private nonisolated static func terminalFailureCode(
+        for error: Error,
+        record: TAPPendingCaptureRecord
+    ) -> TAPPendingCaptureFailureCode? {
+        guard record.artifactKind == .tapVideo,
+              let captureError = error as? TAPDepthCaptureError else {
+            return nil
         }
-
-        let digest = try CaptureContentDigest.make(
-            manifest: manifest,
-            baseHEICData: unsignedData,
-            depthData: depthData
-        )
-        let assertionProof = try await signer.sign(contentDigest: digest)
-        let signedManifest = TAPDepthManifest(payload: manifest.payload, proofs: [assertionProof.proof])
-        let signedData = try TAPDepthHEICWriter.injectingManifest(signedManifest, into: unsignedData)
-        return try await store.storeSignedHEIC(signedData, captureID: record.captureID)
+        switch captureError {
+        case .missingDepthData:
+            return .missingDepthData
+        case .pendingCaptureProofExternalMutation:
+            return .proofExternalMutation
+        case .pendingCaptureProofInvalid,
+             .pendingCaptureProofMissing:
+            return .proofValidationFailed
+        case .invalidTAPManifest,
+             .pendingCaptureManifestIDMismatch:
+            return .invalidVideoArtifact
+        default:
+            return nil
+        }
     }
 
-    private func export(_ record: TAPPendingCaptureRecord, store: TAPPendingCaptureStore) async throws {
-        if let existingAssetID = try? await PhotoLibraryWriter.depthAssetIdentifier(captureID: record.captureID) {
-            _ = try await store.markExported(captureID: record.captureID, assetLocalIdentifier: existingAssetID)
-            return
-        }
-
-        _ = try await store.updateStatus(captureID: record.captureID, status: .exporting)
-        let signedData = try await store.signedHEICData(captureID: record.captureID)
-        let assetID = try await PhotoLibraryWriter.saveDepthHEIC(
-            signedData,
-            capturedAt: record.capturedAt,
-            location: record.location?.clLocation
-        )
-        _ = try await store.markExported(captureID: record.captureID, assetLocalIdentifier: assetID)
-    }
-
-    private func protectedDataIsAvailable() async -> Bool {
+    private static func defaultProtectedDataIsAvailable() async -> Bool {
         await MainActor.run {
             UIApplication.shared.isProtectedDataAvailable
         }
-    }
-
-    private static func isNetworkUnavailable(_ error: Error) -> Bool {
-        let nsError = error as NSError
-        if nsError.domain == NSURLErrorDomain {
-            return [
-                NSURLErrorNotConnectedToInternet,
-                NSURLErrorNetworkConnectionLost,
-                NSURLErrorCannotFindHost,
-                NSURLErrorCannotConnectToHost,
-                NSURLErrorTimedOut,
-                NSURLErrorInternationalRoamingOff,
-                NSURLErrorDataNotAllowed
-            ].contains(nsError.code)
-        }
-
-        let message = error.localizedDescription.lowercased()
-        return message.contains("network")
-            || message.contains("internet")
-            || message.contains("offline")
-            || message.contains("timed out")
     }
 }

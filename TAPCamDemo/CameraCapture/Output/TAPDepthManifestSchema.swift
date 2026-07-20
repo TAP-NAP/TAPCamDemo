@@ -12,6 +12,20 @@ import Foundation
 import ImageIO
 import simd
 
+nonisolated enum CaptureDepthAvailability: String, Codable, Equatable, Sendable {
+    case available
+    case unavailable
+
+    var viewfinderHint: String? {
+        switch self {
+        case .available:
+            nil
+        case .unavailable:
+            "Depth unavailable"
+        }
+    }
+}
+
 /// Versioned metadata contract embedded into every TAP depth HEIC.
 ///
 /// The HEIC file itself remains standards-friendly:
@@ -26,6 +40,8 @@ import simd
 nonisolated struct TAPDepthManifest: Codable, Equatable {
     static let schemaIdentifier = "urn:tapnap:tapcam:depth-manifest:v1"
     static let mediaType = "application/vnd.tapnap.depth-manifest+json;version=1"
+    static let livePhotoSchemaIdentifier = "urn:tapnap:tapcam:depth-manifest:v2"
+    static let livePhotoMediaType = "application/vnd.tapnap.depth-manifest+json;version=2"
     static let xmpNamespaceURI = "urn:tapnap:tapcam:depth:1.0"
     static let xmpPrefix = "tapdepth"
     static let xmpManifestPath = "tapdepth:Manifest"
@@ -35,8 +51,8 @@ nonisolated struct TAPDepthManifest: Codable, Equatable {
     let payload: Payload
     let proofs: [Proof]
 
-    init(payload: Payload, proofs: [Proof] = []) {
-        self.schema = Schema()
+    init(payload: Payload, proofs: [Proof] = [], schema: Schema = Schema()) {
+        self.schema = schema
         self.payload = payload
         self.proofs = proofs
     }
@@ -51,13 +67,25 @@ extension TAPDepthManifest {
         let xmpPrefix: String
         let xmpManifestPath: String
 
-        nonisolated init() {
-            self.id = TAPDepthManifest.schemaIdentifier
-            self.version = 1
-            self.mediaType = TAPDepthManifest.mediaType
+        nonisolated init(
+            id: String = TAPDepthManifest.schemaIdentifier,
+            version: Int = 1,
+            mediaType: String = TAPDepthManifest.mediaType
+        ) {
+            self.id = id
+            self.version = version
+            self.mediaType = mediaType
             self.xmpNamespaceURI = TAPDepthManifest.xmpNamespaceURI
             self.xmpPrefix = TAPDepthManifest.xmpPrefix
             self.xmpManifestPath = TAPDepthManifest.xmpManifestPath
+        }
+
+        nonisolated static var livePhotoV2: Schema {
+            Schema(
+                id: TAPDepthManifest.livePhotoSchemaIdentifier,
+                version: 2,
+                mediaType: TAPDepthManifest.livePhotoMediaType
+            )
         }
     }
 
@@ -85,6 +113,59 @@ extension TAPDepthManifest {
         let alignment: Alignment
         let location: Location?
         let software: Software
+        let livePhoto: LivePhoto?
+
+        nonisolated init(
+            id: String,
+            capturedAt: String,
+            sessionMode: String,
+            pairingMode: String,
+            alignmentStatus: String,
+            sourceAPIs: SourceAPIs,
+            capture: Capture,
+            rgbSource: RGBSource,
+            depthSource: DepthSourceSelection,
+            pairing: Pairing,
+            zoom: Zoom,
+            crop: Crop,
+            resolvedSession: ResolvedSession,
+            selectedDepthCamera: SelectedDepthCamera,
+            selectedZoom: SelectedZoom,
+            photoLens: PhotoLens,
+            depthBackend: DepthBackendSelection,
+            camera: Camera,
+            photo: Photo,
+            depth: Depth,
+            alignment: Alignment,
+            location: Location?,
+            software: Software,
+            livePhoto: LivePhoto? = nil
+        ) {
+            self.id = id
+            self.capturedAt = capturedAt
+            self.sessionMode = sessionMode
+            self.pairingMode = pairingMode
+            self.alignmentStatus = alignmentStatus
+            self.sourceAPIs = sourceAPIs
+            self.capture = capture
+            self.rgbSource = rgbSource
+            self.depthSource = depthSource
+            self.pairing = pairing
+            self.zoom = zoom
+            self.crop = crop
+            self.resolvedSession = resolvedSession
+            self.selectedDepthCamera = selectedDepthCamera
+            self.selectedZoom = selectedZoom
+            self.photoLens = photoLens
+            self.depthBackend = depthBackend
+            self.camera = camera
+            self.photo = photo
+            self.depth = depth
+            self.alignment = alignment
+            self.location = location
+            self.software = software
+            self.livePhoto = livePhoto
+        }
 
         enum CodingKeys: String, CodingKey {
             case id
@@ -110,6 +191,7 @@ extension TAPDepthManifest {
             case alignment
             case location
             case software
+            case livePhoto
         }
 
         /// Encodes the payload with an explicit `location: null` when no
@@ -144,7 +226,19 @@ extension TAPDepthManifest {
             try container.encode(alignment, forKey: .alignment)
             try container.encode(location, forKey: .location)
             try container.encode(software, forKey: .software)
+            try container.encodeIfPresent(livePhoto, forKey: .livePhoto)
         }
+    }
+
+    nonisolated struct LivePhoto: Codable, Equatable {
+        let presence: String
+        let pairedVideoFilename: String
+        let durationSeconds: Double
+        let photoDisplayTimeSeconds: Double
+        let width: Int32
+        let height: Int32
+        let videoCodec: String?
+        let audio: String
     }
 
     nonisolated struct SourceAPIs: Codable, Equatable {
@@ -167,7 +261,52 @@ extension TAPDepthManifest {
         let depthDataDeliveryEnabled: Bool
         let embedsDepthDataInPhoto: Bool
         let depthDataFiltered: Bool
+        let depthAvailability: CaptureDepthAvailability
         let photoQualityPrioritization: String
+
+        nonisolated init(
+            resolvedSettingsUniqueID: Int64,
+            requestedCodec: String,
+            depthDataDeliveryEnabled: Bool,
+            embedsDepthDataInPhoto: Bool,
+            depthDataFiltered: Bool,
+            depthAvailability: CaptureDepthAvailability = .available,
+            photoQualityPrioritization: String
+        ) {
+            self.resolvedSettingsUniqueID = resolvedSettingsUniqueID
+            self.requestedCodec = requestedCodec
+            self.depthDataDeliveryEnabled = depthDataDeliveryEnabled
+            self.embedsDepthDataInPhoto = embedsDepthDataInPhoto
+            self.depthDataFiltered = depthDataFiltered
+            self.depthAvailability = depthAvailability
+            self.photoQualityPrioritization = photoQualityPrioritization
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case resolvedSettingsUniqueID
+            case requestedCodec
+            case depthDataDeliveryEnabled
+            case embedsDepthDataInPhoto
+            case depthDataFiltered
+            case depthAvailability
+            case photoQualityPrioritization
+        }
+
+        nonisolated init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            self.init(
+                resolvedSettingsUniqueID: try container.decode(Int64.self, forKey: .resolvedSettingsUniqueID),
+                requestedCodec: try container.decode(String.self, forKey: .requestedCodec),
+                depthDataDeliveryEnabled: try container.decode(Bool.self, forKey: .depthDataDeliveryEnabled),
+                embedsDepthDataInPhoto: try container.decode(Bool.self, forKey: .embedsDepthDataInPhoto),
+                depthDataFiltered: try container.decode(Bool.self, forKey: .depthDataFiltered),
+                depthAvailability: try container.decodeIfPresent(
+                    CaptureDepthAvailability.self,
+                    forKey: .depthAvailability
+                ) ?? .available,
+                photoQualityPrioritization: try container.decode(String.self, forKey: .photoQualityPrioritization)
+            )
+        }
     }
 
     nonisolated struct SelectedDepthCamera: Codable, Equatable {
@@ -300,6 +439,7 @@ extension TAPDepthManifest {
     }
 
     nonisolated struct Depth: Codable, Equatable {
+        let availability: CaptureDepthAvailability
         let auxiliaryDataKind: String
         let depthDataType: String
         let metricUnit: String
@@ -313,6 +453,78 @@ extension TAPDepthManifest {
         let isFiltered: Bool
         let source: DepthSource
         let cameraCalibration: CameraCalibration?
+
+        nonisolated init(
+            availability: CaptureDepthAvailability = .available,
+            auxiliaryDataKind: String,
+            depthDataType: String,
+            metricUnit: String,
+            conversionPath: String,
+            width: Int,
+            height: Int,
+            pixelFormat: String,
+            orientation: String,
+            accuracy: String,
+            quality: String,
+            isFiltered: Bool,
+            source: DepthSource,
+            cameraCalibration: CameraCalibration?
+        ) {
+            self.availability = availability
+            self.auxiliaryDataKind = auxiliaryDataKind
+            self.depthDataType = depthDataType
+            self.metricUnit = metricUnit
+            self.conversionPath = conversionPath
+            self.width = width
+            self.height = height
+            self.pixelFormat = pixelFormat
+            self.orientation = orientation
+            self.accuracy = accuracy
+            self.quality = quality
+            self.isFiltered = isFiltered
+            self.source = source
+            self.cameraCalibration = cameraCalibration
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case availability
+            case auxiliaryDataKind
+            case depthDataType
+            case metricUnit
+            case conversionPath
+            case width
+            case height
+            case pixelFormat
+            case orientation
+            case accuracy
+            case quality
+            case isFiltered
+            case source
+            case cameraCalibration
+        }
+
+        nonisolated init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            self.init(
+                availability: try container.decodeIfPresent(
+                    CaptureDepthAvailability.self,
+                    forKey: .availability
+                ) ?? .available,
+                auxiliaryDataKind: try container.decode(String.self, forKey: .auxiliaryDataKind),
+                depthDataType: try container.decode(String.self, forKey: .depthDataType),
+                metricUnit: try container.decode(String.self, forKey: .metricUnit),
+                conversionPath: try container.decode(String.self, forKey: .conversionPath),
+                width: try container.decode(Int.self, forKey: .width),
+                height: try container.decode(Int.self, forKey: .height),
+                pixelFormat: try container.decode(String.self, forKey: .pixelFormat),
+                orientation: try container.decode(String.self, forKey: .orientation),
+                accuracy: try container.decode(String.self, forKey: .accuracy),
+                quality: try container.decode(String.self, forKey: .quality),
+                isFiltered: try container.decode(Bool.self, forKey: .isFiltered),
+                source: try container.decode(DepthSource.self, forKey: .source),
+                cameraCalibration: try container.decodeIfPresent(CameraCalibration.self, forKey: .cameraCalibration)
+            )
+        }
     }
 
     nonisolated struct Alignment: Codable, Equatable {

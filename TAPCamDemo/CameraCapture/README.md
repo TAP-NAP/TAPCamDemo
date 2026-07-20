@@ -1,467 +1,251 @@
-# CameraCapture: SingleCam Photo-Depth Code Guide
+# CameraCapture Module
 
-Capture one Apple-paired photo-depth HEIC from a semantic field-of-view choice.
+`TAPCamDemo/CameraCapture` owns the live camera surface, SingleCam photo-depth
+capture, and TAP Video recording. Release UI chooses semantic field-of-view
+options; Planning resolves them into concrete AVFoundation-compatible sources;
+Runtime captures either one Apple photo-depth result or a bounded RGB/audio/
+depth-metadata movie; Output builds the unsigned TAP artifact and stages it in
+TAP Library.
 
-## Overview
+The module does not run separate RGB/depth sessions, does not write sidecars,
+and does not export to Photos directly.
 
-`CameraCapture` is the camera module for TAPCamDemo. Release UI lets the user
-choose a field of view such as `24mm`, `48mm`, or `77mm`; Planning resolves that
-choice into one compatible Apple photo-depth pipeline; Runtime captures one
-`AVCapturePhoto`; Output embeds Apple auxiliary depth plus an unsigned TAP
-manifest into one HEIC and stages it in the app-private TAP Library pending
-store. A separate TAP Library worker later signs and exports the HEIC to Photos.
+## Code Map
 
-```text
-UI
- |
- v
-Planning
- |
- v
-Runtime
- |
- v
-Output
- |
- v
-Support
+| Layer | Responsibility | Code |
+| --- | --- | --- |
+| UI | Camera screen shell, preview stage, debug overlay, bottom chrome controls, FOV chips, preview bridge | [UI/README.md](UI/README.md) |
+| Planning | Device discovery, RGB/depth compatibility, zoom, capture plan | [Planning/README.md](Planning/README.md) |
+| Runtime | SingleCam session mutation, photo capture, and TAP Video writer orchestration | [Runtime/README.md](Runtime/README.md) |
+| Output | Photo/video manifest, provenance, media facts, streaming validation, and pending handoff | [Output/README.md](Output/README.md) |
+| Support | Location, metrics, capture errors, public-safe status text | [Support/README.md](Support/README.md) |
+
+## Layer Flow
+
+```mermaid
+flowchart TD
+    UI["UI\nCameraView + CameraPreviewStageView + CameraPreviewDebugOverlayView + CameraCaptureControlsView + CameraViewModel + CameraRouteStore"] --> Planning["Planning\nCapabilityMatrix + CaptureSourcePlan"]
+    UI --> Album["DepthAnalysis\nDepthAlbumPickerView"]
+    Album --> UI
+    Planning --> Runtime["Runtime\nCaptureSessionController"]
+    Runtime --> Pipeline["CapturePipeline"]
+    Pipeline --> Output["Output\nCapturePackage + EmbeddedPhotoPackager"]
+    Runtime --> Video["TAPVideoRecorder\nwriter + depth metadata"]
+    Video --> Output
+    Output --> Pending["TAPLibrary\nTAPPendingCaptureArtifactWriter"]
+
+    click UI "UI/CameraView.swift"
+    click Album "../DepthAnalysis/DepthAlbumPickerView.swift"
+    click Planning "Planning/CapturePlan.swift"
+    click Runtime "Runtime/CaptureSessionController.swift"
+    click Pipeline "Runtime/CapturePipeline.swift"
+    click Output "Output/EmbeddedPhotoPackager.swift"
+    click Video "Runtime/TAPVideoRecorder.swift"
+    click Pending "../TAPLibrary/TAPPendingCaptureStore.swift"
 ```
 
-The only executable capture path is `AVCaptureSession + AVCapturePhotoOutput`.
-The module doesn't run separate RGB/depth sessions, doesn't write sidecars, and
-doesn't let UI inspect AVFoundation devices directly.
+`CameraRouteStore` is the local route boundary for the live camera surface. It
+keeps the default foreground destination as camera, opens the TAP Library from
+the recent-photo control, and preserves the last selected or visible album item
+as an in-memory restore anchor while the camera view is alive.
 
-## Getting Started
+`CaptureLifecycleCoordinator` is the local lifecycle boundary for the live
+camera surface. It turns SwiftUI scene, route, and pending-capture signing
+credential events into explicit actions such as restore route, refresh recent
+preview, and retry pending captures. It does not create the capture pipeline,
+write Photos assets, sign photo files, or bypass TAP Library's protected-data
+checks.
 
-Build and run on a device to exercise real camera and depth capture. Simulator
-can compile the module and run unit tests, but it doesn't provide the physical
-depth-capable camera pipeline needed for live capture.
+`CameraPreviewStageView` is the local SwiftUI composition boundary for the live
+preview. It owns preview sizing, render-only `AVCaptureSession` handoff, crop
+metadata callback routing, Release FOV overlay, and the Debug overlay host.
+It does not configure the session, inspect devices, build capture plans, sign or
+export photo artifacts, persist route state, or own output format/quality policy.
 
-Start with [CameraView](x-source-tag://CameraCaptureRootView). It composes the
-preview, Release FOV selector, Debug depth override controls, touch-down shutter
-control, and recent-photo entry point. It delegates all camera decisions to
-`CameraViewModel`.
+`CameraPreviewDebugOverlayView` is the Debug-only composition boundary for
+status, depth-source, zoom, and performance overlays. It receives display-only
+depth/zoom rows from `CameraView`, not raw device objects, camera profiles,
+format selections, capture plans, App Attest objects, pending records, photo
+bytes, manifests, or Photos identifiers.
 
-```swift
-CameraPreviewView(
-    session: viewModel.session,
-    onCropRectChanged: { rect in
-        viewModel.updatePreviewCropRect(CropRectNormalized(metadataRect: rect))
-    }
-)
+`CameraCaptureStatusPresentation` is the public-safe status boundary shared by
+UI and Runtime. `CameraViewModel.statusMessage` and
+`CaptureJobMetrics.failureReason` must use this fixed vocabulary instead of raw
+`localizedDescription` values that may include capture IDs, manifest IDs, URLs,
+paths, App Attest key IDs, proofs, or associated error reasons.
+
+## Release FOV Resolution
+
+```mermaid
+flowchart LR
+    Chip["FOV chip\n13/24/48/77mm"] --> Matrix["CapabilityMatrix"]
+    Matrix --> RGB["RGB CameraProfile"]
+    Matrix --> Depth["compatible DepthProfile"]
+    Matrix --> Zoom["raw videoZoomFactor"]
+    RGB --> Plan["CaptureSourcePlan"]
+    Depth --> Plan
+    Zoom --> Plan
+    Plan --> Session["CaptureSessionController"]
+
+    click Matrix "Planning/CapabilityMatrix.swift"
+    click RGB "Planning/CapabilityModels.swift"
+    click Depth "Planning/RGBDepthCompatibilityMatrix.swift"
+    click Zoom "Planning/ZoomCapabilityResolver.swift"
+    click Plan "Planning/CapturePlan.swift"
 ```
 
-[View in Source](x-source-tag://CameraCaptureRootView)
+Release selection starts with `FocalLengthOption`, not a raw camera device.
+Each option already carries the RGB source, depth source, and raw depth-safe
+zoom factor produced by Planning. This keeps nonstandard mappings such as
+`48mm -> raw 4.0` alive until Runtime applies `videoZoomFactor`.
 
-## Select a Release FOV
+## Photo Capture Sequence
 
-Release selection begins with a `FocalLengthOption`, not a raw camera device.
-Each option already contains the RGB source, depth source, and raw depth-safe
-zoom that Planning resolved.
+```mermaid
+sequenceDiagram
+    participant View as CameraView
+    participant VM as CameraViewModel
+    participant Controller as CaptureSessionController
+    participant Provider as AVFoundationSingleCamPhotoProvider
+    participant Pipeline as CapturePipeline
+    participant Packager as EmbeddedPhotoPackager
+    participant Writer as TAPPendingCaptureArtifactWriter
 
-```swift
-selectedRGBSourceID = option.rgbSource.id
-selectedZoomID = option.zoom.id
-selectedFocalLengthOptionID = option.id
-await configureCurrentSelection()
+    View->>VM: capture()
+    VM->>Controller: configure(plan)
+    Controller->>Controller: Reuse graph or rebuild SingleCam graph
+    Controller-->>VM: CaptureSourceContext
+    VM->>Pipeline: run(job, context)
+    Pipeline->>Provider: capturePhotoDepth()
+    Provider-->>Pipeline: AVCapturePhoto + depthData
+    Pipeline->>Packager: package(CapturePackage)
+    Packager-->>Pipeline: unsigned HEIC/JPG + TAP manifest
+    Pipeline->>Writer: write(artifact)
+    Writer-->>Pipeline: pending capture ID
 ```
 
-[View in Source](x-source-tag://SelectReleaseFOV)
+The same `AVCapturePhotoOutput` settings factory is used for prewarm and
+capture. The session controller is the only type that mutates
+`AVCaptureSession`; FOV-only changes reuse the current graph when the selected
+device, format, output, depth state, and plan are compatible.
 
-`configureCurrentSelection()` is the bridge from UI state into a runtime plan.
-The important detail is that it passes `preferredZoomFactor`, the real raw
-`videoZoomFactor`, into Planning. This preserves nonstandard FOV mappings such
-as `48mm -> raw 4.0`.
+## TAP Video Sequence
 
-```swift
-let plan = CaptureSourcePlan.make(
-    rgbSource: rgbSource,
-    depthSource: depthProfile,
-    selectionMode: depthSelectionMode,
-    selectedZoomID: selectedZoomID,
-    selectedZoomFactor: preferredZoomFactor,
-    cropRectNormalized: previewCropRectNormalized
-)
+```mermaid
+sequenceDiagram
+    participant View as CameraViewModel
+    participant Session as CaptureSessionController
+    participant Recorder as TAPVideoRecorder
+    participant Writer as TAPVideoWriterSession
+    participant Encoder as TAPVideoDepthMetadataEncoder
+    participant Store as TAPPendingCaptureStore
+
+    View->>Session: prepare/start TAP Video
+    Session->>Recorder: synchronized RGB/audio/depth callbacks
+    Recorder->>Writer: append media samples
+    Recorder->>Encoder: pack/compress/append one depth frame
+    View->>Recorder: stop
+    Recorder->>Writer: finalize MP4
+    Recorder->>Recorder: inspect tracks + assemble manifest
+    Recorder->>Store: ingest pending TAP Video workspace
 ```
 
-[View in Source](x-source-tag://ConfigureCurrentSelection)
+The recorder keeps callback routing, writer input ownership, depth encoding,
+metrics, manifest assembly, and postflight inspection in separate types. A
+single `TAPMediaTrackFactsReader` is shared by recorder postflight, validation,
+and debug fixtures. The validator streams depth metadata with bounded one-frame
+memory before the pending queue can sign or export the movie.
 
-## Discover Camera Capabilities
+## Output Policy Handoff
 
-Planning begins by discovering AVFoundation devices and converting them into
-stable value models. This keeps SwiftUI from duplicating device-type checks.
+The format and quality boundary crosses layers in this order:
 
-```swift
-let discoveredSources = allDevices
-    .map { makeCameraProfile(device: $0, depthCandidates: depthCandidates) }
-    .sorted { lhs, rhs in
-        if lhs.fixedOrder == rhs.fixedOrder {
-            return lhs.displayName < rhs.displayName
-        }
-        return lhs.fixedOrder < rhs.fixedOrder
-    }
+1. Future UI or product policy should express the choice as
+   `CaptureOutputProfileSelectionIntent`, then resolve it against
+   `CaptureOutputProfileCatalog.release`.
+2. `DepthAnalyzerSettingsView` stores `CameraOutputFormatPreference` as HEIC or
+   JPG. `CameraViewModel.configureCurrentSelection()` resolves that preference
+   through `CaptureOutputProfileSelectionIntent` before Runtime sees it.
+3. `SessionConfigurationRequest` carries a concrete reviewed profile from
+   `CaptureOutputProfileCatalog.release`. The default remains
+   `CaptureOutputProfile.releasePhotoDepthHEIC`; JPG uses
+   `CaptureOutputProfile.releasePhotoDepthJPEG`.
+4. `CaptureSessionController` resolves that raw policy once into
+   `ResolvedCaptureOutputProfile`, configures `AVCapturePhotoOutput` from that
+   resolved request, and stores it in `SessionConfigurationResult`.
+5. `SingleCamPhotoSettingsFactory` receives the configured
+   `ResolvedCaptureOutputProfile` for both prewarm and per-shot
+   `AVCapturePhotoSettings`.
+6. `CapturePackageBuilder`, `EmbeddedPhotoPackager`, and
+   `TAPDepthManifestBuilder` read the same resolved output facts instead of
+   reinterpreting the raw profile during packaging.
+7. Output builds an unsigned embedded HEIC or JPG TAP depth photo file; TAP
+   Library later signs, validates, and exports it. Output does not export to
+   Photos directly.
+
+This is still not a broad image-quality feature. The visible photo format choice is
+limited to the two reviewed TAP depth photo profiles. Live Photo is a narrow
+extension on top of those profiles: when the active photo output supports it,
+the app captures one paired MOV resource and signs it through the v2/v3 Live
+Photo contract. TAP Video uses its own reviewed movie contract. Future RAW,
+arbitrary non-TAP video formats, 24MP deferred delivery, or new
+quality-level work should add a new profile/catalog entry plus validation,
+manifest, packaging, signing, reader, and test evidence before UI can request
+it.
+
+## Packaging Handoff
+
+```mermaid
+flowchart TD
+    Photo["AVCapturePhoto"] --> Package["CapturePackage"]
+    Package --> Manifest["TAPDepthManifestBuilder"]
+    Package --> BasePhoto["fileDataRepresentation(with:)"]
+    Manifest --> Provenance["TAPCaptureProvenanceWriter.writeManifest"]
+    BasePhoto --> Provenance
+    Provenance --> Writer["TAPDepthPhotoFileWriter"]
+    Writer --> Unsigned["Unsigned HEIC/JPG with TAP XMP manifest"]
+    Unsigned --> Store["TAPPendingCaptureStore"]
+
+    click Package "Output/CapturePackage.swift"
+    click Manifest "Output/TAPDepthManifestBuilder.swift"
+    click Provenance "Output/TAPCaptureProvenanceWriter.swift"
+    click Writer "Output/TAPDepthHEICWriter.swift"
+    click Store "../TAPLibrary/TAPPendingCaptureStore.swift"
 ```
 
-[View in Source](x-source-tag://DiscoverCameraCapabilities)
+`EmbeddedPhotoPackager` writes `proofs: []` through
+`TAPCaptureProvenanceWriter.writeManifest`. App Attest digesting, proof
+injection, and final Photos export are retried by
+[TAPPendingCaptureProcessor](../TAPLibrary/TAPPendingCaptureProcessor.swift),
+not by the shutter-time capture job. The pending signing path calls the same
+provenance writer in throwing mode so export cannot silently fall back to an
+unsigned photo file.
 
-## Build Release FOV Options
-
-`CapabilityMatrix` builds Release FOV chips by asking for a compatible depth
-source and depth-safe zoom for each target FOV. Release only shows options that
-can produce embedded photo depth.
-
-```swift
-let requestedZoomFactor = FocalLengthLabelResolver.releaseVideoZoomFactor(
-    for: rgbSource,
-    targetEquivalentMillimeters: targetFOV,
-    formatSelection: seedDepthSource?.formatSelection
-)
-let depthSource = bestCompatibleDepthProfile(
-    for: rgbSource,
-    preferredZoomFactor: requestedZoomFactor
-)
-```
-
-[View in Source](x-source-tag://BuildReleaseFOVOptions)
-
-## Validate RGB and Depth Pairing
-
-Compatibility is deliberately conservative. A depth row is compatible when it
-resolves to the same `AVCaptureDevice` as the RGB source, or to an Apple virtual
-device that contains that RGB source as a constituent.
-
-```swift
-if candidate.device.uniqueID == rgbSource.device.uniqueID
-    || candidate.device.containsConstituent(rgbSource.device) {
-    return Result(
-        status: .compatible,
-        reason: nil,
-        resolvedDevice: candidate.device,
-        formatSelection: formatSelection
-    )
-}
-```
-
-[View in Source](x-source-tag://EvaluateRGBDepthCompatibility)
-
-## Resolve Depth-Safe Zoom
-
-Zoom is format data, not a hardcoded lens rule. `ZoomCapabilityResolver` reads
-`supportedVideoZoomRangesForDepthDataDelivery` from the active candidate format
-and converts visible zoom chips into raw `videoZoomFactor` values relative to
-the 24mm Wide FOV baseline.
-
-```swift
-var profiles = CameraCapabilityResolver.candidateZoomFactors.map { displayZoomFactor in
-    let rawZoomFactor = FocalLengthLabelResolver.rawVideoZoomFactor(
-        for: rgbSource,
-        displayZoomFactor: displayZoomFactor,
-        formatSelection: depthProfile?.formatSelection
-    )
-    return CameraCapabilityResolver.makeZoomProfile(
-        zoom: rawZoomFactor,
-        displayZoomFactor: displayZoomFactor,
-        minimumZoom: minimumZoom,
-        maximumZoom: maximumZoom,
-        depthDeliveryRanges: depthRanges,
-        allowsZoomOutsideDepthDeliveryRanges: allowsOutsideDepthRanges,
-        requiresDepthSafeZoom: requiresDepthSafeZoom
-    )
-}
-```
-
-[View in Source](x-source-tag://ResolveDepthSafeZoom)
-
-## Make the Capture Plan
-
-`CaptureSourcePlan.make` is the last Planning step. It converts selected UI
-state into a `CaptureSourcePlan`, which is the only shape Runtime is allowed to
-execute.
-
-```swift
-let selectedZoom = selectedZoomID.flatMap { id in
-    zoomCapability.zoomProfiles.first(where: { $0.id == id })
-}
-?? selectedZoomFactor.flatMap { zoom in
-    zoomCapability.zoomProfiles.first(where: { $0.matchesRawVideoZoomFactor(zoom) })
-}
-?? zoomCapability.zoomProfiles.first(where: \.isEnabled)
-```
-
-[View in Source](x-source-tag://MakeCaptureSourcePlan)
-
-## Configure the SingleCam Session
-
-`CaptureSessionController` is the only type that mutates `AVCaptureSession`.
-When the current graph already matches the requested device, format, output, and
-depth state, the controller reuses the graph and applies only the raw zoom. This
-is what prevents FOV-only changes from tearing down the virtual-camera input.
-
-```swift
-if canReuseCurrentGraph(
-    session: session,
-    photoOutput: photoOutput,
-    plan: plan
-) {
-    try applyZoom(zoom, to: plan.resolvedCaptureDevice)
-    return makeConfigurationResult(
-        plan: plan,
-        photoOutput: photoOutput,
-        request: request
-    )
-}
-```
-
-[View in Source](x-source-tag://ConfigureSingleCamSession)
-
-The reuse check compares the active graph to the requested plan, including
-photo preset, input device, compatible visual format signature, output presence,
-and depth-delivery state.
-
-[View in Source](x-source-tag://ReuseSingleCamGraph)
-
-After each successful configuration, Runtime prewarms `AVCapturePhotoOutput`
-with the same HEIC + depth photo settings used for capture. This asks
-AVFoundation to allocate still-photo resources before the user presses the
-shutter, while preserving the same SingleCam path if preparation is incomplete.
-
-## Capture the Photo and Depth Data
-
-The provider captures through `AVCapturePhotoOutput`. It doesn't configure the
-session; it only starts the photo request and forwards the produced
-`AVCapturePhoto`. The same settings factory is used for prewarm and capture so
-the prepared path matches the real depth HEIC request.
-
-```swift
-settings.isDepthDataDeliveryEnabled = true
-settings.embedsDepthDataInPhoto = true
-settings.isDepthDataFiltered = true
-settings.photoQualityPrioritization = .quality
-```
-
-[View in Source](x-source-tag://CaptureSingleCamPhotoDepth)
-
-## Run the Async Pipeline
-
-On shutter touch-down, the view model queues a foreground capture-write job,
-uses any recent cached location metadata, starts a background location refresh
-for future captures, and runs the pipeline. The pipeline captures, builds the
-logical package, packages an unsigned HEIC, stages it in the TAP Library pending
-store, and records metrics. The preview remains attached to the running session
-while this happens.
-
-```swift
-let captureResult = try await photoDepthProvider.capturePhotoDepth(job: job, context: context)
-let capturePackage = try CapturePackageBuilder.makePackage(
-    job: job,
-    context: context,
-    captureResult: captureResult
-)
-let artifact = try await packager.package(
-    capturePackage,
-    assertionSigner: nil
-)
-let writeResult = try await writer.write(artifact)
-```
-
-[View in Source](x-source-tag://RunSingleCamCapturePipeline)
-
-The TAP Library entry point is disabled only while this foreground
-capture-write queue is nonempty. Once a capture has been written into the
-pending store, the user can enter TAP Library even if that item is still
-`pending`, `waitingNetwork`, `signing`, `signed`, or `exporting`.
-
-## Build the Logical Package
-
-`CapturePackage` is the logical capture result. It keeps source, pairing, zoom,
-crop, photo, and settings facts together, but it doesn't decide how bytes are
-written.
-
-```swift
-guard captureResult.photo.depthData != nil else {
-    throw TAPDepthCaptureError.missingDepthData
-}
-```
-
-[View in Source](x-source-tag://BuildCapturePackage)
-
-## Package an Embedded HEIC
-
-`EmbeddedPhotoPackager` is the Release-safe physical packaging strategy. It uses
-Apple's `fileDataRepresentation(with:)`, builds the TAP manifest with
-`proofs: []`, and injects that unsigned manifest into the HEIC XMP metadata
-before the file enters the pending store.
-
-```swift
-let manifest = try TAPDepthManifestBuilder.makeManifest(capturePackage: capturePackage)
-guard let baseHEICData = capturePackage.photo.fileDataRepresentation(with: customizer) else {
-    throw TAPDepthCaptureError.unableToCreatePhotoData
-}
-let finalHEICData = try TAPDepthHEICWriter.injectingManifest(manifest, into: baseHEICData)
-```
-
-[View in Source](x-source-tag://PackageEmbeddedDepthHEIC)
-
-The proof is added later by `TAPPendingCaptureProcessor`. It reads the staged
-HEIC, recomputes the RGB/depth/metadata digest, creates a detached App Attest
-capture signature, injects `manifest.proofs[0]`, then exports the signed HEIC
-into the `TAPCamDepth` Photos album. See
-[PACKAGING.md](Documentation/PACKAGING.md) for the verification format. RGB and
-depth digest bytes are streamed into CryptoKit SHA-256 to avoid extra full-image
-`Data` copies. A possible future optimization is to compare
-`AVCapturePhoto.cgImageRepresentation()` against the saved-HEIC decode path,
-but the production signer keeps hashing from the flattened base HEIC so
-third-party verification can reproduce the RGB digest from the saved artifact.
-Debug metrics split this packaging work into manifest, base HEIC, XMP
-injection, and XMP verification timings. Digest and App Attest work now belongs
-to the async pending processor, not the shutter-time capture-write job.
-
-## Build and Inject the TAP Manifest
-
-The manifest builder maps planning/runtime facts and Apple photo metadata into
-the published TAP manifest schema. The schema keys and enum raw values are the
-external contract.
-
-```swift
-let payload = TAPDepthManifest.Payload(
-    id: captureID,
-    capturedAt: TAPDateFormatting.iso8601.string(from: context.capturedAt),
-    sessionMode: selectionContext.sessionMode,
-    pairingMode: selectionContext.pairingMode,
-    alignmentStatus: selectionContext.alignmentStatus,
-    sourceAPIs: .avFoundationPhotoDepth,
-    capture: TAPDepthManifest.Capture(
-        resolvedSettingsUniqueID: photo.resolvedSettings.uniqueID,
-        requestedCodec: capturePackage.requestedCodec.rawValue,
-        depthDataDeliveryEnabled: true,
-        embedsDepthDataInPhoto: true,
-        depthDataFiltered: capturePackage.depthDataFiltered,
-        photoQualityPrioritization: capturePackage.photoQualityPrioritization.tapDescription
-    ),
-    ...
-)
-```
-
-[View in Source](x-source-tag://BuildTAPDepthManifest)
-
-The HEIC writer copies the original image source into a destination while
-merging XMP metadata. That avoids a pixel decode/re-encode step and preserves
-Apple auxiliary depth/disparity attachments.
-
-```swift
-guard CGImageDestinationCopyImageSource(destination, source, options as CFDictionary, &copyError) else {
-    let reason = copyError?.takeRetainedValue().localizedDescription ?? "unknown image copy error"
-    throw TAPDepthCaptureError.imageCopyFailed(reason)
-}
-```
-
-[View in Source](x-source-tag://InjectTAPManifestIntoHEIC)
-
-## Stage Pending and Export to Photos
-
-The writer receives a completed `PackagedCaptureArtifact`; it doesn't inspect
-hardware, choose pairing, or decide packaging. The camera path uses
-`TAPPendingCaptureArtifactWriter`, which saves the unsigned HEIC and thumbnail
-in the app-private pending store and returns a pending capture identifier.
-
-```swift
-let record = try await store.ingest(artifact)
-```
-
-[View in Source](x-source-tag://WritePackagedArtifactToPendingStore)
-
-The async pending processor is responsible for App Attest signing and the final
-`PhotoLibraryWriter.saveDepthHEIC(...)` call. The pending store keeps the small
-thumbnail and exported asset identifier after cleanup so TAP Library can list
-TAPCam-created assets even when Photos is in limited-library mode.
-
-## Debug Override
+## Debug Path
 
 Debug depth selection is an override of the same SingleCam path. Selecting a
 Debug depth-capable device makes that device the preview, RGB photo, and
-`AVCapturePhoto.depthData` source.
+`AVCapturePhoto.depthData` source. It does not enable a second depth pipeline.
 
-```swift
-isDebugDepthOverrideActive = true
-depthSelectionMode = .debugDepthOverride
-selectedRGBSourceID = rgbSource.id
-selectedZoomID = nil
-selectedFocalLengthOptionID = nil
-```
+Start with [UI/CameraViewModel+Debug.swift](UI/CameraViewModel+Debug.swift).
 
-[View in Source](x-source-tag://SelectDebugDepthDevice)
+## Important Bug History
 
-## Bug Notes
-
-These two regressions are worth reading because they explain why the current
-Planning and Runtime boundaries are shaped so tightly.
-
-### PR #3: 48mm Fell Back to the 24mm View
-
-[Pull request #3](https://github.com/TAP-NAP/TAPCamDemo/pull/3) fixed a mapping
-loss between semantic FOV labels and raw `videoZoomFactor` values.
-
-On the iPhone 15 Pro depth-capable virtual-camera format used during debugging,
-the depth-safe raw zoom range started at `2.0`, not `1.0`. That means the Release
-chips were semantic labels over raw zoom values:
-
-- `24mm -> raw 2.0`
-- `48mm -> raw 4.0`
-- `77mm -> raw 6.417`
-
-The broken path calculated the correct `48mm` option, but only passed a generic
-zoom ID into Planning. When that ID wasn't present in the fixed zoom catalog,
-Planning fell back to the first enabled depth-safe zoom, which was raw `2.0`.
-The UI said `48mm`, while Runtime applied the `24mm` view.
-
-The fix is the current `selectedZoomFactor` thread:
-
-- UI passes the real raw zoom from `FocalLengthOption`.
-  [View in Source](x-source-tag://ConfigureCurrentSelection)
-- `ZoomCapabilityResolver` keeps visible zoom labels relative to the 24mm
-  baseline while preserving the raw zoom that AVFoundation needs.
-  [View in Source](x-source-tag://ResolveDepthSafeZoom)
-- `CaptureSourcePlan.make` uses the raw value as a first-class fallback when the
-  selected zoom ID does not resolve.
-  [View in Source](x-source-tag://MakeCaptureSourcePlan)
-
-### PR #4: 77mm Briefly Flashed the 24mm View
-
-[Pull request #4](https://github.com/TAP-NAP/TAPCamDemo/pull/4) fixed preview
-flicker when switching into or out of `77mm`.
-
-The symptom was a short flash of the `24mm` view before the preview settled on
-`77mm`. The root cause was session graph churn: a FOV-only change could remove
-and re-add the virtual camera input even though the selected device, visual
-format, depth state, and output were already compatible. During that graph
-transition, AVFoundation could briefly present the virtual device's wide
-baseline before the requested raw zoom landed.
-
-The fix is the current graph-reuse path:
-
-- `CaptureSessionController` remains the only type that mutates
-  `AVCaptureSession`.
-  [View in Source](x-source-tag://ConfigureSingleCamSession)
-- If the current graph already matches the requested SingleCam plan, Runtime
-  reuses the graph and applies only the raw `videoZoomFactor`.
-  [View in Source](x-source-tag://ReuseSingleCamGraph)
-- Runtime still applies zoom around configuration commits so virtual-device
-  format changes cannot silently reset the requested view.
-  [View in Source](x-source-tag://ConfigureSingleCamSession)
-
-## Documentation Map
-
-The files under `Documentation/` are internal engineering notes. Use this order
-when you need a deeper read than the code guide above:
-
-| Document | Read it when you need to understand |
+| Regression | Current protection |
 | --- | --- |
-| [ARCHITECTURE.md](Documentation/ARCHITECTURE.md) | The module layout, dependency direction, and `UI -> Planning -> Runtime -> Output -> Support` ownership. |
-| [PIPELINE.md](Documentation/PIPELINE.md) | The one executable capture path: `AVCaptureSession + AVCapturePhotoOutput`. |
-| [APPLE_DEPTH_LIMITATIONS.md](Documentation/APPLE_DEPTH_LIMITATIONS.md) | Apple's depth-device, format, calibration, and FOV constraints. |
-| [RGB_DEPTH_PAIRING.md](Documentation/RGB_DEPTH_PAIRING.md) | Why Release only exposes Apple-paired photo-depth choices and how unsupported pairings are rejected. |
-| [ZOOM.md](Documentation/ZOOM.md) | Raw `videoZoomFactor`, semantic FOV labels, and depth-safe zoom ranges. |
-| [CROP.md](Documentation/CROP.md) | Preview crop metadata versus destructive final crop. |
-| [CAPTURE_SOURCES.md](Documentation/CAPTURE_SOURCES.md) | Why the demo has a single photo-depth provider seam instead of RGB/Depth/RAW provider stacks. |
-| [PACKAGING.md](Documentation/PACKAGING.md) | The difference between logical packages, embedded HEIC packaging, pending storage, async signing, and Photos export. |
-| [DEBUGGING.md](Documentation/DEBUGGING.md) | Debug panels, metrics, queue state, and what remains after temporary FOV diagnostics were removed. |
+| `48mm` fell back to the `24mm` view | UI passes raw `selectedZoomFactor`; Planning preserves it through [ZoomCapabilityResolver.swift](Planning/ZoomCapabilityResolver.swift) and [CapturePlan.swift](Planning/CapturePlan.swift). |
+| `77mm` briefly flashed the `24mm` view | [CaptureSessionController.swift](Runtime/CaptureSessionController.swift) reuses a compatible graph and only moves raw zoom for FOV-only changes. |
+
+## Internal Documents
+
+| Document | Read it for |
+| --- | --- |
+| [Documentation/ARCHITECTURE.md](Documentation/ARCHITECTURE.md) | Dependency direction and module boundaries. |
+| [Documentation/PIPELINE.md](Documentation/PIPELINE.md) | The one executable `AVCaptureSession + AVCapturePhotoOutput` path. |
+| [Documentation/APPLE_DEPTH_LIMITATIONS.md](Documentation/APPLE_DEPTH_LIMITATIONS.md) | Apple depth-device, format, calibration, and FOV constraints. |
+| [Documentation/RGB_DEPTH_PAIRING.md](Documentation/RGB_DEPTH_PAIRING.md) | Why Release only exposes Apple-paired photo-depth choices. |
+| [Documentation/ZOOM.md](Documentation/ZOOM.md) | Raw `videoZoomFactor`, semantic FOV labels, and depth-safe zoom ranges. |
+| [Documentation/CROP.md](Documentation/CROP.md) | Preview crop metadata versus destructive final crop. |
+| [Documentation/CAPTURE_SOURCES.md](Documentation/CAPTURE_SOURCES.md) | Why this app has one photo-depth provider path. |
+| [Documentation/PACKAGING.md](Documentation/PACKAGING.md) | Embedded TAP depth photo packaging, pending storage, signing, and export. |
+| [Documentation/DEBUGGING.md](Documentation/DEBUGGING.md) | Debug panels, metrics, and queue state. |

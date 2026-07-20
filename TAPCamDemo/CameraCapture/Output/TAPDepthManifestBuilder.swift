@@ -33,10 +33,7 @@ nonisolated enum TAPDepthManifestBuilder {
         let device = context.sessionConfiguration.device
         let selectionContext = context.sessionConfiguration.selectionContext
         let plan = context.sessionConfiguration.capturePlan
-
-        guard let depthData = photo.depthData else {
-            throw TAPDepthCaptureError.missingDepthData
-        }
+        let resolvedOutput = capturePackage.resolvedOutput
 
         let captureID = UUID().uuidString
         let resolvedDimensions = photo.resolvedSettings.photoDimensions
@@ -49,11 +46,12 @@ nonisolated enum TAPDepthManifestBuilder {
             sourceAPIs: .avFoundationPhotoDepth,
             capture: TAPDepthManifest.Capture(
                 resolvedSettingsUniqueID: photo.resolvedSettings.uniqueID,
-                requestedCodec: capturePackage.requestedCodec.rawValue,
-                depthDataDeliveryEnabled: true,
-                embedsDepthDataInPhoto: true,
-                depthDataFiltered: capturePackage.depthDataFiltered,
-                photoQualityPrioritization: capturePackage.photoQualityPrioritization.tapDescription
+                requestedCodec: resolvedOutput.requestedCodec.rawValue,
+                depthDataDeliveryEnabled: resolvedOutput.depthDataDeliveryEnabled,
+                embedsDepthDataInPhoto: resolvedOutput.embedsDepthDataInPhoto,
+                depthDataFiltered: resolvedOutput.depthDataFiltered,
+                depthAvailability: capturePackage.depthAvailability,
+                photoQualityPrioritization: resolvedOutput.photoQualityPolicy.requested.manifestDescription
             ),
             rgbSource: makeRGBSource(selectionContext, plan: plan),
             depthSource: makeDepthSourceSelection(selectionContext),
@@ -72,13 +70,17 @@ nonisolated enum TAPDepthManifestBuilder {
                 orientation: Self.orientationDescription(from: photo.metadata),
                 metadataKeys: photo.metadata.keys.sorted()
             ),
-            depth: makeDepth(depthData: depthData, device: device),
-            alignment: TAPDepthManifest.Alignment(depthToImage: "appleAuxiliaryDepthNative"),
+            depth: makeDepth(depthData: photo.depthData, device: device),
+            alignment: makeAlignment(depthAvailability: capturePackage.depthAvailability),
             location: context.location.map(makeLocation),
-            software: .current
+            software: .current,
+            livePhoto: makeLivePhoto(capturePackage.livePhotoMovie)
         )
 
-        return TAPDepthManifest(payload: payload)
+        let schema: TAPDepthManifest.Schema = capturePackage.livePhotoMovie == nil
+            ? TAPDepthManifest.Schema()
+            : .livePhotoV2
+        return TAPDepthManifest(payload: payload, schema: schema)
     }
 
     private static func makeRGBSource(
@@ -245,14 +247,50 @@ nonisolated enum TAPDepthManifestBuilder {
         )
     }
 
-    private static func makeDepth(depthData: AVDepthData, device: AVCaptureDevice) -> TAPDepthManifest.Depth {
+    private static func makeLivePhoto(_ movie: CapturedLivePhotoMovie?) -> TAPDepthManifest.LivePhoto? {
+        guard let movie else {
+            return nil
+        }
+        return TAPDepthManifest.LivePhoto(
+            presence: "paired-video",
+            pairedVideoFilename: "paired-video.mov",
+            durationSeconds: max(0, movie.duration.seconds),
+            photoDisplayTimeSeconds: max(0, movie.photoDisplayTime.seconds),
+            width: movie.dimensions.width,
+            height: movie.dimensions.height,
+            videoCodec: movie.codec,
+            audio: movie.capturesAudio ? "captured" : "not-captured"
+        )
+    }
+
+    private static func makeDepth(depthData: AVDepthData?, device: AVCaptureDevice) -> TAPDepthManifest.Depth {
+        let source = TAPDepthSourceClassifier.source(forDeviceType: device.deviceType.rawValue, localizedName: device.localizedName)
+        guard let depthData else {
+            return TAPDepthManifest.Depth(
+                availability: .unavailable,
+                auxiliaryDataKind: "none",
+                depthDataType: "none",
+                metricUnit: "none",
+                conversionPath: "depthUnavailable",
+                width: 0,
+                height: 0,
+                pixelFormat: "none",
+                orientation: "unavailable",
+                accuracy: "unavailable",
+                quality: "unavailable",
+                isFiltered: false,
+                source: source,
+                cameraCalibration: nil
+            )
+        }
+
         let pixelBuffer = depthData.depthDataMap
         let width = CVPixelBufferGetWidth(pixelBuffer)
         let height = CVPixelBufferGetHeight(pixelBuffer)
         let auxiliaryKind = TAPDepthAuxiliaryKind(kind: depthData.depthDataType)
-        let source = TAPDepthSourceClassifier.source(forDeviceType: device.deviceType.rawValue, localizedName: device.localizedName)
 
         return TAPDepthManifest.Depth(
+            availability: .available,
             auxiliaryDataKind: auxiliaryKind.rawValue,
             depthDataType: TAPFourCharCode.string(from: depthData.depthDataType),
             metricUnit: auxiliaryKind == .depth ? "meters" : "convertDisparityToDepthMeters",
@@ -267,6 +305,15 @@ nonisolated enum TAPDepthManifestBuilder {
             source: source,
             cameraCalibration: depthData.cameraCalibrationData.map(makeCalibration)
         )
+    }
+
+    private static func makeAlignment(depthAvailability: CaptureDepthAvailability) -> TAPDepthManifest.Alignment {
+        switch depthAvailability {
+        case .available:
+            TAPDepthManifest.Alignment(depthToImage: "appleAuxiliaryDepthNative")
+        case .unavailable:
+            TAPDepthManifest.Alignment(depthToImage: "unavailable")
+        }
     }
 
     private static func makeCalibration(_ calibration: AVCameraCalibrationData) -> TAPDepthManifest.CameraCalibration {

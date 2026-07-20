@@ -10,16 +10,15 @@ import SwiftUI
 
 /// Debug-only control for exercising depth-safe zoom on one SingleCam pipeline.
 ///
-/// The chips display zoom relative to the 24mm Wide FOV baseline, while each
-/// `ZoomProfile` still carries the raw `videoZoomFactor` applied by Runtime.
+/// The chips receive display-only zoom options; `CameraView` resolves the
+/// selected token back to the `ZoomProfile` that Runtime applies.
 struct DebugZoomControlView: View {
-    let zoomProfiles: [ZoomProfile]
-    let selectedZoomID: String?
+    let zoomOptions: [CameraDebugZoomDisplayOption]
     let selectedZoomFactor: Double
     let fovLabel: String
     let sliderRange: ClosedRange<Double>
     let isSliderEnabled: Bool
-    let selectZoom: (ZoomProfile) -> Void
+    let selectZoom: (CameraDebugZoomDisplayOption) -> Void
     let selectZoomFactor: (Double) -> Void
 
     @State private var sliderValue: Double = 1.0
@@ -72,9 +71,9 @@ struct DebugZoomControlView: View {
              capabilities. The compact Debug control uses a slider only when the
              format exposes a real range; otherwise it presents the valid chips
              directly instead of showing both controls plus duplicated range text.
-             */
+            */
             HStack(spacing: 5) {
-                ForEach(zoomProfiles) { zoom in
+                ForEach(zoomOptions) { zoom in
                     Button {
                         selectZoom(zoom)
                     } label: {
@@ -99,25 +98,18 @@ struct DebugZoomControlView: View {
             && sliderRange.lowerBound < sliderRange.upperBound
     }
 
-    private func background(for zoom: ZoomProfile) -> Color {
+    private func background(for zoom: CameraDebugZoomDisplayOption) -> Color {
         if !zoom.isEnabled {
             return .yellow.opacity(0.08)
         }
-        return isSelected(zoom) ? .yellow.opacity(0.92) : .black.opacity(0.30)
+        return zoom.isSelected ? .yellow.opacity(0.92) : .black.opacity(0.30)
     }
 
-    private func foreground(for zoom: ZoomProfile) -> Color {
+    private func foreground(for zoom: CameraDebugZoomDisplayOption) -> Color {
         if !zoom.isEnabled {
             return .white.opacity(0.32)
         }
-        return isSelected(zoom) ? .black : .white
-    }
-
-    private func isSelected(_ zoom: ZoomProfile) -> Bool {
-        if let selectedZoomID {
-            return zoom.id == selectedZoomID
-        }
-        return zoom.matchesRawVideoZoomFactor(selectedZoomFactor)
+        return zoom.isSelected ? .black : .white
     }
 
     private func clampedSliderValue(_ value: Double) -> Double {

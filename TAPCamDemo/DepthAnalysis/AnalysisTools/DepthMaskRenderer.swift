@@ -29,6 +29,7 @@ nonisolated enum TAPDepthMaskRenderer {
     static let boundaryColor = TAPRGBAColor(red: 255, green: 214, blue: 10, alpha: 230)
 
     static func validMask(for depthMap: TAPMetricDepthMap) throws -> TAPDepthMaskVisualization {
+        _ = try TAPDepthAnalysisInputValidation.validatedDepthPixelCount(for: depthMap)
         let pixels = overlayPixels(for: depthMap)
         let validSampleCount = depthMap.samples.filter { $0.isFinite && $0 > 0 }.count
         let totalSampleCount = depthMap.samples.count
@@ -47,6 +48,10 @@ nonisolated enum TAPDepthMaskRenderer {
     }
 
     static func overlayPixels(for depthMap: TAPMetricDepthMap) -> [UInt8] {
+        guard TAPDepthAnalysisInputValidation.isValidDepthMapLayout(depthMap) else {
+            return []
+        }
+
         var pixels: [UInt8] = []
         pixels.reserveCapacity(depthMap.samples.count * 4)
 

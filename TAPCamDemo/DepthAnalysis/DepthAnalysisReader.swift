@@ -11,14 +11,14 @@ import CoreVideo
 import Foundation
 import ImageIO
 
-/// Reads a TAP Depth HEIC or any Apple depth HEIC into analysis-ready objects.
+/// Reads a TAP depth HEIC/JPG into analysis-ready objects.
 ///
 /// This type belongs to the analysis module: it does not know about live camera
 /// configuration, lens selection, or UI state. It accepts final file bytes and
 /// reconstructs everything from the persisted image container.
 ///
 /// Principle:
-/// - RGB pixels come from the primary HEIC image item via ImageIO.
+/// - RGB pixels come from the primary image item via ImageIO.
 /// - Depth pixels come from Apple's auxiliary depth/disparity attachment and
 ///   are rebuilt as `AVDepthData`.
 /// - Disparity is normalized into metric depth with
@@ -32,7 +32,7 @@ import ImageIO
 ///
 /// Data dependencies:
 /// - `CGImageSourceCreateImageAtIndex` for the visible RGB image.
-/// - `CGImageSourceCopyAuxiliaryDataInfoAtIndex` inside `TAPDepthHEICReader`
+/// - `CGImageSourceCopyAuxiliaryDataInfoAtIndex` inside `TAPDepthPhotoFileReader`
 ///   for `kCGImageAuxiliaryDataTypeDepth` / `kCGImageAuxiliaryDataTypeDisparity`.
 /// - `AVDepthData.depthDataMap` for the `CVPixelBuffer` depth samples.
 /// - `AVDepthData.cameraCalibrationData`, mirrored into the TAP manifest, for
@@ -43,18 +43,29 @@ import ImageIO
 /// - https://developer.apple.com/documentation/avfoundation/avdepthdata
 /// - https://developer.apple.com/documentation/avfoundation/avcameracalibrationdata
 nonisolated enum TAPDepthMapReader {
-    static func analysisInput(from heicData: Data) throws -> TAPDepthAnalysisInput {
-        guard let source = CGImageSourceCreateWithData(heicData as CFData, nil),
-              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+    static func analysisInput(from photoData: Data) throws -> TAPDepthAnalysisInput {
+        try TAPDepthAnalysisInputValidation.validateHEICByteCount(photoData.count)
+        _ = try TAPDepthPhotoFileReader.validateSupportedContainer(photoData)
+        let manifest = try TAPDepthPhotoFileReader.decodedManifest(from: photoData)
+
+        guard let source = CGImageSourceCreateWithData(photoData as CFData, nil),
+              let primaryImageDimensions = primaryImageDimensions(from: source) else {
+            throw TAPDepthAnalysisError.missingPrimaryImage
+        }
+        try TAPDepthAnalysisInputValidation.validatePrimaryImageDimensions(
+            width: primaryImageDimensions.width,
+            height: primaryImageDimensions.height
+        )
+
+        guard let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
             throw TAPDepthAnalysisError.missingPrimaryImage
         }
         let imageOrientation = imageOrientation(from: source)
 
-        guard let depthData = try TAPDepthHEICReader.depthData(from: heicData) else {
+        guard let depthData = try TAPDepthPhotoFileReader.depthData(from: photoData) else {
             throw TAPDepthAnalysisError.missingDepthData
         }
 
-        let manifest = try? TAPDepthHEICReader.decodedManifest(from: heicData)
         let metricDepth = try metricDepthMap(from: depthData, manifest: manifest)
         let heatmap = try TAPDepthHeatmapRenderer.heatmap(for: metricDepth)
         let validMask = try TAPDepthMaskRenderer.validMask(for: metricDepth)
@@ -64,8 +75,8 @@ nonisolated enum TAPDepthMapReader {
             image: image,
             imageOrientation: imageOrientation,
             depthMap: metricDepth,
-            depthAccuracy: manifest?.payload.depth.accuracy ?? depthData.depthDataAccuracy.tapDescription,
-            depthQuality: manifest?.payload.depth.quality ?? depthData.depthDataQuality.tapDescription,
+            depthAccuracy: manifest.payload.depth.accuracy,
+            depthQuality: manifest.payload.depth.quality,
             heatmap: heatmap,
             validMask: validMask
         )
@@ -84,8 +95,18 @@ nonisolated enum TAPDepthMapReader {
         let width = CVPixelBufferGetWidth(pixelBuffer)
         let height = CVPixelBufferGetHeight(pixelBuffer)
         let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
+        let pixelCount = try TAPDepthAnalysisInputValidation.validatedDepthPixelCount(
+            width: width,
+            height: height
+        )
+        guard CVPixelBufferGetPixelFormatType(pixelBuffer) == kCVPixelFormatType_DepthFloat32,
+              width <= Int.max / MemoryLayout<Float>.stride,
+              bytesPerRow >= width * MemoryLayout<Float>.stride else {
+            throw TAPDepthAnalysisError.unreadableDepthMap
+        }
+
         var samples = [Float]()
-        samples.reserveCapacity(width * height)
+        samples.reserveCapacity(pixelCount)
 
         for y in 0..<height {
             let row = baseAddress.advanced(by: y * bytesPerRow).assumingMemoryBound(to: Float.self)
@@ -94,12 +115,26 @@ nonisolated enum TAPDepthMapReader {
             }
         }
 
+        try TAPDepthAnalysisInputValidation.validateDepthMapLayout(
+            width: width,
+            height: height,
+            sampleCount: samples.count
+        )
+        try TAPDepthAnalysisInputValidation.validateMinimumValidDepthSample(samples)
+
+        let fallbackCalibration = metricDepthData.cameraCalibrationData.map(cameraCalibration)
+        let calibration = TAPDepthAnalysisInputValidation.preferredCameraCalibration(
+            manifestCalibration: manifest?.payload.depth.cameraCalibration,
+            fallbackCalibration: fallbackCalibration,
+            depthWidth: width,
+            depthHeight: height
+        )
+
         return TAPMetricDepthMap(
             width: width,
             height: height,
             samples: samples,
-            calibration: manifest?.payload.depth.cameraCalibration
-                ?? metricDepthData.cameraCalibrationData.map(cameraCalibration)
+            calibration: calibration
         )
     }
 
@@ -126,6 +161,15 @@ nonisolated enum TAPDepthMapReader {
                 extrinsic.columns.3.x, extrinsic.columns.3.y, extrinsic.columns.3.z
             ]
         )
+    }
+
+    private static func primaryImageDimensions(from source: CGImageSource) -> (width: Int, height: Int)? {
+        guard let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = integerValue(from: properties[kCGImagePropertyPixelWidth]),
+              let height = integerValue(from: properties[kCGImagePropertyPixelHeight]) else {
+            return nil
+        }
+        return (width, height)
     }
 
     private static func imageOrientation(from source: CGImageSource) -> CGImagePropertyOrientation {
@@ -156,6 +200,27 @@ nonisolated enum TAPDepthMapReader {
             return UInt32(exactly: value)
         case let value as NSNumber:
             return UInt32(exactly: value.int64Value)
+        default:
+            return nil
+        }
+    }
+
+    private static func integerValue(from value: Any?) -> Int? {
+        switch value {
+        case let value as Int:
+            return value
+        case let value as Int32:
+            return Int(value)
+        case let value as Int64:
+            return Int(exactly: value)
+        case let value as UInt:
+            return Int(exactly: value)
+        case let value as UInt32:
+            return Int(exactly: value)
+        case let value as UInt64:
+            return Int(exactly: value)
+        case let value as NSNumber:
+            return Int(exactly: value.int64Value)
         default:
             return nil
         }

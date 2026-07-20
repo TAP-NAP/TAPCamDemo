@@ -87,6 +87,9 @@ nonisolated final class CapturePipeline: @unchecked Sendable {
         do {
             let captureStart = Date()
             let captureResult = try await photoDepthProvider.capturePhotoDepth(job: job, context: context)
+            defer {
+                captureResult.livePhotoMovie?.removeTemporaryFile()
+            }
             captureDuration = Date().timeIntervalSince(captureStart)
 
             let packageBuildStart = Date()
@@ -138,7 +141,7 @@ nonisolated final class CapturePipeline: @unchecked Sendable {
                 queueWaitDuration: queueWaitDuration,
                 pendingJobCount: pendingJobCount,
                 status: .failed,
-                failureReason: error.localizedDescription
+                failureReason: CameraCaptureStatusPresentation.failureReason(for: error)
             ))
 
             return .failure(error)

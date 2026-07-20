@@ -3,121 +3,77 @@
 //  TAPCamDemo
 //
 
-@preconcurrency import CoreLocation
-@preconcurrency import ImageIO
 import Foundation
-import UIKit
+import OSLog
 
-nonisolated extension Notification.Name {
-    static let tapLibraryDidChange = Notification.Name("tapLibraryDidChange")
-}
-
-nonisolated enum TAPPendingCaptureStatus: String, Codable, Equatable, Sendable {
-    case pending
-    case waitingNetwork
-    case signing
-    case signed
-    case exporting
-    case exported
-    case failedRetryable
-}
-
-nonisolated struct TAPPendingCaptureLocation: Codable, Equatable, Sendable {
-    let latitude: Double
-    let longitude: Double
-    let altitude: Double
-    let horizontalAccuracy: Double
-    let verticalAccuracy: Double
-    let timestamp: Date
-
-    init(_ location: CLLocation) {
-        self.latitude = location.coordinate.latitude
-        self.longitude = location.coordinate.longitude
-        self.altitude = location.altitude
-        self.horizontalAccuracy = location.horizontalAccuracy
-        self.verticalAccuracy = location.verticalAccuracy
-        self.timestamp = location.timestamp
-    }
-
-    var clLocation: CLLocation {
-        CLLocation(
-            coordinate: CLLocationCoordinate2D(latitude: latitude, longitude: longitude),
-            altitude: altitude,
-            horizontalAccuracy: horizontalAccuracy,
-            verticalAccuracy: verticalAccuracy,
-            timestamp: timestamp
-        )
-    }
-}
-
-nonisolated struct TAPPendingCaptureRecord: Codable, Equatable, Identifiable, Sendable {
-    let captureID: String
-    let packageID: UUID
-    let capturedAt: Date
-    let createdAt: Date
-    var updatedAt: Date
-    var status: TAPPendingCaptureStatus
-    var unsignedHEICFilename: String?
-    var signedHEICFilename: String?
-    var thumbnailFilename: String?
-    var assetLocalIdentifier: String?
-    var failureReason: String?
-    var retryCount: Int
-    var location: TAPPendingCaptureLocation?
-
-    var id: String {
-        captureID
-    }
-
-    var isVisiblePendingItem: Bool {
-        status != .exported
-    }
-}
-
-/// App-private staging store for unsigned/signed TAP depth HEIC files.
+/// App-private staging store for unsigned/signed TAP depth photo files.
 ///
-/// This store is intentionally HEIC-only for this implementation slice. Future
-/// multi-format resource bundles should be designed separately; see the P1 TODO
-/// in `PACKAGING.md`.
+/// Each pending bundle stores one fixed container chosen at capture time. HEIC
+/// and JPG share the same queue semantics; only their artifact filenames and
+/// Photos UTType differ.
 actor TAPPendingCaptureStore {
     static let shared = TAPPendingCaptureStore()
 
-    private static let recordsDirectoryName = "Pending"
-    private static let recordFilename = "bundle.json"
-    private static let unsignedHEICFilename = "unsigned.heic"
-    private static let signedHEICFilename = "signed.heic"
-    private static let thumbnailFilename = "thumbnail.jpg"
+    private let storage: TAPPendingCaptureBundleStorage
+    private var videoWorkspaces: TAPPendingVideoWorkspaceCoordinator
+    private let maintenance: TAPPendingCaptureMaintenance
+    private let lockedCaptureImporter: TAPPendingLockedCaptureImporter
 
-    private let rootURL: URL
-    private let fileManager = FileManager.default
+    init(
+        rootURL: URL = TAPPendingCaptureRoot.defaultURL,
+        storagePolicy: TAPLocalArtifactStoragePolicy = .privatePhotoArtifact
+    ) {
+        let storage = TAPPendingCaptureBundleStorage(
+            rootURL: rootURL,
+            storagePolicy: storagePolicy
+        )
+        self.storage = storage
+        self.videoWorkspaces = TAPPendingVideoWorkspaceCoordinator(storage: storage)
+        self.maintenance = TAPPendingCaptureMaintenance(storage: storage)
+        self.lockedCaptureImporter = TAPPendingLockedCaptureImporter(storage: storage)
+    }
 
-    init(rootURL: URL = TAPPendingCaptureStore.defaultRootURL()) {
-        self.rootURL = rootURL
+    func beginVideoCaptureWorkspace(captureID: String) throws -> TAPVideoRecordingWorkspace {
+        try videoWorkspaces.begin(captureID: captureID)
+    }
+
+    func abortVideoCaptureWorkspace(captureID: String) throws {
+        try videoWorkspaces.abort(captureID: captureID)
     }
 
     func ingest(_ artifact: PackagedCaptureArtifact) throws -> TAPPendingCaptureRecord {
-        try ensureRootDirectoryExists()
+        try storage.ensureRootDirectoryExists()
 
         let captureID = artifact.manifest.payload.id
-        let finalURL = bundleURL(captureID: captureID)
-        if fileManager.fileExists(atPath: finalURL.path),
+        let finalURL = try storage.bundleURL(captureID: captureID)
+        if storage.bundleExists(at: finalURL),
            let existing = try? readRecord(captureID: captureID) {
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.pendingCapture.info("store ingest existing captureID=\(captureID, privacy: .private) status=\(existing.status.rawValue, privacy: .public) retryCount=\(existing.retryCount, privacy: .public)")
+            #endif
             return existing
         }
 
-        let temporaryURL = rootURL.appendingPathComponent(".tmp-\(UUID().uuidString)", isDirectory: true)
-        if fileManager.fileExists(atPath: temporaryURL.path) {
-            try fileManager.removeItem(at: temporaryURL)
-        }
-        try fileManager.createDirectory(at: temporaryURL, withIntermediateDirectories: true)
+        let temporaryURL = storage.temporaryBundleURL()
+        try storage.createFreshTemporaryBundle(at: temporaryURL)
 
-        let unsignedURL = temporaryURL.appendingPathComponent(Self.unsignedHEICFilename)
-        try artifact.photoData.write(to: unsignedURL, options: [.atomic])
+        try storage.writeUnsignedPhoto(
+            artifact.photoData,
+            fileContainer: artifact.fileContainer,
+            to: temporaryURL
+        )
+        let pairedVideoFilename: String?
+        if let livePhotoMovie = artifact.livePhotoMovie {
+            try storage.copyPairedVideo(from: livePhotoMovie.fileURL, to: temporaryURL)
+            pairedVideoFilename = TAPPendingCaptureBundlePathPolicy.pairedVideoFilename
+        } else {
+            pairedVideoFilename = nil
+        }
 
         let thumbnailFilename: String?
         if let thumbnailData = TAPPendingCaptureThumbnailRenderer.thumbnailData(from: artifact.photoData) {
-            try thumbnailData.write(to: temporaryURL.appendingPathComponent(Self.thumbnailFilename), options: [.atomic])
-            thumbnailFilename = Self.thumbnailFilename
+            try storage.writeThumbnail(thumbnailData, to: temporaryURL)
+            thumbnailFilename = TAPPendingCaptureBundlePathPolicy.thumbnailFilename
         } else {
             thumbnailFilename = nil
         }
@@ -130,29 +86,123 @@ actor TAPPendingCaptureStore {
             createdAt: now,
             updatedAt: now,
             status: .pending,
-            unsignedHEICFilename: Self.unsignedHEICFilename,
-            signedHEICFilename: nil,
+            photoFileContainer: artifact.fileContainer,
+            photoQualityLevel: artifact.photoQualityLevel,
+            captureScoreSummary: artifact.captureScoreSummary,
+            unsignedPhotoFilename: artifact.fileContainer.unsignedFilename,
+            signedPhotoFilename: nil,
+            pairedVideoFilename: pairedVideoFilename,
             thumbnailFilename: thumbnailFilename,
             assetLocalIdentifier: nil,
             failureReason: nil,
             retryCount: 0,
             location: artifact.location.map(TAPPendingCaptureLocation.init)
         )
-        try writeRecord(record, in: temporaryURL)
+        try storage.writeRecord(record, in: temporaryURL)
 
-        if fileManager.fileExists(atPath: finalURL.path) {
-            try fileManager.removeItem(at: finalURL)
-        }
-        try fileManager.moveItem(at: temporaryURL, to: finalURL)
-        try protectBundle(at: finalURL)
-        Self.postLibraryDidChange()
+        try storage.commitTemporaryBundle(at: temporaryURL, to: finalURL)
+        TAPLibraryChangeNotifier.post()
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.pendingCapture.info("store ingest created captureID=\(captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public) unsignedBytes=\(artifact.photoData.count, privacy: .public) hasThumbnail=\(thumbnailFilename != nil, privacy: .public) hasPairedVideo=\(pairedVideoFilename != nil, privacy: .public)")
+        #endif
         return record
     }
 
+    func ingestVideo(
+        _ artifact: TAPPendingVideoCaptureArtifact,
+        terminalFailureCode: TAPPendingCaptureFailureCode? = nil
+    ) throws -> TAPPendingCaptureRecord {
+        try storage.ensureRootDirectoryExists()
+
+        let captureID = artifact.captureID
+        let workspaceURL = try videoWorkspaces.workspaceURL(captureID: captureID)
+        _ = try TAPPendingVideoIngestValidator.validate(
+            artifact: artifact,
+            expectedWorkspaceURL: workspaceURL,
+            terminalFailureCode: terminalFailureCode
+        )
+        let finalURL = try storage.bundleURL(captureID: captureID)
+        if storage.bundleExists(at: finalURL),
+           let existing = try? readRecord(captureID: captureID) {
+            videoWorkspaces.discard(captureID: captureID)
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.pendingCapture.info("store video ingest existing captureID=\(captureID, privacy: .private) status=\(existing.status.rawValue, privacy: .public) retryCount=\(existing.retryCount, privacy: .public)")
+            #endif
+            return existing
+        }
+
+        let byteCount = (try? artifact.videoURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+
+        let now = Date()
+        let record = TAPPendingCaptureRecord(
+            captureID: captureID,
+            packageID: artifact.packageID,
+            capturedAt: artifact.capturedAt,
+            createdAt: now,
+            updatedAt: now,
+            status: terminalFailureCode == nil ? .pending : .failedTerminal,
+            artifactKind: .tapVideo,
+            captureScoreSummary: artifact.captureScoreSummary,
+            unsignedPhotoFilename: nil,
+            signedPhotoFilename: nil,
+            videoArtifactFilename: TAPPendingCaptureBundlePathPolicy.videoArtifactFilename,
+            videoFormatRevision: 2,
+            videoArtifactState: .unsigned,
+            posterRevision: 1,
+            exportResourceFilename: PhotoLibraryWriter.tapVideoResourceFilename(
+                packageID: artifact.packageID
+            ),
+            failureCode: terminalFailureCode,
+            pairedVideoFilename: nil,
+            thumbnailFilename: nil,
+            assetLocalIdentifier: nil,
+            failureReason: terminalFailureCode == nil
+                ? nil
+                : TAPPendingCaptureFailureReasonPresentation.persistedFailureReason(
+                    for: .terminalFailure
+                ),
+            retryCount: 0,
+            location: artifact.location
+        )
+        try storage.writeRecord(record, in: workspaceURL)
+
+        try storage.commitTemporaryBundle(at: workspaceURL, to: finalURL)
+        videoWorkspaces.didCommit(captureID: captureID)
+        TAPLibraryChangeNotifier.post()
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.pendingCapture.info("store video ingest created captureID=\(captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public) videoBytes=\(byteCount, privacy: .public) formatRevision=2")
+        #endif
+        return record
+    }
+
+    /// On a fresh launch there are no in-memory owners, so any hidden video
+    /// workspace is an interrupted recording. During the same process active
+    /// capture IDs are excluded to avoid racing the recorder.
+    @discardableResult
+    func removeStaleVideoCaptureWorkspaces() throws -> Int {
+        try videoWorkspaces.removeStaleWorkspaces()
+    }
+
+    func ingestLockedCapture(
+        _ lockedCapture: TAPPendingLockedCaptureImport
+    ) throws -> TAPPendingCaptureRecord {
+        try lockedCaptureImporter.validate(lockedCapture)
+        try storage.ensureRootDirectoryExists()
+        let captureID = lockedCapture.captureID
+        let finalURL = try storage.bundleURL(captureID: captureID)
+        if storage.bundleExists(at: finalURL),
+           let existing = try? readRecord(captureID: captureID) {
+            return existing
+        }
+        let result = try lockedCaptureImporter.ingest(lockedCapture)
+        TAPLibraryChangeNotifier.post()
+        return result.record
+    }
+
     func allRecords() throws -> [TAPPendingCaptureRecord] {
-        try ensureRootDirectoryExists()
-        return try bundleURLs().compactMap { url in
-            try? readRecord(in: url)
+        try storage.ensureRootDirectoryExists()
+        return try storage.bundleURLs().compactMap { url in
+            try? storage.readNormalizedRecord(in: url, expectedCaptureID: url.lastPathComponent)
         }
         .sorted { $0.capturedAt > $1.capturedAt }
     }
@@ -167,52 +217,136 @@ actor TAPPendingCaptureStore {
         }
     }
 
+    func tapVideoRecordsMissingPoster() throws -> [TAPPendingCaptureRecord] {
+        try allRecords().filter { record in
+            guard record.artifactKind == .tapVideo,
+                  record.status != .exported,
+                  record.thumbnailFilename == nil,
+                  record.videoArtifactFilename != nil else {
+                return false
+            }
+            return (try? storage.videoURL(
+                filename: TAPPendingCaptureBundlePathPolicy.videoArtifactFilename,
+                captureID: record.captureID
+            )) != nil
+        }
+    }
+
+    func storeVideoPoster(
+        _ data: Data,
+        captureID: String,
+        posterRevision: Int
+    ) throws -> TAPPendingCaptureRecord {
+        guard posterRevision > 0 else {
+            throw TAPDepthCaptureError.invalidTAPManifest("video poster revision must be positive")
+        }
+        var record = try readRecord(captureID: captureID)
+        guard record.artifactKind == .tapVideo else {
+            throw TAPDepthCaptureError.invalidPendingCaptureBundlePath(
+                "video posters require a TAP video record"
+            )
+        }
+        let bundleURL = try storage.bundleURL(captureID: captureID)
+        try storage.writeThumbnail(data, to: bundleURL)
+        record.thumbnailFilename = TAPPendingCaptureBundlePathPolicy.thumbnailFilename
+        record.posterRevision = posterRevision
+        record.updatedAt = Date()
+        try storage.writeRecord(record)
+        TAPLibraryChangeNotifier.post()
+        return record
+    }
+
     func processingCandidates() throws -> [TAPPendingCaptureRecord] {
         try allRecords()
-            .filter { record in
-                switch record.status {
-                case .pending, .waitingNetwork, .signing, .signed, .exporting, .failedRetryable:
-                    true
-                case .exported:
-                    false
+            .filter(\.isProcessingCandidate)
+            .sorted { lhs, rhs in
+                let lhsPriority = lhs.processingPriority ?? Int.max
+                let rhsPriority = rhs.processingPriority ?? Int.max
+                if lhsPriority != rhsPriority {
+                    return lhsPriority < rhsPriority
                 }
+                return lhs.capturedAt < rhs.capturedAt
             }
-            .sorted { $0.capturedAt < $1.capturedAt }
+    }
+
+    func nextProcessingCandidate(excludingCaptureIDs excludedCaptureIDs: Set<String> = []) throws -> TAPPendingCaptureRecord? {
+        try processingCandidates().first { record in
+            !excludedCaptureIDs.contains(record.captureID)
+        }
     }
 
     func readRecord(captureID: String) throws -> TAPPendingCaptureRecord {
-        try readRecord(in: bundleURL(captureID: captureID))
+        try storage.readRecord(captureID: captureID)
+    }
+
+    func unsignedPhotoData(captureID: String) throws -> Data {
+        let record = try readRecord(captureID: captureID)
+        guard let filename = record.unsignedPhotoFilename else {
+            throw TAPDepthCaptureError.pendingCaptureDataMissing
+        }
+        return try storage.photoData(filename: filename, captureID: captureID)
     }
 
     func unsignedHEICData(captureID: String) throws -> Data {
+        try unsignedPhotoData(captureID: captureID)
+    }
+
+    func signedPhotoData(captureID: String) throws -> Data {
         let record = try readRecord(captureID: captureID)
-        guard let filename = record.unsignedHEICFilename else {
+        guard let filename = record.signedPhotoFilename else {
             throw TAPDepthCaptureError.pendingCaptureDataMissing
         }
-        return try heicData(filename: filename, captureID: captureID)
+        return try storage.photoData(filename: filename, captureID: captureID)
     }
 
     func signedHEICData(captureID: String) throws -> Data {
-        let record = try readRecord(captureID: captureID)
-        guard let filename = record.signedHEICFilename else {
-            throw TAPDepthCaptureError.pendingCaptureDataMissing
-        }
-        return try heicData(filename: filename, captureID: captureID)
+        try signedPhotoData(captureID: captureID)
     }
 
-    func bestAvailableHEICData(captureID: String) throws -> Data {
+    func videoArtifactURL(captureID: String) throws -> URL {
         let record = try readRecord(captureID: captureID)
-        if let filename = record.signedHEICFilename {
-            if let data = try heicDataIfPresent(filename: filename, captureID: captureID) {
+        guard let filename = record.videoArtifactFilename else {
+            throw TAPDepthCaptureError.pendingCaptureDataMissing
+        }
+        return try storage.videoURL(filename: filename, captureID: captureID)
+    }
+
+    func bestAvailableVideoURL(captureID: String) throws -> URL {
+        try videoArtifactURL(captureID: captureID)
+    }
+
+    func bestAvailablePhotoData(captureID: String) throws -> Data {
+        let record = try readRecord(captureID: captureID)
+        if let filename = record.signedPhotoFilename {
+            if let data = try storage.photoDataIfPresent(filename: filename, captureID: captureID) {
                 return data
             }
         }
-        if let filename = record.unsignedHEICFilename {
-            if let data = try heicDataIfPresent(filename: filename, captureID: captureID) {
+        if let filename = record.unsignedPhotoFilename {
+            if let data = try storage.photoDataIfPresent(filename: filename, captureID: captureID) {
                 return data
             }
         }
         throw TAPDepthCaptureError.pendingCaptureDataMissing
+    }
+
+    func bestAvailablePhotoURL(captureID: String) throws -> URL {
+        let record = try readRecord(captureID: captureID)
+        if let filename = record.signedPhotoFilename {
+            if let url = try storage.photoURLIfPresent(filename: filename, captureID: captureID) {
+                return url
+            }
+        }
+        if let filename = record.unsignedPhotoFilename {
+            if let url = try storage.photoURLIfPresent(filename: filename, captureID: captureID) {
+                return url
+            }
+        }
+        throw TAPDepthCaptureError.pendingCaptureDataMissing
+    }
+
+    func bestAvailableHEICData(captureID: String) throws -> Data {
+        try bestAvailablePhotoData(captureID: captureID)
     }
 
     func thumbnailData(captureID: String) throws -> Data? {
@@ -220,234 +354,255 @@ actor TAPPendingCaptureStore {
         guard let filename = record.thumbnailFilename else {
             return nil
         }
-        return try? Data(contentsOf: bundleURL(captureID: captureID).appendingPathComponent(filename))
+        return try storage.thumbnailData(filename: filename, captureID: captureID)
+    }
+
+    func pairedVideoURL(captureID: String) throws -> URL? {
+        let record = try readRecord(captureID: captureID)
+        guard let filename = record.pairedVideoFilename else {
+            return nil
+        }
+        return try storage.pairedVideoURL(filename: filename, captureID: captureID)
     }
 
     func updateStatus(
         captureID: String,
         status: TAPPendingCaptureStatus,
-        failureReason: String? = nil,
+        failureReason: TAPPendingCaptureFailureReasonPresentation.Reason? = nil,
+        failureCode: TAPPendingCaptureFailureCode? = nil,
         incrementsRetryCount: Bool = false
     ) throws -> TAPPendingCaptureRecord {
         var record = try readRecord(captureID: captureID)
+        // Export is a durable terminal commit. A later cleanup or stale worker
+        // error must never put the record back on an export route and create a
+        // duplicate Photos asset.
+        guard record.status != .exported || status == .exported else {
+            return record
+        }
         record.status = status
-        record.failureReason = failureReason
+        record.failureReason = TAPPendingCaptureFailureReasonPresentation.normalizedPersistedFailureReason(
+            failureReason,
+            status: status
+        )
+        record.failureCode = status == .failedTerminal ? failureCode : nil
         record.updatedAt = Date()
         if incrementsRetryCount {
             record.retryCount += 1
         }
-        try writeRecord(record)
-        Self.postLibraryDidChange()
+        try storage.writeRecord(record)
+        TAPLibraryChangeNotifier.post()
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.pendingCapture.info("store status updated captureID=\(captureID, privacy: .private) status=\(status.rawValue, privacy: .public) retryCount=\(record.retryCount, privacy: .public) hasFailureReason=\(failureReason != nil, privacy: .public)")
+        #endif
+        return record
+    }
+
+    @discardableResult
+    func normalizePersistedFailureReasons() throws -> Int {
+        let count = try maintenance.normalizePersistedFailureReasons()
+        if count > 0 {
+            TAPLibraryChangeNotifier.post()
+        }
+        return count
+    }
+
+    func storeSignedPhoto(_ data: Data, captureID: String) throws -> TAPPendingCaptureRecord {
+        var record = try readRecord(captureID: captureID)
+        try storage.writeSignedPhoto(data, fileContainer: record.photoFileContainer, captureID: captureID)
+        record.signedPhotoFilename = record.photoFileContainer.signedFilename
+        record.status = .signed
+        record.failureReason = nil
+        record.updatedAt = Date()
+        try storage.writeRecord(record)
+        TAPLibraryChangeNotifier.post()
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.pendingCapture.info("store signedPhoto stored captureID=\(captureID, privacy: .private) container=\(record.photoFileContainer.rawValue, privacy: .public) bytes=\(data.count, privacy: .public) status=\(record.status.rawValue, privacy: .public)")
+        #endif
         return record
     }
 
     func storeSignedHEIC(_ data: Data, captureID: String) throws -> TAPPendingCaptureRecord {
-        var record = try readRecord(captureID: captureID)
-        try data.write(to: bundleURL(captureID: captureID).appendingPathComponent(Self.signedHEICFilename), options: [.atomic])
-        record.signedHEICFilename = Self.signedHEICFilename
-        record.status = .signed
-        record.failureReason = nil
-        record.updatedAt = Date()
-        try writeRecord(record)
-        Self.postLibraryDidChange()
+        try storeSignedPhoto(data, captureID: captureID)
+    }
+
+    func markVideoSigned(captureID: String) throws -> TAPPendingCaptureRecord {
+        let source = try readRecord(captureID: captureID)
+        let record = try TAPPendingVideoRecordTransitions.markSigned(
+            source,
+            now: Date()
+        )
+        _ = try videoArtifactURL(captureID: captureID)
+        try persistTransition(from: source, to: record)
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.pendingCapture.info("store video signed in place captureID=\(captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public)")
+        #endif
         return record
     }
 
-    func markExported(captureID: String, assetLocalIdentifier: String) throws -> TAPPendingCaptureRecord {
-        var record = try readRecord(captureID: captureID)
-        record.status = .exported
-        record.assetLocalIdentifier = assetLocalIdentifier
-        record.failureReason = nil
-        record.updatedAt = Date()
-        try writeRecord(record)
-        try cleanupLargeFiles(for: record)
-        Self.postLibraryDidChange()
+    func persistVideoPreSignContentBinding(
+        _ binding: CaptureContentBinding,
+        captureID: String
+    ) throws -> TAPPendingCaptureRecord {
+        let source = try readRecord(captureID: captureID)
+        let record = try TAPPendingVideoRecordTransitions.persistPreSignBinding(
+            binding,
+            in: source,
+            now: Date()
+        )
+        try persistTransition(from: source, to: record)
         return record
+    }
+
+    func markTerminalFailure(
+        captureID: String,
+        code: TAPPendingCaptureFailureCode,
+        assetLocalIdentifier: String? = nil
+    ) throws -> TAPPendingCaptureRecord {
+        var record = try readRecord(captureID: captureID)
+        record.status = .failedTerminal
+        record.failureCode = code
+        record.failureReason = TAPPendingCaptureFailureReasonPresentation.persistedFailureReason(
+            for: .terminalFailure
+        )
+        if let assetLocalIdentifier {
+            record.assetLocalIdentifier = assetLocalIdentifier
+        }
+        record.updatedAt = Date()
+        try storage.writeRecord(record)
+        TAPLibraryChangeNotifier.post()
+        return record
+    }
+
+    /// Persists safe-to-repeat export intent before any Photos asset creation
+    /// begins. A restart in this phase may validate and create again.
+    func markVideoPhotosExportIntent(
+        captureID: String
+    ) throws -> TAPPendingCaptureRecord {
+        let source = try readRecord(captureID: captureID)
+        let record = try TAPPendingVideoRecordTransitions.markExportIntent(
+            source,
+            now: Date()
+        )
+        try persistTransition(from: source, to: record)
+        return record
+    }
+
+    /// Must be called immediately before entering Photos `performChanges`.
+    /// From this durable boundary onward, a missing completion callback is
+    /// commit-ambiguous and restart recovery may only probe/read back.
+    func markVideoPhotosCommitAmbiguous(
+        captureID: String
+    ) throws -> TAPPendingCaptureRecord {
+        let source = try readRecord(captureID: captureID)
+        let record = try TAPPendingVideoRecordTransitions.markCommitAmbiguous(
+            source,
+            now: Date()
+        )
+        try persistTransition(from: source, to: record)
+        return record
+    }
+
+    /// Persists the Photos identifier returned after the commit-ambiguous
+    /// boundary. Retries must only re-read this asset; they must never create a
+    /// second asset automatically.
+    func markVideoPhotosCommit(
+        captureID: String,
+        assetLocalIdentifier: String
+    ) throws -> TAPPendingCaptureRecord {
+        let source = try readRecord(captureID: captureID)
+        let record = try TAPPendingVideoRecordTransitions.markCommit(
+            source,
+            assetLocalIdentifier: assetLocalIdentifier,
+            now: Date()
+        )
+        try persistTransition(from: source, to: record)
+        return record
+    }
+
+    func markExported(
+        captureID: String,
+        assetLocalIdentifier: String,
+        duplicateExportWarning: String? = nil
+    ) throws -> TAPPendingCaptureRecord {
+        let source = try readRecord(captureID: captureID)
+        let record = TAPPendingVideoRecordTransitions.markExported(
+            source,
+            assetLocalIdentifier: assetLocalIdentifier,
+            duplicateExportWarning: duplicateExportWarning,
+            now: Date()
+        )
+        try storage.writeRecord(record)
+        // Return the exact persisted representation so a stale, idempotent
+        // Photos callback observes the same timestamp value after JSON
+        // round-trip instead of an in-memory sub-precision variant.
+        let persistedRecord = try readRecord(captureID: captureID)
+        do {
+            try storage.cleanupLargeFiles(for: persistedRecord)
+        } catch {
+            // The authoritative Photos readback has already passed and the
+            // exported state is persisted. Startup cleanup can retry local file
+            // removal; cleanup failure must not roll back the export commit.
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.pendingCapture.error(
+                "store exported cleanup deferred captureID=\(captureID, privacy: .private) error=\(TAPDiagnostics.describe(error), privacy: .public)"
+            )
+            #endif
+        }
+        TAPLibraryChangeNotifier.post()
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.pendingCapture.info("store exported marked captureID=\(captureID, privacy: .private) assetID=\(assetLocalIdentifier, privacy: .private)")
+        #endif
+        return persistedRecord
     }
 
     func cleanupExportedLargeFiles() throws {
-        for record in try allRecords() where record.status == .exported {
-            try cleanupLargeFiles(for: record)
+        try maintenance.cleanupExportedLargeFiles(records: allRecords())
+    }
+
+    @discardableResult
+    func removeUnshippedLegacyVideoBundles() throws -> Int {
+        let removedCount = try maintenance.removeUnshippedLegacyVideoBundles(
+            records: allRecords()
+        )
+        if removedCount > 0 {
+            TAPLibraryChangeNotifier.post()
         }
+        return removedCount
     }
 
     func removeRecord(captureID: String) throws {
-        let url = bundleURL(captureID: captureID)
-        if fileManager.fileExists(atPath: url.path) {
-            try fileManager.removeItem(at: url)
-            Self.postLibraryDidChange()
+        if try storage.removeBundle(captureID: captureID) {
+            TAPLibraryChangeNotifier.post()
         }
     }
 
-    private nonisolated static func defaultRootURL() -> URL {
-        let baseURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? FileManager.default.temporaryDirectory
-        return baseURL
-            .appendingPathComponent("TAPCaptureLibrary", isDirectory: true)
-            .appendingPathComponent(recordsDirectoryName, isDirectory: true)
+    /// Removes app-private exported records that refer to a Photos asset after
+    /// that asset has been deleted. Older viewer routes only retained the
+    /// Photos identifier, so lookup by asset ID keeps their cleanup complete.
+    @discardableResult
+    func removeExportedRecords(assetLocalIdentifier: String) throws -> Int {
+        let matchingCaptureIDs = try exportedRecords().compactMap { record in
+            record.assetLocalIdentifier == assetLocalIdentifier ? record.captureID : nil
+        }
+        var removedCount = 0
+        for captureID in matchingCaptureIDs where try storage.removeBundle(captureID: captureID) {
+            removedCount += 1
+        }
+        if removedCount > 0 {
+            TAPLibraryChangeNotifier.post()
+        }
+        return removedCount
     }
 
-    private func ensureRootDirectoryExists() throws {
-        guard !fileManager.fileExists(atPath: rootURL.path) else {
+    private func persistTransition(
+        from source: TAPPendingCaptureRecord,
+        to record: TAPPendingCaptureRecord
+    ) throws {
+        guard source != record else {
             return
         }
-        try fileManager.createDirectory(at: rootURL, withIntermediateDirectories: true)
-        try protectBundle(at: rootURL)
+        try storage.writeRecord(record)
+        TAPLibraryChangeNotifier.post()
     }
 
-    private func protectBundle(at url: URL) throws {
-        try fileManager.setAttributes(
-            [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
-            ofItemAtPath: url.path
-        )
-    }
-
-    private func bundleURL(captureID: String) -> URL {
-        rootURL.appendingPathComponent(captureID, isDirectory: true)
-    }
-
-    private func bundleURLs() throws -> [URL] {
-        guard fileManager.fileExists(atPath: rootURL.path) else {
-            return []
-        }
-        return try fileManager.contentsOfDirectory(
-            at: rootURL,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        )
-        .filter { url in
-            (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
-        }
-    }
-
-    private func readRecord(in bundleURL: URL) throws -> TAPPendingCaptureRecord {
-        let data = try Data(contentsOf: bundleURL.appendingPathComponent(Self.recordFilename))
-        return try JSONDecoder.tapPendingCapture.decode(TAPPendingCaptureRecord.self, from: data)
-    }
-
-    private func heicData(filename: String, captureID: String) throws -> Data {
-        guard let data = try heicDataIfPresent(filename: filename, captureID: captureID) else {
-            throw TAPDepthCaptureError.pendingCaptureDataMissing
-        }
-        return data
-    }
-
-    private func heicDataIfPresent(filename: String, captureID: String) throws -> Data? {
-        let url = bundleURL(captureID: captureID).appendingPathComponent(filename)
-        guard fileManager.fileExists(atPath: url.path) else {
-            return nil
-        }
-        return try Data(contentsOf: url)
-    }
-
-    private func writeRecord(_ record: TAPPendingCaptureRecord) throws {
-        try writeRecord(record, in: bundleURL(captureID: record.captureID))
-    }
-
-    private func writeRecord(_ record: TAPPendingCaptureRecord, in bundleURL: URL) throws {
-        let data = try JSONEncoder.tapPendingCapture.encode(record)
-        try data.write(to: bundleURL.appendingPathComponent(Self.recordFilename), options: [.atomic])
-    }
-
-    private func cleanupLargeFiles(for record: TAPPendingCaptureRecord) throws {
-        let directory = bundleURL(captureID: record.captureID)
-        for filename in [record.unsignedHEICFilename, record.signedHEICFilename].compactMap({ $0 }) {
-            let url = directory.appendingPathComponent(filename)
-            if fileManager.fileExists(atPath: url.path) {
-                try fileManager.removeItem(at: url)
-            }
-        }
-    }
-
-    private nonisolated static func postLibraryDidChange() {
-        NotificationCenter.default.post(name: .tapLibraryDidChange, object: nil)
-    }
-}
-
-nonisolated struct TAPPendingCaptureArtifactWriter: CaptureArtifactWriter {
-    let store: TAPPendingCaptureStore
-
-    init(store: TAPPendingCaptureStore = .shared) {
-        self.store = store
-    }
-
-    /// Persists one unsigned capture artifact into the app-private pending store.
-    ///
-    /// Foreground capture work ends here. App Attest signing and Photos export are
-    /// owned by `TAPPendingCaptureProcessor` so TAP Library can show pending state.
-    ///
-    /// - Tag: WritePackagedArtifactToPendingStore
-    func write(_ artifact: PackagedCaptureArtifact) async throws -> CaptureWriteResult {
-        let record = try await store.ingest(artifact)
-        return CaptureWriteResult(
-            artifactID: artifact.packageID,
-            destinationDescription: "Pending TAP capture: \(record.captureID)",
-            assetLocalIdentifier: nil,
-            pendingCaptureID: record.captureID,
-            signatureStatus: .pending(reason: "Queued for App Attest signing.")
-        )
-    }
-}
-
-nonisolated private enum TAPPendingCaptureThumbnailRenderer {
-    private static let pixelLength = 320
-    private static let compressionQuality: CGFloat = 0.78
-
-    static func thumbnailData(from heicData: Data) -> Data? {
-        guard let source = CGImageSourceCreateWithData(heicData as CFData, nil) else {
-            return nil
-        }
-
-        let options: [CFString: Any] = [
-            kCGImageSourceCreateThumbnailFromImageAlways: true,
-            kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: pixelLength
-        ]
-
-        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
-            return nil
-        }
-
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = 1
-        format.opaque = true
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: pixelLength, height: pixelLength), format: format)
-        return renderer.jpegData(withCompressionQuality: compressionQuality) { context in
-            let canvas = CGRect(x: 0, y: 0, width: pixelLength, height: pixelLength)
-            context.cgContext.setFillColor(UIColor.black.cgColor)
-            context.cgContext.fill(canvas)
-            UIImage(cgImage: image).draw(in: aspectFillRect(imageSize: CGSize(width: image.width, height: image.height), targetSize: canvas.size))
-        }
-    }
-
-    private static func aspectFillRect(imageSize: CGSize, targetSize: CGSize) -> CGRect {
-        guard imageSize.width > 0, imageSize.height > 0 else {
-            return CGRect(origin: .zero, size: targetSize)
-        }
-        let scale = max(targetSize.width / imageSize.width, targetSize.height / imageSize.height)
-        let scaledSize = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
-        return CGRect(
-            x: (targetSize.width - scaledSize.width) / 2,
-            y: (targetSize.height - scaledSize.height) / 2,
-            width: scaledSize.width,
-            height: scaledSize.height
-        )
-    }
-}
-
-nonisolated private extension JSONEncoder {
-    static var tapPendingCapture: JSONEncoder {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-        encoder.dateEncodingStrategy = .iso8601
-        return encoder
-    }
-}
-
-nonisolated private extension JSONDecoder {
-    static var tapPendingCapture: JSONDecoder {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        return decoder
-    }
 }

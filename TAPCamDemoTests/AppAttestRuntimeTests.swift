@@ -9,6 +9,7 @@ import Foundation
 import Testing
 @testable import TAPCamDemo
 
+@Suite(.serialized)
 struct AppAttestRuntimeTests {
     @Test func defaultPhotoCredentialNameIsStable() {
         #expect(AppAttestRuntimeDefaults.photoCredentialName == "photo_keyid")
@@ -52,6 +53,97 @@ struct AppAttestRuntimeTests {
         }
     }
 
+    @Test func diagnosticsDescriptionOmitsLocalizedDescriptionAndFailingURL() throws {
+        let failingURL = try #require(URL(string: "https://secret.tapnap.net/health?token=secret-token"))
+        let error = NSError(
+            domain: NSURLErrorDomain,
+            code: NSURLErrorCannotConnectToHost,
+            userInfo: [
+                NSLocalizedDescriptionKey: "secret localized message with /private/photo.heic",
+                NSURLErrorFailingURLErrorKey: failingURL,
+                "NSErrorFailingURLStringKey": failingURL.absoluteString
+            ]
+        )
+
+        let description = TAPDiagnostics.describe(error)
+
+        #expect(description.contains("domain=\(NSURLErrorDomain)"))
+        #expect(description.contains("code=\(NSURLErrorCannotConnectToHost)"))
+        #expect(!description.contains("description="))
+        #expect(!description.contains("url="))
+        #expect(!description.contains("secret"))
+        #expect(!description.contains("photo.heic"))
+        #expect(!description.contains("tapnap.net"))
+    }
+
+    @Test func diagnosticsDescriptionKeepsVPNHintWithoutRawNetworkPath() {
+        let underlying = NSError(
+            domain: NSURLErrorDomain,
+            code: NSURLErrorNetworkConnectionLost,
+            userInfo: [
+                "_NSURLErrorNWPathKey": "interface=utun4 gateway=198.18.0.1 token=secret-route"
+            ]
+        )
+        let error = NSError(
+            domain: "TAPDiagnosticsTests",
+            code: 7,
+            userInfo: [
+                NSUnderlyingErrorKey: underlying
+            ]
+        )
+
+        let description = TAPDiagnostics.describe(error)
+
+        #expect(description.contains("domain=TAPDiagnosticsTests"))
+        #expect(description.contains("code=7"))
+        #expect(description.contains("vpnHint=true"))
+        #expect(!description.contains("networkPath="))
+        #expect(!description.contains("utun4"))
+        #expect(!description.contains("198.18.0.1"))
+        #expect(!description.contains("secret-route"))
+    }
+
+    @Test func diagnosticsDescriptionKeepsScalarStreamDiagnostics() {
+        let error = NSError(
+            domain: NSURLErrorDomain,
+            code: NSURLErrorSecureConnectionFailed,
+            userInfo: [
+                "_kCFStreamErrorDomainKey": 3,
+                "_kCFStreamErrorCodeKey": -9807,
+                "_kCFNetworkCFStreamSSLErrorOriginalValue": -9807,
+                "_kCFStreamPropertySSLClientCertificateState": 1
+            ]
+        )
+
+        let description = TAPDiagnostics.describe(error)
+
+        #expect(description.contains("streamDomain=3"))
+        #expect(description.contains("streamCode=-9807"))
+        #expect(description.contains("sslOriginalValue=-9807"))
+        #expect(description.contains("clientCertificateState=1"))
+    }
+
+    @Test func credentialKeyIDPresentationRedactsRawKeyID() {
+        let rawKeyID = "server-registered-key-id"
+
+        let presentation = AppAttestCredentialKeyIDPresentation(keyID: rawKeyID)
+
+        #expect(!presentation.displayText.contains(rawKeyID))
+        #expect(!presentation.accessibilityText.contains(rawKeyID))
+        #expect(presentation.displayText.contains("\(rawKeyID.count) chars"))
+        #expect(presentation.accessibilityText.contains("\(rawKeyID.count) characters"))
+    }
+
+    @Test func credentialKeyIDPresentationDoesNotExposeShortKeyIDVerbatim() {
+        let rawKeyID = "short"
+
+        let presentation = AppAttestCredentialKeyIDPresentation(keyID: rawKeyID)
+
+        #expect(!presentation.displayText.contains(rawKeyID))
+        #expect(!presentation.accessibilityText.contains(rawKeyID))
+        #expect(presentation.displayText == "Prepared key (5 chars)")
+    }
+
     #if DEBUG
     @Test func debugRuntimeUsesDevelopmentEnvironment() throws {
         let runtime = try AppAttestRuntimeFactory.make(
@@ -60,7 +152,28 @@ struct AppAttestRuntimeTests {
 
         #expect(runtime.backendURL?.absoluteString == "https://dev.tapnap.net")
         #expect(runtime.environment == .development)
-        #expect(runtime.backendDescription == "HTTP Backend: https://dev.tapnap.net")
+        #expect(runtime.backendDescription == "HTTP Backend configured")
+        #expect(runtime.backendPublicSummary == "HTTP backend configured")
+    }
+
+    @Test func backendPublicSummaryDoesNotExposeConfiguredURL() throws {
+        let runtime = try AppAttestRuntimeFactory.make(
+            baseURL: try #require(URL(string: "https://tenant-secret.tapnap.net"))
+        )
+
+        #expect(runtime.backendURL?.absoluteString == "https://tenant-secret.tapnap.net")
+        #expect(!runtime.backendDescription.contains("tenant-secret.tapnap.net"))
+        #expect(!runtime.backendDescription.contains("https://"))
+        #expect(!runtime.backendPublicSummary.contains("tenant-secret.tapnap.net"))
+        #expect(!runtime.backendPublicSummary.contains("https://"))
+        #expect(runtime.backendPublicSummary == "HTTP backend configured")
+    }
+
+    @Test func settingsViewUsesBackendPublicSummary() throws {
+        let source = try Self.source(relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalyzerSettingsView.swift")
+
+        #expect(source.contains("runtime.backendPublicSummary"))
+        #expect(!source.contains("runtime.backendDescription"))
     }
     #endif
 
@@ -81,7 +194,8 @@ struct AppAttestRuntimeTests {
         )
         await controller.resetLocalCredential()
 
-        #expect(controller.credentialStatusText.contains("Reset photo_keyid failed"))
+        #expect(controller.credentialStatusText == "Reset local credential failed. See diagnostics for details.")
+        #expect(!controller.credentialStatusText.contains(AppAttestRuntimeDefaults.photoCredentialName))
     }
 
     @Test @MainActor func resetAndPrepareCredentialResetsThenPreparesWhenNotPrepared() async throws {
@@ -111,18 +225,19 @@ struct AppAttestRuntimeTests {
         ])
         #expect(controller.credentialStatusText == "Ready")
         #expect(controller.credentialKeyIdText == "prepared-key-id")
+        #expect(controller.credentialKeyIDPresentation?.displayText != "prepared-key-id")
         #expect(!controller.isPreparingCredential)
         #expect(!controller.canResetAndPrepareCredential)
     }
 
-    @Test @MainActor func startupRegistersFreshCredentialWhenHealthTokenChanges() async throws {
+    @Test @MainActor func pendingCaptureSigningWarmupRegistersFreshCredentialWhenHealthTokenChanges() async throws {
         let client = RecordingAppAttestClient(
             prepareKeyID: "server-registered-key-id",
             assertionMode: .healthy
         )
         let runtime = AppAttestRuntime(
             client: client,
-            backendURL: try #require(URL(string: "https://www.tapnap.net")),
+            backendURL: URL(string: "https://www.tapnap.net")!,
             environment: .production,
             backendDescription: "HTTP Backend: https://www.tapnap.net"
         )
@@ -139,7 +254,7 @@ struct AppAttestRuntimeTests {
             userDefaults: userDefaults
         )
 
-        let didPrepare = await controller.preparePhotoCredentialAfterFirstInstallLaunch()
+        let didPrepare = await controller.warmPendingCaptureSigningCredential()
 
         #expect(didPrepare)
         #expect(await client.operations() == [
@@ -151,13 +266,13 @@ struct AppAttestRuntimeTests {
         #expect(controller.credentialKeyIdText == "server-registered-key-id")
     }
 
-    @Test @MainActor func startupReusesCredentialWhenHealthTokenMatches() async throws {
+    @Test @MainActor func pendingCaptureSigningWarmupReusesCredentialWhenHealthTokenMatches() async throws {
         let client = RecordingAppAttestClient(
             prepareIfNeededKeyID: "existing-key-id"
         )
         let runtime = AppAttestRuntime(
             client: client,
-            backendURL: try #require(URL(string: "https://www.tapnap.net")),
+            backendURL: URL(string: "https://www.tapnap.net")!,
             environment: .production,
             backendDescription: "HTTP Backend: https://www.tapnap.net"
         )
@@ -175,7 +290,7 @@ struct AppAttestRuntimeTests {
             userDefaults: userDefaults
         )
 
-        let didPrepare = await controller.preparePhotoCredentialAfterFirstInstallLaunch()
+        let didPrepare = await controller.warmPendingCaptureSigningCredential()
 
         #expect(didPrepare)
         #expect(await client.operations() == [
@@ -185,11 +300,11 @@ struct AppAttestRuntimeTests {
         #expect(controller.credentialKeyIdText == "existing-key-id")
     }
 
-    @Test @MainActor func startupReportsFailureWhenFreshPrepareFails() async throws {
+    @Test @MainActor func pendingCaptureSigningWarmupReportsFailureWhenFreshPrepareFails() async throws {
         let client = RecordingAppAttestClient()
         let runtime = AppAttestRuntime(
             client: client,
-            backendURL: try #require(URL(string: "https://www.tapnap.net")),
+            backendURL: URL(string: "https://www.tapnap.net")!,
             environment: .production,
             backendDescription: "HTTP Backend: https://www.tapnap.net"
         )
@@ -204,13 +319,38 @@ struct AppAttestRuntimeTests {
             userDefaults: userDefaults
         )
 
-        let didPrepare = await controller.preparePhotoCredentialAfterFirstInstallLaunch()
+        let didPrepare = await controller.warmPendingCaptureSigningCredential()
 
         #expect(!didPrepare)
         #expect(await client.operations() == [
             "reset:\(AppAttestRuntimeDefaults.photoCredentialName)"
         ])
-        #expect(controller.credentialStatusText.contains("Prepare credential failed"))
+        #expect(controller.credentialStatusText == "Prepare credential failed. See diagnostics for details.")
+        #expect(controller.canResetAndPrepareCredential)
+    }
+
+    @Test @MainActor func credentialOperationFailureStatusOmitsLocalizedDescriptionAndFailingURL() async throws {
+        let runtime = AppAttestRuntime(
+            client: SensitivePrepareFailingAppAttestClient(),
+            backendDescription: "Sensitive Prepare Backend"
+        )
+        let suiteName = "TAPCamDemoTests.AppAttest.\(UUID().uuidString)"
+        let userDefaults = try #require(UserDefaults(suiteName: suiteName))
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let controller = AppAttestRuntimeController(
+            runtime: runtime,
+            userDefaults: userDefaults
+        )
+
+        await controller.resetAndPrepareCredential()
+
+        #expect(controller.credentialStatusText == "Reset and prepare credential failed. See diagnostics for details.")
+        #expect(!controller.credentialStatusText.contains("secret localized"))
+        #expect(!controller.credentialStatusText.contains("private/photo.heic"))
+        #expect(!controller.credentialStatusText.contains("tapnap.net"))
         #expect(controller.canResetAndPrepareCredential)
     }
 
@@ -233,7 +373,7 @@ struct AppAttestRuntimeTests {
 
         await controller.resetAndPrepareCredential()
 
-        #expect(controller.credentialStatusText.contains("timed out"))
+        #expect(controller.credentialStatusText == "Reset and prepare credential failed. See diagnostics for details.")
         #expect(!controller.isPreparingCredential)
         #expect(!controller.isWorking)
         #expect(controller.canResetAndPrepareCredential)
@@ -266,9 +406,40 @@ struct AppAttestRuntimeTests {
         #expect(controller.credentialStatusText == "Ready")
         #expect(controller.credentialKeyIdText == "prepared-if-needed-key-id")
     }
+
+    private static func source(relativePath: String) throws -> String {
+        try String(
+            contentsOf: repositoryRoot().appendingPathComponent(relativePath),
+            encoding: .utf8
+        )
+    }
+
+    private static func repositoryRoot(
+        startingAt filePath: String = #filePath
+    ) throws -> URL {
+        var directory = URL(fileURLWithPath: filePath).deletingLastPathComponent()
+        let fileManager = FileManager.default
+
+        while directory.path != "/" {
+            let projectPath = directory.appendingPathComponent("TAPCamDemo.xcodeproj").path
+            let testsPath = directory.appendingPathComponent("TAPCamDemoTests").path
+            let runtimePath = directory
+                .appendingPathComponent("TAPCamDemo/App/AppAttestRuntime.swift")
+                .path
+            if fileManager.fileExists(atPath: projectPath),
+               fileManager.fileExists(atPath: testsPath),
+               fileManager.fileExists(atPath: runtimePath) {
+                return directory
+            }
+            directory.deleteLastPathComponent()
+        }
+
+        throw AppAttestRuntimeTestError.repositoryRootNotFound(filePath)
+    }
 }
 
 private enum AppAttestRuntimeTestError: Error {
+    case repositoryRootNotFound(String)
     case resetFailed
     case unused
 }
@@ -302,6 +473,36 @@ private actor HangingPrepareAppAttestClient: AppAttestClient {
     func prepare(credentialName: String) async throws -> AppAttestCredential {
         try await Task.sleep(for: .seconds(60))
         throw AppAttestRuntimeTestError.unused
+    }
+
+    func prepareIfNeeded(credentialName: String) async throws -> AppAttestCredential {
+        throw AppAttestRuntimeTestError.unused
+    }
+
+    func generateAssertion(
+        credentialName: String,
+        request: AppAttestProtectedRequest
+    ) async throws -> AppAttestAssertionEnvelope {
+        throw AppAttestRuntimeTestError.unused
+    }
+
+    func status(credentialName: String) async throws -> AppAttestCredentialStatus {
+        throw AppAttestRuntimeTestError.unused
+    }
+
+    func reset(credentialName: String) async throws {}
+}
+
+private actor SensitivePrepareFailingAppAttestClient: AppAttestClient {
+    func prepare(credentialName: String) async throws -> AppAttestCredential {
+        throw NSError(
+            domain: NSURLErrorDomain,
+            code: NSURLErrorCannotConnectToHost,
+            userInfo: [
+                NSLocalizedDescriptionKey: "secret localized message with /private/photo.heic",
+                NSURLErrorFailingURLErrorKey: URL(string: "https://secret.tapnap.net/health?token=secret-token")!
+            ]
+        )
     }
 
     func prepareIfNeeded(credentialName: String) async throws -> AppAttestCredential {

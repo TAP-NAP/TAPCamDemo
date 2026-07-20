@@ -23,7 +23,18 @@ import SwiftUI
 /// readers without destructively cropping the image or depth map.
 struct CameraPreviewView: UIViewRepresentable {
     let session: AVCaptureSession
+    let pointConverter: CameraPreviewPointConverter?
     let onCropRectChanged: (CGRect) -> Void
+
+    init(
+        session: AVCaptureSession,
+        pointConverter: CameraPreviewPointConverter? = nil,
+        onCropRectChanged: @escaping (CGRect) -> Void
+    ) {
+        self.session = session
+        self.pointConverter = pointConverter
+        self.onCropRectChanged = onCropRectChanged
+    }
 
     func makeCoordinator() -> Coordinator {
         Coordinator(onCropRectChanged: onCropRectChanged)
@@ -34,6 +45,7 @@ struct CameraPreviewView: UIViewRepresentable {
         view.videoPreviewLayer.session = session
         view.videoPreviewLayer.videoGravity = .resizeAspectFill
         view.cropRectPublisher = context.coordinator
+        pointConverter?.attach(to: view)
         return view
     }
 
@@ -41,6 +53,7 @@ struct CameraPreviewView: UIViewRepresentable {
         context.coordinator.onCropRectChanged = onCropRectChanged
         uiView.videoPreviewLayer.session = session
         uiView.cropRectPublisher = context.coordinator
+        pointConverter?.attach(to: uiView)
         uiView.publishCurrentCropRect()
     }
 
@@ -94,6 +107,34 @@ struct CameraPreviewView: UIViewRepresentable {
                 || abs(lastPublishedRect.size.width - rect.size.width) > epsilon
                 || abs(lastPublishedRect.size.height - rect.size.height) > epsilon
         }
+    }
+}
+
+/// Converts viewfinder touches with the preview layer that actually renders
+/// them. `AVCaptureDevice` points of interest use the unrotated sensor space,
+/// so a display-space normalization or crop interpolation is not sufficient.
+@MainActor
+final class CameraPreviewPointConverter {
+    private weak var previewView: PreviewView?
+
+    fileprivate func attach(to previewView: PreviewView) {
+        self.previewView = previewView
+    }
+
+    func captureDevicePoint(fromLayerPoint point: CGPoint) -> CGPoint? {
+        guard let previewView,
+              previewView.bounds.width > 0,
+              previewView.bounds.height > 0 else {
+            return nil
+        }
+
+        let converted = previewView.videoPreviewLayer.captureDevicePointConverted(
+            fromLayerPoint: point
+        )
+        guard converted.x.isFinite, converted.y.isFinite else {
+            return nil
+        }
+        return converted
     }
 }
 

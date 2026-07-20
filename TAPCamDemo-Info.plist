@@ -10,6 +10,8 @@
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleDisplayName</key>
+	<string>$(INFOPLIST_KEY_CFBundleDisplayName)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
@@ -18,18 +20,31 @@
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>TAP-NAP.TAPCamDemo.locked-camera</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>tapcamdemo</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>TAPCamDemo captures photos with depth data from the camera.</string>
+	<string>TAPCamDemo captures photos and videos with depth data from the camera.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>TAPCamDemo can attach capture location to the TAP depth HEIC metadata.</string>
+	<string>TAPCamDemo can attach capture location to TAP photo and video metadata.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>TAPCamDemo can record audio for Live Photos and TAP Videos when audio recording is enabled.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>TAPCamDemo saves depth HEIC captures into the TAPCamDepth photo album.</string>
+	<string>TAPCamDemo saves depth photos and TAP Videos into the TAPCamDepth photo album.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>TAPCamDemo creates and reuses the TAPCamDepth photo album for depth HEIC captures.</string>
+	<string>TAPCamDemo creates and reuses the TAPCamDepth photo album for depth photos and TAP Videos.</string>
 	<key>PHPhotoLibraryPreventAutomaticLimitedAccessAlert</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>

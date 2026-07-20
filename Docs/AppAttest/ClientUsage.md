@@ -20,6 +20,10 @@ let tenantCredentialName = "tenant:\(tenantId):user:\(userId)"
 does not know whether it represents an install, user, tenant, or session. See
 [CredentialNameGuide.md](CredentialNameGuide.md) for recommended patterns.
 
+Caller responsibility: if a credential name contains user, tenant, install, or
+session identity, treat it as sensitive in logs even when the credential name is
+not itself a trust claim.
+
 ## Register A Key
 
 ```swift
@@ -64,19 +68,26 @@ try envelope.applyHeaders(to: &urlRequest)
 No request is protected unless the caller explicitly calls
 `generateAssertion(credentialName:request:)` and applies the returned envelope.
 
-## TAPCam HEIC Capture Signatures
+## TAPCam Photo Capture Signatures
 
-TAPCam HEIC capture signing is intentionally not modeled as a protected online
+TAPCam photo capture signing is intentionally not modeled as a protected online
 API request. The pending capture processor still calls
 `prepareIfNeeded(credentialName:)` for `photo_keyid`, but it does not call
 `generateAssertion(credentialName:request:)` because that API requests an
 assertion challenge from the backend.
 
-For a HEIC capture, the app builds a `signingBinding` from the canonical
-`contentDigest`, signs `SHA256(canonical signingBinding JSON)` directly with
-`DCAppAttestService.generateAssertion`, and stores the resulting
-`keyId`, `assertionObject`, `signingBinding`, and `contentDigest` inside the
-HEIC manifest proof. A verifier that later receives the HEIC can call
+For a HEIC or JPG TAP depth photo, the app builds a `signingBinding` from the
+canonical `contentDigest`, signs `SHA256(canonical signingBinding JSON)`
+directly with `DCAppAttestService.generateAssertion`, and stores the resulting
+`keyId`, `assertionObject`, `signingBinding`, and `contentDigest` in the fixed
+TAP proof slot. The embedded manifest keeps `proofs: []`; proof bytes are not
+part of the signed manifest payload.
+
+The `contentDigest` is a C2PA-aligned content binding: it hashes the format
+native photo bytes after excluding the fixed proof slot, plus canonical
+`manifest.payload` JSON. It does not hash CoreGraphics-decoded RGB pixels or
+`AVDepthData` converted to Float32. A verifier that later receives the photo can
+first rebuild that binding locally, then call
 `/tapcam/capture-signatures/verify` with `keyId`, `assertionObject`, and
 `signingBinding`.
 
@@ -100,8 +111,9 @@ not reset other caller-defined credential names.
 - Tapping `Not prepared` on the status row runs reset and then
   `prepare(credentialName:)`. The status row shows a spinner while this is
   running, then shows `Ready`.
-- After preparation succeeds, the settings detail row shows only the App Attest
-  `keyId`; credential name stays out of the Release status details.
+- After preparation succeeds, the settings detail row shows only a redacted App
+  Attest key ID summary; credential name and the full `keyId` stay out of the
+  Release status details and accessibility labels.
 - Enabling Help in Settings shows the `keyId` explanation inline below the App
   Attest `Status` row.
 

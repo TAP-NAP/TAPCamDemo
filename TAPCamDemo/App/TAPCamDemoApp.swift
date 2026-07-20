@@ -26,11 +26,87 @@ final class TAPCamAppDelegate: NSObject, UIApplicationDelegate {
 @main
 struct TAPCamDemoApp: App {
     @UIApplicationDelegateAdaptor(TAPCamAppDelegate.self) private var appDelegate
+    @StateObject private var lockedCaptureImportRuntime = LockedCaptureSessionContentImportRuntime()
+    @State private var libraryStore: LibraryMediaStore
+    private let libraryMediaFetcher: any LibraryMediaFetching
+    private let videoPosterBackfillService = LibraryVideoPosterBackfillService.pendingCaptureStore(
+        TAPPendingCaptureStore.shared
+    )
+
+    init() {
+        let photoKitClient = PhotoKitLibraryMediaFetcher()
+        self.libraryMediaFetcher = photoKitClient
+        _libraryStore = State(
+            initialValue: LibraryMediaStore(photoCatalog: photoKitClient)
+        )
+    }
 
     var body: some Scene {
         WindowGroup {
-            StartupGateView()
-                .preferredColorScheme(.dark)
+            #if DEBUG
+            if let videoFixtureConfiguration = TAPVideoPlaybackFixtureLaunchConfiguration.current {
+                TAPVideoPlaybackFixtureHarnessView(configuration: videoFixtureConfiguration)
+                    .preferredColorScheme(.dark)
+            } else {
+                #if TAP_ENABLE_PRO_CAMERA_CONTROLS
+                if ProcessInfo.processInfo.isCameraControlsUITestHarness {
+                    CameraControlsUITestHarnessView()
+                        .preferredColorScheme(.dark)
+                } else {
+                    standardAppContent
+                }
+                #else
+                standardAppContent
+                #endif
+            }
+            #else
+            standardAppContent
+            #endif
         }
+    }
+
+    @ViewBuilder
+    private var standardAppContent: some View {
+        if ProcessInfo.processInfo.isXCTestHost {
+            XCTestHostView()
+        } else {
+            StartupGateView(
+                libraryStore: libraryStore,
+                libraryMediaFetcher: libraryMediaFetcher,
+                videoPosterBackfillService: videoPosterBackfillService
+            )
+                .preferredColorScheme(.dark)
+                .onAppear {
+                    lockedCaptureImportRuntime.start()
+                }
+                .onDisappear {
+                    lockedCaptureImportRuntime.stop()
+                }
+        }
+    }
+}
+
+private struct XCTestHostView: View {
+    var body: some View {
+        Color.black
+    }
+}
+
+private extension ProcessInfo {
+    #if DEBUG && TAP_ENABLE_PRO_CAMERA_CONTROLS
+    var isCameraControlsUITestHarness: Bool {
+        environment["TAPCAM_UI_TEST_CAMERA_CONTROLS"] == "1"
+            || arguments.contains("--tapcam-camera-controls-ui-test-harness")
+    }
+    #endif
+
+    var isXCTestHost: Bool {
+        guard environment["TAPCAM_UI_TEST_REAL_APP"] != "1" else {
+            return false
+        }
+
+        return environment["TAPCAM_XCTEST_HOST"] == "1"
+            || environment["XCTestConfigurationFilePath"] != nil
+            || environment["XCTestBundlePath"] != nil
     }
 }

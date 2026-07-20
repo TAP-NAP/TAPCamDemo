@@ -8,6 +8,7 @@
 @preconcurrency import AVFoundation
 import Combine
 import Foundation
+import Observation
 import Photos
 import UIKit
 
@@ -30,10 +31,20 @@ final class CameraViewModel: ObservableObject {
     @Published var pendingJobCount = 0
     @Published var recentMetrics: [CaptureJobMetrics] = []
     @Published var isDepthCaptureReady = false
+    @Published var isConfiguringSession = false
     @Published var isPausedForAnalysis = false
     @Published var nativePreviewAspectRatio = 3.0 / 4.0
     @Published var previewCropRectNormalized = CropRectNormalized.fullFrame
-    @Published var recentThumbnail: UIImage?
+    @Published var recentLibraryPresentation: RecentLibraryPresentation = .unresolved
+    @Published var recentLibraryFetchState: IdentifiedMediaFetchState<MediaPoster, MediaPoster>?
+    @Published var latestCaptureDepthHint: CameraCaptureDepthHint?
+    @Published var focusRuntimeEvent: CameraFocusRuntimeEvent?
+    @Published var exposureRuntimeEvent: CameraExposureRuntimeEvent?
+    @Published var isVideoRecording = false
+    @Published var isPreparingVideoMode = false
+    #if TAP_ENABLE_PRO_CAMERA_CONTROLS
+    @Published var latestManualControlReadback: CameraManualControlReadbackSnapshot?
+    #endif
     #if DEBUG
     @Published var debugDepthDeviceOptions: [DebugDepthDeviceOption]
     @Published var debugSelectedDepthDeviceID: String?
@@ -51,13 +62,40 @@ final class CameraViewModel: ObservableObject {
     let metricsStore = MetricsStore()
     let pendingCaptureStore: TAPPendingCaptureStore
     let pendingCaptureProcessor: TAPPendingCaptureProcessor
+    let libraryStore: LibraryMediaStore
+    let libraryMediaFetcher: any LibraryMediaFetching
+    let videoPosterGenerator: any LibraryVideoPosterGenerating
     let pipeline: CapturePipeline
     var activeSessionConfiguration: SessionConfigurationResult?
     var configurationGeneration = 0
     var depthSelectionMode: DepthSelectionMode = .automatic
+    var requestedGlobalAutoExposureBias = CameraEVPreferences.defaultGlobalBias
+    var activeVideoRecordingCaptureID: String?
+    var videoRecordingTemporaryDirectoryURL: URL?
+    var videoDurationLimitTask: Task<Void, Never>?
+    var videoThermalObserver: NSObjectProtocol?
+    var recentLibraryPreviewRefreshTask: Task<Void, Never>?
+    var recentLibraryCoverTask: Task<Void, Never>?
+    var recentLibraryFetchGeneration: UInt64 = 0
+    var lastHandledLibrarySnapshotRevision: UInt64 = 0
 
     var session: AVCaptureSession {
         sessionController.session
+    }
+
+    var recentThumbnail: UIImage? {
+        recentLibraryPresentation.poster?.image
+    }
+
+    var recentLibraryStatusText: String? {
+        switch recentLibraryPresentation {
+        case .unresolved, .empty, .ready, .failed:
+            nil
+        case .resolving(_, let kind):
+            LibraryMediaCopy.preparing(kind)
+        case .loading(_, _, _, let progress):
+            LibraryMediaCopy.loadingFromICloud(progress: progress)
+        }
     }
 
     var isShutterSoundSuppressionSupported: Bool {
@@ -65,11 +103,25 @@ final class CameraViewModel: ObservableObject {
     }
 
     var canCapture: Bool {
-        !isPausedForAnalysis && isDepthCaptureReady && pendingJobCount < CaptureJobQueue.defaultMaximumPendingJobs
+        !isPausedForAnalysis
+            && isDepthCaptureReady
+            && pendingJobCount < CaptureJobQueue.defaultMaximumPendingJobs
+    }
+
+    var canUseVideoShutter: Bool {
+        isVideoRecording
+            || (!isPreparingVideoMode
+                && !isPausedForAnalysis
+                && activeSessionConfiguration?.depthDeliverySupported == true
+                && pendingJobCount < CaptureJobQueue.defaultMaximumPendingJobs)
     }
 
     var isCaptureWriteInProgress: Bool {
         pendingJobCount > 0
+    }
+
+    var isBusyForNonCaptureStartupWork: Bool {
+        isConfiguringSession || isVideoRecording || isPreparingVideoMode || isPausedForAnalysis
     }
 
     var shouldShowFocalLengthSelector: Bool {
@@ -94,16 +146,44 @@ final class CameraViewModel: ObservableObject {
         return selectedFocalLengthOptionID
     }
 
+    var activeControlCapabilities: CameraControlCapabilitySnapshot? {
+        activeSessionConfiguration?.controlCapabilities
+    }
+
+    var isManualFocusControlAvailable: Bool {
+        guard let activeSessionConfiguration else {
+            return false
+        }
+        return activeSessionConfiguration.device.position != .front
+            && activeSessionConfiguration.controlCapabilities.focus.supportsManualLensPosition
+    }
+
+    var isFlashAvailable: Bool {
+        sessionController.photoOutput.supportedFlashModes.contains(.auto)
+            || sessionController.photoOutput.supportedFlashModes.contains(.on)
+    }
+
+    var isLivePhotoCaptureSupported: Bool {
+        sessionController.photoOutput.isLivePhotoCaptureSupported
+    }
+
     init(
         capabilityMatrix: CapabilityMatrix = CameraCapabilityResolver.discover(),
         sessionController: CaptureSessionController = CaptureSessionController(),
         pendingCaptureStore: TAPPendingCaptureStore = .shared,
-        pendingCaptureProcessor: TAPPendingCaptureProcessor = .shared
+        pendingCaptureProcessor: TAPPendingCaptureProcessor = .shared,
+        libraryStore: LibraryMediaStore,
+        libraryMediaFetcher: any LibraryMediaFetching = PhotoKitLibraryMediaFetcher(),
+        videoPosterGenerator: any LibraryVideoPosterGenerating = AVAssetLibraryVideoPosterGenerator()
     ) {
         self.capabilityMatrix = capabilityMatrix
         self.sessionController = sessionController
         self.pendingCaptureStore = pendingCaptureStore
         self.pendingCaptureProcessor = pendingCaptureProcessor
+        self.libraryStore = libraryStore
+        self.libraryMediaFetcher = libraryMediaFetcher
+        self.videoPosterGenerator = videoPosterGenerator
+        self.lastHandledLibrarySnapshotRevision = libraryStore.snapshot.revision
         self.focalLengthOptions = capabilityMatrix.focalLengthOptions()
         #if DEBUG
         self.debugDepthDeviceOptions = capabilityMatrix.debugDepthDeviceOptions()
@@ -115,37 +195,101 @@ final class CameraViewModel: ObservableObject {
             writer: TAPPendingCaptureArtifactWriter(store: pendingCaptureStore),
             metricsStore: metricsStore
         )
+        sessionController.setFocusRuntimeEventHandler { [weak self] event in
+            Task { @MainActor [weak self, event] in
+                self?.focusRuntimeEvent = CameraFocusRuntimeEvent(
+                    kind: CameraFocusRuntimeEvent.Kind(captureSessionEvent: event)
+                )
+            }
+        }
+        sessionController.setExposureRuntimeEventHandler { [weak self] event in
+            Task { @MainActor [weak self, event] in
+                self?.exposureRuntimeEvent = CameraExposureRuntimeEvent(
+                    kind: CameraExposureRuntimeEvent.Kind(captureSessionEvent: event)
+                )
+            }
+        }
+        beginObservingLibraryMediaStore()
+    }
+
+    private func beginObservingLibraryMediaStore() {
+        withObservationTracking {
+            _ = libraryStore.snapshot.revision
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self else {
+                    return
+                }
+                self.beginObservingLibraryMediaStore()
+                let revision = self.libraryStore.snapshot.revision
+                guard revision != self.lastHandledLibrarySnapshotRevision else {
+                    return
+                }
+                self.lastHandledLibrarySnapshotRevision = revision
+                self.recentLibraryCoverTask?.cancel()
+                self.recentLibraryCoverTask = Task { @MainActor [weak self] in
+                    await self?.loadRecentLibraryCoverFromCanonicalSnapshot()
+                }
+            }
+        }
     }
 
     func start() async {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
             await configureDefaultSelection()
-            locationProvider.warmLocationCache()
-            await loadRecentTAPLibraryPreviewIfAvailable()
+            if CameraCaptureDataUsePreferences.usesLocationData() {
+                locationProvider.warmLocationCache()
+            }
+            scheduleRecentTAPLibraryPreviewRefresh()
         case .notDetermined:
             let granted = await AVCaptureDevice.requestAccess(for: .video)
             if granted {
                 await configureDefaultSelection()
-                locationProvider.warmLocationCache()
-                await loadRecentTAPLibraryPreviewIfAvailable()
+                if CameraCaptureDataUsePreferences.usesLocationData() {
+                    locationProvider.warmLocationCache()
+                }
+                scheduleRecentTAPLibraryPreviewRefresh()
             } else {
-                statusMessage = TAPDepthCaptureError.cameraAccessDenied.localizedDescription
+                statusMessage = CameraCaptureStatusPresentation.message(
+                    for: TAPDepthCaptureError.cameraAccessDenied,
+                    context: .configuration
+                )
             }
         case .denied, .restricted:
-            statusMessage = TAPDepthCaptureError.cameraAccessDenied.localizedDescription
+            statusMessage = CameraCaptureStatusPresentation.message(
+                for: TAPDepthCaptureError.cameraAccessDenied,
+                context: .configuration
+            )
         @unknown default:
-            statusMessage = TAPDepthCaptureError.cameraAccessDenied.localizedDescription
+            statusMessage = CameraCaptureStatusPresentation.message(
+                for: TAPDepthCaptureError.cameraAccessDenied,
+                context: .configuration
+            )
         }
     }
 
     func stop() {
+        recentLibraryPreviewRefreshTask?.cancel()
+        recentLibraryPreviewRefreshTask = nil
+        recentLibraryCoverTask?.cancel()
+        recentLibraryCoverTask = nil
+        recentLibraryFetchGeneration &+= 1
+        isConfiguringSession = false
         isPausedForAnalysis = false
+        isPreparingVideoMode = false
         sessionController.stop()
     }
 
     func pauseForAnalysis() {
+        recentLibraryPreviewRefreshTask?.cancel()
+        recentLibraryPreviewRefreshTask = nil
+        recentLibraryCoverTask?.cancel()
+        recentLibraryCoverTask = nil
+        recentLibraryFetchGeneration &+= 1
         configurationGeneration += 1
+        isConfiguringSession = false
+        isPreparingVideoMode = false
         isPausedForAnalysis = true
         isDepthCaptureReady = false
         activeSessionConfiguration = nil
@@ -166,14 +310,22 @@ final class CameraViewModel: ObservableObject {
             } else {
                 await configureCurrentSelection()
             }
-            locationProvider.warmLocationCache()
-            await loadRecentTAPLibraryPreviewIfAvailable()
+            if CameraCaptureDataUsePreferences.usesLocationData() {
+                locationProvider.warmLocationCache()
+            }
+            scheduleRecentTAPLibraryPreviewRefresh()
         case .notDetermined:
             await start()
         case .denied, .restricted:
-            statusMessage = TAPDepthCaptureError.cameraAccessDenied.localizedDescription
+            statusMessage = CameraCaptureStatusPresentation.message(
+                for: TAPDepthCaptureError.cameraAccessDenied,
+                context: .configuration
+            )
         @unknown default:
-            statusMessage = TAPDepthCaptureError.cameraAccessDenied.localizedDescription
+            statusMessage = CameraCaptureStatusPresentation.message(
+                for: TAPDepthCaptureError.cameraAccessDenied,
+                context: .configuration
+            )
         }
     }
 
@@ -182,4 +334,375 @@ final class CameraViewModel: ObservableObject {
         previewCropRectNormalized = rect
     }
 
+    func setGlobalAutoExposureBias(
+        _ exposureBias: Double,
+        effectiveExposureBias: Double? = nil
+    ) async {
+        requestedGlobalAutoExposureBias = CameraEVPreferences.clampedBias(exposureBias)
+        await applyEffectiveAutoExposureBiasToActiveConfiguration(
+            effectiveExposureBias ?? requestedGlobalAutoExposureBias
+        )
+    }
+
+    func restoreAutoCameraControls(globalExposureBias: Double) async {
+        requestedGlobalAutoExposureBias = CameraEVPreferences.clampedBias(globalExposureBias)
+        guard let activeSessionConfiguration else {
+            return
+        }
+
+        do {
+            try await sessionController.restoreAutoPhotoControls(
+                globalExposureBias: requestedGlobalAutoExposureBias,
+                to: activeSessionConfiguration.device
+            )
+        } catch {
+            statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .configuration)
+        }
+    }
+
+    func applyRequestedGlobalAutoExposureBiasToActiveConfiguration() async {
+        await applyEffectiveAutoExposureBiasToActiveConfiguration(requestedGlobalAutoExposureBias)
+    }
+
+    func applyEffectiveAutoExposureBiasToActiveConfiguration(_ exposureBias: Double) async {
+        guard let activeSessionConfiguration else {
+            return
+        }
+
+        let effectiveExposureBias = CameraEVPreferences.clampedBias(exposureBias)
+        #if TAP_ENABLE_PRO_CAMERA_CONTROLS
+        let intent = CameraManualControlIntent(
+            targetDeviceID: activeSessionConfiguration.controlCapabilities.deviceID,
+            exposure: .exposureBias(effectiveExposureBias),
+            focus: nil,
+            whiteBalance: nil,
+            aperture: nil,
+            zoomFactor: nil
+        )
+        do {
+            let presentation = try await sessionController.applyManualControlIntent(
+                intent,
+                against: activeSessionConfiguration.controlCapabilities,
+                to: activeSessionConfiguration.device
+            )
+            if presentation.status == .blocked {
+                statusMessage = "\(presentation.title) · \(presentation.detail)"
+            }
+        } catch {
+            statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .configuration)
+        }
+        #else
+        do {
+            try await sessionController.applyExposureTargetBias(
+                effectiveExposureBias,
+                to: activeSessionConfiguration.device
+            )
+        } catch {
+            statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .configuration)
+        }
+        #endif
+    }
+
+    func focusAtPreviewPoint(
+        _ point: CameraPreviewFocusPoint,
+        globalExposureBias: Double
+    ) async {
+        requestedGlobalAutoExposureBias = CameraEVPreferences.clampedBias(globalExposureBias)
+        guard let activeSessionConfiguration else {
+            return
+        }
+
+        let intentPoint = CameraManualControlIntent.NormalizedPoint(x: point.x, y: point.y)
+        let intent = CameraManualControlIntent(
+            targetDeviceID: activeSessionConfiguration.controlCapabilities.deviceID,
+            exposure: nil,
+            focus: .autoFocus(pointOfInterest: intentPoint),
+            whiteBalance: nil,
+            aperture: nil,
+            zoomFactor: nil
+        )
+
+        do {
+            let presentation = try await sessionController.applyManualControlIntent(
+                intent,
+                against: activeSessionConfiguration.controlCapabilities,
+                to: activeSessionConfiguration.device
+            )
+            if presentation.status == .blocked {
+                statusMessage = "\(presentation.title) · \(presentation.detail)"
+            } else {
+                await applyEffectiveAutoExposureBiasToActiveConfiguration(requestedGlobalAutoExposureBias)
+            }
+        } catch {
+            statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .configuration)
+        }
+    }
+
+    func focusOnlyAtPreviewPoint(_ point: CameraPreviewFocusPoint) async {
+        guard let activeSessionConfiguration else {
+            return
+        }
+
+        let intentPoint = CameraManualControlIntent.NormalizedPoint(x: point.x, y: point.y)
+        let intent = CameraManualControlIntent(
+            targetDeviceID: activeSessionConfiguration.controlCapabilities.deviceID,
+            exposure: nil,
+            focus: .autoFocusOnly(pointOfInterest: intentPoint),
+            whiteBalance: nil,
+            aperture: nil,
+            zoomFactor: nil
+        )
+
+        await applyCameraControlIntent(
+            intent,
+            against: activeSessionConfiguration.controlCapabilities,
+            to: activeSessionConfiguration.device
+        )
+    }
+
+    func lockFocusAndExposure() async {
+        await lockFocusAndExposure(at: nil)
+    }
+
+    func lockFocusAndExposure(at point: CameraPreviewFocusPoint) async {
+        await lockFocusAndExposure(at: CameraManualControlIntent.NormalizedPoint(x: point.x, y: point.y))
+    }
+
+    private func lockFocusAndExposure(
+        at point: CameraManualControlIntent.NormalizedPoint?
+    ) async {
+        guard let activeSessionConfiguration else {
+            return
+        }
+
+        if let point {
+            let pointIntent = CameraManualControlIntent(
+                targetDeviceID: activeSessionConfiguration.controlCapabilities.deviceID,
+                exposure: nil,
+                focus: .autoFocus(pointOfInterest: point),
+                whiteBalance: nil,
+                aperture: nil,
+                zoomFactor: nil
+            )
+
+            do {
+                let presentation = try await sessionController.applyManualControlIntent(
+                    pointIntent,
+                    against: activeSessionConfiguration.controlCapabilities,
+                    to: activeSessionConfiguration.device
+                )
+                if presentation.status == .blocked {
+                    statusMessage = "\(presentation.title) · \(presentation.detail)"
+                }
+            } catch {
+                statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .configuration)
+            }
+        }
+
+        let intent = CameraManualControlIntent(
+            targetDeviceID: activeSessionConfiguration.controlCapabilities.deviceID,
+            exposure: .locked,
+            focus: .locked(lensPosition: nil),
+            whiteBalance: nil,
+            aperture: nil,
+            zoomFactor: nil
+        )
+
+        do {
+            let presentation = try await sessionController.applyManualControlIntent(
+                intent,
+                against: activeSessionConfiguration.controlCapabilities,
+                to: activeSessionConfiguration.device
+            )
+            if presentation.status == .blocked {
+                statusMessage = "\(presentation.title) · \(presentation.detail)"
+            }
+        } catch {
+            statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .configuration)
+        }
+    }
+
+    func restoreAutoExposure(globalExposureBias: Double) async {
+        requestedGlobalAutoExposureBias = CameraEVPreferences.clampedBias(globalExposureBias)
+        guard let activeSessionConfiguration else {
+            return
+        }
+
+        let capability = activeSessionConfiguration.controlCapabilities
+        let intent = CameraManualControlIntent(
+            targetDeviceID: capability.deviceID,
+            exposure: .continuousAuto,
+            focus: nil,
+            whiteBalance: nil,
+            aperture: nil,
+            zoomFactor: nil
+        )
+        await applyCameraControlIntent(intent, against: capability, to: activeSessionConfiguration.device)
+        await applyEffectiveAutoExposureBiasToActiveConfiguration(requestedGlobalAutoExposureBias)
+    }
+
+    func applyCustomExposure(
+        iso: Double,
+        shutterDurationSeconds: Double
+    ) async {
+        guard let activeSessionConfiguration else {
+            return
+        }
+
+        let capability = activeSessionConfiguration.controlCapabilities
+        guard capability.exposure.hasManualRange else {
+            statusMessage = "Manual exposure unavailable"
+            return
+        }
+
+        let intent = CameraManualControlIntent(
+            targetDeviceID: capability.deviceID,
+            exposure: .custom(
+                iso: Self.clamped(iso, in: capability.exposure.isoRange),
+                shutterDurationSeconds: Self.clamped(
+                    shutterDurationSeconds,
+                    in: capability.exposure.shutterDurationRangeSeconds
+                )
+            ),
+            focus: nil,
+            whiteBalance: nil,
+            aperture: nil,
+            zoomFactor: nil
+        )
+        await applyCameraControlIntent(intent, against: capability, to: activeSessionConfiguration.device)
+    }
+
+    func applyManualFocus(lensPosition: Double) async {
+        guard let activeSessionConfiguration else {
+            return
+        }
+
+        let capability = activeSessionConfiguration.controlCapabilities
+        guard activeSessionConfiguration.device.position != .front,
+              capability.focus.supportsManualLensPosition else {
+            statusMessage = "Manual focus unavailable"
+            return
+        }
+
+        let intent = CameraManualControlIntent(
+            targetDeviceID: capability.deviceID,
+            exposure: nil,
+            focus: .locked(lensPosition: Self.clamped(lensPosition, in: .init(minimum: 0, maximum: 1))),
+            whiteBalance: nil,
+            aperture: nil,
+            zoomFactor: nil
+        )
+        await applyCameraControlIntent(intent, against: capability, to: activeSessionConfiguration.device)
+    }
+
+    #if TAP_ENABLE_PRO_CAMERA_CONTROLS
+    func readManualControlSnapshot(
+        reason: CameraManualControlReadbackReason
+    ) async -> CameraManualControlReadbackSnapshot? {
+        guard let activeSessionConfiguration else {
+            return nil
+        }
+
+        let snapshot = await sessionController.readManualControlSnapshot(
+            reason: reason,
+            generation: configurationGeneration,
+            from: activeSessionConfiguration.device
+        )
+        latestManualControlReadback = snapshot
+        return snapshot
+    }
+    #endif
+
+    func applyManualControlIntent(_ intent: CameraManualControlIntent) async {
+        guard let activeSessionConfiguration else {
+            return
+        }
+
+        await applyCameraControlIntent(
+            intent,
+            against: activeSessionConfiguration.controlCapabilities,
+            to: activeSessionConfiguration.device
+        )
+    }
+
+    func restoreAutoFocus() async {
+        guard let activeSessionConfiguration else {
+            return
+        }
+
+        let capability = activeSessionConfiguration.controlCapabilities
+        let intent = CameraManualControlIntent(
+            targetDeviceID: capability.deviceID,
+            exposure: nil,
+            focus: .continuousAuto,
+            whiteBalance: nil,
+            aperture: nil,
+            zoomFactor: nil
+        )
+        await applyCameraControlIntent(intent, against: capability, to: activeSessionConfiguration.device)
+    }
+
+    private func applyCameraControlIntent(
+        _ intent: CameraManualControlIntent,
+        against capability: CameraControlCapabilitySnapshot,
+        to device: AVCaptureDevice
+    ) async {
+        do {
+            let presentation = try await sessionController.applyManualControlIntent(
+                intent,
+                against: capability,
+                to: device
+            )
+            if presentation.status == .blocked {
+                statusMessage = "\(presentation.title) · \(presentation.detail)"
+            }
+        } catch {
+            statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .configuration)
+        }
+    }
+
+    private static func clamped(
+        _ value: Double,
+        in range: CameraControlCapabilitySnapshot.DoubleRange
+    ) -> Double {
+        guard value.isFinite else {
+            return range.minimum
+        }
+        return min(max(value, range.minimum), range.maximum)
+    }
+
+}
+
+nonisolated struct CameraCaptureDepthHint: Equatable, Sendable {
+    let id: UUID
+    let message: String
+
+    init(message: String) {
+        self.id = UUID()
+        self.message = message
+    }
+}
+
+private extension CameraFocusRuntimeEvent.Kind {
+    init(captureSessionEvent: CaptureSessionFocusRuntimeEvent) {
+        switch captureSessionEvent {
+        case .focusStarted:
+            self = .focusStarted
+        case .focusSettled:
+            self = .focusSettled
+        case .subjectAreaChanged:
+            self = .subjectAreaChanged
+        }
+    }
+}
+
+private extension CameraExposureRuntimeEvent.Kind {
+    init(captureSessionEvent: CaptureSessionExposureRuntimeEvent) {
+        switch captureSessionEvent {
+        case .exposureStarted:
+            self = .exposureStarted
+        case .exposureSettled:
+            self = .exposureSettled
+        }
+    }
 }

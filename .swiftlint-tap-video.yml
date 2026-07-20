@@ -1,0 +1,22 @@
+only_rules:
+  - cyclomatic_complexity
+  - function_body_length
+
+# VideoBranchRefactorAudit merge thresholds. The script supplies the explicit
+# production-file allowlist and promotes these warnings to failures.
+cyclomatic_complexity:
+  warning: 10
+  error: 10
+
+function_body_length:
+  warning: 80
+  error: 80
+
+# Defense in depth: these paths are outside the scoped production gate even if
+# a future caller passes a directory instead of the script's allowlist.
+excluded:
+  - Packages/CZstd/Vendor
+  - TAPCamDemoTests
+  - TAPCamDemoUITests
+  - TAPCamDemo/DepthAnalysis/DiagnosticsSupport
+  - TAPCamDemo/Support/TAPDepthCodecBenchmark.swift

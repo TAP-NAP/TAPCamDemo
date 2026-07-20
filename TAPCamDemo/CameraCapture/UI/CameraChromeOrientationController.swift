@@ -97,6 +97,38 @@ enum CameraChromeOrientation: Equatable {
     }
 }
 
+/// Rotates chrome content inside a stable frame using the frame center.
+///
+/// The outer frame remains part of the portrait-locked layout. Only the
+/// content inside rotates, so text or icon intrinsic bounds cannot shift the
+/// apparent rotation anchor.
+struct CenterAnchoredChromeRotation<Content: View>: View {
+    let rotation: Angle
+    let width: CGFloat
+    let height: CGFloat
+    private let content: Content
+
+    init(
+        rotation: Angle,
+        width: CGFloat,
+        height: CGFloat,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.rotation = rotation
+        self.width = width
+        self.height = height
+        self.content = content()
+    }
+
+    var body: some View {
+        ZStack {
+            content
+                .rotationEffect(rotation, anchor: .center)
+        }
+        .frame(width: width, height: height, alignment: .center)
+    }
+}
+
 private extension UIDeviceOrientation {
     var isCameraChromeStable: Bool {
         switch self {

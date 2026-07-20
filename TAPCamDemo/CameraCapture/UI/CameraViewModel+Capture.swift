@@ -7,6 +7,7 @@
 
 import AppAttestKit
 import Foundation
+import OSLog
 import Photos
 import UIKit
 
@@ -17,8 +18,10 @@ import UIKit
 @MainActor
 extension CameraViewModel {
     func capture(
-        appAttestClient: (any AppAttestClient)? = nil,
-        suppressesShutterSound: Bool = false
+        pendingCaptureWorkerClient: (any AppAttestClient)? = nil,
+        suppressesShutterSound: Bool = false,
+        flashMode: CaptureFlashMode = .auto,
+        livePhotoRequest: CaptureLivePhotoRequest = .disabled
     ) async {
         guard !isPausedForAnalysis else {
             statusMessage = "Camera paused for analysis."
@@ -26,42 +29,69 @@ extension CameraViewModel {
         }
 
         guard let activeSessionConfiguration else {
-            statusMessage = TAPDepthCaptureError.depthDeliveryUnsupported.localizedDescription
+            statusMessage = CameraCaptureStatusPresentation.message(
+                for: TAPDepthCaptureError.depthDeliveryUnsupported,
+                context: .capture
+            )
             return
         }
 
-        guard let captureConfiguration = configurationForCurrentCapture(from: activeSessionConfiguration),
+        let captureConfiguration = PreCaptureConfigurationBuilder.configuration(
+            from: activeSessionConfiguration,
+            previewCropRectNormalized: previewCropRectNormalized
+        )
+        guard captureConfiguration.depthDeliverySupported,
               captureConfiguration.capturePlan.canCapturePhotoDepth else {
-            statusMessage = TAPDepthCaptureError.incompatibleRGBDepthPairing.localizedDescription
+            statusMessage = CameraCaptureStatusPresentation.message(
+                for: TAPDepthCaptureError.incompatibleRGBDepthPairing,
+                context: .capture
+            )
             return
         }
 
         guard pendingJobCount < CaptureJobQueue.defaultMaximumPendingJobs else {
-            statusMessage = TAPDepthCaptureError.captureBackpressureLimitReached.localizedDescription
+            statusMessage = CameraCaptureStatusPresentation.message(
+                for: TAPDepthCaptureError.captureBackpressureLimitReached,
+                context: .capture
+            )
             return
         }
 
         let queueEnteredAt = Date()
         let job = CaptureJob()
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.pendingCapture.info("capture requested jobID=\(job.id.uuidString, privacy: .public) suppressesShutterSound=\(suppressesShutterSound, privacy: .public)")
+        #endif
 
         do {
             let pendingCount = try await jobQueue.beginJob()
             pendingJobCount = pendingCount
             statusMessage = "Capture queued..."
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.pendingCapture.info("capture queued jobID=\(job.id.uuidString, privacy: .public) pendingJobCount=\(pendingCount, privacy: .public)")
+            #endif
 
-            let location = locationProvider.cachedCaptureLocation()
-            locationProvider.warmLocationCache()
+            let usesLocationData = CameraCaptureDataUsePreferences.usesLocationData()
+            let location = usesLocationData ? locationProvider.cachedCaptureLocation() : nil
+            if usesLocationData {
+                locationProvider.warmLocationCache()
+            }
             let context = CaptureSourceContext(
                 sessionConfiguration: captureConfiguration,
                 capturedAt: job.createdAt,
                 location: location,
-                suppressesShutterSound: suppressesShutterSound
+                suppressesShutterSound: suppressesShutterSound,
+                flashMode: flashMode,
+                livePhotoRequest: livePhotoRequest
             )
             let queueWaitDuration = Date().timeIntervalSince(queueEnteredAt)
             Task { [pipeline, jobQueue, metricsStore] in
                 let result = await pipeline.runSingleCamJob(
                     job: job,
                     context: context,
+                    // Foreground capture stages an unsigned photo file first. App
+                    // Attest signing/export retry starts only after the pending
+                    // artifact has been written.
                     assertionSigner: nil,
                     pendingJobCount: pendingCount,
                     queueWaitDuration: queueWaitDuration
@@ -74,24 +104,35 @@ extension CameraViewModel {
                     self.recentMetrics = metrics
                     switch result {
                     case .success(let writeResult):
+                        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                        TAPDiagnostics.pendingCapture.info("capture pipeline success jobID=\(job.id.uuidString, privacy: .public) pendingCaptureIDPresent=\(writeResult.pendingCaptureID != nil, privacy: .public) assetIDPresent=\(writeResult.assetLocalIdentifier != nil, privacy: .public) remainingJobs=\(remaining, privacy: .public)")
+                        #endif
                         self.statusMessage = writeResult.signatureStatus.captureStatusMessage
-                        if let pendingCaptureID = writeResult.pendingCaptureID {
+                        if let hint = writeResult.depthAvailability.viewfinderHint {
+                            self.latestCaptureDepthHint = CameraCaptureDepthHint(message: hint)
+                        }
+                        if writeResult.pendingCaptureID != nil || writeResult.assetLocalIdentifier != nil {
+                            self.scheduleRecentTAPLibraryPreviewRefresh(afterNanoseconds: 0)
+                        }
+                        if writeResult.pendingCaptureID != nil,
+                           let pendingCaptureWorkerClient {
                             Task {
-                                await self.loadRecentPendingCapturePreview(captureID: pendingCaptureID)
-                                if let appAttestClient {
-                                    await self.processPendingCaptures(appAttestClient: appAttestClient)
-                                }
+                                await self.retryPendingCaptures(pendingCaptureWorkerClient: pendingCaptureWorkerClient)
                             }
-                        } else if let assetID = writeResult.assetLocalIdentifier {
-                            self.loadRecentDepthAssetPreview(assetID: assetID)
                         }
                     case .failure(let error):
-                        self.statusMessage = error.localizedDescription
+                        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                        TAPDiagnostics.pendingCapture.error("capture pipeline failed jobID=\(job.id.uuidString, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
+                        #endif
+                        self.statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .capture)
                     }
                 }
             }
         } catch {
-            statusMessage = error.localizedDescription
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.pendingCapture.error("capture queue failed jobID=\(job.id.uuidString, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
+            #endif
+            statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .capture)
             pendingJobCount = await jobQueue.pendingCount()
         }
     }
@@ -100,98 +141,336 @@ extension CameraViewModel {
     /// access. Exported captures keep their small app-private thumbnail so the
     /// camera affordance is stable even when Photos is in limited-library mode.
     func loadRecentTAPLibraryPreviewIfAvailable() async {
-        if await loadRecentStoredCapturePreviewIfAvailable() {
+        let loadedSnapshot = await libraryStore.cachedSnapshotOrRefresh()
+        guard !Task.isCancelled else {
+            return
+        }
+        guard loadedSnapshot != nil || libraryStore.loadError == nil else {
+            clearRecentLibraryPresentation()
+            return
+        }
+        lastHandledLibrarySnapshotRevision = libraryStore.snapshot.revision
+        await loadRecentLibraryCoverFromCanonicalSnapshot()
+    }
+
+    func scheduleRecentTAPLibraryPreviewRefresh(afterNanoseconds delay: UInt64 = 900_000_000) {
+        recentLibraryPreviewRefreshTask?.cancel()
+        recentLibraryPreviewRefreshTask = Task { [weak self] in
+            if delay > 0 {
+                try? await Task.sleep(nanoseconds: delay)
+            }
+            guard !Task.isCancelled else {
+                return
+            }
+            await self?.loadRecentTAPLibraryPreviewIfIdle()
+        }
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.pendingCapture.info("recent TAP Library preview refresh scheduled delayNs=\(delay, privacy: .public)")
+        #endif
+    }
+
+    private func loadRecentTAPLibraryPreviewIfIdle() async {
+        guard !isBusyForNonCaptureStartupWork else {
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.pendingCapture.info("recent TAP Library preview refresh skipped cameraBusy=true configuring=\(self.isConfiguringSession, privacy: .public) recording=\(self.isVideoRecording, privacy: .public) paused=\(self.isPausedForAnalysis, privacy: .public)")
+            #endif
             return
         }
 
-        guard let asset = PhotoLibraryWriter.latestDepthAssetIfAuthorized() else {
-            return
-        }
-
-        loadRecentDepthAssetPreview(assetID: asset.localIdentifier)
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.pendingCapture.info("recent TAP Library preview refresh start")
+        #endif
+        await loadRecentTAPLibraryPreviewIfAvailable()
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.pendingCapture.info("recent TAP Library preview refresh finish")
+        #endif
     }
 
     @discardableResult
     func loadRecentPendingCapturePreview(captureID: String) async -> Bool {
-        guard let data = try? await pendingCaptureStore.thumbnailData(captureID: captureID),
-              let image = UIImage(data: data) else {
-            return false
-        }
-
-        recentThumbnail = image
-        return true
+        await loadRecentTAPLibraryPreviewIfAvailable()
+        return recentLibraryPresentation.itemID == .tapCapture(captureID)
     }
 
-    private func loadRecentStoredCapturePreviewIfAvailable() async -> Bool {
-        guard let records = try? await pendingCaptureStore.allRecords() else {
-            return false
+    func loadRecentLibraryCoverFromCanonicalSnapshot() async {
+        recentLibraryFetchGeneration &+= 1
+        let generation = recentLibraryFetchGeneration
+        guard let item = libraryStore.latestItem else {
+            clearRecentLibraryPresentation()
+            return
         }
 
-        for record in records where recordCanBeDisplayedInTAPLibrary(record) {
-            if await loadRecentPendingCapturePreview(captureID: record.captureID) {
-                return true
+        let request = MediaFetchRequestKey(
+            itemID: item.mediaID,
+            generation: generation,
+            purpose: .recentCover
+        )
+        let kind = item.summary.kind
+        publishRecentLibraryPhase(.resolving(nil), request: request, kind: kind)
+
+        let pixelLength = 256
+        let cacheKey = item.thumbnailCacheKey(pixelLength: pixelLength)
+        if let poster = DepthAlbumThumbnailMemoryCache.shared.poster(for: cacheKey) {
+            publishRecentLibraryPhase(.ready(poster), request: request, kind: kind)
+            return
+        }
+        if let data = await DepthAlbumThumbnailDiskCache.shared.data(for: cacheKey),
+           !Task.isCancelled {
+            let poster = MediaPoster(cacheKey: cacheKey, jpegData: data)
+            publishRecentLibraryPhase(.ready(poster), request: request, kind: kind)
+            return
+        }
+
+        do {
+            var phase = try await localRecentPosterPhase(
+                for: item,
+                cacheKey: cacheKey,
+                pixelLength: pixelLength
+            )
+            guard !Task.isCancelled, isCurrentRecentLibraryRequest(request) else {
+                return
             }
+
+            if case .cloudOnly(let preview) = phase,
+               LibraryMediaFetchPolicy.allowsNetworkAccess(
+                purpose: .recentCover,
+                item: item.summary,
+                currentItemID: libraryStore.snapshot.latest?.id
+               ),
+               let posterRequest = LibraryMediaPosterRequest(
+                summary: item.summary,
+                pixelLength: pixelLength
+               ) {
+                publishRecentLibraryPhase(
+                    .downloadingFromICloud(preview, progress: nil),
+                    request: request,
+                    kind: kind
+                )
+                let progress: @Sendable (Double?) -> Void = { [weak self] value in
+                    Task { @MainActor [weak self] in
+                        guard let self,
+                              self.isCurrentRecentLibraryRequest(request) else {
+                            return
+                        }
+                        self.publishRecentLibraryPhase(
+                            .downloadingFromICloud(preview, progress: value),
+                            request: request,
+                            kind: kind
+                        )
+                    }
+                }
+                let downloaded = try await libraryMediaFetcher.posterPhase(
+                    for: posterRequest,
+                    allowsNetworkAccess: true,
+                    progress: progress
+                )
+                phase = recentPosterPhase(from: downloaded, cacheKey: cacheKey)
+                    .preservingFailurePreview(preview)
+            } else if case .cloudOnly(let preview) = phase {
+                phase = .failed(preview, reason: .download, retryable: false)
+            }
+
+            guard !Task.isCancelled, isCurrentRecentLibraryRequest(request) else {
+                return
+            }
+            publishRecentLibraryPhase(phase, request: request, kind: kind)
+        } catch is CancellationError {
+            return
+        } catch let failure as MediaFetchFailure {
+            guard isCurrentRecentLibraryRequest(request) else {
+                return
+            }
+            publishRecentLibraryPhase(
+                .failed(nil, reason: failure, retryable: failure.isRetryable),
+                request: request,
+                kind: kind
+            )
+        } catch {
+            guard isCurrentRecentLibraryRequest(request) else {
+                return
+            }
+            publishRecentLibraryPhase(
+                .failed(nil, reason: .download, retryable: true),
+                request: request,
+                kind: kind
+            )
         }
-        return false
     }
 
-    private func recordCanBeDisplayedInTAPLibrary(_ record: TAPPendingCaptureRecord) -> Bool {
-        guard record.status == .exported else {
-            return true
+    private func localRecentPosterPhase(
+        for item: TAPLibraryItem,
+        cacheKey: String,
+        pixelLength: Int
+    ) async throws -> MediaFetchPhase<MediaPoster, MediaPoster> {
+        switch item.source {
+        case .pending(let record):
+            if let data = try await pendingCaptureStore.thumbnailData(captureID: record.captureID) {
+                return .ready(MediaPoster(cacheKey: cacheKey, jpegData: data))
+            }
+            guard item.isVideo else {
+                return .failed(nil, reason: .decode, retryable: false)
+            }
+            let videoURL = try await pendingCaptureStore.bestAvailableVideoURL(captureID: record.captureID)
+            let data = try await videoPosterGenerator.posterData(
+                for: videoURL,
+                cacheKey: cacheKey,
+                pixelLength: pixelLength
+            )
+            return .ready(MediaPoster(cacheKey: cacheKey, jpegData: data))
+        case .ownedPhoto(let record, _):
+            if let data = try await pendingCaptureStore.thumbnailData(captureID: record.captureID) {
+                return .ready(MediaPoster(cacheKey: cacheKey, jpegData: data))
+            }
+            if item.isVideo,
+               let videoURL = try? await pendingCaptureStore.bestAvailableVideoURL(captureID: record.captureID),
+               let data = try? await videoPosterGenerator.posterData(
+                for: videoURL,
+                cacheKey: cacheKey,
+                pixelLength: pixelLength
+               ) {
+                return .ready(MediaPoster(cacheKey: cacheKey, jpegData: data))
+            }
+            guard let request = LibraryMediaPosterRequest(
+                summary: item.summary,
+                pixelLength: pixelLength
+            ) else {
+                return .failed(nil, reason: .assetRemoved, retryable: false)
+            }
+            let phase = try await libraryMediaFetcher.posterPhase(
+                for: request,
+                allowsNetworkAccess: false,
+                progress: { _ in }
+            )
+            return recentPosterPhase(from: phase, cacheKey: cacheKey)
+        case .photos:
+            guard let request = LibraryMediaPosterRequest(
+                summary: item.summary,
+                pixelLength: pixelLength
+            ) else {
+                return .failed(nil, reason: .assetRemoved, retryable: false)
+            }
+            let phase = try await libraryMediaFetcher.posterPhase(
+                for: request,
+                allowsNetworkAccess: false,
+                progress: { _ in }
+            )
+            return recentPosterPhase(from: phase, cacheKey: cacheKey)
         }
-        guard let assetID = record.assetLocalIdentifier else {
-            return false
-        }
-        return PhotoLibraryWriter.asset(localIdentifier: assetID) != nil
     }
 
-    func processPendingCaptures(appAttestClient: any AppAttestClient) async {
+    private func recentPosterPhase(
+        from phase: MediaFetchPhase<Data, Data>,
+        cacheKey: String
+    ) -> MediaFetchPhase<MediaPoster, MediaPoster> {
+        switch phase {
+        case .idle(let preview):
+            return .idle(preview.map { MediaPoster(cacheKey: cacheKey, jpegData: $0) })
+        case .resolving(let preview):
+            return .resolving(preview.map { MediaPoster(cacheKey: cacheKey, jpegData: $0) })
+        case .localPreview(let preview):
+            return .localPreview(MediaPoster(cacheKey: cacheKey, jpegData: preview))
+        case .cloudOnly(let preview):
+            return .cloudOnly(preview.map { MediaPoster(cacheKey: cacheKey, jpegData: $0) })
+        case .downloadingFromICloud(let preview, let progress):
+            return .downloadingFromICloud(
+                preview.map { MediaPoster(cacheKey: cacheKey, jpegData: $0) },
+                progress: progress
+            )
+        case .ready(let value):
+            return .ready(MediaPoster(cacheKey: cacheKey, jpegData: value))
+        case .failed(let preview, let reason, let retryable):
+            return .failed(
+                preview.map { MediaPoster(cacheKey: cacheKey, jpegData: $0) },
+                reason: reason,
+                retryable: retryable
+            )
+        }
+    }
+
+    private func publishRecentLibraryPhase(
+        _ phase: MediaFetchPhase<MediaPoster, MediaPoster>,
+        request: MediaFetchRequestKey,
+        kind: LibraryMediaKind
+    ) {
+        guard isCurrentRecentLibraryRequest(request) else {
+            return
+        }
+        recentLibraryFetchState = IdentifiedMediaFetchState(request: request, phase: phase)
+        switch phase {
+        case .idle, .resolving:
+            if recentLibraryPresentation.poster == nil {
+                recentLibraryPresentation = .resolving(itemID: request.itemID, kind: kind)
+            }
+        case .localPreview(let poster), .ready(let poster):
+            guard poster.image != nil else {
+                recentLibraryPresentation = .failed(
+                    itemID: request.itemID,
+                    kind: kind,
+                    preview: nil,
+                    retryable: false
+                )
+                return
+            }
+            DepthAlbumThumbnailMemoryCache.shared.insert(poster)
+            recentLibraryPresentation = .ready(
+                itemID: request.itemID,
+                kind: kind,
+                poster: poster
+            )
+        case .cloudOnly(let preview):
+            recentLibraryPresentation = .loading(
+                itemID: request.itemID,
+                kind: kind,
+                preview: preview ?? recentLibraryPresentation.poster,
+                progress: nil
+            )
+        case .downloadingFromICloud(let preview, let progress):
+            recentLibraryPresentation = .loading(
+                itemID: request.itemID,
+                kind: kind,
+                preview: preview ?? recentLibraryPresentation.poster,
+                progress: progress
+            )
+        case .failed(let preview, _, let retryable):
+            recentLibraryPresentation = .failed(
+                itemID: request.itemID,
+                kind: kind,
+                preview: preview,
+                retryable: retryable
+            )
+        }
+    }
+
+    private func isCurrentRecentLibraryRequest(_ request: MediaFetchRequestKey) -> Bool {
+        request.generation == recentLibraryFetchGeneration
+            && request.itemID == libraryStore.snapshot.latest?.id
+    }
+
+    private func clearRecentLibraryPresentation() {
+        recentLibraryFetchGeneration &+= 1
+        recentLibraryFetchState = nil
+        recentLibraryPresentation = .empty
+    }
+
+    func retryPendingCaptures(pendingCaptureWorkerClient: any AppAttestClient) async {
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.pendingCapture.info("viewModel retryPendingCaptures start")
+        #endif
         await pendingCaptureProcessor.processPendingCaptures(
             store: pendingCaptureStore,
-            appAttestClient: appAttestClient
+            appAttestClient: pendingCaptureWorkerClient
         )
-        await loadRecentTAPLibraryPreviewIfAvailable()
+        scheduleRecentTAPLibraryPreviewRefresh(afterNanoseconds: 300_000_000)
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.pendingCapture.info("viewModel retryPendingCaptures finish")
+        #endif
     }
 
     /// Updates the camera chrome's recent-photo entry point after a successful
     /// write. The full analysis flow still lives in `DepthAnalysisView`; the camera
     /// screen only owns the small thumbnail affordance and the sheet presentation.
     func loadRecentDepthAssetPreview(assetID: String) {
-        guard let asset = PhotoLibraryWriter.asset(localIdentifier: assetID) else {
-            recentThumbnail = nil
-            return
-        }
-
-        let options = PHImageRequestOptions()
-        options.deliveryMode = .highQualityFormat
-        options.resizeMode = .exact
-        options.isNetworkAccessAllowed = true
-
-        var didReceiveFinalImage = false
-        PHImageManager.default().requestImage(
-            for: asset,
-            targetSize: CGSize(width: 256, height: 256),
-            contentMode: .aspectFill,
-            options: options
-        ) { [weak self] image, info in
-            guard !didReceiveFinalImage else {
-                return
-            }
-
-            if info?[PHImageCancelledKey] as? Bool == true || info?[PHImageErrorKey] != nil {
-                didReceiveFinalImage = true
-                return
-            }
-
-            guard info?[PHImageResultIsDegradedKey] as? Bool != true else {
-                return
-            }
-
-            didReceiveFinalImage = true
-            Task { @MainActor in
-                self?.recentThumbnail = image
-            }
-        }
+        scheduleRecentTAPLibraryPreviewRefresh(afterNanoseconds: 0)
     }
 }
 

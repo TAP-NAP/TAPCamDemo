@@ -1,0 +1,694 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "%@" : {
+
+    },
+    "%@ %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ %2$@"
+          }
+        }
+      }
+    },
+    "%@ mode" : {
+
+    },
+    "%@ mode coming soon" : {
+
+    },
+    "%lld percent" : {
+
+    },
+    "%lld sampled points" : {
+
+    },
+    "%lld selected points" : {
+
+    },
+    "%lld%%" : {
+
+    },
+    "%lld%% valid depth coverage" : {
+
+    },
+    "2D comparison divider" : {
+
+    },
+    "2D overlay opacity" : {
+
+    },
+    "3D projection model" : {
+
+    },
+    "Adjust exposure compensation." : {
+
+    },
+    "AE/AF LOCK" : {
+
+    },
+    "Analysis" : {
+
+    },
+    "App Attest" : {
+
+    },
+    "Back to TAP Library" : {
+
+    },
+    "Camera" : {
+
+    },
+    "Camera Behavior" : {
+
+    },
+    "Camera calibration missing." : {
+
+    },
+    "Camera setup needs attention" : {
+
+    },
+    "Capture" : {
+
+    },
+    "Capture a TAP depth photo first, then return here to analyze it." : {
+
+    },
+    "Capture photos with TAPCam from the Lock Screen." : {
+
+    },
+    "Capture Score" : {
+
+    },
+    "Capture uses location or microphone data only when system authorization and the app data-use switch are both enabled." : {
+
+    },
+    "Close analysis panel" : {
+
+    },
+    "Close the analyzer and return to the camera." : {
+
+    },
+    "Close this analysis panel." : {
+
+    },
+    "Cloud" : {
+
+    },
+    "Cloud legend" : {
+
+    },
+    "Cloud loupe" : {
+
+    },
+    "Complete network access, camera, and photo library access first. Location and microphone are optional." : {
+
+    },
+    "Completed" : {
+
+    },
+    "Continue" : {
+
+    },
+    "Cycle flash mode." : {
+
+    },
+    "Delete" : {
+
+    },
+    "Delete unsaved photo?" : {
+
+    },
+    "Delete unsaved video?" : {
+
+    },
+    "Depth Warnings" : {
+
+    },
+    "Destination" : {
+
+    },
+    "Detected plane %lld percent confidence" : {
+
+    },
+    "Detecting plane region..." : {
+
+    },
+    "Done" : {
+
+    },
+    "Drag on the image to choose a region. The region heatmap uses only the selected valid depth samples to recalculate its color range." : {
+
+    },
+    "Enable required camera or photo library access in Settings, then return." : {
+
+    },
+    "EV" : {
+
+    },
+    "Export failed" : {
+
+    },
+    "Export Originals" : {
+
+    },
+    "Exports original signed resources for local or browser verification." : {
+
+    },
+    "Feedback" : {
+
+    },
+    "File information" : {
+
+    },
+    "First launch needs required setup checks before camera setup can continue." : {
+
+    },
+    "Flash %@" : {
+
+    },
+    "Flash Default" : {
+
+    },
+    "Flash unavailable" : {
+
+    },
+    "Generating credential" : {
+
+    },
+    "Global depth legend" : {
+
+    },
+    "Grid" : {
+
+    },
+    "Grid Growth Animation" : {
+
+    },
+    "Growing plane region" : {
+
+    },
+    "Help" : {
+
+    },
+    "Higher strictness keeps only pixels that fit the seed plane more tightly." : {
+
+    },
+    "Highlight Color" : {
+
+    },
+    "Keep Screen Awake" : {
+
+    },
+    "KeyID help. %@" : {
+
+    },
+    "Library" : {
+
+    },
+    "library.action.cancel" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancel"
+          }
+        }
+      }
+    },
+    "library.action.retry" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retry"
+          }
+        }
+      }
+    },
+    "library.action.settings" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Settings"
+          }
+        }
+      }
+    },
+    "library.failure.decode.message" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The downloaded media could not be decoded."
+          }
+        }
+      }
+    },
+    "library.failure.decode.title" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unable to open item"
+          }
+        }
+      }
+    },
+    "library.failure.download.message" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The iCloud download did not finish. Try again."
+          }
+        }
+      }
+    },
+    "library.failure.download.title" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unable to download"
+          }
+        }
+      }
+    },
+    "library.failure.offline.message" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connect to the internet to download this item from iCloud."
+          }
+        }
+      }
+    },
+    "library.failure.offline.title" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You’re offline"
+          }
+        }
+      }
+    },
+    "library.failure.permission.message" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Allow Photos access in Settings, then try again."
+          }
+        }
+      }
+    },
+    "library.failure.permission.title" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Photos access required"
+          }
+        }
+      }
+    },
+    "library.failure.removed.message" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This item was removed from Photos or is no longer shared with this device."
+          }
+        }
+      }
+    },
+    "library.failure.removed.title" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Item no longer available"
+          }
+        }
+      }
+    },
+    "library.icloud.loading" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loading from iCloud…"
+          }
+        }
+      }
+    },
+    "library.icloud.stored" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stored in iCloud"
+          }
+        }
+      }
+    },
+    "library.media.preparing.photo" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preparing photo…"
+          }
+        }
+      }
+    },
+    "library.media.preparing.video" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preparing video…"
+          }
+        }
+      }
+    },
+    "Live Photo" : {
+
+    },
+    "Live Photo Default" : {
+
+    },
+    "Live Photo off" : {
+
+    },
+    "Live Photo on" : {
+
+    },
+    "Local cloud" : {
+
+    },
+    "Locked capture imported" : {
+
+    },
+    "Manual focus magnifier" : {
+
+    },
+    "Mask legend" : {
+
+    },
+    "Needs Attention" : {
+
+    },
+    "Network access check failed. Check connectivity, then try again." : {
+
+    },
+    "No capture score is available yet." : {
+
+    },
+    "No depth photos yet" : {
+
+    },
+    "No generated legend." : {
+
+    },
+    "No local plane estimate." : {
+
+    },
+    "No region selected." : {
+
+    },
+    "No stable plane region found from this point." : {
+
+    },
+    "OK" : {
+
+    },
+    "Opacity controls the global overlay on the main image. It does not change local region heatmap colors." : {
+
+    },
+    "Open ${destination}" : {
+
+    },
+    "Open Camera" : {
+
+    },
+    "Open camera and analysis settings." : {
+
+    },
+    "Open Settings" : {
+
+    },
+    "Open TAP Camera" : {
+
+    },
+    "Open TAPCam" : {
+
+    },
+    "Open TAPCam to the selected camera workflow." : {
+
+    },
+    "Output Format" : {
+
+    },
+    "Overlay opacity" : {
+
+    },
+    "Pause video" : {
+
+    },
+    "Permissions" : {
+
+    },
+    "Photo carousel" : {
+
+    },
+    "Photo Quality" : {
+
+    },
+    "Plane region" : {
+
+    },
+    "Plane seed point" : {
+
+    },
+    "Plane Strictness" : {
+
+    },
+    "Play video" : {
+
+    },
+    "Preparing 2D playback" : {
+
+    },
+    "Preparing App Attest credential" : {
+
+    },
+    "Preparing camera" : {
+
+    },
+    "Preparing export..." : {
+
+    },
+    "Region" : {
+
+    },
+    "Requesting" : {
+
+    },
+    "Reset EV on App Launch" : {
+
+    },
+    "Resets and prepares the App Attest credential." : {
+
+    },
+    "Retry" : {
+
+    },
+    "Retry Network Access" : {
+
+    },
+    "Return to camera" : {
+
+    },
+    "Return to Camera After Background" : {
+
+    },
+    "Score Detail" : {
+
+    },
+    "Selected area loupe" : {
+
+    },
+    "Selected plane region" : {
+
+    },
+    "Selected plane region %lld percent confidence" : {
+
+    },
+    "Selected point cloud loupe" : {
+
+    },
+    "Selected point cloud preview" : {
+
+    },
+    "Selecting region..." : {
+
+    },
+    "Settings" : {
+
+    },
+    "Share" : {
+
+    },
+    "Show ${captureScore}" : {
+
+    },
+    "Show a selected TAP capture score without opening the app." : {
+
+    },
+    "Show Capture Score" : {
+
+    },
+    "Show Latest Capture Score" : {
+
+    },
+    "Show the latest TAP capture score without opening the app." : {
+
+    },
+    "Shutter Haptics" : {
+
+    },
+    "Shutter Sound" : {
+
+    },
+    "Shutter sound cannot be disabled on this device or in this region." : {
+
+    },
+    "Skipped" : {
+
+    },
+    "Status" : {
+
+    },
+    "Strictness" : {
+
+    },
+    "Switch front and back camera" : {
+
+    },
+    "Tap a surface point in Planes view. The analyzer grows a connected camera-coordinate plane region from that seed." : {
+
+    },
+    "Tap a surface point to grow a plane region." : {
+
+    },
+    "TAP Library" : {
+
+    },
+    "TAP Library will refresh when iOS finishes the transfer." : {
+
+    },
+    "TAPCam" : {
+
+    },
+    "TAPCam Camera" : {
+
+    },
+    "TAPCam Destination" : {
+
+    },
+    "Temporary focus exposure" : {
+
+    },
+    "This capture has not finished exporting to Photos. Deleting it removes the local TAP copy and cannot be undone." : {
+
+    },
+    "This capture is still pending export to Photos. Return after export completes, then open the saved photo to verify its App Attest proof." : {
+
+    },
+    "This is a local camera-coordinate point cloud preview. It is not cloud storage, cloud compute, or a semantic word cloud." : {
+
+    },
+    "This photo is still being processed in the TAPCam queue. Its credential will appear when processing finishes." : {
+
+    },
+    "This video has not finished exporting to Photos. Deleting it removes the local TAP copy and cannot be undone." : {
+
+    },
+    "Toggle Live Photo capture." : {
+
+    },
+    "Unable to load album" : {
+
+    },
+    "Unable to play video" : {
+
+    },
+    "Unlock and open TAPCam from a Lock Screen control without starting locked camera capture." : {
+
+    },
+    "Use %@ field of view" : {
+
+    },
+    "Use Location Data" : {
+
+    },
+    "Use Microphone Data" : {
+
+    },
+    "Valid credential" : {
+
+    },
+    "Verification unavailable" : {
+
+    },
+    "Verify again" : {
+
+    },
+    "Verify signature" : {
+
+    },
+    "Verify the saved photo's App Attest proof." : {
+
+    },
+    "Verify this photo's App Attest proof again." : {
+
+    },
+    "Video position" : {
+
+    },
+    "video.depth.gap" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Depth data is unavailable at this moment."
+          }
+        }
+      }
+    },
+    "Viewfinder" : {
+
+    },
+    "Waiting for locked capture" : {
+
+    },
+    "Waiting for locked captures" : {
+
+    },
+    "Warnings" : {
+
+    },
+    "Welcome to TAPCam" : {
+
+    }
+  },
+  "version" : "1.0"
+}

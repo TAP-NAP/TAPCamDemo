@@ -11,12 +11,12 @@ import SwiftUI
 /// Debug override panel for fixed-order depth-capable device rows.
 ///
 /// Debug selection switches the whole SingleCam pipeline to the chosen
-/// depth-capable device; this view only reflects capability-layer state.
+/// depth-capable device through an opaque token resolved by `CameraView`; this
+/// view only reflects display state.
 struct DebugDepthPanelView: View {
-    let options: [DebugDepthDeviceOption]
-    let selectedID: String?
+    let options: [CameraDebugDepthDisplayOption]
     @Binding var isExpanded: Bool
-    let select: (DebugDepthDeviceOption) -> Void
+    let select: (CameraDebugDepthDisplayOption) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
@@ -28,11 +28,11 @@ struct DebugDepthPanelView: View {
                         } label: {
                             DebugDepthDeviceChip(
                                 option: option,
-                                isSelected: option.id == selectedID
+                                isSelected: option.isSelected
                             )
                         }
                         .buttonStyle(.plain)
-                        .disabled(!option.isSelectable)
+                        .disabled(!option.isEnabled)
                     }
                 }
                 .transition(.move(edge: .leading).combined(with: .opacity))
@@ -57,10 +57,10 @@ struct DebugDepthPanelView: View {
 
 /// A single depth-capable device row inside `DebugDepthPanelView`.
 ///
-/// Disabled/enabled state comes from `CapabilityMatrix`; the view does not
-/// reorder devices or run compatibility checks.
+/// Disabled/enabled state comes from a display DTO; the view does not reorder
+/// devices, inspect hardware, or run compatibility checks.
 struct DebugDepthDeviceChip: View {
-    let option: DebugDepthDeviceOption
+    let option: CameraDebugDepthDisplayOption
     let isSelected: Bool
 
     var body: some View {
@@ -83,14 +83,14 @@ struct DebugDepthDeviceChip: View {
     }
 
     private var background: Color {
-        if !option.isSelectable {
+        if !option.isEnabled {
             return .yellow.opacity(0.08)
         }
         return isSelected ? .yellow.opacity(0.92) : .yellow.opacity(0.48)
     }
 
     private var foreground: Color {
-        if !option.isSelectable {
+        if !option.isEnabled {
             return .white.opacity(0.36)
         }
         return isSelected ? .black : .white

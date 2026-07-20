@@ -82,11 +82,15 @@ nonisolated struct TAPMetricDepthMap: Equatable {
     }
 
     func sample(x: Int, y: Int) -> Float? {
-        guard x >= 0, y >= 0, x < width, y < height else {
+        guard let sampleIndex = TAPDepthAnalysisInputValidation.sampleIndex(
+            depthMap: self,
+            x: x,
+            y: y
+        ) else {
             return nil
         }
 
-        let value = samples[index(x: x, y: y)]
+        let value = samples[sampleIndex]
         return value.isFinite && value > 0 ? value : nil
     }
 }
@@ -167,6 +171,12 @@ nonisolated struct TAPPlaneRegion: Equatable {
     let areaSquareMeters: Double
 }
 
+nonisolated struct TAPPlaneGridProgress: Equatable {
+    let seedPixel: CGPoint
+    let gridCells: [TAPPlaneGridCell]
+    let progress: Double
+}
+
 nonisolated struct TAPPlaneGrowthParameters: Equatable {
     let strictness: Double
     let residualThresholdMeters: Float
@@ -211,11 +221,14 @@ enum TAPPlaneGrowthError: LocalizedError, Equatable {
 
 enum AnalysisPanelDestination: Equatable {
     case inspector(AnalysisInspector)
+    case signatureVerification
 
     var selectedInspector: AnalysisInspector? {
         switch self {
         case .inspector(let inspector):
             return inspector
+        case .signatureVerification:
+            return nil
         }
     }
 }
@@ -263,9 +276,26 @@ enum AnalysisInspector: String, CaseIterable, Identifiable, Equatable {
             "point.3.connected.trianglepath.dotted"
         }
     }
+
+    var detailedExplanation: String {
+        switch self {
+        case .measurements:
+            "Shows numeric depth measurements for the selected region, including median depth, range, valid samples, and any local plane estimate."
+        case .legend:
+            "Explains the current view's color mapping, such as near-to-far depth colors, valid-depth coverage, or point-cloud distance colors."
+        case .overlay:
+            "Controls the opacity of generated overlays on the main image, so you can compare the analysis layer against the RGB photo."
+        case .region:
+            "Shows measurements and previews for a completed rectangular selection. In Depth view, the selected crop is recolored using only local valid depth samples."
+        case .planeFilter:
+            "Controls seed-grown plane strictness and reports the selected plane region's cells, area, confidence, flatness, residual, and calibration diagnostics."
+        case .cloudInfo:
+            "Explains the local camera-coordinate point cloud preview and reports point counts and near-to-far color meaning."
+        }
+    }
 }
 
-enum AnalysisInteractionState: Equatable {
+nonisolated enum AnalysisInteractionState: Equatable {
     case idle
     case drawingSelection
     case regionSelected
@@ -279,6 +309,8 @@ enum TAPDepthAnalysisError: LocalizedError {
     case missingPrimaryImage
     case missingDepthData
     case unreadableDepthMap
+    case invalidDepthMap
+    case analysisInputTooLarge
     case noValidDepthSamples
     case imageRenderFailed
     case assetNotFound
@@ -291,6 +323,10 @@ enum TAPDepthAnalysisError: LocalizedError {
             "The selected image does not contain Apple auxiliary depth or disparity data."
         case .unreadableDepthMap:
             "The depth pixel buffer could not be read."
+        case .invalidDepthMap:
+            "The depth map could not be analyzed."
+        case .analysisInputTooLarge:
+            "The selected image is too large to analyze."
         case .noValidDepthSamples:
             "The depth map does not contain valid metric depth samples."
         case .imageRenderFailed:

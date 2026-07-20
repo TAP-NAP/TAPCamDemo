@@ -5,2480 +5,1830 @@
 //  Created by Codex on 2026/4/26.
 //
 
-import Combine
 import Foundation
 import ImageIO
+import OSLog
 import Photos
+import PhotosUI
 import SwiftUI
-
-enum DepthAnalysisSource: Hashable {
-    case photosAsset(String)
-    case pendingCapture(String)
-}
-
-private enum DepthAnalysisLoadError: LocalizedError {
-    case pendingCaptureTemporarilyUnavailable
-
-    var errorDescription: String? {
-        switch self {
-        case .pendingCaptureTemporarilyUnavailable:
-            "Temporarily not available. Return to TAP Library; it will refresh automatically."
-        }
-    }
-}
+import UIKit
 
 /// Independent browser/analysis surface for saved TAP Depth HEIC files.
 ///
-/// The camera view links here through a thumbnail only. All depth heatmaps,
-/// point-cloud previews, pixel reads, and plane fitting live on this side of
-/// the module boundary so the capture UI remains a camera.
+/// The camera view links here through a thumbnail only. The default state is a
+/// Photos-like browser where the bottom capsule switches the centered primary
+/// surface between RAW, 2D, and 3D.
 struct DepthAnalysisView: View {
-    let source: DepthAnalysisSource
-    @StateObject private var viewModel = DepthAnalysisViewModel()
-    @State private var heatmapOpacity = 0.74
-    @State private var panelDestination: AnalysisPanelDestination?
-    @State private var buttonHint: AnalysisButtonHint?
-    @State private var buttonHintToken = UUID()
-    @AppStorage(DepthAnalyzerPreferences.showsAnalysisHelpKey)
-    private var isShowingInlineHelp = DepthAnalyzerPreferences.defaultShowsAnalysisHelp
+    private let onCurrentAlbumEntryChanged: ((DepthAnalysisAlbumContext.Entry) -> Void)?
+    private let mediaFetcher: any LibraryMediaFetching
+
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.displayScale) private var displayScale
+    @StateObject private var carouselStore: DepthAnalysisCarouselStore
+    @State private var heatmapOpacity = 0.58
+    @State private var twoDComparisonPosition = 0.5
+    @State private var selectedTool = AnalysisViewerTool.raw
+    @State private var sharePayload: DepthAnalysisSystemSharePayload?
+    @State private var isPreparingShare = false
+    @State private var pendingDeleteRequest: DepthAnalysisPendingDeleteRequest?
+    @State private var deleteAlert: DepthAnalysisDeleteAlert?
+    @AppStorage(CameraViewfinderHighlightPreference.storageKey)
+    private var viewfinderHighlightRawValue = CameraViewfinderHighlightPreference.defaultValue.rawValue
+    @AppStorage(DepthAnalyzerPreferences.planeGridAnimationEnabledKey)
+    private var isPlaneGridAnimationEnabled = DepthAnalyzerPreferences.defaultPlaneGridAnimationEnabled
 
     init(
-        assetID: String
+        source: DepthAnalysisSource,
+        albumContext: DepthAnalysisAlbumContext? = nil,
+        onCurrentAlbumEntryChanged: ((DepthAnalysisAlbumContext.Entry) -> Void)? = nil,
+        mediaFetcher: any LibraryMediaFetching = PhotoKitLibraryMediaFetcher()
     ) {
-        self.source = .photosAsset(assetID)
+        _carouselStore = StateObject(
+            wrappedValue: DepthAnalysisCarouselStore(
+                source: source,
+                albumContext: albumContext,
+                mediaFetcher: mediaFetcher
+            )
+        )
+        self.onCurrentAlbumEntryChanged = onCurrentAlbumEntryChanged
+        self.mediaFetcher = mediaFetcher
     }
 
-    init(
-        pendingCaptureID: String
-    ) {
-        self.source = .pendingCapture(pendingCaptureID)
-    }
-
-    var body: some View {
-        Group {
-            if let input = viewModel.input {
-                analysisContent(input)
-            } else if let errorMessage = viewModel.errorMessage {
-                ContentUnavailableView(
-                    viewModel.errorTitle,
-                    systemImage: viewModel.errorSystemImage,
-                    description: Text(errorMessage)
-                )
-            } else {
-                ProgressView("Loading depth image...")
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .overlay {
-            if panelDestination != nil {
-                Color.black.opacity(0.001)
-                    .ignoresSafeArea()
-                    .contentShape(Rectangle())
-                    .onTapGesture(count: 2) {
-                        clearSelectionAndPanel()
-                    }
-                    .onTapGesture {
-                        panelDestination = nil
-                    }
-            }
-        }
-        .overlay(alignment: .bottom) {
-            if let input = viewModel.input {
-                analysisControls(for: input)
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 12)
-            }
-        }
-        .navigationTitle("Analysis")
-        .navigationBarTitleDisplayMode(.inline)
-        .onChange(of: viewModel.viewMode) { _, viewMode in
-            if let inspector = panelDestination?.selectedInspector, !inspectors(for: viewMode).contains(inspector) {
-                panelDestination = nil
-            }
-        }
-        .task {
-            await viewModel.load(source: source)
-        }
-    }
-
-    @ViewBuilder
-    private func analysisContent(_ input: TAPDepthAnalysisInput) -> some View {
-        ZStack(alignment: .top) {
-            switch viewModel.viewMode {
-            case .rgb:
-                depthImageStage(
-                    input,
-                    overlayImage: nil,
-                    overlayOpacity: 0
-                )
-            case .heatmap:
-                depthImageStage(
-                    input,
-                    overlayImage: input.heatmap.image,
-                    overlayOpacity: heatmapOpacity
-                )
-            case .mask:
-                depthImageStage(
-                    input,
-                    overlayImage: input.validMask.image,
-                    overlayOpacity: 1
-                )
-            case .planes:
-                depthImageStage(
-                    input,
-                    overlayImage: input.heatmap.image,
-                    overlayOpacity: heatmapOpacity,
-                    planeRegion: viewModel.selectedPlaneRegion,
-                    planeSeedPoint: viewModel.planeSeedPoint,
-                    isSelectionEnabled: false,
-                    isPointSelectionEnabled: true,
-                    onPointSelected: { depthPoint in
-                        viewModel.selectPlaneSeed(depthPoint)
-                        panelDestination = .inspector(.planeFilter)
-                    }
-                )
-            case .pointCloud:
-                PointCloudPreview(
-                    depthMap: input.depthMap,
-                    orientation: input.imageOrientation,
-                    selection: $viewModel.selectionRect,
-                    interactionState: viewModel.interactionState,
-                    onSelectionBegan: { depthRect in
-                        viewModel.beginSelection(depthRect)
-                    },
-                    onSelectionChanged: { depthRect in
-                        viewModel.previewSelection(depthRect)
-                    },
-                    onSelectionEnded: { depthRect in
-                        finishRegionSelection(depthRect)
-                    },
-                    onSelectionCleared: {
-                        clearSelectionAndPanel()
-                    }
-                )
-                .background(Color.black)
-            }
-
-            #if DEBUG
-            if let summary = CaptureMetadataSummary(input: input) {
-                CaptureMetadataHUD(summary: summary)
-                    .padding(.horizontal, 12)
-                    .padding(.top, 8)
-                    .allowsHitTesting(false)
-            }
-            #endif
-        }
-    }
-
-    private func depthImageStage(
-        _ input: TAPDepthAnalysisInput,
-        overlayImage: CGImage?,
-        overlayOpacity: Double,
-        planeOverlays: [TAPDetectedPlane] = [],
-        planeRegion: TAPPlaneRegion? = nil,
-        planeSeedPoint: CGPoint? = nil,
-        isSelectionEnabled: Bool = true,
-        isPointSelectionEnabled: Bool = false,
-        onPointSelected: ((CGPoint) -> Void)? = nil
-    ) -> some View {
-        InteractiveDepthImage(
-            image: input.image,
-            overlayImage: overlayImage,
-            overlayOpacity: overlayOpacity,
-            orientation: input.imageOrientation,
-            depthSize: CGSize(width: input.depthMap.width, height: input.depthMap.height),
-            selection: $viewModel.selectionRect,
-            interactionState: viewModel.interactionState,
-            planeOverlays: planeOverlays,
-            planeRegion: planeRegion,
-            planeSeedPoint: planeSeedPoint,
-            isSelectionEnabled: isSelectionEnabled,
-            isPointSelectionEnabled: isPointSelectionEnabled,
-            onSelectionBegan: { depthRect in
-                viewModel.beginSelection(depthRect)
-            },
-            onSelectionChanged: { depthRect in
-                viewModel.previewSelection(depthRect)
-            },
-            onSelectionEnded: { depthRect in
-                finishRegionSelection(depthRect)
-            },
-            onSelectionCleared: {
-                clearSelectionAndPanel()
-            },
-            onPointSelected: { depthPoint in
-                onPointSelected?(depthPoint)
-            }
+    init(assetID: String) {
+        self.init(
+            source: .photosAsset(assetID)
         )
     }
 
-    private func analysisControls(for input: TAPDepthAnalysisInput) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if let destination = panelDestination {
-                AnalysisPanelLayer(destination: $panelDestination, maxHeight: UIScreen.main.bounds.height * 0.32) {
-                    panelContent(for: destination, input: input, showsInlineHelp: isShowingInlineHelp)
-                }
-                .transition(
-                    .asymmetric(
-                        insertion: .move(edge: .bottom).combined(with: .opacity),
-                        removal: .move(edge: .bottom).combined(with: .opacity)
+    init(pendingCaptureID: String) {
+        self.init(
+            source: .pendingCapture(pendingCaptureID)
+        )
+    }
+
+    var body: some View {
+        analysisSurface()
+        .toolbar(.hidden, for: .navigationBar)
+        .ignoresSafeArea(.container, edges: .all)
+        .sheet(item: $sharePayload) { payload in
+            VerificationExportActivityView(activityItems: [payload.export.fileURL])
+        }
+        .alert(item: $pendingDeleteRequest) { request in
+            Alert(
+                title: Text("Delete unsaved photo?"),
+                message: Text("This capture has not finished exporting to Photos. Deleting it removes the local TAP copy and cannot be undone."),
+                primaryButton: .destructive(Text("Delete")) {
+                    performDelete(
+                        source: request.source,
+                        displayPixelLength: request.displayPixelLength,
+                        prewarmCurrentPlaneGeometry: request.prewarmCurrentPlaneGeometry
                     )
-                )
-                .zIndex(1)
-            }
-
-            AnalysisInspectorStrip(
-                panelDestination: $panelDestination,
-                viewMode: $viewModel.viewMode,
-                inspectors: inspectors(for: viewModel.viewMode),
-                buttonHint: buttonHint,
-                onViewTapped: { viewMode in
-                    showButtonHint(.view(viewMode))
-                }
+                },
+                secondaryButton: .cancel()
             )
         }
-        .frame(maxWidth: 560, alignment: .leading)
-        .animation(.snappy(duration: 0.18), value: panelDestination)
-        .animation(.snappy(duration: 0.18), value: viewModel.viewMode)
-        .animation(.snappy(duration: 0.18), value: isShowingInlineHelp)
-    }
-
-    private func clearSelectionAndPanel() {
-        viewModel.clearSelection()
-        panelDestination = nil
-    }
-
-    private func finishRegionSelection(_ depthRect: CGRect) {
-        viewModel.finishSelection(depthRect)
-        if inspectors(for: viewModel.viewMode).contains(.region) {
-            panelDestination = .inspector(.region)
-        }
-    }
-
-    private func showButtonHint(_ hint: AnalysisButtonHint) {
-        let token = UUID()
-        buttonHintToken = token
-        withAnimation(.snappy(duration: 0.16)) {
-            buttonHint = hint
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-            guard buttonHintToken == token else {
-                return
-            }
-            withAnimation(.snappy(duration: 0.16)) {
-                buttonHint = nil
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func panelContent(for destination: AnalysisPanelDestination, input: TAPDepthAnalysisInput, showsInlineHelp: Bool) -> some View {
-        switch destination {
-        case .inspector(let inspector):
-            VStack(alignment: .leading, spacing: 10) {
-                if showsInlineHelp {
-                    InlineHelpText(inspector.detailedExplanation)
-                }
-                inspectorContent(for: inspector, input: input, showsInlineHelp: showsInlineHelp)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func inspectorContent(for inspector: AnalysisInspector, input: TAPDepthAnalysisInput, showsInlineHelp: Bool) -> some View {
-        switch inspector {
-        case .measurements:
-            measurementsContent(showsInlineHelp: showsInlineHelp)
-        case .legend:
-            legendContent(for: input, showsInlineHelp: showsInlineHelp)
-        case .overlay:
-            OverlayInspectorContent(opacity: $heatmapOpacity, showsInlineHelp: showsInlineHelp)
-        case .region:
-            RegionInspectorContent(
-                image: input.image,
-                orientation: input.imageOrientation,
-                depthSize: CGSize(width: input.depthMap.width, height: input.depthMap.height),
-                selection: viewModel.selectionRect,
-                interactionState: viewModel.interactionState,
-                stats: viewModel.regionStats,
-                planeEstimate: viewModel.planeEstimate,
-                regionHeatmap: viewModel.regionHeatmap,
-                heatmapErrorMessage: viewModel.regionHeatmapErrorMessage,
-                showsInlineHelp: showsInlineHelp
-            )
-        case .planeFilter:
-            PlaneFilterInspectorContent(
-                depthMap: input.depthMap,
-                depthAccuracy: input.depthAccuracy,
-                depthQuality: input.depthQuality,
-                selectedPlaneRegion: viewModel.selectedPlaneRegion,
-                planeSeedPoint: viewModel.planeSeedPoint,
-                isDetecting: viewModel.planeRegionIsLoading,
-                errorMessage: viewModel.planeRegionErrorMessage,
-                strictness: Binding(
-                    get: { viewModel.planeGrowthStrictness },
-                    set: { viewModel.updatePlaneGrowthStrictness($0) }
-                ),
-                showsInlineHelp: showsInlineHelp
-            )
-        case .cloudInfo:
-            CloudInfoInspectorContent(
-                depthMap: input.depthMap,
-                orientation: input.imageOrientation,
-                selection: viewModel.selectionRect,
-                interactionState: viewModel.interactionState,
-                showsInlineHelp: showsInlineHelp
+        .alert(item: $deleteAlert) { alert in
+            Alert(
+                title: Text(alert.title),
+                message: Text(alert.message),
+                dismissButton: .default(Text("OK"))
             )
         }
+        .onDisappear {
+            carouselStore.cancelViewerRequests()
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: UIApplication.didEnterBackgroundNotification
+            )
+        ) { _ in
+            carouselStore.cancelViewerRequests()
+        }
     }
 
-    private func measurementsContent(showsInlineHelp: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if let stats = viewModel.regionStats {
-                DepthMetricRow(
-                    title: "Median depth",
-                    value: stats.medianDepthMeters.map { String(format: "%.2f m", $0) } ?? "No valid depth",
-                    explanation: "Sort the selected valid depth samples from near to far; this is the value in the middle. It is less sensitive to isolated noisy pixels than an average.",
-                    showsHelp: showsInlineHelp
+    private func analysisSurface() -> some View {
+        GeometryReader { geometry in
+            let viewportSize = geometry.size
+            let safeAreaInsets = geometry.safeAreaInsets
+            let displayPixelLength = Self.displayPixelLength(
+                viewportSize: viewportSize,
+                displayScale: displayScale
+            )
+
+            ZStack(alignment: .bottom) {
+                AnalysisPhotoCarouselView(
+                    store: carouselStore,
+                    selectedTool: selectedTool,
+                    displayPixelLength: displayPixelLength,
+                    heatmapOpacity: $heatmapOpacity,
+                    comparisonPosition: $twoDComparisonPosition,
+                    highlightPalette: highlightPalette,
+                    isPlaneGridAnimationEnabled: isPlaneGridAnimationEnabled,
+                    mediaFetcher: mediaFetcher,
+                    onCurrentEntryChanged: handleCurrentEntryChanged,
+                    onEdgeBack: {
+                        dismiss()
+                    }
                 )
-                DepthMetricRow(
-                    title: "Range",
-                    value: rangeText(stats),
-                    explanation: "The nearest and farthest valid metric depth samples found inside the selection.",
-                    showsHelp: showsInlineHelp
+                .frame(width: viewportSize.width, height: viewportSize.height)
+                .background(Color.black)
+
+                DepthAnalysisViewerChromeView(
+                    selectedTool: selectedTool,
+                    heatmapOpacity: $heatmapOpacity,
+                    isSharePreparing: isPreparingShare,
+                    topSafeArea: safeAreaInsets.top,
+                    bottomSafeArea: safeAreaInsets.bottom,
+                    onBackTapped: {
+                        dismiss()
+                    },
+                    onShareTapped: presentSystemShareSheet,
+                    onToolTapped: handleToolTapped,
+                    onDeleteTapped: {
+                        deleteCurrentItem(displayPixelLength: displayPixelLength)
+                    }
                 )
-                DepthMetricRow(
-                    title: "Valid samples",
-                    value: "\(stats.validSampleCount)/\(stats.totalSampleCount) · \(Int((stats.validRatio * 100).rounded()))%",
-                    explanation: "How many pixels in the selected region contain finite positive depth. Plane fitting and point projection ignore invalid samples.",
-                    showsHelp: showsInlineHelp
-                )
-            } else {
-                Text(viewModel.interactionState == .drawingSelection ? "Selecting region..." : "No region selected.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                if showsInlineHelp {
-                    InlineHelpText("Drag on the image to choose a depth region. Measurements update from the finite positive depth samples inside that selection.")
-                }
+                .zIndex(2)
+            }
+            .animation(.snappy(duration: 0.2), value: selectedTool)
+        }
+        .background(Color.black)
+    }
+
+    private func handleToolTapped(_ tool: AnalysisViewerTool) {
+        selectedTool = tool
+    }
+
+    private var highlightPalette: AnalysisHighlightPalette {
+        AnalysisHighlightPalette.resolved(viewfinderRawValue: viewfinderHighlightRawValue)
+    }
+
+    private func presentSystemShareSheet() {
+        guard !isPreparingShare,
+              case .photosAsset(let assetID) = carouselStore.currentEntry?.source else {
+            return
+        }
+        isPreparingShare = true
+
+        Task { @MainActor in
+            defer {
+                isPreparingShare = false
             }
 
-            if let plane = viewModel.planeEstimate {
-                Divider()
-                DepthMetricRow(
-                    title: "Plane residual",
-                    value: String(format: "%.3f m", plane.averageResidualMeters),
-                    explanation: "Average distance from inlier points to the fitted plane. Smaller values usually mean the selected surface is flatter.",
-                    showsHelp: showsInlineHelp
-                )
-                DepthMetricRow(
-                    title: "Plane inliers",
-                    value: "\(Int((plane.inlierRatio * 100).rounded()))%",
-                    explanation: "The share of sampled points close enough to the fitted plane to count as inliers.",
-                    showsHelp: showsInlineHelp
-                )
-                DepthMetricRow(
-                    title: "Plane normal",
-                    value: String(format: "[%.2f, %.2f, %.2f]", plane.normal.x, plane.normal.y, plane.normal.z),
-                    explanation: "The fitted plane direction in local camera coordinates. It is useful for comparing orientation, not for world tracking.",
-                    showsHelp: showsInlineHelp
-                )
-            } else {
-                Divider()
-                Text("No local plane estimate.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                if showsInlineHelp {
-                    InlineHelpText("A local plane estimate appears after the selected region has enough valid depth points for a stable fit.")
-                }
+            do {
+                let export = try await TAPVerificationExportBuilder().export(assetID: assetID)
+                sharePayload = DepthAnalysisSystemSharePayload(export: export)
+            } catch {
+                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                TAPDiagnostics.appAttest.error("analysis share export failed error=\(TAPDiagnostics.describe(error), privacy: .public)")
+                #endif
             }
         }
     }
 
-    @ViewBuilder
-    private func legendContent(for input: TAPDepthAnalysisInput, showsInlineHelp: Bool) -> some View {
-        switch viewModel.viewMode {
-        case .rgb:
-            VStack(alignment: .leading, spacing: 6) {
-                Text("No generated legend.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                if showsInlineHelp {
-                    InlineHelpText(viewModel.viewMode.legendDescription)
+    private func deleteCurrentItem(displayPixelLength: Int) {
+        guard let source = carouselStore.currentEntry?.source else {
+            return
+        }
+
+        let prewarmCurrentPlaneGeometry = selectedTool == .threeD
+        if case .pendingCapture = source {
+            pendingDeleteRequest = DepthAnalysisPendingDeleteRequest(
+                source: source,
+                displayPixelLength: displayPixelLength,
+                prewarmCurrentPlaneGeometry: prewarmCurrentPlaneGeometry
+            )
+            return
+        }
+
+        performDelete(
+            source: source,
+            displayPixelLength: displayPixelLength,
+            prewarmCurrentPlaneGeometry: prewarmCurrentPlaneGeometry
+        )
+    }
+
+    private func performDelete(
+        source: DepthAnalysisSource,
+        displayPixelLength: Int,
+        prewarmCurrentPlaneGeometry: Bool
+    ) {
+        Task { @MainActor in
+            do {
+                try await DepthAnalysisDeletionService.delete(source: source)
+                if let nextEntry = carouselStore.advanceAfterDeletingCurrent(
+                    pixelLength: displayPixelLength,
+                    prewarmCurrentPlaneGeometry: prewarmCurrentPlaneGeometry
+                ) {
+                    handleCurrentEntryChanged(nextEntry)
+                } else {
+                    dismiss()
                 }
-            }
-        case .heatmap, .planes:
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 6) {
-                    Text("Global depth legend")
-                        .font(.caption.weight(.semibold))
-                        .help(viewModel.viewMode.legendDescription)
-                    Spacer(minLength: 8)
-                    Text(globalHeatmapRangeText(input.heatmap))
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
-                if showsInlineHelp {
-                    InlineHelpText(viewModel.viewMode.legendDescription)
-                }
-                DepthLegendView(stops: input.heatmap.legendStops)
-            }
-        case .mask:
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Mask legend")
-                    .font(.caption.weight(.semibold))
-                    .help(viewModel.viewMode.legendDescription)
-                if showsInlineHelp {
-                    InlineHelpText(viewModel.viewMode.legendDescription)
-                }
-                SwatchLegendView(stops: input.validMask.legendStops)
-                Text("\(Int((input.validMask.validRatio * 100).rounded()))% valid depth coverage")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                if showsInlineHelp {
-                    InlineHelpText("Coverage is the share of depth pixels that can contribute to statistics, plane fitting, and point projection.")
-                }
-            }
-        case .pointCloud:
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Cloud legend")
-                    .font(.caption.weight(.semibold))
-                    .help(viewModel.viewMode.legendDescription)
-                if showsInlineHelp {
-                    InlineHelpText(viewModel.viewMode.legendDescription)
-                }
-                DepthLegendView(stops: cloudLegendStops)
+            } catch {
+                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                TAPDiagnostics.photoLibrary.error("analysis delete failed error=\(TAPDiagnostics.describe(error), privacy: .public)")
+                #endif
+                deleteAlert = DepthAnalysisDeleteAlert(
+                    title: "Unable to delete photo",
+                    message: "Try again from TAP Library."
+                )
             }
         }
     }
 
-    private func inspectors(for viewMode: DepthAnalysisViewMode) -> [AnalysisInspector] {
-        switch viewMode {
-        case .rgb:
-            [.measurements, .region]
-        case .heatmap:
-            [.measurements, .legend, .overlay, .region]
-        case .mask:
-            [.measurements, .legend, .region]
-        case .planes:
-            [.planeFilter, .legend, .overlay]
-        case .pointCloud:
-            [.cloudInfo, .measurements, .region]
+    private func handleCurrentEntryChanged(_ entry: DepthAnalysisCarouselEntry) {
+        if let albumEntry = entry.albumEntry {
+            onCurrentAlbumEntryChanged?(albumEntry)
         }
     }
 
-    private func rangeText(_ stats: TAPDepthRegionStats) -> String {
-        guard let minimum = stats.minimumDepthMeters, let maximum = stats.maximumDepthMeters else {
-            return "No valid depth"
-        }
-
-        return String(format: "%.2f...%.2f m", minimum, maximum)
+    private static func displayPixelLength(viewportSize: CGSize, displayScale: CGFloat) -> Int {
+        let viewportMaxLength = max(viewportSize.width, viewportSize.height)
+        let scaledLength = Int(ceil(viewportMaxLength * max(displayScale, 1)))
+        return min(max(scaledLength, 960), 4096)
     }
+}
 
-    private func globalHeatmapRangeText(_ heatmap: TAPDepthHeatmapVisualization) -> String {
-        String(format: "%.2f...%.2f m", heatmap.rangeMeters.lowerBound, heatmap.rangeMeters.upperBound)
-    }
+private struct DepthAnalysisPendingDeleteRequest: Identifiable {
+    let id = UUID()
+    let source: DepthAnalysisSource
+    let displayPixelLength: Int
+    let prewarmCurrentPlaneGeometry: Bool
+}
 
-    private var cloudLegendStops: [TAPDepthLegendStop] {
-        [
-            TAPDepthLegendStop(position: 0, label: "Near points", color: TAPDepthHeatmapRenderer.viridisColor(normalized: 0)),
-            TAPDepthLegendStop(position: 1, label: "Far points", color: TAPDepthHeatmapRenderer.viridisColor(normalized: 1))
-        ]
-    }
+private struct DepthAnalysisDeleteAlert: Identifiable {
+    let id = UUID()
+    let title: String
+    let message: String
 }
 
 @MainActor
-final class DepthAnalysisViewModel: ObservableObject {
-    @Published var input: TAPDepthAnalysisInput?
-    @Published var viewMode: DepthAnalysisViewMode = .rgb
-    @Published var selectionRect: CGRect?
-    @Published var interactionState: AnalysisInteractionState = .idle
-    @Published var regionStats: TAPDepthRegionStats?
-    @Published var regionHeatmap: TAPDepthHeatmapVisualization?
-    @Published var regionHeatmapErrorMessage: String?
-    @Published var planeEstimate: TAPPlaneEstimate?
-    @Published var planeGrowthStrictness = 0.68
-    @Published var planeSeedPoint: CGPoint?
-    @Published var selectedPlaneRegion: TAPPlaneRegion?
-    @Published var planeRegionIsLoading = false
-    @Published var planeRegionErrorMessage: String?
-    @Published var errorMessage: String?
-    @Published var errorTitle = "Unable to analyze image"
-    @Published var errorSystemImage = "exclamationmark.triangle"
+private final class DepthAnalysisSystemSharePayload: Identifiable {
+    let id = UUID()
+    let export: TAPVerificationExport
 
-    private var planeRegionTask: Task<Void, Never>?
-    private var planeRegionRequestID = UUID()
-    // Image-level geometry shared by Planes taps. It is prewarmed after load and
-    // can also be built by the first tap if prewarm has not finished yet.
-    private var planeGeometryCache: TAPDepthGeometryCache?
-    private var planeGeometryTask: Task<Void, Never>?
-    private var planeGeometryRequestID = UUID()
-
-    var displayImage: CGImage {
-        guard let input else {
-            preconditionFailure("DepthAnalysisView requests a display image only after input loads.")
-        }
-
-        // UI view mode contract:
-        // - RGB shows the HEIC primary image from ImageIO.
-        // - Depth overlays `TAPDepthHeatmapRenderer.heatmap`, a false-color
-        //   view of metric depth samples. It is visual only; measurements use
-        //   `TAPMetricDepthMap.samples`.
-        // - Mask overlays `TAPDepthMaskRenderer.validMask`, where transparent
-        //   areas are invalid and colored regions have finite positive depth.
-        // - Planes reuses the heatmap as the backdrop while a background Plane
-        //   Filter task grows a seed-selected region using the prewarmed
-        //   geometry cache when available.
-        // - Cloud is handled by `PointCloudPreview`, so this fallback is never
-        //   measured from directly.
-        switch viewMode {
-        case .rgb:
-            return input.image
-        case .heatmap:
-            return input.heatmap.image
-        case .mask:
-            return input.validMask.image
-        case .planes:
-            return input.heatmap.image
-        case .pointCloud:
-            return input.heatmap.image
-        }
+    init(export: TAPVerificationExport) {
+        self.export = export
     }
 
-    func load(source: DepthAnalysisSource) async {
-        planeRegionTask?.cancel()
-        planeGeometryTask?.cancel()
-        planeRegionRequestID = UUID()
-        planeGeometryRequestID = UUID()
-        planeGeometryCache = nil
-        planeRegionIsLoading = false
-
-        do {
-            let data = try await heicData(for: source)
-            let loadedInput = try TAPDepthMapReader.analysisInput(from: data)
-            input = loadedInput
-            clearSelection()
-            prewarmPlaneGeometry(for: loadedInput.depthMap)
-            clearLoadError()
-        } catch {
-            applyLoadError(error)
-        }
+    deinit {
+        export.removeTemporaryDirectory()
     }
+}
 
-    private func heicData(for source: DepthAnalysisSource) async throws -> Data {
+private enum DepthAnalysisDeletionService {
+    static func delete(source: DepthAnalysisSource) async throws {
         switch source {
         case .photosAsset(let assetID):
-            return try await PhotoLibraryWriter.originalPhotoData(localIdentifier: assetID)
+            try await PhotoLibraryWriter.deleteAsset(localIdentifier: assetID)
+            try await TAPPendingCaptureStore.shared.removeExportedRecords(
+                assetLocalIdentifier: assetID
+            )
+            NotificationCenter.default.post(name: .tapLibraryDidChange, object: nil)
         case .pendingCapture(let captureID):
-            return try await pendingCaptureHEICData(captureID: captureID)
+            try await TAPPendingCaptureStore.shared.removeRecord(captureID: captureID)
         }
     }
+}
 
-    private func pendingCaptureHEICData(captureID: String) async throws -> Data {
-        do {
-            return try await TAPPendingCaptureStore.shared.bestAvailableHEICData(captureID: captureID)
-        } catch {
-            Self.postLibraryRefresh()
-            throw DepthAnalysisLoadError.pendingCaptureTemporarilyUnavailable
-        }
-    }
+private struct AnalysisPhotoCarouselView: View {
+    @ObservedObject var store: DepthAnalysisCarouselStore
+    let selectedTool: AnalysisViewerTool
+    let displayPixelLength: Int
+    @Binding var heatmapOpacity: Double
+    @Binding var comparisonPosition: Double
+    let highlightPalette: AnalysisHighlightPalette
+    let isPlaneGridAnimationEnabled: Bool
+    let mediaFetcher: any LibraryMediaFetching
+    let onCurrentEntryChanged: (DepthAnalysisCarouselEntry) -> Void
+    let onEdgeBack: () -> Void
 
-    private func clearLoadError() {
-        errorMessage = nil
-        errorTitle = "Unable to analyze image"
-        errorSystemImage = "exclamationmark.triangle"
-    }
-
-    private func applyLoadError(_ error: Error) {
-        if error is DepthAnalysisLoadError {
-            errorTitle = "Image unavailable"
-            errorSystemImage = "photo.badge.exclamationmark"
-        } else {
-            errorTitle = "Unable to analyze image"
-            errorSystemImage = "exclamationmark.triangle"
-        }
-        errorMessage = error.localizedDescription
-    }
-
-    private nonisolated static func postLibraryRefresh() {
-        NotificationCenter.default.post(name: .tapLibraryDidChange, object: nil)
-    }
-
-    func beginSelection(_ depthRect: CGRect) {
-        selectionRect = clampedSelection(depthRect)
-        interactionState = .drawingSelection
-        regionStats = nil
-        planeEstimate = nil
-        regionHeatmap = nil
-        regionHeatmapErrorMessage = nil
-    }
-
-    func previewSelection(_ depthRect: CGRect) {
-        selectionRect = clampedSelection(depthRect)
-        interactionState = .drawingSelection
-    }
-
-    func finishSelection(_ depthRect: CGRect) {
-        let rect = clampedSelection(depthRect)
-        selectionRect = rect
-        interactionState = .regionSelected
-        updateRegionProducts(rect)
-    }
-
-    func clearSelection() {
-        planeRegionTask?.cancel()
-        planeRegionTask = nil
-        planeRegionRequestID = UUID()
-        selectionRect = nil
-        interactionState = .idle
-        regionStats = nil
-        planeEstimate = nil
-        regionHeatmap = nil
-        regionHeatmapErrorMessage = nil
-        planeSeedPoint = nil
-        selectedPlaneRegion = nil
-        planeRegionIsLoading = false
-        planeRegionErrorMessage = nil
-    }
-
-    func selectPlaneSeed(_ depthPoint: CGPoint) {
-        guard let input else {
-            return
-        }
-
-        let clamped = CGPoint(
-            x: min(max(depthPoint.x, 0), CGFloat(max(input.depthMap.width - 1, 0))),
-            y: min(max(depthPoint.y, 0), CGFloat(max(input.depthMap.height - 1, 0)))
+    var body: some View {
+        AnalysisNativePagingView(
+            store: store,
+            selectedTool: selectedTool,
+            displayPixelLength: displayPixelLength,
+            heatmapOpacity: $heatmapOpacity,
+            comparisonPosition: $comparisonPosition,
+            highlightPalette: highlightPalette,
+            isPlaneGridAnimationEnabled: isPlaneGridAnimationEnabled,
+            mediaFetcher: mediaFetcher,
+            onCurrentEntryChanged: onCurrentEntryChanged,
+            onEdgeBack: onEdgeBack
         )
-        planeSeedPoint = clamped
-        updateSeedPlaneRegion()
-    }
-
-    func updatePlaneGrowthStrictness(_ strictness: Double) {
-        planeGrowthStrictness = min(max(strictness, 0.35), 0.95)
-        if planeSeedPoint != nil {
-            updateSeedPlaneRegion(debounceNanoseconds: 120_000_000)
+        .background(Color.black)
+        .accessibilityLabel("Photo carousel")
+        .task(id: "\(selectedTool.rawValue)-\(displayPixelLength)") {
+            store.ensureVisibleWindowLoaded(
+                pixelLength: displayPixelLength,
+                prewarmCurrentPlaneGeometry: selectedTool == .threeD
+            )
         }
     }
+}
 
-    private func updateRegionProducts(_ depthRect: CGRect) {
-        updateMetricsAndPlane(depthRect)
-        updateRegionHeatmap(depthRect)
+private struct AnalysisNativePagingView: UIViewRepresentable {
+    @ObservedObject var store: DepthAnalysisCarouselStore
+    let selectedTool: AnalysisViewerTool
+    let displayPixelLength: Int
+    @Binding var heatmapOpacity: Double
+    @Binding var comparisonPosition: Double
+    let highlightPalette: AnalysisHighlightPalette
+    let isPlaneGridAnimationEnabled: Bool
+    let mediaFetcher: any LibraryMediaFetching
+    let onCurrentEntryChanged: (DepthAnalysisCarouselEntry) -> Void
+    let onEdgeBack: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
     }
 
-    private func updateMetricsAndPlane(_ depthRect: CGRect) {
-        guard let input else {
-            return
-        }
-
-        regionStats = TAPDepthGeometryProjector.stats(for: input.depthMap, in: depthRect)
-        planeEstimate = TAPPlaneEstimator.estimatePlane(depthMap: input.depthMap, region: depthRect)
+    func makeUIView(context: Context) -> UIScrollView {
+        let scrollView = UIScrollView()
+        scrollView.backgroundColor = .black
+        scrollView.isPagingEnabled = true
+        scrollView.bounces = true
+        scrollView.alwaysBounceHorizontal = true
+        scrollView.alwaysBounceVertical = false
+        scrollView.showsHorizontalScrollIndicator = false
+        scrollView.showsVerticalScrollIndicator = false
+        scrollView.decelerationRate = .fast
+        scrollView.delegate = context.coordinator
+        scrollView.contentInsetAdjustmentBehavior = .never
+        context.coordinator.installHosts(in: scrollView)
+        context.coordinator.installEdgeBackGesture(in: scrollView, onEdgeBack: onEdgeBack)
+        return scrollView
     }
 
-    private func updateRegionHeatmap(_ depthRect: CGRect) {
-        guard let input else {
-            return
-        }
-
-        do {
-            regionHeatmap = try TAPDepthHeatmapRenderer.heatmap(for: input.depthMap, region: depthRect)
-            regionHeatmapErrorMessage = nil
-        } catch {
-            regionHeatmap = nil
-            regionHeatmapErrorMessage = "Not enough valid depth samples in this region."
-        }
+    func updateUIView(_ scrollView: UIScrollView, context: Context) {
+        context.coordinator.update(parent: self, scrollView: scrollView)
     }
 
-    private func updateSeedPlaneRegion(debounceNanoseconds: UInt64 = 0) {
-        guard let input, let planeSeedPoint else {
-            planeRegionTask?.cancel()
-            planeRegionTask = nil
-            planeRegionRequestID = UUID()
-            selectedPlaneRegion = nil
-            planeRegionIsLoading = false
-            planeRegionErrorMessage = nil
-            return
+    final class Coordinator: NSObject, UIScrollViewDelegate, UIGestureRecognizerDelegate {
+        private var parent: AnalysisNativePagingView?
+        private var hosts: [UIHostingController<AnyView>] = []
+        private var isProgrammaticScroll = false
+        private var edgeBackAction: (() -> Void)?
+
+        func installHosts(in scrollView: UIScrollView) {
+            guard hosts.isEmpty else {
+                return
+            }
+            hosts = (0..<3).map { _ in
+                let host = UIHostingController(rootView: AnyView(Color.black))
+                host.view.backgroundColor = .black
+                host.view.isOpaque = true
+                scrollView.addSubview(host.view)
+                return host
+            }
         }
 
-        let requestID = UUID()
-        let depthMap = input.depthMap
-        let strictness = planeGrowthStrictness
-        let geometryCache = planeGeometryCache
-        let geometryCacheRequestID: UUID?
-        planeRegionTask?.cancel()
-        planeRegionRequestID = requestID
-        if geometryCache == nil {
-            // The tap now owns cache construction; cancel utility prewarm so the
-            // same camera-space points are not computed twice.
-            planeGeometryTask?.cancel()
-            planeGeometryTask = nil
-            planeGeometryRequestID = UUID()
-            geometryCacheRequestID = planeGeometryRequestID
-        } else {
-            geometryCacheRequestID = nil
+        func installEdgeBackGesture(in scrollView: UIScrollView, onEdgeBack: @escaping () -> Void) {
+            edgeBackAction = onEdgeBack
+            guard scrollView.gestureRecognizers?.contains(where: { $0 is UIScreenEdgePanGestureRecognizer }) != true else {
+                return
+            }
+            let gesture = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handleEdgeBack(_:)))
+            gesture.edges = .left
+            gesture.delegate = self
+            scrollView.addGestureRecognizer(gesture)
         }
-        selectedPlaneRegion = nil
-        planeRegionIsLoading = true
-        planeRegionErrorMessage = nil
 
-        planeRegionTask = Task.detached(priority: .userInitiated) { [weak self] in
-            do {
-                if debounceNanoseconds > 0 {
-                    try await Task.sleep(nanoseconds: debounceNanoseconds)
+        func update(parent: AnalysisNativePagingView, scrollView: UIScrollView) {
+            self.parent = parent
+            edgeBackAction = parent.onEdgeBack
+            configure(
+                scrollView: scrollView,
+                parent: parent,
+                forceResetOffset: !scrollView.isDragging && !scrollView.isDecelerating
+            )
+        }
+
+        private func configure(
+            scrollView: UIScrollView,
+            parent: AnalysisNativePagingView,
+            forceResetOffset: Bool
+        ) {
+            let bounds = scrollView.bounds
+            guard bounds.width > 0, bounds.height > 0 else {
+                return
+            }
+
+            let window = parent.store.windowEntries()
+            let currentPosition = window.firstIndex { $0.offset == 0 } ?? 0
+            let pageWidth = bounds.width
+            let pageSpacing = min(
+                DepthAnalysisViewerInteractionPolicy.nativePageSpacing,
+                max(pageWidth - 1, 0)
+            )
+            let pageContentSize = CGSize(
+                width: max(pageWidth - pageSpacing, 1),
+                height: bounds.height
+            )
+            scrollView.contentSize = CGSize(width: bounds.width * CGFloat(max(window.count, 1)), height: bounds.height)
+
+            for index in hosts.indices {
+                let host = hosts[index]
+                host.view.frame = CGRect(
+                    x: CGFloat(index) * pageWidth + pageSpacing * 0.5,
+                    y: 0,
+                    width: pageContentSize.width,
+                    height: pageContentSize.height
+                )
+
+                guard window.indices.contains(index) else {
+                    host.rootView = AnyView(Color.black)
+                    host.view.isHidden = true
+                    continue
                 }
 
-                let preparedGeometryCache: TAPDepthGeometryCache?
-                if let geometryCache {
-                    preparedGeometryCache = geometryCache
-                } else {
-                    let builtCache = try TAPDepthGeometryProjector.geometryCache(
-                        for: depthMap,
-                        shouldCancel: { Task.isCancelled }
+                let item = window[index]
+                host.view.isHidden = false
+                host.rootView = AnyView(
+                    AnalysisNativePageView(
+                        slot: parent.store.slot(for: item.entry),
+                        tool: parent.selectedTool,
+                        viewportSize: pageContentSize,
+                        isCurrent: item.offset == 0,
+                        heatmapOpacity: parent.$heatmapOpacity,
+                        comparisonPosition: parent.$comparisonPosition,
+                        highlightPalette: parent.highlightPalette,
+                        isPlaneGridAnimationEnabled: parent.isPlaneGridAnimationEnabled,
+                        mediaFetcher: parent.mediaFetcher
                     )
-                    try Task.checkCancellation()
-                    if let builtCache, let geometryCacheRequestID {
-                        await self?.finishPlaneGeometryPrewarm(geometryCacheRequestID, cache: builtCache)
-                    }
-                    preparedGeometryCache = builtCache
-                }
-
-                let region = try TAPPlaneEstimator.growPlaneRegion(
-                    depthMap: depthMap,
-                    seed: planeSeedPoint,
-                    strictness: strictness,
-                    geometryCache: preparedGeometryCache,
-                    shouldCancel: { Task.isCancelled }
                 )
-                try Task.checkCancellation()
-                await self?.finishPlaneRegionRequest(requestID, result: .success(region))
-            } catch is CancellationError {
-                await self?.finishCancelledPlaneRegionRequest(requestID)
-            } catch let error as TAPPlaneGrowthError {
-                await self?.finishPlaneRegionRequest(requestID, result: .failure(error))
-            } catch {
-                await self?.finishPlaneRegionRequest(requestID, result: .failure(error))
+            }
+
+            let targetOffset = CGPoint(x: CGFloat(currentPosition) * pageWidth, y: 0)
+            guard forceResetOffset else {
+                return
+            }
+            if abs(scrollView.contentOffset.x - targetOffset.x) > 0.5 || scrollView.contentOffset.y != 0 {
+                isProgrammaticScroll = true
+                scrollView.setContentOffset(targetOffset, animated: false)
+                isProgrammaticScroll = false
             }
         }
-    }
 
-    private func prewarmPlaneGeometry(for depthMap: TAPMetricDepthMap) {
-        let requestID = UUID()
-        planeGeometryTask?.cancel()
-        planeGeometryRequestID = requestID
-        planeGeometryCache = nil
-
-        // This shifts the image-level projection/normal work out of the first
-        // tap whenever the user pauses briefly after choosing a photo.
-        planeGeometryTask = Task.detached(priority: .utility) { [weak self] in
-            do {
-                let cache = try TAPDepthGeometryProjector.geometryCache(
-                    for: depthMap,
-                    shouldCancel: { Task.isCancelled }
-                )
-                try Task.checkCancellation()
-                await self?.finishPlaneGeometryPrewarm(requestID, cache: cache)
-            } catch is CancellationError {
-                await self?.finishPlaneGeometryPrewarm(requestID, cache: nil)
-            } catch {
-                await self?.finishPlaneGeometryPrewarm(requestID, cache: nil)
+        func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+            guard !decelerate else {
+                return
             }
-        }
-    }
-
-    private func finishPlaneGeometryPrewarm(_ requestID: UUID, cache: TAPDepthGeometryCache?) {
-        guard planeGeometryRequestID == requestID else {
-            return
+            finishPaging(scrollView)
         }
 
-        planeGeometryTask = nil
-        planeGeometryCache = cache
-    }
-
-    private func finishPlaneRegionRequest(_ requestID: UUID, result: Result<TAPPlaneRegion, Error>) {
-        guard planeRegionRequestID == requestID else {
-            return
+        func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+            finishPaging(scrollView)
         }
 
-        planeRegionTask = nil
-        planeRegionIsLoading = false
-        switch result {
-        case .success(let region):
-            selectedPlaneRegion = region
-            planeRegionErrorMessage = nil
-        case .failure(let error as TAPPlaneGrowthError):
-            selectedPlaneRegion = nil
-            planeRegionErrorMessage = error.localizedDescription
-        case .failure:
-            selectedPlaneRegion = nil
-            planeRegionErrorMessage = "No stable plane region found from this point."
-        }
-    }
-
-    private func finishCancelledPlaneRegionRequest(_ requestID: UUID) {
-        guard planeRegionRequestID == requestID else {
-            return
+        func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
+            finishPaging(scrollView)
         }
 
-        planeRegionTask = nil
-        planeRegionIsLoading = false
-    }
-
-    private func clampedSelection(_ rect: CGRect) -> CGRect {
-        guard let input else {
-            return rect
+        private func finishPaging(_ scrollView: UIScrollView) {
+            guard !isProgrammaticScroll,
+                  let parent,
+                  scrollView.bounds.width > 0 else {
+                return
+            }
+            let window = parent.store.windowEntries()
+            guard !window.isEmpty else {
+                return
+            }
+            let currentPosition = window.firstIndex { $0.offset == 0 } ?? 0
+            let page = min(
+                max(Int(round(scrollView.contentOffset.x / scrollView.bounds.width)), 0),
+                window.count - 1
+            )
+            let offset = page - currentPosition
+            guard offset != 0 else {
+                configure(scrollView: scrollView, parent: parent, forceResetOffset: true)
+                return
+            }
+            guard let entry = parent.store.move(
+                offset: offset,
+                pixelLength: parent.displayPixelLength,
+                prewarmCurrentPlaneGeometry: parent.selectedTool == .threeD
+            ) else {
+                configure(scrollView: scrollView, parent: parent, forceResetOffset: true)
+                return
+            }
+            parent.onCurrentEntryChanged(entry)
+            configure(scrollView: scrollView, parent: parent, forceResetOffset: true)
         }
 
-        let fullRect = CGRect(x: 0, y: 0, width: input.depthMap.width, height: input.depthMap.height)
-        let clamped = rect.intersection(fullRect)
-        if clamped.isNull || clamped.width <= 0 || clamped.height <= 0 {
-            return CGRect(x: 0, y: 0, width: min(1, input.depthMap.width), height: min(1, input.depthMap.height))
+        @objc private func handleEdgeBack(_ gesture: UIScreenEdgePanGestureRecognizer) {
+            guard gesture.state == .ended else {
+                return
+            }
+            let translation = gesture.translation(in: gesture.view)
+            let velocity = gesture.velocity(in: gesture.view)
+            let predicted = CGSize(
+                width: translation.x + velocity.x * 0.12,
+                height: translation.y + velocity.y * 0.12
+            )
+            guard AnalysisEdgeBackPolicy.shouldReturn(
+                startX: 0,
+                translation: CGSize(width: translation.x, height: translation.y),
+                predictedTranslation: predicted
+            ) else {
+                return
+            }
+            edgeBackAction?()
         }
-        return clamped
-    }
-}
 
-enum DepthAnalysisViewMode: String, CaseIterable, Identifiable {
-    /// Normal color image. Source: ImageIO primary HEIC image item.
-    case rgb
-
-    /// False-color depth image. Source: Apple auxiliary depth/disparity rebuilt
-    /// as `AVDepthData`, converted to Float32 metric depth, then colorized.
-    case heatmap
-
-    /// Valid-depth coverage image. Source: the same metric depth map; finite
-    /// positive samples are colored, missing/invalid samples are transparent.
-    case mask
-
-    /// Region plane analysis. Source: selected metric depth samples plus
-    /// `AVCameraCalibrationData` intrinsics from the TAP manifest.
-    case planes
-
-    /// Lightweight camera-coordinate point preview. Source: metric depth samples
-    /// projected with camera intrinsics; this is not a world-space AR mesh.
-    case pointCloud
-
-    var id: String { rawValue }
-
-    var isDebugOnlyAnalysisButton: Bool {
-        self == .heatmap || self == .mask
-    }
-
-    var title: String {
-        switch self {
-        case .rgb:
-            "RGB"
-        case .heatmap:
-            "Depth"
-        case .mask:
-            "Mask"
-        case .planes:
-            "Planes"
-        case .pointCloud:
-            "Cloud"
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+        ) -> Bool {
+            gestureRecognizer is UIScreenEdgePanGestureRecognizer
         }
-    }
 
-    var systemImage: String {
-        switch self {
-        case .rgb:
-            "photo"
-        case .heatmap:
-            "ruler"
-        case .mask:
-            "checkerboard.rectangle"
-        case .planes:
-            "square.3.layers.3d"
-        case .pointCloud:
-            "point.3.connected.trianglepath.dotted"
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            guard let parent,
+                  let scrollView = gestureRecognizer.view as? UIScrollView,
+                  gestureRecognizer === scrollView.panGestureRecognizer,
+                  parent.selectedTool != .raw,
+                  let toolContainerRect = currentToolContainerRect(in: scrollView, parent: parent) else {
+                return true
+            }
+
+            let location = gestureRecognizer.location(in: scrollView)
+            let visibleX: CGFloat
+            if location.x >= scrollView.contentOffset.x,
+               location.x <= scrollView.contentOffset.x + scrollView.bounds.width {
+                visibleX = location.x - scrollView.contentOffset.x
+            } else {
+                visibleX = location.x
+            }
+            let visibleLocation = CGPoint(x: visibleX, y: location.y)
+            let shouldBegin = !toolContainerRect.contains(visibleLocation)
+            return shouldBegin
         }
-    }
 
-    var shortExplanation: String {
-        switch self {
-        case .rgb:
-            "The original color photo stored in the TAP depth HEIC."
-        case .heatmap:
-            "A false-color overlay where color represents metric depth in meters."
-        case .mask:
-            "A coverage overlay showing which pixels have usable depth samples."
-        case .planes:
-            "Tap a surface point to grow and grid the connected camera-coordinate plane."
-        case .pointCloud:
-            "A local camera-coordinate point cloud preview made from valid depth pixels."
-        }
-    }
-
-    var detailedExplanation: String {
-        switch self {
-        case .rgb:
-            "RGB view shows the primary HEIC image. It is the visual reference used to choose regions, but the depth measurements still come from the auxiliary depth map embedded beside it."
-        case .heatmap:
-            "Depth view overlays metric depth as a false-color heatmap. Near pixels use the low end of the legend and far pixels use the high end. Transparent pixels do not contain valid depth."
-        case .mask:
-            "Mask view highlights the pixels that contain finite positive depth samples. Green areas can contribute to statistics, plane fitting, and point projection; transparent areas are ignored."
-        case .planes:
-            "Planes view grows a connected plane from the surface point you tap, then divides that region into fit-confidence grid cells. Rectangular Region selection is disabled here so the view stays focused on plane analysis."
-        case .pointCloud:
-            "Cloud view projects valid depth pixels through camera intrinsics into a lightweight camera-coordinate point preview. It is a point cloud, not cloud storage, cloud compute, or a semantic word cloud."
-        }
-    }
-
-    var legendDescription: String {
-        switch self {
-        case .rgb:
-            "RGB has no color legend because it shows the original photo."
-        case .heatmap:
-            "The legend maps the current depth range from near to far. Adjust opacity to compare the heatmap against the RGB image."
-        case .mask:
-            "Green indicates valid depth coverage. Yellow outlines mark transitions between valid and invalid depth."
-        case .planes:
-            "Plane cells use stronger green for better local plane fit and warmer color for weaker fit; the bright edge marks the grown boundary."
-        case .pointCloud:
-            "Point colors map near-to-far depth in the same direction as the depth legend."
+        private func currentToolContainerRect(
+            in scrollView: UIScrollView,
+            parent: AnalysisNativePagingView
+        ) -> CGRect? {
+            guard let slot = parent.store.currentSlot else {
+                return nil
+            }
+            if let input = slot.input {
+                return DepthAnalysisViewerInteractionPolicy.centeredToolContainerRect(
+                    imageSize: CGSize(width: input.image.width, height: input.image.height),
+                    orientation: input.imageOrientation,
+                    viewportSize: scrollView.bounds.size
+                )
+            }
+            if let displayPhoto = slot.displayPhoto {
+                return DepthAnalysisViewerInteractionPolicy.centeredToolContainerRect(
+                    imageSize: displayPhoto.pixelSize,
+                    orientation: displayPhoto.orientation,
+                    viewportSize: scrollView.bounds.size
+                )
+            }
+            if let thumbnailImage = slot.thumbnailImage {
+                return DepthAnalysisViewerInteractionPolicy.centeredToolContainerRect(
+                    imageSize: thumbnailImage.size,
+                    orientation: .up,
+                    viewportSize: scrollView.bounds.size
+                )
+            }
+            return nil
         }
     }
 }
 
-private struct CaptureMetadataSummary: Equatable {
-    let title: String
-    let detail: String
-    let accessibilityText: String
+private struct AnalysisNativePageView: View {
+    @ObservedObject var slot: AnalysisPhotoSlot
+    let tool: AnalysisViewerTool
+    let viewportSize: CGSize
+    let isCurrent: Bool
+    @Binding var heatmapOpacity: Double
+    @Binding var comparisonPosition: Double
+    let highlightPalette: AnalysisHighlightPalette
+    let isPlaneGridAnimationEnabled: Bool
+    let mediaFetcher: any LibraryMediaFetching
+    @State private var isLivePhotoMuted = true
 
-    init?(input: TAPDepthAnalysisInput) {
-        guard let payload = input.manifest?.payload else {
+    var body: some View {
+        ZStack {
+            Color.black
+
+            switch tool {
+            case .raw:
+                rawContent
+            case .twoD, .threeD:
+                AnalysisToolPhotoStage(
+                    slot: slot,
+                    tool: tool,
+                    viewportSize: viewportSize,
+                    isCurrent: isCurrent,
+                    heatmapOpacity: $heatmapOpacity,
+                    comparisonPosition: $comparisonPosition,
+                    highlightPalette: highlightPalette,
+                    isPlaneGridAnimationEnabled: isPlaneGridAnimationEnabled
+                )
+            }
+
+            AnalysisLivePhotoBadgeOverlay(
+                source: slot.source,
+                isCurrent: isCurrent,
+                viewportSize: viewportSize,
+                displayedImageSize: displayedImageSize,
+                displayedImageOrientation: displayedImageOrientation,
+                mediaFetcher: mediaFetcher
+            )
+
+            if isCurrent {
+                LibraryMediaViewerFetchOverlay(
+                    kind: .photo,
+                    state: LibraryMediaFetchOverlayState(slot.mediaFetchPhase),
+                    onRetry: slot.retryLastMediaFetch
+                )
+                .zIndex(4)
+            }
+        }
+        .frame(width: viewportSize.width, height: viewportSize.height)
+        .onChange(of: slot.source.loadID) { _, _ in
+            isLivePhotoMuted = true
+        }
+        .onChange(of: isCurrent) { _, isCurrent in
+            if isCurrent {
+                isLivePhotoMuted = true
+            }
+        }
+    }
+
+    private var rawContent: some View {
+        ZStack {
+            AnalysisRawZoomScrollView(
+                slot: slot,
+                source: slot.source,
+                image: rawImage,
+                imageIdentifier: rawImageIdentifier,
+                isCurrent: isCurrent,
+                mediaFetcher: mediaFetcher,
+                isLivePhotoMuted: $isLivePhotoMuted
+            )
+            .frame(width: viewportSize.width, height: viewportSize.height)
+
+            if let errorMessage = slot.errorMessage, !slot.hasDisplayImage {
+                ContentUnavailableView(
+                    slot.errorTitle,
+                    systemImage: slot.errorSystemImage,
+                    description: Text(errorMessage)
+                )
+                .foregroundStyle(.white)
+                .padding(24)
+            }
+        }
+    }
+
+    private var rawImage: UIImage? {
+        if let displayPhoto = slot.displayPhoto {
+            return displayPhoto.image
+        }
+        if let input = slot.input {
+            return UIImage(
+                cgImage: input.image,
+                scale: 1,
+                orientation: input.imageOrientation.uiImageOrientation
+            )
+        }
+        return slot.thumbnailImage
+    }
+
+    private var rawImageIdentifier: String {
+        if let displayPhoto = slot.displayPhoto {
+            return "\(slot.id)-display-\(displayPhoto.requestedPixelLength)-\(Int(displayPhoto.pixelSize.width))x\(Int(displayPhoto.pixelSize.height))"
+        }
+        if let input = slot.input {
+            return "\(slot.id)-analysisInput-\(input.image.width)x\(input.image.height)-\(input.imageOrientation.rawValue)"
+        }
+        if slot.thumbnailImage != nil {
+            return "\(slot.id)-thumbnail"
+        }
+        return "\(slot.id)-empty"
+    }
+
+    private var displayedImageSize: CGSize? {
+        if let input = slot.input {
+            return CGSize(width: input.image.width, height: input.image.height)
+        }
+        if let displayPhoto = slot.displayPhoto {
+            return displayPhoto.pixelSize
+        }
+        return slot.thumbnailImage?.size
+    }
+
+    private var displayedImageOrientation: CGImagePropertyOrientation {
+        slot.input?.imageOrientation ?? slot.displayPhoto?.orientation ?? .up
+    }
+}
+
+private struct AnalysisLivePhotoBadgeOverlay: View {
+    let source: DepthAnalysisSource
+    let isCurrent: Bool
+    let viewportSize: CGSize
+    let displayedImageSize: CGSize?
+    let displayedImageOrientation: CGImagePropertyOrientation
+    let mediaFetcher: any LibraryMediaFetching
+    @State private var isLivePhoto = false
+
+    var body: some View {
+        ZStack {
+            if isLivePhoto, let badgePosition {
+                DepthAnalysisLivePhotoBadge(size: .viewer)
+                    .position(badgePosition)
+                    .transition(.opacity)
+            }
+        }
+        .frame(width: viewportSize.width, height: viewportSize.height)
+        .allowsHitTesting(false)
+        .accessibilityHidden(!isLivePhoto)
+        .task(id: "\(source.loadID)|\(isCurrent)") {
+            await refresh()
+        }
+    }
+
+    private var badgePosition: CGPoint? {
+        guard viewportSize.width > 0,
+              viewportSize.height > 0,
+              displayedImageSize != nil else {
             return nil
         }
 
-        let focalLabel = payload.photoLens.requestedFocalLengthLabel
-        let captureDevice = Self.captureDeviceText(payload)
-        let rgbSource = payload.rgbSource.displayName
-        let depthSource = Self.depthSourceText(payload)
-        let depthMethod = Self.depthMethodText(payload.depth.source)
-        let zoom = Self.zoomText(payload)
-
-        self.title = "\(focalLabel) · \(captureDevice)"
-        self.detail = [
-            "RGB \(rgbSource)",
-            "Depth \(depthSource)",
-            depthMethod,
-            "Zoom \(zoom)"
-        ].joined(separator: " · ")
-        self.accessibilityText = "\(title). \(detail)."
+        let imageRect = DepthAnalysisViewerInteractionPolicy.centeredToolContainerRect(
+            imageSize: displayedImageSize,
+            orientation: displayedImageOrientation,
+            viewportSize: viewportSize
+        )
+        let edgeInset = DepthAnalysisLivePhotoBadge.Size.viewer.edgeInset
+        return CGPoint(
+            x: imageRect.maxX - edgeInset,
+            y: imageRect.minY + edgeInset
+        )
     }
 
-    private static func captureDeviceText(_ payload: TAPDepthManifest.Payload) -> String {
-        let resolvedDevice = payload.photoLens.resolvedCaptureDeviceName
-        guard let activeDevice = payload.photoLens.resolvedActivePrimaryConstituentDeviceName,
-              activeDevice != resolvedDevice else {
-            return resolvedDevice
+    private func refresh() async {
+        guard isCurrent else {
+            isLivePhoto = false
+            return
         }
 
-        return "\(resolvedDevice) / \(activeDevice)"
-    }
-
-    private static func depthSourceText(_ payload: TAPDepthManifest.Payload) -> String {
-        let selectedDepth = payload.selectedDepthCamera.displayName
-        if selectedDepth != "None" {
-            return selectedDepth
+        let resolvedIsLivePhoto = await DepthAnalysisLivePhotoSourceResolver.isLivePhoto(
+            source: source,
+            mediaFetcher: mediaFetcher
+        )
+        guard !Task.isCancelled else {
+            return
         }
-
-        return payload.depth.source.captureDeviceName
-    }
-
-    private static func depthMethodText(_ source: TAPDepthManifest.DepthSource) -> String {
-        let method: String
-        switch source.sensingMethod {
-        case "lidarDepthCamera":
-            method = "LiDAR"
-        case "trueDepthCamera":
-            method = "TrueDepth"
-        case "multiCameraStereoOrComputational":
-            method = "stereo/computational"
-        case "singleCameraComputationalOrUnknown":
-            method = "single/computational"
-        default:
-            method = source.sensingMethod
-        }
-
-        switch source.lidarParticipation {
-        case "explicit":
-            return "\(method) · LiDAR explicit"
-        case "notAsserted":
-            return "\(method) · LiDAR not asserted"
-        default:
-            return method
-        }
-    }
-
-    private static func zoomText(_ payload: TAPDepthManifest.Payload) -> String {
-        let zoom = payload.zoom.actualVideoZoomFactor
-            ?? payload.zoom.requestedZoomFactor
-            ?? payload.selectedZoom.zoomFactor
-        return String(format: "%.2fx", zoom)
+        isLivePhoto = resolvedIsLivePhoto
     }
 }
 
-private enum AnalysisDebugHighlight {
-    static let restingBackground = Color.yellow.opacity(0.44)
-    static let selectedBackground = Color.yellow.opacity(0.82)
+private enum DepthAnalysisLivePhotoSourceResolver {
+    static func isLivePhoto(
+        source: DepthAnalysisSource,
+        mediaFetcher: any LibraryMediaFetching
+    ) async -> Bool {
+        switch source {
+        case .photosAsset(let assetID):
+            let request = LibraryMediaAssetRequest(
+                key: MediaFetchRequestKey(
+                    itemID: .photosAsset(assetID),
+                    generation: 0,
+                    purpose: .livePhotoPlayback
+                ),
+                assetLocalIdentifier: assetID
+            )
+            return (try? await mediaFetcher.mediaKind(for: request)) == .livePhoto
+        case .pendingCapture(let captureID):
+            guard let record = try? await TAPPendingCaptureStore.shared.readRecord(captureID: captureID) else {
+                return false
+            }
+            return record.pairedVideoFilename != nil
+        }
+    }
 }
 
-private struct CaptureMetadataHUD: View {
-    let summary: CaptureMetadataSummary
+private struct AnalysisRawZoomScrollView: UIViewRepresentable {
+    let slot: AnalysisPhotoSlot
+    let source: DepthAnalysisSource
+    let image: UIImage?
+    let imageIdentifier: String
+    let isCurrent: Bool
+    let mediaFetcher: any LibraryMediaFetching
+    @Binding var isLivePhotoMuted: Bool
 
-    var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "camera.aperture")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.primary)
-                .frame(width: 18, height: 18)
+    func makeCoordinator() -> Coordinator {
+        Coordinator(slot: slot, mediaFetcher: mediaFetcher)
+    }
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(summary.title)
-                    .font(.caption.weight(.semibold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
+    func makeUIView(context: Context) -> UIScrollView {
+        let scrollView = AnalysisRawZoomUIScrollView()
+        let coordinator = context.coordinator
+        scrollView.onLayout = { [weak coordinator] scrollView in
+            coordinator?.handleLayout(in: scrollView)
+        }
+        scrollView.backgroundColor = .black
+        scrollView.delegate = context.coordinator
+        scrollView.minimumZoomScale = 1
+        scrollView.maximumZoomScale = DepthAnalysisViewerInteractionPolicy.maximumPhotoScale
+        scrollView.bounces = true
+        scrollView.bouncesZoom = true
+        scrollView.showsHorizontalScrollIndicator = false
+        scrollView.showsVerticalScrollIndicator = false
+        scrollView.contentInsetAdjustmentBehavior = .never
+        scrollView.decelerationRate = .fast
+        context.coordinator.installImageView(in: scrollView)
+        context.coordinator.installDoubleTap(in: scrollView)
+        context.coordinator.installLivePhotoLongPress(in: scrollView)
+        return scrollView
+    }
 
-                Text(summary.detail)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
+    func updateUIView(_ scrollView: UIScrollView, context: Context) {
+        context.coordinator.update(
+            scrollView: scrollView,
+            slot: slot,
+            source: source,
+            image: image,
+            imageIdentifier: imageIdentifier,
+            isCurrent: isCurrent,
+            isLivePhotoMuted: isLivePhotoMuted
+        )
+    }
+
+    static func dismantleUIView(_ uiView: UIScrollView, coordinator: Coordinator) {
+        if let rawScrollView = uiView as? AnalysisRawZoomUIScrollView {
+            rawScrollView.onLayout = nil
+        }
+        uiView.delegate = nil
+        coordinator.dismantle()
+    }
+
+    @MainActor
+    final class Coordinator: NSObject, UIScrollViewDelegate, UIGestureRecognizerDelegate {
+        private let mediaFetcher: any LibraryMediaFetching
+        private weak var slot: AnalysisPhotoSlot?
+        private let contentView = UIView()
+        private let imageView = UIImageView()
+        private let livePhotoView = PHLivePhotoView()
+        private var currentImageIdentifier: String?
+        private var lastBoundsSize: CGSize = .zero
+        private var livePhotoRequestCancellation: LivePhotoRequestCancellation?
+        private var livePhotoPreparationTask: Task<Void, Never>?
+        private var scheduledLivePhotoRequestKey: String?
+        private var livePhotoRequestKey: String?
+        private var livePhotoMediaRequestKey: MediaFetchRequestKey?
+        private var livePhotoCoordinatorGeneration: UInt64 = 0
+        private var livePhotoReadyKey: String?
+        private var livePhotoUnavailableKey: String?
+        private var lastLivePhotoRequest: LivePhotoRequestContext?
+        private var isPressingForLivePhoto = false
+        private var isLivePhotoMuted = true
+
+        init(
+            slot: AnalysisPhotoSlot,
+            mediaFetcher: any LibraryMediaFetching
+        ) {
+            self.slot = slot
+            self.mediaFetcher = mediaFetcher
+            super.init()
+        }
+
+        func installImageView(in scrollView: UIScrollView) {
+            contentView.backgroundColor = .black
+            contentView.clipsToBounds = true
+
+            imageView.backgroundColor = .black
+            imageView.contentMode = .scaleAspectFit
+            imageView.clipsToBounds = true
+
+            livePhotoView.backgroundColor = .black
+            livePhotoView.contentMode = .scaleAspectFit
+            livePhotoView.clipsToBounds = true
+            livePhotoView.isHidden = true
+            livePhotoView.isUserInteractionEnabled = false
+
+            contentView.addSubview(imageView)
+            contentView.addSubview(livePhotoView)
+            scrollView.addSubview(contentView)
+        }
+
+        func installDoubleTap(in scrollView: UIScrollView) {
+            let gesture = UITapGestureRecognizer(target: self, action: #selector(handleDoubleTap(_:)))
+            gesture.numberOfTapsRequired = 2
+            scrollView.addGestureRecognizer(gesture)
+        }
+
+        func installLivePhotoLongPress(in scrollView: UIScrollView) {
+            let gesture = UILongPressGestureRecognizer(target: self, action: #selector(handleLivePhotoLongPress(_:)))
+            gesture.minimumPressDuration = 0.42
+            gesture.allowableMovement = 28
+            gesture.cancelsTouchesInView = false
+            gesture.delegate = self
+            scrollView.addGestureRecognizer(gesture)
+        }
+
+        func update(
+            scrollView: UIScrollView,
+            slot: AnalysisPhotoSlot,
+            source: DepthAnalysisSource,
+            image: UIImage?,
+            imageIdentifier: String,
+            isCurrent: Bool,
+            isLivePhotoMuted: Bool
+        ) {
+            if self.slot !== slot {
+                clearLivePhoto()
+                self.slot = slot
+            }
+            scrollView.isUserInteractionEnabled = isCurrent
+            self.isLivePhotoMuted = isLivePhotoMuted
+            livePhotoView.isMuted = isLivePhotoMuted
+            let boundsSize = scrollView.bounds.size
+            let imageObjectChanged = imageView.image !== image
+            if currentImageIdentifier != imageIdentifier || imageObjectChanged {
+                currentImageIdentifier = imageIdentifier
+                imageView.image = image
+                if boundsSize.width > 0, boundsSize.height > 0 {
+                    resetZoom(in: scrollView)
+                }
+            }
+            syncLayoutIfNeeded(in: scrollView)
+            syncLivePhoto(
+                in: scrollView,
+                source: source,
+                isCurrent: isCurrent
+            )
+        }
+
+        func dismantle() {
+            clearLivePhoto()
+            slot = nil
+        }
+
+        func handleLayout(in scrollView: UIScrollView) {
+            syncLayoutIfNeeded(in: scrollView)
+        }
+
+        func viewForZooming(in scrollView: UIScrollView) -> UIView? {
+            contentView
+        }
+
+        func scrollViewDidZoom(_ scrollView: UIScrollView) {
+            centerContent(in: scrollView)
+            syncPanAvailability(in: scrollView)
+        }
+
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+        ) -> Bool {
+            gestureRecognizer is UILongPressGestureRecognizer
+        }
+
+        private func resetZoom(in scrollView: UIScrollView) {
+            let bounds = scrollView.bounds
+            guard bounds.width > 0, bounds.height > 0 else {
+                return
+            }
+            contentView.frame = bounds
+            syncMediaFrames()
+            scrollView.contentSize = bounds.size
+            scrollView.setZoomScale(1, animated: false)
+            centerContent(in: scrollView)
+            syncPanAvailability(in: scrollView)
+        }
+
+        private func syncLayoutIfNeeded(in scrollView: UIScrollView) {
+            let boundsSize = scrollView.bounds.size
+            guard boundsSize.width > 0, boundsSize.height > 0 else {
+                syncPanAvailability(in: scrollView)
+                return
+            }
+
+            let needsFrameRepair = imageView.frame.width <= 0
+                || imageView.frame.height <= 0
+                || scrollView.contentSize.width <= 0
+                || scrollView.contentSize.height <= 0
+            guard boundsSize != lastBoundsSize || needsFrameRepair else {
+                syncPanAvailability(in: scrollView)
+                return
+            }
+
+            lastBoundsSize = boundsSize
+            if scrollView.zoomScale <= DepthAnalysisViewerInteractionPolicy.zoomedScaleThreshold || needsFrameRepair {
+                resetZoom(in: scrollView)
+            } else {
+                syncMediaFrames()
+                centerContent(in: scrollView)
+                syncPanAvailability(in: scrollView)
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .frame(maxWidth: 560, alignment: .leading)
-        .background(AnalysisDebugHighlight.restingBackground, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+        private func centerContent(in scrollView: UIScrollView) {
+            let bounds = scrollView.bounds
+            guard bounds.width > 0, bounds.height > 0 else {
+                return
+            }
+            var frame = contentView.frame
+            frame.origin.x = frame.width < bounds.width ? (bounds.width - frame.width) * 0.5 : 0
+            frame.origin.y = frame.height < bounds.height ? (bounds.height - frame.height) * 0.5 : 0
+            contentView.frame = frame
+            syncMediaFrames()
+        }
+
+        private func syncMediaFrames() {
+            let bounds = contentView.bounds
+            imageView.frame = bounds
+            livePhotoView.frame = bounds
+        }
+
+        private func syncPanAvailability(in scrollView: UIScrollView) {
+            scrollView.panGestureRecognizer.isEnabled = scrollView.zoomScale > DepthAnalysisViewerInteractionPolicy.zoomedScaleThreshold
+        }
+
+        @objc private func handleDoubleTap(_ gesture: UITapGestureRecognizer) {
+            guard let scrollView = gesture.view as? UIScrollView else {
+                return
+            }
+            if scrollView.zoomScale > DepthAnalysisViewerInteractionPolicy.zoomedScaleThreshold {
+                scrollView.setZoomScale(1, animated: true)
+                return
+            }
+            let location = gesture.location(in: contentView)
+            let targetScale = min(
+                DepthAnalysisViewerInteractionPolicy.doubleTapScale,
+                scrollView.maximumZoomScale
+            )
+            let zoomSize = CGSize(
+                width: scrollView.bounds.width / targetScale,
+                height: scrollView.bounds.height / targetScale
+            )
+            let zoomRect = CGRect(
+                x: location.x - zoomSize.width * 0.5,
+                y: location.y - zoomSize.height * 0.5,
+                width: zoomSize.width,
+                height: zoomSize.height
+            )
+            scrollView.zoom(to: zoomRect, animated: true)
+        }
+
+        @objc private func handleLivePhotoLongPress(_ gesture: UILongPressGestureRecognizer) {
+            switch gesture.state {
+            case .began:
+                isPressingForLivePhoto = true
+                startLivePhotoPlaybackIfAvailable()
+            case .ended, .cancelled, .failed:
+                isPressingForLivePhoto = false
+                livePhotoView.stopPlayback()
+            default:
+                break
+            }
+        }
+
+        private func syncLivePhoto(
+            in scrollView: UIScrollView,
+            source: DepthAnalysisSource,
+            isCurrent: Bool
+        ) {
+            guard isCurrent,
+                  scrollView.bounds.width > 0,
+                  scrollView.bounds.height > 0 else {
+                clearLivePhoto()
+                return
+            }
+
+            let targetSize = livePhotoTargetSize(in: scrollView)
+            let key = "\(source.loadID)|\(Int(targetSize.width))x\(Int(targetSize.height))"
+            if livePhotoReadyKey == key
+                || scheduledLivePhotoRequestKey == key
+                || livePhotoRequestKey == key
+                || livePhotoUnavailableKey == key {
+                return
+            }
+
+            scheduleLivePhotoRequest(source: source, targetSize: targetSize, key: key)
+        }
+
+        /// Defers slot publication until after `updateUIView` returns. Writing
+        /// an observed slot synchronously from a representable update would
+        /// mutate SwiftUI state during view reconciliation.
+        private func scheduleLivePhotoRequest(
+            source: DepthAnalysisSource,
+            targetSize: CGSize,
+            key: String
+        ) {
+            scheduledLivePhotoRequestKey = key
+            Task { @MainActor [weak self] in
+                guard let self,
+                      self.scheduledLivePhotoRequestKey == key else {
+                    return
+                }
+                self.scheduledLivePhotoRequestKey = nil
+                self.requestLivePhoto(source: source, targetSize: targetSize, key: key)
+            }
+        }
+
+        private func requestLivePhoto(source: DepthAnalysisSource, targetSize: CGSize, key: String) {
+            cancelLivePhotoRequest(notifySlot: true, preserveCloudState: false)
+            guard let slot else {
+                return
+            }
+            livePhotoCoordinatorGeneration &+= 1
+            let coordinatorGeneration = livePhotoCoordinatorGeneration
+            let mediaRequestKey = slot.beginLivePhotoFetch(
+                onCancel: { [weak self] in
+                    self?.cancelLivePhotoRequest(
+                        notifySlot: false,
+                        preserveCloudState: true,
+                        suppressAutomaticRetry: true,
+                        expectedCoordinatorGeneration: coordinatorGeneration
+                    )
+                },
+                onRetry: { [weak self] in
+                    self?.retryLivePhotoRequest()
+                }
+            )
+            guard livePhotoCoordinatorGeneration == coordinatorGeneration else {
+                slot.cancelLivePhotoFetch(
+                    requestKey: mediaRequestKey,
+                    preserveCloudState: false
+                )
+                return
+            }
+            lastLivePhotoRequest = LivePhotoRequestContext(
+                source: source,
+                targetSize: targetSize,
+                presentationKey: key
+            )
+            livePhotoRequestKey = key
+            livePhotoMediaRequestKey = mediaRequestKey
+            livePhotoReadyKey = nil
+            livePhotoUnavailableKey = nil
+            livePhotoView.livePhoto = nil
+            livePhotoView.isHidden = true
+
+            livePhotoPreparationTask = Task { @MainActor [weak self] in
+                guard let self else {
+                    return
+                }
+                switch source {
+                case .photosAsset(let assetID):
+                    await self.requestPhotosAssetLivePhoto(
+                        assetID: assetID,
+                        targetSize: targetSize,
+                        key: key,
+                        requestKey: mediaRequestKey
+                    )
+                case .pendingCapture(let captureID):
+                    await self.requestPendingCaptureLivePhoto(
+                        captureID: captureID,
+                        targetSize: targetSize,
+                        key: key,
+                        requestKey: mediaRequestKey
+                    )
+                }
+            }
+        }
+
+        private func requestPhotosAssetLivePhoto(
+            assetID: String,
+            targetSize: CGSize,
+            key: String,
+            requestKey: MediaFetchRequestKey
+        ) async {
+            let request = LibraryMediaAssetRequest(
+                key: requestKey,
+                assetLocalIdentifier: assetID
+            )
+            do {
+                let kind = try await mediaFetcher.mediaKind(for: request)
+                guard isCurrentLivePhotoRequest(key: key, requestKey: requestKey) else {
+                    return
+                }
+                guard kind == .livePhoto else {
+                    markLivePhotoUnavailable(
+                        key: key,
+                        requestKey: requestKey,
+                        failure: nil
+                    )
+                    return
+                }
+                let progressSlot = slot
+                progressSlot?.markLivePhotoFetchResolving(requestKey: requestKey)
+                let livePhoto = try await mediaFetcher.livePhoto(
+                    for: request,
+                    targetSize: targetSize,
+                    progress: { progress in
+                        Task { @MainActor in
+                            progressSlot?.applyLivePhotoICloudProgress(
+                                progress,
+                                requestKey: requestKey
+                            )
+                        }
+                    }
+                )
+                guard !Task.isCancelled,
+                      isCurrentLivePhotoRequest(key: key, requestKey: requestKey) else {
+                    return
+                }
+                handleLivePhotoResult(
+                    livePhoto.value,
+                    isCancelled: false,
+                    error: nil,
+                    isDegraded: false,
+                    key: key,
+                    requestKey: requestKey
+                )
+            } catch is CancellationError {
+                return
+            } catch {
+                guard isCurrentLivePhotoRequest(key: key, requestKey: requestKey) else {
+                    return
+                }
+                markLivePhotoUnavailable(
+                    key: key,
+                    requestKey: requestKey,
+                    failure: error
+                )
+            }
+        }
+
+        private func requestPendingCaptureLivePhoto(
+            captureID: String,
+            targetSize: CGSize,
+            key: String,
+            requestKey: MediaFetchRequestKey
+        ) async {
+            let resources: PendingLivePhotoResources
+            do {
+                let photoURL = try await TAPPendingCaptureStore.shared.bestAvailablePhotoURL(captureID: captureID)
+                guard let pairedVideoURL = try await TAPPendingCaptureStore.shared.pairedVideoURL(captureID: captureID) else {
+                    markLivePhotoUnavailable(
+                        key: key,
+                        requestKey: requestKey,
+                        failure: nil
+                    )
+                    return
+                }
+                resources = PendingLivePhotoResources(photoURL: photoURL, pairedVideoURL: pairedVideoURL)
+            } catch {
+                markLivePhotoUnavailable(
+                    key: key,
+                    requestKey: requestKey,
+                    failure: nil
+                )
+                return
+            }
+
+            guard isCurrentLivePhotoRequest(key: key, requestKey: requestKey) else {
+                return
+            }
+            slot?.markLivePhotoFetchResolving(requestKey: requestKey)
+
+            let requestID = PHLivePhoto.request(
+                withResourceFileURLs: [resources.photoURL, resources.pairedVideoURL],
+                placeholderImage: imageView.image,
+                targetSize: targetSize,
+                contentMode: .aspectFit
+            ) { [weak self] livePhoto, info in
+                Task { @MainActor in
+                    self?.handleLocalResourceLivePhotoResult(
+                        livePhoto,
+                        info: info,
+                        key: key,
+                        requestKey: requestKey
+                    )
+                }
+            }
+            livePhotoRequestCancellation = .pendingResources(requestID)
+        }
+
+        private func handleLocalResourceLivePhotoResult(
+            _ livePhoto: PHLivePhoto?,
+            info: [AnyHashable: Any],
+            key: String,
+            requestKey: MediaFetchRequestKey
+        ) {
+            handleLivePhotoResult(
+                livePhoto,
+                isCancelled: info[PHLivePhotoInfoCancelledKey] as? Bool == true,
+                error: info[PHLivePhotoInfoErrorKey],
+                isDegraded: info[PHLivePhotoInfoIsDegradedKey] as? Bool == true,
+                key: key,
+                requestKey: requestKey
+            )
+        }
+
+        private struct LivePhotoRequestContext {
+            let source: DepthAnalysisSource
+            let targetSize: CGSize
+            let presentationKey: String
+        }
+
+        private struct PendingLivePhotoResources {
+            let photoURL: URL
+            let pairedVideoURL: URL
+        }
+
+        private enum LivePhotoRequestCancellation {
+            case pendingResources(PHLivePhotoRequestID)
+
+            func cancel() {
+                switch self {
+                case .pendingResources(let requestID):
+                    PHLivePhoto.cancelRequest(withRequestID: requestID)
+                }
+            }
+        }
+
+        private func handleLivePhotoResult(
+            _ livePhoto: PHLivePhoto?,
+            isCancelled: Bool,
+            error: Any?,
+            isDegraded: Bool,
+            key: String,
+            requestKey: MediaFetchRequestKey
+        ) {
+            guard isCurrentLivePhotoRequest(key: key, requestKey: requestKey) else {
+                return
+            }
+            if isCancelled {
+                cancelLivePhotoRequest(notifySlot: true, preserveCloudState: false)
+                return
+            }
+            if let error = error as? Error {
+                markLivePhotoUnavailable(
+                    key: key,
+                    requestKey: requestKey,
+                    failure: error
+                )
+                return
+            }
+            guard let livePhoto else {
+                if !isDegraded {
+                    markLivePhotoUnavailable(
+                        key: key,
+                        requestKey: requestKey,
+                        failure: MediaFetchFailure.decode
+                    )
+                }
+                return
+            }
+
+            livePhotoView.livePhoto = livePhoto
+            livePhotoView.isMuted = isLivePhotoMuted
+            livePhotoView.isHidden = false
+            livePhotoReadyKey = key
+            livePhotoUnavailableKey = nil
+            syncMediaFrames()
+
+            if isPressingForLivePhoto {
+                startLivePhotoPlaybackIfAvailable()
+            }
+
+            guard !isDegraded else {
+                return
+            }
+            livePhotoRequestCancellation = nil
+            livePhotoPreparationTask = nil
+            livePhotoRequestKey = nil
+            livePhotoMediaRequestKey = nil
+            slot?.completeLivePhotoFetch(requestKey: requestKey)
+        }
+
+        private func livePhotoTargetSize(in scrollView: UIScrollView) -> CGSize {
+            let scale = max(UIScreen.main.scale, 1)
+            return CGSize(
+                width: max(scrollView.bounds.width * scale, 1),
+                height: max(scrollView.bounds.height * scale, 1)
+            )
+        }
+
+        private func startLivePhotoPlaybackIfAvailable() {
+            guard livePhotoView.livePhoto != nil,
+                  !livePhotoView.isHidden else {
+                return
+            }
+            livePhotoView.isMuted = isLivePhotoMuted
+            livePhotoView.startPlayback(with: .full)
+        }
+
+        private func markLivePhotoUnavailable(
+            key: String,
+            requestKey: MediaFetchRequestKey,
+            failure: Error?
+        ) {
+            guard isCurrentLivePhotoRequest(key: key, requestKey: requestKey) else {
+                return
+            }
+            livePhotoRequestCancellation = nil
+            livePhotoPreparationTask = nil
+            livePhotoRequestKey = nil
+            livePhotoMediaRequestKey = nil
+            livePhotoReadyKey = nil
+            livePhotoUnavailableKey = key
+            livePhotoView.livePhoto = nil
+            livePhotoView.isHidden = true
+            if let failure {
+                slot?.failLivePhotoFetch(failure, requestKey: requestKey)
+            } else {
+                slot?.completeLivePhotoFetch(requestKey: requestKey)
+            }
+        }
+
+        private func clearLivePhoto() {
+            isPressingForLivePhoto = false
+            livePhotoView.stopPlayback()
+            scheduledLivePhotoRequestKey = nil
+            cancelLivePhotoRequest(notifySlot: true, preserveCloudState: false)
+            lastLivePhotoRequest = nil
+            livePhotoReadyKey = nil
+            livePhotoUnavailableKey = nil
+            livePhotoView.livePhoto = nil
+            livePhotoView.isMuted = true
+            livePhotoView.isHidden = true
+        }
+
+        private func retryLivePhotoRequest() {
+            guard let lastLivePhotoRequest else {
+                return
+            }
+            livePhotoUnavailableKey = nil
+            requestLivePhoto(
+                source: lastLivePhotoRequest.source,
+                targetSize: lastLivePhotoRequest.targetSize,
+                key: lastLivePhotoRequest.presentationKey
+            )
+        }
+
+        private func isCurrentLivePhotoRequest(
+            key: String,
+            requestKey: MediaFetchRequestKey
+        ) -> Bool {
+            livePhotoRequestKey == key && livePhotoMediaRequestKey == requestKey
+        }
+
+        private func cancelLivePhotoRequest(
+            notifySlot: Bool,
+            preserveCloudState: Bool,
+            suppressAutomaticRetry: Bool = false,
+            expectedCoordinatorGeneration: UInt64? = nil
+        ) {
+            if let expectedCoordinatorGeneration,
+               expectedCoordinatorGeneration != livePhotoCoordinatorGeneration {
+                return
+            }
+            livePhotoCoordinatorGeneration &+= 1
+            let presentationKey = livePhotoRequestKey
+            let mediaRequestKey = livePhotoMediaRequestKey
+            livePhotoPreparationTask?.cancel()
+            livePhotoPreparationTask = nil
+            livePhotoRequestCancellation?.cancel()
+            livePhotoRequestCancellation = nil
+            livePhotoRequestKey = nil
+            livePhotoMediaRequestKey = nil
+            if suppressAutomaticRetry, let presentationKey {
+                livePhotoUnavailableKey = presentationKey
+            }
+            if notifySlot, let mediaRequestKey {
+                let requestSlot = slot
+                Task { @MainActor in
+                    requestSlot?.cancelLivePhotoFetch(
+                        requestKey: mediaRequestKey,
+                        preserveCloudState: preserveCloudState
+                    )
+                }
+            }
+        }
+    }
+}
+
+private final class AnalysisRawZoomUIScrollView: UIScrollView {
+    var onLayout: ((UIScrollView) -> Void)?
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        onLayout?(self)
+    }
+}
+
+private struct AnalysisToolPhotoStage: View {
+    @ObservedObject var slot: AnalysisPhotoSlot
+    let tool: AnalysisViewerTool
+    let viewportSize: CGSize
+    let isCurrent: Bool
+    @Binding var heatmapOpacity: Double
+    @Binding var comparisonPosition: Double
+    let highlightPalette: AnalysisHighlightPalette
+    let isPlaneGridAnimationEnabled: Bool
+    @AppStorage(DepthAnalyzerPreferences.planeGrowthStrictnessKey)
+    private var planeGrowthStrictness = DepthAnalyzerPreferences.defaultPlaneGrowthStrictness
+    @State private var gridToastMessage: String?
+    @State private var displayedGridToastID: UUID?
+
+    var body: some View {
+        let containerRect = DepthAnalysisViewerInteractionPolicy.centeredToolContainerRect(
+            imageSize: displayedImageSize,
+            orientation: displayedImageOrientation,
+            viewportSize: viewportSize
+        )
+
+        toolContent(size: containerRect.size)
+            .frame(width: containerRect.width, height: containerRect.height)
+            .contentShape(Rectangle())
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(alignment: .top) {
+                analysisEdgeToast
+                    .padding(.top, 10)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(.white.opacity(0.16), lineWidth: 1)
+            }
+            .position(x: containerRect.midX, y: containerRect.midY)
+            .accessibilityLabel(tool.accessibilityLabel)
+    }
+
+    @ViewBuilder
+    private func toolContent(size: CGSize) -> some View {
+        switch tool {
+        case .raw:
+            EmptyView()
+        case .twoD:
+            twoDContent(size: size)
+        case .threeD:
+            threeDContent(size: size)
+        }
+    }
+
+    @ViewBuilder
+    private func twoDContent(size: CGSize) -> some View {
+        if let input = slot.input {
+            DepthAnalysisStageView(
+                viewMode: .planes,
+                image: input.image,
+                imageOrientation: input.imageOrientation,
+                depthMap: input.depthMap,
+                heatmapImage: input.heatmap.image,
+                validMaskImage: input.validMask.image,
+                heatmapOpacity: heatmapOpacity,
+                comparisonPosition: comparisonPosition,
+                onComparisonPositionChanged: { newValue in
+                    comparisonPosition = newValue
+                },
+                planeRegion: slot.planeSelection.selectedRegion,
+                partialPlaneGridCells: slot.planeSelection.partialGridCells,
+                planeGridProgress: slot.planeSelection.gridProgress,
+                planeSeedPoint: slot.planeSelection.seedPoint,
+                highlightPalette: highlightPalette,
+                isPlaneGridAnimationEnabled: isPlaneGridAnimationEnabled,
+                metadataSummary: nil,
+                scoreSummary: nil,
+                onSelectionCleared: {
+                    slot.clearSelection()
+                },
+                onPlaneSeedSelected: { depthPoint in
+                    slot.selectPlaneSeed(
+                        depthPoint,
+                        strictness: planeGrowthStrictness
+                    )
+                }
+            )
+            .frame(width: size.width, height: size.height)
+            .onAppear {
+                syncPlaneGrowthStrictnessSettingIfCurrent()
+            }
+            .onChange(of: isCurrent) { _, _ in
+                syncPlaneGrowthStrictnessSettingIfCurrent()
+            }
+            .onChange(of: planeGrowthStrictness) { _, _ in
+                syncPlaneGrowthStrictnessSettingIfCurrent()
+            }
+            .onChange(of: slot.planeSelection.completedGridToastID) { _, toastID in
+                showGridReadyToastIfNeeded(toastID)
+            }
+            .onChange(of: slot.planeSelection.generationID) { _, _ in
+                hideGridToast()
+            }
+        } else {
+            AnalysisToolLoadingView(
+                slot: slot,
+                title: "Preparing 2D analysis",
+                size: size
+            )
+        }
+    }
+
+    private func syncPlaneGrowthStrictnessSettingIfCurrent() {
+        guard isCurrent else {
+            return
+        }
+        slot.updatePlaneGrowthStrictness(planeGrowthStrictness)
+    }
+
+    @ViewBuilder
+    private func threeDContent(size: CGSize) -> some View {
+        if let input = slot.input {
+            PointCloudPreview(
+                image: input.image,
+                depthMap: input.depthMap,
+                orientation: input.imageOrientation,
+                selectedPlaneRegion: slot.planeSelection.selectedRegion,
+                highlightColor: highlightPalette.uiColor,
+                selection: .constant(nil),
+                interactionState: .idle,
+                allowsSelection: false,
+                enablesMotionParallax: true,
+                onSelectionBegan: { _ in },
+                onSelectionChanged: { _ in },
+                onSelectionEnded: { _ in },
+                onSelectionCleared: { }
+            )
+            .frame(width: size.width, height: size.height)
+        } else {
+            AnalysisToolLoadingView(
+                slot: slot,
+                title: "Preparing 3D projection",
+                size: size
+            )
+        }
+    }
+
+    private var displayedImageSize: CGSize? {
+        if let input = slot.input {
+            return CGSize(width: input.image.width, height: input.image.height)
+        }
+        if let displayPhoto = slot.displayPhoto {
+            return displayPhoto.pixelSize
+        }
+        return slot.thumbnailImage?.size
+    }
+
+    private var displayedImageOrientation: CGImagePropertyOrientation {
+        slot.input?.imageOrientation ?? slot.displayPhoto?.orientation ?? .up
+    }
+
+    @ViewBuilder
+    private var analysisEdgeToast: some View {
+        if tool == .twoD, let gridToastMessage {
+            Text(gridToastMessage)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.76)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(.black.opacity(0.58), in: Capsule())
+                .allowsHitTesting(false)
+                .transition(.opacity)
+                .accessibilityIdentifier("analysis.edgeToast")
+        }
+    }
+
+    private func showGridReadyToastIfNeeded(_ toastID: UUID?) {
+        guard tool == .twoD,
+              isCurrent,
+              let toastID,
+              displayedGridToastID != toastID else {
+            return
+        }
+        displayedGridToastID = toastID
+        withAnimation(.easeInOut(duration: 0.18)) {
+            gridToastMessage = "Grid ready"
+        }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2))
+            guard displayedGridToastID == toastID else {
+                return
+            }
+            hideGridToast()
+            slot.dismissCompletedGridToast(toastID)
+        }
+    }
+
+    private func hideGridToast() {
+        displayedGridToastID = nil
+        withAnimation(.easeInOut(duration: 0.18)) {
+            gridToastMessage = nil
+        }
+    }
+}
+
+private struct AnalysisToolLoadingView: View {
+    let slot: AnalysisPhotoSlot?
+    let title: String
+    let size: CGSize
+
+    var body: some View {
+        if let slot {
+            AnalysisToolSlotLoadingView(slot: slot, title: title, size: size)
+        } else {
+            ProgressView(title)
+                .tint(.white)
+                .frame(width: size.width, height: size.height)
+                .frame(maxWidth: .infinity)
+                .background(Color.black)
+        }
+    }
+}
+
+private struct AnalysisToolSlotLoadingView: View {
+    @ObservedObject var slot: AnalysisPhotoSlot
+    let title: String
+    let size: CGSize
+
+    var body: some View {
+        ZStack {
+            Color.black
+
+            if let input = slot.input {
+                Image(decorative: input.image, scale: 1, orientation: input.imageOrientation.swiftUIImageOrientation)
+                    .resizable()
+                    .scaledToFit()
+                    .opacity(0.54)
+            } else if let displayPhoto = slot.displayPhoto {
+                Image(uiImage: displayPhoto.image)
+                    .resizable()
+                    .scaledToFit()
+                    .opacity(0.54)
+            } else if let thumbnailImage = slot.thumbnailImage {
+                Image(uiImage: thumbnailImage)
+                    .resizable()
+                    .scaledToFit()
+                    .opacity(0.54)
+            }
+
+            if !slot.isOriginalLoading || slot.errorMessage != nil {
+                VStack(spacing: 10) {
+                    if let errorMessage = slot.errorMessage {
+                        Image(systemName: slot.errorSystemImage)
+                            .font(.title2.weight(.semibold))
+                        Text(errorMessage)
+                            .font(.caption)
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(.white.opacity(0.78))
+                    } else {
+                        ProgressView()
+                            .tint(.white)
+                    }
+
+                    Text(title)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.8))
+                }
+                .padding(18)
+                .background(.black.opacity(0.48), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
+        }
+        .frame(width: size.width, height: size.height)
+        .frame(maxWidth: .infinity)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(.white.opacity(0.16), lineWidth: 1)
         }
-        .accessibilityLabel(summary.accessibilityText)
     }
 }
 
-private struct InteractiveDepthImage: View {
-    let image: CGImage
-    let overlayImage: CGImage?
-    let overlayOpacity: Double
-    let orientation: CGImagePropertyOrientation
-    let depthSize: CGSize
-    @Binding var selection: CGRect?
-    let interactionState: AnalysisInteractionState
-    let planeOverlays: [TAPDetectedPlane]
-    let planeRegion: TAPPlaneRegion?
-    let planeSeedPoint: CGPoint?
-    let isSelectionEnabled: Bool
-    let isPointSelectionEnabled: Bool
-    let onSelectionBegan: (CGRect) -> Void
-    let onSelectionChanged: (CGRect) -> Void
-    let onSelectionEnded: (CGRect) -> Void
-    let onSelectionCleared: () -> Void
-    let onPointSelected: (CGPoint) -> Void
-
-    @State private var dragStart: CGPoint?
-    @State private var lastClearDate = Date.distantPast
-
-    var body: some View {
-        GeometryReader { proxy in
-            // ImageIO returns raw pixels and a separate EXIF/CGImage orientation.
-            // SwiftUI renders the pixels with that orientation applied, so the
-            // fitted display rect must use the orientation-adjusted dimensions.
-            let imageSize = TAPImageOrientationMapper.displayedSize(
-                nativeSize: CGSize(width: image.width, height: image.height),
-                orientation: orientation
-            )
-            let imageFrame = fittedRect(imageSize: imageSize, containerSize: proxy.size)
-
-            ZStack {
-                Color.black
-
-                Image(decorative: image, scale: 1, orientation: orientation.swiftUIImageOrientation)
-                    .resizable()
-                    .interpolation(.none)
-                    .frame(width: imageFrame.width, height: imageFrame.height)
-                    .position(x: imageFrame.midX, y: imageFrame.midY)
-
-                if let overlayImage {
-                    Image(decorative: overlayImage, scale: 1, orientation: orientation.swiftUIImageOrientation)
-                        .resizable()
-                        .interpolation(.none)
-                        .frame(width: imageFrame.width, height: imageFrame.height)
-                        .position(x: imageFrame.midX, y: imageFrame.midY)
-                        .opacity(overlayOpacity)
-                }
-
-                ForEach(planeOverlays) { plane in
-                    let rect = viewRect(for: plane.imageBounds, imageFrame: imageFrame)
-                    if rect.width > 8, rect.height > 8 {
-                        PlaneOverlayMarker(plane: plane)
-                            .frame(width: rect.width, height: rect.height)
-                            .position(x: rect.midX, y: rect.midY)
-                        }
-                }
-
-                if let planeRegion {
-                    PlaneRegionOverlay(
-                        region: planeRegion,
-                        depthSize: depthSize,
-                        orientation: orientation,
-                        imageFrame: imageFrame
-                    )
-
-                    let rect = viewRect(for: planeRegion.imageBounds, imageFrame: imageFrame)
-                    if rect.width > 8, rect.height > 8 {
-                        PlaneRegionBadge(region: planeRegion)
-                            .position(x: rect.minX + 44, y: max(rect.minY + 16, imageFrame.minY + 16))
-                    }
-                }
-
-                if let planeSeedPoint {
-                    let seedRect = viewRect(
-                        for: CGRect(x: planeSeedPoint.x - 2, y: planeSeedPoint.y - 2, width: 4, height: 4),
-                        imageFrame: imageFrame
-                    )
-                    PlaneSeedMarker()
-                        .position(x: seedRect.midX, y: seedRect.midY)
-                }
-
-                if isSelectionEnabled, let selection {
-                    let rect = viewRect(for: selection, imageFrame: imageFrame)
-                    Rectangle()
-                        .stroke(.white, lineWidth: 2)
-                        .background(Rectangle().fill(selectionFill))
-                        .frame(width: rect.width, height: rect.height)
-                        .position(x: rect.midX, y: rect.midY)
-                }
-            }
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 4)
-                    .onChanged { value in
-                        guard isSelectionEnabled else {
-                            return
-                        }
-                        let isBeginning = dragStart == nil
-                        if isBeginning {
-                            dragStart = value.startLocation
-                        }
-                        let viewRect = CGRect(
-                            x: min(dragStart?.x ?? value.location.x, value.location.x),
-                            y: min(dragStart?.y ?? value.location.y, value.location.y),
-                            width: abs(value.location.x - (dragStart?.x ?? value.location.x)),
-                            height: abs(value.location.y - (dragStart?.y ?? value.location.y))
-                        ).insetBy(dx: -14, dy: -14)
-
-                        let depthRect = depthRect(for: viewRect, imageFrame: imageFrame)
-                        selection = depthRect
-                        if isBeginning {
-                            onSelectionBegan(depthRect)
-                        } else {
-                            onSelectionChanged(depthRect)
-                        }
-                    }
-                    .onEnded { value in
-                        guard isSelectionEnabled else {
-                            dragStart = nil
-                            return
-                        }
-                        let viewRect = CGRect(
-                            x: min(dragStart?.x ?? value.location.x, value.location.x),
-                            y: min(dragStart?.y ?? value.location.y, value.location.y),
-                            width: abs(value.location.x - (dragStart?.x ?? value.location.x)),
-                            height: abs(value.location.y - (dragStart?.y ?? value.location.y))
-                        ).insetBy(dx: -14, dy: -14)
-                        let depthRect = depthRect(for: viewRect, imageFrame: imageFrame)
-                        selection = depthRect
-                        onSelectionEnded(depthRect)
-                        dragStart = nil
-                    }
-            )
-            .simultaneousGesture(
-                TapGesture(count: 2)
-                    .onEnded {
-                        dragStart = nil
-                        lastClearDate = Date()
-                        onSelectionCleared()
-                    }
-            )
-            .simultaneousGesture(
-                SpatialTapGesture(count: 1)
-                    .onEnded { value in
-                        guard isPointSelectionEnabled,
-                              Date().timeIntervalSince(lastClearDate) > 0.25,
-                              let depthPoint = depthPoint(for: value.location, imageFrame: imageFrame) else {
-                            return
-                        }
-                        onPointSelected(depthPoint)
-                    }
-            )
-        }
-    }
-
-    private var selectionFill: Color {
-        switch interactionState {
-        case .drawingSelection:
-            .white.opacity(0.08)
-        case .idle, .regionSelected:
-            .white.opacity(0.14)
-        }
-    }
-
-    private func fittedRect(imageSize: CGSize, containerSize: CGSize) -> CGRect {
-        guard imageSize.width > 0, imageSize.height > 0, containerSize.width > 0, containerSize.height > 0 else {
-            return .zero
-        }
-
-        let scale = min(containerSize.width / imageSize.width, containerSize.height / imageSize.height)
-        let size = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
-        let verticalBias: CGFloat = 0.38
-        return CGRect(
-            x: (containerSize.width - size.width) / 2,
-            y: (containerSize.height - size.height) * verticalBias,
-            width: size.width,
-            height: size.height
-        )
-    }
-
-    private func depthRect(for viewRect: CGRect, imageFrame: CGRect) -> CGRect {
-        guard imageFrame.width > 0, imageFrame.height > 0 else {
-            return .zero
-        }
-
-        let clamped = viewRect.intersection(imageFrame)
-        guard !clamped.isNull else {
-            return .zero
-        }
-
-        // The user drags in oriented display coordinates. Plane fitting and
-        // depth statistics operate on the native depth-map pixel grid, so we
-        // first scale into the displayed depth plane and then invert the
-        // orientation transform.
-        let displayedDepthSize = TAPImageOrientationMapper.displayedSize(nativeSize: depthSize, orientation: orientation)
-        let displayedX = (clamped.minX - imageFrame.minX) / imageFrame.width * displayedDepthSize.width
-        let displayedY = (clamped.minY - imageFrame.minY) / imageFrame.height * displayedDepthSize.height
-        let displayedWidth = clamped.width / imageFrame.width * displayedDepthSize.width
-        let displayedHeight = clamped.height / imageFrame.height * displayedDepthSize.height
-        let displayedRect = CGRect(
-            x: displayedX,
-            y: displayedY,
-            width: max(displayedWidth, 1),
-            height: max(displayedHeight, 1)
-        )
-        return TAPImageOrientationMapper.nativeRect(
-            fromDisplayed: displayedRect,
-            nativeSize: depthSize,
-            orientation: orientation
-        )
-    }
-
-    private func viewRect(for depthRect: CGRect, imageFrame: CGRect) -> CGRect {
-        guard depthSize.width > 0, depthSize.height > 0 else {
-            return .zero
-        }
-
-        // Selection state is stored as a native depth-map rect because that is
-        // what `TAPDepthGeometryProjector` and `TAPPlaneEstimator` consume. This
-        // converts it back into oriented display coordinates for the overlay.
-        let displayedDepthSize = TAPImageOrientationMapper.displayedSize(nativeSize: depthSize, orientation: orientation)
-        let displayedRect = TAPImageOrientationMapper.displayedRect(
-            fromNative: depthRect,
-            nativeSize: depthSize,
-            orientation: orientation
-        )
-        return CGRect(
-            x: imageFrame.minX + displayedRect.minX / displayedDepthSize.width * imageFrame.width,
-            y: imageFrame.minY + displayedRect.minY / displayedDepthSize.height * imageFrame.height,
-            width: displayedRect.width / displayedDepthSize.width * imageFrame.width,
-            height: displayedRect.height / displayedDepthSize.height * imageFrame.height
-        )
-    }
-
-    private func depthPoint(for location: CGPoint, imageFrame: CGRect) -> CGPoint? {
-        guard imageFrame.contains(location), imageFrame.width > 0, imageFrame.height > 0 else {
-            return nil
-        }
-
-        let displayedDepthSize = TAPImageOrientationMapper.displayedSize(nativeSize: depthSize, orientation: orientation)
-        let displayedPointRect = CGRect(
-            x: (location.x - imageFrame.minX) / imageFrame.width * displayedDepthSize.width,
-            y: (location.y - imageFrame.minY) / imageFrame.height * displayedDepthSize.height,
-            width: 1,
-            height: 1
-        )
-        let nativeRect = TAPImageOrientationMapper.nativeRect(
-            fromDisplayed: displayedPointRect,
-            nativeSize: depthSize,
-            orientation: orientation
-        )
-        return CGPoint(
-            x: min(max(nativeRect.midX, 0), max(depthSize.width - 1, 0)),
-            y: min(max(nativeRect.midY, 0), max(depthSize.height - 1, 0))
-        )
-    }
-}
-
-private struct PlaneRegionOverlay: View {
-    let region: TAPPlaneRegion
-    let depthSize: CGSize
-    let orientation: CGImagePropertyOrientation
-    let imageFrame: CGRect
-
-    var body: some View {
-        Canvas { context, _ in
-            for cell in region.gridCells {
-                let rect = viewRect(for: cell.imageBounds).insetBy(dx: 0.8, dy: 0.8)
-                context.fill(Path(rect), with: .color(cellFillColor(cell)))
-                context.stroke(Path(rect), with: .color(cellEdgeColor(cell)), lineWidth: 1.15)
-            }
-
-            let stride = max(region.contourPoints.count / 2_500, 1)
-            for (index, point) in region.contourPoints.enumerated() where index.isMultiple(of: stride) {
-                let rect = viewRect(for: CGRect(x: point.x, y: point.y, width: 1, height: 1))
-                    .insetBy(dx: -1.2, dy: -1.2)
-                context.fill(Path(ellipseIn: rect), with: .color(edgeColor))
-            }
-        }
-        .allowsHitTesting(false)
-        .accessibilityLabel("Selected plane region")
-    }
-
-    private func cellFillColor(_ cell: TAPPlaneGridCell) -> Color {
-        let confidence = min(max(cell.confidence, 0), 1)
-        return Color(
-            red: 1.0 - 0.26 * confidence,
-            green: 0.58 + 0.38 * confidence,
-            blue: 0.22 + 0.14 * confidence
-        )
-        .opacity(0.16 + 0.18 * confidence)
-    }
-
-    private func cellEdgeColor(_ cell: TAPPlaneGridCell) -> Color {
-        let confidence = min(max(cell.confidence, 0), 1)
-        return Color(
-            red: 1.0 - 0.30 * confidence,
-            green: 0.72 + 0.28 * confidence,
-            blue: 0.24 + 0.16 * confidence
-        )
-        .opacity(0.42 + 0.42 * confidence)
-    }
-
-    private var edgeColor: Color {
-        Color(red: 0.78, green: 1.0, blue: 0.42).opacity(0.92)
-    }
-
-    private func viewRect(for depthRect: CGRect) -> CGRect {
-        guard depthSize.width > 0, depthSize.height > 0 else {
-            return .zero
-        }
-
-        let displayedDepthSize = TAPImageOrientationMapper.displayedSize(nativeSize: depthSize, orientation: orientation)
-        let displayedRect = TAPImageOrientationMapper.displayedRect(
-            fromNative: depthRect,
-            nativeSize: depthSize,
-            orientation: orientation
-        )
-        return CGRect(
-            x: imageFrame.minX + displayedRect.minX / displayedDepthSize.width * imageFrame.width,
-            y: imageFrame.minY + displayedRect.minY / displayedDepthSize.height * imageFrame.height,
-            width: max(displayedRect.width / displayedDepthSize.width * imageFrame.width, 1),
-            height: max(displayedRect.height / displayedDepthSize.height * imageFrame.height, 1)
-        )
-    }
-}
-
-private struct PlaneRegionBadge: View {
-    let region: TAPPlaneRegion
-
-    var body: some View {
-        Text("\(Int((region.confidence * 100).rounded()))%")
-            .font(.caption2.monospacedDigit().weight(.bold))
-            .foregroundStyle(.black)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 4)
-            .background(Color(red: 0.78, green: 1.0, blue: 0.42), in: Capsule())
-            .shadow(color: .black.opacity(0.25), radius: 4, y: 2)
-            .accessibilityLabel("Selected plane region \(Int((region.confidence * 100).rounded())) percent confidence")
-    }
-}
-
-private struct PlaneSeedMarker: View {
-    var body: some View {
-        ZStack {
-            Circle()
-                .stroke(.black.opacity(0.78), lineWidth: 5)
-                .frame(width: 18, height: 18)
-            Circle()
-                .stroke(Color(red: 0.78, green: 1.0, blue: 0.42), lineWidth: 3)
-                .frame(width: 18, height: 18)
-            Circle()
-                .fill(Color(red: 0.78, green: 1.0, blue: 0.42))
-                .frame(width: 5, height: 5)
-        }
-        .shadow(color: .black.opacity(0.32), radius: 4, y: 2)
-        .accessibilityLabel("Plane seed point")
-    }
-}
-
-private struct PlaneOverlayMarker: View {
-    let plane: TAPDetectedPlane
-
-    var body: some View {
-        ZStack(alignment: .topLeading) {
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .stroke(markerColor, lineWidth: 2)
-                .background(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(markerColor.opacity(0.13))
-                )
-
-            Text("\(Int((plane.confidence * 100).rounded()))%")
-                .font(.caption2.monospacedDigit().weight(.bold))
-                .foregroundStyle(.black)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .background(markerColor, in: Capsule())
-                .padding(5)
-        }
-        .accessibilityLabel("Detected plane \(Int((plane.confidence * 100).rounded())) percent confidence")
-    }
-
-    private var markerColor: Color {
-        if plane.confidence >= 0.82 {
-            return Color(red: 0.70, green: 0.95, blue: 0.30)
-        }
-        if plane.confidence >= 0.68 {
-            return Color(red: 0.98, green: 0.78, blue: 0.22)
-        }
-        return Color(red: 1.0, green: 0.48, blue: 0.28)
-    }
-}
-
-private struct AnalysisLoupe: View {
-    let image: CGImage
-    let overlayImage: CGImage?
-    let overlayOpacity: Double
-    let orientation: CGImagePropertyOrientation
-    let depthSize: CGSize
-    let selection: CGRect
-    var title = "Loupe"
-    var previewSize = CGSize(width: 136, height: 136)
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(title)
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(.white.opacity(0.88))
-
-            ZStack {
-                Color.black
-                magnifiedImage(image, opacity: 1)
-
-                if let overlayImage {
-                    magnifiedImage(overlayImage, opacity: overlayOpacity)
-                }
-            }
-            .frame(width: previewSize.width, height: previewSize.height)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(.white.opacity(0.24), lineWidth: 1)
-            }
-        }
-        .padding(8)
-        .background(.black.opacity(0.58), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .accessibilityLabel("Selected area loupe")
-    }
-
-    private func magnifiedImage(_ image: CGImage, opacity: Double) -> some View {
-        GeometryReader { proxy in
-            let normalizedCenter = normalizedSelectionCenter()
-            let zoom = zoomScale()
-
-            Image(decorative: image, scale: 1, orientation: orientation.swiftUIImageOrientation)
-                .resizable()
-                .interpolation(.none)
-                .scaledToFit()
-                .scaleEffect(zoom)
-                .offset(
-                    x: (0.5 - normalizedCenter.x) * proxy.size.width * zoom,
-                    y: (0.5 - normalizedCenter.y) * proxy.size.height * zoom
-                )
-                .opacity(opacity)
-                .frame(width: proxy.size.width, height: proxy.size.height)
-        }
-        .clipped()
-    }
-
-    private func normalizedSelectionCenter() -> CGPoint {
-        let displayedDepthSize = TAPImageOrientationMapper.displayedSize(nativeSize: depthSize, orientation: orientation)
-        guard displayedDepthSize.width > 0, displayedDepthSize.height > 0 else {
-            return CGPoint(x: 0.5, y: 0.5)
-        }
-
-        let displayedRect = TAPImageOrientationMapper.displayedRect(
-            fromNative: selection,
-            nativeSize: depthSize,
-            orientation: orientation
-        )
-        return CGPoint(
-            x: min(max(displayedRect.midX / displayedDepthSize.width, 0), 1),
-            y: min(max(displayedRect.midY / displayedDepthSize.height, 0), 1)
-        )
-    }
-
-    private func zoomScale() -> CGFloat {
-        guard selection.width > 0, selection.height > 0 else {
-            return 2.4
-        }
-
-        let widthRatio = depthSize.width / selection.width
-        let heightRatio = depthSize.height / selection.height
-        return min(max(min(widthRatio, heightRatio), 2.2), 5.2)
-    }
-}
-
-private enum AnalysisButtonHint: Equatable {
-    case view(DepthAnalysisViewMode)
-    case inspector(AnalysisInspector)
-
-    var title: String {
-        switch self {
-        case .view(let viewMode):
-            viewMode.title
-        case .inspector(let inspector):
-            inspector.title
-        }
-    }
-
-    var systemImage: String {
-        switch self {
-        case .view(let viewMode):
-            viewMode.systemImage
-        case .inspector(let inspector):
-            inspector.systemImage
-        }
-    }
-}
-
-private extension AnalysisInspector {
-    var detailedExplanation: String {
-        switch self {
-        case .measurements:
-            "Shows numeric depth measurements for the selected region, including median depth, range, valid samples, and any local plane estimate."
-        case .legend:
-            "Explains the current view's color mapping, such as near-to-far depth colors, valid-depth coverage, or point-cloud distance colors."
-        case .overlay:
-            "Controls the opacity of generated overlays on the main image, so you can compare the analysis layer against the RGB photo."
-        case .region:
-            "Shows measurements and previews for a completed rectangular selection. In Depth view, the selected crop is recolored using only local valid depth samples."
-        case .planeFilter:
-            "Controls seed-grown plane strictness and reports the selected plane region's cells, area, confidence, flatness, residual, and calibration diagnostics."
-        case .cloudInfo:
-            "Explains the local camera-coordinate point cloud preview and reports point counts and near-to-far color meaning."
-        }
-    }
-}
-
-private struct AnalysisInspectorStrip: View {
-    @Binding var panelDestination: AnalysisPanelDestination?
-    @Binding var viewMode: DepthAnalysisViewMode
-    let inspectors: [AnalysisInspector]
-    let buttonHint: AnalysisButtonHint?
-    let onViewTapped: (DepthAnalysisViewMode) -> Void
-    @State private var viewScrollPosition: String? = DepthAnalysisViewMode.rgb.id
-    @State private var inspectorScrollPosition: String?
-
-    private static var visibleViewModes: [DepthAnalysisViewMode] {
-        #if DEBUG
-        return DepthAnalysisViewMode.allCases
-        #else
-        return DepthAnalysisViewMode.allCases.filter { !$0.isDebugOnlyAnalysisButton }
-        #endif
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            PinnedStripRow(
-                systemImage: "eye",
-                accessibilityLabel: "Views",
-                helpText: "Views",
-                scrollPosition: $viewScrollPosition
-            ) {
-                viewModeTabs
-            }
-
-            PinnedStripRow(
-                systemImage: "scope",
-                accessibilityLabel: "Inspectors",
-                helpText: "Inspectors",
-                scrollPosition: $inspectorScrollPosition
-            ) {
-                inspectorTabs
-            }
-        }
-        .font(.callout)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 8)
-        .frame(maxWidth: 560, alignment: .leading)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(.white.opacity(0.18), lineWidth: 1)
-        }
-        .overlay(alignment: .top) {
-            if let buttonHint {
-                AnalysisButtonBubble(hint: buttonHint)
-                    .offset(y: -38)
-                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
-            }
-        }
-        .onAppear {
-            viewScrollPosition = viewMode.id
-            syncInspectorScrollPosition()
-        }
-        .onChange(of: viewMode) { _, newValue in
-            viewScrollPosition = newValue.id
-            syncInspectorScrollPosition()
-        }
-        .onChange(of: inspectors) { _, _ in
-            syncInspectorScrollPosition()
-        }
-        .onChange(of: panelDestination) { _, _ in
-            syncInspectorScrollPosition()
-        }
-        .animation(.snappy(duration: 0.18), value: buttonHint)
-    }
-
-    private var viewModeTabs: some View {
-        ForEach(Self.visibleViewModes) { item in
-            Button {
-                onViewTapped(item)
-                viewScrollPosition = item.id
-                viewMode = item
-            } label: {
-                iconButton(
-                    systemImage: item.systemImage,
-                    isSelected: item == viewMode,
-                    isDebugHighlighted: item.isDebugOnlyAnalysisButton
-                )
-            }
-            .id(item.id)
-            .buttonStyle(.plain)
-            .accessibilityLabel(item.title)
-            .help(item.detailedExplanation)
-        }
-    }
-
-    private var inspectorTabs: some View {
-        ForEach(inspectors) { inspector in
-            Button {
-                inspectorScrollPosition = inspector.id
-                toggle(.inspector(inspector))
-            } label: {
-                iconButton(
-                    systemImage: inspector.systemImage,
-                    isSelected: panelDestination?.selectedInspector == inspector
-                )
-            }
-            .id(inspector.id)
-            .buttonStyle(.plain)
-            .contentShape(Rectangle())
-            .accessibilityLabel(inspector.title)
-            .help(inspector.title)
-        }
-    }
-
-    private func iconButton(systemImage: String, isSelected: Bool, isDebugHighlighted: Bool = false) -> some View {
-        Image(systemName: systemImage)
-            .font(.callout.weight(.semibold))
-            .symbolRenderingMode(.hierarchical)
-            .frame(width: 34, height: 32)
-            .foregroundStyle(.primary)
-            .background(
-                iconBackground(isSelected: isSelected, isDebugHighlighted: isDebugHighlighted),
-                in: RoundedRectangle(cornerRadius: 7, style: .continuous)
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-    }
-
-    private func toggle(_ destination: AnalysisPanelDestination) {
-        if panelDestination == destination {
-            panelDestination = nil
-        } else {
-            panelDestination = destination
-        }
-    }
-
-    private func iconBackground(isSelected: Bool, isDebugHighlighted: Bool = false) -> Color {
-        if isDebugHighlighted {
-            return isSelected ? AnalysisDebugHighlight.selectedBackground : AnalysisDebugHighlight.restingBackground
-        }
-        if isSelected {
-            return Color.primary.opacity(0.16)
-        }
-        return Color.primary.opacity(0.06)
-    }
-
-    private func syncInspectorScrollPosition() {
-        if let inspector = panelDestination?.selectedInspector, inspectors.contains(inspector) {
-            inspectorScrollPosition = inspector.id
-        } else if inspectorScrollPosition == nil || !isValidInspectorScrollID(inspectorScrollPosition) {
-            inspectorScrollPosition = inspectors.first?.id
-        }
-    }
-
-    private func isValidInspectorScrollID(_ id: String?) -> Bool {
-        guard let id else {
-            return false
-        }
-        return inspectors.contains { $0.id == id }
-    }
-}
-
-private struct PinnedStripRow<Content: View>: View {
-    let systemImage: String
-    let accessibilityLabel: String
-    let helpText: String
-    @Binding var scrollPosition: String?
-    let content: Content
-
-    init(
-        systemImage: String,
-        accessibilityLabel: String,
-        helpText: String,
-        scrollPosition: Binding<String?>,
-        @ViewBuilder content: () -> Content
-    ) {
-        self.systemImage = systemImage
-        self.accessibilityLabel = accessibilityLabel
-        self.helpText = helpText
-        _scrollPosition = scrollPosition
-        self.content = content()
-    }
-
-    var body: some View {
-        HStack(spacing: 7) {
-            Image(systemName: systemImage)
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.secondary)
-                .frame(width: 22, height: 32)
-                .accessibilityLabel(accessibilityLabel)
-                .help(helpText)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    content
-                }
-                .scrollTargetLayout()
-            }
-            .scrollPosition(id: $scrollPosition, anchor: .center)
-        }
-    }
-}
-
-private struct AnalysisButtonBubble: View {
-    let hint: AnalysisButtonHint
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: hint.systemImage)
-                .font(.caption.weight(.semibold))
-                .symbolRenderingMode(.hierarchical)
-            Text(hint.title)
-                .font(.caption.weight(.semibold))
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(.thinMaterial, in: Capsule())
-        .overlay {
-            Capsule()
-                .stroke(.white.opacity(0.2), lineWidth: 1)
-            }
-        .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
-        .accessibilityHidden(true)
-    }
-}
-
-private struct AnalysisPanelLayer<Content: View>: View {
-    @Binding var destination: AnalysisPanelDestination?
-    let maxHeight: CGFloat
-    let content: Content
-    @State private var measuredContentHeight: CGFloat = 0
-    @State private var measuredPanelHeight: CGFloat = 0
-
-    init(destination: Binding<AnalysisPanelDestination?>, maxHeight: CGFloat, @ViewBuilder content: () -> Content) {
-        _destination = destination
-        self.maxHeight = maxHeight
-        self.content = content()
-    }
-
+private struct CredentialPendingPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Image(systemName: titleIcon)
-                    .font(.headline.weight(.semibold))
-                    .symbolRenderingMode(.hierarchical)
-                    .frame(width: 22, height: 22)
-                    .foregroundStyle(.secondary)
-                Text(title)
-                    .font(.headline)
-                Spacer(minLength: 8)
-                Button {
-                    destination = nil
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.title3)
-                        .foregroundStyle(.secondary)
-                        .frame(width: 32, height: 32)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Close analysis panel")
-                .help("Close this analysis panel.")
-            }
+            Label("Generating credential", systemImage: "clock.badge.checkmark")
+                .font(.subheadline.weight(.semibold))
 
-            Divider()
-
-            adaptivePanelContent
-        }
-        .font(.callout)
-        .padding(12)
-        .frame(maxWidth: 560, alignment: .leading)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(.white.opacity(0.18), lineWidth: 1)
-        }
-        .background {
-            GeometryReader { proxy in
-                Color.clear.preference(key: AnalysisPanelHeightKey.self, value: proxy.size.height)
-            }
-        }
-        .onPreferenceChange(AnalysisPanelContentHeightKey.self) { height in
-            var transaction = Transaction()
-            transaction.animation = nil
-            withTransaction(transaction) {
-                measuredContentHeight = height
-            }
-            logPanelLayout(contentHeight: height, panelHeight: measuredPanelHeight)
-        }
-        .onPreferenceChange(AnalysisPanelHeightKey.self) { height in
-            var transaction = Transaction()
-            transaction.animation = nil
-            withTransaction(transaction) {
-                measuredPanelHeight = height
-            }
-            logPanelLayout(contentHeight: measuredContentHeight, panelHeight: height)
-        }
-        .onChange(of: destination) { _, _ in
-            var transaction = Transaction()
-            transaction.animation = nil
-            withTransaction(transaction) {
-                measuredContentHeight = 0
-                measuredPanelHeight = 0
-            }
-        }
-    }
-
-    private var adaptivePanelContent: some View {
-        ScrollView(.vertical, showsIndicators: measuredContentHeight > contentMaxHeight + 1) {
-            measuredPanelContent
-        }
-        .scrollBounceBehavior(.basedOnSize)
-        .frame(height: contentViewportHeight, alignment: .top)
-        .clipped()
-    }
-
-    private var measuredPanelContent: some View {
-        panelContent
-            .fixedSize(horizontal: false, vertical: true)
-            .background {
-                GeometryReader { proxy in
-                    Color.clear.preference(key: AnalysisPanelContentHeightKey.self, value: proxy.size.height)
-                }
-            }
-    }
-
-    private var panelContent: some View {
-        content
-            .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var contentMaxHeight: CGFloat {
-        max(72, maxHeight - 78)
-    }
-
-    private var contentViewportHeight: CGFloat {
-        guard measuredContentHeight > 0 else {
-            return 1
-        }
-        return min(measuredContentHeight, contentMaxHeight)
-    }
-
-    private func logPanelLayout(contentHeight: CGFloat, panelHeight: CGFloat) {
-        #if DEBUG
-        guard contentHeight > 0 || panelHeight > 0 else {
-            return
-        }
-        let isScrolling = contentHeight > contentMaxHeight + 1
-        print(
-            "[DepthAnalysisPanel] title=\(title) content=\(String(format: "%.1f", contentHeight)) " +
-            "panel=\(String(format: "%.1f", panelHeight)) contentMax=\(String(format: "%.1f", contentMaxHeight)) " +
-            "scroll=\(isScrolling)"
-        )
-        #endif
-    }
-
-    private var title: String {
-        guard let inspector = destination?.selectedInspector else {
-            return "Analysis"
-        }
-
-        return inspector.title
-    }
-
-    private var titleIcon: String {
-        guard let inspector = destination?.selectedInspector else {
-            return "scope"
-        }
-
-        return inspector.systemImage
-    }
-}
-
-private struct AnalysisPanelContentHeightKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = max(value, nextValue())
-    }
-}
-
-private struct AnalysisPanelHeightKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = max(value, nextValue())
-    }
-}
-
-private struct InlineHelpText: View {
-    let text: String
-
-    init(_ text: String) {
-        self.text = text
-    }
-
-    var body: some View {
-        Text(text)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-            .transition(.opacity.combined(with: .move(edge: .top)))
-    }
-}
-
-private struct RegionInspectorContent: View {
-    let image: CGImage
-    let orientation: CGImagePropertyOrientation
-    let depthSize: CGSize
-    let selection: CGRect?
-    let interactionState: AnalysisInteractionState
-    let stats: TAPDepthRegionStats?
-    let planeEstimate: TAPPlaneEstimate?
-    let regionHeatmap: TAPDepthHeatmapVisualization?
-    let heatmapErrorMessage: String?
-    let showsInlineHelp: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 6) {
-                Text("Region")
-                    .font(.caption.weight(.semibold))
-                    .help("Drag on the image to choose a region. The region heatmap uses only the selected valid depth samples to recalculate its color range.")
-                Spacer(minLength: 8)
-                Text(stateText)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-            }
-            if showsInlineHelp {
-                InlineHelpText("Drag on the image to choose a region. The region heatmap uses only the selected valid depth samples to recalculate its color range.")
-            }
-
-            if interactionState == .drawingSelection {
-                Label("Selecting region...", systemImage: "hand.draw")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                if showsInlineHelp {
-                    InlineHelpText("Release your drag to finish the selection and calculate local depth statistics.")
-                }
-            } else if let selection, interactionState.showsRegionInspector {
-                if let regionHeatmap {
-                    HStack(alignment: .top, spacing: 12) {
-                        AnalysisLoupe(
-                            image: image,
-                            overlayImage: regionHeatmap.image,
-                            overlayOpacity: 0.92,
-                            orientation: orientation,
-                            depthSize: depthSize,
-                            selection: selection,
-                            title: "Local heatmap",
-                            previewSize: CGSize(width: 154, height: 154)
-                        )
-
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text(localRangeText(regionHeatmap))
-                                .font(.caption.monospacedDigit())
-                                .foregroundStyle(.secondary)
-                            if showsInlineHelp {
-                                InlineHelpText("Local range is recalculated from this selection, so it can show subtle depth changes inside the crop.")
-                            }
-                            DepthLegendView(stops: regionHeatmap.legendStops)
-                        }
-                    }
-                } else {
-                    Label(heatmapErrorMessage ?? "Not enough valid depth samples in this region.", systemImage: "exclamationmark.triangle")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    if showsInlineHelp {
-                        InlineHelpText("The local heatmap needs enough finite positive depth pixels inside the selected region.")
-                    }
-                }
-
-                regionSummary
-            } else {
-                Label("No region selected.", systemImage: "viewfinder")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                if showsInlineHelp {
-                    InlineHelpText("Select a rectangular area on the image to inspect local depth, range, and plane fit values.")
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var regionSummary: some View {
-        if let stats {
-            VStack(alignment: .leading, spacing: 7) {
-                DepthMetricRow(
-                    title: "Median depth",
-                    value: stats.medianDepthMeters.map { String(format: "%.2f m", $0) } ?? "No valid depth",
-                    explanation: "Sort the selected valid depth samples from near to far; this is the value in the middle.",
-                    showsHelp: showsInlineHelp
-                )
-                DepthMetricRow(
-                    title: "Range",
-                    value: rangeText(stats),
-                    explanation: "The selected region's nearest and farthest valid depth samples.",
-                    showsHelp: showsInlineHelp
-                )
-                DepthMetricRow(
-                    title: "Valid samples",
-                    value: "\(stats.validSampleCount)/\(stats.totalSampleCount) · \(Int((stats.validRatio * 100).rounded()))%",
-                    explanation: "How many selected pixels contain finite positive depth.",
-                    showsHelp: showsInlineHelp
-                )
-
-                if let planeEstimate {
-                    DepthMetricRow(
-                        title: "Plane inliers",
-                        value: "\(Int((planeEstimate.inlierRatio * 100).rounded()))%",
-                        explanation: "The share of selected depth points that match the fitted local plane.",
-                        showsHelp: showsInlineHelp
-                    )
-                }
-            }
-        }
-    }
-
-    private var stateText: String {
-        switch interactionState {
-        case .idle:
-            "No local region"
-        case .drawingSelection:
-            "Selecting"
-        case .regionSelected:
-            "Selected"
-        }
-    }
-
-    private func rangeText(_ stats: TAPDepthRegionStats) -> String {
-        guard let minimum = stats.minimumDepthMeters, let maximum = stats.maximumDepthMeters else {
-            return "No valid depth"
-        }
-        return String(format: "%.2f...%.2f m", minimum, maximum)
-    }
-
-    private func localRangeText(_ heatmap: TAPDepthHeatmapVisualization) -> String {
-        String(format: "Local range %.2f...%.2f m", heatmap.rangeMeters.lowerBound, heatmap.rangeMeters.upperBound)
-    }
-}
-
-private struct PlaneFilterInspectorContent: View {
-    let depthMap: TAPMetricDepthMap
-    let depthAccuracy: String
-    let depthQuality: String
-    let selectedPlaneRegion: TAPPlaneRegion?
-    let planeSeedPoint: CGPoint?
-    let isDetecting: Bool
-    let errorMessage: String?
-    @Binding var strictness: Double
-    let showsInlineHelp: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 6) {
-                Text("Plane region")
-                    .font(.caption.weight(.semibold))
-                    .help("Tap a surface point in Planes view. The analyzer grows a connected camera-coordinate plane region from that seed.")
-                Spacer(minLength: 8)
-                Text(statusText)
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-            }
-            if showsInlineHelp {
-                InlineHelpText("Tap a surface point in Planes view. The analyzer grows a connected camera-coordinate plane region from that seed.")
-            }
-
-            HStack(spacing: 8) {
-                Text("Strictness")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .help("Higher strictness keeps only pixels that fit the seed plane more tightly.")
-                Slider(value: $strictness, in: 0.35...0.95)
-                    .tint(.primary)
-                Text("\(Int((strictness * 100).rounded()))%")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                    .frame(width: 42, alignment: .trailing)
-            }
-            if showsInlineHelp {
-                InlineHelpText("Higher strictness keeps only pixels that fit the seed plane more tightly.")
-            }
-
-            if isDetecting {
-                HStack(spacing: 8) {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text("Detecting plane region...")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-                if showsInlineHelp {
-                    InlineHelpText("You can tap another surface point while this runs; the analyzer keeps the newest point.")
-                }
-            } else if let selectedPlaneRegion {
-                DepthMetricRow(
-                    title: "Confidence",
-                    value: "\(Int((selectedPlaneRegion.confidence * 100).rounded()))%",
-                    explanation: "Combined score from flatness, inlier ratio, and selected plane size.",
-                    showsHelp: showsInlineHelp
-                )
-                DepthMetricRow(
-                    title: "Plane cells",
-                    value: "\(selectedPlaneRegion.gridCells.count)",
-                    explanation: "Grid cells inside the grown region that contain enough pixels fitting the selected plane.",
-                    showsHelp: showsInlineHelp
-                )
-                DepthMetricRow(
-                    title: "Area",
-                    value: areaText(selectedPlaneRegion.areaSquareMeters),
-                    explanation: "Approximate visible surface area in camera coordinates.",
-                    showsHelp: showsInlineHelp
-                )
-                DepthMetricRow(
-                    title: "Flatness",
-                    value: "\(Int((selectedPlaneRegion.flatnessScore * 100).rounded()))%",
-                    explanation: "How tightly the grown region fits a single local plane. Higher is flatter.",
-                    showsHelp: showsInlineHelp
-                )
-                DepthMetricRow(
-                    title: "Residual",
-                    value: String(format: "%.3f m", selectedPlaneRegion.estimate.averageResidualMeters),
-                    explanation: "Average distance from inlier points to the selected plane.",
-                    showsHelp: showsInlineHelp
-                )
-                DepthMetricRow(
-                    title: "Inliers",
-                    value: "\(Int((selectedPlaneRegion.estimate.inlierRatio * 100).rounded()))% · \(selectedPlaneRegion.sampleCount)",
-                    explanation: "Share and count of grown points that match the fitted plane.",
-                    showsHelp: showsInlineHelp
-                )
-                DepthMetricRow(
-                    title: "Normal",
-                    value: String(format: "[%.2f, %.2f, %.2f]", selectedPlaneRegion.estimate.normal.x, selectedPlaneRegion.estimate.normal.y, selectedPlaneRegion.estimate.normal.z),
-                    explanation: "Selected plane direction in local camera coordinates.",
-                    showsHelp: showsInlineHelp
-                )
-            } else if let errorMessage {
-                Label(errorMessage, systemImage: "exclamationmark.triangle")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                if showsInlineHelp {
-                    InlineHelpText("Try a nearby textured surface point with valid depth if the seed cannot grow a stable plane.")
-                }
-            } else if depthMap.calibration == nil {
-                Label("Camera calibration missing.", systemImage: "exclamationmark.triangle")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                if showsInlineHelp {
-                    InlineHelpText("Plane fitting needs camera intrinsics to project depth pixels into local camera coordinates.")
-                }
-            } else if planeSeedPoint == nil {
-                Label("Tap a surface point to grow a plane region.", systemImage: "hand.tap")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                if showsInlineHelp {
-                    InlineHelpText("Plane selection starts from one tapped depth point, then grows to neighboring pixels that fit the same surface.")
-                }
-            } else {
-                Label("No stable plane region found from this point.", systemImage: "square.dashed")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                if showsInlineHelp {
-                    InlineHelpText("A stable plane needs enough nearby samples with similar camera-coordinate depth geometry.")
-                }
-            }
-
-            HStack(spacing: 12) {
-                PlaneLegendSwatch(color: Color(red: 0.74, green: 0.96, blue: 0.36), text: "High-fit cell")
-                PlaneLegendSwatch(color: Color(red: 1.0, green: 0.62, blue: 0.24), text: "Lower-fit cell")
-            }
-            if showsInlineHelp {
-                InlineHelpText("Plane cell colors summarize local fit quality inside the grown region.")
-            }
-
-            Divider()
-
-            DepthMetricRow(
-                title: "Depth size",
-                value: "\(depthMap.width)x\(depthMap.height)",
-                explanation: "Native auxiliary depth-map resolution used for camera-coordinate plane fitting.",
-                showsHelp: showsInlineHelp
-            )
-            DepthMetricRow(
-                title: "Calibration",
-                value: depthMap.calibration == nil ? "Missing" : "Available",
-                explanation: "Camera intrinsics used to project depth pixels into local camera coordinates.",
-                showsHelp: showsInlineHelp
-            )
-            DepthMetricRow(
-                title: "Depth quality",
-                value: "\(depthAccuracy) / \(depthQuality)",
-                explanation: "Apple depth accuracy and quality metadata for this captured photo.",
-                showsHelp: showsInlineHelp
-            )
-        }
-    }
-
-    private var statusText: String {
-        if isDetecting {
-            return "Detecting"
-        }
-        if let selectedPlaneRegion {
-            return "\(selectedPlaneRegion.gridCells.count) cells"
-        }
-        return "No seed"
-    }
-
-    private func areaText(_ area: Double) -> String {
-        if area < 0.01 {
-            return String(format: "%.1f sq cm", area * 10_000)
-        }
-        return String(format: "%.3f sq m", area)
-    }
-}
-
-private struct PlaneLegendSwatch: View {
-    let color: Color
-    let text: String
-
-    var body: some View {
-        HStack(spacing: 5) {
-            RoundedRectangle(cornerRadius: 3, style: .continuous)
-                .fill(color)
-                .frame(width: 18, height: 12)
-            Text(text)
+            Text("This photo is still being processed in the TAPCam queue. Its credential will appear when processing finishes.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
-private struct OverlayInspectorContent: View {
-    @Binding var opacity: Double
-    let showsInlineHelp: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Text("Overlay opacity")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .help("Opacity controls the global overlay on the main image. It does not change local region heatmap colors.")
-                Slider(value: $opacity, in: 0.2...1.0)
-                    .tint(.primary)
-                Text("\(Int((opacity * 100).rounded()))%")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                    .frame(width: 42, alignment: .trailing)
-            }
-            if showsInlineHelp {
-                InlineHelpText("Opacity controls the global overlay on the main image. It does not change local region heatmap colors.")
-            }
+private extension CGImagePropertyOrientation {
+    var uiImageOrientation: UIImage.Orientation {
+        switch self {
+        case .up:
+            .up
+        case .upMirrored:
+            .upMirrored
+        case .down:
+            .down
+        case .downMirrored:
+            .downMirrored
+        case .left:
+            .left
+        case .leftMirrored:
+            .leftMirrored
+        case .right:
+            .right
+        case .rightMirrored:
+            .rightMirrored
         }
-    }
-}
-
-private struct CloudInfoInspectorContent: View {
-    let depthMap: TAPMetricDepthMap
-    let orientation: CGImagePropertyOrientation
-    let selection: CGRect?
-    let interactionState: AnalysisInteractionState
-    let showsInlineHelp: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Cloud")
-                .font(.caption.weight(.semibold))
-                .help("This is a local camera-coordinate point cloud preview. It is not cloud storage, cloud compute, or a semantic word cloud.")
-            if showsInlineHelp {
-                InlineHelpText("This is a local camera-coordinate point cloud preview. It is not cloud storage, cloud compute, or a semantic word cloud.")
-            }
-            DepthLegendView(stops: [
-                TAPDepthLegendStop(position: 0, label: "Near points", color: TAPDepthHeatmapRenderer.viridisColor(normalized: 0)),
-                TAPDepthLegendStop(position: 1, label: "Far points", color: TAPDepthHeatmapRenderer.viridisColor(normalized: 1))
-            ])
-            if showsInlineHelp {
-                InlineHelpText("Point colors map near-to-far depth so the preview stays comparable to the depth legend.")
-            }
-            Text("\(sampleCount(in: fullRegion)) sampled points")
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
-            if showsInlineHelp {
-                InlineHelpText("Sampled points are valid depth pixels projected through camera intrinsics for a lightweight preview.")
-            }
-
-            if let selection, interactionState.showsRegionInspector {
-                Divider()
-                HStack(alignment: .top, spacing: 12) {
-                    PointCloudRegionPreview(
-                        depthMap: depthMap,
-                        orientation: orientation,
-                        selection: selection,
-                        previewSize: CGSize(width: 154, height: 154)
-                    )
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("\(sampleCount(in: selection)) selected points")
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                        if showsInlineHelp {
-                            InlineHelpText("Selected points use the same projection, limited to the active rectangular region.")
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private var fullRegion: CGRect {
-        CGRect(x: 0, y: 0, width: depthMap.width, height: depthMap.height)
-    }
-
-    private func sampleCount(in region: CGRect) -> Int {
-        TAPDepthGeometryProjector.sampledPoints(from: depthMap, in: region, maxCount: 900).count
-    }
-}
-
-struct DepthLegendView: View {
-    let stops: [TAPDepthLegendStop]
-
-    var body: some View {
-        VStack(spacing: 5) {
-            LinearGradient(
-                stops: stops.map { Gradient.Stop(color: $0.color.swiftUIColor, location: $0.position) },
-                startPoint: .leading,
-                endPoint: .trailing
-            )
-            .frame(height: 9)
-            .clipShape(Capsule())
-            .overlay {
-                Capsule()
-                    .stroke(.primary.opacity(0.14), lineWidth: 1)
-            }
-
-            HStack {
-                Text(stops.first?.label ?? "Near")
-                Spacer(minLength: 8)
-                Text(stops.last?.label ?? "Far")
-            }
-            .font(.caption2.monospacedDigit())
-            .foregroundStyle(.secondary)
-        }
-        .accessibilityElement(children: .combine)
-    }
-}
-
-private struct SwatchLegendView: View {
-    let stops: [TAPDepthLegendStop]
-
-    var body: some View {
-        HStack(spacing: 12) {
-            ForEach(stops) { stop in
-                HStack(spacing: 5) {
-                    RoundedRectangle(cornerRadius: 3, style: .continuous)
-                        .fill(stop.color.swiftUIColor)
-                        .frame(width: 18, height: 12)
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 3, style: .continuous)
-                                .stroke(.primary.opacity(0.16), lineWidth: 1)
-                        }
-
-                    Text(stop.label)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            Spacer(minLength: 0)
-        }
-        .accessibilityElement(children: .combine)
-    }
-}
-
-private struct DepthMetricRow: View {
-    let title: String
-    let value: String
-    let explanation: String
-    var showsHelp = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 8) {
-                Text(title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .help(explanation)
-                Spacer(minLength: 8)
-                Text(value)
-                    .fontDesign(.monospaced)
-            }
-            if showsHelp {
-                InlineHelpText(explanation)
-            }
-        }
-    }
-}
-
-private extension TAPRGBAColor {
-    var swiftUIColor: Color {
-        Color(
-            red: Double(red) / 255.0,
-            green: Double(green) / 255.0,
-            blue: Double(blue) / 255.0,
-            opacity: Double(alpha) / 255.0
-        )
     }
 }

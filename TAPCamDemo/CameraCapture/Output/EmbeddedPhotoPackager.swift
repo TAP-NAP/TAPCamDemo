@@ -7,26 +7,46 @@
 
 @preconcurrency import AVFoundation
 import Foundation
+import OSLog
 
 /// Default Release-safe packager.
 ///
-/// It preserves Apple's HEIC photo-depth output using
+/// It preserves Apple's photo-depth output using
 /// `AVCapturePhoto.fileDataRepresentation(with:)`, then injects TAP's XMP
 /// manifest without creating sidecars. This is the only packaging strategy used
 /// by the app in Release.
 nonisolated struct EmbeddedPhotoPackager: CapturePackager {
     let strategy: PackagingStrategy = .embeddedPhoto
+    private let provenanceWriter: TAPCaptureProvenanceWriter
 
-    /// Converts a logical package into the single Release HEIC artifact.
+    init(provenanceWriter: TAPCaptureProvenanceWriter = TAPCaptureProvenanceWriter()) {
+        self.provenanceWriter = provenanceWriter
+    }
+
+    /// Converts a logical package into the single Release depth-photo artifact.
     ///
-    /// Apple auxiliary depth remains in the HEIC, and TAP-specific metadata is
+    /// Apple auxiliary depth remains in the photo file, and TAP-specific metadata is
     /// injected into XMP without emitting sidecar files.
     ///
-    /// - Tag: PackageEmbeddedDepthHEIC
+    /// - Tag: PackageEmbeddedDepthPhoto
     func package(
         _ capturePackage: CapturePackage,
         assertionSigner: (any CaptureAssertionSigning)?
     ) async throws -> PackagedCaptureArtifact {
+        try capturePackage.resolvedOutput.validateForEmbeddedPhotoDepthPackaging()
+        let fileContainer = capturePackage.resolvedOutput.fileContainer
+        let livePhotoMovie = capturePackage.livePhotoMovie.map {
+            PackagedLivePhotoMovie(
+                fileURL: $0.fileURL,
+                durationSeconds: max(0, $0.duration.seconds),
+                photoDisplayTimeSeconds: max(0, $0.photoDisplayTime.seconds),
+                width: $0.dimensions.width,
+                height: $0.dimensions.height,
+                codec: $0.codec,
+                capturesAudio: $0.capturesAudio
+            )
+        }
+
         var packagingMetrics = CapturePackagingMetrics()
 
         let manifestBuildStart = Date()
@@ -39,15 +59,19 @@ nonisolated struct EmbeddedPhotoPackager: CapturePackager {
             device: capturePackage.sourceContext.sessionConfiguration.device
         )
 
-        let baseHEICStart = Date()
-        guard let baseHEICData = capturePackage.photo.fileDataRepresentation(with: customizer) else {
+        let basePhotoStart = Date()
+        guard let basePhotoData = capturePackage.photo.fileDataRepresentation(with: customizer) else {
             throw TAPDepthCaptureError.unableToCreatePhotoData
         }
-        packagingMetrics.baseHEICDuration = Date().timeIntervalSince(baseHEICStart)
+        packagingMetrics.baseHEICDuration = Date().timeIntervalSince(basePhotoStart)
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.cameraCapture.info("base photo materialized profile=\(capturePackage.resolvedOutput.profileID, privacy: .public) container=\(fileContainer.rawValue, privacy: .public) selectedDimensions=\(capturePackage.resolvedOutput.maxPhotoDimensions?.debugDescription ?? "none", privacy: .public) bytes=\(basePhotoData.count, privacy: .public)")
+        #endif
 
-        let signingResult = await Self.manifestByApplyingCaptureAssertion(
+        let signingResult = await provenanceWriter.manifestByApplyingCaptureAssertion(
             to: unsignedManifest,
-            baseHEICData: baseHEICData,
+            baseHEICData: basePhotoData,
+            fileContainer: fileContainer,
             depthData: capturePackage.photo.depthData,
             assertionSigner: assertionSigner
         )
@@ -56,67 +80,32 @@ nonisolated struct EmbeddedPhotoPackager: CapturePackager {
         packagingMetrics.metadataDigestDuration = signingResult.metrics.metadataDigestDuration
         packagingMetrics.appAttestDuration = signingResult.metrics.appAttestDuration
 
-        let writeResult = try TAPDepthHEICWriter.injectingManifestWithMetrics(signingResult.manifest, into: baseHEICData)
+        let writeResult = try provenanceWriter.writeManifest(signingResult.manifest, into: basePhotoData)
         packagingMetrics.xmpInjectDuration = writeResult.xmpInjectDuration
         packagingMetrics.xmpVerifyDuration = writeResult.xmpVerifyDuration
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.cameraCapture.info("unsigned photo packaged profile=\(capturePackage.resolvedOutput.profileID, privacy: .public) container=\(fileContainer.rawValue, privacy: .public) selectedDimensions=\(capturePackage.resolvedOutput.maxPhotoDimensions?.debugDescription ?? "none", privacy: .public) bytes=\(writeResult.data.count, privacy: .public)")
+        #endif
 
         return PackagedCaptureArtifact(
             packageID: capturePackage.job.id,
             strategy: strategy,
             photoData: writeResult.data,
+            fileContainer: fileContainer,
+            photoQualityLevel: capturePackage.resolvedOutput.photoQualityPolicy.requested,
             manifest: signingResult.manifest,
+            livePhotoMovie: livePhotoMovie,
             signatureStatus: signingResult.status,
+            depthAvailability: capturePackage.depthAvailability,
+            captureScoreSummary: CaptureScoreSummary.make(
+                depthAvailability: capturePackage.depthAvailability,
+                fileContainer: fileContainer,
+                photoQualityLevel: capturePackage.resolvedOutput.photoQualityPolicy.requested,
+                signatureStatus: signingResult.status
+            ),
             packagingMetrics: packagingMetrics,
             capturedAt: capturePackage.sourceContext.capturedAt,
             location: capturePackage.sourceContext.location
         )
-    }
-
-    static func manifestByApplyingCaptureAssertion(
-        to manifest: TAPDepthManifest,
-        baseHEICData: Data,
-        depthData: AVDepthData?,
-        assertionSigner: (any CaptureAssertionSigning)?
-    ) async -> (manifest: TAPDepthManifest, status: CaptureSignatureStatus, metrics: CapturePackagingMetrics) {
-        var metrics = CapturePackagingMetrics()
-
-        guard let assertionSigner else {
-            return (manifest, .unsigned(reason: "App Attest signer unavailable."), metrics)
-        }
-
-        do {
-            guard let depthData else {
-                throw TAPDepthCaptureError.missingDepthData
-            }
-
-            let digestResult = try CaptureContentDigest.makeWithMetrics(
-                manifest: manifest,
-                baseHEICData: baseHEICData,
-                depthData: depthData
-            )
-            metrics.rgbDigestDuration = digestResult.metrics.rgbDigestDuration
-            metrics.depthDigestDuration = digestResult.metrics.depthDigestDuration
-            metrics.metadataDigestDuration = digestResult.metrics.metadataDigestDuration
-
-            let appAttestStart = Date()
-            let assertionProof: CaptureAssertionProof
-            do {
-                assertionProof = try await assertionSigner.sign(
-                    contentDigest: digestResult.digest
-                )
-                metrics.appAttestDuration = Date().timeIntervalSince(appAttestStart)
-            } catch {
-                metrics.appAttestDuration = Date().timeIntervalSince(appAttestStart)
-                throw error
-            }
-
-            return (
-                TAPDepthManifest(payload: manifest.payload, proofs: [assertionProof.proof]),
-                .signed(keyID: assertionProof.keyID),
-                metrics
-            )
-        } catch {
-            return (manifest, .unsigned(reason: error.localizedDescription), metrics)
-        }
     }
 }

@@ -8,6 +8,7 @@
 @preconcurrency import AVFoundation
 import CoreGraphics
 import Foundation
+import OSLog
 
 /// Default SingleCam provider backed by `AVCapturePhotoOutput`.
 ///
@@ -31,39 +32,84 @@ nonisolated final class AVFoundationSingleCamPhotoProvider: SingleCamPhotoCaptur
     ///
     /// - Tag: CaptureSingleCamPhotoDepth
     func capturePhotoDepth(job: CaptureJob, context: CaptureSourceContext) async throws -> SingleCamPhotoCaptureResult {
+        let resolvedOutput = context.sessionConfiguration.resolvedOutput
+        let livePhotoPlan = try Self.livePhotoCapturePlan(
+            requested: context.livePhotoRequest,
+            photoOutput: sessionController.photoOutput
+        )
         let settings = SingleCamPhotoSettingsFactory.make(
             photoOutput: sessionController.photoOutput,
-            suppressesShutterSound: context.suppressesShutterSound
+            resolvedOutput: resolvedOutput,
+            suppressesShutterSound: context.suppressesShutterSound,
+            flashMode: context.flashMode,
+            livePhotoMovieFileURL: livePhotoPlan?.movieFileURL,
+            livePhotoVideoCodecType: livePhotoPlan?.codec
         )
-        let requestedCodec: AVVideoCodecType = sessionController.photoOutput.availablePhotoCodecTypes.contains(.hevc) ? .hevc : .jpeg
         let videoRotationAngle = Self.videoRotationAngleForHorizonLevelCapture(
             device: context.sessionConfiguration.device
         )
 
         return try await withCheckedThrowingContinuation { continuation in
-            let delegate = SingleCamPhotoCaptureDelegate { [weak self] result in
-                self?.removeDelegate(uniqueID: settings.uniqueID)
+            let delegate = SingleCamPhotoCaptureDelegate(
+                completion: { [weak self] result in
+                    self?.removeDelegate(uniqueID: settings.uniqueID)
 
-                switch result {
-                case .success(let photo):
-                    continuation.resume(returning: SingleCamPhotoCaptureResult(
-                        photo: photo,
-                        requestedCodec: requestedCodec,
-                        depthDataFiltered: settings.isDepthDataFiltered,
-                        photoQualityPrioritization: settings.photoQualityPrioritization
-                    ))
-                case .failure(let error):
-                    continuation.resume(throwing: error)
-                }
-            }
+                    switch result {
+                    case .success(let captureResult):
+                        if captureResult.livePhotoMovie == nil {
+                            livePhotoPlan?.removeTemporaryDirectory()
+                        }
+                        let actualDimensions = CapturePhotoDimensions(captureResult.photo.resolvedSettings.photoDimensions)
+                        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                        TAPDiagnostics.cameraCapture.info("photo capture processed profile=\(resolvedOutput.profileID, privacy: .public) container=\(resolvedOutput.fileContainer.rawValue, privacy: .public) actualDimensions=\(actualDimensions.debugDescription, privacy: .public) livePhotoMovie=\(captureResult.livePhotoMovie != nil, privacy: .public)")
+                        #endif
+                        continuation.resume(returning: captureResult)
+                    case .failure(let error):
+                        livePhotoPlan?.removeTemporaryDirectory()
+                        continuation.resume(throwing: error)
+                    }
+                },
+                expectsLivePhotoMovie: livePhotoPlan != nil,
+                livePhotoVideoCodec: livePhotoPlan?.codec?.rawValue,
+                capturesLivePhotoAudio: livePhotoPlan?.capturesAudio ?? false
+            )
 
             storeDelegate(delegate, uniqueID: settings.uniqueID)
             sessionController.capturePhoto(
                 settings: settings,
                 delegate: delegate,
-                videoRotationAngle: videoRotationAngle
+                videoRotationAngle: videoRotationAngle,
+                isVideoMirrored: context.sessionConfiguration.device.position == .front
             )
         }
+    }
+
+    private static func livePhotoCapturePlan(
+        requested: CaptureLivePhotoRequest,
+        photoOutput: AVCapturePhotoOutput
+    ) throws -> SingleCamLivePhotoCapturePlan? {
+        guard requested.isEnabled,
+              photoOutput.isLivePhotoCaptureSupported,
+              photoOutput.isLivePhotoCaptureEnabled else {
+            return nil
+        }
+
+        let directoryURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TAPLivePhoto-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: directoryURL,
+            withIntermediateDirectories: true
+        )
+        let movieFileURL = directoryURL.appendingPathComponent("paired-video.mov")
+        let availableCodecs = photoOutput.availableLivePhotoVideoCodecTypes
+        let codec = availableCodecs.first(where: { $0 == .hevc })
+            ?? availableCodecs.first(where: { $0 == .h264 })
+            ?? availableCodecs.first
+        return SingleCamLivePhotoCapturePlan(
+            movieFileURL: movieFileURL,
+            codec: codec,
+            capturesAudio: requested.capturesAudio
+        )
     }
 
     @MainActor
@@ -85,30 +131,82 @@ nonisolated final class AVFoundationSingleCamPhotoProvider: SingleCamPhotoCaptur
     }
 }
 
+private struct SingleCamLivePhotoCapturePlan {
+    let movieFileURL: URL
+    let codec: AVVideoCodecType?
+    let capturesAudio: Bool
+
+    func removeTemporaryDirectory() {
+        try? FileManager.default.removeItem(at: movieFileURL.deletingLastPathComponent())
+    }
+}
+
 /// Creates the single still-photo settings shape used by both prewarming and
 /// actual capture. Keeping these settings identical makes
-/// `setPreparedPhotoSettingsArray` representative of the requested HEIC + depth
-/// capture instead of warming a cheaper default path.
+/// `setPreparedPhotoSettingsArray` representative of the requested container,
+/// codec, depth, quality, and dimensions instead of warming a cheaper default.
 nonisolated enum SingleCamPhotoSettingsFactory {
     static func make(
         photoOutput: AVCapturePhotoOutput,
-        suppressesShutterSound: Bool = false
+        resolvedOutput: ResolvedCaptureOutputProfile,
+        suppressesShutterSound: Bool = false,
+        flashMode: CaptureFlashMode = .auto,
+        livePhotoMovieFileURL: URL? = nil,
+        livePhotoVideoCodecType: AVVideoCodecType? = nil
     ) -> AVCapturePhotoSettings {
-        let settings: AVCapturePhotoSettings
-        if photoOutput.availablePhotoCodecTypes.contains(.hevc) {
-            settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.hevc])
-        } else {
-            settings = AVCapturePhotoSettings()
-        }
+        let processedFormat: [String: Any] = [
+            AVVideoCodecKey: resolvedOutput.codec.avVideoCodecType,
+            AVVideoCompressionPropertiesKey: [
+                AVVideoQualityKey: resolvedOutput.compressionQuality
+            ]
+        ]
+        let settings = AVCapturePhotoSettings(
+            rawPixelFormatType: 0,
+            rawFileType: nil,
+            processedFormat: processedFormat,
+            processedFileType: resolvedOutput.processedFileType
+        )
 
-        settings.isDepthDataDeliveryEnabled = true
-        settings.embedsDepthDataInPhoto = true
-        settings.isDepthDataFiltered = true
-        settings.photoQualityPrioritization = .quality
+        settings.isDepthDataDeliveryEnabled = resolvedOutput.depthDataDeliveryEnabled
+        settings.embedsDepthDataInPhoto = resolvedOutput.embedsDepthDataInPhoto
+        settings.isDepthDataFiltered = resolvedOutput.depthDataFiltered
+        settings.photoQualityPrioritization = resolvedOutput.photoQualityPrioritization
+        if let maxPhotoDimensions = resolvedOutput.maxPhotoDimensions {
+            settings.maxPhotoDimensions = maxPhotoDimensions.cmVideoDimensions
+        }
+        let requestedFlashMode = flashMode.avCaptureFlashMode
+        if photoOutput.supportedFlashModes.contains(requestedFlashMode) {
+            settings.flashMode = requestedFlashMode
+        }
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.cameraCapture.info("photo settings prepared profile=\(resolvedOutput.profileID, privacy: .public) container=\(resolvedOutput.fileContainer.rawValue, privacy: .public) fileType=\(resolvedOutput.processedFileType.rawValue, privacy: .public) codec=\(resolvedOutput.requestedCodec.rawValue, privacy: .public) selectedDimensions=\(resolvedOutput.maxPhotoDimensions?.debugDescription ?? "none", privacy: .public) flashMode=\(String(describing: requestedFlashMode), privacy: .public)")
+        #endif
         if suppressesShutterSound && photoOutput.isShutterSoundSuppressionSupported {
             settings.isShutterSoundSuppressionEnabled = true
         }
+        if let livePhotoMovieFileURL {
+            settings.livePhotoMovieFileURL = livePhotoMovieFileURL
+            if let livePhotoVideoCodecType,
+               photoOutput.availableLivePhotoVideoCodecTypes.contains(livePhotoVideoCodecType) {
+                settings.livePhotoVideoCodecType = livePhotoVideoCodecType
+            }
+        }
         return settings
+    }
+
+    static func resolvedOutput(
+        photoOutput: AVCapturePhotoOutput,
+        activeFormat: AVCaptureDevice.Format? = nil,
+        assumesDepthDeliverySupported: Bool = true,
+        outputProfile: CaptureOutputProfile = CaptureOutputProfileCatalog.releaseDefaultProfile
+    ) throws -> ResolvedCaptureOutputProfile {
+        try outputProfile.resolvedPhotoOutput(
+            capabilities: CapturePhotoOutputCapabilitySnapshot(
+                photoOutput: photoOutput,
+                activeFormat: activeFormat,
+                assumesDepthDeliverySupported: assumesDepthDeliverySupported
+            )
+        )
     }
 }
 
@@ -118,18 +216,104 @@ nonisolated enum SingleCamPhotoSettingsFactory {
 /// this object until completion. The delegate only forwards the produced
 /// `AVCapturePhoto`; packaging and persistence happen elsewhere.
 nonisolated final class SingleCamPhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate, @unchecked Sendable {
-    private let completion: (Result<AVCapturePhoto, Error>) -> Void
+    private let completion: (Result<SingleCamPhotoCaptureResult, Error>) -> Void
+    private let expectsLivePhotoMovie: Bool
+    private let livePhotoVideoCodec: String?
+    private let capturesLivePhotoAudio: Bool
+    private var photoResult: Result<AVCapturePhoto, Error>?
+    private var livePhotoMovieResult: Result<CapturedLivePhotoMovie, Error>?
+    private var didFinishCapture = false
+    private var didComplete = false
 
-    init(completion: @escaping (Result<AVCapturePhoto, Error>) -> Void) {
+    init(
+        completion: @escaping (Result<SingleCamPhotoCaptureResult, Error>) -> Void,
+        expectsLivePhotoMovie: Bool = false,
+        livePhotoVideoCodec: String? = nil,
+        capturesLivePhotoAudio: Bool = false
+    ) {
         self.completion = completion
+        self.expectsLivePhotoMovie = expectsLivePhotoMovie
+        self.livePhotoVideoCodec = livePhotoVideoCodec
+        self.capturesLivePhotoAudio = capturesLivePhotoAudio
         super.init()
     }
 
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
         if let error {
-            completion(.failure(error))
+            photoResult = .failure(error)
         } else {
-            completion(.success(photo))
+            photoResult = .success(photo)
+        }
+        completeIfReady()
+    }
+
+    func photoOutput(
+        _ output: AVCapturePhotoOutput,
+        didFinishProcessingLivePhotoToMovieFileAt outputFileURL: URL,
+        duration: CMTime,
+        photoDisplayTime: CMTime,
+        resolvedSettings: AVCaptureResolvedPhotoSettings,
+        error: Error?
+    ) {
+        if let error {
+            livePhotoMovieResult = .failure(error)
+        } else {
+            let dimensions = CapturePhotoDimensions(resolvedSettings.livePhotoMovieDimensions)
+            livePhotoMovieResult = .success(CapturedLivePhotoMovie(
+                fileURL: outputFileURL,
+                duration: duration,
+                photoDisplayTime: photoDisplayTime,
+                dimensions: dimensions,
+                codec: livePhotoVideoCodec,
+                capturesAudio: capturesLivePhotoAudio
+            ))
+        }
+        completeIfReady()
+    }
+
+    func photoOutput(
+        _ output: AVCapturePhotoOutput,
+        didFinishCaptureFor resolvedSettings: AVCaptureResolvedPhotoSettings,
+        error: Error?
+    ) {
+        if let error, photoResult == nil {
+            photoResult = .failure(error)
+        }
+        didFinishCapture = true
+        completeIfReady()
+    }
+
+    private func completeIfReady() {
+        guard !didComplete, didFinishCapture, let photoResult else {
+            return
+        }
+        didComplete = true
+
+        switch photoResult {
+        case .failure(let error):
+            completion(.failure(error))
+        case .success(let photo):
+            if expectsLivePhotoMovie {
+                switch livePhotoMovieResult {
+                case .success(let movie):
+                    completion(.success(SingleCamPhotoCaptureResult(
+                        photo: photo,
+                        livePhotoMovie: movie
+                    )))
+                case .failure(let error):
+                    completion(.success(SingleCamPhotoCaptureResult(
+                        photo: photo,
+                        livePhotoFailureReason: TAPDiagnostics.describe(error)
+                    )))
+                case .none:
+                    completion(.success(SingleCamPhotoCaptureResult(
+                        photo: photo,
+                        livePhotoFailureReason: "Live Photo movie was not delivered."
+                    )))
+                }
+            } else {
+                completion(.success(SingleCamPhotoCaptureResult(photo: photo)))
+            }
         }
     }
 }

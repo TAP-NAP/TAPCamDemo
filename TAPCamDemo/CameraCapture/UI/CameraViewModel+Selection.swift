@@ -22,7 +22,10 @@ extension CameraViewModel {
     /// - Tag: SelectReleaseFOV
     func selectFocalLengthOption(_ option: FocalLengthOption) async {
         guard option.isEnabled else {
-            statusMessage = option.disabledReason ?? TAPDepthCaptureError.noDepthCameraAvailable.localizedDescription
+            statusMessage = option.disabledReason ?? CameraCaptureStatusPresentation.message(
+                for: TAPDepthCaptureError.noDepthCameraAvailable,
+                context: .configuration
+            )
             return
         }
 
@@ -45,7 +48,10 @@ extension CameraViewModel {
 
         if targetPosition == .front {
             guard let target = defaultRGBSource(position: .front) else {
-                statusMessage = TAPDepthCaptureError.noDepthCameraAvailable.localizedDescription
+                statusMessage = CameraCaptureStatusPresentation.message(
+                    for: TAPDepthCaptureError.noDepthCameraAvailable,
+                    context: .configuration
+                )
                 return
             }
 
@@ -58,7 +64,10 @@ extension CameraViewModel {
                 ?? capabilityMatrix.defaultFocalLengthOption
 
             guard let target else {
-                statusMessage = TAPDepthCaptureError.noDepthCameraAvailable.localizedDescription
+                statusMessage = CameraCaptureStatusPresentation.message(
+                    for: TAPDepthCaptureError.noDepthCameraAvailable,
+                    context: .configuration
+                )
                 return
             }
 
@@ -83,7 +92,10 @@ extension CameraViewModel {
             }
 
             isDepthCaptureReady = false
-            statusMessage = TAPDepthCaptureError.noDepthCameraAvailable.localizedDescription
+            statusMessage = CameraCaptureStatusPresentation.message(
+                for: TAPDepthCaptureError.noDepthCameraAvailable,
+                context: .configuration
+            )
             return
         }
 
@@ -149,6 +161,12 @@ extension CameraViewModel {
 
         configurationGeneration += 1
         let generation = configurationGeneration
+        isConfiguringSession = true
+        defer {
+            if generation == configurationGeneration {
+                isConfiguringSession = false
+            }
+        }
         isDepthCaptureReady = false
         focalLengthOptions = currentFocalLengthOptions
         #if DEBUG
@@ -163,7 +181,29 @@ extension CameraViewModel {
         statusMessage = statusText(for: plan)
 
         do {
-            let result = try await sessionController.configure(SessionConfigurationRequest(capturePlan: plan))
+            let outputFormatPreference = CameraOutputFormatPreference.resolved(
+                rawValue: UserDefaults.standard.string(forKey: CameraOutputFormatPreference.storageKey)
+                    ?? CameraOutputFormatPreference.defaultValue.rawValue
+            )
+            let photoQualityPreference = CameraPhotoQualityPreference.resolved(
+                rawValue: UserDefaults.standard.string(forKey: CameraPhotoQualityPreference.storageKey)
+                    ?? CameraPhotoQualityPreference.defaultValue.rawValue
+            )
+            let outputResolution = outputFormatPreference.selectionIntent.resolved()
+            guard let selectedProfile = outputResolution.selectedProfile, outputResolution.isExecutable else {
+                let presentation = CaptureOutputProfileSelectionPresentation(resolution: outputResolution)
+                activeSessionConfiguration = nil
+                isDepthCaptureReady = false
+                nativePreviewAspectRatio = 3.0 / 4.0
+                statusMessage = "\(presentation.title) · \(presentation.detail)"
+                return
+            }
+            let outputProfile = photoQualityPreference.applied(to: selectedProfile)
+
+            let result = try await sessionController.configure(SessionConfigurationRequest(
+                capturePlan: plan,
+                outputProfile: outputProfile
+            ))
 
             guard generation == configurationGeneration, !isPausedForAnalysis else {
                 sessionController.stop()
@@ -175,6 +215,7 @@ extension CameraViewModel {
             nativePreviewAspectRatio = result.nativePreviewAspectRatio
             isDepthCaptureReady = result.depthDeliverySupported && result.capturePlan.canCapturePhotoDepth
             statusMessage = statusText(for: result.capturePlan)
+            await applyRequestedGlobalAutoExposureBiasToActiveConfiguration()
         } catch {
             guard generation == configurationGeneration else {
                 return
@@ -183,39 +224,8 @@ extension CameraViewModel {
             activeSessionConfiguration = nil
             isDepthCaptureReady = false
             nativePreviewAspectRatio = 3.0 / 4.0
-            statusMessage = error.localizedDescription
+            statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .configuration)
         }
-    }
-
-    func configurationForCurrentCapture(from active: SessionConfigurationResult) -> SessionConfigurationResult? {
-        let plan = capturePlanForCurrentPreviewCrop(from: active.capturePlan)
-        return SessionConfigurationResult(
-            depthDeliverySupported: active.depthDeliverySupported && plan.canCapturePhotoDepth,
-            cameraDisplayName: active.cameraDisplayName,
-            nativePreviewAspectRatio: active.nativePreviewAspectRatio,
-            capturePlan: plan,
-            device: active.device,
-            selectionContext: SessionConfigurationRequest(capturePlan: plan).selectionContext
-        )
-    }
-
-    func capturePlanForCurrentPreviewCrop(from activePlan: CaptureSourcePlan) -> CaptureSourcePlan {
-        let activeZoom = activePlan.zoom
-        let activeZoomFactor = activeZoom?.rawVideoZoomFactor
-        let usesFixedZoomCandidate = activeZoomFactor.map { zoom in
-            CameraCapabilityResolver.candidateZoomFactors.contains { abs($0 - zoom) < 0.001 }
-        } ?? false
-
-        let plan = CaptureSourcePlan.make(
-            rgbSource: activePlan.rgbSource,
-            depthSource: activePlan.depthSource,
-            selectionMode: activePlan.selectionMode,
-            selectedZoomID: usesFixedZoomCandidate ? activeZoom?.id : nil,
-            selectedZoomFactor: usesFixedZoomCandidate ? nil : activeZoomFactor,
-            cropRectNormalized: previewCropRectNormalized
-        )
-
-        return plan
     }
 
     func defaultRGBSource(position: AVCaptureDevice.Position) -> CameraProfile? {
@@ -232,10 +242,16 @@ extension CameraViewModel {
         }
 
         if plan.pairingMode == .requiresMultiCam {
-            return TAPDepthCaptureError.multicamRequired.localizedDescription
+            return CameraCaptureStatusPresentation.message(
+                for: TAPDepthCaptureError.multicamRequired,
+                context: .configuration
+            )
         }
 
-        return plan.compatibilityReason ?? TAPDepthCaptureError.incompatibleRGBDepthPairing.localizedDescription
+        return plan.compatibilityReason ?? CameraCaptureStatusPresentation.message(
+            for: TAPDepthCaptureError.incompatibleRGBDepthPairing,
+            context: .configuration
+        )
     }
 
 }

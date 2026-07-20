@@ -54,7 +54,7 @@ nonisolated struct AppAttestOperationTimeoutError: LocalizedError, Sendable {
     }
 }
 
-private final class AppAttestTimeoutRace<T: Sendable>: @unchecked Sendable {
+nonisolated private final class AppAttestTimeoutRace<T: Sendable>: @unchecked Sendable {
     private let lock = NSLock()
     private var didComplete = false
     private var operationTask: Task<Void, Never>?
@@ -97,6 +97,7 @@ private final class AppAttestTimeoutRace<T: Sendable>: @unchecked Sendable {
     }
 
     func complete(_ result: Result<T, Error>, continuation: CheckedContinuation<T, Error>) {
+        // `lock` protects single-resume state and task references across both tasks.
         lock.lock()
         guard !didComplete else {
             lock.unlock()

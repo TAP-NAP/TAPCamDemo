@@ -12,7 +12,7 @@ import Foundation
 /// Logical result of one SingleCam shutter press.
 ///
 /// This package owns normalized capture facts only: job identity, selected
-/// source context, the `AVCapturePhoto`, location, and capture settings. It
+/// source context, the resolved Runtime output, and the `AVCapturePhoto`. It
 /// does not decide how bytes are physically written or where the result is
 /// persisted.
 nonisolated struct CapturePackage: @unchecked Sendable {
@@ -24,17 +24,19 @@ nonisolated struct CapturePackage: @unchecked Sendable {
     let pairingStatus: RGBDepthCompatibilityStatus
     let zoomCapabilitySnapshot: ZoomCapability
     let cropRectNormalized: CropRectNormalized
+    let resolvedOutput: ResolvedCaptureOutputProfile
+    let depthAvailability: CaptureDepthAvailability
     let photo: AVCapturePhoto
-    let requestedCodec: AVVideoCodecType
-    let depthDataFiltered: Bool
-    let photoQualityPrioritization: AVCapturePhotoOutput.QualityPrioritization
+    let livePhotoMovie: CapturedLivePhotoMovie?
+    let livePhotoFailureReason: String?
 }
 
 /// Builds `CapturePackage` from SingleCam photo output.
 ///
-/// Validation happens here before physical packaging. A package without
-/// `AVCapturePhoto.depthData` is invalid because output must remain a single
-/// photo artifact with embedded auxiliary depth.
+/// Validation happens here before physical packaging. Runtime still requests a
+/// depth-capable photo path, but the individual shutter result may come back
+/// without `AVCapturePhoto.depthData`; that is recorded as No Depth instead of
+/// failing the foreground capture.
 nonisolated enum CapturePackageBuilder {
     /// Normalizes one `AVCapturePhoto` result into the app's logical package.
     ///
@@ -47,9 +49,12 @@ nonisolated enum CapturePackageBuilder {
         context: CaptureSourceContext,
         captureResult: SingleCamPhotoCaptureResult
     ) throws -> CapturePackage {
-        guard captureResult.photo.depthData != nil else {
-            throw TAPDepthCaptureError.missingDepthData
-        }
+        let resolvedOutput = context.sessionConfiguration.resolvedOutput
+        try resolvedOutput.validateForEmbeddedPhotoDepthPackaging()
+        try resolvedOutput.validateCapturePlanDepthConfiguration(
+            depthDataDeliveryEnabled: context.sessionConfiguration.capturePlan.captureConfig.depthDataDeliveryEnabled,
+            embedsDepthDataInPhoto: context.sessionConfiguration.capturePlan.captureConfig.embedsDepthDataInPhoto
+        )
 
         let plan = context.sessionConfiguration.capturePlan
         return CapturePackage(
@@ -61,10 +66,11 @@ nonisolated enum CapturePackageBuilder {
             pairingStatus: plan.compatibilityStatus,
             zoomCapabilitySnapshot: plan.zoomCapability,
             cropRectNormalized: plan.cropPolicy.cropRectNormalized,
+            resolvedOutput: resolvedOutput,
+            depthAvailability: captureResult.photo.depthData == nil ? .unavailable : .available,
             photo: captureResult.photo,
-            requestedCodec: captureResult.requestedCodec,
-            depthDataFiltered: captureResult.depthDataFiltered,
-            photoQualityPrioritization: captureResult.photoQualityPrioritization
+            livePhotoMovie: captureResult.livePhotoMovie,
+            livePhotoFailureReason: captureResult.livePhotoFailureReason
         )
     }
 }
