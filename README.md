@@ -25,7 +25,7 @@ scaffolding, sidecar JSON, and Release debug bundles.
 | Pending TAP Library queue | [TAPCamDemo/TAPLibrary/README.md](TAPCamDemo/TAPLibrary/README.md) | [TAPPendingCaptureStore.swift](TAPCamDemo/TAPLibrary/TAPPendingCaptureStore.swift), [TAPPendingCaptureProcessor.swift](TAPCamDemo/TAPLibrary/TAPPendingCaptureProcessor.swift) |
 | Saved photo depth analysis and TAP Video playback | [TAPCamDemo/DepthAnalysis/README.md](TAPCamDemo/DepthAnalysis/README.md) | [DepthAnalysisView.swift](TAPCamDemo/DepthAnalysis/DepthAnalysisView.swift), [TAPVideoDepthPlaybackView.swift](TAPCamDemo/DepthAnalysis/TAPVideoDepthPlaybackView.swift) |
 | App Attest contract docs | [Docs/AppAttest/README.md](Docs/AppAttest/README.md) | [AppAttestRuntime.swift](TAPCamDemo/App/AppAttestRuntime.swift), [AppAttestCaptureAssertionSigner.swift](TAPCamDemo/CameraCapture/Output/AppAttestCaptureAssertionSigner.swift) |
-| Local SwiftPM zstd wrapper | [Packages/CZstd/README.md](Packages/CZstd/README.md) | [Package.swift](Packages/CZstd/Package.swift), [ZSTD_SOURCE.json](Packages/CZstd/ZSTD_SOURCE.json), [verify-vendored-zstd.sh](Packages/CZstd/Scripts/verify-vendored-zstd.sh) |
+| Zstandard compression dependency | [facebook/zstd](https://github.com/facebook/zstd) | Exact SwiftPM version `1.5.7`; app adapter lives in [TAPDepthFrameCodec.swift](TAPCamDemo/CameraCapture/Output/TAPDepthFrameCodec.swift) |
 | Tests and automation | [TAPCamDemoTests/README.md](TAPCamDemoTests/README.md) | Start with the test README for the automation gate, focused output/provenance suites, manual-control suites, TAP Library suites, and evidence limits. |
 | Source tree module index | [TAPCamDemo/README.md](TAPCamDemo/README.md) | [TAPCamDemo](TAPCamDemo) |
 | Dated project score and reading order | [Docs/ProjectScorecard.md](Docs/ProjectScorecard.md) | [Docs](Docs) |
@@ -202,7 +202,7 @@ Scripts/lint-tap-video-refactor.sh
 The script uses `.swiftlint-tap-video.yml` to enforce function bodies at or
 below 80 lines and cyclomatic complexity at or below 10 on the explicit
 VideoBranchRefactorAudit production allowlist. It intentionally excludes tests,
-UI tests, Debug fixtures, benchmarks, vendored zstd, and unrelated legacy code.
+UI tests, Debug fixtures, benchmarks, remote package sources, and unrelated legacy code.
 
 For AI/CI compilation verification, use:
 

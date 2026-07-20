@@ -3,10 +3,10 @@
 //  TAPCamDemo
 //
 
-import CZstd
 import Compression
 import CoreVideo
 import Foundation
+import libzstd
 
 nonisolated enum TAPDepthCompressionCodec: String, Codable, CaseIterable, Sendable {
     case raw
@@ -193,26 +193,37 @@ nonisolated enum TAPDepthFrameCodec {
     }
 
     private static func zstdEncodeLevel1(_ data: Data) -> Data? {
-        guard data.count > 1 else {
+        guard data.count > 1,
+              data.count <= maximumFrameByteCount,
+              ZSTD_versionNumber() == 10_507 else {
             return nil
         }
-        do {
-            // ZSTD_compress may require its documented bound as destination
-            // capacity even when the final frame is smaller than raw. Allocate
-            // that bounded scratch, then retain the result only if it wins.
-            let destinationCapacity = try CZstd.compressBound(
-                sourceByteCount: data.count,
-                maximumInputByteCount: maximumFrameByteCount
-            )
-            let compressed = try CZstd.compress(
-                data,
-                maximumInputByteCount: maximumFrameByteCount,
-                maximumOutputByteCount: destinationCapacity
-            )
-            return compressed.count < data.count ? compressed : nil
-        } catch {
+
+        // ZSTD_compress may require its documented bound as destination
+        // capacity even when the final frame is smaller than raw. Allocate
+        // that bounded scratch, then retain the result only if it wins.
+        let destinationCapacity = ZSTD_compressBound(data.count)
+        guard destinationCapacity > 0 else {
             return nil
         }
+        var compressed = Data(count: destinationCapacity)
+        let written = compressed.withUnsafeMutableBytes { destination in
+            data.withUnsafeBytes { source in
+                ZSTD_compress(
+                    destination.baseAddress,
+                    destination.count,
+                    source.baseAddress,
+                    source.count,
+                    1
+                )
+            }
+        }
+        guard ZSTD_isError(written) == 0,
+              written < data.count else {
+            return nil
+        }
+        compressed.removeSubrange(written..<compressed.count)
+        return compressed
     }
 
     private static func lzfseDecode(
@@ -260,16 +271,28 @@ nonisolated enum TAPDepthFrameCodec {
             return Data()
         }
 
-        do {
-            return try CZstd.decompress(
-                payload,
-                originalByteCount: uncompressedByteCount,
-                maximumCompressedByteCount: maximumFrameByteCount,
-                maximumOutputByteCount: maximumFrameByteCount
-            )
-        } catch {
+        guard payload.count <= maximumFrameByteCount,
+              uncompressedByteCount <= maximumFrameByteCount,
+              ZSTD_versionNumber() == 10_507 else {
             throw TAPDepthCaptureError.invalidTAPManifest("invalid zstd1 depth frame")
         }
+
+        var output = Data(count: uncompressedByteCount)
+        let written = output.withUnsafeMutableBytes { destination in
+            payload.withUnsafeBytes { source in
+                ZSTD_decompress(
+                    destination.baseAddress,
+                    destination.count,
+                    source.baseAddress,
+                    source.count
+                )
+            }
+        }
+        guard ZSTD_isError(written) == 0,
+              written == uncompressedByteCount else {
+            throw TAPDepthCaptureError.invalidTAPManifest("invalid zstd1 depth frame")
+        }
+        return output
     }
 
     private static func bytesPerSample(for pixelFormat: OSType) throws -> Int {

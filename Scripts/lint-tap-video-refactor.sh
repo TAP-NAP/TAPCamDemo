@@ -12,8 +12,8 @@ fi
 
 # Keep this allowlist explicit. It covers the production files extracted or
 # rewritten by VideoBranchRefactorAudit R1-R4 without expanding into unrelated
-# legacy code. Tests, UI tests, Debug fixtures, benchmarks, and vendored zstd
-# are intentionally outside this structural gate.
+# legacy code. Tests, UI tests, Debug fixtures, benchmarks, and resolved remote
+# package sources are intentionally outside this structural gate.
 production_files=(
     "TAPCamDemo/CameraCapture/Output/TAPBMFFStreamingFile.swift"
     "TAPCamDemo/CameraCapture/Output/TAPDepthFrameCodec.swift"

@@ -727,7 +727,7 @@ Scripts/lint-tap-video-refactor.sh
 This is a scoped VideoBranchRefactorAudit gate, not a repository-wide style
 pass. `.swiftlint-tap-video.yml` checks only the production allowlist for
 function bodies over 80 lines or cyclomatic complexity over 10; unit/UI tests,
-Debug fixtures, benchmarks, and vendored zstd remain outside its scope.
+Debug fixtures, benchmarks, and resolved remote package sources remain outside its scope.
 
 Use `build-for-testing` as the default compile gate:
 
