@@ -26,6 +26,8 @@ final class LibraryMediaStore: NSObject, PHPhotoLibraryChangeObserver {
     @ObservationIgnored
     private var refreshGeneration: UInt64 = 0
     @ObservationIgnored
+    private var inFlightRefreshTask: Task<DepthAlbumItemSnapshot?, Never>?
+    @ObservationIgnored
     private var scheduledRefreshTask: Task<Void, Never>?
     @ObservationIgnored
     private var libraryChangeObserver: NSObjectProtocol?
@@ -64,6 +66,7 @@ final class LibraryMediaStore: NSObject, PHPhotoLibraryChangeObserver {
     }
 
     deinit {
+        inFlightRefreshTask?.cancel()
         scheduledRefreshTask?.cancel()
         if let libraryChangeObserver {
             notificationCenter.removeObserver(libraryChangeObserver)
@@ -77,15 +80,35 @@ final class LibraryMediaStore: NSObject, PHPhotoLibraryChangeObserver {
         items.first
     }
 
-    /// Loads a new snapshot. Only the newest generation may publish, so a slow
-    /// Photos callback cannot restore a deleted or superseded item.
+    /// Loads a new snapshot. Concurrent callers share the same in-flight load
+    /// so startup, camera-cover, and Library presentation work cannot each
+    /// enumerate the same PhotoKit catalog. Only the newest generation may
+    /// publish, so a slow Photos callback cannot restore a deleted or
+    /// superseded item.
     @discardableResult
     func refresh() async -> DepthAlbumItemSnapshot? {
+        if let inFlightRefreshTask {
+            return await inFlightRefreshTask.value
+        }
+
         refreshGeneration &+= 1
         let generation = refreshGeneration
         isRefreshing = true
+
+        let task = Task<DepthAlbumItemSnapshot?, Never> { @MainActor [weak self] in
+            guard let self else {
+                return nil
+            }
+            return await self.performRefresh(generation: generation)
+        }
+        inFlightRefreshTask = task
+        return await task.value
+    }
+
+    private func performRefresh(generation: UInt64) async -> DepthAlbumItemSnapshot? {
         defer {
             if refreshGeneration == generation {
+                inFlightRefreshTask = nil
                 isRefreshing = false
             }
         }
@@ -128,13 +151,28 @@ final class LibraryMediaStore: NSObject, PHPhotoLibraryChangeObserver {
             guard !Task.isCancelled else {
                 return
             }
-            await self?.refresh()
+            await self?.refreshAfterInFlightRefresh()
         }
+    }
+
+    /// A change notification that arrives during a catalog load must not start
+    /// another scan immediately. Wait for the shared load, then perform at most
+    /// one debounced follow-up so a change that landed mid-snapshot is retained.
+    private func refreshAfterInFlightRefresh() async {
+        if let inFlightRefreshTask {
+            _ = await inFlightRefreshTask.value
+        }
+        guard !Task.isCancelled else {
+            return
+        }
+        await refresh()
     }
 
     func cancelRefresh() {
         scheduledRefreshTask?.cancel()
         scheduledRefreshTask = nil
+        inFlightRefreshTask?.cancel()
+        inFlightRefreshTask = nil
         refreshGeneration &+= 1
         isRefreshing = false
     }
