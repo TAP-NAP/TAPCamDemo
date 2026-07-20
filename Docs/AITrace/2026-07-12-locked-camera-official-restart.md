@@ -1095,3 +1095,119 @@ R4G 仅验证无拍照的 C1 生命周期。`UIImagePickerController` 的 captur
 - active root 源码中只有一处 `openApplication(for:)`，且 Open 路径不包含 capture、session-content、import、PhotoKit、签名、等待或显式 stop；
 - 旧自定义相机源码仍属于 Capture Extension target，因此对应类型 metadata 仍可能出现在二进制中，但 active root 不创建这些类型。R4G 验证的是运行时宿主替换，不是 target 文件级清空；若 R4G 仍 freeze，下一轮应使用全新模板 target/project 做文件级与配置级净化；
 - 当前没有 Booted Simulator，因此没有执行 `test-without-building`；真机 C1 smoke 仍由用户从 Xcode Release 安装后完成。
+
+### R4G 真机结果：官方 picker host 仍未消除 freeze
+
+2026-07-21 的 R4G-C1 真机 smoke 仍复现相同故障：第一次从 Capture Extension 调用公开 `openApplication(for:)` 可以完成认证并进入最小主 App；再次锁屏后，第一次启动 Capture Extension 仍停在 Lock Screen 缩小动画，侧键重新锁屏后下一次才能进入。
+
+这轮用户提供的 Xcode 控制台片段仍只有 `r4e_minimal_app_*` marker。名称保持 `r4e` 是因为 R4G 只替换 Capture Extension host，containing App 仍复用 R4E 最小 host；它不代表设备运行了旧 build。另一方面，Xcode 当前附着的是主 App 进程，因此没有采集到第一次 Open 后的 `r4g_template_root_disappear`、`r4g_image_picker_dismantle`，也没有采集到 freeze 时是否产生新的 Capture Extension PID。由此只能确认“R4G 行为仍失败”，不能从这份 App-only 日志确认 picker 是否被 dismantle。
+
+R4G 已经证明：把 active Capture Extension root 换成 Xcode 模板式 `UIImagePickerController`，同时保持 containing App 为静态空 host，仍不足以修复 Open 后的下一次启动 freeze。下一步不再继续在 TAPCamDemo target 内删 UI 或业务对象，而是切换到全新 project、target、bundle identity 和 embed graph；这是为了排除历史工程配置、App Intents metadata、签名身份和残留 target membership，而不是尝试另一种产品相机实现。
+
+## 公开 API 与外部同症状记录
+
+截至本轮使用的 iOS 26.5 SDK，`LockedCameraCaptureSession` 的公开 Swift interface 仍只提供以下与当前问题直接相关的 session 操作：
+
+```swift
+var sessionContentURL: URL { get }
+func openApplication(for userActivity: NSUserActivity) async throws
+func invalidateSessionContent() async throws
+```
+
+`LockedCameraCaptureManager` 公开提供 `sessionContentURLs`、`sessionContentUpdates`、`invalidateSessionContent(at:)`，以及用于控制 containing App 内容出现时机的 `beginDelayingAppearance()` / `endDelayingAppearance()`。SDK 没有公开的“先结束 Secure Capture scene，再打开主 App”、主动 dismiss Extension 或强制完成 handoff transition API。因此 R5 不调用私有符号，也不人为拼装 teardown 顺序。
+
+Apple Developer Forums 的用户帖子 [`LockedCameraCaptureManager` practically unusable since iOS 26](https://developer.apple.com/forums/thread/822735) 描述了与 TAPCam 相同的序列：`openApplication(for:)` 后，再次从锁屏启动只发生 zoom-out、Extension 不出现，同时 `sessionContentUpdates` 延迟或不稳定；帖子提供的 Feedback 编号为 `FB21966835`。这是独立开发者提供的同症状证据，不是 Apple 工程师确认、系统缺陷定论或修复承诺。官方支持路径仍是 [`Creating a camera experience for the Lock Screen`](https://developer.apple.com/documentation/lockedcameracapture/creating-a-camera-experience-for-the-lock-screen) 中公开的 `openApplication(for:)`。
+
+## 工程结构与显示名称审计
+
+Xcode 的 “Rename Embed App Extensions to Embed Foundation Extensions” 推荐项只是给传统 `.appex` copy phase 改名，以便和 ExtensionKit extension 的 embed phase 区分。当前 TAPCamDemo 以及 R5 的实际产品结构都是：
+
+- Control Widget 是 Foundation/App Extension，嵌入主 App 的 `PlugIns/`；
+- Locked Camera Capture Extension 是 ExtensionKit extension，嵌入主 App 的 `Extensions/`；
+- 两类 extension 没有被放进同一个 copy phase。
+
+因此推荐重命名本身不会修复 Secure Capture 生命周期。R5 直接采用 `Embed Foundation Extensions` 和 `Embed ExtensionKit Extensions` 两个明确命名，消除命名噪声。
+
+安装后显示 `TAPCam`，而 project/target 名和 bundle identifier 含 `TAPCamDemo`，也是正常且彼此独立的配置：用户可见名称来自最终 App 的 `CFBundleDisplayName`；系统识别 containing App、Control 和 Capture Extension 使用各自的 bundle identifier、签名和 embedding 关系。R5 故意同时使用全新的显示名称与 bundle identity，便于在设备上和 TAPCam 产品包严格区分。
+
+## R5：全新 project 与 bundle identity 的最小 Open 复现
+
+R5 位于 `Experiments/LockedCameraOpenRepro/LockedCameraOpenRepro.xcodeproj`，是独立可安装的诊断 App，不引用 TAPCamDemo target 或产品源码。它使用以下新身份：
+
+- App display name：`TAPCam LCC Repro`；
+- App bundle ID：`TAP-NAP.TAPCam.LockedCameraOpenRepro`；
+- Capture bundle ID：`TAP-NAP.TAPCam.LockedCameraOpenRepro.Capture`；
+- Control bundle ID：`TAP-NAP.TAPCam.LockedCameraOpenRepro.Controls`；
+- Control kind：`TAP-NAP.TAPCam.LockedCameraOpenRepro.control`。
+
+R5 的 containing App 只负责首次请求 Camera authorization、显示当前授权状态、接收 `NSUserActivityTypeLockedCameraCapture` 并记录 scene phase。它不创建相机、不读取 session content、不启动 manager stream、PhotoKit、Library、App Attest、签名、网络、pending queue、App Group 或自定义导航。
+
+Capture Extension 使用 Xcode 模板式 `UIImagePickerController(.camera)` 作为可见 viewfinder。左下角 Open 的唯一行为是创建无 `title`、无 `userInfo` 的 `NSUserActivity(activityType: NSUserActivityTypeLockedCameraCapture)`，然后直接调用一次：
+
+```swift
+try await session.openApplication(for: activity)
+```
+
+它不拍摄或保存内容，不等待 importer，不 stop/dismantle picker，不 invalidate session content，不延迟，不重试。Control、Capture 和 App 三个 target 共享同一个最小 `CameraCaptureIntent` 定义，避免产品工程中的 intent 变体或 metadata 参与实验。
+
+### R5 marker
+
+所有进程使用 subsystem `TAP-NAP.TAPCam.LockedCameraOpenRepro`，并在 marker 中携带 PID：
+
+```text
+lccr5_intent_perform
+lccr5_capture_extension_init
+lccr5_capture_root_appear
+lccr5_picker_make
+lccr5_open_tap
+lccr5_open_begin
+lccr5_open_accepted | lccr5_open_failed
+lccr5_capture_root_disappear
+lccr5_picker_dismantle
+lccr5_app_init
+lccr5_app_host_appear
+lccr5_app_scene_phase
+lccr5_app_activity_received
+```
+
+必须从 Console 按 subsystem 跨进程采集；只看 Xcode 主 App console 会再次丢失 Capture Extension 的 init/disappear/dismantle 证据。
+
+### R5-C0：不 Open 的生命周期基线
+
+1. 首次打开 `TAPCam LCC Repro`，完成 Camera authorization，并添加名为 `LCC Repro` 的 Lock Screen Control；
+2. 锁屏启动 `LCC Repro`，确认系统 camera UI 与左下角 Open 可见；
+3. 不点击 Open，直接侧键锁屏结束；
+4. 重复五次。
+
+每次都应产生新的 Capture Extension PID/init/root/picker marker 且不 freeze。C0 失败意味着新工程本身的签名、Control-to-Capture 绑定或 Secure Capture 配置不成立，此时不能进入 C1。
+
+### R5-C1：裸 `openApplication(for:)`
+
+1. 从 Lock Screen 启动 `LCC Repro`，不拍照；
+2. 点击 Open 并认证，确认进入 `TAPCam LCC Repro` 且 handoff count 增加；
+3. 再次侧键锁屏；
+4. 只点击一次 `LCC Repro`，记录是否在 zoom-out transition freeze；
+5. 若 freeze，侧键锁屏一次后再启动一次，并保存同一时间窗的 subsystem、SpringBoard、ExtensionKit 和 RunningBoard 日志。
+
+判定：
+
+- **R5-C0 与 C1 都通过**：问题来自 TAPCamDemo 历史 project/target/signing/metadata 集成；以 R5 project graph 为规范，逐项迁入产品能力；
+- **C0 通过、C1 freeze**：全新 bundle identity、干净 embedding、模板 picker、空 containing App 和裸 activity 下仍复现；这将大幅支持 iOS 26 Secure Capture/Open transition 缺陷假设，应把 R5 作为 Feedback 的最小工程；
+- **C0 失败**：先审计 Xcode 实际签名产物、embedded provisioning profiles、entitlements、App Intents metadata 和设备上是否点中了 `LCC Repro` Control，不讨论 Open 生命周期。
+
+### R5 本地验证
+
+2026-07-21 已完成以下不安装设备的验证：
+
+- Xcode 能解析独立 project、三个 target 和共享 scheme；
+- 三个 source plist 均通过 `plutil -lint`；
+- Debug generic iOS Simulator build 通过；
+- Release generic iOS device build 在 `CODE_SIGNING_ALLOWED=NO` 下通过且无 warning；
+- 最终 App 的 `CFBundleDisplayName=TAPCam LCC Repro`、minimum OS 为 iOS 18.6、device family 为 iPhone；
+- Capture Extension 位于 `Extensions/` 且 extension point 为 `com.apple.securecapture`；
+- Control Extension 位于 `PlugIns/` 且 extension point 为 `com.apple.widgetkit-extension`；
+- 三个 target 的最终产物都包含 App Intents metadata；
+- Release Capture Extension 二进制包含全部 `lccr5_*` lifecycle marker，不包含 manager/session-content/PhotoKit/URLSession 路径；
+- App 和 Extension 的 source membership 只包含 R5 目录中的最小文件，没有链接 TAPCamDemo 产品源码。
+
+尚未执行自动签名或真机安装。用户将从 Xcode 手动安装，以保留其正常 Release 日志流程；安装后还需要检查实际签名的 `.app`、两个 embedded `.appex` 的 provisioning profile 与 entitlements，再执行 R5-C0/C1。
