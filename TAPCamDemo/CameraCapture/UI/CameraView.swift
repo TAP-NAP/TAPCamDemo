@@ -1448,6 +1448,10 @@ struct CameraView: View {
         lockedImportReason: String? = nil,
         awaitingLockedCaptureImport: Bool = false
     ) {
+        guard !routeStore.isDepthAlbumPresented else {
+            return
+        }
+
         LockedCameraDiagnostics.logger.info(
             "tap_library_present requestedLockedImportReason=\(lockedImportReason ?? "none", privacy: .public) awaitingLockedCaptureImport=\(awaitingLockedCaptureImport, privacy: .public) managerSessionCount=\(LockedCameraCaptureManager.shared.sessionContentURLs.count, privacy: .public)"
         )
