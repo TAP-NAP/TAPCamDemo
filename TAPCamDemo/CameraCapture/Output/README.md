@@ -108,7 +108,8 @@ type, manifest schema and `payload.id`, Release output facts through
 `CaptureOutputManifestPolicy`, no proof bodies in the manifest, exactly one
 fixed proof slot, proof value/digest/signing binding, and Apple auxiliary
 depth/disparity presence before
-`PhotoLibraryWriter.saveDepthPhoto` can ask Photos for access. The Photos writer
+`PhotoLibraryWriter.saveDepthPhoto` consumes Photos access granted by the
+explicit first-run setup action; it never owns a permission prompt. The writer
 accepts `ValidatedTAPDepthPhoto`, not arbitrary `Data`, so call sites must pass
 through this final gate first.
 

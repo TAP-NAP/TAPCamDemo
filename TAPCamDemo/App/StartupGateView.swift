@@ -6,6 +6,7 @@
 import LockedCameraCapture
 import Combine
 import OSLog
+import Photos
 import SwiftUI
 import UIKit
 
@@ -62,12 +63,20 @@ struct StartupGateView: View {
             await LockedCameraAppContextPublisher.publishCurrentContextIfAvailable()
             do {
                 try await videoPosterBackfillService.run()
-                await libraryStore.refresh()
+                await refreshLibraryIfPhotoAccessIsGranted()
             } catch is CancellationError {
                 return
             } catch {
                 // Poster backfill is a derivative-only maintenance task. A
                 // missing/corrupt poster must never gate camera readiness.
+            }
+        }
+        .onChange(of: startupCoordinator.photoLibraryStatus) { _, status in
+            guard status == .granted else {
+                return
+            }
+            Task {
+                await refreshLibraryIfPhotoAccessIsGranted()
             }
         }
         .onReceive(
@@ -95,6 +104,14 @@ struct StartupGateView: View {
             return
         }
         isPreparingFirstInstallCameraReadiness = true
+    }
+
+    private func refreshLibraryIfPhotoAccessIsGranted() async {
+        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        guard status == .authorized || status == .limited else {
+            return
+        }
+        await libraryStore.refresh()
     }
 
     private func completeFirstInstallSetupAfterCameraReadiness() {

@@ -12,7 +12,7 @@ actor PhotoKitLibraryMediaFetcher: LibraryMediaFetching, DepthAlbumPhotoCatalogi
         exportedAssetLocalIdentifiers: Set<String>
     ) async throws -> DepthAlbumPhotoCatalogSnapshot {
         try Task.checkCancellation()
-        try await ensureCatalogReadAuthorization()
+        try requireCatalogReadAuthorization()
         try Task.checkCancellation()
 
         let albumAssets: [DepthAlbumPhotoAsset]
@@ -361,17 +361,15 @@ actor PhotoKitLibraryMediaFetcher: LibraryMediaFetching, DepthAlbumPhotoCatalogi
         return asset
     }
 
-    private func ensureCatalogReadAuthorization() async throws {
+    /// Catalog reads must never own the system permission prompt. During
+    /// first-run setup, that prompt belongs to the explicit setup action;
+    /// background cover refreshes only consume an already-granted state.
+    private nonisolated func requireCatalogReadAuthorization() throws {
         let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         switch status {
         case .authorized, .limited:
             return
-        case .notDetermined:
-            let requested = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
-            guard requested == .authorized || requested == .limited else {
-                throw MediaFetchFailure.permission
-            }
-        case .denied, .restricted:
+        case .notDetermined, .denied, .restricted:
             throw MediaFetchFailure.permission
         @unknown default:
             throw MediaFetchFailure.permission

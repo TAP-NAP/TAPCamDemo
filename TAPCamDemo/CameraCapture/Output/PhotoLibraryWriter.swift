@@ -66,7 +66,7 @@ nonisolated enum PhotoLibraryWriter {
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.photoLibrary.info("saveDepthPhoto start container=\(validatedPhoto.fileContainer.rawValue, privacy: .public) bytes=\(data.count, privacy: .public) hasLocation=\(location != nil, privacy: .public)")
         #endif
-        let authorizationStatus = try await requestReadWriteAccess()
+        let authorizationStatus = try requireReadWriteAccess()
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.photoLibrary.info("saveDepthPhoto authorization status=\(String(describing: authorizationStatus), privacy: .public)")
         #endif
@@ -96,7 +96,7 @@ nonisolated enum PhotoLibraryWriter {
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.photoLibrary.info("saveDepthLivePhoto start container=\(validatedLivePhoto.photo.fileContainer.rawValue, privacy: .public) bytes=\(data.count, privacy: .public) hasLocation=\(location != nil, privacy: .public)")
         #endif
-        let authorizationStatus = try await requestReadWriteAccess()
+        let authorizationStatus = try requireReadWriteAccess()
         let album: PHAssetCollection? = authorizationStatus == .authorized
             ? try await fetchOrCreateAlbum()
             : nil
@@ -128,7 +128,7 @@ nonisolated enum PhotoLibraryWriter {
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.photoLibrary.info("saveTAPVideoFile start bytes=\(byteCount, privacy: .public) hasLocation=\(location != nil, privacy: .public) depthSamples=\(manifest.payload.depthCoverage.sampleCount, privacy: .public)")
         #endif
-        let authorizationStatus = try await requestReadWriteAccess()
+        let authorizationStatus = try requireReadWriteAccess()
         let album: PHAssetCollection? = authorizationStatus == .authorized
             ? try await fetchOrCreateAlbum()
             : nil
@@ -206,7 +206,8 @@ nonisolated enum PhotoLibraryWriter {
         localIdentifier: String,
         progressHandler: @escaping ResourceProgressHandler = { _ in }
     ) async throws -> URL {
-        try await Task.detached(priority: .userInitiated) {
+        try requireReadWriteAccess()
+        return try await Task.detached(priority: .userInitiated) {
             guard let asset = asset(localIdentifier: localIdentifier) else {
                 #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
                 TAPDiagnostics.photoLibrary.error("originalVideoFileURL missing asset assetID=\(localIdentifier, privacy: .private)")
@@ -261,6 +262,7 @@ nonisolated enum PhotoLibraryWriter {
         progressHandler: @escaping ResourceProgressHandler = { _ in },
         dataReceivedHandler: @escaping @Sendable (Data) throws -> Void
     ) async throws {
+        try requireReadWriteAccess()
         guard let asset = asset(localIdentifier: localIdentifier) else {
             throw TAPDepthCaptureError.assetNotFound
         }
@@ -348,7 +350,8 @@ nonisolated enum PhotoLibraryWriter {
     /// property set, so the practical fix is to keep original-resource
     /// resolution off the main queue and hand the UI only the final bytes.
     static func originalPhotoData(localIdentifier: String) async throws -> Data {
-        try await Task.detached(priority: .userInitiated) {
+        try requireReadWriteAccess()
+        return try await Task.detached(priority: .userInitiated) {
             guard let asset = asset(localIdentifier: localIdentifier) else {
                 throw TAPDepthCaptureError.assetNotFound
             }
@@ -358,7 +361,8 @@ nonisolated enum PhotoLibraryWriter {
     }
 
     static func signatureVerificationResources(localIdentifier: String) async throws -> SignatureVerificationResources {
-        try await Task.detached(priority: .userInitiated) {
+        try requireReadWriteAccess()
+        return try await Task.detached(priority: .userInitiated) {
             guard let asset = asset(localIdentifier: localIdentifier) else {
                 throw TAPDepthCaptureError.assetNotFound
             }
@@ -368,7 +372,14 @@ nonisolated enum PhotoLibraryWriter {
     }
 
     private static func asset(localIdentifier: String) -> PHAsset? {
-        PHAsset.fetchAssets(withLocalIdentifiers: [localIdentifier], options: nil).firstObject
+        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        guard status == .authorized || status == .limited else {
+            return nil
+        }
+        return PHAsset.fetchAssets(
+            withLocalIdentifiers: [localIdentifier],
+            options: nil
+        ).firstObject
     }
 
     static func assetExists(localIdentifier: String) async -> Bool {
@@ -378,7 +389,7 @@ nonisolated enum PhotoLibraryWriter {
     }
 
     static func deleteAsset(localIdentifier: String) async throws {
-        try await requestReadWriteAccess()
+        try requireReadWriteAccess()
         guard let asset = asset(localIdentifier: localIdentifier) else {
             return
         }
@@ -411,7 +422,7 @@ nonisolated enum PhotoLibraryWriter {
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.photoLibrary.info("depthAssetIdentifier lookup start captureID=\(captureID, privacy: .private)")
         #endif
-        try await requestReadWriteAccess()
+        try requireReadWriteAccess()
         return await Task.detached(priority: .userInitiated) {
             guard let album = fetchAlbum() else {
                 return nil
@@ -448,6 +459,7 @@ nonisolated enum PhotoLibraryWriter {
     /// filename is only an index hint; callers must still validate the signed
     /// manifest and byte binding before accepting any candidate.
     static func tapVideoAssetCandidateIdentifiers(packageID: UUID) async throws -> [String] {
+        try requireReadWriteAccess()
         let expectedFilename = tapVideoResourceFilename(packageID: packageID)
         return await Task.detached(priority: .utility) {
             let result = PHAsset.fetchAssets(with: .video, options: nil)
@@ -599,24 +611,18 @@ nonisolated enum PhotoLibraryWriter {
     }
 
     @discardableResult
-    private static func requestReadWriteAccess() async throws -> PHAuthorizationStatus {
+    /// Photos writes and lookups consume authorization granted by the explicit
+    /// setup action. Background retries must report denial instead of owning a
+    /// system permission prompt.
+    private static func requireReadWriteAccess() throws -> PHAuthorizationStatus {
         let current = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.photoLibrary.info("requestReadWriteAccess current=\(String(describing: current), privacy: .public)")
+        TAPDiagnostics.photoLibrary.info("requireReadWriteAccess current=\(String(describing: current), privacy: .public)")
         #endif
         switch current {
         case .authorized, .limited:
             return current
-        case .notDetermined:
-            let requested = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.photoLibrary.info("requestReadWriteAccess requested=\(String(describing: requested), privacy: .public)")
-            #endif
-            if requested == .authorized || requested == .limited {
-                return requested
-            }
-            throw TAPDepthCaptureError.photoLibraryAccessDenied
-        case .denied, .restricted:
+        case .notDetermined, .denied, .restricted:
             throw TAPDepthCaptureError.photoLibraryAccessDenied
         @unknown default:
             throw TAPDepthCaptureError.photoLibraryAccessDenied

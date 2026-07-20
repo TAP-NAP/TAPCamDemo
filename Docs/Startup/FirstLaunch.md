@@ -42,6 +42,9 @@ flowchart TD
 - The welcome page requires a backend security preflight, camera access, and
   photo library access. Location and microphone are optional and can be
   skipped.
+- The Photo Library system prompt is owned exclusively by the welcome page's
+  explicit access action. Startup refreshes, capture retries, and media reads
+  consume existing authorization and never request it implicitly.
 - The backend security preflight is a strict product gate, not an iOS network
   permission prompt. The current policy intentionally blocks first camera entry
   until that preflight succeeds.
