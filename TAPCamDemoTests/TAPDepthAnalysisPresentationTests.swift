@@ -440,12 +440,6 @@ struct TAPDepthAnalysisPresentationTests {
         let analysisSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisView.swift"
         )
-        let soundButtonOverlay = try #require(TAPCamDemoTestSourceInspection.substring(
-            in: analysisSource,
-            from: "private struct AnalysisLivePhotoSoundButtonOverlay: View",
-            to: "private enum DepthAnalysisLivePhotoSourceResolver"
-        ))
-
         #expect(analysisSource.contains("import PhotosUI"))
         #expect(analysisSource.contains("PHLivePhotoView"))
         #expect(analysisSource.contains("UILongPressGestureRecognizer"))
@@ -456,14 +450,7 @@ struct TAPDepthAnalysisPresentationTests {
         #expect(analysisSource.contains("withResourceFileURLs: [resources.photoURL, resources.pairedVideoURL]"))
         #expect(analysisSource.contains("bestAvailablePhotoURL(captureID: captureID)"))
         #expect(analysisSource.contains("pairedVideoURL(captureID: captureID)"))
-        #expect(analysisSource.contains("AnalysisLivePhotoSoundButtonOverlay"))
         #expect(analysisSource.contains("@State private var isLivePhotoMuted = true"))
-        #expect(analysisSource.contains(#"Image(systemName: isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")"#))
-        #expect(soundButtonOverlay.contains(".frame(width: 42, height: 42)"))
-        #expect(soundButtonOverlay.contains(".foregroundStyle(.white)"))
-        #expect(soundButtonOverlay.contains(".shadow(color: .black.opacity(0.72), radius: 2, y: 1)"))
-        #expect(!soundButtonOverlay.contains(".background("))
-        #expect(!soundButtonOverlay.contains(".stroke("))
         #expect(analysisSource.contains("livePhotoView.isMuted = isLivePhotoMuted"))
         #expect(analysisSource.contains("startPlayback(with: .full)"))
         #expect(analysisSource.contains("stopPlayback()"))

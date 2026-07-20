@@ -640,18 +640,6 @@ private struct AnalysisNativePageView: View {
                 mediaFetcher: mediaFetcher
             )
 
-            if tool == .raw {
-                AnalysisLivePhotoSoundButtonOverlay(
-                    source: slot.source,
-                    isCurrent: isCurrent,
-                    viewportSize: viewportSize,
-                    displayedImageSize: displayedImageSize,
-                    displayedImageOrientation: displayedImageOrientation,
-                    mediaFetcher: mediaFetcher,
-                    isMuted: $isLivePhotoMuted
-                )
-            }
-
             if isCurrent {
                 LibraryMediaViewerFetchOverlay(
                     kind: .photo,
@@ -780,80 +768,6 @@ private struct AnalysisLivePhotoBadgeOverlay: View {
         return CGPoint(
             x: imageRect.maxX - edgeInset,
             y: imageRect.minY + edgeInset
-        )
-    }
-
-    private func refresh() async {
-        guard isCurrent else {
-            isLivePhoto = false
-            return
-        }
-
-        let resolvedIsLivePhoto = await DepthAnalysisLivePhotoSourceResolver.isLivePhoto(
-            source: source,
-            mediaFetcher: mediaFetcher
-        )
-        guard !Task.isCancelled else {
-            return
-        }
-        isLivePhoto = resolvedIsLivePhoto
-    }
-}
-
-private struct AnalysisLivePhotoSoundButtonOverlay: View {
-    let source: DepthAnalysisSource
-    let isCurrent: Bool
-    let viewportSize: CGSize
-    let displayedImageSize: CGSize?
-    let displayedImageOrientation: CGImagePropertyOrientation
-    let mediaFetcher: any LibraryMediaFetching
-    @Binding var isMuted: Bool
-    @State private var isLivePhoto = false
-
-    var body: some View {
-        ZStack {
-            if isLivePhoto, let buttonPosition {
-                Button {
-                    isMuted.toggle()
-                } label: {
-                    Image(systemName: isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                        .font(.callout.weight(.semibold))
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(.white)
-                        .frame(width: 42, height: 42)
-                        .contentShape(Circle())
-                        .shadow(color: .black.opacity(0.72), radius: 2, y: 1)
-                }
-                .buttonStyle(.plain)
-                .position(buttonPosition)
-                .transition(.opacity)
-                .accessibilityLabel(isMuted ? "Live Photo muted" : "Live Photo sound on")
-                .help(isMuted ? "Unmute Live Photo" : "Mute Live Photo")
-            }
-        }
-        .frame(width: viewportSize.width, height: viewportSize.height)
-        .accessibilityHidden(!isLivePhoto)
-        .task(id: "\(source.loadID)|\(isCurrent)") {
-            await refresh()
-        }
-    }
-
-    private var buttonPosition: CGPoint? {
-        guard viewportSize.width > 0,
-              viewportSize.height > 0,
-              displayedImageSize != nil else {
-            return nil
-        }
-
-        let imageRect = DepthAnalysisViewerInteractionPolicy.centeredToolContainerRect(
-            imageSize: displayedImageSize,
-            orientation: displayedImageOrientation,
-            viewportSize: viewportSize
-        )
-        let edgeInset = DepthAnalysisLivePhotoBadge.Size.viewer.edgeInset
-        return CGPoint(
-            x: imageRect.maxX - edgeInset,
-            y: imageRect.minY + edgeInset + 48
         )
     }
 
