@@ -111,7 +111,7 @@ struct StartupGateView: View {
         guard status == .authorized || status == .limited else {
             return
         }
-        await libraryStore.refreshSharingInFlightLoad()
+        await libraryStore.cachedSnapshotOrRefresh()
     }
 
     private func completeFirstInstallSetupAfterCameraReadiness() {

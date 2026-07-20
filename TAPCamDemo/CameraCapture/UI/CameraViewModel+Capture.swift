@@ -141,7 +141,7 @@ extension CameraViewModel {
     /// access. Exported captures keep their small app-private thumbnail so the
     /// camera affordance is stable even when Photos is in limited-library mode.
     func loadRecentTAPLibraryPreviewIfAvailable() async {
-        let loadedSnapshot = await libraryStore.refreshSharingInFlightLoad()
+        let loadedSnapshot = await libraryStore.cachedSnapshotOrRefresh()
         guard !Task.isCancelled else {
             return
         }

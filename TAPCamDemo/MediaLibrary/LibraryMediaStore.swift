@@ -80,6 +80,10 @@ final class LibraryMediaStore: NSObject, PHPhotoLibraryChangeObserver {
         items.first
     }
 
+    var hasUsableSnapshot: Bool {
+        snapshot.revision > 0 && loadError == nil && photoAssetsError == nil
+    }
+
     /// Starts a new snapshot generation. Only the newest generation may
     /// publish, so a slow Photos callback cannot restore a deleted or
     /// superseded item.
@@ -98,6 +102,21 @@ final class LibraryMediaStore: NSObject, PHPhotoLibraryChangeObserver {
         }
 
         return await startRefresh()
+    }
+
+    /// Returns the current observer-maintained snapshot without rescanning
+    /// PhotoKit. A missing or failed snapshot joins the current load or starts
+    /// one; explicit change notifications continue to use `refresh()`.
+    @discardableResult
+    func cachedSnapshotOrRefresh() async -> DepthAlbumItemSnapshot? {
+        if hasUsableSnapshot {
+            return DepthAlbumItemSnapshot(
+                items: items,
+                photoAssetsError: photoAssetsError
+            )
+        }
+
+        return await refreshSharingInFlightLoad()
     }
 
     private func startRefresh() async -> DepthAlbumItemSnapshot? {

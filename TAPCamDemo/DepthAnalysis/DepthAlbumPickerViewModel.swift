@@ -29,10 +29,12 @@ final class DepthAlbumPickerViewModel: ObservableObject {
         itemProvider: DepthAlbumItemProvider? = nil,
         libraryStore: LibraryMediaStore? = nil
     ) {
-        self.libraryStore = libraryStore ?? LibraryMediaStore(
+        let resolvedLibraryStore = libraryStore ?? LibraryMediaStore(
             itemProvider: itemProvider,
             observesChanges: false
         )
+        self.libraryStore = resolvedLibraryStore
+        self.hasLoadedSnapshot = resolvedLibraryStore.hasUsableSnapshot
     }
 
     deinit {
@@ -99,6 +101,12 @@ final class DepthAlbumPickerViewModel: ObservableObject {
     }
 
     func loadForPresentation(lockedImportReason: String? = nil) async {
+        if lockedImportReason == nil, libraryStore.hasUsableSnapshot {
+            hasLoadedSnapshot = true
+            errorMessage = nil
+            return
+        }
+
         await load(lockedImportReason: lockedImportReason)
     }
 
