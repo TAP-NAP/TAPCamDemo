@@ -385,16 +385,10 @@
     "Live Photo Default" : {
 
     },
-    "Live Photo muted" : {
-
-    },
     "Live Photo off" : {
 
     },
     "Live Photo on" : {
-
-    },
-    "Live Photo sound on" : {
 
     },
     "Local cloud" : {
@@ -407,9 +401,6 @@
 
     },
     "Mask legend" : {
-
-    },
-    "Mute Live Photo" : {
 
     },
     "Needs Attention" : {
@@ -641,9 +632,6 @@
 
     },
     "Unlock and open TAPCam from a Lock Screen control without starting locked camera capture." : {
-
-    },
-    "Unmute Live Photo" : {
 
     },
     "Use %@ field of view" : {
