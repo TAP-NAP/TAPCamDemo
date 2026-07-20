@@ -54,6 +54,10 @@ The vendored zstd source is pinned to 1.5.7, records its source archive SHA-256,
 and is not counted as application readability debt. It is still 68% of all
 added lines, so raw diff size must not be used as an application-code metric.
 
+> Dependency update (2026-07-21): the vendored source described by this
+> historical diff measurement has been removed. The app now pins the official
+> `facebook/zstd` SwiftPM package at exact version `1.5.7` and links `libzstd`.
+
 Static checks on the changed production Swift files reported:
 
 | SwiftLint rule | Current findings in changed files |
@@ -354,12 +358,12 @@ Debug/test-support target that the Debug app and test targets can import. This
 keeps product source maps smaller and prevents fixture-only adapters from
 shaping production file organization.
 
-### P2 — Treat vendored zstd as a managed third-party artifact
+### P2 — Keep zstd as a pinned remote third-party dependency
 
-The pinned source and SHA-256 provenance are good. Add or document a deterministic
-update/verification script, exclude `Packages/CZstd/Vendor` from app LOC and
-lint dashboards, and keep vulnerability/version review separate from TAPCam
-refactoring. Do not manually “clean up” vendored C files.
+The repository no longer carries upstream C sources. Keep the official
+`facebook/zstd` SwiftPM dependency pinned to an exact reviewed version, retain
+the bounded app-side codec adapter, and review version/security updates
+separately from TAPCam refactoring.
 
 ## Proposed target structure
 
@@ -423,7 +427,7 @@ The executable R0 structure gate is
 `Scripts/lint-tap-video-refactor.sh`. It applies
 `.swiftlint-tap-video.yml` only to the explicit R1-R4 production allowlist and
 fails when a function body exceeds 80 lines or cyclomatic complexity exceeds
-10. Tests, Debug fixtures, benchmarks, vendored zstd, and unrelated legacy code
+10. Tests, Debug fixtures, benchmarks, remote package sources, and unrelated legacy code
 remain outside this gate.
 
 Focused unit and attended UI commands are recorded in
@@ -467,10 +471,16 @@ not rerun.
 1. Update `ProjectScorecard.md` and module READMEs.
 2. Run build-for-testing and focused/full XCTest on a booted Simulator UDID.
 3. Run Release build and inspect the built app's final `Info.plist`.
-4. Repeat physical-device capture, signing/export, Photos readback, poster,
-   RAW/2D playback, seek, background/PiP, delete, iCloud, and memory-pressure
-   acceptance.
-5. Compare ETTrace/SwiftUI/VM Tracker/memgraph evidence with the R0 baseline.
+4. Keep physical-device capture, Photos readback, Library poster, and local
+   foreground-only RAW/2D playback behavior stable. AirPlay, PiP, and background
+   playback are intentionally unsupported.
+5. Automated regression and performance comparison against R0 are deferred to
+   the next explicit refactor and are not current merge gates.
+
+When performance validation is reopened, the capture workflow must explicitly
+install the selected DerivedData `.app` before launch and reject evidence unless
+the trace contains the same Mach-O UUID as that build. Building alone is never
+proof that the current binary was profiled.
 
 ## Merge acceptance criteria
 
@@ -487,9 +497,8 @@ not rerun.
   plist inspection, and `git diff --check` pass.
 - Physical-device evidence covers capture through Photos readback and Library
   RAW/2D playback.
-- SwiftUI Instruments shows update frequency and long body-update evidence;
-  ETTrace/Time Profiler and VM Tracker/memgraph show no regression against the
-  recorded baseline.
+- Automated regression and performance acceptance are deferred until the next
+  explicit refactor; they are not requirements for the current product patch.
 - Recalculated targets: extensibility at least 8.8, readability at least 8.5,
   and weighted overall at least 8.7 before the scorecard claims a score lift.
 

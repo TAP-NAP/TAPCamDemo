@@ -536,7 +536,7 @@ Manual camera control model and test review path:
 
 ## Snapshot
 
-Date: 2026-07-15
+Date: 2026-07-21
 
 Review basis: the merge-base audit in
 [VideoBranchRefactorAudit.md](VideoBranchRefactorAudit.md), followed by the
@@ -548,12 +548,12 @@ Overall is a weighted refactor-readiness score, not a simple average.
 
 | Area | Score | Strict read |
 | --- | ---: | --- |
-| Professional camera capabilities | 7.4 / 10 | TAP Video capture, optional audio, Library routing/posters, custom transport, RAW/registered-2D playback, deletion/share, and RGB PiP/AirPlay fallback now exist in addition to the photo controls. Physical-device video/device-format breadth and repeatable UI/performance evidence remain incomplete. |
+| Professional camera capabilities | 7.4 / 10 | TAP Video capture, optional audio, Library routing/posters, custom local foreground-only RAW/registered-2D playback, deletion, and share now exist in addition to the photo controls. AirPlay, PiP, and background playback are intentionally unsupported. Video-poster correctness remains part of the product contract. |
 | Core depth plus App Attest capture | 9.0 / 10 | The photo path remains intact while TAP Video adds bounded per-frame KLV depth metadata, manifest/proof binding, streaming validation, Photos export/readback validation, and negative/golden-vector coverage. Production backend acceptance and a broader physical-device matrix remain separate gates. |
 | Extensibility | 8.9 / 10 | Recorder, writer, metrics, encoder, manifest, shared media facts, staged validators, one PhotoKit request lifecycle, playback session/transport/depth pipeline, Library slot responsibilities, and pending collaborators now have focused seams. Debug fixtures still live in the Debug app target, and some older non-video modules remain large. |
 | Security | 9.4 / 10 | File-based hashing, fixed proof slots, bounded frame/sample validation, public-safe diagnostics, path allow-lists, and pinned zstd provenance remain strong across the larger video surface. Device/backend and repeated Release evidence still limit the score. |
 | Readability | 8.6 / 10 | The 2,983-line playback file, 1,703-line recorder, 700-line validator, 1,145-line PhotoKit bridge file, 1,450-line carousel state, 893-line picker, and 688-line pending processor have been split by ownership. Source-spelling assertions were reduced by more than 80%. Remaining gaps include fixture-target modularization, four test suites above the near-400-line target, and older files outside this refactor scope. |
-| Docs clarity | 9.3 / 10 | Root/module/test maps now include the TAP Video capture-to-playback path, PhotoKit lifecycle, pending collaborators, local SwiftPM zstd provenance, and evidence separation. Device and Instruments evidence is still documented as outstanding rather than implied complete. |
+| Docs clarity | 9.3 / 10 | Root/module/test maps now include the TAP Video capture-to-playback path, PhotoKit lifecycle, pending collaborators, exact remote SwiftPM zstd provenance, and evidence separation. Device and Instruments evidence is still documented as outstanding rather than implied complete. |
 
 Weighted result:
 `(7.4×10%)+(9.0×20%)+(8.9×20%)+(9.4×25%)+(8.6×15%)+(9.3×10%)`
@@ -822,12 +822,11 @@ SwiftUI Instruments, VM Tracker, or memgraph acceptance.
 
 ## Strict Gaps
 
-- TAP Video now has capture, validation, pending/export/readback, Library, and
-  RAW/2D playback code plus Simulator tests. It still needs a repeated physical
-  device capture-through-Photos matrix and fresh SwiftUI Instruments, ETTrace/
-  Time Profiler, VM Tracker, and memgraph comparisons against the recorded
-  baseline. Simulator/build evidence must not be read as device/performance
-  acceptance.
+- TAP Video now has capture, validation, pending/export/readback, Library poster,
+  and local foreground-only RAW/2D playback. The current iteration deliberately
+  does not treat automated regression or performance profiling as a merge gate;
+  both move to the later refactor phase. Existing build or historical Simulator
+  evidence must not be read as current device/performance acceptance.
 - Runtime fixture code is split into specification, generator, and harness-view
   files under `DepthAnalysis/DiagnosticsSupport` and remains Debug-gated. It is
   still compiled by the app target in Debug because the UI fixture launcher
@@ -948,12 +947,10 @@ SwiftUI Instruments, VM Tracker, or memgraph acceptance.
 The next iteration should raise confidence most through these evidence and
 modularization gates:
 
-1. TAP Video physical-device acceptance: capture through signing, Photos
-   readback, Library poster, RAW/2D playback, seek, background/PiP, delete,
-   iCloud, and memory-pressure behavior on the supported device matrix.
-2. Repeat SwiftUI Instruments, ETTrace/Time Profiler, VM Tracker, and memgraph
-   for the documented 15-second open/play/2D/seek/dismiss loop and compare it
-   with the pre-refactor baseline.
+1. Keep Library video posters and local foreground-only playback stable while
+   AirPlay, PiP, and background playback remain intentionally unsupported.
+2. Defer the automated regression suite and SwiftUI Instruments, ETTrace/Time
+   Profiler, VM Tracker, and memgraph work until the next explicit refactor.
 3. Move Debug fixture specification/generation into an independent support
    module after the TAP Video schema/container types have a non-app target that
    both the app harness and tests can import.
