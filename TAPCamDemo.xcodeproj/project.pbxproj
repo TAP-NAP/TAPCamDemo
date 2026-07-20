@@ -835,6 +835,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.2;
+				OTHER_SWIFT_FLAGS = "$(inherited) -Xcc -Wno-config-macros";
 				PRODUCT_BUNDLE_IDENTIFIER = "TAP-NAP.TAPCamDemo";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -868,6 +869,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.2;
+				OTHER_SWIFT_FLAGS = "$(inherited) -Xcc -Wno-config-macros";
 				PRODUCT_BUNDLE_IDENTIFIER = "TAP-NAP.TAPCamDemo";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
