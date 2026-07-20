@@ -409,7 +409,7 @@ struct CameraView: View {
         CameraCaptureControlsView(
             state: CameraCaptureControlsState(
                 isShutterEnabled: shutterIsEnabled,
-                isLibraryWriteInProgress: viewModel.isCaptureWriteInProgress || viewModel.isVideoRecording || viewModel.isPreparingVideoMode,
+                isLibraryWriteInProgress: viewModel.isCaptureWriteInProgress,
                 selectedMode: selectedMode,
                 isRecordingMovie: viewModel.isVideoRecording,
                 isPreparingMovie: viewModel.isPreparingVideoMode,
@@ -436,7 +436,7 @@ struct CameraView: View {
         CameraCaptureControlsView(
             state: CameraCaptureControlsState(
                 isShutterEnabled: shutterIsEnabled,
-                isLibraryWriteInProgress: viewModel.isCaptureWriteInProgress || viewModel.isVideoRecording || viewModel.isPreparingVideoMode,
+                isLibraryWriteInProgress: viewModel.isCaptureWriteInProgress,
                 selectedMode: selectedMode,
                 isRecordingMovie: viewModel.isVideoRecording,
                 isPreparingMovie: viewModel.isPreparingVideoMode,

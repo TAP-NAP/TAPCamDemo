@@ -26,7 +26,7 @@ struct CameraCaptureControlsState {
     let contentRotation: Angle
 
     var canOpenTAPLibrary: Bool {
-        !isLibraryWriteInProgress
+        !isLibraryWriteInProgress && !isRecordingMovie && !isPreparingMovie
     }
 
     var recentThumbnailOpacity: Double {
@@ -34,13 +34,23 @@ struct CameraCaptureControlsState {
     }
 
     var tapLibraryAccessibilityLabel: String {
-        isLibraryWriteInProgress ? "Finishing capture write" : "Open TAPCamDepth album"
+        if isLibraryWriteInProgress {
+            return "Finishing capture write"
+        }
+        if isRecordingMovie || isPreparingMovie {
+            return "TAP Library unavailable during video capture"
+        }
+        return "Open TAPCamDepth album"
     }
 
     var tapLibraryHelpText: String {
-        isLibraryWriteInProgress
-            ? "TAP Library will be available after the current capture finishes writing."
-            : "Open TAPCamDepth album."
+        if isLibraryWriteInProgress {
+            return "TAP Library will be available after the current capture finishes writing."
+        }
+        if isRecordingMovie || isPreparingMovie {
+            return "TAP Library will be available after video capture finishes."
+        }
+        return "Open TAPCamDepth album."
     }
 }
 
