@@ -643,14 +643,12 @@ nonisolated enum TAPDepthProjectionInteractionPolicy {
     }
 
     static func motionParallaxEulerAngles(
-        pitch: Double,
-        roll: Double,
-        baselinePitch: Double,
-        baselineRoll: Double
+        relativePitch: Double,
+        relativeRoll: Double
     ) -> SCNVector3 {
         SCNVector3(
-            Float(normalizedAngleDelta(pitch - baselinePitch)) * motionParallaxPitchScale,
-            Float(normalizedAngleDelta(roll - baselineRoll)) * motionParallaxRollScale,
+            Float(normalizedAngleDelta(relativePitch)) * motionParallaxPitchScale,
+            Float(normalizedAngleDelta(relativeRoll)) * motionParallaxRollScale,
             0
         )
     }
@@ -1686,7 +1684,10 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
             }
 
             motionManager.deviceMotionUpdateInterval = 1.0 / 30.0
-            motionManager.startDeviceMotionUpdates(to: .main) { [weak self] motion, _ in
+            motionManager.startDeviceMotionUpdates(
+                using: .xArbitraryZVertical,
+                to: .main
+            ) { [weak self] motion, _ in
                 guard let self,
                       let motion,
                       let projectionRootNode = self.projectionRootNode else {
@@ -1734,11 +1735,10 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
             let baseline = motionParallaxBaseline ?? attitude
             let eulerAngles: SCNVector3
             if let attitude, let baseline {
+                let relativeTilt = attitude.relativeTilt(to: baseline)
                 eulerAngles = TAPDepthProjectionInteractionPolicy.motionParallaxEulerAngles(
-                    pitch: attitude.pitch,
-                    roll: attitude.roll,
-                    baselinePitch: baseline.pitch,
-                    baselineRoll: baseline.roll
+                    relativePitch: relativeTilt.pitch,
+                    relativeRoll: relativeTilt.roll
                 )
             } else {
                 eulerAngles = SCNVector3(0, 0, 0)
@@ -1760,13 +1760,59 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
         }
 
         private struct MotionParallaxAttitude {
-            let pitch: Double
-            let roll: Double
+            private let value: CMAttitude
 
             init(motion: CMDeviceMotion) {
-                pitch = motion.attitude.pitch
-                roll = motion.attitude.roll
+                value = Self.copy(motion.attitude)
             }
+
+            func relativeTilt(to baseline: MotionParallaxAttitude) -> MotionParallaxTilt {
+                let relativeValue = Self.copy(value)
+                relativeValue.multiply(byInverseOf: baseline.value)
+                return Self.shortestArcTilt(from: relativeValue.quaternion)
+            }
+
+            private static func copy(_ attitude: CMAttitude) -> CMAttitude {
+                guard let copiedAttitude = attitude.copy() as? CMAttitude else {
+                    preconditionFailure("CMAttitude copy returned an unexpected type")
+                }
+                return copiedAttitude
+            }
+
+            private static func shortestArcTilt(from quaternion: CMQuaternion) -> MotionParallaxTilt {
+                let magnitude = sqrt(
+                    quaternion.x * quaternion.x
+                        + quaternion.y * quaternion.y
+                        + quaternion.z * quaternion.z
+                        + quaternion.w * quaternion.w
+                )
+                guard magnitude.isFinite, magnitude > 0 else {
+                    return MotionParallaxTilt(pitch: 0, roll: 0)
+                }
+
+                let direction = quaternion.w < 0 ? -1.0 : 1.0
+                let x = quaternion.x / magnitude * direction
+                let y = quaternion.y / magnitude * direction
+                let z = quaternion.z / magnitude * direction
+                let w = quaternion.w / magnitude * direction
+                let vectorMagnitude = sqrt(x * x + y * y + z * z)
+                let rotationScale: Double
+                if vectorMagnitude < 0.000_001 {
+                    rotationScale = 2
+                } else {
+                    rotationScale = 2 * atan2(vectorMagnitude, w) / vectorMagnitude
+                }
+
+                return MotionParallaxTilt(
+                    pitch: x * rotationScale,
+                    roll: y * rotationScale
+                )
+            }
+        }
+
+        private struct MotionParallaxTilt {
+            let pitch: Double
+            let roll: Double
         }
 
         private static func makePointGeometry(

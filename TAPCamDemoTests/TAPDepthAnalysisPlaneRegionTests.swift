@@ -81,41 +81,24 @@ struct TAPDepthAnalysisPlaneRegionTests {
         #expect(TAPDepthProjectionInteractionPolicy.rollAngle(startAngle: startAngle, gestureRotation: -0.2) > startAngle)
     }
 
-    @Test func depthProjectionMotionParallaxUsesCurrentAttitudeAsBaseline() {
-        let baselinePitch = 0.42
-        let baselineRoll = -0.31
-
+    @Test func depthProjectionMotionParallaxMapsRelativeAttitude() {
         let recentered = TAPDepthProjectionInteractionPolicy.motionParallaxEulerAngles(
-            pitch: baselinePitch,
-            roll: baselineRoll,
-            baselinePitch: baselinePitch,
-            baselineRoll: baselineRoll
+            relativePitch: 0,
+            relativeRoll: 0
         )
         let tilted = TAPDepthProjectionInteractionPolicy.motionParallaxEulerAngles(
-            pitch: baselinePitch + 0.2,
-            roll: baselineRoll - 0.4,
-            baselinePitch: baselinePitch,
-            baselineRoll: baselineRoll
-        )
-        let flatDevice = TAPDepthProjectionInteractionPolicy.motionParallaxEulerAngles(
-            pitch: 0,
-            roll: 0,
-            baselinePitch: baselinePitch,
-            baselineRoll: baselineRoll
+            relativePitch: 0.2,
+            relativeRoll: -0.4
         )
         let wrappedRoll = TAPDepthProjectionInteractionPolicy.motionParallaxEulerAngles(
-            pitch: 0,
-            roll: -Double.pi + 0.01,
-            baselinePitch: 0,
-            baselineRoll: Double.pi - 0.01
+            relativePitch: 0,
+            relativeRoll: Double.pi * 2 + 0.02
         )
 
         #expect(abs(recentered.x) < 0.0001)
         #expect(abs(recentered.y) < 0.0001)
         #expect(abs(tilted.x - 0.012) < 0.0001)
         #expect(abs(tilted.y + 0.032) < 0.0001)
-        #expect(abs(flatDevice.x) > 0.0001)
-        #expect(abs(flatDevice.y) > 0.0001)
         #expect(abs(wrappedRoll.y - 0.0016) < 0.0001)
     }
 
