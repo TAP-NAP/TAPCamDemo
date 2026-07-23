@@ -183,16 +183,24 @@ nonisolated struct CaptureSourcePlan: @unchecked Sendable {
 /// view model creates this request after pairing validation and hands it to
 /// `CaptureSessionController`, which serializes all AVFoundation mutation on
 /// its session queue.
+nonisolated enum CameraAuxiliaryPreviewPolicy: Equatable, Sendable {
+    case none
+    case manualFocusLoupe
+}
+
 nonisolated struct SessionConfigurationRequest: @unchecked Sendable {
     let capturePlan: CaptureSourcePlan
     let outputProfile: CaptureOutputProfile
+    let auxiliaryPreviewPolicy: CameraAuxiliaryPreviewPolicy
 
     init(
         capturePlan: CaptureSourcePlan,
-        outputProfile: CaptureOutputProfile = CaptureOutputProfileCatalog.releaseDefaultProfile
+        outputProfile: CaptureOutputProfile = CaptureOutputProfileCatalog.releaseDefaultProfile,
+        auxiliaryPreviewPolicy: CameraAuxiliaryPreviewPolicy = .none
     ) {
         self.capturePlan = capturePlan
         self.outputProfile = outputProfile
+        self.auxiliaryPreviewPolicy = auxiliaryPreviewPolicy
     }
 }
 
@@ -245,6 +253,33 @@ nonisolated struct SessionConfigurationResult: @unchecked Sendable {
     let livePhotoAudioInputConfigured: Bool
     let controlCapabilities: CameraControlCapabilitySnapshot
     let selectionContext: CaptureSelectionContext
+    let auxiliaryPreviewPolicy: CameraAuxiliaryPreviewPolicy
+
+    init(
+        depthDeliverySupported: Bool,
+        cameraDisplayName: String,
+        nativePreviewAspectRatio: Double,
+        capturePlan: CaptureSourcePlan,
+        outputProfile: CaptureOutputProfile,
+        resolvedOutput: ResolvedCaptureOutputProfile,
+        device: AVCaptureDevice,
+        livePhotoAudioInputConfigured: Bool,
+        controlCapabilities: CameraControlCapabilitySnapshot,
+        selectionContext: CaptureSelectionContext,
+        auxiliaryPreviewPolicy: CameraAuxiliaryPreviewPolicy = .none
+    ) {
+        self.depthDeliverySupported = depthDeliverySupported
+        self.cameraDisplayName = cameraDisplayName
+        self.nativePreviewAspectRatio = nativePreviewAspectRatio
+        self.capturePlan = capturePlan
+        self.outputProfile = outputProfile
+        self.resolvedOutput = resolvedOutput
+        self.device = device
+        self.livePhotoAudioInputConfigured = livePhotoAudioInputConfigured
+        self.controlCapabilities = controlCapabilities
+        self.selectionContext = selectionContext
+        self.auxiliaryPreviewPolicy = auxiliaryPreviewPolicy
+    }
 }
 
 extension SessionConfigurationRequest {

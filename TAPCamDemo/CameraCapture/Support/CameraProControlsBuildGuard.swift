@@ -3,6 +3,5 @@
 //  TAPCamDemo
 //
 
-#if !DEBUG && TAP_ENABLE_PRO_CAMERA_CONTROLS
-#error("TAP_ENABLE_PRO_CAMERA_CONTROLS must not be enabled in Release builds.")
-#endif
+// Photographer Mode is a product-level runtime surface and compiles in Release.
+// Experimental diagnostics remain protected by `DEBUG` at their call sites.

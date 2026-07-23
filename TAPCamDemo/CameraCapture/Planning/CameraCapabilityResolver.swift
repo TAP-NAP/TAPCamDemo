@@ -262,6 +262,19 @@ nonisolated enum CameraCapabilityResolver {
         for device: AVCaptureDevice,
         depthCandidates: [DepthDeviceCandidate]
     ) -> CameraProfile {
+        cameraProfile(for: device, depthCandidates: depthCandidates)
+    }
+
+    /// Builds the same stable profile for an explicitly selected Release
+    /// depth-capable device as discovery uses for normal RGB sources.
+    ///
+    /// LiDAR is commonly removed from the Release RGB list when a higher
+    /// priority virtual camera occupies the same 24mm slot. Photographer mode
+    /// still needs an explicit LiDAR profile without depending on DEBUG state.
+    static func cameraProfile(
+        for device: AVCaptureDevice,
+        depthCandidates: [DepthDeviceCandidate]
+    ) -> CameraProfile {
         makeCameraProfile(device: device, depthCandidates: depthCandidates)
     }
 

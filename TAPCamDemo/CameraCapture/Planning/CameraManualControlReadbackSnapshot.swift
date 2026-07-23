@@ -5,7 +5,6 @@
 
 import Foundation
 
-#if TAP_ENABLE_PRO_CAMERA_CONTROLS
 nonisolated enum CameraManualControlReadbackExposureMode: String, Equatable, Sendable {
     case continuousAuto
     case locked
@@ -49,4 +48,3 @@ nonisolated struct CameraManualControlReadbackSnapshot: Equatable, Sendable {
         )
     }
 }
-#endif

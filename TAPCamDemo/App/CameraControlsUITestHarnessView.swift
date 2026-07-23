@@ -3,7 +3,7 @@
 //  TAPCamDemo
 //
 
-#if DEBUG && TAP_ENABLE_PRO_CAMERA_CONTROLS
+#if DEBUG
 import Foundation
 import SwiftUI
 
@@ -34,7 +34,10 @@ struct CameraControlsUITestHarnessView: View {
                     selectedMode: selectedMode,
                     isRecordingMovie: false,
                     isPreparingMovie: false,
+                    isPhotographerModeActive: true,
+                    isInteractionLocked: false,
                     adjustmentControlState: adjustmentState,
+                    basicEVControlState: CameraBasicEVControlState(bias: 0, isStripVisible: false),
                     contentRotation: .zero
                 ),
                 highlightColor: CameraViewfinderHighlightPreference.defaultValue.color,

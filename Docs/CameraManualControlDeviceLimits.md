@@ -55,32 +55,43 @@ TAPCam cannot safely:
   manual controls.
 - Treat one iPhone 15 Pro probe as a complete device-support matrix.
 
-## Phase 1 Decision
+## Photographer Mode v1 Decision
 
-Phase 1 prioritizes manual-control reliability over true focal-length
-switching.
+Photographer Mode v1 prioritizes a reliable, internally consistent manual-depth
+path. It is photo-only and uses an all-or-nothing eligibility rule.
 
-When an eligible rear LiDAR 24mm depth path is available:
+Standard mode:
 
-- Use the LiDAR-backed 24mm depth path as the active capture/control path.
-- Keep ISO, shutter, AF, and MF controls attached to that active LiDAR device.
-- Treat `1x / 2x / 3x` as preview-only zoom presets, not hardware source
-  switching.
-- Keep the final photo full-frame LiDAR 24mm.
-- Keep the final depth output full-frame LiDAR 24mm.
-- Do not crop RGB output.
-- Do not crop depth output.
-- Do not repurpose manifest crop metadata as destructive crop.
-- Map tap-to-AF and metering points from the visible preview-only zoom region
-  back into full-frame 24mm coordinates.
-- Show a short `viewfinder edge toast` the first time the user enters 2x or 3x,
-  so the user understands the zoom is preview-only and the saved photo remains
-  full-frame.
+- Never opts into LiDAR merely because the device provides it.
+- Preserves the existing capture path, Basic EV, lens selector, and release UI.
+- Does not expose ISO, shutter, or MF controls.
 
-If the LiDAR-backed manual-depth path is not available, TAPCam should fall back
-to the best existing depth-capable capture path and capability-gate controls
-from that active path. Disabled controls should explain that the current Apple
-camera path does not support the requested manual control.
+Photographer Mode is eligible only when runtime discovers a rear LiDAR 24mm /
+1x path that simultaneously preserves depth and supports custom ISO, custom
+shutter duration, tap AF, and MF lens-position writes. When active:
+
+- Use that LiDAR-backed 24mm / 1x path as the capture and control device.
+- Attach `EV`, `ISO`, `S`, and `AF/MF` to the same active device; show `ƒ` as
+  read-only.
+- Hide the lens selector. Do not offer 2x / 3x preview presets in PRO.
+- Keep the final photo and depth output on the fixed full-frame LiDAR 24mm path.
+- Do not crop RGB or depth output and do not repurpose manifest crop metadata as
+  destructive crop.
+
+If that complete eligible path is unavailable, Photographer Mode is
+`unavailable`: hide the PRO entry and keep Standard fully usable. TAPCam does
+not expose a partially disabled professional toolbar on a fallback camera path.
+
+PRO activation and deactivation require asynchronous session reconfiguration.
+The UI must retain the last preview frame under frosted glass and disable
+capture/control interaction until the destination session is ready. This is why
+availability, Standard, activating, active, deactivating, and failure are
+separate runtime states instead of one Boolean.
+
+The same frosted transition applies between active rear PRO and the front
+camera. Front entry temporarily suspends the rear PRO intent and uses automatic
+or tap focus only; returning rear restores PRO if it remains eligible. This
+suspension does not update the persisted Remember Last State preference.
 
 ## Roadmap: Source Switching Mode
 
@@ -103,12 +114,11 @@ Any future LiDAR-control plus higher-quality RGB fusion would need a separate
 design for synchronization, alignment, fusion, manifest representation,
 validation, and scoring.
 
-The build-boundary plan for hiding professional controls from ordinary product
-builds is separate and lives in
+The runtime product-mode plan is recorded in
 [CameraProControlsBuildIsolationPlan.md](CameraProControlsBuildIsolationPlan.md).
-That plan keeps Basic EV and Debug-only Pro Controls mutually exclusive at
-compile time; this document only explains why Apple active-device capabilities
-limit which controls can work once a camera path is selected.
+That plan keeps Standard and Photographer Mode separate by active camera path
+and session readiness; this document explains why Apple active-device
+capabilities determine whether PRO can be offered at all.
 
 ## Open Validation
 
@@ -118,5 +128,23 @@ The remaining evidence gap is physical device coverage:
 - Record whether `exposureTargetOffset` sign and preview brightness match the
   expected EV direction.
 - Confirm ISO/S/MF writes on the LiDAR path after real readback.
+- Confirm AF -> MF first locks `AVCaptureLensPositionCurrent`, and that only an
+  actual MF-strip drag sends a numeric lens-position write.
+- Confirm MF magnification keeps one main PreviewLayer and renders the inset
+  from the PRO graph's preview-sized VideoDataOutput through an
+  AVSampleBufferDisplayLayer; it must not add a second PreviewLayer or move the
+  device zoom factor.
+- Confirm continuous MF drag uses one in-flight write plus one latest pending
+  value, and that AVFoundation completion (not a fixed debounce) advances the
+  stream.
+- Confirm MF tap runs focus-only AF at the selected point, waits for the
+  request-local settle cycle, locks `AVCaptureLensPositionCurrent`, and keeps
+  the shutter disabled until locked readback completes.
+- Confirm rapid taps, slider drag during assist, PRO/front switching, and
+  background cancellation cannot publish an old focus result or leave UI in MF
+  while the device remains in AF.
 - Confirm front-camera AF/MF gating avoids the observed black-screen path.
+- Confirm Standard never selects the LiDAR input on eligible hardware.
+- Confirm frost stays visible until both Standard/PRO and rear/front destination
+  previews are interactable.
 - Expand to other Apple devices before making product-wide support claims.

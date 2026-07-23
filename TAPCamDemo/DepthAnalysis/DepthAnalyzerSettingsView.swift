@@ -45,6 +45,8 @@ struct DepthAnalyzerSettingsView: View {
     private var photoQualityRawValue = CameraPhotoQualityPreference.defaultValue.rawValue
     @AppStorage(CameraFlashControlMode.startupPolicyKey)
     private var flashStartupPolicyRawValue = CameraFlashControlMode.defaultStartupPolicy.rawValue
+    @AppStorage(CameraPhotographerModePreferences.startupPolicyKey)
+    private var photographerModeStartupPolicyRawValue = CameraPhotographerModePreferences.defaultStartupPolicy.rawValue
     @AppStorage(CameraGuideOverlayPreference.storageKey)
     private var guideOverlayRawValue = CameraGuideOverlayPreference.defaultValue.rawValue
     @AppStorage(CameraViewfinderHighlightPreference.storageKey)
@@ -56,10 +58,6 @@ struct DepthAnalyzerSettingsView: View {
     #if DEBUG
     @AppStorage(CameraFocusMagnifierPreference.storageKey)
     private var focusMagnifierRawValue = CameraFocusMagnifierPreference.defaultValue.rawValue
-    #if TAP_ENABLE_PRO_CAMERA_CONTROLS
-    @AppStorage(CameraManualFocusTapAssistPreferences.isEnabledKey)
-    private var isManualFocusTapAssistEnabled = CameraManualFocusTapAssistPreferences.defaultIsEnabled
-    #endif
     @AppStorage(CameraLiDARFocusAssistPreferences.isEnabledKey)
     private var isLiDARFocusAssistEnabled = CameraLiDARFocusAssistPreferences.defaultIsEnabled
     #endif
@@ -153,6 +151,17 @@ struct DepthAnalyzerSettingsView: View {
                     Text(policy.title).tag(policy.rawValue)
                 }
             }
+
+            Picker("Photographer Mode Startup", selection: $photographerModeStartupPolicyRawValue) {
+                ForEach(CameraViewfinderControlDefaultPolicy.allCases) { policy in
+                    Text(policy.title).tag(policy.rawValue)
+                }
+            }
+
+            Text("Photographer Mode requires a rear LiDAR camera. Unsupported devices fall back to Standard mode at runtime.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -345,12 +354,6 @@ struct DepthAnalyzerSettingsView: View {
             }
             .listRowBackground(Self.debugOnlySettingsBackground)
 
-            #if TAP_ENABLE_PRO_CAMERA_CONTROLS
-            Toggle(isOn: $isManualFocusTapAssistEnabled) {
-                Label("Manual Focus Tap Assist", systemImage: "scope")
-            }
-            .listRowBackground(Self.debugOnlySettingsBackground)
-            #endif
         }
     }
 

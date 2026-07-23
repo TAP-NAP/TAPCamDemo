@@ -5,27 +5,118 @@
 
 import SwiftUI
 
+nonisolated enum CameraProModeChromeState: Equatable, Sendable {
+    case unavailable
+    case standard
+    case transitioning
+    case active
+
+    var isVisible: Bool {
+        self != .unavailable
+    }
+
+    var isInteractive: Bool {
+        self == .standard || self == .active
+    }
+
+    var isTransitioning: Bool {
+        self == .transitioning
+    }
+
+    var isActive: Bool {
+        self == .active
+    }
+
+    var accessibilityLabel: String {
+        switch self {
+        case .unavailable:
+            "Pro mode unavailable"
+        case .standard:
+            "Turn on Pro mode"
+        case .transitioning:
+            "Switching Pro mode"
+        case .active:
+            "Turn off Pro mode"
+        }
+    }
+
+    var accessibilityValue: String {
+        switch self {
+        case .unavailable:
+            "Unavailable"
+        case .standard:
+            "Off"
+        case .transitioning:
+            "Switching"
+        case .active:
+            "On"
+        }
+    }
+}
+
 struct CameraViewfinderChromeState: Equatable {
     let flashMode: CameraFlashControlMode
     let isFlashAvailable: Bool
     let isLivePhotoAvailable: Bool
     let isLivePhotoEnabled: Bool
-    #if !TAP_ENABLE_PRO_CAMERA_CONTROLS
+    let proModeState: CameraProModeChromeState
     let basicEVState: CameraBasicEVControlState
-    #endif
+    let shouldShowBasicEV: Bool
     let contentRotation: Angle
+
+    init(
+        flashMode: CameraFlashControlMode,
+        isFlashAvailable: Bool,
+        isLivePhotoAvailable: Bool,
+        isLivePhotoEnabled: Bool,
+        proModeState: CameraProModeChromeState = .unavailable,
+        basicEVState: CameraBasicEVControlState = CameraBasicEVControlState(
+            bias: 0,
+            isStripVisible: false
+        ),
+        shouldShowBasicEV: Bool = true,
+        contentRotation: Angle
+    ) {
+        self.flashMode = flashMode
+        self.isFlashAvailable = isFlashAvailable
+        self.isLivePhotoAvailable = isLivePhotoAvailable
+        self.isLivePhotoEnabled = isLivePhotoEnabled
+        self.proModeState = proModeState
+        self.basicEVState = basicEVState
+        self.shouldShowBasicEV = shouldShowBasicEV
+        self.contentRotation = contentRotation
+    }
 }
 
 struct CameraViewfinderChromeView: View {
     let state: CameraViewfinderChromeState
     let highlightColor: Color
     let topSafeAreaInset: CGFloat
-    #if !TAP_ENABLE_PRO_CAMERA_CONTROLS
     let onToggleBasicEV: () -> Void
-    #endif
     let onOpenSettings: () -> Void
     let onCycleFlash: () -> Void
     let onToggleLivePhoto: () -> Void
+    let onToggleProMode: () -> Void
+
+    init(
+        state: CameraViewfinderChromeState,
+        highlightColor: Color,
+        topSafeAreaInset: CGFloat,
+        onToggleBasicEV: @escaping () -> Void = {},
+        onOpenSettings: @escaping () -> Void,
+        onCycleFlash: @escaping () -> Void,
+        onToggleLivePhoto: @escaping () -> Void,
+        onToggleProMode: @escaping () -> Void = {}
+    ) {
+        self.state = state
+        self.highlightColor = highlightColor
+        self.topSafeAreaInset = topSafeAreaInset
+        self.onToggleBasicEV = onToggleBasicEV
+        self.onOpenSettings = onOpenSettings
+        self.onCycleFlash = onCycleFlash
+        self.onToggleLivePhoto = onToggleLivePhoto
+        self.onToggleProMode = onToggleProMode
+    }
 
     var body: some View {
         VStack(spacing: 10) {
@@ -45,14 +136,16 @@ struct CameraViewfinderChromeView: View {
 
     private var shoulderRow: some View {
         HStack(alignment: .center) {
-            #if !TAP_ENABLE_PRO_CAMERA_CONTROLS
             CameraBasicEVButton(
                 state: state.basicEVState,
                 highlightColor: highlightColor,
                 contentRotation: state.contentRotation,
                 onToggle: onToggleBasicEV
             )
-            #endif
+            .opacity(state.shouldShowBasicEV ? 1 : 0)
+            .allowsHitTesting(state.shouldShowBasicEV)
+            .accessibilityHidden(!state.shouldShowBasicEV)
+            .animation(.easeInOut(duration: 0.2), value: state.shouldShowBasicEV)
 
             Spacer(minLength: Metrics.dynamicIslandClearance)
 
@@ -83,7 +176,39 @@ struct CameraViewfinderChromeView: View {
                 .accessibilityHidden(!state.isLivePhotoAvailable)
                 .animation(.easeInOut(duration: 0.2), value: state.isLivePhotoAvailable)
             Spacer(minLength: 0)
+            proModeButton
         }
+    }
+
+    private var proModeButton: some View {
+        Button(action: onToggleProMode) {
+            CenterAnchoredChromeRotation(
+                rotation: state.contentRotation,
+                width: Metrics.viewfinderButtonSize,
+                height: Metrics.viewfinderButtonSize
+            ) {
+                if state.proModeState.isTransitioning {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(highlightColor)
+                } else {
+                    Text("PRO")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .tracking(0.6)
+                        .foregroundStyle(state.proModeState.isActive ? highlightColor : .white)
+                }
+            }
+            .background(.black.opacity(0.42), in: Circle())
+        }
+        .buttonStyle(.plain)
+        .opacity(state.proModeState.isVisible ? 1 : 0)
+        .allowsHitTesting(state.proModeState.isInteractive)
+        .accessibilityHidden(!state.proModeState.isVisible)
+        .accessibilityLabel(state.proModeState.accessibilityLabel)
+        .accessibilityValue(state.proModeState.accessibilityValue)
+        .accessibilityIdentifier("camera.chrome.proMode")
+        .help(state.proModeState.isActive ? "Leave Pro mode." : "Use Pro camera controls.")
+        .animation(.easeInOut(duration: 0.2), value: state.proModeState)
     }
 
     private var flashButton: some View {

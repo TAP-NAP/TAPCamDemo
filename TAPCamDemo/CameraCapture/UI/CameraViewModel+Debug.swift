@@ -170,6 +170,7 @@ extension CameraViewModel {
             return
         }
 
+        cancelManualFocusRuntime()
         configurationGeneration += 1
         let generation = configurationGeneration
         isDepthCaptureReady = false

@@ -6,7 +6,6 @@
 import Foundation
 import SwiftUI
 
-#if TAP_ENABLE_PRO_CAMERA_CONTROLS
 nonisolated struct CameraAdjustmentControlState: Equatable, Sendable {
     nonisolated struct ExposureRiskRanges: Equatable, Sendable {
         let iso: [ClosedRange<Double>]
@@ -694,4 +693,3 @@ nonisolated private func clamped(_ value: Double, in range: ClosedRange<Double>)
     }
     return min(max(value, range.lowerBound), range.upperBound)
 }
-#endif

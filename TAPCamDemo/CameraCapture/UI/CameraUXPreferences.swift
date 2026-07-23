@@ -161,11 +161,6 @@ nonisolated enum CameraFocusMagnifierPreference: String, CaseIterable, Identifia
     }
 }
 
-nonisolated enum CameraManualFocusTapAssistPreferences {
-    static let isEnabledKey = "CameraManualFocusTapAssistEnabled"
-    static let defaultIsEnabled = false
-}
-
 nonisolated enum CameraViewfinderControlDefaultPolicy: String, CaseIterable, Identifiable, Sendable {
     case defaultOff
     case defaultOn
@@ -189,6 +184,40 @@ nonisolated enum CameraViewfinderControlDefaultPolicy: String, CaseIterable, Ide
         fallback: CameraViewfinderControlDefaultPolicy
     ) -> CameraViewfinderControlDefaultPolicy {
         CameraViewfinderControlDefaultPolicy(rawValue: rawValue) ?? fallback
+    }
+}
+
+nonisolated enum CameraPhotographerModePreferences {
+    static let startupPolicyKey = "CameraPhotographerModeStartupPolicy"
+    static let defaultStartupPolicy = CameraViewfinderControlDefaultPolicy.defaultOff
+    static let lastPreferredEnabledKey = "CameraPhotographerModeLastPreferredEnabled"
+    static let defaultLastPreferredEnabled = false
+
+    static func resolvedStartupIsEnabled(
+        policyRawValue: String,
+        lastPreferredEnabled: Bool
+    ) -> Bool {
+        switch CameraViewfinderControlDefaultPolicy.resolved(
+            rawValue: policyRawValue,
+            fallback: defaultStartupPolicy
+        ) {
+        case .defaultOff:
+            return false
+        case .defaultOn:
+            return true
+        case .rememberLastState:
+            return lastPreferredEnabled
+        }
+    }
+
+    static func resolvedStartupIsEnabled(in userDefaults: UserDefaults = .standard) -> Bool {
+        let policyRawValue = userDefaults.string(forKey: startupPolicyKey) ?? defaultStartupPolicy.rawValue
+        let lastPreferredEnabled = userDefaults.object(forKey: lastPreferredEnabledKey) as? Bool
+            ?? defaultLastPreferredEnabled
+        return resolvedStartupIsEnabled(
+            policyRawValue: policyRawValue,
+            lastPreferredEnabled: lastPreferredEnabled
+        )
     }
 }
 

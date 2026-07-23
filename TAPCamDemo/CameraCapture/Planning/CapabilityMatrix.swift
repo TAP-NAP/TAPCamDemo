@@ -22,7 +22,10 @@ nonisolated struct CapabilityMatrix: @unchecked Sendable {
 
     var defaultRGBSource: CameraProfile? {
         rgbSources
-            .filter(\.isEnabled)
+            .filter {
+                $0.isEnabled
+                    && $0.device.deviceType != .builtInLiDARDepthCamera
+            }
             .max { lhs, rhs in
                 CameraCapabilityResolver.automaticPriority(for: lhs.device.deviceType) < CameraCapabilityResolver.automaticPriority(for: rhs.device.deviceType)
             }
@@ -33,6 +36,17 @@ nonisolated struct CapabilityMatrix: @unchecked Sendable {
             return defaultRGBSource
         }
         return rgbSources.first(where: { $0.id == id })
+    }
+
+    /// Resolves a source for the Standard product path. A stale explicit ID
+    /// left by a failed PRO transition must never make LiDAR look like a valid
+    /// Standard RGB selection.
+    func standardRGBSource(id: String?) -> CameraProfile? {
+        guard let source = rgbSource(id: id),
+              source.device.deviceType != .builtInLiDARDepthCamera else {
+            return defaultRGBSource
+        }
+        return source
     }
 
     func depthProfiles(
@@ -65,17 +79,69 @@ nonisolated struct CapabilityMatrix: @unchecked Sendable {
         .sorted { $0.fixedOrder < $1.fixedOrder }
     }
 
-    func bestCompatibleDepthProfile(for rgbSource: CameraProfile) -> DepthProfile? {
-        depthProfiles(for: rgbSource)
-            .first(where: \.isSelectable)
-    }
-
-    func bestCompatibleDepthProfile(for rgbSource: CameraProfile, preferredZoomFactor: Double) -> DepthProfile? {
+    /// Depth profiles available to the Standard product path. LiDAR is
+    /// intentionally reserved for Photographer mode even when AVFoundation can
+    /// pair it with a Standard RGB source.
+    func standardDepthProfiles(
+        for rgbSource: CameraProfile,
+        preferredZoomFactor: Double? = nil
+    ) -> [DepthProfile] {
         depthProfiles(
             for: rgbSource,
             preferredZoomFactor: preferredZoomFactor
         )
+        .filter { $0.kind != .lidarDepth }
+    }
+
+    func bestCompatibleDepthProfile(for rgbSource: CameraProfile) -> DepthProfile? {
+        standardDepthProfiles(for: rgbSource)
+            .first(where: \.isSelectable)
+    }
+
+    func bestCompatibleDepthProfile(for rgbSource: CameraProfile, preferredZoomFactor: Double) -> DepthProfile? {
+        standardDepthProfiles(
+            for: rgbSource,
+            preferredZoomFactor: preferredZoomFactor
+        )
         .first(where: \.isSelectable)
+    }
+
+    /// Release eligibility for the LiDAR-only photographer workflow.
+    ///
+    /// This deliberately resolves the explicit `builtInLiDARDepthCamera`
+    /// candidate instead of reusing the automatic 24mm FOV option, which may
+    /// point at Triple or Dual Wide on the same phone.
+    var photographerModeAvailability: PhotographerModeAvailability {
+        let resolution = photographerModeResolution()
+        return PhotographerModeAvailability.resolve(resolution.facts)
+    }
+
+    /// Builds the fixed 24mm/1x LiDAR plan used by Photographer mode.
+    /// Returning nil means the complete Release eligibility contract failed;
+    /// callers must keep or restore a standard camera path.
+    func photographerModeCapturePlan(
+        cropRectNormalized: CropRectNormalized = .fullFrame
+    ) -> CaptureSourcePlan? {
+        let resolution = photographerModeResolution()
+        guard PhotographerModeAvailability.resolve(resolution.facts).isAvailable,
+              let rgbSource = resolution.rgbSource,
+              let depthProfile = resolution.depthProfile else {
+            return nil
+        }
+
+        let plan = CaptureSourcePlan.make(
+            rgbSource: rgbSource,
+            depthSource: depthProfile,
+            selectionMode: .manual,
+            selectedZoomID: nil,
+            selectedZoomFactor: 1.0,
+            cropRectNormalized: cropRectNormalized
+        )
+        guard plan.canCapturePhotoDepth,
+              plan.zoom?.matchesRawVideoZoomFactor(1.0) == true else {
+            return nil
+        }
+        return plan
     }
 
     func debugDepthDeviceOptions() -> [DebugDepthDeviceOption] {
@@ -124,7 +190,8 @@ nonisolated struct CapabilityMatrix: @unchecked Sendable {
              entered through the dedicated camera-switch button so the selector
              does not mix "front camera" with rear 35mm-equivalent focal slots.
              */
-            guard rgbSource.device.position == .back else {
+            guard rgbSource.device.position == .back,
+                  rgbSource.device.deviceType != .builtInLiDARDepthCamera else {
                 continue
             }
 
@@ -251,5 +318,91 @@ nonisolated struct CapabilityMatrix: @unchecked Sendable {
         case .unsupportedFormat:
             return "No depth-capable format"
         }
+    }
+
+    private func photographerModeResolution() -> (
+        facts: PhotographerModeCapabilityFacts,
+        rgbSource: CameraProfile?,
+        depthProfile: DepthProfile?
+    ) {
+        guard let candidate = depthCandidates.first(where: { $0.kind == .lidarDepth }) else {
+            return (
+                unavailablePhotographerModeFacts(),
+                nil,
+                nil
+            )
+        }
+
+        let device = candidate.device
+        let isRearLiDARDevice = device.deviceType == .builtInLiDARDepthCamera
+            && device.position == .back
+        let formatSelection = CameraCapabilityResolver.bestDepthFormatSelection(
+            for: device,
+            preferredZoomFactor: 1.0,
+            requiresPreferredZoomSupport: true
+        )
+        let rgbSource = rgbSources.first(where: { $0.id == device.uniqueID })
+            ?? CameraCapabilityResolver.cameraProfile(
+                for: device,
+                depthCandidates: depthCandidates
+            )
+        let depthProfile = formatSelection.map { selection in
+            DepthProfile(
+                id: DepthProfileKind.lidarDepth.id,
+                kind: .lidarDepth,
+                displayName: DepthProfileKind.lidarDepth.displayName,
+                iconName: DepthProfileKind.lidarDepth.iconName,
+                fixedOrder: DepthProfileKind.lidarDepth.fixedOrder,
+                availability: .available,
+                compatibility: .compatible,
+                disabledReason: nil,
+                resolvedDevice: device,
+                formatSelection: selection
+            )
+        }
+        let plan = depthProfile.map { profile in
+            CaptureSourcePlan.make(
+                rgbSource: rgbSource,
+                depthSource: profile,
+                selectionMode: .manual,
+                selectedZoomID: nil,
+                selectedZoomFactor: 1.0,
+                cropRectNormalized: .fullFrame
+            )
+        }
+        let controlCapabilities = formatSelection.map { selection in
+            CameraControlCapabilitySnapshot.make(
+                device: device,
+                activeFormat: selection.videoFormat
+            )
+        }
+
+        return (
+            PhotographerModeCapabilityFacts(
+                isRearLiDARDevice: isRearLiDARDevice,
+                hasOneXDepthFormat: formatSelection != nil,
+                supportsPhotoDepthDelivery: plan?.canCapturePhotoDepth == true,
+                supportsCustomExposure: controlCapabilities?.exposure.supportsCustomExposure == true,
+                hasAdjustableISORange: controlCapabilities?.exposure.isoRange.isAdjustable == true,
+                hasAdjustableShutterRange: controlCapabilities?.exposure.shutterDurationRangeSeconds.isAdjustable == true,
+                supportsLockedFocus: controlCapabilities?.focus.supportsLockedFocus == true,
+                supportsCustomLensPosition: controlCapabilities?.focus.supportsCustomLensPosition == true
+            ),
+            rgbSource,
+            depthProfile
+        )
+    }
+
+    private func unavailablePhotographerModeFacts() -> PhotographerModeCapabilityFacts {
+        PhotographerModeCapabilityFacts(
+            isRearLiDARDevice: false,
+            hasOneXDepthFormat: false,
+            supportsPhotoDepthDelivery: false,
+            supportsCustomExposure: false,
+            hasAdjustableISORange: false,
+            hasAdjustableShutterRange: false,
+            supportsLockedFocus: false,
+            supportsCustomLensPosition: false
+        )
     }
 }

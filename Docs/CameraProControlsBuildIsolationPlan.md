@@ -1,190 +1,224 @@
-# Camera Pro Controls Build Isolation Plan
+# Photographer Mode Runtime Product Plan
 
-This document records the build-boundary plan for Basic EV and experimental
-professional camera controls.
+This document replaces the former build-isolation plan. Photographer Mode is a
+Release product surface selected at runtime. Basic EV and professional camera
+controls are both compiled; the active camera path and capability result decide
+which surface the user can enter.
 
-The goal is not to hide unfinished controls at runtime. The goal is to keep the
-ordinary product build lightweight by not compiling professional camera-control
-state machines, UI orchestration, readback, or debug surfaces unless a dedicated
-experimental compilation condition is enabled.
+The existing filename is retained so older documentation links continue to
+resolve.
 
-## Compilation Modes
+## Product Contract
 
-| Build mode | Compilation condition | Compiled camera-control surface |
-| --- | --- | --- |
-| Ordinary product path | `TAP_ENABLE_PRO_CAMERA_CONTROLS` is not defined | Basic EV only. No Pro Controls UI or professional exposure/focus state machines. |
-| Pro camera controls experiment | `DEBUG && TAP_ENABLE_PRO_CAMERA_CONTROLS` | Pro Controls module. Basic EV entry is not compiled. |
-| Invalid product build | `!DEBUG && TAP_ENABLE_PRO_CAMERA_CONTROLS` | Build must fail. |
+| Runtime mode | Camera path | Visible controls | Lens selector |
+| --- | --- | --- | --- |
+| Standard | Existing non-LiDAR path | Existing camera UI and Basic EV | Preserved |
+| Photographer / PRO | Eligible rear LiDAR depth camera at 24mm / 1x | `EV`, `ISO`, `S`, `AF/MF`, `ƒ` | Hidden |
+| Front camera | Existing front path with automatic/tap focus | Standard front-camera UI | Existing behavior |
 
-There is no runtime `Pro Controls` toggle in Settings. The choice is a compile
-time boundary, not a user setting and not a hidden Debug setting.
+The boundaries are strict:
 
-## Required Build Guard
+- Standard mode never opts into LiDAR merely because the device has a LiDAR
+  sensor. It keeps the original session, Basic EV, and lens/FOV selector.
+- Photographer Mode is the only product path that selects the rear LiDAR
+  capture device for professional controls.
+- Photographer Mode v1 is photo-only.
+- Photographer Mode uses one fixed 24mm / 1x capture path. It therefore removes
+  the lens selector instead of presenting controls that cannot change the active
+  LiDAR source safely.
+- The professional control group is all-or-nothing. The mode is eligible only
+  when the selected rear LiDAR path preserves depth and supports custom ISO,
+  custom shutter duration, and manual lens-position writes.
+- Front-camera selection never exposes Photographer Mode or manual focus.
 
-Add one small always-compiled guard to the main app target:
+## Entry and Chrome
 
-```swift
-#if !DEBUG && TAP_ENABLE_PRO_CAMERA_CONTROLS
-#error("TAP_ENABLE_PRO_CAMERA_CONTROLS must not be enabled in Release builds.")
-#endif
+The top toolbar order is:
+
+```text
+[Flash] [Live Photo] Spacer [PRO]
 ```
 
-The guard must live outside the Pro Controls module. If it lives inside files
-that are themselves removed from the target or hidden behind Pro-only `#if`
-blocks, the protection can be bypassed accidentally.
+- `PRO` is the rightmost control on the same row as Flash and Live Photo.
+- The button is hidden when the current device has no eligible rear LiDAR path
+  or while the front camera is the active presentation.
+- Standard uses a neutral treatment; active PRO uses the selected treatment.
+- During activation or deactivation the button stays in place and shows
+  progress. Repeated transition requests are ignored.
+- A failed transition returns to a usable mode and may expose concise,
+  public-safe failure feedback; it must not leave the button visually active
+  against a standard session.
 
-## Ordinary Product Path: Basic EV
+When PRO becomes active:
 
-When `TAP_ENABLE_PRO_CAMERA_CONTROLS` is not defined, the app compiles a small
-Basic EV module.
+- Hide Basic EV and close any open Basic EV adjustment strip.
+- Hide the lens selector.
+- Show the lower toolbar in this fixed order: `EV`, `ISO`, `S`, `AF/MF`, `ƒ`.
+- Keep `ƒ` read-only because the physical aperture is not user-adjustable.
 
-Basic EV owns:
+When PRO becomes inactive, restore the original Basic EV, lens selector, and
+standard camera surface.
 
-- A persistent Face ID / Dynamic Island left-shoulder EV entry.
-- A compact current-value display on that entry.
-- The active visual state when the EV strip is open.
-- The same `mode selector slot` replacement behavior as the current EV strip.
-- EV value range, step, default, reset-on-launch policy, and persistence.
-- A narrow Runtime write path that only writes exposure target bias.
+## Runtime State Machine
 
-Basic EV does not:
+Photographer Mode is not represented by one Boolean because changing the active
+camera path requires asynchronous session reconfiguration.
 
-- Read, calculate, or write ISO.
-- Read, calculate, or write shutter duration.
-- Enter custom exposure.
-- Change focus mode.
-- Compile `CameraExposureControlState`.
-- Compile Meter, risk-zone, pending-meter-sample, ISO/S priority, or M/M logic.
-- Compile Pro readback or Pro debug overlay lines.
-- Write App Intents, TAP manifest, Photos metadata, or pending-record schema.
+```mermaid
+stateDiagram-v2
+    [*] --> unavailable: no eligible rear LiDAR path
+    [*] --> standard: eligible and disabled
+    standard --> activating: user or startup policy requests PRO
+    activating --> active: LiDAR session is ready
+    activating --> failed: configuration fails
+    active --> deactivating: user requests Standard
+    deactivating --> standard: standard session is ready
+    deactivating --> failed: configuration fails
+    failed --> standard: recover standard session
+    failed --> activating: explicit retry
+```
 
-UI behavior:
+Canonical states:
 
-- The lower toolbar EV button is not present in the ordinary product path.
-- The Face ID left-shoulder EV entry is always visible while the camera chrome is
-  visible.
-- The left-shoulder EV entry follows the Apple Camera-style lightweight text
-  treatment: one compact line for `EV` plus the current value, no visible
-  background, no border, no capsule/card/chip shape, no shadow/material, and no
-  pressed-state highlight. The hit region may remain larger than the visible
-  text through a fixed frame or transparent content shape.
-- Non-zero EV is communicated by the compact value itself. Any future emphasis
-  must stay text-only, such as a subdued tint or weight change.
-- The open-strip active state may use text tint only; it must not add a
-  background, outline, or separate selection pill.
-- Tapping the entry opens the Basic EV strip in the `mode selector slot`.
-- Tapping the entry again closes the strip and restores the `mode selector bar`.
-- Shutter, Flash, Live Photo, and preview-only zoom do not automatically close
-  the Basic EV strip.
-- Opening Settings, leaving the camera, or lifecycle teardown closes the strip.
-- Closing the strip does not reset EV; the value remains active until the user
-  changes it or the launch reset policy applies.
+- `unavailable`: no eligible rear LiDAR professional path.
+- `standard`: standard camera session is ready.
+- `activating`: switching from standard to the rear LiDAR session.
+- `active`: rear LiDAR session and all professional controls are ready.
+- `deactivating`: restoring the standard session.
+- `failed`: the requested transition failed; recovery must converge on a usable
+  standard session before accepting another request.
 
-## Pro Camera Controls Path
+UI must derive button selection, control availability, shutter gating, lens
+selector visibility, and transition progress from this state machine. It must
+not infer readiness from the user's requested preference.
 
-When `DEBUG && TAP_ENABLE_PRO_CAMERA_CONTROLS` is defined, the Basic EV entry is
-not compiled. The Pro Controls module owns its own exposure and focus control
-surface.
+## Frosted Transition Contract
 
-The Pro module may compile:
+Session reconfiguration must never expose a black, half-configured, or stale
+interactive viewfinder.
 
-- Lower toolbar EV/ISO/S/AFMF/aperture entries.
-- Pro EV/Meter UI.
-- `CameraExposureControlState`.
-- ISO priority, shutter priority, and manual exposure state machines.
-- Meter baseline, pending meter sample, risk-zone, and readback debug state.
-- MF lens-position strip and focus-only tap assist orchestration.
+For Standard to PRO and PRO to Standard:
 
-The Pro module remains Debug-only experimental work. It must not enter Release
-builds.
+1. Pause preview-layer frame flow so the current image remains beneath the
+   frosted treatment.
+2. Cover it with a full-viewfinder frosted-glass treatment.
+3. Disable shutter, focus gestures, lens controls, and professional adjustment
+   writes.
+4. Reconfigure the session asynchronously.
+5. Re-enable preview-layer frame flow and wait for `isPreviewing` to complete a
+   false-to-true transition. Remove the frost only after the destination camera
+   reports an interactable preview and its capability snapshot is current.
 
-## Allowed Shared Code
+If both the requested transition and its original-path recovery fail, keep the
+preview paused beneath the frost until the queued Standard fallback becomes
+interactive. Entering `failed/unconfigured` must not expose an unconfigured
+viewfinder. If the queued fallback also fails, expose a `Retry` action inside
+the frost so Standard recovery remains possible without restarting the app.
 
-The ordinary Basic EV path and the Pro Controls path may share small primitives
-only when those primitives do not depend on Pro business state.
+The same transition contract applies when moving between active rear PRO and
+the front camera in either direction.
 
-Allowed shared code:
+## Front Camera Suspension
 
-- Ticked adjustment strip UI primitive.
-- Value cursor and tick rendering.
-- EV constants such as minimum, maximum, step, and default.
-- Small value-range limiting helpers.
-- Small display-format helpers.
-- Minimal AVFoundation exposure-bias writer, if it stays unaware of ISO, shutter,
-  focus, Meter, readback, and Pro state machines.
+Choosing the front camera while PRO is active does not mean the user turned PRO
+off. It temporarily suspends the rear Photographer Mode intent:
 
-Not allowed as shared dependencies for Basic EV:
+1. Record `suspendedRearMode = pro`.
+2. Frost the current rear frame.
+3. Configure the standard front session with automatic/tap focus only.
+4. Hide the PRO button and professional toolbar.
+5. When the user returns to rear, frost again and restore the eligible LiDAR
+   PRO session.
 
-- `CameraExposureControlState`.
-- `CameraAdjustmentControlState` while it includes ISO/S/focus/aperture.
-- Pro lower-toolbar control enums.
-- Meter, risk-zone, pending-meter-sample, readback, or A/A-M/A-A/M-M/M models.
-- Any module whose change for Basic EV would affect Pro Controls behavior or
-  vice versa.
+If the rear path is no longer eligible when returning, recover to Standard and
+show a concise availability message. This suspended intent is transient camera
+navigation state and is separate from the persisted startup preference.
 
-## Implementation Plan
+## Startup Preference
 
-1. Add the Release fail-build guard for `TAP_ENABLE_PRO_CAMERA_CONTROLS`.
-2. Extract the ticked adjustment strip into a business-agnostic UI primitive if
-   the current implementation still references Pro control state.
-3. Create the Basic EV module with its own state, persistence, launch reset, UI
-   entry, strip orchestration, and exposure-bias write path.
-4. Move Pro-only UI, state machines, readback, and debug lines behind
-   `#if TAP_ENABLE_PRO_CAMERA_CONTROLS`.
-5. Ensure the Basic EV module is excluded when
-   `TAP_ENABLE_PRO_CAMERA_CONTROLS` is defined.
-6. Add source-inspection tests that protect the build boundary.
-7. Add focused UI-state tests for Basic EV strip open/close, persistence, reset,
-   compact value display, and lifecycle clearing.
-8. Validate real-device EV direction and responsiveness after code changes.
+Settings exposes `Photographer Mode Startup` with the same policy shape used by
+Flash and Live Photo:
 
-## Implementation Status
+- `Default Off`
+- `Default On`
+- `Remember Last State`
 
-The first build-boundary implementation is in place:
+Rules:
 
-- `CameraProControlsBuildGuard.swift` owns the always-compiled Release fail-build
-  guard.
-- `CameraBasicEVControlView.swift` owns the ordinary-product Basic EV state,
-  Face ID left-shoulder entry, compact value, and EV strip.
-- `CameraTickedSliderRow.swift` is the shared business-agnostic ticked strip
-  primitive.
-- `CameraView`, `CameraCaptureControlsView`, and `CameraViewfinderChromeView`
-  compile either the ordinary Basic EV surface or the Pro Controls surface.
-- `CameraExposureControlState`, `CameraManualControlReadbackSnapshot`, Pro
-  toolbar UI, Pro readback, and Pro debug manual-control lines are behind
-  `TAP_ENABLE_PRO_CAMERA_CONTROLS`.
-- The ordinary Basic EV write path calls the Runtime exposure-target-bias writer
-  directly and does not create a professional exposure state machine result.
+- Default policy is `Default Off`.
+- `Default On` and remembered-on are requests, not proof of availability.
+- On camera startup, resolve the preference, discover capabilities, and enter
+  PRO only if the eligible rear LiDAR path exists.
+- If the requested startup mode is unavailable or configuration fails, start in
+  Standard without blocking camera use.
+- `Remember Last State` stores explicit successful user preference changes. A
+  temporary front-camera suspension does not overwrite it.
 
-Validation recorded for this implementation:
+## Runtime and State Ownership
 
-- Ordinary build: `xcodebuild build-for-testing -project TAPCamDemo.xcodeproj
-  -scheme TAPCamDemo -destination generic/platform=iOS\ Simulator
-  -derivedDataPath /private/tmp/TAPCamDemoDerivedData`
-- Ordinary focused tests: `xcodebuild test-without-building -project
-  TAPCamDemo.xcodeproj -scheme TAPCamDemo -destination
-  id=742A3184-E1C7-44FC-99E0-0C8DFE807698 -derivedDataPath
-  /private/tmp/TAPCamDemoDerivedData
-  -only-testing:TAPCamDemoTests/TAPCameraCapturePresentationTests`
-- Pro build: `xcodebuild build-for-testing -project TAPCamDemo.xcodeproj
-  -scheme TAPCamDemo -destination generic/platform=iOS\ Simulator
-  -derivedDataPath /private/tmp/TAPCamDemoProDerivedData
-  SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG\ TAP_ENABLE_PRO_CAMERA_CONTROLS`
-- Pro focused tests: `xcodebuild test-without-building -project
-  TAPCamDemo.xcodeproj -scheme TAPCamDemo -destination
-  id=742A3184-E1C7-44FC-99E0-0C8DFE807698 -derivedDataPath
-  /private/tmp/TAPCamDemoProDerivedData
-  -only-testing:TAPCamDemoTests/TAPCameraExposureControlStateTests`
+- Runtime owns camera discovery, eligible-device selection, active format,
+  depth configuration, session mutation, and device writes.
+- The view model owns the Photographer Mode state machine, suspended rear mode,
+  transition generation, cancellation/staleness checks, and public-safe status.
+- SwiftUI chrome receives presentation values and closures. It does not select
+  camera devices or treat a requested state as session readiness.
+- Basic EV keeps its narrow exposure-target-bias-only behavior in Standard.
+- Professional exposure/focus state is used only while the state is `active`.
+- Leaving `active`, switching cameras, changing capture mode, or tearing down the
+  view clears open professional strips and rejects stale writes.
+
+## Photo-Only v1
+
+Photographer Mode v1 applies only to Photo capture. Video remains on the
+standard camera path. The UI must not silently keep PRO selected while switching
+to Video; it should either prevent the switch with concise feedback or complete
+a frosted transition back to Standard before entering Video.
+
+This phase does not promise:
+
+- front-camera manual focus;
+- multiple LiDAR focal lengths;
+- 2x/3x depth-safe hardware zoom;
+- true aperture control;
+- automatic fusion between LiDAR control and another RGB camera path.
 
 ## Acceptance Criteria
 
-- Ordinary product build does not compile Pro Controls UI.
-- Ordinary product build does not compile professional exposure/focus state
-  machines.
-- Ordinary product build still supports Basic EV.
-- Basic EV writes exposure target bias only.
-- Basic EV never reads or writes ISO or shutter duration.
-- Pro Controls build does not compile the Basic EV entry.
-- Release build fails if `TAP_ENABLE_PRO_CAMERA_CONTROLS` is defined.
-- No App Intents, manifest schema, Photos metadata, or pending-record schema
-  changes are introduced for Basic EV.
+- Standard mode never selects LiDAR and retains Basic EV plus the original lens
+  selector.
+- Eligible rear devices expose a rightmost `PRO` button on the Flash/Live Photo
+  row.
+- Ineligible devices and the front camera do not expose the PRO entry.
+- PRO activates only after the rear LiDAR 24mm / 1x session and professional
+  capability snapshot are ready.
+- Active PRO shows `EV`, `ISO`, `S`, `AF/MF`, and `ƒ`, and hides the lens
+  selector.
+- Both PRO toggling directions and both rear-PRO/front switching directions use
+  the frosted transition and disable interaction until ready.
+- Front-camera navigation suspends and restores rear PRO intent without
+  changing `Remember Last State`.
+- Startup policy supports Default Off, Default On, and Remember Last State with
+  safe Standard fallback.
+- Release and Debug builds share the same product eligibility boundary;
+  Debug-only diagnostics may remain separately gated.
+- Focused tests cover state transitions, stale async completions, capability
+  gating, startup-policy resolution, suspended rear intent, chrome visibility,
+  and Standard fallback.
+
+## Validation
+
+Automated validation should include:
+
+- pure tests for the runtime state machine and startup preference resolver;
+- source-boundary tests proving Standard does not request a LiDAR device;
+- source/presentation tests for top-toolbar order and PRO visibility;
+- tests proving the lens selector and Basic EV are hidden only in active PRO;
+- tests proving interaction remains locked throughout activation,
+  deactivation, and rear/front restoration;
+- ordinary Release and Debug simulator build-for-testing runs;
+- attended real-device validation on at least one eligible Pro model and one
+  non-LiDAR model.
+
+Simulator tests establish deterministic state and UI composition only. They do
+not prove physical LiDAR depth, ISO, shutter, lens-position, preview continuity,
+or black-screen avoidance.

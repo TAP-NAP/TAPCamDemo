@@ -705,7 +705,8 @@ struct TAPCaptureOutputProfileTests {
 
         #expect(resultModelSource.contains("let resolvedOutput: ResolvedCaptureOutputProfile"))
         #expect(sessionControllerSource.contains("let resolvedOutput = try SingleCamPhotoSettingsFactory.resolvedOutput"))
-        #expect(sessionControllerSource.contains("Self.prewarmPhotoOutput(photoOutput, resolvedOutput: result.resolvedOutput)"))
+        #expect(!sessionControllerSource.contains("prewarmPhotoOutput"))
+        #expect(!sessionControllerSource.contains("setPreparedPhotoSettingsArray([settings]"))
         #expect(captureMethod.contains("let resolvedOutput = context.sessionConfiguration.resolvedOutput"))
         #expect(!captureMethod.contains("SingleCamPhotoSettingsFactory.resolvedOutput"))
         #expect(!captureMethod.contains("context.sessionConfiguration.outputProfile"))

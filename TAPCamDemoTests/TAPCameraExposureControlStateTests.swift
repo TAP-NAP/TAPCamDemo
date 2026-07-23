@@ -6,7 +6,6 @@
 import Testing
 @testable import TAPCamDemo
 
-#if TAP_ENABLE_PRO_CAMERA_CONTROLS
 struct TAPCameraExposureControlStateTests {
     @Test func isoPriorityComputesOnlyShutterFromMeterBaseline() throws {
         let capability = Self.capability()
@@ -174,4 +173,3 @@ struct TAPCameraExposureControlStateTests {
         )
     }
 }
-#endif

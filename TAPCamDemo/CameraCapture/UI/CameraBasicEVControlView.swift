@@ -3,7 +3,6 @@
 //  TAPCamDemo
 //
 
-#if !TAP_ENABLE_PRO_CAMERA_CONTROLS
 import Foundation
 import SwiftUI
 
@@ -109,4 +108,3 @@ struct CameraBasicEVAdjustmentStrip: View {
         .accessibilityIdentifier("camera.basicEV.adjustmentStrip")
     }
 }
-#endif
