@@ -80,16 +80,22 @@ struct CameraCaptureControlsView: View {
 
     var body: some View {
         VStack(spacing: 8) {
+            professionalToolbarSlot
             bottomControls
-            if state.isPhotographerModeActive {
-                lowerToolbar
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
-            }
             modeSelectorSlot
         }
         .padding(.bottom, 4)
         .disabled(state.isInteractionLocked)
-        .animation(.easeInOut(duration: 0.2), value: state.isPhotographerModeActive)
+    }
+
+    private var professionalToolbarSlot: some View {
+        lowerToolbar
+            .frame(maxWidth: .infinity)
+            .frame(height: Metrics.professionalToolbarSlotHeight)
+            .opacity(state.isPhotographerModeActive ? 1 : 0)
+            .allowsHitTesting(state.isPhotographerModeActive)
+            .accessibilityHidden(!state.isPhotographerModeActive)
+            .animation(.easeInOut(duration: 0.2), value: state.isPhotographerModeActive)
     }
 
     private var bottomControls: some View {
@@ -333,5 +339,9 @@ struct CameraCaptureControlsView: View {
                 }
             }
         }
+    }
+
+    private enum Metrics {
+        static let professionalToolbarSlotHeight: CGFloat = 38
     }
 }

@@ -44,6 +44,7 @@ struct TAPCameraCapturePresentationTests {
         #expect(harnessSource.contains("CameraCaptureControlsView("))
         #expect(harnessSource.contains("CameraAdjustmentControlState("))
         #expect(harnessSource.contains("camera.controlsHarness.status"))
+        #expect(harnessSource.contains("camera.controlsHarness.togglePro"))
         #expect(!harnessSource.contains("AVCaptureDevice"))
         #expect(!harnessSource.contains("CameraControlService"))
         #expect(uiTestSource.contains("TAPCAM_UI_TEST_CAMERA_CONTROLS"))
@@ -53,23 +54,30 @@ struct TAPCameraCapturePresentationTests {
         #expect(uiTestSource.contains(#"tapButton("camera.lowerToolbar.shutter""#))
         #expect(uiTestSource.contains(#"tapButton("camera.lowerToolbar.focus""#))
         #expect(uiTestSource.contains("camera.tickedAdjustmentStrip"))
+        #expect(uiTestSource.contains("assertFrame(shutter.frame, equals: proShutterFrame"))
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func cameraCaptureControlsKeepShutterRowAboveModeSelectorSlot() throws {
+    func cameraCaptureControlsReserveProfessionalToolbarAboveStableShutterRow() throws {
         let controlsSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/CameraCapture/UI/CameraCaptureControlsView.swift"
         )
         let bodyStart = try #require(controlsSource.range(of: "var body: some View"))
-        let bottomControlsDeclaration = try #require(controlsSource.range(of: "private var bottomControls"))
-        let bodySource = String(controlsSource[bodyStart.lowerBound..<bottomControlsDeclaration.lowerBound])
+        let toolbarSlotDeclaration = try #require(controlsSource.range(of: "private var professionalToolbarSlot"))
+        let bodySource = String(controlsSource[bodyStart.lowerBound..<toolbarSlotDeclaration.lowerBound])
+        let professionalToolbarSlotCall = try #require(bodySource.range(of: "professionalToolbarSlot"))
         let bottomControlsCall = try #require(bodySource.range(of: "bottomControls"))
-        let lowerToolbarCall = try #require(bodySource.range(of: "lowerToolbar"))
         let modeSelectorCall = try #require(bodySource.range(of: "modeSelectorSlot"))
 
-        #expect(bottomControlsCall.lowerBound < lowerToolbarCall.lowerBound)
-        #expect(lowerToolbarCall.lowerBound < modeSelectorCall.lowerBound)
+        #expect(professionalToolbarSlotCall.lowerBound < bottomControlsCall.lowerBound)
+        #expect(bottomControlsCall.lowerBound < modeSelectorCall.lowerBound)
         #expect(bodySource.contains(".padding(.bottom, 4)"))
+        #expect(controlsSource.contains("static let professionalToolbarSlotHeight: CGFloat = 38"))
+        #expect(controlsSource.contains(".frame(height: Metrics.professionalToolbarSlotHeight)"))
+        #expect(controlsSource.contains(".opacity(state.isPhotographerModeActive ? 1 : 0)"))
+        #expect(controlsSource.contains(".allowsHitTesting(state.isPhotographerModeActive)"))
+        #expect(controlsSource.contains(".accessibilityHidden(!state.isPhotographerModeActive)"))
+        #expect(!controlsSource.contains(".move(edge: .bottom)"))
     }
 
     @Test func captureLifecycleCoordinatorKeepsPendingSigningWarmupAndRetryPoliciesExplicit() {

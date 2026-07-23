@@ -13,6 +13,7 @@ struct CameraControlsUITestHarnessView: View {
     @State private var focusMode: CameraFocusControlMode = .auto
     @State private var exposureMode: CameraAdjustmentControlState.ExposureMode = .auto(globalBias: 0)
     @State private var draft = CameraAdjustmentControlState.defaultDraft(from: Self.capability)
+    @State private var isPhotographerModeActive = true
     @State private var status = "Ready"
 
     var body: some View {
@@ -25,6 +26,13 @@ struct CameraControlsUITestHarnessView: View {
                 .font(.caption.monospaced())
                 .accessibilityIdentifier("camera.controlsHarness.status")
 
+            Button("Toggle simulated PRO") {
+                isPhotographerModeActive.toggle()
+                activeAdjustmentControl = nil
+                status = isPhotographerModeActive ? "PRO active" : "Standard active"
+            }
+            .accessibilityIdentifier("camera.controlsHarness.togglePro")
+
             Spacer(minLength: 0)
 
             CameraCaptureControlsView(
@@ -34,7 +42,7 @@ struct CameraControlsUITestHarnessView: View {
                     selectedMode: selectedMode,
                     isRecordingMovie: false,
                     isPreparingMovie: false,
-                    isPhotographerModeActive: true,
+                    isPhotographerModeActive: isPhotographerModeActive,
                     isInteractionLocked: false,
                     adjustmentControlState: adjustmentState,
                     basicEVControlState: CameraBasicEVControlState(bias: 0, isStripVisible: false),

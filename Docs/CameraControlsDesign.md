@@ -9,7 +9,7 @@
 | `viewfinder top shoulder` | 取景器顶部 Face ID / Dynamic Island 两侧肩区 | 不放状态噪音。右肩放 `Settings`。 |
 | `Basic EV` | Standard 曝光补偿 | 不依赖专业控制状态机的轻量 EV 流程。入口在 Face ID / Dynamic Island 左侧，只写 exposure target bias。 |
 | `viewfinder top toolbar` | 肩区下方、取景器上方工具栏 | 放高频但不属于参数条的按钮，固定布局为 `Flash / Live Photo / Spacer / PRO`。它参与垂直布局，占用 viewfinder 上方空间，不覆盖预览画面。 |
-| `viewfinder lower toolbar` | 取景器下方参数工具栏 | 只在 Photographer Mode 已完成异步切换并进入 `active` 后显示 `EV / ISO / S / AF/MF / ƒ`。Standard 不显示。 |
+| `viewfinder lower toolbar` | 取景器下方、快门上方的参数工具栏 | 布局永久预留固定高度；只在 Photographer Mode 已完成异步切换并进入 `active` 后淡入 `EV / ISO / S / AF/MF / ƒ`。Standard 隐藏内容但不回收槽位。 |
 | `mode selector slot` | 拍摄模式选择占位区 | 默认承载 `mode selector bar`。控制条打开时被 `ticked adjustment strip` 临时替代。 |
 | `mode selector bar` | 拍摄模式选择条 | 默认显示 `PHOTO / VIDEO`。外层 bar、按钮 frame、按钮文字都不参与旋转。 |
 | `portrait adjustment centerline` | Portrait UI 的全局参数调节中线 | 所有横向参数条的中心刻度必须对齐整个屏幕 / 控件容器的水平中心线，不能被左标题或右数值挤偏。 |
@@ -113,12 +113,16 @@ Flash / Live Photo 之间。
 
 ## Lower Toolbar
 
-`viewfinder lower toolbar` 只在 Photographer Mode `active` 时出现。Standard 即使
-运行在有 LiDAR 的 Pro 机型上也不显示这组入口。
+`viewfinder lower toolbar` 的固定槽位在 Standard 与 Photographer Mode 中始终参与布局，
+避免模式切换改变取景器和快门位置。Standard 即使运行在有 LiDAR 的 Pro 机型上也隐藏
+这组入口并关闭命中测试；只有 Photographer Mode `active` 才在槽位内淡入控件。
 
-下方控制区从上到下固定为：快门行、`viewfinder lower toolbar`（仅 PRO active）、
-`mode selector slot`。快门行必须高于 `mode selector slot`，避免主要拍摄
-动作落在屏幕过低位置；底部留白属于整个控制栈，不属于快门行本身。
+下方控制区从上到下固定为：`viewfinder lower toolbar` 固定槽位、快门行、
+`mode selector slot`。槽位高度固定为 `38pt`，加上它与快门行之间的 `8pt` 间距，
+总共永久预留 `46pt`。PRO 切换只改变槽位内容的透明度、命中测试和 Accessibility，
+不插入或删除布局，也不使用边缘移动 transition。快门行必须高于
+`mode selector slot`，避免主要拍摄动作落在屏幕过低位置；底部留白属于整个控制栈，
+不属于快门行本身。
 
 PRO active 时从左到右：
 
