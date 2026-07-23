@@ -1098,7 +1098,7 @@ struct TAPCameraCapturePresentationTests {
         #expect(state.exposure.isoLabel(for: 400.4) == "400")
         #expect(state.exposure.shutterLabel(for: 1.0 / 120.0) == "1/120")
         #expect(state.focus.lensPositionLabel(for: 0.456) == "0.46")
-        #expect(state.focus.minimumFocusDistanceLabel == "min 125mm")
+        #expect(state.focus.lensPositionValue == "0.46")
     }
 
     @Test func cameraAdjustmentControlStateShowsMeterForCustomExposure() throws {
@@ -1136,7 +1136,7 @@ struct TAPCameraCapturePresentationTests {
 
         #expect(!state.exposure.isAvailable)
         #expect(!state.focus.isAvailable)
-        #expect(state.focus.minimumFocusDistanceLabel == nil)
+        #expect(state.focus.lensPositionValue == "0.50")
     }
 
     @Test func cameraAdjustmentControlStateCanDisableManualFocusDespiteCapabilitySupport() throws {

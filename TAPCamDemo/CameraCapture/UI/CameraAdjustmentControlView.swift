@@ -157,7 +157,6 @@ nonisolated struct CameraAdjustmentControlState: Equatable, Sendable {
         let mode: CameraFocusControlMode
         let lensPositionRange: ClosedRange<Double>
         let lensPosition: Double
-        let minimumFocusDistanceLabel: String?
 
         var title: String {
             mode.title
@@ -165,13 +164,6 @@ nonisolated struct CameraAdjustmentControlState: Equatable, Sendable {
 
         var lensPositionValue: String {
             lensPositionLabel(for: lensPosition)
-        }
-
-        var lensPositionDetail: String {
-            if let minimumFocusDistanceLabel {
-                return "\(lensPositionValue) · \(minimumFocusDistanceLabel)"
-            }
-            return lensPositionValue
         }
 
         nonisolated func clampedLensPosition(_ value: Double) -> Double {
@@ -222,10 +214,7 @@ nonisolated struct CameraAdjustmentControlState: Equatable, Sendable {
             isAvailable: allowsManualFocusControl && capability.focus.supportsManualLensPosition,
             mode: focusMode,
             lensPositionRange: focusRange,
-            lensPosition: clamped(draft.lensPosition, in: focusRange),
-            minimumFocusDistanceLabel: Self.minimumFocusDistanceLabel(
-                capability.focus.minimumFocusDistanceMillimeters
-            )
+            lensPosition: clamped(draft.lensPosition, in: focusRange)
         )
         aperture = Aperture(fixedValue: capability.aperture.fixedLensAperture)
         self.activeControl = activeControl
@@ -252,15 +241,6 @@ nonisolated struct CameraAdjustmentControlState: Equatable, Sendable {
         return minimum...(minimum + 0.000_001)
     }
 
-    private static func minimumFocusDistanceLabel(_ millimeters: Int?) -> String? {
-        guard let millimeters else {
-            return nil
-        }
-        if millimeters >= 1_000 {
-            return String(format: "min %.1fm", Double(millimeters) / 1_000.0)
-        }
-        return "min \(millimeters)mm"
-    }
 }
 
 nonisolated struct CameraAdjustmentControlDraft: Equatable, Sendable {
@@ -555,7 +535,7 @@ struct CameraTickedAdjustmentStrip: View {
     private var focusStrip: some View {
         CameraTickedSliderRow(
             title: "MF",
-            value: state.focus.lensPositionDetail,
+            value: state.focus.lensPositionValue,
             valueBinding: Binding(
                 get: { state.focus.lensPosition },
                 set: { onAdjustLensPosition(state.focus.clampedLensPosition($0)) }
