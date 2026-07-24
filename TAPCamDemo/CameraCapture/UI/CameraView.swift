@@ -73,6 +73,8 @@ struct CameraView: View {
     @State private var cameraPathTransitionReleaseTask: Task<Void, Never>?
     @State private var cameraPathPreviewWatchdogTask: Task<Void, Never>?
     @State private var pendingPhotographerModePreference: Bool?
+    @State private var settingsSessionReconfigurationPolicy =
+        CameraSettingsSessionReconfigurationPolicy()
     @AppStorage(CameraFeedbackPreferences.shutterHapticsEnabledKey)
     private var isShutterHapticsEnabled = CameraFeedbackPreferences.defaultShutterHapticsEnabled
     @AppStorage(CameraFeedbackPreferences.shutterSoundEnabledKey)
@@ -235,18 +237,14 @@ struct CameraView: View {
                     }
                 }
             } else {
-                refreshCaptureDataUsePolicyAfterSettingsDismissal()
+                applyPendingSettingsSessionReconfiguration()
             }
         }
         .onChange(of: outputFormatRawValue) { _, _ in
-            Task {
-                await viewModel.configureCurrentSelection()
-            }
+            captureSessionPreferenceDidChange()
         }
         .onChange(of: photoQualityRawValue) { _, _ in
-            Task {
-                await viewModel.configureCurrentSelection()
-            }
+            captureSessionPreferenceDidChange()
         }
     }
 
@@ -262,9 +260,7 @@ struct CameraView: View {
             applyPhotographerModeStartupPolicy(rawValue)
         }
         .onChange(of: usesMicrophoneData) { _, _ in
-            Task {
-                await viewModel.configureCurrentSelection()
-            }
+            captureSessionPreferenceDidChange()
         }
         .onChange(of: routeStore.isDepthAlbumPresented) { _, isPresented in
             if isPresented {
@@ -977,7 +973,27 @@ struct CameraView: View {
         lastPhotographerModePreferredEnabled = isEnabled
     }
 
-    private func refreshCaptureDataUsePolicyAfterSettingsDismissal() {
+    /// Visual preferences such as the viewfinder highlight color must never
+    /// rebuild the AVFoundation graph. Capture-format and microphone changes
+    /// are the only Settings values observed here; coalesce them while the
+    /// sheet is open so dismissal performs at most one session reconfiguration.
+    private func captureSessionPreferenceDidChange() {
+        guard settingsSessionReconfigurationPolicy.capturePreferenceDidChange(
+            isSettingsPresented: isShowingSettings
+        ) else {
+            return
+        }
+        reconfigureSessionForCapturePreferenceChange()
+    }
+
+    private func applyPendingSettingsSessionReconfiguration() {
+        guard settingsSessionReconfigurationPolicy.settingsDidDismiss() else {
+            return
+        }
+        reconfigureSessionForCapturePreferenceChange()
+    }
+
+    private func reconfigureSessionForCapturePreferenceChange() {
         Task { @MainActor in
             await viewModel.configureCurrentSelection()
             if selectedMode == .video {

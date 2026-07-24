@@ -10,6 +10,26 @@ import Testing
 @testable import TAPCamDemo
 
 struct TAPCameraCapturePresentationTests {
+    @Test func settingsSessionReconfigurationPolicyCoalescesCaptureChanges() {
+        var policy = CameraSettingsSessionReconfigurationPolicy()
+
+        let firstPresentedChangeReconfigures =
+            policy.capturePreferenceDidChange(isSettingsPresented: true)
+        let secondPresentedChangeReconfigures =
+            policy.capturePreferenceDidChange(isSettingsPresented: true)
+        #expect(!firstPresentedChangeReconfigures)
+        #expect(!secondPresentedChangeReconfigures)
+        #expect(policy.hasPendingReconfiguration)
+        let firstDismissalReconfigures = policy.settingsDidDismiss()
+        #expect(firstDismissalReconfigures)
+        #expect(!policy.hasPendingReconfiguration)
+        let secondDismissalReconfigures = policy.settingsDidDismiss()
+        let outsideSettingsChangeReconfigures =
+            policy.capturePreferenceDidChange(isSettingsPresented: false)
+        #expect(!secondDismissalReconfigures)
+        #expect(outsideSettingsChangeReconfigures)
+    }
+
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
     func cameraUISmokeTestAnchorsStayExplicit() throws {
         let appSource = try TAPCamDemoTestSourceInspection.source(relativePath: "TAPCamDemo/App/TAPCamDemoApp.swift")
@@ -1069,7 +1089,8 @@ struct TAPCameraCapturePresentationTests {
         #expect(cameraSource.contains("private var shouldCaptureLivePhotoAudio: Bool"))
         #expect(cameraSource.contains("AVCaptureDevice.authorizationStatus(for: .audio) == .authorized"))
         #expect(cameraSource.contains("livePhotoAudioInputConfigured == true"))
-        #expect(cameraSource.contains("refreshCaptureDataUsePolicyAfterSettingsDismissal"))
+        #expect(cameraSource.contains("captureSessionPreferenceDidChange"))
+        #expect(cameraSource.contains("applyPendingSettingsSessionReconfiguration"))
         #expect(cameraSource.contains("applyFlashStartupPolicy"))
         #expect(cameraSource.contains("applyLivePhotoStartupPolicy"))
         #expect(cameraSource.contains("persistRememberedViewfinderControlStateIfNeeded"))

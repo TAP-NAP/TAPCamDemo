@@ -127,6 +127,23 @@ struct TAPCameraProModeChromeTests {
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func settingsOnlyReconfigureTheCameraForCaptureSessionPreferences() throws {
+        let cameraSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraView.swift"
+        )
+
+        #expect(cameraSource.contains("CameraSettingsSessionReconfigurationPolicy()"))
+        #expect(cameraSource.contains(".onChange(of: outputFormatRawValue) { _, _ in\n            captureSessionPreferenceDidChange()"))
+        #expect(cameraSource.contains(".onChange(of: photoQualityRawValue) { _, _ in\n            captureSessionPreferenceDidChange()"))
+        #expect(cameraSource.contains(".onChange(of: usesMicrophoneData) { _, _ in\n            captureSessionPreferenceDidChange()"))
+        #expect(cameraSource.contains("settingsSessionReconfigurationPolicy.capturePreferenceDidChange("))
+        #expect(cameraSource.contains("settingsSessionReconfigurationPolicy.settingsDidDismiss()"))
+        #expect(cameraSource.contains("reconfigureSessionForCapturePreferenceChange()"))
+        #expect(!cameraSource.contains(".onChange(of: viewfinderHighlightRawValue)"))
+        #expect(!cameraSource.contains("refreshCaptureDataUsePolicyAfterSettingsDismissal"))
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
     func proManualFocusKeepsOnePreviewLayerAndLocksBeforeNumericMovement() throws {
         let previewStageSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/CameraCapture/UI/CameraPreviewStageView.swift"

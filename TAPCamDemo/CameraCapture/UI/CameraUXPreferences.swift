@@ -430,6 +430,30 @@ nonisolated enum CameraIdleTimerPolicy {
     }
 }
 
+/// Coalesces capture-session preference changes while Settings is presented.
+///
+/// Presentation-only preferences never enter this gate. Callers feed it only
+/// changes that alter the AVFoundation graph or capture output configuration.
+nonisolated struct CameraSettingsSessionReconfigurationPolicy: Equatable, Sendable {
+    private(set) var hasPendingReconfiguration = false
+
+    mutating func capturePreferenceDidChange(isSettingsPresented: Bool) -> Bool {
+        guard isSettingsPresented else {
+            return true
+        }
+        hasPendingReconfiguration = true
+        return false
+    }
+
+    mutating func settingsDidDismiss() -> Bool {
+        guard hasPendingReconfiguration else {
+            return false
+        }
+        hasPendingReconfiguration = false
+        return true
+    }
+}
+
 @MainActor
 enum CameraIdleTimerController {
     static func setCameraScreenIdleTimerDisabled(_ isDisabled: Bool) {
