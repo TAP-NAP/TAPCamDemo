@@ -30,6 +30,11 @@ nonisolated enum TAPDiagnostics {
             "code=\(nsError.code)"
         ]
 
+        if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError {
+            parts.append("underlyingDomain=\(underlying.domain)")
+            parts.append("underlyingCode=\(underlying.code)")
+        }
+
         if let streamDomain = firstUserInfoValue(for: "_kCFStreamErrorDomainKey", in: nsError) {
             parts.append("streamDomain=\(streamDomain)")
         }

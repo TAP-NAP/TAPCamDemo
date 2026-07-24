@@ -53,6 +53,8 @@ enum TAPDepthCaptureError: LocalizedError {
     case cameraControlTargetDeviceChanged
     case cameraControlTargetSurfaceChanged
     case cameraControlUnsupportedCommand
+    case cameraManualFocusAssistTimedOut
+    case cameraManualFocusLockTimedOut
     case videoRecordingAlreadyActive
     case videoRecordingNotActive
     case videoRecordingFailed(String)
@@ -141,6 +143,10 @@ enum TAPDepthCaptureError: LocalizedError {
             "The active camera controls changed before manual controls could be applied."
         case .cameraControlUnsupportedCommand:
             "The manual camera control request includes an unsupported command."
+        case .cameraManualFocusAssistTimedOut:
+            "The camera did not finish autofocus assist in time."
+        case .cameraManualFocusLockTimedOut:
+            "The camera did not confirm the manual focus change in time."
         case .videoRecordingAlreadyActive:
             "A TAP video recording is already active."
         case .videoRecordingNotActive:

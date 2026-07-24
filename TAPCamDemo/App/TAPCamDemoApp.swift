@@ -48,16 +48,12 @@ struct TAPCamDemoApp: App {
                 TAPVideoPlaybackFixtureHarnessView(configuration: videoFixtureConfiguration)
                     .preferredColorScheme(.dark)
             } else {
-                #if TAP_ENABLE_PRO_CAMERA_CONTROLS
                 if ProcessInfo.processInfo.isCameraControlsUITestHarness {
                     CameraControlsUITestHarnessView()
                         .preferredColorScheme(.dark)
                 } else {
                     standardAppContent
                 }
-                #else
-                standardAppContent
-                #endif
             }
             #else
             standardAppContent
@@ -93,7 +89,7 @@ private struct XCTestHostView: View {
 }
 
 private extension ProcessInfo {
-    #if DEBUG && TAP_ENABLE_PRO_CAMERA_CONTROLS
+    #if DEBUG
     var isCameraControlsUITestHarness: Bool {
         environment["TAPCAM_UI_TEST_CAMERA_CONTROLS"] == "1"
             || arguments.contains("--tapcam-camera-controls-ui-test-harness")

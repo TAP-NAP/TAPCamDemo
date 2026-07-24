@@ -406,6 +406,15 @@ actor TAPPendingCaptureStore {
         return count
     }
 
+    @discardableResult
+    func reopenLegacyUnsignedVideoValidationFailures() throws -> Int {
+        let count = try maintenance.reopenLegacyUnsignedVideoValidationFailures()
+        if count > 0 {
+            TAPLibraryChangeNotifier.post()
+        }
+        return count
+    }
+
     func storeSignedPhoto(_ data: Data, captureID: String) throws -> TAPPendingCaptureRecord {
         var record = try readRecord(captureID: captureID)
         try storage.writeSignedPhoto(data, fileContainer: record.photoFileContainer, captureID: captureID)

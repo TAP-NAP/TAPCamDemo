@@ -24,36 +24,63 @@ import SwiftUI
 struct CameraPreviewView: UIViewRepresentable {
     let session: AVCaptureSession
     let pointConverter: CameraPreviewPointConverter?
+    let isCameraPathTransitioning: Bool
+    let previewReadinessGeneration: Int
     let onCropRectChanged: (CGRect) -> Void
+    let onPreviewingChanged: (Bool) -> Void
 
     init(
         session: AVCaptureSession,
         pointConverter: CameraPreviewPointConverter? = nil,
-        onCropRectChanged: @escaping (CGRect) -> Void
+        isCameraPathTransitioning: Bool = false,
+        previewReadinessGeneration: Int = 0,
+        onCropRectChanged: @escaping (CGRect) -> Void,
+        onPreviewingChanged: @escaping (Bool) -> Void = { _ in }
     ) {
         self.session = session
         self.pointConverter = pointConverter
+        self.isCameraPathTransitioning = isCameraPathTransitioning
+        self.previewReadinessGeneration = previewReadinessGeneration
         self.onCropRectChanged = onCropRectChanged
+        self.onPreviewingChanged = onPreviewingChanged
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onCropRectChanged: onCropRectChanged)
+        Coordinator(
+            onCropRectChanged: onCropRectChanged,
+            onPreviewingChanged: onPreviewingChanged
+        )
     }
 
     func makeUIView(context: Context) -> PreviewView {
         let view = PreviewView()
         view.videoPreviewLayer.session = session
         view.videoPreviewLayer.videoGravity = .resizeAspectFill
+        view.isCropPublicationPaused = isCameraPathTransitioning
         view.cropRectPublisher = context.coordinator
         pointConverter?.attach(to: view)
+        context.coordinator.attach(to: view.videoPreviewLayer)
+        context.coordinator.reportCurrentPreviewingState(
+            of: view.videoPreviewLayer,
+            generation: previewReadinessGeneration
+        )
         return view
     }
 
     func updateUIView(_ uiView: PreviewView, context: Context) {
         context.coordinator.onCropRectChanged = onCropRectChanged
-        uiView.videoPreviewLayer.session = session
+        context.coordinator.onPreviewingChanged = onPreviewingChanged
+        if uiView.videoPreviewLayer.session !== session {
+            uiView.videoPreviewLayer.session = session
+        }
+        uiView.isCropPublicationPaused = isCameraPathTransitioning
         uiView.cropRectPublisher = context.coordinator
         pointConverter?.attach(to: uiView)
+        context.coordinator.attach(to: uiView.videoPreviewLayer)
+        context.coordinator.reportCurrentPreviewingState(
+            of: uiView.videoPreviewLayer,
+            generation: previewReadinessGeneration
+        )
         uiView.publishCurrentCropRect()
     }
 
@@ -69,13 +96,55 @@ struct CameraPreviewView: UIViewRepresentable {
     /// renderer.
     final class Coordinator {
         var onCropRectChanged: (CGRect) -> Void
+        var onPreviewingChanged: (Bool) -> Void
 
         private var lastPublishedRect: CGRect?
         private var pendingRect: CGRect?
         private var isPublishScheduled = false
+        private weak var observedPreviewLayer: AVCaptureVideoPreviewLayer?
+        private var previewingObservation: NSKeyValueObservation?
+        private var lastCurrentReportGeneration: Int?
 
-        init(onCropRectChanged: @escaping (CGRect) -> Void) {
+        init(
+            onCropRectChanged: @escaping (CGRect) -> Void,
+            onPreviewingChanged: @escaping (Bool) -> Void
+        ) {
             self.onCropRectChanged = onCropRectChanged
+            self.onPreviewingChanged = onPreviewingChanged
+        }
+
+        func attach(to previewLayer: AVCaptureVideoPreviewLayer) {
+            guard observedPreviewLayer !== previewLayer else {
+                return
+            }
+            previewingObservation?.invalidate()
+            observedPreviewLayer = previewLayer
+            previewingObservation = previewLayer.observe(\.isPreviewing, options: [.initial, .new]) { [weak self] _, change in
+                guard let isPreviewing = change.newValue else {
+                    return
+                }
+                Task { @MainActor [weak self] in
+                    self?.onPreviewingChanged(isPreviewing)
+                }
+            }
+        }
+
+        /// Re-publishes the current value after SwiftUI applies a stable runtime
+        /// state. This confirms the post-configuration preview without relying
+        /// on a false-to-true KVO edge, which AVFoundation is not required to
+        /// emit when it keeps the preview layer running across an input swap.
+        func reportCurrentPreviewingState(
+            of previewLayer: AVCaptureVideoPreviewLayer,
+            generation: Int
+        ) {
+            guard lastCurrentReportGeneration != generation else {
+                return
+            }
+            lastCurrentReportGeneration = generation
+            let isPreviewing = previewLayer.isPreviewing
+            Task { @MainActor [weak self] in
+                self?.onPreviewingChanged(isPreviewing)
+            }
         }
 
         func enqueueCropRect(_ rect: CGRect) {
@@ -140,6 +209,7 @@ final class CameraPreviewPointConverter {
 
 final class PreviewView: UIView {
     weak var cropRectPublisher: CameraPreviewView.Coordinator?
+    var isCropPublicationPaused = false
 
     override class var layerClass: AnyClass {
         AVCaptureVideoPreviewLayer.self
@@ -155,7 +225,13 @@ final class PreviewView: UIView {
     }
 
     func publishCurrentCropRect() {
-        guard bounds.width > 0, bounds.height > 0 else { return }
+        guard !isCropPublicationPaused,
+              videoPreviewLayer.isPreviewing,
+              videoPreviewLayer.connection != nil,
+              bounds.width > 0,
+              bounds.height > 0 else {
+            return
+        }
         let rect = videoPreviewLayer.metadataOutputRectConverted(fromLayerRect: bounds)
         cropRectPublisher?.enqueueCropRect(rect)
     }

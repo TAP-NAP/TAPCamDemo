@@ -10,19 +10,60 @@ import OSLog
 
 @MainActor
 extension CameraViewModel {
-    func prepareVideoModeIfNeeded() async {
+    func handleVideoRecordingWriterFailure(
+        _ failure: CaptureSessionVideoRecordingFailure
+    ) {
+        guard isVideoRecording,
+              activeVideoRecordingCaptureID == failure.captureID else {
+            return
+        }
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.cameraCapture.error(
+            "video writer failed during recording captureID=\(failure.captureID, privacy: .private) domain=\(failure.domain, privacy: .public) code=\(failure.code, privacy: .public)"
+        )
+        #endif
+        videoWriterFailureRecoveryTask?.cancel()
+        videoWriterFailureRecoveryTask = Task { @MainActor [weak self] in
+            await self?.recoverVideoRecordingAfterWriterFailure(
+                captureID: failure.captureID
+            )
+        }
+    }
+
+    private func recoverVideoRecordingAfterWriterFailure(captureID: String) async {
+        guard activeVideoRecordingCaptureID == captureID else {
+            return
+        }
+        cancelVideoRecordingStopTriggers()
+        isVideoRecording = false
+        statusMessage = "Video recording failed · rebuilding video mode..."
+
+        try? await sessionController.cancelVideoRecordingAfterWriterFailure()
+        try? await pendingCaptureStore.abortVideoCaptureWorkspace(captureID: captureID)
+        activeVideoRecordingCaptureID = nil
+        videoRecordingTemporaryDirectoryURL = nil
+
+        let didPrepare = await prepareVideoModeIfNeeded()
+        statusMessage = didPrepare
+            ? "TAP video ready · please record again."
+            : "Video mode unavailable"
+        videoWriterFailureRecoveryTask = nil
+    }
+
+    @discardableResult
+    func prepareVideoModeIfNeeded() async -> Bool {
         guard !isPausedForAnalysis,
               !isVideoRecording,
               !isPreparingVideoMode,
               let activeSessionConfiguration else {
-            return
+            return false
         }
         guard activeSessionConfiguration.depthDeliverySupported else {
             statusMessage = CameraCaptureStatusPresentation.message(
                 for: TAPDepthCaptureError.depthDeliveryUnsupported,
                 context: .capture
             )
-            return
+            return false
         }
 
         isPreparingVideoMode = true
@@ -45,14 +86,16 @@ extension CameraViewModel {
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.cameraCapture.info("video mode warmup complete recordsAudio=\(recordsAudio, privacy: .public) depthDeliverySupported=\(activeSessionConfiguration.depthDeliverySupported, privacy: .public)")
             #endif
+            isPreparingVideoMode = false
+            return true
         } catch {
             statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .capture)
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.cameraCapture.error("video mode warmup failed error=\(TAPDiagnostics.describe(error), privacy: .public)")
             #endif
+            isPreparingVideoMode = false
+            return false
         }
-
-        isPreparingVideoMode = false
     }
 
     func teardownPreparedVideoModeIfNeeded() async {
@@ -118,6 +161,10 @@ extension CameraViewModel {
                 for: TAPDepthCaptureError.captureBackpressureLimitReached,
                 context: .capture
             )
+            return
+        }
+        guard await prepareVideoModeIfNeeded() else {
+            statusMessage = "Video mode unavailable"
             return
         }
 
@@ -205,7 +252,7 @@ extension CameraViewModel {
                 await retryPendingCaptures(pendingCaptureWorkerClient: pendingCaptureWorkerClient)
             }
             if reason == .userStop {
-                await prepareVideoModeIfNeeded()
+                _ = await prepareVideoModeIfNeeded()
             }
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.pendingCapture.info("video pending ingest complete captureID=\(record.captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public) depthSamples=\(artifact.manifest.payload.depthCoverage.sampleCount, privacy: .public)")
@@ -217,6 +264,9 @@ extension CameraViewModel {
             }
             videoRecordingTemporaryDirectoryURL = nil
             statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .capture)
+            if reason == .userStop {
+                _ = await prepareVideoModeIfNeeded()
+            }
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.cameraCapture.error("video recording stop failed captureID=\(captureID ?? "none", privacy: .private) error=\(TAPDiagnostics.describe(error), privacy: .public)")
             #endif

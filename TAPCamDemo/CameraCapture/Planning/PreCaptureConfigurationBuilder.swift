@@ -24,7 +24,8 @@ nonisolated enum PreCaptureConfigurationBuilder {
         )
         let request = SessionConfigurationRequest(
             capturePlan: plan,
-            outputProfile: active.outputProfile
+            outputProfile: active.outputProfile,
+            auxiliaryPreviewPolicy: active.auxiliaryPreviewPolicy
         )
 
         return SessionConfigurationResult(
@@ -37,7 +38,8 @@ nonisolated enum PreCaptureConfigurationBuilder {
             device: active.device,
             livePhotoAudioInputConfigured: active.livePhotoAudioInputConfigured,
             controlCapabilities: active.controlCapabilities,
-            selectionContext: request.selectionContext
+            selectionContext: request.selectionContext,
+            auxiliaryPreviewPolicy: active.auxiliaryPreviewPolicy
         )
     }
 

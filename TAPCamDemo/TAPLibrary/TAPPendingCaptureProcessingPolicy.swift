@@ -67,4 +67,34 @@ nonisolated extension TAPPendingCaptureRecord {
             return requiresVideoPhotosReadbackRecovery
         }
     }
+
+    /// Only persisted, already-signed video artifacts may become terminal for
+    /// manifest/proof readback failures. Failures while preparing an unsigned
+    /// capture stay retryable because the app still owns and trusts the file it
+    /// just produced.
+    func terminalFailureCode(for error: Error) -> TAPPendingCaptureFailureCode? {
+        guard artifactKind == .tapVideo,
+              let captureError = error as? TAPDepthCaptureError else {
+            return nil
+        }
+
+        switch captureError {
+        case .missingDepthData:
+            return .missingDepthData
+        case .pendingCaptureProofExternalMutation:
+            return .proofExternalMutation
+        case .pendingCaptureProofInvalid,
+             .pendingCaptureProofMissing:
+            return videoArtifactState == .signed
+                ? .proofValidationFailed
+                : nil
+        case .invalidTAPManifest,
+             .pendingCaptureManifestIDMismatch:
+            return videoArtifactState == .signed
+                ? .invalidVideoArtifact
+                : nil
+        default:
+            return nil
+        }
+    }
 }

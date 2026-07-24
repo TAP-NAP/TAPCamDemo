@@ -5,7 +5,6 @@
 
 import Foundation
 
-#if TAP_ENABLE_PRO_CAMERA_CONTROLS
 nonisolated enum CameraExposureControlMode: Equatable, Sendable {
     case auto
     case isoPriority
@@ -642,7 +641,7 @@ nonisolated struct CameraExposureControlState: Equatable, Sendable {
 }
 
 private extension CameraManualControlCommandPlan.ControlSurfaceSignature.DoubleRange {
-    var range: ClosedRange<Double> {
+    nonisolated var range: ClosedRange<Double> {
         let lower = min(minimum, maximum)
         let upper = max(minimum, maximum)
         if upper > lower {
@@ -651,4 +650,3 @@ private extension CameraManualControlCommandPlan.ControlSurfaceSignature.DoubleR
         return lower...(lower + 0.000_001)
     }
 }
-#endif

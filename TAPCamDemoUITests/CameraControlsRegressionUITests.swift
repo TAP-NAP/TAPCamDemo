@@ -16,6 +16,20 @@ final class CameraControlsRegressionUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Camera Controls UI Harness"].waitForExistence(timeout: 10))
         XCTAssertTrue(waitForStatus(in: app, containing: "Ready"))
 
+        let shutter = app.buttons["camera.capture.shutter"]
+        XCTAssertTrue(shutter.waitForExistence(timeout: 2))
+        let proShutterFrame = shutter.frame
+
+        let togglePro = app.buttons["camera.controlsHarness.togglePro"]
+        XCTAssertTrue(togglePro.waitForExistence(timeout: 2))
+        togglePro.tap()
+        XCTAssertTrue(waitForStatus(in: app, containing: "Standard active"))
+        assertFrame(shutter.frame, equals: proShutterFrame, accuracy: 1)
+
+        togglePro.tap()
+        XCTAssertTrue(waitForStatus(in: app, containing: "PRO active"))
+        assertFrame(shutter.frame, equals: proShutterFrame, accuracy: 1)
+
         tapButton("camera.lowerToolbar.ev", in: app)
         XCTAssertTrue(strip(in: app).waitForExistence(timeout: 2))
         drag(strip: strip(in: app), from: 0.50, to: 0.90)
@@ -97,5 +111,18 @@ final class CameraControlsRegressionUITests: XCTestCase {
             Thread.sleep(forTimeInterval: 0.1)
         }
         return false
+    }
+
+    private func assertFrame(
+        _ actual: CGRect,
+        equals expected: CGRect,
+        accuracy: CGFloat,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertEqual(actual.minX, expected.minX, accuracy: accuracy, file: file, line: line)
+        XCTAssertEqual(actual.minY, expected.minY, accuracy: accuracy, file: file, line: line)
+        XCTAssertEqual(actual.width, expected.width, accuracy: accuracy, file: file, line: line)
+        XCTAssertEqual(actual.height, expected.height, accuracy: accuracy, file: file, line: line)
     }
 }

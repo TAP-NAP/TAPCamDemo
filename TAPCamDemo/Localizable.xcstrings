@@ -53,7 +53,13 @@
     "Analysis" : {
 
     },
+    "Aperture %@" : {
+
+    },
     "App Attest" : {
+
+    },
+    "Auto focus" : {
 
     },
     "Back to TAP Library" : {
@@ -204,6 +210,9 @@
 
     },
     "KeyID help. %@" : {
+
+    },
+    "Leave Pro mode." : {
 
     },
     "Library" : {
@@ -397,6 +406,9 @@
     "Locked capture imported" : {
 
     },
+    "Manual focus" : {
+
+    },
     "Manual focus magnifier" : {
 
     },
@@ -472,6 +484,12 @@
     "Photo Quality" : {
 
     },
+    "Photographer Mode requires a rear LiDAR camera. Unsupported devices fall back to Standard mode at runtime." : {
+
+    },
+    "Photographer Mode Startup" : {
+
+    },
     "Plane region" : {
 
     },
@@ -494,6 +512,9 @@
 
     },
     "Preparing export..." : {
+
+    },
+    "PRO" : {
 
     },
     "Region" : {
@@ -641,6 +662,9 @@
 
     },
     "Use Microphone Data" : {
+
+    },
+    "Use Pro camera controls." : {
 
     },
     "Valid credential" : {

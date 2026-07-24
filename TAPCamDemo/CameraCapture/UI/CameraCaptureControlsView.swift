@@ -18,11 +18,10 @@ struct CameraCaptureControlsState {
     let selectedMode: CameraCaptureModeOption
     let isRecordingMovie: Bool
     let isPreparingMovie: Bool
-    #if TAP_ENABLE_PRO_CAMERA_CONTROLS
+    let isPhotographerModeActive: Bool
+    let isInteractionLocked: Bool
     let adjustmentControlState: CameraAdjustmentControlState?
-    #else
     let basicEVControlState: CameraBasicEVControlState
-    #endif
     let contentRotation: Angle
 
     var canOpenTAPLibrary: Bool {
@@ -68,7 +67,6 @@ struct CameraCaptureControlsView: View {
     let onCapture: () -> Void
     let onSwitchCamera: () -> Void
     let onSelectMode: (CameraCaptureModeOption) -> Void
-    #if TAP_ENABLE_PRO_CAMERA_CONTROLS
     let onSelectAdjustmentControl: (CameraAdjustmentControl) -> Void
     let onToggleFocusMode: () -> Void
     let onAdjustEV: (Double) -> Void
@@ -77,21 +75,27 @@ struct CameraCaptureControlsView: View {
     let onAdjustLensPosition: (Double) -> Void
     let onBeginAdjustment: (CameraAdjustmentControl) -> Void
     let onEndAdjustment: (CameraAdjustmentControl) -> Void
-    #else
-    let onAdjustEV: (Double) -> Void
-    #endif
 
     @State private var isShutterTouchActive = false
 
     var body: some View {
         VStack(spacing: 8) {
+            professionalToolbarSlot
             bottomControls
-            #if TAP_ENABLE_PRO_CAMERA_CONTROLS
-            lowerToolbar
-            #endif
             modeSelectorSlot
         }
         .padding(.bottom, 4)
+        .disabled(state.isInteractionLocked)
+    }
+
+    private var professionalToolbarSlot: some View {
+        lowerToolbar
+            .frame(maxWidth: .infinity)
+            .frame(height: Metrics.professionalToolbarSlotHeight)
+            .opacity(state.isPhotographerModeActive ? 1 : 0)
+            .allowsHitTesting(state.isPhotographerModeActive)
+            .accessibilityHidden(!state.isPhotographerModeActive)
+            .animation(.easeInOut(duration: 0.2), value: state.isPhotographerModeActive)
     }
 
     private var bottomControls: some View {
@@ -123,6 +127,7 @@ struct CameraCaptureControlsView: View {
             }
             .accessibilityLabel("Switch front and back camera")
             .frame(width: 78, height: 78)
+            .disabled(state.isInteractionLocked)
         }
         .buttonStyle(.plain)
         .foregroundStyle(.white)
@@ -132,8 +137,8 @@ struct CameraCaptureControlsView: View {
 
     private var modeSelectorSlot: some View {
         ZStack {
-            #if TAP_ENABLE_PRO_CAMERA_CONTROLS
-            if let adjustmentControlState = state.adjustmentControlState,
+            if state.isPhotographerModeActive,
+               let adjustmentControlState = state.adjustmentControlState,
                adjustmentControlState.activeControl != nil {
                 CameraTickedAdjustmentStrip(
                     state: adjustmentControlState,
@@ -147,12 +152,8 @@ struct CameraCaptureControlsView: View {
                     onEndAdjustment: onEndAdjustment
                 )
                 .transition(.opacity)
-            } else {
-                modeStrip
-                    .transition(.opacity)
-            }
-            #else
-            if state.basicEVControlState.isStripVisible {
+            } else if !state.isPhotographerModeActive,
+                      state.basicEVControlState.isStripVisible {
                 CameraBasicEVAdjustmentStrip(
                     state: state.basicEVControlState,
                     highlightColor: highlightColor,
@@ -164,14 +165,11 @@ struct CameraCaptureControlsView: View {
                 modeStrip
                     .transition(.opacity)
             }
-            #endif
         }
         .frame(height: 50)
-        #if TAP_ENABLE_PRO_CAMERA_CONTROLS
         .animation(.easeInOut(duration: 0.16), value: state.adjustmentControlState?.activeControl)
-        #else
         .animation(.easeInOut(duration: 0.16), value: state.basicEVControlState.isStripVisible)
-        #endif
+        .animation(.easeInOut(duration: 0.16), value: state.isPhotographerModeActive)
     }
 
     private var modeStrip: some View {
@@ -187,12 +185,12 @@ struct CameraCaptureControlsView: View {
                         .frame(minWidth: 48, minHeight: 26)
                 }
                 .buttonStyle(.plain)
+                .disabled(state.isInteractionLocked)
                 .accessibilityLabel(mode.isAvailableInStageOne ? "\(mode.title) mode" : "\(mode.title) mode coming soon")
             }
         }
     }
 
-    #if TAP_ENABLE_PRO_CAMERA_CONTROLS
     @ViewBuilder
     private var lowerToolbar: some View {
         if let adjustmentControlState = state.adjustmentControlState {
@@ -206,7 +204,6 @@ struct CameraCaptureControlsView: View {
             CameraLowerToolbarPlaceholderView(contentRotation: state.contentRotation)
         }
     }
-    #endif
 
     private func modeForegroundStyle(_ mode: CameraCaptureModeOption) -> Color {
         if mode == state.selectedMode {
@@ -249,7 +246,9 @@ struct CameraCaptureControlsView: View {
         .gesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { _ in
-                    guard !isShutterTouchActive else { return }
+                    guard state.isShutterEnabled,
+                          !state.isInteractionLocked,
+                          !isShutterTouchActive else { return }
                     isShutterTouchActive = true
                     onCapture()
                 }
@@ -258,6 +257,7 @@ struct CameraCaptureControlsView: View {
                 }
         )
         .accessibilityElement()
+        .opacity(state.isInteractionLocked ? 0.55 : 1)
         .accessibilityLabel(shutterAccessibilityLabel)
         .accessibilityIdentifier("camera.capture.shutter")
         .accessibilityAddTraits(.isButton)
@@ -339,5 +339,9 @@ struct CameraCaptureControlsView: View {
                 }
             }
         }
+    }
+
+    private enum Metrics {
+        static let professionalToolbarSlotHeight: CGFloat = 38
     }
 }

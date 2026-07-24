@@ -50,6 +50,27 @@ and manifest consistency, metadata/sample streaming, calibration accounting,
 then timeline/gap validation. The sample validator retains at most one bounded
 depth frame payload at a time; no stage may read an entire MP4 into `Data`.
 
+## TAP Video Signing Boundary
+
+A finalized, ingested pending MP4 is the app-owned source artifact. The signing
+path checks its capture/package identity, hashes the exact bytes outside the
+fixed proof slot plus the canonical manifest payload, writes the App Attest
+proof, then immediately recomputes that binding and checks the proof's
+`contentDigest` and `signingBinding`.
+
+Normal Photos export and original-resource readback repeat this byte-binding
+authentication with `validatesDepthTrack: false`. They do not reinterpret
+track health as signature validity. `TAPVideoDepthTrackValidator` remains
+available only when a caller explicitly requests semantic validation; for
+already-signed untrusted input, proof authentication always runs before that
+AVFoundation scan.
+
+Pending-state classification follows the same boundary. Manifest/proof failures
+while the video is still `.unsigned` remain retryable. Once the record is
+persisted `.signed`, proof or identity failures may become terminal integrity
+failures. A persisted pre-sign binding mismatch remains an external-mutation
+terminal failure.
+
 ## Packaging Flow
 
 ```mermaid

@@ -7,6 +7,96 @@
 import CoreMedia
 import Foundation
 
+/// Keeps one already-committed RGB/depth graph and callback queue flowing from
+/// VIDEO warmup through recording.
+///
+/// `AVCaptureDataOutputSynchronizer` overrides the delegates of its data
+/// outputs. Replacing its delegate and callback queue while the graph is live
+/// can strand the first recording without samples. This router remains the
+/// synchronizer delegate for the graph's entire lifetime and switches only its
+/// software consumer. When PRO shares the MF RGB output, it also fans the RGB
+/// sample back to the loupe renderer.
+nonisolated final class TAPVideoGraphOutputRouter: NSObject,
+    AVCaptureDataOutputSynchronizerDelegate,
+    AVCaptureAudioDataOutputSampleBufferDelegate,
+    @unchecked Sendable {
+    let callbackQueue: DispatchQueue
+
+    private let videoOutput: AVCaptureVideoDataOutput
+    private weak var manualFocusPreviewStream: CameraManualFocusPreviewStream?
+
+    /// Accessed only on `callbackQueue`.
+    private var recorder: TAPVideoRecorder?
+
+    init(
+        videoOutput: AVCaptureVideoDataOutput,
+        manualFocusPreviewStream: CameraManualFocusPreviewStream?
+    ) {
+        self.videoOutput = videoOutput
+        self.manualFocusPreviewStream = manualFocusPreviewStream
+        callbackQueue = manualFocusPreviewStream?.sharedVideoCallbackQueue
+            ?? DispatchQueue(
+                label: "tapcam.camera-capture.video-graph-router",
+                qos: .userInitiated
+            )
+        super.init()
+    }
+
+    /// Ordered behind any already-delivered warmup callbacks so the first
+    /// callback after this method returns belongs to the recorder.
+    func activate(_ recorder: TAPVideoRecorder) {
+        callbackQueue.sync {
+            self.recorder = recorder
+        }
+    }
+
+    /// Drains all callbacks already enqueued for the recorder before teardown.
+    func deactivateRecorder() {
+        callbackQueue.sync {
+            recorder = nil
+        }
+    }
+
+    func dataOutputSynchronizer(
+        _ synchronizer: AVCaptureDataOutputSynchronizer,
+        didOutput synchronizedDataCollection: AVCaptureSynchronizedDataCollection
+    ) {
+        if let videoData = synchronizedDataCollection.synchronizedData(for: videoOutput)
+            as? AVCaptureSynchronizedSampleBufferData,
+           !videoData.sampleBufferWasDropped {
+            manualFocusPreviewStream?.consumeSharedVideoSample(videoData.sampleBuffer)
+        }
+        recorder?.handleSynchronizedDataCollection(
+            synchronizer,
+            synchronizedDataCollection: synchronizedDataCollection
+        )
+    }
+
+    func captureOutput(
+        _ output: AVCaptureOutput,
+        didOutput sampleBuffer: CMSampleBuffer,
+        from connection: AVCaptureConnection
+    ) {
+        recorder?.handleOutputSampleBuffer(
+            output,
+            sampleBuffer: sampleBuffer,
+            connection: connection
+        )
+    }
+
+    func captureOutput(
+        _ output: AVCaptureOutput,
+        didDrop sampleBuffer: CMSampleBuffer,
+        from connection: AVCaptureConnection
+    ) {
+        recorder?.handleDroppedSampleBuffer(
+            output,
+            sampleBuffer: sampleBuffer,
+            connection: connection
+        )
+    }
+}
+
 /// Adapts AVCapture callbacks into the recorder's serialized append methods.
 nonisolated extension TAPVideoRecorder {
     func handleDroppedSampleBuffer(

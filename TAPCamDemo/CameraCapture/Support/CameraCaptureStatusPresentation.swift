@@ -73,7 +73,9 @@ nonisolated enum CameraCaptureStatusPresentation {
              .cameraControlCommandPlanNotExecutable,
              .cameraControlTargetDeviceChanged,
              .cameraControlTargetSurfaceChanged,
-             .cameraControlUnsupportedCommand:
+             .cameraControlUnsupportedCommand,
+             .cameraManualFocusAssistTimedOut,
+             .cameraManualFocusLockTimedOut:
             return "Camera controls are temporarily unavailable."
         case .invalidCaptureOutputProfile,
              .captureOutputCodecUnsupported,

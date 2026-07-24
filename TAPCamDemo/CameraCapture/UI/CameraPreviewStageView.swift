@@ -25,9 +25,10 @@ struct CameraPreviewStageState {
     let focusRuntimeEvent: CameraFocusRuntimeEvent?
     let focusMagnifierPreference: CameraFocusMagnifierPreference
     let focusLoupePulseID: UUID?
-    let isManualFocusTapAssistEnabled: Bool
     let viewfinderEdgeToastMessage: String?
     let contentRotation: Angle
+    let isCameraPathTransitioning: Bool
+    let previewReadinessGeneration: Int
 }
 
 /// Live camera preview, release FOV selector, and Debug-only instrumentation.
@@ -37,9 +38,11 @@ struct CameraPreviewStageState {
 /// does not receive hardware planning objects.
 struct CameraPreviewStageView: View {
     let session: AVCaptureSession
+    let manualFocusPreviewStream: CameraManualFocusPreviewStream
     let state: CameraPreviewStageState
     let highlightColor: Color
     let onPreviewCropChange: (CropRectNormalized) -> Void
+    let onPreviewingChanged: (Bool) -> Void
     let onSelectFocalLengthOption: (CameraFocalLengthDisplayOption) -> Void
     let onTapFocusPoint: (CameraPreviewFocusPoint) -> Void
     let onManualFocusTapAssist: (CameraPreviewFocusPoint) -> Void
@@ -59,6 +62,8 @@ struct CameraPreviewStageView: View {
     @State private var focusLoupePoint = CameraPreviewFocusPoint(x: 0.5, y: 0.5)
     @State private var isFocusLoupeVisible = false
     @State private var focusLoupeVisibilityTask: Task<Void, Never>?
+    @State private var manualFocusTapMarkerPoint: CameraPreviewFocusPoint?
+    @State private var manualFocusTapMarkerTask: Task<Void, Never>?
     @State private var pendingLongPressStartPoint: CameraPreviewFocusPoint?
     @State private var longPressLockTask: Task<Void, Never>?
     @State private var shouldSuppressNextTapFocus = false
@@ -71,9 +76,12 @@ struct CameraPreviewStageView: View {
             CameraPreviewView(
                 session: session,
                 pointConverter: previewPointConverter,
+                isCameraPathTransitioning: state.isCameraPathTransitioning,
+                previewReadinessGeneration: state.previewReadinessGeneration,
                 onCropRectChanged: { rect in
                     onPreviewCropChange(CropRectNormalized(metadataRect: rect))
-                }
+                },
+                onPreviewingChanged: onPreviewingChanged
             )
             .frame(width: previewSize.width, height: previewSize.height)
             .clipShape(RoundedRectangle(cornerRadius: previewCornerRadius, style: .continuous))
@@ -90,6 +98,9 @@ struct CameraPreviewStageView: View {
             }
             .overlay {
                 focusTargetOverlayLayer(previewSize: previewSize)
+            }
+            .overlay {
+                manualFocusTapMarkerLayer(previewSize: previewSize)
             }
             .overlay {
                 focusEVControlLayer(previewSize: previewSize)
@@ -133,6 +144,7 @@ struct CameraPreviewStageView: View {
                 hideFocusTargetOverlay()
             } else {
                 hideFocusLoupe()
+                hideManualFocusTapMarker()
             }
         }
         .onChange(of: state.focusLoupePulseID) { _, pulseID in
@@ -147,9 +159,16 @@ struct CameraPreviewStageView: View {
             }
             handleFocusRuntimeEvent(event)
         }
+        .onChange(of: state.previewReadinessGeneration) { _, _ in
+            focusLoupePoint = CameraPreviewFocusPoint(x: 0.5, y: 0.5)
+            hideFocusLoupe()
+            hideManualFocusTapMarker()
+        }
         .onDisappear {
             cancelPendingLongPressLock()
             hideFocusTargetOverlay()
+            hideFocusLoupe()
+            hideManualFocusTapMarker()
         }
     }
 
@@ -175,12 +194,12 @@ struct CameraPreviewStageView: View {
                             withAnimation(.easeInOut(duration: 0.14)) {
                                 focusLoupePoint = localPoint
                             }
+                            showManualFocusTapMarker(at: localPoint)
                             showFocusLoupe()
-                            if state.isManualFocusTapAssistEnabled,
-                               let capturePoint = captureFocusPoint(
-                                   from: localPoint,
-                                   previewSize: previewSize
-                               ) {
+                            if let capturePoint = captureFocusPoint(
+                                from: localPoint,
+                                previewSize: previewSize
+                            ) {
                                 onManualFocusTapAssist(capturePoint)
                             }
                             return
@@ -198,7 +217,8 @@ struct CameraPreviewStageView: View {
             .simultaneousGesture(
                 DragGesture(minimumDistance: 0, coordinateSpace: .local)
                     .onChanged { value in
-                        guard focusExposureScrubStartOffset == nil,
+                        guard state.focusMode == .auto,
+                              focusExposureScrubStartOffset == nil,
                               !shouldSuppressNextTapFocus else {
                             return
                         }
@@ -229,6 +249,28 @@ struct CameraPreviewStageView: View {
                     .transition(.opacity)
             }
         }
+        .allowsHitTesting(false)
+    }
+
+    private func manualFocusTapMarkerLayer(previewSize: CGSize) -> some View {
+        ZStack {
+            if let manualFocusTapMarkerPoint, state.focusMode == .manual {
+                ZStack {
+                    Circle()
+                        .stroke(highlightColor.opacity(0.88), lineWidth: 1.4)
+                        .frame(width: 30, height: 30)
+                    Image(systemName: "plus")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(highlightColor.opacity(0.92))
+                }
+                .position(
+                    x: CGFloat(manualFocusTapMarkerPoint.x) * previewSize.width,
+                    y: CGFloat(manualFocusTapMarkerPoint.y) * previewSize.height
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.82)))
+            }
+        }
+        .allowsHitTesting(false)
     }
 
     private func focusEVControlLayer(previewSize: CGSize) -> some View {
@@ -242,6 +284,7 @@ struct CameraPreviewStageView: View {
                 .transition(.opacity)
             }
         }
+        .allowsHitTesting(false)
     }
 
     private func focusEVControlPosition(
@@ -410,6 +453,28 @@ struct CameraPreviewStageView: View {
         }
     }
 
+    private func showManualFocusTapMarker(at point: CameraPreviewFocusPoint) {
+        manualFocusTapMarkerTask?.cancel()
+        withAnimation(.easeOut(duration: 0.12)) {
+            manualFocusTapMarkerPoint = point
+        }
+        manualFocusTapMarkerTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(350))
+            guard !Task.isCancelled else {
+                return
+            }
+            hideManualFocusTapMarker()
+        }
+    }
+
+    private func hideManualFocusTapMarker() {
+        manualFocusTapMarkerTask?.cancel()
+        manualFocusTapMarkerTask = nil
+        withAnimation(.easeInOut(duration: 0.12)) {
+            manualFocusTapMarkerPoint = nil
+        }
+    }
+
     private func handleFocusRuntimeEvent(_ event: CameraFocusRuntimeEvent) {
         guard state.focusMode == .auto,
               let focusTargetOverlay else {
@@ -467,20 +532,32 @@ struct CameraPreviewStageView: View {
         return CameraTemporaryFocusEVPreferences.clampedOffset(stepped)
     }
 
+    /// Recreates the original bottom-right loupe geometry while sourcing its
+    /// pixels from the PRO graph's lightweight video-data output. The main
+    /// preview remains at 1x and keeps publishing the authoritative crop rect.
     @ViewBuilder
     private func focusLoupe(previewSize: CGSize) -> some View {
         if state.focusMode == .manual, isFocusLoupeVisible {
             let loupeWidth = max(112, previewSize.width * 0.34)
             let loupeHeight = loupeWidth * 9.0 / 16.0
+            let loupeTransform = CameraManualFocusLoupeTransform(
+                focusPoint: focusLoupePoint,
+                previewSize: previewSize,
+                magnification: 2.4
+            )
             ZStack {
-                CameraPreviewView(session: session, onCropRectChanged: { _ in })
+                CameraManualFocusLoupePreview(source: manualFocusPreviewStream)
                     .frame(width: previewSize.width, height: previewSize.height)
                     .scaleEffect(
-                        2.4,
+                        loupeTransform.magnification,
                         anchor: UnitPoint(
                             x: CGFloat(focusLoupePoint.x),
                             y: CGFloat(focusLoupePoint.y)
                         )
+                    )
+                    .offset(
+                        x: loupeTransform.centeringOffset.width,
+                        y: loupeTransform.centeringOffset.height
                     )
                     .frame(width: loupeWidth, height: loupeHeight)
                     .clipped()
@@ -496,6 +573,7 @@ struct CameraPreviewStageView: View {
             .background(.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             .shadow(color: .black.opacity(0.42), radius: 8)
+            .allowsHitTesting(false)
             .transition(.opacity)
             .accessibilityLabel("Manual focus magnifier")
             .accessibilityIdentifier("camera.focusLoupe")

@@ -7,20 +7,23 @@
 | Term | 中文解释 | 使用规则 |
 | --- | --- | --- |
 | `viewfinder top shoulder` | 取景器顶部 Face ID / Dynamic Island 两侧肩区 | 不放状态噪音。右肩放 `Settings`。 |
-| `Basic EV` | 普通产品曝光补偿 | 不依赖专业控制状态机的轻量 EV 流程。入口在 Face ID / Dynamic Island 左侧，只写 exposure target bias。 |
-| `viewfinder top toolbar` | 肩区下方、取景器上方工具栏 | 放高频但不属于参数条的按钮：`Flash` 和 `Live Photo`。它参与垂直布局，占用 viewfinder 上方空间，不覆盖预览画面。 |
-| `viewfinder lower toolbar` | 取景器下方参数工具栏 | 只属于 `TAP_ENABLE_PRO_CAMERA_CONTROLS` 专业控制构建；普通产品构建不编译这组专业参数入口。 |
+| `Basic EV` | Standard 曝光补偿 | 不依赖专业控制状态机的轻量 EV 流程。入口在 Face ID / Dynamic Island 左侧，只写 exposure target bias。 |
+| `viewfinder top toolbar` | 肩区下方、取景器上方工具栏 | 放高频但不属于参数条的按钮，固定布局为 `Flash / Live Photo / Spacer / PRO`。它参与垂直布局，占用 viewfinder 上方空间，不覆盖预览画面。 |
+| `viewfinder lower toolbar` | 取景器下方、快门上方的参数工具栏 | 布局永久预留固定高度；只在 Photographer Mode 已完成异步切换并进入 `active` 后淡入 `EV / ISO / S / AF/MF / ƒ`。Standard 隐藏内容但不回收槽位。 |
 | `mode selector slot` | 拍摄模式选择占位区 | 默认承载 `mode selector bar`。控制条打开时被 `ticked adjustment strip` 临时替代。 |
 | `mode selector bar` | 拍摄模式选择条 | 默认显示 `PHOTO / VIDEO`。外层 bar、按钮 frame、按钮文字都不参与旋转。 |
 | `portrait adjustment centerline` | Portrait UI 的全局参数调节中线 | 所有横向参数条的中心刻度必须对齐整个屏幕 / 控件容器的水平中心线，不能被左标题或右数值挤偏。 |
 | `ticked adjustment strip` | 刻度调节条 | 共享 UI primitive，可服务 Basic EV 或 Pro EV/ISO/S/MF。它只知道 value/range/step/label/callback，不知道 Basic/Pro 业务模式。 |
 | `value cursor` | 当前值游标 | 位于 `ticked adjustment strip` 上的可见圆点 / 小按钮，用来标识当前选择值；不是实线轨道。 |
-| `FOV selector bar` | 镜头 / 视角选择条 | 显示 release field-of-view chips。外层 bar 固定在取景器下边缘内侧，chip 内容按设备姿态旋转，bar 本身不旋转。 |
-| `preview-only zoom` | 取景器预览缩放 | 第一阶段的 `1x / 2x / 3x` 只改变用户看到的预览和 tap 坐标映射，不改变最终 RGB/depth 输出。 |
+| `FOV selector bar` | 镜头 / 视角选择条 | Standard 显示 release field-of-view chips；PRO 固定后置 LiDAR 24mm / 1x，因此隐藏。外层 bar 固定在取景器下边缘内侧，chip 内容按设备姿态旋转，bar 本身不旋转。 |
+| `preview-only zoom` | 取景器预览缩放 | Standard 可保留既有 `1x / 2x / 3x` 预览行为；PRO 固定 LiDAR 24mm / 1x 并隐藏入口。 |
 | `source switching mode` | 真实摄像头源切换模式 | 后续 roadmap。切换焦段时可能切到不同 Apple camera path，并按当前 path 能力重新决定 ISO/S/AF/MF 可用性。 |
-| `TAP_ENABLE_PRO_CAMERA_CONTROLS` | 专业相机控制编译开关 | 只允许 Debug 实验构建使用。普通产品构建不定义它；Release + 该 flag 必须 fail build。 |
+| `Photographer Mode` / `PRO` | 摄影师模式 / 专业模式 | Release runtime 产品模式。只在 eligible 后置 LiDAR 24mm / 1x 路径可用，同时支持 PHOTO 和 TAP VIDEO；VIDEO 中继续显示并允许切换最右侧 `PRO`。 |
+| `Photographer Mode state` | 摄影师模式异步状态 | 固定为 `unavailable / standard / activating / active / deactivating / failed`，不能用一个 bool 代替 session readiness。 |
+| `frosted session transition` | 毛玻璃 session 切换 | 保留最后一帧并覆盖毛玻璃；异步 session 未 ready 前禁用拍摄和取景器交互。适用于 PRO 开关以及 rear PRO / front 双向切换。 |
+| `suspended rear mode` | 暂挂的后置模式意图 | PRO 下切前置时记录的瞬时 rear intent；返回后置时尝试恢复 PRO。它不是关闭 PRO，也不改写 `Remember Last State`。 |
 | `viewfinder edge toast` | 取景器边缘提示 | 贴在取景器上边缘内侧，水平居中淡入淡出，不阻止拍摄。 |
-| `focus loupe` | 对焦放大预览 | MF 下由用户点按位置驱动的预览辅助。它只放大预览，不写 `videoZoomFactor`，不影响构图或成片。显示时长由 Debug Settings 的 `Focus Magnifier` 枚举决定；普通产品设置页暂不展示。 |
+| `focus loupe` | 对焦放大预览 | MF 下由用户点按位置驱动的右下角局部放大窗。主 PreviewLayer 始终保持 1x；PRO source graph 只拥有一条 canonical preview-sized `AVCaptureVideoDataOutput`，放大窗和 VIDEO recorder 在软件层消费同一帧流。它不写 `videoZoomFactor`，不影响主构图或成片，也不创建第二个 PreviewLayer 或第二条 RGB data output。显示时长由 Debug Settings 的 `Focus Magnifier` 枚举决定；普通产品设置页暂不展示。 |
 | `focus target overlay` | 对焦目标覆盖层 | 同一个状态同时驱动对焦框、`AE/AF LOCK` 标签和旁边的临时 EV 条。 |
 | `focus frame anchor` | 对焦框锚点 | 用户点按或锁定的 preview-local 归一化坐标。对焦框的几何中心必须始终由这个点决定，不能被标签、提示、EV 条或动画布局推移。 |
 | `focus validity` | 对焦目标有效性 | 可见对焦框代表“当前仍然有效的用户选择目标”。它不会按固定 TTL 自动消失，只会被用户替换、手动对焦模式、镜头/模式切换、取消或 runtime invalidation 改变。 |
@@ -30,7 +33,7 @@
 | `subject area changed` | 画面/主体区域变化 | AVFoundation 的 subject-area 变化信号。非锁定 AF 下，它表示当前用户选择的对焦目标已经失效。 |
 | `runtime focus invalidation` | 运行时对焦失效 | 用户选择的非锁定对焦目标已经不再代表当前画面。触发条件包括 `subject area changed`，或对焦已经 settled 后 runtime 再次进入 `isAdjustingFocus == true`。 |
 | `center-anchored chrome rotation` | 中心锚点旋转 | 固定控件 frame 不旋转，只把内部内容放进稳定 frame 后以 `.center` 为锚点旋转，避免按文字自身边界偏心旋转。 |
-| `manual focus tap assist` | 手动对焦点按辅助 | MF 下点按取景器时，可选地对该点执行一次 focus-only AF assist，然后回到 MF，用读到的 lens position 作为手动微调起点。它不写 AE、不改变曝光模式。 |
+| `manual focus tap assist` | 手动对焦点按辅助 | eligible 后置 PRO 的 MF 下点按取景器时，始终对该点执行一次 focus-only AF，等待本次请求稳定后用 `AVCaptureDevice.currentLensPosition` 重新锁回 MF。它不写 AE、不改变曝光模式。 |
 | `meter target` | 测光目标 | 用户或系统当前用于估算光强的点或区域。第一阶段目标来自 AF tap、AF completion、进入半自动/手动曝光时的当前自动状态，或默认中心/全局区域。 |
 | `meter sample` | 测光样本 | 某一时刻对 `meter target` 的光强估计。它可以来自 iOS 自动曝光状态，也可以由当前 ISO/S 和 `exposureTargetOffset` 反推。它只是输入测量，不等于写曝光参数。 |
 | `meter baseline` | 测光基准 | TAPCam 接受的最新 `meter sample`，用于半自动曝光计算和双手动 `Meter` 偏差显示。没有独立 re-meter 按钮，但合法 focus-driven metering trigger 可以更新它。 |
@@ -57,36 +60,44 @@
 
 不要对整组 toolbar 或 strip 直接做 `rotationEffect`。整组旋转会改变触控方向和布局锚点，和镜头选择条行为不一致。
 
-## Build-Time Surface Split
+## Runtime Surface Split
 
-普通产品构建和专业控制实验构建是编译期互斥的两套流程，不是运行时设置：
+Standard 和 Photographer Mode 是同一个 Release app 内的 runtime 状态。两套控制
+都会编译，但只能由已完成的 session 状态选择，不允许由 requested preference 或
+一个提前变亮的按钮推断相机已经 ready。
 
-- 未定义 `TAP_ENABLE_PRO_CAMERA_CONTROLS`：编译 `Basic EV`，不编译
-  Pro Controls UI，不编译 ISO/S/MF/Meter/risk/readback 专业状态机。
-- `DEBUG && TAP_ENABLE_PRO_CAMERA_CONTROLS`：编译 Pro Controls，且不编译
-  `Basic EV` 入口。
-- `!DEBUG && TAP_ENABLE_PRO_CAMERA_CONTROLS`：必须 fail build，避免专业实验
-  控制进入 Release 产品包。
+- `standard`：绝不主动选择 LiDAR；保留现有相机路径、`Basic EV`、镜头选择器和
+  原始 UI。
+- `activating` / `deactivating`：显示 `frosted session transition`，禁用快门、
+  focus gesture、镜头选择和参数写入。
+- `active`：只使用 eligible 后置 LiDAR 24mm / 1x path，隐藏 `Basic EV` 和镜头
+  选择器，显示完整 `EV / ISO / S / AF/MF / ƒ`。
+- `unavailable`：当前设备没有同时满足 depth、custom ISO/S 和 MF 的后置 LiDAR
+  path；不显示 PRO 入口。
+- `failed`：切换失败，恢复可用 Standard session，再允许重试。
 
-Settings 里不提供 `Pro Controls` runtime toggle。这个选择只由编译条件决定。
+Photographer Mode 同时支持 Photo 和 TAP Video。VIDEO 中切换 PRO、PRO 中切换
+PHOTO / VIDEO，以及 rear PRO / front 双向切换，都必须保持同一个异步相机路径
+状态机；涉及 LiDAR graph 重建时使用毛玻璃，直到目标 session 和视频 warmup
+共同 ready。Standard 仍然绝不主动选择 LiDAR。
 
-允许共享的只有足够小的底层：`ticked adjustment strip` UI primitive、EV 常量、
-纯显示/数值限制 helper，以及不感知 ISO/S/Meter/MF 的最小 exposure-bias 写入。
-普通 `Basic EV` 不允许依赖 `CameraExposureControlState`、`CameraAdjustmentControlState`
-或任何 Pro lower-toolbar 状态。
+调研探针已经完成并晋级为正式产品路径。Debug Settings 不再提供 PRO Video
+开关；graph format、首帧、drop 和 writer failure 诊断继续保留，见
+[ProVideoResearchPlan.md](ProVideoResearchPlan.md)。
 
-完整边界、实现状态和验证记录见 [CameraProControlsBuildIsolationPlan.md](CameraProControlsBuildIsolationPlan.md)。
+完整 runtime 边界、状态机和验证准绳见
+[CameraProControlsBuildIsolationPlan.md](CameraProControlsBuildIsolationPlan.md)。
 
 ## Top Layout
 
 `viewfinder top shoulder` 只承担两个角色：
 
 - 右肩：`Settings`，替代系统状态区位置。
-- 左肩：普通产品构建显示 `Basic EV` 常驻入口。它采用 Apple Camera 风格的
+- 左肩：Standard 显示 `Basic EV` 常驻入口。它采用 Apple Camera 风格的
   透明单行文字控件，显示紧凑当前值；点击后在 `mode selector slot` 打开 EV
   `ticked adjustment strip`，再次点击关闭。
-- `TAP_ENABLE_PRO_CAMERA_CONTROLS` 构建不编译 `Basic EV` 左肩入口；Pro Controls
-  自己拥有专业 EV/ISO/S/AFMF 入口。
+- PRO `active` 时隐藏 `Basic EV` 左肩入口；专业 EV/ISO/S/AFMF 入口由下方
+  toolbar 承担。
 
 `viewfinder top toolbar` 放：
 
@@ -95,6 +106,12 @@ Settings 里不提供 `Pro Controls` runtime toggle。这个选择只由编译�
   时显示；点击只切换当前 viewfinder 状态。当前实现支持
   无声 Live Photo：照片、manifest/proof、paired MOV 写入和 Photos 导出链路已接通，
   麦克风音频不作为启用前提。
+- `Spacer`：把 PRO 固定推到整行最右侧。
+- `PRO`：只在 eligible 后置 LiDAR path 存在且当前不是前置 presentation 时显示；
+  active 使用选中态，`activating / deactivating` 原位显示 progress，期间不接受重复请求。
+
+固定顺序是 `[Flash] [Live Photo] Spacer [PRO]`，不能把 PRO 放回左肩或插入
+Flash / Live Photo 之间。
 
 `viewfinder top toolbar` 不能作为 preview overlay。布局顺序必须是 `viewfinder top shoulder`、`viewfinder top toolbar`、viewfinder，再进入下方控制区。
 
@@ -102,14 +119,18 @@ Settings 里不提供 `Pro Controls` runtime toggle。这个选择只由编译�
 
 ## Lower Toolbar
 
-`viewfinder lower toolbar` 只属于 `TAP_ENABLE_PRO_CAMERA_CONTROLS` 专业控制构建。
-普通产品构建不编译这组入口。
+`viewfinder lower toolbar` 的固定槽位在 Standard 与 Photographer Mode 中始终参与布局，
+避免模式切换改变取景器和快门位置。Standard 即使运行在有 LiDAR 的 Pro 机型上也隐藏
+这组入口并关闭命中测试；只有 Photographer Mode `active` 才在槽位内淡入控件。
 
-下方控制区从上到下固定为：快门行、`viewfinder lower toolbar`（仅 Pro Controls
-构建）、`mode selector slot`。快门行必须高于 `mode selector slot`，避免主要拍摄
-动作落在屏幕过低位置；底部留白属于整个控制栈，不属于快门行本身。
+下方控制区从上到下固定为：`viewfinder lower toolbar` 固定槽位、快门行、
+`mode selector slot`。槽位高度固定为 `38pt`，加上它与快门行之间的 `8pt` 间距，
+总共永久预留 `46pt`。PRO 切换只改变槽位内容的透明度、命中测试和 Accessibility，
+不插入或删除布局，也不使用边缘移动 transition。快门行必须高于
+`mode selector slot`，避免主要拍摄动作落在屏幕过低位置；底部留白属于整个控制栈，
+不属于快门行本身。
 
-Pro Controls 构建中从左到右：
+PRO active 时从左到右：
 
 1. `EV`
 2. `ISO`
@@ -119,7 +140,7 @@ Pro Controls 构建中从左到右：
 
 行为：
 
-- toolbar 在 Pro Controls 构建中常驻。
+- toolbar 在 PRO active 期间常驻；退出 active 立即关闭当前 adjustment strip。
 - 点击 `EV / ISO / S` 时，`mode selector slot` 被 `ticked adjustment strip` 临时替代；快门位置不移动。
 - 点击另一个参数会直接切换控制条。
 - `ƒ` 灰色只读，例如 `ƒ1.8`；不可点击，不提示。
@@ -130,13 +151,39 @@ Pro Controls 构建中从左到右：
 - 只显示刻度和 `value cursor`，不显示系统 slider 的实线轨道。
 - 拖动热区可以透明覆盖刻度。
 - 每跨过一个有效 step 触发轻量 selection haptic。
-- 在 Pro Controls 构建中，当前正在调节的参数由 `viewfinder lower toolbar`
+- 在 PRO active 时，当前正在调节的参数由 `viewfinder lower toolbar`
   对应按钮的 active 状态标识，不在 strip 内额外加选中标签或轨道高亮。
-- 在普通产品构建中，`Basic EV` 左肩入口的 active 状态标识 EV strip 已打开。
+- 在 Standard 中，`Basic EV` 左肩入口的 active 状态标识 EV strip 已打开。
+
+## Photographer Mode Transitions
+
+PRO 开关不是同步换皮。Standard / PRO 使用不同 active camera path，必须按异步
+session reconfiguration 处理：
+
+1. 暂停 preview-layer 的帧流，让当前画面停留在毛玻璃下方。
+2. 整个 viewfinder 覆盖毛玻璃，PRO 按钮原位显示 progress。
+3. 禁用快门、tap/long-press focus、镜头选择以及所有参数写入。
+4. Runtime 切换 camera input、active format、depth 和 control capability。
+5. 恢复 preview-layer，并等待 `isPreviewing` 完成 `false -> true`；只有新
+   preview 可交互且 capability snapshot 已更新后才撤掉毛玻璃。
+
+如果切换失败且原 camera path 也无法恢复，继续保留毛玻璃和暂停的 preview，直到
+自动回退的 Standard session 真正恢复可交互；不能因为进入 `failed/unconfigured`
+状态就提前露出未配置画面。如果自动回退仍失败，毛玻璃内显示 `Retry`，由用户
+重新触发 Standard recovery，不能把整个相机界面锁成只能重启恢复。
+
+PRO 下切到前置、以及从前置返回后置，也使用同一套毛玻璃等待。进入前置时保存
+`suspended rear mode = pro`，前置只提供自动/点按对焦并隐藏 PRO / lower toolbar；
+返回后置时优先恢复 eligible PRO。如果返回时 capability 已不满足，则落回 Standard
+并显示简短提示。
+
+`suspended rear mode` 只是本次前后摄像头导航状态，不等于用户关闭 PRO，也不能
+写入 Photographer Mode 的 `Remember Last State`。
 
 ## Basic EV
 
-`Basic EV` 是普通产品构建的完整独立流程，不是 Pro Controls 的残留入口。
+`Basic EV` 是 Standard 的完整独立流程，不是 PRO 的残留入口。它在所有产品构建
+中存在，但只由 Standard UI 使用。
 
 UI：
 
@@ -171,6 +218,9 @@ UI：
 
 行为：
 
+- Standard 保留既有选项和选择行为；它不会为了专业控制改成 LiDAR path。
+- PRO active 时整个 selector 隐藏，因为 active capture path 固定为后置 LiDAR
+  24mm / 1x。
 - 只接收 display-only FOV options，不读取 camera profile、depth profile、raw device id 或 zoom plan。
 - 少量选项居中，多选项水平滚动。
 - 可选 chip 使用高对比状态；不可用 chip 灰显。
@@ -195,11 +245,10 @@ pipeline 暴露给 AVFoundation 的能力。
 - 前置 depth capture graph 下写 custom lens position 已观察到黑屏风险；
   第一阶段前置只保留自动/点按对焦，不暴露 MF 调节杆。
 
-第一阶段优先 manual-control reliability：有可用的 rear LiDAR 24mm
-manual-depth path 时，使用它作为 active capture/control path。`1x / 2x /
-3x` 是 `preview-only zoom` preset，不是硬件焦段切换；最终 photo 和 depth
-仍保持 full-frame LiDAR 24mm。第一次进入 2x 或 3x 时，用短暂
-`viewfinder edge toast` 说明 preview-only。
+第一阶段优先 manual-control reliability：只有 Photographer Mode 会切到 eligible
+rear LiDAR 24mm / 1x manual-depth path，并把它作为 active capture/control path。
+该模式固定 24mm / 1x，不显示 `FOV selector bar`。Standard 保留原相机 path 和
+原有镜头选择 / preview-only zoom 行为，但不会因为设备具备 LiDAR 而自动使用 LiDAR。
 
 `source switching mode` 进入 roadmap，不混进第一阶段。未来如果真的切换到
 Triple/Wide/Tele/其他 Apple camera path，ISO/S/AF/MF 必须按当前 path 的
@@ -209,10 +258,83 @@ RGB/depth 都是 full-frame LiDAR 24mm。
 
 完整设备限制说明见 [CameraManualControlDeviceLimits.md](CameraManualControlDeviceLimits.md)。
 
+## Capture Source Binding And Data-Flow Invariants
+
+相机源切换不是只替换一个 UI 状态。每一条运行中的流水必须绑定到一个明确的
+`capture source generation`：
+
+```text
+source generation
+  = device/input
+  + active video format
+  + active depth format
+  + configuration generation
+```
+
+同一 generation 内遵守以下不变量：
+
+1. source graph 只创建一条 canonical RGB data output。不能为了 MF 放大窗、
+   VIDEO、诊断或未来分析分别向同一硬件 source 再挂 RGB output。
+2. `focus loupe`、VIDEO recorder 和未来帧级消费者必须在软件 router 后扇出；
+   消费者的显示、编码或背压不能反向改变硬件 graph。
+3. 需要 RGB/Depth 对齐时，graph 生命周期内只保留一个
+   `AVCaptureDataOutputSynchronizer`、一个 delegate 和一个 callback queue。
+   Warmup -> recording 只切换 router 内的软件 consumer，不能对 live
+   synchronizer 调换 delegate/queue。
+4. MF UI、tap assist、readback、loupe buffer 和 recorder 必须检查相同的
+   device/generation。旧 source 的 late callback 必须丢弃，不能渲染进新 source
+   的 UI，也不能写入新 source 的文件。
+5. 主 `AVCaptureVideoPreviewLayer` 仍由同一个 session/device source 驱动，但它
+   不是 recorder 的 `AVCaptureVideoDataOutput`。文档中的“同一视频源”表示相同
+   source identity/generation；MF loupe 与 recorder 还进一步共享同一 canonical
+   RGB data output。
+
+切换 Standard/PRO、Photo/Video 或前后摄像头时，顺序固定为：
+
+1. 冻结旧 generation 的最后一帧并锁住交互。
+2. 停止接受旧 generation 的手动写入和新 capture。
+3. drain/detach 旧 graph 的软件消费者，再拆除旧 graph。
+4. 配置目标 source，生成新的 generation。
+5. 在目标 canonical RGB/Depth 流上绑定 loupe、recorder 和诊断消费者。
+6. 只让当前 generation 的回调改变 UI 或写入 artifact。
+
+从 TAP Library 返回也必须遵守同一事务边界。相册展示会暂停并拆除当前相机
+session，因此 `selectedMode == .video` 只表示用户仍选择 VIDEO，不能证明 VIDEO
+graph 仍然存在。返回顺序固定为：
+
+1. 恢复当前 Standard / PRO source generation。
+2. 如果 UI 仍选择 VIDEO，重新执行 VIDEO warmup 并绑定该 generation 的消费者。
+3. source 和 VIDEO graph 都 ready 后才解除毛玻璃与交互锁。
+4. VIDEO warmup 失败时有界降级到 PHOTO，不能停留在无限 `Starting PRO`。
+5. pending capture 的签名/导出重试在恢复后独立执行；网络工作不能参与 viewfinder
+   readiness gate。
+
+视频签名也遵守同一条“已产出数据归属”约束：recorder 完成并 ingest 后，pending
+MP4 就是待签名的源文件。签名前不再用第二次 AVFoundation track scan 重新裁决
+这个文件是否值得信任；签名只覆盖 proof slot 之外的精确 MP4 字节和 canonical
+manifest payload。proof 写入后必须立刻重算 binding，核对 `contentDigest` 与
+`signingBinding` 确实对应当前文件；Photos 导出和 original-resource readback
+重复同一检查。RGB/depth/timeline/calibration 的完整语义检查保留为独立健康度
+能力，不参与签名、正常导出或 viewfinder readiness。
+
+`session graph ready`、`preview ready` 和 `data ready` 不能混为一谈：
+
+- `graph ready`：`commitConfiguration` 完成且输出结构合法。
+- `preview ready`：目标 generation 的 PreviewLayer 已恢复交互。
+- `data ready`：目标 canonical output 已交付当前 generation 的首个有效 sample；
+  RGB/Depth 功能还需要首个有效 synchronized pair。
+
+调研期的 `warmup-ready` trace 只曾证明 graph 结构完成，不单独证明 data ready；
+该临时 trace 已在真机验收后删除。当前正式架构已落实单 RGB output 和固定 router；
+如果真机再次出现长期 `Starting PRO`，应针对该次故障添加有界诊断并验证
+current-generation first-sample readiness，不能通过新增 output、重复 warmup 或再次
+切换 delegate 来掩盖问题。
+
 ## Exposure Model
 
-本节只属于 `TAP_ENABLE_PRO_CAMERA_CONTROLS` 专业控制构建。普通产品构建只有
-`Basic EV`，不编译 ISO/S/Meter/risk/readback 专业曝光状态机。
+本节只在 Photographer Mode `active` 时进入。Standard 只使用 `Basic EV`，不会
+创建、恢复或写入 ISO/S/Meter/risk/readback 专业曝光状态；异步切换期间也拒绝
+专业参数写入。
 
 曝光控制有四个用户可见状态。`ISO` 和 `S` 两个按钮就是完整模式选择器，不新增独立曝光模式按钮：
 
@@ -323,9 +445,9 @@ AF completion metering 的节流规则：
 viewfinder 上下滑动目标见
 [FocusTemporaryEVNativeComparison.md](FocusTemporaryEVNativeComparison.md)。
 
-普通产品构建保留基础 tap-to-focus 路径，但不编译 `AF/MF` 专业切换入口、
-MF lens-position strip、MF 专业调节状态或 Pro readback。以下 MF 专业控制规则只属于
-`TAP_ENABLE_PRO_CAMERA_CONTROLS` 构建。
+Standard 和前置相机保留基础 tap-to-focus 路径，但不显示 `AF/MF` 专业切换入口、
+MF lens-position strip、MF 专业调节状态或 PRO readback。以下 MF 专业控制规则只在
+eligible 后置 Photographer Mode `active` 时生效。
 
 对焦模式只决定相机如何找焦点，不决定曝光控制权。曝光写入由 `A/A`、`M/A`、`A/M`、`M/M` 决定。AF 事件可以成为 metering trigger，但 metering 的结果必须按当前曝光状态处理。
 
@@ -368,44 +490,54 @@ stateDiagram-v2
 MF：
 
 - 点击 `AF/MF` 从 AF 进入 MF，并显示 `MF lens position` 的 `ticked adjustment strip`。
+- AF -> MF 只锁定 AF 已经到达的当前镜头位置，再 readback 更新调节条；模式切换本身不能重放 capability snapshot 中已经过期的数值位置。只有用户实际拖动 MF 条后才能写具体 lens position。
 - 再次点击回到 AF，控制条消失。
 - 前置摄像头下第一阶段禁用 `AF/MF` 切换。前置 depth capture graph 下写入 custom lens position 已观察到黑屏风险；在真实设备能力矩阵和 UX 验证完成前，前置只保留自动对焦/点按对焦路径，不暴露 MF 调节杆。
 - MF 下没有对焦框。
 - MF 下点击取景器会更新同一个 `manual focus assist point`。这是原因；`focus loupe` 和 `manual focus tap assist` 都只是这个点派生出来的结果，彼此不能互相 gate。
-- `Focus Magnifier` 不为 `Off` 时，MF tap 在取景器右下角显示 `focus loupe`；它只放大当前预览，不改 `videoZoomFactor`，不影响最终照片。
+- `Focus Magnifier` 不为 `Off` 时，MF tap 或 MF 条调节会显示右下角 2.4x 局部放大窗；主取景器保持 1x，用户仍然看到完整构图。放大窗不新增 PreviewLayer、不改 `videoZoomFactor`，也不影响最终照片。
+- `focus loupe` 使用主取景器的 display-local tap point。2.4x 缩放后必须再把这个像素平移到 loupe 中心；不能只把 tap point 设为 SwiftUI scale anchor，也不能把已经转换过的 capture-device point 再用于显示裁剪。中心、左下、右上以及横竖尺寸都必须满足“点击像素 == loupe 十字中心”。
+- MF 条不使用停手 debounce。第一笔数值立即发送；硬件写入在途时，中间值合并成一个 latest value，completion 后继续发送最新值。这样拖动期间可以实时观察焦平面变化，同时不会向 AVFoundation 堆积过时的 FIFO 写入。
 - `Focus Magnifier` 为 `Off` 时，仍然记录 tap point；只是不显示 loupe。
-- `manual focus tap assist` 开启时，MF tap 会对该点执行一次 focus-only AF assist，然后读取 settled 后的 `lensPosition` 作为手动对焦杆起点，状态仍然回到 MF。
-- `manual focus tap assist` 关闭时，MF tap 仍然可以显示/移动 loupe，但不执行 AF assist。
+- `manual focus tap assist` 是 PRO/MF 的固定交互，不再由 Debug toggle gate。MF tap 会对该点执行一次 focus-only AF，并用本次请求独享的 `isAdjustingFocus` observation 等待 `started -> stably settled`；如果画面已经合焦且没有产生镜头移动，则使用一个短 no-motion grace window。
+- AF 稳定后直接使用 `AVCaptureDevice.currentLensPosition` 锁回 MF，并等待 applied-buffer completion；不能先读取一个 numeric lens position 再重放它。
 - `manual focus tap assist` 不写 `exposurePointOfInterest`，不切 `continuousAutoExposure`，不更新 `meter baseline`，不改变 `A/A`、`M/A`、`A/M`、`M/M`。
-- AF assist 未完成前如果用户拖动 MF 杆，用户拖动优先。旧 AF assist 回调只能更新 Debug readback，不能覆盖 `lensPosition` 或对焦杆位置。
-- `focus loupe` 默认显示 1.5s。显示时长由 Debug Settings 的 `Focus Magnifier` 选择：`Off`、`1.5s`、`3s`、`5s`。用户 tap 或拖动 MF 杆时续期；停止交互后按所选时长关闭。
+- AF assist、current-position MF lock 和 MF slider 共用同一个 transport。assist 未完成前如果用户拖动 MF 杆，只保留最后一个 slider value；barrier 完成后再写该值，并且 assist snapshot 不覆盖用户已经拖动的 draft。
+- 连续点按采用 latest-wins：新点立即更新取样标记和 loupe anchor，并使旧 request/context 失效。切 AF、退出 PRO、切前置、进入后台或停止 session 会立即唤醒并取消旧 settle waiter。
+- assist 完成并重新锁回 MF 前暂时禁用快门，但不禁用 MF slider。AF settle 超时或命令失败时先尝试一次有界的 current-position relock；如果最终无法得到 locked readback，UI 必须回到 AF，不能继续显示不可信的 MF。
+- `focus loupe` 默认显示 1.5s。显示时长由 Debug Settings 的 `Focus Magnifier` 选择：`Off`、`1.5s`、`3s`、`5s`。用户 tap 或拖动 MF 杆时续期；停止交互后按所选时长关闭。放大窗自身不接收点击；主取景器坐标和交互始终保持不变。
 - 半按快门、拍照、切回 AF、切换镜头、退出相机或 view 生命周期结束时立即关闭 loupe。
 - `Focus Magnifier` 的 Debug Settings 形态是单个枚举 key，包含关闭和三个时长值；不保留旧 bool key，也不做未上线内部 key 兼容。这个 UX 允许后续根据真实反馈调整。
 
 ```mermaid
 stateDiagram-v2
     [*] --> ManualIdle
-    ManualIdle --> LoupeOnly: MF tap and magnifier enabled
-    ManualIdle --> AssistOnly: MF tap and tap assist enabled and magnifier off
-    ManualIdle --> LoupeAndAssist: MF tap and both enabled
-    LoupeOnly --> ManualIdle: loupe timeout / close trigger
-    AssistOnly --> ManualIdle: AF assist settled
-    LoupeAndAssist --> ManualIdle: loupe timeout and AF assist settled
-    AssistOnly --> UserDragWins: user drags MF before assist settles
-    LoupeAndAssist --> UserDragWins: user drags MF before assist settles
-    UserDragWins --> ManualIdle: keep user lens position
+    ManualIdle --> Assisting: MF tap
+    Assisting --> Assisting: newer tap supersedes old request
+    Assisting --> Relocking: request-local AF settled
+    Assisting --> Recovering: AF error / settle timeout
+    Recovering --> Relocking: best-effort current lock
+    Relocking --> ManualIdle: locked readback
+    Relocking --> AutoFocus: lock failed
+    Assisting --> SliderQueued: user drags MF
+    SliderQueued --> ManualIdle: current lock then latest slider value
 ```
 
 ## Mode Selector
 
 `mode selector slot` 默认显示 `mode selector bar`：
 
-- `PHOTO`：可用，当前选中。
-- `VIDEO`：灰色不可用，点击显示 `Coming soon`。
+- `PHOTO`：可用。
+- `VIDEO`：Standard 和 eligible rear PRO 都可用。
 
 `mode selector bar` 不响应设备方向变化。它的外层 HStack、每个按钮 frame、`PHOTO` / `VIDEO` 文字都保持 portrait layout，不使用 `rotationEffect`。
 
 `Live Photo` 不放在 mode selector 里，放在 `viewfinder top toolbar`，因为它是 Photo 模式的附加捕获能力，不是独立拍摄模式。
+
+VIDEO 中继续显示最右侧 `PRO`。Standard VIDEO 点按 PRO 时切到 rear LiDAR
+configuration 并准备 PRO Video graph；PRO VIDEO 点按 PRO 时切回 Standard
+VIDEO graph。两条路径都使用毛玻璃并锁定模式、快门和相机切换，直到目标 graph
+ready。失败时恢复可用的稳定相机路径；如果 VIDEO warmup 本身失败，再回到 PHOTO。
 
 ## Viewfinder Edge Toast
 
@@ -429,7 +561,8 @@ Settings 的 `Depth Warnings` 只控制深度类提示；普通操作反馈不�
 
 Settings 分组：
 
-- `Capture`：`Photo Quality`、`Output Format`、`Flash Default`、`Live Photo Default`。
+- `Capture`：`Photo Quality`、`Output Format`、`Flash Default`、`Live Photo Default`、
+  `Photographer Mode Startup`。
 - `Viewfinder`：`Grid`、`Highlight Color`、`Depth Warnings`。
 - `Camera Behavior`：`Keep Screen Awake`、`Reset EV on App Launch`、`Return to Camera After Background`。
 - `Feedback`：`Shutter Sound`、`Shutter Haptics`。
@@ -440,8 +573,8 @@ Settings 分组：
   麦克风数据。
 - `App Attest`：凭证状态和 redacted KeyID 摘要。
 - `Debug Camera Controls`：仅 `DEBUG` 构建显示 `Focus Magnifier` 和
-  `LiDAR Focus Assist`。`Manual Focus Tap Assist` 还必须属于
-  `TAP_ENABLE_PRO_CAMERA_CONTROLS` 构建；普通产品构建不显示。
+  `LiDAR Focus Assist`。MF 点按快速对焦是 eligible 后置 PRO/MF 的固定产品交互，
+  不再出现在 Settings。
 
 `Focus Magnifier` 是 Debug-only Picker，不是 bool toggle：
 
@@ -450,10 +583,8 @@ Settings 分组：
 - `3s`
 - `5s`
 
-该设置只控制 `focus loupe` 是否显示以及显示时长。因为普通产品构建当前没有
-手动对焦入口，它不进入普通 Settings。`manual focus tap assist` 只属于
-`DEBUG && TAP_ENABLE_PRO_CAMERA_CONTROLS` 构建；在 Pro Controls 构建中，
-`Focus Magnifier` 不 gate 它是否执行 focus-only AF assist。
+该设置只控制 `focus loupe` 是否显示以及显示时长。它仍不进入普通 Settings，
+也不 gate MF 点按是否执行 focus-only AF assist。
 
 `LiDAR Focus Assist` 当前不清楚 LiDAR 如何参与真实对焦流程，因此只保留为
 Debug-only 实验开关，默认关，不进入普通 Settings。
@@ -496,6 +627,18 @@ Debug-only 实验开关，默认关，不进入普通 Settings。
 - 如果 Settings 正在打开时才切到 `Remember Last State`，当前 viewfinder
   的 Live Photo 状态会成为第一份 remembered state，不回跳到旧历史值。
 
+`Photographer Mode Startup`：
+
+- 选项同样固定为 `Default Off / Default On / Remember Last State`，默认策略是
+  `Default Off`。
+- `Default On` 和 remembered-on 只是启动请求，不代表 LiDAR/capability 已 ready。
+- 进入相机后先发现 eligible rear LiDAR path；满足 depth + custom ISO/S + MF 后，
+  才通过毛玻璃异步进入 PRO。
+- 当前设备不 eligible、当前从前置启动或 session configuration 失败时，安全回退
+  Standard，不阻塞相机使用。
+- `Remember Last State` 只记录用户明确完成的 Standard / PRO 偏好改变。PRO 下临时
+  切到前置属于 `suspended rear mode`，不覆盖 remembered state。
+
 C2PA 当前不出现在 UI。
 
 ## Lifetime Rules
@@ -508,6 +651,9 @@ C2PA 当前不出现在 UI。
 - 当前激活的 `ticked adjustment strip`
 - `Flash`，除非 `Flash Default` 是 `Remember Last State`
 - `Live Photo`，除非 `Live Photo Default` 是 `Remember Last State`
+- Photographer Mode 内部 ISO/S/AF/MF 调节状态；启动时只恢复模式偏好，不恢复这些
+  专业参数值
+- `suspended rear mode`；它只在当前相机会话的前后摄像头导航中存在
 
 从后台回到前台时，本次会话状态应恢复。
 
@@ -517,8 +663,11 @@ C2PA 当前不出现在 UI。
 - `Output Format`
 - `Flash Default`
 - `Live Photo Default`
+- `Photographer Mode Startup`
 - `Flash Last State`，仅当 `Flash Default` 为 `Remember Last State` 时写入
 - `Live Photo Last State`，仅当 `Live Photo Default` 为 `Remember Last State` 时写入
+- `Photographer Mode Last State`，仅当 `Photographer Mode Startup` 为
+  `Remember Last State` 时记录成功的用户模式偏好改变
 - `Keep Screen Awake`
 - `Reset EV on App Launch`
 - `Basic EV` 值按 EV preference policy 处理：如果启动重置开启，冷启动回到默认值；如果关闭，可恢复上次 EV。它不进入 capture artifact、manifest、Photos metadata 或 pending record。
@@ -532,8 +681,6 @@ Debug-only 持久化 Settings 项：
 
 - `Focus Magnifier` 枚举：`Off / 1.5s / 3s / 5s`
 - `LiDAR Focus Assist`
-- `Manual Focus Tap Assist`，仅 `DEBUG && TAP_ENABLE_PRO_CAMERA_CONTROLS`
-  构建显示和读取
 
 ## No Depth
 
@@ -570,9 +717,9 @@ TAP 仍优先选择支持深度的设备和格式，并请求深度。
 - `CameraExposureControlState` 是纯 Planning 模型，负责 `A/A`、`M/A`、`A/M`、`M/M`、`meter baseline`、`pending meter sample`、EV 重算、只读 `Meter`、generation/device/signature 丢弃和风险区计算。
 - `CameraManualControlReadbackSnapshot` 是 Runtime readback 的纯值边界。`CaptureSessionController` 在 session queue 上读取 ISO、S、`exposureTargetOffset`、lens position、focus/exposure mode 和 `isAdjustingExposure`/`isAdjustingFocus`，并带上 caller-supplied readback reason。
 - `CaptureSessionController` 观察 `isAdjustingExposure`，向 ViewModel 发出 `exposureStarted` / `exposureSettled`。进入半自动/手动或 focus-driven metering 后，View 层按 300ms settle 上限安排 readback。
-- `CameraControlService` 区分 `autoFocus` 和 `autoFocusOnly`。`manual focus tap assist` 使用 focus-only 写入，不写 AE、不改 exposure point。
+- `CameraControlService` 区分 `autoFocus` 和 `autoFocusOnly`。`manual focus tap assist` 使用 request-local observation 和 focus-only 写入，不写 AE、不改 exposure point；settled 后通过 completion-observable `.current` lock 回到 MF。
 - `CameraView` 把纯模型输出的 display state、Runtime intent、Debug state 分开处理；Debug overlay 只显示 readback/model 字符串，不写 OSLog、不持久化、不进入 manifest。
-- `Focus Magnifier` 使用单个 Debug Settings 枚举 key：`Off / 1.5s / 3s / 5s`，默认 `1.5s`；关闭只影响 loupe。`Manual Focus Tap Assist` 只在 `DEBUG && TAP_ENABLE_PRO_CAMERA_CONTROLS` 构建中显示，且不由 `Focus Magnifier` gate。
+- `Focus Magnifier` 使用单个 Debug Settings 枚举 key：`Off / 1.5s / 3s / 5s`，默认 `1.5s`；关闭只影响 loupe。`Manual Focus Tap Assist` 是 PRO/MF 固定交互，不由 `Focus Magnifier` gate。
 
 当前自动化覆盖：
 

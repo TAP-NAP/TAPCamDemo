@@ -474,6 +474,81 @@ struct TAPLibraryProcessingTests {
         }
     }
 
+    @Test func unsignedVideoManifestFailureRemainsRetryable() async throws {
+        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+        let store = TAPPendingCaptureStore(rootURL: rootURL)
+        let record = try await TAPCamDemoTestFixtures.ingestPendingTAPVideo(
+            store: store,
+            captureID: "unsigned-video-validation-failure"
+        )
+
+        await TAPPendingCaptureProcessor().processPendingCaptures(
+            store: store,
+            signer: InvalidManifestPendingVideoSigner(),
+            exporter: RecordingPendingCaptureExporter(),
+            protectedDataIsAvailable: { true }
+        )
+
+        let failed = try await store.readRecord(captureID: record.captureID)
+        #expect(failed.status == .failedRetryable)
+        #expect(failed.failureCode == nil)
+        #expect(failed.videoArtifactState == .unsigned)
+    }
+
+    @Test func persistedSignedVideoBindingFailureIsTerminal() async throws {
+        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+        let store = TAPPendingCaptureStore(rootURL: rootURL)
+        let record = try await TAPCamDemoTestFixtures.ingestPendingTAPVideo(
+            store: store,
+            captureID: "signed-video-binding-failure"
+        )
+
+        await TAPPendingCaptureProcessor().processPendingCaptures(
+            store: store,
+            signer: MarkingPendingVideoSigner(),
+            exporter: InvalidManifestPendingCaptureExporter(),
+            protectedDataIsAvailable: { true }
+        )
+
+        let failed = try await store.readRecord(captureID: record.captureID)
+        #expect(failed.status == .failedTerminal)
+        #expect(failed.failureCode == .invalidVideoArtifact)
+        #expect(failed.videoArtifactState == .signed)
+    }
+
+    @Test func reconcileReopensAndRetriesLegacyUnsignedVideoTerminalFailure() async throws {
+        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+        let store = TAPPendingCaptureStore(rootURL: rootURL)
+        let record = try await TAPCamDemoTestFixtures.ingestPendingTAPVideo(
+            store: store,
+            captureID: "legacy-terminal-video-retry"
+        )
+        _ = try await store.markTerminalFailure(
+            captureID: record.captureID,
+            code: .invalidVideoArtifact
+        )
+        let exporter = RecordingPendingCaptureExporter()
+        let recorder = PendingCaptureStageRecorder()
+
+        await TAPPendingCaptureProcessor().processPendingCaptures(
+            store: store,
+            signer: MarkingPendingVideoSigner(),
+            exporter: exporter,
+            readback: StageRecordingPendingCaptureReadback(recorder: recorder),
+            protectedDataIsAvailable: { true }
+        )
+
+        let retried = try await store.readRecord(captureID: record.captureID)
+        #expect(retried.status == .exported)
+        #expect(retried.failureCode == nil)
+        #expect(retried.videoArtifactState == .signed)
+        #expect(await exporter.exportedCaptureIDs() == [record.captureID])
+        #expect(await recorder.recordedStages() == ["readback"])
+    }
+
     @Test func videoReadbackTransportFailureKeepsCommittedAssetInRecovery() async throws {
         let store = TAPPendingCaptureStore(rootURL: try TAPCamDemoTestFixtures.makeTemporaryDirectory())
         let pending = try await TAPCamDemoTestFixtures.ingestPendingTAPVideo(
@@ -794,6 +869,37 @@ private struct SensitiveFailingPendingCaptureSigner: TAPPendingCaptureSigning {
     ) async throws -> TAPPendingCaptureRecord {
         throw TAPDepthCaptureError.pendingCaptureProofInvalid(
             "captureID=pending/private-capture-id actual=actual-manifest-id-2 keyID=prepared-key-id proof=secret-proof path=/private/var/mobile/Containers/Data/Application/secret/signed.heic"
+        )
+    }
+}
+
+private struct InvalidManifestPendingVideoSigner: TAPPendingCaptureSigning {
+    func sign(
+        _ record: TAPPendingCaptureRecord,
+        store: TAPPendingCaptureStore
+    ) async throws -> TAPPendingCaptureRecord {
+        throw TAPDepthCaptureError.invalidTAPManifest(
+            "unsigned capture health check must not become terminal"
+        )
+    }
+}
+
+private struct MarkingPendingVideoSigner: TAPPendingCaptureSigning {
+    func sign(
+        _ record: TAPPendingCaptureRecord,
+        store: TAPPendingCaptureStore
+    ) async throws -> TAPPendingCaptureRecord {
+        try await store.markVideoSigned(captureID: record.captureID)
+    }
+}
+
+private struct InvalidManifestPendingCaptureExporter: TAPPendingCaptureExporting {
+    func export(
+        _ record: TAPPendingCaptureRecord,
+        store: TAPPendingCaptureStore
+    ) async throws {
+        throw TAPDepthCaptureError.invalidTAPManifest(
+            "signed artifact no longer matches its persisted identity"
         )
     }
 }

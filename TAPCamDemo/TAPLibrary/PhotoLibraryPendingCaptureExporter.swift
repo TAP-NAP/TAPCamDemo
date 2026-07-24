@@ -93,7 +93,8 @@ nonisolated struct PhotoLibraryPendingVideoExportActions: Sendable {
                 try await TAPCaptureProvenanceWriter().validateSignedExportVideoFile(
                     at: fileURL,
                     expectedCaptureID: record.captureID,
-                    expectedPackageID: record.packageID
+                    expectedPackageID: record.packageID,
+                    validatesDepthTrack: false
                 )
             },
             saveVideoFile: { fileURL, record, manifest, commitWillBegin in

@@ -12,7 +12,7 @@ nonisolated final class TAPVideoWriterSession: @unchecked Sendable {
         case appended(startedAt: CMTime?)
         case dropped(startedAt: CMTime?)
         case ignored
-        case failedToStart
+        case failed
     }
 
     enum AudioAppendOutcome {
@@ -125,18 +125,21 @@ nonisolated final class TAPVideoWriterSession: @unchecked Sendable {
         var startedAt: CMTime?
         if !didStartWriting {
             guard assetWriter.startWriting() else {
-                return .failedToStart
+                return .failed
             }
             assetWriter.startSession(atSourceTime: presentationTime)
             didStartWriting = true
             startedAt = presentationTime
         }
         guard assetWriter.status == .writing else {
-            return .ignored
+            return assetWriter.status == .failed ? .failed : .ignored
         }
-        guard videoInput.isReadyForMoreMediaData,
-              videoInput.append(sampleBuffer) else {
+        guard videoInput.isReadyForMoreMediaData else {
             return .dropped(startedAt: startedAt)
+        }
+        guard videoInput.append(sampleBuffer) else {
+            return assetWriter.status == .failed
+                ? .failed : .dropped(startedAt: startedAt)
         }
         return .appended(startedAt: startedAt)
     }

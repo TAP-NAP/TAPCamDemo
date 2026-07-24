@@ -141,10 +141,10 @@ private struct SingleCamLivePhotoCapturePlan {
     }
 }
 
-/// Creates the single still-photo settings shape used by both prewarming and
-/// actual capture. Keeping these settings identical makes
-/// `setPreparedPhotoSettingsArray` representative of the requested container,
-/// codec, depth, quality, and dimensions instead of warming a cheaper default.
+/// Creates the single still-photo settings shape used by actual capture.
+/// Runtime intentionally avoids retaining prepared settings across camera-graph
+/// changes so repeated Standard/LiDAR switching cannot carry resource hints
+/// from one physical capture source into the next.
 nonisolated enum SingleCamPhotoSettingsFactory {
     static func make(
         photoOutput: AVCapturePhotoOutput,

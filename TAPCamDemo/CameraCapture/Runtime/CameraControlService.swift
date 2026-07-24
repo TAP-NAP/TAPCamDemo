@@ -7,6 +7,67 @@
 import CoreGraphics
 import Foundation
 
+nonisolated enum CameraManualFocusLockTarget: Equatable, Sendable {
+    case current
+    case position(Double)
+}
+
+/// Thread-safe lifetime token for one logical MF context. It lets the session
+/// queue reject a write that became stale while waiting behind configuration
+/// work, before touching `AVCaptureDevice`.
+nonisolated final class CameraManualFocusOperationToken: @unchecked Sendable {
+    let id = UUID()
+
+    private let lock = NSLock()
+    private var valid = true
+    private var invalidationHandlers: [UUID: @Sendable () -> Void] = [:]
+
+    var isValid: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return valid
+    }
+
+    func invalidate() {
+        let handlers: [@Sendable () -> Void]
+        lock.lock()
+        guard valid else {
+            lock.unlock()
+            return
+        }
+        valid = false
+        handlers = Array(invalidationHandlers.values)
+        invalidationHandlers.removeAll()
+        lock.unlock()
+        handlers.forEach { $0() }
+    }
+
+    @discardableResult
+    func addInvalidationHandler(
+        _ handler: @escaping @Sendable () -> Void
+    ) -> UUID? {
+        let handlerID = UUID()
+        lock.lock()
+        if valid {
+            invalidationHandlers[handlerID] = handler
+            lock.unlock()
+            return handlerID
+        }
+        lock.unlock()
+        handler()
+        return nil
+    }
+
+    func removeInvalidationHandler(_ handlerID: UUID?) {
+        guard let handlerID else {
+            return
+        }
+        lock.lock()
+        invalidationHandlers.removeValue(forKey: handlerID)
+        lock.unlock()
+    }
+}
+
 /// Runtime boundary for AVFoundation device control writes.
 ///
 /// `CaptureSessionController` owns the serial session queue. This service owns
@@ -162,6 +223,62 @@ nonisolated enum CameraControlService {
         }
     }
 
+    /// Starts one completion-observable MF operation. Unlike the generic
+    /// command plan path, this boundary does not report success until
+    /// AVFoundation associates the locked position with an applied video frame.
+    static func setManualFocusLocked(
+        _ target: CameraManualFocusLockTarget,
+        on device: AVCaptureDevice,
+        completionHandler: @escaping @Sendable (CMTime) -> Void
+    ) throws {
+        try requireSessionQueueAccess()
+        guard device.isFocusModeSupported(.locked) else {
+            throw TAPDepthCaptureError.cameraControlUnsupportedCommand
+        }
+
+        let lensPosition: Float
+        switch target {
+        case .current:
+            lensPosition = AVCaptureDevice.currentLensPosition
+        case .position(let value):
+            guard device.isLockingFocusWithCustomLensPositionSupported else {
+                throw TAPDepthCaptureError.cameraControlUnsupportedCommand
+            }
+            lensPosition = Float(min(max(value, 0), 1))
+        }
+
+        try device.lockForConfiguration()
+        defer { device.unlockForConfiguration() }
+        device.isSubjectAreaChangeMonitoringEnabled = false
+        device.setFocusModeLocked(
+            lensPosition: lensPosition,
+            completionHandler: completionHandler
+        )
+    }
+
+    /// Starts the one-shot, focus-only AF phase used by MF tap assist.
+    ///
+    /// Exposure state is intentionally untouched and subject-area monitoring
+    /// remains disabled because the transaction will immediately return to a
+    /// locked manual lens position.
+    static func startManualFocusTapAssistAutoFocus(
+        at point: CameraManualControlIntent.NormalizedPoint,
+        on device: AVCaptureDevice
+    ) throws {
+        try requireSessionQueueAccess()
+        guard point.isInsideUnitRect,
+              device.isFocusModeSupported(.autoFocus),
+              device.isFocusPointOfInterestSupported else {
+            throw TAPDepthCaptureError.cameraControlUnsupportedCommand
+        }
+
+        try device.lockForConfiguration()
+        defer { device.unlockForConfiguration() }
+        device.isSubjectAreaChangeMonitoringEnabled = false
+        device.focusPointOfInterest = CGPoint(x: point.x, y: point.y)
+        device.focusMode = .autoFocus
+    }
+
     static func validateManualControlCommandPlan(
         _ plan: CameraManualControlCommandPlan,
         activeDeviceID: String,
@@ -273,7 +390,13 @@ nonisolated enum CameraControlService {
             if let lensPosition {
                 device.setFocusModeLocked(lensPosition: Float(lensPosition), completionHandler: nil)
             } else {
-                device.focusMode = .locked
+                // Entering MF must preserve the lens position produced by AF.
+                // Apple's current-position sentinel avoids turning the mode
+                // switch itself into a custom lens movement.
+                device.setFocusModeLocked(
+                    lensPosition: AVCaptureDevice.currentLensPosition,
+                    completionHandler: nil
+                )
             }
         }
     }

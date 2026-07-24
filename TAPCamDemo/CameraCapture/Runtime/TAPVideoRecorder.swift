@@ -62,6 +62,12 @@ nonisolated struct TAPVideoRecordingArtifact: Sendable {
     }
 }
 
+nonisolated struct TAPVideoWriterFailure: Equatable, Sendable {
+    let captureID: String
+    let domain: String
+    let code: Int
+}
+
 nonisolated final class TAPVideoRecorder: NSObject, @unchecked Sendable {
     let callbackQueue: DispatchQueue
     let outputDelegate: TAPVideoRecorderOutputDelegate
@@ -70,12 +76,14 @@ nonisolated final class TAPVideoRecorder: NSObject, @unchecked Sendable {
     private let sessionConfiguration: SessionConfigurationResult
     private let location: TAPPendingCaptureLocation?
     private let writerSession: TAPVideoWriterSession
+    private let writerFailureHandler: @Sendable (TAPVideoWriterFailure) -> Void
     weak var synchronizedVideoOutput: AVCaptureVideoDataOutput?
     weak var synchronizedDepthOutput: AVCaptureDepthDataOutput?
     var metrics = TAPVideoRecordingMetrics()
     var diagnostics: TAPVideoRecorderDiagnostics
 
     private var isFinishing = false
+    private var didReportWriterFailure = false
     private var finishContinuation: CheckedContinuation<TAPVideoRecordingArtifact, any Error>?
 
     init(
@@ -84,13 +92,17 @@ nonisolated final class TAPVideoRecorder: NSObject, @unchecked Sendable {
         videoSettings: [String: Any],
         recordsAudio: Bool,
         recordsDepth: Bool,
-        location: TAPPendingCaptureLocation?
+        location: TAPPendingCaptureLocation?,
+        callbackQueue: DispatchQueue? = nil,
+        writerFailureHandler: @escaping @Sendable (TAPVideoWriterFailure) -> Void
     ) throws {
         let callbackRouter = TAPVideoRecorderCallbackRouter()
         self.request = request
         self.sessionConfiguration = sessionConfiguration
         self.location = location
-        self.callbackQueue = DispatchQueue(label: "tapcam.camera-capture.video-recorder.\(request.captureID)")
+        self.writerFailureHandler = writerFailureHandler
+        self.callbackQueue = callbackQueue
+            ?? DispatchQueue(label: "tapcam.camera-capture.video-recorder.\(request.captureID)")
         self.outputDelegate = TAPVideoRecorderOutputDelegate(router: callbackRouter)
         self.diagnostics = TAPVideoRecorderDiagnostics(captureID: request.captureID)
         self.writerSession = try TAPVideoWriterSession(
@@ -136,6 +148,16 @@ nonisolated final class TAPVideoRecorder: NSObject, @unchecked Sendable {
         }
     }
 
+    func cancelAfterWriterFailure() async {
+        await withCheckedContinuation { continuation in
+            callbackQueue.async {
+                self.isFinishing = true
+                self.writerSession.cancelWriting()
+                self.cleanupWriterFile()
+                continuation.resume()
+            }
+        }
+    }
 
     private func finishOnCallbackQueue(
         reason: TAPVideoManifest.StopReason,
@@ -292,9 +314,11 @@ nonisolated final class TAPVideoRecorder: NSObject, @unchecked Sendable {
             metrics.firstVideoFormatDescription = CMSampleBufferGetFormatDescription(sampleBuffer)
         }
         switch outcome {
-        case .failedToStart:
+        case .failed:
             isFinishing = true
+            reportWriterFailureIfNeeded()
         case .ignored:
+            reportWriterFailureIfNeeded()
             return
         case .dropped(let startedAt):
             metrics.firstVideoTime = metrics.firstVideoTime ?? startedAt
@@ -349,6 +373,7 @@ nonisolated final class TAPVideoRecorder: NSObject, @unchecked Sendable {
         metrics.depthDeliveredSampleCount += 1
 
         guard let metadataAdaptor = depthMetadataAdaptor(at: timestamp) else {
+            reportWriterFailureIfNeeded()
             return
         }
 
@@ -361,6 +386,22 @@ nonisolated final class TAPVideoRecorder: NSObject, @unchecked Sendable {
         } catch {
             recordDepthEncodingFailure(error, timestamp: timestamp)
         }
+        reportWriterFailureIfNeeded()
+    }
+
+    private func reportWriterFailureIfNeeded() {
+        guard !didReportWriterFailure,
+              writerSession.status == .failed else {
+            return
+        }
+        didReportWriterFailure = true
+        isFinishing = true
+        let error = writerSession.error as NSError?
+        writerFailureHandler(TAPVideoWriterFailure(
+            captureID: request.captureID,
+            domain: error?.domain ?? AVFoundationErrorDomain,
+            code: error?.code ?? AVError.Code.unknown.rawValue
+        ))
     }
 
     private func depthMetadataAdaptor(

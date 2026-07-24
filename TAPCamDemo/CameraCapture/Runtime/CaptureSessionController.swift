@@ -21,6 +21,18 @@ nonisolated enum CaptureSessionExposureRuntimeEvent: Equatable, Sendable {
     case exposureSettled
 }
 
+nonisolated struct CaptureSessionRuntimeFailure: Equatable, Sendable {
+    let domain: String
+    let code: Int
+    let isMediaServicesReset: Bool
+}
+
+nonisolated struct CaptureSessionVideoRecordingFailure: Equatable, Sendable {
+    let captureID: String
+    let domain: String
+    let code: Int
+}
+
 /// Owns the managed SingleCam `AVCaptureSession` and its mutation queue.
 ///
 /// This is the only production type that changes the AVFoundation session
@@ -30,23 +42,45 @@ nonisolated enum CaptureSessionExposureRuntimeEvent: Equatable, Sendable {
 nonisolated final class CaptureSessionController: @unchecked Sendable {
     let session = AVCaptureSession()
     let photoOutput = AVCapturePhotoOutput()
+    let manualFocusPreviewStream = CameraManualFocusPreviewStream()
 
     private let sessionQueue = DispatchQueue(label: "tapcam.camera-capture.singlecam.session")
     private var focusRuntimeEventHandler: (@Sendable (CaptureSessionFocusRuntimeEvent) -> Void)?
     private var exposureRuntimeEventHandler: (@Sendable (CaptureSessionExposureRuntimeEvent) -> Void)?
     private var subjectAreaChangeObserver: NSObjectProtocol?
+    private var sessionRuntimeErrorObserver: NSObjectProtocol?
+    private var sessionInterruptedObserver: NSObjectProtocol?
+    private var sessionInterruptionEndedObserver: NSObjectProtocol?
+    private var sessionDidStopRunningObserver: NSObjectProtocol?
     private var focusAdjustingObservation: NSKeyValueObservation?
     private var exposureAdjustingObservation: NSKeyValueObservation?
     private var activeVideoRecordingGraph: ActiveVideoRecordingGraph?
     private var preparedVideoRecordingGraph: PreparedVideoRecordingGraph?
+    private let runtimeFailureHandlerLock = NSLock()
+    private var runtimeFailureHandler: (@Sendable (CaptureSessionRuntimeFailure) -> Void)?
+    private let videoRecordingFailureHandlerLock = NSLock()
+    private var videoRecordingFailureHandler: (@Sendable (CaptureSessionVideoRecordingFailure) -> Void)?
 
     init() {
         CameraControlService.registerSessionQueue(sessionQueue)
+        observeSessionLifecycle()
     }
 
     deinit {
         if let subjectAreaChangeObserver {
             NotificationCenter.default.removeObserver(subjectAreaChangeObserver)
+        }
+        if let sessionRuntimeErrorObserver {
+            NotificationCenter.default.removeObserver(sessionRuntimeErrorObserver)
+        }
+        if let sessionInterruptedObserver {
+            NotificationCenter.default.removeObserver(sessionInterruptedObserver)
+        }
+        if let sessionInterruptionEndedObserver {
+            NotificationCenter.default.removeObserver(sessionInterruptionEndedObserver)
+        }
+        if let sessionDidStopRunningObserver {
+            NotificationCenter.default.removeObserver(sessionDidStopRunningObserver)
         }
         focusAdjustingObservation?.invalidate()
         exposureAdjustingObservation?.invalidate()
@@ -72,6 +106,82 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         }
     }
 
+    func setRuntimeFailureHandler(
+        _ handler: (@Sendable (CaptureSessionRuntimeFailure) -> Void)?
+    ) {
+        runtimeFailureHandlerLock.lock()
+        runtimeFailureHandler = handler
+        runtimeFailureHandlerLock.unlock()
+    }
+
+    func setVideoRecordingFailureHandler(
+        _ handler: (@Sendable (CaptureSessionVideoRecordingFailure) -> Void)?
+    ) {
+        videoRecordingFailureHandlerLock.lock()
+        videoRecordingFailureHandler = handler
+        videoRecordingFailureHandlerLock.unlock()
+    }
+
+    private func observeSessionLifecycle() {
+        sessionRuntimeErrorObserver = NotificationCenter.default.addObserver(
+            forName: AVCaptureSession.runtimeErrorNotification,
+            object: session,
+            queue: nil
+        ) { [weak self] notification in
+            guard let self,
+                  let error = notification.userInfo?[AVCaptureSessionErrorKey] as? NSError else {
+                return
+            }
+            let failure = CaptureSessionRuntimeFailure(
+                domain: error.domain,
+                code: error.code,
+                isMediaServicesReset: error.code == AVError.Code.mediaServicesWereReset.rawValue
+            )
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.cameraCapture.error("capture session runtime error domain=\(failure.domain, privacy: .public) code=\(failure.code, privacy: .public) mediaServicesReset=\(failure.isMediaServicesReset, privacy: .public)")
+            #endif
+            emitRuntimeFailure(failure)
+        }
+
+        sessionInterruptedObserver = NotificationCenter.default.addObserver(
+            forName: AVCaptureSession.wasInterruptedNotification,
+            object: session,
+            queue: nil
+        ) { notification in
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            let reason = (notification.userInfo?[AVCaptureSessionInterruptionReasonKey] as? NSNumber)?.intValue ?? -1
+            TAPDiagnostics.cameraCapture.error("capture session interrupted reason=\(reason, privacy: .public)")
+            #endif
+        }
+
+        sessionInterruptionEndedObserver = NotificationCenter.default.addObserver(
+            forName: AVCaptureSession.interruptionEndedNotification,
+            object: session,
+            queue: nil
+        ) { _ in
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.cameraCapture.info("capture session interruption ended")
+            #endif
+        }
+
+        sessionDidStopRunningObserver = NotificationCenter.default.addObserver(
+            forName: AVCaptureSession.didStopRunningNotification,
+            object: session,
+            queue: nil
+        ) { _ in
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.cameraCapture.info("capture session did stop running")
+            #endif
+        }
+    }
+
+    private func emitRuntimeFailure(_ failure: CaptureSessionRuntimeFailure) {
+        runtimeFailureHandlerLock.lock()
+        let handler = runtimeFailureHandler
+        runtimeFailureHandlerLock.unlock()
+        handler?(failure)
+    }
+
     /// Applies a planned SingleCam photo-depth configuration.
     ///
     /// All AVFoundation graph mutation is serialized here. FOV-only changes can
@@ -79,9 +189,16 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     ///
     /// - Tag: ConfigureSingleCamSession
     func configure(_ request: SessionConfigurationRequest) async throws -> SessionConfigurationResult {
-        try await withCheckedThrowingContinuation { continuation in
-            sessionQueue.async { [self, session, photoOutput] in
+        let traceID = UUID().uuidString
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.cameraCapture.info("capture session configure requested traceID=\(traceID, privacy: .public) deviceType=\(request.capturePlan.resolvedCaptureDevice.deviceType.rawValue, privacy: .public) deviceID=\(request.capturePlan.resolvedCaptureDevice.uniqueID, privacy: .private(mask: .hash))")
+        #endif
+        return try await withCheckedThrowingContinuation { continuation in
+            sessionQueue.async { [self, session, photoOutput, manualFocusPreviewStream] in
                 do {
+                    #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                    TAPDiagnostics.cameraCapture.info("capture session configure dequeued traceID=\(traceID, privacy: .public) running=\(session.isRunning, privacy: .public)")
+                    #endif
                     discardPreparedVideoRecordingGraphLocked(
                         session: session,
                         reason: "configure"
@@ -89,19 +206,51 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                     let result = try Self.configureSession(
                         session: session,
                         photoOutput: photoOutput,
+                        manualFocusPreviewStream: manualFocusPreviewStream,
                         request: request
                     )
+                    if request.auxiliaryPreviewPolicy == .manualFocusLoupe {
+                        manualFocusPreviewStream.activate(for: result.device)
+                    } else {
+                        manualFocusPreviewStream.deactivate()
+                    }
                     observeRuntimeEvents(for: result.device)
 
+                    #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                    TAPDiagnostics.cameraCapture.info("capture session graph configured traceID=\(traceID, privacy: .public) running=\(session.isRunning, privacy: .public)")
+                    #endif
                     if !session.isRunning {
+                        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                        TAPDiagnostics.cameraCapture.info("capture session startRunning begin traceID=\(traceID, privacy: .public)")
+                        #endif
                         session.startRunning()
+                        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                        TAPDiagnostics.cameraCapture.info("capture session startRunning end traceID=\(traceID, privacy: .public) running=\(session.isRunning, privacy: .public)")
+                        #endif
                     }
 
-                    Self.prewarmPhotoOutput(photoOutput, resolvedOutput: result.resolvedOutput)
+                    #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                    TAPDiagnostics.cameraCapture.info("capture session configure completed traceID=\(traceID, privacy: .public)")
+                    #endif
                     continuation.resume(returning: result)
                 } catch {
+                    #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                    TAPDiagnostics.cameraCapture.error("capture session configure failed traceID=\(traceID, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
+                    #endif
                     continuation.resume(throwing: error)
                 }
+            }
+        }
+    }
+
+    /// Waits behind all already-enqueued AVFoundation work without mutating the
+    /// session. A transition watchdog uses this as a single liveness probe: a
+    /// retry is not offered until the possibly blocked configuration closure has
+    /// left the queue.
+    func waitUntilSessionQueueIsResponsive() async {
+        await withCheckedContinuation { continuation in
+            sessionQueue.async {
+                continuation.resume()
             }
         }
     }
@@ -153,7 +302,8 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     }
 
     func stop() {
-        sessionQueue.async { [self, session, photoOutput] in
+        sessionQueue.async { [self, session, photoOutput, manualFocusPreviewStream] in
+            manualFocusPreviewStream.deactivate()
             guard session.isRunning else { return }
             discardPreparedVideoRecordingGraphLocked(
                 session: session,
@@ -195,6 +345,8 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     ) async throws {
         try await withCheckedThrowingContinuation { continuation in
             sessionQueue.async { [self, session] in
+                let isProVideoGraph = configuration.device.deviceType == .builtInLiDARDepthCamera
+                    && configuration.auxiliaryPreviewPolicy == .manualFocusLoupe
                 do {
                     guard activeVideoRecordingGraph == nil else {
                         throw TAPDepthCaptureError.videoRecordingAlreadyActive
@@ -224,7 +376,10 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                         )
                     }
 
-                    let videoOutput = Self.makeVideoRecordingVideoOutput()
+                    let usesSharedManualFocusVideoOutput = isProVideoGraph
+                    let videoOutput = usesSharedManualFocusVideoOutput
+                        ? manualFocusPreviewStream.videoOutput
+                        : Self.makeVideoRecordingVideoOutput()
                     let audioOutput = recordsAudio ? AVCaptureAudioDataOutput() : nil
                     let depthOutput = Self.makeVideoRecordingDepthOutput()
 
@@ -234,11 +389,13 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                     let previousActiveDepthDataFormat = configuration.device.activeDepthDataFormat
                     var didApplyVideoDepthDataFormat = false
                     do {
-                        guard session.canAddOutput(videoOutput) else {
-                            throw TAPDepthCaptureError.unableToAddVideoOutput
+                        if !usesSharedManualFocusVideoOutput {
+                            guard session.canAddOutput(videoOutput) else {
+                                throw TAPDepthCaptureError.unableToAddVideoOutput
+                            }
+                            session.addOutput(videoOutput)
+                            addedOutputs.append(videoOutput)
                         }
-                        session.addOutput(videoOutput)
-                        addedOutputs.append(videoOutput)
 
                         if let connection = videoOutput.connection(with: .video) {
                             connection.preferredVideoStabilizationMode = .off
@@ -249,6 +406,11 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                             if let videoRotationAngle,
                                connection.isVideoRotationAngleSupported(videoRotationAngle) {
                                 connection.videoRotationAngle = videoRotationAngle
+                            }
+                            if usesSharedManualFocusVideoOutput {
+                                manualFocusPreviewStream.setSharedOutputRotationAngle(
+                                    connection.videoRotationAngle
+                                )
                             }
                         }
 
@@ -301,9 +463,28 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                             throw TAPDepthCaptureError.unableToAddDepthOutput
                         }
 
+                        let outputRouter = TAPVideoGraphOutputRouter(
+                            videoOutput: videoOutput,
+                            manualFocusPreviewStream: usesSharedManualFocusVideoOutput
+                                ? manualFocusPreviewStream : nil
+                        )
+                        let dataOutputSynchronizer = AVCaptureDataOutputSynchronizer(
+                            dataOutputs: [videoOutput, depthOutput]
+                        )
+                        dataOutputSynchronizer.setDelegate(
+                            outputRouter,
+                            queue: outputRouter.callbackQueue
+                        )
+                        if actualRecordsAudio {
+                            audioOutput?.setSampleBufferDelegate(
+                                outputRouter,
+                                queue: outputRouter.callbackQueue
+                            )
+                        }
+                        session.commitConfiguration()
+
                         let videoSettings = videoOutput.recommendedVideoSettingsForAssetWriter(writingTo: .mp4)
                             ?? Self.fallbackVideoSettings(for: configuration.device)
-
                         preparedVideoRecordingGraph = PreparedVideoRecordingGraph(
                             outputs: addedOutputs,
                             videoOutput: videoOutput,
@@ -318,9 +499,11 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                             isVideoMirrored: isVideoMirrored,
                             videoSettings: videoSettings,
                             previousActiveDepthDataFormat: previousActiveDepthDataFormat,
-                            didApplyVideoDepthDataFormat: didApplyVideoDepthDataFormat
+                            didApplyVideoDepthDataFormat: didApplyVideoDepthDataFormat,
+                            dataOutputSynchronizer: dataOutputSynchronizer,
+                            outputRouter: outputRouter,
+                            usesSharedManualFocusVideoOutput: usesSharedManualFocusVideoOutput
                         )
-                        session.commitConfiguration()
                         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
                         TAPDiagnostics.cameraCapture.info("video recording graph warmup complete recordsAudio=\(actualRecordsAudio, privacy: .public) recordsDepth=\(recordsDepth, privacy: .public) previewSizedVideo=\(Self.previewSizedDescription(videoOutput), privacy: .public)")
                         #endif
@@ -331,6 +514,16 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                         }
                         if let addedAudioInput {
                             session.removeInput(addedAudioInput)
+                        }
+                        if didApplyVideoDepthDataFormat {
+                            try? CameraControlService.applyActiveDepthDataFormat(
+                                previousActiveDepthDataFormat,
+                                to: configuration.device
+                            )
+                        }
+                        if usesSharedManualFocusVideoOutput {
+                            Self.restoreManualFocusPreviewConnection(videoOutput)
+                            manualFocusPreviewStream.setSharedOutputRotationAngle(nil)
                         }
                         session.commitConfiguration()
                         throw error
@@ -361,6 +554,8 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     ) async throws -> TAPVideoRecorder {
         try await withCheckedThrowingContinuation { continuation in
             sessionQueue.async { [self, session] in
+                let isProVideoGraph = configuration.device.deviceType == .builtInLiDARDepthCamera
+                    && configuration.auxiliaryPreviewPolicy == .manualFocusLoupe
                 do {
                     guard activeVideoRecordingGraph == nil else {
                         throw TAPDepthCaptureError.videoRecordingAlreadyActive
@@ -388,7 +583,11 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                             videoSettings: preparedGraph.videoSettings,
                             recordsAudio: preparedGraph.recordsAudio,
                             recordsDepth: preparedGraph.recordsDepth,
-                            location: location
+                            location: location,
+                            callbackQueue: preparedGraph.outputRouter.callbackQueue,
+                            writerFailureHandler: { [weak self] failure in
+                                self?.emitVideoRecordingFailure(failure)
+                            }
                         )
 
                         let dataOutputSynchronizer: AVCaptureDataOutputSynchronizer?
@@ -398,11 +597,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                                 videoOutput: preparedGraph.videoOutput,
                                 depthOutput: depthOutput
                             )
-                            let synchronizer = AVCaptureDataOutputSynchronizer(
-                                dataOutputs: [preparedGraph.videoOutput, depthOutput]
-                            )
-                            synchronizer.setDelegate(recorder.outputDelegate, queue: recorder.callbackQueue)
-                            dataOutputSynchronizer = synchronizer
+                            dataOutputSynchronizer = preparedGraph.dataOutputSynchronizer
                         } else {
                             preparedGraph.videoOutput.setSampleBufferDelegate(
                                 recorder.outputDelegate,
@@ -411,9 +606,10 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                             dataOutputSynchronizer = nil
                         }
                         preparedGraph.audioOutput?.setSampleBufferDelegate(
-                            recorder.outputDelegate,
-                            queue: recorder.callbackQueue
+                            preparedGraph.outputRouter,
+                            queue: preparedGraph.outputRouter.callbackQueue
                         )
+                        preparedGraph.outputRouter.activate(recorder)
 
                         activeVideoRecordingGraph = ActiveVideoRecordingGraph(
                             recorder: recorder,
@@ -422,7 +618,10 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                             dataOutputSynchronizer: dataOutputSynchronizer,
                             device: preparedGraph.device,
                             previousActiveDepthDataFormat: preparedGraph.previousActiveDepthDataFormat,
-                            didApplyVideoDepthDataFormat: preparedGraph.didApplyVideoDepthDataFormat
+                            didApplyVideoDepthDataFormat: preparedGraph.didApplyVideoDepthDataFormat,
+                            outputRouter: preparedGraph.outputRouter,
+                            sharedManualFocusVideoOutput: preparedGraph.usesSharedManualFocusVideoOutput
+                                ? preparedGraph.videoOutput : nil
                         )
                         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
                         TAPDiagnostics.cameraCapture.info("video recording graph started captureID=\(request.captureID, privacy: .private) warmupReused=true recordsAudio=\(preparedGraph.recordsAudio, privacy: .public) recordsDepth=\(preparedGraph.recordsDepth, privacy: .public) synchronizedDepth=\(dataOutputSynchronizer != nil, privacy: .public) previewSizedVideo=\(Self.previewSizedDescription(preparedGraph.videoOutput), privacy: .public)")
@@ -435,6 +634,11 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                         discardPreparedVideoRecordingGraphLocked(
                             session: session,
                             reason: "start-mismatch"
+                        )
+                    }
+                    guard !isProVideoGraph else {
+                        throw TAPDepthCaptureError.videoRecordingFailed(
+                            "PRO video graph must be prepared before recording"
                         )
                     }
 
@@ -524,7 +728,10 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                             videoSettings: videoSettings,
                             recordsAudio: recordsAudio,
                             recordsDepth: recordsDepth,
-                            location: location
+                            location: location,
+                            writerFailureHandler: { [weak self] failure in
+                                self?.emitVideoRecordingFailure(failure)
+                            }
                         )
 
                         let dataOutputSynchronizer: AVCaptureDataOutputSynchronizer?
@@ -546,7 +753,9 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                             dataOutputSynchronizer: dataOutputSynchronizer,
                             device: configuration.device,
                             previousActiveDepthDataFormat: previousActiveDepthDataFormat,
-                            didApplyVideoDepthDataFormat: didApplyVideoDepthDataFormat
+                            didApplyVideoDepthDataFormat: didApplyVideoDepthDataFormat,
+                            outputRouter: nil,
+                            sharedManualFocusVideoOutput: nil
                         )
                         session.commitConfiguration()
                         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
@@ -583,6 +792,11 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         return try await recorder.finish(reason: reason)
     }
 
+    func cancelVideoRecordingAfterWriterFailure() async throws {
+        let recorder = try await detachActiveVideoRecording()
+        await recorder.cancelAfterWriterFailure()
+    }
+
     private func detachActiveVideoRecording() async throws -> TAPVideoRecorder {
         try await withCheckedThrowingContinuation { continuation in
             sessionQueue.async { [self, session] in
@@ -591,6 +805,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                     return
                 }
                 activeVideoRecordingGraph = nil
+                graph.outputRouter?.deactivateRecorder()
                 graph.dataOutputSynchronizer?.setDelegate(nil, queue: nil)
 
                 for output in graph.outputs {
@@ -628,6 +843,10 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                         #endif
                     }
                 }
+                if let sharedManualFocusVideoOutput = graph.sharedManualFocusVideoOutput {
+                    Self.restoreManualFocusPreviewConnection(sharedManualFocusVideoOutput)
+                    manualFocusPreviewStream.setSharedOutputRotationAngle(nil)
+                }
                 session.commitConfiguration()
                 #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
                 TAPDiagnostics.cameraCapture.info("video recording graph stopped")
@@ -635,6 +854,17 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                 continuation.resume(returning: graph.recorder)
             }
         }
+    }
+
+    private func emitVideoRecordingFailure(_ failure: TAPVideoWriterFailure) {
+        videoRecordingFailureHandlerLock.lock()
+        let handler = videoRecordingFailureHandler
+        videoRecordingFailureHandlerLock.unlock()
+        handler?(CaptureSessionVideoRecordingFailure(
+            captureID: failure.captureID,
+            domain: failure.domain,
+            code: failure.code
+        ))
     }
 
     func applyManualControlCommandPlan(
@@ -648,6 +878,116 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                     continuation.resume()
                 } catch {
                     continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    /// Runs the request-local, focus-only AF phase for MF tap assist.
+    ///
+    /// The observation is installed before the command and belongs to this
+    /// operation token, so an old global focus-settled event cannot complete a
+    /// newer tap. The caller keeps this wait and the following `.current` lock
+    /// inside one `CameraManualFocusTransportQueue` transaction.
+    func autoFocusOnlyAndWaitForManualFocusTapAssist(
+        at point: CameraManualControlIntent.NormalizedPoint,
+        expectedDeviceID: String,
+        expectedControlSignature: CameraManualControlCommandPlan.ControlSurfaceSignature,
+        operationToken: CameraManualFocusOperationToken,
+        on device: AVCaptureDevice
+    ) async throws {
+        try await withCheckedThrowingContinuation { continuation in
+            let gate = ManualFocusAutoFocusSettleContinuationGate(continuation: continuation)
+            gate.bind(to: operationToken)
+            DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 1.2) {
+                gate.resumeForTimeout()
+            }
+
+            sessionQueue.async { [session] in
+                do {
+                    guard operationToken.isValid else {
+                        throw CancellationError()
+                    }
+                    try Self.validateManualFocusTarget(
+                        session: session,
+                        device: device,
+                        expectedDeviceID: expectedDeviceID,
+                        expectedControlSignature: expectedControlSignature
+                    )
+
+                    let observation = device.observe(
+                        \.isAdjustingFocus,
+                        options: [.new]
+                    ) { _, change in
+                        guard let isAdjustingFocus = change.newValue else {
+                            return
+                        }
+                        gate.observe(isAdjustingFocus: isAdjustingFocus)
+                    }
+                    gate.attach(observation: observation)
+                    try CameraControlService.startManualFocusTapAssistAutoFocus(
+                        at: point,
+                        on: device
+                    )
+                    gate.markRequestApplied(isAdjustingFocus: device.isAdjustingFocus)
+                } catch {
+                    gate.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    /// Applies one MF write and waits for AVFoundation's first-applied-buffer
+    /// completion. The timeout prevents a session reset from leaving UI work
+    /// suspended forever.
+    func setManualFocusLocked(
+        _ target: CameraManualFocusLockTarget,
+        expectedDeviceID: String,
+        expectedControlSignature: CameraManualControlCommandPlan.ControlSurfaceSignature,
+        generation: Int,
+        operationToken: CameraManualFocusOperationToken,
+        on device: AVCaptureDevice
+    ) async throws -> CameraManualControlReadbackSnapshot {
+        try await withCheckedThrowingContinuation { continuation in
+            let gate = ManualFocusLockContinuationGate(continuation: continuation)
+            DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 1.5) {
+                gate.resumeForTimeout(operationToken: operationToken)
+            }
+            sessionQueue.async { [self, session] in
+                do {
+                    guard operationToken.isValid else {
+                        throw CancellationError()
+                    }
+                    try Self.validateManualFocusTarget(
+                        session: session,
+                        device: device,
+                        expectedDeviceID: expectedDeviceID,
+                        expectedControlSignature: expectedControlSignature
+                    )
+                    try CameraControlService.setManualFocusLocked(target, on: device) { [self] _ in
+                        sessionQueue.async { [session] in
+                            do {
+                                guard operationToken.isValid else {
+                                    throw CancellationError()
+                                }
+                                try Self.validateManualFocusTarget(
+                                    session: session,
+                                    device: device,
+                                    expectedDeviceID: expectedDeviceID,
+                                    expectedControlSignature: expectedControlSignature
+                                )
+                                gate.resume(returning: Self.manualControlSnapshot(
+                                    reason: .userInteractionEnded,
+                                    generation: generation,
+                                    from: device
+                                ))
+                            } catch {
+                                gate.resume(throwing: error)
+                            }
+                        }
+                    }
+                } catch {
+                    gate.resume(throwing: error)
                 }
             }
         }
@@ -684,7 +1024,6 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         }
     }
 
-    #if TAP_ENABLE_PRO_CAMERA_CONTROLS
     func readManualControlSnapshot(
         reason: CameraManualControlReadbackReason,
         generation: Int,
@@ -692,26 +1031,57 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     ) async -> CameraManualControlReadbackSnapshot {
         await withCheckedContinuation { continuation in
             sessionQueue.async {
-                let capability = CameraControlCapabilitySnapshot.make(device: device)
-                continuation.resume(returning: CameraManualControlReadbackSnapshot(
-                    deviceID: device.uniqueID,
-                    controlSurfaceSignature: CameraManualControlCommandPlan.ControlSurfaceSignature(capability: capability),
+                continuation.resume(returning: Self.manualControlSnapshot(
+                    reason: reason,
                     generation: generation,
-                    iso: capability.exposure.currentISO,
-                    shutterDurationSeconds: capability.exposure.currentShutterDurationSeconds,
-                    exposureTargetOffset: capability.exposure.currentExposureTargetOffset,
-                    exposureTargetBias: Double(device.exposureTargetBias),
-                    lensPosition: capability.focus.currentLensPosition,
-                    exposureMode: CameraManualControlReadbackExposureMode(device.exposureMode),
-                    focusMode: CameraManualControlReadbackFocusMode(device.focusMode),
-                    isAdjustingExposure: device.isAdjustingExposure,
-                    isAdjustingFocus: device.isAdjustingFocus,
-                    reason: reason
+                    from: device
                 ))
             }
         }
     }
-    #endif
+
+    private static func validateManualFocusTarget(
+        session: AVCaptureSession,
+        device: AVCaptureDevice,
+        expectedDeviceID: String,
+        expectedControlSignature: CameraManualControlCommandPlan.ControlSurfaceSignature
+    ) throws {
+        guard device.uniqueID == expectedDeviceID,
+              session.inputs.contains(where: { input in
+                  (input as? AVCaptureDeviceInput)?.device.uniqueID == expectedDeviceID
+              }) else {
+            throw TAPDepthCaptureError.cameraControlTargetDeviceChanged
+        }
+        let currentSignature = CameraManualControlCommandPlan.ControlSurfaceSignature(
+            capability: CameraControlCapabilitySnapshot.make(device: device)
+        )
+        guard currentSignature == expectedControlSignature else {
+            throw TAPDepthCaptureError.cameraControlTargetSurfaceChanged
+        }
+    }
+
+    private static func manualControlSnapshot(
+        reason: CameraManualControlReadbackReason,
+        generation: Int,
+        from device: AVCaptureDevice
+    ) -> CameraManualControlReadbackSnapshot {
+        let capability = CameraControlCapabilitySnapshot.make(device: device)
+        return CameraManualControlReadbackSnapshot(
+            deviceID: device.uniqueID,
+            controlSurfaceSignature: CameraManualControlCommandPlan.ControlSurfaceSignature(capability: capability),
+            generation: generation,
+            iso: capability.exposure.currentISO,
+            shutterDurationSeconds: capability.exposure.currentShutterDurationSeconds,
+            exposureTargetOffset: capability.exposure.currentExposureTargetOffset,
+            exposureTargetBias: Double(device.exposureTargetBias),
+            lensPosition: capability.focus.currentLensPosition,
+            exposureMode: CameraManualControlReadbackExposureMode(device.exposureMode),
+            focusMode: CameraManualControlReadbackFocusMode(device.focusMode),
+            isAdjustingExposure: device.isAdjustingExposure,
+            isAdjustingFocus: device.isAdjustingFocus,
+            reason: reason
+        )
+    }
 
     func restoreAutoPhotoControls(
         globalExposureBias: Double,
@@ -735,6 +1105,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     private static func configureSession(
         session: AVCaptureSession,
         photoOutput: AVCapturePhotoOutput,
+        manualFocusPreviewStream: CameraManualFocusPreviewStream,
         request: SessionConfigurationRequest
     ) throws -> SessionConfigurationResult {
         let plan = request.capturePlan
@@ -762,10 +1133,15 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         if canReuseCurrentGraph(
             session: session,
             photoOutput: photoOutput,
+            manualFocusPreviewOutput: manualFocusPreviewStream.videoOutput,
             plan: plan,
             resolvedOutput: resolvedOutput,
-            shouldConfigureLivePhotoAudioInput: shouldConfigureLivePhotoAudioInput
+            shouldConfigureLivePhotoAudioInput: shouldConfigureLivePhotoAudioInput,
+            auxiliaryPreviewPolicy: request.auxiliaryPreviewPolicy
         ) {
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.cameraCapture.info("capture session graph reuse deviceType=\(plan.resolvedCaptureDevice.deviceType.rawValue, privacy: .public)")
+            #endif
             try CameraControlService.applyZoom(zoom, to: plan.resolvedCaptureDevice)
             let capabilities = CapturePhotoOutputCapabilitySnapshot(
                 photoOutput: photoOutput,
@@ -781,13 +1157,18 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             )
         }
 
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.cameraCapture.info("capture session graph rebuild begin deviceType=\(plan.resolvedCaptureDevice.deviceType.rawValue, privacy: .public)")
+        #endif
         let livePhotoAudioInputConfigured = try rebuildSessionGraph(
             session: session,
             photoOutput: photoOutput,
+            manualFocusPreviewOutput: manualFocusPreviewStream.videoOutput,
             plan: plan,
             resolvedOutput: resolvedOutput,
             zoom: zoom,
-            shouldConfigureLivePhotoAudioInput: shouldConfigureLivePhotoAudioInput
+            shouldConfigureLivePhotoAudioInput: shouldConfigureLivePhotoAudioInput,
+            auxiliaryPreviewPolicy: request.auxiliaryPreviewPolicy
         )
 
         /*
@@ -815,16 +1196,27 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     private static func rebuildSessionGraph(
         session: AVCaptureSession,
         photoOutput: AVCapturePhotoOutput,
+        manualFocusPreviewOutput: AVCaptureVideoDataOutput,
         plan: CaptureSourcePlan,
         resolvedOutput: ResolvedCaptureOutputProfile,
         zoom: Double,
-        shouldConfigureLivePhotoAudioInput: Bool
+        shouldConfigureLivePhotoAudioInput: Bool,
+        auxiliaryPreviewPolicy: CameraAuxiliaryPreviewPolicy
     ) throws -> Bool {
+        let previousDeviceInputs = session.inputs.compactMap { $0 as? AVCaptureDeviceInput }
+        let hadManualFocusPreviewOutput = session.outputs.contains(manualFocusPreviewOutput)
+        let needsManualFocusPreviewOutput = auxiliaryPreviewPolicy == .manualFocusLoupe
         session.beginConfiguration()
         var livePhotoAudioInputConfigured = false
         do {
             session.sessionPreset = .photo
-            session.inputs.forEach { session.removeInput($0) }
+            let videoInputs = previousDeviceInputs.filter { $0.device.hasMediaType(.video) }
+            let audioInputs = previousDeviceInputs.filter { $0.device.hasMediaType(.audio) }
+            videoInputs.forEach { session.removeInput($0) }
+
+            if !shouldConfigureLivePhotoAudioInput {
+                audioInputs.forEach { session.removeInput($0) }
+            }
 
             try CameraControlService.configureBaselineControls(
                 for: plan.resolvedCaptureDevice,
@@ -846,11 +1238,14 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             }
             session.addInput(input)
 
-            if shouldConfigureLivePhotoAudioInput,
-               let audioInput = try? makeLivePhotoAudioInput(),
-               session.canAddInput(audioInput) {
-                session.addInput(audioInput)
-                livePhotoAudioInputConfigured = true
+            if shouldConfigureLivePhotoAudioInput {
+                if hasLivePhotoAudioInput(session) {
+                    livePhotoAudioInputConfigured = true
+                } else if let audioInput = try? makeLivePhotoAudioInput(),
+                          session.canAddInput(audioInput) {
+                    session.addInput(audioInput)
+                    livePhotoAudioInputConfigured = true
+                }
             }
 
             if !session.outputs.contains(photoOutput) {
@@ -858,6 +1253,23 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                     throw TAPDepthCaptureError.unableToAddPhotoOutput
                 }
                 session.addOutput(photoOutput)
+            }
+
+            if needsManualFocusPreviewOutput {
+                if !session.outputs.contains(manualFocusPreviewOutput) {
+                    guard session.canAddOutput(manualFocusPreviewOutput) else {
+                        throw TAPDepthCaptureError.unableToAddVideoOutput
+                    }
+                    session.addOutput(manualFocusPreviewOutput)
+                }
+                if let connection = manualFocusPreviewOutput.connection(with: .video),
+                   connection.isVideoRotationAngleSupported(0) {
+                    // The loupe rotates its display layer, avoiding per-frame
+                    // physical buffer rotation on this auxiliary output.
+                    connection.videoRotationAngle = 0
+                }
+            } else if session.outputs.contains(manualFocusPreviewOutput) {
+                session.removeOutput(manualFocusPreviewOutput)
             }
 
             photoOutput.maxPhotoQualityPrioritization = resolvedOutput.maxPhotoQualityPrioritization
@@ -883,9 +1295,31 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                 configuredCapabilities,
                 requireConfiguredState: true
             )
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.cameraCapture.info("capture session commitConfiguration begin deviceType=\(plan.resolvedCaptureDevice.deviceType.rawValue, privacy: .public)")
+            #endif
             session.commitConfiguration()
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.cameraCapture.info("capture session commitConfiguration end deviceType=\(plan.resolvedCaptureDevice.deviceType.rawValue, privacy: .public)")
+            #endif
             return livePhotoAudioInputConfigured
         } catch {
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.cameraCapture.error("capture session graph rebuild failed before rollback commit deviceType=\(plan.resolvedCaptureDevice.deviceType.rawValue, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
+            #endif
+            let currentDeviceInputs = session.inputs.compactMap { $0 as? AVCaptureDeviceInput }
+            currentDeviceInputs.forEach { session.removeInput($0) }
+            for previousInput in previousDeviceInputs where session.canAddInput(previousInput) {
+                session.addInput(previousInput)
+            }
+            let hasManualFocusPreviewOutput = session.outputs.contains(manualFocusPreviewOutput)
+            if hasManualFocusPreviewOutput && !hadManualFocusPreviewOutput {
+                session.removeOutput(manualFocusPreviewOutput)
+            } else if !hasManualFocusPreviewOutput,
+                      hadManualFocusPreviewOutput,
+                      session.canAddOutput(manualFocusPreviewOutput) {
+                session.addOutput(manualFocusPreviewOutput)
+            }
             session.commitConfiguration()
             throw error
         }
@@ -932,11 +1366,13 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     private static func canReuseCurrentGraph(
         session: AVCaptureSession,
         photoOutput: AVCapturePhotoOutput,
+        manualFocusPreviewOutput: AVCaptureVideoDataOutput,
         plan: CaptureSourcePlan,
         resolvedOutput: ResolvedCaptureOutputProfile,
-        shouldConfigureLivePhotoAudioInput: Bool
+        shouldConfigureLivePhotoAudioInput: Bool,
+        auxiliaryPreviewPolicy: CameraAuxiliaryPreviewPolicy
     ) -> Bool {
-        guard session.sessionPreset == .photo else {
+        guard session.sessionPreset == .photo || session.sessionPreset == .inputPriority else {
             return false
         }
 
@@ -966,6 +1402,11 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         }
 
         guard session.outputs.contains(photoOutput) else {
+            return false
+        }
+
+        let hasManualFocusPreviewOutput = session.outputs.contains(manualFocusPreviewOutput)
+        guard hasManualFocusPreviewOutput == (auxiliaryPreviewPolicy == .manualFocusLoupe) else {
             return false
         }
 
@@ -1048,6 +1489,21 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             && connection.videoRotationAngle == 0
     }
 
+    private static func restoreManualFocusPreviewConnection(
+        _ videoOutput: AVCaptureVideoDataOutput
+    ) {
+        guard let connection = videoOutput.connection(with: .video) else {
+            return
+        }
+        if connection.isVideoRotationAngleSupported(0) {
+            connection.videoRotationAngle = 0
+        }
+        if connection.isVideoMirroringSupported {
+            connection.automaticallyAdjustsVideoMirroring = false
+            connection.isVideoMirrored = false
+        }
+    }
+
     private func discardPreparedVideoRecordingGraphLocked(
         session: AVCaptureSession,
         reason: String
@@ -1056,7 +1512,11 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             return
         }
         preparedVideoRecordingGraph = nil
-        graph.videoOutput.setSampleBufferDelegate(nil, queue: nil)
+        graph.outputRouter.deactivateRecorder()
+        graph.dataOutputSynchronizer.setDelegate(nil, queue: nil)
+        if !graph.usesSharedManualFocusVideoOutput {
+            graph.videoOutput.setSampleBufferDelegate(nil, queue: nil)
+        }
         graph.audioOutput?.setSampleBufferDelegate(nil, queue: nil)
         graph.depthOutput?.setDelegate(nil, callbackQueue: nil)
 
@@ -1082,6 +1542,10 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                 TAPDiagnostics.cameraCapture.error("video warmup depth format restore failed reason=\(reason, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
                 #endif
             }
+        }
+        if graph.usesSharedManualFocusVideoOutput {
+            Self.restoreManualFocusPreviewConnection(graph.videoOutput)
+            manualFocusPreviewStream.setSharedOutputRotationAngle(nil)
         }
         session.commitConfiguration()
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
@@ -1204,25 +1668,9 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             device: plan.resolvedCaptureDevice,
             livePhotoAudioInputConfigured: livePhotoAudioInputConfigured,
             controlCapabilities: CameraControlCapabilitySnapshot.make(device: plan.resolvedCaptureDevice),
-            selectionContext: request.selectionContext
+            selectionContext: request.selectionContext,
+            auxiliaryPreviewPolicy: request.auxiliaryPreviewPolicy
         )
-    }
-
-    private static func prewarmPhotoOutput(
-        _ photoOutput: AVCapturePhotoOutput,
-        resolvedOutput: ResolvedCaptureOutputProfile
-    ) {
-        let settings = SingleCamPhotoSettingsFactory.make(
-            photoOutput: photoOutput,
-            resolvedOutput: resolvedOutput
-        )
-        /*
-         Prewarming is a latency hint, not a capture precondition. It does not
-         need per-tap feedback preferences such as shutter sound suppression,
-         and capture still proceeds normally if AVFoundation delays or declines
-         preparation for the current photo-depth settings.
-         */
-        photoOutput.setPreparedPhotoSettingsArray([settings], completionHandler: nil)
     }
 
     private static func portraitPreviewAspectRatio(for format: AVCaptureDevice.Format) -> Double {
@@ -1253,6 +1701,214 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     }
 }
 
+private nonisolated final class ManualFocusLockContinuationGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<CameraManualControlReadbackSnapshot, Error>?
+
+    init(continuation: CheckedContinuation<CameraManualControlReadbackSnapshot, Error>) {
+        self.continuation = continuation
+    }
+
+    func resume(returning snapshot: CameraManualControlReadbackSnapshot) {
+        takeContinuation()?.resume(returning: snapshot)
+    }
+
+    func resume(throwing error: Error) {
+        takeContinuation()?.resume(throwing: error)
+    }
+
+    func resumeForTimeout(operationToken: CameraManualFocusOperationToken) {
+        guard let continuation = takeContinuation() else {
+            return
+        }
+        operationToken.invalidate()
+        continuation.resume(throwing: TAPDepthCaptureError.cameraManualFocusLockTimedOut)
+    }
+
+    private func takeContinuation() -> CheckedContinuation<CameraManualControlReadbackSnapshot, Error>? {
+        lock.lock()
+        defer { lock.unlock() }
+        let value = continuation
+        continuation = nil
+        return value
+    }
+}
+
+private nonisolated final class ManualFocusAutoFocusSettleContinuationGate: @unchecked Sendable {
+    private struct CompletionResources {
+        let continuation: CheckedContinuation<Void, Error>
+        let observation: NSKeyValueObservation?
+        let operationToken: CameraManualFocusOperationToken?
+        let invalidationHandlerID: UUID?
+    }
+
+    private static let noAdjustmentGrace: TimeInterval = 0.18
+    private static let stableSettleWindow: TimeInterval = 0.06
+
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Void, Error>?
+    private var settleState = CameraManualFocusAutoFocusSettleState()
+    private var observation: NSKeyValueObservation?
+    private var operationToken: CameraManualFocusOperationToken?
+    private var invalidationHandlerID: UUID?
+
+    init(continuation: CheckedContinuation<Void, Error>) {
+        self.continuation = continuation
+    }
+
+    func bind(to operationToken: CameraManualFocusOperationToken) {
+        let handlerID = operationToken.addInvalidationHandler { [weak self] in
+            self?.resume(throwing: CancellationError())
+        }
+
+        lock.lock()
+        let isActive = continuation != nil
+        if isActive {
+            self.operationToken = operationToken
+            invalidationHandlerID = handlerID
+        }
+        lock.unlock()
+
+        if !isActive {
+            operationToken.removeInvalidationHandler(handlerID)
+        }
+    }
+
+    func attach(observation: NSKeyValueObservation) {
+        lock.lock()
+        let isActive = continuation != nil
+        if isActive {
+            self.observation = observation
+        }
+        lock.unlock()
+
+        if !isActive {
+            observation.invalidate()
+        }
+    }
+
+    func markRequestApplied(isAdjustingFocus: Bool) {
+        let stableRevision: Int?
+        lock.lock()
+        guard continuation != nil else {
+            lock.unlock()
+            return
+        }
+        stableRevision = settleState.markRequestApplied(isAdjustingFocus: isAdjustingFocus)
+        lock.unlock()
+
+        scheduleStableSettleIfNeeded(revision: stableRevision)
+        DispatchQueue.global(qos: .userInitiated).asyncAfter(
+            deadline: .now() + Self.noAdjustmentGrace
+        ) { [weak self] in
+            self?.resumeAfterNoAdjustmentGrace()
+        }
+    }
+
+    func observe(isAdjustingFocus: Bool) {
+        let stableRevision: Int?
+        lock.lock()
+        guard continuation != nil else {
+            lock.unlock()
+            return
+        }
+        stableRevision = settleState.observe(isAdjustingFocus: isAdjustingFocus)
+        lock.unlock()
+
+        scheduleStableSettleIfNeeded(revision: stableRevision)
+    }
+
+    func resumeForTimeout() {
+        resume(throwing: TAPDepthCaptureError.cameraManualFocusAssistTimedOut)
+    }
+
+    func resume(throwing error: Error) {
+        finish(with: .failure(error))
+    }
+
+    private func scheduleStableSettleIfNeeded(revision: Int?) {
+        guard let revision else {
+            return
+        }
+        DispatchQueue.global(qos: .userInitiated).asyncAfter(
+            deadline: .now() + Self.stableSettleWindow
+        ) { [weak self] in
+            self?.resumeAfterStableSettleWindow(revision: revision)
+        }
+    }
+
+    private func resumeAfterStableSettleWindow(revision: Int) {
+        let resources: CompletionResources?
+        lock.lock()
+        if settleState.canSettle(
+            at: revision,
+            allowingNoObservedAdjustment: false
+        ) {
+            resources = takeCompletionResourcesLocked()
+        } else {
+            resources = nil
+        }
+        lock.unlock()
+        if let resources {
+            complete(resources, with: .success(()))
+        }
+    }
+
+    private func resumeAfterNoAdjustmentGrace() {
+        let resources: CompletionResources?
+        lock.lock()
+        if !settleState.didObserveAdjustment
+            && settleState.canSettle(
+                at: settleState.revision,
+                allowingNoObservedAdjustment: true
+            ) {
+            resources = takeCompletionResourcesLocked()
+        } else {
+            resources = nil
+        }
+        lock.unlock()
+        if let resources {
+            complete(resources, with: .success(()))
+        }
+    }
+
+    private func finish(with result: Result<Void, Error>) {
+        let resources: CompletionResources?
+        lock.lock()
+        resources = takeCompletionResourcesLocked()
+        lock.unlock()
+        if let resources {
+            complete(resources, with: result)
+        }
+    }
+
+    private func takeCompletionResourcesLocked() -> CompletionResources? {
+        guard let continuation else {
+            return nil
+        }
+        let resources = CompletionResources(
+            continuation: continuation,
+            observation: observation,
+            operationToken: operationToken,
+            invalidationHandlerID: invalidationHandlerID
+        )
+        self.continuation = nil
+        self.observation = nil
+        self.operationToken = nil
+        self.invalidationHandlerID = nil
+        return resources
+    }
+
+    private func complete(
+        _ resources: CompletionResources,
+        with result: Result<Void, Error>
+    ) {
+        resources.observation?.invalidate()
+        resources.operationToken?.removeInvalidationHandler(resources.invalidationHandlerID)
+        resources.continuation.resume(with: result)
+    }
+}
+
 private struct ActiveVideoRecordingGraph {
     let recorder: TAPVideoRecorder
     let outputs: [AVCaptureOutput]
@@ -1261,6 +1917,8 @@ private struct ActiveVideoRecordingGraph {
     let device: AVCaptureDevice
     let previousActiveDepthDataFormat: AVCaptureDevice.Format?
     let didApplyVideoDepthDataFormat: Bool
+    let outputRouter: TAPVideoGraphOutputRouter?
+    let sharedManualFocusVideoOutput: AVCaptureVideoDataOutput?
 }
 
 private nonisolated struct PreparedVideoRecordingGraph {
@@ -1278,6 +1936,9 @@ private nonisolated struct PreparedVideoRecordingGraph {
     let videoSettings: [String: Any]
     let previousActiveDepthDataFormat: AVCaptureDevice.Format?
     let didApplyVideoDepthDataFormat: Bool
+    let dataOutputSynchronizer: AVCaptureDataOutputSynchronizer
+    let outputRouter: TAPVideoGraphOutputRouter
+    let usesSharedManualFocusVideoOutput: Bool
 
     func matches(
         configuration: SessionConfigurationResult,
@@ -1303,9 +1964,8 @@ private nonisolated struct PreparedVideoRecordingGraph {
     }
 }
 
-#if TAP_ENABLE_PRO_CAMERA_CONTROLS
 private extension CameraManualControlReadbackExposureMode {
-    init(_ mode: AVCaptureDevice.ExposureMode) {
+    nonisolated init(_ mode: AVCaptureDevice.ExposureMode) {
         switch mode {
         case .continuousAutoExposure, .autoExpose:
             self = .continuousAuto
@@ -1320,7 +1980,7 @@ private extension CameraManualControlReadbackExposureMode {
 }
 
 private extension CameraManualControlReadbackFocusMode {
-    init(_ mode: AVCaptureDevice.FocusMode) {
+    nonisolated init(_ mode: AVCaptureDevice.FocusMode) {
         switch mode {
         case .continuousAutoFocus:
             self = .continuousAuto
@@ -1333,4 +1993,3 @@ private extension CameraManualControlReadbackFocusMode {
         }
     }
 }
-#endif

@@ -249,6 +249,15 @@ after protected-data readiness passes. Until that migration runs, an unopened
 legacy bundle can still contain its old raw string on disk, but store read APIs
 do not return it.
 
+Worker reconcile also repairs one historical video-state mistake. A TAP Video
+record persisted as `failedTerminal` by the former pre-sign manifest/track
+validator is reopened only when it remains `.unsigned`, still has its local
+artifact, has no Photos/export-recovery state, and carries
+`invalidVideoArtifact` or `proofValidationFailed`. It becomes
+`failedRetryable` and can be signed in the same worker run. Signed integrity
+failures, missing depth, external mutation, Photos readback failures, and
+missing source files remain terminal.
+
 ## TAP Library Item Identity And Route Context
 
 `DepthAlbumPickerView` presents three item identities:

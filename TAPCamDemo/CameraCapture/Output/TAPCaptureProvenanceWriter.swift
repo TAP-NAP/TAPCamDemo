@@ -170,34 +170,9 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
     ) async throws -> TAPSignedVideoFile {
         _ = try TAPProofSlot.ensureEmptyBMFFSlot(inFileAt: videoFileURL)
         let manifest = try TAPVideoManifestBox.decodedManifest(fromFileAt: videoFileURL)
-        try validateVideoManifestSchema(manifest)
         try validateManifestID(manifest.payload.id, expectedCaptureID: expectedCaptureID)
         try validateVideoPackageID(manifest.payload.packageID, expectedPackageID: expectedPackageID)
         try validateVideoManifestCarriesNoProofBody(manifest)
-        let preSignValidationTrace = TAPVideoPerformanceTrace.beginLocalValidation(
-            purpose: "pre-sign-track-validation",
-            validatesDepthTrack: true
-        )
-        do {
-            try await TAPVideoDepthTrackValidator.validate(
-                fileURL: videoFileURL,
-                manifest: manifest
-            )
-            TAPVideoPerformanceTrace.endLocalValidation(
-                preSignValidationTrace,
-                purpose: "pre-sign-track-validation",
-                validatesDepthTrack: true,
-                succeeded: true
-            )
-        } catch {
-            TAPVideoPerformanceTrace.endLocalValidation(
-                preSignValidationTrace,
-                purpose: "pre-sign-track-validation",
-                validatesDepthTrack: true,
-                succeeded: false
-            )
-            throw error
-        }
         try TAPProofSlot.resetBMFFProofSlot(inFileAt: videoFileURL)
 
         let digest = try makeTracedVideoContentDigest(
@@ -424,12 +399,14 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
 
     /// Final fail-closed gate before a signed TAP video may leave pending
     /// storage. This recomputes the byte binding from the exact MP4 bytes that
-    /// will be exported to Photos.
+    /// will be exported to Photos. Timed-track semantic validation is an
+    /// explicitly requested health check; it is not part of signing or export
+    /// authenticity.
     func validateSignedExportVideoFile(
         at videoFileURL: URL,
         expectedCaptureID: String,
         expectedPackageID: UUID,
-        validatesDepthTrack: Bool = true
+        validatesDepthTrack: Bool = false
     ) async throws -> ValidatedTAPVideoFile {
         let validationPurpose = validatesDepthTrack
             ? "signed-export-full"
@@ -451,7 +428,6 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
             )
         }
         let manifest = try TAPVideoManifestBox.decodedManifest(fromFileAt: videoFileURL)
-        try validateVideoManifestSchema(manifest)
         try validateManifestID(manifest.payload.id, expectedCaptureID: expectedCaptureID)
         try validateVideoPackageID(manifest.payload.packageID, expectedPackageID: expectedPackageID)
         try validateVideoManifestCarriesNoProofBody(manifest)
@@ -475,6 +451,7 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
                 )
             },
             validateActualTracks: {
+                try validateVideoManifestSchema(manifest)
                 try await TAPVideoDepthTrackValidator.validate(
                     fileURL: videoFileURL,
                     manifest: manifest

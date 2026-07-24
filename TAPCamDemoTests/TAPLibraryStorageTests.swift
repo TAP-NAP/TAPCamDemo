@@ -646,6 +646,57 @@ struct TAPLibraryStorageTests {
         #expect(!migratedJSON.contains("secret-proof"))
     }
 
+    @Test func pendingCaptureStoreOnlyReopensLegacyUnsignedVideoValidationFailures() async throws {
+        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+        let store = TAPPendingCaptureStore(rootURL: rootURL)
+
+        let invalidUnsigned = try await TAPCamDemoTestFixtures.ingestPendingTAPVideo(
+            store: store,
+            captureID: "legacy-invalid-unsigned"
+        )
+        _ = try await store.markTerminalFailure(
+            captureID: invalidUnsigned.captureID,
+            code: .invalidVideoArtifact
+        )
+
+        let proofUnsigned = try await TAPCamDemoTestFixtures.ingestPendingTAPVideo(
+            store: store,
+            captureID: "legacy-proof-unsigned"
+        )
+        _ = try await store.markTerminalFailure(
+            captureID: proofUnsigned.captureID,
+            code: .proofValidationFailed
+        )
+
+        let missingDepth = try await TAPCamDemoTestFixtures.ingestPendingTAPVideo(
+            store: store,
+            captureID: "terminal-missing-depth"
+        )
+        _ = try await store.markTerminalFailure(
+            captureID: missingDepth.captureID,
+            code: .missingDepthData
+        )
+
+        let invalidSigned = try await TAPCamDemoTestFixtures.ingestPendingTAPVideo(
+            store: store,
+            captureID: "terminal-invalid-signed"
+        )
+        _ = try await store.markVideoSigned(captureID: invalidSigned.captureID)
+        _ = try await store.markTerminalFailure(
+            captureID: invalidSigned.captureID,
+            code: .invalidVideoArtifact
+        )
+
+        let reopenedCount = try await store.reopenLegacyUnsignedVideoValidationFailures()
+
+        #expect(reopenedCount == 2)
+        #expect(try await store.readRecord(captureID: invalidUnsigned.captureID).status == .failedRetryable)
+        #expect(try await store.readRecord(captureID: proofUnsigned.captureID).status == .failedRetryable)
+        #expect(try await store.readRecord(captureID: missingDepth.captureID).status == .failedTerminal)
+        #expect(try await store.readRecord(captureID: invalidSigned.captureID).status == .failedTerminal)
+    }
+
     @Test func pendingCaptureStoreMigrationSkipsInvalidBundlesAndNormalizesOthers() async throws {
         let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
         let store = TAPPendingCaptureStore(rootURL: rootURL)

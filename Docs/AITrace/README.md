@@ -10,6 +10,28 @@ open follow-ups.
 
 ## Read First
 
+Current implementation:
+
+- [2026-07-24-video-signing-trust-boundary.md](2026-07-24-video-signing-trust-boundary.md)
+  records the correction that makes exact MP4/proof binding the signing,
+  export, and Photos-readback gate while keeping full depth-track semantics as
+  a separate explicit health check.
+
+- [2026-07-24-pro-video-first-recording-starvation.md](2026-07-24-pro-video-first-recording-starvation.md)
+  records the real-device `duration=0` first-recording evidence and the
+  controlling single-RGB, stable-synchronizer-router correction, plus the
+  TAP Library return transaction that restores PRO VIDEO before releasing the
+  viewfinder transition.
+
+- [2026-07-24-pro-video-production-promotion.md](2026-07-24-pro-video-production-promotion.md)
+  records promotion of the validated probe into the Release PRO Video path,
+  removal of the Debug toggle, prepared-graph synchronization hardening, writer
+  failure recovery, and first-tap MF routing.
+
+- [2026-07-24-pro-video-graph-research.md](2026-07-24-pro-video-graph-research.md)
+  records the historical Debug-only rear-LiDAR graph probe and the evidence
+  used before it was promoted into a product capability.
+
 1. [2026-07-12-video-library-pr7-runtime-evidence.md](2026-07-12-video-library-pr7-runtime-evidence.md)
    records the final Simulator unit/UI/screenshot and five-cycle lifecycle
    evidence, the playback issues found and fixed while exercising the harness,
