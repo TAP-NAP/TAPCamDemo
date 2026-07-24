@@ -40,7 +40,8 @@ nonisolated enum TAPVideoPhotosReadbackValidator {
         return try await provenanceWriter.validateSignedExportVideoFile(
             at: fileURL,
             expectedCaptureID: captureID,
-            expectedPackageID: packageID
+            expectedPackageID: packageID,
+            validatesDepthTrack: false
         ).manifest
     }
 }

@@ -22,7 +22,13 @@ The boundaries are strict:
   sensor. It keeps the original session, Basic EV, and lens/FOV selector.
 - Photographer Mode is the only product path that selects the rear LiDAR
   capture device for professional controls.
-- Photographer Mode v1 is photo-only.
+- Photographer Mode supports both Photo and TAP Video. The rightmost `PRO`
+  control remains visible in VIDEO and switches between Standard VIDEO and the
+  eligible rear LiDAR PRO VIDEO path.
+- The former Debug graph probe has been promoted into the product path and its
+  Settings toggle has been removed. Runtime graph/format/drop/writer
+  diagnostics remain available for validation. See
+  [ProVideoResearchPlan.md](ProVideoResearchPlan.md).
 - Photographer Mode uses one fixed 24mm / 1x capture path. It therefore removes
   the lens selector instead of presenting controls that cannot change the active
   LiDAR source safely.
@@ -92,6 +98,28 @@ UI must derive button selection, control availability, shutter gating, lens
 selector visibility, and transition progress from this state machine. It must
 not infer readiness from the user's requested preference.
 
+## Capture Source Ownership Invariant
+
+Every camera-path transition creates one source generation identified by the
+active device/input, active video and depth formats, and the ViewModel
+configuration generation.
+
+- All professional controls, MF readback, focus-loupe frames, synchronized
+  Depth, and recorded RGB must belong to that generation.
+- Rear PRO owns one canonical RGB data output. MF and VIDEO fan out after that
+  output; they must not create independent hardware RGB outputs.
+- A live RGB/Depth synchronizer keeps one delegate and one callback queue for
+  its full lifetime. Warmup and recording are software-router states, not
+  AVFoundation delegate changes.
+- Late callbacks from an old generation are stale and must not update the
+  destination UI, writer, or readiness state.
+- The main PreviewLayer shares the session/device source but is not described
+  as the recorder's data output.
+
+This is a product architecture rule, not a PRO Video optimization. Any future
+source-switching mode, lens-source change, auxiliary preview, histogram,
+peaking, or analysis consumer must reuse this ownership model.
+
 ## Frosted Transition Contract
 
 Session reconfiguration must never expose a black, half-configured, or stale
@@ -108,6 +136,9 @@ For Standard to PRO and PRO to Standard:
 5. Re-enable preview-layer frame flow and wait for `isPreviewing` to complete a
    false-to-true transition. Remove the frost only after the destination camera
    reports an interactable preview and its capability snapshot is current.
+   VIDEO must additionally retain a valid canonical-output graph for that same
+   generation. `commitConfiguration` is structural readiness, not proof that a
+   first RGB/Depth pair has flowed.
 
 If both the requested transition and its original-path recovery fail, keep the
 preview paused beneath the frost until the queued Standard fallback becomes

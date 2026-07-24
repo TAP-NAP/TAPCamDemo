@@ -101,6 +101,14 @@ struct TAPCameraCapturePresentationTests {
             .resumeAfterAnalysis,
             .retryPendingCaptures
         ])
+        #expect(CaptureLifecycleCoordinator.depthAlbumPresentationActions(
+            isPresented: false,
+            preparesVideoMode: true
+        ) == [
+            .resumeAfterAnalysis,
+            .prepareVideoMode,
+            .retryPendingCaptures
+        ])
         #expect(CaptureLifecycleCoordinator.depthAlbumPresentationActions(isPresented: true) == [])
 
         #expect(CaptureLifecycleCoordinator.scenePhaseActions(for: .active) == [
@@ -178,6 +186,46 @@ struct TAPCameraCapturePresentationTests {
     @Test func shutterSoundPreferenceDefaultsToEnabled() throws {
         #expect(CameraFeedbackPreferences.defaultShutterSoundEnabled)
         #expect(!CameraFeedbackPreferences.shutterSoundEnabledKey.isEmpty)
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func proVideoIsAProductionPathWithNoDebugPreference() throws {
+        let cameraSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraView.swift"
+        )
+        let settingsSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalyzerSettingsView.swift"
+        )
+        let controllerSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/Runtime/CaptureSessionController.swift"
+        )
+        let preferencesSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraUXPreferences.swift"
+        )
+        let videoViewModelSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraViewModel+VideoCapture.swift"
+        )
+
+        #expect(!settingsSource.contains("PRO Video Graph Probe"))
+        #expect(!settingsSource.contains("CameraProVideoResearchPreferences"))
+        #expect(!preferencesSource.contains("CameraProVideoResearchPreferences"))
+        #expect(!cameraSource.contains("isProVideoResearchEnabled"))
+        #expect(!cameraSource.contains("proVideoResearchPreferenceEnabled"))
+        #expect(!cameraSource.contains("Video is unavailable in PRO mode"))
+        #expect(!cameraSource.contains("PRO mode is available for photos"))
+        #expect(cameraSource.contains("viewModel.isPhotographerModeActive"))
+        #expect(cameraSource.contains("viewModel.isRearCameraActive"))
+        #expect(cameraSource.contains("if selectedMode == .video"))
+        #expect(cameraSource.contains("await viewModel.teardownPreparedVideoModeIfNeeded()"))
+        #expect(cameraSource.contains("await viewModel.prepareVideoModeIfNeeded()"))
+
+        #expect(controllerSource.contains("TAPVideoGraphOutputRouter"))
+        #expect(controllerSource.contains("? manualFocusPreviewStream.videoOutput"))
+        #expect(controllerSource.contains("preparedGraph.outputRouter.activate(recorder)"))
+        #expect(!controllerSource.contains("preparedGraph.dataOutputSynchronizer.setDelegate"))
+        #expect(videoViewModelSource.contains("guard await prepareVideoModeIfNeeded()"))
+        #expect(videoViewModelSource.contains("handleVideoRecordingWriterFailure"))
+        #expect(videoViewModelSource.contains("cancelVideoRecordingAfterWriterFailure"))
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))

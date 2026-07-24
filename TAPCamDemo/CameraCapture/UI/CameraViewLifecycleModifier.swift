@@ -24,6 +24,9 @@ struct CameraViewLifecycleModifier: ViewModifier {
     private let startsAutomatically: Bool
     private let lifecycleCoordinator: CaptureLifecycleCoordinator
     private let isSettingsPresented: Bool
+    private let resumesVideoModeAfterLibrary: Bool
+    private let onLibraryReturnCompleted:
+        @MainActor (CaptureLifecycleCoordinator.LibraryReturnResult) -> Void
 
     init(
         startsAutomatically: Bool,
@@ -32,7 +35,10 @@ struct CameraViewLifecycleModifier: ViewModifier {
         routeStore: CameraRouteStore,
         chromeOrientation: CameraChromeOrientationController,
         appAttestController: AppAttestRuntimeController,
-        isSettingsPresented: Bool
+        isSettingsPresented: Bool,
+        resumesVideoModeAfterLibrary: Bool,
+        onLibraryReturnCompleted: @escaping
+            @MainActor (CaptureLifecycleCoordinator.LibraryReturnResult) -> Void
     ) {
         self.startsAutomatically = startsAutomatically
         self.lifecycleCoordinator = lifecycleCoordinator
@@ -41,6 +47,8 @@ struct CameraViewLifecycleModifier: ViewModifier {
         self.chromeOrientation = chromeOrientation
         self.appAttestController = appAttestController
         self.isSettingsPresented = isSettingsPresented
+        self.resumesVideoModeAfterLibrary = resumesVideoModeAfterLibrary
+        self.onLibraryReturnCompleted = onLibraryReturnCompleted
     }
 
     func body(content: Content) -> some View {
@@ -91,11 +99,13 @@ struct CameraViewLifecycleModifier: ViewModifier {
     private func depthAlbumPresentationDidChange(_ isPresented: Bool) {
         updateIdleTimerForCurrentPresentation()
         Task {
-            await lifecycleCoordinator.depthAlbumPresentationDidChange(
+            let result = await lifecycleCoordinator.depthAlbumPresentationDidChange(
                 isPresented: isPresented,
+                preparesVideoMode: resumesVideoModeAfterLibrary,
                 viewModel: viewModel,
                 appAttestController: appAttestController
             )
+            onLibraryReturnCompleted(result)
         }
     }
 
@@ -151,7 +161,10 @@ extension View {
         routeStore: CameraRouteStore,
         chromeOrientation: CameraChromeOrientationController,
         appAttestController: AppAttestRuntimeController,
-        isSettingsPresented: Bool
+        isSettingsPresented: Bool,
+        resumesVideoModeAfterLibrary: Bool,
+        onLibraryReturnCompleted: @escaping
+            @MainActor (CaptureLifecycleCoordinator.LibraryReturnResult) -> Void
     ) -> some View {
         modifier(CameraViewLifecycleModifier(
             startsAutomatically: startsAutomatically,
@@ -160,7 +173,9 @@ extension View {
             routeStore: routeStore,
             chromeOrientation: chromeOrientation,
             appAttestController: appAttestController,
-            isSettingsPresented: isSettingsPresented
+            isSettingsPresented: isSettingsPresented,
+            resumesVideoModeAfterLibrary: resumesVideoModeAfterLibrary,
+            onLibraryReturnCompleted: onLibraryReturnCompleted
         ))
     }
 }

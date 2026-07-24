@@ -182,7 +182,9 @@ struct CameraView: View {
             routeStore: routeStore,
             chromeOrientation: chromeOrientation,
             appAttestController: appAttestController,
-            isSettingsPresented: isShowingSettings
+            isSettingsPresented: isShowingSettings,
+            resumesVideoModeAfterLibrary: selectedMode == .video,
+            onLibraryReturnCompleted: handleLibraryReturnCompleted
         )
         .overlay {
             if initialReadinessState.blocksInteraction {
@@ -469,8 +471,7 @@ struct CameraView: View {
     }
 
     private var proModeChromeState: CameraProModeChromeState {
-        guard selectedMode == .photo,
-              viewModel.photographerModeAvailability.isAvailable,
+        guard viewModel.photographerModeAvailability.isAvailable,
               viewModel.isRearCameraActive else {
             return .unavailable
         }
@@ -600,8 +601,8 @@ struct CameraView: View {
             onPreviewCropChange: viewModel.updatePreviewCropRect,
             onPreviewingChanged: previewLayerPreviewingDidChange,
             onSelectFocalLengthOption: selectFocalLengthDisplayOption,
-            onTapFocusPoint: focusAtPreviewPoint,
-            onManualFocusTapAssist: manualFocusTapAssistAtPreviewPoint,
+            onTapFocusPoint: handleFocusTapAtPreviewPoint,
+            onManualFocusTapAssist: handleFocusTapAtPreviewPoint,
             onAdjustTemporaryFocusEV: adjustTemporaryFocusEVOffset,
             onFinishTemporaryFocusEVAdjustment: finishTemporaryFocusEVAdjustment,
             onClearFocusSession: clearFocusSession,
@@ -636,8 +637,8 @@ struct CameraView: View {
             onPreviewCropChange: viewModel.updatePreviewCropRect,
             onPreviewingChanged: previewLayerPreviewingDidChange,
             onSelectFocalLengthOption: selectFocalLengthDisplayOption,
-            onTapFocusPoint: focusAtPreviewPoint,
-            onManualFocusTapAssist: manualFocusTapAssistAtPreviewPoint,
+            onTapFocusPoint: handleFocusTapAtPreviewPoint,
+            onManualFocusTapAssist: handleFocusTapAtPreviewPoint,
             onAdjustTemporaryFocusEV: adjustTemporaryFocusEVOffset,
             onFinishTemporaryFocusEVAdjustment: finishTemporaryFocusEVAdjustment,
             onClearFocusSession: clearFocusSession,
@@ -762,23 +763,24 @@ struct CameraView: View {
             showViewfinderHint("Coming soon")
             return
         }
-        if mode == .video, isPhotographerModePreferredForRearCamera {
-            showViewfinderHint("Video is unavailable in PRO mode")
-            return
-        }
         guard !isCameraPathTransitioning else {
             return
         }
-        guard !viewModel.isVideoRecording else {
+        guard !viewModel.isVideoRecording,
+              !viewModel.isPreparingVideoMode else {
             return
         }
         selectedMode = mode
-        Task {
+        Task { @MainActor in
             switch mode {
             case .photo:
                 await viewModel.teardownPreparedVideoModeIfNeeded()
             case .video:
-                await viewModel.prepareVideoModeIfNeeded()
+                let didPrepare = await viewModel.prepareVideoModeIfNeeded()
+                if !didPrepare {
+                    selectedMode = .photo
+                    showViewfinderHint("Video mode unavailable")
+                }
             }
         }
     }
@@ -799,8 +801,8 @@ struct CameraView: View {
     }
 
     private func togglePhotographerMode() {
-        guard selectedMode == .photo else {
-            showViewfinderHint("PRO mode is available for photos")
+        guard !viewModel.isVideoRecording,
+              !viewModel.isPreparingVideoMode else {
             return
         }
         guard viewModel.photographerModeAvailability.isAvailable else {
@@ -821,8 +823,10 @@ struct CameraView: View {
         pendingPhotographerModePreference = shouldEnable
 
         Task { @MainActor in
+            if selectedMode == .video {
+                await viewModel.teardownPreparedVideoModeIfNeeded()
+            }
             await viewModel.setPhotographerModeEnabled(shouldEnable)
-            completeCameraPathRuntimeTransition()
 
             let didReachRequestedStableMode: Bool
             if shouldEnable {
@@ -834,8 +838,20 @@ struct CameraView: View {
                 if case .failed(_, let reason) = viewModel.photographerModeState {
                     showViewfinderHint(reason.message)
                 }
+                completeCameraPathRuntimeTransition()
                 return
             }
+
+            if selectedMode == .video {
+                let didPrepareVideo = await viewModel.prepareVideoModeIfNeeded()
+                guard didPrepareVideo else {
+                    selectedMode = .photo
+                    showViewfinderHint("Video mode unavailable")
+                    completeCameraPathRuntimeTransition()
+                    return
+                }
+            }
+            completeCameraPathRuntimeTransition()
 
             if shouldEnable {
                 alignVisibleAdjustmentControlsIfNeeded()
@@ -851,12 +867,14 @@ struct CameraView: View {
     ) {
         switch state {
         case .active:
-            completeCameraPathRuntimeTransition()
-            selectedMode = .photo
+            if selectedMode != .video {
+                completeCameraPathRuntimeTransition()
+            }
             isBasicEVStripVisible = false
             alignVisibleAdjustmentControlsIfNeeded()
         case .standard, .unavailable:
-            if previousState.isTransitioning || previousState.requiresStandardRecovery {
+            if selectedMode != .video,
+               previousState.isTransitioning || previousState.requiresStandardRecovery {
                 completeCameraPathRuntimeTransition()
             }
             activeAdjustmentControl = nil
@@ -960,8 +978,15 @@ struct CameraView: View {
     }
 
     private func refreshCaptureDataUsePolicyAfterSettingsDismissal() {
-        Task {
+        Task { @MainActor in
             await viewModel.configureCurrentSelection()
+            if selectedMode == .video {
+                let didPrepareVideo = await viewModel.prepareVideoModeIfNeeded()
+                if !didPrepareVideo {
+                    selectedMode = .photo
+                    showViewfinderHint("Video mode unavailable")
+                }
+            }
         }
     }
 
@@ -1440,6 +1465,18 @@ struct CameraView: View {
         }
     }
 
+    /// The preview stage can briefly render one frame behind the parent while
+    /// AF/MF state changes. Resolve the interaction from CameraView's current
+    /// state so the first tap after entering MF cannot be routed through the
+    /// stale AF callback.
+    private func handleFocusTapAtPreviewPoint(_ point: CameraPreviewFocusPoint) {
+        if viewModel.isPhotographerModeActive, focusMode == .manual {
+            manualFocusTapAssistAtPreviewPoint(point)
+        } else {
+            focusAtPreviewPoint(point)
+        }
+    }
+
     private func manualFocusTapAssistAtPreviewPoint(_ point: CameraPreviewFocusPoint) {
         guard viewModel.isPhotographerModeActive,
               focusMode == .manual else {
@@ -1713,6 +1750,28 @@ struct CameraView: View {
         )
     }
 
+    private func handleLibraryReturnCompleted(
+        _ result: CaptureLifecycleCoordinator.LibraryReturnResult
+    ) {
+        switch result {
+        case .notApplicable:
+            return
+        case .cameraReady:
+            completeCameraPathRuntimeTransition()
+        case .videoReady:
+            completeCameraPathRuntimeTransition()
+            if viewModel.isPhotographerModeActive {
+                alignVisibleAdjustmentControlsIfNeeded()
+            }
+        case .failed:
+            if selectedMode == .video {
+                selectedMode = .photo
+                showViewfinderHint("Video mode unavailable")
+            }
+            completeCameraPathRuntimeTransition()
+        }
+    }
+
     private func retryPendingCapturesAfterLockedImport() {
         LockedCameraDiagnostics.logger.info(
             "locked_camera_import_notification_received routeDepthAlbumPresented=\(routeStore.isDepthAlbumPresented, privacy: .public) routeAwaitingImport=\(routeStore.isAwaitingLockedCaptureImport, privacy: .public)"
@@ -1744,12 +1803,22 @@ struct CameraView: View {
         }
 
         Task { @MainActor in
-            await viewModel.switchCameraPosition()
-            if involvesPhotographerMode {
-                completeCameraPathRuntimeTransition()
+            if selectedMode == .video {
+                await viewModel.teardownPreparedVideoModeIfNeeded()
             }
+            await viewModel.switchCameraPosition()
             if viewModel.isPhotographerModeActive {
                 alignVisibleAdjustmentControlsIfNeeded()
+            }
+            if selectedMode == .video {
+                let didPrepareVideo = await viewModel.prepareVideoModeIfNeeded()
+                if !didPrepareVideo {
+                    selectedMode = .photo
+                    showViewfinderHint("Video mode unavailable")
+                }
+            }
+            if involvesPhotographerMode {
+                completeCameraPathRuntimeTransition()
             }
         }
     }

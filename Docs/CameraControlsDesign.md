@@ -18,12 +18,12 @@
 | `FOV selector bar` | 镜头 / 视角选择条 | Standard 显示 release field-of-view chips；PRO 固定后置 LiDAR 24mm / 1x，因此隐藏。外层 bar 固定在取景器下边缘内侧，chip 内容按设备姿态旋转，bar 本身不旋转。 |
 | `preview-only zoom` | 取景器预览缩放 | Standard 可保留既有 `1x / 2x / 3x` 预览行为；PRO 固定 LiDAR 24mm / 1x 并隐藏入口。 |
 | `source switching mode` | 真实摄像头源切换模式 | 后续 roadmap。切换焦段时可能切到不同 Apple camera path，并按当前 path 能力重新决定 ISO/S/AF/MF 可用性。 |
-| `Photographer Mode` / `PRO` | 摄影师模式 / 专业模式 | Release runtime 产品模式。只在 eligible 后置 LiDAR 24mm / 1x 路径可用，并且 v1 只支持 Photo。 |
+| `Photographer Mode` / `PRO` | 摄影师模式 / 专业模式 | Release runtime 产品模式。只在 eligible 后置 LiDAR 24mm / 1x 路径可用，同时支持 PHOTO 和 TAP VIDEO；VIDEO 中继续显示并允许切换最右侧 `PRO`。 |
 | `Photographer Mode state` | 摄影师模式异步状态 | 固定为 `unavailable / standard / activating / active / deactivating / failed`，不能用一个 bool 代替 session readiness。 |
 | `frosted session transition` | 毛玻璃 session 切换 | 保留最后一帧并覆盖毛玻璃；异步 session 未 ready 前禁用拍摄和取景器交互。适用于 PRO 开关以及 rear PRO / front 双向切换。 |
 | `suspended rear mode` | 暂挂的后置模式意图 | PRO 下切前置时记录的瞬时 rear intent；返回后置时尝试恢复 PRO。它不是关闭 PRO，也不改写 `Remember Last State`。 |
 | `viewfinder edge toast` | 取景器边缘提示 | 贴在取景器上边缘内侧，水平居中淡入淡出，不阻止拍摄。 |
-| `focus loupe` | 对焦放大预览 | MF 下由用户点按位置驱动的右下角局部放大窗。主 PreviewLayer 始终保持 1x；PRO graph 常驻一条 preview-sized `AVCaptureVideoDataOutput`，放大窗用 `AVSampleBufferDisplayLayer` 消费该帧流。它不写 `videoZoomFactor`，不影响主构图或成片，也不创建第二个 PreviewLayer。显示时长由 Debug Settings 的 `Focus Magnifier` 枚举决定；普通产品设置页暂不展示。 |
+| `focus loupe` | 对焦放大预览 | MF 下由用户点按位置驱动的右下角局部放大窗。主 PreviewLayer 始终保持 1x；PRO source graph 只拥有一条 canonical preview-sized `AVCaptureVideoDataOutput`，放大窗和 VIDEO recorder 在软件层消费同一帧流。它不写 `videoZoomFactor`，不影响主构图或成片，也不创建第二个 PreviewLayer 或第二条 RGB data output。显示时长由 Debug Settings 的 `Focus Magnifier` 枚举决定；普通产品设置页暂不展示。 |
 | `focus target overlay` | 对焦目标覆盖层 | 同一个状态同时驱动对焦框、`AE/AF LOCK` 标签和旁边的临时 EV 条。 |
 | `focus frame anchor` | 对焦框锚点 | 用户点按或锁定的 preview-local 归一化坐标。对焦框的几何中心必须始终由这个点决定，不能被标签、提示、EV 条或动画布局推移。 |
 | `focus validity` | 对焦目标有效性 | 可见对焦框代表“当前仍然有效的用户选择目标”。它不会按固定 TTL 自动消失，只会被用户替换、手动对焦模式、镜头/模式切换、取消或 runtime invalidation 改变。 |
@@ -76,8 +76,14 @@ Standard 和 Photographer Mode 是同一个 Release app 内的 runtime 状态。
   path；不显示 PRO 入口。
 - `failed`：切换失败，恢复可用 Standard session，再允许重试。
 
-Photographer Mode v1 只支持 Photo。进入 Video 前必须先完成到 Standard 的切换，
-或拒绝切换并给出简短反馈，不能让 PRO 视觉状态留在 Video。
+Photographer Mode 同时支持 Photo 和 TAP Video。VIDEO 中切换 PRO、PRO 中切换
+PHOTO / VIDEO，以及 rear PRO / front 双向切换，都必须保持同一个异步相机路径
+状态机；涉及 LiDAR graph 重建时使用毛玻璃，直到目标 session 和视频 warmup
+共同 ready。Standard 仍然绝不主动选择 LiDAR。
+
+调研探针已经完成并晋级为正式产品路径。Debug Settings 不再提供 PRO Video
+开关；graph format、首帧、drop 和 writer failure 诊断继续保留，见
+[ProVideoResearchPlan.md](ProVideoResearchPlan.md)。
 
 完整 runtime 边界、状态机和验证准绳见
 [CameraProControlsBuildIsolationPlan.md](CameraProControlsBuildIsolationPlan.md)。
@@ -251,6 +257,78 @@ capability 重新 gate。置灰项需要解释为“当前苹果设备摄像头�
 RGB/depth 都是 full-frame LiDAR 24mm。
 
 完整设备限制说明见 [CameraManualControlDeviceLimits.md](CameraManualControlDeviceLimits.md)。
+
+## Capture Source Binding And Data-Flow Invariants
+
+相机源切换不是只替换一个 UI 状态。每一条运行中的流水必须绑定到一个明确的
+`capture source generation`：
+
+```text
+source generation
+  = device/input
+  + active video format
+  + active depth format
+  + configuration generation
+```
+
+同一 generation 内遵守以下不变量：
+
+1. source graph 只创建一条 canonical RGB data output。不能为了 MF 放大窗、
+   VIDEO、诊断或未来分析分别向同一硬件 source 再挂 RGB output。
+2. `focus loupe`、VIDEO recorder 和未来帧级消费者必须在软件 router 后扇出；
+   消费者的显示、编码或背压不能反向改变硬件 graph。
+3. 需要 RGB/Depth 对齐时，graph 生命周期内只保留一个
+   `AVCaptureDataOutputSynchronizer`、一个 delegate 和一个 callback queue。
+   Warmup -> recording 只切换 router 内的软件 consumer，不能对 live
+   synchronizer 调换 delegate/queue。
+4. MF UI、tap assist、readback、loupe buffer 和 recorder 必须检查相同的
+   device/generation。旧 source 的 late callback 必须丢弃，不能渲染进新 source
+   的 UI，也不能写入新 source 的文件。
+5. 主 `AVCaptureVideoPreviewLayer` 仍由同一个 session/device source 驱动，但它
+   不是 recorder 的 `AVCaptureVideoDataOutput`。文档中的“同一视频源”表示相同
+   source identity/generation；MF loupe 与 recorder 还进一步共享同一 canonical
+   RGB data output。
+
+切换 Standard/PRO、Photo/Video 或前后摄像头时，顺序固定为：
+
+1. 冻结旧 generation 的最后一帧并锁住交互。
+2. 停止接受旧 generation 的手动写入和新 capture。
+3. drain/detach 旧 graph 的软件消费者，再拆除旧 graph。
+4. 配置目标 source，生成新的 generation。
+5. 在目标 canonical RGB/Depth 流上绑定 loupe、recorder 和诊断消费者。
+6. 只让当前 generation 的回调改变 UI 或写入 artifact。
+
+从 TAP Library 返回也必须遵守同一事务边界。相册展示会暂停并拆除当前相机
+session，因此 `selectedMode == .video` 只表示用户仍选择 VIDEO，不能证明 VIDEO
+graph 仍然存在。返回顺序固定为：
+
+1. 恢复当前 Standard / PRO source generation。
+2. 如果 UI 仍选择 VIDEO，重新执行 VIDEO warmup 并绑定该 generation 的消费者。
+3. source 和 VIDEO graph 都 ready 后才解除毛玻璃与交互锁。
+4. VIDEO warmup 失败时有界降级到 PHOTO，不能停留在无限 `Starting PRO`。
+5. pending capture 的签名/导出重试在恢复后独立执行；网络工作不能参与 viewfinder
+   readiness gate。
+
+视频签名也遵守同一条“已产出数据归属”约束：recorder 完成并 ingest 后，pending
+MP4 就是待签名的源文件。签名前不再用第二次 AVFoundation track scan 重新裁决
+这个文件是否值得信任；签名只覆盖 proof slot 之外的精确 MP4 字节和 canonical
+manifest payload。proof 写入后必须立刻重算 binding，核对 `contentDigest` 与
+`signingBinding` 确实对应当前文件；Photos 导出和 original-resource readback
+重复同一检查。RGB/depth/timeline/calibration 的完整语义检查保留为独立健康度
+能力，不参与签名、正常导出或 viewfinder readiness。
+
+`session graph ready`、`preview ready` 和 `data ready` 不能混为一谈：
+
+- `graph ready`：`commitConfiguration` 完成且输出结构合法。
+- `preview ready`：目标 generation 的 PreviewLayer 已恢复交互。
+- `data ready`：目标 canonical output 已交付当前 generation 的首个有效 sample；
+  RGB/Depth 功能还需要首个有效 synchronized pair。
+
+调研期的 `warmup-ready` trace 只曾证明 graph 结构完成，不单独证明 data ready；
+该临时 trace 已在真机验收后删除。当前正式架构已落实单 RGB output 和固定 router；
+如果真机再次出现长期 `Starting PRO`，应针对该次故障添加有界诊断并验证
+current-generation first-sample readiness，不能通过新增 output、重复 warmup 或再次
+切换 delegate 来掩盖问题。
 
 ## Exposure Model
 
@@ -449,16 +527,17 @@ stateDiagram-v2
 
 `mode selector slot` 默认显示 `mode selector bar`：
 
-- `PHOTO`：可用，当前选中。
-- `VIDEO`：灰色不可用，点击显示 `Coming soon`。
+- `PHOTO`：可用。
+- `VIDEO`：Standard 和 eligible rear PRO 都可用。
 
 `mode selector bar` 不响应设备方向变化。它的外层 HStack、每个按钮 frame、`PHOTO` / `VIDEO` 文字都保持 portrait layout，不使用 `rotationEffect`。
 
 `Live Photo` 不放在 mode selector 里，放在 `viewfinder top toolbar`，因为它是 Photo 模式的附加捕获能力，不是独立拍摄模式。
 
-Photographer Mode v1 只支持 `PHOTO`。如果用户在 PRO active 时选择 `VIDEO`，UI
-必须拒绝并提示，或先完成带毛玻璃的 PRO -> Standard 切换后再进入 Video；不能让
-PRO selected state 和 standard video session 同时出现。
+VIDEO 中继续显示最右侧 `PRO`。Standard VIDEO 点按 PRO 时切到 rear LiDAR
+configuration 并准备 PRO Video graph；PRO VIDEO 点按 PRO 时切回 Standard
+VIDEO graph。两条路径都使用毛玻璃并锁定模式、快门和相机切换，直到目标 graph
+ready。失败时恢复可用的稳定相机路径；如果 VIDEO warmup 本身失败，再回到 PHOTO。
 
 ## Viewfinder Edge Toast
 

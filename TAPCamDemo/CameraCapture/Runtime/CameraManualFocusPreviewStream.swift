@@ -21,9 +21,13 @@ nonisolated final class CameraManualFocusPreviewStream: NSObject,
     let videoOutput: AVCaptureVideoDataOutput
 
     private let delegateQueue: DispatchQueue
+    var sharedVideoCallbackQueue: DispatchQueue {
+        delegateQueue
+    }
     private let activeDeviceLock = NSLock()
     private var activeDevice: AVCaptureDevice?
     private var isCaptureActive = false
+    private var sharedOutputRotationAngle: CGFloat?
 
     /// Main-actor observers are used only to rebuild UI rotation state after a
     /// session activation/deactivation. Frame delivery stays entirely on
@@ -117,6 +121,23 @@ nonisolated final class CameraManualFocusPreviewStream: NSObject,
         return isCaptureActive ? activeDevice : nil
     }
 
+    @MainActor
+    func sharedOutputRotationAngleSnapshot() -> CGFloat? {
+        activeDeviceLock.lock()
+        defer { activeDeviceLock.unlock() }
+        return sharedOutputRotationAngle
+    }
+
+    /// Tells the loupe that PRO Video is delivering already-rotated RGB
+    /// buffers. The display layer must not apply its usual preview rotation a
+    /// second time while the recording graph owns the shared output.
+    func setSharedOutputRotationAngle(_ angle: CGFloat?) {
+        activeDeviceLock.lock()
+        sharedOutputRotationAngle = angle
+        activeDeviceLock.unlock()
+        publishActiveStateChange()
+    }
+
     /// Observes activation changes without making the frame source itself an
     /// ObservableObject. The callback re-reads the current snapshot, so rapid
     /// deactivate/activate events cannot deliver a stale device.
@@ -187,6 +208,16 @@ nonisolated final class CameraManualFocusPreviewStream: NSObject,
         return isCaptureActive
     }
 
+    /// Fans a frame from a shared PRO Video synchronizer back into the MF loupe.
+    ///
+    /// `AVCaptureDataOutputSynchronizer` temporarily overrides this output's
+    /// normal sample-buffer delegate. Keeping rendering behind this method lets
+    /// PRO Video reuse the existing RGB output instead of attaching a second
+    /// hardware video-data output to the LiDAR graph.
+    func consumeSharedVideoSample(_ sampleBuffer: CMSampleBuffer) {
+        render(sampleBuffer)
+    }
+
     /// Must be called on `delegateQueue`.
     private func flushAttachedRenderer(removingDisplayedImage: Bool) {
         guard let renderer = attachedRenderer?.renderer else {
@@ -232,20 +263,32 @@ nonisolated final class CameraManualFocusPreviewStream: NSObject,
         from connection: AVCaptureConnection
     ) {
         guard output === videoOutput,
-              captureIsActive(),
+              captureIsActive() else {
+            return
+        }
+        render(sampleBuffer)
+    }
+
+    /// Must be called on `delegateQueue`.
+    private func render(_ sampleBuffer: CMSampleBuffer) {
+        guard captureIsActive(),
               let renderer = attachedRenderer?.renderer else {
             return
         }
-
         if renderer.status == .failed {
             let now = Date()
             if now.timeIntervalSince(lastRendererFailureLogAt) >= 2 {
                 lastRendererFailureLogAt = now
                 #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-                let errorDescription = renderer.error.map(TAPDiagnostics.describe) ?? "none"
-                TAPDiagnostics.cameraCapture.error(
-                    "manual focus loupe renderer failed error=\(errorDescription, privacy: .public)"
-                )
+                if let error = renderer.error {
+                    TAPDiagnostics.cameraCapture.error(
+                        "manual focus loupe renderer failed error=\(TAPDiagnostics.describe(error), privacy: .public)"
+                    )
+                } else {
+                    TAPDiagnostics.cameraCapture.error(
+                        "manual focus loupe renderer failed without an NSError"
+                    )
+                }
                 #endif
             }
         }

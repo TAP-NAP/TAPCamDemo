@@ -151,6 +151,11 @@ struct CameraManualFocusLoupePreview: UIViewRepresentable {
                 view.previewRotationAngleDegrees = 0
                 return
             }
+            if source.sharedOutputRotationAngleSnapshot() != nil {
+                stopObservingRotation()
+                view.previewRotationAngleDegrees = 0
+                return
+            }
             guard activeDeviceID != device.uniqueID
                     || rotationCoordinator?.previewLayer !== view.displayLayer else {
                 return

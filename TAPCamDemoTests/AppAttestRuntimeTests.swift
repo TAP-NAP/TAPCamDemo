@@ -96,6 +96,8 @@ struct AppAttestRuntimeTests {
 
         #expect(description.contains("domain=TAPDiagnosticsTests"))
         #expect(description.contains("code=7"))
+        #expect(description.contains("underlyingDomain=\(NSURLErrorDomain)"))
+        #expect(description.contains("underlyingCode=\(NSURLErrorNetworkConnectionLost)"))
         #expect(description.contains("vpnHint=true"))
         #expect(!description.contains("networkPath="))
         #expect(!description.contains("utun4"))

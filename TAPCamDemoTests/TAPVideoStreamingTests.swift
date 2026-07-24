@@ -383,6 +383,76 @@ struct TAPVideoStreamingTests {
         #expect(phases == [.authenticateProofAndContentBinding])
     }
 
+    @Test func videoSigningBindsExactBytesWithoutRequiringSemanticTrackScan() async throws {
+        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+        let store = TAPPendingCaptureStore(rootURL: rootURL)
+        let record = try await TAPCamDemoTestFixtures.ingestPendingTAPVideo(
+            store: store,
+            captureID: "byte-binding-only-video"
+        )
+        let videoURL = try await store.videoArtifactURL(captureID: record.captureID)
+        let signer = SuccessfulVideoCaptureAssertionSigner()
+        let writer = TAPCaptureProvenanceWriter()
+
+        let signed = try await writer.signedVideoFile(
+            at: videoURL,
+            expectedCaptureID: record.captureID,
+            expectedPackageID: record.packageID,
+            assertionSigner: signer
+        )
+        let validated = try await writer.validateSignedExportVideoFile(
+            at: videoURL,
+            expectedCaptureID: record.captureID,
+            expectedPackageID: record.packageID
+        )
+
+        #expect(signed.fileURL == videoURL)
+        #expect(validated.manifest.payload.id == record.captureID)
+        #expect(await signer.lastDigest()?.assetHash.fileContainer == "mp4")
+
+        await #expect(throws: Error.self) {
+            _ = try await writer.validateSignedExportVideoFile(
+                at: videoURL,
+                expectedCaptureID: record.captureID,
+                expectedPackageID: record.packageID,
+                validatesDepthTrack: true
+            )
+        }
+    }
+
+    @Test func signedVideoValidationRejectsAnyMutationOutsideProofSlot() async throws {
+        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+        let store = TAPPendingCaptureStore(rootURL: rootURL)
+        let record = try await TAPCamDemoTestFixtures.ingestPendingTAPVideo(
+            store: store,
+            captureID: "mutated-signed-video"
+        )
+        let videoURL = try await store.videoArtifactURL(captureID: record.captureID)
+        let writer = TAPCaptureProvenanceWriter()
+
+        _ = try await writer.signedVideoFile(
+            at: videoURL,
+            expectedCaptureID: record.captureID,
+            expectedPackageID: record.packageID,
+            assertionSigner: SuccessfulVideoCaptureAssertionSigner()
+        )
+
+        let fileHandle = try FileHandle(forUpdating: videoURL)
+        try fileHandle.seek(toOffset: 11)
+        try fileHandle.write(contentsOf: Data([0x33]))
+        try fileHandle.close()
+
+        await #expect(throws: TAPDepthCaptureError.self) {
+            _ = try await writer.validateSignedExportVideoFile(
+                at: videoURL,
+                expectedCaptureID: record.captureID,
+                expectedPackageID: record.packageID
+            )
+        }
+    }
+
     @Test func depthGapAccumulatorMergesAdjacentEventsAndStaysBounded() throws {
         var adjacent = TAPDepthGapAccumulator()
         adjacent.record(
@@ -581,6 +651,32 @@ struct TAPVideoStreamingTests {
         box32(type: "ftyp", payload: Data("mp42".utf8))
             + box32(type: "moov", payload: Data(repeating: 0x4d, count: 127))
             + box32(type: "mdat", payload: Data(repeating: 0xa5, count: 1_031))
+    }
+
+    private actor SuccessfulVideoCaptureAssertionSigner: CaptureAssertionSigning {
+        private var recordedDigest: CaptureContentDigest?
+
+        func lastDigest() -> CaptureContentDigest? {
+            recordedDigest
+        }
+
+        func sign(contentDigest: CaptureContentDigest) async throws -> CaptureAssertionProof {
+            recordedDigest = contentDigest
+            let proofValue = CaptureAssertionProofValue(
+                contentDigest: contentDigest,
+                keyId: "video-test-key-id",
+                assertionObject: Data([0xA1, 0x01]).appAttestBase64URL,
+                signingBinding: try CaptureSigningBinding(contentDigest: contentDigest)
+            )
+            let proof = TAPDepthManifest.Proof(
+                type: "appAttestAssertion",
+                algorithm: "TAPCam.AppAttestCaptureSignature.v1",
+                keyID: "video-test-key-id",
+                createdAt: contentDigest.capturedAt,
+                value: try proofValue.canonicalJSONData().appAttestBase64URL
+            )
+            return CaptureAssertionProof(proof: proof, keyID: "video-test-key-id")
+        }
     }
 
     private enum ExpectedSignedValidationFailure: Error {

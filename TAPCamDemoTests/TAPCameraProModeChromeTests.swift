@@ -196,6 +196,8 @@ struct TAPCameraProModeChromeTests {
         let alignSource = String(cameraSource[alignStart.lowerBound..<alignEnd.lowerBound])
         #expect(!alignSource.contains("scheduleManualFocusApply()"))
         #expect(cameraSource.contains("viewModel.queueManualFocus(lensPosition: value)"))
+        #expect(cameraSource.contains("onTapFocusPoint: handleFocusTapAtPreviewPoint"))
+        #expect(cameraSource.contains("onManualFocusTapAssist: handleFocusTapAtPreviewPoint"))
         #expect(!cameraSource.contains("Task.sleep(for: .milliseconds(120))"))
         #expect(cameraSource.contains("manualFocusDraftRevision"))
         let assistStart = try #require(

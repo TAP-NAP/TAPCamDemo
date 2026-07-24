@@ -76,6 +76,7 @@ final class CameraViewModel: ObservableObject {
     var videoRecordingTemporaryDirectoryURL: URL?
     var videoDurationLimitTask: Task<Void, Never>?
     var videoThermalObserver: NSObjectProtocol?
+    var videoWriterFailureRecoveryTask: Task<Void, Never>?
     var recentLibraryPreviewRefreshTask: Task<Void, Never>?
     var recentLibraryCoverTask: Task<Void, Never>?
     var recentLibraryFetchGeneration: UInt64 = 0
@@ -277,6 +278,11 @@ final class CameraViewModel: ObservableObject {
         sessionController.setRuntimeFailureHandler { [weak self] failure in
             Task { @MainActor [weak self, failure] in
                 self?.handleCaptureSessionRuntimeFailure(failure)
+            }
+        }
+        sessionController.setVideoRecordingFailureHandler { [weak self] failure in
+            Task { @MainActor [weak self, failure] in
+                self?.handleVideoRecordingWriterFailure(failure)
             }
         }
         beginObservingLibraryMediaStore()

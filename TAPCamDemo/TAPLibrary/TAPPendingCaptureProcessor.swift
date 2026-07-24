@@ -151,6 +151,7 @@ actor TAPPendingCaptureProcessor {
         try await store.removeStaleVideoCaptureWorkspaces()
         try await store.removeUnshippedLegacyVideoBundles()
         try await store.normalizePersistedFailureReasons()
+        try await store.reopenLegacyUnsignedVideoValidationFailures()
         let records = try await store.allRecords()
         for record in records {
             switch record.status {
@@ -221,7 +222,9 @@ actor TAPPendingCaptureProcessor {
             TAPDiagnostics.pendingCapture.info("process success captureID=\(record.captureID, privacy: .private) previousStatus=\(record.status.rawValue, privacy: .public)")
             #endif
         } catch {
-            if let terminalCode = Self.terminalFailureCode(for: error, record: record) {
+            let persistedRecord = try? await store.readRecord(captureID: record.captureID)
+            let failureRecord = persistedRecord ?? record
+            if let terminalCode = failureRecord.terminalFailureCode(for: error) {
                 _ = try? await store.markTerminalFailure(
                     captureID: record.captureID,
                     code: terminalCode
@@ -231,7 +234,6 @@ actor TAPPendingCaptureProcessor {
                 #endif
                 return
             }
-            let persistedRecord = try? await store.readRecord(captureID: record.captureID)
             let mustRemainInVideoRecovery = record.artifactKind == .tapVideo
                 && (record.requiresVideoPhotosReadbackRecovery
                     || persistedRecord?.requiresVideoPhotosReadbackRecovery == true)
@@ -248,30 +250,6 @@ actor TAPPendingCaptureProcessor {
                 failureReason: failureReason,
                 incrementsRetryCount: true
             )
-        }
-    }
-
-    private nonisolated static func terminalFailureCode(
-        for error: Error,
-        record: TAPPendingCaptureRecord
-    ) -> TAPPendingCaptureFailureCode? {
-        guard record.artifactKind == .tapVideo,
-              let captureError = error as? TAPDepthCaptureError else {
-            return nil
-        }
-        switch captureError {
-        case .missingDepthData:
-            return .missingDepthData
-        case .pendingCaptureProofExternalMutation:
-            return .proofExternalMutation
-        case .pendingCaptureProofInvalid,
-             .pendingCaptureProofMissing:
-            return .proofValidationFailed
-        case .invalidTAPManifest,
-             .pendingCaptureManifestIDMismatch:
-            return .invalidVideoArtifact
-        default:
-            return nil
         }
     }
 

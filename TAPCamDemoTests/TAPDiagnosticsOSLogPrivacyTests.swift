@@ -105,7 +105,6 @@ struct TAPDiagnosticsOSLogPrivacyTests {
         "rawSampleCount",
         "readiness",
         "remainingJobs",
-        "requested",
         "retryCount",
         "resourceCount",
         "rootPitch",
@@ -168,9 +167,11 @@ struct TAPDiagnosticsOSLogPrivacyTests {
         "depthOutputDrops",
         "depthOutputSamples",
         "dropCount",
+        "domain",
         "duration",
         "filtered",
         "height",
+        "mediaServicesReset",
         "pixelFormat",
         "requestedExportedCount",
         "resolvedExportedCount",
@@ -181,7 +182,10 @@ struct TAPDiagnosticsOSLogPrivacyTests {
         "videoDrops",
         "width",
         "writerError",
-        "writerStatus"
+        "writerStatus",
+        "deviceType",
+        "running",
+        "traceID"
     ])
 
     @Test func allTAPDiagnosticsLoggingFilesAreCoveredByHarness() throws {
@@ -328,6 +332,7 @@ struct TAPDiagnosticsOSLogPrivacyTests {
             "TAPCamDemo/CameraCapture/Output/EmbeddedPhotoPackager.swift",
             "TAPCamDemo/CameraCapture/Output/PhotoLibraryWriter.swift",
             "TAPCamDemo/CameraCapture/Runtime/AVFoundationSingleCamPhotoProvider.swift",
+            "TAPCamDemo/CameraCapture/Runtime/CameraManualFocusPreviewStream.swift",
             "TAPCamDemo/CameraCapture/Runtime/CaptureSessionController.swift",
             "TAPCamDemo/CameraCapture/Runtime/TAPVideoRecorder.swift",
             "TAPCamDemo/CameraCapture/Runtime/TAPVideoRecorderDiagnostics.swift",

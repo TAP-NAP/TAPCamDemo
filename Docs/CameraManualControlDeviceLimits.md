@@ -57,8 +57,9 @@ TAPCam cannot safely:
 
 ## Photographer Mode v1 Decision
 
-Photographer Mode v1 prioritizes a reliable, internally consistent manual-depth
-path. It is photo-only and uses an all-or-nothing eligibility rule.
+Photographer Mode prioritizes a reliable, internally consistent manual-depth
+path. It supports Photo and TAP Video and uses an all-or-nothing eligibility
+rule.
 
 Standard mode:
 
