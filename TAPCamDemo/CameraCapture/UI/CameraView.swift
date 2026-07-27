@@ -499,6 +499,12 @@ struct CameraView: View {
                 basicEVState: basicEVControlState,
                 shouldShowBasicEV: !viewModel.isPhotographerModeActive
                     && !isCameraPathTransitioning,
+                videoRecordingTimecode: viewModel.videoRecordingStartedAt.map {
+                    CameraVideoRecordingTimecodeState(
+                        startedAt: $0,
+                        maximumDuration: TAPVideoRecordingRequest.defaultMaximumDuration
+                    )
+                },
                 contentRotation: chromeOrientation.angle
             ),
             highlightColor: viewfinderHighlightColor,

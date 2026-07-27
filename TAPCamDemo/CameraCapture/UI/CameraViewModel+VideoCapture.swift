@@ -36,6 +36,7 @@ extension CameraViewModel {
         }
         cancelVideoRecordingStopTriggers()
         isVideoRecording = false
+        videoRecordingStartedAt = nil
         statusMessage = "Video recording failed · rebuilding video mode..."
 
         try? await sessionController.cancelVideoRecordingAfterWriterFailure()
@@ -200,6 +201,7 @@ extension CameraViewModel {
 
             activeVideoRecordingCaptureID = captureID
             isVideoRecording = true
+            videoRecordingStartedAt = Date()
             statusMessage = "Recording TAP video..."
             installVideoRecordingLimitTask(pendingCaptureWorkerClient: pendingCaptureWorkerClient)
             installVideoThermalObserver(pendingCaptureWorkerClient: pendingCaptureWorkerClient)
@@ -208,6 +210,7 @@ extension CameraViewModel {
             #endif
         } catch {
             isVideoRecording = false
+            videoRecordingStartedAt = nil
             activeVideoRecordingCaptureID = nil
             videoRecordingTemporaryDirectoryURL = nil
             try? await pendingCaptureStore.abortVideoCaptureWorkspace(captureID: captureID)
@@ -229,6 +232,7 @@ extension CameraViewModel {
         let captureID = activeVideoRecordingCaptureID
         cancelVideoRecordingStopTriggers()
         isVideoRecording = false
+        videoRecordingStartedAt = nil
         statusMessage = "Finishing TAP video..."
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.cameraCapture.info("video recording stop requested captureID=\(captureID ?? "none", privacy: .private) reason=\(reason.rawValue, privacy: .public)")

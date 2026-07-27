@@ -41,6 +41,7 @@ final class CameraViewModel: ObservableObject {
     @Published var focusRuntimeEvent: CameraFocusRuntimeEvent?
     @Published var exposureRuntimeEvent: CameraExposureRuntimeEvent?
     @Published var isVideoRecording = false
+    @Published var videoRecordingStartedAt: Date?
     @Published var isPreparingVideoMode = false
     @Published var photographerModeState: PhotographerModeState
     @Published var suspendedRearModeIntent: PhotographerRearModeIntent = .standard

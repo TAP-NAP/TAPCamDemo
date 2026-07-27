@@ -428,6 +428,36 @@ struct TAPCameraCapturePresentationTests {
         }
     }
 
+    @Test func videoRecordingTimecodeFormatsElapsedAndLimit() {
+        let startedAt = Date(timeIntervalSince1970: 100)
+        let state = CameraVideoRecordingTimecodeState(
+            startedAt: startedAt,
+            maximumDuration: 180
+        )
+
+        #expect(state.displayText(at: startedAt) == "0:00 / 3:00")
+        #expect(state.displayText(at: startedAt.addingTimeInterval(1.9)) == "0:01 / 3:00")
+        #expect(state.displayText(at: startedAt.addingTimeInterval(181)) == "3:00 / 3:00")
+        #expect(state.displayText(at: startedAt.addingTimeInterval(-1)) == "0:00 / 3:00")
+    }
+
+    @Test func videoRecordingTimecodeFormatsHourDurations() {
+        #expect(CameraVideoRecordingTimecodeState.formatted(seconds: 3_661) == "1:01:01")
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func videoRecordingTimecodeUsesLeafNativeUpdateBoundary() throws {
+        let source = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraVideoRecordingTimecodeView.swift"
+        )
+
+        #expect(source.contains("UIViewRepresentable"))
+        #expect(source.contains("override var intrinsicContentSize"))
+        #expect(source.contains("timecodeLabel.text = text"))
+        #expect(!source.contains("TimelineView"))
+        #expect(!source.contains("@Published"))
+    }
+
     @Test func cameraPreviewStageStateDoesNotNameCaptureSecurityOrOutputInputs() throws {
         let state = CameraPreviewStageState(
             nativePreviewAspectRatio: 3.0 / 4.0,

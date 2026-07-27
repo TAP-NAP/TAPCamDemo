@@ -14,6 +14,7 @@ The current control vocabulary and placement rules live in
 | --- | --- |
 | Main camera screen shell, object lifetime, navigation, sheet, camera chrome state, and capture action owner | [CameraView.swift](CameraView.swift) |
 | Viewfinder chrome state, top shoulder Settings, and Flash/Live Photo toolbar | [CameraViewfinderChromeView.swift](CameraViewfinderChromeView.swift) |
+| Leaf-native recording timecode that updates without periodic SwiftUI invalidation | [CameraVideoRecordingTimecodeView.swift](CameraVideoRecordingTimecodeView.swift) |
 | Lower toolbar parameter buttons, AF/MF state, exposure risk-zone display, and ticked adjustment strip | [CameraAdjustmentControlView.swift](CameraAdjustmentControlView.swift) |
 | First-stage camera UX preferences, mode enums, Flash/Live Photo viewfinder default policy, AF/MF mode, Debug-only Focus Magnifier duration setting, Debug-only LiDAR Focus Assist setting, and idle-timer policy | [CameraUXPreferences.swift](CameraUXPreferences.swift) |
 | Live preview stage, preview sizing, crop metadata callback, tap-focus and temporary-EV gesture layer, focus loupe, viewfinder edge toast, guide overlay, FOV overlay, and Debug overlay host | [CameraPreviewStageView.swift](CameraPreviewStageView.swift) |
@@ -236,6 +237,9 @@ unsigned photo data.
   `TAPPendingCaptureStore`, `CaptureOutputProfile`, session configuration
   results, raw Photos identifiers, pending capture identifiers, photo bytes,
   manifests, proofs, App Attest key IDs, or output objects.
+- Periodic recording-chrome updates must stay inside a leaf-native view. Do not
+  publish per-second ticks through `CameraViewModel` or place `TimelineView` in
+  the camera chrome/preview SwiftUI tree; update only the native label.
 - The preview stage may receive a render-only `AVCaptureSession`, normalized
   crop callback, display-only FOV options, guide-overlay preference, primitive
   preview sizing values, and a Debug-only overlay state. It must not receive `CameraViewModel`,

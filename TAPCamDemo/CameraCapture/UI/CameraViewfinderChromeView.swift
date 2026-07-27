@@ -62,6 +62,7 @@ struct CameraViewfinderChromeState: Equatable {
     let proModeState: CameraProModeChromeState
     let basicEVState: CameraBasicEVControlState
     let shouldShowBasicEV: Bool
+    let videoRecordingTimecode: CameraVideoRecordingTimecodeState?
     let contentRotation: Angle
 
     init(
@@ -75,6 +76,7 @@ struct CameraViewfinderChromeState: Equatable {
             isStripVisible: false
         ),
         shouldShowBasicEV: Bool = true,
+        videoRecordingTimecode: CameraVideoRecordingTimecodeState? = nil,
         contentRotation: Angle
     ) {
         self.flashMode = flashMode
@@ -84,6 +86,7 @@ struct CameraViewfinderChromeState: Equatable {
         self.proModeState = proModeState
         self.basicEVState = basicEVState
         self.shouldShowBasicEV = shouldShowBasicEV
+        self.videoRecordingTimecode = videoRecordingTimecode
         self.contentRotation = contentRotation
     }
 }
@@ -168,16 +171,30 @@ struct CameraViewfinderChromeView: View {
     }
 
     private var topToolbar: some View {
-        HStack(spacing: 10) {
-            flashButton
-            livePhotoButton
-                .opacity(state.isLivePhotoAvailable ? 1 : 0)
-                .allowsHitTesting(state.isLivePhotoAvailable)
-                .accessibilityHidden(!state.isLivePhotoAvailable)
-                .animation(.easeInOut(duration: 0.2), value: state.isLivePhotoAvailable)
-            Spacer(minLength: 0)
-            proModeButton
+        ZStack {
+            HStack(spacing: 10) {
+                flashButton
+                livePhotoButton
+                    .opacity(state.isLivePhotoAvailable ? 1 : 0)
+                    .allowsHitTesting(state.isLivePhotoAvailable)
+                    .accessibilityHidden(!state.isLivePhotoAvailable)
+                    .animation(.easeInOut(duration: 0.2), value: state.isLivePhotoAvailable)
+                Spacer(minLength: 0)
+                proModeButton
+            }
+
+            if let videoRecordingTimecode = state.videoRecordingTimecode {
+                CenterAnchoredChromeRotation(
+                    rotation: state.contentRotation,
+                    width: Metrics.timecodeWidth,
+                    height: Metrics.viewfinderButtonSize
+                ) {
+                    CameraVideoRecordingTimecodeView(state: videoRecordingTimecode)
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.96)))
+            }
         }
+        .animation(.easeInOut(duration: 0.18), value: state.videoRecordingTimecode != nil)
     }
 
     private var proModeButton: some View {
@@ -274,6 +291,7 @@ struct CameraViewfinderChromeView: View {
         static let minimumShoulderHeight: CGFloat = 44
         static let dynamicIslandClearance: CGFloat = 96
         static let viewfinderButtonSize: CGFloat = 44
+        static let timecodeWidth: CGFloat = 132
         static let bottomPadding: CGFloat = 4
     }
 }
