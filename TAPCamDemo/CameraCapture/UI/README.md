@@ -16,7 +16,7 @@ The current control vocabulary and placement rules live in
 | Viewfinder chrome state, top shoulder Settings, and Flash/Live Photo toolbar | [CameraViewfinderChromeView.swift](CameraViewfinderChromeView.swift) |
 | Leaf-native recording timecode that updates without periodic SwiftUI invalidation | [CameraVideoRecordingTimecodeView.swift](CameraVideoRecordingTimecodeView.swift) |
 | Lower toolbar parameter buttons, AF/MF state, exposure risk-zone display, and ticked adjustment strip | [CameraAdjustmentControlView.swift](CameraAdjustmentControlView.swift) |
-| First-stage camera UX preferences, mode enums, Flash/Live Photo viewfinder default policy, AF/MF mode, Debug-only Focus Magnifier duration setting, Debug-only LiDAR Focus Assist setting, and idle-timer policy | [CameraUXPreferences.swift](CameraUXPreferences.swift) |
+| First-stage camera UX preferences, mode enums, Flash/Live Photo viewfinder default policy, AF/MF mode, Debug-only Focus Magnifier duration setting, and idle-timer policy | [CameraUXPreferences.swift](CameraUXPreferences.swift) |
 | Live preview stage, preview sizing, crop metadata callback, tap-focus and temporary-EV gesture layer, focus loupe, viewfinder edge toast, guide overlay, FOV overlay, and Debug overlay host | [CameraPreviewStageView.swift](CameraPreviewStageView.swift) |
 | Settings-owned guide overlay renderer | [CameraGuideOverlayView.swift](CameraGuideOverlayView.swift) |
 | Debug-only preview overlay for status, depth source, zoom, manual-control readback strings, and performance panels | [CameraPreviewDebugOverlayView.swift](CameraPreviewDebugOverlayView.swift) |
@@ -140,8 +140,7 @@ If this directory is new to you, read it in this order:
 10. [CameraUXPreferences.swift](CameraUXPreferences.swift) for first-stage
    camera UI enums and preference policy: guide selection, viewfinder highlight
    color, EV reset default, Debug-only Focus Magnifier duration default,
-   Debug-only LiDAR Focus Assist default, Flash/Live Photo viewfinder default
-   policy, depth-warning default,
+   Flash/Live Photo viewfinder default policy, depth-warning default,
    keep-screen-awake default, AF/MF mode, current flash mode, disabled capture
    modes, and the idle-timer gate.
 11. [CameraViewfinderChromeView.swift](CameraViewfinderChromeView.swift) for the
@@ -170,9 +169,12 @@ If this directory is new to you, read it in this order:
    rotation, capture planning, signing, export, or persistence.
 15. [CameraCaptureControlsView.swift](CameraCaptureControlsView.swift) for the
    bottom camera chrome. It receives only `CameraCaptureControlsState`, a
-   thumbnail image, and closures; it does not receive the view model, route
-   store, App Attest controller, pending store, capture pipeline, output
-   profile, identifiers, photo bytes, manifests, or proofs.
+   thumbnail image, `RecentLibraryPresentation`, and closures. The fixed
+   lower-left TAP Library slot shows its photo/video placeholder until a real
+   poster is ready, then replaces it in place without changing the 58pt
+   geometry. It does not receive the view model, route store, App Attest
+   controller, pending store, capture pipeline, output profile, identifiers,
+   photo bytes, manifests, or proofs.
 16. [CameraPreviewView.swift](CameraPreviewView.swift),
    [FocalLengthSelectorView.swift](FocalLengthSelectorView.swift), Debug panels,
    and [PerformancePanelView.swift](PerformancePanelView.swift) for the smaller
@@ -237,6 +239,11 @@ unsigned photo data.
   `TAPPendingCaptureStore`, `CaptureOutputProfile`, session configuration
   results, raw Photos identifiers, pending capture identifiers, photo bytes,
   manifests, proofs, App Attest key IDs, or output objects.
+- The `cameraSurface` subtree intentionally resolves localized camera chrome
+  with the English locale so viewfinder terms stay canonical. Settings, TAP
+  Library, startup/readiness gates, and other app surfaces inherit the user's
+  selected app locale. Keep this as a presentation-only environment override;
+  do not use view identity or lifecycle callbacks to enforce it.
 - Periodic recording-chrome updates must stay inside a leaf-native view. Do not
   publish per-second ticks through `CameraViewModel` or place `TimelineView` in
   the camera chrome/preview SwiftUI tree; update only the native label.

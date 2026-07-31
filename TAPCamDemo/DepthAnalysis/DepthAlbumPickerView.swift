@@ -115,10 +115,16 @@ struct DepthAlbumPickerView: View {
 
             if viewModel.shouldShowLoading {
                 ProgressView()
-                    .accessibilityLabel(viewModel.loadingMessage)
+                    .accessibilityLabel(
+                        Text(LocalizedStringKey(viewModel.loadingPresentation.rawValue))
+                    )
                     .frame(maxWidth: .infinity, minHeight: 260)
             } else if let errorMessage = viewModel.errorMessage {
-                ContentUnavailableView("Unable to load album", systemImage: "photo.on.rectangle.angled", description: Text(errorMessage))
+                ContentUnavailableView(
+                    "Unable to load album",
+                    systemImage: "photo.on.rectangle.angled",
+                    description: albumErrorDescription(errorMessage)
+                )
                     .frame(minHeight: 320)
             } else if visibleItems.isEmpty {
                 ContentUnavailableView("No depth photos yet", systemImage: "photo.stack", description: Text("Capture a TAP depth photo first, then return here to analyze it."))
@@ -164,6 +170,18 @@ struct DepthAlbumPickerView: View {
                 rowStride: returnScrollRowStride,
                 clearAfterDelay: false
             )
+        }
+    }
+
+    private func albumErrorDescription(_ message: String) -> Text {
+        switch message {
+        case "Unable to load TAP Library. Check Photos access and try again.":
+            Text("Unable to load TAP Library. Check Photos access and try again.")
+        case "Unable to read the TAPCamDepth album. Check Photos access and try again.":
+            Text("Unable to read the TAPCamDepth album. Check Photos access and try again.")
+        default:
+            // Unknown future loader diagnostics are values, not localization keys.
+            Text(verbatim: message)
         }
     }
 

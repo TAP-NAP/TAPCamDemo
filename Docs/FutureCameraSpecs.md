@@ -161,7 +161,8 @@ Dynamic Island shoulder layout, Flash/Live/Spacer/PRO top toolbar, always-visibl
 Standard Basic EV, PRO-only lower parameter toolbar, mode selector bar,
 Standard-only FOV selector bar, ticked adjustment
 strip, rotation rules, global and temporary EV behavior, AF/MF gestures,
-TAPCam-owned metering state, ISO/shutter exposure-priority rules, Debug-only LiDAR Focus Assist, no-depth fallback
+TAPCam-owned metering state, ISO/shutter exposure-priority rules, removal of the
+no-op LiDAR focus-assist preference, no-depth fallback
 behavior, Settings-owned guide and format controls, and the main-app-only
 screen-awake boundary.
 

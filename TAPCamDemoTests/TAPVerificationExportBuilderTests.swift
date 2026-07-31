@@ -10,6 +10,30 @@ import ZIPFoundation
 
 @Suite(.serialized)
 struct TAPVerificationExportBuilderTests {
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func assetExportEntryPointsLeaveTheMainActor() throws {
+        let source = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/TAPVerificationExportBuilder.swift"
+        )
+
+        #expect(
+            source.contains(
+                """
+                @concurrent
+                    func export(assetID: String) async throws
+                """
+            )
+        )
+        #expect(
+            source.contains(
+                """
+                @concurrent
+                    func hasValidCredential(assetID: String) async
+                """
+            )
+        )
+    }
+
     @Test func stillManifestExportsOriginalPhotoFile() async throws {
         let photoData = try Self.photoData(captureID: "still-export")
         let outputDirectory = try TAPCamDemoTestFixtures.makeTemporaryDirectory()

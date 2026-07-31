@@ -45,14 +45,21 @@ struct CloudInfoInspectorContent: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Cloud")
                 .font(.caption.weight(.semibold))
-                .help("This is a local camera-coordinate point cloud preview. It is not cloud storage, cloud compute, or a semantic word cloud.")
+                .help(
+                    Text(LocalizedStringKey(
+                        "This is a local camera-coordinate point cloud preview. It is not cloud storage, cloud compute, or a semantic word cloud."
+                    ))
+                )
             if showsInlineHelp {
                 InlineHelpText("This is a local camera-coordinate point cloud preview. It is not cloud storage, cloud compute, or a semantic word cloud.")
             }
-            DepthLegendView(stops: [
-                TAPDepthLegendStop(position: 0, label: "Near points", color: TAPDepthHeatmapRenderer.viridisColor(normalized: 0)),
-                TAPDepthLegendStop(position: 1, label: "Far points", color: TAPDepthHeatmapRenderer.viridisColor(normalized: 1))
-            ])
+            DepthLegendView(
+                stops: [
+                    TAPDepthLegendStop(position: 0, label: "Near points", color: TAPDepthHeatmapRenderer.viridisColor(normalized: 0)),
+                    TAPDepthLegendStop(position: 1, label: "Far points", color: TAPDepthHeatmapRenderer.viridisColor(normalized: 1))
+                ],
+                labelStyle: .localizedKey
+            )
             if showsInlineHelp {
                 InlineHelpText("Point colors map near-to-far depth so the preview stays comparable to the depth legend.")
             }

@@ -126,10 +126,10 @@ Camera UX stage-one shell review path:
    product and layout decisions: Dynamic Island shoulder terminology,
    Flash/Live Photo top toolbar placement and startup policy, lower parameter toolbar behavior,
    global/temporary EV policy, TAPCam-owned metering state, AF/MF gestures,
-   ISO/S exposure-priority and manual-focus control lifetime, Debug-only LiDAR Focus Assist, no-depth fallback, guide
+   ISO/S exposure-priority and manual-focus control lifetime, no-depth fallback, guide
    placement, and screen-awake scope.
 3. Read [../TAPCamDemo/CameraCapture/UI/CameraUXPreferences.swift](../TAPCamDemo/CameraCapture/UI/CameraUXPreferences.swift)
-   for first-stage guide, EV reset, Debug-only LiDAR Focus Assist, depth-hint, keep-awake,
+   for first-stage guide, EV reset, depth-hint, keep-awake,
    Flash/Live Photo startup policy, and mode-strip policy.
 4. Read [../TAPCamDemo/CameraCapture/UI/CameraViewfinderChromeView.swift](../TAPCamDemo/CameraCapture/UI/CameraViewfinderChromeView.swift)
    for the Dynamic Island shoulders and top Flash/Live Photo toolbar.
@@ -742,8 +742,10 @@ SwiftUI Instruments, VM Tracker, or memgraph acceptance.
   receives field-level presentation state and action closures for Settings,
   flash, and the Live Photo top-toolbar entry, while `CameraView` keeps App
   Attest client access, route store ownership, capture action orchestration,
-  lifecycle forwarding, and Settings presentation. LiDAR Focus Assist is
-  Debug-only Settings-owned.
+  lifecycle forwarding, and Settings presentation. The former
+  `LiDAR Focus Assist` Settings preference was removed because no runtime focus
+  path consumed it; this does not change the rear-LiDAR PRO capture path or the
+  eligible PRO/MF tap-assist behavior.
 - Camera bottom chrome is isolated in `CameraCaptureControlsView`. It receives
   field-level presentation state and action closures for TAP Library, shutter,
   camera switch, and mode-strip taps. The controls state has tests for TAP
@@ -787,7 +789,7 @@ SwiftUI Instruments, VM Tracker, or memgraph acceptance.
   manual-control UI.
 - The first-stage camera UX shell now has a documented layout vocabulary,
   Dynamic Island shoulder chrome, Settings-owned guide overlay, Flash/Live
-  Photo top-toolbar controls, Debug-only LiDAR Focus Assist, raised shutter
+  Photo top-toolbar controls, removal of the no-op LiDAR focus-assist setting, raised shutter
   row, enabled TAP Video mode, fixed-position viewfinder edge toast, global EV
   exposure-bias writes, flash photo-settings handoff, basic tap focus and
   TAPCam-owned metering routing, long-press AF/AE lock routing constrained by exposure state, ISO/S exposure-priority rules,

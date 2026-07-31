@@ -65,7 +65,7 @@ struct TAPCameraPhotographerModePreferencesTests {
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func photographerModeStartupPickerIsUserVisibleAndKeepsDebugFocusControls() throws {
+    func photographerModeStartupPickerIsUserVisibleAndKeepsOnlyFunctionalDebugFocusControls() throws {
         let settingsSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalyzerSettingsView.swift"
         )
@@ -81,7 +81,9 @@ struct TAPCameraPhotographerModePreferencesTests {
         #expect(captureSection.contains("requires a rear LiDAR camera"))
         #expect(captureSection.contains("Unsupported devices fall back to Standard mode at runtime"))
         #expect(settingsSource.contains(#"Section("Debug Camera Controls")"#))
-        #expect(settingsSource.contains("LiDAR Focus Assist"))
+        #expect(settingsSource.contains("Focus Magnifier"))
+        #expect(!settingsSource.contains("LiDAR Focus Assist"))
+        #expect(!settingsSource.contains("CameraLiDARFocusAssistPreferences"))
         #expect(!settingsSource.contains("Manual Focus Tap Assist"))
         #expect(!settingsSource.contains("TAP_ENABLE_PRO_CAMERA_CONTROLS"))
     }

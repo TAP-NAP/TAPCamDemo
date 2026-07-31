@@ -12,7 +12,15 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
     private static let playPauseIdentifier = "tap.video.playback.transport.playPause"
     private static let scrubberIdentifier = "tap.video.playback.transport.scrubber"
     private static let elapsedIdentifier = "tap.video.playback.transport.elapsed"
-    private static let gapIdentifier = "tap.video.playback.depthGapNotice"
+    private static let opacityIdentifier = "tap.viewer.opacity"
+    private static let edgeToastIdentifier = "tap.viewer.edgeToast"
+    private static let selectedValueTokens = ["Selected", "已选中"]
+    private static let selectedReadyValueTokens = [
+        "Selected, Ready",
+        "已选中，已就绪"
+    ]
+    private static let comingSoonValueTokens = ["Coming soon", "即将推出"]
+    private static let pauseLabelTokens = ["Pause video", "暂停视频"]
 
     override func setUpWithError() throws {
         continueAfterFailure = false
@@ -80,13 +88,65 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
         twoD.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
 
         XCTAssertTrue(
-            waitForValue(twoD, containing: "Selected", timeout: 3),
+            waitForValue(
+                twoD,
+                containingAny: Self.selectedValueTokens,
+                timeout: 3
+            ),
             "A physical tap did not select 2D."
         )
         XCTAssertFalse(
-            String(describing: app.buttons[Self.rawIdentifier].value).contains("Selected")
+            value(
+                of: app.buttons[Self.rawIdentifier],
+                containsAny: Self.selectedValueTokens
+            )
         )
         XCTAssertTrue(opacityControl(in: app).waitForExistence(timeout: 3))
+    }
+
+    func testVideoThreeDShowsComingSoonWithoutChangingModeOrPlayback() throws {
+        let app = launchFixture(
+            scenario: "performance-playback-15s",
+            autoPlay: true
+        )
+        try openFixture(in: app)
+
+        let raw = app.buttons[Self.rawIdentifier]
+        let threeD = app.buttons[Self.threeDIdentifier]
+        let playPause = app.buttons[Self.playPauseIdentifier]
+        XCTAssertTrue(threeD.isEnabled && threeD.isHittable)
+        XCTAssertTrue(
+            waitForElement(
+                playPause,
+                labelContainingAny: Self.pauseLabelTokens,
+                timeout: 3
+            ),
+            "The fixture did not begin playback before the 3D interaction."
+        )
+
+        threeD.tap()
+        let toast = element(Self.edgeToastIdentifier, in: app)
+        XCTAssertTrue(toast.waitForExistence(timeout: 2))
+        XCTAssertTrue(Self.comingSoonValueTokens.contains(toast.label))
+        XCTAssertTrue(value(of: raw, containsAny: Self.selectedValueTokens))
+        XCTAssertFalse(value(of: threeD, containsAny: Self.selectedValueTokens))
+        XCTAssertTrue(Self.pauseLabelTokens.contains(playPause.label))
+        keepScreenshot(of: app, named: "video_3d_coming-soon_toolbar_en_L")
+
+        Thread.sleep(forTimeInterval: 1.2)
+        threeD.tap()
+        Thread.sleep(forTimeInterval: 1.0)
+        XCTAssertTrue(
+            toast.exists,
+            "A repeated 3D tap must refresh the current toast dismissal token."
+        )
+        XCTAssertEqual(
+            app.staticTexts.matching(identifier: Self.edgeToastIdentifier).count,
+            1,
+            "Repeated 3D taps must replace one toast instead of stacking copies."
+        )
+        XCTAssertTrue(value(of: raw, containsAny: Self.selectedValueTokens))
+        XCTAssertTrue(Self.pauseLabelTokens.contains(playPause.label))
     }
 
     func testCustomTransportCanSeek() throws {
@@ -105,18 +165,26 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
         )
     }
 
-    func testGapSeekAndSimplifiedChineseScreenshots() throws {
-        var app = launchFixture(scenario: "depth-gap", language: "zh-Hans")
-        try openFixture(in: app)
-        try selectTwoD(in: app, acceptingSignedGap: true)
-        XCTAssertTrue(
-            element(Self.gapIdentifier, in: app).waitForExistence(timeout: 8),
-            "Expected the automatic seek into the signed depth gap to clear the overlay and show a notice."
+    func testSimplifiedChineseSystemLanguageAndSeekScreenshots() throws {
+        var app = launchFixture(
+            scenario: "performance-playback-15s",
+            language: "zh-Hans",
+            appLanguage: "system"
         )
+        try openFixture(in: app)
+        try selectTwoD(in: app)
+        assertSimplifiedChineseViewerCopy(in: app)
         assertSharedViewerChrome(in: app, selectedModeIdentifier: Self.twoDIdentifier)
         XCTAssertTrue(opacityControl(in: app).exists)
+
+        app.buttons[Self.threeDIdentifier].tap()
+        let toast = element(Self.edgeToastIdentifier, in: app)
+        XCTAssertTrue(toast.waitForExistence(timeout: 2))
+        XCTAssertEqual(toast.label, "即将推出")
+        XCTAssertTrue(value(of: app.buttons[Self.twoDIdentifier], containsAny: Self.selectedValueTokens))
+
         Thread.sleep(forTimeInterval: 0.4)
-        keepScreenshot(of: app, named: "video_depth-gap_2d_shared-chrome_zh-Hans_L")
+        keepScreenshot(of: app, named: "video_performance_2d_shared-chrome_zh-Hans_L")
         app.terminate()
 
         app = launchFixture(scenario: "seek-discontinuity")
@@ -142,19 +210,20 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
         app.terminate()
 
         app = launchFixture(
-            scenario: "depth-gap",
-            language: "zh-Hans",
+            scenario: "performance-playback-15s",
+            language: "en",
+            appLanguage: "zh-Hans",
             accessibilityDynamicType: true
         )
         try openFixture(in: app)
-        try selectTwoD(in: app, acceptingSignedGap: true)
-        XCTAssertTrue(element(Self.gapIdentifier, in: app).waitForExistence(timeout: 8))
+        try selectTwoD(in: app)
+        assertSimplifiedChineseViewerCopy(in: app)
         assertSharedViewerChrome(in: app, selectedModeIdentifier: Self.twoDIdentifier)
         XCTAssertTrue(opacityControl(in: app).exists)
         Thread.sleep(forTimeInterval: 0.4)
         keepScreenshot(
             of: app,
-            named: "video_depth-gap_2d_shared-chrome_zh-Hans_AXXXL"
+            named: "video_performance_2d_shared-chrome_zh-Hans_AXXXL"
         )
     }
 
@@ -222,6 +291,7 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
     private func launchFixture(
         scenario: String,
         language: String = "en",
+        appLanguage: String? = nil,
         autoPlay: Bool = false,
         seekScheduleSeconds: [Double]? = nil,
         accessibilityDynamicType: Bool = false
@@ -244,9 +314,11 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
                 "TAPCAM_UI_TEST_VIDEO_FIXTURE_ACCESSIBILITY_DYNAMIC_TYPE"
             ] = "1"
         }
+        let appLanguageRawValue = appLanguage ?? language
         app.launchArguments += [
             "-AppleLanguages", "(\(language))",
-            "-AppleLocale", language == "zh-Hans" ? "zh_CN" : "en_US"
+            "-AppleLocale", language == "zh-Hans" ? "zh_CN" : "en_US",
+            "-TAPCamDemo.AppLanguage", appLanguageRawValue
         ]
         app.launch()
 
@@ -284,10 +356,7 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
         )
     }
 
-    private func selectTwoD(
-        in app: XCUIApplication,
-        acceptingSignedGap: Bool = false
-    ) throws {
+    private func selectTwoD(in app: XCUIApplication) throws {
         let twoD = app.buttons[Self.twoDIdentifier]
         XCTAssertTrue(twoD.waitForExistence(timeout: 10), "2D control is missing.")
         let enabledDeadline = Date().addingTimeInterval(10)
@@ -305,20 +374,28 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
         }
         let deadline = Date().addingTimeInterval(10)
         while Date() < deadline {
-            if String(describing: twoD.value).contains("Selected, Ready") {
-                return
-            }
-            if acceptingSignedGap, element(Self.gapIdentifier, in: app).exists {
+            if value(of: twoD, containsAny: Self.selectedReadyValueTokens) {
                 return
             }
             Thread.sleep(forTimeInterval: 0.1)
         }
         let preparing = element("tap.video.playback.2d.preparing", in: app)
-        let gap = element(Self.gapIdentifier, in: app)
         XCTFail(
             "2D readiness did not publish its first registered depth frame "
                 + "(modeValue=\(String(describing: twoD.value)), "
-                + "preparing=\(preparing.exists), gap=\(gap.exists))."
+                + "preparing=\(preparing.exists))."
+        )
+    }
+
+    private func assertSimplifiedChineseViewerCopy(in app: XCUIApplication) {
+        XCTAssertEqual(app.buttons["tap.viewer.share"].label, "分享视频")
+        XCTAssertEqual(app.buttons["tap.viewer.delete"].label, "删除视频")
+        XCTAssertEqual(app.buttons[Self.threeDIdentifier].label, "3D 投影")
+        XCTAssertTrue(
+            value(
+                of: app.buttons[Self.threeDIdentifier],
+                containsAny: ["即将推出"]
+            )
         )
     }
 
@@ -348,12 +425,18 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
         XCTAssertTrue(threeD.exists)
         let expectedSelectedModeIdentifier = selectedModeIdentifier ?? Self.rawIdentifier
         XCTAssertTrue(
-            String(describing: app.buttons[expectedSelectedModeIdentifier].value).contains("Selected"),
+            value(
+                of: app.buttons[expectedSelectedModeIdentifier],
+                containsAny: Self.selectedValueTokens
+            ),
             "The expected viewer mode did not publish its selected state."
         )
-        XCTAssertFalse(threeD.isEnabled, "Video 3D must remain visible but disabled.")
         XCTAssertTrue(
-            String(describing: threeD.value).contains("Unavailable for video")
+            threeD.isEnabled && threeD.isHittable,
+            "Video 3D must remain visible and physically tappable."
+        )
+        XCTAssertTrue(
+            value(of: threeD, containsAny: Self.comingSoonValueTokens)
         )
         XCTAssertTrue(app.buttons[Self.playPauseIdentifier].exists)
         XCTAssertTrue(app.sliders[Self.scrubberIdentifier].exists)
@@ -374,19 +457,42 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
         return element.label == label
     }
 
-    private func waitForValue(
+    private func waitForElement(
         _ element: XCUIElement,
-        containing text: String,
+        labelContainingAny tokens: [String],
         timeout: TimeInterval
     ) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            if String(describing: element.value).contains(text) {
+            if tokens.contains(element.label) {
                 return true
             }
             Thread.sleep(forTimeInterval: 0.1)
         }
-        return String(describing: element.value).contains(text)
+        return tokens.contains(element.label)
+    }
+
+    private func waitForValue(
+        _ element: XCUIElement,
+        containingAny tokens: [String],
+        timeout: TimeInterval
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if value(of: element, containsAny: tokens) {
+                return true
+            }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        return value(of: element, containsAny: tokens)
+    }
+
+    private func value(
+        of element: XCUIElement,
+        containsAny tokens: [String]
+    ) -> Bool {
+        let publishedValue = String(describing: element.value)
+        return tokens.contains { publishedValue.contains($0) }
     }
 
     private func waitForConfirmedElapsed(
@@ -406,9 +512,7 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
     }
 
     private func opacityControl(in app: XCUIApplication) -> XCUIElement {
-        app.descendants(matching: .any)
-            .matching(NSPredicate(format: "label == %@", "2D overlay opacity"))
-            .firstMatch
+        element(Self.opacityIdentifier, in: app)
     }
 
     private func element(_ identifier: String, in app: XCUIApplication) -> XCUIElement {

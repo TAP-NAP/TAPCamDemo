@@ -45,7 +45,7 @@ struct DepthAnalyzerAppAttestSection: View {
                 .accessibilityLabel("Preparing App Attest credential")
         } else if canResetAndPrepareCredential {
             VStack(alignment: .trailing, spacing: 6) {
-                Text(statusText)
+                Text(LocalizedStringKey(statusText))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.trailing)
@@ -55,13 +55,13 @@ struct DepthAnalyzerAppAttestSection: View {
                         await onPrepare()
                     }
                 } label: {
-                    Text(actionTitle)
+                    Text(LocalizedStringKey(actionTitle))
                 }
                 .buttonStyle(.borderless)
                 .accessibilityHint("Resets and prepares the App Attest credential.")
             }
         } else {
-            Text(statusText)
+            Text(LocalizedStringKey(statusText))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.trailing)
         }
@@ -77,7 +77,7 @@ private struct AppAttestKeyIDHelpView: View {
     let message: String
 
     var body: some View {
-        Text(message)
+        Text(LocalizedStringKey(message))
             .font(.footnote)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)

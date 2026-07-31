@@ -172,14 +172,22 @@ is rejected.
 
 ### Shared Photo/Video viewer chrome
 
-- Photo and TAP Video viewers reuse the same Back, Share, Delete, and centered
-  icon-only `RAW` / `2D` / `3D` capsule implementation. Video must not maintain
-  a visually similar private copy.
+- In this document, **viewer toolbar** means the bottom row containing Share,
+  the centered icon-only `RAW` / `2D` / `3D` capsule, and Delete. Photo and TAP
+  Video viewers reuse the same Back control and viewer-toolbar implementation;
+  Video must not maintain a visually similar private copy.
+- The viewer toolbar derives its bottom position from the device safe area and
+  adds a small home-gesture clearance. Its Share/Delete circles and center mode
+  capsule share one 44-point outer height so the row remains optically aligned
+  and clear of the app-switching gesture region.
 - For TAP Video, `RAW` is always available. `2D` is available only after a
   complete registration descriptor is validated; while checking or unavailable
   it remains visible with an explicit disabled/readiness state.
 - `3D` remains visible in the video capsule so the two viewers keep one stable
-  information architecture, but it is always disabled for video in this release.
+  information architecture. It remains enabled and hittable; tapping it keeps
+  the current `RAW` or `2D` selection and player state unchanged, starts no 3D
+  work, and shows one localized, non-blocking `Coming soon` edge toast. Repeated
+  taps refresh that same toast instead of stacking copies.
 - The app-owned transport is a separate bottom accessory above the shared
   Share/mode/Delete row. It exposes Play/Pause, elapsed time, duration, and an
   accessible scrubber without placing controls inside the `AVPlayerLayer` view.
@@ -384,7 +392,7 @@ a generic launch trace still does not answer the video questions.
 | Photo iCloud | Selecting an iCloud-only photo keeps its aspect-fit low-resolution preview visible and shows a single circular current-original progress indicator. Display and original callbacks cannot overwrite each other; progress cannot regress; swipe/dismiss cancels work. |
 | Video iCloud | Player creation waits for the current original while an aspect-fit local poster remains visible under the same circular indicator used by photos. Progress cannot regress; navigation/lifecycle cancellation removes partial temporary files; terminal failure exposes English retry UI. |
 | Errors | Permission, offline/download, deleted asset, and decode failures have different public-safe copy and retry behavior. |
-| Player chrome | Photo and Video expose the same Back, Share, Delete, and `RAW` / `2D` / `3D` capsule. Video `RAW` is available, `2D` is physically hittable when registration is ready, and `3D` remains visible but disabled. Custom transport does not overlap the capsule or 2D opacity control across supported layouts. |
+| Player chrome | Photo and Video expose the same Back control and viewer toolbar: Share, the `RAW` / `2D` / `3D` capsule, and Delete. Video `RAW` is available, `2D` is physically hittable when registration is ready, and `3D` remains visible and hittable but only presents one localized `Coming soon` edge toast without changing selection or playback. The toolbar uses bottom-safe-area plus home-gesture clearance, and custom transport does not overlap it or the 2D opacity control across supported layouts. |
 | Spatial overlay | Test fixtures for rotation/mirroring/aspect ratios align RGB and depth to the same displayed rect; missing depth never leaves a stale overlay. |
 | Heap | No whole-video `Data`; RSS is duration-independent after steady state; playback obeys its byte budget. |
 | Disk | One pending MP4; no durable debug sidecar; Photos reads from file URL; verified readback precedes cleanup. |
@@ -405,8 +413,9 @@ a generic launch trace still does not answer the video questions.
 - Source-contract tests require the shared chrome and reject
   `AVPlayerViewController` / `contentOverlayView` ownership on the video path.
 - UI tests perform coordinate-level taps on `2D`, verify selected accessibility
-  state, verify `3D` remains visible and disabled, and exercise custom
-  Play/Pause and scrubber hit testing.
+  state, verify `3D` remains visible and hittable, and confirm its edge toast
+  neither selects 3D nor pauses playback. Repeated taps must refresh one toast.
+  The same suite exercises custom Play/Pause and scrubber hit testing.
 - Capability-policy tests verify local foreground-only playback by requiring
   `.pauses` background policy and `allowsExternalPlayback == false`.
 - Streaming parser/hash/proof tests using sparse large fixtures so test memory is

@@ -3,8 +3,8 @@
 Status: current implementation record plus target behavior. The 2026-07-05
 Analysis viewer refactor now uses a stable full-screen browser shell, a
 previous/current/next carousel, progressive loading, and a bottom `RAW / 2D /
-3D` mode group that switches the primary centered surface. The bottom capsule
-also includes global Share/Delete icon buttons. Credential action-menu
+3D` mode group that switches the primary centered surface. The bottom viewer
+toolbar is Share, the centered mode capsule, and Delete. Credential action-menu
 expansion, single-tap chrome toggle, and iOS 26 Liquid Glass polish remain
 explicit gaps, not completed product behavior.
 
@@ -36,12 +36,12 @@ so future work does not confuse an intended contract with shipped interaction.
 | Stable viewer and chrome | Implemented. `DepthAnalysisView` keeps bottom chrome and selected tool state outside per-photo loading. |
 | Carousel | Implemented. `AnalysisNativePagingView` wraps UIKit `UIScrollView.isPagingEnabled`, while `DepthAnalysisCarouselStore` owns previous/current/next slots and switches by changing `currentItemID`. |
 | Loading | Implemented. RAW display loading is separate from 2D/3D analysis input loading. Slots load thumbnails first, then viewport-sized display images for browsing; depth analysis input is loaded on demand for the current 2D/3D page. |
-| Bottom controls | Implemented. `DepthAnalysisViewerChromeView` places Share at bottom-left, Delete at bottom-right, and keeps `DepthAnalysisControlsView` as the centered icon-only `RAW` / `2D` / `3D` capsule. `RAW`, `2D`, and `3D` remain the only viewer modes. |
+| Viewer toolbar | Implemented. `DepthAnalysisViewerChromeView` places Share at bottom-left, Delete at bottom-right, and keeps `DepthAnalysisControlsView` as the centered icon-only `RAW` / `2D` / `3D` capsule. The toolbar uses the bottom safe area plus home-gesture clearance. Share and Delete keep a common 20pt symbol canvas inside 44pt circles, with per-symbol optical offsets that move only the glyph rather than its background. `RAW`, `2D`, and `3D` remain the only viewer modes. |
 | Raw photo surface | Implemented. The raw photo is centered in the full-screen black viewer, supports pinch, pan while zoomed, double-tap zoom, and fit-size left/right paging. |
 | 2D tool surface | Implemented. `2D` replaces the primary surface with a centered aspect-fit container matching the raw photo ratio. Swipes that begin outside the container page left/right. |
 | 3D tool surface | Implemented. `3D` replaces the primary surface with a centered aspect-fit SceneKit container matching the raw photo ratio. SceneKit owns gestures that begin inside the container; swipes outside it page left/right. |
 | Vertical gestures | Not implemented by design in this pass. There is no up-swipe drawer, down-swipe dismiss, or half/full detent behavior in the current viewer. |
-| Global Share | Implemented. The Share button opens a compact share page, shows only whether a locally valid credential is present, and reuses `TAPVerificationExportBuilder` plus `VerificationExportActivityView` for verification-original exports. |
+| Global Share | Implemented. The Share button prepares a verification-original export and opens `UIActivityViewController` directly. The async asset entry point is explicitly concurrent so decode, validation, hashing, file writes, and ZIP work do not occupy the MainActor. |
 | Delete | Implemented. The Delete button asks for confirmation, then deletes Photos assets through Photos semantics or removes pending local records through `TAPPendingCaptureStore`. |
 | Liquid Glass | Not implemented. Current controls use material fallbacks such as `.thinMaterial`; future iOS 26 adoption should be `#available(iOS 26, *)` gated because the project deployment target is iOS 18.6. |
 
@@ -89,7 +89,8 @@ is guarded.
 ## Primary Surface
 
 The normal state is a Photos-like browser. The active photo or tool container is
-centered in the viewport. The bottom control is one capsule:
+centered in the viewport. The viewer toolbar contains Share, this one centered
+mode capsule, and Delete:
 
 | Control | Behavior |
 | --- | --- |
@@ -311,29 +312,32 @@ the background. Debug builds may expose retry and diagnostics.
 
 ## Share And Export
 
-Current implementation status: a global Share button is shown in the bottom
-viewer capsule and wired from `DepthAnalysisView`.
+Current implementation status: a global Share button is shown on the bottom
+viewer toolbar and wired from `DepthAnalysisView`.
 
-The current Release share page is intentionally minimal: it uses a compact
-drawer and shows only `Valid credential: Yes/No`. That status is a local
-credential/proof check through the verification-export validator; opening the
-Share drawer must not call the backend. Full App Attest backend verification
-remains in the Verify Signature panel. Debug-only details must stay behind
-`DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS` and must continue to avoid raw proof,
-key, asset, capture, signing-binding, or backend payload values.
+The current global Share flow has no app-owned intermediate drawer. For a saved
+Photos TAP asset, it prepares the verification-original export and presents the
+system share controller directly. Full App Attest backend verification remains
+in the Verify Signature panel; global Share must not call the backend.
+
+`TAPVerificationExportBuilder.export(assetID:)` is an explicitly concurrent
+boundary. PhotoKit loading may still wait for an iCloud original, and Live Photo
+validation/ZIP creation still takes real time, but that work must not block the
+MainActor or freeze viewer interaction. Only `isPreparingShare` and the final
+sheet payload are updated on the MainActor.
 
 Existing reusable implementation pieces:
 
 - `TAPVerificationExportBuilder` builds verification-original exports for
-  still photos and Live Photos.
+  still photos and Live Photos outside the MainActor.
 - `VerificationExportActivityView` wraps `UIActivityViewController` for both
-  the credential panel and global Share page.
+  the credential panel and global Share.
 
 | Item state | Share menu actions |
 | --- | --- |
-| Saved Photos TAP asset | Show valid credential Yes/No, then allow Share via verification-original export. |
-| Pending local item | Show valid credential No; do not invent an uncredentialed export path in this UI. |
-| Debug only | Optional diagnostics, guarded by the debug compile condition and the existing privacy boundary. |
+| Saved Photos TAP asset | Prepare a verification-original export off the MainActor, then open the system share controller directly. |
+| Pending local item | Do not invent an uncredentialed export path in this UI. |
+| Debug only | Keep optional diagnostics in the separate verification surface, guarded by the debug compile condition and existing privacy boundary. |
 
 Manual uncredentialed export is allowed when signing fails or cannot complete.
 It must be a user action, not an automatic fallback.
@@ -348,8 +352,8 @@ invalid file.
 
 ## Delete
 
-Current implementation status: a Delete button is shown in the bottom viewer
-capsule and wired from `DepthAnalysisView`.
+Current implementation status: a Delete button is shown on the bottom viewer
+toolbar and wired from `DepthAnalysisView`.
 
 Delete does not add an app-owned confirmation panel. Photos assets use system
 Photos delete semantics, including the system delete prompt and Recently Deleted

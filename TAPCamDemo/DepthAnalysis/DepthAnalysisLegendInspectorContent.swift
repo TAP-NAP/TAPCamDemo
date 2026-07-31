@@ -30,7 +30,7 @@ struct LegendInspectorContent: View {
                 HStack(spacing: 6) {
                     Text("Global depth legend")
                         .font(.caption.weight(.semibold))
-                        .help(viewMode.legendDescription)
+                        .help(Text(LocalizedStringKey(viewMode.legendDescription)))
                     Spacer(minLength: 8)
                     Text(globalHeatmapRangeText(heatmap))
                         .font(.caption.monospacedDigit())
@@ -45,7 +45,7 @@ struct LegendInspectorContent: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Mask legend")
                     .font(.caption.weight(.semibold))
-                    .help(viewMode.legendDescription)
+                    .help(Text(LocalizedStringKey(viewMode.legendDescription)))
                 if showsInlineHelp {
                     InlineHelpText(viewMode.legendDescription)
                 }
@@ -61,11 +61,14 @@ struct LegendInspectorContent: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Cloud legend")
                     .font(.caption.weight(.semibold))
-                    .help(viewMode.legendDescription)
+                    .help(Text(LocalizedStringKey(viewMode.legendDescription)))
                 if showsInlineHelp {
                     InlineHelpText(viewMode.legendDescription)
                 }
-                DepthLegendView(stops: cloudLegendStops)
+                DepthLegendView(
+                    stops: cloudLegendStops,
+                    labelStyle: .localizedKey
+                )
             }
         }
     }

@@ -194,7 +194,7 @@ struct TAPDepthAnalysisPresentationTests {
         #expect(modeItems.allSatisfy { $0.isEnabled })
     }
 
-    @Test func videoViewerModesKeepPhotoOrderAndFailClosedAvailability() throws {
+    @Test func videoViewerModesKeepPhotoOrderAndFailClosedTwoDAvailability() throws {
         let registeredDescriptor = TAPVideoDepthRegistrationDescriptor(
             schemaID: "test.registered-rgb-presentation",
             rgbPresentationWidth: 1,
@@ -218,11 +218,11 @@ struct TAPDepthAnalysisPresentationTests {
             "2D analysis",
             "3D projection"
         ])
-        #expect(availableItems.map(\.isEnabled) == [true, true, false])
+        #expect(availableItems.map(\.isEnabled) == [true, true, true])
         #expect(availableItems.map(\.accessibilityValue) == [
             "Selected",
             "Available",
-            "Unavailable for video"
+            "Coming soon"
         ])
 
         let readyTwoDItems = TAPVideoViewerModePolicy.items(
@@ -237,7 +237,7 @@ struct TAPDepthAnalysisPresentationTests {
             selectedTool: .raw,
             isTwoDPlaybackReady: false
         )
-        #expect(unavailableItems.map(\.isEnabled) == [true, false, false])
+        #expect(unavailableItems.map(\.isEnabled) == [true, false, true])
         #expect(unavailableItems[1].accessibilityValue == "Registered depth unavailable")
 
         let incompleteDescriptor = TAPVideoDepthRegistrationDescriptor(
@@ -251,7 +251,45 @@ struct TAPDepthAnalysisPresentationTests {
             selectedTool: .raw,
             isTwoDPlaybackReady: false
         )
-        #expect(incompleteItems.map(\.isEnabled) == [true, false, false])
+        #expect(incompleteItems.map(\.isEnabled) == [true, false, true])
+    }
+
+    @Test func viewerToolbarUsesUnifiedGeometryAndHomeGestureClearance() {
+        #expect(
+            DepthViewerToolbarMetrics.modeHitTargetSize
+                == DepthViewerToolbarMetrics.controlHeight
+        )
+        #expect(
+            DepthViewerToolbarMetrics.modeButtonWidth
+                <= DepthViewerToolbarMetrics.modeHitTargetSize
+        )
+        #expect(
+            DepthViewerToolbarMetrics.modeButtonHeight
+                <= DepthViewerToolbarMetrics.modeHitTargetSize
+        )
+        #expect(
+            DepthViewerToolbarMetrics.toolbarBottomPadding(bottomSafeArea: 34)
+                == 50
+        )
+        #expect(
+            DepthViewerToolbarMetrics.toolbarBottomPadding(bottomSafeArea: 0)
+                == DepthViewerToolbarMetrics.fallbackBottomPadding
+        )
+        #expect(
+            DepthViewerToolbarActionMetrics.opticalSymbolOffset(
+                for: "square.and.arrow.up"
+            ) == CGSize(width: -0.5, height: -1)
+        )
+        #expect(
+            DepthViewerToolbarActionMetrics.opticalSymbolOffset(
+                for: "trash"
+            ) == CGSize(width: -0.5, height: -0.5)
+        )
+        #expect(
+            DepthViewerToolbarActionMetrics.opticalSymbolOffset(
+                for: "clock"
+            ) == .zero
+        )
     }
 
     @Test func videoTransportTreatsBufferingAsActivePlaybackIntent() {
@@ -291,13 +329,32 @@ struct TAPDepthAnalysisPresentationTests {
         #expect(chromeSource.contains("square.and.arrow.up"))
         #expect(chromeSource.contains("trash"))
         #expect(chromeSource.contains("DepthViewerChromeView("))
+        #expect(chromeSource.contains("DepthViewerToolbar("))
+        #expect(chromeSource.contains("ViewerToolbarIconButton("))
         #expect(chromeSource.contains("DepthViewerModeCapsule("))
         #expect(chromeSource.contains("HStack(alignment: .center"))
         #expect(chromeSource.contains("Circle()"))
+        #expect(chromeSource.contains("toolbarBottomPadding("))
+        #expect(chromeSource.contains("opticalSymbolOffset("))
         #expect(chromeSource.contains(#".accessibilityIdentifier("tap.viewer.back")"#))
         #expect(chromeSource.contains(#"accessibilityIdentifier: "tap.viewer.share""#))
         #expect(chromeSource.contains(#"accessibilityIdentifier: "tap.viewer.delete""#))
         #expect(chromeSource.contains("bottomAccessory: EmptyView()"))
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func videoThreeDComingSoonToastDoesNotOwnAsyncLifecycleWork() throws {
+        let chromeSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/Playback/TAPVideoViewerChrome.swift"
+        )
+
+        #expect(chromeSource.contains("comingSoonToastTrigger = UUID()"))
+        #expect(chromeSource.contains(".phaseAnimator("))
+        #expect(chromeSource.contains("guard itemID == AnalysisViewerTool.threeD.rawValue"))
+        #expect(!chromeSource.contains("Task {"))
+        #expect(!chromeSource.contains(".task("))
+        #expect(!chromeSource.contains(".onAppear"))
+        #expect(!chromeSource.contains(".onDisappear"))
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))

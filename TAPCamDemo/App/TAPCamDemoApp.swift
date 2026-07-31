@@ -26,6 +26,8 @@ final class TAPCamAppDelegate: NSObject, UIApplicationDelegate {
 @main
 struct TAPCamDemoApp: App {
     @UIApplicationDelegateAdaptor(TAPCamAppDelegate.self) private var appDelegate
+    @AppStorage(AppLanguage.storageKey)
+    private var appLanguageRawValue = AppLanguage.defaultValue.rawValue
     @StateObject private var lockedCaptureImportRuntime = LockedCaptureSessionContentImportRuntime()
     @State private var libraryStore: LibraryMediaStore
     private let libraryMediaFetcher: any LibraryMediaFetching
@@ -59,6 +61,10 @@ struct TAPCamDemoApp: App {
             standardAppContent
             #endif
         }
+        .environment(
+            \.locale,
+            AppLanguage.resolved(rawValue: appLanguageRawValue).locale
+        )
     }
 
     @ViewBuilder

@@ -256,9 +256,12 @@ nonisolated enum RecentLibraryPresentation: Equatable, Sendable {
 
     var showsPlaceholderSymbol: Bool {
         switch self {
-        case .empty, .failed:
+        case .unresolved, .empty, .resolving:
             true
-        case .unresolved, .resolving, .loading, .ready:
+        case .loading(_, _, let preview, _),
+             .failed(_, _, let preview, _):
+            preview == nil
+        case .ready:
             false
         }
     }

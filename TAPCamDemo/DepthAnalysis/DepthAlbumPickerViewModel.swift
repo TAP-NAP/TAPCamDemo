@@ -7,10 +7,15 @@ import Combine
 import Foundation
 import OSLog
 
+nonisolated enum DepthAlbumLoadingPresentation: String, Equatable, Sendable {
+    case library = "Loading TAP Library..."
+    case lockedCaptureImport = "Importing locked captures..."
+}
+
 @MainActor
 final class DepthAlbumPickerViewModel: ObservableObject {
     @Published private(set) var isLoading = false
-    @Published private(set) var loadingMessage = "Loading TAP Library..."
+    @Published private(set) var loadingPresentation = DepthAlbumLoadingPresentation.library
     @Published private(set) var errorMessage: String?
 
     private let libraryStore: LibraryMediaStore
@@ -23,6 +28,10 @@ final class DepthAlbumPickerViewModel: ObservableObject {
 
     var shouldShowLoading: Bool {
         isLoading || !hasLoadedSnapshot
+    }
+
+    var loadingMessage: String {
+        loadingPresentation.rawValue
     }
 
     init(
@@ -49,16 +58,16 @@ final class DepthAlbumPickerViewModel: ObservableObject {
             "tap_library_load_begin showLoading=\(showLoadingIndicator, privacy: .public) lockedImportReason=\(lockedImportReason ?? "none", privacy: .public)"
         )
         if showLoadingIndicator {
-            loadingMessage = lockedImportReason == nil
-                ? "Loading TAP Library..."
-                : "Importing locked captures..."
+            loadingPresentation = lockedImportReason == nil
+                ? .library
+                : .lockedCaptureImport
             isLoading = true
         }
         defer {
             hasLoadedSnapshot = true
             if showLoadingIndicator {
                 isLoading = false
-                loadingMessage = "Loading TAP Library..."
+                loadingPresentation = .library
             }
         }
 
@@ -71,7 +80,7 @@ final class DepthAlbumPickerViewModel: ObservableObject {
                 )
             }
             if showLoadingIndicator, lockedImportReason != nil {
-                loadingMessage = "Loading TAP Library..."
+                loadingPresentation = .library
             }
             let snapshot = await libraryStore.refreshSharingInFlightLoad()
             if let loadError = libraryStore.loadError {

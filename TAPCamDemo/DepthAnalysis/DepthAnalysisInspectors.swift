@@ -24,7 +24,9 @@ struct InlineHelpText: View {
     }
 
     var body: some View {
-        Text(text)
+        // This component accepts product-authored static copy only. Runtime
+        // errors and measured values use separate verbatim presentation paths.
+        Text(LocalizedStringKey(text))
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -32,8 +34,14 @@ struct InlineHelpText: View {
     }
 }
 
+enum DepthLegendLabelStyle {
+    case metricDepth
+    case localizedKey
+}
+
 struct DepthLegendView: View {
     let stops: [TAPDepthLegendStop]
+    var labelStyle = DepthLegendLabelStyle.metricDepth
 
     var body: some View {
         VStack(spacing: 5) {
@@ -50,15 +58,60 @@ struct DepthLegendView: View {
             }
 
             HStack {
-                Text(stops.first?.label ?? "Near")
+                endpointLabel(stops.first?.label, endpoint: .near)
                 Spacer(minLength: 8)
-                Text(stops.last?.label ?? "Far")
+                endpointLabel(stops.last?.label, endpoint: .far)
             }
             .font(.caption2.monospacedDigit())
             .foregroundStyle(.secondary)
         }
         .accessibilityElement(children: .combine)
     }
+
+    @ViewBuilder
+    private func endpointLabel(
+        _ label: String?,
+        endpoint: DepthLegendEndpoint
+    ) -> some View {
+        if let label {
+            switch labelStyle {
+            case .metricDepth:
+                metricEndpointLabel(label, endpoint: endpoint)
+            case .localizedKey:
+                Text(LocalizedStringKey(label))
+            }
+        } else {
+            switch endpoint {
+            case .near:
+                Text("Near")
+            case .far:
+                Text("Far")
+            }
+        }
+    }
+
+    private func metricEndpointLabel(
+        _ label: String,
+        endpoint: DepthLegendEndpoint
+    ) -> Text {
+        let prefix = endpoint == .near ? "Near " : "Far "
+        guard label.hasPrefix(prefix) else {
+            return Text(verbatim: label)
+        }
+
+        let measurement = Text(verbatim: String(label.dropFirst(prefix.count)))
+        switch endpoint {
+        case .near:
+            return Text("Near \(measurement)")
+        case .far:
+            return Text("Far \(measurement)")
+        }
+    }
+}
+
+private enum DepthLegendEndpoint {
+    case near
+    case far
 }
 
 struct SwatchLegendView: View {
@@ -76,7 +129,9 @@ struct SwatchLegendView: View {
                                 .stroke(.primary.opacity(0.16), lineWidth: 1)
                         }
 
-                    Text(stop.label)
+                    // Swatch labels are product-authored semantic categories;
+                    // unlike metric depth labels, they contain no runtime value.
+                    Text(LocalizedStringKey(stop.label))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -141,11 +196,13 @@ struct DepthMetricRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
-                Text(title)
+                Text(LocalizedStringKey(title))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
-                    .help(explanation)
+                    .help(Text(LocalizedStringKey(explanation)))
                 Spacer(minLength: 8)
+                // Measurements, counts, and device metadata are intentionally
+                // verbatim and must not be interpreted as catalog keys.
                 Text(value)
                     .fontDesign(.monospaced)
             }

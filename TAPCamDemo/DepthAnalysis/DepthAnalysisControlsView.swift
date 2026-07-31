@@ -7,10 +7,26 @@
 
 import SwiftUI
 
+nonisolated enum DepthViewerToolbarMetrics {
+    static let controlHeight: CGFloat = 44
+    static let modeButtonWidth: CGFloat = 42
+    static let modeButtonHeight: CGFloat = 36
+    static let modeHitTargetSize: CGFloat = 44
+    static let modeCapsuleHorizontalInset: CGFloat = 4
+    static let actionSymbolCanvasSize: CGFloat = 20
+    static let horizontalPadding: CGFloat = 34
+    static let homeGestureClearance: CGFloat = 16
+    static let fallbackBottomPadding: CGFloat = 20
+
+    static func toolbarBottomPadding(bottomSafeArea: CGFloat) -> CGFloat {
+        max(fallbackBottomPadding, bottomSafeArea + homeGestureClearance)
+    }
+}
+
 /// Bottom controls for the Photos-style analysis browser.
 ///
 /// The controls own no loaded image or depth data. They only expose the
-/// centered raw/2D/3D tool switcher; global actions live in the viewer chrome.
+/// centered raw/2D/3D tool switcher; global actions live in the viewer toolbar.
 struct DepthAnalysisControlsView: View {
     let selectedTool: AnalysisViewerTool
     let onToolTapped: (AnalysisViewerTool) -> Void
@@ -61,7 +77,7 @@ struct DepthViewerModeCapsule: View {
     let onItemTapped: (String) -> Void
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 0) {
             ForEach(items) { item in
                 iconButton(
                     item: item,
@@ -72,7 +88,7 @@ struct DepthViewerModeCapsule: View {
                 )
             }
         }
-        .padding(5)
+        .padding(.horizontal, DepthViewerToolbarMetrics.modeCapsuleHorizontalInset)
         .background(.thinMaterial, in: Capsule())
         .overlay {
             Capsule()
@@ -89,22 +105,39 @@ struct DepthViewerModeCapsule: View {
         action: @escaping () -> Void
     ) -> some View {
         let button = Button(action: action) {
-            Image(systemName: item.systemImage)
-                .font(.callout.weight(.semibold))
-                .dynamicTypeSize(.large)
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(.primary)
-                .frame(width: 42, height: 36)
-                .background(toolBackground(isSelected: isSelected), in: Capsule())
-                .contentShape(Capsule())
+            ZStack {
+                Capsule()
+                    .fill(toolBackground(isSelected: isSelected))
+                    .frame(
+                        width: DepthViewerToolbarMetrics.modeButtonWidth,
+                        height: DepthViewerToolbarMetrics.modeButtonHeight
+                    )
+
+                Image(systemName: item.systemImage)
+                    .font(.callout.weight(.semibold))
+                    .dynamicTypeSize(.large)
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(.primary)
+            }
+            .frame(
+                width: DepthViewerToolbarMetrics.modeHitTargetSize,
+                height: DepthViewerToolbarMetrics.modeHitTargetSize
+            )
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(!item.isEnabled)
         .opacity(item.isEnabled ? 1 : 0.35)
-        .accessibilityLabel(item.accessibilityLabel)
-        .accessibilityValue(accessibilityValue(for: item, isSelected: isSelected))
+        .accessibilityLabel(
+            Text(LocalizedStringKey(item.accessibilityLabel))
+        )
+        .accessibilityValue(
+            Text(LocalizedStringKey(
+                accessibilityValue(for: item, isSelected: isSelected)
+            ))
+        )
         .accessibilityAddTraits(isSelected ? .isSelected : [])
-        .help(item.accessibilityLabel)
+        .help(Text(LocalizedStringKey(item.accessibilityLabel)))
 
         if let accessibilityIdentifier = item.accessibilityIdentifier {
             button.accessibilityIdentifier(accessibilityIdentifier)

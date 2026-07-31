@@ -2,7 +2,14 @@
   "sourceLanguage" : "en",
   "strings" : {
     "%@" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@"
+          }
+        }
+      }
     },
     "%@ %@" : {
       "localizations" : {
@@ -11,212 +18,1550 @@
             "state" : "new",
             "value" : "%1$@ %2$@"
           }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ %2$@"
+          }
         }
       }
     },
     "%@ mode" : {
-
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 模式"
+          }
+        }
+      }
     },
     "%@ mode coming soon" : {
-
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 模式即将推出"
+          }
+        }
+      }
     },
     "%lld percent" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "百分之 %lld"
+          }
+        }
+      }
     },
     "%lld sampled points" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 个采样点"
+          }
+        }
+      }
     },
     "%lld selected points" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 个已选点"
+          }
+        }
+      }
     },
     "%lld%%" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld%%"
+          }
+        }
+      }
     },
     "%lld%% valid depth coverage" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld%% 有效深度覆盖率"
+          }
+        }
+      }
+    },
+    "2D analysis" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "2D 分析"
+          }
+        }
+      }
     },
     "2D comparison divider" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "2D 对比滑块"
+          }
+        }
+      }
     },
     "2D overlay opacity" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "2D 叠加层不透明度"
+          }
+        }
+      }
+    },
+    "3D projection" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3D 投影"
+          }
+        }
+      }
     },
     "3D projection model" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3D 投影模型"
+          }
+        }
+      }
+    },
+    "A local plane estimate appears after the selected region has enough valid depth points for a stable fit." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所选区域包含足够的有效深度点并可稳定拟合后，将显示局部平面估计。"
+          }
+        }
+      }
+    },
+    "A stable plane needs enough nearby samples with similar camera-coordinate depth geometry." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "稳定平面需要足够多、且在相机坐标系深度几何上相近的邻近样本。"
+          }
+        }
+      }
     },
     "Adjust exposure compensation." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "调整曝光补偿。"
+          }
+        }
+      }
     },
     "AE/AF LOCK" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自动曝光/自动对焦锁定"
+          }
+        }
+      }
+    },
+    "Allow" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "允许"
+          }
+        }
+      }
+    },
+    "Always allowed" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "始终允许"
+          }
+        }
+      }
+    },
+    "Always On" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "始终开启"
+          }
+        }
+      }
     },
     "Analysis" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分析"
+          }
+        }
+      }
     },
     "Aperture %@" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "光圈 %@"
+          }
+        }
+      }
     },
     "App Attest" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App Attest"
+          }
+        }
+      }
+    },
+    "App Attest Backend" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App Attest 后端"
+          }
+        }
+      }
+    },
+    "App Attest Credential" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App Attest 凭据"
+          }
+        }
+      }
+    },
+    "App Language" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App 语言"
+          }
+        }
+      }
+    },
+    "Apple depth accuracy and quality metadata for this captured photo." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这张照片所包含的 Apple 深度精度与质量元数据。"
+          }
+        }
+      }
+    },
+    "Approximate visible surface area in camera coordinates." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "相机坐标系中可见表面的近似面积。"
+          }
+        }
+      }
+    },
+    "Area" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "面积"
+          }
+        }
+      }
+    },
+    "Authorized" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已授权"
+          }
+        }
+      }
+    },
+    "Auto" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自动"
+          }
+        }
+      }
     },
     "Auto focus" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自动对焦"
+          }
+        }
+      }
+    },
+    "Available" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可用"
+          }
+        }
+      }
+    },
+    "Average distance from inlier points to the fitted plane. Smaller values usually mean the selected surface is flatter." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "内点到拟合平面的平均距离。数值越小，通常表示所选表面越平整。"
+          }
+        }
+      }
+    },
+    "Average distance from inlier points to the selected plane." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "内点到所选平面的平均距离。"
+          }
+        }
+      }
     },
     "Back to TAP Library" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "返回 TAP 图库"
+          }
+        }
+      }
+    },
+    "Balanced" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "均衡"
+          }
+        }
+      }
+    },
+    "Calibration" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "标定"
+          }
+        }
+      }
     },
     "Camera" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "相机"
+          }
+        }
+      }
+    },
+    "Camera Access" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "相机访问"
+          }
+        }
+      }
+    },
+    "Camera access is required to capture depth photos." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拍摄深度照片需要相机访问权限。"
+          }
+        }
+      }
     },
     "Camera Behavior" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "相机行为"
+          }
+        }
+      }
     },
     "Camera calibration missing." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "缺少相机标定数据。"
+          }
+        }
+      }
+    },
+    "Camera configuration did not finish." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "相机配置未完成。"
+          }
+        }
+      }
+    },
+    "Camera configuration failed. See diagnostics for details." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "相机配置失败。请查看诊断信息了解详情。"
+          }
+        }
+      }
+    },
+    "Camera controls are temporarily unavailable." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "相机控制暂时不可用。"
+          }
+        }
+      }
+    },
+    "Camera intrinsics used to project depth pixels into local camera coordinates." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "用于将深度像素投影到相机局部坐标系的相机内参。"
+          }
+        }
+      }
+    },
+    "Camera preview did not resume. Retry camera setup." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "相机预览未恢复。请重试相机设置。"
+          }
+        }
+      }
+    },
+    "Camera service did not respond." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "相机服务没有响应。"
+          }
+        }
+      }
+    },
+    "Camera service is not responding. Reopen TAP-NAP if it does not recover." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "相机服务没有响应。如果无法恢复，请重新打开 TAP-NAP。"
+          }
+        }
+      }
+    },
+    "Camera service is ready to retry." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "相机服务已可以重试。"
+          }
+        }
+      }
+    },
+    "Camera service is still recovering." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "相机服务仍在恢复中。"
+          }
+        }
+      }
+    },
+    "Camera service restarted. Waiting for it to recover." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "相机服务已重新启动，正在等待恢复。"
+          }
+        }
+      }
     },
     "Camera setup needs attention" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "相机设置需要处理"
+          }
+        }
+      }
     },
     "Capture" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拍摄"
+          }
+        }
+      }
     },
     "Capture a TAP depth photo first, then return here to analyze it." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请先拍摄一张 TAP 深度照片，然后返回此处进行分析。"
+          }
+        }
+      }
     },
     "Capture photos with TAPCam from the Lock Screen." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从锁定屏幕使用 TAPCam 拍摄照片。"
+          }
+        }
+      }
     },
     "Capture Score" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拍摄评分"
+          }
+        }
+      }
     },
     "Capture uses location or microphone data only when system authorization and the app data-use switch are both enabled." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只有在系统已授权且 App 内的数据使用开关也已开启时，拍摄才会使用位置或麦克风数据。"
+          }
+        }
+      }
+    },
+    "Center Cross" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "中心十字线"
+          }
+        }
+      }
+    },
+    "Checks that TAPCam can reach the service before first camera setup." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在首次设置相机前，检查 TAPCam 能否连接服务。"
+          }
+        }
+      }
     },
     "Close analysis panel" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关闭分析面板"
+          }
+        }
+      }
     },
     "Close the analyzer and return to the camera." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关闭分析器并返回相机。"
+          }
+        }
+      }
     },
     "Close this analysis panel." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关闭此分析面板。"
+          }
+        }
+      }
     },
     "Cloud" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "点云"
+          }
+        }
+      }
+    },
+    "Cloud Info" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "点云信息"
+          }
+        }
+      }
     },
     "Cloud legend" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "点云图例"
+          }
+        }
+      }
     },
     "Cloud loupe" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "点云放大镜"
+          }
+        }
+      }
+    },
+    "Cloud view projects valid depth pixels through camera intrinsics into a lightweight camera-coordinate point preview. It is a point cloud, not cloud storage, cloud compute, or a semantic word cloud." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "点云视图使用相机内参，将有效深度像素投影为轻量的相机坐标系点预览。这里的点云并非云存储、云计算或语义词云。"
+          }
+        }
+      }
+    },
+    "Combined score from flatness, inlier ratio, and selected plane size." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由平整度、内点比例和所选平面大小综合得出的评分。"
+          }
+        }
+      }
+    },
+    "Coming soon" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "即将推出"
+          }
+        }
+      }
     },
     "Complete network access, camera, and photo library access first. Location and microphone are optional." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请先完成网络、相机和照片图库访问设置。位置与麦克风为可选权限。"
+          }
+        }
+      }
     },
     "Completed" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已完成"
+          }
+        }
+      }
+    },
+    "Confidence" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "置信度"
+          }
+        }
+      }
     },
     "Continue" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "继续"
+          }
+        }
+      }
+    },
+    "Controls seed-grown plane strictness and reports the selected plane region's cells, area, confidence, flatness, residual, and calibration diagnostics." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "控制种子生长平面的严格度，并报告所选平面区域的单元格、面积、置信度、平整度、残差及标定诊断。"
+          }
+        }
+      }
+    },
+    "Controls the opacity of generated overlays on the main image, so you can compare the analysis layer against the RGB photo." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "控制主图上生成叠加层的不透明度，以便将分析层与 RGB 照片进行比较。"
+          }
+        }
+      }
+    },
+    "Coverage is the share of depth pixels that can contribute to statistics, plane fitting, and point projection." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "覆盖率表示可参与统计、平面拟合和点投影的深度像素比例。"
+          }
+        }
+      }
+    },
+    "Credential" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "凭据"
+          }
+        }
+      }
     },
     "Cycle flash mode." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "切换闪光灯模式。"
+          }
+        }
+      }
+    },
+    "Default Off" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "默认关闭"
+          }
+        }
+      }
+    },
+    "Default On" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "默认开启"
+          }
+        }
+      }
     },
     "Delete" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除"
+          }
+        }
+      }
+    },
+    "Delete photo" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除照片"
+          }
+        }
+      }
     },
     "Delete unsaved photo?" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除尚未保存的照片？"
+          }
+        }
+      }
     },
     "Delete unsaved video?" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除尚未保存的视频？"
+          }
+        }
+      }
+    },
+    "Delete video" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除视频"
+          }
+        }
+      }
+    },
+    "Denied" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已拒绝"
+          }
+        }
+      }
+    },
+    "Depth" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "深度"
+          }
+        }
+      }
+    },
+    "Depth quality" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "深度质量"
+          }
+        }
+      }
+    },
+    "Depth size" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "深度尺寸"
+          }
+        }
+      }
+    },
+    "Depth view overlays metric depth as a false-color heatmap. Near pixels use the low end of the legend and far pixels use the high end. Transparent pixels do not contain valid depth." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "深度视图以伪彩色热图叠加公制深度。近处像素使用图例低值端的颜色，远处像素使用高值端的颜色；透明像素不包含有效深度。"
+          }
+        }
+      }
     },
     "Depth Warnings" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "深度警告"
+          }
+        }
+      }
     },
     "Destination" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "目标位置"
+          }
+        }
+      }
     },
     "Detected plane %lld percent confidence" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "检测到的平面置信度为百分之 %lld"
+          }
+        }
+      }
     },
     "Detecting plane region..." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在检测平面区域…"
+          }
+        }
+      }
     },
     "Done" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "完成"
+          }
+        }
+      }
+    },
+    "Downloading photo" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在下载照片"
+          }
+        }
+      }
+    },
+    "Downloading video" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在下载视频"
+          }
+        }
+      }
+    },
+    "Drag on the image to choose a depth region. Measurements update from the finite positive depth samples inside that selection." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在图像上拖动以选择深度区域。测量结果会根据所选区域内有限且为正的深度样本更新。"
+          }
+        }
+      }
     },
     "Drag on the image to choose a region. The region heatmap uses only the selected valid depth samples to recalculate its color range." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在图像上拖动以选择区域。区域热图只使用选中的有效深度样本重新计算颜色范围。"
+          }
+        }
+      }
     },
     "Enable required camera or photo library access in Settings, then return." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在“设置”中允许所需的相机或照片图库访问权限，然后返回。"
+          }
+        }
+      }
+    },
+    "English" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "English"
+          }
+        }
+      }
     },
     "EV" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "曝光补偿"
+          }
+        }
+      }
+    },
+    "Explains the current view's color mapping, such as near-to-far depth colors, valid-depth coverage, or point-cloud distance colors." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "说明当前视图的颜色映射，例如由近到远的深度颜色、有效深度覆盖范围或点云距离颜色。"
+          }
+        }
+      }
+    },
+    "Explains the local camera-coordinate point cloud preview and reports point counts and near-to-far color meaning." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "说明相机局部坐标系中的点云预览，并报告点数以及由近到远的颜色含义。"
+          }
+        }
+      }
     },
     "Export failed" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "导出失败"
+          }
+        }
+      }
     },
     "Export Originals" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "导出原始文件"
+          }
+        }
+      }
     },
     "Exports original signed resources for local or browser verification." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "导出原始签名资源，以便在本机或浏览器中验证。"
+          }
+        }
+      }
+    },
+    "Exposure compensation %@" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "曝光补偿 %@"
+          }
+        }
+      }
+    },
+    "Far" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "远处"
+          }
+        }
+      }
+    },
+    "Far %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "远处 %@"
+          }
+        }
+      }
+    },
+    "Far points" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "远处点"
+          }
+        }
+      }
     },
     "Feedback" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "反馈"
+          }
+        }
+      }
     },
     "File information" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件信息"
+          }
+        }
+      }
     },
     "First launch needs required setup checks before camera setup can continue." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "首次启动需要完成必要的设置检查，之后才能继续配置相机。"
+          }
+        }
+      }
     },
     "Flash %@" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "闪光灯 %@"
+          }
+        }
+      }
     },
     "Flash Default" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "闪光灯默认状态"
+          }
+        }
+      }
     },
     "Flash unavailable" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "闪光灯不可用"
+          }
+        }
+      }
+    },
+    "Flatness" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "平整度"
+          }
+        }
+      }
+    },
+    "Focus Magnifier" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "对焦放大镜"
+          }
+        }
+      }
     },
     "Generating credential" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在生成凭据"
+          }
+        }
+      }
+    },
+    "Get Permission" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "获取权限"
+          }
+        }
+      }
     },
     "Global depth legend" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全局深度图例"
+          }
+        }
+      }
+    },
+    "Green indicates valid depth coverage. Yellow outlines mark transitions between valid and invalid depth." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "绿色表示有效深度覆盖区域，黄色轮廓标出有效与无效深度之间的过渡。"
+          }
+        }
+      }
     },
     "Grid" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "网格"
+          }
+        }
+      }
+    },
+    "Grid cells inside the grown region that contain enough pixels fitting the selected plane." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "生长区域内包含足够多符合所选平面像素的网格单元。"
+          }
+        }
+      }
     },
     "Grid Growth Animation" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "网格生长动画"
+          }
+        }
+      }
     },
     "Growing plane region" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在扩展平面区域"
+          }
+        }
+      }
     },
     "Help" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "帮助"
+          }
+        }
+      }
+    },
+    "High-fit cell" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "高拟合度单元格"
+          }
+        }
+      }
     },
     "Higher strictness keeps only pixels that fit the seed plane more tightly." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更高的严格度只保留与种子平面拟合得更紧密的像素。"
+          }
+        }
+      }
     },
     "Highlight Color" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "高亮颜色"
+          }
+        }
+      }
+    },
+    "How many pixels in the selected region contain finite positive depth. Plane fitting and point projection ignore invalid samples." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所选区域内包含有限正深度的像素数量。平面拟合和点投影会忽略无效样本。"
+          }
+        }
+      }
+    },
+    "How many selected pixels contain finite positive depth." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所选像素中包含有限正深度的数量。"
+          }
+        }
+      }
+    },
+    "How tightly the grown region fits a single local plane. Higher is flatter." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "生长区域与单个局部平面的拟合紧密程度。数值越高表示越平整。"
+          }
+        }
+      }
+    },
+    "HTTP backend configured" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HTTP 后端已配置"
+          }
+        }
+      }
+    },
+    "Importing locked captures..." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在导入锁定屏幕拍摄内容…"
+          }
+        }
+      }
+    },
+    "Inliers" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "内点"
+          }
+        }
+      }
+    },
+    "Inspectors" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "检查器"
+          }
+        }
+      }
     },
     "Keep Screen Awake" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保持屏幕常亮"
+          }
+        }
+      }
     },
     "KeyID help. %@" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KeyID 帮助。%@"
+          }
+        }
+      }
+    },
+    "KeyID identifies the App Attest key that this app prepared on this device. The app uses that key to generate request assertions, and the backend uses the KeyID to find the registered credential for verification. Settings show only a redacted KeyID summary." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KeyID 用于标识此 App 在本设备上准备的 App Attest 密钥。App 使用该密钥生成请求断言，后端使用 KeyID 查找已注册的凭据进行验证。“设置”中只会显示经过隐藏处理的 KeyID 摘要。"
+          }
+        }
+      }
+    },
+    "Language" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语言"
+          }
+        }
+      }
     },
     "Leave Pro mode." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "退出专业模式。"
+          }
+        }
+      }
+    },
+    "Legend" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "图例"
+          }
+        }
+      }
     },
     "Library" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "图库"
+          }
+        }
+      }
     },
     "library.action.cancel" : {
       "localizations" : {
@@ -224,6 +1569,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Cancel"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消"
           }
         }
       }
@@ -235,6 +1586,12 @@
             "state" : "translated",
             "value" : "Retry"
           }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重试"
+          }
         }
       }
     },
@@ -244,6 +1601,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Open Settings"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开设置"
           }
         }
       }
@@ -255,6 +1618,12 @@
             "state" : "translated",
             "value" : "The downloaded media could not be decoded."
           }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下载的媒体无法解码。"
+          }
         }
       }
     },
@@ -264,6 +1633,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Unable to open item"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法打开项目"
           }
         }
       }
@@ -275,6 +1650,12 @@
             "state" : "translated",
             "value" : "The iCloud download did not finish. Try again."
           }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud 下载尚未完成，请重试。"
+          }
         }
       }
     },
@@ -284,6 +1665,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Unable to download"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法下载"
           }
         }
       }
@@ -295,6 +1682,12 @@
             "state" : "translated",
             "value" : "Connect to the internet to download this item from iCloud."
           }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请连接互联网，以从 iCloud 下载此项目。"
+          }
         }
       }
     },
@@ -304,6 +1697,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "You’re offline"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前离线"
           }
         }
       }
@@ -315,6 +1714,12 @@
             "state" : "translated",
             "value" : "Allow Photos access in Settings, then try again."
           }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在“设置”中允许访问照片，然后重试。"
+          }
         }
       }
     },
@@ -324,6 +1729,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Photos access required"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要照片访问权限"
           }
         }
       }
@@ -335,6 +1746,12 @@
             "state" : "translated",
             "value" : "This item was removed from Photos or is no longer shared with this device."
           }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此项目已从“照片”中移除，或不再与此设备共享。"
+          }
         }
       }
     },
@@ -344,6 +1761,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Item no longer available"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "项目已不可用"
           }
         }
       }
@@ -355,6 +1778,12 @@
             "state" : "translated",
             "value" : "Loading from iCloud…"
           }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在从 iCloud 载入…"
+          }
         }
       }
     },
@@ -364,6 +1793,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Stored in iCloud"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已存储在 iCloud"
           }
         }
       }
@@ -375,6 +1810,12 @@
             "state" : "translated",
             "value" : "Preparing photo…"
           }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在准备照片…"
+          }
         }
       }
     },
@@ -385,308 +1826,2530 @@
             "state" : "translated",
             "value" : "Preparing video…"
           }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在准备视频…"
+          }
+        }
+      }
+    },
+    "Limited" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "受限访问"
+          }
         }
       }
     },
     "Live Photo" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "实况照片"
+          }
+        }
+      }
     },
     "Live Photo Default" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "实况照片默认状态"
+          }
+        }
+      }
     },
     "Live Photo off" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "实况照片已关闭"
+          }
+        }
+      }
     },
     "Live Photo on" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "实况照片已开启"
+          }
+        }
+      }
+    },
+    "Loading TAP Library..." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在载入 TAP 图库…"
+          }
+        }
+      }
     },
     "Local cloud" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本地点云"
+          }
+        }
+      }
+    },
+    "Local heatmap" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "局部热图"
+          }
+        }
+      }
+    },
+    "Local range is recalculated from this selection, so it can show subtle depth changes inside the crop." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "局部范围会根据当前选择重新计算，因此能够显示裁剪区域内细微的深度变化。"
+          }
+        }
+      }
+    },
+    "Location" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "位置"
+          }
+        }
+      }
+    },
+    "Location Access" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "位置访问"
+          }
+        }
+      }
     },
     "Locked capture imported" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已导入锁定屏幕拍摄内容"
+          }
+        }
+      }
+    },
+    "Loupe" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "放大镜"
+          }
+        }
+      }
+    },
+    "Lower-fit cell" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "较低拟合度单元格"
+          }
+        }
+      }
     },
     "Manual focus" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "手动对焦"
+          }
+        }
+      }
     },
     "Manual focus magnifier" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "手动对焦放大镜"
+          }
+        }
+      }
+    },
+    "Mask" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "遮罩"
+          }
+        }
+      }
     },
     "Mask legend" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "遮罩图例"
+          }
+        }
+      }
+    },
+    "Mask view highlights the pixels that contain finite positive depth samples. Green areas can contribute to statistics, plane fitting, and point projection; transparent areas are ignored." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "遮罩视图会高亮包含有限正深度样本的像素。绿色区域可参与统计、平面拟合和点投影，透明区域则会被忽略。"
+          }
+        }
+      }
+    },
+    "Measurements" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "测量"
+          }
+        }
+      }
+    },
+    "Median depth" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "深度中位数"
+          }
+        }
+      }
+    },
+    "Microphone" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "麦克风"
+          }
+        }
+      }
+    },
+    "Microphone Access" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "麦克风访问"
+          }
+        }
+      }
+    },
+    "Native auxiliary depth-map resolution used for camera-coordinate plane fitting." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "用于相机坐标系平面拟合的原生辅助深度图分辨率。"
+          }
+        }
+      }
+    },
+    "Near" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "近处"
+          }
+        }
+      }
+    },
+    "Near %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "近处 %@"
+          }
+        }
+      }
+    },
+    "Near points" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "近处点"
+          }
+        }
+      }
     },
     "Needs Attention" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要处理"
+          }
+        }
+      }
+    },
+    "Network Access" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "网络访问"
+          }
+        }
+      }
     },
     "Network access check failed. Check connectivity, then try again." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "网络访问检查失败。请检查网络连接后重试。"
+          }
+        }
+      }
+    },
+    "No camera with depth-capable formats is available on this device." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此设备上没有可使用深度格式的相机。"
+          }
+        }
+      }
     },
     "No capture score is available yet." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "目前没有可用的拍摄评分。"
+          }
+        }
+      }
     },
     "No depth photos yet" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "还没有深度照片"
+          }
+        }
+      }
     },
     "No generated legend." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未生成图例。"
+          }
+        }
+      }
     },
     "No local plane estimate." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有本地平面估计结果。"
+          }
+        }
+      }
+    },
+    "No local region" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无局部区域"
+          }
+        }
+      }
     },
     "No region selected." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未选择区域。"
+          }
+        }
+      }
     },
     "No stable plane region found from this point." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未能从此点找到稳定的平面区域。"
+          }
+        }
+      }
+    },
+    "Normal" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "法向量"
+          }
+        }
+      }
+    },
+    "Not prepared" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未准备"
+          }
+        }
+      }
+    },
+    "Not requested" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未请求"
+          }
+        }
+      }
+    },
+    "Off" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关闭"
+          }
+        }
+      }
     },
     "OK" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "好"
+          }
+        }
+      }
+    },
+    "On" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开启"
+          }
+        }
+      }
     },
     "Opacity controls the global overlay on the main image. It does not change local region heatmap colors." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不透明度控制主图上的全局叠加层，不会改变局部区域热图的颜色。"
+          }
+        }
+      }
     },
     "Open ${destination}" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开 ${destination}"
+          }
+        }
+      }
     },
     "Open Camera" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开相机"
+          }
+        }
+      }
     },
     "Open camera and analysis settings." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开相机与分析设置。"
+          }
+        }
+      }
     },
     "Open Settings" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开设置"
+          }
+        }
+      }
     },
     "Open TAP Camera" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开 TAP 相机"
+          }
+        }
+      }
     },
     "Open TAPCam" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开 TAPCam"
+          }
+        }
+      }
     },
     "Open TAPCam to the selected camera workflow." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开 TAPCam 并进入所选的相机流程。"
+          }
+        }
+      }
+    },
+    "Optional. Used to include sound when Live Photo sound is enabled." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可选。启用实况照片声音时，用于录制声音。"
+          }
+        }
+      }
+    },
+    "Optional. Used to write capture location into photo metadata." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可选。用于将拍摄位置写入照片元数据。"
+          }
+        }
+      }
     },
     "Output Format" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "输出格式"
+          }
+        }
+      }
+    },
+    "Overlay" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "叠加层"
+          }
+        }
+      }
     },
     "Overlay opacity" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "叠加层不透明度"
+          }
+        }
+      }
     },
     "Pause video" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂停视频"
+          }
+        }
+      }
     },
     "Permissions" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "权限"
+          }
+        }
+      }
+    },
+    "PHOTO" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照片"
+          }
+        }
+      }
     },
     "Photo carousel" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照片轮播"
+          }
+        }
+      }
+    },
+    "Photo Library Access" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照片图库访问"
+          }
+        }
+      }
+    },
+    "Photo mode" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照片模式"
+          }
+        }
+      }
+    },
+    "Photo mode coming soon" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照片模式即将推出"
+          }
+        }
+      }
     },
     "Photo Quality" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照片质量"
+          }
+        }
+      }
     },
     "Photographer Mode requires a rear LiDAR camera. Unsupported devices fall back to Standard mode at runtime." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "专业模式需要后置 LiDAR 相机。不支持的设备会在运行时回退到标准模式。"
+          }
+        }
+      }
     },
     "Photographer Mode Startup" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "专业模式启动状态"
+          }
+        }
+      }
+    },
+    "Photos" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照片"
+          }
+        }
+      }
+    },
+    "Plane cell colors summarize local fit quality inside the grown region." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "平面单元格的颜色概括了生长区域内的局部拟合质量。"
+          }
+        }
+      }
+    },
+    "Plane cells" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "平面单元格"
+          }
+        }
+      }
+    },
+    "Plane cells use stronger green for better local plane fit and warmer color for weaker fit; the bright edge marks the grown boundary." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "局部平面拟合越好，单元格绿色越强；拟合较弱时颜色更暖。明亮边缘表示生长区域的边界。"
+          }
+        }
+      }
+    },
+    "Plane Filter" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "平面筛选"
+          }
+        }
+      }
+    },
+    "Plane fitting needs camera intrinsics to project depth pixels into local camera coordinates." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "平面拟合需要使用相机内参，将深度像素投影到相机局部坐标系。"
+          }
+        }
+      }
+    },
+    "Plane inliers" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "平面内点"
+          }
+        }
+      }
+    },
+    "Plane normal" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "平面法向量"
+          }
+        }
+      }
     },
     "Plane region" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "平面区域"
+          }
+        }
+      }
+    },
+    "Plane residual" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "平面残差"
+          }
+        }
+      }
     },
     "Plane seed point" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "平面种子点"
+          }
+        }
+      }
+    },
+    "Plane selection starts from one tapped depth point, then grows to neighboring pixels that fit the same surface." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "平面选择从轻点的一个深度点开始，再扩展到符合相同表面的相邻像素。"
+          }
+        }
+      }
     },
     "Plane Strictness" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "平面严格度"
+          }
+        }
+      }
+    },
+    "Planes" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "平面"
+          }
+        }
+      }
+    },
+    "Planes view grows a connected plane from the surface point you tap, then divides that region into fit-confidence grid cells. Rectangular Region selection is disabled here so the view stays focused on plane analysis." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "平面视图会从你轻点的表面点生长出相连平面，再按拟合置信度将该区域划分为网格单元。此处禁用矩形区域选择，使视图专注于平面分析。"
+          }
+        }
+      }
     },
     "Play video" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "播放视频"
+          }
+        }
+      }
+    },
+    "Point colors map near-to-far depth in the same direction as the depth legend." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "点的颜色按照与深度图例相同的方向映射由近到远的深度。"
+          }
+        }
+      }
+    },
+    "Point colors map near-to-far depth so the preview stays comparable to the depth legend." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "点的颜色映射由近到远的深度，使预览能够与深度图例直接比较。"
+          }
+        }
+      }
+    },
+    "Prepare" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "准备"
+          }
+        }
+      }
+    },
+    "Prepare Credential" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "准备凭据"
+          }
+        }
+      }
+    },
+    "Preparing" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在准备"
+          }
+        }
+      }
     },
     "Preparing 2D playback" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在准备 2D 播放"
+          }
+        }
+      }
     },
     "Preparing App Attest credential" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在准备 App Attest 凭据"
+          }
+        }
+      }
     },
     "Preparing camera" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在准备相机"
+          }
+        }
+      }
+    },
+    "Preparing camera..." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在准备相机…"
+          }
+        }
+      }
+    },
+    "Preparing capture session..." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在准备拍摄会话…"
+          }
+        }
+      }
     },
     "Preparing export..." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在准备导出…"
+          }
+        }
+      }
+    },
+    "Preparing registered depth" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在准备配准深度"
+          }
+        }
+      }
+    },
+    "Preparing share" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在准备分享"
+          }
+        }
+      }
+    },
+    "Preparing video" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在准备视频"
+          }
+        }
+      }
     },
     "PRO" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PRO"
+          }
+        }
+      }
+    },
+    "Pro mode unavailable" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "专业模式不可用"
+          }
+        }
+      }
+    },
+    "Quality" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "质量优先"
+          }
+        }
+      }
+    },
+    "Range" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "范围"
+          }
+        }
+      }
+    },
+    "Raw photo" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "原始照片"
+          }
+        }
+      }
+    },
+    "Raw video" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "原始视频"
+          }
+        }
+      }
+    },
+    "Ready" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已准备"
+          }
+        }
+      }
+    },
+    "Ready · %@ · crop metadata" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已就绪 · %@ · 裁切元数据"
+          }
+        }
+      }
     },
     "Region" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "区域"
+          }
+        }
+      }
+    },
+    "Registered depth unavailable" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "配准深度不可用"
+          }
+        }
+      }
+    },
+    "Release your drag to finish the selection and calculate local depth statistics." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "松开拖动以完成选择并计算局部深度统计。"
+          }
+        }
+      }
+    },
+    "Remember Last State" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "记住上次状态"
+          }
+        }
+      }
     },
     "Requesting" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在请求"
+          }
+        }
+      }
+    },
+    "requiresMultiCam" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要多摄像头"
+          }
+        }
+      }
     },
     "Reset EV on App Launch" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "启动 App 时重置曝光补偿"
+          }
+        }
+      }
+    },
+    "Reset Local Credential" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重置本地凭据"
+          }
+        }
+      }
+    },
+    "Reset local credential." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已重置本地凭据。"
+          }
+        }
+      }
     },
     "Resets and prepares the App Attest credential." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重置并准备 App Attest 凭据。"
+          }
+        }
+      }
+    },
+    "Residual" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "残差"
+          }
+        }
+      }
+    },
+    "Restoring Pro mode…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在恢复专业模式…"
+          }
+        }
+      }
+    },
+    "Restoring standard camera…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在恢复标准相机…"
+          }
+        }
+      }
+    },
+    "Restricted" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "受限制"
+          }
+        }
+      }
     },
     "Retry" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重试"
+          }
+        }
+      }
     },
     "Retry Network Access" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重试网络访问"
+          }
+        }
+      }
     },
     "Return to camera" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "返回相机"
+          }
+        }
+      }
     },
     "Return to Camera After Background" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从后台返回后进入相机"
+          }
+        }
+      }
+    },
+    "Returning to standard mode…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在返回标准模式…"
+          }
+        }
+      }
+    },
+    "RGB" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "RGB"
+          }
+        }
+      }
+    },
+    "RGB has no color legend because it shows the original photo." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "RGB 显示原始照片，因此没有颜色图例。"
+          }
+        }
+      }
+    },
+    "RGB view shows the primary HEIC image. It is the visual reference used to choose regions, but the depth measurements still come from the auxiliary depth map embedded beside it." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "RGB 视图显示主 HEIC 图像。它是选择区域时的视觉参考，但深度测量仍来自随图像嵌入的辅助深度图。"
+          }
+        }
+      }
+    },
+    "rgbOnly" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仅 RGB"
+          }
+        }
+      }
+    },
+    "rgbWithApplePairedDepth" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "RGB 与 Apple 配对深度"
+          }
+        }
+      }
+    },
+    "Rule of Thirds" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "三分构图线"
+          }
+        }
+      }
+    },
+    "Sampled points are valid depth pixels projected through camera intrinsics for a lightweight preview." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "采样点是通过相机内参投影的有效深度像素，用于生成轻量预览。"
+          }
+        }
+      }
     },
     "Score Detail" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "评分详情"
+          }
+        }
+      }
+    },
+    "Select a rectangular area on the image to inspect local depth, range, and plane fit values." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在图像上选择一个矩形区域，以检查局部深度、范围和平面拟合值。"
+          }
+        }
+      }
+    },
+    "Selected" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已选中"
+          }
+        }
+      }
     },
     "Selected area loupe" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所选区域放大镜"
+          }
+        }
+      }
+    },
+    "Selected plane direction in local camera coordinates." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所选平面在相机局部坐标系中的方向。"
+          }
+        }
+      }
     },
     "Selected plane region" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所选平面区域"
+          }
+        }
+      }
     },
     "Selected plane region %lld percent confidence" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所选平面区域置信度为百分之 %lld"
+          }
+        }
+      }
     },
     "Selected point cloud loupe" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所选点云放大镜"
+          }
+        }
+      }
     },
     "Selected point cloud preview" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所选点云预览"
+          }
+        }
+      }
+    },
+    "Selected points use the same projection, limited to the active rectangular region." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所选点使用相同的投影，但仅限于当前矩形区域。"
+          }
+        }
+      }
+    },
+    "Selected, Preparing" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已选中，正在准备"
+          }
+        }
+      }
+    },
+    "Selected, Ready" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已选中，已就绪"
+          }
+        }
+      }
+    },
+    "Selecting" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在选择"
+          }
+        }
+      }
     },
     "Selecting region..." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在选择区域…"
+          }
+        }
+      }
     },
     "Settings" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "设置"
+          }
+        }
+      }
     },
     "Share" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享"
+          }
+        }
+      }
+    },
+    "Share and count of grown points that match the fitted plane." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "生长点中符合拟合平面的比例和数量。"
+          }
+        }
+      }
+    },
+    "Share photo" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享照片"
+          }
+        }
+      }
+    },
+    "Share video" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享视频"
+          }
+        }
+      }
     },
     "Show ${captureScore}" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示 ${captureScore}"
+          }
+        }
+      }
     },
     "Show a selected TAP capture score without opening the app." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无需打开 App 即可显示所选的 TAP 拍摄评分。"
+          }
+        }
+      }
     },
     "Show Capture Score" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示拍摄评分"
+          }
+        }
+      }
     },
     "Show Latest Capture Score" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示最新拍摄评分"
+          }
+        }
+      }
     },
     "Show the latest TAP capture score without opening the app." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无需打开 App 即可显示最新的 TAP 拍摄评分。"
+          }
+        }
+      }
+    },
+    "Shows measurements and previews for a completed rectangular selection. In Depth view, the selected crop is recolored using only local valid depth samples." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示已完成矩形选择的测量结果和预览。在深度视图中，所选裁剪区域仅使用局部有效深度样本重新着色。"
+          }
+        }
+      }
+    },
+    "Shows numeric depth measurements for the selected region, including median depth, range, valid samples, and any local plane estimate." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示所选区域的数值深度测量，包括深度中位数、范围、有效样本以及可用的局部平面估计。"
+          }
+        }
+      }
     },
     "Shutter Haptics" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "快门触感"
+          }
+        }
+      }
     },
     "Shutter Sound" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "快门声音"
+          }
+        }
+      }
     },
     "Shutter sound cannot be disabled on this device or in this region." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此设备或所在地区不允许关闭快门声音。"
+          }
+        }
+      }
+    },
+    "Simplified Chinese" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "简体中文"
+          }
+        }
+      }
+    },
+    "Skip" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "跳过"
+          }
+        }
+      }
     },
     "Skipped" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已跳过"
+          }
+        }
+      }
+    },
+    "Sort the selected valid depth samples from near to far; this is the value in the middle." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将所选有效深度样本由近到远排序；此值位于中间。"
+          }
+        }
+      }
+    },
+    "Sort the selected valid depth samples from near to far; this is the value in the middle. It is less sensitive to isolated noisy pixels than an average." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将所选有效深度样本由近到远排序；此值位于中间。与平均值相比，它对孤立噪声像素不那么敏感。"
+          }
+        }
+      }
+    },
+    "Speed" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "速度优先"
+          }
+        }
+      }
+    },
+    "Starting Pro mode…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在启动专业模式…"
+          }
+        }
+      }
     },
     "Status" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "状态"
+          }
+        }
+      }
     },
     "Strictness" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "严格度"
+          }
+        }
+      }
     },
     "Switch front and back camera" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "切换前后摄像头"
+          }
+        }
+      }
+    },
+    "Switching" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在切换"
+          }
+        }
+      }
+    },
+    "Switching Pro mode" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在切换专业模式"
+          }
+        }
+      }
+    },
+    "Switching to front camera…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在切换到前置摄像头…"
+          }
+        }
+      }
+    },
+    "Switching to rear camera…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在切换到后置摄像头…"
+          }
+        }
+      }
+    },
+    "System Default" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "跟随系统"
+          }
+        }
+      }
     },
     "Tap a surface point in Planes view. The analyzer grows a connected camera-coordinate plane region from that seed." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在“平面”视图中轻点一个表面点。分析器会从该种子点扩展相连的相机坐标系平面区域。"
+          }
+        }
+      }
     },
     "Tap a surface point to grow a plane region." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "轻点表面点以扩展平面区域。"
+          }
+        }
+      }
     },
     "TAP Library" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TAP 图库"
+          }
+        }
+      }
     },
     "TAP Library will refresh when iOS finishes the transfer." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS 完成传输后，TAP 图库将自动刷新。"
+          }
+        }
+      }
     },
     "TAPCam" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TAPCam"
+          }
+        }
+      }
     },
     "TAPCam Camera" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TAPCam 相机"
+          }
+        }
+      }
     },
     "TAPCam Destination" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TAPCam 目标位置"
+          }
+        }
+      }
     },
     "Temporary focus exposure" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "临时对焦曝光"
+          }
+        }
+      }
+    },
+    "The current session configuration does not support depth photo delivery." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前会话配置不支持深度照片传输。"
+          }
+        }
+      }
+    },
+    "The fitted plane direction in local camera coordinates. It is useful for comparing orientation, not for world tracking." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拟合平面在相机局部坐标系中的方向。它适合比较朝向，不用于世界坐标跟踪。"
+          }
+        }
+      }
+    },
+    "The legend maps the current depth range from near to far. Adjust opacity to compare the heatmap against the RGB image." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "图例将当前深度范围由近到远进行映射。调整不透明度可将热图与 RGB 图像进行比较。"
+          }
+        }
+      }
+    },
+    "The local heatmap needs enough finite positive depth pixels inside the selected region." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "局部热图需要所选区域内包含足够多有限且为正的深度像素。"
+          }
+        }
+      }
+    },
+    "The nearest and farthest valid metric depth samples found inside the selection." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所选区域内找到的最近和最远有效公制深度样本。"
+          }
+        }
+      }
+    },
+    "The selected region's nearest and farthest valid depth samples." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所选区域中最近和最远的有效深度样本。"
+          }
+        }
+      }
+    },
+    "The selected RGB source and depth source cannot produce a supported paired capture." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所选 RGB 源和深度源无法生成受支持的配对拍摄。"
+          }
+        }
+      }
+    },
+    "The selected zoom factor does not support depth delivery on this camera." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所选变焦倍率不支持此相机的深度传输。"
+          }
+        }
+      }
+    },
+    "The share of sampled points close enough to the fitted plane to count as inliers." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "采样点中足够接近拟合平面、可计为内点的比例。"
+          }
+        }
+      }
+    },
+    "The share of selected depth points that match the fitted local plane." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所选深度点中符合拟合局部平面的比例。"
+          }
+        }
+      }
     },
     "This capture has not finished exporting to Photos. Deleting it removes the local TAP copy and cannot be undone." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此拍摄内容尚未完成导出到“照片”。删除操作会移除本地 TAP 副本，且无法撤销。"
+          }
+        }
+      }
     },
     "This capture is still pending export to Photos. Return after export completes, then open the saved photo to verify its App Attest proof." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此拍摄内容仍在等待导出到“照片”。请在导出完成后返回，然后打开已保存的照片以验证其 App Attest 证明。"
+          }
+        }
+      }
     },
     "This is a local camera-coordinate point cloud preview. It is not cloud storage, cloud compute, or a semantic word cloud." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这是本地相机坐标系点云预览，并非云存储、云计算或语义词云。"
+          }
+        }
+      }
     },
     "This photo is still being processed in the TAPCam queue. Its credential will appear when processing finishes." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此照片仍在 TAPCam 队列中处理。处理完成后将显示其凭据。"
+          }
+        }
+      }
+    },
+    "This RGB and depth pairing is outside the SingleCam photo-depth pipeline." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "该 RGB 与深度组合超出 SingleCam 照片深度管线的支持范围。"
+          }
+        }
+      }
     },
     "This video has not finished exporting to Photos. Deleting it removes the local TAP copy and cannot be undone." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此视频尚未完成导出到“照片”。删除操作会移除本地 TAP 副本，且无法撤销。"
+          }
+        }
+      }
+    },
+    "Titian" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "提香红"
+          }
+        }
+      }
     },
     "Toggle Live Photo capture." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "切换实况照片拍摄。"
+          }
+        }
+      }
+    },
+    "Try a nearby textured surface point with valid depth if the seed cannot grow a stable plane." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "如果种子无法生长出稳定平面，请尝试附近具有纹理且深度有效的表面点。"
+          }
+        }
+      }
+    },
+    "Turn off Pro mode" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关闭专业模式"
+          }
+        }
+      }
+    },
+    "Turn on Pro mode" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开启专业模式"
+          }
+        }
+      }
+    },
+    "Unable to add audio output to the capture session." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法将音频输出添加到拍摄会话。"
+          }
+        }
+      }
+    },
+    "Unable to add depth output to the capture session." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法将深度输出添加到拍摄会话。"
+          }
+        }
+      }
+    },
+    "Unable to add photo output to the capture session." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法将照片输出添加到拍摄会话。"
+          }
+        }
+      }
+    },
+    "Unable to add the selected camera input to the capture session." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法将所选相机输入添加到拍摄会话。"
+          }
+        }
+      }
+    },
+    "Unable to add video output to the capture session." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法将视频输出添加到拍摄会话。"
+          }
+        }
+      }
     },
     "Unable to load album" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法载入相簿"
+          }
+        }
+      }
+    },
+    "Unable to load TAP Library. Check Photos access and try again." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法载入 TAP 图库。请检查“照片”访问权限后重试。"
+          }
+        }
+      }
     },
     "Unable to play video" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法播放视频"
+          }
+        }
+      }
+    },
+    "Unable to read the TAPCamDepth album. Check Photos access and try again." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法读取 TAPCamDepth 相簿。请检查“照片”访问权限后重试。"
+          }
+        }
+      }
+    },
+    "Unable to restore the camera." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法恢复相机。"
+          }
+        }
+      }
+    },
+    "Unavailable" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不可用"
+          }
+        }
+      }
+    },
+    "Unknown" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未知"
+          }
+        }
+      }
     },
     "Unlock and open TAPCam from a Lock Screen control without starting locked camera capture." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从锁定屏幕控制项解锁并打开 TAPCam，而不启动锁定屏幕拍摄。"
+          }
+        }
+      }
+    },
+    "unsupported" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不支持"
+          }
+        }
+      }
     },
     "Use %@ field of view" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用 %@ 视野"
+          }
+        }
+      }
     },
     "Use Location Data" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用位置数据"
+          }
+        }
+      }
     },
     "Use Microphone Data" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用麦克风数据"
+          }
+        }
+      }
     },
     "Use Pro camera controls." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用专业相机控制。"
+          }
+        }
+      }
+    },
+    "Used to capture photos with depth data." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "用于拍摄包含深度数据的照片。"
+          }
+        }
+      }
+    },
+    "Used to save and read photos." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "用于保存和读取照片。"
+          }
+        }
+      }
     },
     "Valid credential" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有效凭据"
+          }
+        }
+      }
+    },
+    "Valid depth" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有效深度"
+          }
+        }
+      }
+    },
+    "Valid samples" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有效样本"
+          }
+        }
+      }
+    },
+    "Valid/invalid edge" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有效/无效边界"
+          }
+        }
+      }
     },
     "Verification unavailable" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "验证不可用"
+          }
+        }
+      }
+    },
+    "Verify" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "验证"
+          }
+        }
+      }
     },
     "Verify again" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再次验证"
+          }
+        }
+      }
     },
     "Verify signature" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "验证签名"
+          }
+        }
+      }
     },
     "Verify the saved photo's App Attest proof." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "验证已保存照片的 App Attest 证明。"
+          }
+        }
+      }
     },
     "Verify this photo's App Attest proof again." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再次验证此照片的 App Attest 证明。"
+          }
+        }
+      }
+    },
+    "VIDEO" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "视频"
+          }
+        }
+      }
+    },
+    "Video mode" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "视频模式"
+          }
+        }
+      }
+    },
+    "Video mode coming soon" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "视频模式即将推出"
+          }
+        }
+      }
     },
     "Video position" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "视频位置"
+          }
+        }
+      }
     },
     "video.depth.gap" : {
       "localizations" : {
@@ -695,23 +4358,108 @@
             "state" : "translated",
             "value" : "Depth data is unavailable at this moment."
           }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前时刻没有可用的深度数据。"
+          }
         }
       }
     },
     "Viewfinder" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取景器"
+          }
+        }
+      }
+    },
+    "Views" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "视图"
+          }
+        }
+      }
     },
     "Waiting for locked capture" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在等待锁定屏幕拍摄"
+          }
+        }
+      }
     },
     "Waiting for locked captures" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在等待锁定屏幕拍摄内容"
+          }
+        }
+      }
     },
     "Warnings" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "警告"
+          }
+        }
+      }
     },
     "Welcome to TAPCam" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "欢迎使用 TAPCam"
+          }
+        }
+      }
+    },
+    "While using app" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用 App 时允许"
+          }
+        }
+      }
+    },
+    "Yellow" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "黄色"
+          }
+        }
+      }
+    },
+    "You can tap another surface point while this runs; the analyzer keeps the newest point." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分析过程中可以轻点另一个表面点；分析器会保留最新的点。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

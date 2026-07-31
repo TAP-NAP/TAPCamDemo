@@ -38,9 +38,9 @@ struct CameraTickedSliderRow: View {
                 riskZoneLayer(trackWidth: trackWidth)
                     .position(x: portraitAdjustmentCenterline, y: rowCenterY)
 
-                valueCursor
+                activeTick
                     .position(
-                        x: cursorX(
+                        x: activeTickX(
                             portraitAdjustmentCenterline: portraitAdjustmentCenterline,
                             trackWidth: trackWidth
                         ),
@@ -145,12 +145,11 @@ struct CameraTickedSliderRow: View {
             let descriptors = tickDescriptors
             ZStack(alignment: .leading) {
                 ForEach(Array(descriptors.enumerated()), id: \.offset) { index, descriptor in
-                    Rectangle()
-                        .fill(.white.opacity(opacity(for: descriptor)))
-                        .frame(
-                            width: descriptor.isMajor ? Metrics.majorTickWidth : Metrics.minorTickWidth,
-                            height: tickHeight(for: descriptor)
-                        )
+                    CameraTickedSliderTickMark(
+                        visualState: visualState(for: descriptor),
+                        highlightColor: highlightColor,
+                        isEnabled: isEnabled
+                    )
                         .position(
                             x: tickX(for: index, count: descriptors.count, width: proxy.size.width),
                             y: proxy.size.height / 2
@@ -178,27 +177,14 @@ struct CameraTickedSliderRow: View {
         .accessibilityHidden(true)
     }
 
-    private var valueCursor: some View {
-        ZStack {
-            cursorTriangle(direction: .down)
-                .offset(y: -Metrics.cursorTriangleBaseOffset)
-            cursorTriangle(direction: .up)
-                .offset(y: Metrics.cursorTriangleBaseOffset)
-        }
-        .frame(width: Metrics.cursorWidth, height: Metrics.cursorHeight)
-        .shadow(color: .black.opacity(0.38), radius: 3)
+    private var activeTick: some View {
+        CameraTickedSliderTickMark(
+            visualState: .active,
+            highlightColor: highlightColor,
+            isEnabled: isEnabled
+        )
         .accessibilityHidden(true)
-        .accessibilityIdentifier("camera.tickedAdjustmentStrip.valueCursor")
-    }
-
-    private func cursorTriangle(direction: CameraTriangleCursorShape.Direction) -> some View {
-        CameraTriangleCursorShape(direction: direction)
-            .fill(isEnabled ? highlightColor : .white.opacity(0.36))
-            .frame(width: Metrics.cursorTriangleWidth, height: Metrics.cursorTriangleHeight)
-            .overlay {
-                CameraTriangleCursorShape(direction: direction)
-                    .stroke(.white.opacity(isEnabled ? 0.72 : 0.24), lineWidth: 1)
-            }
+        .accessibilityIdentifier("camera.tickedAdjustmentStrip.activeTick")
     }
 
     private func resolvedTrackWidth(for containerWidth: CGFloat) -> CGFloat {
@@ -233,7 +219,7 @@ struct CameraTickedSliderRow: View {
         )
     }
 
-    private func cursorX(
+    private func activeTickX(
         portraitAdjustmentCenterline: CGFloat,
         trackWidth: CGFloat
     ) -> CGFloat {
@@ -395,24 +381,16 @@ struct CameraTickedSliderRow: View {
         return tickValueStep
     }
 
-    private func opacity(for descriptor: TickDescriptor) -> Double {
+    private func visualState(
+        for descriptor: TickDescriptor
+    ) -> CameraTickedSliderTickVisualState {
         if descriptor.isCenter {
-            return 0.62
+            return .center
         }
         if descriptor.isMajor {
-            return 0.44
+            return .major
         }
-        return 0.24
-    }
-
-    private func tickHeight(for descriptor: TickDescriptor) -> CGFloat {
-        if descriptor.isCenter {
-            return Metrics.centerTickHeight
-        }
-        if descriptor.isMajor {
-            return Metrics.majorTickHeight
-        }
-        return Metrics.minorTickHeight
+        return .minor
     }
 
     private func tickX(for index: Int, count: Int, width: CGFloat) -> CGFloat {
@@ -450,16 +428,6 @@ struct CameraTickedSliderRow: View {
         static let valueWidth: CGFloat = 78
         static let labelGap: CGFloat = 8
         static let horizontalInset: CGFloat = 12
-        static let minorTickWidth: CGFloat = 1
-        static let majorTickWidth: CGFloat = 1.5
-        static let minorTickHeight: CGFloat = 9
-        static let majorTickHeight: CGFloat = 14
-        static let centerTickHeight: CGFloat = 20
-        static let cursorWidth: CGFloat = 12
-        static let cursorHeight: CGFloat = centerTickHeight
-        static let cursorTriangleWidth: CGFloat = 11
-        static let cursorTriangleHeight: CGFloat = 6
-        static let cursorTriangleBaseOffset: CGFloat = centerTickHeight / 2 - cursorTriangleHeight / 2
         static let defaultTickCount = 17
         static let maximumTickCount = 61
         static let minimumTrackWidth: CGFloat = 128
@@ -476,27 +444,96 @@ struct CameraTickedSliderRow: View {
     }
 }
 
-private struct CameraTriangleCursorShape: Shape {
-    enum Direction {
-        case up
-        case down
+private struct CameraTickedSliderTickMark: View {
+    let visualState: CameraTickedSliderTickVisualState
+    let highlightColor: Color
+    let isEnabled: Bool
+
+    var body: some View {
+        Capsule(style: .continuous)
+            .fill(fillColor)
+            .frame(width: visualState.width, height: visualState.height)
+            .shadow(
+                color: visualState == .active
+                    ? .black.opacity(isEnabled ? 0.34 : 0)
+                    : .clear,
+                radius: visualState == .active ? 2 : 0
+            )
     }
 
-    let direction: Direction
-
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        switch direction {
-        case .up:
-            path.move(to: CGPoint(x: rect.midX, y: rect.minY))
-            path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
-            path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
-        case .down:
-            path.move(to: CGPoint(x: rect.minX, y: rect.minY))
-            path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
-            path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
+    private var fillColor: Color {
+        if visualState.usesHighlightColor {
+            return isEnabled
+                ? highlightColor
+                : .white.opacity(visualState.disabledOpacity)
         }
-        path.closeSubpath()
-        return path
+        return .white.opacity(
+            isEnabled
+                ? visualState.enabledOpacity
+                : visualState.disabledOpacity
+        )
+    }
+}
+
+enum CameraTickedSliderTickVisualState: CaseIterable, Equatable {
+    case minor
+    case major
+    case center
+    case active
+
+    var usesHighlightColor: Bool {
+        self == .active
+    }
+
+    var width: CGFloat {
+        switch self {
+        case .minor:
+            1
+        case .major:
+            1.5
+        case .center:
+            2
+        case .active:
+            3
+        }
+    }
+
+    var height: CGFloat {
+        switch self {
+        case .minor:
+            8
+        case .major:
+            13
+        case .center:
+            18
+        case .active:
+            24
+        }
+    }
+
+    var enabledOpacity: Double {
+        switch self {
+        case .minor:
+            0.20
+        case .major:
+            0.34
+        case .center:
+            0.52
+        case .active:
+            1
+        }
+    }
+
+    var disabledOpacity: Double {
+        switch self {
+        case .minor:
+            0.10
+        case .major:
+            0.17
+        case .center:
+            0.26
+        case .active:
+            0.36
+        }
     }
 }

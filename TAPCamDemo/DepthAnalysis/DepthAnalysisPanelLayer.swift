@@ -54,7 +54,7 @@ struct AnalysisPanelLayer<Content: View>: View {
                     .symbolRenderingMode(.hierarchical)
                     .frame(width: 22, height: 22)
                     .foregroundStyle(.secondary)
-                Text(title)
+                Text(LocalizedStringKey(title))
                     .font(.headline)
                 Spacer(minLength: 8)
                 Button {

@@ -61,6 +61,7 @@ nonisolated struct TAPVerificationExportBuilder: Sendable {
         self.localValidator = localValidator
     }
 
+    @concurrent
     func export(assetID: String) async throws -> TAPVerificationExport {
         let resources = try await resourceLoader(assetID)
         defer {
@@ -70,6 +71,7 @@ nonisolated struct TAPVerificationExportBuilder: Sendable {
         return try export(resources: resources)
     }
 
+    @concurrent
     func hasValidCredential(assetID: String) async -> Bool {
         do {
             let resources = try await resourceLoader(assetID)

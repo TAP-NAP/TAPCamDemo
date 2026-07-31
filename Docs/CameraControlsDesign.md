@@ -14,7 +14,8 @@
 | `mode selector bar` | 拍摄模式选择条 | 默认显示 `PHOTO / VIDEO`。外层 bar、按钮 frame、按钮文字都不参与旋转。 |
 | `portrait adjustment centerline` | Portrait UI 的全局参数调节中线 | 所有横向参数条的中心刻度必须对齐整个屏幕 / 控件容器的水平中心线，不能被左标题或右数值挤偏。 |
 | `ticked adjustment strip` | 刻度调节条 | 共享 UI primitive，可服务 Basic EV 或 Pro EV/ISO/S/MF。它只知道 value/range/step/label/callback，不知道 Basic/Pro 业务模式。 |
-| `value cursor` | 当前值游标 | 位于 `ticked adjustment strip` 上的可见圆点 / 小按钮，用来标识当前选择值；不是实线轨道。 |
+| `active tick` | 当前值刻度 | `ticked adjustment strip` 中唯一使用交互高亮色的刻度，精确落在当前值位置；不叠加三角形、圆点或其他独立游标。 |
+| `value cursor` | 当前值游标 | 仅用于 `focus companion EV rail` 的黄色太阳游标；不用于 `ticked adjustment strip`。 |
 | `FOV selector bar` | 镜头 / 视角选择条 | Standard 显示 release field-of-view chips；PRO 固定后置 LiDAR 24mm / 1x，因此隐藏。外层 bar 固定在取景器下边缘内侧，chip 内容按设备姿态旋转，bar 本身不旋转。 |
 | `preview-only zoom` | 取景器预览缩放 | Standard 可保留既有 `1x / 2x / 3x` 预览行为；PRO 固定 LiDAR 24mm / 1x 并隐藏入口。 |
 | `source switching mode` | 真实摄像头源切换模式 | 后续 roadmap。切换焦段时可能切到不同 Apple camera path，并按当前 path 能力重新决定 ISO/S/AF/MF 可用性。 |
@@ -115,7 +116,8 @@ Flash / Live Photo 之间。
 
 `viewfinder top toolbar` 不能作为 preview overlay。布局顺序必须是 `viewfinder top shoulder`、`viewfinder top toolbar`、viewfinder，再进入下方控制区。
 
-`LiDAR Focus Assist` 不出现在拍摄 UI 上，只在 Debug Settings 里。
+PRO 仍通过 eligible 后置 LiDAR 24mm / 1x path 获得真实的深度和手动控制能力；
+不再额外暴露名为 `LiDAR Focus Assist` 的开关。
 
 ## Lower Toolbar
 
@@ -148,7 +150,7 @@ PRO active 时从左到右：
 `ticked adjustment strip` 的视觉：
 
 - 中心刻度对齐 `portrait adjustment centerline`。
-- 只显示刻度和 `value cursor`，不显示系统 slider 的实线轨道。
+- 只显示刻度，并让 `active tick` 成为唯一主要视觉焦点；不显示独立游标或系统 slider 的实线轨道。
 - 拖动热区可以透明覆盖刻度。
 - 每跨过一个有效 step 触发轻量 selection haptic。
 - 在 PRO active 时，当前正在调节的参数由 `viewfinder lower toolbar`
@@ -561,6 +563,12 @@ Settings 的 `Depth Warnings` 只控制深度类提示；普通操作反馈不�
 
 Settings 分组：
 
+- `Language`：`App Language`，提供 `System Default / English /
+  Simplified Chinese`。默认跟随系统；用户选择通过稳定的 presentation
+  locale 影响 Settings、TAP Library、启动门禁和显式本地化的 Foundation
+  文案。`cameraSurface` 取景器子树例外：摄影术语、模式名和取景器提示固定使用
+  英文 canonical copy。这个子树级 locale 覆盖只改变展示，不增加 `.id`、
+  lifecycle callback，也不触发相机 session 重建。
 - `Capture`：`Photo Quality`、`Output Format`、`Flash Default`、`Live Photo Default`、
   `Photographer Mode Startup`。
 - `Viewfinder`：`Grid`、`Highlight Color`、`Depth Warnings`。
@@ -572,9 +580,8 @@ Settings 分组：
   是 App 内数据使用开关。采集只在系统授权和 App 内开关都允许时使用地点或
   麦克风数据。
 - `App Attest`：凭证状态和 redacted KeyID 摘要。
-- `Debug Camera Controls`：仅 `DEBUG` 构建显示 `Focus Magnifier` 和
-  `LiDAR Focus Assist`。MF 点按快速对焦是 eligible 后置 PRO/MF 的固定产品交互，
-  不再出现在 Settings。
+- `Debug Camera Controls`：仅 `DEBUG` 构建显示 `Focus Magnifier`。MF
+  点按快速对焦是 eligible 后置 PRO/MF 的固定产品交互，不再出现在 Settings。
 
 `Focus Magnifier` 是 Debug-only Picker，不是 bool toggle：
 
@@ -586,15 +593,16 @@ Settings 分组：
 该设置只控制 `focus loupe` 是否显示以及显示时长。它仍不进入普通 Settings，
 也不 gate MF 点按是否执行 focus-only AF assist。
 
-`LiDAR Focus Assist` 当前不清楚 LiDAR 如何参与真实对焦流程，因此只保留为
-Debug-only 实验开关，默认关，不进入普通 Settings。
+原 `LiDAR Focus Assist` 没有运行时消费者：MF 点按辅助实际走 AVFoundation
+的对焦点和自动对焦请求，没有读取该偏好，也没有用深度图计算焦点。因此该开关及其
+孤立持久化 key 已删除；这不改变 PRO 对 rear LiDAR capture device 的选择。
 
 `Highlight Color` 是取景器交互高亮色：
 
 - 默认值是 `Yellow`，保留既有外观。
 - `Titian`（`#B7282E`）影响用户可见的 EV 激活状态、Flash Auto 的 `A`
   角标、Flash On 强制开启态、Live Photo 激活态、AE/AF lock、tap-focus
-  temporary EV marker，以及 Pro 控制 ticked slider cursor。
+  temporary EV marker，以及 Basic / Pro 参数条的 `active tick`。
 - Debug-only overlay、Settings Debug rows、warning/status 黄色、深度热力图或
   分析语义色不读取该设置。
 
@@ -659,6 +667,8 @@ C2PA 当前不出现在 UI。
 
 持久化的 Settings 项：
 
+- `App Language`：`System Default / English / Simplified Chinese`；未知的旧值
+  fail-safe 回 `System Default`，未来语言通过稳定 raw value 扩展。
 - `Photo Quality`
 - `Output Format`
 - `Flash Default`
@@ -680,7 +690,6 @@ C2PA 当前不出现在 UI。
 Debug-only 持久化 Settings 项：
 
 - `Focus Magnifier` 枚举：`Off / 1.5s / 3s / 5s`
-- `LiDAR Focus Assist`
 
 ## No Depth
 

@@ -29,6 +29,8 @@ struct DepthAnalyzerSettingsView: View {
     @State private var authorizationSnapshot: DepthAnalyzerAuthorizationSnapshot
     private let shutterSoundSuppressionSupported: Bool
     @ObservedObject private var appAttestController: AppAttestRuntimeController
+    @AppStorage(AppLanguage.storageKey)
+    private var appLanguageRawValue = AppLanguage.defaultValue.rawValue
     @AppStorage(DepthAnalyzerPreferences.showsAnalysisHelpKey)
     private var showsAnalysisHelp = DepthAnalyzerPreferences.defaultShowsAnalysisHelp
     @AppStorage(DepthAnalyzerPreferences.planeGridAnimationEnabledKey)
@@ -58,8 +60,6 @@ struct DepthAnalyzerSettingsView: View {
     #if DEBUG
     @AppStorage(CameraFocusMagnifierPreference.storageKey)
     private var focusMagnifierRawValue = CameraFocusMagnifierPreference.defaultValue.rawValue
-    @AppStorage(CameraLiDARFocusAssistPreferences.isEnabledKey)
-    private var isLiDARFocusAssistEnabled = CameraLiDARFocusAssistPreferences.defaultIsEnabled
     #endif
     @AppStorage(CameraIdleTimerPreferences.keepScreenAwakeKey)
     private var keepScreenAwake = CameraIdleTimerPreferences.defaultKeepScreenAwake
@@ -85,6 +85,7 @@ struct DepthAnalyzerSettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                languageSettingsSection
                 captureSettingsSection
                 viewfinderSettingsSection
                 cameraBehaviorSection
@@ -126,35 +127,57 @@ struct DepthAnalyzerSettingsView: View {
         }
     }
 
+    private var languageSettingsSection: some View {
+        Section("Language") {
+            Picker("App Language", selection: appLanguageSelection) {
+                ForEach(AppLanguage.allCases) { language in
+                    Text(language.titleKey)
+                        .tag(language.rawValue)
+                }
+            }
+        }
+    }
+
+    private var appLanguageSelection: Binding<String> {
+        Binding(
+            get: {
+                AppLanguage.resolved(rawValue: appLanguageRawValue).rawValue
+            },
+            set: { newValue in
+                appLanguageRawValue = AppLanguage.resolved(rawValue: newValue).rawValue
+            }
+        )
+    }
+
     private var captureSettingsSection: some View {
         Section("Capture") {
             Picker("Photo Quality", selection: $photoQualityRawValue) {
                 ForEach(CameraPhotoQualityPreference.allCases) { quality in
-                    Text(quality.title).tag(quality.rawValue)
+                    Text(LocalizedStringKey(quality.title)).tag(quality.rawValue)
                 }
             }
 
             Picker("Output Format", selection: $outputFormatRawValue) {
                 ForEach(CameraOutputFormatPreference.allCases) { format in
-                    Text(format.title).tag(format.rawValue)
+                    Text(LocalizedStringKey(format.title)).tag(format.rawValue)
                 }
             }
 
             Picker("Flash Default", selection: $flashStartupPolicyRawValue) {
                 ForEach(CameraViewfinderControlDefaultPolicy.allCases) { policy in
-                    Text(policy.title).tag(policy.rawValue)
+                    Text(LocalizedStringKey(policy.title)).tag(policy.rawValue)
                 }
             }
 
             Picker("Live Photo Default", selection: $livePhotoStartupPolicyRawValue) {
                 ForEach(CameraViewfinderControlDefaultPolicy.allCases) { policy in
-                    Text(policy.title).tag(policy.rawValue)
+                    Text(LocalizedStringKey(policy.title)).tag(policy.rawValue)
                 }
             }
 
             Picker("Photographer Mode Startup", selection: $photographerModeStartupPolicyRawValue) {
                 ForEach(CameraViewfinderControlDefaultPolicy.allCases) { policy in
-                    Text(policy.title).tag(policy.rawValue)
+                    Text(LocalizedStringKey(policy.title)).tag(policy.rawValue)
                 }
             }
 
@@ -169,7 +192,7 @@ struct DepthAnalyzerSettingsView: View {
         Section("Viewfinder") {
             Picker("Grid", selection: $guideOverlayRawValue) {
                 ForEach(CameraGuideOverlayPreference.allCases) { guide in
-                    Text(guide.title).tag(guide.rawValue)
+                    Text(LocalizedStringKey(guide.title)).tag(guide.rawValue)
                 }
             }
 
@@ -179,7 +202,7 @@ struct DepthAnalyzerSettingsView: View {
                         Circle()
                             .fill(preference.color)
                             .frame(width: 11, height: 11)
-                        Text(preference.title)
+                        Text(LocalizedStringKey(preference.title))
                     }
                     .tag(preference.rawValue)
                 }
@@ -348,12 +371,6 @@ struct DepthAnalyzerSettingsView: View {
                 }
             }
             .listRowBackground(Self.debugOnlySettingsBackground)
-
-            Toggle(isOn: $isLiDARFocusAssistEnabled) {
-                Label("LiDAR Focus Assist", systemImage: "scope")
-            }
-            .listRowBackground(Self.debugOnlySettingsBackground)
-
         }
     }
 
@@ -408,11 +425,11 @@ private struct DepthAnalyzerStatusRow: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 24)
 
-            Text(title)
+            Text(LocalizedStringKey(title))
 
             Spacer(minLength: 12)
 
-            Text(value)
+            Text(LocalizedStringKey(value))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.trailing)
         }
@@ -436,8 +453,8 @@ private struct DepthAnalyzerPermissionControlRow: View {
                 .frame(width: 24)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                Text(value)
+                Text(LocalizedStringKey(title))
+                Text(LocalizedStringKey(value))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -447,7 +464,9 @@ private struct DepthAnalyzerPermissionControlRow: View {
             if isRequesting {
                 ProgressView()
             } else if let actionTitle {
-                Button(actionTitle, action: action)
+                Button(action: action) {
+                    Text(LocalizedStringKey(actionTitle))
+                }
                     .buttonStyle(.bordered)
                     .font(.footnote.weight(.semibold))
             }

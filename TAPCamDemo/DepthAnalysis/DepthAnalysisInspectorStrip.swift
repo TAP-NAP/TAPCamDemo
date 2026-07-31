@@ -112,8 +112,8 @@ struct AnalysisInspectorStrip: View {
             }
             .id(item.id)
             .buttonStyle(.plain)
-            .accessibilityLabel(item.title)
-            .help(item.detailedExplanation)
+            .accessibilityLabel(Text(LocalizedStringKey(item.title)))
+            .help(Text(LocalizedStringKey(item.detailedExplanation)))
         }
 
         verifyButton
@@ -134,8 +134,8 @@ struct AnalysisInspectorStrip: View {
             .id(inspector.id)
             .buttonStyle(.plain)
             .contentShape(Rectangle())
-            .accessibilityLabel(inspector.title)
-            .help(inspector.title)
+            .accessibilityLabel(Text(LocalizedStringKey(inspector.title)))
+            .help(Text(LocalizedStringKey(inspector.title)))
         }
     }
 
@@ -238,8 +238,8 @@ private struct PinnedStripRow<Content: View>: View {
                 .font(.caption.weight(.bold))
                 .foregroundStyle(.secondary)
                 .frame(width: 22, height: 32)
-                .accessibilityLabel(accessibilityLabel)
-                .help(helpText)
+                .accessibilityLabel(Text(LocalizedStringKey(accessibilityLabel)))
+                .help(Text(LocalizedStringKey(helpText)))
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
@@ -260,7 +260,7 @@ private struct AnalysisButtonBubble: View {
             Image(systemName: hint.systemImage)
                 .font(.caption.weight(.semibold))
                 .symbolRenderingMode(.hierarchical)
-            Text(hint.title)
+            Text(LocalizedStringKey(hint.title))
                 .font(.caption.weight(.semibold))
         }
         .padding(.horizontal, 10)

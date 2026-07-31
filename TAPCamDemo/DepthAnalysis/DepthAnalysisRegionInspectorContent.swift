@@ -29,7 +29,7 @@ struct RegionInspectorContent: View {
                     .font(.caption.weight(.semibold))
                     .help("Drag on the image to choose a region. The region heatmap uses only the selected valid depth samples to recalculate its color range.")
                 Spacer(minLength: 8)
-                Text(stateText)
+                Text(LocalizedStringKey(stateText))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
@@ -153,7 +153,7 @@ private struct AnalysisLoupe: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(title)
+            Text(LocalizedStringKey(title))
                 .font(.caption2.weight(.bold))
                 .foregroundStyle(.white.opacity(0.88))
 

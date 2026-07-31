@@ -100,7 +100,7 @@ struct CameraInitialReadinessOverlayView: View {
                         .font(.headline)
                         .foregroundStyle(.white)
 
-                    Text(message)
+                    CameraInitialReadinessMessageText(message: message)
                         .font(.footnote)
                         .foregroundStyle(.white.opacity(0.68))
                         .multilineTextAlignment(.center)
@@ -117,7 +117,7 @@ struct CameraInitialReadinessOverlayView: View {
                         .font(.headline)
                         .foregroundStyle(.white)
 
-                    Text(message)
+                    CameraInitialReadinessMessageText(message: message)
                         .font(.footnote)
                         .foregroundStyle(.white.opacity(0.68))
                         .multilineTextAlignment(.center)
@@ -152,5 +152,65 @@ struct CameraInitialReadinessOverlayView: View {
             }
         }
         .accessibilityIdentifier("camera.initialReadiness.overlay")
+    }
+}
+
+private struct CameraInitialReadinessMessageText: View {
+    let message: String
+
+    var body: Text {
+        Self.text(for: message)
+    }
+
+    private static let localizedMessages: Set<String> = [
+        "Preparing camera...",
+        "Preparing capture session...",
+        "Camera service restarted. Waiting for it to recover.",
+        "Camera service did not respond.",
+        "Camera configuration did not finish.",
+        "Camera preview did not resume. Retry camera setup.",
+        "Camera service is ready to retry.",
+        "Camera service is still recovering.",
+        "Camera access is required to capture depth photos.",
+        "No camera with depth-capable formats is available on this device.",
+        "Unable to add the selected camera input to the capture session.",
+        "Unable to add photo output to the capture session.",
+        "Unable to add video output to the capture session.",
+        "Unable to add audio output to the capture session.",
+        "Unable to add depth output to the capture session.",
+        "The current session configuration does not support depth photo delivery.",
+        "The selected zoom factor does not support depth delivery on this camera.",
+        "The selected RGB source and depth source cannot produce a supported paired capture.",
+        "This RGB and depth pairing is outside the SingleCam photo-depth pipeline.",
+        "Camera controls are temporarily unavailable.",
+        "Camera configuration failed. See diagnostics for details."
+    ]
+
+    private static func readyPairingKey(in message: String) -> String? {
+        let components = message.components(separatedBy: " · ")
+        guard components.count == 3,
+              components[0] == "Ready",
+              components[2] == "crop metadata" else {
+            return nil
+        }
+
+        switch components[1] {
+        case "rgbOnly", "rgbWithApplePairedDepth", "requiresMultiCam", "unsupported":
+            return components[1]
+        default:
+            return nil
+        }
+    }
+
+    private static func text(for message: String) -> Text {
+        if localizedMessages.contains(message) {
+            return Text(LocalizedStringKey(message))
+        }
+        if let pairingKey = readyPairingKey(in: message) {
+            return Text("Ready · \(Text(LocalizedStringKey(pairingKey))) · crop metadata")
+        }
+
+        // A future runtime diagnostic is a value, never an inferred catalog key.
+        return Text(verbatim: message)
     }
 }

@@ -177,11 +177,11 @@ struct WelcomeStartupSetupView: View {
 
 private struct StartupRequirementRow: View {
     let iconName: String
-    let title: String
-    let message: String
+    let title: LocalizedStringKey
+    let message: LocalizedStringKey
     let status: StartupGateRequirementStatus
-    let actionTitle: String
-    var secondaryActionTitle: String? = nil
+    let actionTitle: LocalizedStringKey
+    var secondaryActionTitle: LocalizedStringKey? = nil
     let primaryAction: () -> Void
     var secondaryAction: (() -> Void)? = nil
 
@@ -241,8 +241,10 @@ private struct StartupRequirementRow: View {
                 .accessibilityLabel("Needs Attention")
         case .idle:
             VStack(spacing: 7) {
-                Button(actionTitle) {
+                Button {
                     primaryAction()
+                } label: {
+                    Text(actionTitle)
                 }
                 .font(.caption.weight(.semibold))
                 .buttonStyle(.bordered)
@@ -250,8 +252,10 @@ private struct StartupRequirementRow: View {
 
                 if let secondaryActionTitle,
                    let secondaryAction {
-                    Button(secondaryActionTitle) {
+                    Button {
                         secondaryAction()
+                    } label: {
+                        Text(secondaryActionTitle)
                     }
                     .font(.caption2.weight(.semibold))
                     .buttonStyle(.plain)

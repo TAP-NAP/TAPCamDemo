@@ -178,7 +178,7 @@ struct CameraCaptureControlsView: View {
                 Button {
                     onSelectMode(mode)
                 } label: {
-                    Text(mode.title)
+                    Text(LocalizedStringKey(mode.title))
                         .font(.caption.weight(.semibold))
                         .tracking(0)
                         .foregroundStyle(modeForegroundStyle(mode))
@@ -186,8 +186,16 @@ struct CameraCaptureControlsView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(state.isInteractionLocked)
-                .accessibilityLabel(mode.isAvailableInStageOne ? "\(mode.title) mode" : "\(mode.title) mode coming soon")
+                .accessibilityLabel(modeAccessibilityLabel(mode))
             }
+        }
+    }
+
+    private func modeAccessibilityLabel(_ mode: CameraCaptureModeOption) -> Text {
+        if mode.isAvailableInStageOne {
+            Text(LocalizedStringKey(mode.accessibilityLabel))
+        } else {
+            Text(LocalizedStringKey(mode.comingSoonAccessibilityLabel))
         }
     }
 

@@ -264,11 +264,6 @@ nonisolated enum CameraIdleTimerPreferences {
     static let defaultKeepScreenAwake = true
 }
 
-nonisolated enum CameraLiDARFocusAssistPreferences {
-    static let isEnabledKey = "CameraLiDARFocusAssistEnabled"
-    static let defaultIsEnabled = false
-}
-
 nonisolated struct CameraPreviewFocusPoint: Equatable, Sendable {
     let x: Double
     let y: Double
@@ -613,6 +608,24 @@ nonisolated enum CameraCaptureModeOption: String, CaseIterable, Identifiable, Se
             "PHOTO"
         case .video:
             "VIDEO"
+        }
+    }
+
+    var accessibilityLabel: String {
+        switch self {
+        case .photo:
+            "Photo mode"
+        case .video:
+            "Video mode"
+        }
+    }
+
+    var comingSoonAccessibilityLabel: String {
+        switch self {
+        case .photo:
+            "Photo mode coming soon"
+        case .video:
+            "Video mode coming soon"
         }
     }
 

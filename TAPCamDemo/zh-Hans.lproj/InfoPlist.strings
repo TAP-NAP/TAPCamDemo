@@ -1,0 +1,6 @@
+"CFBundleDisplayName" = "TAPCam";
+"NSCameraUsageDescription" = "TAPCam 需要使用相机拍摄包含深度数据的照片和视频。";
+"NSLocationWhenInUseUsageDescription" = "TAPCam 可将拍摄位置写入 TAP 照片和视频的元数据。";
+"NSMicrophoneUsageDescription" = "启用录音后，TAPCam 可为实况照片和 TAP 视频录制声音。";
+"NSPhotoLibraryAddUsageDescription" = "TAPCam 需要将深度照片和 TAP 视频保存到 TAPCamDepth 相簿。";
+"NSPhotoLibraryUsageDescription" = "TAPCam 需要创建并访问 TAPCamDepth 相簿，以管理深度照片和 TAP 视频。";

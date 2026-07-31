@@ -100,6 +100,31 @@ struct TAPCameraCapturePresentationTests {
         #expect(!controlsSource.contains(".move(edge: .bottom)"))
     }
 
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func recentLibraryControlKeepsPlaceholderInTheStableThumbnailSlot() throws {
+        let controlsSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraCaptureControlsView.swift"
+        )
+        let thumbnailSection = try #require(
+            TAPCamDemoTestSourceInspection.substring(
+                in: controlsSource,
+                from: "private var recentPhotoThumbnail",
+                to: "private enum Metrics"
+            )
+        )
+
+        #expect(
+            thumbnailSection.contains(
+                "recentLibraryPresentation?.showsPlaceholderSymbol ?? true"
+            )
+        )
+        #expect(thumbnailSection.contains(#""photo.on.rectangle""#))
+        #expect(thumbnailSection.contains(".frame(width: 58, height: 58)"))
+        #expect(!thumbnailSection.contains(".task"))
+        #expect(!thumbnailSection.contains(".onAppear"))
+        #expect(!thumbnailSection.contains(".onDisappear"))
+    }
+
     @Test func captureLifecycleCoordinatorKeepsPendingSigningWarmupAndRetryPoliciesExplicit() {
         #expect(CaptureLifecycleCoordinator.initialCameraActions(startsAutomatically: true) == [.startCamera])
         #expect(CaptureLifecycleCoordinator.initialCameraActions(startsAutomatically: false) == [])
@@ -769,10 +794,37 @@ struct TAPCameraCapturePresentationTests {
         #expect(adjustmentSource.contains("CenterAnchoredChromeRotation"))
     }
 
+    @Test func cameraTickedSliderActiveTickIsTheOnlyDominantVisualState() {
+        let minor = CameraTickedSliderTickVisualState.minor
+        let major = CameraTickedSliderTickVisualState.major
+        let center = CameraTickedSliderTickVisualState.center
+        let active = CameraTickedSliderTickVisualState.active
+
+        #expect(!minor.usesHighlightColor)
+        #expect(!major.usesHighlightColor)
+        #expect(!center.usesHighlightColor)
+        #expect(active.usesHighlightColor)
+        #expect(CameraTickedSliderTickVisualState.allCases.filter(\.usesHighlightColor) == [.active])
+
+        #expect(minor.width < major.width)
+        #expect(major.width < center.width)
+        #expect(center.width < active.width)
+        #expect(minor.height < major.height)
+        #expect(major.height < center.height)
+        #expect(center.height < active.height)
+        #expect(minor.enabledOpacity < major.enabledOpacity)
+        #expect(major.enabledOpacity < center.enabledOpacity)
+        #expect(center.enabledOpacity < active.enabledOpacity)
+        #expect(active.disabledOpacity < active.enabledOpacity)
+    }
+
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func cameraTickedAdjustmentStripUsesCenteredAxisCursorAndHaptics() throws {
+    func cameraTickedAdjustmentStripUsesCenteredActiveTickAndSharedHaptics() throws {
         let adjustmentSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/CameraCapture/UI/CameraAdjustmentControlView.swift"
+        )
+        let basicEVSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraBasicEVControlView.swift"
         )
         let sliderSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/CameraCapture/UI/CameraTickedSliderRow.swift"
@@ -786,17 +838,20 @@ struct TAPCameraCapturePresentationTests {
 
         #expect(adjustmentSource.contains("tickValueStep: CameraEVPreferences.adjustmentStep"))
         #expect(adjustmentSource.contains("isEVIntegerHapticsEnabled: true"))
+        #expect(adjustmentSource.contains("CameraTickedSliderRow("))
+        #expect(basicEVSource.contains("CameraTickedSliderRow("))
         #expect(sliderSource.contains("portraitAdjustmentCenterline"))
-        #expect(sliderSource.contains("valueCursor"))
-        #expect(sliderSource.contains("cursorTriangle(direction: .down)"))
-        #expect(sliderSource.contains("cursorTriangle(direction: .up)"))
-        #expect(sliderSource.contains("offset(y: -Metrics.cursorTriangleBaseOffset)"))
-        #expect(sliderSource.contains("offset(y: Metrics.cursorTriangleBaseOffset)"))
-        #expect(sliderSource.contains("static let cursorTriangleWidth"))
-        #expect(sliderSource.contains("static let cursorTriangleHeight"))
-        #expect(sliderSource.contains("static let cursorTriangleBaseOffset"))
+        #expect(sliderSource.contains("activeTick"))
+        #expect(sliderSource.contains("visualState: .active"))
+        #expect(sliderSource.contains("visualState.usesHighlightColor"))
+        #expect(sliderSource.contains("CameraTickedSliderTickVisualState"))
+        #expect(sliderSource.contains("CameraTickedSliderTickMark("))
         #expect(sliderSource.contains("tickX(for: index, count: descriptors.count, width: proxy.size.width)"))
-        #expect(sliderSource.contains(#".accessibilityIdentifier("camera.tickedAdjustmentStrip.valueCursor")"#))
+        #expect(sliderSource.contains("CGFloat(normalizedValue) * trackWidth"))
+        #expect(sliderSource.contains(#".accessibilityIdentifier("camera.tickedAdjustmentStrip.activeTick")"#))
+        #expect(!sliderSource.contains("valueCursor"))
+        #expect(!sliderSource.contains("cursorTriangle"))
+        #expect(!sliderSource.contains("CameraTriangleCursorShape"))
         #expect(sliderSource.contains("@Environment(\\.cameraHapticFeedbackController)"))
         #expect(sliderSource.contains("hapticFeedbackController.adjustmentChanged(style: adjustmentHapticStyle(for: value))"))
         #expect(sliderSource.contains("return .zeroTick"))
@@ -832,7 +887,7 @@ struct TAPCameraCapturePresentationTests {
         let modeStripSource = String(controlsSource[modeStripStart.lowerBound..<lowerToolbarStart.lowerBound])
 
         #expect(modeStripSource.contains("ForEach(CameraCaptureModeOption.allCases)"))
-        #expect(modeStripSource.contains("Text(mode.title)"))
+        #expect(modeStripSource.contains("Text(LocalizedStringKey(mode.title))"))
         #expect(!modeStripSource.contains("rotationEffect"))
         #expect(controlsSource.contains("CameraLowerToolbarPlaceholderView"))
         #expect(!controlsSource.contains(#"ForEach(["EV", "ISO", "S", "AF", "ƒ"]"#))
@@ -854,6 +909,8 @@ struct TAPCameraCapturePresentationTests {
         #expect(controlsDesignSource.contains("Rotation Rules"))
         #expect(controlsDesignSource.contains("mode selector bar"))
         #expect(controlsDesignSource.contains("portrait adjustment centerline"))
+        #expect(controlsDesignSource.contains("active tick"))
+        #expect(controlsDesignSource.contains("不叠加三角形、圆点或其他独立游标"))
         #expect(controlsDesignSource.contains("value cursor"))
         #expect(controlsDesignSource.contains("focus target overlay"))
         #expect(controlsDesignSource.contains("focus frame anchor"))
@@ -933,6 +990,10 @@ struct TAPCameraCapturePresentationTests {
         #expect(CameraCaptureModeOption.photo.isAvailableInStageOne)
         #expect(CameraCaptureModeOption.video.isAvailableInStageOne)
         #expect(CameraCaptureModeOption.allCases.map(\.title) == ["PHOTO", "VIDEO"])
+        #expect(
+            CameraCaptureModeOption.allCases.map(\.accessibilityLabel)
+                == ["Photo mode", "Video mode"]
+        )
     }
 
     @Test func cameraChromeControlModesKeepExpectedDefaultsAndCycleOrder() throws {
@@ -1078,7 +1139,7 @@ struct TAPCameraCapturePresentationTests {
         #expect(settingsSource.contains(".fill(preference.color)"))
         #expect(settingsSource.contains(#"Section("Debug Camera Controls")"#))
         #expect(settingsSource.contains("#if DEBUG\n    @AppStorage(CameraFocusMagnifierPreference.storageKey)"))
-        #expect(settingsSource.contains("CameraLiDARFocusAssistPreferences.isEnabledKey"))
+        #expect(!settingsSource.contains("CameraLiDARFocusAssistPreferences"))
         let viewfinderSectionStart = try #require(settingsSource.range(of: "private var viewfinderSettingsSection"))
         let cameraBehaviorSectionStart = try #require(settingsSource.range(of: "private var cameraBehaviorSection"))
         let viewfinderSection = String(settingsSource[viewfinderSectionStart.lowerBound..<cameraBehaviorSectionStart.lowerBound])
@@ -1377,8 +1438,6 @@ struct TAPCameraCapturePresentationTests {
         #expect(!CameraLivePhotoPreferences.lastEnabledKey.isEmpty)
         #expect(CameraIdleTimerPreferences.defaultKeepScreenAwake)
         #expect(!CameraIdleTimerPreferences.keepScreenAwakeKey.isEmpty)
-        #expect(!CameraLiDARFocusAssistPreferences.defaultIsEnabled)
-        #expect(!CameraLiDARFocusAssistPreferences.isEnabledKey.isEmpty)
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
@@ -1402,7 +1461,8 @@ struct TAPCameraCapturePresentationTests {
         let debugSectionEnd = try #require(settingsSource.range(of: "private var debugAppAttestSections"))
         let debugCameraControlsSection = String(settingsSource[debugSectionStart.lowerBound..<debugSectionEnd.lowerBound])
         #expect(debugCameraControlsSection.contains(#"Picker("Focus Magnifier", selection: $focusMagnifierRawValue)"#))
-        #expect(debugCameraControlsSection.contains("LiDAR Focus Assist"))
+        #expect(!debugCameraControlsSection.contains("LiDAR Focus Assist"))
+        #expect(!settingsSource.contains("CameraLiDARFocusAssistPreferences"))
         #expect(!debugCameraControlsSection.contains("Manual Focus Tap Assist"))
         #expect(!settingsSource.contains("CameraManualFocusTapAssistPreferences"))
         #expect(previewSource.contains("onManualFocusTapAssist(capturePoint)"))

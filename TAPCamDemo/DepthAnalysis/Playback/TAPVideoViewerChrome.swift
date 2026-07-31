@@ -46,8 +46,8 @@ nonisolated enum TAPVideoViewerModePolicy {
                     }
                 }
             case .threeD:
-                isEnabled = false
-                accessibilityValue = "Unavailable for video"
+                isEnabled = true
+                accessibilityValue = "Coming soon"
             }
             return DepthViewerModeItem(
                 id: tool.rawValue,
@@ -100,6 +100,7 @@ struct TAPVideoViewerChrome: View {
     let onShareTapped: () -> Void
     let onModeTapped: (String) -> Void
     let onDeleteTapped: () -> Void
+    @State private var comingSoonToastTrigger: UUID?
 
     var body: some View {
         let isPlayerReady = player != nil
@@ -127,9 +128,29 @@ struct TAPVideoViewerChrome: View {
             bottomAccessory: TAPVideoPlaybackTransportAccessory(player: player),
             onBackTapped: onBackTapped,
             onShareTapped: onShareTapped,
-            onModeTapped: onModeTapped,
+            onModeTapped: handleModeTapped,
             onDeleteTapped: onDeleteTapped
         )
+        .overlay(alignment: .top) {
+            TAPVideoComingSoonToast()
+                .padding(.horizontal, 38)
+                .padding(
+                    .top,
+                    TAPVideoViewerChromeLayout.noticeTopPadding(
+                        topSafeArea: topSafeArea
+                    )
+                )
+                .phaseAnimator(
+                    TAPVideoComingSoonToastPhase.allCases,
+                    trigger: comingSoonToastTrigger
+                ) { content, phase in
+                    content
+                        .opacity(phase.opacity)
+                        .accessibilityHidden(!phase.isVisible)
+                } animation: { phase in
+                    phase.animation
+                }
+        }
     }
 
     private func shareAccessibilityLabel(isPlayerReady: Bool) -> String {
@@ -137,5 +158,69 @@ struct TAPVideoViewerChrome: View {
             return "Preparing video"
         }
         return isSharePreparing ? "Preparing share" : "Share video"
+    }
+
+    private func handleModeTapped(_ itemID: String) {
+        guard itemID == AnalysisViewerTool.threeD.rawValue else {
+            onModeTapped(itemID)
+            return
+        }
+        showComingSoonToast()
+    }
+
+    private func showComingSoonToast() {
+        comingSoonToastTrigger = UUID()
+    }
+}
+
+private enum TAPVideoComingSoonToastPhase: CaseIterable {
+    case hidden
+    case visible
+    case holding
+    case dismissed
+
+    var isVisible: Bool {
+        self == .visible || self == .holding
+    }
+
+    var opacity: Double {
+        switch self {
+        case .hidden, .dismissed:
+            0
+        case .visible:
+            1
+        case .holding:
+            // Keep one imperceptibly small animatable delta so PhaseAnimator
+            // owns the full two-second hold before accessibility is hidden.
+            0.999
+        }
+    }
+
+    var animation: Animation? {
+        switch self {
+        case .hidden:
+            nil
+        case .visible:
+            .easeInOut(duration: 0.18)
+        case .holding:
+            .linear(duration: 2)
+        case .dismissed:
+            .easeInOut(duration: 0.18)
+        }
+    }
+}
+
+private struct TAPVideoComingSoonToast: View {
+    var body: some View {
+        Text("Coming soon")
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(.white)
+            .lineLimit(1)
+            .minimumScaleFactor(0.76)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(.black.opacity(0.58), in: Capsule())
+            .allowsHitTesting(false)
+            .accessibilityIdentifier("tap.viewer.edgeToast")
     }
 }

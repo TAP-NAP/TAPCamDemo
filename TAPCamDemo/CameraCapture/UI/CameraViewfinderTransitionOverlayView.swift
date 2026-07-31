@@ -108,7 +108,7 @@ struct CameraViewfinderTransitionOverlayView<RetainedPreview: View>: View {
                     }
 
                     if let message = presentation.message {
-                        Text(message)
+                        CameraViewfinderTransitionCopy.text(for: message)
                             .font(.footnote.weight(.semibold))
                             .foregroundStyle(.white)
                             .multilineTextAlignment(.center)
@@ -117,7 +117,9 @@ struct CameraViewfinderTransitionOverlayView<RetainedPreview: View>: View {
                     }
 
                     if let recoveryActionTitle, let onRecoveryAction {
-                        Button(recoveryActionTitle, action: onRecoveryAction)
+                        Button(action: onRecoveryAction) {
+                            CameraViewfinderTransitionCopy.text(for: recoveryActionTitle)
+                        }
                             .buttonStyle(.borderedProminent)
                             .tint(.white)
                             .foregroundStyle(.black)
@@ -134,9 +136,16 @@ struct CameraViewfinderTransitionOverlayView<RetainedPreview: View>: View {
         .allowsHitTesting(presentation.isPresented)
         .accessibilityElement(children: recoveryActionTitle == nil ? .combine : .contain)
         .accessibilityHidden(!presentation.isPresented)
-        .accessibilityLabel(presentation.message ?? "")
+        .accessibilityLabel(accessibilityLabel)
         .accessibilityIdentifier("camera.viewfinder.transitionOverlay")
         .animation(.easeInOut(duration: 0.18), value: presentation)
+    }
+
+    private var accessibilityLabel: Text {
+        guard let message = presentation.message else {
+            return Text(verbatim: "")
+        }
+        return CameraViewfinderTransitionCopy.text(for: message)
     }
 }
 
@@ -153,5 +162,27 @@ extension CameraViewfinderTransitionOverlayView where RetainedPreview == EmptyVi
         ) {
             EmptyView()
         }
+    }
+}
+
+private enum CameraViewfinderTransitionCopy {
+    private static let localizedMessages: Set<String> = [
+        "Starting Pro mode…",
+        "Returning to standard mode…",
+        "Switching to front camera…",
+        "Switching to rear camera…",
+        "Restoring Pro mode…",
+        "Restoring standard camera…",
+        "Unable to restore the camera.",
+        "Camera service is not responding. Reopen TAP-NAP if it does not recover.",
+        "Retry"
+    ]
+
+    static func text(for message: String) -> Text {
+        guard localizedMessages.contains(message) else {
+            // Presentation cases may carry a future runtime value; keep it verbatim.
+            return Text(verbatim: message)
+        }
+        return Text(LocalizedStringKey(message))
     }
 }

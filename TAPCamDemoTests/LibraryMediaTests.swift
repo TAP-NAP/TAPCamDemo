@@ -10,6 +10,62 @@ import UIKit
 @testable import TAPCamDemo
 
 struct LibraryMediaTests {
+    @Test func recentLibraryPlaceholderRemainsVisibleUntilPosterIsReady() {
+        let itemID = LibraryMediaID.tapCapture("placeholder")
+        let readyPoster = MediaPoster(
+            cacheKey: "ready",
+            jpegData: Data([0])
+        )
+
+        #expect(RecentLibraryPresentation.unresolved.showsPlaceholderSymbol)
+        #expect(RecentLibraryPresentation.empty.showsPlaceholderSymbol)
+        #expect(
+            RecentLibraryPresentation.resolving(
+                itemID: itemID,
+                kind: .photo
+            ).showsPlaceholderSymbol
+        )
+        #expect(
+            RecentLibraryPresentation.loading(
+                itemID: itemID,
+                kind: .photo,
+                preview: nil,
+                progress: nil
+            ).showsPlaceholderSymbol
+        )
+        #expect(
+            !RecentLibraryPresentation.loading(
+                itemID: itemID,
+                kind: .photo,
+                preview: readyPoster,
+                progress: 0.5
+            ).showsPlaceholderSymbol
+        )
+        #expect(
+            RecentLibraryPresentation.failed(
+                itemID: itemID,
+                kind: .photo,
+                preview: nil,
+                retryable: true
+            ).showsPlaceholderSymbol
+        )
+        #expect(
+            !RecentLibraryPresentation.failed(
+                itemID: itemID,
+                kind: .photo,
+                preview: readyPoster,
+                retryable: true
+            ).showsPlaceholderSymbol
+        )
+        #expect(
+            !RecentLibraryPresentation.ready(
+                itemID: itemID,
+                kind: .photo,
+                poster: readyPoster
+            ).showsPlaceholderSymbol
+        )
+    }
+
     @Test func originalVideoResourceAlwaysWinsOverAdjustedFullSizeVideo() {
         #expect(LibraryVideoResourceSelectionPolicy.preferredType(
             in: [.fullSizeVideo, .video]

@@ -18,9 +18,9 @@ leaves an 18pt black gap between neighboring photos.
 Related design note:
 [DepthAnalysisViewerRedesign.md](../../Docs/DepthAnalysisViewerRedesign.md)
 describes the current Photos-style viewer implementation, the `RAW` / `2D` /
-`3D` mode group inside the bottom Share / `RAW` / `2D` / `3D` / Delete
-capsule, centered aspect-fit tool containers, Liquid Glass future work, 2D
-overlay/plane detection, and native 3D projection.
+`3D` mode group inside the bottom viewer toolbar (Share / centered `RAW` /
+`2D` / `3D` capsule / Delete), centered aspect-fit tool containers, Liquid
+Glass future work, 2D overlay/plane detection, and native 3D projection.
 
 Terminology note: `TAPCamDemo/TAPLibrary` is the app-private pending artifact
 queue for signing, Photos export, retry, and cleanup. The user-facing TAP
@@ -30,9 +30,11 @@ inside this module.
 Photo and TAP Video viewers intentionally share one interaction vocabulary:
 Back, Share, Delete, and the centered icon-only `RAW` / `2D` / `3D` capsule
 come from the same chrome components. Video adds an app-owned transport above
-that row, enables `2D` only when registration is complete, and keeps `3D`
-visible but disabled. Its visual surface is `AVPlayerLayer`-backed; it does not
-embed interactive SwiftUI controls in an `AVPlayerViewController` overlay.
+that row and enables `2D` only when registration is complete. Video `3D`
+remains visible and hittable, but tapping it only shows one localized
+`Coming soon` edge toast without changing the selected mode or playback. Its
+visual surface is `AVPlayerLayer`-backed; it does not embed interactive SwiftUI
+controls in an `AVPlayerViewController` overlay.
 
 ## Code Map
 
@@ -51,7 +53,7 @@ embed interactive SwiftUI controls in an `AVPlayerViewController` overlay.
 | Playback session/resource lifecycle, stable chrome, transport, player surface, and depth metadata/decode/render pipeline | [Playback/](Playback/), [Playback/Depth/](Playback/Depth/) |
 | Debug-only runtime fixture specification, generator, and harness view | [DiagnosticsSupport/](DiagnosticsSupport/) |
 | Central visual stage for RGB, heatmap, mask, planes, internal point projection, region gestures, and plane seed taps | [DepthAnalysisStageView.swift](DepthAnalysisStageView.swift) |
-| Bottom-left Share, centered icon-only `RAW` / `2D` / `3D` capsule, and bottom-right Delete shared by Photo and TAP Video | [DepthAnalysisViewerChromeView.swift](DepthAnalysisViewerChromeView.swift), [DepthAnalysisControlsView.swift](DepthAnalysisControlsView.swift) |
+| Viewer toolbar: bottom-left Share, centered icon-only `RAW` / `2D` / `3D` capsule, and bottom-right Delete shared by Photo and TAP Video | [DepthAnalysisViewerChromeView.swift](DepthAnalysisViewerChromeView.swift), [DepthAnalysisControlsView.swift](DepthAnalysisControlsView.swift) |
 | System share entry for verification-original exports | [DepthAnalysisView.swift](DepthAnalysisView.swift), [VerificationExportActivityView.swift](VerificationExportActivityView.swift) |
 | App Attest capture-signature verification service and public-safe report model | [AppAttestSignatureVerification.swift](AppAttestSignatureVerification.swift) |
 | App Attest capture-signature verification panel | [AppAttestSignatureVerificationPanel.swift](AppAttestSignatureVerificationPanel.swift) |
@@ -154,7 +156,8 @@ If this module is new to you, read it in this order:
    RAW zoom/pan/double-tap, centered `RAW` / `2D` / `3D` primary surfaces,
    selected-tool routing, global Share/Delete presentation, left-edge return,
    and top-level callbacks. Share prepares the verification-original export
-   for saved Photos items and opens the system share page directly. Delete routes
+   for saved Photos items outside the MainActor and opens the system share page
+   directly. Delete routes
    Photos assets through system Photos deletion via
    `PhotoLibraryWriter.deleteAsset` and pending local records through
    `TAPPendingCaptureStore.removeRecord`.
@@ -464,11 +467,12 @@ and falling back to the unsigned container-specific file.
 display-ready local analysis values from `DepthAnalysisCarouselStore` and its
 `AnalysisPhotoSlot`s, keeps the active photo centered, and switches the primary
 surface among `RAW`, `2D`, and `3D`.
-`DepthAnalysisViewerChromeView` keeps Share as a bottom-left action and Delete
-as a bottom-right action. `DepthAnalysisControlsView` is only the centered
+`DepthAnalysisViewerChromeView` owns the viewer toolbar, with Share as a
+bottom-left action and Delete as a bottom-right action.
+`DepthAnalysisControlsView` is only the centered
 icon-only `RAW` / `2D` / `3D` capsule. Credential detail stays out of the
-control bar; Release Share UI shows only whether a locally valid credential is
-present. Field-level inspector data still stays out of the control bar.
+viewer toolbar; Release Share UI shows only whether a locally valid credential
+is present. Field-level inspector data still stays out of the viewer toolbar.
 
 TAP Library item construction is split from the grid UI.
 [DepthAlbumItemProvider.swift](DepthAlbumItemProvider.swift) reads visible

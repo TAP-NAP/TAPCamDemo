@@ -160,7 +160,9 @@ struct LockedCaptureRootView: View {
 
     private var diagnosticBadge: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Lock POC • \(controller.state.title)")
+            Text(
+                "Lock POC • \(Text(LocalizedStringKey(controller.state.title)))"
+            )
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.white)
             Text(controller.state.message)
@@ -180,7 +182,7 @@ struct LockedCaptureRootView: View {
                 .tint(.white)
                 .opacity(controller.state.isRecovering ? 1 : 0)
 
-            Text(controller.state.title)
+            Text(LocalizedStringKey(controller.state.title))
                 .font(.headline)
                 .foregroundStyle(.white)
 

@@ -221,8 +221,12 @@ struct CameraViewfinderChromeView: View {
         .opacity(state.proModeState.isVisible ? 1 : 0)
         .allowsHitTesting(state.proModeState.isInteractive)
         .accessibilityHidden(!state.proModeState.isVisible)
-        .accessibilityLabel(state.proModeState.accessibilityLabel)
-        .accessibilityValue(state.proModeState.accessibilityValue)
+        .accessibilityLabel(
+            Text(LocalizedStringKey(state.proModeState.accessibilityLabel))
+        )
+        .accessibilityValue(
+            Text(LocalizedStringKey(state.proModeState.accessibilityValue))
+        )
         .accessibilityIdentifier("camera.chrome.proMode")
         .help(state.proModeState.isActive ? "Leave Pro mode." : "Use Pro camera controls.")
         .animation(.easeInOut(duration: 0.2), value: state.proModeState)

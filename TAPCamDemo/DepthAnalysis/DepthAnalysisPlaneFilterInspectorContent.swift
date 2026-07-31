@@ -203,7 +203,7 @@ private struct PlaneLegendSwatch: View {
             RoundedRectangle(cornerRadius: 3, style: .continuous)
                 .fill(color)
                 .frame(width: 18, height: 12)
-            Text(text)
+            Text(LocalizedStringKey(text))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
