@@ -6,6 +6,33 @@
 import Foundation
 import SwiftUI
 
+nonisolated enum CameraAdjustmentAutomationState: Equatable, Sendable {
+    case automatic
+    case manual
+
+    var title: String {
+        switch self {
+        case .automatic:
+            "Auto"
+        case .manual:
+            "Manual"
+        }
+    }
+
+    var badge: String {
+        switch self {
+        case .automatic:
+            "A"
+        case .manual:
+            "M"
+        }
+    }
+
+    var canRestoreAuto: Bool {
+        self == .manual
+    }
+}
+
 nonisolated struct CameraAdjustmentControlState: Equatable, Sendable {
     nonisolated struct ExposureRiskRanges: Equatable, Sendable {
         let iso: [ClosedRange<Double>]
@@ -85,19 +112,35 @@ nonisolated struct CameraAdjustmentControlState: Equatable, Sendable {
         }
 
         var isoBadge: String {
-            mode.isISOAutomatic ? "A" : "M"
+            isoAutomationState.badge
         }
 
         var shutterBadge: String {
-            mode.isShutterAutomatic ? "A" : "M"
+            shutterAutomationState.badge
+        }
+
+        var isoAutomationState: CameraAdjustmentAutomationState {
+            mode.isISOAutomatic ? .automatic : .manual
+        }
+
+        var shutterAutomationState: CameraAdjustmentAutomationState {
+            mode.isShutterAutomatic ? .automatic : .manual
         }
 
         var isoValue: String {
-            isoLabel(for: iso)
+            isoScale.label(for: iso)
         }
 
         var shutterValue: String {
-            shutterLabel(for: shutterDurationSeconds)
+            shutterScale.label(for: shutterDurationSeconds)
+        }
+
+        var isoScale: CameraPhotographyExposureScale {
+            .iso(in: isoRange)
+        }
+
+        var shutterScale: CameraPhotographyExposureScale {
+            .shutterDuration(in: shutterDurationRangeSeconds)
         }
 
         nonisolated func clampedISO(_ value: Double) -> Double {
@@ -108,40 +151,20 @@ nonisolated struct CameraAdjustmentControlState: Equatable, Sendable {
             clamped(value, in: shutterDurationRangeSeconds)
         }
 
-        nonisolated func normalizedShutterPosition(for duration: Double) -> Double {
-            let minimum = max(shutterDurationRangeSeconds.lowerBound, 0.000_001)
-            let maximum = max(shutterDurationRangeSeconds.upperBound, minimum)
-            guard maximum > minimum else {
-                return 0
-            }
-            let clampedDuration = clampedShutterDuration(duration)
-            return (log(clampedDuration) - log(minimum)) / (log(maximum) - log(minimum))
+        nonisolated func isoPosition(for value: Double) -> Double {
+            isoScale.position(for: clampedISO(value))
         }
 
-        nonisolated func shutterDuration(forNormalizedPosition position: Double) -> Double {
-            let minimum = max(shutterDurationRangeSeconds.lowerBound, 0.000_001)
-            let maximum = max(shutterDurationRangeSeconds.upperBound, minimum)
-            guard maximum > minimum else {
-                return minimum
-            }
-            let clampedPosition = clamped(position, in: 0...1)
-            return exp(log(minimum) + clampedPosition * (log(maximum) - log(minimum)))
+        nonisolated func iso(forPosition position: Double) -> Double {
+            isoScale.value(at: position)
         }
 
-        nonisolated func isoLabel(for value: Double) -> String {
-            String(format: "%.0f", clampedISO(value))
+        nonisolated func shutterPosition(for duration: Double) -> Double {
+            shutterScale.position(for: clampedShutterDuration(duration))
         }
 
-        nonisolated func shutterLabel(for duration: Double) -> String {
-            let clampedDuration = clampedShutterDuration(duration)
-            guard clampedDuration < 1 else {
-                return String(format: "%.1fs", clampedDuration)
-            }
-            let reciprocal = 1 / max(clampedDuration, 0.000_001)
-            if reciprocal >= 10 {
-                return "1/\(Int(reciprocal.rounded()))"
-            }
-            return String(format: "%.2fs", clampedDuration)
+        nonisolated func shutterDuration(forPosition position: Double) -> Double {
+            shutterScale.value(at: position)
         }
 
         private static func signedLabel(_ value: Double, zeroPrefix: String) -> String {
@@ -160,6 +183,14 @@ nonisolated struct CameraAdjustmentControlState: Equatable, Sendable {
 
         var title: String {
             mode.title
+        }
+
+        var automationState: CameraAdjustmentAutomationState {
+            mode == .auto ? .automatic : .manual
+        }
+
+        var badge: String {
+            automationState.badge
         }
 
         var lensPositionValue: String {
@@ -328,7 +359,6 @@ struct CameraLowerToolbarView: View {
     let state: CameraAdjustmentControlState
     let contentRotation: Angle
     let onSelectControl: (CameraAdjustmentControl) -> Void
-    let onToggleFocusMode: () -> Void
 
     var body: some View {
         HStack(spacing: 8) {
@@ -346,7 +376,7 @@ struct CameraLowerToolbarView: View {
                 value: state.exposure.isoValue,
                 badge: state.exposure.isoBadge,
                 control: .iso,
-                isEnabled: state.exposure.isAvailable,
+                isEnabled: state.exposure.isAvailable && state.exposure.isoScale.isAdjustable,
                 contentRotation: contentRotation
             )
 
@@ -355,24 +385,18 @@ struct CameraLowerToolbarView: View {
                 value: state.exposure.shutterValue,
                 badge: state.exposure.shutterBadge,
                 control: .shutter,
-                isEnabled: state.exposure.isAvailable,
+                isEnabled: state.exposure.isAvailable && state.exposure.shutterScale.isAdjustable,
                 contentRotation: contentRotation
             )
 
-            Button(action: onToggleFocusMode) {
-                CameraToolbarButtonContent(
-                    title: state.focus.title,
-                    value: nil,
-                    badge: nil,
-                    isActive: state.activeControl == .focus,
-                    isEnabled: state.focus.isAvailable,
-                    contentRotation: contentRotation
-                )
-            }
-            .buttonStyle(.plain)
-            .disabled(!state.focus.isAvailable)
-            .accessibilityLabel(state.focus.mode == .auto ? "Auto focus" : "Manual focus")
-            .accessibilityIdentifier("camera.lowerToolbar.focus")
+            parameterButton(
+                title: "Focus",
+                value: nil,
+                badge: state.focus.badge,
+                control: .focus,
+                isEnabled: state.focus.isAvailable,
+                contentRotation: contentRotation
+            )
 
             CameraToolbarButtonContent(
                 title: "ƒ",
@@ -390,7 +414,7 @@ struct CameraLowerToolbarView: View {
 
     private func parameterButton(
         title: String,
-        value: String,
+        value: String?,
         badge: String?,
         control: CameraAdjustmentControl,
         isEnabled: Bool,
@@ -410,7 +434,9 @@ struct CameraLowerToolbarView: View {
         }
         .buttonStyle(.plain)
         .disabled(!isEnabled)
-        .accessibilityLabel("\(title) \(value)")
+        .accessibilityLabel(
+            [title, value, badge].compactMap { $0 }.joined(separator: " ")
+        )
         .accessibilityIdentifier("camera.lowerToolbar.\(control.rawValue)")
     }
 }
@@ -423,6 +449,7 @@ struct CameraTickedAdjustmentStrip: View {
     let onAdjustISO: (Double) -> Void
     let onAdjustShutterPosition: (Double) -> Void
     let onAdjustLensPosition: (Double) -> Void
+    let onRestoreAutomaticMode: (CameraAdjustmentControl) -> Void
     let onBeginAdjustment: (CameraAdjustmentControl) -> Void
     let onEndAdjustment: (CameraAdjustmentControl) -> Void
 
@@ -463,7 +490,8 @@ struct CameraTickedAdjustmentStrip: View {
             }
         }()
         return CameraTickedSliderRow(
-            title: "EV",
+            title: state.exposure.evTitle,
+            automationState: nil,
             value: state.exposure.evValue,
             valueBinding: Binding(
                 get: { bias },
@@ -477,64 +505,76 @@ struct CameraTickedAdjustmentStrip: View {
             riskRanges: [],
             tickValueStep: CameraEVPreferences.adjustmentStep,
             isEVIntegerHapticsEnabled: true,
+            majorTickIndices: [],
+            showsGeometricCenterTick: false,
+            onRestoreAuto: {},
             onEditingBegan: { onBeginAdjustment(.ev) },
             onEditingEnded: { onEndAdjustment(.ev) }
         )
     }
 
     private var isoStrip: some View {
-        CameraTickedSliderRow(
+        let scale = state.exposure.isoScale
+        return CameraTickedSliderRow(
             title: "ISO",
+            automationState: state.exposure.isoAutomationState,
             value: state.exposure.isoValue,
             valueBinding: Binding(
-                get: { state.exposure.iso },
-                set: { onAdjustISO(state.exposure.clampedISO($0)) }
+                get: { state.exposure.isoPosition(for: state.exposure.iso) },
+                set: { onAdjustISO(state.exposure.iso(forPosition: $0)) }
             ),
-            range: state.exposure.isoRange,
+            range: scale.positionRange,
             step: 1,
-            isEnabled: state.exposure.isAvailable,
+            isEnabled: state.exposure.isAvailable && scale.isAdjustable,
             highlightColor: highlightColor,
             contentRotation: contentRotation,
-            riskRanges: state.exposure.isoRiskRanges,
-            tickValueStep: nil,
+            riskRanges: scale.positionRanges(for: state.exposure.isoRiskRanges),
+            tickValueStep: 1,
             isEVIntegerHapticsEnabled: false,
+            majorTickIndices: scale.majorTickIndices,
+            showsGeometricCenterTick: false,
+            onRestoreAuto: { onRestoreAutomaticMode(.iso) },
             onEditingBegan: { onBeginAdjustment(.iso) },
             onEditingEnded: { onEndAdjustment(.iso) }
         )
     }
 
     private var shutterStrip: some View {
-        CameraTickedSliderRow(
+        let scale = state.exposure.shutterScale
+        return CameraTickedSliderRow(
             title: "S",
+            automationState: state.exposure.shutterAutomationState,
             value: state.exposure.shutterValue,
             valueBinding: Binding(
-                get: { state.exposure.normalizedShutterPosition(for: state.exposure.shutterDurationSeconds) },
+                get: { state.exposure.shutterPosition(for: state.exposure.shutterDurationSeconds) },
                 set: { onAdjustShutterPosition($0) }
             ),
-            range: 0...1,
-            step: 0.01,
-            isEnabled: state.exposure.isAvailable,
+            range: scale.positionRange,
+            step: 1,
+            isEnabled: state.exposure.isAvailable && scale.isAdjustable,
             highlightColor: highlightColor,
             contentRotation: contentRotation,
             riskRanges: shutterRiskRangesForSlider,
-            tickValueStep: nil,
+            tickValueStep: 1,
             isEVIntegerHapticsEnabled: false,
+            majorTickIndices: scale.majorTickIndices,
+            showsGeometricCenterTick: false,
+            onRestoreAuto: { onRestoreAutomaticMode(.shutter) },
             onEditingBegan: { onBeginAdjustment(.shutter) },
             onEditingEnded: { onEndAdjustment(.shutter) }
         )
     }
 
     private var shutterRiskRangesForSlider: [ClosedRange<Double>] {
-        state.exposure.shutterDurationRiskRanges.map { range in
-            let lower = state.exposure.normalizedShutterPosition(for: range.lowerBound)
-            let upper = state.exposure.normalizedShutterPosition(for: range.upperBound)
-            return min(lower, upper)...max(lower, upper)
-        }
+        state.exposure.shutterScale.positionRanges(
+            for: state.exposure.shutterDurationRiskRanges
+        )
     }
 
     private var focusStrip: some View {
         CameraTickedSliderRow(
-            title: "MF",
+            title: "Focus",
+            automationState: state.focus.automationState,
             value: state.focus.lensPositionValue,
             valueBinding: Binding(
                 get: { state.focus.lensPosition },
@@ -542,12 +582,15 @@ struct CameraTickedAdjustmentStrip: View {
             ),
             range: state.focus.lensPositionRange,
             step: 0.01,
-            isEnabled: state.focus.isAvailable && state.focus.mode == .manual,
+            isEnabled: state.focus.isAvailable,
             highlightColor: highlightColor,
             contentRotation: contentRotation,
             riskRanges: [],
             tickValueStep: nil,
             isEVIntegerHapticsEnabled: false,
+            majorTickIndices: [],
+            showsGeometricCenterTick: true,
+            onRestoreAuto: { onRestoreAutomaticMode(.focus) },
             onEditingBegan: { onBeginAdjustment(.focus) },
             onEditingEnded: { onEndAdjustment(.focus) }
         )
@@ -587,9 +630,9 @@ struct CameraLowerToolbarPlaceholderView: View {
             )
 
             CameraToolbarButtonContent(
-                title: "AF",
+                title: "Focus",
                 value: nil,
-                badge: nil,
+                badge: "A",
                 isActive: false,
                 isEnabled: false,
                 contentRotation: contentRotation

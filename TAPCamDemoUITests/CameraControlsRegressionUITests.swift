@@ -37,23 +37,34 @@ final class CameraControlsRegressionUITests: XCTestCase {
 
         tapButton("camera.lowerToolbar.iso", in: app)
         XCTAssertTrue(strip(in: app).waitForExistence(timeout: 2))
-        drag(strip: strip(in: app), from: 0.20, to: 0.74)
+        XCTAssertTrue(waitForStatus(in: app, containing: "ISO strip shown"))
+        assertAutomaticState(in: app)
+        drag(strip: strip(in: app), from: 0.35, to: 0.68)
         XCTAssertTrue(waitForStatus(in: app, containing: "ISO"))
+        restoreAuto(in: app)
+        XCTAssertTrue(waitForStatus(in: app, containing: "ISO Auto restored"))
+        assertAutomaticState(in: app)
 
         tapButton("camera.lowerToolbar.shutter", in: app)
         XCTAssertTrue(strip(in: app).waitForExistence(timeout: 2))
-        drag(strip: strip(in: app), from: 0.30, to: 0.64)
+        XCTAssertTrue(waitForStatus(in: app, containing: "Shutter strip shown"))
+        drag(strip: strip(in: app), from: 0.35, to: 0.65)
         XCTAssertTrue(waitForStatus(in: app, containing: "Shutter"))
+        restoreAuto(in: app)
+        XCTAssertTrue(waitForStatus(in: app, containing: "Shutter Auto restored"))
 
         tapButton("camera.lowerToolbar.focus", in: app)
         XCTAssertTrue(strip(in: app).waitForExistence(timeout: 2))
-        drag(strip: strip(in: app), from: 0.50, to: 0.82)
+        XCTAssertTrue(waitForStatus(in: app, containing: "Focus strip shown"))
+        drag(strip: strip(in: app), from: 0.45, to: 0.68)
         XCTAssertTrue(waitForStatus(in: app, containing: "MF"))
+        restoreAuto(in: app)
+        XCTAssertTrue(waitForStatus(in: app, containing: "Focus Auto restored"))
 
         tapButton("camera.lowerToolbar.focus", in: app)
-        XCTAssertTrue(waitForStatus(in: app, containing: "AF restored"))
+        XCTAssertTrue(waitForStatus(in: app, containing: "Controls hidden"))
 
-        let videoMode = app.buttons["VIDEO mode"]
+        let videoMode = app.buttons["camera.mode.video"]
         XCTAssertTrue(videoMode.waitForExistence(timeout: 2))
         videoMode.tap()
         XCTAssertTrue(waitForStatus(in: app, containing: "VIDEO selected"))
@@ -88,6 +99,30 @@ final class CameraControlsRegressionUITests: XCTestCase {
 
     private func strip(in app: XCUIApplication) -> XCUIElement {
         app.descendants(matching: .any)["camera.tickedAdjustmentStrip"]
+    }
+
+    private func restoreAuto(in app: XCUIApplication) {
+        let manualButton = app.buttons["camera.tickedAdjustmentStrip.automation"]
+        XCTAssertTrue(manualButton.waitForExistence(timeout: 2))
+        XCTAssertTrue(manualButton.isHittable)
+        manualButton.tap()
+    }
+
+    private func assertAutomaticState(in app: XCUIApplication) {
+        let identifier = "camera.tickedAdjustmentStrip.automation"
+        let state = app.descendants(matching: .any)[identifier]
+        let automaticState = XCTNSPredicateExpectation(
+            predicate: NSPredicate(
+                format: "exists == true AND label CONTAINS[c] %@",
+                "Auto"
+            ),
+            object: state
+        )
+        XCTAssertEqual(
+            XCTWaiter.wait(for: [automaticState], timeout: 2),
+            .completed
+        )
+        XCTAssertFalse(app.buttons[identifier].exists)
     }
 
     private func drag(strip: XCUIElement, from startX: CGFloat, to endX: CGFloat) {

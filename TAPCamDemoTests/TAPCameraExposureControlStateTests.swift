@@ -3,6 +3,7 @@
 //  TAPCamDemoTests
 //
 
+import Foundation
 import Testing
 @testable import TAPCamDemo
 
@@ -141,6 +142,89 @@ struct TAPCameraExposureControlStateTests {
         )
 
         #expect(abs(sample.equivalentExposure - 0.5) < 0.000_001)
+    }
+
+    @Test func manualAdjustmentsSnapToPhotographicThirdStopValues() {
+        let capability = Self.capability()
+        let state = CameraExposureControlState(capability: capability)
+
+        let isoResult = state.setISO(118)
+        let shutterResult = state.setShutterDuration(1.0 / 120.0)
+
+        #expect(isoResult.nextState.mode == .isoPriority)
+        #expect(isoResult.displayState.iso == 125)
+        #expect(shutterResult.nextState.mode == .shutterPriority)
+        #expect(
+            abs(shutterResult.displayState.shutterDurationSeconds - 1.0 / 125.0)
+                < 0.000_001
+        )
+    }
+
+    @Test func restoringOneAutomaticSidePreservesTheOtherManualSide() {
+        let capability = Self.capability()
+        let manual = CameraExposureControlState(capability: capability)
+            .setISO(200)
+            .nextState
+            .setShutterDuration(1.0 / 50.0)
+            .nextState
+
+        let isoAutomatic = manual.makeISOAutomatic()
+        let shutterAutomatic = manual.makeShutterAutomatic()
+
+        #expect(isoAutomatic.nextState.mode == .shutterPriority)
+        #expect(isoAutomatic.displayState.isoBadge == "A")
+        #expect(isoAutomatic.displayState.shutterBadge == nil)
+        #expect(shutterAutomatic.nextState.mode == .isoPriority)
+        #expect(shutterAutomatic.displayState.isoBadge == nil)
+        #expect(shutterAutomatic.displayState.shutterBadge == "A")
+    }
+
+    @Test func automaticSideUsesTheNearestNominalPhotographicStop() {
+        let capability = Self.capability()
+        let baseline = Self.sample(
+            capability: capability,
+            iso: 117,
+            shutter: 0.009,
+            generation: 0
+        )
+        let result = CameraExposureControlState(capability: capability)
+            .establishMeterBaseline(from: baseline)
+            .nextState
+            .setISO(200)
+
+        let targetExposure = baseline.equivalentExposure
+        let actualExposure = result.displayState.iso
+            * result.displayState.shutterDurationSeconds
+        let errorInStops = abs(log2(actualExposure / targetExposure))
+
+        #expect(result.displayState.shutterDurationSeconds == 1.0 / 200.0)
+        #expect(errorInStops < 0.21)
+    }
+
+    @Test func unavailablePhotographicScaleClampsWithoutInventingAStop() {
+        let capability = TAPCamDemoTestFixtures.sampleManualControlCapability(
+            isoRange: .init(minimum: 70, maximum: 75),
+            shutterDurationRangeSeconds: .init(minimum: 1.0 / 100.0, maximum: 1.0 / 50.0)
+        )
+        let result = CameraExposureControlState(capability: capability).setISO(73)
+
+        #expect(result.nextState.mode == .isoPriority)
+        #expect(result.displayState.iso == 73)
+        #expect(result.nextState.riskRangeForISO().isEmpty)
+    }
+
+    @Test func firstPriorityAdjustmentPreservesExposureBeforeBaselineArrives() {
+        let capability = Self.capability()
+        let result = CameraExposureControlState(capability: capability).setISO(200)
+
+        #expect(result.nextState.meterBaseline == nil)
+        #expect(result.nextState.mode == .isoPriority)
+        #expect(result.displayState.iso == 200)
+        #expect(result.displayState.shutterDurationSeconds == 1.0 / 200.0)
+        #expect(
+            result.manualControlIntent?.exposure
+                == .custom(iso: 200, shutterDurationSeconds: 1.0 / 200.0)
+        )
     }
 
     private static func capability(deviceID: String = "wide") -> CameraControlCapabilitySnapshot {

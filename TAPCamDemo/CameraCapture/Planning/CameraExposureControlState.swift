@@ -280,7 +280,11 @@ nonisolated struct CameraExposureControlState: Equatable, Sendable {
                 )
             )
         case .isoPriority, .shutterPriority:
-            let resolvedState = state.resolvedAutomaticSide()
+            let fallbackTargetExposure = currentEquivalentExposure
+                * pow(2, nextBias - evBias)
+            let resolvedState = state.resolvedAutomaticSide(
+                fallbackTargetExposure: fallbackTargetExposure
+            )
             return resolvedState.result(intent: resolvedState.customExposureIntent())
         case .manual:
             return state.result()
@@ -288,24 +292,32 @@ nonisolated struct CameraExposureControlState: Equatable, Sendable {
     }
 
     func setISO(_ value: Double) -> CameraExposureControlResult {
-        let clampedISO = Self.clamped(value, in: controlSurfaceSignature.iso.range)
+        let clampedISO = CameraPhotographyExposureScale
+            .iso(in: controlSurfaceSignature.iso.range)
+            .snappedValue(for: value)
         let nextMode: CameraExposureControlMode = mode.isShutterAutomatic ? .isoPriority : .manual
         var pendingState = self
         pendingState.mode = nextMode
         pendingState.iso = clampedISO
         pendingState.lastDiscardedReason = nil
-        let state = pendingState.resolvedAutomaticSide()
+        let state = pendingState.resolvedAutomaticSide(
+            fallbackTargetExposure: currentEquivalentExposure
+        )
         return state.result(intent: state.customExposureIntent())
     }
 
     func setShutterDuration(_ value: Double) -> CameraExposureControlResult {
-        let clampedShutter = Self.clamped(value, in: controlSurfaceSignature.shutterSeconds.range)
+        let clampedShutter = CameraPhotographyExposureScale
+            .shutterDuration(in: controlSurfaceSignature.shutterSeconds.range)
+            .snappedValue(for: value)
         let nextMode: CameraExposureControlMode = mode.isISOAutomatic ? .shutterPriority : .manual
         var pendingState = self
         pendingState.mode = nextMode
         pendingState.shutterDurationSeconds = clampedShutter
         pendingState.lastDiscardedReason = nil
-        let state = pendingState.resolvedAutomaticSide()
+        let state = pendingState.resolvedAutomaticSide(
+            fallbackTargetExposure: currentEquivalentExposure
+        )
         return state.result(intent: state.customExposureIntent())
     }
 
@@ -313,7 +325,9 @@ nonisolated struct CameraExposureControlState: Equatable, Sendable {
         let nextMode: CameraExposureControlMode = mode.isShutterAutomatic ? .auto : .shutterPriority
         var pendingState = self
         pendingState.mode = nextMode
-        let state = pendingState.resolvedAutomaticSide()
+        let state = pendingState.resolvedAutomaticSide(
+            fallbackTargetExposure: currentEquivalentExposure
+        )
         return state.result(intent: state.intentForCurrentMode())
     }
 
@@ -321,33 +335,55 @@ nonisolated struct CameraExposureControlState: Equatable, Sendable {
         let nextMode: CameraExposureControlMode = mode.isISOAutomatic ? .auto : .isoPriority
         var pendingState = self
         pendingState.mode = nextMode
-        let state = pendingState.resolvedAutomaticSide()
+        let state = pendingState.resolvedAutomaticSide(
+            fallbackTargetExposure: currentEquivalentExposure
+        )
         return state.result(intent: state.intentForCurrentMode())
     }
 
     func riskRangeForISO() -> [ClosedRange<Double>] {
+        let isoScale = CameraPhotographyExposureScale.iso(
+            in: controlSurfaceSignature.iso.range
+        )
+        let shutterScale = CameraPhotographyExposureScale.shutterDuration(
+            in: controlSurfaceSignature.shutterSeconds.range
+        )
+        guard let isoRange = isoScale.adjustableValueRange,
+              let shutterRange = shutterScale.adjustableValueRange else {
+            return []
+        }
         if mode.isShutterAutomatic {
             return automaticSideBoundaryRiskRanges(
-                variableRange: controlSurfaceSignature.iso.range,
-                automaticRange: controlSurfaceSignature.shutterSeconds.range
+                variableRange: isoRange,
+                automaticRange: shutterRange
             )
         }
         return riskRanges(
-            range: controlSurfaceSignature.iso.range,
+            range: isoRange,
             fixedValue: shutterDurationSeconds,
             product: { iso, shutter in iso * shutter }
         )
     }
 
     func riskRangeForShutterDuration() -> [ClosedRange<Double>] {
+        let isoScale = CameraPhotographyExposureScale.iso(
+            in: controlSurfaceSignature.iso.range
+        )
+        let shutterScale = CameraPhotographyExposureScale.shutterDuration(
+            in: controlSurfaceSignature.shutterSeconds.range
+        )
+        guard let isoRange = isoScale.adjustableValueRange,
+              let shutterRange = shutterScale.adjustableValueRange else {
+            return []
+        }
         if mode.isISOAutomatic {
             return automaticSideBoundaryRiskRanges(
-                variableRange: controlSurfaceSignature.shutterSeconds.range,
-                automaticRange: controlSurfaceSignature.iso.range
+                variableRange: shutterRange,
+                automaticRange: isoRange
             )
         }
         return riskRanges(
-            range: controlSurfaceSignature.shutterSeconds.range,
+            range: shutterRange,
             fixedValue: iso,
             product: { shutter, iso in iso * shutter }
         )
@@ -376,8 +412,11 @@ nonisolated struct CameraExposureControlState: Equatable, Sendable {
         return state.result(discardedReason: discardedReason)
     }
 
-    private func resolvedAutomaticSide() -> CameraExposureControlState {
-        guard let targetExposure = targetExposure, targetExposure > 0 else {
+    private func resolvedAutomaticSide(
+        fallbackTargetExposure: Double? = nil
+    ) -> CameraExposureControlState {
+        guard let targetExposure = targetExposure ?? fallbackTargetExposure,
+              targetExposure > 0 else {
             return self
         }
 
@@ -385,12 +424,18 @@ nonisolated struct CameraExposureControlState: Equatable, Sendable {
         case .auto, .manual:
             return self
         case .isoPriority:
+            let computedShutter = targetExposure / max(iso, 0.000_001)
             return updating(
-                shutterDurationSeconds: Self.clamped(targetExposure / max(iso, 0.000_001), in: controlSurfaceSignature.shutterSeconds.range)
+                shutterDurationSeconds: CameraPhotographyExposureScale
+                    .shutterDuration(in: controlSurfaceSignature.shutterSeconds.range)
+                    .snappedValue(for: computedShutter)
             )
         case .shutterPriority:
+            let computedISO = targetExposure / max(shutterDurationSeconds, 0.000_001)
             return updating(
-                iso: Self.clamped(targetExposure / max(shutterDurationSeconds, 0.000_001), in: controlSurfaceSignature.iso.range)
+                iso: CameraPhotographyExposureScale
+                    .iso(in: controlSurfaceSignature.iso.range)
+                    .snappedValue(for: computedISO)
             )
         }
     }

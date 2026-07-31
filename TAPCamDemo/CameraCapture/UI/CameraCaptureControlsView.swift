@@ -68,11 +68,11 @@ struct CameraCaptureControlsView: View {
     let onSwitchCamera: () -> Void
     let onSelectMode: (CameraCaptureModeOption) -> Void
     let onSelectAdjustmentControl: (CameraAdjustmentControl) -> Void
-    let onToggleFocusMode: () -> Void
     let onAdjustEV: (Double) -> Void
     let onAdjustISO: (Double) -> Void
     let onAdjustShutterPosition: (Double) -> Void
     let onAdjustLensPosition: (Double) -> Void
+    let onRestoreAutomaticMode: (CameraAdjustmentControl) -> Void
     let onBeginAdjustment: (CameraAdjustmentControl) -> Void
     let onEndAdjustment: (CameraAdjustmentControl) -> Void
 
@@ -148,6 +148,7 @@ struct CameraCaptureControlsView: View {
                     onAdjustISO: onAdjustISO,
                     onAdjustShutterPosition: onAdjustShutterPosition,
                     onAdjustLensPosition: onAdjustLensPosition,
+                    onRestoreAutomaticMode: onRestoreAutomaticMode,
                     onBeginAdjustment: onBeginAdjustment,
                     onEndAdjustment: onEndAdjustment
                 )
@@ -187,6 +188,7 @@ struct CameraCaptureControlsView: View {
                 .buttonStyle(.plain)
                 .disabled(state.isInteractionLocked)
                 .accessibilityLabel(modeAccessibilityLabel(mode))
+                .accessibilityIdentifier("camera.mode.\(mode.rawValue)")
             }
         }
     }
@@ -205,8 +207,7 @@ struct CameraCaptureControlsView: View {
             CameraLowerToolbarView(
                 state: adjustmentControlState,
                 contentRotation: state.contentRotation,
-                onSelectControl: onSelectAdjustmentControl,
-                onToggleFocusMode: onToggleFocusMode
+                onSelectControl: onSelectAdjustmentControl
             )
         } else {
             CameraLowerToolbarPlaceholderView(contentRotation: state.contentRotation)

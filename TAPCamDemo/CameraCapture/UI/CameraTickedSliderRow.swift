@@ -7,6 +7,7 @@ import SwiftUI
 
 struct CameraTickedSliderRow: View {
     let title: String
+    let automationState: CameraAdjustmentAutomationState?
     let value: String
     let valueBinding: Binding<Double>
     let range: ClosedRange<Double>
@@ -17,6 +18,9 @@ struct CameraTickedSliderRow: View {
     let riskRanges: [ClosedRange<Double>]
     let tickValueStep: Double?
     let isEVIntegerHapticsEnabled: Bool
+    let majorTickIndices: Set<Int>
+    let showsGeometricCenterTick: Bool
+    let onRestoreAuto: () -> Void
     let onEditingBegan: () -> Void
     let onEditingEnded: () -> Void
 
@@ -73,17 +77,7 @@ struct CameraTickedSliderRow: View {
                 .position(x: portraitAdjustmentCenterline, y: rowCenterY)
                 .allowsHitTesting(isEnabled)
 
-                CenterAnchoredChromeRotation(
-                    rotation: contentRotation,
-                    width: Metrics.titleWidth,
-                    height: Metrics.labelHeight
-                ) {
-                    Text(title)
-                        .font(.caption.weight(.bold))
-                        .monospaced()
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.72)
-                }
+                leadingControl
                 .position(
                     x: titleX(
                         portraitAdjustmentCenterline: portraitAdjustmentCenterline,
@@ -103,6 +97,7 @@ struct CameraTickedSliderRow: View {
                         .monospacedDigit()
                         .lineLimit(1)
                         .minimumScaleFactor(0.68)
+                        .foregroundStyle(isEnabled ? .white : .white.opacity(0.38))
                 }
                 .position(
                     x: valueX(
@@ -116,14 +111,17 @@ struct CameraTickedSliderRow: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: Metrics.rowHeight)
-        .foregroundStyle(isEnabled ? .white : .white.opacity(0.38))
         .background(.black.opacity(0.58), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(.white.opacity(0.12), lineWidth: 1)
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(title) \(value)")
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(
+            [title, automationState?.title, value]
+                .compactMap { $0 }
+                .joined(separator: " ")
+        )
         .accessibilityIdentifier("camera.tickedAdjustmentStrip")
         .accessibilityAdjustableAction { direction in
             guard isEnabled else {
@@ -138,6 +136,72 @@ struct CameraTickedSliderRow: View {
                 break
             }
         }
+    }
+
+    @ViewBuilder
+    private var leadingControl: some View {
+        CenterAnchoredChromeRotation(
+            rotation: contentRotation,
+            width: Metrics.titleWidth,
+            height: Metrics.touchHeight
+        ) {
+            if let automationState, automationState.canRestoreAuto {
+                Button(action: onRestoreAuto) {
+                    automationStateBadge(automationState)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(CameraAutomationRestoreButtonStyle())
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .accessibilityLabel(Text(verbatim: "Manual. Restore Auto"))
+                .accessibilityIdentifier("camera.tickedAdjustmentStrip.automation")
+            } else if let automationState {
+                automationStateBadge(automationState)
+                    .accessibilityIdentifier("camera.tickedAdjustmentStrip.automation")
+            } else {
+                leadingLabel(title)
+                    .foregroundStyle(.white)
+            }
+        }
+    }
+
+    private func automationStateBadge(
+        _ automationState: CameraAdjustmentAutomationState
+    ) -> some View {
+        let isInteractive = automationState.canRestoreAuto
+        let fillOpacity = isEnabled ? (isInteractive ? 0.30 : 0.14) : 0.06
+        let strokeOpacity = isEnabled ? (isInteractive ? 0.96 : 0.62) : 0.24
+
+        return leadingLabel(automationState.title)
+            .foregroundStyle(isEnabled ? .white : .white.opacity(0.38))
+            .frame(
+                width: Metrics.automationControlWidth,
+                height: Metrics.automationControlHeight
+            )
+            .background {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(highlightColor.opacity(fillOpacity))
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .stroke(
+                        highlightColor.opacity(strokeOpacity),
+                        lineWidth: isInteractive ? 1.4 : 1
+                    )
+            }
+            .shadow(
+                color: highlightColor.opacity(isEnabled && isInteractive ? 0.24 : 0),
+                radius: 2,
+                y: 1
+            )
+    }
+
+    private func leadingLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.caption2.weight(.bold))
+            .monospaced()
+            .lineLimit(1)
+            .minimumScaleFactor(0.64)
     }
 
     private var tickMarks: some View {
@@ -333,11 +397,16 @@ struct CameraTickedSliderRow: View {
         let midpointIndex = values.count / 2
 
         return values.enumerated().map { index, value in
-            let isZero = isZeroValue(value)
+            let isZero = isEVIntegerHapticsEnabled && isZeroValue(value)
             let isInteger = isEVIntegerHapticsEnabled && isIntegerValue(value)
+            let isScaleMajor = majorTickIndices.contains(index)
+            let isGeometricCenter = showsGeometricCenterTick && index == midpointIndex
             return TickDescriptor(
-                isCenter: isZero || (!isEVIntegerHapticsEnabled && index == midpointIndex),
-                isMajor: isZero || isInteger || (!isEVIntegerHapticsEnabled && index == midpointIndex)
+                isCenter: isZero || isGeometricCenter,
+                isMajor: isZero
+                    || isInteger
+                    || isScaleMajor
+                    || isGeometricCenter
             )
         }
     }
@@ -424,7 +493,9 @@ struct CameraTickedSliderRow: View {
         static let trackHeight: CGFloat = 34
         static let touchHeight: CGFloat = 44
         static let labelHeight: CGFloat = 34
-        static let titleWidth: CGFloat = 44
+        static let titleWidth: CGFloat = 58
+        static let automationControlWidth: CGFloat = 52
+        static let automationControlHeight: CGFloat = 28
         static let valueWidth: CGFloat = 78
         static let labelGap: CGFloat = 8
         static let horizontalInset: CGFloat = 12
@@ -441,6 +512,15 @@ struct CameraTickedSliderRow: View {
     private struct TickDescriptor: Equatable {
         let isCenter: Bool
         let isMajor: Bool
+    }
+}
+
+private struct CameraAutomationRestoreButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .opacity(configuration.isPressed ? 0.78 : 1)
+            .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
     }
 }
 

@@ -9,11 +9,11 @@
 | `viewfinder top shoulder` | 取景器顶部 Face ID / Dynamic Island 两侧肩区 | 不放状态噪音。右肩放 `Settings`。 |
 | `Basic EV` | Standard 曝光补偿 | 不依赖专业控制状态机的轻量 EV 流程。入口在 Face ID / Dynamic Island 左侧，只写 exposure target bias。 |
 | `viewfinder top toolbar` | 肩区下方、取景器上方工具栏 | 放高频但不属于参数条的按钮，固定布局为 `Flash / Live Photo / Spacer / PRO`。它参与垂直布局，占用 viewfinder 上方空间，不覆盖预览画面。 |
-| `viewfinder lower toolbar` | 取景器下方、快门上方的参数工具栏 | 布局永久预留固定高度；只在 Photographer Mode 已完成异步切换并进入 `active` 后淡入 `EV / ISO / S / AF/MF / ƒ`。Standard 隐藏内容但不回收槽位。 |
+| `viewfinder lower toolbar` | 取景器下方、快门上方的参数工具栏 | 布局永久预留固定高度；只在 Photographer Mode 已完成异步切换并进入 `active` 后淡入 `EV / ISO / S / Focus / ƒ`。Standard 隐藏内容但不回收槽位。 |
 | `mode selector slot` | 拍摄模式选择占位区 | 默认承载 `mode selector bar`。控制条打开时被 `ticked adjustment strip` 临时替代。 |
 | `mode selector bar` | 拍摄模式选择条 | 默认显示 `PHOTO / VIDEO`。外层 bar、按钮 frame、按钮文字都不参与旋转。 |
 | `portrait adjustment centerline` | Portrait UI 的全局参数调节中线 | 所有横向参数条的中心刻度必须对齐整个屏幕 / 控件容器的水平中心线，不能被左标题或右数值挤偏。 |
-| `ticked adjustment strip` | 刻度调节条 | 共享 UI primitive，可服务 Basic EV 或 Pro EV/ISO/S/MF。它只知道 value/range/step/label/callback，不知道 Basic/Pro 业务模式。 |
+| `ticked adjustment strip` | 刻度调节条 | 共享 UI primitive，可服务 Basic EV 或 Pro EV/ISO/S/Focus。它只知道 value/range/step/label/callback，不知道 Basic/Pro 业务模式。 |
 | `active tick` | 当前值刻度 | `ticked adjustment strip` 中唯一使用交互高亮色的刻度，精确落在当前值位置；不叠加三角形、圆点或其他独立游标。 |
 | `value cursor` | 当前值游标 | 仅用于 `focus companion EV rail` 的黄色太阳游标；不用于 `ticked adjustment strip`。 |
 | `FOV selector bar` | 镜头 / 视角选择条 | Standard 显示 release field-of-view chips；PRO 固定后置 LiDAR 24mm / 1x，因此隐藏。外层 bar 固定在取景器下边缘内侧，chip 内容按设备姿态旋转，bar 本身不旋转。 |
@@ -72,7 +72,7 @@ Standard 和 Photographer Mode 是同一个 Release app 内的 runtime 状态。
 - `activating` / `deactivating`：显示 `frosted session transition`，禁用快门、
   focus gesture、镜头选择和参数写入。
 - `active`：只使用 eligible 后置 LiDAR 24mm / 1x path，隐藏 `Basic EV` 和镜头
-  选择器，显示完整 `EV / ISO / S / AF/MF / ƒ`。
+  选择器，显示完整 `EV / ISO / S / Focus / ƒ`。
 - `unavailable`：当前设备没有同时满足 depth、custom ISO/S 和 MF 的后置 LiDAR
   path；不显示 PRO 入口。
 - `failed`：切换失败，恢复可用 Standard session，再允许重试。
@@ -137,22 +137,32 @@ PRO active 时从左到右：
 1. `EV`
 2. `ISO`
 3. `S`
-4. `AF/MF`
+4. `Focus`，右上角显示同步的 `A / M`
 5. `ƒ`
 
 行为：
 
 - toolbar 在 PRO active 期间常驻；退出 active 立即关闭当前 adjustment strip。
-- 点击 `EV / ISO / S` 时，`mode selector slot` 被 `ticked adjustment strip` 临时替代；快门位置不移动。
+- 点击 `EV / ISO / S / Focus` 时，只把 `mode selector slot` 替换成对应
+  `ticked adjustment strip`；打开或关闭 strip 本身不改变任何 `A / M` 状态，快门位置不移动。
 - 点击另一个参数会直接切换控制条。
 - `ƒ` 灰色只读，例如 `ƒ1.8`；不可点击，不提示。
 
 `ticked adjustment strip` 的视觉：
 
+- EV、ISO、S 和 Focus 共享同一组背景、刻度、中心线、active tick、高度和左右标签布局。
 - 中心刻度对齐 `portrait adjustment centerline`。
 - 只显示刻度，并让 `active tick` 成为唯一主要视觉焦点；不显示独立游标或系统 slider 的实线轨道。
 - 拖动热区可以透明覆盖刻度。
 - 每跨过一个有效 step 触发轻量 selection haptic。
+- ISO、S 和 Focus 的左侧显示该参数的自动化状态：`Auto` 为静态文本；
+  用户第一次实际移动调节条后变为可点击的 `Manual`。点击 `Manual` 只恢复该参数
+  的 Auto，并保持当前 strip 打开。toolbar 右上角的 `A / M` 与这里读取同一份状态。
+- `Auto / Manual` 都放在固定大小的高亮色小圆角框中。`Auto` 使用较弱的填充和描边，
+  表示当前状态；可点击的 `Manual` 使用更强的填充、描边、微弱光晕和按压反馈，同时
+  保留 44pt 触控热区。`Auto` 不伪装成无实际动作的按钮。
+- EV 曝光补偿不是独立的自动/手动曝光参数，双手动时显示的 `Meter` 也是只读测光结果，
+  因而两者不伪造一套无实际 Runtime 语义的 `A / M` 开关。
 - 在 PRO active 时，当前正在调节的参数由 `viewfinder lower toolbar`
   对应按钮的 active 状态标识，不在 strip 内额外加选中标签或轨道高亮。
 - 在 Standard 中，`Basic EV` 左肩入口的 active 状态标识 EV strip 已打开。
@@ -338,18 +348,27 @@ current-generation first-sample readiness，不能通过新增 output、重复 w
 创建、恢复或写入 ISO/S/Meter/risk/readback 专业曝光状态；异步切换期间也拒绝
 专业参数写入。
 
-曝光控制有四个用户可见状态。`ISO` 和 `S` 两个按钮就是完整模式选择器，不新增独立曝光模式按钮：
+曝光控制有四个用户可见状态。toolbar 的 `ISO` 和 `S` 按钮只负责打开对应 strip；
+完整模式切换位于每个 strip 左侧，不新增独立曝光模式按钮：
 
 - `ISO A / S A` 是全自动曝光。`EV` 可调，写入全局曝光补偿。
 - `ISO M / S A` 是 `ISO priority`。用户手动选择 ISO，TAPCam 只计算带 `A` 角标的 S。
 - `ISO A / S M` 是 `shutter priority`。用户手动选择 S，TAPCam 只计算带 `A` 角标的 ISO。
 - `ISO M / S M` 是 `manual exposure`。取消自动等效曝光计算，直接写入用户选择的 ISO 和 S。
 - 从 `A/A` 调 ISO 进入 `M/A`；从 `A/A` 调 S 进入 `A/M`；在 `M/A` 下再调 S 或在 `A/M` 下再调 ISO 升级为 `M/M`。
-- 点击已经处于 `M` 的 `ISO` 或 `S` 按钮时，只把该侧恢复为 `A`。因此 `M/M` 可通过恢复 ISO 得到 `A/M`，或通过恢复 S 得到 `M/A`；再恢复另一侧回到 `A/A`。不新增第三个曝光模式按钮。
+- 只打开 ISO 或 S strip 不切档；第一次实际移动该 strip 才把这一侧切到 `M`。
+- 当某侧处于 `M` 时，点击对应 strip 左侧的 `Manual` 只把该侧恢复为 `A`，
+  并保持 strip 打开。因此 `M/M` 可通过恢复 ISO 得到 `A/M`，或通过恢复 S
+  得到 `M/A`；再恢复另一侧回到 `A/A`。
+- ISO 与快门条使用当前设备范围裁剪后的摄影 1/3 档离散值。ISO 显示
+  `64 / 80 / 100 / 125 ...`；快门显示 `1/8000 / 1/6400 ... 1/125 ... 0.5" / 1" ...`。
+  每一小格是摄影行业常用的 nominal 1/3 档，整档刻度使用统一的 major tick；
+  AVFoundation 的连续原始值只在边界上吸附到最近摄影档位，不直接作为用户数值展示。
 - 在 `M/A` 或 `A/M` 下调 EV 时，固定用户手动的 `M` 项，只按新的 EV 目标重算带 `A` 的项。
 - UI 里的 `A` 表示 TAPCam 根据当前 `meter baseline` 自动等效计算，不表示 AVFoundation 仍处于连续自动曝光。Runtime 写入仍使用 custom exposure 的 ISO + shutter 双值。
 - `M/M` 下 `EV` 位置变成只读 `Meter +/-x.x`，显示当前手动 ISO/S 组合相对 `meter baseline` 的偏差。
-- `Meter +/-x.x` 本身是只读显示，不作为隐藏模式状态或恢复按钮。恢复自动侧只通过 `ISO` / `S` 两个按钮完成。
+- `Meter +/-x.x` 本身是只读显示，不作为隐藏模式状态或恢复按钮。恢复自动侧只通过
+  ISO / S strip 左侧的 `Manual` 完成。
 
 ```mermaid
 stateDiagram-v2
@@ -378,6 +397,9 @@ stateDiagram-v2
 - 目标曝光量近似为 `baseISO * baseShutterSeconds * pow(2, evBias - exposureTargetOffset)`。具体符号需要真机验证；验收时必须记录预览变亮/变暗方向是否与 EV 相符。
 - `M/A` 中 `computedShutter = targetExposure / selectedISO`。
 - `A/M` 中 `computedISO = targetExposure / selectedShutter`。
+- 如果首个 `meter baseline` 尚未到达，第一次 ISO/S 调节只用“修改前的当前
+  `ISO × shutter`”作为一次性 fallback target，以避免自动侧仍停在旧值造成曝光跳变；
+  该 fallback 不冒充正式 baseline，后续合法 readback 仍会建立真实测光基准。
 - 计算结果必须按当前设备的 ISO 和 shutter range clamp；发生 clamp 时，Debug readback 和验收记录应标记自动项已到硬件边界。
 - `M/M` 不使用公式重算 ISO/S，只计算 `meterDeltaEV = log2(manualExposure / targetExposure)` 作为只读 `Meter`。
 
@@ -441,13 +463,13 @@ AF completion metering 的节流规则：
 
 ## Focus Model
 
-`AF/MF` 与曝光完全独立。
+Focus 的 `A/M` 与曝光完全独立。
 
 原生 iPhone Camera、AVFoundation 约束、当前 TAPCam 差异和临时 EV 全局
 viewfinder 上下滑动目标见
 [FocusTemporaryEVNativeComparison.md](FocusTemporaryEVNativeComparison.md)。
 
-Standard 和前置相机保留基础 tap-to-focus 路径，但不显示 `AF/MF` 专业切换入口、
+Standard 和前置相机保留基础 tap-to-focus 路径，但不显示 `Focus` 专业调节入口、
 MF lens-position strip、MF 专业调节状态或 PRO readback。以下 MF 专业控制规则只在
 eligible 后置 Photographer Mode `active` 时生效。
 
@@ -491,10 +513,14 @@ stateDiagram-v2
 
 MF：
 
-- 点击 `AF/MF` 从 AF 进入 MF，并显示 `MF lens position` 的 `ticked adjustment strip`。
-- AF -> MF 只锁定 AF 已经到达的当前镜头位置，再 readback 更新调节条；模式切换本身不能重放 capability snapshot 中已经过期的数值位置。只有用户实际拖动 MF 条后才能写具体 lens position。
-- 再次点击回到 AF，控制条消失。
-- 前置摄像头下第一阶段禁用 `AF/MF` 切换。前置 depth capture graph 下写入 custom lens position 已观察到黑屏风险；在真实设备能力矩阵和 UX 验证完成前，前置只保留自动对焦/点按对焦路径，不暴露 MF 调节杆。
+- 点击 toolbar 的 `Focus` 只打开 lens-position strip，不切换 AF/MF。
+- strip 左侧初始显示 `Auto`。用户第一次实际移动调节条时切到 MF；Runtime 先锁定
+  AF 已经到达的当前镜头位置，再通过既有串行 transport 写入最新 slider value，
+  不能重放 capability snapshot 中已经过期的数值位置。
+- MF 时左侧显示可点击的 `Manual`；点击后恢复 AF，保持 Focus strip 打开并显示 `Auto`。
+- 前置摄像头下第一阶段禁用 Focus 手动调节。前置 depth capture graph 下写入
+  custom lens position 已观察到黑屏风险；在真实设备能力矩阵和 UX 验证完成前，
+  前置只保留自动对焦/点按对焦路径，不暴露 MF 调节杆。
 - MF 下没有对焦框。
 - MF 下点击取景器会更新同一个 `manual focus assist point`。这是原因；`focus loupe` 和 `manual focus tap assist` 都只是这个点派生出来的结果，彼此不能互相 gate。
 - `Focus Magnifier` 不为 `Off` 时，MF tap 或 MF 条调节会显示右下角 2.4x 局部放大窗；主取景器保持 1x，用户仍然看到完整构图。放大窗不新增 PreviewLayer、不改 `videoZoomFactor`，也不影响最终照片。
@@ -732,7 +758,10 @@ TAP 仍优先选择支持深度的设备和格式，并请求深度。
 
 当前自动化覆盖：
 
-- `TAPCameraExposureControlStateTests` 覆盖纯曝光模型、EV 只重算 `A` 侧、纯 M 只读 Meter、pending sample、stale generation 丢弃和等效曝光公式符号。
+- `TAPCameraExposureControlStateTests` 覆盖纯曝光模型、EV 只重算 `A` 侧、纯 M 只读 Meter、
+  pending sample、stale generation 丢弃、等效曝光公式符号、摄影档位吸附和单侧恢复 Auto。
+- `TAPCameraPhotographyExposureScaleTests` 覆盖设备范围裁剪、ISO/快门 1/3 档、
+  full-stop major tick、对数最近值和窄范围禁用策略。
 - `TAPCameraManualControlIntentTests` / `TAPCameraManualControlCommandPlanTests` 继续覆盖 Runtime command 边界。
 - `TAPCameraCapturePresentationTests` 覆盖 UI state、Settings key/default、Debug state 和边界扫描。
 

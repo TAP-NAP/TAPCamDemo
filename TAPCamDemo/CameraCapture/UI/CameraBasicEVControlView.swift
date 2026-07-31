@@ -89,6 +89,7 @@ struct CameraBasicEVAdjustmentStrip: View {
     var body: some View {
         CameraTickedSliderRow(
             title: "EV",
+            automationState: nil,
             value: state.compactValue,
             valueBinding: Binding(
                 get: { state.bias },
@@ -102,6 +103,9 @@ struct CameraBasicEVAdjustmentStrip: View {
             riskRanges: [],
             tickValueStep: CameraEVPreferences.adjustmentStep,
             isEVIntegerHapticsEnabled: true,
+            majorTickIndices: [],
+            showsGeometricCenterTick: false,
+            onRestoreAuto: {},
             onEditingBegan: {},
             onEditingEnded: {}
         )

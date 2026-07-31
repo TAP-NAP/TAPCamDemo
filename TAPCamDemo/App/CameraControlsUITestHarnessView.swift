@@ -55,11 +55,11 @@ struct CameraControlsUITestHarnessView: View {
                 onSwitchCamera: { status = "Camera switched" },
                 onSelectMode: selectMode,
                 onSelectAdjustmentControl: selectAdjustmentControl,
-                onToggleFocusMode: toggleFocusMode,
                 onAdjustEV: adjustEV,
                 onAdjustISO: adjustISO,
                 onAdjustShutterPosition: adjustShutterPosition,
                 onAdjustLensPosition: adjustLensPosition,
+                onRestoreAutomaticMode: restoreAutomaticMode,
                 onBeginAdjustment: { _ in },
                 onEndAdjustment: { _ in }
             )
@@ -94,14 +94,8 @@ struct CameraControlsUITestHarnessView: View {
     private func selectAdjustmentControl(_ control: CameraAdjustmentControl) {
         switch control {
         case .ev:
-            if adjustmentState.exposure.isCustom {
-                exposureMode = .auto(globalBias: 0)
-                activeAdjustmentControl = nil
-                status = "Auto exposure restored"
-            } else {
-                activeAdjustmentControl = activeAdjustmentControl == .ev ? nil : .ev
-                status = activeAdjustmentControl == .ev ? "EV strip shown" : "Controls hidden"
-            }
+            activeAdjustmentControl = activeAdjustmentControl == .ev ? nil : .ev
+            status = activeAdjustmentControl == .ev ? "EV strip shown" : "Controls hidden"
         case .iso:
             activeAdjustmentControl = activeAdjustmentControl == .iso ? nil : .iso
             status = activeAdjustmentControl == .iso ? "ISO strip shown" : "Controls hidden"
@@ -109,47 +103,89 @@ struct CameraControlsUITestHarnessView: View {
             activeAdjustmentControl = activeAdjustmentControl == .shutter ? nil : .shutter
             status = activeAdjustmentControl == .shutter ? "Shutter strip shown" : "Controls hidden"
         case .focus:
-            toggleFocusMode()
+            activeAdjustmentControl = activeAdjustmentControl == .focus ? nil : .focus
+            status = activeAdjustmentControl == .focus ? "Focus strip shown" : "Controls hidden"
         }
     }
 
-    private func toggleFocusMode() {
-        switch focusMode {
-        case .auto:
-            focusMode = .manual
-            activeAdjustmentControl = .focus
-            status = "MF strip shown"
-        case .manual:
-            focusMode = .auto
-            if activeAdjustmentControl == .focus {
-                activeAdjustmentControl = nil
+    private func restoreAutomaticMode(_ control: CameraAdjustmentControl) {
+        switch control {
+        case .iso:
+            switch exposureMode {
+            case .isoPriority(let globalBias):
+                exposureMode = .auto(globalBias: globalBias)
+            case .custom:
+                exposureMode = .shutterPriority(globalBias: 0)
+            case .auto, .shutterPriority:
+                return
             }
-            status = "AF restored"
+            activeAdjustmentControl = .iso
+            status = "ISO Auto restored"
+        case .shutter:
+            switch exposureMode {
+            case .shutterPriority(let globalBias):
+                exposureMode = .auto(globalBias: globalBias)
+            case .custom:
+                exposureMode = .isoPriority(globalBias: 0)
+            case .auto, .isoPriority:
+                return
+            }
+            activeAdjustmentControl = .shutter
+            status = "Shutter Auto restored"
+        case .focus:
+            guard focusMode == .manual else {
+                return
+            }
+            focusMode = .auto
+            activeAdjustmentControl = .focus
+            status = "Focus Auto restored"
+        case .ev:
+            return
         }
     }
 
     private func adjustEV(_ value: Double) {
         let clamped = CameraEVPreferences.clampedBias(value)
-        exposureMode = .auto(globalBias: clamped)
+        switch exposureMode {
+        case .auto:
+            exposureMode = .auto(globalBias: clamped)
+        case .isoPriority:
+            exposureMode = .isoPriority(globalBias: clamped)
+        case .shutterPriority:
+            exposureMode = .shutterPriority(globalBias: clamped)
+        case .custom:
+            break
+        }
         status = "EV \(Self.signedLabel(clamped))"
     }
 
     private func adjustISO(_ value: Double) {
         let state = adjustmentState
-        draft = draft.replacingISO(state.exposure.clampedISO(value)).clamped(to: state)
-        exposureMode = .custom(meterOffset: 0)
+        let snappedISO = state.exposure.isoScale.snappedValue(for: value)
+        draft = draft.replacingISO(snappedISO).clamped(to: state)
+        switch exposureMode {
+        case .auto(let globalBias), .isoPriority(let globalBias):
+            exposureMode = .isoPriority(globalBias: globalBias)
+        case .shutterPriority, .custom:
+            exposureMode = .custom(meterOffset: 0)
+        }
         activeAdjustmentControl = .iso
-        status = "ISO \(state.exposure.isoLabel(for: draft.iso))"
+        status = "ISO \(state.exposure.isoScale.label(for: draft.iso))"
     }
 
     private func adjustShutterPosition(_ position: Double) {
         let state = adjustmentState
         draft = draft.replacingShutterDuration(
-            state.exposure.shutterDuration(forNormalizedPosition: position)
+            state.exposure.shutterDuration(forPosition: position)
         ).clamped(to: state)
-        exposureMode = .custom(meterOffset: 0)
+        switch exposureMode {
+        case .auto(let globalBias), .shutterPriority(let globalBias):
+            exposureMode = .shutterPriority(globalBias: globalBias)
+        case .isoPriority, .custom:
+            exposureMode = .custom(meterOffset: 0)
+        }
         activeAdjustmentControl = .shutter
-        status = "Shutter \(state.exposure.shutterLabel(for: draft.shutterDurationSeconds))"
+        status = "Shutter \(state.exposure.shutterScale.label(for: draft.shutterDurationSeconds))"
     }
 
     private func adjustLensPosition(_ value: Double) {

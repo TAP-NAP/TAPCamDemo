@@ -544,11 +544,11 @@ struct CameraView: View {
             onSwitchCamera: switchCameraPosition,
             onSelectMode: selectCaptureMode,
             onSelectAdjustmentControl: selectAdjustmentControl,
-            onToggleFocusMode: toggleFocusMode,
             onAdjustEV: adjustGlobalEVBias,
             onAdjustISO: adjustISO,
             onAdjustShutterPosition: adjustShutterPosition,
             onAdjustLensPosition: adjustLensPosition,
+            onRestoreAutomaticMode: restoreAutomaticMode,
             onBeginAdjustment: beginAdjustmentInteraction,
             onEndAdjustment: endAdjustmentInteraction
         )
@@ -1116,33 +1116,48 @@ struct CameraView: View {
         case .ev:
             activeAdjustmentControl = activeAdjustmentControl == .ev ? nil : .ev
         case .iso:
-            guard state.exposure.isAvailable else {
+            guard state.exposure.isAvailable,
+                  state.exposure.isoScale.isAdjustable else {
                 showViewfinderHint("ISO unavailable")
-                return
-            }
-            if activeAdjustmentControl == .iso,
-               let exposureControlState,
-               !exposureControlState.mode.isISOAutomatic {
-                applyExposureControlResult(exposureControlState.makeISOAutomatic())
-                activeAdjustmentControl = nil
                 return
             }
             activeAdjustmentControl = activeAdjustmentControl == .iso ? nil : .iso
         case .shutter:
-            guard state.exposure.isAvailable else {
+            guard state.exposure.isAvailable,
+                  state.exposure.shutterScale.isAdjustable else {
                 showViewfinderHint("Shutter unavailable")
-                return
-            }
-            if activeAdjustmentControl == .shutter,
-               let exposureControlState,
-               !exposureControlState.mode.isShutterAutomatic {
-                applyExposureControlResult(exposureControlState.makeShutterAutomatic())
-                activeAdjustmentControl = nil
                 return
             }
             activeAdjustmentControl = activeAdjustmentControl == .shutter ? nil : .shutter
         case .focus:
-            toggleFocusMode()
+            guard state.focus.isAvailable else {
+                showViewfinderHint("Focus unavailable")
+                return
+            }
+            activeAdjustmentControl = activeAdjustmentControl == .focus ? nil : .focus
+        }
+    }
+
+    private func restoreAutomaticMode(_ control: CameraAdjustmentControl) {
+        switch control {
+        case .iso:
+            guard let exposureControlState,
+                  !exposureControlState.mode.isISOAutomatic else {
+                return
+            }
+            applyExposureControlResult(exposureControlState.makeISOAutomatic())
+            activeAdjustmentControl = .iso
+        case .shutter:
+            guard let exposureControlState,
+                  !exposureControlState.mode.isShutterAutomatic else {
+                return
+            }
+            applyExposureControlResult(exposureControlState.makeShutterAutomatic())
+            activeAdjustmentControl = .shutter
+        case .focus:
+            restoreAutoFocusFromStrip()
+        case .ev:
+            break
         }
     }
 
@@ -1201,7 +1216,7 @@ struct CameraView: View {
         }
 
         activeAdjustmentControl = .shutter
-        let shutterDuration = state.exposure.shutterDuration(forNormalizedPosition: position)
+        let shutterDuration = state.exposure.shutterDuration(forPosition: position)
         storeAdjustmentDraft(
             adjustmentDraft.replacingShutterDuration(shutterDuration),
             state: state
@@ -1215,6 +1230,7 @@ struct CameraView: View {
             return
         }
 
+        let isEnteringManualFocus = focusMode == .auto
         manualFocusDraftRevision &+= 1
         focusLoupePulseID = UUID()
         focusMode = .manual
@@ -1223,7 +1239,35 @@ struct CameraView: View {
             adjustmentDraft.replacingLensPosition(value),
             state: state
         )
-        viewModel.queueManualFocus(lensPosition: value)
+        if isEnteringManualFocus {
+            beginManualFocusFromStrip()
+        } else if manualFocusModeEntryToken == nil {
+            viewModel.queueManualFocus(lensPosition: value)
+        }
+    }
+
+    private func beginManualFocusFromStrip() {
+        let entryToken = UUID()
+        manualFocusModeEntryToken = entryToken
+        Task { @MainActor in
+            let snapshot = await viewModel.lockManualFocusAtCurrentLensPosition()
+            guard manualFocusModeEntryToken == entryToken,
+                  focusMode == .manual else {
+                return
+            }
+            guard let snapshot,
+                  snapshot.focusMode == .locked else {
+                manualFocusModeEntryToken = nil
+                focusMode = .auto
+                activeAdjustmentControl = .focus
+                viewModel.cancelManualFocusRuntime()
+                showViewfinderHint("Manual focus unavailable")
+                await viewModel.restoreAutoFocus()
+                return
+            }
+            manualFocusModeEntryToken = nil
+            viewModel.queueManualFocus(lensPosition: adjustmentDraft.lensPosition)
+        }
     }
 
     private func restoreAutoExposureFromMeter() {
@@ -1243,61 +1287,21 @@ struct CameraView: View {
         }
     }
 
-    private func toggleFocusMode() {
-        guard let state = adjustmentControlState else {
-            showViewfinderHint("Focus unavailable")
+    private func restoreAutoFocusFromStrip() {
+        guard focusMode == .manual else {
             return
         }
-
-        switch focusMode {
-        case .auto:
-            guard state.focus.isAvailable else {
-                showViewfinderHint("Manual focus unavailable")
+        manualFocusAssistToken = nil
+        manualFocusModeEntryToken = nil
+        viewModel.cancelManualFocusRuntime()
+        focusMode = .auto
+        activeAdjustmentControl = .focus
+        Task { @MainActor in
+            guard focusMode == .auto,
+                  manualFocusModeEntryToken == nil else {
                 return
             }
-            focusMode = .manual
-            activeAdjustmentControl = .focus
-            let entryToken = UUID()
-            let draftRevisionAtEntry = manualFocusDraftRevision
-            manualFocusModeEntryToken = entryToken
-            Task { @MainActor in
-                let snapshot = await viewModel.lockManualFocusAtCurrentLensPosition()
-                guard manualFocusModeEntryToken == entryToken,
-                      focusMode == .manual else {
-                    return
-                }
-                guard let snapshot,
-                      snapshot.focusMode == .locked,
-                      let updatedState = adjustmentControlState else {
-                    manualFocusModeEntryToken = nil
-                    focusMode = .auto
-                    if activeAdjustmentControl == .focus {
-                        activeAdjustmentControl = nil
-                    }
-                    viewModel.cancelManualFocusRuntime()
-                    showViewfinderHint("Manual focus unavailable")
-                    await viewModel.restoreAutoFocus()
-                    return
-                }
-                if manualFocusDraftRevision == draftRevisionAtEntry {
-                    storeAdjustmentDraft(
-                        adjustmentDraft.replacingLensPosition(snapshot.lensPosition),
-                        state: updatedState
-                    )
-                }
-                manualFocusModeEntryToken = nil
-            }
-        case .manual:
-            manualFocusAssistToken = nil
-            manualFocusModeEntryToken = nil
-            viewModel.cancelManualFocusRuntime()
-            focusMode = .auto
-            if activeAdjustmentControl == .focus {
-                activeAdjustmentControl = nil
-            }
-            Task {
-                await viewModel.restoreAutoFocus()
-            }
+            await viewModel.restoreAutoFocus()
         }
     }
 

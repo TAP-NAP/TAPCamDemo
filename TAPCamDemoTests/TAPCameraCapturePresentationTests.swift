@@ -39,6 +39,11 @@ struct TAPCameraCapturePresentationTests {
 
         #expect(appSource.contains("TAPCAM_UI_TEST_REAL_APP"))
         #expect(controlsSource.contains(#".accessibilityIdentifier("camera.capture.shutter")"#))
+        #expect(
+            controlsSource.contains(
+                #".accessibilityIdentifier("camera.mode.\(mode.rawValue)")"#
+            )
+        )
         #expect(overlaySource.contains(#".accessibilityIdentifier("camera.capture.status")"#))
         #expect(uiTestSource.contains(#"app.launchEnvironment["TAPCAM_UI_TEST_REAL_APP"] = "1""#))
         #expect(uiTestSource.contains(#"app.buttons["camera.capture.shutter"]"#))
@@ -857,6 +862,9 @@ struct TAPCameraCapturePresentationTests {
         #expect(sliderSource.contains("return .zeroTick"))
         #expect(sliderSource.contains("return .integerTick"))
         #expect(sliderSource.contains("return .selection"))
+        #expect(sliderSource.contains("isEVIntegerHapticsEnabled && isZeroValue(value)"))
+        #expect(sliderSource.contains("showsGeometricCenterTick && index == midpointIndex"))
+        #expect(!sliderSource.contains("majorTickIndices.isEmpty && index == midpointIndex"))
         #expect(!sliderSource.contains("UISelectionFeedbackGenerator"))
         #expect(!sliderSource.contains("UIImpactFeedbackGenerator"))
         #expect(hapticSource.contains("final class CameraHapticFeedbackController"))
@@ -1251,8 +1259,8 @@ struct TAPCameraCapturePresentationTests {
             focusMode: .manual,
             draft: .init(iso: 400.4, shutterDurationSeconds: 1.0 / 125.0, lensPosition: 0.456)
         )
-        let shutterPosition = state.exposure.normalizedShutterPosition(for: 1.0 / 125.0)
-        let resolvedShutter = state.exposure.shutterDuration(forNormalizedPosition: shutterPosition)
+        let shutterPosition = state.exposure.shutterPosition(for: 1.0 / 120.0)
+        let resolvedShutter = state.exposure.shutterDuration(forPosition: shutterPosition)
 
         #expect(state.exposure.isAvailable)
         #expect(state.focus.isAvailable)
@@ -1263,10 +1271,124 @@ struct TAPCameraCapturePresentationTests {
         #expect(state.exposure.isoBadge == "A")
         #expect(state.exposure.shutterBadge == "A")
         #expect(abs(resolvedShutter - (1.0 / 125.0)) < 0.0001)
-        #expect(state.exposure.isoLabel(for: 400.4) == "400")
-        #expect(state.exposure.shutterLabel(for: 1.0 / 120.0) == "1/120")
+        #expect(state.exposure.isoScale.label(for: 400.4) == "400")
+        #expect(state.exposure.shutterScale.label(for: 1.0 / 120.0) == "1/125")
+        #expect(state.exposure.isoAutomationState == .automatic)
+        #expect(state.exposure.shutterAutomationState == .automatic)
         #expect(state.focus.lensPositionLabel(for: 0.456) == "0.46")
         #expect(state.focus.lensPositionValue == "0.46")
+        #expect(state.focus.automationState == .manual)
+        #expect(state.focus.badge == "M")
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func proAdjustmentStripsOwnAutomaticManualSwitchingWithoutToolbarSideEffects() throws {
+        let cameraViewSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraView.swift"
+        )
+        let adjustmentSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraAdjustmentControlView.swift"
+        )
+        let sliderSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraTickedSliderRow.swift"
+        )
+
+        let selectionSource = try #require(
+            TAPCamDemoTestSourceInspection.substring(
+                in: cameraViewSource,
+                from: "private func selectAdjustmentControl",
+                to: "private func restoreAutomaticMode"
+            )
+        )
+        let restoreSource = try #require(
+            TAPCamDemoTestSourceInspection.substring(
+                in: cameraViewSource,
+                from: "private func restoreAutomaticMode",
+                to: "private func beginAdjustmentInteraction"
+            )
+        )
+        let isoAdjustmentSource = try #require(
+            TAPCamDemoTestSourceInspection.substring(
+                in: cameraViewSource,
+                from: "private func adjustISO",
+                to: "private func adjustShutterPosition"
+            )
+        )
+        let shutterAdjustmentSource = try #require(
+            TAPCamDemoTestSourceInspection.substring(
+                in: cameraViewSource,
+                from: "private func adjustShutterPosition",
+                to: "private func adjustLensPosition"
+            )
+        )
+        let focusAdjustmentSource = try #require(
+            TAPCamDemoTestSourceInspection.substring(
+                in: cameraViewSource,
+                from: "private func adjustLensPosition",
+                to: "private func restoreAutoExposureFromMeter"
+            )
+        )
+        let automationControlSource = try #require(
+            TAPCamDemoTestSourceInspection.substring(
+                in: sliderSource,
+                from: "private var leadingControl",
+                to: "private func automationStateBadge"
+            )
+        )
+        let automationBadgeSource = try #require(
+            TAPCamDemoTestSourceInspection.substring(
+                in: sliderSource,
+                from: "private func automationStateBadge",
+                to: "private func leadingLabel"
+            )
+        )
+
+        #expect(selectionSource.contains("activeAdjustmentControl == .iso ? nil : .iso"))
+        #expect(selectionSource.contains("activeAdjustmentControl == .shutter ? nil : .shutter"))
+        #expect(selectionSource.contains("activeAdjustmentControl == .focus ? nil : .focus"))
+        #expect(!selectionSource.contains("makeISOAutomatic"))
+        #expect(!selectionSource.contains("makeShutterAutomatic"))
+        #expect(!selectionSource.contains("focusMode = .manual"))
+
+        #expect(restoreSource.contains("exposureControlState.makeISOAutomatic()"))
+        #expect(restoreSource.contains("exposureControlState.makeShutterAutomatic()"))
+        #expect(restoreSource.contains("restoreAutoFocusFromStrip()"))
+        #expect(isoAdjustmentSource.contains(".setISO(value)"))
+        #expect(shutterAdjustmentSource.contains(".setShutterDuration(shutterDuration)"))
+        #expect(focusAdjustmentSource.contains("focusMode = .manual"))
+        #expect(focusAdjustmentSource.contains("beginManualFocusFromStrip()"))
+        #expect(focusAdjustmentSource.contains("await viewModel.lockManualFocusAtCurrentLensPosition()"))
+        #expect(focusAdjustmentSource.contains("snapshot.focusMode == .locked"))
+        #expect(focusAdjustmentSource.contains("viewModel.queueManualFocus(lensPosition: adjustmentDraft.lensPosition)"))
+        #expect(focusAdjustmentSource.contains("showViewfinderHint(\"Manual focus unavailable\")"))
+
+        #expect(adjustmentSource.contains("case .automatic:\n            \"Auto\""))
+        #expect(adjustmentSource.contains("case .manual:\n            \"Manual\""))
+        #expect(adjustmentSource.contains("badge: state.exposure.isoBadge"))
+        #expect(adjustmentSource.contains("badge: state.exposure.shutterBadge"))
+        #expect(adjustmentSource.contains("badge: state.focus.badge"))
+        #expect(adjustmentSource.contains("automationState: state.exposure.isoAutomationState"))
+        #expect(adjustmentSource.contains("automationState: state.exposure.shutterAutomationState"))
+        #expect(adjustmentSource.contains("automationState: state.focus.automationState"))
+        #expect(adjustmentSource.contains("majorTickIndices: scale.majorTickIndices"))
+        #expect(adjustmentSource.contains("tickValueStep: 1"))
+
+        #expect(sliderSource.contains("if let automationState, automationState.canRestoreAuto"))
+        #expect(sliderSource.contains("Button(action: onRestoreAuto)"))
+        #expect(automationControlSource.contains("automationStateBadge(automationState)"))
+        #expect(automationControlSource.contains("else if let automationState"))
+        #expect(automationControlSource.contains("leadingLabel(title)"))
+        #expect(sliderSource.contains("CameraAutomationRestoreButtonStyle"))
+        #expect(automationBadgeSource.contains(".fill(highlightColor.opacity(fillOpacity))"))
+        #expect(automationBadgeSource.contains(".stroke("))
+        #expect(automationBadgeSource.contains("highlightColor.opacity(strokeOpacity)"))
+        #expect(automationBadgeSource.contains("Metrics.automationControlWidth"))
+        #expect(automationBadgeSource.contains("Metrics.automationControlHeight"))
+        #expect(
+            sliderSource.contains(
+                #".accessibilityLabel(Text(verbatim: "Manual. Restore Auto"))"#
+            )
+        )
     }
 
     @Test func cameraAdjustmentControlStateShowsMeterForCustomExposure() throws {
