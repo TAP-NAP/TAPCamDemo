@@ -583,7 +583,8 @@ ready。失败时恢复可用的稳定相机路径；如果 VIDEO warmup 本身�
 - `Auto exposure restored`
 - `Flash unavailable`
 
-Settings 的 `Depth Warnings` 只控制深度类提示；普通操作反馈不提供开关。
+Release 中深度类提示是固定产品行为，不提供关闭入口；Debug 可临时关闭它做诊断。
+普通操作反馈同样不提供全局开关。
 
 ## Settings
 
@@ -595,19 +596,31 @@ Settings 分组：
   文案。`cameraSurface` 取景器子树例外：摄影术语、模式名和取景器提示固定使用
   英文 canonical copy。这个子树级 locale 覆盖只改变展示，不增加 `.id`、
   lifecycle callback，也不触发相机 session 重建。
-- `Capture`：`Photo Quality`、`Output Format`、`Flash Default`、`Live Photo Default`、
-  `Photographer Mode Startup`。
-- `Viewfinder`：`Grid`、`Highlight Color`、`Depth Warnings`。
-- `Camera Behavior`：`Keep Screen Awake`、`Reset EV on App Launch`、`Return to Camera After Background`。
-- `Feedback`：`Shutter Sound`、`Shutter Haptics`。
-- `Analysis`：`Help`。
-- `Permissions`：`Camera`、`Photos` 授权状态；`Location`、`Microphone`
-  授权状态和获取权限入口；`Use Location Data`、`Use Microphone Data`
-  是 App 内数据使用开关。采集只在系统授权和 App 内开关都允许时使用地点或
-  麦克风数据。
-- `App Attest`：凭证状态和 redacted KeyID 摘要。
-- `Debug Camera Controls`：仅 `DEBUG` 构建显示 `Focus Magnifier`。MF
-  点按快速对焦是 eligible 后置 PRO/MF 的固定产品交互，不再出现在 Settings。
+- `Camera Settings`：`Output Format`、`Flash Default`、`Live Photo Default`、
+  `Photographer Mode Startup`、`Keep Screen Awake`、`Reset EV on App Launch`、
+  `Return to Camera After Background`、`Capture Haptics`。
+- `Interface`：`Grid`、`Highlight Color`、`Analysis Animation`。
+- `Data & Permissions`：`Camera`、`Photos` 显示授权状态；`Location Data` 和
+  `Microphone` 各自用一条复合行同时表达系统授权入口与 App 内
+  `Use When Capturing` 选择。两层状态仍然独立，只有系统授权和 App 选择都允许时
+  才使用相应数据。
+- `Photo Integrity`：Release 只显示 `Protection Readiness`，状态为
+  `Not Ready / Preparing / Ready / Preparation Failed`，必要时提供
+  `Prepare / Retry`。Release 不展示 App Attest、后端、credential name 或 KeyID。
+- `Debug Camera Controls`：仅 `DEBUG` 构建显示 `Capture Prioritization`、
+  `Depth Warnings`、`Shutter Sound`、`Focus Magnifier` 和 `Plane Strictness`。
+  MF 点按快速对焦是 eligible 后置 PRO/MF 的固定产品交互，不再出现在 Settings。
+- `App Attest Backend` 与 `App Attest Credential`：仅 `DEBUG` 构建显示
+  public-safe backend 摘要、内部 credential name、redacted KeyID 和准备/重置操作。
+
+Release 的捕获优先级固定为 AVFoundation `.quality`，旧版本保存的 `speed` 或
+`balanced` 值不会在不可见状态下继续生效；Debug 才读取该诊断选项。Release 的
+`Plane Strictness` 固定使用默认值 `0.68`，`Depth Warnings` 固定开启，快门声音
+交给系统和地区策略决定。`Capture Haptics` 仍控制照片与视频开始/停止的拍摄触感。
+
+麦克风偏好使用中性 key，同时迁移旧 `CameraLivePhotoSoundEnabled` 值。未保存过
+任何选择的用户在第一次授予麦克风权限后默认开启；用户主动关闭后，升级、重新授权
+或返回前台都不得自动重新开启。
 
 `Focus Magnifier` 是 Debug-only Picker，不是 bool toggle：
 
@@ -695,7 +708,6 @@ C2PA 当前不出现在 UI。
 
 - `App Language`：`System Default / English / Simplified Chinese`；未知的旧值
   fail-safe 回 `System Default`，未来语言通过稳定 raw value 扩展。
-- `Photo Quality`
 - `Output Format`
 - `Flash Default`
 - `Live Photo Default`
@@ -709,13 +721,19 @@ C2PA 当前不出现在 UI。
 - `Basic EV` 值按 EV preference policy 处理：如果启动重置开启，冷启动回到默认值；如果关闭，可恢复上次 EV。它不进入 capture artifact、manifest、Photos metadata 或 pending record。
 - `Grid`
 - `Highlight Color`
-- `Depth Warnings`
 - `Return to Camera After Background`
-- `Help`
+- `Capture Haptics`
+- `Analysis Animation`
+- `Use Location Data`
+- `Use Microphone Data`：首次授权且从未选择时默认开启；显式关闭后保持关闭
 
 Debug-only 持久化 Settings 项：
 
+- `Capture Prioritization`：`Speed / Balanced / Quality`
+- `Depth Warnings`
+- `Shutter Sound`
 - `Focus Magnifier` 枚举：`Off / 1.5s / 3s / 5s`
+- `Plane Strictness`
 
 ## No Depth
 
@@ -729,7 +747,8 @@ TAP 仍优先选择支持深度的设备和格式，并请求深度。
 - 允许进入分析页面；分析页面显示 No Depth 分数和不可用状态。
 - 不因为深度或可信状态阻止拍摄。
 
-拍摄中不常驻显示可信状态或深度状态。只有 `Depth Warnings` 开启时，No Depth 捕获后用 `viewfinder edge toast` 轻提示。
+拍摄中不常驻显示可信状态或深度状态。Release 在 No Depth 捕获后固定使用
+`viewfinder edge toast` 轻提示；Debug 可关闭这条提示以做诊断。
 
 ## Capture Score Summary
 

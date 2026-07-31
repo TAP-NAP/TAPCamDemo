@@ -31,6 +31,28 @@ struct TAPCameraCapturePresentationTests {
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func settingsKeepSessionReconfigurationLimitedToCaptureAffectingPreferences() throws {
+        let cameraSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraView.swift"
+        )
+        let settingsSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalyzerSettingsView.swift"
+        )
+
+        for observer in [
+            ".onChange(of: outputFormatRawValue)",
+            ".onChange(of: photoQualityRawValue)",
+            ".onChange(of: usesMicrophoneData)"
+        ] {
+            #expect(cameraSource.contains(observer))
+        }
+        #expect(cameraSource.components(separatedBy: "captureSessionPreferenceDidChange()").count == 5)
+        #expect(!settingsSource.contains("configureCurrentSelection"))
+        #expect(!settingsSource.contains("configurePhotographerMode"))
+        #expect(!settingsSource.contains("CameraSettingsSessionReconfigurationPolicy"))
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
     func cameraUISmokeTestAnchorsStayExplicit() throws {
         let appSource = try TAPCamDemoTestSourceInspection.source(relativePath: "TAPCamDemo/App/TAPCamDemoApp.swift")
         let controlsSource = try TAPCamDemoTestSourceInspection.source(relativePath: "TAPCamDemo/CameraCapture/UI/CameraCaptureControlsView.swift")
@@ -236,6 +258,43 @@ struct TAPCameraCapturePresentationTests {
     @Test func shutterSoundPreferenceDefaultsToEnabled() throws {
         #expect(CameraFeedbackPreferences.defaultShutterSoundEnabled)
         #expect(!CameraFeedbackPreferences.shutterSoundEnabledKey.isEmpty)
+    }
+
+    @Test func releaseCapturePoliciesStayFixedWhileDebugOverridesRemainAvailable() {
+        #expect(CameraPhotoQualityPreference.resolvedForRuntime(
+            rawValue: CameraPhotoQualityPreference.speed.rawValue,
+            allowsDebugOverride: true
+        ) == .speed)
+        #expect(CameraPhotoQualityPreference.resolvedForRuntime(
+            rawValue: CameraPhotoQualityPreference.balanced.rawValue,
+            allowsDebugOverride: true
+        ) == .balanced)
+        #expect(CameraPhotoQualityPreference.resolvedForRuntime(
+            rawValue: CameraPhotoQualityPreference.speed.rawValue,
+            allowsDebugOverride: false
+        ) == .quality)
+
+        #expect(!CameraDepthAvailabilityHintPreferences.resolvedShowsHints(
+            storedValue: false,
+            allowsDebugOverride: true
+        ))
+        #expect(CameraDepthAvailabilityHintPreferences.resolvedShowsHints(
+            storedValue: false,
+            allowsDebugOverride: false
+        ))
+
+        #expect(CameraFeedbackPreferences.shouldSuppressShutterSound(
+            storedIsEnabled: false,
+            allowsDebugOverride: true
+        ))
+        #expect(!CameraFeedbackPreferences.shouldSuppressShutterSound(
+            storedIsEnabled: false,
+            allowsDebugOverride: false
+        ))
+        #expect(!CameraFeedbackPreferences.shouldSuppressShutterSound(
+            storedIsEnabled: true,
+            allowsDebugOverride: true
+        ))
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
@@ -1104,6 +1163,73 @@ struct TAPCameraCapturePresentationTests {
         #expect(CameraCaptureDataUsePreferences.usesMicrophoneData(in: userDefaults))
     }
 
+    @Test func microphoneDataPreferenceMigratesTheLegacyChoice() throws {
+        let suiteName = "TAPCameraMicrophoneLegacyMigrationTests-\(UUID().uuidString)"
+        let userDefaults = try #require(UserDefaults(suiteName: suiteName))
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+
+        userDefaults.set(
+            true,
+            forKey: CameraCaptureDataUsePreferences.legacyUsesMicrophoneDataKey
+        )
+
+        #expect(CameraCaptureDataUsePreferences.usesMicrophoneData(in: userDefaults))
+        #expect(
+            userDefaults.object(forKey: CameraCaptureDataUsePreferences.usesMicrophoneDataKey) as? Bool
+                == true
+        )
+        #expect(!CameraCaptureDataUsePreferences.migrateLegacyMicrophonePreferenceIfNeeded(
+            in: userDefaults
+        ))
+    }
+
+    @Test func firstMicrophoneAuthorizationEnablesDataUseOnlyWithoutAPriorChoice() throws {
+        let suiteName = "TAPCameraMicrophoneFirstAuthorizationTests-\(UUID().uuidString)"
+        let userDefaults = try #require(UserDefaults(suiteName: suiteName))
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+
+        #expect(CameraCaptureDataUsePreferences.enableMicrophoneDataAfterFirstAuthorizationIfNeeded(
+            in: userDefaults
+        ))
+        #expect(CameraCaptureDataUsePreferences.usesMicrophoneData(in: userDefaults))
+        #expect(!CameraCaptureDataUsePreferences.enableMicrophoneDataAfterFirstAuthorizationIfNeeded(
+            in: userDefaults
+        ))
+
+        userDefaults.set(false, forKey: CameraCaptureDataUsePreferences.usesMicrophoneDataKey)
+        userDefaults.set(true, forKey: CameraCaptureDataUsePreferences.legacyUsesMicrophoneDataKey)
+        #expect(!CameraCaptureDataUsePreferences.enableMicrophoneDataAfterFirstAuthorizationIfNeeded(
+            in: userDefaults
+        ))
+        #expect(!CameraCaptureDataUsePreferences.usesMicrophoneData(in: userDefaults))
+    }
+
+    @Test func firstMicrophoneAuthorizationPreservesAnExplicitLegacyOptOut() throws {
+        let suiteName = "TAPCameraMicrophoneLegacyOptOutTests-\(UUID().uuidString)"
+        let userDefaults = try #require(UserDefaults(suiteName: suiteName))
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+
+        userDefaults.set(
+            false,
+            forKey: CameraCaptureDataUsePreferences.legacyUsesMicrophoneDataKey
+        )
+
+        #expect(!CameraCaptureDataUsePreferences.enableMicrophoneDataAfterFirstAuthorizationIfNeeded(
+            in: userDefaults
+        ))
+        #expect(!CameraCaptureDataUsePreferences.usesMicrophoneData(in: userDefaults))
+        #expect(
+            userDefaults.object(forKey: CameraCaptureDataUsePreferences.usesMicrophoneDataKey) as? Bool
+                == false
+        )
+    }
+
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
     func cameraViewfinderChromeKeepsFocusExperimentsOutOfReleaseSettingsAndPairsFlashWithLivePhoto() throws {
         let chromeSource = try TAPCamDemoTestSourceInspection.source(
@@ -1136,8 +1262,13 @@ struct TAPCameraCapturePresentationTests {
         #expect(settingsSource.contains("@AppStorage(CameraCaptureDataUsePreferences.usesMicrophoneDataKey)"))
         #expect(settingsSource.contains(#"Picker("Flash Default", selection: $flashStartupPolicyRawValue)"#))
         #expect(settingsSource.contains(#"Picker("Live Photo Default", selection: $livePhotoStartupPolicyRawValue)"#))
-        #expect(settingsSource.contains("Use Location Data"))
-        #expect(settingsSource.contains("Use Microphone Data"))
+        #expect(settingsSource.contains(#"Section("Camera Settings")"#))
+        #expect(settingsSource.contains(#"Section("Interface")"#))
+        #expect(settingsSource.contains(#"Section("Data & Permissions")"#))
+        #expect(settingsSource.contains("Location Data"))
+        #expect(settingsSource.contains("Use When Capturing"))
+        #expect(!settingsSource.contains("Use Location Data"))
+        #expect(!settingsSource.contains("Use Microphone Data"))
         #expect(settingsSource.contains("Get Permission"))
         #expect(settingsSource.contains("CameraViewfinderControlDefaultPolicy.allCases"))
         #expect(!settingsSource.contains(#"Picker("Default Flash""#))
@@ -1146,13 +1277,65 @@ struct TAPCameraCapturePresentationTests {
         #expect(settingsSource.contains("CameraViewfinderHighlightPreference.allCases"))
         #expect(settingsSource.contains(".fill(preference.color)"))
         #expect(settingsSource.contains(#"Section("Debug Camera Controls")"#))
-        #expect(settingsSource.contains("#if DEBUG\n    @AppStorage(CameraFocusMagnifierPreference.storageKey)"))
+        #expect(settingsSource.contains("@AppStorage(CameraFocusMagnifierPreference.storageKey)"))
         #expect(!settingsSource.contains("CameraLiDARFocusAssistPreferences"))
-        let viewfinderSectionStart = try #require(settingsSource.range(of: "private var viewfinderSettingsSection"))
-        let cameraBehaviorSectionStart = try #require(settingsSource.range(of: "private var cameraBehaviorSection"))
-        let viewfinderSection = String(settingsSource[viewfinderSectionStart.lowerBound..<cameraBehaviorSectionStart.lowerBound])
-        #expect(!viewfinderSection.contains("Focus Magnifier"))
-        #expect(!viewfinderSection.contains("LiDAR Focus Assist"))
+        let formStart = try #require(settingsSource.range(of: "Form {"))
+        let debugFormStart = try #require(
+            settingsSource.range(
+                of: "#if DEBUG\n                debugCameraControlsSection",
+                range: formStart.upperBound..<settingsSource.endIndex
+            )
+        )
+        let releaseForm = String(settingsSource[formStart.lowerBound..<debugFormStart.lowerBound])
+        let releaseSectionMarkers = [
+            "languageSettingsSection",
+            "cameraSettingsSection",
+            "interfaceSettingsSection",
+            "dataAndPermissionsSection",
+            "DepthAnalyzerAppAttestSection("
+        ]
+        var previousMarkerIndex = releaseForm.startIndex
+        for marker in releaseSectionMarkers {
+            let markerRange = try #require(
+                releaseForm.range(of: marker, range: previousMarkerIndex..<releaseForm.endIndex)
+            )
+            previousMarkerIndex = markerRange.upperBound
+        }
+        #expect(!releaseForm.contains("Photo Quality"))
+        #expect(!releaseForm.contains("Depth Warnings"))
+        #expect(!releaseForm.contains("Shutter Sound"))
+        #expect(!releaseForm.contains("Plane Strictness"))
+        #expect(!releaseForm.contains("cameraBehaviorSection"))
+        #expect(!releaseForm.contains("feedbackSettingsSection"))
+        #expect(!releaseForm.contains("analysisSettingsSection"))
+        #expect(!releaseForm.contains("permissionsSection"))
+
+        let interfaceSectionStart = try #require(settingsSource.range(of: "private var interfaceSettingsSection"))
+        let dataSectionStart = try #require(settingsSource.range(of: "private var dataAndPermissionsSection"))
+        let interfaceSection = String(settingsSource[interfaceSectionStart.lowerBound..<dataSectionStart.lowerBound])
+        #expect(interfaceSection.contains("Analysis Animation"))
+        #expect(!interfaceSection.contains("Focus Magnifier"))
+        #expect(!interfaceSection.contains("LiDAR Focus Assist"))
+
+        let dataSectionEnd = try #require(settingsSource.range(of: "private func refreshAuthorizationSnapshot"))
+        let dataSection = String(settingsSource[dataSectionStart.lowerBound..<dataSectionEnd.lowerBound])
+        #expect(dataSection.components(separatedBy: "DepthAnalyzerDataPermissionRow(").count == 3)
+        #expect(dataSection.contains("dataUseBinding: authorizationSnapshot.isLocationAuthorized"))
+        #expect(dataSection.contains("dataUseBinding: authorizationSnapshot.isMicrophoneAuthorized"))
+
+        let debugSectionStart = try #require(settingsSource.range(of: "private var debugCameraControlsSection"))
+        let debugSectionEnd = try #require(settingsSource.range(of: "private var debugAppAttestSections"))
+        let debugSection = String(settingsSource[debugSectionStart.lowerBound..<debugSectionEnd.lowerBound])
+        for label in ["Capture Prioritization", "Depth Warnings", "Shutter Sound", "Focus Magnifier", "Plane Strictness"] {
+            #expect(debugSection.contains(label))
+        }
+
+        let compositeRowStart = try #require(settingsSource.range(of: "private struct DepthAnalyzerDataPermissionRow"))
+        let compositeRowEnd = try #require(settingsSource.range(of: "@MainActor", range: compositeRowStart.upperBound..<settingsSource.endIndex))
+        let compositeRow = String(settingsSource[compositeRowStart.lowerBound..<compositeRowEnd.lowerBound])
+        #expect(compositeRow.contains(#"Toggle("Use When Capturing", isOn: dataUseBinding)"#))
+        #expect(compositeRow.contains(".buttonStyle(.bordered)"))
+        #expect(!compositeRow.contains(".accessibilityElement(children: .combine)"))
         #expect(!settingsSource.contains(#"Section("Focus")"#))
         #expect(!settingsSource.contains(#"Section("Roadmap")"#))
         #expect(!settingsSource.contains("Shutter Position"))
@@ -1577,7 +1760,7 @@ struct TAPCameraCapturePresentationTests {
         #expect(cameraSource.contains("manualFocusTapAssistAtPreviewPoint"))
         #expect(cameraSource.contains("await viewModel.performManualFocusTapAssist(at: point)"))
         #expect(cameraSource.contains("manualFocusAssistToken == nil"))
-        #expect(settingsSource.contains("#if DEBUG\n    @AppStorage(CameraFocusMagnifierPreference.storageKey)"))
+        #expect(settingsSource.contains("@AppStorage(CameraFocusMagnifierPreference.storageKey)"))
         #expect(!settingsSource.contains("TAP_ENABLE_PRO_CAMERA_CONTROLS"))
         let debugSectionStart = try #require(settingsSource.range(of: "private var debugCameraControlsSection"))
         let debugSectionEnd = try #require(settingsSource.range(of: "private var debugAppAttestSections"))

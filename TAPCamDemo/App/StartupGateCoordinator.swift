@@ -88,6 +88,8 @@ final class StartupGateCoordinator: NSObject, ObservableObject, CLLocationManage
     }
 
     func refreshAuthorizationStatuses() {
+        CameraCaptureDataUsePreferences.migrateLegacyMicrophonePreferenceIfNeeded()
+
         if securityPreflightStatus == .denied {
             Task { await requestSecurityPreflight() }
         } else if securityPreflightStatus != .requesting,
@@ -111,6 +113,9 @@ final class StartupGateCoordinator: NSObject, ObservableObject, CLLocationManage
         if microphoneStatus != .requesting,
            microphoneStatus != .skipped {
             microphoneStatus = Self.microphoneStatus()
+            if microphoneStatus == .granted {
+                CameraCaptureDataUsePreferences.enableMicrophoneDataAfterFirstAuthorizationIfNeeded()
+            }
         }
     }
 
@@ -199,10 +204,14 @@ final class StartupGateCoordinator: NSObject, ObservableObject, CLLocationManage
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .authorized:
             microphoneStatus = .granted
+            CameraCaptureDataUsePreferences.enableMicrophoneDataAfterFirstAuthorizationIfNeeded()
         case .notDetermined:
             microphoneStatus = .requesting
             let granted = await AVCaptureDevice.requestAccess(for: .audio)
             microphoneStatus = granted ? .granted : .denied
+            if granted {
+                CameraCaptureDataUsePreferences.enableMicrophoneDataAfterFirstAuthorizationIfNeeded()
+            }
         case .denied, .restricted:
             microphoneStatus = .denied
         @unknown default:

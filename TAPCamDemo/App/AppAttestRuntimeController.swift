@@ -36,6 +36,23 @@ final class AppAttestRuntimeController: ObservableObject {
         credentialKeyIdText.map(AppAttestCredentialKeyIDPresentation.init(keyID:))
     }
 
+    var photoIntegrityReadiness: PhotoIntegrityReadiness {
+        if isPreparingCredential {
+            return .preparing
+        }
+        if isPhotoCredentialReady && hasCurrentCredentialHealthCheck {
+            return .ready
+        }
+        if AppAttestCredentialPresentation.isFailureStatusText(credentialStatusText) {
+            return .preparationFailed
+        }
+        return .notReady
+    }
+
+    var canPreparePhotoIntegrity: Bool {
+        !isWorking && photoIntegrityReadiness != .ready
+    }
+
     init(
         runtime: AppAttestRuntime? = nil,
         userDefaults: UserDefaults = .standard,
@@ -93,9 +110,13 @@ final class AppAttestRuntimeController: ObservableObject {
     }
 
     func resetAndPrepareCredential() async {
+        let currentHealthCheckToken = Self.currentCredentialHealthCheckToken(runtime: runtime)
         _ = await performCredentialOperation("Reset and prepare credential", showsPreparationProgress: true) {
             try await self.resetLocalCredentialMetadata()
-            try await self.prepareCredential(markAutoPrepared: true)
+            try await self.prepareAndValidateCredential(
+                markAutoPrepared: true,
+                healthCheckToken: currentHealthCheckToken
+            )
         }
     }
 
@@ -228,6 +249,11 @@ final class AppAttestRuntimeController: ObservableObject {
     private func endOperation() {
         activeOperationCount = max(0, activeOperationCount - 1)
         isWorking = activeOperationCount > 0
+    }
+
+    private var hasCurrentCredentialHealthCheck: Bool {
+        userDefaults.string(forKey: Self.credentialHealthCheckTokenKey)
+            == Self.currentCredentialHealthCheckToken(runtime: runtime)
     }
 
     private static func makeRuntime() -> AppAttestRuntime {

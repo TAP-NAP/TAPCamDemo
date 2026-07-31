@@ -133,19 +133,25 @@ accident.
 
 ## Settings UI
 
-Release settings show only the App Attest `Status` row. Debug builds also show
-backend, credential, prepare, and reset controls, and those debug-only rows use
-a yellow background so they are easy to distinguish from Release UI.
+Release settings present this capability as `Photo Integrity`, with one
+`Protection Readiness` row. Its product-facing states are `Not Ready`,
+`Preparing`, `Ready`, and `Preparation Failed`; unavailable or failed states
+offer `Prepare` or `Retry`. Release does not expose App Attest terminology,
+backend details, help text, credential names, or key IDs.
 
-When the status is `Not prepared`, tapping that row asks
-`AppAttestRuntimeController` to reset local credential artifacts and run
-`prepare(credentialName:)` for `photo_keyid`. Once ready, the details row shows
-only a redacted App Attest key ID summary from
-`AppAttestCredentialPresentation`. The Debug backend row shows
-`AppAttestRuntime.backendPublicSummary`, so the real backend URL remains an
-internal request and credential-health-token input. User-visible failure text is
-generic; raw localized errors, failing URLs, paths, backend URLs, backend text,
-and full key IDs stay out of Settings text and accessibility labels.
+The Release action asks `AppAttestRuntimeController` to reset local credential
+artifacts, run `prepare(credentialName:)` for `photo_keyid`, and validate that
+the prepared credential can generate an assertion. The controller reports
+`Ready` only after that complete health check succeeds. Debug builds retain the
+internal status, redacted key-ID presentation, backend, prepare, and reset
+controls, and those debug-only rows use a yellow background so they are easy to
+distinguish from Release UI.
+
+The Debug backend row uses `AppAttestRuntime.backendPublicSummary`, so the real
+backend URL remains an internal request and credential-health-token input.
+User-visible failure text is generic; raw localized errors, failing URLs, paths,
+backend URLs, backend text, and full key IDs stay out of Settings text and
+accessibility labels.
 
 ## Boundary Rules
 

@@ -380,8 +380,9 @@ struct TAPDepthAnalysisPresentationTests {
         #expect(settingsSource.contains("planeGrowthStrictnessKey"))
         #expect(settingsSource.contains("Plane Strictness"))
         #expect(settingsSource.contains("DepthAnalysisPlaneSelectionState.minimumStrictness...DepthAnalysisPlaneSelectionState.maximumStrictness"))
-        #expect(viewSource.contains("strictness: planeGrowthStrictness"))
-        #expect(viewSource.contains("updatePlaneGrowthStrictness(planeGrowthStrictness)"))
+        #expect(viewSource.contains("strictness: runtimePlaneGrowthStrictness"))
+        #expect(viewSource.contains("updatePlaneGrowthStrictness(runtimePlaneGrowthStrictness)"))
+        #expect(viewSource.contains("resolvedPlaneGrowthStrictness("))
         #expect(!chromeSource.contains("AnalysisComparisonControl"))
         #expect(!chromeSource.contains("2D comparison position"))
         #expect(interactiveSource.contains("ComparisonDivider"))
@@ -445,7 +446,7 @@ struct TAPDepthAnalysisPresentationTests {
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func analysisPlaneGridAnimationCanBeDisabledInSettings() throws {
+    func analysisAnimationCanBeDisabledInInterfaceSettings() throws {
         let settingsSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalyzerSettingsView.swift"
         )
@@ -454,7 +455,11 @@ struct TAPDepthAnalysisPresentationTests {
         )
 
         #expect(settingsSource.contains("planeGridAnimationEnabledKey"))
-        #expect(settingsSource.contains("Grid Growth Animation"))
+        let interfaceStart = try #require(settingsSource.range(of: "private var interfaceSettingsSection"))
+        let dataStart = try #require(settingsSource.range(of: "private var dataAndPermissionsSection"))
+        let interfaceSection = String(settingsSource[interfaceStart.lowerBound..<dataStart.lowerBound])
+        #expect(interfaceSection.contains("Analysis Animation"))
+        #expect(!settingsSource.contains("Grid Growth Animation"))
         #expect(interactiveSource.contains("accessibilityReduceMotion || !isPlaneGridAnimationEnabled"))
     }
 
@@ -1185,9 +1190,38 @@ struct TAPDepthAnalysisPresentationTests {
         slot.prepareForEviction()
     }
 
-    @Test func analyzerHelpPreferenceDefaultsToEnabled() throws {
-        #expect(DepthAnalyzerPreferences.defaultShowsAnalysisHelp)
-        #expect(!DepthAnalyzerPreferences.showsAnalysisHelpKey.isEmpty)
+    @Test func planeGrowthStrictnessUsesTheReleaseDefaultAndClampsDebugOverrides() {
+        #expect(DepthAnalyzerPreferences.resolvedPlaneGrowthStrictness(
+            storedValue: DepthAnalysisPlaneSelectionState.minimumStrictness,
+            allowsDebugOverride: true
+        ) == DepthAnalysisPlaneSelectionState.minimumStrictness)
+        #expect(DepthAnalyzerPreferences.resolvedPlaneGrowthStrictness(
+            storedValue: DepthAnalysisPlaneSelectionState.minimumStrictness - 0.2,
+            allowsDebugOverride: true
+        ) == DepthAnalysisPlaneSelectionState.minimumStrictness)
+        #expect(DepthAnalyzerPreferences.resolvedPlaneGrowthStrictness(
+            storedValue: DepthAnalysisPlaneSelectionState.maximumStrictness + 0.2,
+            allowsDebugOverride: true
+        ) == DepthAnalysisPlaneSelectionState.maximumStrictness)
+        #expect(DepthAnalyzerPreferences.resolvedPlaneGrowthStrictness(
+            storedValue: DepthAnalysisPlaneSelectionState.maximumStrictness,
+            allowsDebugOverride: false
+        ) == DepthAnalysisPlaneSelectionState.defaultStrictness)
+        #expect(DepthAnalyzerPreferences.resolvedPlaneGrowthStrictness(
+            storedValue: .nan,
+            allowsDebugOverride: true
+        ) == DepthAnalysisPlaneSelectionState.defaultStrictness)
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func settingsDoNotExposeTheRemovedGlobalHelpPreference() throws {
+        let settingsSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalyzerSettingsView.swift"
+        )
+
+        #expect(!settingsSource.contains("showsAnalysisHelpKey"))
+        #expect(!settingsSource.contains("defaultShowsAnalysisHelp"))
+        #expect(!settingsSource.contains(#"Label("Help""#))
     }
 
     @Test func analysisInteractionStateSeparatesDrawingFromRegionInspection() throws {

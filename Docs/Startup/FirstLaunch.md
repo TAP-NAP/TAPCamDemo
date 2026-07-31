@@ -55,9 +55,11 @@ flowchart TD
   captures use the app's location data-use switch plus any already cached
   authorized location, or save without location metadata.
 - If microphone is skipped or still not authorized after first launch, the
-  camera continues to capture still photos and silent Live Photos. Live Photo
-  sound requires both system microphone authorization and the app's microphone
-  data-use switch.
+  camera continues to capture still photos, silent Live Photos, and silent
+  videos. Live Photo and video sound require both system microphone
+  authorization and the app's microphone data-use switch. The first successful
+  authorization enables that switch only when the user has never made a choice;
+  a saved opt-out remains authoritative.
 - The Network Access row performs a lightweight HTTPS preflight against the
   configured App Attest server `/healthz` endpoint before first camera entry and
   automatic pending-capture signing credential warmup.

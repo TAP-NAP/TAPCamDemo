@@ -85,4 +85,19 @@ nonisolated enum CameraPhotoQualityPreference: String, CaseIterable, Identifiabl
     static func resolved(rawValue: String) -> CameraPhotoQualityPreference {
         CameraPhotoQualityPreference(rawValue: rawValue) ?? defaultValue
     }
+
+    /// Resolves the capture-prioritization policy that runtime is allowed to use.
+    ///
+    /// Release builds deliberately ignore any legacy `speed` or `balanced`
+    /// preference because capture prioritization is not a supported customer
+    /// control. Debug builds can still exercise every AVFoundation policy.
+    static func resolvedForRuntime(
+        rawValue: String,
+        allowsDebugOverride: Bool = _isDebugAssertConfiguration()
+    ) -> CameraPhotoQualityPreference {
+        guard allowsDebugOverride else {
+            return .quality
+        }
+        return resolved(rawValue: rawValue)
+    }
 }

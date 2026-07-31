@@ -117,6 +117,15 @@ nonisolated enum CameraTemporaryFocusEVPreferences {
 nonisolated enum CameraDepthAvailabilityHintPreferences {
     static let showsHintsKey = "CameraDepthAvailabilityHintsEnabled"
     static let defaultShowsHints = true
+
+    /// Depth availability remains an always-on product hint in Release.
+    /// Debug builds retain the stored switch for diagnostics.
+    static func resolvedShowsHints(
+        storedValue: Bool,
+        allowsDebugOverride: Bool = _isDebugAssertConfiguration()
+    ) -> Bool {
+        allowsDebugOverride ? storedValue : defaultShowsHints
+    }
 }
 
 nonisolated enum CameraFocusMagnifierPreference: String, CaseIterable, Identifiable, Sendable {

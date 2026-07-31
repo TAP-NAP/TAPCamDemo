@@ -1517,6 +1517,23 @@ private final class AnalysisRawZoomUIScrollView: UIScrollView {
     }
 }
 
+extension DepthAnalyzerPreferences {
+    /// Release uses the reviewed plane-growth threshold regardless of an older
+    /// stored setting. Debug builds can still tune the clamped detector input.
+    nonisolated static func resolvedPlaneGrowthStrictness(
+        storedValue: Double,
+        allowsDebugOverride: Bool = _isDebugAssertConfiguration()
+    ) -> Double {
+        guard allowsDebugOverride, storedValue.isFinite else {
+            return DepthAnalysisPlaneSelectionState.defaultStrictness
+        }
+        return min(
+            max(storedValue, DepthAnalysisPlaneSelectionState.minimumStrictness),
+            DepthAnalysisPlaneSelectionState.maximumStrictness
+        )
+    }
+}
+
 private struct AnalysisToolPhotoStage: View {
     @ObservedObject var slot: AnalysisPhotoSlot
     let tool: AnalysisViewerTool
@@ -1595,7 +1612,7 @@ private struct AnalysisToolPhotoStage: View {
                 onPlaneSeedSelected: { depthPoint in
                     slot.selectPlaneSeed(
                         depthPoint,
-                        strictness: planeGrowthStrictness
+                        strictness: runtimePlaneGrowthStrictness
                     )
                 }
             )
@@ -1628,7 +1645,13 @@ private struct AnalysisToolPhotoStage: View {
         guard isCurrent else {
             return
         }
-        slot.updatePlaneGrowthStrictness(planeGrowthStrictness)
+        slot.updatePlaneGrowthStrictness(runtimePlaneGrowthStrictness)
+    }
+
+    private var runtimePlaneGrowthStrictness: Double {
+        DepthAnalyzerPreferences.resolvedPlaneGrowthStrictness(
+            storedValue: planeGrowthStrictness
+        )
     }
 
     @ViewBuilder

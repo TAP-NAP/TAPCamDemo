@@ -68,13 +68,15 @@ App Attest UI presentation review path:
 2. Read [../TAPCamDemo/App/AppAttestRuntimeController.swift](../TAPCamDemo/App/AppAttestRuntimeController.swift)
    for credential lifecycle and the raw key id held for readiness checks.
 3. Read [../TAPCamDemo/App/AppAttestCredentialPresentation.swift](../TAPCamDemo/App/AppAttestCredentialPresentation.swift)
-   for generic failure status text and redacted key ID summaries.
+   for product-facing Photo Integrity readiness, generic failure status text,
+   and Debug-only redacted key ID summaries.
 4. Read [../TAPCamDemo/DepthAnalysis/DepthAnalyzerAppAttestSection.swift](../TAPCamDemo/DepthAnalysis/DepthAnalyzerAppAttestSection.swift)
-   for the Settings App Attest section. It consumes explicit display fields and
-   closures instead of the whole controller.
+   for the Release `Photo Integrity / Protection Readiness` section. It consumes
+   explicit product readiness and an action closure instead of the whole controller.
 5. Read [../TAPCamDemo/DepthAnalysis/DepthAnalyzerSettingsView.swift](../TAPCamDemo/DepthAnalysis/DepthAnalyzerSettingsView.swift)
-   to confirm Settings passes presentation values, not raw key IDs or raw
-   localized errors, into visible text and accessibility labels.
+   to confirm Release Settings passes product readiness, not App Attest
+   terminology, raw key IDs, backend details, or raw localized errors. Redacted
+   credential details remain under `#if DEBUG`.
 6. Read [../TAPCamDemoTests/AppAttestRuntimeTests.swift](../TAPCamDemoTests/AppAttestRuntimeTests.swift)
    for key ID redaction and generic failure-status tests.
 
@@ -608,12 +610,13 @@ SwiftUI Instruments, VM Tracker, or memgraph acceptance.
   `TAPDiagnosticsOSLogPrivacyTests` source-scans critical logging files so
   capture ids, manifest ids, credential names, App Attest key ids, Photos asset
   ids, and invalid bundle names stay private in the capture/proof/export path.
-- `AppAttestCredentialPresentation` and `AppAttestBackendPresentation` are now
-  the public-safe Settings presentation boundaries for App Attest credential
-  status, key IDs, and backend status. User-visible failure text is generic,
-  Settings displays only redacted key ID summaries and backend public summaries,
-  and the runtime retains the full key ID plus backend URL for readiness checks,
-  requests, and credential health tokens.
+- `PhotoIntegrityReadiness` is the Release Settings boundary for protection
+  readiness; `AppAttestCredentialPresentation` and
+  `AppAttestBackendPresentation` provide public-safe Debug summaries. Release
+  displays only `Not Ready / Preparing / Ready / Preparation Failed`, while
+  Debug may display redacted key ID and backend summaries. The runtime retains
+  the full key ID plus backend URL for readiness checks, requests, and
+  credential health tokens.
 - `CameraCaptureStatusPresentation` is now the public-safe camera status
   boundary for `CameraViewModel.statusMessage` and
   `CaptureJobMetrics.failureReason`. Camera status and Debug metrics failure

@@ -102,20 +102,21 @@ not reset other caller-defined credential names.
 
 ## TAPCamDemo Settings Mapping
 
-- Release shows only App Attest `Status`.
+- Release shows a `Photo Integrity` section with one `Protection Readiness`
+  row. Its values are `Not Ready`, `Preparing`, `Ready`, and
+  `Preparation Failed`.
+- Release does not show App Attest terminology, backend details, help text,
+  credential names, or key IDs.
 - Debug shows the backend, credential name, prepare, and reset rows. These
   debug-only rows use a yellow background.
 - `Prepare Credential` calls `prepare(credentialName:)`.
 - `Reset Local Credential` calls `reset(credentialName:)` and clears the local
   `photo_keyid` health token metadata.
-- Tapping `Not prepared` on the status row runs reset and then
-  `prepare(credentialName:)`. The status row shows a spinner while this is
-  running, then shows `Ready`.
-- After preparation succeeds, the settings detail row shows only a redacted App
-  Attest key ID summary; credential name and the full `keyId` stay out of the
-  Release status details and accessibility labels.
-- Enabling Help in Settings shows the `keyId` explanation inline below the App
-  Attest `Status` row.
+- Tapping `Prepare` or `Retry` runs reset, `prepare(credentialName:)`, and an
+  assertion-generation health check. The row shows `Preparing` while this is
+  running and reports `Ready` only after the full health check succeeds.
+- Debug may show the redacted App Attest key-ID summary. Credential name and the
+  full `keyId` stay out of Release text and accessibility labels.
 
 ## TAPCamDemo Backend Configuration
 

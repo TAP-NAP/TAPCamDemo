@@ -68,7 +68,7 @@ struct WelcomeStartupSetupView: View {
                         StartupRequirementRow(
                             iconName: "mic",
                             title: "Microphone Access",
-                            message: "Optional. Used to include sound when Live Photo sound is enabled.",
+                            message: "Optional. Used to record sound for Live Photos and videos.",
                             status: coordinator.microphoneStatus,
                             actionTitle: "Allow",
                             secondaryActionTitle: "Skip"

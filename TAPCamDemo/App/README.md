@@ -106,10 +106,12 @@ The app target also sets `APP_ATTEST_ENVIRONMENT` to `development` for Debug and
 - Shared diagnostics categories are declared in `TAPDiagnostics`: `AppAttest`,
   `PendingCapture`, `SecurityPreflight`, and `PhotoLibrary`. Public error
   summaries must be safe for OSLog `.public` interpolation.
-- `AppAttestCredentialPresentation` is the user-visible presentation boundary
-  for App Attest credential status and key identifiers. Runtime code may keep
-  the real key id for readiness checks, but Settings UI must use the redacted
-  presentation and generic failure text instead of raw localized errors.
+- `PhotoIntegrityReadiness` is the Release presentation boundary for protection
+  readiness. Release Settings exposes only `Not Ready`, `Preparing`, `Ready`,
+  or `Preparation Failed`; it does not expose App Attest terminology or key
+  identifiers. Runtime code may keep the real key id for readiness checks, and
+  Debug Settings may use the redacted presentation with generic failure text
+  instead of raw localized errors.
 - `AppAttestBackendPresentation` is the public-safe backend summary boundary.
   Runtime code keeps the real backend URL for requests and credential health
   tokens, but Settings UI and public OSLog lines use `backendPublicSummary`.

@@ -146,6 +146,33 @@ struct AppAttestRuntimeTests {
         #expect(presentation.displayText == "Prepared key (5 chars)")
     }
 
+    @Test func photoIntegrityReadinessUsesProductFacingCopy() {
+        #expect(PhotoIntegrityReadiness.notReady.statusText == "Not Ready")
+        #expect(PhotoIntegrityReadiness.preparing.statusText == "Preparing")
+        #expect(PhotoIntegrityReadiness.ready.statusText == "Ready")
+        #expect(PhotoIntegrityReadiness.preparationFailed.statusText == "Preparation Failed")
+        #expect(PhotoIntegrityReadiness.notReady.preparationActionTitle == "Prepare")
+        #expect(PhotoIntegrityReadiness.preparationFailed.preparationActionTitle == "Retry")
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func releasePhotoIntegritySectionHidesAppAttestImplementationDetails() throws {
+        let sectionSource = try Self.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalyzerAppAttestSection.swift"
+        )
+        let settingsSource = try Self.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalyzerSettingsView.swift"
+        )
+
+        #expect(sectionSource.contains(#"Section("Photo Integrity")"#))
+        #expect(sectionSource.contains(#"Text("Protection Readiness")"#))
+        #expect(!sectionSource.contains(#"Section("App Attest")"#))
+        #expect(!sectionSource.contains("AppAttestKeyID"))
+        #expect(!sectionSource.contains("showsHelp"))
+        #expect(settingsSource.contains(#"Section("App Attest Backend")"#))
+        #expect(settingsSource.contains("credentialKeyIDPresentation"))
+    }
+
     #if DEBUG
     @Test func debugRuntimeUsesDevelopmentEnvironment() throws {
         let runtime = try AppAttestRuntimeFactory.make(
@@ -201,7 +228,10 @@ struct AppAttestRuntimeTests {
     }
 
     @Test @MainActor func resetAndPrepareCredentialResetsThenPreparesWhenNotPrepared() async throws {
-        let client = RecordingAppAttestClient(prepareKeyID: "prepared-key-id")
+        let client = RecordingAppAttestClient(
+            prepareKeyID: "prepared-key-id",
+            assertionMode: .healthy
+        )
         let runtime = AppAttestRuntime(
             client: client,
             backendDescription: "Reset And Prepare Backend"
@@ -218,18 +248,52 @@ struct AppAttestRuntimeTests {
         )
 
         #expect(controller.canResetAndPrepareCredential)
+        #expect(controller.canPreparePhotoIntegrity)
+        #expect(controller.photoIntegrityReadiness == .notReady)
 
         await controller.resetAndPrepareCredential()
 
         #expect(await client.operations() == [
             "reset:\(AppAttestRuntimeDefaults.photoCredentialName)",
-            "prepare:\(AppAttestRuntimeDefaults.photoCredentialName)"
+            "prepare:\(AppAttestRuntimeDefaults.photoCredentialName)",
+            "generateAssertion:\(AppAttestRuntimeDefaults.photoCredentialName):/tapcam/app-attest/credential-health"
         ])
         #expect(controller.credentialStatusText == "Ready")
         #expect(controller.credentialKeyIdText == "prepared-key-id")
         #expect(controller.credentialKeyIDPresentation?.displayText != "prepared-key-id")
+        #expect(controller.photoIntegrityReadiness == .ready)
         #expect(!controller.isPreparingCredential)
         #expect(!controller.canResetAndPrepareCredential)
+        #expect(!controller.canPreparePhotoIntegrity)
+    }
+
+    @Test @MainActor func resetAndPrepareCredentialReportsFailedReadinessWhenHealthCheckFails() async throws {
+        let client = RecordingAppAttestClient(prepareKeyID: "unvalidated-key-id")
+        let runtime = AppAttestRuntime(
+            client: client,
+            backendDescription: "Failing Health Check Backend"
+        )
+        let suiteName = "TAPCamDemoTests.AppAttest.\(UUID().uuidString)"
+        let userDefaults = try #require(UserDefaults(suiteName: suiteName))
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let controller = AppAttestRuntimeController(
+            runtime: runtime,
+            userDefaults: userDefaults
+        )
+
+        await controller.resetAndPrepareCredential()
+
+        #expect(await client.operations() == [
+            "reset:\(AppAttestRuntimeDefaults.photoCredentialName)",
+            "prepare:\(AppAttestRuntimeDefaults.photoCredentialName)",
+            "generateAssertion:\(AppAttestRuntimeDefaults.photoCredentialName):/tapcam/app-attest/credential-health"
+        ])
+        #expect(controller.credentialKeyIdText == nil)
+        #expect(controller.photoIntegrityReadiness == .preparationFailed)
+        #expect(controller.canPreparePhotoIntegrity)
     }
 
     @Test @MainActor func pendingCaptureSigningWarmupRegistersFreshCredentialWhenHealthTokenChanges() async throws {
@@ -266,6 +330,7 @@ struct AppAttestRuntimeTests {
         ])
         #expect(controller.credentialStatusText == "Ready")
         #expect(controller.credentialKeyIdText == "server-registered-key-id")
+        #expect(controller.photoIntegrityReadiness == .ready)
     }
 
     @Test @MainActor func pendingCaptureSigningWarmupReusesCredentialWhenHealthTokenMatches() async throws {
@@ -300,6 +365,7 @@ struct AppAttestRuntimeTests {
         ])
         #expect(controller.credentialStatusText == "Ready")
         #expect(controller.credentialKeyIdText == "existing-key-id")
+        #expect(controller.photoIntegrityReadiness == .ready)
     }
 
     @Test @MainActor func pendingCaptureSigningWarmupReportsFailureWhenFreshPrepareFails() async throws {
@@ -329,6 +395,8 @@ struct AppAttestRuntimeTests {
         ])
         #expect(controller.credentialStatusText == "Prepare credential failed. See diagnostics for details.")
         #expect(controller.canResetAndPrepareCredential)
+        #expect(controller.photoIntegrityReadiness == .preparationFailed)
+        #expect(controller.canPreparePhotoIntegrity)
     }
 
     @Test @MainActor func credentialOperationFailureStatusOmitsLocalizedDescriptionAndFailingURL() async throws {
@@ -354,6 +422,7 @@ struct AppAttestRuntimeTests {
         #expect(!controller.credentialStatusText.contains("private/photo.heic"))
         #expect(!controller.credentialStatusText.contains("tapnap.net"))
         #expect(controller.canResetAndPrepareCredential)
+        #expect(controller.photoIntegrityReadiness == .preparationFailed)
     }
 
     @Test @MainActor func prepareTimeoutResetsWorkingStateAndAllowsRetry() async throws {
@@ -379,9 +448,10 @@ struct AppAttestRuntimeTests {
         #expect(!controller.isPreparingCredential)
         #expect(!controller.isWorking)
         #expect(controller.canResetAndPrepareCredential)
+        #expect(controller.photoIntegrityReadiness == .preparationFailed)
     }
 
-    @Test @MainActor func manualPrepareUsesPrepareIfNeededToAvoidKeyRotation() async throws {
+    @Test @MainActor func debugPrepareWithoutCurrentHealthTokenDoesNotReportPhotoIntegrityReady() async throws {
         let client = RecordingAppAttestClient(
             prepareIfNeededKeyID: "prepared-if-needed-key-id"
         )
@@ -407,6 +477,8 @@ struct AppAttestRuntimeTests {
         ])
         #expect(controller.credentialStatusText == "Ready")
         #expect(controller.credentialKeyIdText == "prepared-if-needed-key-id")
+        #expect(controller.photoIntegrityReadiness == .notReady)
+        #expect(controller.canPreparePhotoIntegrity)
     }
 
     private static func source(relativePath: String) throws -> String {

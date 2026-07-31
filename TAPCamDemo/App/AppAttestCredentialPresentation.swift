@@ -7,13 +7,42 @@
 
 import Foundation
 
+nonisolated enum PhotoIntegrityReadiness: Equatable, Sendable {
+    case notReady
+    case preparing
+    case ready
+    case preparationFailed
+
+    var statusText: String {
+        switch self {
+        case .notReady:
+            "Not Ready"
+        case .preparing:
+            "Preparing"
+        case .ready:
+            "Ready"
+        case .preparationFailed:
+            "Preparation Failed"
+        }
+    }
+
+    var preparationActionTitle: String {
+        self == .preparationFailed ? "Retry" : "Prepare"
+    }
+}
+
 nonisolated enum AppAttestCredentialPresentation {
     static let notPreparedStatusText = "Not prepared"
     static let readyStatusText = "Ready"
     static let resetStatusText = "Reset local credential."
+    private static let failureStatusSuffix = " failed. See diagnostics for details."
 
     static func failureStatusText(label: String) -> String {
-        "\(label) failed. See diagnostics for details."
+        "\(label)\(failureStatusSuffix)"
+    }
+
+    static func isFailureStatusText(_ statusText: String) -> Bool {
+        statusText.hasSuffix(failureStatusSuffix)
     }
 }
 

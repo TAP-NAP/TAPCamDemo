@@ -41,7 +41,7 @@ struct TAPLocalizationTests {
             TAPCamDemoTestSourceInspection.substring(
                 in: settingsSource,
                 from: "private var languageSettingsSection",
-                to: "private var captureSettingsSection"
+                to: "private var cameraSettingsSection"
             )
         )
 
@@ -110,6 +110,20 @@ struct TAPLocalizationTests {
             "System Default",
             "Simplified Chinese",
             "Settings",
+            "Camera Settings",
+            "Interface",
+            "Data & Permissions",
+            "Photo Integrity",
+            "Protection Readiness",
+            "Not Ready",
+            "Preparation Failed",
+            "Capture Haptics",
+            "Analysis Animation",
+            "Location Data",
+            "Use When Capturing",
+            "Adds capture location to photo metadata.",
+            "Records sound for Live Photos and videos.",
+            "Optional. Used to record sound for Live Photos and videos.",
             "Photographer Mode Startup",
             "TAP Library",
             "Share",

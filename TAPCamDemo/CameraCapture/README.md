@@ -166,6 +166,9 @@ The format and quality boundary crosses layers in this order:
 2. `DepthAnalyzerSettingsView` stores `CameraOutputFormatPreference` as HEIC or
    JPG. `CameraViewModel.configureCurrentSelection()` resolves that preference
    through `CaptureOutputProfileSelectionIntent` before Runtime sees it.
+   Release fixes AVFoundation capture prioritization to `.quality`; Debug can
+   override that prioritization for diagnostics. These values do not promise a
+   particular file size, compression ratio, or pixel resolution.
 3. `SessionConfigurationRequest` carries a concrete reviewed profile from
    `CaptureOutputProfileCatalog.release`. The default remains
    `CaptureOutputProfile.releasePhotoDepthHEIC`; JPG uses

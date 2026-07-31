@@ -69,17 +69,18 @@ struct TAPCameraPhotographerModePreferencesTests {
         let settingsSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalyzerSettingsView.swift"
         )
-        let captureSectionStart = try #require(settingsSource.range(of: "private var captureSettingsSection"))
-        let viewfinderSectionStart = try #require(settingsSource.range(of: "private var viewfinderSettingsSection"))
-        let captureSection = String(
-            settingsSource[captureSectionStart.lowerBound..<viewfinderSectionStart.lowerBound]
+        let cameraSettingsStart = try #require(settingsSource.range(of: "private var cameraSettingsSection"))
+        let interfaceSettingsStart = try #require(settingsSource.range(of: "private var interfaceSettingsSection"))
+        let cameraSettingsSection = String(
+            settingsSource[cameraSettingsStart.lowerBound..<interfaceSettingsStart.lowerBound]
         )
 
         #expect(settingsSource.contains("@AppStorage(CameraPhotographerModePreferences.startupPolicyKey)"))
-        #expect(captureSection.contains(#"Picker("Photographer Mode Startup", selection: $photographerModeStartupPolicyRawValue)"#))
-        #expect(captureSection.contains("CameraViewfinderControlDefaultPolicy.allCases"))
-        #expect(captureSection.contains("requires a rear LiDAR camera"))
-        #expect(captureSection.contains("Unsupported devices fall back to Standard mode at runtime"))
+        #expect(cameraSettingsSection.contains(#"Section("Camera Settings")"#))
+        #expect(cameraSettingsSection.contains(#"Picker("Photographer Mode Startup", selection: $photographerModeStartupPolicyRawValue)"#))
+        #expect(cameraSettingsSection.contains("CameraViewfinderControlDefaultPolicy.allCases"))
+        #expect(!cameraSettingsSection.contains("requires a rear LiDAR camera"))
+        #expect(!cameraSettingsSection.contains("Unsupported devices fall back to Standard mode at runtime"))
         #expect(settingsSource.contains(#"Section("Debug Camera Controls")"#))
         #expect(settingsSource.contains("Focus Magnifier"))
         #expect(!settingsSource.contains("LiDAR Focus Assist"))

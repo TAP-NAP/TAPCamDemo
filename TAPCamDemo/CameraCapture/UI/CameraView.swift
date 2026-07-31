@@ -12,11 +12,20 @@ import OSLog
 import SwiftUI
 import UIKit
 
-enum CameraFeedbackPreferences {
+nonisolated enum CameraFeedbackPreferences {
     static let shutterHapticsEnabledKey = "CameraShutterHapticsEnabled"
     static let defaultShutterHapticsEnabled = true
     static let shutterSoundEnabledKey = "CameraShutterSoundEnabled"
     static let defaultShutterSoundEnabled = true
+
+    /// Release leaves shutter-sound behavior to the system and region. Debug
+    /// builds retain the stored suppression override for capability testing.
+    static func shouldSuppressShutterSound(
+        storedIsEnabled: Bool,
+        allowsDebugOverride: Bool = _isDebugAssertConfiguration()
+    ) -> Bool {
+        allowsDebugOverride ? !storedIsEnabled : false
+    }
 }
 
 /// Main SingleCam photo-depth capture screen.
@@ -304,7 +313,7 @@ struct CameraView: View {
             guard let hint else {
                 return
             }
-            if showsDepthAvailabilityHints {
+            if runtimeShowsDepthAvailabilityHints {
                 showViewfinderHint(hint.message)
             }
         }
@@ -339,7 +348,7 @@ struct CameraView: View {
 
     private var cameraReadinessObservers: some View {
         cameraControlObservers
-        .onChange(of: showsDepthAvailabilityHints) { _, isEnabled in
+        .onChange(of: runtimeShowsDepthAvailabilityHints) { _, isEnabled in
             if !isEnabled {
                 viewfinderHint = nil
             }
@@ -1718,7 +1727,9 @@ struct CameraView: View {
             case .photo:
                 await viewModel.capture(
                     pendingCaptureWorkerClient: pendingCaptureWorkerClient,
-                    suppressesShutterSound: !isShutterSoundEnabled,
+                    suppressesShutterSound: CameraFeedbackPreferences.shouldSuppressShutterSound(
+                        storedIsEnabled: isShutterSoundEnabled
+                    ),
                     flashMode: flashMode.captureFlashMode,
                     livePhotoRequest: CaptureLivePhotoRequest(
                         isEnabled: isLivePhotoEnabled && viewModel.isLivePhotoCaptureSupported,
@@ -1739,6 +1750,12 @@ struct CameraView: View {
             && usesMicrophoneData
             && AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
             && viewModel.activeSessionConfiguration?.livePhotoAudioInputConfigured == true
+    }
+
+    private var runtimeShowsDepthAvailabilityHints: Bool {
+        CameraDepthAvailabilityHintPreferences.resolvedShowsHints(
+            storedValue: showsDepthAvailabilityHints
+        )
     }
 
     private func openTAPLibrary() {

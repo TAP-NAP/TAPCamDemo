@@ -571,7 +571,7 @@ extension CameraViewModel {
             rawValue: UserDefaults.standard.string(forKey: CameraOutputFormatPreference.storageKey)
                 ?? CameraOutputFormatPreference.defaultValue.rawValue
         )
-        let photoQualityPreference = CameraPhotoQualityPreference.resolved(
+        let photoQualityPreference = CameraPhotoQualityPreference.resolvedForRuntime(
             rawValue: UserDefaults.standard.string(forKey: CameraPhotoQualityPreference.storageKey)
                 ?? CameraPhotoQualityPreference.defaultValue.rawValue
         )

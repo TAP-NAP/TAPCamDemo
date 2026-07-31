@@ -13,8 +13,6 @@ import SwiftUI
 import UIKit
 
 enum DepthAnalyzerPreferences {
-    static let showsAnalysisHelpKey = "DepthAnalyzerShowsAnalysisHelp"
-    static let defaultShowsAnalysisHelp = true
     static let planeGridAnimationEnabledKey = "DepthAnalyzerPlaneGridAnimationEnabled"
     static let defaultPlaneGridAnimationEnabled = true
     static let planeGrowthStrictnessKey = "DepthAnalyzerPlaneGrowthStrictness"
@@ -31,20 +29,12 @@ struct DepthAnalyzerSettingsView: View {
     @ObservedObject private var appAttestController: AppAttestRuntimeController
     @AppStorage(AppLanguage.storageKey)
     private var appLanguageRawValue = AppLanguage.defaultValue.rawValue
-    @AppStorage(DepthAnalyzerPreferences.showsAnalysisHelpKey)
-    private var showsAnalysisHelp = DepthAnalyzerPreferences.defaultShowsAnalysisHelp
     @AppStorage(DepthAnalyzerPreferences.planeGridAnimationEnabledKey)
     private var isPlaneGridAnimationEnabled = DepthAnalyzerPreferences.defaultPlaneGridAnimationEnabled
-    @AppStorage(DepthAnalyzerPreferences.planeGrowthStrictnessKey)
-    private var planeGrowthStrictness = DepthAnalyzerPreferences.defaultPlaneGrowthStrictness
     @AppStorage(CameraFeedbackPreferences.shutterHapticsEnabledKey)
     private var shutterHapticsEnabled = CameraFeedbackPreferences.defaultShutterHapticsEnabled
-    @AppStorage(CameraFeedbackPreferences.shutterSoundEnabledKey)
-    private var shutterSoundEnabled = CameraFeedbackPreferences.defaultShutterSoundEnabled
     @AppStorage(CameraOutputFormatPreference.storageKey)
     private var outputFormatRawValue = CameraOutputFormatPreference.defaultValue.rawValue
-    @AppStorage(CameraPhotoQualityPreference.storageKey)
-    private var photoQualityRawValue = CameraPhotoQualityPreference.defaultValue.rawValue
     @AppStorage(CameraFlashControlMode.startupPolicyKey)
     private var flashStartupPolicyRawValue = CameraFlashControlMode.defaultStartupPolicy.rawValue
     @AppStorage(CameraPhotographerModePreferences.startupPolicyKey)
@@ -55,11 +45,17 @@ struct DepthAnalyzerSettingsView: View {
     private var viewfinderHighlightRawValue = CameraViewfinderHighlightPreference.defaultValue.rawValue
     @AppStorage(CameraEVPreferences.resetOnAppLaunchKey)
     private var resetEVOnAppLaunch = CameraEVPreferences.defaultResetOnAppLaunch
+    #if DEBUG
+    @AppStorage(CameraPhotoQualityPreference.storageKey)
+    private var photoQualityRawValue = CameraPhotoQualityPreference.defaultValue.rawValue
     @AppStorage(CameraDepthAvailabilityHintPreferences.showsHintsKey)
     private var showsDepthAvailabilityHints = CameraDepthAvailabilityHintPreferences.defaultShowsHints
-    #if DEBUG
+    @AppStorage(CameraFeedbackPreferences.shutterSoundEnabledKey)
+    private var shutterSoundEnabled = CameraFeedbackPreferences.defaultShutterSoundEnabled
     @AppStorage(CameraFocusMagnifierPreference.storageKey)
     private var focusMagnifierRawValue = CameraFocusMagnifierPreference.defaultValue.rawValue
+    @AppStorage(DepthAnalyzerPreferences.planeGrowthStrictnessKey)
+    private var planeGrowthStrictness = DepthAnalyzerPreferences.defaultPlaneGrowthStrictness
     #endif
     @AppStorage(CameraIdleTimerPreferences.keepScreenAwakeKey)
     private var keepScreenAwake = CameraIdleTimerPreferences.defaultKeepScreenAwake
@@ -86,24 +82,16 @@ struct DepthAnalyzerSettingsView: View {
         NavigationStack {
             Form {
                 languageSettingsSection
-                captureSettingsSection
-                viewfinderSettingsSection
-                cameraBehaviorSection
-                feedbackSettingsSection
-                analysisSettingsSection
-                permissionsSection
+                cameraSettingsSection
+                interfaceSettingsSection
+                dataAndPermissionsSection
 
                 DepthAnalyzerAppAttestSection(
-                    statusText: appAttestController.credentialStatusText,
-                    keyID: appAttestController.credentialKeyIDPresentation,
-                    isPreparingCredential: appAttestController.isPreparingCredential,
-                    canResetAndPrepareCredential: appAttestController.canResetAndPrepareCredential,
-                    actionTitle: appAttestController.credentialPreparationActionTitle,
-                    showsHelp: showsAnalysisHelp,
-                    onPrepare: {
-                        await appAttestController.resetAndPrepareCredential()
-                    }
-                )
+                    readiness: appAttestController.photoIntegrityReadiness,
+                    canPrepare: appAttestController.canPreparePhotoIntegrity
+                ) {
+                    await appAttestController.resetAndPrepareCredential()
+                }
 
                 #if DEBUG
                 debugCameraControlsSection
@@ -149,14 +137,8 @@ struct DepthAnalyzerSettingsView: View {
         )
     }
 
-    private var captureSettingsSection: some View {
-        Section("Capture") {
-            Picker("Photo Quality", selection: $photoQualityRawValue) {
-                ForEach(CameraPhotoQualityPreference.allCases) { quality in
-                    Text(LocalizedStringKey(quality.title)).tag(quality.rawValue)
-                }
-            }
-
+    private var cameraSettingsSection: some View {
+        Section("Camera Settings") {
             Picker("Output Format", selection: $outputFormatRawValue) {
                 ForEach(CameraOutputFormatPreference.allCases) { format in
                     Text(LocalizedStringKey(format.title)).tag(format.rawValue)
@@ -181,15 +163,26 @@ struct DepthAnalyzerSettingsView: View {
                 }
             }
 
-            Text("Photographer Mode requires a rear LiDAR camera. Unsupported devices fall back to Standard mode at runtime.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            Toggle(isOn: $keepScreenAwake) {
+                Label("Keep Screen Awake", systemImage: "sun.max")
+            }
+
+            Toggle(isOn: $resetEVOnAppLaunch) {
+                Label("Reset EV on App Launch", systemImage: "plusminus")
+            }
+
+            Toggle(isOn: $returnToCameraOnForeground) {
+                Label("Return to Camera After Background", systemImage: "camera.viewfinder")
+            }
+
+            Toggle(isOn: $shutterHapticsEnabled) {
+                Label("Capture Haptics", systemImage: "iphone.radiowaves.left.and.right")
+            }
         }
     }
 
-    private var viewfinderSettingsSection: some View {
-        Section("Viewfinder") {
+    private var interfaceSettingsSection: some View {
+        Section("Interface") {
             Picker("Grid", selection: $guideOverlayRawValue) {
                 ForEach(CameraGuideOverlayPreference.allCases) { guide in
                     Text(LocalizedStringKey(guide.title)).tag(guide.rawValue)
@@ -208,74 +201,14 @@ struct DepthAnalyzerSettingsView: View {
                 }
             }
 
-            Toggle(isOn: $showsDepthAvailabilityHints) {
-                Label("Depth Warnings", systemImage: "rectangle.and.text.magnifyingglass")
-            }
-        }
-    }
-
-    private var cameraBehaviorSection: some View {
-        Section("Camera Behavior") {
-            Toggle(isOn: $keepScreenAwake) {
-                Label("Keep Screen Awake", systemImage: "sun.max")
-            }
-
-            Toggle(isOn: $resetEVOnAppLaunch) {
-                Label("Reset EV on App Launch", systemImage: "plusminus")
-            }
-
-            Toggle(isOn: $returnToCameraOnForeground) {
-                Label("Return to Camera After Background", systemImage: "camera.viewfinder")
-            }
-        }
-    }
-
-    private var feedbackSettingsSection: some View {
-        Section("Feedback") {
-            Toggle(isOn: $shutterSoundEnabled) {
-                Label("Shutter Sound", systemImage: "speaker.wave.2")
-            }
-            .disabled(!shutterSoundSuppressionSupported)
-
-            Toggle(isOn: $shutterHapticsEnabled) {
-                Label("Shutter Haptics", systemImage: "iphone.radiowaves.left.and.right")
-            }
-
-            if !shutterSoundSuppressionSupported {
-                Text("Shutter sound cannot be disabled on this device or in this region.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-
-    private var analysisSettingsSection: some View {
-        Section("Analysis") {
-            Toggle(isOn: $showsAnalysisHelp) {
-                Label("Help", systemImage: "questionmark.circle")
-            }
-
             Toggle(isOn: $isPlaneGridAnimationEnabled) {
-                Label("Grid Growth Animation", systemImage: "square.grid.3x3")
+                Label("Analysis Animation", systemImage: "square.grid.3x3")
             }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Label("Plane Strictness", systemImage: "scope")
-
-                Slider(
-                    value: $planeGrowthStrictness,
-                    in: DepthAnalysisPlaneSelectionState.minimumStrictness...DepthAnalysisPlaneSelectionState.maximumStrictness
-                )
-            }
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("Plane Strictness")
-            .accessibilityValue("\(Int((planeGrowthStrictness * 100).rounded())) percent")
         }
     }
 
-    private var permissionsSection: some View {
-        Section("Permissions") {
+    private var dataAndPermissionsSection: some View {
+        Section("Data & Permissions") {
             DepthAnalyzerStatusRow(
                 title: "Camera",
                 value: authorizationSnapshot.camera,
@@ -286,41 +219,40 @@ struct DepthAnalyzerSettingsView: View {
                 value: authorizationSnapshot.photos,
                 systemImage: "photo.on.rectangle"
             )
-            DepthAnalyzerPermissionControlRow(
-                title: "Location",
+            DepthAnalyzerDataPermissionRow(
+                title: "Location Data",
+                subtitle: "Adds capture location to photo metadata.",
                 value: authorizationSnapshot.location,
                 systemImage: "location",
                 actionTitle: authorizationSnapshot.locationPermissionActionTitle,
                 isRequesting: permissionRequester.isRequestingLocation,
+                dataUseBinding: authorizationSnapshot.isLocationAuthorized ? $usesLocationData : nil,
                 action: performLocationPermissionAction
             )
 
-            Toggle(isOn: $usesLocationData) {
-                Label("Use Location Data", systemImage: "location.fill")
-            }
-
-            DepthAnalyzerPermissionControlRow(
+            DepthAnalyzerDataPermissionRow(
                 title: "Microphone",
+                subtitle: "Records sound for Live Photos and videos.",
                 value: authorizationSnapshot.microphone,
                 systemImage: "mic",
                 actionTitle: authorizationSnapshot.microphonePermissionActionTitle,
                 isRequesting: permissionRequester.isRequestingMicrophone,
+                dataUseBinding: authorizationSnapshot.isMicrophoneAuthorized ? $usesMicrophoneData : nil,
                 action: performMicrophonePermissionAction
             )
-
-            Toggle(isOn: $usesMicrophoneData) {
-                Label("Use Microphone Data", systemImage: "mic.fill")
-            }
-
-            Text("Capture uses location or microphone data only when system authorization and the app data-use switch are both enabled.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
     private func refreshAuthorizationSnapshot() {
-        authorizationSnapshot = .current()
+        let snapshot = DepthAnalyzerAuthorizationSnapshot.current()
+        authorizationSnapshot = snapshot
+
+        if snapshot.isMicrophoneAuthorized {
+            CameraCaptureDataUsePreferences.enableMicrophoneDataAfterFirstAuthorizationIfNeeded()
+        } else {
+            CameraCaptureDataUsePreferences.migrateLegacyMicrophonePreferenceIfNeeded()
+        }
+        usesMicrophoneData = CameraCaptureDataUsePreferences.usesMicrophoneData()
     }
 
     private func performLocationPermissionAction() {
@@ -343,7 +275,11 @@ struct DepthAnalyzerSettingsView: View {
         switch authorizationSnapshot.microphoneAuthorizationStatus {
         case .notDetermined:
             Task {
-                await permissionRequester.requestMicrophoneAccess()
+                let granted = await permissionRequester.requestMicrophoneAccess()
+                if granted {
+                    CameraCaptureDataUsePreferences.enableMicrophoneDataAfterFirstAuthorizationIfNeeded()
+                    usesMicrophoneData = CameraCaptureDataUsePreferences.usesMicrophoneData()
+                }
                 refreshAuthorizationSnapshot()
             }
         case .denied, .restricted:
@@ -365,11 +301,42 @@ struct DepthAnalyzerSettingsView: View {
     #if DEBUG
     private var debugCameraControlsSection: some View {
         Section("Debug Camera Controls") {
+            Picker("Capture Prioritization", selection: $photoQualityRawValue) {
+                ForEach(CameraPhotoQualityPreference.allCases) { quality in
+                    Text(LocalizedStringKey(quality.title)).tag(quality.rawValue)
+                }
+            }
+            .listRowBackground(Self.debugOnlySettingsBackground)
+
+            Toggle(isOn: $showsDepthAvailabilityHints) {
+                Label("Depth Warnings", systemImage: "rectangle.and.text.magnifyingglass")
+            }
+            .listRowBackground(Self.debugOnlySettingsBackground)
+
+            Toggle(isOn: $shutterSoundEnabled) {
+                Label("Shutter Sound", systemImage: "speaker.wave.2")
+            }
+            .disabled(!shutterSoundSuppressionSupported)
+            .listRowBackground(Self.debugOnlySettingsBackground)
+
             Picker("Focus Magnifier", selection: $focusMagnifierRawValue) {
                 ForEach(CameraFocusMagnifierPreference.allCases) { preference in
                     Text(preference.title).tag(preference.rawValue)
                 }
             }
+            .listRowBackground(Self.debugOnlySettingsBackground)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Plane Strictness", systemImage: "scope")
+
+                Slider(
+                    value: $planeGrowthStrictness,
+                    in: DepthAnalysisPlaneSelectionState.minimumStrictness...DepthAnalysisPlaneSelectionState.maximumStrictness
+                )
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Plane Strictness")
+            .accessibilityValue("\(Int((planeGrowthStrictness * 100).rounded())) percent")
             .listRowBackground(Self.debugOnlySettingsBackground)
         }
     }
@@ -383,8 +350,16 @@ struct DepthAnalyzerSettingsView: View {
             }
 
             Section("App Attest Credential") {
+                LabeledContent("Internal Status", value: appAttestController.credentialStatusText)
+                    .listRowBackground(Self.debugOnlySettingsBackground)
+
                 LabeledContent("Credential", value: AppAttestRuntimeDefaults.photoCredentialName)
                     .listRowBackground(Self.debugOnlySettingsBackground)
+
+                if let keyID = appAttestController.credentialKeyIDPresentation {
+                    LabeledContent("KeyID", value: keyID.displayText)
+                        .listRowBackground(Self.debugOnlySettingsBackground)
+                }
 
                 Button {
                     Task {
@@ -437,12 +412,14 @@ private struct DepthAnalyzerStatusRow: View {
     }
 }
 
-private struct DepthAnalyzerPermissionControlRow: View {
+private struct DepthAnalyzerDataPermissionRow: View {
     let title: String
+    let subtitle: String
     let value: String
     let systemImage: String
     let actionTitle: String?
     let isRequesting: Bool
+    let dataUseBinding: Binding<Bool>?
     let action: () -> Void
 
     var body: some View {
@@ -454,9 +431,15 @@ private struct DepthAnalyzerPermissionControlRow: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(LocalizedStringKey(title))
+
                 Text(LocalizedStringKey(value))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+
+                Text(LocalizedStringKey(subtitle))
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Spacer(minLength: 12)
@@ -469,9 +452,12 @@ private struct DepthAnalyzerPermissionControlRow: View {
                 }
                     .buttonStyle(.bordered)
                     .font(.footnote.weight(.semibold))
+            } else if let dataUseBinding {
+                Toggle("Use When Capturing", isOn: dataUseBinding)
+                    .labelsHidden()
+                    .accessibilityLabel("Use When Capturing")
             }
         }
-        .accessibilityElement(children: .combine)
     }
 }
 
@@ -506,18 +492,21 @@ private final class DepthAnalyzerPermissionRequester: NSObject, ObservableObject
         }
     }
 
-    func requestMicrophoneAccess() async {
-        guard !isRequestingMicrophone else { return }
+    func requestMicrophoneAccess() async -> Bool {
+        guard !isRequestingMicrophone else { return false }
 
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
-        case .authorized, .denied, .restricted:
-            return
+        case .authorized:
+            return true
+        case .denied, .restricted:
+            return false
         case .notDetermined:
             isRequestingMicrophone = true
-            _ = await AVCaptureDevice.requestAccess(for: .audio)
+            let granted = await AVCaptureDevice.requestAccess(for: .audio)
             isRequestingMicrophone = false
+            return granted
         @unknown default:
-            return
+            return false
         }
     }
 
@@ -547,6 +536,15 @@ nonisolated struct DepthAnalyzerAuthorizationSnapshot: Equatable {
 
     var microphonePermissionActionTitle: String? {
         Self.permissionActionTitle(for: microphoneAuthorizationStatus)
+    }
+
+    var isLocationAuthorized: Bool {
+        locationAuthorizationStatus == .authorizedAlways ||
+            locationAuthorizationStatus == .authorizedWhenInUse
+    }
+
+    var isMicrophoneAuthorized: Bool {
+        microphoneAuthorizationStatus == .authorized
     }
 
     static func current() -> DepthAnalyzerAuthorizationSnapshot {

@@ -183,6 +183,17 @@
         }
       }
     },
+    "Adds capture location to photo metadata." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将拍摄位置写入照片元数据。"
+          }
+        }
+      }
+    },
     "AE/AF LOCK" : {
       "localizations" : {
         "zh-Hans" : {
@@ -205,7 +216,7 @@
       }
     },
     "Always allowed" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -232,6 +243,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "分析"
+          }
+        }
+      }
+    },
+    "Analysis Animation" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分析动画"
           }
         }
       }
@@ -322,7 +344,7 @@
       }
     },
     "Authorized" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -424,6 +446,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "相机"
+          }
+        }
+      }
+    },
+    "Camera Settings" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "相机设置"
           }
         }
       }
@@ -596,6 +629,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "拍摄"
+          }
+        }
+      }
+    },
+    "Capture Haptics" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拍摄触感"
+          }
+        }
+      }
+    },
+    "Capture Prioritization" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拍摄优先策略"
           }
         }
       }
@@ -860,6 +915,17 @@
         }
       }
     },
+    "Data & Permissions" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "数据与权限"
+          }
+        }
+      }
+    },
     "Default Off" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -935,7 +1001,7 @@
       }
     },
     "Denied" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -1301,7 +1367,7 @@
       }
     },
     "Get Permission" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -1491,12 +1557,45 @@
         }
       }
     },
+    "Interface" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "界面"
+          }
+        }
+      }
+    },
+    "Internal Status" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "内部状态"
+          }
+        }
+      }
+    },
     "Keep Screen Awake" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "保持屏幕常亮"
+          }
+        }
+      }
+    },
+    "KeyID" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KeyID"
           }
         }
       }
@@ -1836,7 +1935,7 @@
       }
     },
     "Limited" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -1951,6 +2050,17 @@
         }
       }
     },
+    "Location Data" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "位置数据"
+          }
+        }
+      }
+    },
     "Locked capture imported" : {
       "localizations" : {
         "zh-Hans" : {
@@ -2058,7 +2168,7 @@
       }
     },
     "Microphone" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -2247,6 +2357,17 @@
         }
       }
     },
+    "Not Ready" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未准备"
+          }
+        }
+      }
+    },
     "Not prepared" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2259,7 +2380,7 @@
       }
     },
     "Not requested" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -2392,6 +2513,17 @@
         }
       }
     },
+    "Optional. Used to record sound for Live Photos and videos." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可选。用于为实况照片和视频录制声音。"
+          }
+        }
+      }
+    },
     "Optional. Used to write capture location into photo metadata." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2461,6 +2593,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "照片"
+          }
+        }
+      }
+    },
+    "Photo Integrity" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照片保真"
           }
         }
       }
@@ -2539,7 +2682,7 @@
       }
     },
     "Photos" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -2733,7 +2876,7 @@
       }
     },
     "Prepare" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -2754,8 +2897,30 @@
         }
       }
     },
+    "Preparation Failed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "准备失败"
+          }
+        }
+      }
+    },
+    "Prepares photo protection on this device." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在此设备上准备照片保护。"
+          }
+        }
+      }
+    },
     "Preparing" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -2881,6 +3046,17 @@
         }
       }
     },
+    "Protection Readiness" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保护准备状态"
+          }
+        }
+      }
+    },
     "Quality" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2926,7 +3102,7 @@
       }
     },
     "Ready" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -2943,6 +3119,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已就绪 · %@ · 裁切元数据"
+          }
+        }
+      }
+    },
+    "Records sound for Live Photos and videos." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "为实况照片和视频录制声音。"
           }
         }
       }
@@ -3087,7 +3274,7 @@
       }
     },
     "Restricted" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -4111,7 +4298,7 @@
       }
     },
     "Unknown" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -4168,6 +4355,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "使用麦克风数据"
+          }
+        }
+      }
+    },
+    "Use When Capturing" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拍摄时使用"
           }
         }
       }
@@ -4429,7 +4627,7 @@
       }
     },
     "While using app" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
