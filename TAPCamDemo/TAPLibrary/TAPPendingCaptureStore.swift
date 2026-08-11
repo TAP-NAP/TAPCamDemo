@@ -6,6 +6,44 @@
 import Foundation
 import OSLog
 
+nonisolated enum TAPPendingCaptureStoreLookupError: LocalizedError, Equatable, Sendable {
+    case ambiguousAssetLocalIdentifier
+
+    var errorDescription: String? {
+        switch self {
+        case .ambiguousAssetLocalIdentifier:
+            "More than one TAP capture record refers to the selected Photos asset."
+        }
+    }
+}
+
+nonisolated struct TAPPendingCaptureShareResourceSnapshot: Sendable {
+    let photoURL: URL
+    let pairedVideoURL: URL?
+    let fileContainer: CapturePhotoFileContainer
+}
+
+nonisolated struct TAPPendingVideoShareResourceSnapshot: Sendable {
+    let videoURL: URL
+}
+
+nonisolated enum TAPPendingVideoShareSnapshotError: Error, Equatable, Sendable {
+    case notVideo
+    case identityMismatch
+    case signatureEvidenceUnavailable
+    case sourceUnavailable
+}
+
+nonisolated enum TAPPendingCaptureShareResourceLinkPolicy: Equatable, Sendable {
+    /// The snapshot remains app-internal and is consumed read-only while a
+    /// TAPNAP archive is written.
+    case allowReadOnlyHardLink
+
+    /// The snapshot may cross the process boundary through the system share
+    /// sheet, so it must not share an inode with durable signed source media.
+    case requireIndependentFile
+}
+
 /// App-private staging store for unsigned/signed TAP depth photo files.
 ///
 /// Each pending bundle stores one fixed container chosen at capture time. HEIC
@@ -14,14 +52,26 @@ import OSLog
 actor TAPPendingCaptureStore {
     static let shared = TAPPendingCaptureStore()
 
+    private enum ShareResourceRole: String {
+        case photo
+        case pairedVideo
+        case video
+    }
+
+    private static let shareSnapshotCopyBufferSize = 512 * 1_024
+
     private let storage: TAPPendingCaptureBundleStorage
     private var videoWorkspaces: TAPPendingVideoWorkspaceCoordinator
     private let maintenance: TAPPendingCaptureMaintenance
     private let lockedCaptureImporter: TAPPendingLockedCaptureImporter
+    private let shareSnapshotLinker: @Sendable (URL, URL) throws -> Void
 
     init(
         rootURL: URL = TAPPendingCaptureRoot.defaultURL,
-        storagePolicy: TAPLocalArtifactStoragePolicy = .privatePhotoArtifact
+        storagePolicy: TAPLocalArtifactStoragePolicy = .privatePhotoArtifact,
+        shareSnapshotLinker: @escaping @Sendable (URL, URL) throws -> Void = { sourceURL, destinationURL in
+            try FileManager.default.linkItem(at: sourceURL, to: destinationURL)
+        }
     ) {
         let storage = TAPPendingCaptureBundleStorage(
             rootURL: rootURL,
@@ -31,6 +81,7 @@ actor TAPPendingCaptureStore {
         self.videoWorkspaces = TAPPendingVideoWorkspaceCoordinator(storage: storage)
         self.maintenance = TAPPendingCaptureMaintenance(storage: storage)
         self.lockedCaptureImporter = TAPPendingLockedCaptureImporter(storage: storage)
+        self.shareSnapshotLinker = shareSnapshotLinker
     }
 
     func beginVideoCaptureWorkspace(captureID: String) throws -> TAPVideoRecordingWorkspace {
@@ -207,6 +258,18 @@ actor TAPPendingCaptureStore {
         .sorted { $0.capturedAt > $1.capturedAt }
     }
 
+    /// Resolves the durable queue record for a Photos asset without silently
+    /// picking one side of a corrupt identity collision.
+    func record(assetLocalIdentifier: String) throws -> TAPPendingCaptureRecord? {
+        let matches = try allRecords().filter { record in
+            record.assetLocalIdentifier == assetLocalIdentifier
+        }
+        guard matches.count <= 1 else {
+            throw TAPPendingCaptureStoreLookupError.ambiguousAssetLocalIdentifier
+        }
+        return matches.first
+    }
+
     func visiblePendingRecords() throws -> [TAPPendingCaptureRecord] {
         try allRecords().filter(\.isVisiblePendingItem)
     }
@@ -343,6 +406,316 @@ actor TAPPendingCaptureStore {
             }
         }
         throw TAPDepthCaptureError.pendingCaptureDataMissing
+    }
+
+    /// Creates one stable photo resource snapshot while the store actor owns
+    /// the pending bundle. Eligible same-volume files use hard links so this
+    /// phase is effectively constant-time. Other filesystems fall back to a
+    /// cancellable, progress-reporting streamed copy. Holding the actor for
+    /// either path prevents the export worker from deleting a source midway.
+    ///
+    /// `requiresSignedPhoto` is deliberately explicit: TAPNAP packages and
+    /// verified image sharing must never fall back to the unsigned staging
+    /// file. Ordinary image sharing may opt into the existing signed-first
+    /// fallback behavior. Hard links are only safe for app-internal,
+    /// read-only package preparation; externally shared images require an
+    /// independent file.
+    func snapshotPhotoShareResources(
+        captureID: String,
+        to destinationDirectoryURL: URL,
+        requiresSignedPhoto: Bool,
+        includesPairedVideo: Bool,
+        linkPolicy: TAPPendingCaptureShareResourceLinkPolicy = .requireIndependentFile,
+        progressHandler: @escaping @Sendable (Double?) -> Void = { _ in }
+    ) throws -> TAPPendingCaptureShareResourceSnapshot {
+        let record = try readRecord(captureID: captureID)
+        guard record.artifactKind == .photoDepth else {
+            throw TAPDepthCaptureError.pendingCaptureDataMissing
+        }
+
+        let sourcePhotoURL: URL
+        if requiresSignedPhoto {
+            guard let signedFilename = record.signedPhotoFilename,
+                  let signedURL = try storage.photoURLIfPresent(
+                    filename: signedFilename,
+                    captureID: captureID
+                  ) else {
+                throw TAPDepthCaptureError.pendingCaptureDataMissing
+            }
+            sourcePhotoURL = signedURL
+        } else if let signedFilename = record.signedPhotoFilename,
+                  let signedURL = try storage.photoURLIfPresent(
+                    filename: signedFilename,
+                    captureID: captureID
+                  ) {
+            sourcePhotoURL = signedURL
+        } else if let unsignedFilename = record.unsignedPhotoFilename,
+                  let unsignedURL = try storage.photoURLIfPresent(
+                    filename: unsignedFilename,
+                    captureID: captureID
+                  ) {
+            sourcePhotoURL = unsignedURL
+        } else {
+            throw TAPDepthCaptureError.pendingCaptureDataMissing
+        }
+
+        let photoURL = destinationDirectoryURL.appendingPathComponent(
+            "source-photo.\(record.photoFileContainer.tapnapFileExtension)"
+        )
+        let destinationPairedVideoURL = includesPairedVideo
+            ? destinationDirectoryURL.appendingPathComponent("source-paired-video.mov")
+            : nil
+
+        let sourcePairedVideoURL: URL?
+        if includesPairedVideo, let filename = record.pairedVideoFilename {
+            do {
+                sourcePairedVideoURL = try storage.pairedVideoURL(
+                    filename: filename,
+                    captureID: captureID
+                )
+            } catch TAPDepthCaptureError.pendingCaptureDataMissing {
+                sourcePairedVideoURL = nil
+            }
+        } else {
+            sourcePairedVideoURL = nil
+        }
+
+        do {
+            try Task.checkCancellation()
+            try FileManager.default.createDirectory(
+                at: destinationDirectoryURL,
+                withIntermediateDirectories: true
+            )
+
+            let photoByteCount = try checkedShareResourceByteCount(at: sourcePhotoURL)
+            let pairedVideoByteCount = try sourcePairedVideoURL.map {
+                try checkedShareResourceByteCount(at: $0)
+            } ?? 0
+            let totalByteCount = max(photoByteCount + pairedVideoByteCount, 1)
+            progressHandler(0)
+
+            try createStableShareResourceSnapshot(
+                from: sourcePhotoURL,
+                to: photoURL,
+                byteCount: photoByteCount,
+                role: .photo,
+                linkPolicy: linkPolicy,
+                progressHandler: { copiedByteCount in
+                    progressHandler(
+                        min(1, Double(copiedByteCount) / Double(totalByteCount))
+                    )
+                }
+            )
+
+            let copiedPairedVideoURL: URL?
+            if let sourcePairedVideoURL, let destinationPairedVideoURL {
+                try createStableShareResourceSnapshot(
+                    from: sourcePairedVideoURL,
+                    to: destinationPairedVideoURL,
+                    byteCount: pairedVideoByteCount,
+                    role: .pairedVideo,
+                    linkPolicy: linkPolicy,
+                    progressHandler: { copiedByteCount in
+                        progressHandler(
+                            min(
+                                1,
+                                Double(photoByteCount + copiedByteCount)
+                                    / Double(totalByteCount)
+                            )
+                        )
+                    }
+                )
+                copiedPairedVideoURL = destinationPairedVideoURL
+            } else {
+                // Preserve the stable photo snapshot so the package builder
+                // can report the more specific missing-pair error.
+                copiedPairedVideoURL = nil
+            }
+
+            try Task.checkCancellation()
+            progressHandler(1)
+            return TAPPendingCaptureShareResourceSnapshot(
+                photoURL: photoURL,
+                pairedVideoURL: copiedPairedVideoURL,
+                fileContainer: record.photoFileContainer
+            )
+        } catch {
+            try? FileManager.default.removeItem(at: destinationDirectoryURL)
+            throw error
+        }
+    }
+
+    /// Creates an independent, byte-for-byte video snapshot while the store
+    /// actor owns the pending bundle. This prevents an export worker from
+    /// cleaning the source midway and avoids exposing durable media directly
+    /// to another process through the system activity controller.
+    func snapshotVideoShareResource(
+        captureID: String,
+        expectedAssetLocalIdentifier: String? = nil,
+        to destinationDirectoryURL: URL,
+        requiresSignedVideo: Bool,
+        progressHandler: @escaping @Sendable (Double?) -> Void = { _ in }
+    ) throws -> TAPPendingVideoShareResourceSnapshot {
+        let record: TAPPendingCaptureRecord
+        do {
+            record = try readRecord(captureID: captureID)
+        } catch TAPDepthCaptureError.pendingCaptureDataMissing {
+            throw TAPPendingVideoShareSnapshotError.sourceUnavailable
+        }
+        guard record.artifactKind == .tapVideo else {
+            throw TAPPendingVideoShareSnapshotError.notVideo
+        }
+        if let expectedAssetLocalIdentifier,
+           record.assetLocalIdentifier != expectedAssetLocalIdentifier {
+            throw TAPPendingVideoShareSnapshotError.identityMismatch
+        }
+        guard !requiresSignedVideo || record.videoArtifactState == .signed else {
+            throw TAPPendingVideoShareSnapshotError.signatureEvidenceUnavailable
+        }
+        guard let filename = record.videoArtifactFilename else {
+            throw TAPPendingVideoShareSnapshotError.sourceUnavailable
+        }
+
+        let sourceVideoURL: URL
+        do {
+            sourceVideoURL = try storage.videoURL(
+                filename: filename,
+                captureID: captureID
+            )
+        } catch TAPDepthCaptureError.pendingCaptureDataMissing {
+            throw TAPPendingVideoShareSnapshotError.sourceUnavailable
+        }
+        let fileExtension = sourceVideoURL.pathExtension.isEmpty
+            ? "mp4"
+            : sourceVideoURL.pathExtension.lowercased()
+        let destinationVideoURL = destinationDirectoryURL.appendingPathComponent(
+            "source-video.\(fileExtension)"
+        )
+
+        do {
+            try Task.checkCancellation()
+            try FileManager.default.createDirectory(
+                at: destinationDirectoryURL,
+                withIntermediateDirectories: true
+            )
+            let byteCount = try checkedShareResourceByteCount(at: sourceVideoURL)
+            progressHandler(0)
+            try createStableShareResourceSnapshot(
+                from: sourceVideoURL,
+                to: destinationVideoURL,
+                byteCount: byteCount,
+                role: .video,
+                linkPolicy: .requireIndependentFile,
+                progressHandler: { copiedByteCount in
+                    progressHandler(
+                        min(1, Double(copiedByteCount) / Double(max(byteCount, 1)))
+                    )
+                }
+            )
+            try Task.checkCancellation()
+            progressHandler(1)
+            return TAPPendingVideoShareResourceSnapshot(videoURL: destinationVideoURL)
+        } catch {
+            try? FileManager.default.removeItem(at: destinationDirectoryURL)
+            throw error
+        }
+    }
+
+    private func checkedShareResourceByteCount(at url: URL) throws -> Int64 {
+        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        guard let size = attributes[.size] as? NSNumber, size.int64Value > 0 else {
+            throw TAPDepthCaptureError.pendingCaptureDataMissing
+        }
+        return size.int64Value
+    }
+
+    private func createStableShareResourceSnapshot(
+        from sourceURL: URL,
+        to destinationURL: URL,
+        byteCount: Int64,
+        role: ShareResourceRole,
+        linkPolicy: TAPPendingCaptureShareResourceLinkPolicy,
+        progressHandler: (Int64) -> Void
+    ) throws {
+        let startedAt = ProcessInfo.processInfo.systemUptime
+        try Task.checkCancellation()
+
+        if linkPolicy == .allowReadOnlyHardLink {
+            do {
+                try shareSnapshotLinker(sourceURL, destinationURL)
+                try Task.checkCancellation()
+                progressHandler(byteCount)
+                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                let durationMilliseconds = max(
+                    0,
+                    (ProcessInfo.processInfo.systemUptime - startedAt) * 1_000
+                )
+                TAPDiagnostics.sharePackaging.info(
+                    "tapnap local snapshot completed role=\(role.rawValue, privacy: .public) strategy=hardLink durationMs=\(durationMilliseconds, privacy: .public) bytes=\(byteCount, privacy: .public)"
+                )
+                #endif
+                return
+            } catch {
+                if error is CancellationError {
+                    throw error
+                }
+                try? FileManager.default.removeItem(at: destinationURL)
+            }
+        }
+
+        guard FileManager.default.createFile(
+            atPath: destinationURL.path,
+            contents: nil
+        ) else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+
+        let sourceHandle = try FileHandle(forReadingFrom: sourceURL)
+        let destinationHandle: FileHandle
+        do {
+            destinationHandle = try FileHandle(forWritingTo: destinationURL)
+        } catch {
+            try? sourceHandle.close()
+            try? FileManager.default.removeItem(at: destinationURL)
+            throw error
+        }
+
+        do {
+            var copiedByteCount: Int64 = 0
+            while true {
+                try Task.checkCancellation()
+                guard let chunk = try sourceHandle.read(
+                    upToCount: Self.shareSnapshotCopyBufferSize
+                ), !chunk.isEmpty else {
+                    break
+                }
+                try destinationHandle.write(contentsOf: chunk)
+                copiedByteCount += Int64(chunk.count)
+                progressHandler(min(copiedByteCount, byteCount))
+            }
+            guard copiedByteCount == byteCount else {
+                throw CocoaError(.fileReadUnknown)
+            }
+            try destinationHandle.synchronize()
+            try Task.checkCancellation()
+            try sourceHandle.close()
+            try destinationHandle.close()
+
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            let durationMilliseconds = max(
+                0,
+                (ProcessInfo.processInfo.systemUptime - startedAt) * 1_000
+            )
+            TAPDiagnostics.sharePackaging.info(
+                "tapnap local snapshot completed role=\(role.rawValue, privacy: .public) strategy=streamedCopy durationMs=\(durationMilliseconds, privacy: .public) bytes=\(byteCount, privacy: .public)"
+            )
+            #endif
+        } catch {
+            try? sourceHandle.close()
+            try? destinationHandle.close()
+            try? FileManager.default.removeItem(at: destinationURL)
+            throw error
+        }
     }
 
     func bestAvailableHEICData(captureID: String) throws -> Data {

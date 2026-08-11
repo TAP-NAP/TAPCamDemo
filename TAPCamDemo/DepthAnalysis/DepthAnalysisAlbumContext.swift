@@ -17,6 +17,25 @@ nonisolated struct DepthAnalysisAlbumContext: Equatable {
         let mediaID: LibraryMediaID
         let source: DepthAnalysisSource
         let routeAnchor: CameraRouteAlbumAnchor
+        /// Album-level media classification survives after the item is
+        /// reduced to a lightweight viewer route. This is important for
+        /// legacy exported records whose optional local paired-video filename
+        /// may be absent even though the Photos asset is a Live Photo.
+        let expectsPairedVideo: Bool
+
+        init(
+            id: String,
+            mediaID: LibraryMediaID,
+            source: DepthAnalysisSource,
+            routeAnchor: CameraRouteAlbumAnchor,
+            expectsPairedVideo: Bool = false
+        ) {
+            self.id = id
+            self.mediaID = mediaID
+            self.source = source
+            self.routeAnchor = routeAnchor
+            self.expectsPairedVideo = expectsPairedVideo
+        }
     }
 
     let currentItemID: String
@@ -28,9 +47,30 @@ nonisolated struct DepthAnalysisAlbumContext: Equatable {
     }
 
     init(currentItemID: String, items: [TAPLibraryItem]) {
+        guard let currentIndex = items.firstIndex(where: { $0.id == currentItemID }),
+              Entry(item: items[currentIndex]) != nil else {
+            self.init(currentItemID: currentItemID, entries: [])
+            return
+        }
+
+        // Keep only the contiguous run that this renderer can display. The
+        // mixed-media viewer context owns transitions across a video boundary;
+        // filtering the entire album here would make a photo swipe silently
+        // skip over intervening videos.
+        var lowerBound = currentIndex
+        while lowerBound > items.startIndex,
+              Entry(item: items[items.index(before: lowerBound)]) != nil {
+            lowerBound = items.index(before: lowerBound)
+        }
+        var upperBound = currentIndex
+        while upperBound < items.index(before: items.endIndex),
+              Entry(item: items[items.index(after: upperBound)]) != nil {
+            upperBound = items.index(after: upperBound)
+        }
+
         self.init(
             currentItemID: currentItemID,
-            entries: items.compactMap(Entry.init(item:))
+            entries: items[lowerBound...upperBound].compactMap(Entry.init(item:))
         )
     }
 
@@ -56,9 +96,7 @@ nonisolated struct DepthAnalysisAlbumContext: Equatable {
 
 private extension DepthAnalysisAlbumContext.Entry {
     nonisolated init?(item: TAPLibraryItem) {
-        id = item.id
-        mediaID = item.summary.id
-        routeAnchor = item.routeAnchor
+        let source: DepthAnalysisSource
         switch item.source {
         case .photos(let asset):
             guard !asset.isVideo else {
@@ -77,6 +115,13 @@ private extension DepthAnalysisAlbumContext.Entry {
             }
             source = .pendingCapture(record.captureID)
         }
+        self.init(
+            id: item.id,
+            mediaID: item.summary.id,
+            source: source,
+            routeAnchor: item.routeAnchor,
+            expectsPairedVideo: item.isLivePhoto
+        )
     }
 }
 

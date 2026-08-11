@@ -538,6 +538,9 @@ final class DepthAnalysisCarouselStore: ObservableObject {
         }
         let retainedState = retainedSlotStates.removeValue(forKey: entry.id)
         let slot = AnalysisPhotoSlot(entry: entry, retainedState: retainedState)
+        if let preview = TAPLibraryPagingPreviewCache.shared.image(for: entry.id) {
+            slot.seedThumbnailIfEmpty(preview)
+        }
         slots[entry.id] = slot
         return slot
     }

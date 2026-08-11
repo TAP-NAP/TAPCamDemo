@@ -15,6 +15,49 @@ nonisolated enum TAPVideoPlaybackTransportPolicy {
     }
 }
 
+/// One user-intent source shared by the transport controls and the Library
+/// pager. AVPlayer is temporarily paused during scrubbing and interactive
+/// paging, so its instantaneous timeControlStatus cannot represent whether the
+/// user expects playback to resume.
+@MainActor
+@Observable
+final class TAPVideoPlaybackIntentState {
+    private(set) var intendsPlayback = false
+    @ObservationIgnored private var isSuspendedForPaging = false
+
+    func setUserIntent(_ intendsPlayback: Bool) {
+        self.intendsPlayback = intendsPlayback
+    }
+
+    func updateFromPlayerStatus(_ status: AVPlayer.TimeControlStatus) {
+        guard !isSuspendedForPaging else {
+            return
+        }
+        intendsPlayback = TAPVideoPlaybackTransportPolicy
+            .hasActivePlaybackIntent(status: status)
+    }
+
+    func beginPagingSuspension(
+        currentStatus: AVPlayer.TimeControlStatus
+    ) -> Bool {
+        if !intendsPlayback {
+            intendsPlayback = TAPVideoPlaybackTransportPolicy
+                .hasActivePlaybackIntent(status: currentStatus)
+        }
+        isSuspendedForPaging = true
+        return intendsPlayback
+    }
+
+    func endPagingSuspension() {
+        isSuspendedForPaging = false
+    }
+
+    func reset() {
+        isSuspendedForPaging = false
+        intendsPlayback = false
+    }
+}
+
 @MainActor
 enum TAPVideoPlaybackAudioSession {
     @discardableResult
@@ -46,6 +89,7 @@ final class TAPVideoPlaybackTransportModel {
     private(set) var durationSeconds: Double = 0
 
     @ObservationIgnored private let player: AVPlayer
+    @ObservationIgnored private let intentState: TAPVideoPlaybackIntentState
     @ObservationIgnored private var periodicTimeObserver: Any?
     @ObservationIgnored private var timeControlStatusObservation: NSKeyValueObservation?
     @ObservationIgnored private var durationObservation: NSKeyValueObservation?
@@ -58,8 +102,13 @@ final class TAPVideoPlaybackTransportModel {
     @ObservationIgnored private var ownsPlaybackAudioSession = false
     @ObservationIgnored private var isInvalidated = false
 
-    init(player: AVPlayer) {
+    init(player: AVPlayer, intentState: TAPVideoPlaybackIntentState) {
         self.player = player
+        self.intentState = intentState
+        let initialIntent = TAPVideoPlaybackTransportPolicy
+            .hasActivePlaybackIntent(status: player.timeControlStatus)
+        hasActivePlaybackIntent = initialIntent
+        intentState.setUserIntent(initialIntent)
         installObservers()
     }
 
@@ -92,6 +141,7 @@ final class TAPVideoPlaybackTransportModel {
         if hasActivePlaybackIntent {
             cancelPendingSeek()
             shouldResumeAfterScrubbing = false
+            setPlaybackIntent(false)
             player.pause()
             return
         }
@@ -101,6 +151,7 @@ final class TAPVideoPlaybackTransportModel {
             return
         }
         cancelPendingSeek()
+        setPlaybackIntent(true)
         activatePlaybackAudioSessionIfNeeded()
         player.play()
     }
@@ -117,10 +168,13 @@ final class TAPVideoPlaybackTransportModel {
             return
         }
         if scrubbing {
-            shouldResumeAfterScrubbing = TAPVideoPlaybackTransportPolicy
-                .hasActivePlaybackIntent(status: player.timeControlStatus)
-            cancelPendingSeek()
             isScrubbing = true
+            shouldResumeAfterScrubbing = intentState.intendsPlayback
+                || TAPVideoPlaybackTransportPolicy.hasActivePlaybackIntent(
+                    status: player.timeControlStatus
+                )
+            setPlaybackIntent(shouldResumeAfterScrubbing)
+            cancelPendingSeek()
             player.pause()
             return
         }
@@ -136,13 +190,16 @@ final class TAPVideoPlaybackTransportModel {
             return
         }
         isInvalidated = true
+        setPlaybackIntent(false)
         player.pause()
         tearDown()
     }
 
     private func performSeek(to target: CMTime, resumeAfterSeek: Bool) {
         cancelPendingSeek()
+        setPlaybackIntent(resumeAfterSeek)
         guard let expectedItem = player.currentItem else {
+            setPlaybackIntent(false)
             elapsedSeconds = confirmedElapsedSeconds
             return
         }
@@ -191,8 +248,9 @@ final class TAPVideoPlaybackTransportModel {
             options: [.initial, .new]
         ) { [weak self] player, _ in
             Task { @MainActor [weak self] in
-                self?.hasActivePlaybackIntent = TAPVideoPlaybackTransportPolicy
-                    .hasActivePlaybackIntent(status: player.timeControlStatus)
+                self?.synchronizePlaybackIntent(
+                    from: player.timeControlStatus
+                )
             }
         }
         if let item = player.currentItem {
@@ -212,7 +270,7 @@ final class TAPVideoPlaybackTransportModel {
                         return
                     }
                     cancelPendingSeek()
-                    hasActivePlaybackIntent = false
+                    setPlaybackIntent(false)
                     elapsedSeconds = durationSeconds
                     confirmedElapsedSeconds = durationSeconds
                 }
@@ -264,6 +322,21 @@ final class TAPVideoPlaybackTransportModel {
         ownsPlaybackAudioSession = TAPVideoPlaybackAudioSession.activate()
     }
 
+    private func setPlaybackIntent(_ intendsPlayback: Bool) {
+        hasActivePlaybackIntent = intendsPlayback
+        intentState.setUserIntent(intendsPlayback)
+    }
+
+    private func synchronizePlaybackIntent(
+        from status: AVPlayer.TimeControlStatus
+    ) {
+        guard !isScrubbing, seekTask == nil else {
+            return
+        }
+        intentState.updateFromPlayerStatus(status)
+        hasActivePlaybackIntent = intentState.intendsPlayback
+    }
+
     private func tearDown() {
         cancelPendingSeek()
         if let periodicTimeObserver {
@@ -295,6 +368,7 @@ final class TAPVideoPlaybackTransportModel {
         cancelPendingSeek()
         shouldResumeAfterScrubbing = false
         isScrubbing = false
+        setPlaybackIntent(false)
         player.pause()
         if ownsPlaybackAudioSession {
             TAPVideoPlaybackAudioSession.deactivate()

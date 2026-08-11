@@ -457,6 +457,34 @@ enum TAPCamDemoTestFixtures {
         )
     }
 
+    static func samplePendingVideoRecord(
+        captureID: String,
+        capturedAt: Date,
+        status: TAPPendingCaptureStatus = .pending,
+        videoArtifactState: TAPPendingVideoArtifactState = .unsigned,
+        assetLocalIdentifier: String? = nil
+    ) -> TAPPendingCaptureRecord {
+        TAPPendingCaptureRecord(
+            captureID: captureID,
+            packageID: UUID(uuidString: "00000000-0000-0000-0000-000000000457")!,
+            capturedAt: capturedAt,
+            createdAt: capturedAt,
+            updatedAt: capturedAt,
+            status: status,
+            artifactKind: .tapVideo,
+            unsignedPhotoFilename: nil,
+            signedPhotoFilename: nil,
+            videoArtifactFilename: TAPPendingCaptureBundlePathPolicy.videoArtifactFilename,
+            videoFormatRevision: 2,
+            videoArtifactState: videoArtifactState,
+            thumbnailFilename: nil,
+            assetLocalIdentifier: assetLocalIdentifier,
+            failureReason: nil,
+            retryCount: 0,
+            location: nil
+        )
+    }
+
     static func samplePendingArtifact(
         photoData: Data,
         fileContainer: CapturePhotoFileContainer = .heic,

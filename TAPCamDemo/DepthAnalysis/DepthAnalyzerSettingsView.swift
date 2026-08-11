@@ -33,6 +33,8 @@ struct DepthAnalyzerSettingsView: View {
     private var isPlaneGridAnimationEnabled = DepthAnalyzerPreferences.defaultPlaneGridAnimationEnabled
     @AppStorage(CameraFeedbackPreferences.shutterHapticsEnabledKey)
     private var shutterHapticsEnabled = CameraFeedbackPreferences.defaultShutterHapticsEnabled
+    @AppStorage(CameraFeedbackPreferences.shutterSoundEnabledKey)
+    private var shutterSoundEnabled = CameraFeedbackPreferences.defaultShutterSoundEnabled
     @AppStorage(CameraOutputFormatPreference.storageKey)
     private var outputFormatRawValue = CameraOutputFormatPreference.defaultValue.rawValue
     @AppStorage(CameraFlashControlMode.startupPolicyKey)
@@ -50,8 +52,6 @@ struct DepthAnalyzerSettingsView: View {
     private var photoQualityRawValue = CameraPhotoQualityPreference.defaultValue.rawValue
     @AppStorage(CameraDepthAvailabilityHintPreferences.showsHintsKey)
     private var showsDepthAvailabilityHints = CameraDepthAvailabilityHintPreferences.defaultShowsHints
-    @AppStorage(CameraFeedbackPreferences.shutterSoundEnabledKey)
-    private var shutterSoundEnabled = CameraFeedbackPreferences.defaultShutterSoundEnabled
     @AppStorage(CameraFocusMagnifierPreference.storageKey)
     private var focusMagnifierRawValue = CameraFocusMagnifierPreference.defaultValue.rawValue
     @AppStorage(DepthAnalyzerPreferences.planeGrowthStrictnessKey)
@@ -178,6 +178,18 @@ struct DepthAnalyzerSettingsView: View {
             Toggle(isOn: $shutterHapticsEnabled) {
                 Label("Capture Haptics", systemImage: "iphone.radiowaves.left.and.right")
             }
+
+            Toggle(isOn: shutterSoundSuppressionBinding) {
+                Label("Silent Shutter", systemImage: "speaker.slash")
+            }
+            .disabled(!shutterSoundSuppressionSupported)
+
+            if !shutterSoundSuppressionSupported {
+                Text("Silent shutter is unavailable on this device or in this region.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
@@ -205,6 +217,13 @@ struct DepthAnalyzerSettingsView: View {
                 Label("Analysis Animation", systemImage: "square.grid.3x3")
             }
         }
+    }
+
+    private var shutterSoundSuppressionBinding: Binding<Bool> {
+        Binding(
+            get: { !shutterSoundEnabled },
+            set: { shutterSoundEnabled = !$0 }
+        )
     }
 
     private var dataAndPermissionsSection: some View {
@@ -311,12 +330,6 @@ struct DepthAnalyzerSettingsView: View {
             Toggle(isOn: $showsDepthAvailabilityHints) {
                 Label("Depth Warnings", systemImage: "rectangle.and.text.magnifyingglass")
             }
-            .listRowBackground(Self.debugOnlySettingsBackground)
-
-            Toggle(isOn: $shutterSoundEnabled) {
-                Label("Shutter Sound", systemImage: "speaker.wave.2")
-            }
-            .disabled(!shutterSoundSuppressionSupported)
             .listRowBackground(Self.debugOnlySettingsBackground)
 
             Picker("Focus Magnifier", selection: $focusMagnifierRawValue) {

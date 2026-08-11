@@ -47,6 +47,30 @@
 	<string>TAPCamDemo creates and reuses the TAPCamDepth photo album for depth photos and TAP Videos.</string>
 	<key>PHPhotoLibraryPreventAutomaticLimitedAccessAlert</key>
 	<true/>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.zip-archive</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>TAPNAP Capture Package</string>
+			<key>UTTypeIdentifier</key>
+			<string>net.tapnap.capture-package</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>tapnap</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>application/vnd.tapnap.capture-package+zip</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

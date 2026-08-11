@@ -26,6 +26,8 @@ struct DepthAlbumPickerView: View {
     @State private var isViewerPresented = false
     @State private var locallyRemovedItemIDs: Set<String> = []
     @State private var returnScrollRestoreToken = UUID()
+    @State private var analysisViewerGeneration = UUID()
+    @State private var presentedItemRevision: DepthAlbumViewerItemRevision?
 
     private static let columnCount = 5
     private static let gridSpacing: CGFloat = 3
@@ -99,6 +101,10 @@ struct DepthAlbumPickerView: View {
         }
         .onChange(of: isViewerPresented) { _, isPresented in
             handleViewerPresentationChange(isPresented: isPresented)
+        }
+        .onChange(of: visibleItems.map(DepthAlbumViewerItemRevision.init(item:))) {
+            previousRevisions, _ in
+            reconcilePresentedDestination(previousRevisions: previousRevisions)
         }
         .modifier(DepthAlbumEdgeBackModifier(onReturn: returnToCameraWithoutAnimation))
     }
@@ -228,8 +234,25 @@ struct DepthAlbumPickerView: View {
                 onCurrentAlbumEntryChanged: { entry in
                     updatePresentedAnalysisRoute(entry)
                 },
+                mixedMediaContext: DepthAlbumDeletionContext(
+                    currentItemID: route.itemID,
+                    items: visibleItems
+                ),
+                onMixedMediaEntryChanged: { entry in
+                    updatePresentedMixedMediaRoute(entry)
+                },
+                onDeletionCompleted: { deletedItemID, nextEntry in
+                    handleViewerDeletionCompleted(
+                        deletedItemID: deletedItemID,
+                        nextEntry: nextEntry
+                    )
+                },
                 mediaFetcher: mediaFetcher
             )
+            // Ordinary photo-to-photo moves stay inside the retained carousel.
+            // A mixed-media handoff to a photo that the old immutable carousel
+            // snapshot does not own must create a fresh store for that item.
+            .id(analysisViewerGeneration)
         case .video(let route):
             TAPVideoDepthPlaybackView(
                 source: route.source,
@@ -240,19 +263,24 @@ struct DepthAlbumPickerView: View {
                 onCurrentAlbumEntryChanged: { entry in
                     updatePresentedVideoRoute(entry)
                 },
+                onMixedMediaEntryChanged: { entry in
+                    updatePresentedMixedMediaRoute(entry)
+                },
                 deletionContext: DepthAlbumDeletionContext(
                     currentItemID: route.itemID,
                     items: visibleItems
                 ),
                 onDeletionCompleted: { deletedItemID, nextEntry in
-                    handleVideoDeletionCompleted(
+                    handleViewerDeletionCompleted(
                         deletedItemID: deletedItemID,
                         nextEntry: nextEntry
                     )
                 },
                 mediaFetcher: mediaFetcher
             )
-            .id(route.itemID)
+            // TAPVideoDepthPlaybackView migrates only its playback session when
+            // the current video or backing source changes. The viewer, pager,
+            // fixed chrome, and transport keep one identity for the whole visit.
         case nil:
             EmptyView()
         }
@@ -260,6 +288,25 @@ struct DepthAlbumPickerView: View {
 
     private func updatePresentedAnalysisRoute(_ entry: DepthAnalysisAlbumContext.Entry) {
         selectedDestination = .analysis(DepthAlbumRouteAdapter.analysisRoute(for: entry))
+        recordPresentedRevision(itemID: entry.id)
+        routeStore.openDepthAlbumItem(entry.routeAnchor)
+        pendingReturnScrollBookmark = DepthAlbumReturnScrollBookmark(
+            itemID: entry.id,
+            routeAnchor: entry.routeAnchor,
+            itemViewportY: itemViewportYByID[entry.id] ?? 0
+        )
+        returnScrollRestoreToken = UUID()
+    }
+
+    private func updatePresentedMixedMediaRoute(
+        _ entry: DepthAlbumDeletionContext.Entry
+    ) {
+        if case .analysis = selectedDestination,
+           case .analysis = entry.destination {
+            analysisViewerGeneration = UUID()
+        }
+        selectedDestination = entry.destination
+        recordPresentedRevision(itemID: entry.id)
         routeStore.openDepthAlbumItem(entry.routeAnchor)
         pendingReturnScrollBookmark = DepthAlbumReturnScrollBookmark(
             itemID: entry.id,
@@ -271,6 +318,7 @@ struct DepthAlbumPickerView: View {
 
     private func updatePresentedVideoRoute(_ entry: TAPVideoAlbumContext.Entry) {
         selectedDestination = .video(DepthAlbumRouteAdapter.videoRoute(for: entry))
+        recordPresentedRevision(itemID: entry.id)
         routeStore.openDepthAlbumItem(entry.routeAnchor)
         pendingReturnScrollBookmark = DepthAlbumReturnScrollBookmark(
             itemID: entry.id,
@@ -278,6 +326,71 @@ struct DepthAlbumPickerView: View {
             itemViewportY: itemViewportYByID[entry.id] ?? 0
         )
         returnScrollRestoreToken = UUID()
+    }
+
+    private func reconcilePresentedDestination(
+        previousRevisions: [DepthAlbumViewerItemRevision]
+    ) {
+        guard isViewerPresented,
+              let selectedDestination else {
+            return
+        }
+        guard let currentItem = visibleItems.first(where: {
+            $0.id == selectedDestination.itemID
+        }) else {
+            moveAfterExternalRemoval(
+                selectedDestination: selectedDestination,
+                previousRevisions: previousRevisions
+            )
+            return
+        }
+        let updatedDestination = DepthAlbumRouteAdapter.destination(for: currentItem)
+        let updatedRevision = DepthAlbumViewerItemRevision(item: currentItem)
+        guard updatedRevision != presentedItemRevision else {
+            return
+        }
+        if case .analysis = updatedDestination {
+            analysisViewerGeneration = UUID()
+        }
+        if updatedDestination != selectedDestination {
+            self.selectedDestination = updatedDestination
+        }
+        presentedItemRevision = updatedRevision
+    }
+
+    private func moveAfterExternalRemoval(
+        selectedDestination: DepthAlbumRouteAdapter.Destination,
+        previousRevisions: [DepthAlbumViewerItemRevision]
+    ) {
+        guard !visibleItems.isEmpty else {
+            self.selectedDestination = nil
+            presentedItemRevision = nil
+            isViewerPresented = false
+            return
+        }
+        let removedIndex = previousRevisions.firstIndex(where: {
+            $0.destination.itemID == selectedDestination.itemID
+        }) ?? 0
+        let replacement = visibleItems[min(removedIndex, visibleItems.count - 1)]
+        let replacementDestination = DepthAlbumRouteAdapter.destination(for: replacement)
+        if case .analysis = selectedDestination,
+           case .analysis = replacementDestination {
+            analysisViewerGeneration = UUID()
+        }
+        self.selectedDestination = replacementDestination
+        presentedItemRevision = DepthAlbumViewerItemRevision(item: replacement)
+        routeStore.openDepthAlbumItem(replacement.routeAnchor)
+        pendingReturnScrollBookmark = DepthAlbumReturnScrollBookmark(
+            itemID: replacement.id,
+            routeAnchor: replacement.routeAnchor,
+            itemViewportY: itemViewportYByID[replacement.id] ?? 0
+        )
+        returnScrollRestoreToken = UUID()
+    }
+
+    private func recordPresentedRevision(itemID: String) {
+        presentedItemRevision = visibleItems.first(where: { $0.id == itemID })
+            .map(DepthAlbumViewerItemRevision.init(item:))
     }
 
     private func openAlbumItem(_ item: TAPLibraryItem, returnScrollRowStride: CGFloat) {
@@ -290,10 +403,11 @@ struct DepthAlbumPickerView: View {
         returnScrollRestoreToken = UUID()
         routeStore.openDepthAlbumItem(item.routeAnchor)
         selectedDestination = DepthAlbumRouteAdapter.destination(for: item)
+        presentedItemRevision = DepthAlbumViewerItemRevision(item: item)
         isViewerPresented = true
     }
 
-    private func handleVideoDeletionCompleted(
+    private func handleViewerDeletionCompleted(
         deletedItemID: String,
         nextEntry: DepthAlbumDeletionContext.Entry?
     ) {
@@ -301,14 +415,7 @@ struct DepthAlbumPickerView: View {
         guard let nextEntry else {
             return
         }
-        selectedDestination = nextEntry.destination
-        routeStore.openDepthAlbumItem(nextEntry.routeAnchor)
-        pendingReturnScrollBookmark = DepthAlbumReturnScrollBookmark(
-            itemID: nextEntry.id,
-            routeAnchor: nextEntry.routeAnchor,
-            itemViewportY: itemViewportYByID[nextEntry.id] ?? 0
-        )
-        returnScrollRestoreToken = UUID()
+        updatePresentedMixedMediaRoute(nextEntry)
     }
 
     private func handleViewerPresentationChange(isPresented: Bool) {
@@ -317,6 +424,7 @@ struct DepthAlbumPickerView: View {
         }
 
         selectedDestination = nil
+        presentedItemRevision = nil
         scheduleReturnScrollRestore(clearAfterDelay: true)
     }
 
@@ -451,5 +559,19 @@ struct DepthAlbumPickerView: View {
         let cellPointLength = gridCellPointLength(containerWidth: containerWidth)
         let targetPixelLength = Int(ceil(cellPointLength * displayScale))
         return min(max(targetPixelLength, 1), maximumThumbnailPixelLength)
+    }
+}
+
+/// Renderer-relevant identity for a visible Library item. `Destination`
+/// catches pending/owned/source transitions; `isLivePhoto` also catches the
+/// legacy case where Photos reveals the paired resource after an initial
+/// fallback catalog entry was presented as a still image.
+nonisolated private struct DepthAlbumViewerItemRevision: Equatable {
+    let destination: DepthAlbumRouteAdapter.Destination
+    let isLivePhoto: Bool
+
+    init(item: TAPLibraryItem) {
+        destination = DepthAlbumRouteAdapter.destination(for: item)
+        isLivePhoto = item.isLivePhoto
     }
 }

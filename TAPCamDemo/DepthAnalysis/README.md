@@ -36,12 +36,61 @@ remains visible and hittable, but tapping it only shows one localized
 visual surface is `AVPlayerLayer`-backed; it does not embed interactive SwiftUI
 controls in an `AVPlayerViewController` overlay.
 
+TAP Library navigation keeps one canonical mixed-media order across still
+photos, Live Photos, and TAP Video. Photo and video surfaces now use the same
+native horizontal pager and the same previous/current/next window, so every
+media-type combination follows the finger and settles with one paging curve.
+Only the committed video owns an AVPlayer; adjacent video pages are poster-only
+previews. At the first and last Library item, the pager keeps UIKit's native
+rubber-band bounce instead of creating a fake page or silently refusing input.
+Video loading never swaps the viewer root when the resource becomes ready.
+Its cached poster remains above the warming `AVPlayerLayer` until
+`isReadyForDisplay` confirms a real frame, then the two layers hand off in one
+non-animated transaction. Spinner completion, depth availability, and
+pending-to-owned source migration must not rebuild the pager or fixed chrome.
+The native pager rewrites a page host only when its entry, current-page role,
+size, or explicit content revision changes; ordinary observable loading updates
+stay inside the existing hosted page.
+
+This parity is an engineering invariant, not a visual guideline. One drag
+freezes one canonical mixed-media window and its page-content revision until it
+settles; a concurrent Library refresh cannot reinterpret or remount that drag.
+Pending-to-owned source changes and late
+Live Photo classification refresh the current renderer by item revision, while
+external removal advances to the nearest remaining item or closes an empty
+viewer. Still, Live Photo, and video all enter the same TAP Share sheet. Media
+renderers may add only their explicit capabilities: Live Photo keeps native
+press-and-hold playback, and video owns transport controls while its 3D mode is
+Coming Soon.
+
+## TAPNAP Share Artifact Lifecycle
+
+`.tapnap` package generation is strictly user-initiated and on demand. Opening
+the TAP Share sheet only reads lightweight local record state; package resource
+loading and ZIP writing begin only after the user selects the TAPNAP Package
+row. The app must never pre-generate a package after signing/export, run package
+generation as background prewarming, or retain a persistent `.tapnap` cache.
+
+The generated package belongs to one active share attempt and stays in a
+per-attempt temporary directory only while the system activity controller may
+read it. Completion, cancellation, system-share dismissal, or TAP Share sheet
+dismissal must remove that directory. A later share tap starts a new on-demand
+generation. This storage/lifecycle rule is independent of signature evidence:
+an existing signature is reused as status evidence and the share path does not
+re-verify it.
+
+Still photos and Live Photos can prepare the current `.tapnap` still/live
+package contract. TAP Video opens the same TAP Share sheet and can prepare an
+independent byte-for-byte copy of its original MP4/MOV only after Share Video
+is selected. A video `.tapnap` transport is explicitly Coming Soon; the app
+does not disguise an MP4 as a still/live package or pre-generate either form.
+
 ## Code Map
 
 | Responsibility | Code |
 | --- | --- |
 | Photos album browser shell, loading model, navigation support, item cell, and route adaptation | [DepthAlbumPickerView.swift](DepthAlbumPickerView.swift), [DepthAlbumPickerViewModel.swift](DepthAlbumPickerViewModel.swift), [DepthAlbumPickerNavigationSupport.swift](DepthAlbumPickerNavigationSupport.swift), [TAPLibraryItemCell.swift](TAPLibraryItemCell.swift), [DepthAlbumRouteAdapter.swift](DepthAlbumRouteAdapter.swift) |
-| Ordered album context used for left/right photo switching inside Analysis | [DepthAnalysisAlbumContext.swift](DepthAnalysisAlbumContext.swift) |
+| Canonical mixed-media route context plus shared native photo/video paging and bounded adjacent previews | [DepthAlbumRouteAdapter.swift](DepthAlbumRouteAdapter.swift), [TAPLibraryNativePagingView.swift](TAPLibraryNativePagingView.swift), [DepthAnalysisAlbumContext.swift](DepthAnalysisAlbumContext.swift), [Playback/TAPVideoPlaybackRoute.swift](Playback/TAPVideoPlaybackRoute.swift) |
 | Analysis photo source loading and decode handoff | [DepthAnalysisInputLoader.swift](DepthAnalysisInputLoader.swift) |
 | Stable Analysis carousel window and focused display-fetch, analysis, and selection slot state | [DepthAnalysisCarouselState.swift](DepthAnalysisCarouselState.swift), [AnalysisPhotoSlot.swift](AnalysisPhotoSlot.swift), [AnalysisPhotoSlot+DisplayFetch.swift](AnalysisPhotoSlot+DisplayFetch.swift), [AnalysisPhotoSlot+Analysis.swift](AnalysisPhotoSlot+Analysis.swift), [AnalysisPhotoSlot+Selection.swift](AnalysisPhotoSlot+Selection.swift) |
 | Public-safe analysis, album, and Planes error copy | [DepthAnalysisErrorPresentation.swift](DepthAnalysisErrorPresentation.swift) |
@@ -54,7 +103,7 @@ controls in an `AVPlayerViewController` overlay.
 | Debug-only runtime fixture specification, generator, and harness view | [DiagnosticsSupport/](DiagnosticsSupport/) |
 | Central visual stage for RGB, heatmap, mask, planes, internal point projection, region gestures, and plane seed taps | [DepthAnalysisStageView.swift](DepthAnalysisStageView.swift) |
 | Viewer toolbar: bottom-left Share, centered icon-only `RAW` / `2D` / `3D` capsule, and bottom-right Delete shared by Photo and TAP Video | [DepthAnalysisViewerChromeView.swift](DepthAnalysisViewerChromeView.swift), [DepthAnalysisControlsView.swift](DepthAnalysisControlsView.swift) |
-| System share entry for verification-original exports | [DepthAnalysisView.swift](DepthAnalysisView.swift), [VerificationExportActivityView.swift](VerificationExportActivityView.swift) |
+| Shared TAP Share sheet, on-demand package/image/video preparation, temporary-artifact lifecycle, and nested system activity presentation | [DepthAnalysisShareSheet.swift](DepthAnalysisShareSheet.swift), [TAPNAPShareArtifactBuilder.swift](TAPNAPShareArtifactBuilder.swift), [TAPVideoShareArtifactBuilder.swift](TAPVideoShareArtifactBuilder.swift), [VerificationExportActivityView.swift](VerificationExportActivityView.swift) |
 | App Attest capture-signature verification service and public-safe report model | [AppAttestSignatureVerification.swift](AppAttestSignatureVerification.swift) |
 | App Attest capture-signature verification panel | [AppAttestSignatureVerificationPanel.swift](AppAttestSignatureVerificationPanel.swift) |
 | Field-level panel content adapter for concrete inspector bodies | [DepthAnalysisInspectorPanelContent.swift](DepthAnalysisInspectorPanelContent.swift) |
@@ -114,9 +163,12 @@ If this module is new to you, read it in this order:
    selected item into a photo or TAP Video route. The picker retains fresh-entry
    top start, cached first album load, in-session clicked-item scroll return,
    item selection, and navigation into analysis.
-   [DepthAnalysisAlbumContext.swift](DepthAnalysisAlbumContext.swift) is the
-   small ordered context passed into Analysis so left/right swipes can move
-   through the same time flow and keep route/bookmark state current.
+   [DepthAlbumRouteAdapter.swift](DepthAlbumRouteAdapter.swift) provides the
+   canonical mixed-media previous/current/next window, and
+   [TAPLibraryNativePagingView.swift](TAPLibraryNativePagingView.swift) gives
+   photo, Live Photo, and video the same interactive paging and endpoint bounce.
+   Specialized photo/video contexts remain resource-management helpers rather
+   than the visual Library order.
 8. [DepthAnalysisCarouselState.swift](DepthAnalysisCarouselState.swift) owns
    the Analysis browser's `previous/current/next` window and stable item
    identity. The `AnalysisPhotoSlot` files split progressive display fetching,
@@ -155,9 +207,9 @@ If this module is new to you, read it in this order:
    `previous/current/next` page hosting, RAW display-only browsing,
    RAW zoom/pan/double-tap, centered `RAW` / `2D` / `3D` primary surfaces,
    selected-tool routing, global Share/Delete presentation, left-edge return,
-   and top-level callbacks. Share prepares the verification-original export
-   for saved Photos items outside the MainActor and opens the system share page
-   directly. Delete routes
+   and top-level callbacks. Share first opens the lightweight TAP Share sheet;
+   original media is prepared only after the user chooses a format, and the
+   system activity controller appears only when that payload is ready. Delete routes
    Photos assets through system Photos deletion via
    `PhotoLibraryWriter.deleteAsset` and pending local records through
    `TAPPendingCaptureStore.removeRecord`.
@@ -386,6 +438,9 @@ list for attended device or UI checks that code reading alone cannot prove.
 6. Switch among `RAW`, `2D`, and `3D` while paging left/right and verify the
    selected tool, toolbar, and route/bookmark state remain stable with no black
    rebuild flash.
+   For video, also verify that the poster and loading indicator remain visible
+   until the first frame replaces them directly, with no intermediate blank
+   frame or full-screen refresh.
 7. Tap Share and verify the sheet shows only whether a valid credential exists
    in Release UI. Tap Delete and verify Photos deletion uses the system Photos
    prompt while pending local records are removed through TAPCam storage.

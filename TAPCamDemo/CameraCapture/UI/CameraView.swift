@@ -18,13 +18,11 @@ nonisolated enum CameraFeedbackPreferences {
     static let shutterSoundEnabledKey = "CameraShutterSoundEnabled"
     static let defaultShutterSoundEnabled = true
 
-    /// Release leaves shutter-sound behavior to the system and region. Debug
-    /// builds retain the stored suppression override for capability testing.
     static func shouldSuppressShutterSound(
         storedIsEnabled: Bool,
-        allowsDebugOverride: Bool = _isDebugAssertConfiguration()
+        suppressionSupported: Bool
     ) -> Bool {
-        allowsDebugOverride ? !storedIsEnabled : false
+        suppressionSupported && !storedIsEnabled
     }
 }
 
@@ -269,8 +267,14 @@ struct CameraView: View {
         .onChange(of: photographerModeStartupPolicyRawValue) { _, rawValue in
             applyPhotographerModeStartupPolicy(rawValue)
         }
+        .onChange(of: isShutterHapticsEnabled) { _, isEnabled in
+            hapticFeedbackController.setEnabled(isEnabled)
+        }
         .onChange(of: usesMicrophoneData) { _, _ in
             captureSessionPreferenceDidChange()
+        }
+        .onChange(of: isCameraAudioInputActive) { _, isActive in
+            hapticFeedbackController.cameraAudioInputDidChange(isActive: isActive)
         }
         .onChange(of: routeStore.isDepthAlbumPresented) { _, isPresented in
             if isPresented {
@@ -400,6 +404,8 @@ struct CameraView: View {
     }
 
     private func cameraViewDidAppear() {
+        hapticFeedbackController.setEnabled(isShutterHapticsEnabled)
+        hapticFeedbackController.cameraAudioInputDidChange(isActive: isCameraAudioInputActive)
         hapticFeedbackController.prepareForCameraInteraction()
         applyPendingIntentHandoff()
         completeInitialReadinessGateIfReady()
@@ -1728,7 +1734,8 @@ struct CameraView: View {
                 await viewModel.capture(
                     pendingCaptureWorkerClient: pendingCaptureWorkerClient,
                     suppressesShutterSound: CameraFeedbackPreferences.shouldSuppressShutterSound(
-                        storedIsEnabled: isShutterSoundEnabled
+                        storedIsEnabled: isShutterSoundEnabled,
+                        suppressionSupported: viewModel.isShutterSoundSuppressionSupported
                     ),
                     flashMode: flashMode.captureFlashMode,
                     livePhotoRequest: CaptureLivePhotoRequest(
@@ -1750,6 +1757,10 @@ struct CameraView: View {
             && usesMicrophoneData
             && AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
             && viewModel.activeSessionConfiguration?.livePhotoAudioInputConfigured == true
+    }
+
+    private var isCameraAudioInputActive: Bool {
+        viewModel.activeSessionConfiguration?.livePhotoAudioInputConfigured == true
     }
 
     private var runtimeShowsDepthAvailabilityHints: Bool {
@@ -2005,10 +2016,6 @@ struct CameraView: View {
     }
 
     private func performShutterHaptic() {
-        guard isShutterHapticsEnabled else {
-            return
-        }
-
         hapticFeedbackController.shutterAccepted()
     }
 }

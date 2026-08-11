@@ -8,6 +8,18 @@ import UIKit
 
 @MainActor
 extension AnalysisPhotoSlot {
+    func seedThumbnailIfEmpty(_ image: UIImage) {
+        guard displayFetchState.thumbnailImage == nil,
+              displayFetchState.displayPhoto == nil,
+              analysisState.input == nil else {
+            return
+        }
+        displayFetchState.thumbnailImage = image
+        if case .idle = displayFetchState.phase {
+            displayFetchState.phase = .thumbnailReady
+        }
+    }
+
     /// Registers the Live Photo request as a slot-owned fetch. The returned
     /// key is the only identity accepted by later progress/result callbacks.
     func beginLivePhotoFetch(

@@ -34,19 +34,15 @@ enum TAPVideoPlaybackResourceLoader {
             let fileURL = try await TAPPendingCaptureStore.shared
                 .bestAvailableVideoURL(captureID: captureID)
             return localResource(fileURL)
-        case .ownedCapture(let captureID, let assetID):
-            do {
-                let fileURL = try await TAPPendingCaptureStore.shared
-                    .bestAvailableVideoURL(captureID: captureID)
-                return localResource(fileURL)
-            } catch {
-                return try await photoResource(
-                    assetID: assetID,
-                    requestKey: requestKey,
-                    mediaFetcher: mediaFetcher,
-                    progress: progress
-                )
-            }
+        case .ownedCapture(_, let assetID):
+            // Once Photos owns the capture, do not bind playback to an
+            // unleased pending-store URL that the export worker may clean up.
+            return try await photoResource(
+                assetID: assetID,
+                requestKey: requestKey,
+                mediaFetcher: mediaFetcher,
+                progress: progress
+            )
         case .photosAsset(let assetID):
             return try await photoResource(
                 assetID: assetID,
@@ -78,6 +74,42 @@ enum TAPVideoPlaybackResourceLoader {
                 return nil
             }
             return await videoPreviewData(fileURL: fileURL, source: source)
+        case .ownedCapture(let captureID, let assetID):
+            if let data = try? await TAPPendingCaptureStore.shared
+                .thumbnailData(captureID: captureID) {
+                return data
+            }
+            return await photoPreviewData(
+                assetID: assetID,
+                originalRequestKey: originalRequestKey,
+                mediaFetcher: mediaFetcher
+            )
+        case .photosAsset(let assetID):
+            return await photoPreviewData(
+                assetID: assetID,
+                originalRequestKey: originalRequestKey,
+                mediaFetcher: mediaFetcher
+            )
+        #if DEBUG
+        case .fixtureFile(let fileURL, _, _):
+            return await videoPreviewData(fileURL: fileURL, source: source)
+        #endif
+        }
+    }
+
+    /// Resolves only work that is safe to associate with an uncommitted
+    /// adjacent page. In particular, a pending video without a stored
+    /// thumbnail must not start an AVAssetImageGenerator task that can outlive
+    /// a quickly cancelled page drag.
+    static func adjacentPreviewData(
+        source: TAPVideoPlaybackSource,
+        originalRequestKey: MediaFetchRequestKey,
+        mediaFetcher: any LibraryMediaFetching
+    ) async -> Data? {
+        switch source {
+        case .pendingCapture(let captureID):
+            return try? await TAPPendingCaptureStore.shared
+                .thumbnailData(captureID: captureID)
         case .ownedCapture(let captureID, let assetID):
             if let data = try? await TAPPendingCaptureStore.shared
                 .thumbnailData(captureID: captureID) {

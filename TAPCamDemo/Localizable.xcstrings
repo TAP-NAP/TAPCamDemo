@@ -12,6 +12,7 @@
       }
     },
     "%@ %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -173,16 +174,6 @@
         }
       }
     },
-    "Adjust exposure compensation." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "调整曝光补偿。"
-          }
-        }
-      }
-    },
     "Adds capture location to photo metadata." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -190,6 +181,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "将拍摄位置写入照片元数据。"
+          }
+        }
+      }
+    },
+    "Adjust exposure compensation." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "调整曝光补偿。"
           }
         }
       }
@@ -238,6 +239,7 @@
       }
     },
     "Analysis" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -269,6 +271,7 @@
       }
     },
     "App Attest" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -366,6 +369,7 @@
       }
     },
     "Auto focus" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -450,17 +454,6 @@
         }
       }
     },
-    "Camera Settings" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "相机设置"
-          }
-        }
-      }
-    },
     "Camera Access" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -484,6 +477,7 @@
       }
     },
     "Camera Behavior" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -613,6 +607,17 @@
         }
       }
     },
+    "Camera Settings" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "相机设置"
+          }
+        }
+      }
+    },
     "Camera setup needs attention" : {
       "localizations" : {
         "zh-Hans" : {
@@ -623,12 +628,34 @@
         }
       }
     },
+    "Cancel" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消"
+          }
+        }
+      }
+    },
     "Capture" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "拍摄"
+          }
+        }
+      }
+    },
+    "Capture a TAP depth photo first, then return here to analyze it." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请先拍摄一张 TAP 深度照片，然后返回此处进行分析。"
           }
         }
       }
@@ -644,6 +671,16 @@
         }
       }
     },
+    "Capture photos with TAPCam from the Lock Screen." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从锁定屏幕使用 TAPCam 拍摄照片。"
+          }
+        }
+      }
+    },
     "Capture Prioritization" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -651,26 +688,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "拍摄优先策略"
-          }
-        }
-      }
-    },
-    "Capture a TAP depth photo first, then return here to analyze it." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "请先拍摄一张 TAP 深度照片，然后返回此处进行分析。"
-          }
-        }
-      }
-    },
-    "Capture photos with TAPCam from the Lock Screen." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "从锁定屏幕使用 TAPCam 拍摄照片。"
           }
         }
       }
@@ -686,6 +703,7 @@
       }
     },
     "Capture uses location or microphone data only when system authorization and the app data-use switch are both enabled." : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -1056,6 +1074,7 @@
       }
     },
     "Depth Warnings" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -1275,6 +1294,7 @@
       }
     },
     "Feedback" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -1285,6 +1305,7 @@
       }
     },
     "File information" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -1420,6 +1441,7 @@
       }
     },
     "Grid Growth Animation" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -1440,6 +1462,7 @@
       }
     },
     "Help" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -1601,6 +1624,7 @@
       }
     },
     "KeyID help. %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -2094,6 +2118,7 @@
       }
     },
     "Manual focus" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -2357,17 +2382,6 @@
         }
       }
     },
-    "Not Ready" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未准备"
-          }
-        }
-      }
-    },
     "Not prepared" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2375,6 +2389,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "尚未准备"
+          }
+        }
+      }
+    },
+    "Not Ready" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未准备"
           }
         }
       }
@@ -2577,6 +2602,7 @@
       }
     },
     "Permissions" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -2597,6 +2623,16 @@
         }
       }
     },
+    "Photo carousel" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照片轮播"
+          }
+        }
+      }
+    },
     "Photo Integrity" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2604,16 +2640,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "照片保真"
-          }
-        }
-      }
-    },
-    "Photo carousel" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "照片轮播"
           }
         }
       }
@@ -2652,6 +2678,7 @@
       }
     },
     "Photo Quality" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -2662,6 +2689,7 @@
       }
     },
     "Photographer Mode requires a rear LiDAR camera. Unsupported devices fall back to Standard mode at runtime." : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -2812,6 +2840,7 @@
       }
     },
     "Plane Strictness" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -2875,6 +2904,17 @@
         }
       }
     },
+    "Preparation Failed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "准备失败"
+          }
+        }
+      }
+    },
     "Prepare" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2893,17 +2933,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "准备凭据"
-          }
-        }
-      }
-    },
-    "Preparation Failed" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "准备失败"
           }
         }
       }
@@ -2941,6 +2970,7 @@
       }
     },
     "Preparing App Attest credential" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3231,6 +3261,7 @@
       }
     },
     "Resets and prepares the App Attest credential." : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3612,6 +3643,397 @@
         }
       }
     },
+    "share.badge.comingSoon" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Coming Soon"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "即将推出"
+          }
+        }
+      }
+    },
+    "share.badge.members" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Members"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "会员"
+          }
+        }
+      }
+    },
+    "share.badge.recommended" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recommended"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "推荐"
+          }
+        }
+      }
+    },
+    "share.error.message" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The original sharing resources are temporarily unavailable."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "原始分享资料暂时不可用。"
+          }
+        }
+      }
+    },
+    "share.error.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unable to Prepare Share"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法准备分享"
+          }
+        }
+      }
+    },
+    "share.option.image.subtitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Platforms may compress the image or remove verification data."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "平台可能会压缩图片或移除验证数据。"
+          }
+        }
+      }
+    },
+    "share.option.image.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Share Image"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享图片"
+          }
+        }
+      }
+    },
+    "share.option.link.subtitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Upload a capture and share a verification link."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上传拍摄内容并分享验证链接。"
+          }
+        }
+      }
+    },
+    "share.option.link.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Share Link"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享链接"
+          }
+        }
+      }
+    },
+    "share.option.package.locked" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Available after TAPNAP signing completes."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TAPNAP 签名完成后可用。"
+          }
+        }
+      }
+    },
+    "share.option.package.subtitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Complete original resources for verification."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "包含用于验证的完整原始资料。"
+          }
+        }
+      }
+    },
+    "share.option.package.videoComingSoon" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TAPNAP packages for video are coming soon."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "视频 TAPNAP 包即将推出。"
+          }
+        }
+      }
+    },
+    "share.option.package.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TAPNAP Package"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TAPNAP 包"
+          }
+        }
+      }
+    },
+    "share.option.video.subtitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Platforms may transcode the video or remove verification data."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "平台可能会转码视频或移除验证数据。"
+          }
+        }
+      }
+    },
+    "share.option.video.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Share Video"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享视频"
+          }
+        }
+      }
+    },
+    "share.option.sticker.subtitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Animate a point cloud as a shareable sticker."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将点云动画导出为可分享的表情包。"
+          }
+        }
+      }
+    },
+    "share.option.sticker.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3D Sticker"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3D 表情包"
+          }
+        }
+      }
+    },
+    "share.preparing.package.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Packing TAPNAP…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在打包 TAPNAP…"
+          }
+        }
+      }
+    },
+    "share.preparing.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preparing Share…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在准备分享…"
+          }
+        }
+      }
+    },
+    "share.status.failed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Failed"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "失败"
+          }
+        }
+      }
+    },
+    "share.status.retry" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Needs Retry"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "待重试"
+          }
+        }
+      }
+    },
+    "share.status.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TAPNAP Status"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TAPNAP 状态"
+          }
+        }
+      }
+    },
+    "share.status.verified" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verified"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已验证"
+          }
+        }
+      }
+    },
     "Show ${captureScore}" : {
       "localizations" : {
         "zh-Hans" : {
@@ -3685,6 +4107,7 @@
       }
     },
     "Shutter Haptics" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3695,6 +4118,7 @@
       }
     },
     "Shutter Sound" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3705,11 +4129,34 @@
       }
     },
     "Shutter sound cannot be disabled on this device or in this region." : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "此设备或所在地区不允许关闭快门声音。"
+          }
+        }
+      }
+    },
+    "Silent Shutter" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "静音快门"
+          }
+        }
+      }
+    },
+    "Silent shutter is unavailable on this device or in this region." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此设备或所在地区不支持静音快门。"
           }
         }
       }
@@ -3790,6 +4237,7 @@
       }
     },
     "Status" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -4340,6 +4788,7 @@
       }
     },
     "Use Location Data" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -4350,11 +4799,22 @@
       }
     },
     "Use Microphone Data" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "使用麦克风数据"
+          }
+        }
+      }
+    },
+    "Use Pro camera controls." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用专业相机控制。"
           }
         }
       }
@@ -4366,16 +4826,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "拍摄时使用"
-          }
-        }
-      }
-    },
-    "Use Pro camera controls." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用专业相机控制。"
           }
         }
       }
@@ -4403,6 +4853,7 @@
       }
     },
     "Valid credential" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -4566,6 +5017,7 @@
       }
     },
     "Viewfinder" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -4607,6 +5059,7 @@
       }
     },
     "Warnings" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {

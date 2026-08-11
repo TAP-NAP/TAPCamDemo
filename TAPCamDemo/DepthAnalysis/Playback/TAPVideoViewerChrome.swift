@@ -89,6 +89,7 @@ nonisolated enum TAPVideoViewerModePolicy {
 
 struct TAPVideoViewerChrome: View {
     let player: AVPlayer?
+    let playbackIntentState: TAPVideoPlaybackIntentState
     let selectedTool: AnalysisViewerTool
     let availability: TAPVideoRegisteredDepthAvailability
     let isTwoDPlaybackReady: Bool
@@ -125,7 +126,10 @@ struct TAPVideoViewerChrome: View {
             bottomSafeArea: bottomSafeArea,
             // This accessory type never changes, so the root chrome identity
             // remains stable while its local player content becomes ready.
-            bottomAccessory: TAPVideoPlaybackTransportAccessory(player: player),
+            bottomAccessory: TAPVideoPlaybackTransportAccessory(
+                player: player,
+                intentState: playbackIntentState
+            ),
             onBackTapped: onBackTapped,
             onShareTapped: onShareTapped,
             onModeTapped: handleModeTapped,

@@ -37,6 +37,7 @@ final class TAPVideoPlaybackSession {
     private(set) var depthGapNotice: String?
     private(set) var requestKey: MediaFetchRequestKey?
     private var fetchState = TAPVideoPlaybackFetchState()
+    @ObservationIgnored let playbackIntentState = TAPVideoPlaybackIntentState()
 
     @ObservationIgnored private let source: TAPVideoPlaybackSource
     @ObservationIgnored private let registrationAdapter: any TAPVideoDepthRegistrationAdapting
@@ -47,15 +48,18 @@ final class TAPVideoPlaybackSession {
     @ObservationIgnored private var playerLifecycle: TAPVideoPlaybackPlayerLifecycle?
     @ObservationIgnored private var requestGeneration: UInt64 = 1
     @ObservationIgnored private var shouldResumeFetchAfterBackground = false
+    @ObservationIgnored private var shouldResumeAfterInteractivePaging = false
 
     init(
         source: TAPVideoPlaybackSource,
         registrationAdapter: any TAPVideoDepthRegistrationAdapting,
-        mediaFetcher: any LibraryMediaFetching
+        mediaFetcher: any LibraryMediaFetching,
+        initialLoadingPreviewImage: UIImage? = nil
     ) {
         self.source = source
         self.registrationAdapter = registrationAdapter
         self.mediaFetcher = mediaFetcher
+        loadingPreviewImage = initialLoadingPreviewImage
         depthPipeline = TAPVideoDepthPipeline(sourceLabel: source.diagnosticsLabel)
         requestKey = MediaFetchRequestKey(
             itemID: source.libraryMediaID,
@@ -113,6 +117,8 @@ final class TAPVideoPlaybackSession {
 
     func stopPlayback() {
         shouldResumeFetchAfterBackground = false
+        shouldResumeAfterInteractivePaging = false
+        playbackIntentState.reset()
         requestKey = nil
         activeRequestKey = nil
         releasePlaybackResources()
@@ -124,7 +130,39 @@ final class TAPVideoPlaybackSession {
         )
     }
 
+    /// Freezes the committed video's frame while the Library pager is under
+    /// the user's finger. A cancelled page turn can resume the prior playback
+    /// intent; a committed turn calls `stopPlayback()` first and therefore
+    /// cannot resurrect the outgoing player.
+    func beginInteractivePaging() {
+        guard let player else {
+            shouldResumeAfterInteractivePaging = false
+            playbackIntentState.reset()
+            return
+        }
+        shouldResumeAfterInteractivePaging = playbackIntentState
+            .beginPagingSuspension(currentStatus: player.timeControlStatus)
+        player.currentItem?.cancelPendingSeeks()
+        player.cancelPendingPrerolls()
+        player.pause()
+    }
+
+    func endInteractivePaging() {
+        let shouldResume = shouldResumeAfterInteractivePaging
+        shouldResumeAfterInteractivePaging = false
+        playbackIntentState.endPagingSuspension()
+        guard shouldResume,
+              state == .ready,
+              requestKey != nil,
+              let player else {
+            return
+        }
+        player.play()
+    }
+
     func handleDidEnterBackground() {
+        shouldResumeAfterInteractivePaging = false
+        playbackIntentState.reset()
         player?.pause()
         guard hasActiveMediaFetch else {
             return

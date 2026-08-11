@@ -14,9 +14,27 @@ struct TAPVideoPlayerSurfaceView: UIViewRepresentable {
     let overlayStore: TAPVideoDepthOverlayStore
     let showsRegisteredDepth: Bool
     let overlayOpacity: Double
+    let onReadyForDisplay: (ObjectIdentifier, Bool) -> Void
+
+    init(
+        player: AVPlayer,
+        overlayStore: TAPVideoDepthOverlayStore,
+        showsRegisteredDepth: Bool,
+        overlayOpacity: Double,
+        onReadyForDisplay: @escaping (ObjectIdentifier, Bool) -> Void = { _, _ in }
+    ) {
+        self.player = player
+        self.overlayStore = overlayStore
+        self.showsRegisteredDepth = showsRegisteredDepth
+        self.overlayOpacity = overlayOpacity
+        self.onReadyForDisplay = onReadyForDisplay
+    }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(overlayStore: overlayStore)
+        Coordinator(
+            overlayStore: overlayStore,
+            onReadyForDisplay: onReadyForDisplay
+        )
     }
 
     func makeUIView(context: Context) -> TAPVideoPlayerSurfaceUIView {
@@ -25,7 +43,8 @@ struct TAPVideoPlayerSurfaceView: UIViewRepresentable {
         context.coordinator.bind(to: surfaceView)
         context.coordinator.update(
             showsRegisteredDepth: showsRegisteredDepth,
-            overlayOpacity: overlayOpacity
+            overlayOpacity: overlayOpacity,
+            onReadyForDisplay: onReadyForDisplay
         )
         return surfaceView
     }
@@ -39,7 +58,8 @@ struct TAPVideoPlayerSurfaceView: UIViewRepresentable {
         }
         context.coordinator.update(
             showsRegisteredDepth: showsRegisteredDepth,
-            overlayOpacity: overlayOpacity
+            overlayOpacity: overlayOpacity,
+            onReadyForDisplay: onReadyForDisplay
         )
         surfaceView.refreshVideoGeometry()
     }
@@ -59,9 +79,14 @@ struct TAPVideoPlayerSurfaceView: UIViewRepresentable {
         private var playerLayerReadyObservation: NSKeyValueObservation?
         private var showsRegisteredDepth = false
         private var overlayOpacity = 1.0
+        private var onReadyForDisplay: (ObjectIdentifier, Bool) -> Void
 
-        init(overlayStore: TAPVideoDepthOverlayStore) {
+        init(
+            overlayStore: TAPVideoDepthOverlayStore,
+            onReadyForDisplay: @escaping (ObjectIdentifier, Bool) -> Void
+        ) {
             self.overlayStore = overlayStore
+            self.onReadyForDisplay = onReadyForDisplay
             super.init()
         }
 
@@ -81,9 +106,14 @@ struct TAPVideoPlayerSurfaceView: UIViewRepresentable {
             surfaceView = nil
         }
 
-        func update(showsRegisteredDepth: Bool, overlayOpacity: Double) {
+        func update(
+            showsRegisteredDepth: Bool,
+            overlayOpacity: Double,
+            onReadyForDisplay: @escaping (ObjectIdentifier, Bool) -> Void
+        ) {
             self.showsRegisteredDepth = showsRegisteredDepth
             self.overlayOpacity = overlayOpacity
+            self.onReadyForDisplay = onReadyForDisplay
             surfaceView?.update(
                 showsRegisteredDepth: showsRegisteredDepth,
                 overlayOpacity: overlayOpacity
@@ -99,9 +129,18 @@ struct TAPVideoPlayerSurfaceView: UIViewRepresentable {
             playerLayerReadyObservation = playerLayer.observe(
                 \.isReadyForDisplay,
                 options: [.initial, .new]
-            ) { [weak self] _, _ in
+            ) { [weak self] playerLayer, _ in
+                let isReadyForDisplay = playerLayer.isReadyForDisplay
+                let playerID = playerLayer.player.map(ObjectIdentifier.init)
                 Task { @MainActor [weak self] in
-                    self?.surfaceView?.refreshVideoGeometry()
+                    guard let self,
+                          let playerID,
+                          surfaceView?.playerLayer.player.map(ObjectIdentifier.init)
+                            == playerID else {
+                        return
+                    }
+                    surfaceView?.refreshVideoGeometry()
+                    onReadyForDisplay(playerID, isReadyForDisplay)
                 }
             }
         }

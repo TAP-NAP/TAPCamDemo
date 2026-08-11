@@ -41,7 +41,7 @@ so future work does not confuse an intended contract with shipped interaction.
 | 2D tool surface | Implemented. `2D` replaces the primary surface with a centered aspect-fit container matching the raw photo ratio. Swipes that begin outside the container page left/right. |
 | 3D tool surface | Implemented. `3D` replaces the primary surface with a centered aspect-fit SceneKit container matching the raw photo ratio. SceneKit owns gestures that begin inside the container; swipes outside it page left/right. |
 | Vertical gestures | Not implemented by design in this pass. There is no up-swipe drawer, down-swipe dismiss, or half/full detent behavior in the current viewer. |
-| Global Share | Implemented. The Share button prepares a verification-original export and opens `UIActivityViewController` directly. The async asset entry point is explicitly concurrent so decode, validation, hashing, file writes, and ZIP work do not occupy the MainActor. |
+| Global Share | Implemented. The Share button immediately opens the app-owned TAP Share sheet for still photos, Live Photos, and videos. Heavy resource loading begins only after the user chooses a format; the system activity controller appears only after that payload is ready. |
 | Delete | Implemented. The Delete button asks for confirmation, then deletes Photos assets through Photos semantics or removes pending local records through `TAPPendingCaptureStore`. |
 | Liquid Glass | Not implemented. Current controls use material fallbacks such as `.thinMaterial`; future iOS 26 adoption should be `#available(iOS 26, *)` gated because the project deployment target is iOS 18.6. |
 
@@ -50,14 +50,17 @@ so future work does not confuse an intended contract with shipped interaction.
 The current viewer uses UIKit for the parts where iOS Photos feel matters most.
 This is the engineering contract for the shipped browser behavior:
 
-- Horizontal photo switching is driven by a `UIScrollView` with
+- Horizontal still/Live/video switching is driven by one shared `UIScrollView` with
   `isPagingEnabled`, `.fast` deceleration, horizontal bounce, and a stable black
   background. We do not hand-roll page commit distance, velocity landing, or
   spring-back curves in SwiftUI.
-- The SwiftUI bridge keeps three `UIHostingController` page hosts alive for
-  previous/current/next. When the system scroll view lands on a neighbor,
-  `DepthAnalysisCarouselStore.move(offset:)` updates `currentItemID`, then the
-  scroll view is reset without animation back to the center/active page.
+- The SwiftUI bridge keeps up to three `UIHostingController` page hosts for the
+  real previous/current/next mixed-media window. The window and explicit page
+  content revision are frozen from drag begin through landing, then the
+  canonical item ID is committed. This prevents a Library refresh during a
+  gesture from changing its destination or remounting a visible page host.
+- The first and last real items remain actual endpoints. UIKit's native
+  rubber-band bounce communicates the boundary; no sentinel/fake page is added.
 - Each page reserves `DepthAnalysisViewerInteractionPolicy.nativePageSpacing`
   points for black inter-page separation. The current value is `18`, applied as
   a 9pt inset on each side of page content.
@@ -135,11 +138,22 @@ when the gesture starts in a pageable region.
 ## Carousel And Loading
 
 Analysis no longer rebuilds the whole page from a single `currentSource`.
-`DepthAnalysisCarouselStore` owns a stable ordered list and creates one
-`AnalysisPhotoSlot` per item. The visible window is always the current item plus
-its previous and next neighbors when they exist. UIKit paging owns the drag,
-deceleration, page landing, and edge bounce; the store owns only the model
-transition after the page lands.
+`DepthAnalysisCarouselStore` owns stable photo slots, while the canonical TAP
+Library context owns mixed-media order. `TAPLibraryNativePagingView` renders the
+current item plus its real previous and next Library neighbors, regardless of
+whether they are photos, Live Photos, or videos. UIKit owns the drag,
+deceleration, page landing, and endpoint rubber-band bounce; model routing is
+committed only after the page lands. Adjacent videos stay poster-only and never
+construct an off-screen AVPlayer.
+
+Video resource readiness and visual readiness are separate boundaries. The
+viewer keeps one stable black-backed surface, warms the committed
+`AVPlayerLayer` underneath its poster, and removes the poster only after
+`isReadyForDisplay` reports a frame. Loading state, depth discovery,
+video-to-video session changes, and pending-to-owned migration update leaf
+state only; they must not replace the pager, toolbar, or navigation destination.
+The UIKit bridge caches each host configuration and does not reassign
+`UIHostingController.rootView` for ordinary leaf-observable state changes.
 
 Each slot owns:
 

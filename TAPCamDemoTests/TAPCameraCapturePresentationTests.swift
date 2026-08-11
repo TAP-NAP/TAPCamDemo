@@ -255,6 +255,29 @@ struct TAPCameraCapturePresentationTests {
         #expect(!CameraFeedbackPreferences.shutterHapticsEnabledKey.isEmpty)
     }
 
+    @Test @MainActor func sharedCameraHapticsEnableAudioInputAllowanceOnlyWhenEnabled() {
+        var audioInputAllowanceAttempts = 0
+        let controller = CameraHapticFeedbackController {
+            audioInputAllowanceAttempts += 1
+        }
+
+        controller.setEnabled(false)
+        controller.prepareForCameraInteraction()
+        #expect(controller.hasPreparedCameraInteraction)
+        #expect(!controller.isEnabled)
+        #expect(audioInputAllowanceAttempts == 0)
+
+        controller.setEnabled(true)
+        #expect(controller.isEnabled)
+        #expect(audioInputAllowanceAttempts == 0)
+
+        controller.cameraAudioInputDidChange(isActive: true)
+        #expect(audioInputAllowanceAttempts == 1)
+
+        controller.prepareForCameraInteraction()
+        #expect(audioInputAllowanceAttempts == 1)
+    }
+
     @Test func shutterSoundPreferenceDefaultsToEnabled() throws {
         #expect(CameraFeedbackPreferences.defaultShutterSoundEnabled)
         #expect(!CameraFeedbackPreferences.shutterSoundEnabledKey.isEmpty)
@@ -285,15 +308,15 @@ struct TAPCameraCapturePresentationTests {
 
         #expect(CameraFeedbackPreferences.shouldSuppressShutterSound(
             storedIsEnabled: false,
-            allowsDebugOverride: true
+            suppressionSupported: true
         ))
         #expect(!CameraFeedbackPreferences.shouldSuppressShutterSound(
             storedIsEnabled: false,
-            allowsDebugOverride: false
+            suppressionSupported: false
         ))
         #expect(!CameraFeedbackPreferences.shouldSuppressShutterSound(
             storedIsEnabled: true,
-            allowsDebugOverride: true
+            suppressionSupported: true
         ))
     }
 
@@ -930,6 +953,8 @@ struct TAPCameraCapturePresentationTests {
         #expect(hapticSource.contains("UISelectionFeedbackGenerator"))
         #expect(hapticSource.contains("UIImpactFeedbackGenerator(style: .heavy)"))
         #expect(hapticSource.contains("UIImpactFeedbackGenerator(style: .medium)"))
+        #expect(hapticSource.contains("setAllowHapticsAndSystemSoundsDuringRecording(true)"))
+        #expect(hapticSource.contains("guard isEnabled else"))
         #expect(hapticSource.contains("enum CameraAdjustmentHapticStyle"))
         #expect(hapticSource.contains("case zeroTick"))
         #expect(hapticSource.contains("case integerTick"))
@@ -937,6 +962,8 @@ struct TAPCameraCapturePresentationTests {
         #expect(cameraSource.contains("@StateObject private var hapticFeedbackController"))
         #expect(cameraSource.contains(".environment(\\.cameraHapticFeedbackController, hapticFeedbackController)"))
         #expect(cameraSource.contains("hapticFeedbackController.prepareForCameraInteraction()"))
+        #expect(cameraSource.contains("hapticFeedbackController.setEnabled(isShutterHapticsEnabled)"))
+        #expect(cameraSource.contains("hapticFeedbackController.cameraAudioInputDidChange(isActive: isCameraAudioInputActive)"))
         #expect(cameraSource.contains("hapticFeedbackController.shutterAccepted()"))
         #expect(!cameraSource.contains("UIImpactFeedbackGenerator(style: .medium)"))
         #expect(sliderSource.contains("lastHapticStepIndex"))
@@ -1265,6 +1292,14 @@ struct TAPCameraCapturePresentationTests {
         #expect(settingsSource.contains(#"Section("Camera Settings")"#))
         #expect(settingsSource.contains(#"Section("Interface")"#))
         #expect(settingsSource.contains(#"Section("Data & Permissions")"#))
+        let cameraSectionStart = try #require(settingsSource.range(of: "private var cameraSettingsSection"))
+        let interfaceSectionStart = try #require(settingsSource.range(of: "private var interfaceSettingsSection"))
+        let cameraSection = String(settingsSource[cameraSectionStart.lowerBound..<interfaceSectionStart.lowerBound])
+        #expect(cameraSection.contains("Silent Shutter"))
+        #expect(cameraSection.contains("Silent shutter is unavailable on this device or in this region."))
+        #expect(cameraSection.contains("Toggle(isOn: shutterSoundSuppressionBinding)"))
+        #expect(settingsSource.contains("get: { !shutterSoundEnabled }"))
+        #expect(settingsSource.contains("set: { shutterSoundEnabled = !$0 }"))
         #expect(settingsSource.contains("Location Data"))
         #expect(settingsSource.contains("Use When Capturing"))
         #expect(!settingsSource.contains("Use Location Data"))
@@ -1303,14 +1338,12 @@ struct TAPCameraCapturePresentationTests {
         }
         #expect(!releaseForm.contains("Photo Quality"))
         #expect(!releaseForm.contains("Depth Warnings"))
-        #expect(!releaseForm.contains("Shutter Sound"))
         #expect(!releaseForm.contains("Plane Strictness"))
         #expect(!releaseForm.contains("cameraBehaviorSection"))
         #expect(!releaseForm.contains("feedbackSettingsSection"))
         #expect(!releaseForm.contains("analysisSettingsSection"))
         #expect(!releaseForm.contains("permissionsSection"))
 
-        let interfaceSectionStart = try #require(settingsSource.range(of: "private var interfaceSettingsSection"))
         let dataSectionStart = try #require(settingsSource.range(of: "private var dataAndPermissionsSection"))
         let interfaceSection = String(settingsSource[interfaceSectionStart.lowerBound..<dataSectionStart.lowerBound])
         #expect(interfaceSection.contains("Analysis Animation"))
@@ -1326,9 +1359,10 @@ struct TAPCameraCapturePresentationTests {
         let debugSectionStart = try #require(settingsSource.range(of: "private var debugCameraControlsSection"))
         let debugSectionEnd = try #require(settingsSource.range(of: "private var debugAppAttestSections"))
         let debugSection = String(settingsSource[debugSectionStart.lowerBound..<debugSectionEnd.lowerBound])
-        for label in ["Capture Prioritization", "Depth Warnings", "Shutter Sound", "Focus Magnifier", "Plane Strictness"] {
+        for label in ["Capture Prioritization", "Depth Warnings", "Focus Magnifier", "Plane Strictness"] {
             #expect(debugSection.contains(label))
         }
+        #expect(!debugSection.contains("Silent Shutter"))
 
         let compositeRowStart = try #require(settingsSource.range(of: "private struct DepthAnalyzerDataPermissionRow"))
         let compositeRowEnd = try #require(settingsSource.range(of: "@MainActor", range: compositeRowStart.upperBound..<settingsSource.endIndex))

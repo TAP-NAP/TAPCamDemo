@@ -8,11 +8,15 @@ import SwiftUI
 
 struct TAPVideoPlaybackTransportAccessory: View {
     let player: AVPlayer?
+    let intentState: TAPVideoPlaybackIntentState
 
     @ViewBuilder
     var body: some View {
         if let player {
-            TAPVideoPlaybackTransportView(player: player)
+            TAPVideoPlaybackTransportView(
+                player: player,
+                intentState: intentState
+            )
         } else {
             EmptyView()
         }
@@ -22,8 +26,11 @@ struct TAPVideoPlaybackTransportAccessory: View {
 struct TAPVideoPlaybackTransportView: View {
     @State private var model: TAPVideoPlaybackTransportModel
 
-    init(player: AVPlayer) {
-        _model = State(initialValue: TAPVideoPlaybackTransportModel(player: player))
+    init(player: AVPlayer, intentState: TAPVideoPlaybackIntentState) {
+        _model = State(initialValue: TAPVideoPlaybackTransportModel(
+            player: player,
+            intentState: intentState
+        ))
     }
 
     var body: some View {

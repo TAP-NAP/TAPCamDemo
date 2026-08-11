@@ -7,6 +7,7 @@
 
 import Foundation
 import ImageIO
+import Observation
 import OSLog
 import Photos
 import PhotosUI
@@ -20,6 +21,9 @@ import UIKit
 /// surface between RAW, 2D, and 3D.
 struct DepthAnalysisView: View {
     private let onCurrentAlbumEntryChanged: ((DepthAnalysisAlbumContext.Entry) -> Void)?
+    private let mixedMediaContext: DepthAlbumDeletionContext?
+    private let onMixedMediaEntryChanged: ((DepthAlbumDeletionContext.Entry) -> Void)?
+    private let onDeletionCompleted: ((String, DepthAlbumDeletionContext.Entry?) -> Void)?
     private let mediaFetcher: any LibraryMediaFetching
 
     @Environment(\.dismiss) private var dismiss
@@ -28,8 +32,7 @@ struct DepthAnalysisView: View {
     @State private var heatmapOpacity = 0.58
     @State private var twoDComparisonPosition = 0.5
     @State private var selectedTool = AnalysisViewerTool.raw
-    @State private var sharePayload: DepthAnalysisSystemSharePayload?
-    @State private var isPreparingShare = false
+    @State private var sharePresentation: DepthAnalysisShareSubject?
     @State private var pendingDeleteRequest: DepthAnalysisPendingDeleteRequest?
     @State private var deleteAlert: DepthAnalysisDeleteAlert?
     @AppStorage(CameraViewfinderHighlightPreference.storageKey)
@@ -41,6 +44,9 @@ struct DepthAnalysisView: View {
         source: DepthAnalysisSource,
         albumContext: DepthAnalysisAlbumContext? = nil,
         onCurrentAlbumEntryChanged: ((DepthAnalysisAlbumContext.Entry) -> Void)? = nil,
+        mixedMediaContext: DepthAlbumDeletionContext? = nil,
+        onMixedMediaEntryChanged: ((DepthAlbumDeletionContext.Entry) -> Void)? = nil,
+        onDeletionCompleted: ((String, DepthAlbumDeletionContext.Entry?) -> Void)? = nil,
         mediaFetcher: any LibraryMediaFetching = PhotoKitLibraryMediaFetcher()
     ) {
         _carouselStore = StateObject(
@@ -51,6 +57,9 @@ struct DepthAnalysisView: View {
             )
         )
         self.onCurrentAlbumEntryChanged = onCurrentAlbumEntryChanged
+        self.mixedMediaContext = mixedMediaContext
+        self.onMixedMediaEntryChanged = onMixedMediaEntryChanged
+        self.onDeletionCompleted = onDeletionCompleted
         self.mediaFetcher = mediaFetcher
     }
 
@@ -70,8 +79,10 @@ struct DepthAnalysisView: View {
         analysisSurface()
         .toolbar(.hidden, for: .navigationBar)
         .ignoresSafeArea(.container, edges: .all)
-        .sheet(item: $sharePayload) { payload in
-            VerificationExportActivityView(activityItems: [payload.export.fileURL])
+        .sheet(item: $sharePresentation) { subject in
+            DepthAnalysisShareSheet(subject: subject)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
         }
         .alert(item: $pendingDeleteRequest) { request in
             Alert(
@@ -104,6 +115,13 @@ struct DepthAnalysisView: View {
         ) { _ in
             carouselStore.cancelViewerRequests()
         }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: UIApplication.willEnterForegroundNotification
+            )
+        ) { _ in
+            carouselStore.currentSlot?.retryLastMediaFetch()
+        }
     }
 
     private func analysisSurface() -> some View {
@@ -118,6 +136,7 @@ struct DepthAnalysisView: View {
             ZStack(alignment: .bottom) {
                 AnalysisPhotoCarouselView(
                     store: carouselStore,
+                    mixedMediaContext: mixedMediaContext,
                     selectedTool: selectedTool,
                     displayPixelLength: displayPixelLength,
                     heatmapOpacity: $heatmapOpacity,
@@ -126,6 +145,7 @@ struct DepthAnalysisView: View {
                     isPlaneGridAnimationEnabled: isPlaneGridAnimationEnabled,
                     mediaFetcher: mediaFetcher,
                     onCurrentEntryChanged: handleCurrentEntryChanged,
+                    onBoundaryMove: handleMixedMediaBoundaryMove,
                     onEdgeBack: {
                         dismiss()
                     }
@@ -136,13 +156,13 @@ struct DepthAnalysisView: View {
                 DepthAnalysisViewerChromeView(
                     selectedTool: selectedTool,
                     heatmapOpacity: $heatmapOpacity,
-                    isSharePreparing: isPreparingShare,
+                    isSharePreparing: false,
                     topSafeArea: safeAreaInsets.top,
                     bottomSafeArea: safeAreaInsets.bottom,
                     onBackTapped: {
                         dismiss()
                     },
-                    onShareTapped: presentSystemShareSheet,
+                    onShareTapped: presentShareSheet,
                     onToolTapped: handleToolTapped,
                     onDeleteTapped: {
                         deleteCurrentItem(displayPixelLength: displayPixelLength)
@@ -163,27 +183,11 @@ struct DepthAnalysisView: View {
         AnalysisHighlightPalette.resolved(viewfinderRawValue: viewfinderHighlightRawValue)
     }
 
-    private func presentSystemShareSheet() {
-        guard !isPreparingShare,
-              case .photosAsset(let assetID) = carouselStore.currentEntry?.source else {
+    private func presentShareSheet() {
+        guard let currentEntry = carouselStore.currentEntry else {
             return
         }
-        isPreparingShare = true
-
-        Task { @MainActor in
-            defer {
-                isPreparingShare = false
-            }
-
-            do {
-                let export = try await TAPVerificationExportBuilder().export(assetID: assetID)
-                sharePayload = DepthAnalysisSystemSharePayload(export: export)
-            } catch {
-                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-                TAPDiagnostics.appAttest.error("analysis share export failed error=\(TAPDiagnostics.describe(error), privacy: .public)")
-                #endif
-            }
-        }
+        sharePresentation = DepthAnalysisShareSubject(entry: currentEntry)
     }
 
     private func deleteCurrentItem(displayPixelLength: Int) {
@@ -213,9 +217,25 @@ struct DepthAnalysisView: View {
         displayPixelLength: Int,
         prewarmCurrentPlaneGeometry: Bool
     ) {
+        let deletedItemID = carouselStore.currentEntry?.id
+            ?? source.loadID
         Task { @MainActor in
             do {
                 try await DepthAnalysisDeletionService.delete(source: source)
+
+                let removedIDs = Set([deletedItemID])
+                let mixedNextEntry = mixedMediaContext?.entryAfterDeleting(
+                    deletedItemID,
+                    excluding: removedIDs
+                )
+                if case .video? = mixedNextEntry?.destination,
+                   let onDeletionCompleted {
+                    carouselStore.cancelViewerRequests()
+                    onDeletionCompleted(deletedItemID, mixedNextEntry)
+                    return
+                }
+
+                onDeletionCompleted?(deletedItemID, nil)
                 if let nextEntry = carouselStore.advanceAfterDeletingCurrent(
                     pixelLength: displayPixelLength,
                     prewarmCurrentPlaneGeometry: prewarmCurrentPlaneGeometry
@@ -242,6 +262,18 @@ struct DepthAnalysisView: View {
         }
     }
 
+    private func handleMixedMediaBoundaryMove(offset: Int) {
+        guard let currentItemID = carouselStore.currentEntry?.id,
+              let entry = mixedMediaContext?.adjacentEntry(
+                from: currentItemID,
+                offset: offset
+              ) else {
+            return
+        }
+        carouselStore.cancelViewerRequests()
+        onMixedMediaEntryChanged?(entry)
+    }
+
     private static func displayPixelLength(viewportSize: CGSize, displayScale: CGFloat) -> Int {
         let viewportMaxLength = max(viewportSize.width, viewportSize.height)
         let scaledLength = Int(ceil(viewportMaxLength * max(displayScale, 1)))
@@ -262,20 +294,6 @@ private struct DepthAnalysisDeleteAlert: Identifiable {
     let message: String
 }
 
-@MainActor
-private final class DepthAnalysisSystemSharePayload: Identifiable {
-    let id = UUID()
-    let export: TAPVerificationExport
-
-    init(export: TAPVerificationExport) {
-        self.export = export
-    }
-
-    deinit {
-        export.removeTemporaryDirectory()
-    }
-}
-
 private enum DepthAnalysisDeletionService {
     static func delete(source: DepthAnalysisSource) async throws {
         switch source {
@@ -293,6 +311,7 @@ private enum DepthAnalysisDeletionService {
 
 private struct AnalysisPhotoCarouselView: View {
     @ObservedObject var store: DepthAnalysisCarouselStore
+    let mixedMediaContext: DepthAlbumDeletionContext?
     let selectedTool: AnalysisViewerTool
     let displayPixelLength: Int
     @Binding var heatmapOpacity: Double
@@ -301,11 +320,13 @@ private struct AnalysisPhotoCarouselView: View {
     let isPlaneGridAnimationEnabled: Bool
     let mediaFetcher: any LibraryMediaFetching
     let onCurrentEntryChanged: (DepthAnalysisCarouselEntry) -> Void
+    let onBoundaryMove: (Int) -> Void
     let onEdgeBack: () -> Void
 
     var body: some View {
         AnalysisNativePagingView(
             store: store,
+            mixedMediaContext: mixedMediaContext,
             selectedTool: selectedTool,
             displayPixelLength: displayPixelLength,
             heatmapOpacity: $heatmapOpacity,
@@ -314,6 +335,7 @@ private struct AnalysisPhotoCarouselView: View {
             isPlaneGridAnimationEnabled: isPlaneGridAnimationEnabled,
             mediaFetcher: mediaFetcher,
             onCurrentEntryChanged: onCurrentEntryChanged,
+            onBoundaryMove: onBoundaryMove,
             onEdgeBack: onEdgeBack
         )
         .background(Color.black)
@@ -327,8 +349,9 @@ private struct AnalysisPhotoCarouselView: View {
     }
 }
 
-private struct AnalysisNativePagingView: UIViewRepresentable {
+private struct AnalysisNativePagingView: View {
     @ObservedObject var store: DepthAnalysisCarouselStore
+    let mixedMediaContext: DepthAlbumDeletionContext?
     let selectedTool: AnalysisViewerTool
     let displayPixelLength: Int
     @Binding var heatmapOpacity: Double
@@ -337,265 +360,176 @@ private struct AnalysisNativePagingView: UIViewRepresentable {
     let isPlaneGridAnimationEnabled: Bool
     let mediaFetcher: any LibraryMediaFetching
     let onCurrentEntryChanged: (DepthAnalysisCarouselEntry) -> Void
+    let onBoundaryMove: (Int) -> Void
     let onEdgeBack: () -> Void
+    @State private var pagingInteractionState = AnalysisPagingInteractionState()
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-
-    func makeUIView(context: Context) -> UIScrollView {
-        let scrollView = UIScrollView()
-        scrollView.backgroundColor = .black
-        scrollView.isPagingEnabled = true
-        scrollView.bounces = true
-        scrollView.alwaysBounceHorizontal = true
-        scrollView.alwaysBounceVertical = false
-        scrollView.showsHorizontalScrollIndicator = false
-        scrollView.showsVerticalScrollIndicator = false
-        scrollView.decelerationRate = .fast
-        scrollView.delegate = context.coordinator
-        scrollView.contentInsetAdjustmentBehavior = .never
-        context.coordinator.installHosts(in: scrollView)
-        context.coordinator.installEdgeBackGesture(in: scrollView, onEdgeBack: onEdgeBack)
-        return scrollView
-    }
-
-    func updateUIView(_ scrollView: UIScrollView, context: Context) {
-        context.coordinator.update(parent: self, scrollView: scrollView)
-    }
-
-    final class Coordinator: NSObject, UIScrollViewDelegate, UIGestureRecognizerDelegate {
-        private var parent: AnalysisNativePagingView?
-        private var hosts: [UIHostingController<AnyView>] = []
-        private var isProgrammaticScroll = false
-        private var edgeBackAction: (() -> Void)?
-
-        func installHosts(in scrollView: UIScrollView) {
-            guard hosts.isEmpty else {
-                return
-            }
-            hosts = (0..<3).map { _ in
-                let host = UIHostingController(rootView: AnyView(Color.black))
-                host.view.backgroundColor = .black
-                host.view.isOpaque = true
-                scrollView.addSubview(host.view)
-                return host
-            }
-        }
-
-        func installEdgeBackGesture(in scrollView: UIScrollView, onEdgeBack: @escaping () -> Void) {
-            edgeBackAction = onEdgeBack
-            guard scrollView.gestureRecognizers?.contains(where: { $0 is UIScreenEdgePanGestureRecognizer }) != true else {
-                return
-            }
-            let gesture = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handleEdgeBack(_:)))
-            gesture.edges = .left
-            gesture.delegate = self
-            scrollView.addGestureRecognizer(gesture)
-        }
-
-        func update(parent: AnalysisNativePagingView, scrollView: UIScrollView) {
-            self.parent = parent
-            edgeBackAction = parent.onEdgeBack
-            configure(
-                scrollView: scrollView,
-                parent: parent,
-                forceResetOffset: !scrollView.isDragging && !scrollView.isDecelerating
-            )
-        }
-
-        private func configure(
-            scrollView: UIScrollView,
-            parent: AnalysisNativePagingView,
-            forceResetOffset: Bool
-        ) {
-            let bounds = scrollView.bounds
-            guard bounds.width > 0, bounds.height > 0 else {
-                return
-            }
-
-            let window = parent.store.windowEntries()
-            let currentPosition = window.firstIndex { $0.offset == 0 } ?? 0
-            let pageWidth = bounds.width
-            let pageSpacing = min(
-                DepthAnalysisViewerInteractionPolicy.nativePageSpacing,
-                max(pageWidth - 1, 0)
-            )
-            let pageContentSize = CGSize(
-                width: max(pageWidth - pageSpacing, 1),
-                height: bounds.height
-            )
-            scrollView.contentSize = CGSize(width: bounds.width * CGFloat(max(window.count, 1)), height: bounds.height)
-
-            for index in hosts.indices {
-                let host = hosts[index]
-                host.view.frame = CGRect(
-                    x: CGFloat(index) * pageWidth + pageSpacing * 0.5,
-                    y: 0,
-                    width: pageContentSize.width,
-                    height: pageContentSize.height
+    var body: some View {
+        TAPLibraryNativePagingView(
+            entries: pagingEntries,
+            currentItemID: currentItemID,
+            pageContentRevision: pageContentRevision,
+            pageBuilder: { entry, isCurrent, pageSize in
+                page(
+                    for: entry,
+                    isCurrent: isCurrent,
+                    pageSize: pageSize
                 )
+            },
+            onCurrentEntryChanged: handleSettledEntry,
+            onPagingInteractionChanged: { isInteracting in
+                pagingInteractionState.isInteracting = isInteracting
+            },
+            shouldBeginPaging: shouldBeginPaging,
+            onEdgeBack: onEdgeBack
+        )
+    }
 
-                guard window.indices.contains(index) else {
-                    host.rootView = AnyView(Color.black)
-                    host.view.isHidden = true
-                    continue
-                }
+    private var currentItemID: String {
+        store.currentEntry?.id
+            ?? mixedMediaContext?.currentItemID
+            ?? ""
+    }
 
-                let item = window[index]
-                host.view.isHidden = false
-                host.rootView = AnyView(
-                    AnalysisNativePageView(
-                        slot: parent.store.slot(for: item.entry),
-                        tool: parent.selectedTool,
-                        viewportSize: pageContentSize,
-                        isCurrent: item.offset == 0,
-                        heatmapOpacity: parent.$heatmapOpacity,
-                        comparisonPosition: parent.$comparisonPosition,
-                        highlightPalette: parent.highlightPalette,
-                        isPlaneGridAnimationEnabled: parent.isPlaneGridAnimationEnabled,
-                        mediaFetcher: parent.mediaFetcher
+    private var pagingEntries: [TAPLibraryViewerPagingEntry] {
+        if let mixedMediaContext {
+            return mixedMediaContext.pagingEntries(from: currentItemID)
+                .map(TAPLibraryViewerPagingEntry.init)
+        }
+
+        return store.windowEntries().map { item in
+            TAPLibraryViewerPagingEntry(
+                id: item.entry.id,
+                destination: .analysis(
+                    DepthAlbumAnalysisRoute(
+                        itemID: item.entry.id,
+                        source: item.entry.source
                     )
-                )
-            }
-
-            let targetOffset = CGPoint(x: CGFloat(currentPosition) * pageWidth, y: 0)
-            guard forceResetOffset else {
-                return
-            }
-            if abs(scrollView.contentOffset.x - targetOffset.x) > 0.5 || scrollView.contentOffset.y != 0 {
-                isProgrammaticScroll = true
-                scrollView.setContentOffset(targetOffset, animated: false)
-                isProgrammaticScroll = false
-            }
-        }
-
-        func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
-            guard !decelerate else {
-                return
-            }
-            finishPaging(scrollView)
-        }
-
-        func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
-            finishPaging(scrollView)
-        }
-
-        func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
-            finishPaging(scrollView)
-        }
-
-        private func finishPaging(_ scrollView: UIScrollView) {
-            guard !isProgrammaticScroll,
-                  let parent,
-                  scrollView.bounds.width > 0 else {
-                return
-            }
-            let window = parent.store.windowEntries()
-            guard !window.isEmpty else {
-                return
-            }
-            let currentPosition = window.firstIndex { $0.offset == 0 } ?? 0
-            let page = min(
-                max(Int(round(scrollView.contentOffset.x / scrollView.bounds.width)), 0),
-                window.count - 1
+                ),
+                expectsPairedVideo: item.entry.albumEntry?.expectsPairedVideo
+                    ?? false
             )
-            let offset = page - currentPosition
-            guard offset != 0 else {
-                configure(scrollView: scrollView, parent: parent, forceResetOffset: true)
-                return
-            }
-            guard let entry = parent.store.move(
-                offset: offset,
-                pixelLength: parent.displayPixelLength,
-                prewarmCurrentPlaneGeometry: parent.selectedTool == .threeD
-            ) else {
-                configure(scrollView: scrollView, parent: parent, forceResetOffset: true)
-                return
-            }
-            parent.onCurrentEntryChanged(entry)
-            configure(scrollView: scrollView, parent: parent, forceResetOffset: true)
         }
+    }
 
-        @objc private func handleEdgeBack(_ gesture: UIScreenEdgePanGestureRecognizer) {
-            guard gesture.state == .ended else {
-                return
-            }
-            let translation = gesture.translation(in: gesture.view)
-            let velocity = gesture.velocity(in: gesture.view)
-            let predicted = CGSize(
-                width: translation.x + velocity.x * 0.12,
-                height: translation.y + velocity.y * 0.12
+    private func page(
+        for pagingEntry: TAPLibraryViewerPagingEntry,
+        isCurrent: Bool,
+        pageSize: CGSize
+    ) -> AnyView {
+        if let carouselEntry = localCarouselEntry(matching: pagingEntry) {
+            return AnyView(
+                AnalysisNativePageView(
+                    slot: store.slot(for: carouselEntry),
+                    tool: selectedTool,
+                    viewportSize: pageSize,
+                    isCurrent: isCurrent,
+                    pagingInteractionState: pagingInteractionState,
+                    heatmapOpacity: $heatmapOpacity,
+                    comparisonPosition: $comparisonPosition,
+                    highlightPalette: highlightPalette,
+                    isPlaneGridAnimationEnabled: isPlaneGridAnimationEnabled,
+                    mediaFetcher: mediaFetcher
+                )
             )
-            guard AnalysisEdgeBackPolicy.shouldReturn(
-                startX: 0,
-                translation: CGSize(width: translation.x, height: translation.y),
-                predictedTranslation: predicted
-            ) else {
-                return
-            }
-            edgeBackAction?()
         }
 
-        func gestureRecognizer(
-            _ gestureRecognizer: UIGestureRecognizer,
-            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
-        ) -> Bool {
-            gestureRecognizer is UIScreenEdgePanGestureRecognizer
+        return AnyView(
+            TAPLibraryAdjacentMediaPreview(
+                entry: pagingEntry,
+                viewportSize: pageSize,
+                mediaFetcher: mediaFetcher
+            )
+        )
+    }
+
+    private func handleSettledEntry(_ target: TAPLibraryViewerPagingEntry) {
+        let currentID = currentItemID
+        if localCarouselEntry(matching: target) != nil,
+           let localWindowItem = store.windowEntries().first(where: {
+               $0.entry.id == target.id
+           }),
+           localWindowItem.offset != 0,
+           let entry = store.move(
+               offset: localWindowItem.offset,
+               pixelLength: displayPixelLength,
+               prewarmCurrentPlaneGeometry: selectedTool == .threeD
+           ) {
+            onCurrentEntryChanged(entry)
+            return
         }
 
-        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-            guard let parent,
-                  let scrollView = gestureRecognizer.view as? UIScrollView,
-                  gestureRecognizer === scrollView.panGestureRecognizer,
-                  parent.selectedTool != .raw,
-                  let toolContainerRect = currentToolContainerRect(in: scrollView, parent: parent) else {
-                return true
-            }
-
-            let location = gestureRecognizer.location(in: scrollView)
-            let visibleX: CGFloat
-            if location.x >= scrollView.contentOffset.x,
-               location.x <= scrollView.contentOffset.x + scrollView.bounds.width {
-                visibleX = location.x - scrollView.contentOffset.x
-            } else {
-                visibleX = location.x
-            }
-            let visibleLocation = CGPoint(x: visibleX, y: location.y)
-            let shouldBegin = !toolContainerRect.contains(visibleLocation)
-            return shouldBegin
+        guard let mixedEntries = mixedMediaContext?.pagingEntries(from: currentID),
+              let currentIndex = mixedEntries.firstIndex(where: { $0.id == currentID }),
+              let targetIndex = mixedEntries.firstIndex(where: { $0.id == target.id }),
+              abs(targetIndex - currentIndex) == 1 else {
+            return
         }
+        onBoundaryMove(targetIndex - currentIndex)
+    }
 
-        private func currentToolContainerRect(
-            in scrollView: UIScrollView,
-            parent: AnalysisNativePagingView
-        ) -> CGRect? {
-            guard let slot = parent.store.currentSlot else {
-                return nil
-            }
-            if let input = slot.input {
-                return DepthAnalysisViewerInteractionPolicy.centeredToolContainerRect(
-                    imageSize: CGSize(width: input.image.width, height: input.image.height),
-                    orientation: input.imageOrientation,
-                    viewportSize: scrollView.bounds.size
-                )
-            }
-            if let displayPhoto = slot.displayPhoto {
-                return DepthAnalysisViewerInteractionPolicy.centeredToolContainerRect(
-                    imageSize: displayPhoto.pixelSize,
-                    orientation: displayPhoto.orientation,
-                    viewportSize: scrollView.bounds.size
-                )
-            }
-            if let thumbnailImage = slot.thumbnailImage {
-                return DepthAnalysisViewerInteractionPolicy.centeredToolContainerRect(
-                    imageSize: thumbnailImage.size,
-                    orientation: .up,
-                    viewportSize: scrollView.bounds.size
-                )
-            }
+    private func localCarouselEntry(
+        matching pagingEntry: TAPLibraryViewerPagingEntry
+    ) -> DepthAnalysisCarouselEntry? {
+        guard case .analysis(let route) = pagingEntry.destination,
+              let localEntry = store.windowEntries().first(where: {
+                  $0.entry.id == pagingEntry.id
+              })?.entry,
+              localEntry.source == route.source,
+              (localEntry.albumEntry?.expectsPairedVideo ?? false)
+                == pagingEntry.expectsPairedVideo else {
             return nil
         }
+        return localEntry
+    }
+
+    private func shouldBeginPaging(
+        at location: CGPoint,
+        viewportSize: CGSize
+    ) -> Bool {
+        guard selectedTool != .raw,
+              let toolContainerRect = currentToolContainerRect(
+                  viewportSize: viewportSize
+              ) else {
+            return true
+        }
+        return !toolContainerRect.contains(location)
+    }
+
+    private var pageContentRevision: UInt64 {
+        var hasher = Hasher()
+        hasher.combine(selectedTool.rawValue)
+        hasher.combine(highlightPalette.uiColor.hash)
+        hasher.combine(isPlaneGridAnimationEnabled)
+        return UInt64(bitPattern: Int64(hasher.finalize()))
+    }
+
+    private func currentToolContainerRect(viewportSize: CGSize) -> CGRect? {
+        guard let slot = store.currentSlot else {
+            return nil
+        }
+        if let input = slot.input {
+            return DepthAnalysisViewerInteractionPolicy.centeredToolContainerRect(
+                imageSize: CGSize(width: input.image.width, height: input.image.height),
+                orientation: input.imageOrientation,
+                viewportSize: viewportSize
+            )
+        }
+        if let displayPhoto = slot.displayPhoto {
+            return DepthAnalysisViewerInteractionPolicy.centeredToolContainerRect(
+                imageSize: displayPhoto.pixelSize,
+                orientation: displayPhoto.orientation,
+                viewportSize: viewportSize
+            )
+        }
+        if let thumbnailImage = slot.thumbnailImage {
+            return DepthAnalysisViewerInteractionPolicy.centeredToolContainerRect(
+                imageSize: thumbnailImage.size,
+                orientation: .up,
+                viewportSize: viewportSize
+            )
+        }
+        return nil
     }
 }
 
@@ -604,6 +538,7 @@ private struct AnalysisNativePageView: View {
     let tool: AnalysisViewerTool
     let viewportSize: CGSize
     let isCurrent: Bool
+    let pagingInteractionState: AnalysisPagingInteractionState
     @Binding var heatmapOpacity: Double
     @Binding var comparisonPosition: Double
     let highlightPalette: AnalysisHighlightPalette
@@ -668,6 +603,7 @@ private struct AnalysisNativePageView: View {
                 image: rawImage,
                 imageIdentifier: rawImageIdentifier,
                 isCurrent: isCurrent,
+                isPagingInteracting: pagingInteractionState.isInteracting,
                 mediaFetcher: mediaFetcher,
                 isLivePhotoMuted: $isLivePhotoMuted
             )
@@ -725,6 +661,12 @@ private struct AnalysisNativePageView: View {
     private var displayedImageOrientation: CGImagePropertyOrientation {
         slot.input?.imageOrientation ?? slot.displayPhoto?.orientation ?? .up
     }
+}
+
+@MainActor
+@Observable
+private final class AnalysisPagingInteractionState {
+    var isInteracting = false
 }
 
 private struct AnalysisLivePhotoBadgeOverlay: View {
@@ -819,6 +761,7 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
     let image: UIImage?
     let imageIdentifier: String
     let isCurrent: Bool
+    let isPagingInteracting: Bool
     let mediaFetcher: any LibraryMediaFetching
     @Binding var isLivePhotoMuted: Bool
 
@@ -856,6 +799,7 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
             image: image,
             imageIdentifier: imageIdentifier,
             isCurrent: isCurrent,
+            isPagingInteracting: isPagingInteracting,
             isLivePhotoMuted: isLivePhotoMuted
         )
     }
@@ -887,6 +831,7 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
         private var livePhotoUnavailableKey: String?
         private var lastLivePhotoRequest: LivePhotoRequestContext?
         private var isPressingForLivePhoto = false
+        private var isPagingInteracting = false
         private var isLivePhotoMuted = true
 
         init(
@@ -939,6 +884,7 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
             image: UIImage?,
             imageIdentifier: String,
             isCurrent: Bool,
+            isPagingInteracting: Bool,
             isLivePhotoMuted: Bool
         ) {
             if self.slot !== slot {
@@ -946,6 +892,11 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
                 self.slot = slot
             }
             scrollView.isUserInteractionEnabled = isCurrent
+            self.isPagingInteracting = isPagingInteracting
+            if isPagingInteracting {
+                isPressingForLivePhoto = false
+                livePhotoView.stopPlayback()
+            }
             self.isLivePhotoMuted = isLivePhotoMuted
             livePhotoView.isMuted = isLivePhotoMuted
             let boundsSize = scrollView.bounds.size
@@ -1080,6 +1031,9 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
         @objc private func handleLivePhotoLongPress(_ gesture: UILongPressGestureRecognizer) {
             switch gesture.state {
             case .began:
+                guard !isPagingInteracting else {
+                    return
+                }
                 isPressingForLivePhoto = true
                 startLivePhotoPlaybackIfAvailable()
             case .ended, .cancelled, .failed:

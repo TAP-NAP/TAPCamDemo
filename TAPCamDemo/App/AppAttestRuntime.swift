@@ -16,6 +16,7 @@ nonisolated enum TAPDiagnostics {
     static let securityPreflight = Logger(subsystem: subsystem, category: "SecurityPreflight")
     static let photoLibrary = Logger(subsystem: subsystem, category: "PhotoLibrary")
     static let depthAnalysis = Logger(subsystem: subsystem, category: "DepthAnalysis")
+    static let sharePackaging = Logger(subsystem: subsystem, category: "SharePackaging")
 
     /// Public log-safe error summary.
     ///

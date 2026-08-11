@@ -464,37 +464,87 @@ struct TAPDepthAnalysisPresentationTests {
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func analysisShareButtonPresentsSystemShareDirectly() throws {
+    func analysisShareButtonPresentsTapnapSheetBeforePreparingPayload() throws {
         let analysisSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisView.swift"
         )
 
-        #expect(analysisSource.contains("DepthAnalysisSystemSharePayload"))
-        #expect(analysisSource.contains("VerificationExportActivityView(activityItems: [payload.export.fileURL])"))
-        #expect(analysisSource.contains("TAPVerificationExportBuilder().export(assetID: assetID)"))
-        #expect(!analysisSource.contains("DepthAnalysisShareSheet(source:"))
-        #expect(!analysisSource.contains("presentationDetents([.height(380), .medium])"))
+        #expect(analysisSource.contains("@State private var sharePresentation: DepthAnalysisShareSubject?"))
+        #expect(analysisSource.contains("DepthAnalysisShareSheet(subject: subject)"))
+        #expect(analysisSource.contains("presentationDetents([.medium, .large])"))
+        #expect(analysisSource.contains("sharePresentation = DepthAnalysisShareSubject(entry: currentEntry)"))
+        #expect(!analysisSource.contains("DepthAnalysisSystemSharePayload"))
+        #expect(!analysisSource.contains("TAPVerificationExportBuilder().export"))
+        #expect(!analysisSource.contains("VerificationExportActivityView"))
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func analysisShareSheetKeepsCredentialPresentationMinimalOutsideDebug() throws {
+    func videoShareButtonOnlyPresentsTapShareSheetBeforePreparingPayload() throws {
+        let videoSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/TAPVideoDepthPlaybackView.swift"
+        )
+
+        #expect(videoSource.contains("@State private var sharePresentation: DepthAnalysisShareSubject?"))
+        #expect(videoSource.contains("onShareTapped: presentShareSheet"))
+        #expect(videoSource.contains("sharePresentation = DepthAnalysisShareSubject("))
+        #expect(videoSource.contains("videoSource: sessionSource"))
+        #expect(videoSource.contains(".sheet(item: $sharePresentation)"))
+        #expect(videoSource.contains("DepthAnalysisShareSheet(subject: subject)"))
+        #expect(!videoSource.contains("shareableFileURL("))
+        #expect(!videoSource.contains("VerificationExportActivityView"))
+        #expect(!videoSource.contains("TAPVideoSystemSharePayload"))
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func analysisShareSheetUsesThreeLocalStatesAndFourFixedActions() throws {
         let shareSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisShareSheet.swift"
         )
+        let artifactBuilderSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/TAPNAPShareArtifactBuilder.swift"
+        )
 
-        #expect(shareSource.contains("Valid credential"))
-        #expect(shareSource.contains("viewModel.hasValidCredential ? \"Yes\" : \"No\""))
-        #expect(shareSource.contains("File information"))
-        #expect(shareSource.contains("fileURL.lastPathComponent"))
-        #expect(shareSource.contains("exportBuilder.hasValidCredential"))
-        #expect(shareSource.contains("#if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS"))
-        #expect(shareSource.contains("Debug status"))
+        #expect(shareSource.contains("case idle"))
+        #expect(shareSource.contains("case preparing"))
+        #expect(shareSource.contains("case failed"))
+        #expect(shareSource.contains("case ready"))
+        #expect(shareSource.contains("share.option.package.title"))
+        #expect(shareSource.contains("share.option.image.title"))
+        #expect(shareSource.contains("share.option.sticker.title"))
+        #expect(shareSource.contains("share.option.link.title"))
+        #expect(shareSource.contains("share.status.verified"))
+        #expect(shareSource.contains("share.status.retry"))
+        #expect(shareSource.contains("share.status.failed"))
+        for identifier in [
+            "tap.share.status",
+            "tap.share.package",
+            "tap.share.image",
+            "tap.share.sticker",
+            "tap.share.link",
+            "tap.share.progress",
+            "tap.share.progress.phase",
+            "tap.share.cancel",
+            "tap.share.retry",
+            "tap.share.done"
+        ] {
+            #expect(shareSource.contains(identifier))
+        }
+        #expect(shareSource.contains("for: .tapLibraryDidChange"))
+        #expect(shareSource.contains("share.preparing.package.title"))
+        #expect(shareSource.contains("format: .percent"))
+        #expect(shareSource.contains("TAPNAPShareArtifactBuilder"))
+        #expect(!shareSource.contains("hasValidCredential"))
+        #expect(!shareSource.contains("TAPVerificationExportBuilder"))
         #expect(!shareSource.contains("AppAttestCaptureSignatureVerifier"))
         #expect(!shareSource.contains(".verify("))
         #expect(!shareSource.contains("assertionObject"))
         #expect(!shareSource.contains("keyId"))
         #expect(!shareSource.contains("signingBinding"))
         #expect(!shareSource.contains("proof"))
+        #expect(!artifactBuilderSource.contains("TAPVerificationExportLocalValidator"))
+        #expect(!artifactBuilderSource.contains("TAPDepthPhotoFileReader"))
+        #expect(!artifactBuilderSource.contains("validateSignedExportPhoto"))
+        #expect(!artifactBuilderSource.contains("hasValidCredential"))
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
@@ -632,6 +682,45 @@ struct TAPDepthAnalysisPresentationTests {
             translation: CGSize(width: 90, height: 90),
             predictedTranslation: CGSize(width: 130, height: 90)
         ))
+    }
+
+    @Test func photoLiveAndVideoShareOneHorizontalSwipePolicy() {
+        #expect(TAPLibraryViewerSwipePolicy.offset(
+            translation: CGSize(width: -40, height: 2),
+            predictedTranslation: CGSize(width: -140, height: 8)
+        ) == 1)
+        #expect(TAPLibraryViewerSwipePolicy.offset(
+            translation: CGSize(width: 45, height: 3),
+            predictedTranslation: CGSize(width: 145, height: 9)
+        ) == -1)
+        #expect(TAPLibraryViewerSwipePolicy.offset(
+            translation: CGSize(width: -30, height: 4),
+            predictedTranslation: CGSize(width: -79, height: 5)
+        ) == nil)
+        #expect(TAPLibraryViewerSwipePolicy.offset(
+            translation: CGSize(width: -40, height: 90),
+            predictedTranslation: CGSize(width: -120, height: 150)
+        ) == nil)
+    }
+
+    @Test func edgeBackClaimSurvivesRecognizerEndUntilPagingFinishes() {
+        var state = TAPLibraryViewerGestureArbitrationState()
+        state.beginPaging(edgeBackIsActive: true)
+        state.claimEdgeBack()
+
+        // The edge recognizer may already be `.ended` before UIScrollView asks
+        // where paging should finish. Ownership must remain durable.
+        #expect(state.edgeBackClaimed)
+        let claimedCompletion = state.finishPaging()
+        #expect(claimedCompletion)
+        #expect(!state.edgeBackClaimed)
+
+        // A later ordinary swipe starts clean even if a previous edge gesture
+        // never produced a paging completion callback.
+        state.claimEdgeBack()
+        state.beginPaging(edgeBackIsActive: false)
+        let ordinaryCompletion = state.finishPaging()
+        #expect(!ordinaryCompletion)
     }
 
     @Test func analysisToolContainerRectMatchesRawAspectFitAndStaysCentered() throws {

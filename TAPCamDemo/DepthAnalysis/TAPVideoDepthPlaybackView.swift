@@ -12,23 +12,28 @@ struct TAPVideoDepthPlaybackView: View {
     private let source: TAPVideoPlaybackSource
     private let albumContext: TAPVideoAlbumContext?
     private let onCurrentAlbumEntryChanged: ((TAPVideoAlbumContext.Entry) -> Void)?
+    private let onMixedMediaEntryChanged: ((DepthAlbumDeletionContext.Entry) -> Void)?
     private let deletionContext: DepthAlbumDeletionContext?
     private let onDeletionCompleted: ((String, DepthAlbumDeletionContext.Entry?) -> Void)?
+    private let registrationAdapter: any TAPVideoDepthRegistrationAdapting
+    private let mediaFetcher: any LibraryMediaFetching
 
     @Environment(\.dismiss) private var dismiss
     @State private var session: TAPVideoPlaybackSession
     @State private var selectedTool = AnalysisViewerTool.raw
     @State private var depthOverlayOpacity = 0.58
-    @State private var sharePayload: TAPVideoSystemSharePayload?
-    @State private var isPreparingShare = false
+    @State private var sharePresentation: DepthAnalysisShareSubject?
     @State private var pendingDeleteRequest: TAPVideoPendingDeleteRequest?
     @State private var deleteAlert: TAPVideoDeleteAlert?
     @State private var removedVideoEntryIDs: Set<String> = []
+    @State private var sessionGeneration: UInt64 = 0
+    @State private var sessionSource: TAPVideoPlaybackSource
 
     init(
         source: TAPVideoPlaybackSource,
         albumContext: TAPVideoAlbumContext? = nil,
         onCurrentAlbumEntryChanged: ((TAPVideoAlbumContext.Entry) -> Void)? = nil,
+        onMixedMediaEntryChanged: ((DepthAlbumDeletionContext.Entry) -> Void)? = nil,
         deletionContext: DepthAlbumDeletionContext? = nil,
         onDeletionCompleted: ((String, DepthAlbumDeletionContext.Entry?) -> Void)? = nil,
         registrationAdapter: any TAPVideoDepthRegistrationAdapting =
@@ -38,31 +43,46 @@ struct TAPVideoDepthPlaybackView: View {
         self.source = source
         self.albumContext = albumContext
         self.onCurrentAlbumEntryChanged = onCurrentAlbumEntryChanged
+        self.onMixedMediaEntryChanged = onMixedMediaEntryChanged
         self.deletionContext = deletionContext
         self.onDeletionCompleted = onDeletionCompleted
+        self.registrationAdapter = registrationAdapter
+        self.mediaFetcher = mediaFetcher
+        let currentItemID = albumContext?.currentItemID
+            ?? source.libraryMediaID.storageValue
         _session = State(initialValue: TAPVideoPlaybackSession(
             source: source,
             registrationAdapter: registrationAdapter,
-            mediaFetcher: mediaFetcher
+            mediaFetcher: mediaFetcher,
+            initialLoadingPreviewImage: TAPLibraryPagingPreviewCache.shared.image(
+                for: currentItemID
+            )
         ))
+        _sessionSource = State(initialValue: source)
     }
 
     var body: some View {
         TAPVideoPlaybackScreen(
             session: session,
+            pagingEntries: pagingEntries,
+            currentItemID: currentItemID,
+            pageContentRevision: sessionGeneration,
+            mediaFetcher: mediaFetcher,
             selectedTool: $selectedTool,
             depthOverlayOpacity: $depthOverlayOpacity,
-            isPreparingShare: isPreparingShare,
+            isPreparingShare: false,
             onBackTapped: { dismiss() },
-            onShareTapped: presentSystemShareSheet,
+            onShareTapped: presentShareSheet,
             onModeTapped: handleModeTapped,
             onDeleteTapped: deleteCurrentVideo,
-            onMoveVideo: moveVideo
+            onCurrentPagingEntryChanged: moveToPagingEntry
         )
         .toolbar(.hidden, for: .navigationBar)
         .ignoresSafeArea(.container, edges: .all)
-        .sheet(item: $sharePayload) { payload in
-            VerificationExportActivityView(activityItems: [payload.fileURL])
+        .sheet(item: $sharePresentation) { subject in
+            DepthAnalysisShareSheet(subject: subject)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
         }
         .alert(item: $pendingDeleteRequest) { request in
             Alert(
@@ -81,11 +101,21 @@ struct TAPVideoDepthPlaybackView: View {
                 dismissButton: .default(Text("OK"))
             )
         }
-        .task(id: session.requestKey) {
-            await session.startPlaybackSession()
-            if selectedTool == .twoD {
-                session.prepareTwoDPlaybackGate()
+        .task(id: playbackTaskIdentity) {
+            let activeSession = session
+            await activeSession.startPlaybackSession()
+            guard !Task.isCancelled else {
+                return
             }
+            if selectedTool == .twoD {
+                activeSession.prepareTwoDPlaybackGate()
+            }
+        }
+        .onChange(of: source) { _, updatedSource in
+            replacePlaybackSessionIfNeeded(
+                to: updatedSource,
+                itemID: currentItemID
+            )
         }
         .onChange(of: selectedTool) { _, tool in
             if tool == .twoD {
@@ -127,30 +157,20 @@ struct TAPVideoDepthPlaybackView: View {
         selectedTool = tool
     }
 
-    private func presentSystemShareSheet() {
-        guard !isPreparingShare, session.player != nil else {
-            return
-        }
-        isPreparingShare = true
-        Task { @MainActor in
-            defer { isPreparingShare = false }
-            do {
-                sharePayload = TAPVideoSystemSharePayload(
-                    fileURL: try await session.shareableFileURL()
-                )
-            } catch {
-                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-                TAPDiagnostics.appAttest.error("video share export failed error=\(TAPDiagnostics.describe(error), privacy: .public)")
-                #endif
-            }
-        }
+    private func presentShareSheet() {
+        let itemID = albumContext?.currentItemID
+            ?? source.libraryMediaID.storageValue
+        sharePresentation = DepthAnalysisShareSubject(
+            videoSource: sessionSource,
+            itemID: itemID
+        )
     }
 
     private func deleteCurrentVideo() {
-        if source.requiresUnsavedDeleteConfirmation {
-            pendingDeleteRequest = TAPVideoPendingDeleteRequest(source: source)
+        if sessionSource.requiresUnsavedDeleteConfirmation {
+            pendingDeleteRequest = TAPVideoPendingDeleteRequest(source: sessionSource)
         } else {
-            performDelete(source: source)
+            performDelete(source: sessionSource)
         }
     }
 
@@ -163,10 +183,17 @@ struct TAPVideoDepthPlaybackView: View {
                 removedVideoEntryIDs.insert(deletedItemID)
 
                 if let onDeletionCompleted {
-                    let nextEntry = deletionContext?.entryAfterDeletingCurrent(
+                    let nextEntry = deletionContext?.entryAfterDeleting(
+                        deletedItemID,
                         excluding: removedVideoEntryIDs
                     )
-                    session.stopPlayback()
+                    if let nextEntry {
+                        preparePlaybackForPagingTarget(
+                            TAPLibraryViewerPagingEntry(nextEntry)
+                        )
+                    } else {
+                        session.stopPlayback()
+                    }
                     onDeletionCompleted(deletedItemID, nextEntry)
                     if nextEntry == nil {
                         dismiss()
@@ -174,9 +201,14 @@ struct TAPVideoDepthPlaybackView: View {
                 } else if let nextEntry = albumContext?.entryAfterDeletingCurrent(
                     excluding: removedVideoEntryIDs
                 ) {
-                    session.stopPlayback()
+                    let route = DepthAlbumRouteAdapter.videoRoute(for: nextEntry)
+                    replacePlaybackSessionIfNeeded(
+                        to: route.source,
+                        itemID: nextEntry.id
+                    )
                     onCurrentAlbumEntryChanged?(nextEntry)
                 } else {
+                    session.stopPlayback()
                     dismiss()
                 }
             } catch {
@@ -191,21 +223,123 @@ struct TAPVideoDepthPlaybackView: View {
         }
     }
 
-    private func moveVideo(offset: Int) {
-        guard let entry = albumContext?.adjacentEntry(
-            offset: offset,
-            excluding: removedVideoEntryIDs
-        ) else {
+    private var currentItemID: String {
+        albumContext?.currentItemID ?? source.libraryMediaID.storageValue
+    }
+
+    private var playbackTaskIdentity: TAPVideoPlaybackTaskIdentity {
+        TAPVideoPlaybackTaskIdentity(
+            session: ObjectIdentifier(session),
+            requestKey: session.requestKey
+        )
+    }
+
+    /// A video/source change replaces only playback ownership. The stable
+    /// viewer, pager, chrome, and target poster remain on screen.
+    private func replacePlaybackSessionIfNeeded(
+        to updatedSource: TAPVideoPlaybackSource,
+        itemID: String
+    ) {
+        guard sessionSource != updatedSource else {
             return
         }
-        session.stopPlayback()
+        let isSameMedia = sessionSource.libraryMediaID == updatedSource.libraryMediaID
+        let targetPreview = TAPLibraryPagingPreviewCache.shared.image(for: itemID)
+        let handoffPreview = targetPreview
+            ?? (isSameMedia ? session.loadingPreviewImage : nil)
+        let replacement = TAPVideoPlaybackSession(
+            source: updatedSource,
+            registrationAdapter: registrationAdapter,
+            mediaFetcher: mediaFetcher,
+            initialLoadingPreviewImage: handoffPreview
+        )
+        var transaction = Transaction()
+        transaction.animation = nil
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            session.stopPlayback()
+            if !isSameMedia {
+                selectedTool = .raw
+                sharePresentation = nil
+            }
+            session = replacement
+            sessionSource = updatedSource
+            sessionGeneration &+= 1
+        }
+    }
+
+    private func preparePlaybackForPagingTarget(
+        _ target: TAPLibraryViewerPagingEntry
+    ) {
+        guard case .video(let route) = target.destination else {
+            session.stopPlayback()
+            return
+        }
+        replacePlaybackSessionIfNeeded(
+            to: route.source,
+            itemID: target.id
+        )
+    }
+
+    private var pagingEntries: [TAPLibraryViewerPagingEntry] {
+        if let deletionContext {
+            return deletionContext.pagingEntries(
+                from: currentItemID,
+                excluding: removedVideoEntryIDs
+            ).map(TAPLibraryViewerPagingEntry.init)
+        }
+
+        guard let albumContext,
+              albumContext.entries.contains(where: {
+                  $0.id == currentItemID
+              }) else {
+            return [TAPLibraryViewerPagingEntry(
+                id: currentItemID,
+                destination: .video(TAPVideoPlaybackRoute(
+                    itemID: currentItemID,
+                    source: source
+                ))
+            )]
+        }
+
+        let visibleEntries = albumContext.entries.filter {
+            !removedVideoEntryIDs.contains($0.id)
+        }
+        guard let visibleCurrentIndex = visibleEntries.firstIndex(where: {
+            $0.id == currentItemID
+        }) else {
+            return []
+        }
+        let lowerBound = max(visibleCurrentIndex - 1, visibleEntries.startIndex)
+        let upperBound = min(
+            visibleCurrentIndex + 1,
+            visibleEntries.index(before: visibleEntries.endIndex)
+        )
+        return visibleEntries[lowerBound...upperBound].map { entry in
+            TAPLibraryViewerPagingEntry(
+                id: entry.id,
+                destination: .video(DepthAlbumRouteAdapter.videoRoute(for: entry))
+            )
+        }
+    }
+
+    private func moveToPagingEntry(_ target: TAPLibraryViewerPagingEntry) {
+        if let entry = deletionContext?.entries.first(where: {
+            $0.id == target.id && !removedVideoEntryIDs.contains($0.id)
+        }) {
+            preparePlaybackForPagingTarget(target)
+            onMixedMediaEntryChanged?(entry)
+            return
+        }
+
+        guard let entry = albumContext?.entries.first(where: {
+            $0.id == target.id && !removedVideoEntryIDs.contains($0.id)
+        }) else {
+            return
+        }
+        preparePlaybackForPagingTarget(target)
         onCurrentAlbumEntryChanged?(entry)
     }
-}
-
-private struct TAPVideoSystemSharePayload: Identifiable {
-    let id = UUID()
-    let fileURL: URL
 }
 
 private struct TAPVideoPendingDeleteRequest: Identifiable {
@@ -217,4 +351,9 @@ private struct TAPVideoDeleteAlert: Identifiable {
     let id = UUID()
     let title: String
     let message: String
+}
+
+private struct TAPVideoPlaybackTaskIdentity: Hashable {
+    let session: ObjectIdentifier
+    let requestKey: MediaFetchRequestKey?
 }

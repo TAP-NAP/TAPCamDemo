@@ -48,6 +48,28 @@ nonisolated enum PhotoLibraryWriter {
         }
     }
 
+    /// File-backed original resources for share preparation. The caller owns
+    /// `temporaryDirectoryURL`; no photo or movie bytes are accumulated into a
+    /// whole-file `Data` value on this path.
+    nonisolated struct OriginalShareResources: Sendable {
+        let photoURL: URL
+        let photoFileExtension: String
+        let photoMediaType: String
+        let pairedVideoURL: URL?
+        let temporaryDirectoryURL: URL
+        let presentationAdjustmentResourceLabels: [String]
+    }
+
+    /// Caller-owned original video resource for direct sharing. Photos streams
+    /// into the supplied staging directory; no transcoding or whole-file
+    /// `Data` allocation occurs on this path.
+    nonisolated struct OriginalVideoShareResource: Sendable {
+        let videoURL: URL
+        let fileExtension: String
+        let mediaType: String
+        let temporaryDirectoryURL: URL
+    }
+
     /// Saves a validated TAP depth photo file to Photos.
     ///
     /// This writer receives a completed, provenance-checked artifact; it does
@@ -369,6 +391,227 @@ nonisolated enum PhotoLibraryWriter {
 
             return try await signatureVerificationResources(for: asset)
         }.value
+    }
+
+    /// Streams the selected asset's original `.photo` and optional
+    /// `.pairedVideo` resources into caller-owned temporary storage. The
+    /// detached Photos lookup avoids original-metadata work on the main actor;
+    /// cancellation is forwarded to both the detached task and the active
+    /// `PHAssetResourceManager` request.
+    static func originalShareResources(
+        localIdentifier: String,
+        preferredFileContainer: CapturePhotoFileContainer?,
+        includesPairedVideo: Bool,
+        outputDirectoryURL: URL,
+        progressHandler: @escaping ResourceProgressHandler = { _ in }
+    ) async throws -> OriginalShareResources {
+        try requireReadWriteAccess()
+        let task = Task.detached(priority: .userInitiated) {
+            guard let asset = asset(localIdentifier: localIdentifier) else {
+                throw TAPDepthCaptureError.assetNotFound
+            }
+            return try await originalShareResources(
+                for: asset,
+                preferredFileContainer: preferredFileContainer,
+                includesPairedVideo: includesPairedVideo,
+                outputDirectoryURL: outputDirectoryURL,
+                progressHandler: progressHandler
+            )
+        }
+        return try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: {
+            task.cancel()
+        }
+    }
+
+    /// Streams the selected asset's original video resource into
+    /// caller-owned temporary storage. The original container and bytes are
+    /// preserved so sharing never silently converts MOV and MP4 resources.
+    static func originalVideoShareResource(
+        localIdentifier: String,
+        outputDirectoryURL: URL,
+        progressHandler: @escaping ResourceProgressHandler = { _ in }
+    ) async throws -> OriginalVideoShareResource {
+        try requireReadWriteAccess()
+        let task = Task.detached(priority: .userInitiated) {
+            guard let asset = asset(localIdentifier: localIdentifier) else {
+                throw TAPDepthCaptureError.assetNotFound
+            }
+            let resources = PHAssetResource.assetResources(for: asset)
+            guard let preferredType = LibraryVideoResourceSelectionPolicy.preferredType(
+                in: resources.map(\.type)
+            ),
+                  let resource = resources.first(where: { $0.type == preferredType }) else {
+                throw TAPDepthCaptureError.assetCreationFailed
+            }
+
+            let originalExtension = URL(
+                fileURLWithPath: resource.originalFilename
+            ).pathExtension.lowercased()
+            let fileExtension = originalExtension.isEmpty
+                ? (UTType(resource.uniformTypeIdentifier)?.preferredFilenameExtension ?? "mp4")
+                : originalExtension
+            let videoURL = outputDirectoryURL.appendingPathComponent(
+                "source-video.\(fileExtension)"
+            )
+
+            do {
+                try FileManager.default.createDirectory(
+                    at: outputDirectoryURL,
+                    withIntermediateDirectories: true
+                )
+                try await writeResourceCancellable(
+                    resource,
+                    to: videoURL,
+                    assetLocalIdentifier: asset.localIdentifier,
+                    label: "originalShareVideo",
+                    progressHandler: progressHandler
+                )
+                try Task.checkCancellation()
+                progressHandler(1)
+                return OriginalVideoShareResource(
+                    videoURL: videoURL,
+                    fileExtension: fileExtension,
+                    mediaType: resource.uniformTypeIdentifier,
+                    temporaryDirectoryURL: outputDirectoryURL
+                )
+            } catch {
+                try? FileManager.default.removeItem(at: outputDirectoryURL)
+                throw error
+            }
+        }
+        return try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: {
+            task.cancel()
+        }
+    }
+
+    private static func originalShareResources(
+        for asset: PHAsset,
+        preferredFileContainer: CapturePhotoFileContainer?,
+        includesPairedVideo: Bool,
+        outputDirectoryURL: URL,
+        progressHandler: @escaping ResourceProgressHandler
+    ) async throws -> OriginalShareResources {
+        let resources = PHAssetResource.assetResources(for: asset)
+        guard let photoResource = resources.first(where: { $0.type == .photo }) else {
+            throw TAPDepthCaptureError.assetCreationFailed
+        }
+        let pairedVideoResource = includesPairedVideo
+            ? resources.first(where: { $0.type == .pairedVideo })
+            : nil
+
+        let photoFileExtension = try sharePhotoFileExtension(
+            resource: photoResource,
+            preferredFileContainer: preferredFileContainer
+        )
+        let photoMediaType = preferredFileContainer?.uniformTypeIdentifier
+            ?? photoResource.uniformTypeIdentifier
+        let photoURL = outputDirectoryURL.appendingPathComponent(
+            "source-photo.\(photoFileExtension)"
+        )
+        let pairedVideoURL = pairedVideoResource.map { _ in
+            outputDirectoryURL.appendingPathComponent("source-paired-video.mov")
+        }
+        let photoProgressWeight = pairedVideoResource == nil ? 1.0 : 0.35
+
+        do {
+            try FileManager.default.createDirectory(
+                at: outputDirectoryURL,
+                withIntermediateDirectories: true
+            )
+            try await writeResourceCancellable(
+                photoResource,
+                to: photoURL,
+                assetLocalIdentifier: asset.localIdentifier,
+                label: "originalSharePhoto",
+                progressHandler: { value in
+                    mappedShareProgress(
+                        value,
+                        offset: 0,
+                        weight: photoProgressWeight,
+                        handler: progressHandler
+                    )
+                }
+            )
+            try Task.checkCancellation()
+
+            if let pairedVideoResource, let pairedVideoURL {
+                try await writeResourceCancellable(
+                    pairedVideoResource,
+                    to: pairedVideoURL,
+                    assetLocalIdentifier: asset.localIdentifier,
+                    label: "originalSharePairedVideo",
+                    progressHandler: { value in
+                        mappedShareProgress(
+                            value,
+                            offset: photoProgressWeight,
+                            weight: 1 - photoProgressWeight,
+                            handler: progressHandler
+                        )
+                    }
+                )
+            }
+            progressHandler(1)
+            return OriginalShareResources(
+                photoURL: photoURL,
+                photoFileExtension: photoFileExtension,
+                photoMediaType: photoMediaType,
+                pairedVideoURL: pairedVideoURL,
+                temporaryDirectoryURL: outputDirectoryURL,
+                presentationAdjustmentResourceLabels: presentationAdjustmentResourceLabels(
+                    in: resources
+                )
+            )
+        } catch {
+            try? FileManager.default.removeItem(at: outputDirectoryURL)
+            throw error
+        }
+    }
+
+    private static func sharePhotoFileExtension(
+        resource: PHAssetResource,
+        preferredFileContainer: CapturePhotoFileContainer?
+    ) throws -> String {
+        if let preferredFileContainer {
+            return preferredFileContainer.tapnapFileExtension
+        }
+        if let fileContainer = CapturePhotoFileContainer(
+            imageTypeIdentifier: resource.uniformTypeIdentifier
+        ) {
+            return fileContainer.tapnapFileExtension
+        }
+
+        let typeExtension = UTType(resource.uniformTypeIdentifier)?.preferredFilenameExtension
+        let originalExtension = URL(fileURLWithPath: resource.originalFilename).pathExtension
+        for candidate in [typeExtension, originalExtension].compactMap({ $0 }) {
+            let normalized = candidate.lowercased()
+            guard (1...12).contains(normalized.count),
+                  normalized.unicodeScalars.allSatisfy({
+                    CharacterSet.alphanumerics.contains($0)
+                  }) else {
+                continue
+            }
+            return normalized == "jpeg" ? "jpg" : normalized
+        }
+        throw TAPDepthCaptureError.invalidHEICContainerType(
+            resource.uniformTypeIdentifier
+        )
+    }
+
+    private static func mappedShareProgress(
+        _ value: Double?,
+        offset: Double,
+        weight: Double,
+        handler: ResourceProgressHandler
+    ) {
+        guard let value, value.isFinite else {
+            handler(nil)
+            return
+        }
+        handler(offset + min(max(value, 0), 1) * weight)
     }
 
     private static func asset(localIdentifier: String) -> PHAsset? {
@@ -856,10 +1099,12 @@ nonisolated private final class PhotoResourceFileRequest: @unchecked Sendable {
     private let assetLocalIdentifier: String
     private let label: String
     private let progressHandler: PhotoLibraryWriter.ResourceProgressHandler
+    private let requestStartedAt = ProcessInfo.processInfo.systemUptime
     private var fileHandle: FileHandle?
     private var continuation: CheckedContinuation<Void, any Error>?
     private var cancellationRequested = false
     private var finished = false
+    private var receivedByteCount = Int64(0)
 
     init(
         fileURL: URL,
@@ -896,6 +1141,11 @@ nonisolated private final class PhotoResourceFileRequest: @unchecked Sendable {
             options.progressHandler = { [weak self] progress in
                 self?.progressHandler(progress.isFinite ? progress : nil)
             }
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.photoLibrary.info(
+                "\(self.label, privacy: .public) request started assetID=\(self.assetLocalIdentifier, privacy: .private) networkAccess=true"
+            )
+            #endif
             let requestID = manager.requestData(
                 for: resource,
                 options: options,
@@ -928,6 +1178,7 @@ nonisolated private final class PhotoResourceFileRequest: @unchecked Sendable {
         if !finished, !cancellationRequested {
             do {
                 try fileHandle?.write(contentsOf: data)
+                receivedByteCount += Int64(data.count)
             } catch {
                 writeError = error
             }
@@ -951,19 +1202,28 @@ nonisolated private final class PhotoResourceFileRequest: @unchecked Sendable {
         self.continuation = nil
         let fileHandle = self.fileHandle
         self.fileHandle = nil
+        let receivedByteCount = self.receivedByteCount
         lock.unlock()
 
         try? fileHandle?.close()
+        let durationMilliseconds = max(
+            0,
+            (ProcessInfo.processInfo.systemUptime - requestStartedAt) * 1_000
+        )
         if let error {
             try? FileManager.default.removeItem(at: fileURL)
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.photoLibrary.error("\(self.label, privacy: .public) request failed assetID=\(self.assetLocalIdentifier, privacy: .private) error=\(TAPDiagnostics.describe(error), privacy: .public)")
+            TAPDiagnostics.photoLibrary.error(
+                "\(self.label, privacy: .public) request failed assetID=\(self.assetLocalIdentifier, privacy: .private) durationMs=\(durationMilliseconds, privacy: .public) receivedBytes=\(receivedByteCount, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)"
+            )
             #endif
             continuation?.resume(throwing: error)
         } else {
             progressHandler(1)
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.photoLibrary.info("\(self.label, privacy: .public) request success assetID=\(self.assetLocalIdentifier, privacy: .private)")
+            TAPDiagnostics.photoLibrary.info(
+                "\(self.label, privacy: .public) request success assetID=\(self.assetLocalIdentifier, privacy: .private) durationMs=\(durationMilliseconds, privacy: .public) receivedBytes=\(receivedByteCount, privacy: .public)"
+            )
             #endif
             continuation?.resume(returning: ())
         }

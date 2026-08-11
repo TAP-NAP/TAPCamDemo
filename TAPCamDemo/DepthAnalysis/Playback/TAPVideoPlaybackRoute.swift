@@ -62,6 +62,11 @@ nonisolated struct TAPVideoPlaybackRoute: Hashable {
         source = entry.source
     }
 
+    nonisolated init(itemID: String, source: TAPVideoPlaybackSource) {
+        self.itemID = itemID
+        self.source = source
+    }
+
     nonisolated init?(item: TAPLibraryItem) {
         itemID = item.id
         switch item.source {
@@ -122,9 +127,30 @@ nonisolated struct TAPVideoAlbumContext: Equatable {
     }
 
     init(currentItemID: String, items: [TAPLibraryItem]) {
+        guard let currentIndex = items.firstIndex(where: { $0.id == currentItemID }),
+              Entry(item: items[currentIndex]) != nil else {
+            self.init(currentItemID: currentItemID, entries: [])
+            return
+        }
+
+        // A video viewer may page through consecutive videos, but it must stop
+        // at a photo/Live Photo boundary. Cross-renderer movement is resolved
+        // by the canonical mixed-media context instead of compact-mapping the
+        // whole album and jumping over non-video items.
+        var lowerBound = currentIndex
+        while lowerBound > items.startIndex,
+              Entry(item: items[items.index(before: lowerBound)]) != nil {
+            lowerBound = items.index(before: lowerBound)
+        }
+        var upperBound = currentIndex
+        while upperBound < items.index(before: items.endIndex),
+              Entry(item: items[items.index(after: upperBound)]) != nil {
+            upperBound = items.index(after: upperBound)
+        }
+
         self.init(
             currentItemID: currentItemID,
-            entries: items.compactMap(Entry.init(item:))
+            entries: items[lowerBound...upperBound].compactMap(Entry.init(item:))
         )
     }
 

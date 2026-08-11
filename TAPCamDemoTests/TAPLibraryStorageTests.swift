@@ -765,6 +765,227 @@ struct TAPLibraryStorageTests {
         #expect(recordsByID[exportedRecord.captureID]?.failureReason == nil)
     }
 
+    @Test func pendingCaptureStoreResolvesOnlyUniquePhotosAssetRecord() async throws {
+        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        let store = TAPPendingCaptureStore(rootURL: rootURL)
+        let record = TAPCamDemoTestFixtures.samplePendingRecord(
+            captureID: "owned-photo",
+            capturedAt: Date(timeIntervalSince1970: 1),
+            status: .exported,
+            assetLocalIdentifier: "asset-id"
+        )
+        try TAPCamDemoTestFixtures.writePendingRecord(record, rootURL: rootURL)
+
+        #expect(try await store.record(assetLocalIdentifier: "missing") == nil)
+        #expect(
+            try await store.record(assetLocalIdentifier: "asset-id")?.captureID
+                == record.captureID
+        )
+    }
+
+    @Test func pendingCaptureStoreRejectsAmbiguousPhotosAssetRecord() async throws {
+        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        let store = TAPPendingCaptureStore(rootURL: rootURL)
+        for (captureID, capturedAt) in [
+            ("duplicate-photo-a", Date(timeIntervalSince1970: 1)),
+            ("duplicate-photo-b", Date(timeIntervalSince1970: 2))
+        ] {
+            try TAPCamDemoTestFixtures.writePendingRecord(
+                TAPCamDemoTestFixtures.samplePendingRecord(
+                    captureID: captureID,
+                    capturedAt: capturedAt,
+                    status: .exported,
+                    assetLocalIdentifier: "duplicate-asset-id"
+                ),
+                rootURL: rootURL
+            )
+        }
+
+        await #expect(
+            throws: TAPPendingCaptureStoreLookupError.ambiguousAssetLocalIdentifier
+        ) {
+            try await store.record(assetLocalIdentifier: "duplicate-asset-id")
+        }
+    }
+
+    @Test func signedShareSnapshotNeverFallsBackToUnsignedPhoto() async throws {
+        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        let store = TAPPendingCaptureStore(rootURL: rootURL)
+        let record = try await store.ingest(
+            TAPCamDemoTestFixtures.samplePendingArtifact(
+                photoData: Data("unsigned-must-not-be-shared".utf8)
+            )
+        )
+        _ = try await store.storeSignedPhoto(
+            Data("signed-photo".utf8),
+            captureID: record.captureID
+        )
+        let bundleURL = rootURL.appendingPathComponent(record.captureID, isDirectory: true)
+        try FileManager.default.removeItem(
+            at: bundleURL.appendingPathComponent("signed.heic")
+        )
+        let snapshotDirectoryURL = rootURL.appendingPathComponent(
+            "share-snapshot",
+            isDirectory: true
+        )
+
+        await #expect(throws: TAPDepthCaptureError.self) {
+            try await store.snapshotPhotoShareResources(
+                captureID: record.captureID,
+                to: snapshotDirectoryURL,
+                requiresSignedPhoto: true,
+                includesPairedVideo: false
+            )
+        }
+        #expect(!FileManager.default.fileExists(atPath: snapshotDirectoryURL.path))
+        #expect(
+            try await store.unsignedPhotoData(captureID: record.captureID)
+                == Data("unsigned-must-not-be-shared".utf8)
+        )
+    }
+
+    @Test func signedLivePhotoShareSnapshotCreatesAStableResourcePair() async throws {
+        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        let movieDirectoryURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        let sourceMovieURL = movieDirectoryURL.appendingPathComponent("source.mov")
+        try Data("paired-video".utf8).write(to: sourceMovieURL)
+        let store = TAPPendingCaptureStore(rootURL: rootURL)
+        let record = try await store.ingest(
+            TAPCamDemoTestFixtures.samplePendingArtifact(
+                photoData: Data("unsigned-photo".utf8),
+                livePhotoMovie: PackagedLivePhotoMovie(
+                    fileURL: sourceMovieURL,
+                    durationSeconds: 1,
+                    photoDisplayTimeSeconds: 0.5,
+                    width: 1440,
+                    height: 1080,
+                    codec: "hvc1",
+                    capturesAudio: false
+                )
+            )
+        )
+        let signedRecord = try await store.storeSignedPhoto(
+            Data("signed-photo".utf8),
+            captureID: record.captureID
+        )
+        let snapshotDirectoryURL = rootURL.appendingPathComponent(
+            "share-snapshot",
+            isDirectory: true
+        )
+
+        let snapshot = try await store.snapshotPhotoShareResources(
+            captureID: record.captureID,
+            to: snapshotDirectoryURL,
+            requiresSignedPhoto: true,
+            includesPairedVideo: true,
+            linkPolicy: .allowReadOnlyHardLink
+        )
+
+        let bundleURL = rootURL.appendingPathComponent(record.captureID, isDirectory: true)
+        try FileManager.default.removeItem(
+            at: bundleURL.appendingPathComponent(
+                try #require(signedRecord.signedPhotoFilename)
+            )
+        )
+        try FileManager.default.removeItem(
+            at: bundleURL.appendingPathComponent(
+                try #require(signedRecord.pairedVideoFilename)
+            )
+        )
+
+        #expect(try Data(contentsOf: snapshot.photoURL) == Data("signed-photo".utf8))
+        #expect(
+            try Data(contentsOf: #require(snapshot.pairedVideoURL))
+                == Data("paired-video".utf8)
+        )
+    }
+
+    @Test func signedShareSnapshotFallbackStreamsBytesAndPublishesProgress() async throws {
+        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        let signedPhotoData = Data(
+            repeating: 0xA5,
+            count: (2 * 1_024 * 1_024) + 137
+        )
+        let progressRecorder = TAPPendingShareSnapshotProgressRecorder()
+        let store = TAPPendingCaptureStore(
+            rootURL: rootURL,
+            shareSnapshotLinker: { _, _ in
+                throw TAPPendingShareSnapshotTestError.hardLinkUnavailable
+            }
+        )
+        let record = try await store.ingest(
+            TAPCamDemoTestFixtures.samplePendingArtifact(
+                photoData: Data("unsigned-photo".utf8)
+            )
+        )
+        _ = try await store.storeSignedPhoto(
+            signedPhotoData,
+            captureID: record.captureID
+        )
+        let snapshotDirectoryURL = rootURL.appendingPathComponent(
+            "streamed-share-snapshot",
+            isDirectory: true
+        )
+
+        let snapshot = try await store.snapshotPhotoShareResources(
+            captureID: record.captureID,
+            to: snapshotDirectoryURL,
+            requiresSignedPhoto: true,
+            includesPairedVideo: false,
+            linkPolicy: .allowReadOnlyHardLink,
+            progressHandler: { progressRecorder.record($0) }
+        )
+
+        #expect(try Data(contentsOf: snapshot.photoURL) == signedPhotoData)
+        let progressValues = progressRecorder.snapshot().compactMap { $0 }
+        #expect(progressValues.first == 0)
+        #expect(progressValues.last == 1)
+        #expect(progressValues.count >= 6)
+        #expect(progressValues.allSatisfy { 0 ... 1 ~= $0 })
+        #expect(
+            progressValues.elementsEqual(
+                progressValues.sorted(),
+                by: { abs($0 - $1) < 0.000_001 }
+            )
+        )
+    }
+
+    @Test func externallySharedImageSnapshotCannotMutateDurableSignedPhoto() async throws {
+        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        let signedPhotoData = Data("durable-signed-photo".utf8)
+        let store = TAPPendingCaptureStore(rootURL: rootURL)
+        let record = try await store.ingest(
+            TAPCamDemoTestFixtures.samplePendingArtifact(
+                photoData: Data("unsigned-photo".utf8)
+            )
+        )
+        _ = try await store.storeSignedPhoto(
+            signedPhotoData,
+            captureID: record.captureID
+        )
+        let snapshotDirectoryURL = rootURL.appendingPathComponent(
+            "external-image-snapshot",
+            isDirectory: true
+        )
+
+        let snapshot = try await store.snapshotPhotoShareResources(
+            captureID: record.captureID,
+            to: snapshotDirectoryURL,
+            requiresSignedPhoto: true,
+            includesPairedVideo: false,
+            linkPolicy: .requireIndependentFile
+        )
+        let snapshotHandle = try FileHandle(forWritingTo: snapshot.photoURL)
+        try snapshotHandle.truncate(atOffset: 0)
+        try snapshotHandle.write(contentsOf: Data("external-mutation".utf8))
+        try snapshotHandle.close()
+
+        #expect(
+            try await store.signedPhotoData(captureID: record.captureID)
+                == signedPhotoData
+        )
+    }
+
     @Test func pendingCaptureStoreBestAvailableHEICPrefersSignedAndFallsBackToUnsigned() async throws {
         let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
         let store = TAPPendingCaptureStore(rootURL: rootURL)
@@ -1084,5 +1305,26 @@ struct TAPLibraryStorageTests {
             .deletingLastPathComponent()
         let fileURL = root.appendingPathComponent(relativePath)
         return try String(contentsOf: fileURL, encoding: .utf8)
+    }
+}
+
+private enum TAPPendingShareSnapshotTestError: Error {
+    case hardLinkUnavailable
+}
+
+private final class TAPPendingShareSnapshotProgressRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [Double?] = []
+
+    func record(_ value: Double?) {
+        lock.lock()
+        values.append(value)
+        lock.unlock()
+    }
+
+    func snapshot() -> [Double?] {
+        lock.lock()
+        defer { lock.unlock() }
+        return values
     }
 }

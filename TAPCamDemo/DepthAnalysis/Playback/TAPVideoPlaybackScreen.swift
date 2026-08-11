@@ -3,10 +3,15 @@
 //  TAPCamDemo
 //
 
+@preconcurrency import AVFoundation
 import SwiftUI
 
 struct TAPVideoPlaybackScreen: View {
     let session: TAPVideoPlaybackSession
+    let pagingEntries: [TAPLibraryViewerPagingEntry]
+    let currentItemID: String
+    let pageContentRevision: UInt64
+    let mediaFetcher: any LibraryMediaFetching
     @Binding var selectedTool: AnalysisViewerTool
     @Binding var depthOverlayOpacity: Double
     let isPreparingShare: Bool
@@ -14,28 +19,53 @@ struct TAPVideoPlaybackScreen: View {
     let onShareTapped: () -> Void
     let onModeTapped: (String) -> Void
     let onDeleteTapped: () -> Void
-    let onMoveVideo: (Int) -> Void
+    let onCurrentPagingEntryChanged: (TAPLibraryViewerPagingEntry) -> Void
 
     var body: some View {
         GeometryReader { geometry in
             let size = geometry.size
             let insets = geometry.safeAreaInsets
             ZStack {
-                TAPVideoPlaybackContentSurface(
-                    session: session,
-                    selectedTool: selectedTool,
-                    overlayOpacity: depthOverlayOpacity,
-                    onRetry: session.retryCurrentFetch,
-                    onMoveVideo: onMoveVideo
+                TAPLibraryNativePagingView(
+                    entries: pagingEntries,
+                    currentItemID: currentItemID,
+                    pageContentRevision: pageContentRevision,
+                    pageBuilder: { entry, isCurrent, pageSize in
+                        if isCurrent {
+                            return AnyView(
+                                TAPVideoPlaybackContentSurface(
+                                    session: session,
+                                    selectedTool: $selectedTool,
+                                    overlayOpacity: $depthOverlayOpacity,
+                                    onRetry: session.retryCurrentFetch
+                                )
+                                .frame(width: pageSize.width, height: pageSize.height)
+                            )
+                        }
+                        return AnyView(
+                            TAPLibraryAdjacentMediaPreview(
+                                entry: entry,
+                                viewportSize: pageSize,
+                                mediaFetcher: mediaFetcher
+                            )
+                        )
+                    },
+                    onCurrentEntryChanged: onCurrentPagingEntryChanged,
+                    onPagingInteractionChanged: { isInteracting in
+                        if isInteracting {
+                            session.beginInteractivePaging()
+                        } else {
+                            session.endInteractivePaging()
+                        }
+                    },
+                    onEdgeBack: onBackTapped
                 )
                 .frame(width: size.width, height: size.height)
                 .background(Color.black)
 
-                TAPVideoViewerChrome(
-                    player: session.player,
+                TAPVideoPlaybackSessionChrome(
+                    session: session,
                     selectedTool: selectedTool,
-                    availability: session.registeredDepthAvailability,
-                    isTwoDPlaybackReady: session.isTwoDPlaybackReady,
                     overlayOpacity: $depthOverlayOpacity,
                     isSharePreparing: isPreparingShare,
                     topSafeArea: insets.top,
@@ -54,49 +84,64 @@ struct TAPVideoPlaybackScreen: View {
     }
 }
 
-private struct TAPVideoPlaybackContentSurface: View {
+struct TAPVideoPlaybackContentSurface: View {
     let session: TAPVideoPlaybackSession
-    let selectedTool: AnalysisViewerTool
-    let overlayOpacity: Double
+    @Binding var selectedTool: AnalysisViewerTool
+    @Binding var overlayOpacity: Double
     let onRetry: () -> Void
-    let onMoveVideo: (Int) -> Void
 
-    @ViewBuilder
+    @State private var readyPlayerID: ObjectIdentifier?
+
     var body: some View {
-        switch session.state {
-        case .idle, .loading:
-            ZStack {
-                loadingPreview
-                LibraryMediaViewerFetchOverlay(
-                    kind: .tapVideo,
-                    state: LibraryMediaFetchOverlayState(session.mediaFetchPhase),
-                    onRetry: onRetry
+        ZStack {
+            Color.black
+
+            if let player = session.player {
+                TAPVideoPlayerSurfaceView(
+                    player: player,
+                    overlayStore: session.overlayStore,
+                    showsRegisteredDepth: selectedTool == .twoD,
+                    overlayOpacity: overlayOpacity,
+                    onReadyForDisplay: { playerID, isReady in
+                        acceptPlayerFrameReadiness(
+                            playerID: playerID,
+                            isReady: isReady
+                        )
+                    }
                 )
+                .contentShape(Rectangle())
+                .clipped()
             }
-            .contentShape(Rectangle())
-            .gesture(swipeGesture)
-        case .failed(let message):
-            ZStack {
-                loadingPreview
-                if LibraryMediaFetchOverlayState(session.mediaFetchPhase) == .hidden {
-                    ContentUnavailableView(
-                        "Unable to play video",
-                        systemImage: "video.slash",
-                        description: Text(message)
-                    )
-                    .foregroundStyle(.white)
-                    .padding()
-                } else {
-                    LibraryMediaViewerFetchOverlay(
-                        kind: .tapVideo,
-                        state: LibraryMediaFetchOverlayState(session.mediaFetchPhase),
-                        onRetry: onRetry
-                    )
+
+            // Keep the poster above the warming AVPlayerLayer. AVPlayer creation
+            // is not a first-frame guarantee; uncovering it earlier produces a
+            // visible black flash when the loading indicator disappears.
+            loadingPreview
+                .opacity(showsLoadingPreview ? 1 : 0)
+                .allowsHitTesting(false)
+                .accessibilityHidden(!showsLoadingPreview)
+                .transaction { transaction in
+                    transaction.animation = nil
+                    transaction.disablesAnimations = true
                 }
+
+            primaryStatusOverlay
+
+            if selectedTool == .twoD, session.isPreparingTwoDPlayback {
+                ZStack {
+                    Color.black.opacity(0.62)
+                    ProgressView()
+                        .controlSize(.large)
+                        .tint(.white)
+                        .accessibilityLabel("Preparing 2D playback")
+                        .accessibilityIdentifier("tap.video.playback.2d.preparing")
+                }
+                .allowsHitTesting(false)
+                .zIndex(3)
             }
-        case .ready:
-            playbackSurface
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
     }
 
     private var loadingPreview: some View {
@@ -111,49 +156,124 @@ private struct TAPVideoPlaybackContentSurface: View {
     }
 
     @ViewBuilder
-    private var playbackSurface: some View {
-        ZStack {
-            Color.black
-            if let player = session.player {
-                TAPVideoPlayerSurfaceView(
-                    player: player,
-                    overlayStore: session.overlayStore,
-                    showsRegisteredDepth: selectedTool == .twoD,
-                    overlayOpacity: overlayOpacity
+    private var primaryStatusOverlay: some View {
+        switch session.state {
+        case .idle, .loading:
+            LibraryMediaViewerFetchOverlay(
+                kind: .tapVideo,
+                state: LibraryMediaFetchOverlayState(session.mediaFetchPhase),
+                onRetry: onRetry
+            )
+        case .failed(let message):
+            if LibraryMediaFetchOverlayState(session.mediaFetchPhase) == .hidden {
+                ContentUnavailableView(
+                    "Unable to play video",
+                    systemImage: "video.slash",
+                    description: Text(message)
                 )
-                .contentShape(Rectangle())
-                .gesture(swipeGesture)
-                .clipped()
+                .foregroundStyle(.white)
+                .padding()
             } else {
-                ProgressView().tint(.white)
+                LibraryMediaViewerFetchOverlay(
+                    kind: .tapVideo,
+                    state: LibraryMediaFetchOverlayState(session.mediaFetchPhase),
+                    onRetry: onRetry
+                )
             }
-
-            if selectedTool == .twoD, session.isPreparingTwoDPlayback {
-                ZStack {
-                    Color.black.opacity(0.62)
-                    ProgressView()
-                        .controlSize(.large)
-                        .tint(.white)
-                        .accessibilityLabel("Preparing 2D playback")
-                        .accessibilityIdentifier("tap.video.playback.2d.preparing")
-                }
-                .allowsHitTesting(false)
-                .zIndex(3)
-                .transition(.opacity)
-            }
+        case .ready:
+            LibraryMediaViewerFetchOverlay(
+                kind: .tapVideo,
+                state: isPlayerFrameReady ? .hidden : .preparing,
+                onRetry: onRetry
+            )
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var swipeGesture: some Gesture {
-        DragGesture(minimumDistance: 24)
-            .onEnded { value in
-                let horizontal = value.predictedEndTranslation.width
-                let vertical = value.predictedEndTranslation.height
-                guard abs(horizontal) > abs(vertical), abs(horizontal) > 80 else {
-                    return
-                }
-                onMoveVideo(horizontal < 0 ? 1 : -1)
-            }
+    private var showsLoadingPreview: Bool {
+        TAPVideoFirstFramePresentationPolicy.showsLoadingPreview(
+            state: session.state,
+            isPlayerFrameReady: isPlayerFrameReady
+        )
+    }
+
+    private var playerIdentity: ObjectIdentifier? {
+        session.player.map(ObjectIdentifier.init)
+    }
+
+    private func acceptPlayerFrameReadiness(
+        playerID: ObjectIdentifier,
+        isReady: Bool
+    ) {
+        // Readiness is monotonic for one player. A transient false KVO update
+        // during seek/buffering must never put the poster back over playback.
+        guard isReady else {
+            return
+        }
+        guard playerID == playerIdentity else {
+            return
+        }
+        guard readyPlayerID != playerID else {
+            return
+        }
+        var transaction = Transaction()
+        transaction.animation = nil
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            readyPlayerID = playerID
+        }
+    }
+
+    private var isPlayerFrameReady: Bool {
+        guard let playerIdentity else {
+            return false
+        }
+        return readyPlayerID == playerIdentity
+    }
+}
+
+nonisolated enum TAPVideoFirstFramePresentationPolicy {
+    static func showsLoadingPreview(
+        state: TAPVideoPlaybackLoadState,
+        isPlayerFrameReady: Bool
+    ) -> Bool {
+        switch state {
+        case .ready:
+            !isPlayerFrameReady
+        case .idle, .loading, .failed:
+            true
+        }
+    }
+}
+
+/// Keeps session observation below the screen root. Player readiness and depth
+/// availability must update only the chrome leaf, not rebuild the native pager.
+private struct TAPVideoPlaybackSessionChrome: View {
+    let session: TAPVideoPlaybackSession
+    let selectedTool: AnalysisViewerTool
+    @Binding var overlayOpacity: Double
+    let isSharePreparing: Bool
+    let topSafeArea: CGFloat
+    let bottomSafeArea: CGFloat
+    let onBackTapped: () -> Void
+    let onShareTapped: () -> Void
+    let onModeTapped: (String) -> Void
+    let onDeleteTapped: () -> Void
+
+    var body: some View {
+        TAPVideoViewerChrome(
+            player: session.player,
+            playbackIntentState: session.playbackIntentState,
+            selectedTool: selectedTool,
+            availability: session.registeredDepthAvailability,
+            isTwoDPlaybackReady: session.isTwoDPlaybackReady,
+            overlayOpacity: $overlayOpacity,
+            isSharePreparing: isSharePreparing,
+            topSafeArea: topSafeArea,
+            bottomSafeArea: bottomSafeArea,
+            onBackTapped: onBackTapped,
+            onShareTapped: onShareTapped,
+            onModeTapped: onModeTapped,
+            onDeleteTapped: onDeleteTapped
+        )
     }
 }
