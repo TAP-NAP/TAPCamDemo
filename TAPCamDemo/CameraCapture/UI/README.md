@@ -5,14 +5,19 @@ model. It presents Release FOV choices, Debug controls, the preview bridge, and
 the shutter path. It delegates camera decisions to Planning and Runtime instead
 of inspecting AVFoundation devices directly in views.
 
-The current control vocabulary and placement rules live in
-[../../../Docs/CameraControlsDesign.md](../../../Docs/CameraControlsDesign.md).
+[ProductContract.md](../../../Docs/ProductContract.md) owns camera capability
+and behavior. This README records the current native UI ownership and state
+machines. New or revised component geometry is approved through
+[UIPrototypeContract.md](../../../Docs/UIPrototypeContract.md), not by adding a
+second camera-design document.
 
 ## Code Map
 
 | Responsibility | Code |
 | --- | --- |
 | Main camera screen shell, object lifetime, navigation, sheet, camera chrome state, and capture action owner | [CameraView.swift](CameraView.swift) |
+| First-install camera-interactive readiness state and blocking surface | [CameraInitialReadinessGate.swift](CameraInitialReadinessGate.swift), [CameraView.swift](CameraView.swift) |
+| Frosted camera-path transition presentation | [CameraViewfinderTransitionOverlayView.swift](CameraViewfinderTransitionOverlayView.swift), [CameraView.swift](CameraView.swift) |
 | Viewfinder chrome state, top shoulder Settings, and Flash/Live Photo toolbar | [CameraViewfinderChromeView.swift](CameraViewfinderChromeView.swift) |
 | Leaf-native recording timecode that updates without periodic SwiftUI invalidation | [CameraVideoRecordingTimecodeView.swift](CameraVideoRecordingTimecodeView.swift) |
 | Lower toolbar parameter buttons, AF/MF state, exposure risk-zone display, and ticked adjustment strip | [CameraAdjustmentControlView.swift](CameraAdjustmentControlView.swift) |
@@ -98,6 +103,116 @@ flowchart TD
     click Snapshot "../Planning/PreCaptureConfigurationBuilder.swift"
     click Pipeline "../Runtime/CapturePipeline.swift"
 ```
+
+## Current Release Camera Surface
+
+The camera remains one portrait-layout surface. Rotation changes supported
+icon/label content around a stable center; it does not rotate the toolbar,
+parameter strip, mode-selector, or their touch geometry.
+
+- The top shoulder owns Standard Basic EV on the left and Settings on the
+  right. Basic EV writes exposure-target bias only; it does not enter the PRO
+  ISO/shutter state machine.
+- The top toolbar order is `[Flash] [Live Photo] Spacer [PRO]`. Live Photo is a
+  Photo capture option, not a third item in the capture-mode selector.
+- The capture-mode selector exposes `PHOTO / VIDEO` in Standard and eligible
+  rear PRO. PRO remains available in VIDEO.
+- Standard shows Release FOV choices resolved by Planning. Active PRO hides
+  Basic EV and the FOV selector because its path is fixed rear LiDAR 24 mm /
+  1x with no product crop.
+- The lower parameter slot is stable across modes. Active PRO exposes
+  `EV / ISO / S / Focus / ƒ`; `ƒ` is read-only. Opening a parameter replaces
+  the mode-selector slot with the shared ticked adjustment strip without
+  moving the shutter.
+- Non-blocking capture feedback uses the viewfinder-edge toast. Missing depth
+  is reported there without preventing still-photo or TAP Video output.
+
+Visible SwiftUI views receive presentation values and closures only. Planning
+owns camera/depth/FOV/manual capability decisions, Runtime owns session and
+device writes, and the Product Contract owns whether a capability is current,
+future, or out of scope.
+
+## Photographer Mode UI State
+
+`PhotographerModeState` is the only readiness source for PRO chrome:
+
+```text
+unavailable | standard | activating | active | deactivating | failed
+```
+
+- A requested preference or highlighted button never proves that the
+  destination camera is ready.
+- Activation, deactivation, Standard/PRO VIDEO switching, and rear-PRO/front
+  switching retain the last frame under a frosted transition and block the
+  shutter, focus gestures, FOV changes, capture-mode changes, and parameter
+  writes.
+- The transition ends only after Runtime reaches the intended stable graph and
+  `CameraPreviewView` reports a current real preview frame. VIDEO additionally
+  requires the requested recording graph to be prepared.
+- A failed destination transition recovers a usable Standard path. If no path
+  remains configured, the frosted surface stays blocking and exposes recovery;
+  it must not reveal an interactive black or stale preview.
+- Front-camera entry while PRO is active records a transient suspended rear
+  PRO intent. Returning rear restores PRO only if it remains eligible. This
+  navigation state does not overwrite `Remember Last State`.
+- `Photographer Mode Startup` resolves `Default Off / Default On / Remember
+  Last State` into a request. Only a successful explicit user mode change is
+  remembered; capability and the stable state still decide the result.
+
+## Exposure And Focus UI State
+
+`CameraView` coordinates the current PRO exposure model but does not perform
+the pure calculation or AVFoundation write itself.
+
+- ISO and shutter render the Planning-owned `A/A`, `M/A`, `A/M`, and `M/M`
+  state. Opening a strip does not change modes; the first real adjustment makes
+  that parameter Manual, and its `Manual` action restores only that parameter
+  to Auto. In `M/M`, the EV position becomes a read-only `Meter` result.
+- ISO and shutter rows use device-clipped photographic steps, not raw
+  continuous AVFoundation values. Risk zones are informational and do not
+  discard the user's requested value.
+- Standard uses only Basic EV. PRO exposure state, meter baseline, pending
+  samples, AF/MF state, manual lens position, and open strips are session
+  state; they are not capture metadata or cross-launch proof state.
+
+AF overlay state is `none -> focusing(point) -> focused(point) ->
+locked(point)`. A settled non-locked target has no fixed dismissal timer. A new
+tap replaces it; subject-area change, a later runtime focus scan, MF entry,
+camera/mode change, lifecycle teardown, or explicit cancellation invalidates
+it. Locked state ignores ordinary subject-area and focus-cycle events until the
+user or lifecycle explicitly clears it.
+
+While an AF overlay is visible, a vertical scrub anywhere in the preview
+content adjusts temporary focus EV. The rail beside the focus frame is visual
+feedback, not a separate required hit target. Scrubbing does not refocus or
+move the focus anchor; the effective automatic bias is global EV plus temporary
+focus EV. Replacing or clearing the focus session resets the temporary value.
+
+MF is exposed only on the eligible rear PRO path. A first actual Focus-strip
+change enters MF. A viewfinder tap always performs the focus-only tap-assist
+transaction; the optional Debug Focus Magnifier setting controls only whether
+and how long the software loupe is shown. The main preview remains 1x, and the
+loupe must not create another PreviewLayer, RGB output, hardware zoom, or
+capture crop.
+
+## Preference And Lifetime Ownership
+
+`CameraUXPreferences` owns the persisted presentation policy, while
+`CameraView` owns the resolved state for the current camera lifecycle.
+
+- Flash, Live Photo, and Photographer Mode each use `Default Off / Default On /
+  Remember Last State`. Flash's product default maps `Default On` to Auto; Live
+  Photo defaults to Remember Last State with off as the no-history fallback;
+  Photographer Mode defaults off and always has a safe Standard fallback.
+- Basic EV follows its reset-on-launch policy. PRO ISO/S modes, meter baseline,
+  pending samples, AF/MF mode, manual lens position, open parameter strip, and
+  suspended rear intent are not persisted across a cold launch.
+- Location and Microphone data-use choices remain distinct from OS permission.
+  A saved opt-out is not overwritten on foreground return or reauthorization.
+- Debug-only capture prioritization, depth-warning, shutter-sound, Focus
+  Magnifier, and plane-strictness controls do not become Release camera chrome.
+- Camera-surface terminology remains canonical English; Settings, setup, and
+  TAP Library continue to use the selected app locale.
 
 ## Reading Order
 

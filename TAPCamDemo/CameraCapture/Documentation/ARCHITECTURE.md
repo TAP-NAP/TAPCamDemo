@@ -42,13 +42,13 @@ The runtime provider produces one paired `AVCapturePhoto`. Runtime prewarms the
 photo output with the same HEIC + depth settings it later captures, and the UI
 starts shutter work on touch-down. Output code keeps the logical
 `CapturePackage` separate from the embedded HEIC artifact, then stages Apple
-auxiliary depth plus an unsigned TAP manifest in the TAP Library pending store.
-The async TAP Library worker later signs the staged HEIC and exports it into the
+auxiliary depth plus an unsigned TAP manifest in the Pending Capture Queue.
+The async Pending Capture Queue worker later signs the staged HEIC and exports it into the
 TAPCamDepth Photos album. Location metadata is best-effort cached support data;
 capture never waits on Core Location.
 
 The camera UI distinguishes foreground capture writes from background
-attestation. TAP Library is blocked only while queued shutter jobs are still
+attestation. The user-facing TAP Library entry is blocked only while queued shutter jobs are still
 being captured, packaged, and written into the pending store. After a pending
 record exists, Library remains available even if that record is still waiting
 for network, signing, or exporting.

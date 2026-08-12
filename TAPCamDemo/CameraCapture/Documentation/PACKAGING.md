@@ -17,7 +17,7 @@ EmbeddedPhotoPackager only
 Unsigned Single Photo Artifact
       |
       v
-TAP Library Pending Store
+Pending Capture Queue
       |
       +--> optional paired-video.mov for Live Photo
       |
@@ -42,8 +42,8 @@ auxiliary depth/disparity attachment stores depth, and TAP's manifest is stored
 in XMP at `tapdepth:Manifest`.
 
 At shutter time, `EmbeddedPhotoPackager` creates an unsigned HEIC or JPG with
-`proofs: []`. The app writes that file to the app-private TAP Library pending
-store first, not directly to Photos. A background worker later reads the pending
+`proofs: []`. The app writes that file to the app-private Pending Capture Queue
+first, not directly to Photos. A background worker later reads the pending
 photo file, ensures the fixed TAP proof slot exists, recomputes the canonical
 content binding over the file bytes excluding that slot, creates the App Attest
 assertion, writes the proof envelope into the slot, validates the final signed
@@ -249,10 +249,10 @@ content binding and App Attest assertion now belong to the async pending
 processor, not the shutter-time capture-write job. These timings are diagnostics
 only; they are not written into the saved photo file.
 
-## TAP Library Pending Store
+## Pending Capture Queue
 
 The pending store is app-private storage for current TAP depth photo captures
-that have not yet completed signing and Photos export. TAP Library merges these
+that have not yet completed signing and Photos export. The user-facing TAP Library merges these
 internal records with the current TAPCamDepth Photos album at display time.
 Pending, signing, and exporting records show status badges. Once export
 succeeds, the item is shown from Photos; if the user deletes the Photos asset,

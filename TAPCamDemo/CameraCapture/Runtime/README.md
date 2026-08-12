@@ -4,6 +4,10 @@
 `AVCaptureSession + AVCapturePhotoOutput`, prewarms photo settings, captures
 one photo-depth result, and runs the async capture pipeline.
 
+[ProductContract.md](../../../Docs/ProductContract.md) owns product capability;
+this README owns Runtime's executable session, device-write, and recording
+invariants.
+
 Runtime does not decide which camera should be used; it executes the
 photo-capture `CaptureSourcePlan` produced by Planning. Manual-control writes
 use a separate `CameraManualControlCommandPlan` produced by Planning and
@@ -13,8 +17,8 @@ Output file format, codec, dimensions, and quality policy come from
 [`CapturePhotoQualityPolicy`](../Output/CapturePhotoQualityPolicy.swift),
 [`CaptureOutputProfileCatalog`](../Output/CaptureOutputProfileCatalog.swift),
 [`CaptureOutputProfileSelectionIntent`](../Output/CaptureOutputProfileSelectionIntent.swift),
-and [`CaptureOutputProfile`](../Output/CaptureOutputProfile.swift). Future UI
-should resolve selection intent before Runtime sees a profile. Runtime resolves
+and [`CaptureOutputProfile`](../Output/CaptureOutputProfile.swift). UI resolves
+selection intent before Runtime sees a profile. Runtime resolves
 the raw profile policy once into `ResolvedCaptureOutputProfile`, validates that
 resolved request against a `CapturePhotoOutputCapabilitySnapshot` from the
 current `AVCapturePhotoOutput` while configuring or reusing the graph, stores it
@@ -26,10 +30,10 @@ Runtime also owns
 [`CameraControlService`](CameraControlService.swift), the internal device-control
 write boundary. The active session result still returns a read-only
 [`CameraControlCapabilitySnapshot`](../Planning/CameraControlCapabilitySnapshot.swift);
-future manual UI requests should be modeled by
+manual UI requests are modeled by
 [`CameraManualControlIntent`](../Planning/CameraManualControlIntent.swift) in
 Planning before they reach Runtime. Runtime must not infer, persist, or log
-manual user intent on its own; future controls should pass only a resolved
+manual user intent on its own; controls pass only a resolved
 executable command plan into session-queue-safe service commands.
 The service registers `CaptureSessionController`'s serial session queue and
 rejects device writes outside that queue. It uses the session-safe runtime path
@@ -69,6 +73,49 @@ AVFoundation callbacks enter through one fully initialized
 `TAPVideoRecorderOutputDelegate`; the recorder cannot exist with an absent
 delegate. Callback routing, writer ownership, encoding, metrics, and manifest
 assembly therefore have separate review boundaries.
+
+## Capture Source And PRO Video Invariants
+
+Every configured camera path belongs to one source generation: active
+device/input, video format, depth format, and the caller's configuration
+generation. Runtime must reject or drain work from an older generation before
+it can update a new UI, manual-control readback, preview consumer, or writer.
+
+The eligible rear-LiDAR PRO path owns one canonical preview-sized RGB data
+output. The MF loupe and TAP Video recorder fan out in software behind that
+output; they must not add separate hardware RGB outputs. When VIDEO depth is
+active, one `AVCaptureDataOutputSynchronizer` and one
+`TAPVideoGraphOutputRouter` remain bound to the same callback queue for the
+entire prepared graph lifetime. Warmup and recording change only the router's
+software recorder consumer. They do not replace the live synchronizer delegate
+or queue.
+
+The main `AVCaptureVideoPreviewLayer` shares the active session/device source
+but is not the recorder data output. Runtime graph completion, a real preview
+frame, and the first valid canonical RGB or synchronized RGB/depth sample are
+separate readiness facts. Callers must not treat `commitConfiguration` as proof
+of all three.
+
+Standard VIDEO may use its resolved Standard graph, but Standard never selects
+the rear LiDAR device merely because it is present. Active PRO Photo and PRO
+Video remain on the same eligible fixed 24 mm / 1x source and manual-control
+device. Switching Standard/PRO, Photo/Video, rear/front, or returning from TAP
+Library tears down or drains old consumers before the new graph is declared
+ready.
+
+## Video Writer Failure Recovery
+
+`TAPVideoRecorder` reports the first writer failure once. Runtime then detaches
+the failed recording graph. The UI owner clears recording state and stop
+triggers, the Pending Capture Queue aborts the failed temporary workspace, and
+the selected VIDEO graph is prepared again before another recording. A corrupt
+or zero-duration workspace is never ingested as a capture, and the original
+failed recording is not presented as recoverable.
+
+This failure recovery is distinct from missing depth. A successfully finalized
+RGB/audio video with zero or missing depth coverage is retained for the
+non-blocking signing/export path defined by the Product Contract; missing depth
+alone is not a writer failure.
 
 ## Runtime Sequence
 
@@ -121,6 +168,10 @@ sequenceDiagram
   AVFoundation.
 - Runtime applies raw `videoZoomFactor`; it does not reinterpret semantic FOV
   labels.
+- A configured Standard FOV executes the exact RGB/depth/zoom plan supplied by
+  Planning. Runtime does not replace it with preview-only magnification.
+- Active PRO executes the fixed full-frame rear LiDAR 24 mm / 1x plan; it does
+  not apply product crop metadata or an unproven LiDAR zoom range.
 - Device writes must go through `CameraControlService`. The service is
   registered to `CaptureSessionController`'s serial session queue and throws if
   a caller tries to write camera controls from another queue.

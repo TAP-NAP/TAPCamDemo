@@ -987,56 +987,6 @@ struct TAPCameraCapturePresentationTests {
         #expect(!controlsSource.contains(#"ForEach(["EV", "ISO", "S", "AF", "ƒ"]"#))
     }
 
-    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func cameraControlsDesignIsSingleCameraUXDesignSource() throws {
-        let futureSpecsSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "Docs/FutureCameraSpecs.md"
-        )
-        let controlsDesignSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "Docs/CameraControlsDesign.md"
-        )
-        let aiTraceSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "Docs/AITrace/2026-06-30-camera-ux-stage-one-shell.md"
-        )
-
-        #expect(controlsDesignSource.contains("FOV selector bar"))
-        #expect(controlsDesignSource.contains("Rotation Rules"))
-        #expect(controlsDesignSource.contains("mode selector bar"))
-        #expect(controlsDesignSource.contains("portrait adjustment centerline"))
-        #expect(controlsDesignSource.contains("active tick"))
-        #expect(controlsDesignSource.contains("不叠加三角形、圆点或其他独立游标"))
-        #expect(controlsDesignSource.contains("value cursor"))
-        #expect(controlsDesignSource.contains("focus target overlay"))
-        #expect(controlsDesignSource.contains("focus frame anchor"))
-        #expect(controlsDesignSource.contains("focus validity"))
-        #expect(controlsDesignSource.contains("lock badge"))
-        #expect(controlsDesignSource.contains("subject area changed"))
-        #expect(controlsDesignSource.contains("runtime focus invalidation"))
-        #expect(controlsDesignSource.contains("必须隐藏 `focus target overlay`"))
-        #expect(controlsDesignSource.contains("```mermaid"))
-        #expect(controlsDesignSource.contains("stateDiagram-v2"))
-        #expect(controlsDesignSource.contains("Focused --> None: subject area changed"))
-        #expect(controlsDesignSource.contains("Focused --> None: isAdjustingFocus == true"))
-        #expect(!controlsDesignSource.contains("refocusing"))
-        #expect(controlsDesignSource.contains("focus exposure scrub"))
-        #expect(controlsDesignSource.contains("center-anchored chrome rotation"))
-        #expect(controlsDesignSource.contains("manual focus tap assist"))
-        #expect(controlsDesignSource.contains("按钮 frame、`PHOTO / VIDEO` 文字都不旋转"))
-        #expect(controlsDesignSource.contains("`focus companion EV rail` 继续显示且不自动消失"))
-        #expect(controlsDesignSource.contains("不显示 `EV` 字样、当前 EV 数值或刻度"))
-        #expect(controlsDesignSource.contains("两者边缘间距优先使用 2pt"))
-        #expect(controlsDesignSource.contains("太阳游标的中心必须落在 rail 的中点上"))
-        #expect(controlsDesignSource.contains("用户只看到细线和黄色太阳 `value cursor`"))
-        #expect(controlsDesignSource.contains("不使用固定时间自动隐藏"))
-        #expect(controlsDesignSource.contains("不能改变对焦框位置"))
-        #expect(!controlsDesignSource.contains("两者边缘间距优先使用 6pt"))
-        #expect(!controlsDesignSource.contains("中间刻度上"))
-        #expect(futureSpecsSource.contains("[CameraControlsDesign.md](CameraControlsDesign.md)"))
-        #expect(aiTraceSource.contains("Docs/CameraControlsDesign.md"))
-        #expect(!futureSpecsSource.contains("CameraUXPlan.md"))
-        #expect(!aiTraceSource.contains("CameraUXPlan.md"))
-    }
-
     @Test func cameraFocalLengthDisplayOptionDoesNotNameHardwarePlanningInputs() throws {
         let option = CameraFocalLengthDisplayOption(
             selectionToken: "fov-0",
@@ -1452,15 +1402,9 @@ struct TAPCameraCapturePresentationTests {
         )
         let toastOverlayStart = try #require(previewSource.range(of: ".overlay(alignment: .top) {\n                viewfinderEdgeToast"))
         let controlsOverlayStart = try #require(previewSource.range(of: ".overlay(alignment: .bottom) {\n                viewfinderControls"))
-        let designSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "Docs/CameraControlsDesign.md"
-        )
-
         #expect(toastOverlayStart.lowerBound < controlsOverlayStart.lowerBound)
         #expect(previewSource.contains("viewfinderEdgeToast\n                    .padding(.top, 14)"))
         #expect(!previewSource.contains("viewfinderEdgeToast\n                    .padding(.bottom, 14)"))
-        #expect(designSource.contains("贴取景器上边缘内侧，水平居中"))
-        #expect(!designSource.contains("贴取景器下边缘内侧，水平居中"))
     }
 
     @Test func cameraAdjustmentControlStatePublishesCapabilityGatedRanges() throws {

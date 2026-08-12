@@ -20,6 +20,9 @@ scaffolding, sidecar JSON, and Release debug bundles.
 
 | Area | README | Primary code |
 | --- | --- | --- |
+| Canonical product constraints | [Docs/ProductContract.md](Docs/ProductContract.md) | Current capability, state-machine, non-goal, future, experiment, and claim authority |
+| Project task database | [Docs/ProjectBoard.md](Docs/ProjectBoard.md) | Stable `TAP-xxxx` records and Inbox/Todo/Doing/Done/Deprecated views |
+| UI prototype workflow | [Docs/UIPrototypeContract.md](Docs/UIPrototypeContract.md) | HTML/Web visual contract → SwiftUI → Simulator/device acceptance |
 | App startup and App Attest runtime | [TAPCamDemo/App/README.md](TAPCamDemo/App/README.md) | [TAPCamDemoApp.swift](TAPCamDemo/App/TAPCamDemoApp.swift) |
 | SingleCam capture pipeline | [TAPCamDemo/CameraCapture/README.md](TAPCamDemo/CameraCapture/README.md) | [CameraView.swift](TAPCamDemo/CameraCapture/UI/CameraView.swift), [CameraViewModel.swift](TAPCamDemo/CameraCapture/UI/CameraViewModel.swift) |
 | Pending TAP Library queue | [TAPCamDemo/TAPLibrary/README.md](TAPCamDemo/TAPLibrary/README.md) | [TAPPendingCaptureStore.swift](TAPCamDemo/TAPLibrary/TAPPendingCaptureStore.swift), [TAPPendingCaptureProcessor.swift](TAPCamDemo/TAPLibrary/TAPPendingCaptureProcessor.swift) |
@@ -28,8 +31,7 @@ scaffolding, sidecar JSON, and Release debug bundles.
 | Zstandard compression dependency | [facebook/zstd](https://github.com/facebook/zstd) | Exact SwiftPM version `1.5.7`; app adapter lives in [TAPDepthFrameCodec.swift](TAPCamDemo/CameraCapture/Output/TAPDepthFrameCodec.swift) |
 | Tests and automation | [TAPCamDemoTests/README.md](TAPCamDemoTests/README.md) | Start with the test README for the automation gate, focused output/provenance suites, manual-control suites, TAP Library suites, and evidence limits. |
 | Source tree module index | [TAPCamDemo/README.md](TAPCamDemo/README.md) | [TAPCamDemo](TAPCamDemo) |
-| Dated project score and reading order | [Docs/ProjectScorecard.md](Docs/ProjectScorecard.md) | [Docs](Docs) |
-| AI collaboration trace | [Docs/AITrace/README.md](Docs/AITrace/README.md) | [Docs/AITrace/2026-06-21-tap-library-scroll-memory.md](Docs/AITrace/2026-06-21-tap-library-scroll-memory.md) |
+| Documentation index | [Docs/README.md](Docs/README.md) | Minimal active reading order and specialized contracts |
 
 ## Architecture
 
@@ -50,26 +52,21 @@ flowchart TD
     click Attest "Docs/AppAttest/README.md"
 ```
 
-## Current Goal And Score Standard
+## Current Work Governance
 
-Current AI-assisted goal: complete the structural refactor and validation gates
-for the TAP Video branch. Recorder/validator, PhotoKit request bridging,
-playback/depth, Library carousel/picker, and pending orchestration now have
-focused ownership boundaries while preserving the existing photo path.
+Current product scope comes only from
+[Docs/ProductContract.md](Docs/ProductContract.md). Current and historical work
+is tracked by stable Task ID in
+[Docs/ProjectBoard.md](Docs/ProjectBoard.md). Before proposing a feature, search
+the complete Board across Inbox, Todo, Doing, Done, and Deprecated; revise a
+matching Task instead of creating a duplicate.
 
-Use [Docs/AITrace/2026-06-21-tap-library-scroll-memory.md](Docs/AITrace/2026-06-21-tap-library-scroll-memory.md)
-as the plan-specific scoring-standard document. It contains the 10-point rubric,
-current plan score, validation commands, remaining evidence, and AI
-collaboration trace for this user journey. Use
-[Docs/ProjectScorecard.md](Docs/ProjectScorecard.md) only for the broader
-project score formula and from-scratch reading order. Use
-[Docs/AITrace/README.md](Docs/AITrace/README.md) for the folder rules covering
-AI-assisted iterations, security/iOS reviews, subagents, validation steps, and
-change traceability.
+Visible UI work follows
+[Docs/UIPrototypeContract.md](Docs/UIPrototypeContract.md): approve the
+HTML/Web component and state relationship first, implement SwiftUI second, then
+perform Simulator and required physical-device acceptance.
 
-Start with [Docs/FutureCameraSpecs.md](Docs/FutureCameraSpecs.md) for the
-refactor boundary status.
-The first code-level entry for future image format or quality work is the
+The first code-level entry for image format or quality work remains the
 app-level quality policy plus Output contract in
 [TAPCamDemo/CameraCapture/Output/README.md](TAPCamDemo/CameraCapture/Output/README.md).
 `CapturePhotoQualityPolicy`, `CaptureOutputProfileSelectionIntent`,
@@ -200,8 +197,8 @@ Scripts/lint-tap-video-refactor.sh
 ```
 
 The script uses `.swiftlint-tap-video.yml` to enforce function bodies at or
-below 80 lines and cyclomatic complexity at or below 10 on the explicit
-VideoBranchRefactorAudit production allowlist. It intentionally excludes tests,
+below 80 lines and cyclomatic complexity at or below 10 on the explicit scoped
+TAP Video production allowlist. It intentionally excludes tests,
 UI tests, Debug fixtures, benchmarks, remote package sources, and unrelated legacy code.
 
 For AI/CI compilation verification, use:
@@ -231,10 +228,9 @@ default unit gate.
 | Document | Purpose |
 | --- | --- |
 | [Docs/README.md](Docs/README.md) | Cross-module documentation index. |
-| [Docs/ProjectScorecard.md](Docs/ProjectScorecard.md) | Dated score, strict gaps, score formula, and from-scratch reading order. |
-| [Docs/FutureCameraSpecs.md](Docs/FutureCameraSpecs.md) | Current refactor-first boundary status and future camera capability specs. |
-| [Docs/AITrace/README.md](Docs/AITrace/README.md) | AI collaboration trace for goals, user constraints, subagent/plugin use, iteration history, and validation status. |
-| [Docs/Startup/FirstLaunch.md](Docs/Startup/FirstLaunch.md) | Current first-install startup flow and trace points. |
+| [Docs/ProductContract.md](Docs/ProductContract.md) | Canonical current capability, state-machine, non-goal, future, experimental, and evidence boundaries. |
+| [Docs/ProjectBoard.md](Docs/ProjectBoard.md) | Markdown task database and Kanban views. |
+| [Docs/UIPrototypeContract.md](Docs/UIPrototypeContract.md) | HTML/Web prototype to SwiftUI and acceptance workflow. |
 | [Docs/AppAttest/README.md](Docs/AppAttest/README.md) | App Attest client/backend boundary and capture proof notes. |
 | [TAPCamDemo/CameraCapture/Documentation/ARCHITECTURE.md](TAPCamDemo/CameraCapture/Documentation/ARCHITECTURE.md) | Camera module dependency direction. |
 | [TAPCamDemo/CameraCapture/Documentation/PIPELINE.md](TAPCamDemo/CameraCapture/Documentation/PIPELINE.md) | Single executable capture path. |

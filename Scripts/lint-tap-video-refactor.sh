@@ -10,8 +10,8 @@ if ! command -v swiftlint >/dev/null 2>&1; then
     exit 127
 fi
 
-# Keep this allowlist explicit. It covers the production files extracted or
-# rewritten by VideoBranchRefactorAudit R1-R4 without expanding into unrelated
+# Keep this allowlist explicit. It covers the scoped TAP Video production
+# structure gate without expanding into unrelated
 # legacy code. Tests, UI tests, Debug fixtures, benchmarks, and resolved remote
 # package sources are intentionally outside this structural gate.
 production_files=(

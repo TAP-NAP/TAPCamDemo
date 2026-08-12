@@ -1,29 +1,64 @@
-# TAPLibrary Module
+# TAPLibrary Module — Pending Capture Queue
 
-`TAPCamDemo/TAPLibrary` owns the app-private queue for TAP capture artifacts.
-Camera capture writes one unsigned TAP depth photo file, either HEIC or JPG, and
-returns quickly. Live Photo captures may add one fixed paired MOV resource. The
-queue processor serially signs, exports, retries, and cleans up records so
-real-device App Attest and Photos work do not overlap.
+`TAPCamDemo/TAPLibrary` is the legacy implementation-module name for the
+app-private **Pending Capture Queue**. It owns pending artifacts, signing,
+Photos export, retry, and cleanup. The user-facing **TAP Library** is the
+mixed-media grid and Viewer implemented under `TAPCamDemo/DepthAnalysis`; this
+private queue must not be called the TAP Library in product or architecture
+prose.
 
-Related design note:
-[CredentialSigningRetryDesign.md](../../Docs/CredentialSigningRetryDesign.md)
-describes the proposed stage-separated credential/assertion retry model that
-will replace the current coarse retry status model.
+Camera capture writes an unsigned HEIC/JPG photo or TAP Video artifact and
+returns quickly. Live Photo captures may add one fixed paired MOV resource.
+`TAPPendingCaptureProcessor` serializes signing, export, readback, retry state,
+and cleanup so real-device App Attest and Photos work do not overlap. Product
+scope and terminology come from
+[ProductContract.md](../../Docs/ProductContract.md).
+
+## Current Coarse Retry Model
+
+The implemented retry model is deliberately coarse:
+
+- durable status is one of `pending`, `waitingNetwork`, `signing`, `signed`,
+  `exporting`, `exported`, `failedRetryable`, or `failedTerminal`;
+- `TAPPendingCaptureRetryClassifier` maps a non-terminal worker error to either
+  `waitingNetwork` or `failedRetryable` using typed error domains and codes;
+- `AppAttestPendingCaptureSigner` performs credential preparation and capture
+  assertion/proof generation inside one signing operation;
+- each record persists one cumulative `retryCount`, but no retry stage,
+  `nextAttemptAt`, retry window, cooldown, or total-budget state;
+- only one worker runs at a time, and each candidate capture ID is attempted at
+  most once in that worker run; a later explicit worker invocation may retry an
+  eligible coarse retry state;
+- signed/exporting records are processed before new pending/signing records,
+  which are processed before failed-retryable/waiting-network records; and
+- protected-data unavailability stops the worker before private queue reads or
+  mutations and does not convert a capture into a failure.
+
+Release presentation uses fixed public-safe failure text and does not expose
+queue position, raw retry errors, proof identifiers, or a manual signing Retry
+control. The queue may be retriggered by its callers, but it has no fine-grained
+time scheduler of its own.
+
+Future credential/assertion/export stage separation, `nextAttemptAt`, bounded
+retry windows, cooldown, pause state, and persistence migration are one
+technical optimization tracked only by
+[`TAP-0015`](../../Docs/ProjectBoard.md#tap-0015--implement-fine-grained-credential-retry-optimization).
+Those unimplemented details are not part of this current module contract and
+must not be copied into another active design document.
 
 ## Code Map
 
 | Responsibility | Code |
 | --- | --- |
 | Queue record model, statuses, and persisted location | [TAPPendingCaptureRecord.swift](TAPPendingCaptureRecord.swift) |
-| TAP Library change notification | [TAPLibraryNotifications.swift](TAPLibraryNotifications.swift) |
+| Pending Capture Queue change notification (legacy type name) | [TAPLibraryNotifications.swift](TAPLibraryNotifications.swift) |
 | Pending bundle path and filename validation | [TAPPendingCaptureBundlePathPolicy.swift](TAPPendingCaptureBundlePathPolicy.swift) |
 | Pending bundle filesystem, record IO, artifact IO, and cleanup | [TAPPendingCaptureBundleStorage.swift](TAPPendingCaptureBundleStorage.swift) |
 | Serialized queue repository and public API | [TAPPendingCaptureStore.swift](TAPPendingCaptureStore.swift) |
 | Video workspace ownership and ingest validation | [TAPPendingVideoWorkspaceCoordinator.swift](TAPPendingVideoWorkspaceCoordinator.swift), [TAPPendingVideoIngestValidator.swift](TAPPendingVideoIngestValidator.swift) |
 | Pure video record transitions and focused maintenance | [TAPPendingVideoRecordTransitions.swift](TAPPendingVideoRecordTransitions.swift), [TAPPendingCaptureMaintenance.swift](TAPPendingCaptureMaintenance.swift) |
 | Locked-capture staging/import validation | [TAPPendingLockedCaptureImporter.swift](TAPPendingLockedCaptureImporter.swift) |
-| Shared artifact paths and Library notification/root policies | [TAPPendingCaptureArtifacts.swift](TAPPendingCaptureArtifacts.swift), [TAPLibraryNotifications.swift](TAPLibraryNotifications.swift) |
+| Shared artifact paths plus Pending Capture Queue notification/root policies | [TAPPendingCaptureArtifacts.swift](TAPPendingCaptureArtifacts.swift), [TAPLibraryNotifications.swift](TAPLibraryNotifications.swift) |
 | Queue record JSON encoding/decoding policy | [TAPPendingCaptureRecordCoding.swift](TAPPendingCaptureRecordCoding.swift) |
 | Processing route and candidate priority policy | [TAPPendingCaptureProcessingPolicy.swift](TAPPendingCaptureProcessingPolicy.swift) |
 | Worker protected-data readiness policy | [TAPPendingCaptureWorkerReadiness.swift](TAPPendingCaptureWorkerReadiness.swift) |
@@ -37,7 +72,7 @@ will replace the current coarse retry status model.
 | TAP manifest/provenance writer used by signing and export validation | [TAPCaptureProvenanceWriter.swift](../CameraCapture/Output/TAPCaptureProvenanceWriter.swift) |
 | Photos export/readback adapter | [PhotoLibraryPendingCaptureExporter.swift](PhotoLibraryPendingCaptureExporter.swift) |
 
-## Queue Flow
+## Pending Capture Queue Flow
 
 ```mermaid
 flowchart TD
@@ -186,7 +221,7 @@ without App Attest hardware, network, or Photos side effects.
 - `TAPPendingCaptureBundlePathPolicy` validates pending bundle path components:
   capture IDs must be single safe directory names, and persisted artifact
   filenames must be one of the fixed bundle resources.
-- `TAPPendingCaptureBundleStorage` is the only TAP Library helper that owns the
+- `TAPPendingCaptureBundleStorage` is the only Pending Capture Queue helper that owns the
   pending root directory, per-capture bundle directories, temporary bundle
   directories, file moves/removes, `bundle.json` reads/writes, artifact
   reads/writes, and exported-file cleanup. It routes bundle and artifact paths
@@ -255,10 +290,14 @@ validator is reopened only when it remains `.unsigned`, still has its local
 artifact, has no Photos/export-recovery state, and carries
 `invalidVideoArtifact` or `proofValidationFailed`. It becomes
 `failedRetryable` and can be signed in the same worker run. Signed integrity
-failures, missing depth, external mutation, Photos readback failures, and
-missing source files remain terminal.
+failures, external mutation, Photos readback failures, and missing source files
+may remain terminal. Missing depth alone is not a valid terminal product result:
+the Product Contract requires the RGB/audio artifact to continue through
+signing and export with truthful zero-depth state and a non-blocking warning.
+Any remaining terminal missing-depth code path is the implementation gap tracked
+by `TAP-0011`, not the Pending Capture Queue contract.
 
-## TAP Library Item Identity And Route Context
+## TAP Library Integration: Item Identity And Route Context
 
 `DepthAlbumPickerView` presents three item identities:
 

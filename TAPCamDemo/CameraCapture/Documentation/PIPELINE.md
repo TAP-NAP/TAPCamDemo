@@ -43,7 +43,7 @@ off a best-effort background refresh for later captures. If no recent location
 exists, the manifest and staged photo file are saved without location metadata.
 
 Foreground shutter work ends when the unsigned photo file has been written into the
-app-private TAP Library pending store. While this capture-write queue is
+app-private Pending Capture Queue. While this capture-write queue is
 nonempty, the TAP Library entry point is disabled and shows progress so entering
 Library cannot stop the camera session before queued captures have landed on
 disk. This gate does not cover App Attest signing or Photos export: once a

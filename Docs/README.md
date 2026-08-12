@@ -1,77 +1,59 @@
-# TAPCamDemo Documents
+# TAPCam Documentation
 
-`Docs` contains cross-module design and integration notes. Source-adjacent
-README files live next to their code under `TAPCamDemo/`.
+Start here. The current documentation set is intentionally organized by
+authority so an Agent does not need to read every historical design before
+working on one Task.
 
-## Document Map
+## Canonical Product And Work Management
 
-```mermaid
-flowchart TD
-    Docs["Docs"] --> Startup["Startup\nfirst-install flow"]
-    Docs --> AppAttest["AppAttest\nclient/backend/capture proof"]
-    Docs --> Future["FutureCameraSpecs\nboundary status"]
-    Docs --> ManualLimits["Manual control\ndevice limits"]
-    Docs --> ViewerRedesign["Analysis viewer\nredesign"]
-    Docs --> CredentialRetry["Credential signing\nretry design"]
-    Docs --> DepthVideo["Depth video\nrecording design"]
-    Docs --> VideoLibrary["Video Library\nrelease-readiness PRD"]
-    Docs --> ProBuild["Pro controls\nbuild isolation"]
-    Docs --> LiveBrowser["Live Photo\nbrowser verification"]
-    Docs --> LockedPOC["Locked Camera\ncapture POC"]
-    Docs --> LockedAPI["Locked Camera\nAPI notes"]
-    Docs --> Scorecard["ProjectScorecard\ndated score"]
-    Docs --> AITrace["AITrace\ncollaboration trace"]
-    AppAttest --> Backend["BackendContract.md"]
-    AppAttest --> Client["ClientUsage.md"]
-    AppAttest --> Security["SecurityNotes.md"]
-
-    click Future "FutureCameraSpecs.md"
-    click ManualLimits "CameraManualControlDeviceLimits.md"
-    click ViewerRedesign "DepthAnalysisViewerRedesign.md"
-    click CredentialRetry "CredentialSigningRetryDesign.md"
-    click DepthVideo "DepthVideoRecordingDesign.md"
-    click VideoLibrary "TAPVideoLibraryPRD.md"
-    click ProBuild "CameraProControlsBuildIsolationPlan.md"
-    click LiveBrowser "LivePhotoBrowserVerification.md"
-    click LockedPOC "LockedCameraCapturePOC.md"
-    click LockedAPI "LockedCameraCaptureAPINotes.md"
-    click Scorecard "ProjectScorecard.md"
-    click AITrace "AITrace/README.md"
-    click Startup "Startup/FirstLaunch.md"
-    click AppAttest "AppAttest/README.md"
-    click Backend "AppAttest/BackendContract.md"
-    click Client "AppAttest/ClientUsage.md"
-    click Security "AppAttest/SecurityNotes.md"
-```
-
-| Area | Entry |
+| Role | Document |
 | --- | --- |
-| Dated score and from-scratch reading order | [ProjectScorecard.md](ProjectScorecard.md) |
-| Refactor boundary status and future camera specs | [FutureCameraSpecs.md](FutureCameraSpecs.md) |
-| Professional camera-control device limits | [CameraManualControlDeviceLimits.md](CameraManualControlDeviceLimits.md) |
-| Analysis viewer and tool drawer redesign | [DepthAnalysisViewerRedesign.md](DepthAnalysisViewerRedesign.md) |
-| Credential signing retry state machine | [CredentialSigningRetryDesign.md](CredentialSigningRetryDesign.md) |
-| Depth video recording design | [DepthVideoRecordingDesign.md](DepthVideoRecordingDesign.md) |
-| Video Library release-readiness PRD | [TAPVideoLibraryPRD.md](TAPVideoLibraryPRD.md) |
-| Video Library implementation and PR 7 runtime evidence | [AITrace/2026-07-11-video-library-refactor-implementation.md](AITrace/2026-07-11-video-library-refactor-implementation.md) · [AITrace/2026-07-12-video-library-pr7-runtime-evidence.md](AITrace/2026-07-12-video-library-pr7-runtime-evidence.md) |
-| TAP Video manifest v2 / Zstd / KLV golden vectors | [Fixtures/TAPVideoManifestV2GoldenVectors.json](Fixtures/TAPVideoManifestV2GoldenVectors.json) |
-| Basic EV and Pro Controls build isolation | [CameraProControlsBuildIsolationPlan.md](CameraProControlsBuildIsolationPlan.md) |
-| Live Photo browser verification contract | [LivePhotoBrowserVerification.md](LivePhotoBrowserVerification.md) |
-| Locked Camera Capture POC PRD | [LockedCameraCapturePOC.md](LockedCameraCapturePOC.md) |
-| Locked Camera Capture API and handoff notes | [LockedCameraCaptureAPINotes.md](LockedCameraCaptureAPINotes.md) |
-| AI collaboration trace | [AITrace/README.md](AITrace/README.md) |
-| Output profile contract | [../TAPCamDemo/CameraCapture/Output/README.md](../TAPCamDemo/CameraCapture/Output/README.md) |
-| First-install startup flow | [Startup/FirstLaunch.md](Startup/FirstLaunch.md) |
-| App Attest integration | [AppAttest/README.md](AppAttest/README.md) |
-| App Attest backend contract | [AppAttest/BackendContract.md](AppAttest/BackendContract.md) |
-| App Attest client usage | [AppAttest/ClientUsage.md](AppAttest/ClientUsage.md) |
-| App Attest credential naming | [AppAttest/CredentialNameGuide.md](AppAttest/CredentialNameGuide.md) |
-| App Attest security notes | [AppAttest/SecurityNotes.md](AppAttest/SecurityNotes.md) |
+| Current capabilities, state machines, non-goals, future/experimental scope, and claim boundaries | [ProductContract.md](ProductContract.md) |
+| Markdown task database and Inbox/Todo/Doing/Done/Deprecated views | [ProjectBoard.md](ProjectBoard.md) |
+| HTML/Web prototype authority and Prototype → SwiftUI → acceptance workflow | [UIPrototypeContract.md](UIPrototypeContract.md) |
 
-## Related Code READMEs
+Every Agent must follow the repository rules in [../AGENTS.md](../AGENTS.md):
+read the Product Contract, find or revise a Task before creating one, and use a
+separate DeviceAcceptance Task for attended physical-device evidence.
 
-- [../TAPCamDemo/README.md](../TAPCamDemo/README.md)
-- [../TAPCamDemo/App/README.md](../TAPCamDemo/App/README.md)
-- [../TAPCamDemo/CameraCapture/README.md](../TAPCamDemo/CameraCapture/README.md)
-- [../TAPCamDemo/TAPLibrary/README.md](../TAPCamDemo/TAPLibrary/README.md)
-- [../TAPCamDemo/DepthAnalysis/README.md](../TAPCamDemo/DepthAnalysis/README.md)
+## Current Specialized Contracts
+
+Specialized documents remain only when they own a unique implementation,
+format, security, or cross-project responsibility. They do not override the
+Product Contract.
+
+| Responsibility | Entry |
+| --- | --- |
+| App Attest client/backend boundary | [AppAttest/README.md](AppAttest/README.md) |
+| App Attest backend interface | [AppAttest/BackendContract.md](AppAttest/BackendContract.md) |
+| Live Photo cross-project browser verification contract | [LivePhotoBrowserVerification.md](LivePhotoBrowserVerification.md) |
+| TAP Video MP4/KLV/manifest/proof/content-binding contract | [TAPVideoFormatContract.md](TAPVideoFormatContract.md) |
+| Camera output profile and packaging contract | [../TAPCamDemo/CameraCapture/Output/README.md](../TAPCamDemo/CameraCapture/Output/README.md) |
+| Camera runtime module boundary | [../TAPCamDemo/CameraCapture/README.md](../TAPCamDemo/CameraCapture/README.md) |
+| User-facing TAP Library and Viewer boundary | [../TAPCamDemo/DepthAnalysis/README.md](../TAPCamDemo/DepthAnalysis/README.md) |
+| App-private Pending Capture Queue implementation | [../TAPCamDemo/TAPLibrary/README.md](../TAPCamDemo/TAPLibrary/README.md) |
+| Test and automation boundary | [../TAPCamDemoTests/README.md](../TAPCamDemoTests/README.md) |
+
+The Swift module is still named `TAPLibrary`, but current prose calls its
+private signing/export/retry responsibility the **Pending Capture Queue**.
+**TAP Library** refers only to the user-facing mixed-media grid and Viewer.
+
+## Acceptance
+
+`Docs/Acceptance/` stores executable evidence records. A physical-device report
+must be linked from its `DeviceAcceptance` Task and contain prerequisites,
+install/reset steps, numbered actions, expected results, required evidence, and
+explicit human confirmation.
+
+Acceptance reports establish only what their procedure exercised. They do not
+define current product scope.
+
+## Historical Material And Retention
+
+Old PRDs, design phases, branch audits, AITrace, POCs, experiments, and Sketch
+pilot documents were migrated through `TAP-0003`. Unique current obligations
+and acceptance procedures now live in the minimal active set; obsolete files
+were removed from the current tree. Git history remains the recoverable archive.
+
+Do not add an old file back to the active reading path merely for traceability.
+Create or revise a Task when its idea needs to be reconsidered.

@@ -1,10 +1,20 @@
 # App Attest Integration
 
+Status: active TAPCamDemo client and runtime contract
+
+Server interface: [BackendContract.md](BackendContract.md)
+
 This folder documents TAPCamDemo's App Attest integration. The reusable client
 implementation comes from the upstream
 [TAP-NAP/AppAttestKit](https://github.com/TAP-NAP/AppAttestKit) Swift Package.
 TAPCamDemo owns runtime wiring, credential naming, capture-proof construction,
 and the decision about when App Attest is required.
+
+This document is the single active App Attest client guide for TAPCamDemo. It
+owns client call semantics, credential naming and storage boundaries, runtime
+configuration, Settings presentation, and client-side privacy rules. The
+separate backend contract remains active because it owns a cross-project HTTP
+and server-trust boundary.
 
 ## Code Boundaries
 
@@ -45,6 +55,58 @@ sequenceDiagram
     end
 ```
 
+## Credential And Client API Semantics
+
+TAPCamDemo uses the one fixed capture credential name `photo_keyid`.
+`credentialName` is only a caller-owned lookup name for credential metadata; it
+is not an Apple attestation claim, user model, or proof of identity. Apple
+attests the generated App Attest key. AppAttestKit stores the association:
+
+```text
+credentialName -> keyId / credentialId / status / environment / timestamps
+```
+
+The naming scheme must remain stable because changing the string selects a
+different credential. If TAPCam later introduces install-, account-, tenant-,
+or session-scoped credential names, it must prefer opaque backend identifiers
+or hashed stable identifiers rather than raw PII. Those names remain private in
+logs and UI even when they are not themselves trust claims.
+
+The client calls have distinct meanings:
+
+- `prepare(credentialName:)` creates and attests a fresh App Attest key, sends
+  the attestation to the backend, and persists the local mapping only after the
+  backend accepts registration.
+- `prepareIfNeeded(credentialName:)` reuses a ready local credential; if none
+  exists, it performs the registration flow.
+- `reset(credentialName:)` deletes local metadata for that name only. It does
+  not delete other caller-defined credentials, an Apple-held private key, or a
+  backend credential record. TAPCam's controller also clears its local health
+  token when it resets `photo_keyid`.
+- `generateAssertion(credentialName:request:)` protects only the request for
+  which TAPCam explicitly calls it and applies the returned envelope. The kit
+  does not intercept or protect requests automatically.
+
+TAPCam capture signing is deliberately different from an online protected API
+request. The pending capture signer calls `prepareIfNeeded` for `photo_keyid`,
+constructs the canonical capture `signingBinding`, and asks
+`DCAppAttestService` to sign its client-data hash directly. It does not call the
+request-oriented `generateAssertion(credentialName:request:)` and does not ask
+the backend for an assertion challenge.
+
+## Credential Preparation And Health Token
+
+Credential warmup begins after entry into the interactive camera as background
+work; it is not part of first-install permission setup or the first-frame
+readiness gate.
+
+TAPCam stores a local credential-health token bound to the app bundle id,
+version/build, backend URL, App Attest environment, and the fixed
+`photo_keyid` name. If any input changes, the controller resets local
+`photo_keyid` metadata, runs `prepare`, and validates that the prepared
+credential can generate an assertion. If the token still matches, it may reuse
+the local credential through `prepareIfNeeded`.
+
 ## Capture Proof Flow
 
 ```mermaid
@@ -77,6 +139,29 @@ manifest id, selected HEIC/JPG source type, and auxiliary depth presence. The
 content binding hashes the exact file bytes that are leaving the private queue
 except for the fixed proof slot, so validation does not depend on CoreGraphics,
 AVDepthData conversion output, browser canvas pixels, or libheif decode output.
+
+## Client Trust And Storage Boundary
+
+The client can create local key handles, attestation objects, and assertion
+objects, but it cannot decide that any of them are trustworthy. The backend
+must validate attestation before accepting registration, and a later verifier
+must validate a capture assertion against the registered backend credential.
+
+The App Attest private key is not stored by TAPCamDemo or AppAttestKit. Apple
+keeps it in system-protected key material; the app receives a `keyId` handle.
+Keychain stores only the credential metadata needed to find and reuse that
+handle. Losing the mapping requires registration of a new key and can create a
+new backend credential record.
+
+The final HEIC/JPG validation before Photos export is a client-side consistency
+check. It confirms that the outgoing file still contains the expected
+container, manifest id, proof envelope, digest binding, source type, and depth
+presence. It does not establish backend trust, capture freshness, protection
+against every replay, or real-world scene authenticity.
+
+If `DCAppAttestService.isSupported` is false, the client reports
+`AppAttestError.unsupportedDevice`. That error does not authorize a silent
+trust fallback; the owning product flow must apply its explicit failure policy.
 
 ## Runtime Backend Selection
 
@@ -163,9 +248,9 @@ accessibility labels.
 - App Attest entitlements and dependency pinning are visible in the checkout so
   reviewers do not need to infer security setup from runtime code alone.
 
-## Primary Documents
+## Active Documents
 
-- [ClientUsage.md](ClientUsage.md): client API and call examples.
-- [CredentialNameGuide.md](CredentialNameGuide.md): recommended caller-owned credential names.
-- [BackendContract.md](BackendContract.md): HTTP contract and server duties.
-- [SecurityNotes.md](SecurityNotes.md): safety boundaries and non-goals.
+- This README: TAPCamDemo client calls, naming, storage, privacy, runtime, and
+  capture-signing boundaries.
+- [BackendContract.md](BackendContract.md): cross-project HTTP contract, server
+  trust decisions, replay controls, and capture-signature verification duties.

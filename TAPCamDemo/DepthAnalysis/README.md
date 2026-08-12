@@ -15,55 +15,113 @@ RAW display-image loading from 2D/3D depth-analysis loading, uses a nested
 inside the same centered aspect-fit rectangle as the RAW photo. Page content
 leaves an 18pt black gap between neighboring photos.
 
-Related design note:
-[DepthAnalysisViewerRedesign.md](../../Docs/DepthAnalysisViewerRedesign.md)
-describes the current Photos-style viewer implementation, the `RAW` / `2D` /
-`3D` mode group inside the bottom viewer toolbar (Share / centered `RAW` /
-`2D` / `3D` capsule / Delete), centered aspect-fit tool containers, Liquid
-Glass future work, 2D overlay/plane detection, and native 3D projection.
+This README is the current implementation-ownership document for the
+user-facing **TAP Library** and Viewer. Product behavior is constrained by
+[ProductContract.md](../../Docs/ProductContract.md), while visible UI revisions
+follow [UIPrototypeContract.md](../../Docs/UIPrototypeContract.md).
 
-Terminology note: `TAPCamDemo/TAPLibrary` is the app-private pending artifact
-queue for signing, Photos export, retry, and cleanup. The user-facing TAP
-Library grid and viewer path is `DepthAlbumPickerView` -> `DepthAnalysisView`
-inside this module.
+Terminology is strict:
 
-Photo and TAP Video viewers intentionally share one interaction vocabulary:
-Back, Share, Delete, and the centered icon-only `RAW` / `2D` / `3D` capsule
-come from the same chrome components. Video adds an app-owned transport above
-that row and enables `2D` only when registration is complete. Video `3D`
-remains visible and hittable, but tapping it only shows one localized
-`Coming soon` edge toast without changing the selected mode or playback. Its
-visual surface is `AVPlayerLayer`-backed; it does not embed interactive SwiftUI
-controls in an `AVPlayerViewController` overlay.
+- **TAP Library** means the user-facing mixed-media grid and Viewer. Its route
+  is `DepthAlbumPickerView` -> `DepthAnalysisView` inside this module.
+- **Pending Capture Queue** means the app-private signing, Photos export, retry,
+  and cleanup queue. Its implementation module retains the legacy filesystem
+  name `TAPCamDemo/TAPLibrary`, but product and architecture prose must not call
+  that private queue the TAP Library.
 
-TAP Library navigation keeps one canonical mixed-media order across still
-photos, Live Photos, and TAP Video. Photo and video surfaces now use the same
-native horizontal pager and the same previous/current/next window, so every
-media-type combination follows the finger and settles with one paging curve.
-Only the committed video owns an AVPlayer; adjacent video pages are poster-only
-previews. At the first and last Library item, the pager keeps UIKit's native
-rubber-band bounce instead of creating a fake page or silently refusing input.
-Video loading never swaps the viewer root when the resource becomes ready.
-Its cached poster remains above the warming `AVPlayerLayer` until
-`isReadyForDisplay` confirms a real frame, then the two layers hand off in one
-non-animated transaction. Spinner completion, depth availability, and
-pending-to-owned source migration must not rebuild the pager or fixed chrome.
-The native pager rewrites a page host only when its entry, current-page role,
-size, or explicit content revision changes; ordinary observable loading updates
-stay inside the existing hosted page.
+## Current Viewer Contract
 
-This parity is an engineering invariant, not a visual guideline. One drag
-freezes one canonical mixed-media window and its page-content revision until it
-settles; a concurrent Library refresh cannot reinterpret or remount that drag.
-Pending-to-owned source changes and late
-Live Photo classification refresh the current renderer by item revision, while
-external removal advances to the nearest remaining item or closes an empty
-viewer. Still, Live Photo, and video all enter the same TAP Share sheet. Media
-renderers may add only their explicit capabilities: Live Photo keeps native
-press-and-hold playback, and video owns transport controls while its 3D mode is
-Coming Soon.
+The current Viewer is the Photos-style mixed-media browser. It keeps one
+canonical order across still photos, Live Photos, and TAP Video and provides:
 
-## TAPNAP Share Artifact Lifecycle
+- native horizontal previous/current/next paging with an 18pt black inter-page
+  gap and UIKit endpoint rubber-band bounce;
+- stable Back, Share, and Delete chrome;
+- a centered icon-only `RAW / 2D / 3D` bottom capsule;
+- RAW pinch, pan while zoomed, and double-tap zoom;
+- centered aspect-fit 2D and static-photo 3D surfaces aligned to the visible
+  RAW photo;
+- native Live Photo press-and-hold playback; and
+- foreground TAP Video RAW playback and registered 2D playback with app-owned
+  transport controls above the shared toolbar.
+
+Paging and fixed chrome must remain mounted while thumbnails, originals, depth,
+video resources, and first frames load. One drag freezes its mixed-media window
+until landing so a concurrent TAP Library refresh cannot reinterpret the
+gesture. Only the committed video owns an `AVPlayer`; adjacent video pages are
+poster-only. A committed video keeps its poster above the warming
+`AVPlayerLayer` until `isReadyForDisplay` reports a real frame. It does not
+embed interactive SwiftUI controls in an `AVPlayerViewController` overlay.
+Pending-to-owned migration and late Live Photo classification update the
+current renderer by item revision instead of rebuilding the pager or chrome.
+External removal selects the nearest remaining item or closes an empty Viewer.
+
+TAP Video 3D remains a future feature tracked by `TAP-0016`. Its visible entry
+may show one localized `Coming soon` edge toast, but it must not change the
+selected mode or playback state.
+
+The following are deprecated designs, not Todo items and not current UI:
+
+- the tool drawer, up-swipe drawer/Verify action, down-swipe dismissal, and
+  half/full detents;
+- top-level Heatmap, Overlay, or Mask mode buttons; and
+- a fourth credential or Verify mode inside the bottom capsule.
+
+Internal heatmap, mask, plane-selection, and inspector code may remain as
+analysis implementation detail. It does not recreate those deprecated
+top-level controls. Any future Viewer proposal requires a new Task and an
+approved Web prototype; it does not revive a deprecated interaction by default.
+
+## Current Static-Photo 3D Contract
+
+Static-photo `3D` is a native point projection for an eligible photo with
+usable depth and calibration. Release calls it a **3D projection**, not a point
+cloud, scan, reconstruction, mesh, digital twin, or world-space model.
+
+- SceneKit is the current renderer. A possible Metal replacement is only the
+  evidence-triggered technical option tracked by `TAP-0034`.
+- Display orientation is applied once to geometry and camera intrinsics. RGB
+  sampling and selected-plane membership remain in native pixel space.
+- Depth pixels are back-projected with `fx / fy / cx / cy` into capture-camera
+  space and mapped to SceneKit's camera-facing `-Z`; geometry is not normalized
+  into an arbitrary display cube.
+- The configured camera keeps the capture-camera projection. Custom gestures
+  transform the interaction root rather than replacing the camera or projection
+  matrix; SceneKit's default camera controller remains disabled.
+- One-finger drag orbits, two-finger drag pans, pinch scales, two-finger rotation
+  rolls, and double-tap resets the capture-camera view. Gesture ownership stays
+  inside the 3D container; paging begins only outside it.
+- Selected 2D plane pixels may render as a separate highlight overlay. Reduce
+  Motion disables motion-dependent decoration and gyroscope movement.
+
+## Share And Delete
+
+Share uses the app-owned, on-demand flow:
+
+1. Open the lightweight TAP Share format-selection sheet.
+2. Load or generate the selected resource only after the user chooses it.
+3. Present the system activity controller only after the payload is ready.
+4. Remove per-attempt temporary resources after completion, cancellation, or
+   dismissal.
+
+TAPCam-owned captures display their persisted credential/protection and
+verifiability state. Viewing or sharing one does not run a new backend Verify
+operation and does not expose a standalone Verify action. External-media import
+and true in-app Verify remain future work tracked by `TAP-0022`; any remaining
+verification service or panel files are unmounted legacy implementation, not a
+current Viewer route.
+
+Delete follows source ownership:
+
+- exported Photos assets use the system Photos delete request and its single
+  system confirmation; TAPCam must not add a second confirmation;
+- pending or local-only captures require an app-owned confirmation before the
+  Pending Capture Queue removes local data; and
+- after deletion, the Viewer selects the item that occupied the next index when
+  possible, otherwise the previous item, and closes only when TAP Library is
+  empty.
+
+### TAPNAP share artifact lifecycle
 
 `.tapnap` package generation is strictly user-initiated and on demand. Opening
 the TAP Share sheet only reads lightweight local record state; package resource
@@ -104,8 +162,7 @@ does not disguise an MP4 as a still/live package or pre-generate either form.
 | Central visual stage for RGB, heatmap, mask, planes, internal point projection, region gestures, and plane seed taps | [DepthAnalysisStageView.swift](DepthAnalysisStageView.swift) |
 | Viewer toolbar: bottom-left Share, centered icon-only `RAW` / `2D` / `3D` capsule, and bottom-right Delete shared by Photo and TAP Video | [DepthAnalysisViewerChromeView.swift](DepthAnalysisViewerChromeView.swift), [DepthAnalysisControlsView.swift](DepthAnalysisControlsView.swift) |
 | Shared TAP Share sheet, on-demand package/image/video preparation, temporary-artifact lifecycle, and nested system activity presentation | [DepthAnalysisShareSheet.swift](DepthAnalysisShareSheet.swift), [TAPNAPShareArtifactBuilder.swift](TAPNAPShareArtifactBuilder.swift), [TAPVideoShareArtifactBuilder.swift](TAPVideoShareArtifactBuilder.swift), [VerificationExportActivityView.swift](VerificationExportActivityView.swift) |
-| App Attest capture-signature verification service and public-safe report model | [AppAttestSignatureVerification.swift](AppAttestSignatureVerification.swift) |
-| App Attest capture-signature verification panel | [AppAttestSignatureVerificationPanel.swift](AppAttestSignatureVerificationPanel.swift) |
+| Legacy backend verification service and unmounted panel; not a current TAPCam-owned-capture Viewer route | [AppAttestSignatureVerification.swift](AppAttestSignatureVerification.swift), [AppAttestSignatureVerificationPanel.swift](AppAttestSignatureVerificationPanel.swift) |
 | Field-level panel content adapter for concrete inspector bodies | [DepthAnalysisInspectorPanelContent.swift](DepthAnalysisInspectorPanelContent.swift) |
 | Analysis view-mode model, labels, icons, debug-only mode flag, and explanations | [DepthAnalysisViewMode.swift](DepthAnalysisViewMode.swift) |
 | Public-safe capture metadata summary model and debug-only HUD from manifest payload summary fields | [DepthAnalysisMetadataHUD.swift](DepthAnalysisMetadataHUD.swift) |
@@ -230,15 +287,13 @@ If this module is new to you, read it in this order:
    the centered icon-only `RAW` / `2D` / `3D` capsule. Tool content is rendered
    as the primary centered surface in `DepthAnalysisView`. Share and Delete are
    global actions around the three viewer modes, not additional modes.
-   For the Verify Signature route, read
    [AppAttestSignatureVerification.swift](AppAttestSignatureVerification.swift)
-   for Photos photo loading, local signed-export validation reuse, backend
-   verify submission, and public-safe report text, followed by
+   and
    [AppAttestSignatureVerificationPanel.swift](AppAttestSignatureVerificationPanel.swift)
-   for the SwiftUI panel. The panel shows fixed status steps only; it does not
-   render raw backend URLs, raw request/response JSON, App Attest key IDs,
-   assertion objects, capture IDs, digest values, Photos asset IDs, or pending
-   capture IDs.
+   are legacy, unmounted backend-verification implementation. They do not define
+   an active route for TAPCam-owned captures; removal of redundant owned-capture
+   Verify UX is tracked by `TAP-0014`, while any future external-media Verify
+   flow belongs to `TAP-0022`.
 18. [DepthAnalysisInspectorPanelContent.swift](DepthAnalysisInspectorPanelContent.swift)
    adapts field-level image/depth/stats/selection values into concrete
    inspector bodies. Read it before changing which data an inspector is allowed
@@ -273,33 +328,23 @@ If this module is new to you, read it in this order:
 24. [AnalysisTools/README.md](AnalysisTools/README.md) is the entry point for
    heatmap, mask, plane, and native projection implementations.
 
-## Inspector/HUD Presentation Map
+## Legacy Unmounted UI Code
 
-Use this table before reading the concrete inspector files. It names the
-visible surface, the code owner, the tests that protect the current contract,
-and the evidence that still requires UI or device review.
+The following source remains for focused tests or later cleanup, but none of it
+defines a current TAP Library Viewer route:
 
-Presentation/privacy model tests live in
-[../../TAPCamDemoTests/TAPDepthAnalysisPresentationTests.swift](../../TAPCamDemoTests/TAPDepthAnalysisPresentationTests.swift);
-fixed error-copy and hostile sink guards live in
-[../../TAPCamDemoTests/DepthAnalysisErrorPresentationTests.swift](../../TAPCamDemoTests/DepthAnalysisErrorPresentationTests.swift).
-Signature-verification presentation and service privacy tests live in
-[../../TAPCamDemoTests/TAPAppAttestSignatureVerificationTests.swift](../../TAPCamDemoTests/TAPAppAttestSignatureVerificationTests.swift).
-Selection-state and ViewModel selection-bridge tests live in
-[../../TAPCamDemoTests/TAPDepthAnalysisSelectionTests.swift](../../TAPCamDemoTests/TAPDepthAnalysisSelectionTests.swift).
-Plane geometry, detector, and request-coordinator tests live in
-[../../TAPCamDemoTests/TAPDepthAnalysisPlaneRegionTests.swift](../../TAPCamDemoTests/TAPDepthAnalysisPlaneRegionTests.swift).
+- `AppAttestSignatureVerification.swift` and
+  `AppAttestSignatureVerificationPanel.swift` implement the former proactive
+  backend Verify path. Owned-capture Verify removal is tracked by `TAP-0014`;
+  future external-media Verify, if approved, belongs to `TAP-0022`.
+- `DepthAnalysisPanelControls.swift`, `DepthAnalysisPanelSupport.swift`,
+  `DepthAnalysisInspectorStrip.swift`, `DepthAnalysisPanelLayer.swift`, and the
+  concrete inspector-content files implement the former drawer/inspector
+  presentation. They must not be used as evidence that vertical gestures,
+  detents, or top-level analysis modes remain current UI.
 
-| Surface | Trigger | Owning file | Covered tests | Remaining evidence |
-| --- | --- | --- | --- | --- |
-| DEBUG metadata HUD | A loaded analysis input has a manifest payload and the stage is built in DEBUG | [DepthAnalysisMetadataHUD.swift](DepthAnalysisMetadataHUD.swift) | `TAPDepthAnalysisPresentationTests`: `captureMetadataSummaryRequiresPayload`, `captureMetadataSummaryPublishesExpectedPublicText`, `captureMetadataSummaryOmitsIdentifiersAndLocation`, `captureMetadataSummaryFallsBackForSensitiveManifestDisplayFields`, `captureMetadataSummaryFallsBackForDepthSourceDeviceName` | Visual HUD layout still needs UI regression evidence |
-| Inspector panel adapter | A bottom inspector route is selected | [DepthAnalysisInspectorPanelContent.swift](DepthAnalysisInspectorPanelContent.swift) | `TAPDepthAnalysisPresentationTests`: `analysisViewModesPublishInspectorRoutes`, `analysisPanelDestinationSelectsInspectorsOnly` | Inspector body layout still needs UI regression evidence |
-| Signature verification panel | A saved Photos asset or pending item opens the verification route outside the bottom mode group | [AppAttestSignatureVerification.swift](AppAttestSignatureVerification.swift), [AppAttestSignatureVerificationPanel.swift](AppAttestSignatureVerificationPanel.swift), [TAPVerificationExportBuilder.swift](TAPVerificationExportBuilder.swift), [DepthAnalysisView.swift](DepthAnalysisView.swift) | `TAPAppAttestSignatureVerificationTests`: public backend summary, success/failure visible-text redaction, and panel raw-section source guard. `TAPVerificationExportBuilderTests`: original still export, Live Photo ZIP export, primary-only fallback, MOV mismatch, and sidecar privacy. `TAPDepthAnalysisPresentationTests`: panel destination keeps verification separate from inspector selection. | Real backend acceptance, real Photos asset verification/export, and rendered panel layout still need attended evidence |
-| Adaptive panel height metrics | A panel's measured content height changes | [DepthAnalysisPanelLayer.swift](DepthAnalysisPanelLayer.swift) | `analysisPanelLayoutMetricsUsesOnePointViewportBeforeMeasurement`, `analysisPanelLayoutMetricsFitsShortMeasuredContentWithoutScrolling`, `analysisPanelLayoutMetricsCapsOverflowingContentAndEnablesScrolling`, `analysisPanelLayoutMetricsKeepsMinimumContentHeightForSmallPanels` | Pure metrics only; rendered SwiftUI panel layout and screenshot evidence still need UI regression coverage |
-| Inspector visible errors | Region heatmap or Plane selection fails | [DepthAnalysisErrorPresentation.swift](DepthAnalysisErrorPresentation.swift), [DepthAnalysisInspectorPanelContent.swift](DepthAnalysisInspectorPanelContent.swift) | `depthAnalysisInspectorErrorMessageKeepsRegionHeatmapCopyPublicSafe`, `depthAnalysisInspectorErrorMessageKeepsPlaneSelectionCopyPublicSafe`, `depthAnalysisInspectorViewsDoNotAcceptRawErrorStringSinks` | Real-device unified-log evidence remains separate |
-| Measurements and Region inspectors | A rectangular region is selected outside Planes mode | [DepthAnalysisInspectors.swift](DepthAnalysisInspectors.swift), [DepthAnalysisMeasurementsInspectorContent.swift](DepthAnalysisMeasurementsInspectorContent.swift), [DepthAnalysisRegionInspectorContent.swift](DepthAnalysisRegionInspectorContent.swift) | `TAPDepthAnalysisSelectionTests` covers region clamping, stats, local heatmap, local plane estimate, and ViewModel selection bridge. `TAPDepthAnalysisPresentationTests` covers shared region-stats presentation text. `DepthAnalysisErrorPresentationTests` covers typed public-safe local-heatmap failure text. | Visual measurement rows and loupe layout still need UI evidence |
-| Plane Filter inspector | A Planes seed request is active or has a selected region | [DepthAnalysisPlaneFilterInspectorContent.swift](DepthAnalysisPlaneFilterInspectorContent.swift) | `TAPDepthAnalysisSelectionTests` covers seed, strictness, loading, selected-region, clear, and fixed public-safe failure text. `TAPDepthAnalysisPlaneRegionTests` covers geometry guardrails, detector build/reuse, request-coordinator latest-result, and cache-reuse behavior. | Visual strictness control and plane-result layout still need UI evidence |
-| Legend, Overlay, and internal projection inspectors | View mode exposes legend, overlay, or projection details | [DepthAnalysisLegendInspectorContent.swift](DepthAnalysisLegendInspectorContent.swift), [DepthAnalysisOverlayCloudInspectors.swift](DepthAnalysisOverlayCloudInspectors.swift) | `TAPDepthAnalysisPresentationTests` covers labels, icons, explanations, debug-only mode flags, and per-mode inspector routes | Inspector body layout still needs UI evidence |
+Privacy and model tests for these files protect the code while it exists; they
+do not create a product obligation or an acceptance gap for deprecated UI.
 
 ## Human Acceptance Path
 
@@ -441,9 +486,11 @@ list for attended device or UI checks that code reading alone cannot prove.
    For video, also verify that the poster and loading indicator remain visible
    until the first frame replaces them directly, with no intermediate blank
    frame or full-screen refresh.
-7. Tap Share and verify the sheet shows only whether a valid credential exists
-   in Release UI. Tap Delete and verify Photos deletion uses the system Photos
-   prompt while pending local records are removed through TAPCam storage.
+7. Tap Share and confirm the sheet shows only the persisted credential and
+   verifiability state in Release UI, without starting a backend Verify action.
+   Tap Delete and confirm Photos deletion uses the system Photos prompt, while
+   pending/local-only removal first uses TAPCam's own confirmation and then the
+   Pending Capture Queue storage boundary.
 8. Treat this module as a local reader. It may read pending or saved TAP HEIC or
    JPG photo files, but App Attest proof validation and final export trust
    remain in the capture/output pipeline.
@@ -496,7 +543,12 @@ flowchart TD
     click Projection "AnalysisTools/DepthPointCloudPreview.swift"
 ```
 
-## View Modes
+## Internal Analysis Modes
+
+The state diagram below describes internal analysis/rendering modes. It does
+not define top-level Viewer controls: Release exposes only the `RAW / 2D / 3D`
+capsule, and does not expose separate Heatmap, Overlay, Mask, Planes, or
+projection buttons.
 
 ```mermaid
 stateDiagram-v2

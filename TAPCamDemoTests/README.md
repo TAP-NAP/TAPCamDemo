@@ -724,7 +724,7 @@ Run the production structure gate before the compile/test commands:
 Scripts/lint-tap-video-refactor.sh
 ```
 
-This is a scoped VideoBranchRefactorAudit gate, not a repository-wide style
+This is a scoped TAP Video production-structure gate, not a repository-wide style
 pass. `.swiftlint-tap-video.yml` checks only the production allowlist for
 function bodies over 80 lines or cyclomatic complexity over 10; unit/UI tests,
 Debug fixtures, benchmarks, and resolved remote package sources remain outside its scope.

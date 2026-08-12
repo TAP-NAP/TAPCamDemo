@@ -3,7 +3,7 @@
 `CameraCapture/Output` converts a successful photo-depth capture into the TAP
 depth photo contract. It builds the logical package, constructs the TAP
 manifest, embeds that manifest into an Apple HEIC or JPG photo-depth file, and
-hands the unsigned artifact to TAP Library for signing and export.
+hands the unsigned artifact to the Pending Capture Queue for signing and export.
 
 Output does not talk to Photos directly and does not own retry behavior.
 
@@ -28,7 +28,7 @@ Output does not talk to Photos directly and does not own retry behavior.
 | TAP depth photo XMP injection and HEIC compatibility wrappers | [TAPDepthHEICWriter.swift](TAPDepthHEICWriter.swift) |
 | Photo metadata customization | [TAPPhotoFileMetadataCustomizer.swift](TAPPhotoFileMetadataCustomizer.swift) |
 | App Attest capture digest and signer | [CaptureContentDigest.swift](CaptureContentDigest.swift), [AppAttestCaptureAssertionSigner.swift](AppAttestCaptureAssertionSigner.swift) |
-| Photos writer used by TAP Library | [PhotoLibraryWriter.swift](PhotoLibraryWriter.swift) |
+| Photos writer used by the Pending Capture Queue | [PhotoLibraryWriter.swift](PhotoLibraryWriter.swift) |
 | Shared AVAsset track facts and reader used by recorder, validator, and fixtures | [TAPMediaTrackFacts.swift](TAPMediaTrackFacts.swift), [TAPMediaTrackFactsReader.swift](TAPMediaTrackFactsReader.swift) |
 | TAP Video manifest schema and BMFF box access | [TAPVideoManifestSchema.swift](TAPVideoManifestSchema.swift), [TAPVideoManifestBox.swift](TAPVideoManifestBox.swift) |
 | TAP Video validation facade and staged contract | [TAPVideoDepthTrackValidator.swift](TAPVideoDepthTrackValidator.swift), [TAPVideoDepthValidationContract.swift](TAPVideoDepthValidationContract.swift) |
@@ -139,7 +139,8 @@ provenance writer is the only production file that can mint that trusted wrapper
 
 Live Photo capture adds one optional MOV resource without changing the still
 photo path. If `AVCapturePhotoOutput` delivers the movie complement,
-`CapturePackage` and `PackagedCaptureArtifact` carry it to TAP Library. The
+`CapturePackage` and `PackagedCaptureArtifact` carry it to the Pending Capture
+Queue. The
 manifest switches from `depth-manifest:v1` to `depth-manifest:v2` and records
 `payload.livePhoto`; signing switches from `content-binding:v2` to
 `content-binding:v3` and adds `signedResources` for the primary photo, manifest
@@ -304,7 +305,7 @@ the asset but the Photos round-trip original lost `tapdepth:Manifest`.
 - TAP photo metadata injection must preserve the primary image and Apple
   auxiliary depth attachments without a pixel decode/re-encode step.
 - Capture signing is offline file proofing, not a normal protected API request.
-- Packagers and TAP Library workers should use `TAPCaptureProvenanceWriter`
+- Packagers and Pending Capture Queue workers should use `TAPCaptureProvenanceWriter`
   instead of directly constructing proof-bearing manifests.
 - `manifestByApplyingCaptureAssertion` is the non-throwing shutter-time path;
   `signedPhotoData` is the throwing pending-signing path and requires the
