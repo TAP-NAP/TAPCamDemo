@@ -215,7 +215,7 @@ struct TAPVideoDepthPlaybackPolicyTests {
             to: "    private func preparePlayer("
         ))
         let guardedPublish = try #require(TAPCamDemoTestSourceInspection.substring(
-            in: progressBridge,
+            in: source,
             from: "    private func publishOriginalLoadProgress(",
             to: "    private func preparePlayer("
         ))

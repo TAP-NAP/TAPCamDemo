@@ -245,7 +245,7 @@ struct TAPPhotoOriginalResourceTests {
         )
 
         let result = try TAPPhotoLocalIntegrityValidator(
-            localValidator: TAPVerificationExportLocalValidator(
+            localValidator: TAPSignedPhotoResourceValidator(
                 validateStillPhoto: { data, captureID, profile in
                     #expect(data == photoData)
                     #expect(captureID == "self-described-still")
@@ -312,7 +312,7 @@ struct TAPPhotoOriginalResourceTests {
         )
 
         let result = try TAPPhotoLocalIntegrityValidator(
-            localValidator: TAPVerificationExportLocalValidator(
+            localValidator: TAPSignedPhotoResourceValidator(
                 validateStillPhoto: { _, _, _ in
                     throw TestError.unexpectedRoute
                 },
@@ -407,7 +407,7 @@ struct TAPPhotoOriginalResourceTests {
         let source = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/DepthAnalysis/TAPPhotoOriginalResource.swift"
         )
-        #expect(source.contains("TAPVerificationExportLocalValidator"))
+        #expect(source.contains("TAPSignedPhotoResourceValidator"))
         #expect(!source.contains("AppAttestCaptureSignatureVerifier"))
         #expect(!source.contains("/tapcam/capture-signatures/verify"))
         #expect(!source.contains("hasValidCredential(assetID:"))

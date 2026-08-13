@@ -110,7 +110,12 @@ final class DepthAlbumPickerViewModel: ObservableObject {
     }
 
     func loadForPresentation(lockedImportReason: String? = nil) async {
-        if lockedImportReason == nil, libraryStore.hasUsableSnapshot {
+        // An empty snapshot is usable for startup readiness, but it is not a
+        // durable presentation cache: captures may have arrived since the
+        // prior scan without producing an in-process change notification.
+        if lockedImportReason == nil,
+           libraryStore.hasUsableSnapshot,
+           !libraryStore.items.isEmpty {
             hasLoadedSnapshot = true
             errorMessage = nil
             return

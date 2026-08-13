@@ -209,7 +209,7 @@ class DepthAnalysisShareCoordinator: ObservableObject {
     }
 
     var isPackageAvailable: Bool {
-        subject?.mediaKind == .photo && certificationState == .verified
+        subject?.mediaKind == .photo && certificationState == .localIntegrityPassed
     }
 
     var isImageAvailable: Bool {
@@ -462,7 +462,7 @@ class DepthAnalysisShareCoordinator: ObservableObject {
             preparationState = .failed(option: option)
             return
         }
-        if option == .tapnapPackage, certificationState != .verified {
+        if option == .tapnapPackage, certificationState != .localIntegrityPassed {
             return
         }
 
@@ -502,7 +502,7 @@ class DepthAnalysisShareCoordinator: ObservableObject {
                     }
                     artifact = try await artifactPreparer.prepareImage(
                         request: photoRequest,
-                        requiresSignedPhoto: certificationState == .verified,
+                        requiresSignedPhoto: certificationState == .localIntegrityPassed,
                         progress: progressHandler
                     )
                 case .video:
@@ -511,7 +511,7 @@ class DepthAnalysisShareCoordinator: ObservableObject {
                     }
                     artifact = try await artifactPreparer.prepareVideo(
                         request: videoRequest,
-                        requiresSignedVideo: certificationState == .verified,
+                        requiresSignedVideo: certificationState == .localIntegrityPassed,
                         progress: progressHandler
                     )
                 }
@@ -840,10 +840,10 @@ class DepthAnalysisShareCoordinator: ObservableObject {
             )
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.sharePackaging.info(
-                "tap_share_local_integrity_finished media=\(subject.mediaKind.diagnosticValue, privacy: .public) outcome=verified durationBucket=\(Self.durationBucket(since: validationStartedAt), privacy: .public)"
+                "tap_share_local_integrity_finished media=\(subject.mediaKind.diagnosticValue, privacy: .public) outcome=localIntegrityPassed message=本地完整性检查通过 durationBucket=\(Self.durationBucket(since: validationStartedAt), privacy: .public)"
             )
             #endif
-            return .verified
+            return .localIntegrityPassed
         } catch {
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.sharePackaging.info(
@@ -871,7 +871,7 @@ class DepthAnalysisShareCoordinator: ObservableObject {
         }
         return TAPNAPShareResourceRequest(
             originalResourceLease: resourceLease,
-            hasSignatureEvidence: certificationState == .verified,
+            hasSignatureEvidence: certificationState == .localIntegrityPassed,
             directShareVerifiabilityWarning: directShareVerifiabilityWarning
         )
     }
@@ -886,7 +886,7 @@ class DepthAnalysisShareCoordinator: ObservableObject {
         }
         return TAPVideoShareResourceRequest(
             originalResourceLease: resourceLease,
-            hasSignatureEvidence: certificationState == .verified,
+            hasSignatureEvidence: certificationState == .localIntegrityPassed,
             directShareVerifiabilityWarning: directShareVerifiabilityWarning
         )
     }

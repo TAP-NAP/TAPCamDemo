@@ -236,7 +236,7 @@ struct DepthAnalysisSharePopover: View {
                     availableOptionRow(
                         option: .tapnapPackage,
                         titleKey: "share.option.package.title",
-                        subtitleKey: coordinator.certificationState == .verified
+                        subtitleKey: coordinator.certificationState == .localIntegrityPassed
                             ? "share.option.package.subtitle"
                             : "share.option.package.locked",
                         systemImage: "shippingbox",
@@ -544,7 +544,7 @@ private extension DepthAnalysisShareOption {
 private extension DepthAnalysisShareCertificationState {
     var localizationKey: String.LocalizationValue {
         switch self {
-        case .verified:
+        case .localIntegrityPassed:
             "share.status.verified"
         case .retryPending:
             "share.status.retry"
@@ -555,7 +555,7 @@ private extension DepthAnalysisShareCertificationState {
 
     var systemImage: String {
         switch self {
-        case .verified:
+        case .localIntegrityPassed:
             "checkmark.circle"
         case .retryPending:
             "arrow.clockwise.circle"
@@ -566,7 +566,7 @@ private extension DepthAnalysisShareCertificationState {
 
     var tint: Color {
         switch self {
-        case .verified:
+        case .localIntegrityPassed:
             .green
         case .retryPending:
             .orange

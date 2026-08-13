@@ -393,9 +393,9 @@ nonisolated enum TAPPhotoLocalIntegrityError: Error, Equatable, Sendable {
 /// original held by a Viewer lease. This is a synchronous, local-only gate: it
 /// neither re-signs the capture nor submits an App Attest verification request.
 nonisolated struct TAPPhotoLocalIntegrityValidator: Sendable {
-    private let localValidator: TAPVerificationExportLocalValidator
+    private let localValidator: TAPSignedPhotoResourceValidator
 
-    init(localValidator: TAPVerificationExportLocalValidator = .production) {
+    init(localValidator: TAPSignedPhotoResourceValidator = .production) {
         self.localValidator = localValidator
     }
 

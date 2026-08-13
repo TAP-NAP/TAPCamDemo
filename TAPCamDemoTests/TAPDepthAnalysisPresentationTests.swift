@@ -534,6 +534,12 @@ struct TAPDepthAnalysisPresentationTests {
         let artifactBuilderSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/DepthAnalysis/TAPNAPShareArtifactBuilder.swift"
         )
+        let certificationSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisSharePresentation.swift"
+        )
+        let legacyPanelSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/AppAttestSignatureVerificationPanel.swift"
+        )
 
         #expect(coordinatorSource.contains("case idle"))
         #expect(coordinatorSource.contains("case preparing"))
@@ -546,6 +552,10 @@ struct TAPDepthAnalysisPresentationTests {
         #expect(popoverSource.contains("share.status.verified"))
         #expect(popoverSource.contains("share.status.retry"))
         #expect(popoverSource.contains("share.status.failed"))
+        #expect(certificationSource.contains("case localIntegrityPassed"))
+        #expect(!certificationSource.contains("case verified"))
+        #expect(coordinatorSource.contains("outcome=localIntegrityPassed"))
+        #expect(coordinatorSource.contains("message=本地完整性检查通过"))
         for identifier in [
             "tap.share.selection",
             "tap.share.preparation",
@@ -580,10 +590,13 @@ struct TAPDepthAnalysisPresentationTests {
         #expect(!coordinatorSource.contains("keyId"))
         #expect(!coordinatorSource.contains("signingBinding"))
         #expect(!coordinatorSource.contains("proof"))
-        #expect(!artifactBuilderSource.contains("TAPVerificationExportLocalValidator"))
+        #expect(!artifactBuilderSource.contains("TAPSignedPhotoResourceValidator"))
         #expect(!artifactBuilderSource.contains("TAPDepthPhotoFileReader"))
         #expect(!artifactBuilderSource.contains("validateSignedExportPhoto"))
         #expect(!artifactBuilderSource.contains("hasValidCredential"))
+        #expect(!legacyPanelSource.contains("Export Originals"))
+        #expect(!legacyPanelSource.contains("TAPVerificationExportBuilder"))
+        #expect(!legacyPanelSource.contains("VerificationExportActivityView"))
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))

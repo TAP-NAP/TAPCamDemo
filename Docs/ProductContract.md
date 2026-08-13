@@ -352,6 +352,11 @@ The three public Share credential labels remain `Verified`, `Needs Retry`, and
   the actual bytes. A Photos/iCloud asset must not become `Failed` merely
   because its old Pending Capture Queue record no longer exists.
 
+`Verified` is the approved public label, not the name of a backend-verification
+result. Internal state and diagnostics for that branch must use
+`localIntegrityPassed` / “本地完整性检查通过” semantics so source and telemetry
+cannot imply that the App Attest assertion was independently verified.
+
 Local integrity failure disables `.tapnap`, because TAPCam cannot describe that
 payload as verifiable. Direct image or video sharing remains available with an
 explicit warning that verifiability is not guaranteed. Live Photo `.tapnap`

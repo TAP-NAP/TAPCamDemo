@@ -193,7 +193,7 @@ Verify.
 | Debug-only runtime fixture specification, generator, and harness view | [DiagnosticsSupport/](DiagnosticsSupport/) |
 | Central visual stage for RGB, heatmap, mask, planes, internal point projection, region gestures, and plane seed taps | [DepthAnalysisStageView.swift](DepthAnalysisStageView.swift) |
 | Viewer toolbar: bottom-left Share, centered icon-only `RAW` / `2D` / `3D` capsule, and bottom-right Delete shared by Photo and TAP Video | [DepthAnalysisViewerChromeView.swift](DepthAnalysisViewerChromeView.swift), [DepthAnalysisControlsView.swift](DepthAnalysisControlsView.swift) |
-| Stable Photo/Live Photo/TAP Video Share toolbar leaf, Viewer original owners/leases, local-only content-binding gate, anchored app-owned popover, frozen-subject preparation coordinator, haptic feedback, on-demand package/image/video builders, per-attempt temporary-artifact lease, and subsequent single system activity presentation | [DepthViewerShareControl.swift](DepthViewerShareControl.swift), [TAPPhotoOriginalResource.swift](TAPPhotoOriginalResource.swift), [Playback/TAPVideoPlaybackResourceLoader.swift](Playback/TAPVideoPlaybackResourceLoader.swift), [DepthAnalysisShareOriginalResource.swift](DepthAnalysisShareOriginalResource.swift), [DepthAnalysisSharePopover.swift](DepthAnalysisSharePopover.swift), [DepthAnalysisShareCoordinator.swift](DepthAnalysisShareCoordinator.swift), [DepthAnalysisShareFeedback.swift](DepthAnalysisShareFeedback.swift), [TAPNAPShareArtifactBuilder.swift](TAPNAPShareArtifactBuilder.swift), [TAPVideoShareArtifactBuilder.swift](TAPVideoShareArtifactBuilder.swift), [VerificationExportActivityView.swift](VerificationExportActivityView.swift) |
+| Stable Photo/Live Photo/TAP Video Share toolbar leaf, Viewer original owners/leases, local-only content-binding gate, anchored app-owned popover, frozen-subject preparation coordinator, haptic feedback, on-demand package/image/video builders, per-attempt temporary-artifact lease, and subsequent single system activity presentation | [DepthViewerShareControl.swift](DepthViewerShareControl.swift), [TAPPhotoOriginalResource.swift](TAPPhotoOriginalResource.swift), [Playback/TAPVideoPlaybackResourceLoader.swift](Playback/TAPVideoPlaybackResourceLoader.swift), [DepthAnalysisShareOriginalResource.swift](DepthAnalysisShareOriginalResource.swift), [DepthAnalysisSharePopover.swift](DepthAnalysisSharePopover.swift), [DepthAnalysisShareCoordinator.swift](DepthAnalysisShareCoordinator.swift), [DepthAnalysisShareFeedback.swift](DepthAnalysisShareFeedback.swift), [TAPShareIntegritySupport.swift](TAPShareIntegritySupport.swift), [TAPNAPShareArtifactBuilder.swift](TAPNAPShareArtifactBuilder.swift), [TAPVideoShareArtifactBuilder.swift](TAPVideoShareArtifactBuilder.swift), [VerificationExportActivityView.swift](VerificationExportActivityView.swift) |
 | Legacy backend verification service and unmounted panel; not a current TAPCam-owned-capture Viewer route | [AppAttestSignatureVerification.swift](AppAttestSignatureVerification.swift), [AppAttestSignatureVerificationPanel.swift](AppAttestSignatureVerificationPanel.swift) |
 | Field-level panel content adapter for concrete inspector bodies | [DepthAnalysisInspectorPanelContent.swift](DepthAnalysisInspectorPanelContent.swift) |
 | Analysis view-mode model, labels, icons, debug-only mode flag, and explanations | [DepthAnalysisViewMode.swift](DepthAnalysisViewMode.swift) |
@@ -368,8 +368,10 @@ defines a current TAP Library Viewer route:
 
 - `AppAttestSignatureVerification.swift` and
   `AppAttestSignatureVerificationPanel.swift` implement the former proactive
-  backend Verify path. Owned-capture Verify removal is tracked by `TAP-0014`;
-  future external-media Verify, if approved, belongs to `TAP-0022`.
+  backend Verify path. The unmounted panel has no export action; the removed
+  legacy `tapcam-live-photo-verification.zip` builder must not be restored.
+  Owned-capture Verify removal is tracked by `TAP-0014`; future external-media
+  Verify, if approved, belongs to `TAP-0022`.
 - `DepthAnalysisPanelControls.swift`, `DepthAnalysisPanelSupport.swift`,
   `DepthAnalysisInspectorStrip.swift`, `DepthAnalysisPanelLayer.swift`, and the
   concrete inspector-content files implement the former drawer/inspector

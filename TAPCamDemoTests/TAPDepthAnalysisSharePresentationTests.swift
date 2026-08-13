@@ -188,7 +188,7 @@ struct TAPDepthAnalysisSharePresentationTests {
         let sources = [shareIntegritySource, photoIntegritySource, videoIntegritySource]
 
         #expect(shareIntegritySource.contains("DepthAnalysisShareLocalIntegrityValidator"))
-        #expect(photoIntegritySource.contains("TAPVerificationExportLocalValidator"))
+        #expect(photoIntegritySource.contains("TAPSignedPhotoResourceValidator"))
         #expect(videoIntegritySource.contains("validateSignedExportVideoFile"))
         for source in sources {
             #expect(!source.contains("AppAttestCaptureSignatureVerifier"))
@@ -262,7 +262,7 @@ struct TAPDepthAnalysisSharePresentationTests {
         #expect(model.isPopoverPresented)
         await model.refreshCertification()
 
-        #expect(model.certificationState == .verified)
+        #expect(model.certificationState == .localIntegrityPassed)
         #expect(model.isPackageAvailable)
         #expect(model.isImageAvailable)
         #expect(await invocationRecorder.count() == 1)
@@ -298,7 +298,7 @@ struct TAPDepthAnalysisSharePresentationTests {
         )
 
         await model.refreshCertification()
-        #expect(model.certificationState == .verified)
+        #expect(model.certificationState == .localIntegrityPassed)
         #expect(await invocationRecorder.count() == 1)
 
         model.scheduleCertificationRefresh(
@@ -308,7 +308,7 @@ struct TAPDepthAnalysisSharePresentationTests {
             await Task.yield()
         }
 
-        #expect(model.certificationState == .verified)
+        #expect(model.certificationState == .localIntegrityPassed)
         #expect(await invocationRecorder.count() == 1)
     }
 
@@ -383,7 +383,7 @@ struct TAPDepthAnalysisSharePresentationTests {
 
         await model.refreshCertification()
 
-        #expect(model.certificationState == .verified)
+        #expect(model.certificationState == .localIntegrityPassed)
         #expect(await invocationRecorder.count() == 1)
         #expect(await invocationRecorder.lastExpectedCaptureID() == record.captureID)
     }
@@ -629,7 +629,7 @@ struct TAPDepthAnalysisSharePresentationTests {
             await Task.yield()
         }
 
-        #expect(model.certificationState == .verified)
+        #expect(model.certificationState == .localIntegrityPassed)
         #expect(await invocationRecorder.count() == 1)
     }
 
@@ -682,11 +682,11 @@ struct TAPDepthAnalysisSharePresentationTests {
             )
         )
         model.popoverDidAppear()
-        for _ in 0..<100 where model.certificationState != .verified {
+        for _ in 0..<100 where model.certificationState != .localIntegrityPassed {
             await Task.yield()
         }
         #expect(model.subject?.id == secondSubject.id)
-        #expect(model.certificationState == .verified)
+        #expect(model.certificationState == .localIntegrityPassed)
 
         await gate.releaseFirstValidationAsMismatch()
         for _ in 0..<30 {
@@ -694,7 +694,7 @@ struct TAPDepthAnalysisSharePresentationTests {
         }
 
         #expect(model.subject?.id == secondSubject.id)
-        #expect(model.certificationState == .verified)
+        #expect(model.certificationState == .localIntegrityPassed)
         #expect(await gate.invocationCount() == 2)
     }
 
@@ -937,7 +937,7 @@ struct TAPDepthAnalysisSharePresentationTests {
         )
 
         await model.refreshCertification()
-        #expect(model.certificationState == .verified)
+        #expect(model.certificationState == .localIntegrityPassed)
         #expect(await invocationRecorder.count() == 1)
 
         model.scheduleCertificationRefresh(
@@ -947,7 +947,7 @@ struct TAPDepthAnalysisSharePresentationTests {
             await Task.yield()
         }
 
-        #expect(model.certificationState == .verified)
+        #expect(model.certificationState == .localIntegrityPassed)
         #expect(await invocationRecorder.count() == 1)
     }
 
@@ -1315,7 +1315,7 @@ struct TAPDepthAnalysisSharePresentationTests {
         #expect(model.certificationState == .retryPending)
         await gate.releaseArtifact()
         for _ in 0..<100 where model.isPopoverPresented {
-            await Task.yield()
+            try await Task.sleep(for: .milliseconds(10))
         }
         model.popoverDidDisappear()
 
@@ -1915,7 +1915,7 @@ struct TAPDepthAnalysisSharePresentationTests {
     }
 
     @MainActor
-    @Test func systemHandoffProgressStaysVisibleForItsMinimumDuration() async throws {
+    @Test func systemHandoffWaitsForMinimumProgressThenDismissalCleansImmediately() async throws {
         let record = TAPCamDemoTestFixtures.samplePendingRecord(
             captureID: "activity-progress-hold",
             capturedAt: Date(timeIntervalSince1970: 1_750_000_000),
@@ -1989,15 +1989,6 @@ struct TAPDepthAnalysisSharePresentationTests {
         #expect(model.activityPresentation?.controller === preconstructedActivityController)
 
         model.activitySheetDidDismiss()
-        #expect(model.hasActiveActivityPresentation)
-        #expect(FileManager.default.fileExists(atPath: artifactDirectoryURL.path))
-        try await Task.sleep(for: .milliseconds(100))
-        #expect(model.hasActiveActivityPresentation)
-        #expect(FileManager.default.fileExists(atPath: artifactDirectoryURL.path))
-
-        for _ in 0..<40 where model.hasActiveActivityPresentation {
-            try await Task.sleep(for: .milliseconds(10))
-        }
         #expect(!model.hasActiveActivityPresentation)
         #expect(!FileManager.default.fileExists(atPath: artifactDirectoryURL.path))
         #expect(!model.isPreparationProgressVisible)

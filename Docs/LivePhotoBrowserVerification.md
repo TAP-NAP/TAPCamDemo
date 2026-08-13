@@ -77,8 +77,8 @@ The resources correspond through two layers:
   `proof.value.contentDigest.signedResources` binds the primary photo, manifest
   payload, and paired MOV bytes into one signed content digest.
 
-The TAP verifier must trust the TAP hash chain, not the ZIP sidecar, filenames
-alone, decoded pixels, or platform Live Photo playback state.
+The TAP verifier must trust the TAP hash chain, not the package sidecar,
+filenames alone, decoded pixels, or platform Live Photo playback state.
 
 ```mermaid
 flowchart TD
@@ -200,22 +200,28 @@ It must not use Photos' generic share/export surface, because that surface may
 render edits, change compatibility format, or drop the Live Photo movie for
 targets that do not support Live Photos.
 
-For still-photo captures, TAPCam exports the original Photos `.photo` resource
-as one HEIC or JPG file. For Live Photo captures with a complete original
-paired movie, TAPCam exports one ZIP package:
+The current public verification transport is the TAP Share `TAPNAP Package`
+option. TAPCam emits a `.tapnap` file for both still photos and complete Live
+Photos; direct HEIC/JPG sharing is a separate ordinary-media option. A Live
+Photo package has this byte-preserving layout:
 
 ```text
-tapcam-live-photo-verification.zip
+TAPNAP-Capture.tapnap
 ├── primary-photo.heic   or primary-photo.jpg
 ├── paired-video.mov
 └── tapcam-export.json
 ```
 
-The ZIP is a transport container only. It is written without media
-re-encoding, and browser verification must not trust the ZIP container or the
-sidecar as signature evidence. The verifier must read `primary-photo.*`, parse
-the embedded TAP proof, and then hash `paired-video.mov` against
-`proof.value.contentDigest.signedResources`.
+`.tapnap` is a ZIP-compatible transport container only. It is written without
+media re-encoding or entry compression, and browser verification must not trust
+the archive container or sidecar as signature evidence. The verifier must read
+`primary-photo.*`, parse the embedded TAP proof, and then hash
+`paired-video.mov` against `proof.value.contentDigest.signedResources`.
+
+`tapcam-live-photo-verification.zip` is a legacy input filename. A verifier may
+continue accepting that byte-compatible historical package, but TAPCam must not
+emit it or present `.zip` as a current user-facing output. Legacy acceptance
+does not change any proof, resource-role, hashing, or trust rule.
 
 `tapcam-export.json` is intentionally minimal and unsigned. It may contain only
 the export schema/version, package kind, resource roles, filenames, media
@@ -288,7 +294,9 @@ CLI as long as it receives byte-preserving inputs.
 
 Required support:
 
-- Accept TAPCam's verification ZIP as the user-facing Live Photo transport.
+- Accept TAPCam's `.tapnap` package as the current user-facing Live Photo
+  transport, and accept `tapcam-live-photo-verification.zip` only as legacy
+  input.
 - Preserve entry bytes exactly when reading `primary-photo.*` and
   `paired-video.mov`.
 - Parse the TAP manifest and proof slot from HEIC/BMFF or JPEG bytes without
@@ -303,7 +311,8 @@ Supported input modes:
 
 | Platform / source | Required behavior |
 | --- | --- |
-| TAPCam in-app export ZIP | Primary supported path. Unzip, verify primary photo, then verify paired MOV. |
+| TAPCam `.tapnap` package | Current primary path. Read the ZIP-compatible entries, verify the primary photo, then verify the paired MOV. |
+| Legacy `tapcam-live-photo-verification.zip` | Backward-compatible input only. Apply the same byte and trust rules; never describe it as current TAPCam output. |
 | Developer fixture with separate photo and MOV | Supported for tests if the MOV is explicitly selected as the paired resource. |
 | Single HEIC/JPG still photo | Supported only for v1/v2 still-photo contracts. If the embedded manifest is Live Photo v2, report missing MOV. |
 | Generic share, AirDrop, social app export, or platform "compatible" export | Not a stable verification source. These paths may transcode, compress, drop resources, or export presentation edits. |
@@ -322,8 +331,8 @@ The browser verifier needs these implementation tools:
 
 | Need | Browser-side tool |
 | --- | --- |
-| Read user-selected photo, MOV, or ZIP bytes | File input / drag-drop plus `Blob.arrayBuffer()` |
-| Unpack TAPCam Live Photo verification ZIPs | ZIP reader that preserves entry bytes; trust only the embedded TAP proof after unpacking |
+| Read user-selected photo, MOV, `.tapnap`, or legacy ZIP bytes | File input / drag-drop plus `Blob.arrayBuffer()` |
+| Unpack current `.tapnap` and legacy Live Photo ZIP inputs | ZIP reader that preserves entry bytes; trust only the embedded TAP proof after unpacking |
 | Parse binary containers | TAP-owned HEIC/BMFF and JPEG byte parsers, preferably in the existing Rust/WASM verifier path |
 | Locate and validate the TAP proof slot | Extend `Tools/ContentBindingVerifier/tap-content-binding.mjs` rules or port the same rules into WASM |
 | Parse TAP XMP manifest | TAP-owned XMP extraction for JPEG APP1 and HEIC/BMFF metadata, then JSON parse the `tapdepth:Manifest` value |
@@ -379,9 +388,10 @@ binding schema itself.
 Implementation belongs in the TAPCamVerifier repository. TAPCamDemo only
 publishes the artifact contract and fixtures/spec expectations.
 
-- Accept either a single still-photo file or a TAPCam Live Photo verification
-  ZIP. Raw photo-plus-MOV pairs may remain a developer fixture path, but the
-  user-facing Live Photo transport is the ZIP package.
+- Accept either a single still-photo file, a current TAPCam `.tapnap` package,
+  or the explicitly legacy `tapcam-live-photo-verification.zip` input. Raw
+  photo-plus-MOV pairs may remain a developer fixture path, but the current
+  user-facing Live Photo transport is `.tapnap`.
 - Keep the visible verifier simple: file selection or drag-drop should start
   verification directly.
 - Preserve the current server split:

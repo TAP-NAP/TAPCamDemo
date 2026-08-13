@@ -168,7 +168,7 @@ struct TAPNAPShareArtifactBuilderTests {
         )
         let sidecarJSON = try #require(String(data: sidecarData, encoding: .utf8))
         #expect(sidecar.schemaID == "urn:tapnap:tapcam:verification-export:v1")
-        #expect(sidecar.packageKind == TAPVerificationExport.Kind.stillPhoto.rawValue)
+        #expect(sidecar.packageKind == TAPVerificationPackageKind.stillPhoto.rawValue)
         #expect(sidecar.resources.map(\.role) == ["primaryPhoto"])
         for forbidden in [
             "captureID", "keyId", "keyID", "assertionObject", "bodySHA256", "proof", "hash"
@@ -256,7 +256,7 @@ struct TAPNAPShareArtifactBuilderTests {
             TAPVerificationExportSidecar.self,
             from: Data(contentsOf: extractedDirectoryURL.appendingPathComponent("tapcam-export.json"))
         )
-        #expect(sidecar.packageKind == TAPVerificationExport.Kind.livePhotoPackage.rawValue)
+        #expect(sidecar.packageKind == TAPVerificationPackageKind.livePhotoPackage.rawValue)
         #expect(sidecar.resources.map(\.role) == ["primaryPhoto", "pairedLivePhotoVideo"])
     }
 

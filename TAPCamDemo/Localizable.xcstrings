@@ -1208,36 +1208,6 @@
         }
       }
     },
-    "Export failed" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "导出失败"
-          }
-        }
-      }
-    },
-    "Export Originals" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "导出原始文件"
-          }
-        }
-      }
-    },
-    "Exports original signed resources for local or browser verification." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "导出原始签名资源，以便在本机或浏览器中验证。"
-          }
-        }
-      }
-    },
     "Exposure compensation %@" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -3014,16 +2984,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在准备拍摄会话…"
-          }
-        }
-      }
-    },
-    "Preparing export..." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在准备导出…"
           }
         }
       }

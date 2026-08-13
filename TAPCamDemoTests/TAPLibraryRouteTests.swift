@@ -397,7 +397,7 @@ struct TAPLibraryRouteTests {
         #expect(!cellSource.contains("displayedPoster?.image"))
         #expect(cellSource.contains("await DepthAlbumThumbnailDecoder.shared"))
         #expect(cellSource.contains("thumbnailTaskID == cacheKey"))
-        #expect(pipelineSource.contains("Task.detached(priority: .utility)"))
+        #expect(pipelineSource.contains(".detached(priority: .utility)"))
         #expect(pipelineSource.contains("await MainActor.run"))
         #expect(pipelineSource.contains("kCGImageSourceShouldCacheImmediately: true"))
         #expect(pipelineSource.contains("func insert(_ decodedThumbnail: DepthAlbumDecodedThumbnail)"))

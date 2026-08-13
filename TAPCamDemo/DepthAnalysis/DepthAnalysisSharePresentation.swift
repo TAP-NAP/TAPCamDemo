@@ -114,14 +114,15 @@ nonisolated struct DepthAnalysisShareSubject: Identifiable, Equatable, Sendable 
     }
 }
 
-/// Product-facing owned-capture Share state. The public `verified` result is
-/// emitted only after the frozen Viewer original matches its embedded digest
-/// and signing binding. This is byte-integrity, not independent App Attest
-/// assertion-signature verification; the queue-only policy below classifies
-/// whether pending bytes are eligible for the check and never contacts a
-/// backend.
+/// Product-facing owned-capture Share state. The internal
+/// `localIntegrityPassed` result is emitted only after the frozen Viewer
+/// original matches its embedded digest and signing binding. The UI may map
+/// that result to the approved `Verified` label, but the state itself means
+/// byte integrity only—not independent App Attest assertion-signature
+/// verification. The queue-only policy below classifies whether pending bytes
+/// are eligible for the check and never contacts a backend.
 nonisolated enum DepthAnalysisShareCertificationState: String, Equatable, Sendable {
-    case verified
+    case localIntegrityPassed
     case retryPending
     case failed
 }

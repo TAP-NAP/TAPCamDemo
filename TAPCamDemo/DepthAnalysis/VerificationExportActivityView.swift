@@ -8,30 +8,6 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
-/// Presentation-only metadata for the explicit verification-export panel.
-/// TAP Share never constructs this merely to open its format selector.
-nonisolated struct DepthAnalysisShareFileInfo: Equatable {
-    let fileName: String
-    let kind: String
-    let fileSize: String
-    let warnings: [String]
-
-    init(export: TAPVerificationExport, fileManager: FileManager = .default) {
-        fileName = export.fileURL.lastPathComponent
-        kind = export.kind.displayName
-        fileSize = Self.fileSizeText(for: export.fileURL, fileManager: fileManager)
-        warnings = export.warnings
-    }
-
-    private static func fileSizeText(for fileURL: URL, fileManager: FileManager) -> String {
-        guard let attributes = try? fileManager.attributesOfItem(atPath: fileURL.path),
-              let value = attributes[.size] as? NSNumber else {
-            return "Unknown"
-        }
-        return ByteCountFormatter.string(fromByteCount: value.int64Value, countStyle: .file)
-    }
-}
-
 struct VerificationExportActivityView: UIViewControllerRepresentable {
     let activityItems: [Any]
     private let retainedShareArtifact: TAPNAPShareArtifact?

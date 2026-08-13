@@ -679,8 +679,8 @@ nonisolated struct TAPNAPShareArtifactBuilder: Sendable {
         }
         let sidecar = TAPVerificationExportSidecar(
             packageKind: expectsPairedVideo
-                ? TAPVerificationExport.Kind.livePhotoPackage.rawValue
-                : TAPVerificationExport.Kind.stillPhoto.rawValue,
+                ? TAPVerificationPackageKind.livePhotoPackage.rawValue
+                : TAPVerificationPackageKind.stillPhoto.rawValue,
             resources: sidecarResources,
             warningLabels: warningLabels,
             warnings: warnings
