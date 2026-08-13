@@ -1,0 +1,198 @@
+{
+  "schemaVersion": 1,
+  "revision": "TAP-0081-r2-TAP-0009-r1-candidate",
+  "baseRevision": "TAP-0081-r1",
+  "kind": "lightweight-interactive-visual-contract",
+  "implementation": "static-html-css-javascript",
+  "taskIds": ["TAP-0006", "TAP-0009", "TAP-0081"],
+  "contracts": [
+    "Docs/ProductContract.md §2.4",
+    "Docs/ProductContract.md §5.2",
+    "Docs/ProductContract.md §5.3",
+    "Docs/ProductContract.md §6",
+    "Docs/ProductContract.md §9",
+    "Docs/UIPrototypeContract.md §1-5"
+  ],
+  "viewport": { "cssWidth": 393, "cssHeight": 852, "deviceFrame": "generic iPhone review frame" },
+  "coveredMedia": ["photo", "livePhoto", "video"],
+  "coveredFirstInstallStates": ["resourcePreparing", "cameraReadyCatalogPending", "catalogReadyCameraPending", "cameraAndCatalogReadyHandoff"],
+  "firstInstallInitializationBoundary": {
+    "trigger": "first launch after fresh installation, reinstallation, or app update; skipped by ordinary subsequent launches for the same installed version",
+    "waitsFor": ["camera interactive readiness including real first preview frame", "first usable TAP Library catalog metadata snapshot including an empty snapshot"],
+    "neverWaitsFor": ["TAP Share preparation or prewarming", "iCloud originals", "all thumbnail decoding", "media hashing", "ZIP generation", "system activity prewarming", "App Attest network work", "Pending Capture Queue batch processing"],
+    "visualSource": "restored CameraInitialReadinessOverlayView and historical first-launch startup loading state",
+    "approvalStatus": "ownerApproved",
+    "failurePresentation": "none; abnormal noncompletion is an engineering defect reported through low-cardinality developer diagnostics while the stable initialization UI remains visible",
+    "retryAction": false,
+    "degradedContinuation": false,
+    "ownerApproval": {
+      "approvedAt": "2026-08-13",
+      "ownerStatement": "原型我检查了 没有问题"
+    }
+  },
+  "slices": {
+    "tapShare": {
+      "taskID": "TAP-0081",
+      "revision": "TAP-0081-r2-candidate",
+      "stateFixture": "states/tap-share-local-integrity.json",
+      "approvalStatus": "ownerApproved",
+      "approvedAt": "2026-08-13",
+      "ownerStatement": "已确认没有问题 请继续实施 Swift UI"
+    },
+    "firstInstallResourceInitialization": {
+      "taskID": "TAP-0009",
+      "revision": "TAP-0009-r1-candidate",
+      "stateFixture": "states/first-install-resource-initialization.json",
+      "approvalStatus": "ownerApproved",
+      "approvedAt": "2026-08-13",
+      "ownerStatement": "原型我检查了 没有问题",
+      "evidence": ["design-qa.md"]
+    }
+  },
+  "stateFixtures": ["states/tap-share-local-integrity.json", "states/first-install-resource-initialization.json"],
+  "coveredResourceStates": ["localReady", "iCloudLoading", "iCloudReady", "iCloudUnavailable", "privateQueue"],
+  "coveredCredentialStates": ["verified", "retryPending", "failed"],
+  "coveredIntegrityStates": ["textFreeResolvingSkeleton", "passed", "mismatch"],
+  "coveredInteractionStates": [
+    "viewerClosed",
+    "viewerOriginalReadyShareEnabled",
+    "viewerICloudLoadingWithProgressShareDisabled",
+    "viewerICloudUnavailableShareDisabled",
+    "localIntegrityCheckingWithoutPublicCredentialLabel",
+    "anchoredSelection",
+    "failedIntegrityTapnapDisabledOrdinaryMediaWarned",
+    "needsRetryFromPrivateQueueOnly",
+    "hiddenFastPreparation0To50ms",
+    "visiblePreparationAfter50ms",
+    "thresholdCompletion120msWith400msMinimumVisibleHold",
+    "monotonicProgress",
+    "completed100PercentMinimum400ms",
+    "cancelToSelection",
+    "recoverableFailure",
+    "retrySameOption",
+    "beforeSystemActivityBoundary",
+    "afterSystemActivityDismissal"
+  ],
+  "policy": {
+    "progressRevealDelayMs": 50,
+    "minimumVisibleDurationMs": 400,
+    "persistentShareCache": false,
+    "packagePreGeneration": false,
+    "backendVerifyDuringShare": false,
+    "appAttestVerifyDuringShare": false,
+    "needsRetrySource": "pendingCaptureQueueOnly",
+    "missingExportedQueueRecordIsFailure": false
+  },
+  "geometryInheritance": {
+    "baseRevision": "TAP-0081-r1",
+    "unchanged": [
+      "device frame and 393 x 852 content viewport",
+      "Viewer toolbar and RAW / 2D / 3D capsule",
+      "Share control size and position",
+      "anchored popover left, bottom, width, radius, and caret",
+      "selection and preparation row geometry"
+    ]
+  },
+  "viewerToolbarVisualSpec": {
+    "authority": "owner-selected TAP-0081-r1 prototype geometry; explicitly reaffirmed for native replacement on 2026-08-13",
+    "coordinateSpace": "393 x 852 CSS px Viewer content viewport",
+    "toolbar": {
+      "sideInsetPx": 16,
+      "bottomInsetPx": 25,
+      "modeCapsuleWidthPx": 140,
+      "layout": "42 px Share circle, compact 140 px centered mode capsule, 42 px Delete circle with equal flexible gaps"
+    },
+    "roundControl": {
+      "diameterPx": 42,
+      "backReferenceDiameterPx": 42,
+      "shape": "circle",
+      "iconBoxPx": 20,
+      "iconBoxCenterOffsetPx": { "x": 0, "y": 0 },
+      "concentricity": "the 20 x 20 icon box center and 42 x 42 circular background center are identical; Share and Delete match the Back control diameter"
+    },
+    "share": {
+      "iconIdentity": "share-network",
+      "assetPath": "assets/icons/share-network.svg",
+      "assetSha256": "e6923db3591f797c89c36671aad3e20effd7b06e6eb400b2a7ffb6daaed0474a",
+      "nativeRepresentation": "template-rendered vector asset; do not substitute square.and.arrow.up",
+      "cssOpticalTranslationPx": { "x": 0, "y": 0 },
+      "intrinsicArtworkBoundsIn256ViewBox": { "minX": 24, "minY": 16, "maxX": 216, "maxY": 240 },
+      "intrinsicArtworkCenterOffsetAt20Px": { "x": -0.625, "y": 0 },
+      "note": "The zero CSS translation intentionally preserves the owner-approved prototype rendering, including the vector artwork's intrinsic leftward optical balance."
+    },
+    "delete": {
+      "iconIdentity": "trash",
+      "assetPath": "assets/icons/trash.svg",
+      "assetSha256": "e6a830c0409f9e101e3695c981eef98427d39fd01f502b9cbd6900930b01f19c",
+      "nativeRepresentation": "template-rendered vector asset; do not substitute an independently sized SF Symbol",
+      "cssOpticalTranslationPx": { "x": 0, "y": 0 },
+      "intrinsicArtworkBoundsIn256ViewBox": { "minX": 32, "minY": 16, "maxX": 224, "maxY": 224 },
+      "intrinsicArtworkCenterOffsetAt20Px": { "x": 0, "y": -0.625 },
+      "note": "The zero CSS translation intentionally preserves the owner-approved prototype rendering, including the vector artwork's intrinsic upward optical balance."
+    }
+  },
+  "nativeSymbolIntent": {
+    "credentialVerified": "checkmark.circle",
+    "tapnapPackage": "shippingbox",
+    "image": "photo.on.rectangle",
+    "sticker": "face.smiling",
+    "link": "link"
+  },
+  "referenceAssets": [
+    {
+      "path": "assets/references/tap-share-format-selection.png",
+      "sha256": "508f6579694a2ff0ed1ecb02f9d39c5f615c43ffe7a943f696d5af7174934d99",
+      "ownerDecision": "selected visual direction"
+    },
+    {
+      "path": "assets/references/tap-share-preparing.png",
+      "sha256": "1935a2bd5264e4e6f2af00a68686937001c7132c48917be04f2eb333c4c91b50",
+      "ownerDecision": "approved preparation visual direction"
+    }
+  ],
+  "fixtureAssets": [
+    {
+      "path": "assets/media/rainy-street-viewer-fixture.png",
+      "sha256": "84970451e1e1324fefdc8fca8f57f8bf012efe17c888f31d449d05a89e5bc52f",
+      "role": "prototype-only media fixture without baked UI",
+      "approvalBoundary": "not a product image approval source"
+    }
+  ],
+  "evidence": [
+    "design-qa.md",
+    "evidence/TAP-0081-r2-candidate-resource-loading-full.png",
+    "evidence/TAP-0081-r2-candidate-integrity-checking-full.png",
+    "evidence/TAP-0081-r2-candidate-failed-integrity-full.png",
+    "evidence/TAP-0081-r2-candidate-resource-comparison.png",
+    "evidence/TAP-0081-r2-candidate-integrity-comparison.png",
+    "evidence/TAP-0081-r2-candidate-selection-comparison.png"
+  ],
+  "deliberateNativeDifferences": [
+    "The Web prototype does not imitate UIActivityViewController, AirDrop targets, or third-party destinations.",
+    "The Viewer toolbar uses the exact recorded share-network and trash template vectors; other HTML icons remain optical analogues whose recorded SF Symbol identities apply only to their native rows.",
+    "The generic review frame is a viewport aid and not physical-device evidence.",
+    "The iCloud progress and local-integrity fixtures simulate visible states only; they do not download, hash, parse proof data, or establish a credential verdict.",
+    "Haptics, PhotoKit, AVPlayer, signing, ZIP generation, cancellation at the resource layer, and temporary-file cleanup require native tests."
+  ],
+  "outOfScope": ["TAP Video tapnap transport", "3D Sticker implementation", "Share Link implementation", "backend", "membership", "billing", "external Verify", "real iCloud transfer", "real local cryptographic work"],
+  "approval": {
+    "status": "ownerApproved",
+    "owner": "product owner",
+    "approvedAt": "2026-08-13",
+    "approvedRevision": "TAP-0081-r2-TAP-0009-r1-candidate",
+    "candidateRevision": "TAP-0081-r2-TAP-0009-r1-candidate",
+    "behaviorAuthority": {
+      "status": "ownerApproved",
+      "recordedAt": "2026-08-13",
+      "scope": "Viewer original readiness gates Share; ready originals receive local integrity checking without backend Verify; Failed disables TAPNAP while ordinary media remains available with an explicit unverifiability warning; Needs Retry is queue-only."
+    },
+    "baseRevisionApproval": {
+      "status": "ownerApproved",
+      "revision": "TAP-0081-r1",
+      "approvedAt": "2026-08-12",
+      "ownerStatement": "我觉得 web 模拟流程是合理的 请开始实现"
+    },
+    "sourceCommit": null,
+    "sourceCommitNote": "The product owner approved both exact slices before their first repository commit. The sourceCommit field is synchronized immediately after the visual files are frozen in Git."
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "revision": "TAP-0081-r2-candidate",
+  "resourceStates": {
+    "localReady": {
+      "shareEnabled": true,
+      "viewerLoadingVisible": false,
+      "credentialSource": "localIntegrity"
+    },
+    "iCloudLoading": {
+      "shareEnabled": false,
+      "viewerLoadingVisible": true,
+      "progress": 0.64,
+      "credentialState": null
+    },
+    "iCloudReady": {
+      "shareEnabled": true,
+      "viewerLoadingVisible": false,
+      "credentialSource": "localIntegrity"
+    },
+    "iCloudUnavailable": {
+      "shareEnabled": false,
+      "viewerLoadingVisible": true,
+      "credentialState": null
+    },
+    "privateQueue": {
+      "shareEnabled": true,
+      "viewerLoadingVisible": false,
+      "credentialSource": "pendingCaptureQueue"
+    }
+  },
+  "credentialStates": {
+    "verified": {
+      "source": "readyOriginalPassedLocalIntegrity",
+      "tapnapEnabledForStillAndLivePhoto": true
+    },
+    "retryPending": {
+      "source": "pendingCaptureQueueOnly",
+      "tapnapEnabled": false
+    },
+    "failed": {
+      "source": "localIntegrityMismatchOrTerminalQueueFailure",
+      "tapnapEnabled": false,
+      "ordinaryMediaEnabled": true,
+      "ordinaryMediaWarning": "无法保证可验证性"
+    }
+  },
+  "integrityStates": {
+    "checking": {
+      "visiblePresentation": "textFreeSkeleton",
+      "publicCredentialLabel": null
+    },
+    "passed": {
+      "publicCredentialLabel": "verified"
+    },
+    "mismatch": {
+      "publicCredentialLabel": "failed"
+    }
+  },
+  "trustBoundary": {
+    "backendVerifyAllowed": false,
+    "appAttestVerifyAllowed": false,
+    "packagePreGenerationAllowed": false,
+    "persistentShareCacheAllowed": false
+  },
+  "transitions": [
+    "iCloudLoading -> iCloudReady -> shareEnabled",
+    "readyOriginal -> integrityChecking -> verified|failed",
+    "privateQueueUnsigned -> retryPending",
+    "failed -> tapnapDisabled + ordinaryMediaEnabledWithWarning",
+    "verified + formatSelection -> hiddenFast|visiblePreparation -> systemBoundary"
+  ]
+}

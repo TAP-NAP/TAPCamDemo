@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "revision": "TAP-0009-r1-candidate",
+  "trigger": "first launch after fresh installation, reinstallation, or app update; ordinary subsequent launches skip this state",
+  "publicCopy": {
+    "zh-Hans": { "title": "资源初始化", "subtitle": "请等待…" },
+    "en": { "title": "Resource Initialization", "subtitle": "Please wait…" }
+  },
+  "readinessGroups": {
+    "camera": [
+      "capture graph and required path ready",
+      "real first preview frame presented",
+      "primary controls and shutter safe",
+      "required first-interaction haptics prepared"
+    ],
+    "library": [
+      "first usable identity and order metadata snapshot, including an empty snapshot"
+    ]
+  },
+  "fixtures": {
+    "preparing": { "camera": "loading", "library": "loading", "advances": false },
+    "cameraReadyCatalogPending": { "camera": "ready", "library": "loading", "advances": false },
+    "catalogReadyCameraPending": { "camera": "loading", "library": "ready", "advances": false },
+    "readyHandoff": { "camera": "ready", "library": "ready", "advances": true }
+  },
+  "neverBlocksOn": [
+    "iCloud originals",
+    "all thumbnail decoding",
+    "media hashing",
+    "ZIP generation",
+    "system activity prewarming",
+    "App Attest network work",
+    "Pending Capture Queue batch processing"
+  ],
+  "invariantPolicy": {
+    "failurePresentation": "none",
+    "retryAction": false,
+    "degradedContinuation": false,
+    "abnormalNoncompletion": "keep stable initialization UI and emit low-cardinality developer diagnostics"
+  },
+  "openOwnerDecisions": [],
+  "approvalStatus": "ownerApproved",
+  "approvedAt": "2026-08-13",
+  "ownerStatement": "原型我检查了 没有问题"
+}

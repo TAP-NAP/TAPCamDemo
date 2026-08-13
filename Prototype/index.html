@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="zh-Hans">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="color-scheme" content="dark">
+    <title>TAPCam Visual Contract</title>
+    <link rel="stylesheet" href="prototype.css">
+  </head>
+  <body>
+    <main class="prototype-shell">
+      <section class="control-panel" aria-label="Prototype controls">
+        <div>
+          <p class="eyebrow" id="flow-task-label">TAP-0006 · TAP-0081</p>
+          <h1>TAPCam visual contract</h1>
+          <p class="lede" id="flow-description">Review the app-owned TAP Share selection and preparation flow. The system activity controller remains a documented boundary.</p>
+        </div>
+
+        <fieldset>
+          <legend>Flow</legend>
+          <div class="segmented two-up" id="flow-control">
+            <button type="button" data-flow="share" aria-pressed="true">TAP Share</button>
+            <button type="button" data-flow="startup" aria-pressed="false">冷启动资源初始化</button>
+          </div>
+        </fieldset>
+
+        <fieldset class="startup-controls" hidden>
+          <legend>Initialization fixture</legend>
+          <div class="fixture-grid" id="startup-control">
+            <button type="button" data-startup="preparing" aria-pressed="true">Preparing</button>
+            <button type="button" data-startup="cameraReadyCatalogPending">Camera ready</button>
+            <button type="button" data-startup="catalogReadyCameraPending">Library ready</button>
+            <button type="button" data-startup="readyHandoff">Ready → Camera</button>
+          </div>
+          <p class="fixture-note">首次安装、重新安装或版本更新后的第一次启动会进入此状态。界面保持等待，直到相机可交互与首个 Library metadata snapshot 都就绪；异常停滞只写开发诊断日志。普通重复启动会直接进入相机。</p>
+        </fieldset>
+
+        <div class="share-controls">
+
+        <fieldset>
+          <legend>Media</legend>
+          <div class="segmented" id="media-control">
+            <button type="button" data-media="photo" aria-pressed="true">Photo</button>
+            <button type="button" data-media="livePhoto" aria-pressed="false">Live Photo</button>
+            <button type="button" data-media="video" aria-pressed="false">Video</button>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Original resource</legend>
+          <div class="fixture-grid" id="resource-control">
+            <button type="button" data-resource="localReady" aria-pressed="true">Local · Ready</button>
+            <button type="button" data-resource="iCloudLoading" aria-pressed="false">iCloud · Loading</button>
+            <button type="button" data-resource="iCloudReady" aria-pressed="false">iCloud · Ready</button>
+            <button type="button" data-resource="privateQueue" aria-pressed="false">Private queue</button>
+            <button type="button" data-resource="iCloudUnavailable" aria-pressed="false">iCloud · Unavailable</button>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Credential state</legend>
+          <div class="segmented" id="credential-control">
+            <button type="button" data-credential="verified" aria-pressed="true">已验证</button>
+            <button type="button" data-credential="retryPending" aria-pressed="false" disabled>待重试</button>
+            <button type="button" data-credential="failed" aria-pressed="false">失败</button>
+          </div>
+          <p class="fixture-note" id="credential-scope-note">“待重试”仅用于应用私有签名队列。</p>
+        </fieldset>
+
+        <fieldset>
+          <legend>Local integrity fixture</legend>
+          <div class="segmented two-up" id="integrity-control">
+            <button type="button" data-integrity-fixture="auto" aria-pressed="true">Auto · 650 ms</button>
+            <button type="button" data-integrity-fixture="hold" aria-pressed="false">Hold for review</button>
+          </div>
+          <button type="button" class="prototype-only-action" id="resolve-integrity-button" disabled>Resolve local check</button>
+        </fieldset>
+
+        <fieldset>
+          <legend>Preparation fixture</legend>
+          <div class="fixture-grid" id="fixture-control">
+            <button type="button" data-fixture="fast">Fast · 35 ms</button>
+            <button type="button" data-fixture="threshold">Threshold · 120 ms</button>
+            <button type="button" data-fixture="slow" aria-pressed="true">Slow · 1.4 s</button>
+            <button type="button" data-fixture="failure">Failure</button>
+          </div>
+        </fieldset>
+
+        <div class="contract-notes">
+          <p><strong>Fast:</strong> no progress UI is inserted within 50 ms.</p>
+          <p><strong>Visible:</strong> once revealed, progress remains readable for at least 400 ms and never moves backwards.</p>
+        </div>
+        </div>
+      </section>
+
+      <section class="phone-stage" aria-label="TAPCam mobile prototype">
+        <div class="device-frame" data-testid="device-frame">
+          <div class="device-screen" data-testid="device-screen">
+            <section class="startup-initialization" id="startup-initialization" hidden>
+              <div class="startup-spinner" id="startup-spinner" aria-hidden="true"></div>
+              <h2 id="startup-title">资源初始化</h2>
+              <p id="startup-subtitle">请等待…</p>
+              <p class="visually-hidden" id="startup-announcement" role="status" aria-live="polite" aria-atomic="true"></p>
+              <div class="startup-checks" aria-label="Initialization readiness">
+                <div id="startup-camera-check"><span></span><strong>相机资源</strong><small>正在准备首个预览画面</small></div>
+                <div id="startup-library-check"><span></span><strong>TAP 图库</strong><small>正在建立媒体目录</small></div>
+              </div>
+            </section>
+            <section class="startup-entry-boundary" id="startup-entry-boundary" hidden>
+              <img src="assets/icons/check-circle.svg" alt="">
+              <h2>初始化完成</h2>
+              <p>正在进入相机…</p>
+              <small>此处是 TAP-0009 的结束边界；Viewfinder 将由后续原型切片描述。</small>
+            </section>
+            <div class="share-flow-screen" id="share-flow-screen">
+            <img class="viewer-photo" src="assets/media/rainy-street-viewer-fixture.png" alt="Rainy street Viewer fixture">
+            <div class="viewer-shade" aria-hidden="true"></div>
+            <span class="viewer-back-reference" aria-hidden="true"><img src="assets/icons/caret-left.svg" alt=""></span>
+            <div class="media-chip" id="media-chip">PHOTO</div>
+
+            <section class="resource-overlay" id="resource-overlay" aria-live="polite" hidden>
+              <img id="resource-warning-icon" src="assets/icons/warning-circle.svg" alt="" hidden>
+              <strong id="resource-title">正在从 iCloud 下载原始资源</strong>
+              <small id="resource-subtitle">正在下载原始照片</small>
+              <div class="resource-progress-row" id="resource-progress-row">
+                <progress id="resource-progress" max="1" value="0.64"></progress>
+                <output id="resource-progress-label">64%</output>
+              </div>
+            </section>
+
+            <section class="share-popover" id="share-popover" aria-live="polite" hidden>
+              <div class="popover-caret" aria-hidden="true"></div>
+
+              <div class="popover-state integrity-state" data-panel="integrityChecking" aria-label="正在本地检查完整性" hidden>
+                <span class="visually-hidden">正在本地检查完整性</span>
+                <div class="integrity-skeleton" aria-hidden="true">
+                  <div class="skeleton-status-row">
+                    <span class="skeleton-dot"></span>
+                    <span class="skeleton-line skeleton-line-status"></span>
+                  </div>
+                  <div class="divider"></div>
+                  <div class="skeleton-option-row"><span class="skeleton-icon"></span><span class="skeleton-copy"><span class="skeleton-line skeleton-line-title"></span><span class="skeleton-line skeleton-line-subtitle"></span></span></div>
+                  <div class="skeleton-option-row"><span class="skeleton-icon"></span><span class="skeleton-copy"><span class="skeleton-line skeleton-line-title"></span><span class="skeleton-line skeleton-line-subtitle short"></span></span></div>
+                  <div class="skeleton-option-row"><span class="skeleton-icon"></span><span class="skeleton-copy"><span class="skeleton-line skeleton-line-title short"></span></span></div>
+                  <div class="skeleton-option-row"><span class="skeleton-icon"></span><span class="skeleton-copy"><span class="skeleton-line skeleton-line-title"></span></span></div>
+                </div>
+              </div>
+
+              <div class="popover-state selector-state" data-panel="selector">
+                <header class="credential-row">
+                  <span class="icon-mask credential-mask" id="credential-icon" aria-hidden="true"></span>
+                  <span id="credential-label">已验证</span>
+                </header>
+                <div class="divider"></div>
+                <div id="share-options" class="share-options"></div>
+              </div>
+
+              <div class="popover-state preparing-state" data-panel="preparing" hidden>
+                <header class="preparing-heading">
+                  <span class="icon-mask package-mask" aria-hidden="true"></span>
+                  <div>
+                    <h2 id="preparing-title">正在准备 TAPNAP 包</h2>
+                    <p id="preparing-subtitle">正在打包完整验证资料</p>
+                  </div>
+                </header>
+                <div class="progress-row">
+                  <progress id="progress-bar" max="1" value="0"></progress>
+                  <output id="progress-label">0%</output>
+                </div>
+                <div class="divider"></div>
+                <div class="preparing-footer">
+                  <span>请保持 TAP-NAP 打开</span>
+                  <button type="button" id="cancel-button">取消</button>
+                </div>
+              </div>
+
+              <div class="popover-state failure-state" data-panel="failure" hidden>
+                <header class="preparing-heading">
+                  <span class="icon-mask warning-mask" aria-hidden="true"></span>
+                  <div>
+                    <h2>分享资料暂不可用</h2>
+                    <p>没有改变认证状态。你可以重试同一选项。</p>
+                  </div>
+                </header>
+                <div class="failure-actions">
+                  <button type="button" id="failure-cancel">取消</button>
+                  <button type="button" id="retry-button">重试</button>
+                </div>
+              </div>
+
+              <div class="popover-state boundary-state" data-panel="boundary" hidden>
+                <header class="preparing-heading">
+                  <span class="icon-mask share-mask" aria-hidden="true"></span>
+                  <div>
+                    <h2>资料已准备完成</h2>
+                    <p>下一步由 iOS 系统分享面板接管。此原型不伪造 AirDrop 或第三方 App。</p>
+                  </div>
+                </header>
+                <button type="button" id="return-button" class="primary-action">模拟系统页关闭</button>
+              </div>
+            </section>
+
+            <div class="viewer-toolbar" aria-label="Viewer toolbar">
+              <button type="button" class="round-button share-button" id="share-button" aria-label="Share" aria-expanded="false" aria-describedby="resource-share-status">
+                <span class="progress-ring" id="share-progress-ring" aria-hidden="true"></span>
+                <img src="assets/icons/share-network.svg" alt="">
+              </button>
+              <span class="visually-hidden" id="resource-share-status">原始资源已就绪，可以分享。</span>
+
+              <div class="mode-capsule" aria-label="Viewer mode">
+                <button type="button">RAW</button>
+                <button type="button" class="selected">2D</button>
+                <button type="button">3D</button>
+              </div>
+
+              <button type="button" class="round-button delete-button" id="delete-button" aria-label="Delete">
+                <img src="assets/icons/trash.svg" alt="">
+              </button>
+            </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+    <script src="prototype.js"></script>
+  </body>
+</html>
