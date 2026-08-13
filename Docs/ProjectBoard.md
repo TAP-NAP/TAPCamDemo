@@ -66,7 +66,6 @@ from each record's `Status` field.
 
 ### Doing
 
-- `TAP-0006` Build the repository-owned HTML/Web UI prototype foundation
 - `TAP-0083` Eliminate cold-path UI starvation and codify responsiveness guardrails
 
 ### Done
@@ -75,6 +74,7 @@ from each record's `Status` field.
 - `TAP-0002` Reconcile active documents with the Product Contract
 - `TAP-0003` Migrate unique facts, then remove obsolete documents
 - `TAP-0004` Normalize TAP Library and Pending Capture Queue terminology
+- `TAP-0006` Build the repository-owned HTML/Web UI prototype foundation
 - `TAP-0050` Required versus optional first-install rows
 - `TAP-0051` Bounded Network retry policy foundation
 - `TAP-0052` PRO Photo and TAP Video Release capability
@@ -401,7 +401,7 @@ Every active Task uses these stable fields:
 
 ### TAP-0006 — Build the repository-owned HTML/Web UI prototype foundation
 
-- Status: `Doing`
+- Status: `Done`
 - Kind: `Feature`
 - Priority: `P0`
 - Domain: `UI Prototype`
@@ -526,6 +526,17 @@ Every active Task uses these stable fields:
     visual authority for `/root` SwiftUI implementation. TAP-0006 remains Doing
     pending manifest/QA synchronization and handoff reconciliation; no Done
     transition is inferred.
+  - `2026-08-13` Final closure audit completed after prototype commit
+    `70e8b60d4e20486a6d4847d726b393a50e22c7ba` and governance synchronization
+    commit `456e30790bdae0b227ae99433e604d0c87f6dfb1`. The lightweight static
+    entry point, TAP Share vertical slice, deterministic states, 50/400 timing,
+    manifest and design-QA traceability, exact-revision owner approval, static
+    contract test, browser-path evidence, and required documentation now satisfy
+    the recorded Done When. The owner explicitly confirmed “同意 06 关闭 并提交且
+    推送相关代码”. Moved TAP-0006 Doing -> Done. First-install, Viewfinder, and
+    every later prototype slice remain independently scoped by their own Tasks;
+    extending the shared foundation through those Tasks does not reopen
+    TAP-0006.
 
 ### TAP-0007 — Decide App Store media work after the HTML-first transition
 
@@ -2652,3 +2663,12 @@ not replace the Product Contract, and linked device evidence may remain open.
   `TAP-0081-r2-candidate` and `TAP-0009-r1-candidate`. This closes metadata
   synchronization only: TAP-0081 and TAP-0082 remain Done, TAP-0009 remains
   Todo, TAP-0083 remains Doing, and TAP-0084 remains Inbox.
+- `2026-08-13` Closed TAP-0006 after the final Board audit. Prototype commit
+  `70e8b60d4e20486a6d4847d726b393a50e22c7ba` and governance synchronization
+  commit `456e30790bdae0b227ae99433e604d0c87f6dfb1` establish the lightweight
+  static entry point, TAP Share slice, manifest/design-QA traceability,
+  owner-approved exact revision, tests, browser evidence, and documentation
+  required by its Done When. The owner explicitly agreed “同意 06 关闭 并提交且
+  推送相关代码”. Moved TAP-0006 Doing -> Done in both its canonical record and
+  Kanban view. Later prototype slices remain independent Tasks and do not reopen
+  this completed foundation milestone; no other Task status changed.
