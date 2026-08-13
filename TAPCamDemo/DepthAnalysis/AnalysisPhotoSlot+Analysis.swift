@@ -42,12 +42,23 @@ extension AnalysisPhotoSlot {
         requestKey: MediaFetchRequestKey
     ) async {
         do {
-            let loadedInput = try await loader.input(
+            let loadedInput = try await loader.loadedOriginal(
                 source: source,
-                requestKey: requestKey
-            ) { [weak self] progress in
-                self?.applyOriginalICloudProgress(progress, requestKey: requestKey)
-            }
+                requestKey: requestKey,
+                expectsPairedVideo: entry.albumEntry?.expectsPairedVideo ?? false,
+                resourceReadyHandler: { [weak self] resourceLease in
+                    self?.publishOriginalResource(
+                        resourceLease,
+                        requestKey: requestKey
+                    )
+                },
+                progressHandler: { [weak self] progress in
+                    self?.applyOriginalICloudProgress(
+                        progress,
+                        requestKey: requestKey
+                    )
+                }
+            )
             guard !Task.isCancelled else {
                 finishCancelledInputLoad(requestKey: requestKey)
                 return
@@ -68,10 +79,28 @@ extension AnalysisPhotoSlot {
         }
         analysisState.inputTask = nil
         analysisState.activeOriginalRequestKey = nil
+        pendingSignedOriginalRefreshID = nil
+    }
+
+    private func publishOriginalResource(
+        _ resourceLease: TAPPhotoOriginalResourceLease,
+        requestKey: MediaFetchRequestKey
+    ) {
+        guard analysisState.activeOriginalRequestKey == requestKey else {
+            return
+        }
+        originalResourceOwner.install(resourceLease)
+        if case .pendingCapture(_, let selectedSignedPhoto) = resourceLease.origin,
+           selectedSignedPhoto {
+            pendingSignedOriginalRefreshID = nil
+        }
+        // Original-file readiness is independent from depth/3D decoding. The
+        // latter continues in the same task but must not keep Share disabled.
+        setOriginalMediaFetchPhase(.ready(true))
     }
 
     private func finishInputLoad(
-        _ loadedInput: TAPDepthAnalysisInput,
+        _ loadedOriginal: DepthAnalysisProgressivePhotoLoader.LoadedOriginal,
         requestKey: MediaFetchRequestKey
     ) {
         guard analysisState.activeOriginalRequestKey == requestKey else {
@@ -79,7 +108,37 @@ extension AnalysisPhotoSlot {
         }
         analysisState.inputTask = nil
         analysisState.activeOriginalRequestKey = nil
-        analysisState.input = loadedInput
+        if let resourceLease = loadedOriginal.resourceLease {
+            originalResourceOwner.install(resourceLease)
+        } else {
+            originalResourceOwner.clear()
+        }
+        pendingSignedOriginalRefreshID = nil
+
+        let input: TAPDepthAnalysisInput
+        do {
+            input = try loadedOriginal.analysisInput()
+        } catch {
+            analysisState.input = nil
+            let presentation = DepthAnalysisErrorPresentation.analysisLoadError(for: error)
+            analysisState.errorTitle = presentation.title
+            analysisState.errorSystemImage = presentation.systemImage
+            analysisState.errorMessage = presentation.message
+            analysisState.phase = .failed
+            // The complete original is still ready even when 3D/depth decoding
+            // is unavailable. Share readiness follows the file-backed lease,
+            // not the analysis result.
+            if loadedOriginal.resourceLease != nil {
+                setOriginalMediaFetchPhase(.ready(true))
+            } else {
+                applyMediaFetchFailure(error)
+            }
+            selectionState.planeRequestCoordinator.resetForNewInput()
+            selectionState.planeSelection.cancelDetection()
+            return
+        }
+
+        analysisState.input = input
         analysisState.phase = .ready
         setOriginalMediaFetchPhase(.ready(true))
         clearLoadError()
@@ -87,7 +146,7 @@ extension AnalysisPhotoSlot {
         selectionState.planeSelection.cancelDetection()
         selectionState.planeRequestCoordinator.resetForNewInput()
         selectionState.hasRequestedPlaneGeometryPrewarm = false
-        ensurePlaneGeometryPrewarmIfNeeded(for: loadedInput.depthMap)
+        ensurePlaneGeometryPrewarmIfNeeded(for: input.depthMap)
     }
 
     private func finishFailedInputLoad(
@@ -99,6 +158,8 @@ extension AnalysisPhotoSlot {
         }
         analysisState.inputTask = nil
         analysisState.activeOriginalRequestKey = nil
+        originalResourceOwner.clear()
+        pendingSignedOriginalRefreshID = nil
         applyLoadError(error)
     }
 
@@ -146,6 +207,13 @@ extension AnalysisPhotoSlot {
         guard analysisState.activeOriginalRequestKey == requestKey else {
             return
         }
+        // PhotoKit may deliver a final progress callback through a queued
+        // MainActor task after the complete original lease has already been
+        // published. Once exact bytes are ready, progress must never demote
+        // Share readiness while depth/3D decoding continues.
+        guard originalResourceOwner.acquireLease() == nil else {
+            return
+        }
         let normalizedProgress = progress.map { min(max($0, 0), 1) }
         if let normalizedProgress {
             analysisState.lastOriginalProgress = max(
@@ -186,11 +254,16 @@ extension AnalysisPhotoSlot {
         analysisState.activeOriginalRequestKey = nil
         analysisState.originalFetchGeneration &+= 1
         analysisState.lastOriginalProgress = nil
+        pendingSignedOriginalRefreshID = nil
         displayFetchState.displayTask?.cancel()
         displayFetchState.displayTask = nil
         displayFetchState.displayTaskPixelLength = nil
         analysisState.inputTask?.cancel()
         analysisState.inputTask = nil
+
+        if analysisState.input == nil {
+            originalResourceOwner.clear()
+        }
 
         if displayFetchState.displayPhoto == nil {
             displayFetchState.phase = displayFetchState.thumbnailImage == nil

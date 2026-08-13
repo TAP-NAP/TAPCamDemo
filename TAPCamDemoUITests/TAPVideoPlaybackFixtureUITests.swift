@@ -12,6 +12,7 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
     private static let playPauseIdentifier = "tap.video.playback.transport.playPause"
     private static let scrubberIdentifier = "tap.video.playback.transport.scrubber"
     private static let elapsedIdentifier = "tap.video.playback.transport.elapsed"
+    private static let shareIdentifier = "tap.viewer.share"
     private static let opacityIdentifier = "tap.viewer.opacity"
     private static let edgeToastIdentifier = "tap.viewer.edgeToast"
     private static let selectedValueTokens = ["Selected", "已选中"]
@@ -102,6 +103,106 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
             )
         )
         XCTAssertTrue(opacityControl(in: app).waitForExistence(timeout: 3))
+    }
+
+    func testShareOpensAnchoredSelectorBeforePlayerReadinessAndKeepsChromeStable() throws {
+        let app = launchFixture(
+            scenario: "rotation-0",
+            playerReadinessDelayMilliseconds: 8_000
+        )
+
+        let open = app.buttons[Self.openIdentifier]
+        XCTAssertTrue(open.waitForExistence(timeout: 5))
+        open.tap()
+
+        let share = app.buttons[Self.shareIdentifier]
+        XCTAssertTrue(
+            share.waitForExistence(timeout: 3),
+            "Share must mount with the stable Viewer chrome."
+        )
+        XCTAssertTrue(
+            share.isHittable,
+            "Video Share must be physically tappable while AVPlayer is still preparing."
+        )
+        // The transport is mounted only after AVPlayer exists. Its absence is
+        // the runtime proof that Share readiness is independent of player
+        // readiness rather than merely happening to work after a fast load.
+        XCTAssertFalse(
+            app.buttons[Self.playPauseIdentifier].exists,
+            "The fixture timing seam did not preserve the pre-player-readiness state."
+        )
+
+        let stableChrome = [
+            app.buttons[Self.backIdentifier],
+            share,
+            app.buttons["tap.viewer.delete"],
+            app.buttons[Self.rawIdentifier],
+            app.buttons[Self.twoDIdentifier],
+            app.buttons[Self.threeDIdentifier]
+        ]
+        for control in stableChrome {
+            XCTAssertTrue(
+                control.exists,
+                "The stable Viewer chrome is incomplete before Share opens."
+            )
+        }
+        let delete = app.buttons["tap.viewer.delete"]
+        let twoD = app.buttons[Self.twoDIdentifier]
+        XCTAssertEqual(share.frame.width, 42, accuracy: 1)
+        XCTAssertEqual(share.frame.height, 42, accuracy: 1)
+        XCTAssertEqual(delete.frame.width, 42, accuracy: 1)
+        XCTAssertEqual(delete.frame.height, 42, accuracy: 1)
+        XCTAssertEqual(share.frame.midY, delete.frame.midY, accuracy: 1)
+        XCTAssertEqual(share.frame.minX, app.frame.minX + 16, accuracy: 1.5)
+        XCTAssertEqual(delete.frame.maxX, app.frame.maxX - 16, accuracy: 1.5)
+        XCTAssertEqual(
+            share.frame.midX + delete.frame.midX,
+            app.frame.midX * 2,
+            accuracy: 2
+        )
+        XCTAssertEqual(twoD.frame.midX, app.frame.midX, accuracy: 1.5)
+        let framesBeforePresentation = stableChrome.map(\.frame)
+
+        share.tap()
+
+        // Assert the native presentation role, not only a SwiftUI identifier:
+        // compact adaptation must remain an anchored Popover on iPhone.
+        let presentation = app.popovers.firstMatch
+        XCTAssertTrue(
+            presentation.waitForExistence(timeout: 2),
+            "Share did not open the app-owned anchored presentation."
+        )
+        let shareVideo = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Share Video")
+        ).firstMatch
+        XCTAssertTrue(
+            shareVideo.waitForExistence(timeout: 1),
+            "The anchored selector did not expose the video share choice."
+        )
+        XCTAssertLessThan(
+            presentation.frame.width,
+            app.frame.width * 0.9,
+            "The app-owned selector adapted to a full-screen sheet instead of an anchor."
+        )
+        XCTAssertFalse(
+            app.buttons[Self.playPauseIdentifier].exists,
+            "Share could only be opened after player readiness, violating the interaction contract."
+        )
+
+        for (index, control) in stableChrome.enumerated() {
+            XCTAssertTrue(control.exists, "Share presentation removed Viewer chrome.")
+            assertEqual(
+                control.frame,
+                framesBeforePresentation[index],
+                accuracy: 1,
+                message: "Share presentation remounted or shifted Viewer chrome."
+            )
+        }
+        XCTAssertTrue(
+            value(of: app.buttons[Self.rawIdentifier], containsAny: Self.selectedValueTokens),
+            "Opening Share changed the selected Viewer mode."
+        )
+        keepScreenshot(of: app, named: "video_share_selector_before_player_ready_en_L")
     }
 
     func testVideoThreeDShowsComingSoonWithoutChangingModeOrPlayback() throws {
@@ -294,7 +395,8 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
         appLanguage: String? = nil,
         autoPlay: Bool = false,
         seekScheduleSeconds: [Double]? = nil,
-        accessibilityDynamicType: Bool = false
+        accessibilityDynamicType: Bool = false,
+        playerReadinessDelayMilliseconds: Int? = nil
     ) -> XCUIApplication {
         let app = XCUIApplication(bundleIdentifier: Self.bundleIdentifier)
         if ProcessInfo.processInfo.environment["TAPCAM_PR7_ENABLE_ACTIVITY_LOGGING"] == "1" {
@@ -313,6 +415,11 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
             app.launchEnvironment[
                 "TAPCAM_UI_TEST_VIDEO_FIXTURE_ACCESSIBILITY_DYNAMIC_TYPE"
             ] = "1"
+        }
+        if let playerReadinessDelayMilliseconds {
+            app.launchEnvironment[
+                "TAPCAM_UI_TEST_VIDEO_FIXTURE_PLAYER_READINESS_DELAY_MS"
+            ] = String(playerReadinessDelayMilliseconds)
         }
         let appLanguageRawValue = appLanguage ?? language
         app.launchArguments += [
@@ -517,6 +624,20 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
 
     private func element(_ identifier: String, in app: XCUIApplication) -> XCUIElement {
         app.descendants(matching: .any)[identifier]
+    }
+
+    private func assertEqual(
+        _ lhs: CGRect,
+        _ rhs: CGRect,
+        accuracy: CGFloat,
+        message: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertEqual(lhs.minX, rhs.minX, accuracy: accuracy, message, file: file, line: line)
+        XCTAssertEqual(lhs.minY, rhs.minY, accuracy: accuracy, message, file: file, line: line)
+        XCTAssertEqual(lhs.width, rhs.width, accuracy: accuracy, message, file: file, line: line)
+        XCTAssertEqual(lhs.height, rhs.height, accuracy: accuracy, message, file: file, line: line)
     }
 
     private func keepScreenshot(of app: XCUIApplication, named name: String) {

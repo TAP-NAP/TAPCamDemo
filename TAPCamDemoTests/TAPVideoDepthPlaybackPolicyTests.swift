@@ -10,6 +10,223 @@ import UIKit
 @testable import TAPCamDemo
 
 struct TAPVideoDepthPlaybackPolicyTests {
+    @Test @MainActor
+    func videoOriginalProgressCoalescerPreservesEndpointsAndDropsCallbackFlood() async {
+        let recorder = TAPVideoPlaybackProgressRecorder()
+        let coalescer = TAPVideoPlaybackProgressCoalescer(
+            minimumInterval: .milliseconds(1)
+        ) { progress in
+            recorder.append(progress)
+        }
+
+        coalescer.submit(0)
+        for index in 1...500 {
+            coalescer.submit(Double(index) / 501)
+        }
+        coalescer.submit(1)
+        await coalescer.finish()
+
+        #expect(recorder.values.compactMap(\.self) == [0, 1])
+    }
+
+    @Test @MainActor
+    func videoOriginalProgressCoalescerFlushesNewestIntermediateValue() async {
+        let recorder = TAPVideoPlaybackProgressRecorder()
+        let coalescer = TAPVideoPlaybackProgressCoalescer(
+            minimumInterval: .milliseconds(1)
+        ) { progress in
+            recorder.append(progress)
+        }
+
+        coalescer.submit(0)
+        coalescer.submit(0.2)
+        coalescer.submit(0.4)
+        await coalescer.finish()
+
+        #expect(recorder.values.compactMap(\.self) == [0, 0.4])
+    }
+
+    @Test @MainActor
+    func cancelledVideoOriginalProgressCoalescerDropsBufferedValue() async throws {
+        let recorder = TAPVideoPlaybackProgressRecorder()
+        let coalescer = TAPVideoPlaybackProgressCoalescer(
+            minimumInterval: .milliseconds(100)
+        ) { progress in
+            recorder.append(progress)
+        }
+
+        coalescer.submit(0)
+        for _ in 0..<50 where recorder.values.isEmpty {
+            try await Task.sleep(for: .milliseconds(1))
+        }
+        #expect(recorder.values.compactMap(\.self) == [0])
+
+        coalescer.submit(0.5)
+        coalescer.cancel()
+        try await Task.sleep(for: .milliseconds(125))
+
+        #expect(recorder.values.compactMap(\.self) == [0])
+    }
+
+    @Test func originalResourceLeaseRetainsTemporaryFileAfterViewerRelease() throws {
+        let directoryURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        let fileURL = directoryURL.appendingPathComponent("original.mp4")
+        try Data("stable-video-original".utf8).write(to: fileURL)
+
+        var owner: TAPVideoOriginalResourceOwner? = try TAPVideoOriginalResourceOwner(
+            mediaID: .photosAsset("stable-video-original"),
+            origin: .photosAsset(assetID: "stable-video-original"),
+            fileURL: fileURL,
+            managedTemporaryFile: LibraryManagedTemporaryFile(
+                fileURL: fileURL,
+                directoryURL: directoryURL
+            )
+        )
+        var lease: TAPVideoOriginalResourceLease? = owner?.acquireLease()
+        owner = nil
+
+        #expect(FileManager.default.fileExists(atPath: fileURL.path))
+        #expect(try Data(contentsOf: try #require(lease).fileURL) == Data("stable-video-original".utf8))
+
+        lease = nil
+        #expect(!FileManager.default.fileExists(atPath: directoryURL.path))
+    }
+
+    @Test func originalResourceOwnerRejectsUnavailableFiles() throws {
+        let directoryURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directoryURL) }
+        let missingURL = directoryURL.appendingPathComponent("missing.mp4")
+        let emptyURL = directoryURL.appendingPathComponent("empty.mp4")
+        try Data().write(to: emptyURL)
+
+        #expect(throws: TAPVideoOriginalResourceError.unavailableVideo) {
+            _ = try TAPVideoOriginalResourceOwner(
+                mediaID: .photosAsset("missing-video"),
+                origin: .photosAsset(assetID: "missing-video"),
+                fileURL: missingURL
+            )
+        }
+        #expect(throws: TAPVideoOriginalResourceError.unavailableVideo) {
+            _ = try TAPVideoOriginalResourceOwner(
+                mediaID: .photosAsset("directory-video"),
+                origin: .photosAsset(assetID: "directory-video"),
+                fileURL: directoryURL
+            )
+        }
+        #expect(throws: TAPVideoOriginalResourceError.unavailableVideo) {
+            _ = try TAPVideoOriginalResourceOwner(
+                mediaID: .photosAsset("empty-video"),
+                origin: .photosAsset(assetID: "empty-video"),
+                fileURL: emptyURL
+            )
+        }
+    }
+
+    @Test @MainActor func pendingSignedOriginalRefreshClaimIsSingleFlight() {
+        let session = Self.makePendingRefreshSession()
+
+        let refreshID = session.claimPendingSignedOriginalRefresh()
+        #expect(refreshID != nil)
+        #expect(session.isPendingSignedOriginalRefreshInFlight)
+        #expect(session.claimPendingSignedOriginalRefresh() == nil)
+        #expect(session.isPendingSignedOriginalRefreshInFlight)
+    }
+
+    @Test @MainActor func cancelledPendingSignedOriginalRefreshClaimCanBeRetried() throws {
+        let session = Self.makePendingRefreshSession()
+
+        let refreshID = try #require(session.claimPendingSignedOriginalRefresh())
+        session.cancelPendingSignedOriginalRefreshClaim(refreshID)
+        #expect(!session.isPendingSignedOriginalRefreshInFlight)
+        #expect(session.claimPendingSignedOriginalRefresh() != nil)
+    }
+
+    @Test @MainActor
+    func stalePendingSignedOriginalRefreshTokenCannotCancelOrStartANewerClaim() throws {
+        let session = Self.makePendingRefreshSession()
+        let staleID = try #require(session.claimPendingSignedOriginalRefresh())
+
+        // A retry invalidates the suspended actor lookup associated with the
+        // old token. A later notification may then claim the same session.
+        session.retryCurrentFetch()
+        let currentID = try #require(session.claimPendingSignedOriginalRefresh())
+        let requestBeforeStaleCallbacks = try #require(session.requestKey)
+
+        session.cancelPendingSignedOriginalRefreshClaim(staleID)
+        #expect(session.pendingSignedOriginalRefreshID == currentID)
+        #expect(!session.startClaimedPendingSignedOriginalRefresh(staleID))
+        #expect(session.requestKey == requestBeforeStaleCallbacks)
+
+        #expect(session.startClaimedPendingSignedOriginalRefresh(currentID))
+        #expect(session.requestKey?.generation == requestBeforeStaleCallbacks.generation + 1)
+    }
+
+    @Test @MainActor
+    func startedPendingSignedOriginalRefreshRejectsDuplicateNotificationWithoutAnotherRequest() throws {
+        let session = Self.makePendingRefreshSession()
+        let initialRequest = try #require(session.requestKey)
+
+        let refreshID = try #require(session.claimPendingSignedOriginalRefresh())
+        #expect(session.startClaimedPendingSignedOriginalRefresh(refreshID))
+        let replacementRequest = try #require(session.requestKey)
+        #expect(replacementRequest.generation == initialRequest.generation + 1)
+
+        // A repeated status-only queue notification must fail the claim before
+        // it can start another replacement and tear down playback a second time.
+        #expect(session.claimPendingSignedOriginalRefresh() == nil)
+        #expect(session.requestKey == replacementRequest)
+        #expect(session.isPendingSignedOriginalRefreshInFlight)
+    }
+
+    @Test(.enabled(
+        if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable,
+        "Source tree is unavailable on this runtime."
+    ))
+    func signedOriginalRefreshGuardReadsThePublishedResourceLease() throws {
+        let source = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/Playback/TAPVideoPlaybackSession.swift"
+        )
+        let claim = try #require(TAPCamDemoTestSourceInspection.substring(
+            in: source,
+            from: "    func claimPendingSignedOriginalRefresh() -> UUID? {",
+            to: "    /// Completes a transition claim"
+        ))
+        let signedSelection = try #require(TAPCamDemoTestSourceInspection.substring(
+            in: source,
+            from: "    var currentOriginalSelectedSignedVideo: Bool? {",
+            to: "    func prepareTwoDPlaybackGate()"
+        ))
+
+        #expect(claim.contains("currentOriginalSelectedSignedVideo != true"))
+        #expect(signedSelection.contains("resource?.acquireLease().selectedSignedVideo"))
+    }
+
+    @Test(.enabled(
+        if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable,
+        "Source tree is unavailable on this runtime."
+    ))
+    func lateVideoProgressCannotDemotePublishedOriginalReadiness() throws {
+        let source = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/Playback/TAPVideoPlaybackSession.swift"
+        )
+        let progressBridge = try #require(TAPCamDemoTestSourceInspection.substring(
+            in: source,
+            from: "    private func resolveResource(",
+            to: "    private func preparePlayer("
+        ))
+        let guardedPublish = try #require(TAPCamDemoTestSourceInspection.substring(
+            in: progressBridge,
+            from: "    private func publishOriginalLoadProgress(",
+            to: "    private func preparePlayer("
+        ))
+
+        #expect(progressBridge.contains("TAPVideoPlaybackProgressCoalescer"))
+        #expect(!progressBridge.contains("Task { @MainActor"))
+        #expect(guardedPublish.contains("activeRequestKey == requestKey"))
+        #expect(guardedPublish.contains("!isOriginalResourceReady"))
+        #expect(guardedPublish.contains("fetchState.publishProgress("))
+    }
+
     @Test func pausedAtZeroProbeUsesABoundedForwardWindow() throws {
         let window = try #require(TAPVideoDepthMetadataProbePolicy.window(
             playbackTimeSeconds: 0,
@@ -529,6 +746,15 @@ struct TAPVideoDepthPlaybackPolicyTests {
         )
     }
 
+    @MainActor
+    private static func makePendingRefreshSession() -> TAPVideoPlaybackSession {
+        TAPVideoPlaybackSession(
+            source: .pendingCapture("refresh-claim-\(UUID().uuidString)"),
+            registrationAdapter: TAPVideoManifestDepthRegistrationAdapter(),
+            mediaFetcher: PhotoKitLibraryMediaFetcher()
+        )
+    }
+
     private static func waitUntil(
         _ predicate: @escaping @Sendable () -> Bool
     ) async -> Bool {
@@ -754,5 +980,14 @@ struct TAPVideoDepthPlaybackPolicyTests {
                 )
             )
         )
+    }
+}
+
+@MainActor
+private final class TAPVideoPlaybackProgressRecorder {
+    private(set) var values: [Double?] = []
+
+    func append(_ progress: Double?) {
+        values.append(progress)
     }
 }

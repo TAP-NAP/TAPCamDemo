@@ -6,6 +6,7 @@
 @preconcurrency import AVFoundation
 import CryptoKit
 import Foundation
+import ImageIO
 import Photos
 import UIKit
 
@@ -147,6 +148,114 @@ actor DepthAlbumThumbnailLoader {
             }
         }
         return nil
+    }
+}
+
+/// A display-ready image paired with the encoded value that owns its cache
+/// identity. UIKit image objects are immutable for this use and may cross the
+/// decoder actor boundary after ImageIO has eagerly populated their pixels.
+nonisolated struct DepthAlbumDecodedThumbnail: @unchecked Sendable {
+    let poster: MediaPoster
+    let image: UIImage
+}
+
+/// Coalesces every decode for one revision-bearing cache key and performs the
+/// scalable ImageIO work in a detached task. Caller cancellation never cancels
+/// the shared decode needed by another visible cell, but a cancelled caller
+/// receives no result and therefore cannot publish stale UI state.
+actor DepthAlbumThumbnailDecoder {
+    typealias Decode = @Sendable (MediaPoster) -> DepthAlbumDecodedThumbnail?
+
+    static let shared = DepthAlbumThumbnailDecoder()
+
+    private struct InFlight {
+        let token: UInt64
+        let task: Task<DepthAlbumDecodedThumbnail?, Never>
+    }
+
+    private var inFlightByCacheKey: [String: InFlight] = [:]
+    private var nextToken: UInt64 = 0
+    private let decode: Decode
+
+    init(decode: @escaping Decode = DepthAlbumThumbnailDecoder.decodeForDisplay) {
+        self.decode = decode
+    }
+
+    func decodedThumbnail(for poster: MediaPoster) async -> DepthAlbumDecodedThumbnail? {
+        guard !Task.isCancelled else {
+            return nil
+        }
+
+        if let cached = await MainActor.run(body: {
+            DepthAlbumThumbnailMemoryCache.shared.decodedThumbnail(for: poster.cacheKey)
+        }) {
+            guard !Task.isCancelled else {
+                return nil
+            }
+            return cached
+        }
+
+        let inFlight: InFlight
+        if let existing = inFlightByCacheKey[poster.cacheKey] {
+            inFlight = existing
+        } else {
+            nextToken &+= 1
+            let token = nextToken
+            let decode = self.decode
+            let task = Task<DepthAlbumDecodedThumbnail?, Never>.detached(priority: .utility) {
+                guard !Task.isCancelled else {
+                    return nil
+                }
+                return decode(poster)
+            }
+            inFlight = InFlight(token: token, task: task)
+            inFlightByCacheKey[poster.cacheKey] = inFlight
+        }
+
+        let decoded = await inFlight.task.value
+        if let decoded {
+            await MainActor.run {
+                DepthAlbumThumbnailMemoryCache.shared.insert(decoded)
+            }
+        }
+        if inFlightByCacheKey[poster.cacheKey]?.token == inFlight.token {
+            inFlightByCacheKey[poster.cacheKey] = nil
+        }
+        guard !Task.isCancelled else {
+            return nil
+        }
+        return decoded
+    }
+
+    private nonisolated static func decodeForDisplay(
+        _ poster: MediaPoster
+    ) -> DepthAlbumDecodedThumbnail? {
+        guard let source = CGImageSourceCreateWithData(poster.jpegData as CFData, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil)
+                as? [CFString: Any] else {
+            return nil
+        }
+
+        let pixelWidth = properties[kCGImagePropertyPixelWidth] as? Int ?? 1
+        let pixelHeight = properties[kCGImagePropertyPixelHeight] as? Int ?? 1
+        let maximumPixelLength = max(max(pixelWidth, pixelHeight), 1)
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: maximumPixelLength
+        ]
+        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(
+            source,
+            0,
+            options as CFDictionary
+        ) else {
+            return nil
+        }
+        return DepthAlbumDecodedThumbnail(
+            poster: poster,
+            image: UIImage(cgImage: cgImage, scale: 1, orientation: .up)
+        )
     }
 }
 
@@ -300,10 +409,18 @@ final class DepthAlbumThumbnailMemoryCache {
         cache.object(forKey: key as NSString)?.poster
     }
 
-    func insert(_ poster: MediaPoster) {
-        guard let image = poster.image else {
-            return
+    func decodedThumbnail(for key: String) -> DepthAlbumDecodedThumbnail? {
+        guard let entry = cache.object(forKey: key as NSString) else {
+            return nil
         }
+        return DepthAlbumDecodedThumbnail(poster: entry.poster, image: entry.image)
+    }
+
+    /// Accepts only a display-ready image. Decoding bytes is deliberately not
+    /// an operation this MainActor-owned publication cache can perform.
+    func insert(_ decodedThumbnail: DepthAlbumDecodedThumbnail) {
+        let poster = decodedThumbnail.poster
+        let image = decodedThumbnail.image
         cache.setObject(
             Entry(poster: poster, image: image),
             forKey: poster.cacheKey as NSString,

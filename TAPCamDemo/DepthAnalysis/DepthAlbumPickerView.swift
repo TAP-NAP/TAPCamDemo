@@ -19,12 +19,13 @@ struct DepthAlbumPickerView: View {
     private let libraryStore: LibraryMediaStore
     private let mediaFetcher: any LibraryMediaFetching
     @State private var albumScrollPosition = ScrollPosition(idType: String.self)
-    @State private var itemViewportYByID: [String: CGFloat] = [:]
+    @StateObject private var itemViewportTracker = DepthAlbumItemViewportTracker()
     @State private var pendingReturnScrollBookmark: DepthAlbumReturnScrollBookmark?
     @State private var latestReturnScrollRowStride: CGFloat = 0
     @State private var selectedDestination: DepthAlbumRouteAdapter.Destination?
     @State private var isViewerPresented = false
     @State private var locallyRemovedItemIDs: Set<String> = []
+    @State private var visibleSnapshot: DepthAlbumVisibleSnapshot
     @State private var returnScrollRestoreToken = UUID()
     @State private var analysisViewerGeneration = UUID()
     @State private var presentedItemRevision: DepthAlbumViewerItemRevision?
@@ -43,7 +44,7 @@ struct DepthAlbumPickerView: View {
     }
 
     private var visibleItems: [TAPLibraryItem] {
-        libraryStore.items.filter { !locallyRemovedItemIDs.contains($0.id) }
+        visibleSnapshot.items
     }
 
     init(
@@ -55,6 +56,12 @@ struct DepthAlbumPickerView: View {
         self.mediaFetcher = mediaFetcher
         let resolvedLibraryStore = libraryStore ?? LibraryMediaStore(observesChanges: false)
         self.libraryStore = resolvedLibraryStore
+        _visibleSnapshot = State(
+            initialValue: DepthAlbumVisibleSnapshot(
+                items: resolvedLibraryStore.items,
+                excluding: []
+            )
+        )
         _viewModel = StateObject(
             wrappedValue: DepthAlbumPickerViewModel(libraryStore: resolvedLibraryStore)
         )
@@ -74,6 +81,7 @@ struct DepthAlbumPickerView: View {
         .navigationTitle("TAP Library")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
+        .toolbar(isViewerPresented ? .hidden : .visible, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button {
@@ -102,7 +110,10 @@ struct DepthAlbumPickerView: View {
         .onChange(of: isViewerPresented) { _, isPresented in
             handleViewerPresentationChange(isPresented: isPresented)
         }
-        .onChange(of: visibleItems.map(DepthAlbumViewerItemRevision.init(item:))) {
+        .onChange(of: libraryStore.snapshot.revision) { _, _ in
+            refreshVisibleSnapshot()
+        }
+        .onChange(of: visibleSnapshot.revisions) {
             previousRevisions, _ in
             reconcilePresentedDestination(previousRevisions: previousRevisions)
         }
@@ -152,7 +163,7 @@ struct DepthAlbumPickerView: View {
                         .onGeometryChange(for: CGFloat.self) { geometry in
                             geometry.frame(in: .named(Self.scrollViewportCoordinateSpaceName)).minY
                         } action: { _, newViewportY in
-                            itemViewportYByID[item.id] = newViewportY
+                            itemViewportTracker.record(newViewportY, for: item.id)
                         }
                         .onAppear {
                             routeStore.recordVisibleDepthAlbumItem(item.routeAnchor)
@@ -164,7 +175,7 @@ struct DepthAlbumPickerView: View {
         }
         .scrollPosition($albumScrollPosition)
         .coordinateSpace(name: Self.scrollViewportCoordinateSpaceName)
-        .onChange(of: visibleItems.map(\.id)) { _, _ in
+        .onChange(of: visibleSnapshot.itemIDs) { _, _ in
             pruneTrackedItemViewportPositions()
             restorePendingReturnScrollPosition(
                 rowStride: returnScrollRowStride,
@@ -293,7 +304,7 @@ struct DepthAlbumPickerView: View {
         pendingReturnScrollBookmark = DepthAlbumReturnScrollBookmark(
             itemID: entry.id,
             routeAnchor: entry.routeAnchor,
-            itemViewportY: itemViewportYByID[entry.id] ?? 0
+            itemViewportY: itemViewportTracker.viewportY(for: entry.id) ?? 0
         )
         returnScrollRestoreToken = UUID()
     }
@@ -311,7 +322,7 @@ struct DepthAlbumPickerView: View {
         pendingReturnScrollBookmark = DepthAlbumReturnScrollBookmark(
             itemID: entry.id,
             routeAnchor: entry.routeAnchor,
-            itemViewportY: itemViewportYByID[entry.id] ?? 0
+            itemViewportY: itemViewportTracker.viewportY(for: entry.id) ?? 0
         )
         returnScrollRestoreToken = UUID()
     }
@@ -323,7 +334,7 @@ struct DepthAlbumPickerView: View {
         pendingReturnScrollBookmark = DepthAlbumReturnScrollBookmark(
             itemID: entry.id,
             routeAnchor: entry.routeAnchor,
-            itemViewportY: itemViewportYByID[entry.id] ?? 0
+            itemViewportY: itemViewportTracker.viewportY(for: entry.id) ?? 0
         )
         returnScrollRestoreToken = UUID()
     }
@@ -383,7 +394,7 @@ struct DepthAlbumPickerView: View {
         pendingReturnScrollBookmark = DepthAlbumReturnScrollBookmark(
             itemID: replacement.id,
             routeAnchor: replacement.routeAnchor,
-            itemViewportY: itemViewportYByID[replacement.id] ?? 0
+            itemViewportY: itemViewportTracker.viewportY(for: replacement.id) ?? 0
         )
         returnScrollRestoreToken = UUID()
     }
@@ -398,7 +409,7 @@ struct DepthAlbumPickerView: View {
         pendingReturnScrollBookmark = DepthAlbumReturnScrollBookmark(
             itemID: item.id,
             routeAnchor: item.routeAnchor,
-            itemViewportY: itemViewportYByID[item.id] ?? 0
+            itemViewportY: itemViewportTracker.viewportY(for: item.id) ?? 0
         )
         returnScrollRestoreToken = UUID()
         routeStore.openDepthAlbumItem(item.routeAnchor)
@@ -412,6 +423,7 @@ struct DepthAlbumPickerView: View {
         nextEntry: DepthAlbumDeletionContext.Entry?
     ) {
         locallyRemovedItemIDs.insert(deletedItemID)
+        refreshVisibleSnapshot()
         guard let nextEntry else {
             return
         }
@@ -483,8 +495,14 @@ struct DepthAlbumPickerView: View {
     }
 
     private func pruneTrackedItemViewportPositions() {
-        let currentItemIDs = Set(visibleItems.map(\.id))
-        itemViewportYByID = itemViewportYByID.filter { currentItemIDs.contains($0.key) }
+        itemViewportTracker.retainOnly(Set(visibleSnapshot.itemIDs))
+    }
+
+    private func refreshVisibleSnapshot() {
+        visibleSnapshot = DepthAlbumVisibleSnapshot(
+            items: libraryStore.items,
+            excluding: locallyRemovedItemIDs
+        )
     }
 
     static func returnScrollOffsetY(
@@ -559,6 +577,45 @@ struct DepthAlbumPickerView: View {
         let cellPointLength = gridCellPointLength(containerWidth: containerWidth)
         let targetPixelLength = Int(ceil(cellPointLength * displayScale))
         return min(max(targetPixelLength, 1), maximumThumbnailPixelLength)
+    }
+}
+
+/// Derives the large-grid filter and the two change-observation projections
+/// once per semantic Library revision (or local deletion), rather than once
+/// for every read of `DepthAlbumPickerView.body`.
+@MainActor
+private struct DepthAlbumVisibleSnapshot {
+    let items: [TAPLibraryItem]
+    let itemIDs: [String]
+    let revisions: [DepthAlbumViewerItemRevision]
+
+    init(items: [TAPLibraryItem], excluding removedItemIDs: Set<String>) {
+        let visibleItems = removedItemIDs.isEmpty
+            ? items
+            : items.filter { !removedItemIDs.contains($0.id) }
+        self.items = visibleItems
+        self.itemIDs = visibleItems.map(\.id)
+        self.revisions = visibleItems.map(DepthAlbumViewerItemRevision.init(item:))
+    }
+}
+
+/// Keeps exact per-item return positions without making every geometry update
+/// an observed mutation of the whole grid. SwiftUI owns this object's lifetime,
+/// but it deliberately emits no `objectWillChange` events while scrolling.
+@MainActor
+final class DepthAlbumItemViewportTracker: ObservableObject {
+    private var viewportYByID: [String: CGFloat] = [:]
+
+    func record(_ viewportY: CGFloat, for itemID: String) {
+        viewportYByID[itemID] = viewportY
+    }
+
+    func viewportY(for itemID: String) -> CGFloat? {
+        viewportYByID[itemID]
+    }
+
+    func retainOnly(_ itemIDs: Set<String>) {
+        viewportYByID = viewportYByID.filter { itemIDs.contains($0.key) }
     }
 }
 

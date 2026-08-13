@@ -192,6 +192,7 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
             assertionProof = try await assertionSigner.sign(contentDigest: digest)
             assertionFinished = true
             TAPVideoPerformanceTrace.emitAssertionFinished(succeeded: true)
+            try Task.checkCancellation()
             let videoProof = TAPVideoManifest.Proof(
                 type: assertionProof.proof.type,
                 algorithm: assertionProof.proof.algorithm,
@@ -221,6 +222,7 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
             expectedPackageID: expectedPackageID,
             validatesDepthTrack: false
         )
+        try Task.checkCancellation()
 
         return TAPSignedVideoFile(
             fileURL: videoFileURL,
@@ -259,6 +261,7 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
         expectedCaptureID: String,
         expectedProfile: CaptureOutputProfile
     ) throws -> ValidatedTAPDepthPhoto {
+        try Task<Never, Never>.checkCancellation()
         try TAPDepthPhotoFileReader.validateContainer(
             signedPhotoData,
             expected: expectedProfile.fileContainer
@@ -274,6 +277,7 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
             fileContainer: expectedProfile.fileContainer
         )
         let proofValue = try decodedCaptureProofValue(proof, expectedCaptureID: expectedCaptureID)
+        try Task<Never, Never>.checkCancellation()
 
         let depthData = try TAPDepthPhotoFileReader.depthData(from: signedPhotoData)
         try validateDepthReadback(depthData, manifest: manifest)
@@ -284,6 +288,7 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
             fileContainer: expectedProfile.fileContainer,
             depthData: depthData
         )
+        try Task<Never, Never>.checkCancellation()
         try validateCaptureProof(
             proof,
             proofValue: proofValue,
@@ -304,6 +309,7 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
         expectedCaptureID: String,
         expectedProfile: CaptureOutputProfile
     ) throws -> ValidatedTAPLivePhoto {
+        try Task<Never, Never>.checkCancellation()
         try TAPDepthPhotoFileReader.validateContainer(
             signedPhotoData,
             expected: expectedProfile.fileContainer
@@ -320,6 +326,7 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
             fileContainer: expectedProfile.fileContainer
         )
         let proofValue = try decodedCaptureProofValue(proof, expectedCaptureID: expectedCaptureID)
+        try Task<Never, Never>.checkCancellation()
 
         let depthData = try TAPDepthPhotoFileReader.depthData(from: signedPhotoData)
         try validateDepthReadback(depthData, manifest: manifest)
@@ -331,6 +338,7 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
             depthData: depthData,
             pairedVideoURL: pairedVideoURL
         )
+        try Task<Never, Never>.checkCancellation()
         try validateCaptureProof(
             proof,
             proofValue: proofValue,
@@ -356,6 +364,7 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
         expectedCaptureID: String,
         expectedProfile: CaptureOutputProfile
     ) throws -> ValidatedTAPDepthPhoto {
+        try Task<Never, Never>.checkCancellation()
         try TAPDepthPhotoFileReader.validateContainer(
             signedPhotoData,
             expected: expectedProfile.fileContainer
@@ -408,6 +417,7 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
         expectedPackageID: UUID,
         validatesDepthTrack: Bool = false
     ) async throws -> ValidatedTAPVideoFile {
+        try Task<Never, Never>.checkCancellation()
         let validationPurpose = validatesDepthTrack
             ? "signed-export-full"
             : "post-proof-authentication"
@@ -428,12 +438,14 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
             )
         }
         let manifest = try TAPVideoManifestBox.decodedManifest(fromFileAt: videoFileURL)
+        try Task<Never, Never>.checkCancellation()
         try validateManifestID(manifest.payload.id, expectedCaptureID: expectedCaptureID)
         try validateVideoPackageID(manifest.payload.packageID, expectedPackageID: expectedPackageID)
         try validateVideoManifestCarriesNoProofBody(manifest)
         try await TAPVideoSignedFileValidationOrder.run(
             validatesDepthTrack: validatesDepthTrack,
             authenticate: {
+                try Task<Never, Never>.checkCancellation()
                 let proof = try decodedVideoCaptureProof(fromFileAt: videoFileURL)
                 let proofValue = try decodedVideoCaptureProofValue(
                     proof,
@@ -444,6 +456,7 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
                     videoFileURL: videoFileURL,
                     purpose: "proof-validation"
                 )
+                try Task<Never, Never>.checkCancellation()
                 try validateVideoCaptureProof(
                     proof,
                     proofValue: proofValue,

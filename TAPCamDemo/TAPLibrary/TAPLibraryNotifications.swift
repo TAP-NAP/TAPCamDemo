@@ -12,13 +12,27 @@ nonisolated extension Notification.Name {
     )
 }
 
+/// Optional private routing payload for queue-originated Library changes.
+/// General Photos/catalog changes may continue posting `nil`; Viewer resource
+/// owners use this value only to ignore unrelated pending-capture updates.
+nonisolated struct TAPLibraryPendingCaptureChange: Sendable {
+    let captureID: String
+}
+
 nonisolated enum TAPLibraryChangeNotifier {
-    static func post() {
+    static func post(captureID: String? = nil) {
+        let object = captureID.map(TAPLibraryPendingCaptureChange.init)
         if Thread.isMainThread {
-            NotificationCenter.default.post(name: .tapLibraryDidChange, object: nil)
+            NotificationCenter.default.post(
+                name: .tapLibraryDidChange,
+                object: object
+            )
         } else {
             DispatchQueue.main.async {
-                NotificationCenter.default.post(name: .tapLibraryDidChange, object: nil)
+                NotificationCenter.default.post(
+                    name: .tapLibraryDidChange,
+                    object: object
+                )
             }
         }
     }

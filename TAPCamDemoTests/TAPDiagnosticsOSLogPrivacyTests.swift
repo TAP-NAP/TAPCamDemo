@@ -271,6 +271,20 @@ struct TAPDiagnosticsOSLogPrivacyTests {
         #expect(!publicLabels.contains("captureID"))
     }
 
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func coldPathMilestonesOmitMediaIdentifiersAndFilePaths() throws {
+        let providerSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAlbumItemProvider.swift"
+        )
+        let playbackSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/Playback/TAPVideoPlaybackSession.swift"
+        )
+
+        #expect(!providerSource.contains("latestPending="))
+        #expect(!playbackSource.contains("fileURL=\\("))
+        #expect(!playbackSource.contains("lastPathComponent, privacy:"))
+    }
+
     @Test func runtimeOutputLogsAreConditionallyCompiled() throws {
         let calls = try Self.runtimeOutputLoggingCalls()
         #expect(!calls.isEmpty, "Output log scanner should find existing runtime logs")

@@ -5,34 +5,61 @@
 
 import Foundation
 
-/// Scalar input for on-demand original-video sharing. Durable signature state
-/// is carried from the local record; the builder never parses or validates the
-/// MP4 while preparing a transport copy.
+/// Frozen input for on-demand original-video sharing. When a Viewer resource
+/// lease is supplied, it remains the sole media source for this attempt; the
+/// builder never re-fetches the same file from Photos or the pending queue.
 nonisolated struct TAPVideoShareResourceRequest: Sendable {
     let captureID: String?
     let assetLocalIdentifier: String?
     let prefersPhotoLibraryResource: Bool
     let hasSignatureEvidence: Bool
+    let originalResourceLease: TAPVideoOriginalResourceLease?
+    let directShareVerifiabilityWarning: String?
 
-    init(record: TAPPendingCaptureRecord) {
+    init(
+        record: TAPPendingCaptureRecord,
+        originalResourceLease: TAPVideoOriginalResourceLease? = nil,
+        directShareVerifiabilityWarning: String? = nil
+    ) {
         captureID = record.captureID
         assetLocalIdentifier = record.assetLocalIdentifier
         prefersPhotoLibraryResource = record.status == .exported
             && record.assetLocalIdentifier != nil
         hasSignatureEvidence = record.artifactKind == .tapVideo
             && record.videoArtifactState == .signed
+        self.originalResourceLease = originalResourceLease
+        self.directShareVerifiabilityWarning = directShareVerifiabilityWarning
     }
 
     init(
         captureID: String?,
         assetLocalIdentifier: String?,
         prefersPhotoLibraryResource: Bool = false,
-        hasSignatureEvidence: Bool = false
+        hasSignatureEvidence: Bool = false,
+        originalResourceLease: TAPVideoOriginalResourceLease? = nil,
+        directShareVerifiabilityWarning: String? = nil
     ) {
         self.captureID = captureID
         self.assetLocalIdentifier = assetLocalIdentifier
         self.prefersPhotoLibraryResource = prefersPhotoLibraryResource
         self.hasSignatureEvidence = hasSignatureEvidence
+        self.originalResourceLease = originalResourceLease
+        self.directShareVerifiabilityWarning = directShareVerifiabilityWarning
+    }
+
+    /// Preferred constructor after the Viewer has resolved and locally checked
+    /// one complete original video.
+    init(
+        originalResourceLease: TAPVideoOriginalResourceLease,
+        hasSignatureEvidence: Bool,
+        directShareVerifiabilityWarning: String? = nil
+    ) {
+        captureID = nil
+        assetLocalIdentifier = nil
+        prefersPhotoLibraryResource = false
+        self.hasSignatureEvidence = hasSignatureEvidence
+        self.originalResourceLease = originalResourceLease
+        self.directShareVerifiabilityWarning = directShareVerifiabilityWarning
     }
 }
 
@@ -94,6 +121,10 @@ nonisolated struct TAPVideoShareArtifactBuilder: Sendable {
         if requiresSignedVideo, !request.hasSignatureEvidence {
             throw TAPNAPShareArtifactError.packageRequiresSignatureEvidence
         }
+        let progressCoalescer = TAPShareProgressCoalescer(delivery: progress)
+        let coalescedProgress: ProgressHandler = { value in
+            progressCoalescer.submit(value)
+        }
 
         let outputDirectoryURL = try temporaryDirectoryProvider()
         let resourcesDirectoryURL = outputDirectoryURL.appendingPathComponent(
@@ -105,13 +136,17 @@ nonisolated struct TAPVideoShareArtifactBuilder: Sendable {
                 at: outputDirectoryURL,
                 withIntermediateDirectories: true
             )
-            progress(0)
+            coalescedProgress(0)
             let sourceURL = try await loadVideoResource(
                 request: request,
                 requiresSignedVideo: requiresSignedVideo,
                 destinationDirectoryURL: resourcesDirectoryURL,
                 progress: { value in
-                    Self.mapProgress(value, weight: 0.98, handler: progress)
+                    Self.mapProgress(
+                        value,
+                        weight: 0.98,
+                        handler: coalescedProgress
+                    )
                 }
             )
             try Task.checkCancellation()
@@ -124,18 +159,29 @@ nonisolated struct TAPVideoShareArtifactBuilder: Sendable {
                 .appendingPathComponent(Self.outputBasename)
                 .appendingPathExtension(fileExtension)
             try FileManager.default.moveItem(at: sourceURL, to: outputURL)
-            try? FileManager.default.removeItem(at: resourcesDirectoryURL)
+            TAPShareTemporaryDirectoryCleanup.removeIfPresent(
+                at: resourcesDirectoryURL,
+                scope: "videoResources"
+            )
             try Task.checkCancellation()
-            progress(1)
-            return TAPNAPShareArtifact(
+            coalescedProgress(1)
+            let artifact = TAPNAPShareArtifact(
                 id: UUID(),
                 kind: .video,
                 fileURL: outputURL,
                 temporaryDirectoryURL: outputDirectoryURL,
-                warnings: []
+                warnings: Self.verifiabilityWarning(
+                    request.directShareVerifiabilityWarning
+                )
             )
+            await progressCoalescer.finish()
+            return artifact
         } catch {
-            try? FileManager.default.removeItem(at: outputDirectoryURL)
+            progressCoalescer.cancel()
+            TAPShareTemporaryDirectoryCleanup.removeIfPresent(
+                at: outputDirectoryURL,
+                scope: "videoFailure"
+            )
             if error is CancellationError {
                 throw error
             }
@@ -149,6 +195,23 @@ nonisolated struct TAPVideoShareArtifactBuilder: Sendable {
         destinationDirectoryURL: URL,
         progress: @escaping ProgressHandler
     ) async throws -> URL {
+        if let originalResourceLease = request.originalResourceLease {
+            try Task.checkCancellation()
+            let fileExtension = originalResourceLease.fileURL.pathExtension.isEmpty
+                ? "mp4"
+                : originalResourceLease.fileURL.pathExtension.lowercased()
+            let copiedURL = destinationDirectoryURL
+                .appendingPathComponent("viewer-original-video")
+                .appendingPathExtension(fileExtension)
+            try TAPShareResourceFileCopier.copy(
+                from: originalResourceLease.fileURL,
+                to: copiedURL,
+                progress: progress
+            )
+            try Task.checkCancellation()
+            return copiedURL
+        }
+
         if !request.prefersPhotoLibraryResource, let captureID = request.captureID {
             do {
                 let snapshot = try await pendingSnapshotter(
@@ -198,6 +261,14 @@ nonisolated struct TAPVideoShareArtifactBuilder: Sendable {
             return
         }
         handler(min(max(value, 0), 1) * weight)
+    }
+
+    private static func verifiabilityWarning(_ warning: String?) -> [String] {
+        guard let warning = warning?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !warning.isEmpty else {
+            return []
+        }
+        return [warning]
     }
 
     private static func defaultTemporaryDirectory() throws -> URL {

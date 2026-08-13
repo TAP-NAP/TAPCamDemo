@@ -278,11 +278,21 @@ nonisolated struct DepthAnalysisProgressivePhotoLoader {
     typealias ThumbnailLoader = DepthAnalysisDisplayPhotoLoader.ThumbnailLoader
     typealias DisplayLoader = DepthAnalysisDisplayPhotoLoader.DisplayLoader
     typealias InputLoader = @Sendable (DepthAnalysisSource, @escaping OriginalProgressHandler) async throws -> TAPDepthAnalysisInput
+    struct LoadedOriginal {
+        let analysisResult: Result<TAPDepthAnalysisInput, any Error>
+        let resourceLease: TAPPhotoOriginalResourceLease?
+
+        func analysisInput() throws -> TAPDepthAnalysisInput {
+            try analysisResult.get()
+        }
+    }
     private typealias IdentifiedInputLoader = @Sendable (
         DepthAnalysisSource,
         MediaFetchRequestKey,
+        Bool,
+        @escaping @Sendable @MainActor (TAPPhotoOriginalResourceLease) -> Void,
         @escaping OriginalProgressHandler
-    ) async throws -> TAPDepthAnalysisInput
+    ) async throws -> LoadedOriginal
 
     private let displayPhotoLoader: DepthAnalysisDisplayPhotoLoader
     private let identifiedInputLoader: IdentifiedInputLoader
@@ -299,15 +309,21 @@ nonisolated struct DepthAnalysisProgressivePhotoLoader {
             displayLoader: displayLoader
         )
         if let inputLoader {
-            self.identifiedInputLoader = { source, _, progressHandler in
-                try await inputLoader(source, progressHandler)
+            self.identifiedInputLoader = { source, _, _, _, progressHandler in
+                LoadedOriginal(
+                    analysisResult: .success(
+                        try await inputLoader(source, progressHandler)
+                    ),
+                    resourceLease: nil
+                )
             }
         } else {
-            self.identifiedInputLoader = { source, requestKey, progressHandler in
+            self.identifiedInputLoader = { source, requestKey, expectsPairedVideo, resourceReadyHandler, progressHandler in
                 try await Self.defaultInput(
                     source: source,
-                    requestKey: requestKey,
-                    mediaFetcher: mediaFetcher,
+                    mediaID: requestKey.itemID,
+                    expectsPairedVideo: expectsPairedVideo,
+                    resourceReadyHandler: resourceReadyHandler,
                     progressHandler: progressHandler
                 )
             }
@@ -337,40 +353,65 @@ nonisolated struct DepthAnalysisProgressivePhotoLoader {
         requestKey: MediaFetchRequestKey,
         progressHandler: @escaping OriginalProgressHandler
     ) async throws -> TAPDepthAnalysisInput {
-        try await identifiedInputLoader(source, requestKey, progressHandler)
+        try await loadedOriginal(
+            source: source,
+            requestKey: requestKey,
+            expectsPairedVideo: false,
+            progressHandler: progressHandler
+        ).analysisInput()
+    }
+
+    func loadedOriginal(
+        source: DepthAnalysisSource,
+        requestKey: MediaFetchRequestKey,
+        expectsPairedVideo: Bool,
+        resourceReadyHandler: @escaping @Sendable @MainActor (
+            TAPPhotoOriginalResourceLease
+        ) -> Void = { _ in },
+        progressHandler: @escaping OriginalProgressHandler
+    ) async throws -> LoadedOriginal {
+        try await identifiedInputLoader(
+            source,
+            requestKey,
+            expectsPairedVideo,
+            resourceReadyHandler,
+            progressHandler
+        )
     }
 
     private static func defaultInput(
         source: DepthAnalysisSource,
-        requestKey: MediaFetchRequestKey,
-        mediaFetcher: any LibraryMediaFetching,
+        mediaID: LibraryMediaID,
+        expectsPairedVideo: Bool,
+        resourceReadyHandler: @escaping @Sendable @MainActor (
+            TAPPhotoOriginalResourceLease
+        ) -> Void,
         progressHandler: @escaping OriginalProgressHandler
-    ) async throws -> TAPDepthAnalysisInput {
-        let data: Data
-        switch source {
-        case .photosAsset(let assetID):
-            let request = LibraryMediaAssetRequest(
-                key: requestKey,
-                assetLocalIdentifier: assetID
+    ) async throws -> LoadedOriginal {
+        let resourceLease = try await TAPPhotoOriginalResourceLoader().load(
+            TAPPhotoOriginalResourceRequest(
+                mediaID: mediaID,
+                source: source,
+                expectsPairedVideo: expectsPairedVideo
             )
-            data = try await mediaFetcher.photoOriginalData(
-                for: request
-            ) { progress in
-                Task { @MainActor in
-                    progressHandler(progress)
-                }
-            }
-        case .pendingCapture(let captureID):
-            do {
-                data = try await TAPPendingCaptureStore.shared.bestAvailablePhotoData(captureID: captureID)
-            } catch {
-                NotificationCenter.default.post(name: .tapLibraryDidChange, object: nil)
-                throw DepthAnalysisInputLoaderError.pendingCaptureTemporarilyUnavailable
+        ) { progress in
+            Task { @MainActor in
+                progressHandler(progress)
             }
         }
-
-        try TAPDepthAnalysisInputValidation.validateHEICByteCount(data.count)
-        return try TAPDepthMapReader.analysisInput(from: data)
+        await resourceReadyHandler(resourceLease.retaining())
+        let analysisResult = Result<TAPDepthAnalysisInput, any Error> {
+            let data = try Data(
+                contentsOf: resourceLease.photoURL,
+                options: [.mappedIfSafe]
+            )
+            try TAPDepthAnalysisInputValidation.validateHEICByteCount(data.count)
+            return try TAPDepthMapReader.analysisInput(from: data)
+        }
+        return LoadedOriginal(
+            analysisResult: analysisResult,
+            resourceLease: resourceLease
+        )
     }
 
 }

@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import Observation
 @preconcurrency import Photos
 import Testing
 import UIKit
@@ -170,6 +171,17 @@ struct LibraryMediaTests {
 
         #expect(!providerSource.contains("import Photos"))
         #expect(!providerSource.contains("PhotoLibraryWriter.depthAlbumAssets"))
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func providerKeepsScalableLibraryMergeBehindExplicitIsolationBoundary() throws {
+        let providerSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAlbumItemProvider.swift"
+        )
+
+        #expect(providerSource.contains("let reconciled = await Task.detached(priority: .userInitiated)"))
+        #expect(providerSource.contains("TAPLibraryItem.merged("))
+        #expect(providerSource.contains("items.map(\\.summary)"))
     }
 
     @Test func exportedScalarRecordSurvivesTemporaryPhotosResolutionFailure() throws {
@@ -737,6 +749,119 @@ struct LibraryMediaTests {
         #expect(store.latestItem?.mediaID == store.snapshot.items.first?.id)
     }
 
+    @Test @MainActor func storePublishesFirstEmptySnapshotOnlyOnce() async {
+        let provider = DepthAlbumItemProvider(
+            pendingRecordsLoader: { [] },
+            exportedRecordsLoader: { [] },
+            photoCatalogLoader: { _ in .empty }
+        )
+        let store = LibraryMediaStore(itemProvider: provider, observesChanges: false)
+
+        _ = await store.refresh()
+        let firstRevision = store.snapshot.revision
+        #expect(firstRevision > 0)
+        #expect(store.snapshot.items.isEmpty)
+
+        let publicationRecorder = LibraryMediaObservationRecorder()
+        withObservationTracking {
+            _ = store.items
+            _ = store.snapshot.revision
+        } onChange: {
+            publicationRecorder.record()
+        }
+
+        _ = await store.refresh()
+
+        #expect(store.snapshot.revision == firstRevision)
+        #expect(publicationRecorder.count == 0)
+    }
+
+    @Test @MainActor func storeDoesNotRepublishEquivalentNineHundredItemSnapshot() async {
+        let records = (0..<900).map { index in
+            TAPCamDemoTestFixtures.samplePendingRecord(
+                captureID: "capture-\(index)",
+                capturedAt: Date(timeIntervalSince1970: Double(index))
+            )
+        }
+        let provider = DepthAlbumItemProvider(
+            pendingRecordsLoader: { records },
+            exportedRecordsLoader: { [] },
+            photoCatalogLoader: { _ in .empty }
+        )
+        let store = LibraryMediaStore(itemProvider: provider, observesChanges: false)
+
+        _ = await store.refresh()
+        let firstRevision = store.snapshot.revision
+        #expect(store.items.count == 900)
+
+        let publicationRecorder = LibraryMediaObservationRecorder()
+        withObservationTracking {
+            _ = store.items
+            _ = store.snapshot.revision
+        } onChange: {
+            publicationRecorder.record()
+        }
+
+        _ = await store.refresh()
+
+        #expect(store.items.count == 900)
+        #expect(store.snapshot.revision == firstRevision)
+        #expect(publicationRecorder.count == 0)
+    }
+
+    @Test @MainActor func storePublishesOnlySemanticSnapshotChanges() async {
+        let firstRecord = TAPCamDemoTestFixtures.samplePendingRecord(
+            captureID: "first",
+            capturedAt: Date(timeIntervalSince1970: 1)
+        )
+        let secondRecord = TAPCamDemoTestFixtures.samplePendingRecord(
+            captureID: "second",
+            capturedAt: Date(timeIntervalSince1970: 2)
+        )
+        let loader = SequencedPendingLoader(first: [firstRecord], second: [secondRecord])
+        let provider = DepthAlbumItemProvider(
+            pendingRecordsLoader: { await loader.load() },
+            exportedRecordsLoader: { [] },
+            photoCatalogLoader: { _ in .empty }
+        )
+        let store = LibraryMediaStore(itemProvider: provider, observesChanges: false)
+
+        _ = await store.refresh()
+        let firstRevision = store.snapshot.revision
+        _ = await store.refresh()
+        let changedRevision = store.snapshot.revision
+
+        #expect(changedRevision == firstRevision + 1)
+        #expect(store.items.map(\.id) == ["capture:second"])
+
+        _ = await store.refresh()
+
+        #expect(store.snapshot.revision == changedRevision)
+    }
+
+    @Test @MainActor func storeTreatsEquivalentPhotosErrorsAsOneSnapshot() async {
+        let record = TAPCamDemoTestFixtures.samplePendingRecord(
+            captureID: "partial",
+            capturedAt: Date(timeIntervalSince1970: 1)
+        )
+        let provider = DepthAlbumItemProvider(
+            pendingRecordsLoader: { [record] },
+            exportedRecordsLoader: { [] },
+            photoCatalogLoader: { _ in
+                throw NSError(domain: PHPhotosErrorDomain, code: 3)
+            }
+        )
+        let store = LibraryMediaStore(itemProvider: provider, observesChanges: false)
+
+        _ = await store.refresh()
+        let firstRevision = store.snapshot.revision
+        _ = await store.refresh()
+
+        #expect(store.snapshot.revision == firstRevision)
+        #expect(store.items.map(\.id) == ["capture:partial"])
+        #expect(store.photoAssetsError != nil)
+    }
+
     @Test func diskCacheEnforcesByteBudgetAndTTL() async throws {
         let directory = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
             .appendingPathComponent("LibraryPosterCache", isDirectory: true)
@@ -851,6 +976,69 @@ struct LibraryMediaTests {
         #expect(poster.height == 512)
     }
 
+    @Test @MainActor func thumbnailDecoderRunsOffMainActorAndCoalescesSameKey() async throws {
+        let cache = DepthAlbumThumbnailMemoryCache.shared
+        cache.removeAll()
+        defer { cache.removeAll() }
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 8, height: 8))
+        let sourceImage = renderer.image { context in
+            UIColor.red.setFill()
+            context.cgContext.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
+        }
+        let jpegData = try #require(sourceImage.jpegData(compressionQuality: 0.8))
+        let poster = MediaPoster(cacheKey: "coalesced", jpegData: jpegData)
+        let recorder = ThumbnailDecodeRecorder()
+        let decoder = DepthAlbumThumbnailDecoder { poster in
+            recorder.recordDecode(isMainThread: Thread.isMainThread)
+            Thread.sleep(forTimeInterval: 0.04)
+            guard let image = UIImage(data: poster.jpegData) else {
+                return nil
+            }
+            return DepthAlbumDecodedThumbnail(poster: poster, image: image)
+        }
+
+        let cancelledWaiter = Task {
+            await decoder.decodedThumbnail(for: poster)
+        }
+        let liveWaiter = Task {
+            await decoder.decodedThumbnail(for: poster)
+        }
+        try await Task.sleep(for: .milliseconds(5))
+        cancelledWaiter.cancel()
+
+        let cancelledResult = await cancelledWaiter.value
+        let liveResult = await liveWaiter.value
+
+        #expect(cancelledResult == nil)
+        #expect(liveResult != nil)
+        #expect(recorder.decodeCount == 1)
+        #expect(!recorder.didRunOnMainThread)
+        #expect(cache.image(for: poster.cacheKey) === liveResult?.image)
+    }
+
+    @Test @MainActor func thumbnailMemoryCacheReusesOneDecodedImageObject() async throws {
+        let cache = DepthAlbumThumbnailMemoryCache.shared
+        cache.removeAll()
+        defer { cache.removeAll() }
+
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 2, height: 2))
+        let image = renderer.image { context in
+            UIColor.blue.setFill()
+            context.cgContext.fill(CGRect(x: 0, y: 0, width: 2, height: 2))
+        }
+        let jpegData = try #require(image.jpegData(compressionQuality: 0.8))
+        let poster = MediaPoster(cacheKey: "decoded-once", jpegData: jpegData)
+        let decodedThumbnail = try #require(
+            await DepthAlbumThumbnailDecoder().decodedThumbnail(for: poster)
+        )
+
+        let first = try #require(cache.image(for: "decoded-once"))
+        let second = try #require(cache.image(for: "decoded-once"))
+
+        #expect(first === second)
+        #expect(first === decodedThumbnail.image)
+    }
+
     private static func summary(
         id: LibraryMediaID,
         source: LibraryMediaSource
@@ -882,6 +1070,48 @@ private actor SequencedPendingLoader {
             return first
         }
         return second
+    }
+}
+
+private nonisolated final class LibraryMediaObservationRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = 0
+
+    var count: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
+    }
+
+    func record() {
+        lock.lock()
+        value += 1
+        lock.unlock()
+    }
+}
+
+private nonisolated final class ThumbnailDecodeRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    private var ranOnMainThread = false
+
+    var decodeCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return count
+    }
+
+    var didRunOnMainThread: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return ranOnMainThread
+    }
+
+    func recordDecode(isMainThread: Bool) {
+        lock.lock()
+        count += 1
+        ranOnMainThread = ranOnMainThread || isMainThread
+        lock.unlock()
     }
 }
 

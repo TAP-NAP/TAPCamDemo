@@ -14,6 +14,13 @@ and cleanup so real-device App Attest and Photos work do not overlap. Product
 scope and terminology come from
 [ProductContract.md](../../Docs/ProductContract.md).
 
+TAP Video proof filling never mutates the durable generation that Viewer or
+Share may currently snapshot. The store creates one independent same-bundle
+working generation on demand, signing mutates only that file, and the store
+atomically publishes the completed inode. The temporary signing generation is
+discarded on failure/cancellation and is neither a generated `.tapnap` nor a
+persistent media cache.
+
 ## Current Coarse Retry Model
 
 The implemented retry model is deliberately coarse:

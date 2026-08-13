@@ -14,9 +14,8 @@ struct TAPVideoPlaybackScreen: View {
     let mediaFetcher: any LibraryMediaFetching
     @Binding var selectedTool: AnalysisViewerTool
     @Binding var depthOverlayOpacity: Double
-    let isPreparingShare: Bool
+    let shareSubject: DepthAnalysisShareSubject?
     let onBackTapped: () -> Void
-    let onShareTapped: () -> Void
     let onModeTapped: (String) -> Void
     let onDeleteTapped: () -> Void
     let onCurrentPagingEntryChanged: (TAPLibraryViewerPagingEntry) -> Void
@@ -67,11 +66,10 @@ struct TAPVideoPlaybackScreen: View {
                     session: session,
                     selectedTool: selectedTool,
                     overlayOpacity: $depthOverlayOpacity,
-                    isSharePreparing: isPreparingShare,
+                    shareSubject: shareSubject,
                     topSafeArea: insets.top,
                     bottomSafeArea: insets.bottom,
                     onBackTapped: onBackTapped,
-                    onShareTapped: onShareTapped,
                     onModeTapped: onModeTapped,
                     onDeleteTapped: onDeleteTapped
                 )
@@ -251,11 +249,10 @@ private struct TAPVideoPlaybackSessionChrome: View {
     let session: TAPVideoPlaybackSession
     let selectedTool: AnalysisViewerTool
     @Binding var overlayOpacity: Double
-    let isSharePreparing: Bool
+    let shareSubject: DepthAnalysisShareSubject?
     let topSafeArea: CGFloat
     let bottomSafeArea: CGFloat
     let onBackTapped: () -> Void
-    let onShareTapped: () -> Void
     let onModeTapped: (String) -> Void
     let onDeleteTapped: () -> Void
 
@@ -267,11 +264,19 @@ private struct TAPVideoPlaybackSessionChrome: View {
             availability: session.registeredDepthAvailability,
             isTwoDPlaybackReady: session.isTwoDPlaybackReady,
             overlayOpacity: $overlayOpacity,
-            isSharePreparing: isSharePreparing,
+            shareSubject: shareSubject,
+            shareResourceAccess: DepthAnalysisShareResourceAccess(
+                isReady: session.isOriginalResourceReady,
+                acquire: {
+                    guard let lease = try? session.acquireOriginalResourceLease() else {
+                        return nil
+                    }
+                    return .video(lease)
+                }
+            ),
             topSafeArea: topSafeArea,
             bottomSafeArea: bottomSafeArea,
             onBackTapped: onBackTapped,
-            onShareTapped: onShareTapped,
             onModeTapped: onModeTapped,
             onDeleteTapped: onDeleteTapped
         )

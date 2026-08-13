@@ -12,7 +12,10 @@ screen, resource lifecycle, player, transport, stable chrome, and depth path.
 2. `TAPVideoPlaybackResourceLoader.swift` resolves the original video resource
    and bounded loading preview.
 3. `TAPVideoPlaybackSession.swift` owns fetch state, the foreground-only player
-   policy, background fetch cancellation/recovery, share preparation, and cleanup.
+   policy, background fetch cancellation/recovery, a reference-counted lease
+   for the complete original, and cleanup. `TAPVideoPlaybackProgressCoalescer`
+   turns per-chunk copy progress into latest-value UI publication at no more
+   than 20 Hz while preserving start and terminal samples.
 4. `TAPVideoPlaybackPlayerLifecycle.swift` isolates player-item observation,
    warm-up, audio-session ownership, and seek completion.
 5. `TAPVideoPlaybackScreen.swift` composes one stable viewer tree.
@@ -31,7 +34,14 @@ screen, resource lifecycle, player, transport, stable chrome, and depth path.
 ## Ownership rules
 
 - Screen composition does not read MP4 bytes or decode depth frames.
-- The session owns temporary resources and player teardown.
+- The session owns temporary resources and player teardown. Its original-video
+  readiness is independent from AVPlayer first-frame readiness: Share is
+  disabled until the original lease exists, then may open while the first
+  visible frame is still warming.
+- Share acquires a lease, runs the embedded proof/content-binding validator on
+  those exact bytes locally, and gives the same lease to on-demand payload
+  preparation. No Share path invokes backend/App Attest Verify, re-fetches the
+  original, pre-generates a package, or persists a Share cache.
 - Transport owns user time intent; the depth pipeline consumes confirmed
   playback time.
 - Calibration alone never enables the 2D overlay. A reviewed spatial

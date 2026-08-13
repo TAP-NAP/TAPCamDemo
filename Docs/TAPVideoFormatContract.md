@@ -234,8 +234,10 @@ Signing then uses
 binding becomes `bodySHA256`; SHA-256 of the canonical signing binding becomes
 the App Attest `clientDataHash`. The resulting
 `appAttestAssertion` / `TAPCam.AppAttestCaptureSignature.v1` proof envelope is
-written in place. Only proof-slot bytes may change after the pre-sign binding
-is persisted.
+written into the independent signing generation's fixed proof slot. Only those
+proof-slot bytes may change after the pre-sign binding is persisted; the
+completed generation is published over the durable path only after local
+validation succeeds.
 
 Proof authentication and depth-track health are deliberately separate:
 
@@ -261,11 +263,16 @@ Pending/<captureID>/
 ```
 
 Recording starts in a hidden workspace, then commits the finalized MP4 and
-record atomically. The same `artifact.mp4` transitions from empty proof slot to
-proof-filled signed file in place. Video APIs use file URLs, streaming box
-inspection, bounded hashing, and bounded depth work; production must not
-materialize the complete MP4 as `Data` or create a second full-size signing
-copy.
+record atomically. Signing freezes that unsigned generation into an independent
+same-bundle working file, fills and validates the proof there, then atomically
+publishes the complete signed inode over `artifact.mp4` inside the Pending
+Capture Store actor. This prevents Viewer/Share snapshots from observing a
+partially rewritten proof slot while App Attest work is in flight. The working
+generation is on-demand, discarded after publish/failure/cancellation, and is
+not a Share package or persistent cache. Video APIs use file URLs, filesystem
+clone/copy semantics, streaming box inspection, bounded hashing, and bounded
+depth work; production must not materialize the complete MP4 as `Data` or use a
+hard-linked mutable signing file.
 
 Before signing, `captureID` and `packageID` must match the manifest. The queue
 persists the pre-sign binding so a later byte change outside the proof slot is

@@ -26,9 +26,12 @@ nonisolated extension CapturePhotoFileContainer {
     }
 }
 
-/// Scalar routing input captured before share preparation begins. A request
-/// deliberately carries durable record evidence rather than asking the share
-/// path to verify photo bytes again.
+/// Frozen input captured before Share payload preparation begins.
+///
+/// When `originalResourceLease` is present it is the exact Viewer-ready
+/// resource set evaluated by the caller's local-integrity decision. The
+/// builder retains that lease for the whole request and must not re-fetch the
+/// same media from Photos or the Pending Capture Queue.
 nonisolated struct TAPNAPShareResourceRequest: Sendable {
     let captureID: String?
     let assetLocalIdentifier: String?
@@ -36,10 +39,14 @@ nonisolated struct TAPNAPShareResourceRequest: Sendable {
     let expectsPairedVideo: Bool
     let hasSignatureEvidence: Bool
     let prefersPhotoLibraryResources: Bool
+    let originalResourceLease: TAPPhotoOriginalResourceLease?
+    let directShareVerifiabilityWarning: String?
 
     init(
         record: TAPPendingCaptureRecord,
-        expectsPairedVideo livePhotoHint: Bool = false
+        expectsPairedVideo livePhotoHint: Bool = false,
+        originalResourceLease: TAPPhotoOriginalResourceLease? = nil,
+        directShareVerifiabilityWarning: String? = nil
     ) {
         captureID = record.captureID
         assetLocalIdentifier = record.assetLocalIdentifier
@@ -49,15 +56,23 @@ nonisolated struct TAPNAPShareResourceRequest: Sendable {
             && (record.signedPhotoFilename != nil || record.status.tapnapHasSignatureEvidence)
         prefersPhotoLibraryResources = record.status == .exported
             && record.assetLocalIdentifier != nil
+        self.originalResourceLease = originalResourceLease?.retaining()
+        self.directShareVerifiabilityWarning = directShareVerifiabilityWarning
     }
 
-    init(assetLocalIdentifier: String) {
+    init(
+        assetLocalIdentifier: String,
+        originalResourceLease: TAPPhotoOriginalResourceLease? = nil,
+        directShareVerifiabilityWarning: String? = nil
+    ) {
         captureID = nil
         self.assetLocalIdentifier = assetLocalIdentifier
         fileContainer = nil
         expectsPairedVideo = false
         hasSignatureEvidence = false
         prefersPhotoLibraryResources = true
+        self.originalResourceLease = originalResourceLease?.retaining()
+        self.directShareVerifiabilityWarning = directShareVerifiabilityWarning
     }
 
     init(
@@ -66,7 +81,9 @@ nonisolated struct TAPNAPShareResourceRequest: Sendable {
         fileContainer: CapturePhotoFileContainer?,
         expectsPairedVideo: Bool,
         hasSignatureEvidence: Bool,
-        prefersPhotoLibraryResources: Bool = false
+        prefersPhotoLibraryResources: Bool = false,
+        originalResourceLease: TAPPhotoOriginalResourceLease? = nil,
+        directShareVerifiabilityWarning: String? = nil
     ) {
         self.captureID = captureID
         self.assetLocalIdentifier = assetLocalIdentifier
@@ -74,10 +91,38 @@ nonisolated struct TAPNAPShareResourceRequest: Sendable {
         self.expectsPairedVideo = expectsPairedVideo
         self.hasSignatureEvidence = hasSignatureEvidence
         self.prefersPhotoLibraryResources = prefersPhotoLibraryResources
+        self.originalResourceLease = originalResourceLease?.retaining()
+        self.directShareVerifiabilityWarning = directShareVerifiabilityWarning
+    }
+
+    /// Preferred constructor after the Viewer has resolved and locally checked
+    /// one complete original-resource set.
+    init(
+        originalResourceLease: TAPPhotoOriginalResourceLease,
+        hasSignatureEvidence: Bool,
+        directShareVerifiabilityWarning: String? = nil
+    ) {
+        switch originalResourceLease.origin {
+        case .photosAsset(let assetID):
+            captureID = nil
+            assetLocalIdentifier = assetID
+            prefersPhotoLibraryResources = true
+        case .pendingCapture(let pendingCaptureID, _):
+            captureID = pendingCaptureID
+            assetLocalIdentifier = nil
+            prefersPhotoLibraryResources = false
+        }
+        fileContainer = originalResourceLease.fileContainerHint
+        expectsPairedVideo = originalResourceLease.expectsPairedVideo
+        self.hasSignatureEvidence = hasSignatureEvidence
+        self.originalResourceLease = originalResourceLease.retaining()
+        self.directShareVerifiabilityWarning = directShareVerifiabilityWarning
     }
 }
 
-nonisolated struct TAPNAPShareArtifact: Identifiable, Sendable {
+nonisolated final class TAPNAPShareArtifact: Identifiable, @unchecked Sendable {
+    typealias TemporaryDirectoryRemover = @Sendable (URL) throws -> Void
+
     enum Kind: String, Sendable {
         case tapnapPackage
         case image
@@ -89,9 +134,108 @@ nonisolated struct TAPNAPShareArtifact: Identifiable, Sendable {
     let fileURL: URL
     let temporaryDirectoryURL: URL
     let warnings: [String]
+    private let temporaryDirectoryLease: TAPNAPShareTemporaryDirectoryLease
+
+    init(
+        id: UUID,
+        kind: Kind,
+        fileURL: URL,
+        temporaryDirectoryURL: URL,
+        warnings: [String],
+        temporaryDirectoryRemover: @escaping TemporaryDirectoryRemover = {
+            try FileManager.default.removeItem(at: $0)
+        }
+    ) {
+        self.id = id
+        self.kind = kind
+        self.fileURL = fileURL
+        self.temporaryDirectoryURL = temporaryDirectoryURL
+        self.warnings = warnings
+        temporaryDirectoryLease = TAPNAPShareTemporaryDirectoryLease(
+            directoryURL: temporaryDirectoryURL,
+            remover: temporaryDirectoryRemover
+        )
+    }
 
     func removeTemporaryDirectory() {
-        try? FileManager.default.removeItem(at: temporaryDirectoryURL)
+        temporaryDirectoryLease.remove()
+    }
+}
+
+/// Shared by every value-copy of one artifact. Explicit cleanup remains the
+/// normal path; deinit is the abnormal-presentation fallback that prevents a
+/// temporary package from leaking if its SwiftUI owner disappears mid-handoff.
+private nonisolated final class TAPNAPShareTemporaryDirectoryLease: @unchecked Sendable {
+    private let directoryURL: URL
+    private let remover: TAPNAPShareArtifact.TemporaryDirectoryRemover
+    private let lock = NSLock()
+    private var hasRemovedDirectory = false
+    private var isRemovalInProgress = false
+
+    init(
+        directoryURL: URL,
+        remover: @escaping TAPNAPShareArtifact.TemporaryDirectoryRemover
+    ) {
+        self.directoryURL = directoryURL
+        self.remover = remover
+    }
+
+    deinit {
+        remove()
+    }
+
+    func remove() {
+        let shouldAttempt = lock.withLock {
+            guard !hasRemovedDirectory,
+                  !isRemovalInProgress else {
+                return false
+            }
+            isRemovalInProgress = true
+            return true
+        }
+        guard shouldAttempt else {
+            return
+        }
+
+        let didRemove = TAPShareTemporaryDirectoryCleanup.removeIfPresent(
+            at: directoryURL,
+            scope: "artifactLease",
+            remover: remover
+        )
+        lock.withLock {
+            hasRemovedDirectory = didRemove
+            isRemovalInProgress = false
+        }
+    }
+}
+
+nonisolated enum TAPShareTemporaryDirectoryCleanup {
+    private static let removalAttemptLimit = 3
+
+    @discardableResult
+    static func removeIfPresent(
+        at directoryURL: URL,
+        scope: String,
+        remover: @escaping TAPNAPShareArtifact.TemporaryDirectoryRemover = {
+            try FileManager.default.removeItem(at: $0)
+        }
+    ) -> Bool {
+        for attempt in 1...removalAttemptLimit {
+            do {
+                if FileManager.default.fileExists(atPath: directoryURL.path) {
+                    try remover(directoryURL)
+                }
+                return true
+            } catch {
+                let nsError = error as NSError
+                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                TAPDiagnostics.sharePackaging.error(
+                    "tap_share_temp_cleanup_failed scope=\(scope, privacy: .public) domain=\(nsError.domain, privacy: .public) code=\(nsError.code, privacy: .public) attempt=\(attempt, privacy: .public) willRetry=\(attempt < removalAttemptLimit, privacy: .public)"
+                )
+                #endif
+            }
+        }
+        return false
     }
 }
 
@@ -122,7 +266,7 @@ nonisolated enum TAPNAPShareArtifactError: LocalizedError, Equatable, Sendable {
 /// proof, computes a digest, or invokes a signature validator.
 ///
 /// Lifecycle constraint: a `.tapnap` may be generated only on demand after the
-/// user explicitly selects the package option in `DepthAnalysisShareSheet`.
+/// user explicitly selects the package option in the anchored TAP Share popover.
 /// Background pre-generation and persistent package caching are prohibited.
 /// Every output lives in a per-share temporary directory that the presentation
 /// owner removes after completion, cancellation, or dismissal.
@@ -192,13 +336,20 @@ nonisolated struct TAPNAPShareArtifactBuilder: Sendable {
         progress: @escaping ProgressHandler = { _ in }
     ) async throws -> TAPNAPShareArtifact {
         let preparationStartedAt = ProcessInfo.processInfo.systemUptime
-        guard request.hasSignatureEvidence, request.fileContainer != nil else {
+        guard request.hasSignatureEvidence,
+              request.fileContainer != nil || request.originalResourceLease != nil else {
             throw TAPNAPShareArtifactError.packageRequiresSignatureEvidence
+        }
+        let expectsPairedVideo = request.originalResourceLease?.expectsPairedVideo
+            ?? request.expectsPairedVideo
+        let progressCoalescer = TAPShareProgressCoalescer(delivery: progress)
+        let coalescedProgress: ProgressHandler = { value in
+            progressCoalescer.submit(value)
         }
 
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.sharePackaging.info(
-            "tapnap prepare started livePhoto=\(request.expectsPairedVideo, privacy: .public) pendingRoute=\(request.captureID != nil, privacy: .public) photosRoute=\(request.assetLocalIdentifier != nil, privacy: .public) compression=none bufferBytes=\(Self.archiveBufferSize, privacy: .public)"
+            "tapnap prepare started livePhoto=\(expectsPairedVideo, privacy: .public) pendingRoute=\(request.captureID != nil, privacy: .public) photosRoute=\(request.assetLocalIdentifier != nil, privacy: .public) viewerLease=\(request.originalResourceLease != nil, privacy: .public) compression=none bufferBytes=\(Self.archiveBufferSize, privacy: .public)"
         )
         #endif
 
@@ -212,16 +363,21 @@ nonisolated struct TAPNAPShareArtifactBuilder: Sendable {
                 at: outputDirectoryURL,
                 withIntermediateDirectories: true
             )
-            progress(0)
+            coalescedProgress(0)
             let resourceLoadStartedAt = ProcessInfo.processInfo.systemUptime
             let resources = try await loadResources(
                 request: request,
                 requiresSignedPhoto: true,
-                includesPairedVideo: request.expectsPairedVideo,
+                includesPairedVideo: expectsPairedVideo,
                 pendingLinkPolicy: .allowReadOnlyHardLink,
                 destinationDirectoryURL: resourcesDirectoryURL,
                 progress: { value in
-                    Self.mapProgress(value, offset: 0, weight: 0.78, handler: progress)
+                    Self.mapProgress(
+                        value,
+                        offset: 0,
+                        weight: 0.78,
+                        handler: coalescedProgress
+                    )
                 }
             )
             let photoBytes = try Self.checkedResourceSize(resources.photoURL)
@@ -232,18 +388,22 @@ nonisolated struct TAPNAPShareArtifactBuilder: Sendable {
             )
             #endif
             try Task.checkCancellation()
-            guard !request.expectsPairedVideo || resources.pairedVideoURL != nil else {
+            guard !expectsPairedVideo || resources.pairedVideoURL != nil else {
                 throw TAPNAPShareArtifactError.livePhotoPairedVideoMissing
             }
 
             let artifact = try await makePackage(
                 resources: resources,
-                expectsPairedVideo: request.expectsPairedVideo,
+                expectsPairedVideo: expectsPairedVideo,
                 outputDirectoryURL: outputDirectoryURL,
-                progress: progress
+                progress: coalescedProgress
             )
-            try? FileManager.default.removeItem(at: resourcesDirectoryURL)
-            progress(1)
+            TAPShareTemporaryDirectoryCleanup.removeIfPresent(
+                at: resourcesDirectoryURL,
+                scope: "tapnapResources"
+            )
+            coalescedProgress(1)
+            await progressCoalescer.finish()
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.sharePackaging.info(
                 "tapnap prepare completed durationMs=\(Self.elapsedMilliseconds(since: preparationStartedAt), privacy: .public) packageBytes=\((try? Self.checkedResourceSize(artifact.fileURL)) ?? 0, privacy: .public)"
@@ -251,7 +411,11 @@ nonisolated struct TAPNAPShareArtifactBuilder: Sendable {
             #endif
             return artifact
         } catch {
-            try? FileManager.default.removeItem(at: outputDirectoryURL)
+            progressCoalescer.cancel()
+            TAPShareTemporaryDirectoryCleanup.removeIfPresent(
+                at: outputDirectoryURL,
+                scope: "tapnapFailure"
+            )
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.sharePackaging.error(
                 "tapnap prepare failed durationMs=\(Self.elapsedMilliseconds(since: preparationStartedAt), privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)"
@@ -271,6 +435,10 @@ nonisolated struct TAPNAPShareArtifactBuilder: Sendable {
         if requiresSignedPhoto, !request.hasSignatureEvidence {
             throw TAPNAPShareArtifactError.packageRequiresSignatureEvidence
         }
+        let progressCoalescer = TAPShareProgressCoalescer(delivery: progress)
+        let coalescedProgress: ProgressHandler = { value in
+            progressCoalescer.submit(value)
+        }
 
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.sharePackaging.info(
@@ -288,7 +456,7 @@ nonisolated struct TAPNAPShareArtifactBuilder: Sendable {
                 at: outputDirectoryURL,
                 withIntermediateDirectories: true
             )
-            progress(0)
+            coalescedProgress(0)
             let resourceLoadStartedAt = ProcessInfo.processInfo.systemUptime
             let resources = try await loadResources(
                 request: request,
@@ -297,7 +465,12 @@ nonisolated struct TAPNAPShareArtifactBuilder: Sendable {
                 pendingLinkPolicy: .requireIndependentFile,
                 destinationDirectoryURL: resourcesDirectoryURL,
                 progress: { value in
-                    Self.mapProgress(value, offset: 0, weight: 0.95, handler: progress)
+                    Self.mapProgress(
+                        value,
+                        offset: 0,
+                        weight: 0.95,
+                        handler: coalescedProgress
+                    )
                 }
             )
             try Task.checkCancellation()
@@ -312,8 +485,11 @@ nonisolated struct TAPNAPShareArtifactBuilder: Sendable {
                 .appendingPathComponent(Self.imageBasename)
                 .appendingPathExtension(resources.photoFileExtension)
             try FileManager.default.moveItem(at: resources.photoURL, to: imageURL)
-            try? FileManager.default.removeItem(at: resourcesDirectoryURL)
-            progress(1)
+            TAPShareTemporaryDirectoryCleanup.removeIfPresent(
+                at: resourcesDirectoryURL,
+                scope: "imageResources"
+            )
+            coalescedProgress(1)
             let artifact = TAPNAPShareArtifact(
                 id: UUID(),
                 kind: .image,
@@ -321,8 +497,11 @@ nonisolated struct TAPNAPShareArtifactBuilder: Sendable {
                 temporaryDirectoryURL: outputDirectoryURL,
                 warnings: Self.warningMessages(
                     from: resources.presentationAdjustmentResourceLabels
+                ) + Self.verifiabilityWarning(
+                    request.directShareVerifiabilityWarning
                 )
             )
+            await progressCoalescer.finish()
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.sharePackaging.info(
                 "image share prepare completed durationMs=\(Self.elapsedMilliseconds(since: preparationStartedAt), privacy: .public) imageBytes=\(photoBytes, privacy: .public)"
@@ -330,7 +509,11 @@ nonisolated struct TAPNAPShareArtifactBuilder: Sendable {
             #endif
             return artifact
         } catch {
-            try? FileManager.default.removeItem(at: outputDirectoryURL)
+            progressCoalescer.cancel()
+            TAPShareTemporaryDirectoryCleanup.removeIfPresent(
+                at: outputDirectoryURL,
+                scope: "imageFailure"
+            )
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.sharePackaging.error(
                 "image share prepare failed durationMs=\(Self.elapsedMilliseconds(since: preparationStartedAt), privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)"
@@ -348,6 +531,16 @@ nonisolated struct TAPNAPShareArtifactBuilder: Sendable {
         destinationDirectoryURL: URL,
         progress: @escaping ProgressHandler
     ) async throws -> SourceResources {
+        if let originalResourceLease = request.originalResourceLease {
+            return try await resources(
+                from: originalResourceLease,
+                includesPairedVideo: includesPairedVideo,
+                requiresIndependentCopy: pendingLinkPolicy == .requireIndependentFile,
+                destinationDirectoryURL: destinationDirectoryURL,
+                progress: progress
+            )
+        }
+
         if !request.prefersPhotoLibraryResources, let captureID = request.captureID {
             do {
                 let snapshot = try await pendingSnapshotter(
@@ -364,7 +557,8 @@ nonisolated struct TAPNAPShareArtifactBuilder: Sendable {
                     photoFileExtension: snapshot.fileContainer.tapnapFileExtension,
                     photoMediaType: snapshot.fileContainer.uniformTypeIdentifier,
                     pairedVideoURL: snapshot.pairedVideoURL,
-                    presentationAdjustmentResourceLabels: []
+                    presentationAdjustmentResourceLabels: [],
+                    retainedOriginalResourceLease: nil
                 )
             } catch TAPDepthCaptureError.pendingCaptureDataMissing {
                 guard request.assetLocalIdentifier != nil else {
@@ -388,7 +582,59 @@ nonisolated struct TAPNAPShareArtifactBuilder: Sendable {
             photoFileExtension: resources.photoFileExtension,
             photoMediaType: resources.photoMediaType,
             pairedVideoURL: resources.pairedVideoURL,
-            presentationAdjustmentResourceLabels: resources.presentationAdjustmentResourceLabels
+            presentationAdjustmentResourceLabels: resources.presentationAdjustmentResourceLabels,
+            retainedOriginalResourceLease: nil
+        )
+    }
+
+    private func resources(
+        from originalResourceLease: TAPPhotoOriginalResourceLease,
+        includesPairedVideo: Bool,
+        requiresIndependentCopy: Bool,
+        destinationDirectoryURL: URL,
+        progress: @escaping ProgressHandler
+    ) async throws -> SourceResources {
+        try Task.checkCancellation()
+        if includesPairedVideo, originalResourceLease.pairedVideoURL == nil {
+            throw TAPNAPShareArtifactError.livePhotoPairedVideoMissing
+        }
+
+        guard requiresIndependentCopy else {
+            progress(1)
+            return SourceResources(
+                photoURL: originalResourceLease.photoURL,
+                photoFileExtension: originalResourceLease.photoFileExtension,
+                photoMediaType: originalResourceLease.photoMediaType,
+                pairedVideoURL: includesPairedVideo
+                    ? originalResourceLease.pairedVideoURL
+                    : nil,
+                presentationAdjustmentResourceLabels:
+                    originalResourceLease.presentationAdjustmentResourceLabels,
+                retainedOriginalResourceLease: originalResourceLease.retaining()
+            )
+        }
+
+        try FileManager.default.createDirectory(
+            at: destinationDirectoryURL,
+            withIntermediateDirectories: true
+        )
+        let photoURL = destinationDirectoryURL
+            .appendingPathComponent("viewer-original-photo")
+            .appendingPathExtension(originalResourceLease.photoFileExtension)
+        try TAPShareResourceFileCopier.copy(
+            from: originalResourceLease.photoURL,
+            to: photoURL,
+            progress: progress
+        )
+        try Task.checkCancellation()
+        return SourceResources(
+            photoURL: photoURL,
+            photoFileExtension: originalResourceLease.photoFileExtension,
+            photoMediaType: originalResourceLease.photoMediaType,
+            pairedVideoURL: nil,
+            presentationAdjustmentResourceLabels:
+                originalResourceLease.presentationAdjustmentResourceLabels,
+            retainedOriginalResourceLease: nil
         )
     }
 
@@ -401,7 +647,15 @@ nonisolated struct TAPNAPShareArtifactBuilder: Sendable {
         let photoFilename = Self.primaryPhotoBasename
             + "."
             + resources.photoFileExtension
-        let sidecarURL = resources.photoURL.deletingLastPathComponent()
+        let sidecarDirectoryURL = outputDirectoryURL.appendingPathComponent(
+            "resources",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(
+            at: sidecarDirectoryURL,
+            withIntermediateDirectories: true
+        )
+        let sidecarURL = sidecarDirectoryURL
             .appendingPathComponent(Self.sidecarFilename)
         let packageURL = outputDirectoryURL.appendingPathComponent(Self.packageFilename)
         let partialPackageURL = outputDirectoryURL.appendingPathComponent(
@@ -590,6 +844,14 @@ nonisolated struct TAPNAPShareArtifactBuilder: Sendable {
         ]
     }
 
+    private static func verifiabilityWarning(_ warning: String?) -> [String] {
+        guard let warning = warning?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !warning.isEmpty else {
+            return []
+        }
+        return [warning]
+    }
+
     private static func mapProgress(
         _ value: Double?,
         offset: Double,
@@ -634,12 +896,76 @@ private extension TAPNAPShareArtifactBuilder {
         let photoMediaType: String
         let pairedVideoURL: URL?
         let presentationAdjustmentResourceLabels: [String]
+        /// Keeps Viewer-owned source URLs valid while an on-demand package is
+        /// reading them directly. Independent image copies intentionally do not
+        /// retain the Viewer resource after copying.
+        let retainedOriginalResourceLease: TAPPhotoOriginalResourceLease?
     }
 
     nonisolated struct ArchiveSource: Sendable {
         let path: String
         let fileURL: URL
         let uncompressedSize: Int64
+    }
+}
+
+/// Cancellable byte-for-byte copy used when the system activity controller
+/// needs ownership independent from the Viewer resource lease.
+nonisolated enum TAPShareResourceFileCopier {
+    private static let bufferSize = 512 * 1_024
+
+    static func copy(
+        from sourceURL: URL,
+        to destinationURL: URL,
+        progress: @escaping @Sendable (Double?) -> Void
+    ) throws {
+        let values = try sourceURL.resourceValues(forKeys: [
+            .isRegularFileKey,
+            .fileSizeKey
+        ])
+        guard values.isRegularFile == true,
+              FileManager.default.isReadableFile(atPath: sourceURL.path),
+              let fileSize = values.fileSize,
+              fileSize > 0 else {
+            throw TAPNAPShareArtifactError.emptyResource(sourceURL.lastPathComponent)
+        }
+
+        try FileManager.default.createDirectory(
+            at: destinationURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        guard FileManager.default.createFile(
+            atPath: destinationURL.path,
+            contents: nil
+        ) else {
+            throw TAPNAPShareArtifactError.shareResourceUnavailable
+        }
+
+        let source = try FileHandle(forReadingFrom: sourceURL)
+        let destination = try FileHandle(forWritingTo: destinationURL)
+        var copiedBytes = 0
+        do {
+            while let chunk = try source.read(upToCount: bufferSize), !chunk.isEmpty {
+                try Task.checkCancellation()
+                try destination.write(contentsOf: chunk)
+                copiedBytes += chunk.count
+                progress(Double(copiedBytes) / Double(fileSize))
+            }
+            try destination.synchronize()
+            try source.close()
+            try destination.close()
+            guard copiedBytes == fileSize else {
+                throw TAPNAPShareArtifactError.shareResourceUnavailable
+            }
+        } catch {
+            try? source.close()
+            try? destination.close()
+            TAPShareTemporaryDirectoryCleanup.removeIfPresent(
+                at: destinationURL,
+                scope: "partialCopyFile"
+            )
+            throw error
+        }
     }
 }
 

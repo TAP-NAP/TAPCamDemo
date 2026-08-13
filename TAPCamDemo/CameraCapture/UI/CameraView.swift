@@ -174,7 +174,6 @@ struct CameraView: View {
                         libraryStore: libraryStore,
                         mediaFetcher: viewModel.libraryMediaFetcher
                     )
-                        .toolbar(.visible, for: .navigationBar)
                 }
         }
         .statusBarHidden(true)

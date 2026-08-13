@@ -217,7 +217,13 @@ extension CameraViewModel {
         if let data = await DepthAlbumThumbnailDiskCache.shared.data(for: cacheKey),
            !Task.isCancelled {
             let poster = MediaPoster(cacheKey: cacheKey, jpegData: data)
-            publishRecentLibraryPhase(.ready(poster), request: request, kind: kind)
+            guard let phase = await prepareRecentLibraryPhase(
+                .ready(poster),
+                request: request
+            ) else {
+                return
+            }
+            publishRecentLibraryPhase(phase, request: request, kind: kind)
             return
         }
 
@@ -241,11 +247,13 @@ extension CameraViewModel {
                 summary: item.summary,
                 pixelLength: pixelLength
                ) {
-                publishRecentLibraryPhase(
+                guard let loadingPhase = await prepareRecentLibraryPhase(
                     .downloadingFromICloud(preview, progress: nil),
-                    request: request,
-                    kind: kind
-                )
+                    request: request
+                ) else {
+                    return
+                }
+                publishRecentLibraryPhase(loadingPhase, request: request, kind: kind)
                 let progress: @Sendable (Double?) -> Void = { [weak self] value in
                     Task { @MainActor [weak self] in
                         guard let self,
@@ -273,7 +281,13 @@ extension CameraViewModel {
             guard !Task.isCancelled, isCurrentRecentLibraryRequest(request) else {
                 return
             }
-            publishRecentLibraryPhase(phase, request: request, kind: kind)
+            guard let preparedPhase = await prepareRecentLibraryPhase(
+                phase,
+                request: request
+            ) else {
+                return
+            }
+            publishRecentLibraryPhase(preparedPhase, request: request, kind: kind)
         } catch is CancellationError {
             return
         } catch let failure as MediaFetchFailure {
@@ -402,7 +416,7 @@ extension CameraViewModel {
                 recentLibraryPresentation = .resolving(itemID: request.itemID, kind: kind)
             }
         case .localPreview(let poster), .ready(let poster):
-            guard poster.image != nil else {
+            guard DepthAlbumThumbnailMemoryCache.shared.image(for: poster.cacheKey) != nil else {
                 recentLibraryPresentation = .failed(
                     itemID: request.itemID,
                     kind: kind,
@@ -411,7 +425,6 @@ extension CameraViewModel {
                 )
                 return
             }
-            DepthAlbumThumbnailMemoryCache.shared.insert(poster)
             recentLibraryPresentation = .ready(
                 itemID: request.itemID,
                 kind: kind,
@@ -439,6 +452,40 @@ extension CameraViewModel {
                 retryable: retryable
             )
         }
+    }
+
+    /// Resolves poster bytes before publishing any presentation that exposes
+    /// them. The decode actor coalesces the camera cover and Library grid when
+    /// both ask for the same revision. The decoder publishes only into the
+    /// revision-keyed memory cache; request identity is checked again before
+    /// that cached object becomes visible UI state.
+    private func prepareRecentLibraryPhase(
+        _ phase: MediaFetchPhase<MediaPoster, MediaPoster>,
+        request: MediaFetchRequestKey
+    ) async -> MediaFetchPhase<MediaPoster, MediaPoster>? {
+        guard !Task.isCancelled, isCurrentRecentLibraryRequest(request) else {
+            return nil
+        }
+        guard let poster = phase.previewOrReadyValue else {
+            return phase
+        }
+        if DepthAlbumThumbnailMemoryCache.shared.image(for: poster.cacheKey) != nil {
+            return phase
+        }
+
+        guard let decodedThumbnail = await DepthAlbumThumbnailDecoder.shared
+            .decodedThumbnail(for: poster) else {
+            guard !Task.isCancelled, isCurrentRecentLibraryRequest(request) else {
+                return nil
+            }
+            return phase.removingUndecodablePoster()
+        }
+        guard !Task.isCancelled,
+              isCurrentRecentLibraryRequest(request),
+              decodedThumbnail.poster.cacheKey == poster.cacheKey else {
+            return nil
+        }
+        return phase
     }
 
     private func isCurrentRecentLibraryRequest(_ request: MediaFetchRequestKey) -> Bool {
@@ -483,6 +530,25 @@ private extension CaptureSignatureStatus {
             "Capture saved"
         case .unsigned:
             "Capture saved unsigned"
+        }
+    }
+}
+
+private extension MediaFetchPhase where Preview == MediaPoster, Value == MediaPoster {
+    func removingUndecodablePoster() -> Self {
+        switch self {
+        case .idle:
+            .idle(nil)
+        case .resolving:
+            .resolving(nil)
+        case .localPreview, .ready:
+            .failed(nil, reason: .decode, retryable: false)
+        case .cloudOnly:
+            .cloudOnly(nil)
+        case .downloadingFromICloud(_, let progress):
+            .downloadingFromICloud(nil, progress: progress)
+        case .failed(_, let reason, let retryable):
+            .failed(nil, reason: reason, retryable: retryable)
         }
     }
 }

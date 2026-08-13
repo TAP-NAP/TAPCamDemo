@@ -36,6 +36,11 @@ final class TAPVideoPlaybackSession {
     private(set) var isTwoDPlaybackReady = false
     private(set) var depthGapNotice: String?
     private(set) var requestKey: MediaFetchRequestKey?
+    private(set) var isOriginalResourceReady = false
+    private(set) var pendingSignedOriginalRefreshID: UUID?
+    var isPendingSignedOriginalRefreshInFlight: Bool {
+        pendingSignedOriginalRefreshID != nil
+    }
     private var fetchState = TAPVideoPlaybackFetchState()
     @ObservationIgnored let playbackIntentState = TAPVideoPlaybackIntentState()
 
@@ -121,6 +126,7 @@ final class TAPVideoPlaybackSession {
         playbackIntentState.reset()
         requestKey = nil
         activeRequestKey = nil
+        pendingSignedOriginalRefreshID = nil
         releasePlaybackResources()
         registeredDepthAvailability = .checking
         state = .idle
@@ -181,6 +187,59 @@ final class TAPVideoPlaybackSession {
 
     func retryCurrentFetch() {
         shouldResumeFetchAfterBackground = false
+        pendingSignedOriginalRefreshID = nil
+        activeRequestKey = nil
+        if isOriginalResourceReady {
+            releasePlayerResources()
+        } else {
+            releasePlaybackResources()
+        }
+        state = .idle
+        if isOriginalResourceReady {
+            fetchState.finish()
+        } else {
+            fetchState.reset(hasPreview: hasLoadingPreview)
+        }
+        requestGeneration &+= 1
+        requestKey = MediaFetchRequestKey(
+            itemID: source.libraryMediaID,
+            generation: requestGeneration,
+            purpose: .videoOriginal
+        )
+    }
+
+    /// Claims at most one unsigned-to-signed pending-resource upgrade. Queue
+    /// status/export notifications may repeat while the streamed snapshot is
+    /// being classified; they must not race through the record lookup and
+    /// repeatedly restart the same copy.
+    func claimPendingSignedOriginalRefresh() -> UUID? {
+        guard pendingSignedOriginalRefreshID == nil,
+              currentOriginalSelectedSignedVideo != true else {
+            return nil
+        }
+        let refreshID = UUID()
+        pendingSignedOriginalRefreshID = refreshID
+        return refreshID
+    }
+
+    /// Completes a transition claim that did not reach resource loading (for
+    /// example, because the queue record lookup failed). A later precise
+    /// notification may then retry the upgrade.
+    func cancelPendingSignedOriginalRefreshClaim(_ refreshID: UUID) {
+        guard pendingSignedOriginalRefreshID == refreshID else {
+            return
+        }
+        pendingSignedOriginalRefreshID = nil
+    }
+
+    /// Starts the one claimed resource replacement only after the queue actor
+    /// confirms that signed bytes actually exist.
+    @discardableResult
+    func startClaimedPendingSignedOriginalRefresh(_ refreshID: UUID) -> Bool {
+        guard pendingSignedOriginalRefreshID == refreshID else {
+            return false
+        }
+        shouldResumeFetchAfterBackground = false
         activeRequestKey = nil
         releasePlaybackResources()
         state = .idle
@@ -191,6 +250,7 @@ final class TAPVideoPlaybackSession {
             generation: requestGeneration,
             purpose: .videoOriginal
         )
+        return true
     }
 
     func handleMemoryWarning() {
@@ -200,11 +260,19 @@ final class TAPVideoPlaybackSession {
         )
     }
 
-    func shareableFileURL() async throws -> URL {
+    /// Acquires a short-lived capability for the already-loaded original.
+    /// Playback first-frame readiness is intentionally unrelated: Share may
+    /// use the complete bytes as soon as the resource load commits, even while
+    /// AVPlayerLayer is still warming its first visible frame.
+    func acquireOriginalResourceLease() throws -> TAPVideoOriginalResourceLease {
         guard let resource else {
             throw MediaFetchFailure.download
         }
-        return resource.fileURL
+        return resource.acquireLease()
+    }
+
+    var currentOriginalSelectedSignedVideo: Bool? {
+        resource?.acquireLease().selectedSignedVideo
     }
 
     func prepareTwoDPlaybackGate() {
@@ -232,9 +300,17 @@ final class TAPVideoPlaybackSession {
     private func cancelCurrentFetch() {
         requestKey = nil
         activeRequestKey = nil
-        releasePlaybackResources()
+        if isOriginalResourceReady {
+            releasePlayerResources()
+        } else {
+            releasePlaybackResources()
+        }
         state = .idle
-        fetchState.cancel(hasPreview: hasLoadingPreview)
+        if isOriginalResourceReady {
+            fetchState.finish()
+        } else {
+            fetchState.cancel(hasPreview: hasLoadingPreview)
+        }
     }
 
     private func loadPreviewIfAvailable(requestKey: MediaFetchRequestKey) async {
@@ -270,45 +346,74 @@ final class TAPVideoPlaybackSession {
         }
         state = .loading
         fetchState.begin(hasPreview: hasLoadingPreview)
-        var uncommittedResource: TAPVideoPlaybackResolvedResource?
+
+        let loadedResource: TAPVideoPlaybackResolvedResource
+        do {
+            if let resource, isOriginalResourceReady {
+                loadedResource = resource
+            } else {
+                loadedResource = try await resolveResource(requestKey: requestKey)
+                publishResolvedOriginal(loadedResource, requestKey: requestKey)
+            }
+        } catch is CancellationError {
+            handleCancelledResourceLoad(requestKey: requestKey)
+            return
+        } catch {
+            handleFailedResourceLoad(error, requestKey: requestKey)
+            return
+        }
 
         do {
-            let loadedResource = try await resolveResource(requestKey: requestKey)
-            uncommittedResource = loadedResource
             let loadedPlayer = try await preparePlayer(
                 for: loadedResource,
                 requestKey: requestKey
             )
             commitLoadedResource(loadedResource, player: loadedPlayer)
-            uncommittedResource = nil
             didOpenPlayer = true
         } catch is CancellationError {
-            uncommittedResource?.cleanup()
-            handleCancelledLoad(requestKey: requestKey)
+            handleCancelledPlayerPreparation(requestKey: requestKey)
         } catch {
-            uncommittedResource?.cleanup()
-            handleFailedLoad(error, requestKey: requestKey)
+            handleFailedPlayerPreparation(error, requestKey: requestKey)
         }
     }
 
     private func resolveResource(
         requestKey: MediaFetchRequestKey
     ) async throws -> TAPVideoPlaybackResolvedResource {
-        try await TAPVideoPlaybackResourceLoader.resolve(
-            source: source,
-            requestKey: requestKey,
-            mediaFetcher: mediaFetcher
-        ) { [weak self] progress in
-            Task { @MainActor [weak self] in
-                guard let self, activeRequestKey == requestKey else {
-                    return
-                }
-                fetchState.publishProgress(
-                    progress,
-                    hasPreview: hasLoadingPreview
-                )
-            }
+        let progressCoalescer = TAPVideoPlaybackProgressCoalescer { [weak self] progress in
+            self?.publishOriginalLoadProgress(
+                progress,
+                requestKey: requestKey
+            )
         }
+        do {
+            let resource = try await TAPVideoPlaybackResourceLoader.resolve(
+                source: source,
+                requestKey: requestKey,
+                mediaFetcher: mediaFetcher,
+                progress: progressCoalescer.submit
+            )
+            await progressCoalescer.finish()
+            try ensureCurrent(requestKey)
+            return resource
+        } catch {
+            progressCoalescer.cancel()
+            throw error
+        }
+    }
+
+    private func publishOriginalLoadProgress(
+        _ progress: Double?,
+        requestKey: MediaFetchRequestKey
+    ) {
+        guard activeRequestKey == requestKey,
+              !isOriginalResourceReady else {
+            return
+        }
+        fetchState.publishProgress(
+            progress,
+            hasPreview: hasLoadingPreview
+        )
     }
 
     private func preparePlayer(
@@ -335,24 +440,44 @@ final class TAPVideoPlaybackSession {
         player loadedPlayer: AVPlayer
     ) {
         resource = loadedResource
+        isOriginalResourceReady = true
         player = loadedPlayer
         state = .ready
         fetchState.finish()
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        LockedCameraDiagnostics.logger.info("tap_video_playback_loaded source=\(self.source.diagnosticsLabel, privacy: .public) fileURL=\(loadedResource.fileURL.lastPathComponent, privacy: .public) autoPlay=false")
+        LockedCameraDiagnostics.logger.info("tap_video_playback_loaded source=\(self.source.diagnosticsLabel, privacy: .public) autoPlay=false")
         #endif
     }
 
-    private func handleCancelledLoad(requestKey: MediaFetchRequestKey) {
+    /// Publishes complete-original readiness as soon as the streamed resource
+    /// commits. Depth metadata parsing, AVPlayer construction, and first-frame
+    /// display continue independently and must not gate Share.
+    private func publishResolvedOriginal(
+        _ loadedResource: TAPVideoPlaybackResolvedResource,
+        requestKey: MediaFetchRequestKey
+    ) {
+        guard activeRequestKey == requestKey else {
+            return
+        }
+        resource = loadedResource
+        isOriginalResourceReady = true
+        if loadedResource.acquireLease().selectedSignedVideo == true {
+            pendingSignedOriginalRefreshID = nil
+        }
+        fetchState.finish()
+    }
+
+    private func handleCancelledResourceLoad(requestKey: MediaFetchRequestKey) {
         guard activeRequestKey == requestKey else {
             return
         }
         releasePlaybackResources()
+        pendingSignedOriginalRefreshID = nil
         state = .idle
         fetchState.cancelLoadAfterTaskCancellation(hasPreview: hasLoadingPreview)
     }
 
-    private func handleFailedLoad(
+    private func handleFailedResourceLoad(
         _ error: any Error,
         requestKey: MediaFetchRequestKey
     ) {
@@ -360,6 +485,7 @@ final class TAPVideoPlaybackSession {
             return
         }
         releasePlaybackResources()
+        pendingSignedOriginalRefreshID = nil
         state = .failed(
             DepthAnalysisErrorPresentation.albumLoadErrorMessage(for: error)
         )
@@ -370,6 +496,39 @@ final class TAPVideoPlaybackSession {
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         let nsError = error as NSError
         LockedCameraDiagnostics.logger.error("tap_video_playback_load_failed source=\(self.source.diagnosticsLabel, privacy: .public) error=\(nsError.domain, privacy: .public)(\(nsError.code, privacy: .public))")
+        #endif
+    }
+
+    private func handleCancelledPlayerPreparation(
+        requestKey: MediaFetchRequestKey
+    ) {
+        guard activeRequestKey == requestKey else {
+            return
+        }
+        releasePlayerResources()
+        state = .failed(
+            DepthAnalysisErrorPresentation.albumLoadErrorMessage(
+                for: CancellationError()
+            )
+        )
+        fetchState.finish()
+    }
+
+    private func handleFailedPlayerPreparation(
+        _ error: any Error,
+        requestKey: MediaFetchRequestKey
+    ) {
+        guard activeRequestKey == requestKey else {
+            return
+        }
+        releasePlayerResources()
+        state = .failed(
+            DepthAnalysisErrorPresentation.albumLoadErrorMessage(for: error)
+        )
+        fetchState.finish()
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        let nsError = error as NSError
+        LockedCameraDiagnostics.logger.error("tap_video_playback_prepare_failed source=\(self.source.diagnosticsLabel, privacy: .public) error=\(nsError.domain, privacy: .public)(\(nsError.code, privacy: .public)) originalReady=true")
         #endif
     }
 
@@ -406,6 +565,12 @@ final class TAPVideoPlaybackSession {
     }
 
     private func releasePlaybackResources() {
+        releasePlayerResources()
+        resource = nil
+        isOriginalResourceReady = false
+    }
+
+    private func releasePlayerResources() {
         playerLifecycle?.invalidate()
         playerLifecycle = nil
         depthPipeline.cancelPresentation()
@@ -413,8 +578,6 @@ final class TAPVideoPlaybackSession {
         player?.pause()
         player?.replaceCurrentItem(with: nil)
         player = nil
-        resource?.cleanup()
-        resource = nil
     }
 
     private var hasLoadingPreview: Bool {

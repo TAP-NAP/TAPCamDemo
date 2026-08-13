@@ -265,6 +265,105 @@ struct TAPLibraryStorageTests {
         #expect(!FileManager.default.fileExists(atPath: artifactURL.path))
     }
 
+    @Test func videoSigningWorkingArtifactIsIndependentAndDiscardKeepsDurableBytes() async throws {
+        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+        let store = TAPPendingCaptureStore(rootURL: rootURL)
+        let record = try await TAPCamDemoTestFixtures.ingestPendingTAPVideo(
+            store: store,
+            captureID: "independent-video-signing-artifact"
+        )
+        _ = try await store.updateStatus(
+            captureID: record.captureID,
+            status: .signing
+        )
+        let durableURL = try await store.videoArtifactURL(
+            captureID: record.captureID
+        )
+        let durableBytes = try Data(contentsOf: durableURL)
+        let durableInode = try #require(
+            FileManager.default.attributesOfItem(atPath: durableURL.path)[
+                .systemFileNumber
+            ] as? NSNumber
+        )
+
+        let signingArtifact = try await store.beginVideoSigningArtifact(
+            captureID: record.captureID
+        )
+        let workingInode = try #require(
+            FileManager.default.attributesOfItem(
+                atPath: signingArtifact.fileURL.path
+            )[.systemFileNumber] as? NSNumber
+        )
+
+        #expect(signingArtifact.fileURL != durableURL)
+        #expect(workingInode != durableInode)
+        #expect(try Data(contentsOf: signingArtifact.fileURL) == durableBytes)
+
+        let workingHandle = try FileHandle(forUpdating: signingArtifact.fileURL)
+        try workingHandle.seek(toOffset: 11)
+        try workingHandle.write(contentsOf: Data([0x7F]))
+        try workingHandle.close()
+
+        #expect(try Data(contentsOf: durableURL) == durableBytes)
+        try await store.discardVideoSigningArtifact(signingArtifact)
+        #expect(!FileManager.default.fileExists(atPath: signingArtifact.fileURL.path))
+        #expect(try Data(contentsOf: durableURL) == durableBytes)
+    }
+
+    @Test func videoSigningRecordProtectionFailurePrecedesCommitAndKeepsUnsignedGenerationRetryable() async throws {
+        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+        let store = TAPPendingCaptureStore(
+            rootURL: rootURL,
+            videoSigningRecordPreparationFault: { record in
+                guard record.videoArtifactState == .signed else {
+                    return
+                }
+                throw TAPPendingVideoSigningPublishTestError.recordWriteRejected
+            }
+        )
+        let record = try await TAPCamDemoTestFixtures.ingestPendingTAPVideo(
+            store: store,
+            captureID: "video-signing-record-write-failure"
+        )
+        _ = try await store.updateStatus(
+            captureID: record.captureID,
+            status: .signing
+        )
+        let durableURL = try await store.videoArtifactURL(
+            captureID: record.captureID
+        )
+        let unsignedBytes = try Data(contentsOf: durableURL)
+        let recordURL = TAPPendingCaptureBundlePathPolicy.recordURL(
+            bundleURL: try TAPPendingCaptureBundlePathPolicy.bundleURL(
+                rootURL: rootURL,
+                captureID: record.captureID
+            )
+        )
+        let unsignedRecordBytes = try Data(contentsOf: recordURL)
+        let signingArtifact = try await store.beginVideoSigningArtifact(
+            captureID: record.captureID
+        )
+
+        await #expect(throws: TAPPendingVideoSigningPublishTestError.self) {
+            _ = try await store.publishVideoSigningArtifact(signingArtifact)
+        }
+        try await store.discardVideoSigningArtifact(signingArtifact)
+
+        let unchangedRecord = try await store.readRecord(captureID: record.captureID)
+        #expect(unchangedRecord.status == .signing)
+        #expect(unchangedRecord.videoArtifactState == .unsigned)
+        #expect(try Data(contentsOf: durableURL) == unsignedBytes)
+        #expect(try Data(contentsOf: recordURL) == unsignedRecordBytes)
+
+        let retryArtifact = try await store.beginVideoSigningArtifact(
+            captureID: record.captureID
+        )
+        #expect(try Data(contentsOf: retryArtifact.fileURL) == unsignedBytes)
+        try await store.discardVideoSigningArtifact(retryArtifact)
+    }
+
     @Test func zeroDepthVideoPersistsAsTerminalRecordInsteadOfBeingDiscarded() async throws {
         let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
         let store = TAPPendingCaptureStore(rootURL: rootURL)
@@ -880,6 +979,7 @@ struct TAPLibraryStorageTests {
             includesPairedVideo: true,
             linkPolicy: .allowReadOnlyHardLink
         )
+        #expect(snapshot.selectedSignedPhoto)
 
         let bundleURL = rootURL.appendingPathComponent(record.captureID, isDirectory: true)
         try FileManager.default.removeItem(
@@ -897,6 +997,34 @@ struct TAPLibraryStorageTests {
         #expect(
             try Data(contentsOf: #require(snapshot.pairedVideoURL))
                 == Data("paired-video".utf8)
+        )
+    }
+
+    @Test func ordinaryViewerSnapshotReportsUnsignedFallback() async throws {
+        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        let store = TAPPendingCaptureStore(rootURL: rootURL)
+        let record = try await store.ingest(
+            TAPCamDemoTestFixtures.samplePendingArtifact(
+                photoData: Data("unsigned-viewer-photo".utf8)
+            )
+        )
+        let snapshotDirectoryURL = rootURL.appendingPathComponent(
+            "viewer-snapshot",
+            isDirectory: true
+        )
+
+        let snapshot = try await store.snapshotPhotoShareResources(
+            captureID: record.captureID,
+            to: snapshotDirectoryURL,
+            requiresSignedPhoto: false,
+            includesPairedVideo: false,
+            linkPolicy: .allowReadOnlyHardLink
+        )
+
+        #expect(!snapshot.selectedSignedPhoto)
+        #expect(
+            try Data(contentsOf: snapshot.photoURL)
+                == Data("unsigned-viewer-photo".utf8)
         )
     }
 
@@ -1306,6 +1434,10 @@ struct TAPLibraryStorageTests {
         let fileURL = root.appendingPathComponent(relativePath)
         return try String(contentsOf: fileURL, encoding: .utf8)
     }
+}
+
+private enum TAPPendingVideoSigningPublishTestError: Error {
+    case recordWriteRejected
 }
 
 private enum TAPPendingShareSnapshotTestError: Error {

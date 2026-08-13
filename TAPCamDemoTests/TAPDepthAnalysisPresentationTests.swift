@@ -255,14 +255,13 @@ struct TAPDepthAnalysisPresentationTests {
     }
 
     @Test func viewerToolbarUsesUnifiedGeometryAndHomeGestureClearance() {
-        #expect(
-            DepthViewerToolbarMetrics.modeHitTargetSize
-                == DepthViewerToolbarMetrics.controlHeight
-        )
-        #expect(
-            DepthViewerToolbarMetrics.modeButtonWidth
-                <= DepthViewerToolbarMetrics.modeHitTargetSize
-        )
+        #expect(DepthViewerToolbarMetrics.controlHeight == 42)
+        #expect(DepthViewerToolbarMetrics.actionSymbolCanvasSize == 20)
+        #expect(DepthViewerToolbarMetrics.horizontalPadding == 16)
+        #expect(DepthViewerToolbarMetrics.progressRingOutset == 3)
+        #expect(DepthViewerToolbarMetrics.progressRingLineWidth == 3)
+        #expect(DepthViewerToolbarMetrics.modeButtonWidth == 42)
+        #expect(DepthViewerToolbarMetrics.modeHitTargetSize == 44)
         #expect(
             DepthViewerToolbarMetrics.modeButtonHeight
                 <= DepthViewerToolbarMetrics.modeHitTargetSize
@@ -273,23 +272,10 @@ struct TAPDepthAnalysisPresentationTests {
         )
         #expect(
             DepthViewerToolbarMetrics.toolbarBottomPadding(bottomSafeArea: 0)
-                == DepthViewerToolbarMetrics.fallbackBottomPadding
+                == 25
         )
-        #expect(
-            DepthViewerToolbarActionMetrics.opticalSymbolOffset(
-                for: "square.and.arrow.up"
-            ) == CGSize(width: -0.5, height: -1)
-        )
-        #expect(
-            DepthViewerToolbarActionMetrics.opticalSymbolOffset(
-                for: "trash"
-            ) == CGSize(width: -0.5, height: -0.5)
-        )
-        #expect(
-            DepthViewerToolbarActionMetrics.opticalSymbolOffset(
-                for: "clock"
-            ) == .zero
-        )
+        #expect(ViewerToolbarActionIcon.shareNetwork.assetName == "ViewerShareNetwork")
+        #expect(ViewerToolbarActionIcon.trash.assetName == "ViewerTrash")
     }
 
     @Test func videoTransportTreatsBufferingAsActivePlaybackIntent() {
@@ -325,21 +311,55 @@ struct TAPDepthAnalysisPresentationTests {
         let chromeSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisViewerChromeView.swift"
         )
+        let shareControlSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthViewerShareControl.swift"
+        )
+        let shareAssetManifest = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/Assets.xcassets/ViewerShareNetwork.imageset/Contents.json"
+        )
+        let deleteAssetManifest = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/Assets.xcassets/ViewerTrash.imageset/Contents.json"
+        )
 
-        #expect(chromeSource.contains("square.and.arrow.up"))
-        #expect(chromeSource.contains("trash"))
         #expect(chromeSource.contains("DepthViewerChromeView("))
         #expect(chromeSource.contains("DepthViewerToolbar("))
         #expect(chromeSource.contains("ViewerToolbarIconButton("))
         #expect(chromeSource.contains("DepthViewerModeCapsule("))
-        #expect(chromeSource.contains("HStack(alignment: .center"))
+        #expect(chromeSource.contains("HStack(alignment: .center, spacing: 0)"))
+        #expect(chromeSource.components(separatedBy: "Spacer(minLength: 0)").count >= 3)
         #expect(chromeSource.contains("Circle()"))
         #expect(chromeSource.contains("toolbarBottomPadding("))
-        #expect(chromeSource.contains("opticalSymbolOffset("))
+        #expect(chromeSource.contains("Image(icon.assetName)"))
+        #expect(chromeSource.contains(".renderingMode(.template)"))
+        #expect(chromeSource.contains("icon: .trash"))
+        #expect(chromeSource.contains("foregroundStyle: .primary"))
+        #expect(shareControlSource.contains("icon: .shareNetwork"))
+        #expect(!chromeSource.contains("opticalSymbolOffset("))
+        #expect(!chromeSource.contains(".offset("))
+        #expect(!shareControlSource.contains("square.and.arrow.up"))
+        #expect(shareAssetManifest.contains(#""preserves-vector-representation" : true"#))
+        #expect(shareAssetManifest.contains(#""template-rendering-intent" : "template""#))
+        #expect(deleteAssetManifest.contains(#""preserves-vector-representation" : true"#))
+        #expect(deleteAssetManifest.contains(#""template-rendering-intent" : "template""#))
         #expect(chromeSource.contains(#".accessibilityIdentifier("tap.viewer.back")"#))
-        #expect(chromeSource.contains(#"accessibilityIdentifier: "tap.viewer.share""#))
         #expect(chromeSource.contains(#"accessibilityIdentifier: "tap.viewer.delete""#))
         #expect(chromeSource.contains("bottomAccessory: EmptyView()"))
+        #expect(chromeSource.contains("DepthViewerShareControl("))
+        #expect(chromeSource.contains("Circle()"))
+        #expect(chromeSource.contains(".trim(from: 0"))
+        #expect(!chromeSource.contains(#"isSharePreparing ? "clock""#))
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func videoShareAvailabilityDoesNotDependOnPlayerReadiness() throws {
+        let videoChromeSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/Playback/TAPVideoViewerChrome.swift"
+        )
+
+        #expect(videoChromeSource.contains("shareSubject: shareSubject"))
+        #expect(videoChromeSource.contains(#"shareAccessibilityLabel: "Share video""#))
+        #expect(!videoChromeSource.contains("shareIsDisabled"))
+        #expect(!videoChromeSource.contains("Preparing video"))
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
@@ -464,58 +484,72 @@ struct TAPDepthAnalysisPresentationTests {
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func analysisShareButtonPresentsTapnapSheetBeforePreparingPayload() throws {
+    func analysisShareButtonUsesSharedAnchoredControlBeforePreparingPayload() throws {
         let analysisSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisView.swift"
         )
+        let controlSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthViewerShareControl.swift"
+        )
 
-        #expect(analysisSource.contains("@State private var sharePresentation: DepthAnalysisShareSubject?"))
-        #expect(analysisSource.contains("DepthAnalysisShareSheet(subject: subject)"))
-        #expect(analysisSource.contains("presentationDetents([.medium, .large])"))
-        #expect(analysisSource.contains("sharePresentation = DepthAnalysisShareSubject(entry: currentEntry)"))
+        #expect(analysisSource.contains("shareSubject: carouselStore.currentEntry.map("))
+        #expect(!analysisSource.contains("sharePresentation"))
+        #expect(!analysisSource.contains("DepthAnalysisShareSheet"))
+        #expect(!analysisSource.contains("presentationDetents"))
+        #expect(controlSource.contains("DepthAnalysisSharePopover("))
+        #expect(controlSource.contains(".popover("))
+        #expect(controlSource.contains("item: activityPresentationBinding"))
         #expect(!analysisSource.contains("DepthAnalysisSystemSharePayload"))
         #expect(!analysisSource.contains("TAPVerificationExportBuilder().export"))
         #expect(!analysisSource.contains("VerificationExportActivityView"))
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func videoShareButtonOnlyPresentsTapShareSheetBeforePreparingPayload() throws {
+    func videoShareButtonUsesTheSameAnchoredControlBeforePreparingPayload() throws {
         let videoSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/DepthAnalysis/TAPVideoDepthPlaybackView.swift"
         )
 
-        #expect(videoSource.contains("@State private var sharePresentation: DepthAnalysisShareSubject?"))
-        #expect(videoSource.contains("onShareTapped: presentShareSheet"))
-        #expect(videoSource.contains("sharePresentation = DepthAnalysisShareSubject("))
+        #expect(!videoSource.contains("sharePresentation"))
+        #expect(videoSource.contains("shareSubject: DepthAnalysisShareSubject("))
         #expect(videoSource.contains("videoSource: sessionSource"))
-        #expect(videoSource.contains(".sheet(item: $sharePresentation)"))
-        #expect(videoSource.contains("DepthAnalysisShareSheet(subject: subject)"))
+        #expect(!videoSource.contains(".sheet(item:"))
+        #expect(!videoSource.contains("DepthAnalysisShareSheet"))
         #expect(!videoSource.contains("shareableFileURL("))
         #expect(!videoSource.contains("VerificationExportActivityView"))
         #expect(!videoSource.contains("TAPVideoSystemSharePayload"))
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func analysisShareSheetUsesThreeLocalStatesAndFourFixedActions() throws {
-        let shareSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisShareSheet.swift"
+    func analysisSharePopoverUsesThreeLocalStatesAndFourFixedActions() throws {
+        let popoverSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisSharePopover.swift"
+        )
+        let coordinatorSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisShareCoordinator.swift"
+        )
+        let controlSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/DepthAnalysis/DepthViewerShareControl.swift"
         )
         let artifactBuilderSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/DepthAnalysis/TAPNAPShareArtifactBuilder.swift"
         )
 
-        #expect(shareSource.contains("case idle"))
-        #expect(shareSource.contains("case preparing"))
-        #expect(shareSource.contains("case failed"))
-        #expect(shareSource.contains("case ready"))
-        #expect(shareSource.contains("share.option.package.title"))
-        #expect(shareSource.contains("share.option.image.title"))
-        #expect(shareSource.contains("share.option.sticker.title"))
-        #expect(shareSource.contains("share.option.link.title"))
-        #expect(shareSource.contains("share.status.verified"))
-        #expect(shareSource.contains("share.status.retry"))
-        #expect(shareSource.contains("share.status.failed"))
+        #expect(coordinatorSource.contains("case idle"))
+        #expect(coordinatorSource.contains("case preparing"))
+        #expect(coordinatorSource.contains("case failed"))
+        #expect(coordinatorSource.contains("case ready"))
+        #expect(popoverSource.contains("share.option.package.title"))
+        #expect(popoverSource.contains("share.option.image.title"))
+        #expect(popoverSource.contains("share.option.sticker.title"))
+        #expect(popoverSource.contains("share.option.link.title"))
+        #expect(popoverSource.contains("share.status.verified"))
+        #expect(popoverSource.contains("share.status.retry"))
+        #expect(popoverSource.contains("share.status.failed"))
         for identifier in [
+            "tap.share.selection",
+            "tap.share.preparation",
+            "tap.share.failure",
             "tap.share.status",
             "tap.share.package",
             "tap.share.image",
@@ -524,23 +558,28 @@ struct TAPDepthAnalysisPresentationTests {
             "tap.share.progress",
             "tap.share.progress.phase",
             "tap.share.cancel",
-            "tap.share.retry",
-            "tap.share.done"
+            "tap.share.retry"
         ] {
-            #expect(shareSource.contains(identifier))
+            #expect(popoverSource.contains(identifier) || controlSource.contains(identifier))
         }
-        #expect(shareSource.contains("for: .tapLibraryDidChange"))
-        #expect(shareSource.contains("share.preparing.package.title"))
-        #expect(shareSource.contains("format: .percent"))
-        #expect(shareSource.contains("TAPNAPShareArtifactBuilder"))
-        #expect(!shareSource.contains("hasValidCredential"))
-        #expect(!shareSource.contains("TAPVerificationExportBuilder"))
-        #expect(!shareSource.contains("AppAttestCaptureSignatureVerifier"))
-        #expect(!shareSource.contains(".verify("))
-        #expect(!shareSource.contains("assertionObject"))
-        #expect(!shareSource.contains("keyId"))
-        #expect(!shareSource.contains("signingBinding"))
-        #expect(!shareSource.contains("proof"))
+        #expect(popoverSource.contains("private var activeContent"))
+        #expect(popoverSource.contains("case .selection:"))
+        #expect(popoverSource.contains("case .preparation:"))
+        #expect(popoverSource.contains("case .failure:"))
+        #expect(!popoverSource.contains(".opacity(shows"))
+        #expect(!popoverSource.contains("tap.share.presentation"))
+        #expect(controlSource.contains("for: .tapLibraryDidChange"))
+        #expect(popoverSource.contains("share.preparing.package.title"))
+        #expect(popoverSource.contains("format: .percent"))
+        #expect(coordinatorSource.contains("TAPNAPShareArtifactBuilder"))
+        #expect(!coordinatorSource.contains("hasValidCredential"))
+        #expect(!coordinatorSource.contains("TAPVerificationExportBuilder"))
+        #expect(!coordinatorSource.contains("AppAttestCaptureSignatureVerifier"))
+        #expect(!coordinatorSource.contains(".verify("))
+        #expect(!coordinatorSource.contains("assertionObject"))
+        #expect(!coordinatorSource.contains("keyId"))
+        #expect(!coordinatorSource.contains("signingBinding"))
+        #expect(!coordinatorSource.contains("proof"))
         #expect(!artifactBuilderSource.contains("TAPVerificationExportLocalValidator"))
         #expect(!artifactBuilderSource.contains("TAPDepthPhotoFileReader"))
         #expect(!artifactBuilderSource.contains("validateSignedExportPhoto"))
@@ -1082,6 +1121,36 @@ struct TAPDepthAnalysisPresentationTests {
         #expect(slot.loadProgress == 0.64)
         try await waitForCondition { slot.input != nil }
         #expect(slot.mediaFetchPhase == .ready(true))
+    }
+
+    @Test @MainActor func lateOriginalProgressCannotDemotePublishedResourceReadiness() throws {
+        let directory = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        let photoURL = directory.appendingPathComponent("original.heic")
+        try Data("complete-original".utf8).write(to: photoURL)
+        let lease = try TAPPhotoOriginalResourceLease(
+            mediaID: .photosAsset("late-progress"),
+            origin: .photosAsset(assetID: "late-progress"),
+            photoURL: photoURL,
+            pairedVideoURL: nil,
+            photoFileExtension: "heic",
+            photoMediaType: "public.heic",
+            fileContainerHint: .heic,
+            expectsPairedVideo: false,
+            ownedTemporaryDirectoryURL: directory
+        )
+        let slot = AnalysisPhotoSlot(
+            entry: DepthAnalysisCarouselEntry(source: .photosAsset("late-progress"))
+        )
+        let requestKey = slot.newOriginalRequestKey()
+        slot.originalResourceOwner.install(lease)
+        slot.setOriginalMediaFetchPhase(.ready(true))
+
+        // A queued PhotoKit callback may arrive after the resource-ready
+        // callback but before depth analysis returns. It must be ignored.
+        slot.applyOriginalICloudProgress(0.99, requestKey: requestKey)
+
+        #expect(slot.mediaFetchPhase == .ready(true))
+        #expect(slot.originalResourceOwner.isReady)
     }
 
     @Test @MainActor func livePhotoProgressAggregatesWithReadyOriginalAndCanonicalIdentity() async throws {

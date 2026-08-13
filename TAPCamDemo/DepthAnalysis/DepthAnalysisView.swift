@@ -29,10 +29,10 @@ struct DepthAnalysisView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.displayScale) private var displayScale
     @StateObject private var carouselStore: DepthAnalysisCarouselStore
+    @StateObject private var unavailableShareResourceOwner = TAPPhotoOriginalResourceOwner()
     @State private var heatmapOpacity = 0.58
     @State private var twoDComparisonPosition = 0.5
     @State private var selectedTool = AnalysisViewerTool.raw
-    @State private var sharePresentation: DepthAnalysisShareSubject?
     @State private var pendingDeleteRequest: DepthAnalysisPendingDeleteRequest?
     @State private var deleteAlert: DepthAnalysisDeleteAlert?
     @AppStorage(CameraViewfinderHighlightPreference.storageKey)
@@ -63,27 +63,10 @@ struct DepthAnalysisView: View {
         self.mediaFetcher = mediaFetcher
     }
 
-    init(assetID: String) {
-        self.init(
-            source: .photosAsset(assetID)
-        )
-    }
-
-    init(pendingCaptureID: String) {
-        self.init(
-            source: .pendingCapture(pendingCaptureID)
-        )
-    }
-
     var body: some View {
         analysisSurface()
         .toolbar(.hidden, for: .navigationBar)
         .ignoresSafeArea(.container, edges: .all)
-        .sheet(item: $sharePresentation) { subject in
-            DepthAnalysisShareSheet(subject: subject)
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
-        }
         .alert(item: $pendingDeleteRequest) { request in
             Alert(
                 title: Text("Delete unsaved photo?"),
@@ -122,6 +105,15 @@ struct DepthAnalysisView: View {
         ) { _ in
             carouselStore.currentSlot?.retryLastMediaFetch()
         }
+        .onReceive(
+            NotificationCenter.default.publisher(for: .tapLibraryDidChange)
+        ) { notification in
+            let change = notification.object as? TAPLibraryPendingCaptureChange
+            Task { @MainActor in
+                await carouselStore.currentSlot?
+                    .reloadPendingOriginalAfterLibraryChange(change)
+            }
+        }
     }
 
     private func analysisSurface() -> some View {
@@ -156,13 +148,16 @@ struct DepthAnalysisView: View {
                 DepthAnalysisViewerChromeView(
                     selectedTool: selectedTool,
                     heatmapOpacity: $heatmapOpacity,
-                    isSharePreparing: false,
+                    shareSubject: carouselStore.currentEntry.map(
+                        DepthAnalysisShareSubject.init(entry:)
+                    ),
+                    originalResourceOwner: carouselStore.currentSlot?.originalResourceOwner
+                        ?? unavailableShareResourceOwner,
                     topSafeArea: safeAreaInsets.top,
                     bottomSafeArea: safeAreaInsets.bottom,
                     onBackTapped: {
                         dismiss()
                     },
-                    onShareTapped: presentShareSheet,
                     onToolTapped: handleToolTapped,
                     onDeleteTapped: {
                         deleteCurrentItem(displayPixelLength: displayPixelLength)
@@ -181,13 +176,6 @@ struct DepthAnalysisView: View {
 
     private var highlightPalette: AnalysisHighlightPalette {
         AnalysisHighlightPalette.resolved(viewfinderRawValue: viewfinderHighlightRawValue)
-    }
-
-    private func presentShareSheet() {
-        guard let currentEntry = carouselStore.currentEntry else {
-            return
-        }
-        sharePresentation = DepthAnalysisShareSubject(entry: currentEntry)
     }
 
     private func deleteCurrentItem(displayPixelLength: Int) {

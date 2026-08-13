@@ -22,7 +22,6 @@ struct TAPVideoDepthPlaybackView: View {
     @State private var session: TAPVideoPlaybackSession
     @State private var selectedTool = AnalysisViewerTool.raw
     @State private var depthOverlayOpacity = 0.58
-    @State private var sharePresentation: DepthAnalysisShareSubject?
     @State private var pendingDeleteRequest: TAPVideoPendingDeleteRequest?
     @State private var deleteAlert: TAPVideoDeleteAlert?
     @State private var removedVideoEntryIDs: Set<String> = []
@@ -70,20 +69,17 @@ struct TAPVideoDepthPlaybackView: View {
             mediaFetcher: mediaFetcher,
             selectedTool: $selectedTool,
             depthOverlayOpacity: $depthOverlayOpacity,
-            isPreparingShare: false,
+            shareSubject: DepthAnalysisShareSubject(
+                videoSource: sessionSource,
+                itemID: currentItemID
+            ),
             onBackTapped: { dismiss() },
-            onShareTapped: presentShareSheet,
             onModeTapped: handleModeTapped,
             onDeleteTapped: deleteCurrentVideo,
             onCurrentPagingEntryChanged: moveToPagingEntry
         )
         .toolbar(.hidden, for: .navigationBar)
         .ignoresSafeArea(.container, edges: .all)
-        .sheet(item: $sharePresentation) { subject in
-            DepthAnalysisShareSheet(subject: subject)
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
-        }
         .alert(item: $pendingDeleteRequest) { request in
             Alert(
                 title: Text("Delete unsaved video?"),
@@ -146,6 +142,39 @@ struct TAPVideoDepthPlaybackView: View {
         ) { _ in
             session.handleMemoryWarning()
         }
+        .onReceive(
+            NotificationCenter.default.publisher(for: .tapLibraryDidChange)
+        ) { notification in
+            guard case .pendingCapture(let captureID) = sessionSource,
+                  let change = notification.object as? TAPLibraryPendingCaptureChange,
+                  change.captureID == captureID else {
+                return
+            }
+            let refreshSession = session
+            let refreshSource = sessionSource
+            guard let refreshID = refreshSession.claimPendingSignedOriginalRefresh() else {
+                return
+            }
+            Task { @MainActor in
+                guard session === refreshSession,
+                      sessionSource == refreshSource else {
+                    refreshSession.cancelPendingSignedOriginalRefreshClaim(refreshID)
+                    return
+                }
+                guard let record = try? await TAPPendingCaptureStore.shared
+                    .readRecord(captureID: captureID),
+                      record.videoArtifactState == .signed else {
+                    refreshSession.cancelPendingSignedOriginalRefreshClaim(refreshID)
+                    return
+                }
+                guard session === refreshSession,
+                      sessionSource == refreshSource else {
+                    refreshSession.cancelPendingSignedOriginalRefreshClaim(refreshID)
+                    return
+                }
+                _ = refreshSession.startClaimedPendingSignedOriginalRefresh(refreshID)
+            }
+        }
     }
 
     private func handleModeTapped(_ itemID: String) {
@@ -155,15 +184,6 @@ struct TAPVideoDepthPlaybackView: View {
             return
         }
         selectedTool = tool
-    }
-
-    private func presentShareSheet() {
-        let itemID = albumContext?.currentItemID
-            ?? source.libraryMediaID.storageValue
-        sharePresentation = DepthAnalysisShareSubject(
-            videoSource: sessionSource,
-            itemID: itemID
-        )
     }
 
     private func deleteCurrentVideo() {
@@ -260,7 +280,6 @@ struct TAPVideoDepthPlaybackView: View {
             session.stopPlayback()
             if !isSameMedia {
                 selectedTool = .raw
-                sharePresentation = nil
             }
             session = replacement
             sessionSource = updatedSource

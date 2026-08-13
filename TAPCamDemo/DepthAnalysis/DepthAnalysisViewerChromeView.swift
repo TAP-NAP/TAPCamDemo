@@ -7,27 +7,23 @@
 
 import SwiftUI
 
-nonisolated enum DepthViewerToolbarActionMetrics {
-    static func opticalSymbolOffset(for systemImage: String) -> CGSize {
-        switch systemImage {
-        case "square.and.arrow.up":
-            CGSize(width: -0.5, height: -1)
-        case "trash":
-            CGSize(width: -0.5, height: -0.5)
-        default:
-            .zero
-        }
+nonisolated enum ViewerToolbarActionIcon: String {
+    case shareNetwork = "ViewerShareNetwork"
+    case trash = "ViewerTrash"
+
+    var assetName: String {
+        rawValue
     }
 }
 
 struct DepthAnalysisViewerChromeView: View {
     let selectedTool: AnalysisViewerTool
     @Binding var heatmapOpacity: Double
-    let isSharePreparing: Bool
+    let shareSubject: DepthAnalysisShareSubject?
+    @ObservedObject var originalResourceOwner: TAPPhotoOriginalResourceOwner
     let topSafeArea: CGFloat
     let bottomSafeArea: CGFloat
     let onBackTapped: () -> Void
-    let onShareTapped: () -> Void
     let onToolTapped: (AnalysisViewerTool) -> Void
     let onDeleteTapped: () -> Void
 
@@ -37,14 +33,21 @@ struct DepthAnalysisViewerChromeView: View {
             modeItems: AnalysisViewerTool.allCases.map(\.modeItem),
             overlayOpacity: $heatmapOpacity,
             showsOpacityControl: selectedTool == .twoD,
-            isSharePreparing: isSharePreparing,
-            shareAccessibilityLabel: isSharePreparing ? "Preparing share" : "Share photo",
+            shareSubject: shareSubject,
+            shareResourceAccess: DepthAnalysisShareResourceAccess(
+                isReady: originalResourceOwner.isReady,
+                acquire: {
+                    originalResourceOwner.acquireLease().map(
+                        DepthAnalysisShareOriginalResource.photo
+                    )
+                }
+            ),
+            shareAccessibilityLabel: "Share photo",
             deleteAccessibilityLabel: "Delete photo",
             topSafeArea: topSafeArea,
             bottomSafeArea: bottomSafeArea,
             bottomAccessory: EmptyView(),
             onBackTapped: onBackTapped,
-            onShareTapped: onShareTapped,
             onModeTapped: { itemID in
                 guard let tool = AnalysisViewerTool(rawValue: itemID) else {
                     return
@@ -61,14 +64,14 @@ struct DepthViewerChromeView<BottomAccessory: View>: View {
     let modeItems: [DepthViewerModeItem]
     @Binding var overlayOpacity: Double
     let showsOpacityControl: Bool
-    let isSharePreparing: Bool
+    let shareSubject: DepthAnalysisShareSubject?
+    let shareResourceAccess: DepthAnalysisShareResourceAccess?
     let shareAccessibilityLabel: String
     let deleteAccessibilityLabel: String
     let topSafeArea: CGFloat
     let bottomSafeArea: CGFloat
     let bottomAccessory: BottomAccessory
     let onBackTapped: () -> Void
-    let onShareTapped: () -> Void
     let onModeTapped: (String) -> Void
     let onDeleteTapped: () -> Void
 
@@ -110,10 +113,10 @@ struct DepthViewerChromeView<BottomAccessory: View>: View {
             DepthViewerToolbar(
                 selectedModeID: selectedModeID,
                 modeItems: modeItems,
-                isSharePreparing: isSharePreparing,
+                shareSubject: shareSubject,
+                shareResourceAccess: shareResourceAccess,
                 shareAccessibilityLabel: shareAccessibilityLabel,
                 deleteAccessibilityLabel: deleteAccessibilityLabel,
-                onShareTapped: onShareTapped,
                 onModeTapped: onModeTapped,
                 onDeleteTapped: onDeleteTapped
             )
@@ -148,22 +151,19 @@ private enum ViewerChromeMetrics {
 private struct DepthViewerToolbar: View {
     let selectedModeID: String
     let modeItems: [DepthViewerModeItem]
-    let isSharePreparing: Bool
+    let shareSubject: DepthAnalysisShareSubject?
+    let shareResourceAccess: DepthAnalysisShareResourceAccess?
     let shareAccessibilityLabel: String
     let deleteAccessibilityLabel: String
-    let onShareTapped: () -> Void
     let onModeTapped: (String) -> Void
     let onDeleteTapped: () -> Void
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            ViewerToolbarIconButton(
-                systemImage: isSharePreparing ? "clock" : "square.and.arrow.up",
-                accessibilityLabel: shareAccessibilityLabel,
-                accessibilityIdentifier: "tap.viewer.share",
-                foregroundStyle: .primary,
-                isEnabled: !isSharePreparing,
-                action: onShareTapped
+        HStack(alignment: .center, spacing: 0) {
+            DepthViewerShareControl(
+                subject: shareSubject,
+                resourceAccess: shareResourceAccess,
+                accessibilityLabel: shareAccessibilityLabel
             )
 
             Spacer(minLength: 0)
@@ -177,41 +177,56 @@ private struct DepthViewerToolbar: View {
             Spacer(minLength: 0)
 
             ViewerToolbarIconButton(
-                systemImage: "trash",
+                icon: .trash,
                 accessibilityLabel: deleteAccessibilityLabel,
                 accessibilityIdentifier: "tap.viewer.delete",
-                foregroundStyle: .red,
+                foregroundStyle: .primary,
                 action: onDeleteTapped
             )
         }
     }
 }
 
-private struct ViewerToolbarIconButton: View {
-    let systemImage: String
+struct ViewerToolbarIconButton: View {
+    let icon: ViewerToolbarActionIcon
     let accessibilityLabel: String
     let accessibilityIdentifier: String
     let foregroundStyle: Color
     var isEnabled = true
+    var accessibilityValue: String?
+    var progress: Double?
     let action: () -> Void
+
+    init(
+        icon: ViewerToolbarActionIcon,
+        accessibilityLabel: String,
+        accessibilityIdentifier: String,
+        foregroundStyle: Color,
+        isEnabled: Bool = true,
+        accessibilityValue: String? = nil,
+        progress: Double? = nil,
+        action: @escaping () -> Void
+    ) {
+        self.icon = icon
+        self.accessibilityLabel = accessibilityLabel
+        self.accessibilityIdentifier = accessibilityIdentifier
+        self.foregroundStyle = foregroundStyle
+        self.isEnabled = isEnabled
+        self.accessibilityValue = accessibilityValue
+        self.progress = progress
+        self.action = action
+    }
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.system(size: 16, weight: .semibold))
-                .symbolRenderingMode(.hierarchical)
+            Image(icon.assetName)
+                .resizable()
+                .renderingMode(.template)
+                .scaledToFit()
                 .foregroundStyle(foregroundStyle)
                 .frame(
                     width: DepthViewerToolbarMetrics.actionSymbolCanvasSize,
                     height: DepthViewerToolbarMetrics.actionSymbolCanvasSize
-                )
-                .offset(
-                    x: DepthViewerToolbarActionMetrics.opticalSymbolOffset(
-                        for: systemImage
-                    ).width,
-                    y: DepthViewerToolbarActionMetrics.opticalSymbolOffset(
-                        for: systemImage
-                    ).height
                 )
                 .frame(
                     width: DepthViewerToolbarMetrics.controlHeight,
@@ -222,6 +237,27 @@ private struct ViewerToolbarIconButton: View {
                     Circle()
                         .stroke(.white.opacity(0.18), lineWidth: 1)
                 }
+                .overlay {
+                    if let progress {
+                        Circle()
+                            .trim(from: 0, to: max(0.02, min(progress, 1)))
+                            .stroke(
+                                Color.accentColor,
+                                style: StrokeStyle(
+                                    lineWidth: DepthViewerToolbarMetrics.progressRingLineWidth,
+                                    lineCap: .round
+                                )
+                            )
+                            .rotationEffect(.degrees(-90))
+                            .frame(
+                                width: DepthViewerToolbarMetrics.controlHeight
+                                    + DepthViewerToolbarMetrics.progressRingOutset * 2,
+                                height: DepthViewerToolbarMetrics.controlHeight
+                                    + DepthViewerToolbarMetrics.progressRingOutset * 2
+                            )
+                            .accessibilityHidden(true)
+                    }
+                }
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
@@ -231,8 +267,22 @@ private struct ViewerToolbarIconButton: View {
             Text(LocalizedStringKey(accessibilityLabel))
         )
         .accessibilityIdentifier(accessibilityIdentifier)
+        .modifier(OptionalAccessibilityValue(value: accessibilityValue))
         .help(Text(LocalizedStringKey(accessibilityLabel)))
         .shadow(color: .black.opacity(0.16), radius: 12, y: 4)
+    }
+}
+
+private struct OptionalAccessibilityValue: ViewModifier {
+    let value: String?
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if let value {
+            content.accessibilityValue(value)
+        } else {
+            content
+        }
     }
 }
 

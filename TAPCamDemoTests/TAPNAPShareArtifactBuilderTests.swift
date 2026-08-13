@@ -10,6 +10,111 @@ import ZIPFoundation
 
 @Suite(.serialized)
 struct TAPNAPShareArtifactBuilderTests {
+    @Test func shareProgressCoalescerPreservesEndpointsAndBoundsCallbackFlood() async {
+        let recorder = TAPNAPShareProgressRecorder()
+        let coalescer = TAPShareProgressCoalescer(
+            minimumInterval: .milliseconds(50),
+            delivery: recorder.record
+        )
+
+        coalescer.submit(0)
+        for sample in 1...10_000 {
+            coalescer.submit(Double(sample) / 10_001)
+        }
+        coalescer.submit(1)
+        await coalescer.finish()
+
+        let values = recorder.snapshot().compactMap { $0 }
+        #expect(values.first == 0)
+        #expect(values.last == 1)
+        #expect(values.count <= 3)
+    }
+
+    @Test func shareProgressCompletionDoesNotAddTheThrottleIntervalToFastWork() async {
+        let recorder = TAPNAPShareProgressRecorder()
+        let clock = ContinuousClock()
+        let startedAt = clock.now
+        let coalescer = TAPShareProgressCoalescer(
+            minimumInterval: .seconds(5),
+            delivery: recorder.record
+        )
+
+        coalescer.submit(0)
+        coalescer.submit(1)
+        await coalescer.finish()
+
+        #expect(startedAt.duration(to: clock.now) < .seconds(1))
+        #expect(recorder.snapshot().compactMap { $0 } == [0, 1])
+    }
+
+    @Test func shareProgressCoalescerDeliversNewestIntermediateAndDropsAfterCancel() async throws {
+        let recorder = TAPNAPShareProgressRecorder()
+        let coalescer = TAPShareProgressCoalescer(
+            minimumInterval: .milliseconds(20),
+            delivery: recorder.record
+        )
+
+        coalescer.submit(0)
+        for _ in 0..<20 where recorder.snapshot().isEmpty {
+            try await Task.sleep(for: .milliseconds(2))
+        }
+        coalescer.submit(0.2)
+        coalescer.submit(0.7)
+        coalescer.submit(0.9)
+        try await Task.sleep(for: .milliseconds(30))
+
+        let beforeCancel = recorder.snapshot().compactMap { $0 }
+        #expect(beforeCancel.last == 0.9)
+        coalescer.submit(0.95)
+        coalescer.cancel()
+        try await Task.sleep(for: .milliseconds(30))
+        #expect(recorder.snapshot().compactMap { $0 } == beforeCancel)
+    }
+
+    @Test func artifactCleanupRetriesTransientFailureAndRemainsIdempotent() throws {
+        let directoryURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        let fileURL = directoryURL.appendingPathComponent("payload.tapnap")
+        try Data("cleanup-retry".utf8).write(to: fileURL)
+        let remover = TAPNAPTemporaryDirectoryRemovalStub(failuresRemaining: 2)
+        let artifact = TAPNAPShareArtifact(
+            id: UUID(),
+            kind: .tapnapPackage,
+            fileURL: fileURL,
+            temporaryDirectoryURL: directoryURL,
+            warnings: [],
+            temporaryDirectoryRemover: remover.remove
+        )
+
+        artifact.removeTemporaryDirectory()
+        artifact.removeTemporaryDirectory()
+
+        #expect(remover.invocationCount == 3)
+        #expect(!FileManager.default.fileExists(atPath: directoryURL.path))
+    }
+
+    @Test func artifactCleanupCanBeRetriedAfterAttemptBudgetIsExhausted() throws {
+        let directoryURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        let fileURL = directoryURL.appendingPathComponent("payload.tapnap")
+        try Data("cleanup-explicit-retry".utf8).write(to: fileURL)
+        let remover = TAPNAPTemporaryDirectoryRemovalStub(failuresRemaining: 3)
+        let artifact = TAPNAPShareArtifact(
+            id: UUID(),
+            kind: .tapnapPackage,
+            fileURL: fileURL,
+            temporaryDirectoryURL: directoryURL,
+            warnings: [],
+            temporaryDirectoryRemover: remover.remove
+        )
+
+        artifact.removeTemporaryDirectory()
+        #expect(remover.invocationCount == 3)
+        #expect(FileManager.default.fileExists(atPath: directoryURL.path))
+
+        artifact.removeTemporaryDirectory()
+        #expect(remover.invocationCount == 4)
+        #expect(!FileManager.default.fileExists(atPath: directoryURL.path))
+    }
+
     @Test func opaqueStillPhotoBuildsFixedUncompressedTapnapPackageWithoutValidation() async throws {
         let photoData = Data("opaque-not-an-image-or-manifest".utf8)
         let outputDirectoryURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
@@ -195,7 +300,8 @@ struct TAPNAPShareArtifactBuilderTests {
             value > TAPNAPShareArtifactBuilder.archiveProgressOffsetForPresentation
                 && value < 0.96
         }
-        #expect(zipProgressValues.count >= 3)
+        #expect(progressValues.count <= 24)
+        #expect(zipProgressValues.count <= 20)
     }
 
     @Test func livePhotoWithoutPairedMovieFailsAndRemovesSessionDirectory() async throws {
@@ -461,6 +567,115 @@ struct TAPNAPShareArtifactBuilderTests {
         #expect(!FileManager.default.fileExists(atPath: outputDirectoryURL.path))
     }
 
+    @Test func viewerLivePhotoLeaseBuildsPackageWithoutRefetchingAndPreservesExactPair() async throws {
+        let photoBytes = Data("viewer-ready-photo".utf8)
+        let pairedVideoBytes = Data("viewer-ready-paired-video".utf8)
+        let sourceDirectoryURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        let photoURL = sourceDirectoryURL.appendingPathComponent("original.heic")
+        let pairedVideoURL = sourceDirectoryURL.appendingPathComponent("original.mov")
+        try photoBytes.write(to: photoURL)
+        try pairedVideoBytes.write(to: pairedVideoURL)
+
+        var lease: TAPPhotoOriginalResourceLease? = try TAPPhotoOriginalResourceLease(
+            mediaID: .tapCapture("viewer-live"),
+            origin: .pendingCapture(
+                captureID: "viewer-live",
+                selectedSignedPhoto: true
+            ),
+            photoURL: photoURL,
+            pairedVideoURL: pairedVideoURL,
+            photoFileExtension: "heic",
+            photoMediaType: "public.heic",
+            fileContainerHint: .heic,
+            expectsPairedVideo: true,
+            ownedTemporaryDirectoryURL: sourceDirectoryURL
+        )
+        var request: TAPNAPShareResourceRequest? = TAPNAPShareResourceRequest(
+            originalResourceLease: try #require(lease),
+            hasSignatureEvidence: true
+        )
+        let outputDirectoryURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        let builder = TAPNAPShareArtifactBuilder(
+            pendingSnapshotter: { _, _, _, _, _, _ in
+                throw TAPNAPShareArtifactTestError.unexpectedResourceLoad
+            },
+            photoLibraryResourceLoader: { _, _, _, _, _ in
+                throw TAPNAPShareArtifactTestError.unexpectedResourceLoad
+            },
+            temporaryDirectoryProvider: { outputDirectoryURL }
+        )
+
+        let artifact = try await builder.prepareTapnapPackage(
+            request: try #require(request)
+        )
+        defer { artifact.removeTemporaryDirectory() }
+        request = nil
+        lease = nil
+        #expect(!FileManager.default.fileExists(atPath: sourceDirectoryURL.path))
+
+        let extractedDirectoryURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: extractedDirectoryURL) }
+        try FileManager.default.unzipItem(
+            at: artifact.fileURL,
+            to: extractedDirectoryURL
+        )
+        #expect(
+            try Data(contentsOf: extractedDirectoryURL.appendingPathComponent("primary-photo.heic"))
+                == photoBytes
+        )
+        #expect(
+            try Data(contentsOf: extractedDirectoryURL.appendingPathComponent("paired-video.mov"))
+                == pairedVideoBytes
+        )
+    }
+
+    @Test func viewerPhotoLeaseDirectShareOwnsCopyAndCarriesVerifiabilityWarning() async throws {
+        let photoBytes = Data(repeating: 0x5A, count: 1_100_000)
+        let sourceDirectoryURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        let photoURL = sourceDirectoryURL.appendingPathComponent("original.jpg")
+        try photoBytes.write(to: photoURL)
+
+        var lease: TAPPhotoOriginalResourceLease? = try TAPPhotoOriginalResourceLease(
+            mediaID: .photosAsset("viewer-photo"),
+            origin: .photosAsset(assetID: "viewer-photo"),
+            photoURL: photoURL,
+            pairedVideoURL: nil,
+            photoFileExtension: "jpg",
+            photoMediaType: "public.jpeg",
+            fileContainerHint: .jpeg,
+            expectsPairedVideo: false,
+            ownedTemporaryDirectoryURL: sourceDirectoryURL
+        )
+        let warning = "Verifiability is not guaranteed for this shared image."
+        var request: TAPNAPShareResourceRequest? = TAPNAPShareResourceRequest(
+            originalResourceLease: try #require(lease),
+            hasSignatureEvidence: false,
+            directShareVerifiabilityWarning: warning
+        )
+        let outputDirectoryURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        let builder = TAPNAPShareArtifactBuilder(
+            pendingSnapshotter: { _, _, _, _, _, _ in
+                throw TAPNAPShareArtifactTestError.unexpectedResourceLoad
+            },
+            photoLibraryResourceLoader: { _, _, _, _, _ in
+                throw TAPNAPShareArtifactTestError.unexpectedResourceLoad
+            },
+            temporaryDirectoryProvider: { outputDirectoryURL }
+        )
+
+        let artifact = try await builder.prepareImage(
+            request: try #require(request),
+            requiresSignedPhoto: false
+        )
+        defer { artifact.removeTemporaryDirectory() }
+        request = nil
+        lease = nil
+
+        #expect(!FileManager.default.fileExists(atPath: sourceDirectoryURL.path))
+        #expect(try Data(contentsOf: artifact.fileURL) == photoBytes)
+        #expect(artifact.warnings == [warning])
+    }
+
     @Test func cancellationRemovesIncompleteSessionDirectory() async throws {
         let outputDirectoryURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
         let builder = TAPNAPShareArtifactBuilder(
@@ -555,7 +770,7 @@ struct TAPNAPShareArtifactBuilderTests {
         let progress = progressRecorder.snapshot().compactMap { $0 }
         #expect(progress.first == 0)
         #expect(progress.last == 1)
-        #expect(progress.filter { $0 > 0 && $0 < 0.98 }.count >= 3)
+        #expect(progress.count <= 24)
         #expect(
             progress.elementsEqual(
                 progress.sorted(),
@@ -676,6 +891,59 @@ struct TAPNAPShareArtifactBuilderTests {
 
         #expect(routeRecorder.snapshot() == .init(pending: 0, photos: 1))
         #expect(try Data(contentsOf: artifact.fileURL) == photosBytes)
+    }
+
+    @Test func viewerVideoLeaseDirectShareOwnsCopyWithoutRefetchingAndCarriesWarning() async throws {
+        let videoBytes = Data(repeating: 0xC3, count: 1_200_000)
+        let sourceDirectoryURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        let sourceURL = sourceDirectoryURL.appendingPathComponent("original.mp4")
+        try videoBytes.write(to: sourceURL)
+
+        var owner: TAPVideoOriginalResourceOwner? = try TAPVideoOriginalResourceOwner(
+            mediaID: .photosAsset("viewer-video"),
+            origin: .photosAsset(assetID: "viewer-video"),
+            fileURL: sourceURL,
+            managedTemporaryFile: LibraryManagedTemporaryFile(
+                fileURL: sourceURL,
+                directoryURL: sourceDirectoryURL
+            )
+        )
+        var lease: TAPVideoOriginalResourceLease? = owner?.acquireLease()
+        let warning = "Verifiability is not guaranteed for this shared video."
+        var request: TAPVideoShareResourceRequest? = TAPVideoShareResourceRequest(
+            originalResourceLease: try #require(lease),
+            hasSignatureEvidence: false,
+            directShareVerifiabilityWarning: warning
+        )
+        let outputDirectoryURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        let progressRecorder = TAPNAPShareProgressRecorder()
+        let builder = TAPVideoShareArtifactBuilder(
+            pendingSnapshotter: { _, _, _, _, _ in
+                throw TAPNAPShareArtifactTestError.unexpectedResourceLoad
+            },
+            photoLibraryResourceLoader: { _, _, _ in
+                throw TAPNAPShareArtifactTestError.unexpectedResourceLoad
+            },
+            temporaryDirectoryProvider: { outputDirectoryURL }
+        )
+
+        let artifact = try await builder.prepareVideo(
+            request: try #require(request),
+            requiresSignedVideo: false,
+            progress: { progressRecorder.record($0) }
+        )
+        defer { artifact.removeTemporaryDirectory() }
+        request = nil
+        lease = nil
+        owner = nil
+
+        #expect(!FileManager.default.fileExists(atPath: sourceDirectoryURL.path))
+        #expect(try Data(contentsOf: artifact.fileURL) == videoBytes)
+        #expect(artifact.warnings == [warning])
+        let progress = progressRecorder.snapshot().compactMap { $0 }
+        #expect(progress.first == 0)
+        #expect(progress.last == 1)
+        #expect(progress.count <= 24)
     }
 
     @Test func videoBuilderCancellationRemovesPartialSessionDirectory() async throws {
@@ -830,6 +1098,35 @@ private final class TAPNAPShareProgressRecorder: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return values
+    }
+}
+
+private final class TAPNAPTemporaryDirectoryRemovalStub: @unchecked Sendable {
+    private let lock = NSLock()
+    private var failuresRemaining: Int
+    private var calls = 0
+
+    init(failuresRemaining: Int) {
+        self.failuresRemaining = failuresRemaining
+    }
+
+    var invocationCount: Int {
+        lock.withLock { calls }
+    }
+
+    func remove(_ directoryURL: URL) throws {
+        let shouldFail = lock.withLock {
+            calls += 1
+            guard failuresRemaining > 0 else {
+                return false
+            }
+            failuresRemaining -= 1
+            return true
+        }
+        if shouldFail {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        try FileManager.default.removeItem(at: directoryURL)
     }
 }
 

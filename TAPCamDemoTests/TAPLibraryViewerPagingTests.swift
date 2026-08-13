@@ -400,7 +400,7 @@ struct TAPLibraryViewerPagingTests {
         #expect(playbackSource.contains("preparePlaybackForPagingTarget(target)"))
         #expect(playbackSource.contains("guard !Task.isCancelled"))
         let ownedBranch = try #require(resourceSource.range(
-            of: "case .ownedCapture(_, let assetID):"
+            of: "case .ownedCapture(let captureID, let assetID):"
         ))
         let photosBranch = try #require(resourceSource.range(
             of: "case .photosAsset(let assetID):"

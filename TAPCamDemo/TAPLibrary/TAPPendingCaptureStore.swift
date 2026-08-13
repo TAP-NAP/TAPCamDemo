@@ -21,10 +21,48 @@ nonisolated struct TAPPendingCaptureShareResourceSnapshot: Sendable {
     let photoURL: URL
     let pairedVideoURL: URL?
     let fileContainer: CapturePhotoFileContainer
+    /// Describes the exact photo selected by the actor-owned snapshot, not a
+    /// status inferred later by a presentation layer. Ordinary Viewer loading
+    /// may select an unsigned fallback; TAPNAP preparation still requests a
+    /// signed-only snapshot and therefore always receives `true` here.
+    let selectedSignedPhoto: Bool
+
+    init(
+        photoURL: URL,
+        pairedVideoURL: URL?,
+        fileContainer: CapturePhotoFileContainer,
+        selectedSignedPhoto: Bool = false
+    ) {
+        self.photoURL = photoURL
+        self.pairedVideoURL = pairedVideoURL
+        self.fileContainer = fileContainer
+        self.selectedSignedPhoto = selectedSignedPhoto
+    }
 }
 
 nonisolated struct TAPPendingVideoShareResourceSnapshot: Sendable {
     let videoURL: URL
+}
+
+nonisolated struct TAPPendingVideoPlaybackResourceSnapshot: Sendable {
+    let videoURL: URL
+    let selectedSignedVideo: Bool
+
+    init(videoURL: URL, selectedSignedVideo: Bool = false) {
+        self.videoURL = videoURL
+        self.selectedSignedVideo = selectedSignedVideo
+    }
+}
+
+/// One actor-issued, single-use working generation for pending TAP Video
+/// signing. The file is an independent inode inside the pending bundle; only
+/// the store that issued the attempt may publish or discard it.
+nonisolated struct TAPPendingVideoSigningArtifact: Sendable {
+    let captureID: String
+    let packageID: UUID
+    let attemptID: UUID
+    let fileURL: URL
+    let expectedPreSignContentBinding: CaptureContentBinding?
 }
 
 nonisolated enum TAPPendingVideoShareSnapshotError: Error, Equatable, Sendable {
@@ -65,13 +103,16 @@ actor TAPPendingCaptureStore {
     private let maintenance: TAPPendingCaptureMaintenance
     private let lockedCaptureImporter: TAPPendingLockedCaptureImporter
     private let shareSnapshotLinker: @Sendable (URL, URL) throws -> Void
+    private let videoSigningRecordPreparationFault: @Sendable (TAPPendingCaptureRecord) throws -> Void
+    private var activeVideoSigningAttempts: [String: UUID] = [:]
 
     init(
         rootURL: URL = TAPPendingCaptureRoot.defaultURL,
         storagePolicy: TAPLocalArtifactStoragePolicy = .privatePhotoArtifact,
         shareSnapshotLinker: @escaping @Sendable (URL, URL) throws -> Void = { sourceURL, destinationURL in
             try FileManager.default.linkItem(at: sourceURL, to: destinationURL)
-        }
+        },
+        videoSigningRecordPreparationFault: @escaping @Sendable (TAPPendingCaptureRecord) throws -> Void = { _ in }
     ) {
         let storage = TAPPendingCaptureBundleStorage(
             rootURL: rootURL,
@@ -82,6 +123,7 @@ actor TAPPendingCaptureStore {
         self.maintenance = TAPPendingCaptureMaintenance(storage: storage)
         self.lockedCaptureImporter = TAPPendingLockedCaptureImporter(storage: storage)
         self.shareSnapshotLinker = shareSnapshotLinker
+        self.videoSigningRecordPreparationFault = videoSigningRecordPreparationFault
     }
 
     func beginVideoCaptureWorkspace(captureID: String) throws -> TAPVideoRecordingWorkspace {
@@ -371,7 +413,136 @@ actor TAPPendingCaptureStore {
         guard let filename = record.videoArtifactFilename else {
             throw TAPDepthCaptureError.pendingCaptureDataMissing
         }
+        if activeVideoSigningAttempts[captureID] == nil {
+            // Completes cleanup after a crash between the durable record write
+            // and removal of the swapped-out previous generation. Never touch
+            // this path while a live signing attempt owns its working file.
+            try storage.removeStaleVideoSigningArtifacts(captureID: captureID)
+        }
         return try storage.videoURL(filename: filename, captureID: captureID)
+    }
+
+    /// Freezes the durable unsigned generation into an independent working
+    /// inode before proof generation begins. This synchronous actor boundary
+    /// may copy bytes, but it never waits for App Attest or the network.
+    func beginVideoSigningArtifact(
+        captureID: String
+    ) throws -> TAPPendingVideoSigningArtifact {
+        let record = try readRecord(captureID: captureID)
+        guard record.artifactKind == .tapVideo,
+              record.status == .signing,
+              record.videoArtifactState == .unsigned,
+              let sourceFilename = record.videoArtifactFilename else {
+            throw TAPDepthCaptureError.invalidPendingCaptureBundlePath(
+                "video signing artifact requires one unsigned signing record"
+            )
+        }
+        guard activeVideoSigningAttempts[captureID] == nil else {
+            throw TAPDepthCaptureError.invalidPendingCaptureBundlePath(
+                "video signing artifact attempt is already active"
+            )
+        }
+
+        try storage.removeStaleVideoSigningArtifacts(captureID: captureID)
+        let attemptID = UUID()
+        let fileURL = try storage.createVideoSigningArtifactCopy(
+            captureID: captureID,
+            sourceFilename: sourceFilename,
+            attemptID: attemptID
+        )
+        activeVideoSigningAttempts[captureID] = attemptID
+        return TAPPendingVideoSigningArtifact(
+            captureID: captureID,
+            packageID: record.packageID,
+            attemptID: attemptID,
+            fileURL: fileURL,
+            expectedPreSignContentBinding: record.preSignContentBinding
+        )
+    }
+
+    /// Publishes a fully signed and locally validated working generation.
+    /// Snapshot operations and this transition are actor-serialized, while the
+    /// same-directory rename changes `artifact.mp4` from the complete old inode
+    /// to the complete new inode atomically.
+    func publishVideoSigningArtifact(
+        _ artifact: TAPPendingVideoSigningArtifact
+    ) throws -> TAPPendingCaptureRecord {
+        guard activeVideoSigningAttempts[artifact.captureID] == artifact.attemptID else {
+            throw TAPDepthCaptureError.invalidPendingCaptureBundlePath(
+                "video signing artifact attempt is stale"
+            )
+        }
+        let source = try readRecord(captureID: artifact.captureID)
+        guard source.artifactKind == .tapVideo,
+              source.packageID == artifact.packageID,
+              source.status == .signing,
+              source.videoArtifactState == .unsigned,
+              let sourceFilename = source.videoArtifactFilename else {
+            throw TAPDepthCaptureError.invalidPendingCaptureBundlePath(
+                "video signing artifact cannot publish into the current record"
+            )
+        }
+        let expectedFileURL = try storage.videoSigningArtifactURL(
+            captureID: artifact.captureID,
+            attemptID: artifact.attemptID
+        )
+        guard artifact.fileURL.standardizedFileURL == expectedFileURL.standardizedFileURL else {
+            throw TAPDepthCaptureError.invalidPendingCaptureBundlePath(
+                "video signing artifact URL does not match its attempt"
+            )
+        }
+
+        let record = try TAPPendingVideoRecordTransitions.markSigned(
+            source,
+            now: Date()
+        )
+        let previousGenerationURL = try storage.publishVideoSigningArtifact(
+            captureID: artifact.captureID,
+            sourceFilename: sourceFilename,
+            attemptID: artifact.attemptID
+        )
+        do {
+            try storage.commitVideoSigningRecord(
+                record,
+                attemptID: artifact.attemptID,
+                preparationFault: videoSigningRecordPreparationFault
+            )
+        } catch {
+            try? storage.rollbackPublishedVideoSigningArtifact(
+                captureID: artifact.captureID,
+                sourceFilename: sourceFilename,
+                attemptID: artifact.attemptID,
+                previousGenerationURL: previousGenerationURL
+            )
+            throw error
+        }
+        try? storage.commitPublishedVideoSigningArtifact(
+            previousGenerationURL: previousGenerationURL
+        )
+        activeVideoSigningAttempts[artifact.captureID] = nil
+        TAPLibraryChangeNotifier.post(captureID: record.captureID)
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.pendingCapture.info(
+            "store video signed generation published captureID=\(artifact.captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public)"
+        )
+        #endif
+        return record
+    }
+
+    /// Removes an unpublished generation after assertion, validation,
+    /// cancellation, or stale-attempt failure. A generation already moved over
+    /// the durable path is harmlessly treated as absent.
+    func discardVideoSigningArtifact(
+        _ artifact: TAPPendingVideoSigningArtifact
+    ) throws {
+        guard activeVideoSigningAttempts[artifact.captureID] == artifact.attemptID else {
+            return
+        }
+        defer { activeVideoSigningAttempts[artifact.captureID] = nil }
+        try storage.discardVideoSigningArtifact(
+            captureID: artifact.captureID,
+            attemptID: artifact.attemptID
+        )
     }
 
     func bestAvailableVideoURL(captureID: String) throws -> URL {
@@ -434,6 +605,7 @@ actor TAPPendingCaptureStore {
         }
 
         let sourcePhotoURL: URL
+        let selectedSignedPhoto: Bool
         if requiresSignedPhoto {
             guard let signedFilename = record.signedPhotoFilename,
                   let signedURL = try storage.photoURLIfPresent(
@@ -443,18 +615,21 @@ actor TAPPendingCaptureStore {
                 throw TAPDepthCaptureError.pendingCaptureDataMissing
             }
             sourcePhotoURL = signedURL
+            selectedSignedPhoto = true
         } else if let signedFilename = record.signedPhotoFilename,
                   let signedURL = try storage.photoURLIfPresent(
                     filename: signedFilename,
                     captureID: captureID
                   ) {
             sourcePhotoURL = signedURL
+            selectedSignedPhoto = true
         } else if let unsignedFilename = record.unsignedPhotoFilename,
                   let unsignedURL = try storage.photoURLIfPresent(
                     filename: unsignedFilename,
                     captureID: captureID
                   ) {
             sourcePhotoURL = unsignedURL
+            selectedSignedPhoto = false
         } else {
             throw TAPDepthCaptureError.pendingCaptureDataMissing
         }
@@ -537,7 +712,8 @@ actor TAPPendingCaptureStore {
             return TAPPendingCaptureShareResourceSnapshot(
                 photoURL: photoURL,
                 pairedVideoURL: copiedPairedVideoURL,
-                fileContainer: record.photoFileContainer
+                fileContainer: record.photoFileContainer,
+                selectedSignedPhoto: selectedSignedPhoto
             )
         } catch {
             try? FileManager.default.removeItem(at: destinationDirectoryURL)
@@ -615,6 +791,78 @@ actor TAPPendingCaptureStore {
             try Task.checkCancellation()
             progressHandler(1)
             return TAPPendingVideoShareResourceSnapshot(videoURL: destinationVideoURL)
+        } catch {
+            try? FileManager.default.removeItem(at: destinationDirectoryURL)
+            throw error
+        }
+    }
+
+    /// Creates a stable, independent original for Viewer playback. Resolving
+    /// the queue path and starting the copy stay inside the store actor instead
+    /// of exposing a detached durable URL to the Viewer. Later proof-slot writes
+    /// or queue cleanup cannot mutate or unlink the returned copy. The caller
+    /// owns the destination directory.
+    func snapshotVideoPlaybackResource(
+        captureID: String,
+        to destinationDirectoryURL: URL,
+        progressHandler: @escaping @Sendable (Double?) -> Void = { _ in }
+    ) throws -> TAPPendingVideoPlaybackResourceSnapshot {
+        let record: TAPPendingCaptureRecord
+        do {
+            record = try readRecord(captureID: captureID)
+        } catch TAPDepthCaptureError.pendingCaptureDataMissing {
+            throw TAPPendingVideoShareSnapshotError.sourceUnavailable
+        }
+        guard record.artifactKind == .tapVideo,
+              let filename = record.videoArtifactFilename else {
+            throw TAPPendingVideoShareSnapshotError.sourceUnavailable
+        }
+
+        let sourceVideoURL: URL
+        do {
+            sourceVideoURL = try storage.videoURL(
+                filename: filename,
+                captureID: captureID
+            )
+        } catch TAPDepthCaptureError.pendingCaptureDataMissing {
+            throw TAPPendingVideoShareSnapshotError.sourceUnavailable
+        }
+        let fileExtension = sourceVideoURL.pathExtension.isEmpty
+            ? "mp4"
+            : sourceVideoURL.pathExtension.lowercased()
+        let destinationVideoURL = destinationDirectoryURL.appendingPathComponent(
+            "playback-source.\(fileExtension)"
+        )
+
+        do {
+            try Task.checkCancellation()
+            try FileManager.default.createDirectory(
+                at: destinationDirectoryURL,
+                withIntermediateDirectories: true
+            )
+            let byteCount = try checkedShareResourceByteCount(at: sourceVideoURL)
+            progressHandler(0)
+            try createStableShareResourceSnapshot(
+                from: sourceVideoURL,
+                to: destinationVideoURL,
+                byteCount: byteCount,
+                role: .video,
+                // A hard link survives unlinking but not in-place proof-slot
+                // writes. Pending signing can mutate the same inode, so
+                // playback needs an independent byte snapshot.
+                linkPolicy: .requireIndependentFile,
+                progressHandler: { copiedByteCount in
+                    progressHandler(
+                        min(1, Double(copiedByteCount) / Double(max(byteCount, 1)))
+                    )
+                }
+            )
+            try Task.checkCancellation()
+            progressHandler(1)
+            return TAPPendingVideoPlaybackResourceSnapshot(
+                videoURL: destinationVideoURL,
+                selectedSignedVideo: record.videoArtifactState == .signed
+            )
         } catch {
             try? FileManager.default.removeItem(at: destinationDirectoryURL)
             throw error
@@ -763,7 +1011,7 @@ actor TAPPendingCaptureStore {
             record.retryCount += 1
         }
         try storage.writeRecord(record)
-        TAPLibraryChangeNotifier.post()
+        TAPLibraryChangeNotifier.post(captureID: captureID)
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.pendingCapture.info("store status updated captureID=\(captureID, privacy: .private) status=\(status.rawValue, privacy: .public) retryCount=\(record.retryCount, privacy: .public) hasFailureReason=\(failureReason != nil, privacy: .public)")
         #endif
@@ -796,7 +1044,7 @@ actor TAPPendingCaptureStore {
         record.failureReason = nil
         record.updatedAt = Date()
         try storage.writeRecord(record)
-        TAPLibraryChangeNotifier.post()
+        TAPLibraryChangeNotifier.post(captureID: captureID)
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.pendingCapture.info("store signedPhoto stored captureID=\(captureID, privacy: .private) container=\(record.photoFileContainer.rawValue, privacy: .public) bytes=\(data.count, privacy: .public) status=\(record.status.rawValue, privacy: .public)")
         #endif
@@ -816,7 +1064,7 @@ actor TAPPendingCaptureStore {
         _ = try videoArtifactURL(captureID: captureID)
         try persistTransition(from: source, to: record)
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.pendingCapture.info("store video signed in place captureID=\(captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public)")
+        TAPDiagnostics.pendingCapture.info("store video signed state updated captureID=\(captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public)")
         #endif
         return record
     }
@@ -851,7 +1099,7 @@ actor TAPPendingCaptureStore {
         }
         record.updatedAt = Date()
         try storage.writeRecord(record)
-        TAPLibraryChangeNotifier.post()
+        TAPLibraryChangeNotifier.post(captureID: captureID)
         return record
     }
 
@@ -984,7 +1232,7 @@ actor TAPPendingCaptureStore {
             return
         }
         try storage.writeRecord(record)
-        TAPLibraryChangeNotifier.post()
+        TAPLibraryChangeNotifier.post(captureID: record.captureID)
     }
 
 }

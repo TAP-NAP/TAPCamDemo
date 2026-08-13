@@ -19,7 +19,7 @@ struct TAPLibraryItemCell: View {
                 Rectangle()
                     .fill(Color(uiColor: .secondarySystemBackground))
 
-                if let posterImage = displayedPoster?.image {
+                if let posterImage = displayedPosterImage {
                     Image(uiImage: posterImage)
                         .resizable()
                         .scaledToFill()
@@ -139,25 +139,43 @@ struct TAPLibraryItemCell: View {
 
     private func loadThumbnail() async {
         let cacheKey = item.thumbnailCacheKey(pixelLength: thumbnailPixelLength)
+        guard !Task.isCancelled, thumbnailTaskID == cacheKey else {
+            return
+        }
         fetchPhase = .resolving(nil)
         if let cachedPoster = DepthAlbumThumbnailMemoryCache.shared.poster(for: cacheKey) {
+            guard !Task.isCancelled, thumbnailTaskID == cacheKey else {
+                return
+            }
             fetchPhase = .ready(cachedPoster)
             return
         }
 
         do {
-            let phase = try await thumbnailPhase(cacheKey: cacheKey)
-            guard !Task.isCancelled else {
+            var phase = try await thumbnailPhase(cacheKey: cacheKey)
+            guard !Task.isCancelled, thumbnailTaskID == cacheKey else {
                 return
             }
-            if case .ready(let poster) = phase {
-                DepthAlbumThumbnailMemoryCache.shared.insert(poster)
+            if let poster = phase.previewOrReadyValue {
+                if let decodedThumbnail = await DepthAlbumThumbnailDecoder.shared
+                    .decodedThumbnail(for: poster) {
+                    guard !Task.isCancelled,
+                          thumbnailTaskID == cacheKey,
+                          decodedThumbnail.poster.cacheKey == cacheKey else {
+                        return
+                    }
+                } else if phase.requiresRenderablePoster {
+                    phase = .failed(nil, reason: .decode, retryable: false)
+                }
+            }
+            guard !Task.isCancelled, thumbnailTaskID == cacheKey else {
+                return
             }
             fetchPhase = phase
         } catch is CancellationError {
             return
         } catch {
-            guard !Task.isCancelled else {
+            guard !Task.isCancelled, thumbnailTaskID == cacheKey else {
                 return
             }
             fetchPhase = .failed(nil, reason: .decode, retryable: false)
@@ -258,6 +276,13 @@ struct TAPLibraryItemCell: View {
         }
     }
 
+    private var displayedPosterImage: UIImage? {
+        guard let poster = displayedPoster else {
+            return nil
+        }
+        return DepthAlbumThumbnailMemoryCache.shared.image(for: poster.cacheKey)
+    }
+
     private var isCloudOnly: Bool {
         if case .cloudOnly = fetchPhase {
             return true
@@ -277,5 +302,16 @@ struct TAPLibraryItemCell: View {
             return true
         }
         return false
+    }
+}
+
+private extension MediaFetchPhase where Preview == MediaPoster, Value == MediaPoster {
+    var requiresRenderablePoster: Bool {
+        switch self {
+        case .localPreview, .ready:
+            true
+        case .idle, .resolving, .cloudOnly, .downloadingFromICloud, .failed:
+            false
+        }
     }
 }

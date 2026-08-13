@@ -176,7 +176,7 @@ struct DepthAnalyzerSettingsView: View {
             }
 
             Toggle(isOn: $shutterHapticsEnabled) {
-                Label("Capture Haptics", systemImage: "iphone.radiowaves.left.and.right")
+                Label("Interaction Haptics", systemImage: "iphone.radiowaves.left.and.right")
             }
 
             Toggle(isOn: shutterSoundSuppressionBinding) {

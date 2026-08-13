@@ -20,6 +20,7 @@ nonisolated struct DepthAnalysisShareSubject: Identifiable, Equatable, Sendable 
     let hasIdentityConflict: Bool
     let mediaKind: DepthAnalysisShareMediaKind
     let expectsPairedVideo: Bool
+    let usesPendingCaptureResource: Bool
 
     init(entry: DepthAnalysisCarouselEntry) {
         let mediaCaptureID: String?
@@ -49,6 +50,11 @@ nonisolated struct DepthAnalysisShareSubject: Identifiable, Equatable, Sendable 
             || Self.valuesConflict(sourceAssetID, routeAssetID)
         mediaKind = .photo
         expectsPairedVideo = entry.albumEntry?.expectsPairedVideo ?? false
+        if case .pendingCapture = entry.source {
+            usesPendingCaptureResource = true
+        } else {
+            usesPendingCaptureResource = false
+        }
     }
 
     init(videoSource: TAPVideoPlaybackSource, itemID: String) {
@@ -58,16 +64,20 @@ nonisolated struct DepthAnalysisShareSubject: Identifiable, Equatable, Sendable 
         case .pendingCapture(let captureID):
             self.captureID = captureID
             assetID = nil
+            usesPendingCaptureResource = true
         case .ownedCapture(let captureID, let assetID):
             self.captureID = captureID
             self.assetID = assetID
+            usesPendingCaptureResource = false
         case .photosAsset(let assetID):
             captureID = nil
             self.assetID = assetID
+            usesPendingCaptureResource = false
         #if DEBUG
         case .fixtureFile:
             captureID = nil
             assetID = nil
+            usesPendingCaptureResource = false
         #endif
         }
         hasIdentityConflict = false
@@ -82,7 +92,8 @@ nonisolated struct DepthAnalysisShareSubject: Identifiable, Equatable, Sendable 
         assetID: String?,
         hasIdentityConflict: Bool = false,
         mediaKind: DepthAnalysisShareMediaKind = .photo,
-        expectsPairedVideo: Bool = false
+        expectsPairedVideo: Bool = false,
+        usesPendingCaptureResource: Bool? = nil
     ) {
         self.id = id
         self.mediaID = mediaID
@@ -91,6 +102,8 @@ nonisolated struct DepthAnalysisShareSubject: Identifiable, Equatable, Sendable 
         self.hasIdentityConflict = hasIdentityConflict
         self.mediaKind = mediaKind
         self.expectsPairedVideo = expectsPairedVideo
+        self.usesPendingCaptureResource = usesPendingCaptureResource
+            ?? (captureID != nil && assetID == nil)
     }
 
     private static func valuesConflict(_ lhs: String?, _ rhs: String?) -> Bool {
@@ -101,72 +114,16 @@ nonisolated struct DepthAnalysisShareSubject: Identifiable, Equatable, Sendable 
     }
 }
 
-/// Product-facing TAPNAP state. `verified` means signing completion is already
-/// durably recorded; this policy intentionally performs no cryptographic work.
+/// Product-facing owned-capture Share state. The public `verified` result is
+/// emitted only after the frozen Viewer original matches its embedded digest
+/// and signing binding. This is byte-integrity, not independent App Attest
+/// assertion-signature verification; the queue-only policy below classifies
+/// whether pending bytes are eligible for the check and never contacts a
+/// backend.
 nonisolated enum DepthAnalysisShareCertificationState: String, Equatable, Sendable {
     case verified
     case retryPending
     case failed
-}
-
-nonisolated enum DepthAnalysisShareCertificationPolicy {
-    static func state(
-        for record: TAPPendingCaptureRecord?
-    ) -> DepthAnalysisShareCertificationState {
-        state(for: record, mediaKind: .photo)
-    }
-
-    static func state(
-        for record: TAPPendingCaptureRecord?,
-        mediaKind: DepthAnalysisShareMediaKind
-    ) -> DepthAnalysisShareCertificationState {
-        guard let record else {
-            return .failed
-        }
-
-        switch mediaKind {
-        case .photo:
-            guard record.artifactKind == .photoDepth else {
-                return .failed
-            }
-            if record.signedPhotoFilename != nil
-                || record.status.hasDurablePhotoSignatureEvidence {
-                return .verified
-            }
-        case .video:
-            guard record.artifactKind == .tapVideo else {
-                return .failed
-            }
-            // A persisted signed artifact is sufficient evidence. Sharing must
-            // never reopen the MP4 merely to verify it again.
-            if record.videoArtifactState == .signed {
-                return .verified
-            }
-        }
-
-        switch record.status {
-        case .pending, .waitingNetwork, .signing, .failedRetryable:
-            return .retryPending
-        case .failedTerminal:
-            return .failed
-        case .signed, .exporting, .exported:
-            // Photo records reached here only when their durable signature
-            // fields are inconsistent; video requires its explicit signed
-            // artifact state. Treat either mismatch as a terminal failure.
-            return mediaKind == .photo ? .verified : .failed
-        }
-    }
-}
-
-nonisolated private extension TAPPendingCaptureStatus {
-    var hasDurablePhotoSignatureEvidence: Bool {
-        switch self {
-        case .signed, .exporting, .exported:
-            true
-        case .pending, .waitingNetwork, .signing, .failedRetryable, .failedTerminal:
-            false
-        }
-    }
 }
 
 nonisolated enum DepthAnalysisShareRecordResolutionError: Error, Equatable {
@@ -200,7 +157,15 @@ nonisolated struct DepthAnalysisShareRecordResolver: Sendable {
         }
 
         if let captureID = subject.captureID {
-            let record = try await captureLoader(captureID)
+            let record: TAPPendingCaptureRecord
+            do {
+                record = try await captureLoader(captureID)
+            } catch where Self.isMissingRecord(error) {
+                // Exported Photos/iCloud media can legitimately outlive its
+                // private queue record. A genuine absence is not an identity
+                // conflict; the frozen media remains self-describing.
+                return nil
+            }
             try Self.requireMatchingIdentity(record: record, subject: subject)
             return record
         }
@@ -226,6 +191,15 @@ nonisolated struct DepthAnalysisShareRecordResolver: Sendable {
         record: TAPPendingCaptureRecord,
         subject: DepthAnalysisShareSubject
     ) throws {
+        let expectedKind: TAPPendingCaptureArtifactKind = switch subject.mediaKind {
+        case .photo:
+            .photoDepth
+        case .video:
+            .tapVideo
+        }
+        guard record.artifactKind == expectedKind else {
+            throw DepthAnalysisShareRecordResolutionError.identityConflict
+        }
         if let expectedCaptureID = subject.captureID,
            record.captureID != expectedCaptureID {
             throw DepthAnalysisShareRecordResolutionError.identityConflict
@@ -236,5 +210,14 @@ nonisolated struct DepthAnalysisShareRecordResolver: Sendable {
         guard record.assetLocalIdentifier == expectedAssetID else {
             throw DepthAnalysisShareRecordResolutionError.identityConflict
         }
+    }
+
+    private static func isMissingRecord(_ error: any Error) -> Bool {
+        let cocoaError = error as NSError
+        guard cocoaError.domain == NSCocoaErrorDomain else {
+            return false
+        }
+        return cocoaError.code == CocoaError.Code.fileNoSuchFile.rawValue
+            || cocoaError.code == CocoaError.Code.fileReadNoSuchFile.rawValue
     }
 }

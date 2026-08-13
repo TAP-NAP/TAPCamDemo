@@ -88,6 +88,12 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
     @Published var displayFetchState = AnalysisPhotoDisplayFetchState()
     @Published var analysisState = AnalysisPhotoAnalysisState()
     @Published var selectionState: AnalysisPhotoSelectionState
+    let originalResourceOwner = TAPPhotoOriginalResourceOwner()
+    var pendingSignedOriginalRefreshID: UUID?
+
+    var isRefreshingPendingSignedOriginal: Bool {
+        pendingSignedOriginalRefreshID != nil
+    }
 
     var id: String { entry.id }
     var source: DepthAnalysisSource { entry.source }
@@ -231,10 +237,62 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
         livePhotoRetryAction?()
     }
 
+    /// A pending capture may have completed signing while this Viewer kept an
+    /// earlier unsigned snapshot alive. Refresh only that app-private source;
+    /// Photos/iCloud originals are immutable for this presentation and do not
+    /// need a queue-driven reload.
+    func reloadPendingOriginalAfterLibraryChange(
+        _ change: TAPLibraryPendingCaptureChange?
+    ) async {
+        guard case .pendingCapture(let captureID) = source,
+              change?.captureID == captureID,
+              pendingSignedOriginalRefreshID == nil,
+              let lastLoader = displayFetchState.lastLoader else {
+            return
+        }
+        // Claim the transition before the actor hop below. Burst queue
+        // notifications otherwise pass the same guard and repeatedly restart
+        // the original request after each suspended record read resumes.
+        let refreshID = UUID()
+        pendingSignedOriginalRefreshID = refreshID
+        if let lease = originalResourceOwner.acquireLease(),
+           case .pendingCapture(_, let selectedSignedPhoto) = lease.origin,
+           selectedSignedPhoto {
+            if pendingSignedOriginalRefreshID == refreshID {
+                pendingSignedOriginalRefreshID = nil
+            }
+            return
+        }
+        guard let record = try? await TAPPendingCaptureStore.shared
+            .readRecord(captureID: captureID),
+              record.signedPhotoFilename != nil else {
+            if pendingSignedOriginalRefreshID == refreshID {
+                pendingSignedOriginalRefreshID = nil
+            }
+            return
+        }
+        guard case .pendingCapture(let currentCaptureID) = source,
+              currentCaptureID == captureID,
+              pendingSignedOriginalRefreshID == refreshID else {
+            return
+        }
+        cancelOriginalTasks(preserveCloudState: false)
+        pendingSignedOriginalRefreshID = refreshID
+        originalResourceOwner.clear()
+        analysisState.input = nil
+        analysisState.phase = .idle
+        ensureInputLoading(
+            loader: lastLoader,
+            priority: displayFetchState.lastPriority,
+            prewarmPlaneGeometry: displayFetchState.lastRequestedPlaneGeometryPrewarm
+        )
+    }
+
     func prepareForAdjacentPreview() {
         cancelLivePhotoFetch(preserveCloudState: false, invokesCancellationAction: true)
         cancelOriginalTasks(preserveCloudState: true)
         analysisState.input = nil
+        originalResourceOwner.clear()
         analysisState.phase = .idle
         selectionState.planeRequestCoordinator.cancelRegionRequest()
         selectionState.planeRequestCoordinator.resetForNewInput()
@@ -263,6 +321,7 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
         displayFetchState.thumbnailImage = nil
         displayFetchState.displayPhoto = nil
         analysisState.input = nil
+        originalResourceOwner.clear()
         displayFetchState.phase = .idle
         analysisState.phase = .idle
 

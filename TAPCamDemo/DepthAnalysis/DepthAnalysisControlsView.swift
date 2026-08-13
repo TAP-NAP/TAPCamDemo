@@ -8,15 +8,17 @@
 import SwiftUI
 
 nonisolated enum DepthViewerToolbarMetrics {
-    static let controlHeight: CGFloat = 44
+    static let controlHeight: CGFloat = 42
     static let modeButtonWidth: CGFloat = 42
     static let modeButtonHeight: CGFloat = 36
     static let modeHitTargetSize: CGFloat = 44
     static let modeCapsuleHorizontalInset: CGFloat = 4
     static let actionSymbolCanvasSize: CGFloat = 20
-    static let horizontalPadding: CGFloat = 34
+    static let horizontalPadding: CGFloat = 16
+    static let progressRingOutset: CGFloat = 3
+    static let progressRingLineWidth: CGFloat = 3
     static let homeGestureClearance: CGFloat = 16
-    static let fallbackBottomPadding: CGFloat = 20
+    static let fallbackBottomPadding: CGFloat = 25
 
     static func toolbarBottomPadding(bottomSafeArea: CGFloat) -> CGFloat {
         max(fallbackBottomPadding, bottomSafeArea + homeGestureClearance)
@@ -89,6 +91,10 @@ struct DepthViewerModeCapsule: View {
             }
         }
         .padding(.horizontal, DepthViewerToolbarMetrics.modeCapsuleHorizontalInset)
+        .frame(
+            minHeight: DepthViewerToolbarMetrics.controlHeight,
+            maxHeight: DepthViewerToolbarMetrics.controlHeight
+        )
         .background(.thinMaterial, in: Capsule())
         .overlay {
             Capsule()

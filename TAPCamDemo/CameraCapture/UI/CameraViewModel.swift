@@ -111,7 +111,10 @@ final class CameraViewModel: ObservableObject {
     }
 
     var recentThumbnail: UIImage? {
-        recentLibraryPresentation.poster?.image
+        guard let poster = recentLibraryPresentation.poster else {
+            return nil
+        }
+        return DepthAlbumThumbnailMemoryCache.shared.image(for: poster.cacheKey)
     }
 
     var recentLibraryStatusText: String? {

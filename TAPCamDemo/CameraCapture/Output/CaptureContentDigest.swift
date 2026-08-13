@@ -100,20 +100,22 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
         manifest: TAPVideoManifest,
         mp4FileURL: URL
     ) throws -> CaptureContentBinding {
+        try Task<Never, Never>.checkCancellation()
         let slot = try TAPProofSlot.locateBMFF(inFileAt: mp4FileURL)
-        let byteCount = try TAPBMFFStreamingFile.byteCount(of: mp4FileURL)
-        guard byteCount <= UInt64(Int.max) else {
+        let fileHash = try TAPBMFFStreamingFile.sha256AndByteCountBase64URL(
+            of: mp4FileURL,
+            excluding: slot.containerRange
+        )
+        guard fileHash.byteCount <= UInt64(Int.max) else {
             throw TAPDepthCaptureError.pendingCaptureProofInvalid("video file is too large to describe")
         }
-        let assetHash = try AssetHash(
+        let assetHash = AssetHash(
             fileContainerIdentifier: "mp4",
-            byteCount: Int(byteCount),
+            byteCount: Int(fileHash.byteCount),
             slot: slot,
-            value: TAPBMFFStreamingFile.sha256Base64URL(
-                of: mp4FileURL,
-                excluding: slot.containerRange
-            )
+            value: fileHash.value
         )
+        try Task<Never, Never>.checkCancellation()
         let payloadData = try TAPVideoManifestEncoder.payloadDataExcludingProofs(manifest.payload)
         let metadataHash = MetadataHash(videoPayloadData: payloadData, schemaVersion: manifest.schema.version)
 
@@ -163,6 +165,7 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
         depthData: AVDepthData?,
         pairedVideoURL: URL? = nil
     ) throws -> CaptureContentDigestBuildResult {
+        try Task<Never, Never>.checkCancellation()
         var metrics = CaptureContentDigestMetrics()
 
         let contentStart = Date()
@@ -176,6 +179,7 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
                 excluding: slot.containerRange
             )
         )
+        try Task<Never, Never>.checkCancellation()
         metrics.rgbDigestDuration = Date().timeIntervalSince(contentStart)
 
         let depthStart = Date()
@@ -188,6 +192,7 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
         metrics.metadataDigestDuration = Date().timeIntervalSince(metadataStart)
         let livePhotoSignedResources: [SignedResource]?
         if let pairedVideoURL {
+            try Task<Never, Never>.checkCancellation()
             livePhotoSignedResources = try signedResources(
                 pairedVideoURL: pairedVideoURL,
                 fileContainer: fileContainer,
@@ -252,7 +257,14 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
         metadataHash: MetadataHash,
         payloadByteCount: Int
     ) throws -> [SignedResource] {
-        let pairedVideoData = try Data(contentsOf: pairedVideoURL)
+        let pairedVideoHash = try TAPBMFFStreamingFile.sha256AndByteCountBase64URL(
+            of: pairedVideoURL
+        )
+        guard pairedVideoHash.byteCount <= UInt64(Int.max) else {
+            throw TAPDepthCaptureError.pendingCaptureProofInvalid(
+                "Live Photo paired video is too large to describe"
+            )
+        }
         return [
             SignedResource(
                 role: "primaryPhoto",
@@ -278,8 +290,8 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
                 kind: "format-native-full-file",
                 mediaType: "com.apple.quicktime-movie",
                 algorithm: "SHA-256",
-                byteCount: pairedVideoData.count,
-                value: TAPContentBindingHash.sha256Base64URL(data: pairedVideoData),
+                byteCount: Int(pairedVideoHash.byteCount),
+                value: pairedVideoHash.value,
                 binding: "full-file"
             )
         ]
@@ -475,32 +487,81 @@ nonisolated struct CaptureContentDigestMetrics: Equatable, Sendable {
 }
 
 nonisolated enum TAPContentBindingHash {
+    static let defaultChunkByteCount = 1 * 1024 * 1024
+
     static func sha256Base64URL(data: Data) -> String {
         sha256Base64URL { hasher in
             hasher.update(data: data)
         }
     }
 
-    static func sha256Base64URL(data: Data, excluding excludedRange: Range<Int>) throws -> String {
+    static func sha256Base64URL(
+        data: Data,
+        excluding excludedRange: Range<Int>,
+        chunkByteCount: Int = defaultChunkByteCount,
+        cancellationCheck: @Sendable () throws -> Void = {
+            try Task<Never, Never>.checkCancellation()
+        }
+    ) throws -> String {
         guard excludedRange.lowerBound >= 0,
               excludedRange.upperBound <= data.count,
               excludedRange.lowerBound <= excludedRange.upperBound else {
             throw TAPDepthCaptureError.pendingCaptureProofInvalid("invalid proof slot range")
         }
+        guard chunkByteCount > 0 else {
+            throw TAPDepthCaptureError.pendingCaptureProofInvalid("hash chunk size must be positive")
+        }
 
-        return sha256Base64URL { hasher in
-            if excludedRange.lowerBound > 0 {
-                hasher.update(data: data.subdata(in: 0..<excludedRange.lowerBound))
+        return try sha256Base64URL { hasher in
+            try cancellationCheck()
+            try data.withUnsafeBytes { bytes in
+                try update(
+                    &hasher,
+                    bytes: bytes,
+                    range: 0..<excludedRange.lowerBound,
+                    chunkByteCount: chunkByteCount,
+                    cancellationCheck: cancellationCheck
+                )
+                try update(
+                    &hasher,
+                    bytes: bytes,
+                    range: excludedRange.upperBound..<data.count,
+                    chunkByteCount: chunkByteCount,
+                    cancellationCheck: cancellationCheck
+                )
             }
-            if excludedRange.upperBound < data.count {
-                hasher.update(data: data.subdata(in: excludedRange.upperBound..<data.count))
-            }
+            try cancellationCheck()
         }
     }
 
-    private static func sha256Base64URL(_ update: (inout SHA256) -> Void) -> String {
+    private static func update(
+        _ hasher: inout SHA256,
+        bytes: UnsafeRawBufferPointer,
+        range: Range<Int>,
+        chunkByteCount: Int,
+        cancellationCheck: @Sendable () throws -> Void
+    ) throws {
+        var offset = range.lowerBound
+        while offset < range.upperBound {
+            try cancellationCheck()
+            let upperBound = offset + min(
+                chunkByteCount,
+                range.upperBound - offset
+            )
+            hasher.update(
+                bufferPointer: UnsafeRawBufferPointer(
+                    rebasing: bytes[offset..<upperBound]
+                )
+            )
+            offset = upperBound
+        }
+    }
+
+    private static func sha256Base64URL(
+        _ update: (inout SHA256) throws -> Void
+    ) rethrows -> String {
         var hasher = SHA256()
-        update(&hasher)
+        try update(&hasher)
         return Data(hasher.finalize()).appAttestBase64URL
     }
 }

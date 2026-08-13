@@ -47,12 +47,20 @@ nonisolated struct TAPVideoContainerLayout: Equatable, Sendable {
     }
 }
 
+nonisolated struct TAPStreamingFileSHA256: Equatable, Sendable {
+    let byteCount: UInt64
+    let value: String
+}
+
 nonisolated enum TAPBMFFStreamingFile {
+    typealias CancellationCheck = @Sendable () throws -> Void
+
     static let defaultChunkByteCount = 1 * 1024 * 1024
     static let maximumManifestByteCount = 1 * 1024 * 1024
     static let maximumTopLevelBoxCount = 4_096
 
     static func topLevelBoxes(at fileURL: URL) throws -> [TAPBMFFTopLevelBox] {
+        try Task<Never, Never>.checkCancellation()
         let fileByteCount = try byteCount(of: fileURL)
         let handle = try FileHandle(forReadingFrom: fileURL)
         defer {
@@ -62,6 +70,7 @@ nonisolated enum TAPBMFFStreamingFile {
         var boxes: [TAPBMFFTopLevelBox] = []
         var offset: UInt64 = 0
         while offset < fileByteCount {
+            try Task<Never, Never>.checkCancellation()
             guard boxes.count < maximumTopLevelBoxCount else {
                 throw TAPDepthCaptureError.invalidTAPManifest("BMFF top-level box count exceeds limit")
             }
@@ -162,16 +171,12 @@ nonisolated enum TAPBMFFStreamingFile {
     }
 
     static func byteCount(of fileURL: URL) throws -> UInt64 {
+        try Task<Never, Never>.checkCancellation()
         let handle = try FileHandle(forReadingFrom: fileURL)
         defer {
             try? handle.close()
         }
-        var fileStatus = stat()
-        guard Darwin.fstat(handle.fileDescriptor, &fileStatus) == 0,
-              fileStatus.st_size >= 0 else {
-            throw TAPDepthCaptureError.pendingCaptureDataMissing
-        }
-        return UInt64(fileStatus.st_size)
+        return try byteCount(of: handle)
     }
 
     static func read(
@@ -254,44 +259,119 @@ nonisolated enum TAPBMFFStreamingFile {
     static func sha256Base64URL(
         of fileURL: URL,
         excluding excludedRange: TAPFileByteRange,
-        chunkByteCount: Int = defaultChunkByteCount
+        chunkByteCount: Int = defaultChunkByteCount,
+        cancellationCheck: CancellationCheck = {
+            try Task<Never, Never>.checkCancellation()
+        }
     ) throws -> String {
+        try sha256AndByteCountBase64URL(
+            of: fileURL,
+            excluding: excludedRange,
+            chunkByteCount: chunkByteCount,
+            cancellationCheck: cancellationCheck
+        ).value
+    }
+
+    /// Streams one complete file through SHA-256 without materializing it as a
+    /// single `Data` value. The byte count and digest are derived from the same
+    /// opened file descriptor so Live Photo resource descriptors cannot mix
+    /// values from separate reads.
+    static func sha256AndByteCountBase64URL(
+        of fileURL: URL,
+        chunkByteCount: Int = defaultChunkByteCount,
+        cancellationCheck: CancellationCheck = {
+            try Task<Never, Never>.checkCancellation()
+        }
+    ) throws -> TAPStreamingFileSHA256 {
+        try sha256AndByteCountBase64URL(
+            of: fileURL,
+            excluding: nil,
+            chunkByteCount: chunkByteCount,
+            cancellationCheck: cancellationCheck
+        )
+    }
+
+    /// Streams a BMFF file while excluding its fixed proof-slot range. This is
+    /// the existing signed-byte contract used by TAP Video; cancellation only
+    /// changes when work stops, never which bytes enter SHA-256.
+    static func sha256AndByteCountBase64URL(
+        of fileURL: URL,
+        excluding excludedRange: TAPFileByteRange,
+        chunkByteCount: Int = defaultChunkByteCount,
+        cancellationCheck: CancellationCheck = {
+            try Task<Never, Never>.checkCancellation()
+        }
+    ) throws -> TAPStreamingFileSHA256 {
+        try sha256AndByteCountBase64URL(
+            of: fileURL,
+            excluding: Optional(excludedRange),
+            chunkByteCount: chunkByteCount,
+            cancellationCheck: cancellationCheck
+        )
+    }
+
+    private static func sha256AndByteCountBase64URL(
+        of fileURL: URL,
+        excluding excludedRange: TAPFileByteRange?,
+        chunkByteCount: Int,
+        cancellationCheck: CancellationCheck
+    ) throws -> TAPStreamingFileSHA256 {
         guard chunkByteCount > 0 else {
             throw TAPDepthCaptureError.pendingCaptureProofInvalid("hash chunk size must be positive")
         }
-        let fileByteCount = try byteCount(of: fileURL)
-        guard excludedRange.upperBound <= fileByteCount else {
-            throw TAPDepthCaptureError.pendingCaptureProofInvalid("proof range exceeds file")
-        }
+        try cancellationCheck()
         let handle = try FileHandle(forReadingFrom: fileURL)
         defer {
             try? handle.close()
         }
+        let fileByteCount = try byteCount(of: handle)
+        if let excludedRange {
+            guard excludedRange.upperBound <= fileByteCount else {
+                throw TAPDepthCaptureError.pendingCaptureProofInvalid("proof range exceeds file")
+            }
+        }
 
         var hasher = SHA256()
-        try update(
-            &hasher,
-            from: handle,
-            range: TAPFileByteRange(offset: 0, length: excludedRange.offset),
-            chunkByteCount: chunkByteCount
+        if let excludedRange {
+            try update(
+                &hasher,
+                from: handle,
+                range: TAPFileByteRange(offset: 0, length: excludedRange.offset),
+                chunkByteCount: chunkByteCount,
+                cancellationCheck: cancellationCheck
+            )
+            try update(
+                &hasher,
+                from: handle,
+                range: TAPFileByteRange(
+                    offset: excludedRange.upperBound,
+                    length: fileByteCount - excludedRange.upperBound
+                ),
+                chunkByteCount: chunkByteCount,
+                cancellationCheck: cancellationCheck
+            )
+        } else {
+            try update(
+                &hasher,
+                from: handle,
+                range: TAPFileByteRange(offset: 0, length: fileByteCount),
+                chunkByteCount: chunkByteCount,
+                cancellationCheck: cancellationCheck
+            )
+        }
+        try cancellationCheck()
+        return TAPStreamingFileSHA256(
+            byteCount: fileByteCount,
+            value: Data(hasher.finalize()).appAttestBase64URL
         )
-        try update(
-            &hasher,
-            from: handle,
-            range: TAPFileByteRange(
-                offset: excludedRange.upperBound,
-                length: fileByteCount - excludedRange.upperBound
-            ),
-            chunkByteCount: chunkByteCount
-        )
-        return Data(hasher.finalize()).appAttestBase64URL
     }
 
     private static func update(
         _ hasher: inout SHA256,
         from handle: FileHandle,
         range: TAPFileByteRange,
-        chunkByteCount: Int
+        chunkByteCount: Int,
+        cancellationCheck: CancellationCheck
     ) throws {
         guard range.length > 0 else {
             return
@@ -299,20 +379,33 @@ nonisolated enum TAPBMFFStreamingFile {
         try handle.seek(toOffset: range.offset)
         var remaining = range.length
         while remaining > 0 {
+            try cancellationCheck()
             let requestedByteCount = Int(min(UInt64(chunkByteCount), remaining))
-            let chunk = try readExactly(requestedByteCount, from: handle)
+            let chunk = try readExactly(
+                requestedByteCount,
+                from: handle,
+                cancellationCheck: cancellationCheck
+            )
+            try cancellationCheck()
             hasher.update(data: chunk)
             remaining -= UInt64(chunk.count)
         }
     }
 
-    private static func readExactly(_ byteCount: Int, from handle: FileHandle) throws -> Data {
+    private static func readExactly(
+        _ byteCount: Int,
+        from handle: FileHandle,
+        cancellationCheck: CancellationCheck = {
+            try Task<Never, Never>.checkCancellation()
+        }
+    ) throws -> Data {
         guard byteCount >= 0 else {
             throw TAPDepthCaptureError.invalidTAPManifest("negative bounded read size")
         }
         var data = Data()
         data.reserveCapacity(byteCount)
         while data.count < byteCount {
+            try cancellationCheck()
             let remaining = byteCount - data.count
             guard let chunk = try handle.read(upToCount: remaining), !chunk.isEmpty else {
                 throw TAPDepthCaptureError.invalidTAPManifest("unexpected end of BMFF file")
@@ -320,6 +413,15 @@ nonisolated enum TAPBMFFStreamingFile {
             data.append(chunk)
         }
         return data
+    }
+
+    private static func byteCount(of handle: FileHandle) throws -> UInt64 {
+        var fileStatus = stat()
+        guard Darwin.fstat(handle.fileDescriptor, &fileStatus) == 0,
+              fileStatus.st_size >= 0 else {
+            throw TAPDepthCaptureError.pendingCaptureDataMissing
+        }
+        return UInt64(fileStatus.st_size)
     }
 }
 

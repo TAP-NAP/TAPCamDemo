@@ -53,6 +53,8 @@
 			<key>UTTypeConformsTo</key>
 			<array>
 				<string>public.zip-archive</string>
+				<string>public.data</string>
+				<string>public.content</string>
 			</array>
 			<key>UTTypeDescription</key>
 			<string>TAPNAP Capture Package</string>

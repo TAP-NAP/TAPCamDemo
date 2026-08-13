@@ -8,12 +8,20 @@ import Foundation
 import OSLog
 
 struct AppAttestPendingCaptureSigner: TAPPendingCaptureSigning {
-    private let signer: AppAttestCaptureAssertionSigner
+    private let signer: any CaptureAssertionSigning
     private let provenanceWriter: TAPCaptureProvenanceWriter
 
     init(appAttestClient: any AppAttestClient) {
         self.signer = AppAttestCaptureAssertionSigner(client: appAttestClient)
         self.provenanceWriter = TAPCaptureProvenanceWriter()
+    }
+
+    init(
+        signer: any CaptureAssertionSigning,
+        provenanceWriter: TAPCaptureProvenanceWriter = TAPCaptureProvenanceWriter()
+    ) {
+        self.signer = signer
+        self.provenanceWriter = provenanceWriter
     }
 
     func sign(
@@ -52,32 +60,50 @@ struct AppAttestPendingCaptureSigner: TAPPendingCaptureSigning {
             return signedRecord
 
         case .tapVideo:
-            let videoFileURL = try await store.videoArtifactURL(captureID: record.captureID)
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            let byteCount = (try? videoFileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-            TAPDiagnostics.pendingCapture.info("sign video file loaded captureID=\(record.captureID, privacy: .private) bytes=\(byteCount, privacy: .public)")
-            #endif
-            let signedVideo = try await provenanceWriter.signedVideoFile(
-                at: videoFileURL,
-                expectedCaptureID: record.captureID,
-                expectedPackageID: record.packageID,
-                expectedPreSignContentBinding: record.preSignContentBinding,
-                contentBindingPrepared: { binding in
-                    _ = try await store.persistVideoPreSignContentBinding(
-                        binding,
-                        captureID: record.captureID
-                    )
-                },
-                assertionSigner: signer
+            let signingArtifact = try await store.beginVideoSigningArtifact(
+                captureID: record.captureID
             )
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.pendingCapture.info("sign video provenance ready captureID=\(record.captureID, privacy: .private) manifestID=\(signedVideo.manifest.payload.id, privacy: .private) keyID=\(signedVideo.keyID, privacy: .private) depthSamples=\(signedVideo.manifest.payload.depthCoverage.sampleCount, privacy: .public)")
+            let byteCount = (
+                try? signingArtifact.fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize
+            ) ?? 0
+            TAPDiagnostics.pendingCapture.info("sign video file loaded captureID=\(record.captureID, privacy: .private) bytes=\(byteCount, privacy: .public)")
             #endif
-            let signedRecord = try await store.markVideoSigned(captureID: record.captureID)
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.pendingCapture.info("sign video success captureID=\(record.captureID, privacy: .private) file=\(signedVideo.fileURL.lastPathComponent, privacy: .public)")
-            #endif
-            return signedRecord
+            do {
+                let signedVideo = try await provenanceWriter.signedVideoFile(
+                    at: signingArtifact.fileURL,
+                    expectedCaptureID: signingArtifact.captureID,
+                    expectedPackageID: signingArtifact.packageID,
+                    expectedPreSignContentBinding: signingArtifact.expectedPreSignContentBinding,
+                    contentBindingPrepared: { binding in
+                        _ = try await store.persistVideoPreSignContentBinding(
+                            binding,
+                            captureID: signingArtifact.captureID
+                        )
+                    },
+                    assertionSigner: signer
+                )
+                guard signedVideo.fileURL.standardizedFileURL
+                        == signingArtifact.fileURL.standardizedFileURL else {
+                    throw TAPDepthCaptureError.invalidPendingCaptureBundlePath(
+                        "signed video result must match its working generation"
+                    )
+                }
+                try Task.checkCancellation()
+                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                TAPDiagnostics.pendingCapture.info("sign video provenance ready captureID=\(record.captureID, privacy: .private) manifestID=\(signedVideo.manifest.payload.id, privacy: .private) keyID=\(signedVideo.keyID, privacy: .private) depthSamples=\(signedVideo.manifest.payload.depthCoverage.sampleCount, privacy: .public)")
+                #endif
+                let signedRecord = try await store.publishVideoSigningArtifact(
+                    signingArtifact
+                )
+                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                TAPDiagnostics.pendingCapture.info("sign video success captureID=\(record.captureID, privacy: .private) file=\(TAPPendingCaptureBundlePathPolicy.videoArtifactFilename, privacy: .public)")
+                #endif
+                return signedRecord
+            } catch {
+                try? await store.discardVideoSigningArtifact(signingArtifact)
+                throw error
+            }
         }
     }
 }

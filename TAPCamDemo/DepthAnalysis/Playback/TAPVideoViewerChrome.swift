@@ -94,18 +94,17 @@ struct TAPVideoViewerChrome: View {
     let availability: TAPVideoRegisteredDepthAvailability
     let isTwoDPlaybackReady: Bool
     @Binding var overlayOpacity: Double
-    let isSharePreparing: Bool
+    let shareSubject: DepthAnalysisShareSubject?
+    let shareResourceAccess: DepthAnalysisShareResourceAccess?
     let topSafeArea: CGFloat
     let bottomSafeArea: CGFloat
     let onBackTapped: () -> Void
-    let onShareTapped: () -> Void
     let onModeTapped: (String) -> Void
     let onDeleteTapped: () -> Void
     @State private var comingSoonToastTrigger: UUID?
 
     var body: some View {
         let isPlayerReady = player != nil
-        let shareIsDisabled = !isPlayerReady || isSharePreparing
         DepthViewerChromeView(
             selectedModeID: selectedTool.rawValue,
             modeItems: TAPVideoViewerModePolicy.items(
@@ -117,10 +116,9 @@ struct TAPVideoViewerChrome: View {
             showsOpacityControl: selectedTool == .twoD
                 && availability.isAvailable
                 && isPlayerReady,
-            isSharePreparing: shareIsDisabled,
-            shareAccessibilityLabel: shareAccessibilityLabel(
-                isPlayerReady: isPlayerReady
-            ),
+            shareSubject: shareSubject,
+            shareResourceAccess: shareResourceAccess,
+            shareAccessibilityLabel: "Share video",
             deleteAccessibilityLabel: "Delete video",
             topSafeArea: topSafeArea,
             bottomSafeArea: bottomSafeArea,
@@ -131,7 +129,6 @@ struct TAPVideoViewerChrome: View {
                 intentState: playbackIntentState
             ),
             onBackTapped: onBackTapped,
-            onShareTapped: onShareTapped,
             onModeTapped: handleModeTapped,
             onDeleteTapped: onDeleteTapped
         )
@@ -155,13 +152,6 @@ struct TAPVideoViewerChrome: View {
                     phase.animation
                 }
         }
-    }
-
-    private func shareAccessibilityLabel(isPlayerReady: Bool) -> String {
-        if !isPlayerReady {
-            return "Preparing video"
-        }
-        return isSharePreparing ? "Preparing share" : "Share video"
     }
 
     private func handleModeTapped(_ itemID: String) {

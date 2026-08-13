@@ -106,6 +106,74 @@ struct TAPVideoStreamingTests {
         #expect(defaultHash == explicitOneMiBHash)
     }
 
+    @Test func fullFileStreamingHashMatchesExactBytesAcrossChunkBoundaries() throws {
+        let fileData = Data((0..<32_769).map { UInt8(truncatingIfNeeded: $0 * 31) })
+        let fileURL = try Self.makeTemporaryFile(data: fileData)
+        let tinyChunks = try TAPBMFFStreamingFile.sha256AndByteCountBase64URL(
+            of: fileURL,
+            chunkByteCount: 13
+        )
+        let largeChunks = try TAPBMFFStreamingFile.sha256AndByteCountBase64URL(
+            of: fileURL,
+            chunkByteCount: 16_384
+        )
+        let expectedHash = Data(SHA256.hash(data: fileData)).appAttestBase64URL
+
+        #expect(tinyChunks.byteCount == UInt64(fileData.count))
+        #expect(tinyChunks.value == expectedHash)
+        #expect(largeChunks == tinyChunks)
+    }
+
+    @Test func fullFileStreamingHashChecksCancellationBetweenChunks() throws {
+        let fileURL = try Self.makeTemporaryFile(
+            data: Data(repeating: 0x5a, count: 4_096)
+        )
+        let probe = HashCancellationProbe(cancelOnCheck: 7)
+
+        #expect(throws: CancellationError.self) {
+            _ = try TAPBMFFStreamingFile.sha256AndByteCountBase64URL(
+                of: fileURL,
+                chunkByteCount: 64,
+                cancellationCheck: { try probe.check() }
+            )
+        }
+        #expect(probe.checkCount == 7)
+    }
+
+    @Test func streamingHashUsesTheCurrentTaskCancellationByDefault() async throws {
+        let fileURL = try Self.makeTemporaryFile(
+            data: Data(repeating: 0x5a, count: 4_096)
+        )
+        let task = Task { () throws -> TAPStreamingFileSHA256 in
+            withUnsafeCurrentTask { currentTask in
+                currentTask?.cancel()
+            }
+            return try TAPBMFFStreamingFile.sha256AndByteCountBase64URL(
+                of: fileURL,
+                chunkByteCount: 64
+            )
+        }
+
+        await #expect(throws: CancellationError.self) {
+            _ = try await task.value
+        }
+    }
+
+    @Test func inMemoryProofSlotHashChecksCancellationBetweenChunks() throws {
+        let data = Data(repeating: 0x42, count: 4_096)
+        let probe = HashCancellationProbe(cancelOnCheck: 5)
+
+        #expect(throws: CancellationError.self) {
+            _ = try TAPContentBindingHash.sha256Base64URL(
+                data: data,
+                excluding: 512..<768,
+                chunkByteCount: 64,
+                cancellationCheck: { try probe.check() }
+            )
+        }
+        #expect(probe.checkCount == 5)
+    }
+
     @Test func depthTrackValidatorFailsClosedAboveItsCombined32MiBBudget() throws {
         #expect(
             TAPVideoDepthTrackValidator.maximumCombinedFrameBufferBytes
@@ -421,6 +489,321 @@ struct TAPVideoStreamingTests {
         }
     }
 
+    @Test func embeddedIdentityVideoValidationUsesTheSameLocalByteBinding() async throws {
+        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+        let store = TAPPendingCaptureStore(rootURL: rootURL)
+        let record = try await TAPCamDemoTestFixtures.ingestPendingTAPVideo(
+            store: store,
+            captureID: "embedded-identity-video"
+        )
+        let videoURL = try await store.videoArtifactURL(captureID: record.captureID)
+        let writer = TAPCaptureProvenanceWriter()
+
+        _ = try await writer.signedVideoFile(
+            at: videoURL,
+            expectedCaptureID: record.captureID,
+            expectedPackageID: record.packageID,
+            assertionSigner: SuccessfulVideoCaptureAssertionSigner()
+        )
+
+        let lease = try TAPVideoOriginalResourceOwner(
+            mediaID: .tapCapture(record.captureID),
+            origin: .pendingCapture(captureID: record.captureID),
+            fileURL: videoURL
+        ).acquireLease()
+        let validated = try await TAPVideoLocalIntegrityValidator().validate(
+            lease
+        )
+
+        #expect(validated.captureID == record.captureID)
+        #expect(validated.packageID == record.packageID)
+    }
+
+    @Test func embeddedIdentityVideoValidationRejectsMutatedOriginal() async throws {
+        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+        let store = TAPPendingCaptureStore(rootURL: rootURL)
+        let record = try await TAPCamDemoTestFixtures.ingestPendingTAPVideo(
+            store: store,
+            captureID: "embedded-identity-mutated-video"
+        )
+        let videoURL = try await store.videoArtifactURL(captureID: record.captureID)
+        let writer = TAPCaptureProvenanceWriter()
+
+        _ = try await writer.signedVideoFile(
+            at: videoURL,
+            expectedCaptureID: record.captureID,
+            expectedPackageID: record.packageID,
+            assertionSigner: SuccessfulVideoCaptureAssertionSigner()
+        )
+
+        let fileHandle = try FileHandle(forUpdating: videoURL)
+        try fileHandle.seek(toOffset: 11)
+        try fileHandle.write(contentsOf: Data([0x33]))
+        try fileHandle.close()
+
+        let lease = try TAPVideoOriginalResourceOwner(
+            mediaID: .tapCapture(record.captureID),
+            origin: .pendingCapture(captureID: record.captureID),
+            fileURL: videoURL
+        ).acquireLease()
+        await #expect(throws: TAPDepthCaptureError.self) {
+            _ = try await TAPVideoLocalIntegrityValidator().validate(lease)
+        }
+    }
+
+    @Test func videoLocalIntegrityExpectedIdentityMismatchFailsClosed() async throws {
+        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+        let store = TAPPendingCaptureStore(rootURL: rootURL)
+        let record = try await TAPCamDemoTestFixtures.ingestPendingTAPVideo(
+            store: store,
+            captureID: "expected-identity-video"
+        )
+        let videoURL = try await store.videoArtifactURL(captureID: record.captureID)
+        let writer = TAPCaptureProvenanceWriter()
+
+        _ = try await writer.signedVideoFile(
+            at: videoURL,
+            expectedCaptureID: record.captureID,
+            expectedPackageID: record.packageID,
+            assertionSigner: SuccessfulVideoCaptureAssertionSigner()
+        )
+
+        let lease = try TAPVideoOriginalResourceOwner(
+            mediaID: .tapCapture(record.captureID),
+            origin: .pendingCapture(captureID: record.captureID),
+            fileURL: videoURL
+        ).acquireLease()
+        await #expect(throws: TAPVideoLocalIntegrityError.expectedCaptureIDMismatch) {
+            _ = try await TAPVideoLocalIntegrityValidator().validate(
+                lease,
+                expectedCaptureID: "different-capture-id",
+                expectedPackageID: record.packageID
+            )
+        }
+    }
+
+    @Test func pendingPlaybackSnapshotDoesNotShareMutableSourceInode() async throws {
+        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+        let snapshotDirectoryURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: snapshotDirectoryURL) }
+        let store = TAPPendingCaptureStore(rootURL: rootURL)
+        let record = try await TAPCamDemoTestFixtures.ingestPendingTAPVideo(
+            store: store,
+            captureID: "stable-playback-snapshot-video"
+        )
+        let sourceURL = try await store.videoArtifactURL(captureID: record.captureID)
+
+        let snapshot = try await store.snapshotVideoPlaybackResource(
+            captureID: record.captureID,
+            to: snapshotDirectoryURL
+        )
+        let snapshotBeforeMutation = try Data(contentsOf: snapshot.videoURL)
+
+        let sourceHandle = try FileHandle(forUpdating: sourceURL)
+        try sourceHandle.seek(toOffset: 11)
+        try sourceHandle.write(contentsOf: Data([0x33]))
+        try sourceHandle.close()
+
+        #expect(try Data(contentsOf: snapshot.videoURL) == snapshotBeforeMutation)
+        #expect(try Data(contentsOf: sourceURL) != snapshotBeforeMutation)
+    }
+
+    @Test func pendingVideoSigningPublishesOnlyACompleteNewInodeToSnapshots() async throws {
+        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+        let beforeSnapshotDirectoryURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: beforeSnapshotDirectoryURL) }
+        let afterSnapshotDirectoryURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: afterSnapshotDirectoryURL) }
+        let store = TAPPendingCaptureStore(rootURL: rootURL)
+        let record = try await TAPCamDemoTestFixtures.ingestPendingTAPVideo(
+            store: store,
+            captureID: "atomic-video-signing-publish"
+        )
+        let durableURL = try await store.videoArtifactURL(captureID: record.captureID)
+        let unsignedBytes = try Data(contentsOf: durableURL)
+        let unsignedInode = try #require(
+            FileManager.default.attributesOfItem(atPath: durableURL.path)[
+                .systemFileNumber
+            ] as? NSNumber
+        )
+        let suspendedAssertionSigner = SuspendingVideoCaptureAssertionSigner()
+        let pendingSigner = AppAttestPendingCaptureSigner(
+            signer: suspendedAssertionSigner
+        )
+
+        let signingTask = Task {
+            try await pendingSigner.sign(record, store: store)
+        }
+        await suspendedAssertionSigner.waitUntilRequested()
+
+        let signingRecord = try await store.readRecord(captureID: record.captureID)
+        #expect(signingRecord.status == .signing)
+        #expect(signingRecord.preSignContentBinding != nil)
+        #expect(try Data(contentsOf: durableURL) == unsignedBytes)
+        #expect(throws: TAPDepthCaptureError.self) {
+            _ = try TAPProofSlot.proofEnvelopeData(fromBMFFFileAt: durableURL)
+        }
+
+        let bundleURL = rootURL.appendingPathComponent(record.captureID, isDirectory: true)
+        let workingURLs = try FileManager.default.contentsOfDirectory(
+            at: bundleURL,
+            includingPropertiesForKeys: nil
+        ).filter { $0.lastPathComponent.hasPrefix(".tap-signing-") }
+        let workingURL = try #require(workingURLs.first)
+        #expect(workingURLs.count == 1)
+        let workingInode = try #require(
+            FileManager.default.attributesOfItem(atPath: workingURL.path)[
+                .systemFileNumber
+            ] as? NSNumber
+        )
+        #expect(workingInode != unsignedInode)
+
+        let beforeSnapshot = try await store.snapshotVideoPlaybackResource(
+            captureID: record.captureID,
+            to: beforeSnapshotDirectoryURL
+        )
+        #expect(!beforeSnapshot.selectedSignedVideo)
+        #expect(try Data(contentsOf: beforeSnapshot.videoURL) == unsignedBytes)
+
+        await suspendedAssertionSigner.release()
+        let signedRecord = try await signingTask.value
+
+        #expect(signedRecord.status == .signed)
+        #expect(signedRecord.videoArtifactState == .signed)
+        #expect(!FileManager.default.fileExists(atPath: workingURL.path))
+        let signedInode = try #require(
+            FileManager.default.attributesOfItem(atPath: durableURL.path)[
+                .systemFileNumber
+            ] as? NSNumber
+        )
+        #expect(signedInode == workingInode)
+        #expect(signedInode != unsignedInode)
+        #expect(try Data(contentsOf: beforeSnapshot.videoURL) == unsignedBytes)
+        #expect(throws: TAPDepthCaptureError.self) {
+            _ = try TAPProofSlot.proofEnvelopeData(
+                fromBMFFFileAt: beforeSnapshot.videoURL
+            )
+        }
+
+        _ = try await TAPCaptureProvenanceWriter().validateSignedExportVideoFile(
+            at: durableURL,
+            expectedCaptureID: record.captureID,
+            expectedPackageID: record.packageID
+        )
+        let afterSnapshot = try await store.snapshotVideoPlaybackResource(
+            captureID: record.captureID,
+            to: afterSnapshotDirectoryURL
+        )
+        #expect(afterSnapshot.selectedSignedVideo)
+        _ = try await TAPCaptureProvenanceWriter().validateSignedExportVideoFile(
+            at: afterSnapshot.videoURL,
+            expectedCaptureID: record.captureID,
+            expectedPackageID: record.packageID
+        )
+    }
+
+    @Test func cancelledPendingVideoSigningDiscardsWorkAndCanRetry() async throws {
+        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+        let store = TAPPendingCaptureStore(rootURL: rootURL)
+        let record = try await TAPCamDemoTestFixtures.ingestPendingTAPVideo(
+            store: store,
+            captureID: "cancelled-video-signing-generation"
+        )
+        let durableURL = try await store.videoArtifactURL(captureID: record.captureID)
+        let unsignedBytes = try Data(contentsOf: durableURL)
+        let suspendedAssertionSigner = SuspendingVideoCaptureAssertionSigner()
+        let pendingSigner = AppAttestPendingCaptureSigner(
+            signer: suspendedAssertionSigner
+        )
+
+        let signingTask = Task {
+            try await pendingSigner.sign(record, store: store)
+        }
+        await suspendedAssertionSigner.waitUntilRequested()
+        signingTask.cancel()
+        await suspendedAssertionSigner.release()
+
+        do {
+            _ = try await signingTask.value
+            Issue.record("Expected cancelled video signing to throw.")
+        } catch is CancellationError {
+            // Expected cancellation boundary.
+        } catch {
+            Issue.record("Unexpected video signing cancellation error: \(error)")
+        }
+
+        #expect(try Data(contentsOf: durableURL) == unsignedBytes)
+        let bundleURL = rootURL.appendingPathComponent(record.captureID, isDirectory: true)
+        let workingURLs = try FileManager.default.contentsOfDirectory(
+            at: bundleURL,
+            includingPropertiesForKeys: nil
+        ).filter { $0.lastPathComponent.hasPrefix(".tap-signing-") }
+        #expect(workingURLs.isEmpty)
+
+        let retryRecord = try await store.readRecord(captureID: record.captureID)
+        let signedRecord = try await AppAttestPendingCaptureSigner(
+            signer: SuccessfulVideoCaptureAssertionSigner()
+        ).sign(retryRecord, store: store)
+        #expect(signedRecord.status == .signed)
+        _ = try await TAPCaptureProvenanceWriter().validateSignedExportVideoFile(
+            at: durableURL,
+            expectedCaptureID: record.captureID,
+            expectedPackageID: record.packageID
+        )
+    }
+
+    @Test func pendingVideoSigningRecoversWhenSignedBytesPrecedeUnsignedRecord() async throws {
+        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+        let store = TAPPendingCaptureStore(rootURL: rootURL)
+        let record = try await TAPCamDemoTestFixtures.ingestPendingTAPVideo(
+            store: store,
+            captureID: "video-signing-crash-window-recovery"
+        )
+        let durableURL = try await store.videoArtifactURL(captureID: record.captureID)
+        let writer = TAPCaptureProvenanceWriter()
+
+        _ = try await writer.signedVideoFile(
+            at: durableURL,
+            expectedCaptureID: record.captureID,
+            expectedPackageID: record.packageID,
+            contentBindingPrepared: { binding in
+                _ = try await store.persistVideoPreSignContentBinding(
+                    binding,
+                    captureID: record.captureID
+                )
+            },
+            assertionSigner: SuccessfulVideoCaptureAssertionSigner()
+        )
+
+        let staleRecord = try await store.readRecord(captureID: record.captureID)
+        #expect(staleRecord.videoArtifactState == .unsigned)
+        #expect(staleRecord.preSignContentBinding != nil)
+        _ = try await writer.validateSignedExportVideoFile(
+            at: durableURL,
+            expectedCaptureID: record.captureID,
+            expectedPackageID: record.packageID
+        )
+
+        let recoveredRecord = try await AppAttestPendingCaptureSigner(
+            signer: SuccessfulVideoCaptureAssertionSigner()
+        ).sign(staleRecord, store: store)
+
+        #expect(recoveredRecord.status == .signed)
+        #expect(recoveredRecord.videoArtifactState == .signed)
+        _ = try await writer.validateSignedExportVideoFile(
+            at: durableURL,
+            expectedCaptureID: record.captureID,
+            expectedPackageID: record.packageID
+        )
+    }
+
     @Test func signedVideoValidationRejectsAnyMutationOutsideProofSlot() async throws {
         let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -679,6 +1062,59 @@ struct TAPVideoStreamingTests {
         }
     }
 
+    private actor SuspendingVideoCaptureAssertionSigner: CaptureAssertionSigning {
+        private var requested = false
+        private var requestedWaiters: [CheckedContinuation<Void, Never>] = []
+        private var releaseContinuation: CheckedContinuation<Void, Never>?
+
+        func waitUntilRequested() async {
+            guard !requested else {
+                return
+            }
+            await withCheckedContinuation { continuation in
+                requestedWaiters.append(continuation)
+            }
+        }
+
+        func release() {
+            releaseContinuation?.resume()
+            releaseContinuation = nil
+        }
+
+        func sign(
+            contentDigest: CaptureContentDigest
+        ) async throws -> CaptureAssertionProof {
+            requested = true
+            let waiters = requestedWaiters
+            requestedWaiters.removeAll()
+            await withCheckedContinuation { continuation in
+                releaseContinuation = continuation
+                waiters.forEach { $0.resume() }
+            }
+            try Task.checkCancellation()
+
+            let proofValue = CaptureAssertionProofValue(
+                contentDigest: contentDigest,
+                keyId: "video-test-key-id",
+                assertionObject: Data([0xA1, 0x01]).appAttestBase64URL,
+                signingBinding: try CaptureSigningBinding(
+                    contentDigest: contentDigest
+                )
+            )
+            let proof = TAPDepthManifest.Proof(
+                type: "appAttestAssertion",
+                algorithm: "TAPCam.AppAttestCaptureSignature.v1",
+                keyID: "video-test-key-id",
+                createdAt: contentDigest.capturedAt,
+                value: try proofValue.canonicalJSONData().appAttestBase64URL
+            )
+            return CaptureAssertionProof(
+                proof: proof,
+                keyID: "video-test-key-id"
+            )
+        }
+    }
+
     private enum ExpectedSignedValidationFailure: Error {
         case rejected
     }
@@ -721,6 +1157,30 @@ struct TAPVideoStreamingTests {
         let fileURL = directoryURL.appendingPathComponent("artifact.mp4")
         try data.write(to: fileURL)
         return fileURL
+    }
+}
+
+private final class HashCancellationProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private let cancelOnCheck: Int
+    private var storedCheckCount = 0
+
+    init(cancelOnCheck: Int) {
+        self.cancelOnCheck = cancelOnCheck
+    }
+
+    var checkCount: Int {
+        lock.withLock { storedCheckCount }
+    }
+
+    func check() throws {
+        let shouldCancel = lock.withLock {
+            storedCheckCount += 1
+            return storedCheckCount >= cancelOnCheck
+        }
+        if shouldCancel {
+            throw CancellationError()
+        }
     }
 }
 

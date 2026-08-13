@@ -10,11 +10,8 @@ import OSLog
 /// reconciled.
 nonisolated struct DepthAlbumItemSnapshot {
     let items: [TAPLibraryItem]
+    let summaries: [LibraryMediaSummary]
     let photoAssetsError: Error?
-
-    var summaries: [LibraryMediaSummary] {
-        items.map(\.summary)
-    }
 }
 
 /// Reads the sources that can appear in the TAP Library grid.
@@ -108,16 +105,27 @@ struct DepthAlbumItemProvider {
             reconciledExportedRecords = exportedRecords
         }
 
-        let items = TAPLibraryItem.merged(
-            pendingRecords: pendingRecords,
-            exportedRecords: reconciledExportedRecords,
-            photoAssets: photoCatalogSnapshot.albumAssets,
-            photoAssetsByLocalIdentifier: photoCatalogSnapshot.assetsByLocalIdentifier
-        )
+        // `loadSnapshot` is MainActor-isolated because it coordinates the
+        // UI-facing catalog lifecycle. The pure reconciliation below grows
+        // with the complete Library and must not consume that actor while it
+        // maps, deduplicates, and sorts hundreds of items.
+        let reconciled = await Task.detached(priority: .userInitiated) {
+            let items = TAPLibraryItem.merged(
+                pendingRecords: pendingRecords,
+                exportedRecords: reconciledExportedRecords,
+                photoAssets: photoCatalogSnapshot.albumAssets,
+                photoAssetsByLocalIdentifier: photoCatalogSnapshot.assetsByLocalIdentifier
+            )
+            return (items: items, summaries: items.map(\.summary))
+        }.value
         LockedCameraDiagnostics.logger.info(
-            "tap_library_snapshot_loaded visiblePendingCount=\(pendingRecords.count, privacy: .public) exportedRecordCount=\(exportedRecords.count, privacy: .public) photoAssetCount=\(photoCatalogSnapshot.albumAssets.count, privacy: .public) itemCount=\(items.count, privacy: .public) itemSources=\(Self.itemSourceCountsDescription(items), privacy: .public) latestPending=\(Self.pendingRecordsDescription(pendingRecords), privacy: .public) photoAssetsErrorPresent=\(photoAssetsError != nil, privacy: .public)"
+            "tap_library_snapshot_loaded visiblePendingCount=\(pendingRecords.count, privacy: .public) exportedRecordCount=\(exportedRecords.count, privacy: .public) photoAssetCount=\(photoCatalogSnapshot.albumAssets.count, privacy: .public) itemCount=\(reconciled.items.count, privacy: .public) itemSources=\(Self.itemSourceCountsDescription(reconciled.items), privacy: .public) photoAssetsErrorPresent=\(photoAssetsError != nil, privacy: .public)"
         )
-        return DepthAlbumItemSnapshot(items: items, photoAssetsError: photoAssetsError)
+        return DepthAlbumItemSnapshot(
+            items: reconciled.items,
+            summaries: reconciled.summaries,
+            photoAssetsError: photoAssetsError
+        )
     }
 
     /// A successful PhotoKit catalog read is authoritative for old exported
@@ -152,14 +160,6 @@ struct DepthAlbumItemProvider {
         return retained
     }
 
-    private static func pendingRecordsDescription(_ records: [TAPPendingCaptureRecord]) -> String {
-        let value = records
-            .prefix(6)
-            .map { "\($0.captureID):\($0.status.rawValue)" }
-            .joined(separator: "|")
-        return value.isEmpty ? "none" : value
-    }
-
     private static func itemSourceCountsDescription(_ items: [TAPLibraryItem]) -> String {
         var pendingCount = 0
         var ownedPhotoCount = 0
@@ -178,8 +178,8 @@ struct DepthAlbumItemProvider {
     }
 }
 
-nonisolated struct TAPLibraryItem: Identifiable {
-    enum Source {
+nonisolated struct TAPLibraryItem: Identifiable, Sendable {
+    nonisolated enum Source: Sendable {
         case pending(TAPPendingCaptureRecord)
         case ownedPhoto(TAPPendingCaptureRecord, DepthAlbumPhotoAsset)
         case photos(DepthAlbumPhotoAsset)

@@ -660,17 +660,6 @@
         }
       }
     },
-    "Capture Haptics" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "拍摄触感"
-          }
-        }
-      }
-    },
     "Capture photos with TAPCam from the Lock Screen." : {
       "localizations" : {
         "zh-Hans" : {
@@ -1576,6 +1565,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "检查器"
+          }
+        }
+      }
+    },
+    "Interaction Haptics" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Interaction Haptics"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "交互触感"
           }
         }
       }
@@ -3601,6 +3607,7 @@
       }
     },
     "Share" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3677,6 +3684,23 @@
         }
       }
     },
+    "share.badge.membersComingSoon" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Members · Coming Soon"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "会员 · 即将推出"
+          }
+        }
+      }
+    },
     "share.badge.recommended" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3700,13 +3724,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "The original sharing resources are temporarily unavailable."
+            "value" : "Certification status was not changed. You can retry the same option."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "原始分享资料暂时不可用。"
+            "value" : "没有改变认证状态。你可以重试同一选项。"
           }
         }
       }
@@ -3717,13 +3741,30 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Unable to Prepare Share"
+            "value" : "Share Resources Unavailable"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "无法准备分享"
+            "value" : "分享资料暂不可用"
+          }
+        }
+      }
+    },
+    "share.integrity.checking.accessibility" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Checking local integrity"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在检查本地完整性"
           }
         }
       }
@@ -3734,13 +3775,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Platforms may compress the image or remove verification data."
+            "value" : "Metadata may be lost."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "平台可能会压缩图片或移除验证数据。"
+            "value" : "可能损失元数据"
           }
         }
       }
@@ -3768,13 +3809,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Upload a capture and share a verification link."
+            "value" : "Members feature is not implemented yet."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "上传拍摄内容并分享验证链接。"
+            "value" : "会员功能尚未实现"
           }
         }
       }
@@ -3796,19 +3837,36 @@
         }
       }
     },
+    "share.option.media.unverifiable" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verifiability cannot be guaranteed."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法保证可验证性"
+          }
+        }
+      }
+    },
     "share.option.package.locked" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Available after TAPNAP signing completes."
+            "value" : "Requires verified signature evidence."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "TAPNAP 签名完成后可用。"
+            "value" : "需要已验证的签名证据"
           }
         }
       }
@@ -3819,30 +3877,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Complete original resources for verification."
+            "value" : "Complete resources, ready for verification."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "包含用于验证的完整原始资料。"
-          }
-        }
-      }
-    },
-    "share.option.package.videoComingSoon" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "TAPNAP packages for video are coming soon."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "视频 TAPNAP 包即将推出。"
+            "value" : "完整资料，可供验证"
           }
         }
       }
@@ -3864,36 +3905,19 @@
         }
       }
     },
-    "share.option.video.subtitle" : {
+    "share.option.package.videoComingSoon" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Platforms may transcode the video or remove verification data."
+            "value" : "Video transport package is not implemented yet."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "平台可能会转码视频或移除验证数据。"
-          }
-        }
-      }
-    },
-    "share.option.video.title" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Share Video"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "分享视频"
+            "value" : "视频传输外壳尚未实现"
           }
         }
       }
@@ -3904,13 +3928,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Animate a point cloud as a shareable sticker."
+            "value" : "Point-cloud paths and GIF export are not implemented yet."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "将点云动画导出为可分享的表情包。"
+            "value" : "点云轨迹与 GIF 尚未实现"
           }
         }
       }
@@ -3932,19 +3956,121 @@
         }
       }
     },
+    "share.option.video.subtitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Share the original TAP Video."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享原始 TAP Video"
+          }
+        }
+      }
+    },
+    "share.option.video.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Share Video"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享视频"
+          }
+        }
+      }
+    },
+    "share.preparing.image.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preparing Image"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在准备图片"
+          }
+        }
+      }
+    },
+    "share.preparing.keepOpen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keep TAP-NAP open"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请保持 TAP-NAP 打开"
+          }
+        }
+      }
+    },
+    "share.preparing.media.subtitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copying selected original media"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在复制所选原始媒体"
+          }
+        }
+      }
+    },
+    "share.preparing.package.subtitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Packing complete verification resources"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在打包完整验证资料"
+          }
+        }
+      }
+    },
     "share.preparing.package.title" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Packing TAPNAP…"
+            "value" : "Preparing TAPNAP Package"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "正在打包 TAPNAP…"
+            "value" : "正在准备 TAPNAP 包"
           }
         }
       }
@@ -3962,6 +4088,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在准备分享…"
+          }
+        }
+      }
+    },
+    "share.preparing.video.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preparing Video"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在准备视频"
+          }
+        }
+      }
+    },
+    "share.progress.accessibilityValue" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d percent prepared"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已准备百分之 %d"
           }
         }
       }
@@ -4030,6 +4190,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已验证"
+          }
+        }
+      }
+    },
+    "share.warning.localIntegrityFailed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local integrity validation failed; this media may not remain verifiable."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本地完整性校验失败；此媒体可能无法继续验证。"
           }
         }
       }
