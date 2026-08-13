@@ -98,10 +98,31 @@ cloud, scan, reconstruction, mesh, digital twin, or world-space model.
 
 Share uses the app-owned, on-demand flow:
 
-1. Open the lightweight TAP Share format-selection sheet.
-2. Load or generate the selected resource only after the user chooses it.
-3. Present the system activity controller only after the payload is ready.
-4. Remove per-attempt temporary resources after completion, cancellation, or
+1. Open one lightweight TAP Share popover anchored to the Viewer's bottom-left
+   Share control. Photo, Live Photo, and TAP Video use this same stable control,
+   coordinator, presentation, and preparation state machine.
+2. Keep credential state, format selection, hidden fast preparation, visible
+   progress, cancellation, public-safe failure, and Retry in that one anchored
+   app-owned surface. The Viewer, mixed-media pager, playback session, and
+   toolbar remain mounted behind it.
+3. While the Viewer is open, resolve the complete original from local storage
+   or iCloud. Share remains disabled until the photo original, complete Live
+   Photo pair, or video original is held by a short-lived Viewer lease.
+4. On Share open, freeze that exact lease and recompute its embedded local
+   proof/content binding. This checks byte integrity against the embedded digest
+   and binding; it does not cryptographically verify the App Attest assertion
+   object because the registered public key remains backend-owned. It never
+   contacts the TAP backend or App Attest Verify service. The same popover shows
+   a text-free skeleton until the three-state result is known.
+5. Generate the selected payload only after the user chooses it. Work
+   completed within 50 ms does not insert progress UI. If work is still running
+   after 50 ms, the popover changes in place to determinate, monotonic progress;
+   once shown, progress remains visible for at least 400 ms and reaches 100%
+   before handoff.
+6. Dismiss the app-owned popover only after the payload is ready, then present
+   exactly one sibling system activity controller. TAPCam does not nest,
+   imitate, or embed the system destination chooser inside its popover.
+7. Remove per-attempt temporary resources after completion, cancellation, or
    dismissal.
 
 TAPCam-owned captures display their persisted credential/protection and
@@ -123,25 +144,36 @@ Delete follows source ownership:
 
 ### TAPNAP share artifact lifecycle
 
-`.tapnap` package generation is strictly user-initiated and on demand. Opening
-the TAP Share sheet only reads lightweight local record state; package resource
-loading and ZIP writing begin only after the user selects the TAPNAP Package
-row. The app must never pre-generate a package after signing/export, run package
-generation as background prewarming, or retain a persistent `.tapnap` cache.
+`.tapnap` package generation is strictly user-initiated and on demand. Viewer
+original loading and Share-open local content binding do not generate a
+package; ZIP writing begins only after the user selects the TAPNAP Package row.
+The app must never pre-generate a package after signing/export, run
+package generation as background prewarming, or retain a persistent `.tapnap`
+cache.
 
 The generated package belongs to one active share attempt and stays in a
 per-attempt temporary directory only while the system activity controller may
-read it. Completion, cancellation, system-share dismissal, or TAP Share sheet
+read it. Completion, cancellation, system-share dismissal, or TAP Share popover
 dismissal must remove that directory. A later share tap starts a new on-demand
-generation. This storage/lifecycle rule is independent of signature evidence:
-an existing signature is reused as status evidence and the share path does not
-re-verify it.
+generation. The share path never asks the backend to attest or verify a capture
+again; it only checks that the embedded digest/content binding still matches
+the exact local or iCloud-downloaded bytes about to be shared. This local gate
+must not be described as independent App Attest assertion-authenticity proof.
 
 Still photos and Live Photos can prepare the current `.tapnap` still/live
-package contract. TAP Video opens the same TAP Share sheet and can prepare an
+package contract. TAP Video opens the same TAP Share popover and can prepare an
 independent byte-for-byte copy of its original MP4/MOV only after Share Video
 is selected. A video `.tapnap` transport is explicitly Coming Soon; the app
 does not disguise an MP4 as a still/live package or pre-generate either form.
+
+The three public credential labels remain exactly **Verified**, **Needs
+Retry**, and **Failed** (localized in the app). **Needs Retry** comes only from
+an unsigned app-private queue resource. Photos/iCloud media does not become
+Failed merely because its pending record was cleaned up: it derives identity
+from the embedded manifest and runs the local binding check. A mismatch makes
+TAPNAP Package unavailable while ordinary image/video sharing remains enabled
+with an explicit unverifiability warning. None of these paths calls backend
+Verify.
 
 ## Code Map
 
@@ -161,7 +193,7 @@ does not disguise an MP4 as a still/live package or pre-generate either form.
 | Debug-only runtime fixture specification, generator, and harness view | [DiagnosticsSupport/](DiagnosticsSupport/) |
 | Central visual stage for RGB, heatmap, mask, planes, internal point projection, region gestures, and plane seed taps | [DepthAnalysisStageView.swift](DepthAnalysisStageView.swift) |
 | Viewer toolbar: bottom-left Share, centered icon-only `RAW` / `2D` / `3D` capsule, and bottom-right Delete shared by Photo and TAP Video | [DepthAnalysisViewerChromeView.swift](DepthAnalysisViewerChromeView.swift), [DepthAnalysisControlsView.swift](DepthAnalysisControlsView.swift) |
-| Shared TAP Share sheet, on-demand package/image/video preparation, temporary-artifact lifecycle, and nested system activity presentation | [DepthAnalysisShareSheet.swift](DepthAnalysisShareSheet.swift), [TAPNAPShareArtifactBuilder.swift](TAPNAPShareArtifactBuilder.swift), [TAPVideoShareArtifactBuilder.swift](TAPVideoShareArtifactBuilder.swift), [VerificationExportActivityView.swift](VerificationExportActivityView.swift) |
+| Stable Photo/Live Photo/TAP Video Share toolbar leaf, Viewer original owners/leases, local-only content-binding gate, anchored app-owned popover, frozen-subject preparation coordinator, haptic feedback, on-demand package/image/video builders, per-attempt temporary-artifact lease, and subsequent single system activity presentation | [DepthViewerShareControl.swift](DepthViewerShareControl.swift), [TAPPhotoOriginalResource.swift](TAPPhotoOriginalResource.swift), [Playback/TAPVideoPlaybackResourceLoader.swift](Playback/TAPVideoPlaybackResourceLoader.swift), [DepthAnalysisShareOriginalResource.swift](DepthAnalysisShareOriginalResource.swift), [DepthAnalysisSharePopover.swift](DepthAnalysisSharePopover.swift), [DepthAnalysisShareCoordinator.swift](DepthAnalysisShareCoordinator.swift), [DepthAnalysisShareFeedback.swift](DepthAnalysisShareFeedback.swift), [TAPNAPShareArtifactBuilder.swift](TAPNAPShareArtifactBuilder.swift), [TAPVideoShareArtifactBuilder.swift](TAPVideoShareArtifactBuilder.swift), [VerificationExportActivityView.swift](VerificationExportActivityView.swift) |
 | Legacy backend verification service and unmounted panel; not a current TAPCam-owned-capture Viewer route | [AppAttestSignatureVerification.swift](AppAttestSignatureVerification.swift), [AppAttestSignatureVerificationPanel.swift](AppAttestSignatureVerificationPanel.swift) |
 | Field-level panel content adapter for concrete inspector bodies | [DepthAnalysisInspectorPanelContent.swift](DepthAnalysisInspectorPanelContent.swift) |
 | Analysis view-mode model, labels, icons, debug-only mode flag, and explanations | [DepthAnalysisViewMode.swift](DepthAnalysisViewMode.swift) |
@@ -263,11 +295,12 @@ If this module is new to you, read it in this order:
    screen shell. It owns stable chrome, UIKit paged scrolling,
    `previous/current/next` page hosting, RAW display-only browsing,
    RAW zoom/pan/double-tap, centered `RAW` / `2D` / `3D` primary surfaces,
-   selected-tool routing, global Share/Delete presentation, left-edge return,
-   and top-level callbacks. Share first opens the lightweight TAP Share sheet;
-   original media is prepared only after the user chooses a format, and the
-   system activity controller appears only when that payload is ready. Delete routes
-   Photos assets through system Photos deletion via
+   selected-tool routing, Share-subject propagation, Delete presentation,
+   left-edge return, and top-level callbacks. The shared chrome mounts
+   `DepthViewerShareControl`, which first opens the lightweight anchored TAP
+   Share popover; original media is prepared only after the user chooses a
+   format, and the system activity controller appears only when that payload is
+   ready. Delete routes Photos assets through system Photos deletion via
    `PhotoLibraryWriter.deleteAsset` and pending local records through
    `TAPPendingCaptureStore.removeRecord`.
    [DepthAnalysisViewerInteractionPolicy.swift](DepthAnalysisViewerInteractionPolicy.swift)
@@ -486,7 +519,7 @@ list for attended device or UI checks that code reading alone cannot prove.
    For video, also verify that the poster and loading indicator remain visible
    until the first frame replaces them directly, with no intermediate blank
    frame or full-screen refresh.
-7. Tap Share and confirm the sheet shows only the persisted credential and
+7. Tap Share and confirm the anchored popover shows only the persisted credential and
    verifiability state in Release UI, without starting a backend Verify action.
    Tap Delete and confirm Photos deletion uses the system Photos prompt, while
    pending/local-only removal first uses TAPCam's own confirmation and then the
@@ -580,6 +613,15 @@ bottom-left action and Delete as a bottom-right action.
 icon-only `RAW` / `2D` / `3D` capsule. Credential detail stays out of the
 viewer toolbar; Release Share UI shows only whether a locally valid credential
 is present. Field-level inspector data still stays out of the viewer toolbar.
+The shared Photo / Live Photo / TAP Video toolbar follows the approved
+prototype geometry: the Share and Delete circular backgrounds match the
+42-point Back control, a 20-point template-vector icon box is concentric with
+each circle, and the mode capsule remains compact and fixed at the screen
+center between equal flexible gaps. It uses the vendored Phosphor
+`share-network` and `trash` vectors with no compensating SwiftUI offset; the
+Share progress ring is centered on the same circle. Native safe-area padding
+remains adaptive rather than copying the prototype's fixed viewport bottom
+inset.
 
 TAP Library item construction is split from the grid UI.
 [DepthAlbumItemProvider.swift](DepthAlbumItemProvider.swift) reads visible
@@ -587,6 +629,13 @@ pending records, exported records, and app-owned Photos assets, then creates one
 current in-memory item list. Raw Photos and pending identifiers remain private
 inputs for opening the selected item and deriving route-restore tokens; the
 durable route context stores HMAC tokens, not those raw identifiers.
+
+Cold Library and Share paths follow
+[../../Docs/ColdPathResponsiveness.md](../../Docs/ColdPathResponsiveness.md): an
+equivalent catalog is not republished, scroll geometry does not invalidate the
+whole grid, thumbnail images are decoded once outside `body`, video-copy
+progress is latest-value coalesced to at most 20 UI updates per second, and
+Share logs low-cardinality lifecycle milestones without media identifiers.
 
 [DepthAlbumPickerView.swift](DepthAlbumPickerView.swift) keeps that loaded item
 list in its `DepthAlbumPickerViewModel` while the picker is still alive. Back

@@ -35,6 +35,14 @@ product owner inspect and directly adjust component relationships in a browser.
 Sketch is optional. If Sketch is used, its accepted decision must be synchronized
 to the Web prototype so the project does not gain a second active visual truth.
 
+The prototype grows by approved vertical slices; it is not a requirement to
+redraw the entire application before the first native change. The foundation
+first provides one lightweight, statically served interaction entry and one
+complete Task-scoped flow. Later Tasks read their relevant Product Contract
+states and extend the same prototype with additional flows such as first-install
+setup or the Viewfinder. Each added slice keeps its own Task, revision, covered
+states, approval, and acceptance mapping.
+
 ## 3. What The Web Prototype Owns
 
 For every covered state, the prototype may define:
@@ -50,6 +58,13 @@ For every covered state, the prototype may define:
 The prototype should let the product owner see relationships among components
 and switch between the states needed by its Task. It may use deterministic
 fixtures to demonstrate those states.
+
+This makes the prototype an executable visual constraint rather than a second
+product implementation. Text remains authoritative for runtime facts, state
+meaning, failure policy, and non-goals; the prototype makes the approved
+visible hierarchy and interaction sequence concrete enough to review before
+SwiftUI. A state not covered by the current slice remains an explicit gap, not
+an invitation for implementation to invent it.
 
 The prototype does not prove or own:
 
@@ -132,15 +147,22 @@ Unfinished Sketch P3 work was not inherited automatically. Any future App Store
 or Sketch work requires its own Project Board Task after the HTML-first workflow
 is considered.
 
-## 8. Planned Repository Shape
+## 8. Repository Shape And Incremental Coverage
 
-The first Web-prototype Task will decide the exact build stack and path. The
-intended durable shape is:
+The prototype starts with the smallest stack that can express its approved
+interaction states. A lightweight HTML/CSS/JavaScript implementation is valid;
+a framework, backend, package manager, hosting runtime, or full-app shell is not
+required merely to satisfy the workflow. Add infrastructure only when a later
+Task demonstrates that the current foundation cannot express its states.
+
+The intended durable shape is:
 
 ```text
 Prototype/
   README.md                # run instructions and evidence boundary
-  src/                     # interactive visual specification
+  index.html               # statically served interaction entry
+  prototype.css            # shared visual tokens and layout
+  prototype.js             # deterministic state transitions
   states/                  # deterministic state fixtures
   assets/                  # reviewed prototype-only assets
   manifest.*               # prototype revision and Task/contract mapping
@@ -148,7 +170,10 @@ Prototype/
 
 The prototype does not exist merely to produce screenshots. It is an
 interactive, versioned visual contract that the product owner can inspect before
-SwiftUI implementation.
+SwiftUI implementation. Repository history and Task revision history record
+incremental milestones; the Kanban schema does not need a separate `Partial`
+status to acknowledge a completed slice while the broader foundation Task
+continues.
 
 ## 9. App Store And Localization Boundary
 

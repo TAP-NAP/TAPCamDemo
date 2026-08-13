@@ -2,7 +2,7 @@
 
 - Status: canonical product constraint document
 - Owner: product owner
-- Last updated: 2026-08-12
+- Last updated: 2026-08-13
 
 This document is the single current product contract for TAPCamDemo. It defines
 what the product currently does, what it deliberately does not do, which work is
@@ -101,14 +101,22 @@ Completing the required rows does not complete first-install setup. The order is
 ```text
 required setup rows complete
         -> user presses Continue
-        -> first camera readiness gate
-        -> persist first-install completion
+        -> resource-initialization readiness gate
+        -> persist the resource-initialization completion marker
         -> enter the interactive camera
 ```
 
-The readiness gate exists to prevent the app from entering the camera surface
-too early and presenting a frozen or non-responsive page. **Camera interactive**
-requires all of the following:
+After an app update, already-completed permission/setup rows are not replayed,
+but the resource-initialization gate still runs before the interactive camera
+when its independent marker does not match the current update and
+initialization-schema generation.
+
+The full-screen app-owned state is titled **Resource Initialization** with the
+subtitle **Please Wait**. It exists to prevent the app from entering the camera
+surface too early and presenting a frozen or non-responsive page. It completes
+only after both readiness groups below are ready.
+
+**Camera interactive** requires all of the following:
 
 - the underlying capture graph and required capture path are ready;
 - a real first preview frame has been presented;
@@ -116,26 +124,50 @@ requires all of the following:
 - required first-interaction haptics are prepared.
 
 Session configuration alone is insufficient. A loading or readiness surface
-must remain until all of the conditions above hold. Failure remains in the
-initialization flow and offers an appropriate Retry or Open Settings action.
+must remain until all of the conditions above hold.
+
+**TAP Library catalog ready** requires the first usable identity/order metadata
+snapshot. A successful empty snapshot is usable. The gate does not wait for or
+decode the media represented by that snapshot.
+
+Initialization is a startup invariant, not a user-recoverable failure flow.
+There is no Failed, Retry, timeout, or degraded-entry surface. If readiness does
+not complete, the stable Resource Initialization state remains visible and the
+app emits low-cardinality developer diagnostics that identify the incomplete
+readiness group. Such noncompletion is treated as an engineering defect.
+
+The gate must never wait for iCloud originals, complete original-resource
+downloads, all thumbnail decoding, local proof or media hashing, ZIP/package
+generation, system activity-controller prewarming, App Attest/network warmup,
+or Pending Capture Queue retry/batch completion.
 
 App Attest credential warmup and Pending Capture Queue retry begin after camera
 entry as background work. They do not block the first interactive frame and are
 not the same operation as the required Network preflight.
 
-### 2.5 Completion marker
+### 2.5 Completion markers
 
-The stored completion marker means only that the user has previously completed
-first-install setup and the first camera-readiness gate.
+Permission/setup completion and Resource Initialization completion are separate
+facts. Resource Initialization owns an independent marker identifying both the
+current installed app update and the current initialization-schema generation.
+Write it atomically only after the camera-interactive and TAP Library catalog
+readiness groups have both succeeded.
 
 - It is not proof that any permission remains authorized forever.
 - It is not a recurring permission gate for later launches.
-- Later launches silently skip first-install setup.
+- An absent marker, a marker for another installed update, or an initialization-
+  schema mismatch requires the gate. A fresh installation or reinstallation has
+  no matching marker.
+- An interrupted or abnormally incomplete run leaves the marker absent or stale
+  so the next launch remains in Resource Initialization.
+- Ordinary later launches whose marker exactly matches the current update and
+  schema generation silently skip Resource Initialization.
 - If a permission changes later, the affected feature handles the missing
   permission in context. The app does not send the user through first-install
   setup again.
-- The legacy persisted key name may remain for compatibility, but it does not
-  define the marker's product meaning.
+- A legacy persisted key name may remain as an implementation compatibility
+  detail, but it cannot merge setup permission state with this versioned
+  readiness marker or redefine the marker's product meaning.
 
 ## 3. Camera And Capture
 
@@ -271,15 +303,59 @@ is a technical option activated by evidence, not a promised product feature.
 
 The canonical Share flow is:
 
-1. Open the app-owned lightweight format-selection sheet.
-2. Load or generate a resource only after the user selects a format.
-3. Present the system activity controller only after that payload is ready.
-4. Remove per-attempt temporary resources on completion, cancellation, or
+1. While the current item is being viewed, resolve its complete original
+   resource set for normal Viewer use. The Share control remains unavailable
+   while that original is absent, cloud-only, downloading from iCloud, or
+   incomplete. A preview, thumbnail, displayed Live Photo, video poster, or
+   first decoded video frame is not sufficient Share readiness.
+2. Open one lightweight app-owned format-selection surface anchored to the
+   Viewer's Share action. The same stable surface owns selection, preparation,
+   cancellation, public-safe failure, and Retry; it is not a separate modal
+   page. On opening, check the actual ready original resource locally against
+   its embedded TAP proof and content binding before resolving the public
+   credential state. This local integrity gate must not contact the TAP
+   verification backend.
+3. Copy, package, or otherwise generate a Share-specific payload only after the
+   user selects a format. Normal Viewer original-resource loading is not Share
+   prewarming and must not pre-generate a package or persistent Share payload.
+4. Present the system activity controller only after that payload is ready.
+   The app-owned surface hands off directly to this one system-owned
+   presentation; TAPCam does not imitate or embed controls inside it.
+5. Remove per-attempt temporary resources on completion, cancellation, or
    dismissal.
 
+Preparation presentation follows one anti-flash policy across still photos,
+Live Photos, and TAP Video:
+
+- work completed within 50 ms never inserts progress UI;
+- work still running after 50 ms reveals progress in the same anchored surface;
+- once revealed, progress remains visible for at least 400 ms, advances
+  monotonically, and reaches 100% before handoff when preparation completes
+  early; and
+- selection, preparation, and system handoff must not create an intermediate
+  blank frame, rebuild the Viewer/pager/chrome, or flash a full-screen loading
+  state.
+
 The app must not pre-generate packages, background-prewarm them, or keep a
-persistent share cache. The old direct-preparation/direct-system-share design is
-deprecated.
+persistent share cache. The old direct-preparation/direct-system-share design
+and the separate app-owned modal format sheet are deprecated.
+
+The three public Share credential labels remain `Verified`, `Needs Retry`, and
+`Failed`:
+
+- `Verified` means the complete original resource set passed the local TAP
+  proof/content-binding integrity gate for the bytes that may be shared.
+- `Needs Retry` is emitted only by the app-private Pending Capture Queue for an
+  unsigned capture whose signing operation is pending or retryable.
+- `Failed` means a terminal queue failure or a complete resource whose embedded
+  proof/content binding is missing, malformed, incomplete, or does not match
+  the actual bytes. A Photos/iCloud asset must not become `Failed` merely
+  because its old Pending Capture Queue record no longer exists.
+
+Local integrity failure disables `.tapnap`, because TAPCam cannot describe that
+payload as verifiable. Direct image or video sharing remains available with an
+explicit warning that verifiability is not guaranteed. Live Photo `.tapnap`
+requires both the original photo and its signed paired MOV.
 
 Still and Live Photo `.tapnap` sharing and supported original-media sharing are
 current. TAP Video `.tapnap`, Sticker, and Link remain future items until their
@@ -298,12 +374,29 @@ contracts are implemented.
 ## 6. Credential And Verification UX
 
 For a capture made by TAPCam whose attestation/signing process has completed,
-TAPCam already owns the capture record and credential state. The app therefore:
+TAPCam has already performed the App Attest signing operation. The app
+therefore:
 
-- displays the persisted credential/protection and verifiability state;
-- may expose that state in Share presentation;
-- does not run a new Verify operation every time the user views or shares it;
+- keeps unsigned, retry, and terminal signing state in the app-private Pending
+  Capture Queue rather than maintaining a second durable signed/unsigned index
+  for every exported Photos asset;
+- may expose the queue state for private pending captures in Share presentation;
+- locally recomputes the embedded proof/content binding over a complete
+  original resource before sharing it, including the paired MOV for a Live
+  Photo and the original MP4/MOV bytes for TAP Video;
+- does not submit a new App Attest Verify request to the TAP verification
+  backend every time the user views or shares an owned capture;
 - does not require a separate Verify button for its own attested captures.
+
+The local content-binding gate confirms that the actual resource bytes match
+the digest and signing binding embedded alongside the App Attest assertion. It
+does not re-sign the capture, verify the assertion object's cryptographic
+signature with a registered App Attest public key, or independently establish a
+new backend credential verdict. The current App keeps only the App Attest key
+handle; complete assertion authenticity remains the responsibility of the TAP
+backend (or a future verifier with an explicitly provisioned public key).
+iCloud may be used only to retrieve the original Photos resources needed by
+this byte-integrity gate.
 
 A true in-app Verify workflow becomes relevant only if a future product accepts
 external media whose origin and credential state are not already owned by the
@@ -355,6 +448,15 @@ evidence, but they cannot impersonate an attended physical-device acceptance.
 Only an explicitly recorded owner acceptance can close a `DeviceAcceptance`
 task.
 
+Cold-path behavior is a separate required evidence condition whenever a
+capability performs first-install, empty-cache, first-open, large-catalog,
+iCloud, or first system-presentation work. The attended procedure must include
+a newly installed app or an explicitly cleared container/cache. A successful
+warm re-entry is useful comparison evidence, but it cannot substitute for the
+cold run or close a cold-path acceptance condition. Scalable work must publish
+visible acknowledgement before it begins and follow the repository standard
+in [ColdPathResponsiveness.md](ColdPathResponsiveness.md).
+
 ## 9. UI Design Source Of Truth
 
 TAPCam uses two complementary current constraints:
@@ -367,3 +469,9 @@ The Web prototype cannot redefine permissions, AVFoundation capability, camera
 readiness, or other runtime facts. SwiftUI implementation must satisfy both
 sources, followed by Simulator and physical-device acceptance. The complete
 workflow is defined in [UIPrototypeContract.md](UIPrototypeContract.md).
+
+Prototype coverage grows by Task-scoped vertical slices rather than requiring a
+complete Web copy of TAPCam before native work. Each slice reads the applicable
+product states from this contract, records uncovered states explicitly, and
+becomes implementation authority only for its approved visible hierarchy and
+simulated interaction.

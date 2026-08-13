@@ -140,6 +140,10 @@ before the Task can close.
 
 - Implement only the approved Task scope and preserve explicit non-goals.
 - Prefer existing module and interface seams over parallel implementations.
+- For first-install, empty-cache, first-open, large-Library, iCloud, media, and
+  system-presentation work, follow
+  [`Docs/ColdPathResponsiveness.md`](Docs/ColdPathResponsiveness.md). A warm
+  second run is comparison evidence, never proof that the cold path is safe.
 - Add or update tests that protect the contract, not tests that merely spell a
   document or current source structure.
 - Validate in proportion to risk: focused tests first, then build/integration,

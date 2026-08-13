@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "revision": "TAP-0009-r1-candidate",
-  "trigger": "first launch after fresh installation, reinstallation, or app update; ordinary subsequent launches skip this state",
+  "trigger": "first launch after fresh installation or reinstallation, and first launch after an app update or initialization-schema change; ordinary subsequent launches with an exact current update/schema marker skip this state",
   "publicCopy": {
     "zh-Hans": { "title": "资源初始化", "subtitle": "请等待…" },
     "en": { "title": "Resource Initialization", "subtitle": "Please wait…" }
@@ -37,6 +37,12 @@
     "retryAction": false,
     "degradedContinuation": false,
     "abnormalNoncompletion": "keep stable initialization UI and emit low-cardinality developer diagnostics"
+  },
+  "completionMarker": {
+    "separateFromSetupAndPermissions": true,
+    "identity": ["current installed app update", "initialization-schema generation"],
+    "write": "atomic and only after camera and library readiness are both ready",
+    "interruption": "leave absent or stale"
   },
   "openOwnerDecisions": [],
   "approvalStatus": "ownerApproved",
