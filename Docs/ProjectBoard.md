@@ -67,7 +67,6 @@ from each record's `Status` field.
 ### Doing
 
 - `TAP-0083` Eliminate cold-path UI starvation and codify responsiveness guardrails
-- `TAP-0085` Restrict the current runtime target to iPhone
 
 ### Done
 
@@ -97,6 +96,7 @@ from each record's `Status` field.
 - `TAP-0080` Migrate Locked Camera experiment guardrails and remove main-tree experiment prose
 - `TAP-0081` Unify TAP Share selection and preparation into an anchored handoff
 - `TAP-0082` Device acceptance: TAP Share anchored handoff and anti-flash progress
+- `TAP-0085` Restrict the current runtime target to iPhone
 
 ### Deprecated
 
@@ -3226,7 +3226,7 @@ Every active Task uses these stable fields:
 
 ### TAP-0085 — Restrict the current runtime target to iPhone
 
-- Status: `Doing`
+- Status: `Done`
 - Kind: `Technical`
 - Priority: `P1`
 - Domain: `Platform / Build Configuration`
@@ -3239,8 +3239,9 @@ Every active Task uses these stable fields:
 - Assignee: `/root` documentation and validation reconciliation; product owner
   authored the existing Xcode project setting change
 - Dev Session: `019ff4ea-acba-7051-bd0f-3d489f1caadc`
-- Branch/Worktree: `codex/tap-share-system-handoff-recovery`; delivery requires
-  a separate TAP-0085 commit from TAP-0081/TAP-0082
+- Branch/Worktree: `main` / `origin/main` at merge
+  `37d0c61`; independent TAP-0085 implementation commit
+  `28d5aef683848c3043f0777b6f3c9665a897864b`
 - Scope: Make the main TAPCamDemo application target iPhone-only in both Debug
   and Release. Its supported build platforms are iPhone device and iPhone
   Simulator; the Simulator remains a development/validation destination rather
@@ -3265,7 +3266,15 @@ Every active Task uses these stable fields:
   `TARGETED_DEVICE_FAMILY` to `1`. The existing generic iphoneos
   `build-for-testing` passed, and its built app `Info.plist` reports
   `UIDeviceFamily = [1]`. TAP-0007 is synchronized to the distinct 6.9-inch
-  iPhone App Store-media decision.
+  iPhone App Store-media decision. A current `main` recheck at merge
+  `37d0c61` independently reconfirmed the same Debug/Release effective settings,
+  completed generic/platform=iOS Debug `build-for-testing` with
+  `CODE_SIGNING_ALLOWED=NO`, and inspected the built app `Info.plist` with
+  `UIDeviceFamily = [1]`; neither Simulator nor a physical device was launched.
+  The owner-approved settings, documentation, and validation evidence are
+  frozen separately from TAP-0081/TAP-0082 by implementation commit
+  `28d5aef683848c3043f0777b6f3c9665a897864b`, now present in both `main` and
+  `origin/main` through merge `37d0c61`.
 - Done When: The Product Contract, UI Prototype Contract, and root README all
   state the same iPhone-only current scope; main-app Debug and Release effective
   settings resolve to iPhone device/Simulator only with device family `1` and
@@ -3274,6 +3283,17 @@ Every active Task uses these stable fields:
   distinct 6.9-inch iPhone App Store-media decision; and the owner-authored
   project settings plus documentation and validation evidence are frozen in a
   separate TAP-0085 commit.
+- Completion Audit: `Satisfied on 2026-08-14.` Every recorded Done When item is
+  present: the three current documents agree, main-app Debug and Release resolve
+  to iPhone device/Simulator with device family `1` and all three unsupported
+  Mac/XR routes disabled, the generic iOS build gate passes, the built app
+  reports `UIDeviceFamily = [1]`, TAP-0007 remains an independent Inbox
+  decision, and the dedicated implementation is frozen in `28d5aef` and merged
+  at `37d0c61`. Commit `28d5aef` also carries an adjacent shared-scheme
+  `LaunchAction` change from Release to Debug. That neighbor is not claimed as
+  TAP-0085 scope or evidence; per the owner's instruction to preserve the
+  complete current mainline, it remains untouched and is not used to broaden
+  this Task.
 - Related: `TAP-0007`
 - Created: `2026-08-14`
 - Updated: `2026-08-14`
@@ -3298,6 +3318,19 @@ Every active Task uses these stable fields:
     passed and the built app reports `UIDeviceFamily = [1]`. All recorded Done
     When conditions except the required separate TAP-0085 commit are now met,
     so TAP-0085 remains Doing solely for that freeze point.
+  - `2026-08-14` Closed the remaining freeze point and moved TAP-0085 Doing ->
+    Done. Independent implementation commit
+    `28d5aef683848c3043f0777b6f3c9665a897864b` follows the TAP-0081/TAP-0082
+    closure commit and is present on clean `main` / `origin/main` through merge
+    `37d0c61`. A fresh mainline audit reconfirmed both main-app Debug/Release
+    settings, all three unsupported compatibility flags `NO`, device family
+    `1`, a successful generic/platform=iOS Debug `build-for-testing` with code
+    signing disabled, and built-app `UIDeviceFamily = [1]`; Simulator and device
+    were not launched. TAP-0007 remains Inbox and Next Task ID is unchanged.
+    The same implementation commit contains an adjacent scheme LaunchAction
+    Release-to-Debug change; it is explicitly excluded from TAP-0085 evidence
+    and remains untouched under the owner's instruction to preserve the current
+    mainline rather than pop, rewrite, or redo another Task.
 
 ## 5. Inbox Decision Registry
 
@@ -3859,3 +3892,17 @@ not replace the Product Contract, and linked device evidence may remain open.
   shutter/haptics, marker, interruption, or repeated-launch evidence; TAP-0041
   remains Todo pending a revised procedure. TAP-0083 remains Doing. TAP-0010
   and all other Task records/statuses and Next Task ID are unchanged.
+- `2026-08-14` Board Steward closed TAP-0085 after its final independent-freeze
+  condition became current Git evidence. Moved TAP-0085 Doing -> Done and
+  recorded implementation commit
+  `28d5aef683848c3043f0777b6f3c9665a897864b`, now in clean `main` and
+  `origin/main` through merge `37d0c61`. The owner-approved iPhone-only
+  Product/UI-prototype/README boundary, main-app Debug and Release effective
+  settings (`iphoneos iphonesimulator`, device family `1`, and all three Mac/XR
+  routes `NO`), generic/platform=iOS Debug build-for-testing with code signing
+  disabled, and built-app `UIDeviceFamily = [1]` were rechecked on main; no
+  Simulator or physical device was launched. The adjacent shared-scheme
+  LaunchAction Release-to-Debug change in `28d5aef` is not TAP-0085 scope or
+  completion evidence and remains untouched under the owner's instruction to
+  preserve current mainline state. TAP-0007 remains Inbox; Next Task ID and all
+  other Task records/statuses are unchanged.
