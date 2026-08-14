@@ -13,7 +13,7 @@ const sha256 = (relativePath) => crypto
   .update(fs.readFileSync(new URL(relativePath, import.meta.url)))
   .digest("hex");
 
-assert.equal(manifest.revision, "TAP-0081-r2-TAP-0009-r1-candidate");
+assert.equal(manifest.revision, "TAP-0081-r3-TAP-0009-r1-candidate");
 assert.equal(manifest.baseRevision, "TAP-0081-r1");
 assert.deepEqual(manifest.taskIds, ["TAP-0006", "TAP-0009", "TAP-0081"]);
 assert.deepEqual(manifest.coveredFirstInstallStates, ["resourcePreparing", "cameraReadyCatalogPending", "catalogReadyCameraPending", "cameraAndCatalogReadyHandoff"]);
@@ -28,7 +28,10 @@ assert.equal(manifest.firstInstallInitializationBoundary.retryAction, false);
 assert.equal(manifest.firstInstallInitializationBoundary.degradedContinuation, false);
 assert.equal(manifest.slices.firstInstallResourceInitialization.revision, "TAP-0009-r1-candidate");
 assert.equal(manifest.slices.firstInstallResourceInitialization.approvalStatus, "ownerApproved");
-assert.equal(manifest.slices.tapShare.ownerStatement, "已确认没有问题 请继续实施 Swift UI");
+assert.equal(manifest.slices.tapShare.revision, "TAP-0081-r3-candidate");
+assert.equal(manifest.slices.tapShare.approvalStatus, "ownerApproved");
+assert.equal(manifest.slices.tapShare.ownerStatement, "对的 现在原型是我想要的");
+assert.equal(manifest.slices.tapShare.supersedesApprovedRevision, "TAP-0081-r2-candidate");
 assert.equal(manifest.slices.firstInstallResourceInitialization.ownerStatement, "原型我检查了 没有问题");
 assert.ok(manifest.firstInstallInitializationBoundary.neverWaitsFor.includes("iCloud originals"));
 assert.ok(manifest.firstInstallInitializationBoundary.neverWaitsFor.includes("App Attest network work"));
@@ -44,26 +47,42 @@ assert.equal(startupStates.invariantPolicy.degradedContinuation, false);
 assert.ok(startupStates.neverBlocksOn.includes("iCloud originals"));
 assert.equal(startupStates.approvalStatus, "ownerApproved");
 assert.equal(startupStates.ownerStatement, "原型我检查了 没有问题");
-assert.equal(manifest.policy.progressRevealDelayMs, 50);
-assert.equal(manifest.policy.minimumVisibleDurationMs, 400);
+assert.equal(manifest.policy.preparationProgressPresentation, "immediateAfterImplementedOptionSelection");
+assert.equal(manifest.policy.preparationProgressPlacement, "replacesSubtitleTextWithinSameSlot");
+assert.equal(manifest.policy.nonSelectedOptionBehaviorDuringPreparation, "visibleDisabled");
+assert.equal(manifest.policy.preparationProgressPercentageVisible, false);
+assert.equal(manifest.policy.preparationCancelVisible, false);
+assert.equal(manifest.policy.preparationGeometryMutation, false);
+assert.equal(manifest.policy.artificialProgressRevealDelay, false);
+assert.equal(manifest.policy.minimumProgressHold, false);
+assert.equal(manifest.policy.payloadReadyBehavior, "endAppOwnedPopover");
+assert.equal(manifest.policy.systemActivitySimulation, false);
 assert.equal(manifest.policy.persistentShareCache, false);
 assert.equal(manifest.policy.packagePreGeneration, false);
 assert.equal(manifest.policy.backendVerifyDuringShare, false);
 assert.equal(manifest.policy.appAttestVerifyDuringShare, false);
 assert.equal(manifest.policy.needsRetrySource, "pendingCaptureQueueOnly");
 assert.equal(manifest.policy.missingExportedQueueRecordIsFailure, false);
+assert.equal(manifest.prototypeGeometryValidation.tapnapPackageBeforeEqualsPreparing, true);
+assert.equal(manifest.prototypeGeometryValidation.shareImageBeforeEqualsPreparing, true);
+assert.equal(manifest.prototypeGeometryValidation.percentageTextPresent, false);
+assert.equal(manifest.prototypeGeometryValidation.cancelControlPresent, false);
 assert.equal(manifest.approval.status, "ownerApproved");
-assert.equal(manifest.approval.approvedAt, "2026-08-13");
-assert.equal(manifest.approval.approvedRevision, "TAP-0081-r2-TAP-0009-r1-candidate");
+assert.equal(manifest.approval.approvedAt, "2026-08-14");
+assert.equal(manifest.approval.approvedRevision, "TAP-0081-r3-TAP-0009-r1-candidate");
+assert.equal(manifest.approval.ownerStatement, "对的 现在原型是我想要的");
+assert.equal(manifest.approval.candidateRevision, "TAP-0081-r3-TAP-0009-r1-candidate");
+assert.equal(manifest.approval.candidateDirection.status, "ownerApproved");
 assert.equal(manifest.approval.behaviorAuthority.status, "ownerApproved");
 assert.equal(manifest.approval.baseRevisionApproval.revision, "TAP-0081-r1");
-assert.equal(manifest.approval.sourceCommit, "70e8b60d4e20486a6d4847d726b393a50e22c7ba");
-assert.match(manifest.approval.sourceCommitNote, /first repository commit/);
+assert.equal(manifest.approval.sourceCommit, null);
+assert.match(manifest.approval.sourceCommitNote, /attended device acceptance/);
+assert.equal(manifest.approval.inheritedFoundationCommit, "70e8b60d4e20486a6d4847d726b393a50e22c7ba");
 assert.deepEqual(manifest.coveredMedia, ["photo", "livePhoto", "video"]);
 assert.deepEqual(manifest.coveredResourceStates, ["localReady", "iCloudLoading", "iCloudReady", "iCloudUnavailable", "privateQueue"]);
 assert.deepEqual(manifest.coveredCredentialStates, ["verified", "retryPending", "failed"]);
 assert.deepEqual(manifest.coveredIntegrityStates, ["textFreeResolvingSkeleton", "passed", "mismatch"]);
-assert.equal(states.revision, manifest.baseRevision.replace("r1", "r2-candidate"));
+assert.equal(states.revision, manifest.slices.tapShare.revision);
 assert.equal(states.resourceStates.iCloudLoading.shareEnabled, false);
 assert.equal(states.resourceStates.iCloudLoading.viewerLoadingVisible, true);
 assert.equal(states.resourceStates.iCloudReady.shareEnabled, true);
@@ -74,6 +93,20 @@ assert.equal(states.credentialStates.failed.ordinaryMediaWarning, "无法保证�
 assert.equal(states.integrityStates.checking.publicCredentialLabel, null);
 assert.equal(states.trustBoundary.backendVerifyAllowed, false);
 assert.equal(states.trustBoundary.appAttestVerifyAllowed, false);
+assert.equal(states.preparationPolicy.progressVisibleImmediatelyAfterSelection, true);
+assert.equal(states.preparationPolicy.progressPlacement, "replacesSubtitleTextWithinSameSlot");
+assert.equal(states.preparationPolicy.nonSelectedOptionsDuringPreparation, "visibleDisabled");
+assert.equal(states.preparationPolicy.independentPreparationPanelAllowed, false);
+assert.equal(states.preparationPolicy.percentageVisible, false);
+assert.equal(states.preparationPolicy.cancelVisible, false);
+assert.equal(states.preparationPolicy.selectedSubtitleTextReplacedDuringPreparation, true);
+assert.equal(states.preparationPolicy.selectedTitleIconBadgeMutationAllowed, false);
+assert.equal(states.preparationPolicy.selectedRowGeometryMutationAllowed, false);
+assert.equal(states.preparationPolicy.popoverGeometryMutationAllowed, false);
+assert.equal(states.preparationPolicy.artificialRevealDelayAllowed, false);
+assert.equal(states.preparationPolicy.minimumVisibleHoldAllowed, false);
+assert.equal(states.preparationPolicy.payloadReadyEndsAppPopover, true);
+assert.equal(states.preparationPolicy.systemActivityControllerSimulated, false);
 
 const toolbar = manifest.viewerToolbarVisualSpec;
 assert.equal(toolbar.toolbar.sideInsetPx, 16);
@@ -94,20 +127,36 @@ assert.equal(sha256(toolbar.delete.assetPath), toolbar.delete.assetSha256);
 assert.deepEqual(toolbar.delete.cssOpticalTranslationPx, { x: 0, y: 0 });
 assert.deepEqual(toolbar.delete.intrinsicArtworkCenterOffsetAt20Px, { x: 0, y: -0.625 });
 
-for (const id of ["share-button", "delete-button", "share-popover", "share-options", "progress-bar", "cancel-button", "retry-button", "return-button", "resource-overlay", "resource-progress", "resolve-integrity-button", "startup-initialization", "startup-entry-boundary", "startup-title", "startup-subtitle", "startup-announcement", "startup-camera-check", "startup-library-check"]) {
+for (const id of ["share-button", "delete-button", "share-popover", "share-options", "retry-button", "resource-overlay", "resource-progress", "resolve-integrity-button", "startup-initialization", "startup-entry-boundary", "startup-title", "startup-subtitle", "startup-announcement", "startup-camera-check", "startup-library-check"]) {
   assert.match(html, new RegExp(`id="${id}"`));
 }
 
-for (const state of ["integrityChecking", "selector", "preparing", "failure", "boundary"]) {
+for (const state of ["integrityChecking", "selector", "failure"]) {
   assert.match(html, new RegExp(`data-panel="${state}"`));
 }
 
-assert.match(script, /revealDelayMs:\s*50/);
-assert.match(script, /minimumVisibleMs:\s*400/);
-assert.match(script, /threshold:\s*120/);
+assert.match(html, /细进度条在完全相同的副标题槽内替换原文字；标题、图标、推荐标记和全部布局不动/);
+assert.match(html, /iOS 系统分享面板只作为文案边界，本原型不伪造/);
+assert.doesNotMatch(html, /id="return-button"|data-panel="boundary"|data-panel="preparing"|资料已准备完成|模拟系统页关闭/);
+assert.match(script, /progressPresentation:\s*"immediate"/);
+assert.match(script, /minimumVisibleHold:\s*false/);
+assert.match(script, /payloadReadyBehavior:\s*"closeAppPopover"/);
+assert.match(script, /systemActivitySimulation:\s*false/);
+assert.match(script, /fixtureDurations = Object\.freeze\(\{ success: 1400, failure: 720 \}\)/);
 assert.match(script, /Math\.max\(state\.progress/);
-assert.match(script, /state\.fixture === "fast"/);
-assert.match(script, /showPanel\("boundary"\)/);
+assert.match(script, /const visiblePanel = name === "preparing" \? "selector" : name/);
+assert.match(script, /const preparing = state\.panel === "preparing"/);
+assert.match(script, /button\.disabled = preparing \|\| Boolean\(option\.disabled\)/);
+assert.match(script, /row\.className = `share-option-row\$\{selected \? " is-preparing" : ""\}`/);
+assert.match(script, /const subtitleContent = selected[\s\S]*id="progress-bar" class="subtitle-progress-track"[\s\S]*: option\.subtitle/);
+assert.match(script, /<small>\$\{subtitleContent\}<\/small>/);
+assert.doesNotMatch(script, /id="progress-label"|id="cancel-button"/);
+assert.match(script, /function prepare\(option\)[\s\S]*showPanel\("preparing"\);\s*renderSelector\(\{ preservePanel: true \}\);\s*setProgress\(0\);[\s\S]*const duration = fixtureDurations\[state\.fixture\]/);
+assert.match(script, /function complete\(attempt\)[\s\S]*setProgress\(1\);[\s\S]*state\.systemActivityBoundaryReached = true;\s*showPanel\("closed"\);/);
+assert.doesNotMatch(script, /revealDelayMs|minimumVisibleMs|progressVisibleAt|showPanel\("boundary"\)|return-button/);
+assert.match(css, /\.share-option-row\.is-preparing \.share-option\[disabled\] \{ opacity: 1; \}/);
+assert.match(css, /\.share-option small \{ position: relative; display: block; height: 14px;[\s\S]*line-height: 14px; \}/);
+assert.match(css, /\.subtitle-progress-track \{ position: absolute; left: 0; right: 0; top: 50%;[\s\S]*height: 2px;[\s\S]*pointer-events: none; \}/);
 assert.match(script, /readyResources = new Set\(\["localReady", "iCloudReady", "privateQueue"\]\)/);
 assert.match(script, /retryButton\.disabled = !queueOnly/);
 assert.match(script, /showPanel\("integrityChecking"\)/);

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "revision": "TAP-0081-r2-candidate",
+  "revision": "TAP-0081-r3-candidate",
   "resourceStates": {
     "localReady": {
       "shareEnabled": true,
@@ -63,11 +63,27 @@
     "packagePreGenerationAllowed": false,
     "persistentShareCacheAllowed": false
   },
+  "preparationPolicy": {
+    "progressVisibleImmediatelyAfterSelection": true,
+    "progressPlacement": "replacesSubtitleTextWithinSameSlot",
+    "nonSelectedOptionsDuringPreparation": "visibleDisabled",
+    "independentPreparationPanelAllowed": false,
+    "percentageVisible": false,
+    "cancelVisible": false,
+    "selectedSubtitleTextReplacedDuringPreparation": true,
+    "selectedTitleIconBadgeMutationAllowed": false,
+    "selectedRowGeometryMutationAllowed": false,
+    "popoverGeometryMutationAllowed": false,
+    "artificialRevealDelayAllowed": false,
+    "minimumVisibleHoldAllowed": false,
+    "payloadReadyEndsAppPopover": true,
+    "systemActivityControllerSimulated": false
+  },
   "transitions": [
     "iCloudLoading -> iCloudReady -> shareEnabled",
     "readyOriginal -> integrityChecking -> verified|failed",
     "privateQueueUnsigned -> retryPending",
     "failed -> tapnapDisabled + ordinaryMediaEnabledWithWarning",
-    "verified + formatSelection -> hiddenFast|visiblePreparation -> systemBoundary"
+    "implementedFormatSelection -> geometryStableSelectorWithProgressReplacingSelectedSubtitleTextAndOtherRowsVisibleDisabled -> appPopoverClosedAtPayloadReady -> documentedSystemActivityBoundary"
   ]
 }

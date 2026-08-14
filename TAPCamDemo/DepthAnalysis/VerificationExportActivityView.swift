@@ -3,180 +3,67 @@
 //  TAPCamDemo
 //
 
+import Dispatch
 import OSLog
 import SwiftUI
 import UIKit
-import UniformTypeIdentifiers
 
 struct VerificationExportActivityView: UIViewControllerRepresentable {
-    let activityItems: [Any]
-    private let retainedShareArtifact: TAPNAPShareArtifact?
-    private let typedShareArtifact: TAPNAPShareArtifact?
-    private let preparedSharePresentation: TAPShareActivityPresentation?
-    var onAppeared: (() -> Void)?
-    var onFinished: (() -> Void)?
-    var onDismantled: (() -> Void)?
+    private let sharePresentation: TAPShareActivityPresentation
 
-    init(
-        activityItems: [Any],
-        retainedShareArtifact: TAPNAPShareArtifact? = nil,
-        onAppeared: (() -> Void)? = nil,
-        onFinished: (() -> Void)? = nil,
-        onDismantled: (() -> Void)? = nil
-    ) {
-        self.activityItems = activityItems
-        self.retainedShareArtifact = retainedShareArtifact
-        typedShareArtifact = nil
-        preparedSharePresentation = nil
-        self.onAppeared = onAppeared
-        self.onFinished = onFinished
-        self.onDismantled = onDismantled
-    }
-
-    init(
-        shareArtifact: TAPNAPShareArtifact,
-        onAppeared: (() -> Void)? = nil,
-        onFinished: (() -> Void)? = nil,
-        onDismantled: (() -> Void)? = nil
-    ) {
-        activityItems = []
-        retainedShareArtifact = shareArtifact
-        typedShareArtifact = shareArtifact
-        preparedSharePresentation = nil
-        self.onAppeared = onAppeared
-        self.onFinished = onFinished
-        self.onDismantled = onDismantled
-    }
-
-    init(
-        preparedSharePresentation: TAPShareActivityPresentation,
-        onAppeared: (() -> Void)? = nil,
-        onFinished: (() -> Void)? = nil,
-        onDismantled: (() -> Void)? = nil
-    ) {
-        activityItems = []
-        retainedShareArtifact = preparedSharePresentation.artifact
-        typedShareArtifact = nil
-        self.preparedSharePresentation = preparedSharePresentation
-        self.onAppeared = onAppeared
-        self.onFinished = onFinished
-        self.onDismantled = onDismantled
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
+    init(sharePresentation: TAPShareActivityPresentation) {
+        self.sharePresentation = sharePresentation
     }
 
     func makeUIViewController(context: Context) -> UIActivityViewController {
-        let controller: TAPObservedActivityViewController
-        if let preparedSharePresentation {
-            controller = preparedSharePresentation.controller
-        } else if let typedShareArtifact {
-            controller = TAPObservedActivityViewController(
-                activityItemsConfiguration: Self.activityItemsConfiguration(
-                    for: typedShareArtifact
-                )
-            )
-        } else {
-            controller = TAPObservedActivityViewController(
-                activityItems: activityItems,
-                applicationActivities: nil
-            )
-        }
-        context.coordinator.onDismantled = onDismantled
-        controller.onFirstAppearance = {
-            Task { @MainActor in
-                onAppeared?()
-            }
-        }
-        controller.completionWithItemsHandler = { _, _, _, _ in
-            _ = retainedShareArtifact
-            Task { @MainActor in
-                onFinished?()
-            }
-        }
-        return controller
+        sharePresentation.makeViewController()
     }
 
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {
-        context.coordinator.onDismantled = onDismantled
-    }
-
-    static func dismantleUIViewController(
-        _ uiViewController: UIActivityViewController,
-        coordinator: Coordinator
-    ) {
-        coordinator.onDismantled?()
-        coordinator.onDismantled = nil
-    }
-
-    @MainActor
-    static func activityItemsConfiguration(
-        for artifact: TAPNAPShareArtifact
-    ) -> UIActivityItemsConfiguration {
-        let provider = NSItemProvider()
-        provider.suggestedName = artifact.fileURL.lastPathComponent
-        for typeIdentifier in artifact.activityTypeIdentifiers {
-            provider.registerFileRepresentation(
-                forTypeIdentifier: typeIdentifier,
-                fileOptions: [],
-                visibility: .all
-            ) { completion in
-                // The source lives in an app-private, per-attempt directory.
-                // Register the default copy-backed representation so Files,
-                // AirDrop, and other out-of-process consumers receive a
-                // transport-owned copy instead of trying to open that private
-                // URL in place. Capturing the artifact keeps the source lease
-                // alive until Foundation has completed its copy.
-                _ = artifact
-                completion(artifact.fileURL, false, nil)
-                return nil
-            }
-        }
-        return UIActivityItemsConfiguration(itemProviders: [provider])
-    }
-
-    final class Coordinator {
-        var onDismantled: (() -> Void)?
-    }
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 @MainActor
 final class TAPShareActivityPresentation: Identifiable {
     let artifact: TAPNAPShareArtifact
-    let controller: TAPObservedActivityViewController
-    let constructionDuration: Duration
 
     var id: UUID { artifact.id }
 
-    init(
-        artifact: TAPNAPShareArtifact,
-        controller: TAPObservedActivityViewController,
-        constructionDuration: Duration
-    ) {
+    init(artifact: TAPNAPShareArtifact) {
         self.artifact = artifact
-        self.controller = controller
-        self.constructionDuration = constructionDuration
     }
 
-    static func prepare(for artifact: TAPNAPShareArtifact) -> Self {
+    func makeViewController() -> TAPShareActivityViewController {
         let clock = ContinuousClock()
         let startedAt = clock.now
-        let controller = TAPObservedActivityViewController(
-            activityItemsConfiguration: VerificationExportActivityView
-                .activityItemsConfiguration(for: artifact)
+        let controller = TAPShareActivityViewController(
+            artifact: artifact,
+            activityItems: Self.activityItems(for: artifact)
         )
         let duration = startedAt.duration(to: clock.now)
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.sharePackaging.info(
-            "tap_share_activity_controller_created kind=\(artifact.kind.rawValue, privacy: .public) durationBucket=\(Self.durationBucket(duration), privacy: .public) providerMode=typed"
+            "tap_share_activity_controller_created kind=\(self.artifact.kind.rawValue, privacy: .public) durationBucket=\(Self.durationBucket(duration), privacy: .public) transport=fileURL"
         )
         #endif
-        return Self(
-            artifact: artifact,
-            controller: controller,
-            constructionDuration: duration
-        )
+        return controller
+    }
+
+    /// The item binding's dismissal is the app-owned lifetime boundary for
+    /// this attempt. UIKit has already accepted or cancelled the activity by
+    /// then, so cleanup no longer depends on when SwiftUI releases a cached
+    /// controller instance.
+    func scheduleTemporaryDirectoryCleanup() {
+        let artifact = artifact
+        TAPShareArtifactCleanup.schedule {
+            artifact.removeTemporaryDirectory()
+        }
+    }
+
+    /// Every supported Share kind uses the same system-native file URL item.
+    /// UIKit and LaunchServices derive the declared type from the materialized
+    /// file and the app's exported UTI instead of an app-owned item provider.
+    static func activityItems(for artifact: TAPNAPShareArtifact) -> [Any] {
+        [artifact.fileURL]
     }
 
     nonisolated private static func durationBucket(_ duration: Duration) -> String {
@@ -193,9 +80,37 @@ final class TAPShareActivityPresentation: Identifiable {
     }
 }
 
-final class TAPObservedActivityViewController: UIActivityViewController {
-    var onFirstAppearance: (() -> Void)?
+@MainActor
+final class TAPShareActivityViewController: UIActivityViewController {
+    let artifact: TAPNAPShareArtifact
     private var hasReportedAppearance = false
+
+    init(
+        artifact: TAPNAPShareArtifact,
+        activityItems: [Any]
+    ) {
+        // Construction now happens only when SwiftUI begins presenting the
+        // system sheet. Retain the artifact through that system-owned UI.
+        self.artifact = artifact
+        super.init(
+            activityItems: activityItems,
+            applicationActivities: nil
+        )
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is unavailable")
+    }
+
+    deinit {
+        let artifact = artifact
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.sharePackaging.info(
+            "tap_share_activity_controller_released kind=\(artifact.kind.rawValue, privacy: .public)"
+        )
+        #endif
+    }
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
@@ -203,28 +118,21 @@ final class TAPObservedActivityViewController: UIActivityViewController {
             return
         }
         hasReportedAppearance = true
-        onFirstAppearance?()
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.sharePackaging.info(
+            "tap_share_activity_sheet_appeared kind=\(self.artifact.kind.rawValue, privacy: .public)"
+        )
+        #endif
     }
 }
 
-private extension TAPNAPShareArtifact {
-    var activityTypeIdentifiers: [String] {
-        switch kind {
-        case .tapnapPackage:
-            [
-                UTType.tapnapCapturePackage.identifier,
-                UTType.zip.identifier
-            ]
-        case .image:
-            [
-                UTType(filenameExtension: fileURL.pathExtension)?.identifier
-                    ?? UTType.image.identifier
-            ]
-        case .video:
-            [
-                UTType(filenameExtension: fileURL.pathExtension)?.identifier
-                    ?? UTType.movie.identifier
-            ]
-        }
+nonisolated enum TAPShareArtifactCleanup {
+    private static let queue = DispatchQueue(
+        label: "net.tapnap.tapcam.share-artifact-cleanup",
+        qos: .utility
+    )
+
+    static func schedule(_ cleanup: @escaping @Sendable () -> Void) {
+        queue.async(execute: cleanup)
     }
 }

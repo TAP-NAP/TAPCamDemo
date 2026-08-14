@@ -3,6 +3,7 @@
 //  TAPCamDemo
 //
 
+import Foundation
 import SwiftUI
 
 /// Stable Share leaf shared by photo, Live Photo, and TAP Video. The popover
@@ -44,27 +45,10 @@ struct DepthViewerShareControl: View {
                 onDismissalCompleted: coordinator.popoverDidDisappear
             )
         }
-        .sheet(
-            item: activityPresentationBinding,
-            onDismiss: coordinator.activitySheetDidDismiss
-        ) { presentation in
-            VerificationExportActivityView(
-                preparedSharePresentation: presentation,
-                onAppeared: {
-                    coordinator.activitySheetDidAppear(
-                        expectedArtifactID: presentation.id
-                    )
-                },
-                onFinished: {
-                    coordinator.finishActivityPresentation(
-                        expectedArtifactID: presentation.id
-                    )
-                },
-                onDismantled: {
-                    coordinator.activityControllerDidDismantle(
-                        expectedArtifactID: presentation.id
-                    )
-                }
+        .background {
+            DepthViewerSystemSharePresenter(
+                coordinator: coordinator,
+                expectedPresentationID: coordinator.activityPresentation?.id
             )
         }
         .onReceive(
@@ -98,17 +82,6 @@ struct DepthViewerShareControl: View {
         )
     }
 
-    private var activityPresentationBinding: Binding<TAPShareActivityPresentation?> {
-        Binding(
-            get: { coordinator.activityPresentation },
-            set: { presentation in
-                if presentation == nil {
-                    coordinator.activityBindingDidDismiss()
-                }
-            }
-        )
-    }
-
     private var accessibilityValue: String? {
         guard let progress = coordinator.visibleProgress else {
             return nil
@@ -139,6 +112,54 @@ struct DepthViewerShareControl: View {
         if interactionHapticsEnabled {
             feedback.optionSelected()
         }
+    }
+}
+
+/// Gives every system sheet an immutable attempt ID. The item binding is the
+/// primary end signal; SwiftUI `onDismiss` is an exact-ID, idempotent fallback.
+/// Neither path uses UIKit controller release as a resource-lifetime protocol.
+private struct DepthViewerSystemSharePresenter: View {
+    @ObservedObject var coordinator: DepthAnalysisShareCoordinator
+    let expectedPresentationID: UUID?
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .sheet(
+                item: presentationBinding,
+                onDismiss: activitySheetDidDismiss
+            ) { presentation in
+                VerificationExportActivityView(
+                    sharePresentation: presentation
+                )
+            }
+    }
+
+    private func activitySheetDidDismiss() {
+        guard let expectedPresentationID else {
+            return
+        }
+        coordinator.activityPresentationDidEnd(
+            expectedArtifactID: expectedPresentationID
+        )
+    }
+
+    private var presentationBinding: Binding<TAPShareActivityPresentation?> {
+        Binding(
+            get: {
+                guard coordinator.activityPresentation?.id == expectedPresentationID else {
+                    return nil
+                }
+                return coordinator.activityPresentation
+            },
+            set: { newPresentation in
+                if newPresentation == nil, let expectedPresentationID {
+                    coordinator.activityPresentationDidEnd(
+                        expectedArtifactID: expectedPresentationID
+                    )
+                }
+            }
+        )
     }
 }
 

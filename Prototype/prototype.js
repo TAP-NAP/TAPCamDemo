@@ -10,15 +10,13 @@
     resource: "localReady",
     credential: "verified",
     integrityFixture: "auto",
-    fixture: "slow",
+    fixture: "success",
     panel: "closed",
     progress: 0,
     selectedOption: null,
     attempt: 0,
-    attemptStartedAt: 0,
     timers: new Set(),
-    progressWasVisible: false,
-    progressVisibleAt: 0
+    systemActivityBoundaryReached: false
   };
 
   const shareControls = document.querySelector(".share-controls");
@@ -95,13 +93,16 @@
   const shareButton = byID("share-button");
   const popover = byID("share-popover");
   const options = byID("share-options");
-  const progressBar = byID("progress-bar");
-  const progressLabel = byID("progress-label");
   const resourceOverlay = byID("resource-overlay");
   const resolveIntegrityButton = byID("resolve-integrity-button");
 
-  const policy = Object.freeze({ revealDelayMs: 50, minimumVisibleMs: 400 });
-  const fixtureDurations = Object.freeze({ fast: 35, threshold: 120, slow: 1400, failure: 720 });
+  const policy = Object.freeze({
+    progressPresentation: "immediate",
+    minimumVisibleHold: false,
+    payloadReadyBehavior: "closeAppPopover",
+    systemActivitySimulation: false
+  });
+  const fixtureDurations = Object.freeze({ success: 1400, failure: 720 });
   const integrityFixtureDurations = Object.freeze({ auto: 650 });
   const readyResources = new Set(["localReady", "iCloudReady", "privateQueue"]);
 
@@ -127,7 +128,8 @@
     document.documentElement.dataset.credential = state.credential;
     document.documentElement.dataset.integrityFixture = state.integrityFixture;
     document.documentElement.dataset.fixture = state.fixture;
-    document.documentElement.dataset.progressVisible = String(state.progressWasVisible);
+    document.documentElement.dataset.progressVisible = String(state.panel === "preparing");
+    document.documentElement.dataset.systemActivityBoundary = state.systemActivityBoundaryReached ? "reached" : "notReached";
     window.__tapSharePrototype = {
       snapshot: () => ({ ...state, timers: state.timers.size, policy }),
       policy
@@ -136,22 +138,21 @@
 
   function showPanel(name) {
     state.panel = name;
+    const visiblePanel = name === "preparing" ? "selector" : name;
     popover.hidden = name === "closed";
     shareButton.setAttribute("aria-expanded", String(name !== "closed"));
-    for (const panel of panels) panel.hidden = panel.dataset.panel !== name;
+    for (const panel of panels) panel.hidden = panel.dataset.panel !== visiblePanel;
     shareButton.classList.toggle("is-preparing", name === "preparing");
     resolveIntegrityButton.disabled = name !== "integrityChecking";
-    if (name === "boundary" && state.attemptStartedAt > 0) {
-      document.documentElement.dataset.boundaryElapsedMs = String(Math.round(performance.now() - state.attemptStartedAt));
-    }
     exposeState();
   }
 
   function setProgress(value) {
     state.progress = Math.max(state.progress, Math.min(1, Math.max(0, value)));
-    progressBar.value = state.progress;
-    progressLabel.value = `${Math.round(state.progress * 100)}%`;
-    progressLabel.textContent = progressLabel.value;
+    const progressBar = byID("progress-bar");
+    if (progressBar) {
+      progressBar.value = state.progress;
+    }
     exposeState();
   }
 
@@ -233,7 +234,7 @@
     ];
   }
 
-  function renderSelector() {
+  function renderSelector({ preservePanel = false } = {}) {
     const credentialMap = {
       verified: ["已验证", "check-circle.svg", "var(--green)"],
       retryPending: ["待重试", "arrows-clockwise.svg", "var(--orange)"],
@@ -244,18 +245,27 @@
     byID("credential-icon").style.setProperty("--icon", `url(assets/icons/${icon})`);
     byID("credential-icon").style.color = tint;
     byID("credential-label").style.color = tint;
+    const preparing = state.panel === "preparing";
     options.replaceChildren(...optionRows().map((option) => {
+      const selected = preparing && option.id === state.selectedOption;
+      const row = document.createElement("div");
+      row.className = `share-option-row${selected ? " is-preparing" : ""}`;
       const button = document.createElement("button");
       button.type = "button";
       button.className = "share-option";
-      button.disabled = Boolean(option.disabled);
+      button.disabled = preparing || Boolean(option.disabled);
       button.dataset.option = option.id;
-      button.innerHTML = `<img src="assets/icons/${option.icon}" alt=""><span><strong>${option.title}</strong><small>${option.subtitle}</small></span><span class="badge">${option.badge}</span>`;
+      button.setAttribute("aria-busy", String(selected));
+      const subtitleContent = selected
+        ? `<progress id="progress-bar" class="subtitle-progress-track" max="1" value="${state.progress}" aria-label="${option.title}准备进度"></progress>`
+        : option.subtitle;
+      button.innerHTML = `<img src="assets/icons/${option.icon}" alt=""><span class="share-option-copy"><strong>${option.title}</strong><small>${subtitleContent}</small></span><span class="badge">${option.badge}</span>`;
       if (!button.disabled) button.addEventListener("click", () => prepare(option.id));
-      return button;
+      row.append(button);
+      return row;
     }));
     byID("media-chip").textContent = state.media === "livePhoto" ? "LIVE" : state.media.toUpperCase();
-    showPanel("selector");
+    if (!preservePanel) showPanel("selector");
   }
 
   function resolveIntegrity(attempt = state.attempt) {
@@ -276,46 +286,29 @@
 
   function complete(attempt) {
     if (attempt !== state.attempt) return;
-    if (state.progressWasVisible) {
-      setProgress(1);
-      const elapsed = performance.now() - state.progressVisibleAt;
-      later(() => attempt === state.attempt && showPanel("boundary"), Math.max(0, policy.minimumVisibleMs - elapsed));
-    } else {
-      showPanel("boundary");
-    }
+    setProgress(1);
+    clearTimers();
+    state.attempt += 1;
+    state.selectedOption = null;
+    state.systemActivityBoundaryReached = true;
+    showPanel("closed");
   }
 
   function prepare(option) {
     cancelAttempt(false);
     const attempt = ++state.attempt;
-    state.attemptStartedAt = performance.now();
-    document.documentElement.dataset.progressRevealElapsedMs = "";
-    document.documentElement.dataset.boundaryElapsedMs = "";
     state.selectedOption = option;
     state.progress = 0;
-    state.progressWasVisible = false;
-    progressBar.value = 0;
-    progressLabel.value = "0%";
-    progressLabel.textContent = "0%";
-    const packageOption = option === "tapnapPackage" || option === "videoPackage";
-    byID("preparing-title").textContent = packageOption ? "正在准备 TAPNAP 包" : state.media === "video" ? "正在准备视频" : "正在准备图片";
-    byID("preparing-subtitle").textContent = packageOption ? "正在打包完整验证资料" : "正在复制所选原始媒体";
+    state.systemActivityBoundaryReached = false;
 
-    later(() => {
-      if (attempt !== state.attempt || state.fixture === "fast") return;
-      state.progressWasVisible = true;
-      state.progressVisibleAt = performance.now();
-      document.documentElement.dataset.progressRevealElapsedMs = String(Math.round(state.progressVisibleAt - state.attemptStartedAt));
-      showPanel("preparing");
-      setProgress(.08);
-    }, policy.revealDelayMs);
+    showPanel("preparing");
+    renderSelector({ preservePanel: true });
+    setProgress(0);
 
     const duration = fixtureDurations[state.fixture];
-    if (state.fixture !== "fast") {
-      [0.24, 0.49, 0.71, 0.9].forEach((progress, index) => {
-        later(() => attempt === state.attempt && state.panel === "preparing" && setProgress(progress), duration * ((index + 1) / 5));
-      });
-    }
+    [0.12, 0.32, 0.58, 0.82].forEach((progress, index) => {
+      later(() => attempt === state.attempt && state.panel === "preparing" && setProgress(progress), duration * ((index + 1) / 5));
+    });
     later(() => {
       if (attempt !== state.attempt) return;
       if (state.fixture === "failure") {
@@ -331,8 +324,8 @@
     clearTimers();
     state.attempt += 1;
     state.progress = 0;
-    state.progressWasVisible = false;
     state.selectedOption = null;
+    state.systemActivityBoundaryReached = false;
     shareButton.classList.remove("is-preparing");
     if (close) showPanel("closed");
   }
@@ -356,10 +349,8 @@
     exposeState();
   }));
   resolveIntegrityButton.addEventListener("click", () => resolveIntegrity());
-  byID("cancel-button").addEventListener("click", () => { cancelAttempt(false); renderSelector(); });
   byID("failure-cancel").addEventListener("click", () => { cancelAttempt(false); renderSelector(); });
   byID("retry-button").addEventListener("click", () => state.selectedOption && prepare(state.selectedOption));
-  byID("return-button").addEventListener("click", () => { cancelAttempt(false); renderSelector(); });
 
   document.querySelectorAll("[data-media]").forEach((button) => button.addEventListener("click", () => {
     state.media = button.dataset.media;

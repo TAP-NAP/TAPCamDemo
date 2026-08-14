@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "revision": "TAP-0081-r2-TAP-0009-r1-candidate",
+  "revision": "TAP-0081-r3-TAP-0009-r1-candidate",
   "baseRevision": "TAP-0081-r1",
   "kind": "lightweight-interactive-visual-contract",
   "implementation": "static-html-css-javascript",
@@ -39,11 +39,14 @@
   "slices": {
     "tapShare": {
       "taskID": "TAP-0081",
-      "revision": "TAP-0081-r2-candidate",
+      "revision": "TAP-0081-r3-candidate",
       "stateFixture": "states/tap-share-local-integrity.json",
       "approvalStatus": "ownerApproved",
-      "approvedAt": "2026-08-13",
-      "ownerStatement": "已确认没有问题 请继续实施 Swift UI"
+      "approvedAt": "2026-08-14",
+      "ownerStatement": "对的 现在原型是我想要的",
+      "supersedesApprovedRevision": "TAP-0081-r2-candidate",
+      "ownerDirectionRecordedAt": "2026-08-14",
+      "ownerDirection": "选择列表及全部几何保持不变；点击 TAPNAP 包或其他已实现的分享类型后，在完全相同的 subtitle slot 内用极细的 determinate progress track 替换副标题文字，标题、图标、推荐 badge、行高、popover 尺寸和 sibling 位置不动，不显示取消或百分比；其他行保持可见但禁用；资料就绪后应用内 popover 直接结束。"
     },
     "firstInstallResourceInitialization": {
       "taskID": "TAP-0009",
@@ -68,26 +71,44 @@
     "anchoredSelection",
     "failedIntegrityTapnapDisabledOrdinaryMediaWarned",
     "needsRetryFromPrivateQueueOnly",
-    "hiddenFastPreparation0To50ms",
-    "visiblePreparationAfter50ms",
-    "thresholdCompletion120msWith400msMinimumVisibleHold",
+    "progressReplacesSelectedOptionSubtitleTextWithinSameSlot",
+    "nonSelectedShareOptionsRemainVisibleButDisabled",
+    "noIndependentPreparationPanel",
+    "preparationGeometryIdenticalToSelection",
     "monotonicProgress",
-    "completed100PercentMinimum400ms",
+    "payloadReadyEndsAppPopover",
     "cancelToSelection",
     "recoverableFailure",
     "retrySameOption",
-    "beforeSystemActivityBoundary",
-    "afterSystemActivityDismissal"
+    "systemActivityControllerAsDocumentedBoundaryOnly"
   ],
   "policy": {
-    "progressRevealDelayMs": 50,
-    "minimumVisibleDurationMs": 400,
+    "preparationProgressPresentation": "immediateAfterImplementedOptionSelection",
+    "preparationProgressPlacement": "replacesSubtitleTextWithinSameSlot",
+    "nonSelectedOptionBehaviorDuringPreparation": "visibleDisabled",
+    "preparationProgressPercentageVisible": false,
+    "preparationCancelVisible": false,
+    "preparationGeometryMutation": false,
+    "artificialProgressRevealDelay": false,
+    "minimumProgressHold": false,
+    "payloadReadyBehavior": "endAppOwnedPopover",
+    "systemActivitySimulation": false,
     "persistentShareCache": false,
     "packagePreGeneration": false,
     "backendVerifyDuringShare": false,
     "appAttestVerifyDuringShare": false,
     "needsRetrySource": "pendingCaptureQueueOnly",
     "missingExportedQueueRecordIsFailure": false
+  },
+  "prototypeGeometryValidation": {
+    "measuredAt": "2026-08-14",
+    "method": "Chrome getBoundingClientRect before selection and during determinate preparation",
+    "compared": ["popover", "all four row wrappers", "all four row buttons", "all icons", "all titles", "all subtitle slots", "all badges"],
+    "tapnapPackageBeforeEqualsPreparing": true,
+    "shareImageBeforeEqualsPreparing": true,
+    "percentageTextPresent": false,
+    "cancelControlPresent": false,
+    "source": "design-qa.md"
   },
   "geometryInheritance": {
     "baseRevision": "TAP-0081-r1",
@@ -96,7 +117,7 @@
       "Viewer toolbar and RAW / 2D / 3D capsule",
       "Share control size and position",
       "anchored popover left, bottom, width, radius, and caret",
-      "selection and preparation row geometry"
+      "selection rows, titles, icons, badges, subtitle-slot dimensions, row heights, popover dimensions, and sibling positions; progress replaces only the selected subtitle text within that same slot"
     ]
   },
   "viewerToolbarVisualSpec": {
@@ -175,6 +196,7 @@
   ],
   "deliberateNativeDifferences": [
     "The Web prototype does not imitate UIActivityViewController, AirDrop targets, or third-party destinations.",
+    "When payload preparation reaches ready, the Web prototype ends the app-owned popover immediately; the subsequently presented system activity controller is a documented text boundary rather than another simulated screen.",
     "The Viewer toolbar uses the exact recorded share-network and trash template vectors; other HTML icons remain optical analogues whose recorded SF Symbol identities apply only to their native rows.",
     "The generic review frame is a viewport aid and not physical-device evidence.",
     "The iCloud progress and local-integrity fixtures simulate visible states only; they do not download, hash, parse proof data, or establish a credential verdict.",
@@ -184,9 +206,15 @@
   "approval": {
     "status": "ownerApproved",
     "owner": "product owner",
-    "approvedAt": "2026-08-13",
-    "approvedRevision": "TAP-0081-r2-TAP-0009-r1-candidate",
-    "candidateRevision": "TAP-0081-r2-TAP-0009-r1-candidate",
+    "approvedAt": "2026-08-14",
+    "approvedRevision": "TAP-0081-r3-TAP-0009-r1-candidate",
+    "ownerStatement": "对的 现在原型是我想要的",
+    "candidateRevision": "TAP-0081-r3-TAP-0009-r1-candidate",
+    "candidateDirection": {
+      "status": "ownerApproved",
+      "recordedAt": "2026-08-14",
+      "scope": "The selector and all geometry stay unchanged; only the selected option's subtitle text is replaced by a thin determinate track inside the exact same subtitle slot, with no percentage or cancel UI; title, icon, badge, row and popover geometry remain fixed, all other rows remain visible but disabled, no independent preparation page exists, the app popover ends at payload readiness, and no post-ready system page is simulated."
+    },
     "behaviorAuthority": {
       "status": "ownerApproved",
       "recordedAt": "2026-08-13",
@@ -198,7 +226,8 @@
       "approvedAt": "2026-08-12",
       "ownerStatement": "我觉得 web 模拟流程是合理的 请开始实现"
     },
-    "sourceCommit": "70e8b60d4e20486a6d4847d726b393a50e22c7ba",
-    "sourceCommitNote": "This is the first repository commit containing the owner-approved shared prototype foundation and both exact Task-scoped slices."
+    "sourceCommit": null,
+    "sourceCommitNote": "The exact r3 source is owner-approved but intentionally remains uncommitted until the linked native candidate passes attended device acceptance.",
+    "inheritedFoundationCommit": "70e8b60d4e20486a6d4847d726b393a50e22c7ba"
   }
 }

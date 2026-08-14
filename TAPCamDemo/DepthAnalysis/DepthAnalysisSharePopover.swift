@@ -96,7 +96,6 @@ struct DepthAnalysisSharePopover: View {
     private enum ContentState {
         case resolvingIntegrity
         case selection
-        case preparation
         case failure
     }
 
@@ -108,15 +107,9 @@ struct DepthAnalysisSharePopover: View {
         case .idle:
             return .selection
         case .preparing:
-            return coordinator.isPreparationProgressVisible
-                ? .preparation
-                : .selection
+            return .selection
         case .failed:
             return .failure
-        case .ready:
-            return coordinator.isPreparationProgressVisible
-                ? .preparation
-                : .selection
         }
     }
 
@@ -127,8 +120,6 @@ struct DepthAnalysisSharePopover: View {
             integrityResolvingContent
         case .selection:
             selectionContent
-        case .preparation:
-            preparationContent
         case .failure:
             failureContent
         }
@@ -310,56 +301,6 @@ struct DepthAnalysisSharePopover: View {
         }
     }
 
-    private var preparationContent: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 13) {
-                Image(systemName: preparingOption.systemImage)
-                    .font(.title2.weight(.medium))
-                    .frame(width: 28)
-
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(String(localized: preparingOption.titleKey))
-                        .font(.headline)
-                        .accessibilityIdentifier("tap.share.progress.phase")
-                    Text(String(localized: preparingOption.subtitleKey))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            HStack(spacing: 10) {
-                ProgressView(value: coordinator.visibleProgress ?? 0)
-                    .tint(.blue)
-                    .frame(maxWidth: .infinity)
-                Text(
-                    coordinator.visibleProgress ?? 0,
-                    format: .percent.precision(.fractionLength(0))
-                )
-                .font(.subheadline.monospacedDigit())
-                .foregroundStyle(.secondary)
-            }
-            .padding(.leading, 41)
-            .accessibilityIdentifier("tap.share.progress")
-
-            Divider()
-
-            HStack {
-                Text(String(localized: "share.preparing.keepOpen"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 8)
-                Button("Cancel") {
-                    coordinator.cancelPreparation()
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.blue)
-                .accessibilityIdentifier("tap.share.cancel")
-            }
-        }
-        .padding(16)
-        .accessibilityIdentifier("tap.share.preparation")
-    }
-
     private var failureContent: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 13) {
@@ -398,17 +339,6 @@ struct DepthAnalysisSharePopover: View {
         .accessibilityIdentifier("tap.share.failure")
     }
 
-    private var preparingOption: DepthAnalysisShareOption {
-        switch coordinator.preparationState {
-        case .preparing(let preparingOption, _):
-            preparingOption
-        case .ready(let readyOption):
-            readyOption
-        case .idle, .failed:
-            .image
-        }
-    }
-
     private func availableOptionRow(
         option: DepthAnalysisShareOption,
         titleKey: String.LocalizationValue,
@@ -419,7 +349,8 @@ struct DepthAnalysisSharePopover: View {
         canPrepare: Bool,
         identifier: String
     ) -> some View {
-        Button {
+        let progress = coordinator.preparationProgress(for: option)
+        return Button {
             onOptionSelected()
             coordinator.prepare(option)
         } label: {
@@ -427,7 +358,8 @@ struct DepthAnalysisSharePopover: View {
                 titleKey: titleKey,
                 subtitleKey: subtitleKey,
                 systemImage: systemImage,
-                badgeKey: badgeKey
+                badgeKey: badgeKey,
+                progress: progress
             )
         }
         .buttonStyle(StableShareOptionButtonStyle())
@@ -464,6 +396,7 @@ struct DepthAnalysisSharePopover: View {
         subtitleKey: String.LocalizationValue,
         systemImage: String,
         badgeKey: String.LocalizationValue?,
+        progress: Double? = nil,
         drawsDivider: Bool = true
     ) -> some View {
         HStack(spacing: 10) {
@@ -481,10 +414,24 @@ struct DepthAnalysisSharePopover: View {
                             .foregroundStyle(.blue)
                     }
                 }
-                Text(String(localized: subtitleKey))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                ZStack(alignment: .leading) {
+                    Text(String(localized: subtitleKey))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .opacity(progress == nil ? 1 : 0)
+                        .accessibilityHidden(progress != nil)
+
+                    ProgressView(value: progress ?? 0)
+                        .progressViewStyle(.linear)
+                        .tint(.blue)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 2)
+                        .opacity(progress == nil ? 0 : 1)
+                        .accessibilityHidden(progress == nil)
+                        .accessibilityIdentifier("tap.share.progress")
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             Spacer(minLength: 0)
         }
@@ -505,39 +452,6 @@ struct DepthAnalysisSharePopover: View {
 private struct StableShareOptionButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-    }
-}
-
-private extension DepthAnalysisShareOption {
-    var systemImage: String {
-        switch self {
-        case .tapnapPackage:
-            "shippingbox"
-        case .image:
-            "photo.on.rectangle"
-        case .video:
-            "video"
-        }
-    }
-
-    var titleKey: String.LocalizationValue {
-        switch self {
-        case .tapnapPackage:
-            "share.preparing.package.title"
-        case .image:
-            "share.preparing.image.title"
-        case .video:
-            "share.preparing.video.title"
-        }
-    }
-
-    var subtitleKey: String.LocalizationValue {
-        switch self {
-        case .tapnapPackage:
-            "share.preparing.package.subtitle"
-        case .image, .video:
-            "share.preparing.media.subtitle"
-        }
     }
 }
 

@@ -1,7 +1,7 @@
 # TAPCam UI Prototype Contract
 
 - Status: canonical UI design-to-implementation workflow
-- Last updated: 2026-08-12
+- Last updated: 2026-08-14
 
 ## 1. Two Complementary Sources Of Truth
 
@@ -58,6 +58,12 @@ For every covered state, the prototype may define:
 The prototype should let the product owner see relationships among components
 and switch between the states needed by its Task. It may use deterministic
 fixtures to demonstrate those states.
+
+The current runtime product is iPhone-only, so repository prototype and native
+parity requirements cover only the iPhone viewports explicitly approved by
+their Task. iPad, Mac, and Apple Vision Pro layouts are not implicit responsive
+requirements. Adding one of those platform families requires a separate
+owner-approved product and prototype scope.
 
 This makes the prototype an executable visual constraint rather than a second
 product implementation. Text remains authoritative for runtime facts, state
@@ -179,9 +185,10 @@ continues.
 
 App Store media work is not active merely because a prototype exists. It remains
 an Inbox decision on the Project Board. A future Store Task must separately own
-the 6.9-inch and, while the target remains Universal, iPad capture matrix,
-device-frame decision, asset rights, locale order, export validation, and
-submit-ready files.
+the supported iPhone display-size capture matrix, device-frame decision, asset
+rights, locale order, export validation, and submit-ready files. App Store
+media work must not silently expand the current iPhone-only runtime target;
+iPad or Mac product support requires its own product decision and Task.
 
 Real Preview pixels, TAP Library thumbnails, 3D output, and credential-state
 marketing evidence must come from a fixed runtime build and documented asset

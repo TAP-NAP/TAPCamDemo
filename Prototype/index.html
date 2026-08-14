@@ -77,18 +77,16 @@
         </fieldset>
 
         <fieldset>
-          <legend>Preparation fixture</legend>
+          <legend>Preparation result</legend>
           <div class="fixture-grid" id="fixture-control">
-            <button type="button" data-fixture="fast">Fast · 35 ms</button>
-            <button type="button" data-fixture="threshold">Threshold · 120 ms</button>
-            <button type="button" data-fixture="slow" aria-pressed="true">Slow · 1.4 s</button>
+            <button type="button" data-fixture="success" aria-pressed="true">Success · observable</button>
             <button type="button" data-fixture="failure">Failure</button>
           </div>
         </fieldset>
 
         <div class="contract-notes">
-          <p><strong>Fast:</strong> no progress UI is inserted within 50 ms.</p>
-          <p><strong>Visible:</strong> once revealed, progress remains readable for at least 400 ms and never moves backwards.</p>
+          <p><strong>Immediate:</strong> 选择任一已实现的分享类型后，细进度条在完全相同的副标题槽内替换原文字；标题、图标、推荐标记和全部布局不动，其他选项保持可见但暂时禁用。</p>
+          <p><strong>System boundary:</strong> 资料就绪后应用内弹窗直接结束。iOS 系统分享面板只作为文案边界，本原型不伪造。</p>
         </div>
         </div>
       </section>
@@ -155,25 +153,6 @@
                 <div id="share-options" class="share-options"></div>
               </div>
 
-              <div class="popover-state preparing-state" data-panel="preparing" hidden>
-                <header class="preparing-heading">
-                  <span class="icon-mask package-mask" aria-hidden="true"></span>
-                  <div>
-                    <h2 id="preparing-title">正在准备 TAPNAP 包</h2>
-                    <p id="preparing-subtitle">正在打包完整验证资料</p>
-                  </div>
-                </header>
-                <div class="progress-row">
-                  <progress id="progress-bar" max="1" value="0"></progress>
-                  <output id="progress-label">0%</output>
-                </div>
-                <div class="divider"></div>
-                <div class="preparing-footer">
-                  <span>请保持 TAP-NAP 打开</span>
-                  <button type="button" id="cancel-button">取消</button>
-                </div>
-              </div>
-
               <div class="popover-state failure-state" data-panel="failure" hidden>
                 <header class="preparing-heading">
                   <span class="icon-mask warning-mask" aria-hidden="true"></span>
@@ -188,16 +167,6 @@
                 </div>
               </div>
 
-              <div class="popover-state boundary-state" data-panel="boundary" hidden>
-                <header class="preparing-heading">
-                  <span class="icon-mask share-mask" aria-hidden="true"></span>
-                  <div>
-                    <h2>资料已准备完成</h2>
-                    <p>下一步由 iOS 系统分享面板接管。此原型不伪造 AirDrop 或第三方 App。</p>
-                  </div>
-                </header>
-                <button type="button" id="return-button" class="primary-action">模拟系统页关闭</button>
-              </div>
             </section>
 
             <div class="viewer-toolbar" aria-label="Viewer toolbar">
@@ -222,6 +191,6 @@
         </div>
       </section>
     </main>
-    <script src="prototype.js"></script>
+    <script src="prototype.js?revision=tap-0081-r3"></script>
   </body>
 </html>
