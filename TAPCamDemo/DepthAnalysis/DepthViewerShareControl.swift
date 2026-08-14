@@ -44,28 +44,12 @@ struct DepthViewerShareControl: View {
                 onDismissalCompleted: coordinator.popoverDidDisappear
             )
         }
-        .sheet(
-            item: activityPresentationBinding,
-            onDismiss: coordinator.activitySheetDidDismiss
-        ) { presentation in
-            VerificationExportActivityView(
-                preparedSharePresentation: presentation,
-                onAppeared: {
-                    coordinator.activitySheetDidAppear(
-                        expectedArtifactID: presentation.id
-                    )
-                },
-                onFinished: {
-                    coordinator.finishActivityPresentation(
-                        expectedArtifactID: presentation.id
-                    )
-                },
-                onDismantled: {
-                    coordinator.activityControllerDidDismantle(
-                        expectedArtifactID: presentation.id
-                    )
-                }
+        .background {
+            DepthViewerSystemSharePresenter(
+                coordinator: coordinator,
+                presentation: coordinator.activityPresentation
             )
+            .id(coordinator.activityPresentation?.id)
         }
         .onReceive(
             NotificationCenter.default.publisher(for: .tapLibraryDidChange)
@@ -98,17 +82,6 @@ struct DepthViewerShareControl: View {
         )
     }
 
-    private var activityPresentationBinding: Binding<TAPShareActivityPresentation?> {
-        Binding(
-            get: { coordinator.activityPresentation },
-            set: { presentation in
-                if presentation == nil {
-                    coordinator.activityBindingDidDismiss()
-                }
-            }
-        )
-    }
-
     private var accessibilityValue: String? {
         guard let progress = coordinator.visibleProgress else {
             return nil
@@ -138,6 +111,59 @@ struct DepthViewerShareControl: View {
     private func selectionFeedback() {
         if interactionHapticsEnabled {
             feedback.optionSelected()
+        }
+    }
+}
+
+/// Gives every system sheet an immutable attempt ID. SwiftUI may deliver the
+/// old sheet's binding and dismissal callbacks after a newer attempt begins;
+/// routing through this item-scoped presenter lets the coordinator reject
+/// those stale callbacks instead of closing the new sheet.
+private struct DepthViewerSystemSharePresenter: View {
+    @ObservedObject var coordinator: DepthAnalysisShareCoordinator
+    let presentation: TAPShareActivityPresentation?
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .sheet(
+                item: presentationBinding,
+                onDismiss: sheetDidDismiss
+            ) { presentation in
+                VerificationExportActivityView(
+                    preparedSharePresentation: presentation,
+                    onAppeared: { [presentationID = presentation.id] in
+                        coordinator.activitySheetDidAppear(
+                            expectedArtifactID: presentationID
+                        )
+                    },
+                    onDismantled: { [presentationID = presentation.id] in
+                        coordinator.activityControllerDidDismantle(
+                            expectedArtifactID: presentationID
+                        )
+                    }
+                )
+            }
+    }
+
+    private var presentationBinding: Binding<TAPShareActivityPresentation?> {
+        Binding(
+            get: { presentation },
+            set: { newPresentation in
+                if newPresentation == nil, let presentation {
+                    coordinator.activityBindingDidDismiss(
+                        expectedArtifactID: presentation.id
+                    )
+                }
+            }
+        )
+    }
+
+    private func sheetDidDismiss() {
+        if let presentation {
+            coordinator.activitySheetDidDismiss(
+                expectedArtifactID: presentation.id
+            )
         }
     }
 }

@@ -152,7 +152,6 @@ class DepthAnalysisShareCoordinator: ObservableObject {
     private var preparationID: UUID?
     private var preparationTask: Task<Void, Never>?
     private var progressRevealTask: Task<Void, Never>?
-    private var activityFinishTask: Task<Void, Never>?
     private var activityAppearanceWatchdogTask: Task<Void, Never>?
     private var activityDismantleWatchdogTask: Task<Void, Never>?
     private var refreshTask: Task<Void, Never>?
@@ -165,7 +164,6 @@ class DepthAnalysisShareCoordinator: ObservableObject {
     private var activeActivityLease: TAPNAPShareArtifact?
     private var activitySheetArtifactID: UUID?
     private var activitySheetHasAppeared = false
-    private var activitySheetHasDismissed = false
 
     init(
         subject: DepthAnalysisShareSubject? = nil,
@@ -348,12 +346,9 @@ class DepthAnalysisShareCoordinator: ObservableObject {
         if let presentation = pendingHandoffPresentation {
             let payload = presentation.artifact
             pendingHandoffPresentation = nil
-            activityFinishTask?.cancel()
-            activityFinishTask = nil
             activeActivityLease = payload
             activitySheetArtifactID = payload.id
             activitySheetHasAppeared = false
-            activitySheetHasDismissed = false
             activityPresentation = presentation
             scheduleActivityAppearanceWatchdog(expectedArtifactID: payload.id)
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
@@ -584,77 +579,33 @@ class DepthAnalysisShareCoordinator: ObservableObject {
         prepare(option)
     }
 
-    func finishActivityPresentation(expectedArtifactID: UUID) {
-        guard activitySheetArtifactID == expectedArtifactID,
-              activeActivityLease?.id == expectedArtifactID,
-              activityFinishTask == nil else {
-            return
-        }
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.sharePackaging.info(
-            "tap_share_activity_completed kind=\(self.activeActivityLease?.kind.rawValue ?? "none", privacy: .public)"
-        )
-        #endif
-        if let remaining = remainingMinimumProgressVisibilityDuration() {
-            activityFinishTask = Task { @MainActor [weak self] in
-                do {
-                    try await Task.sleep(for: remaining)
-                } catch {
-                    guard let self,
-                          self.activitySheetArtifactID == expectedArtifactID else {
-                        return
-                    }
-                    self.activityFinishTask = nil
-                    return
-                }
-                guard let self,
-                      self.activitySheetArtifactID == expectedArtifactID,
-                      self.activeActivityLease?.id == expectedArtifactID else {
-                    return
-                }
-                self.activityFinishTask = nil
-                self.completeActivityPresentation(
-                    expectedArtifactID: expectedArtifactID
-                )
-            }
-            return
-        }
-        completeActivityPresentation(expectedArtifactID: expectedArtifactID)
-    }
-
-    private func completeActivityPresentation(expectedArtifactID: UUID) {
+    private func endActivityPresentationAfterSystemDismissal(
+        expectedArtifactID: UUID
+    ) {
         guard activitySheetArtifactID == expectedArtifactID,
               activeActivityLease?.id == expectedArtifactID else {
             return
         }
-        // The system controller is the final owner of this payload. A library
-        // refresh can intentionally release our ordinary retained reference
-        // while the activity sheet is open, so capture the active lease before
-        // clearing the binding and dispose it after completion, or after the
-        // authoritative sheet-dismissal fallback.
-        let completedPayload = activeActivityLease ?? activityPresentation?.artifact
+        // Ending app-owned presentation state must not explicitly delete a
+        // file already handed to the system. The activity controller retains
+        // the artifact until UIKit releases the controller; the artifact's
+        // last-owner lease then performs idempotent cleanup.
         activityPresentation = nil
         activeActivityLease = nil
+        activitySheetArtifactID = nil
         activityAppearanceWatchdogTask?.cancel()
         activityAppearanceWatchdogTask = nil
         activityDismantleWatchdogTask?.cancel()
         activityDismantleWatchdogTask = nil
         discardPendingHandoff()
-        completedPayload?.removeTemporaryDirectory()
         resetPresentationState()
-        if activitySheetHasDismissed,
-           activitySheetArtifactID == expectedArtifactID {
-            activitySheetArtifactID = nil
-            activitySheetHasDismissed = false
-        }
     }
 
-    /// `UIActivityViewController` normally invokes its completion handler, but
-    /// SwiftUI dismissal is the authoritative fallback for presentation setup
-    /// failures and system-driven dismissal. The stored ID cannot be replaced
-    /// by a new attempt while this sheet lifecycle remains active.
-    func activitySheetDidDismiss() {
-        guard let expectedArtifactID = activitySheetArtifactID else {
+    /// The system/user dismissal, not destination completion, ends this
+    /// app-owned lifecycle. The immutable attempt ID rejects late callbacks
+    /// from an older activity controller.
+    func activitySheetDidDismiss(expectedArtifactID: UUID) {
+        guard activitySheetArtifactID == expectedArtifactID else {
             return
         }
         let appeared = activitySheetHasAppeared
@@ -664,25 +615,19 @@ class DepthAnalysisShareCoordinator: ObservableObject {
             "tap_share_activity_sheet_dismissed kind=\(kind, privacy: .public) appeared=\(appeared, privacy: .public)"
         )
         #endif
-        activitySheetHasDismissed = true
-        finishActivityPresentation(expectedArtifactID: expectedArtifactID)
-        if activeActivityLease == nil,
-           activityFinishTask == nil,
-           activitySheetArtifactID == expectedArtifactID {
-            activitySheetArtifactID = nil
-            activitySheetHasDismissed = false
-        }
-        activityAppearanceWatchdogTask?.cancel()
-        activityAppearanceWatchdogTask = nil
-        activityDismantleWatchdogTask?.cancel()
-        activityDismantleWatchdogTask = nil
-        activitySheetHasAppeared = false
+        endActivityPresentationAfterSystemDismissal(
+            expectedArtifactID: expectedArtifactID
+        )
     }
 
     /// SwiftUI may clear the item binding before its dismissal callback. Stop
     /// advertising a presented sheet without releasing the system controller's
-    /// retained file lease; `onDismiss` or the activity completion owns cleanup.
-    func activityBindingDidDismiss() {
+    /// retained file lease; item-scoped dismissal/dismantle owns state cleanup.
+    func activityBindingDidDismiss(expectedArtifactID: UUID) {
+        guard activitySheetArtifactID == expectedArtifactID,
+              activityPresentation?.id == expectedArtifactID else {
+            return
+        }
         activityPresentation = nil
     }
 
@@ -695,8 +640,9 @@ class DepthAnalysisShareCoordinator: ObservableObject {
             "tap_share_activity_controller_dismantled kind=\(self.activeActivityLease?.kind.rawValue ?? "released", privacy: .public)"
         )
         #endif
-        activitySheetHasDismissed = true
-        finishActivityPresentation(expectedArtifactID: expectedArtifactID)
+        endActivityPresentationAfterSystemDismissal(
+            expectedArtifactID: expectedArtifactID
+        )
     }
 
     func dismissPresentation() {
@@ -1059,15 +1005,6 @@ class DepthAnalysisShareCoordinator: ObservableObject {
         }
     }
 
-    private func remainingMinimumProgressVisibilityDuration() -> Duration? {
-        guard let progressVisibleAt else {
-            return nil
-        }
-        let elapsed = progressVisibleAt.duration(to: continuousClock.now)
-        let remaining = progressPresentationPolicy.minimumVisibleDuration - elapsed
-        return remaining > .zero ? remaining : nil
-    }
-
     private func resetProgressPresentation() {
         progressRevealTask?.cancel()
         progressRevealTask = nil
@@ -1162,13 +1099,12 @@ class DepthAnalysisShareCoordinator: ObservableObject {
                 return
             }
             self.activityDismantleWatchdogTask = nil
-            self.activitySheetHasDismissed = true
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.sharePackaging.error(
-                "tap_share_activity_dismantle_timeout kind=\(self.activeActivityLease?.kind.rawValue ?? "none", privacy: .public) outcome=forcedCleanup"
+                "tap_share_activity_dismantle_timeout kind=\(self.activeActivityLease?.kind.rawValue ?? "none", privacy: .public) outcome=forcedStateRelease"
             )
             #endif
-            self.finishActivityPresentation(
+            self.endActivityPresentationAfterSystemDismissal(
                 expectedArtifactID: expectedArtifactID
             )
         }

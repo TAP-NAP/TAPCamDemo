@@ -498,7 +498,7 @@ struct TAPDepthAnalysisPresentationTests {
         #expect(!analysisSource.contains("presentationDetents"))
         #expect(controlSource.contains("DepthAnalysisSharePopover("))
         #expect(controlSource.contains(".popover("))
-        #expect(controlSource.contains("item: activityPresentationBinding"))
+        #expect(controlSource.contains("item: presentationBinding"))
         #expect(!analysisSource.contains("DepthAnalysisSystemSharePayload"))
         #expect(!analysisSource.contains("TAPVerificationExportBuilder().export"))
         #expect(!analysisSource.contains("VerificationExportActivityView"))

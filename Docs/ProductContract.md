@@ -2,7 +2,7 @@
 
 - Status: canonical product constraint document
 - Owner: product owner
-- Last updated: 2026-08-13
+- Last updated: 2026-08-14
 
 This document is the single current product contract for TAPCamDemo. It defines
 what the product currently does, what it deliberately does not do, which work is
@@ -321,8 +321,16 @@ The canonical Share flow is:
 4. Present the system activity controller only after that payload is ready.
    The app-owned surface hands off directly to this one system-owned
    presentation; TAPCam does not imitate or embed controls inside it.
-5. Remove per-attempt temporary resources on completion, cancellation, or
-   dismissal.
+5. Remove a per-attempt temporary resource immediately when preparation is
+   cancelled or becomes stale before system handoff. After handoff, pass the
+   materialized file URL directly to the one system activity controller and
+   keep its source lease alive for that controller's lifetime. System/user
+   dismissal, representable dismantling, or never-appeared recovery may end
+   the app-owned presentation state, but must not explicitly delete a source
+   that UIKit still owns. Controller release is the terminal cleanup boundary,
+   and cleanup remains attempt-scoped and idempotent. TAPCam does not observe a
+   destination-completion callback to proactively dismiss the system activity
+   controller; closing that system-owned presentation is an iOS/user action.
 
 Preparation presentation follows one anti-flash policy across still photos,
 Live Photos, and TAP Video:

@@ -8,13 +8,6 @@ import OSLog
 import UniformTypeIdentifiers
 import ZIPFoundation
 
-nonisolated extension UTType {
-    static let tapnapCapturePackage = UTType(
-        exportedAs: "net.tapnap.capture-package",
-        conformingTo: .zip
-    )
-}
-
 nonisolated extension CapturePhotoFileContainer {
     var tapnapFileExtension: String {
         switch self {
@@ -162,8 +155,9 @@ nonisolated final class TAPNAPShareArtifact: Identifiable, @unchecked Sendable {
     }
 }
 
-/// Shared by every value-copy of one artifact. Explicit cleanup remains the
-/// normal path; deinit is the abnormal-presentation fallback that prevents a
+/// Shared by every reference to one artifact. Explicit cleanup after
+/// pre-handoff cancellation or controller release is the normal path; deinit
+/// is the abnormal-presentation fallback that prevents a
 /// temporary package from leaking if its SwiftUI owner disappears mid-handoff.
 private nonisolated final class TAPNAPShareTemporaryDirectoryLease: @unchecked Sendable {
     private let directoryURL: URL
@@ -273,8 +267,9 @@ nonisolated enum TAPNAPShareArtifactError: LocalizedError, Equatable, Sendable {
 /// Lifecycle constraint: a `.tapnap` may be generated only on demand after the
 /// user explicitly selects the package option in the anchored TAP Share popover.
 /// Background pre-generation and persistent package caching are prohibited.
-/// Every output lives in a per-share temporary directory that the presentation
-/// owner removes after completion, cancellation, or dismissal.
+/// Every output lives in a per-share temporary directory. A cancelled or stale
+/// pre-handoff attempt cleans immediately; after handoff, the activity
+/// controller's release performs the attempt-scoped cleanup.
 nonisolated struct TAPNAPShareArtifactBuilder: Sendable {
     typealias ProgressHandler = @Sendable (Double?) -> Void
     typealias PendingSnapshotter = @Sendable (
