@@ -29,10 +29,11 @@ bare-URL-only handoff is not an accepted fallback.
 
 ## Fixed-build prerequisites
 
-- [ ] Record the exact implementation commit and device build configuration.
+- [x] Record the exact implementation commit and device build configuration:
+      `35745be` (`Fix TAPNAP system share transport`), Debug iphoneos build.
 - [ ] Install the fixed build on the sending device without reusing the old
       `bf20b52` acceptance result.
-- [ ] Record sending device model and iOS version.
+- [x] Record sending device model and iOS version.
 - [ ] Prepare a reachable receiving Apple device and record its model and OS.
 - [ ] Confirm Files is available on the sender and AirDrop is enabled on both
       devices.
@@ -88,10 +89,19 @@ bare-URL-only handoff is not an accepted fallback.
 
 ## Evidence
 
-- Fixed commit/build: `Pending`
-- Sending device/iOS: `Pending`
+- Fixed commit/build: `35745be`; signed Debug iphoneos build succeeded. The
+  owner will install this candidate directly from Xcode; no successful
+  tool-driven install or launch is claimed.
+- Sending device/iOS: `iPhone 15 Pro (iPhone16,1), iOS 26.6`; attended actions
+  remain Pending after the owner requested that Codex stop device installation,
+  launch, and debugging operations.
 - Receiving device/OS: `Pending`
 - Save to Files result and artifact hash: `Pending`
 - AirDrop result, received artifact, and hash: `Pending`
 - Relevant logs/screenshots: `Pending`
 - Human confirmation: `Pending`
+
+The interrupted Codex installation attempt and the transient AirDrop
+“未找到用户” state observed while Xcode/LLDB still held the replaced process are
+excluded from the verdict. The next valid evidence starts after the owner has
+installed `35745be` independently and supplies the resulting Console log.

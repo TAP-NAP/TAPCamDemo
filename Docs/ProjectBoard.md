@@ -1773,8 +1773,19 @@ Every active Task uses these stable fields:
   times. The containing suite nevertheless failed in those runs only because a
   source-shape assertion still expected the README's old wording; the README
   assertion source is now repaired, but that entire suite has not been rerun,
-  so no current full-suite pass is claimed. This working-tree implementation is
-  not yet a frozen fixed commit or installed device build.
+  so no current full-suite pass is claimed. The implementation is now frozen as
+  candidate commit `35745be` (`Fix TAPNAP system share transport`), and its
+  signed iPhone build succeeded.
+- Current Device Delivery State: No successful install or launch of `35745be`
+  is claimed. The tool-driven install stalled while Xcode/LLDB retained the
+  previous app process; LLDB showed the expected `SIGKILL` while iOS attempted
+  replacement, which is delivery-tooling evidence rather than an app crash or
+  product verdict. The owner then explicitly directed: “你先不要帮我进行调试
+  之类的操作，我自己安装。到时候我会把 Xcode 的 console log 给你。” `/root`
+  immediately cancelled the single active `devicectl` install and will perform
+  no further device install, debug, or launch operation. The owner will install
+  the candidate and return Xcode console logs; install, launch, Files, AirDrop,
+  received-artifact, and attended verdict evidence all remain Pending.
 - Reopened Done When: A fixed build uses a copy-backed typed provider, the new
   provider load and artifact-lifetime tests pass, and TAP-0082 records successful
   physical-device Save to Files plus AirDrop receipt of the resulting artifact.
@@ -1997,6 +2008,17 @@ Every active Task uses these stable fields:
     repaired and the full suite has not been rerun. The iPhone 15 Pro currently
     reports CoreDevice unavailable, no fixed build is installed, and TAP-0082
     Save to Files/AirDrop owner retest remains Pending. TAP-0081 stays Doing.
+  - `2026-08-14` Froze the current implementation candidate as commit `35745be`
+    (`Fix TAPNAP system share transport`) and recorded a successful signed
+    iPhone build without claiming device delivery. The automated install stalled
+    while Xcode/LLDB held the previous app process; LLDB's expected `SIGKILL`
+    occurred during replacement and is not treated as an app crash or acceptance
+    result. After the owner said “你先不要帮我进行调试之类的操作，我自己安装。到
+    时候我会把 Xcode 的 console log 给你。”, `/root` cancelled the one active
+    `devicectl` install and stopped all further device install/debug/launch work.
+    The owner will self-install and return console logs. No fixed-build install,
+    launch, Files/AirDrop result, or owner verdict is claimed; TAP-0081 remains
+    Doing.
 
 ### TAP-0082 — Device acceptance: TAP Share anchored handoff and anti-flash progress
 
@@ -2023,10 +2045,12 @@ Every active Task uses these stable fields:
   (bf20b52, Fix cold share handoff and media loading). Its iphoneos build was
   installed and launched successfully as TAP-NAP.TAPCamDemo on the recorded
   device. Earlier delivered artifacts remain superseded historical evidence.`
-- Current Reopen Build/Install: `Working-tree copy-backed provider implementation
-  builds for generic Simulator and generic iphoneos, but is not yet frozen or
-  installed. The recorded iPhone 15 Pro currently reports CoreDevice
-  unavailable.`
+- Current Reopen Build/Install: `Implementation candidate 35745be (Fix TAPNAP
+  system share transport) is frozen, and its signed iPhone build succeeded. A
+  tool-driven install stalled while Xcode/LLDB held the previous app process;
+  the resulting expected replacement SIGKILL is not an app verdict. The owner
+  will self-install and return Xcode console logs. No successful fixed-build
+  install or launch is claimed.`
 - Historical Device/iOS (`bf20b52`): `Connected iPhone 15 Pro; model identifier iPhone16,1; iOS 26.6;
   CoreDevice 8104D5C9-6503-5A80-BBE3-6BBF1EB04CE7.`
 - Scope: On a physical device, verify the approved anchored app-owned Share
@@ -2173,10 +2197,13 @@ Every active Task uses these stable fields:
   `bf20b52` verdict remains history and may not be reused for the fixed build.
 - Current Retest State: `Docs/Acceptance/TAP-0082-share-handoff.md` now contains
   the regression, prerequisites, numbered Save to Files/AirDrop procedure, and
-  verdict/evidence rules. The iPhone 15 Pro is currently unavailable through
-  CoreDevice, so the working-tree build has not been installed and neither
-  destination has been rerun. This is Blocked execution evidence, not a failed
-  or passing owner verdict; TAP-0082 remains Todo.
+  verdict/evidence rules. Candidate 35745be has a successful signed iPhone build
+  but no successful install or launch. After the tool-driven install stalled,
+  the owner took over installation and requested that `/root` perform no further
+  device debugging; the single active `devicectl` install was cancelled. The
+  owner will provide Xcode console logs after self-installing. Neither Files nor
+  AirDrop has been rerun, so this is pending execution evidence rather than a
+  failed or passing owner verdict; TAP-0082 remains Todo.`
 - Current Human Confirmation: `Pending for the fixed TAP-0081 build.`
 - Reopened Done When: Both physical-device destinations pass on the fixed build,
   AirDrop produces a received artifact, and the linked acceptance record carries
@@ -2285,6 +2312,15 @@ Every active Task uses these stable fields:
     yet a frozen or installed device build. The recorded iPhone 15 Pro currently
     reports CoreDevice unavailable; Save to Files, AirDrop receipt/artifact
     inspection, and the owner's attended verdict therefore remain Pending.
+  - `2026-08-14` Recorded frozen candidate commit `35745be` and its successful
+    signed iPhone build without converting build evidence into device
+    acceptance. The tool-driven install stalled while Xcode/LLDB held the prior
+    app process; the expected replacement `SIGKILL` is not a product failure or
+    pass. The owner explicitly took over installation and will return Xcode
+    console logs; `/root` cancelled the single active `devicectl` install and
+    will perform no further install/debug/launch. No successful fixed-build
+    install, launch, Save to Files, AirDrop receipt, artifact inspection, or
+    owner verdict is claimed. TAP-0082 remains Todo.
 
 ### TAP-0083 — Eliminate cold-path UI starvation and codify responsiveness guardrails
 
@@ -2506,7 +2542,7 @@ owner before execution.
 | `TAP-0047` | Todo | P1 | `TAP-0058`, `TAP-0059`, `TAP-0083` | Limited access, Photos system delete, pending confirm, adjacency, empty close, plus first cold large-Library entry with no repeated semantic snapshot churn or UI starvation | [Procedure](Acceptance/TAP-0047-library-permission-delete.md) must add a fresh/cleared-cache large-catalog run and structured milestone evidence | Unassigned | Pending | Existing Library draft remains; 2026-08-13 added cold large-catalog responsiveness evidence without changing status |
 | `TAP-0048` | Todo | P0 | `TAP-0006` | Approved Web states versus SwiftUI geometry, icons, layout, navigation and state presentation | [Procedure](Acceptance/TAP-0048-web-swiftui-parity.md) | Unassigned | Pending | Created for HTML-first workflow; executable draft added 2026-08-12 |
 | `TAP-0049` | Todo | P0 | `TAP-0013` | Locked launch/first-frame/soak/capture/suspend/exit/relaunch | [Blocked Procedure](Acceptance/TAP-0049-locked-camera-lifecycle.md) | Unassigned | Pending | Executable draft added 2026-08-12; cannot run until lifecycle-correct experiment is ready |
-| `TAP-0082` | Todo | P0 | `TAP-0081` | Revalidate the fixed copy-backed typed `.tapnap` handoff on physical-device Save to Files and AirDrop, including an actually received artifact; the previously accepted anti-flash and Viewer-toolbar results remain historical | [Current procedure and evidence record](Acceptance/TAP-0082-share-handoff.md) for the fixed build; old `bf20b52` Board evidence remains history only | `/root` delivery/evidence reconciliation; product-owner attended retest | Pending for fixed TAP-0081 build | Reopened 2026-08-14 after Save to Files selector crash, AirDrop waiting, and attachment error `Could not load representation public.zip-archive from the item provider for opening in place`; copy-backed implementation and generic build-for-testing evidence are recorded, but the iPhone 15 Pro is currently CoreDevice unavailable, no fixed build is installed, and the owner retest remains Pending; 2026-08-13 `bf20b52` acceptance retained as history; TAP-0084 remains independent |
+| `TAP-0082` | Todo | P0 | `TAP-0081` | Revalidate the fixed copy-backed typed `.tapnap` handoff on physical-device Save to Files and AirDrop, including an actually received artifact; the previously accepted anti-flash and Viewer-toolbar results remain historical | [Current procedure and evidence record](Acceptance/TAP-0082-share-handoff.md) for the fixed build; old `bf20b52` Board evidence remains history only | `/root` delivery/evidence reconciliation; product-owner attended retest | Pending for fixed TAP-0081 build | Reopened 2026-08-14 after Save to Files selector crash, AirDrop waiting, and attachment error `Could not load representation public.zip-archive from the item provider for opening in place`; candidate `35745be` is frozen and its signed iPhone build succeeded, but no successful install/launch is claimed after the tool-driven install stalled under Xcode/LLDB process ownership; owner took over self-install and will return console logs, `/root` cancelled the active `devicectl` install, and Files/AirDrop/artifact verdicts remain Pending; 2026-08-13 `bf20b52` acceptance retained as history; TAP-0084 remains independent |
 
 ## 7. Completed Task Registry
 
@@ -2823,3 +2859,15 @@ not replace the Product Contract, and linked device evidence may remain open.
   CoreDevice unavailable, the fixed build is not installed, and attended Files
   plus AirDrop artifact acceptance remains Pending. TAP-0081 stays Doing,
   TAP-0082 stays Todo, and no other Task status or Next Task ID changed.
+- `2026-08-14` Recorded implementation candidate commit `35745be` (`Fix TAPNAP
+  system share transport`) and its successful signed iPhone build without
+  claiming installation or runtime acceptance. The tool-driven install stalled
+  while Xcode/LLDB retained the previous app process, and LLDB showed the
+  expected `SIGKILL` during replacement; this is delivery-tooling evidence, not
+  an app crash, pass, or fail. The owner explicitly directed `/root` to stop
+  debugging and device operations, self-install the build, and later provide
+  Xcode console logs. `/root` immediately cancelled the single active
+  `devicectl` install and will perform no further install/debug/launch action.
+  Fixed-build install, launch, Files, AirDrop receipt/artifact inspection, and
+  owner verdict evidence remain Pending. TAP-0081 remains Doing, TAP-0082
+  remains Todo, and no other Task status or Next Task ID changed.
