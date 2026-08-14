@@ -8,11 +8,16 @@ import {
   chooseRoute,
   createState,
   initializationIdentityMatches,
+  lifecycleTimingLaneRecordIDs,
+  lifecycleTruthRegistry,
   machineRegistry,
   nextEvent,
   photosUsable,
+  PROTOTYPE_DIFFERENCE_DATA_SOURCE,
+  PROTOTYPE_DIFFERENCE_DATA_STATUS,
   publicSnapshot,
   reduce,
+  resolveWorkloadDifferenceTraceBinding,
   requiredPermissionsUsable,
   scenarioFixtures,
   setupRequiredReady,
@@ -20,6 +25,9 @@ import {
   timelineRegistry,
   workloadInspectionReached,
   workloadInspectionRegistry,
+  workloadDifferenceRegistry,
+  workloadDifferenceScenarioRegistry,
+  workloadLaneTruthRecordIDs,
   workloadRegistry,
   workloadStates
 } from "./startup-model.mjs";
@@ -54,6 +62,216 @@ const openColdLibrary = (state) => dispatch(
   { type: "DEFERRED_WORK_RELEASED" },
   { type: "LIBRARY_OPENED" }
 );
+
+const replayScenarioColumns = (scenarioId, limit = 80) => {
+  let state = createState(scenarioId);
+  const columns = [];
+  for (let index = 0; index < limit; index += 1) {
+    const event = nextEvent(state);
+    if (!event) break;
+    state = reduce(state, event);
+    const entry = state.log.at(-1);
+    columns.push({
+      entry,
+      milestones: entry.effects.milestones || [],
+      stateAfter: structuredClone(state)
+    });
+    if (event.type === "SCENARIO_TERMINATED") break;
+  }
+  return { state, columns };
+};
+
+test("TAP-0008/TAP-0009 code-truth records use explicit lifecycle anchors", () => {
+  const timelineIDs = new Set(timelineRegistry.map(({ id }) => id));
+  const truthIDs = lifecycleTruthRegistry.map(({ id }) => id);
+  assert.equal(new Set(truthIDs).size, truthIDs.length);
+  assert.ok(lifecycleTruthRegistry.length >= 10);
+
+  for (const truth of lifecycleTruthRegistry) {
+    assert.ok(truth.taskIDs.some((taskID) => taskID === "TAP-0008" || taskID === "TAP-0009"), truth.id);
+    assert.ok(timelineIDs.has(truth.actual.anchor), `${truth.id} actual anchor`);
+    assert.ok(timelineIDs.has(truth.target.anchor), `${truth.id} target anchor`);
+    assert.ok(truth.actual.phase && truth.actual.summary && truth.actual.evidence, `${truth.id} actual record`);
+    assert.ok(truth.target.phase && truth.target.summary && truth.target.evidence, `${truth.id} target record`);
+    assert.equal(truth.mismatch, truth.alignment !== "aligned", truth.id);
+  }
+
+  const aligned = lifecycleTruthRegistry.filter(({ mismatch }) => !mismatch).map(({ id }) => id);
+  assert.deepEqual(aligned.sort(), ["explicitPermissionActions", "optionalPermissionPolicy"]);
+  const truthManifest = manifest.independentCandidates.startupLifecycle.workbench.right.tap0008Tap0009CodeTruth;
+  assert.equal(manifest.independentCandidates.startupLifecycle.workbench.revision, "v16");
+  assert.equal(truthManifest.recordCount, lifecycleTruthRegistry.length);
+  assert.equal(truthManifest.mismatchCount, lifecycleTruthRegistry.filter(({ mismatch }) => mismatch).length);
+  assert.equal(truthManifest.alignedCount, aligned.length);
+  assert.equal(lifecycleTruthRegistry.find(({ id }) => id === "cameraReadinessPredicate").actual.anchor, "t3");
+  assert.equal(lifecycleTruthRegistry.find(({ id }) => id === "initializationCommit").actual.anchor, "t4");
+  assert.equal(lifecycleTruthRegistry.find(({ id }) => id === "deferredWorkGuard").actual.anchor, "t5");
+  assert.deepEqual(lifecycleTruthRegistry, truthManifest.records);
+  assert.equal(PROTOTYPE_DIFFERENCE_DATA_SOURCE, "Prototype/manifest.json");
+  assert.deepEqual(PROTOTYPE_DIFFERENCE_DATA_STATUS, { loaded: true, error: null });
+  assert.doesNotMatch(modelSource, /id:\s*"legacyReceiptAndMarker"/);
+});
+
+test("lifecycle and workload mismatches have disjoint JSON-backed Timing owners", () => {
+  const truthManifest = manifest.independentCandidates.startupLifecycle.workbench.right.tap0008Tap0009CodeTruth;
+  const comparison = truthManifest.workloadDifferenceComparison;
+  const timelineIDs = new Set(timelineRegistry.map(({ id }) => id));
+  const workloadIDs = new Set(Object.keys(workloadRegistry));
+  const recordIDs = workloadDifferenceRegistry.map(({ id }) => id);
+  const mismatchTruthIDs = new Set(lifecycleTruthRegistry.filter(({ mismatch }) => mismatch).map(({ id }) => id));
+  const lifecycleOwnerIDs = new Set(lifecycleTimingLaneRecordIDs);
+  const workloadOwnerIDs = new Set(workloadLaneTruthRecordIDs);
+
+  assert.equal(new Set(recordIDs).size, recordIDs.length);
+  assert.deepEqual(workloadDifferenceRegistry, comparison.records);
+  assert.equal(comparison.recordCount, comparison.records.length);
+  assert.equal(comparison.mismatchCount, comparison.records.filter(({ mismatch }) => mismatch).length);
+  assert.equal(comparison.records.length, 13);
+  assert.equal(comparison.timingMismatchCount, comparison.records.filter(({ differenceType }) => differenceType === "timing").length);
+  assert.equal(comparison.semanticMismatchCount, comparison.records.filter(({ differenceType }) => differenceType === "semantic").length);
+  assert.equal(comparison.timingMismatchCount, 10);
+  assert.equal(comparison.semanticMismatchCount, 3);
+  assert.equal(lifecycleOwnerIDs.size, 6);
+  assert.equal(workloadOwnerIDs.size, 6);
+  assert.deepEqual([...lifecycleOwnerIDs].filter((id) => workloadOwnerIDs.has(id)), []);
+  assert.deepEqual(new Set([...lifecycleOwnerIDs, ...workloadOwnerIDs]), mismatchTruthIDs);
+
+  for (const difference of workloadDifferenceRegistry) {
+    assert.ok(["timing", "semantic"].includes(difference.differenceType), difference.id);
+    assert.equal(difference.mismatch, true, difference.id);
+    assert.ok(difference.scope?.path && difference.scope?.trigger && difference.scope?.anchorMeaning, difference.id);
+    assert.ok(difference.lifecycleTruthIDs.length > 0, difference.id);
+    assert.ok(difference.lifecycleTruthIDs.every((id) => workloadOwnerIDs.has(id)), `${difference.id} truth ownership`);
+    assert.ok(workloadIDs.has(difference.actual.workloadID), `${difference.id} actual workload`);
+    assert.ok(workloadIDs.has(difference.target.workloadID), `${difference.id} target workload`);
+    assert.ok(timelineIDs.has(difference.actual.anchor), `${difference.id} actual anchor`);
+    assert.ok(timelineIDs.has(difference.target.anchor), `${difference.id} target anchor`);
+    assert.ok(difference.actual.phase && difference.actual.summary && difference.actual.evidence, `${difference.id} actual evidence`);
+    assert.ok(difference.target.phase && difference.target.summary && difference.target.evidence, `${difference.id} target evidence`);
+    const binding = difference.traceBinding;
+    assert.ok(Array.isArray(workloadDifferenceScenarioRegistry[binding?.scenarioGroupID]), `${difference.id} scenario group`);
+    assert.ok(binding.actualVisibleAfter.eventTypes.length > 0, `${difference.id} visibility events`);
+    assert.ok(binding.targetEffect.eventTypes.length > 0, `${difference.id} target events`);
+    assert.equal(binding.targetEffect.workloadID, difference.target.workloadID, `${difference.id} target workload binding`);
+    assert.ok(workloadStates.includes(binding.targetEffect.status), `${difference.id} target status`);
+    assert.ok(Number.isInteger(binding.targetEffect.occurrence) && binding.targetEffect.occurrence > 0, `${difference.id} target occurrence`);
+  }
+
+  const scenarioIDs = new Set(Object.keys(scenarioFixtures));
+  for (const [groupID, groupedScenarioIDs] of Object.entries(workloadDifferenceScenarioRegistry)) {
+    assert.ok(groupedScenarioIDs.length > 0, groupID);
+    assert.equal(new Set(groupedScenarioIDs).size, groupedScenarioIDs.length, `${groupID} duplicate scenarios`);
+    assert.ok(groupedScenarioIDs.every((scenarioID) => scenarioIDs.has(scenarioID)), `${groupID} unknown scenario`);
+  }
+
+  const coveredWorkloadTruthIDs = new Set(workloadDifferenceRegistry.flatMap(({ lifecycleTruthIDs }) => lifecycleTruthIDs));
+  assert.deepEqual(coveredWorkloadTruthIDs, workloadOwnerIDs);
+  assert.deepEqual(comparison.projectionCounts, {
+    lifecycleMismatchCards: 6,
+    migratedLifecycleTruthSources: 6,
+    workloadDifferenceCards: 13,
+    workloadTimingCards: 10,
+    workloadSemanticCards: 3,
+    maximumRenderedMismatchCards: 19
+  });
+
+  const excludedIDs = comparison.excludedFromWorkloadMismatch.map(({ comparisonID }) => comparisonID);
+  assert.equal(new Set(excludedIDs).size, excludedIDs.length);
+  assert.deepEqual(excludedIDs.sort(), ["startupFactsShapeOnly", "thumbnailDecodeAligned"]);
+  assert.equal(workloadDifferenceRegistry.some(({ id }) => id === "attestationRetryStartsOnRefresh"), false);
+  assert.equal(workloadDifferenceRegistry.some(({ id }) => id === "firstPreviewGateConsumption"), true);
+
+  const firstInstallCredential = workloadDifferenceRegistry.find(({ id }) => id === "firstInstallCredentialStartsAfterContinue");
+  assert.equal(firstInstallCredential.actual.anchor, "t2");
+  assert.equal(firstInstallCredential.target.anchor, "t2");
+  assert.match(firstInstallCredential.actual.phase, /post-Continue/);
+  assert.match(firstInstallCredential.target.phase, /before Continue/);
+  assert.equal(workloadDifferenceRegistry.find(({ id }) => id === "videoPosterStartsBeforeDeferredRelease").target.anchor, "t5");
+  assert.equal(workloadDifferenceRegistry.find(({ id }) => id === "initialAttestationCompletionMeaning").differenceType, "semantic");
+  assert.equal(workloadDifferenceRegistry.find(({ id }) => id === "libraryCatalogReadyNotConsumedByInitialization").target.anchor, "t4");
+  assert.doesNotMatch(modelSource, /id:\s*"libraryObserverStartsPreFrame"/);
+});
+
+test("JSON workload bindings resolve only to applicable recorded target effects", () => {
+  const replayCache = new Map();
+  const replay = (scenarioID) => {
+    if (!replayCache.has(scenarioID)) replayCache.set(scenarioID, replayScenarioColumns(scenarioID));
+    return replayCache.get(scenarioID);
+  };
+
+  let concreteBindingCoverage = 0;
+  for (const difference of workloadDifferenceRegistry) {
+    const scenarioIDs = workloadDifferenceScenarioRegistry[difference.traceBinding.scenarioGroupID];
+    for (const scenarioID of scenarioIDs) {
+      concreteBindingCoverage += 1;
+      const { columns } = replay(scenarioID);
+      const resolved = resolveWorkloadDifferenceTraceBinding(difference, scenarioID, columns);
+      const assertionScope = `${difference.id} / ${scenarioID}`;
+      assert.equal(resolved.applicable, true, assertionScope);
+      assert.equal(resolved.visible, true, `${assertionScope} visibility projection`);
+      assert.ok(resolved.actualColumn?.milestones.includes(difference.actual.anchor), `${assertionScope} actual anchor column`);
+      assert.ok(resolved.targetColumn, `${assertionScope} target effect`);
+      assert.ok(
+        difference.traceBinding.targetEffect.eventTypes.includes(resolved.targetColumn.entry.event.type),
+        `${assertionScope} target event`
+      );
+      assert.ok(
+        resolved.targetColumn.entry.effects.workloads.includes(difference.target.workloadID),
+        `${assertionScope} target workload effect`
+      );
+      assert.equal(
+        resolved.targetColumn.stateAfter.workloads[difference.target.workloadID],
+        difference.traceBinding.targetEffect.status,
+        `${assertionScope} target status`
+      );
+    }
+
+    const excludedScenarioID = Object.keys(scenarioFixtures).find((candidate) => !scenarioIDs.includes(candidate));
+    const excluded = resolveWorkloadDifferenceTraceBinding(difference, excludedScenarioID, replay(excludedScenarioID).columns);
+    assert.equal(excluded.applicable, false, `${difference.id} cross-scenario exclusion`);
+    assert.equal(excluded.visible, false, `${difference.id} cross-scenario visibility`);
+    assert.equal(excluded.targetColumn, null, `${difference.id} cross-scenario target`);
+  }
+  assert.equal(concreteBindingCoverage, 154, "every manifest record/scenario binding is replayed");
+
+  let earlyState = createState("ordinaryProcessLaunch");
+  const earlyColumns = [];
+  for (const event of [
+    { type: "ACTIVATION_REQUESTED" },
+    { type: "APP_FIRST_FRAME_COMMITTED" },
+    { type: "INITIAL_ROUTE_COMMITTED" }
+  ]) {
+    earlyState = reduce(earlyState, event);
+    const entry = earlyState.log.at(-1);
+    earlyColumns.push({ entry, milestones: entry.effects.milestones || [], stateAfter: structuredClone(earlyState) });
+  }
+  const deferred = workloadDifferenceRegistry.find(({ id }) => id === "videoPosterStartsBeforeDeferredRelease");
+  const unresolved = resolveWorkloadDifferenceTraceBinding(deferred, "ordinaryProcessLaunch", earlyColumns);
+  assert.equal(unresolved.visible, true);
+  assert.equal(unresolved.targetColumn, null);
+
+  const directLibrary = workloadDifferenceRegistry.find(({ id }) => id === "libraryCatalogStartsBeforeRouteOwnership");
+  const directLibraryBinding = resolveWorkloadDifferenceTraceBinding(
+    directLibrary,
+    "ordinaryProcessLaunch",
+    replay("ordinaryProcessLaunch").columns
+  );
+  assert.equal(directLibraryBinding.targetColumn.entry.event.type, "LIBRARY_OPENED");
+  assert.equal(directLibraryBinding.targetColumn.stateAfter.workloads.libraryCatalog, "running");
+
+  const catalogGate = workloadDifferenceRegistry.find(({ id }) => id === "libraryCatalogReadyNotConsumedByInitialization");
+  const initializationColumns = replay("inPlaceUpdate").columns;
+  const catalogPublishedIndex = initializationColumns.findIndex(({ entry }) => entry.event.type === "LIBRARY_CATALOG_PUBLISHED");
+  const catalogBeforeT4 = resolveWorkloadDifferenceTraceBinding(
+    catalogGate,
+    "inPlaceUpdate",
+    initializationColumns.slice(0, catalogPublishedIndex + 1)
+  );
+  assert.equal(catalogBeforeT4.visible, true, "JSON visibility checkpoint exposes the actual difference before coarse t4 exists");
+  assert.equal(catalogBeforeT4.actualColumn, null, "coarse lifecycle anchor is a label, not a visibility gate");
+  assert.equal(catalogBeforeT4.targetColumn.entry.event.type, "LIBRARY_CATALOG_PUBLISHED");
+  assert.equal(catalogBeforeT4.targetColumn.stateAfter.workloads.libraryCatalog, "succeeded");
+});
 
 const expectedInitialRoutes = Object.freeze({
   freshInstall: "firstInstallSetup",
@@ -438,7 +656,20 @@ test("Foreground Resume and Settings Return never mark root Library observation 
 
   let processState = createState("ordinaryProcessLaunch");
   processState = reduce(processState, { type: "ACTIVATION_REQUESTED" });
-  assert.equal(processState.workloads.libraryRootObservation, "running");
+  assert.equal(processState.workloads.libraryRootObservation, "dormant");
+  processState = reduce(processState, { type: "APP_FIRST_FRAME_COMMITTED" });
+  assert.equal(processState.workloads.libraryRootObservation, "dormant");
+  processState = reduce(processState, { type: "INITIAL_ROUTE_COMMITTED" });
+  assert.equal(processState.workloads.libraryRootObservation, "succeeded");
+});
+
+test("fresh install activates root Library observation only after explicit Photos authorization", () => {
+  let state = activate("freshInstall");
+  assert.equal(state.workloads.libraryRootObservation, "dormant");
+
+  state = authorizeSetupPermission(state, "photos");
+  assert.equal(state.facts.permissions.photos, "authorized");
+  assert.equal(state.workloads.libraryRootObservation, "succeeded");
 });
 
 test("Library Back cancels a superseded catalog refresh", () => {

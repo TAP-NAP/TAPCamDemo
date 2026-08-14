@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="color-scheme" content="dark">
     <title>TAPCam Startup Lifecycle · TAP-0087</title>
-    <link rel="stylesheet" href="startup-lifecycle.css?revision=tap-0087-r1-workbench-v11">
+    <link rel="stylesheet" href="startup-lifecycle.css?revision=tap-0087-r1-workbench-v16">
   </head>
   <body>
     <main class="lifecycle-shell">
@@ -329,6 +329,7 @@
           </div>
           <span id="trace-sequence">seq 0</span>
         </header>
+        <svg id="lifecycle-difference-connectors" class="lifecycle-difference-connectors" aria-hidden="true" focusable="false"></svg>
 
         <section class="surface-business-card" aria-labelledby="surface-business-title">
           <div>
@@ -338,6 +339,7 @@
             <div class="implementation-legend" aria-label="当前实现与目标模型图例">
               <span>Current main · source observed</span>
               <span>TAP-0087 · target reducer</span>
+              <span class="difference-legend">生命周期：红卡 → 实际阶段圆点 · Workload 栏内：红色实际 → 虚线 → 蓝色既有原型 Workload</span>
             </div>
           </div>
           <div class="surface-business-machines" id="surface-business-machines" aria-label="关联状态机"></div>
@@ -402,9 +404,13 @@
         <div class="runtime-inspector-column" aria-label="工作负载与事件控制台">
         <section class="inspector-section">
           <div class="section-title-row">
-              <h3>Current main ↔ target workloads</h3>
+            <div class="workload-inspector-heading">
+              <h3>Current main ↔ prototype target</h3>
+              <small id="workload-inspector-summary">代码真值加载中</small>
+            </div>
             <div class="filter-group" role="group" aria-label="Workload filter">
-              <button type="button" data-workload-filter="relevant" aria-pressed="true">当前</button>
+              <button type="button" data-workload-filter="truth" aria-pressed="true">08 / 09 真值</button>
+              <button type="button" data-workload-filter="relevant" aria-pressed="false">当前</button>
               <button type="button" data-workload-filter="all" aria-pressed="false">全部</button>
             </div>
           </div>
@@ -427,6 +433,6 @@
       </aside>
     </main>
     <p class="visually-hidden" id="prototype-announcement" role="status" aria-live="polite" aria-atomic="true"></p>
-    <script type="module" src="startup-prototype.mjs?revision=tap-0087-r1-workbench-v11"></script>
+    <script type="module" src="startup-prototype.mjs?revision=tap-0087-r1-workbench-v16"></script>
   </body>
 </html>

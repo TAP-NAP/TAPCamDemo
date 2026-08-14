@@ -173,6 +173,72 @@ inspect,” normally the moment that workload becomes prepared for its role. A
 workload card is reviewer navigation into the complete reducer snapshot at that
 moment, not merely a machine-focus shortcut.
 
+The inspector also owns a separate, source-grounded **TAP-0008 / TAP-0009 code
+truth** projection. Route, persistence, recovery, readiness, and presentation
+differences are not forced into the workload state machine when they are not
+executable workloads. Each truth record has a stable ID, related Task IDs,
+`actual { anchor, phase, summary, evidence }`,
+`target { anchor, phase, summary, evidence }`, and an explicit alignment verdict.
+Anchors are data, never parsed from prose. Records whose current-main behavior
+differs from the prototype target use a red background and the visible word
+**不一致**; aligned facts remain non-red and say **一致**.
+
+The default truth-card list renders the six non-workload mismatch records plus
+the two aligned records. The six workload-owned mismatch sources remain in the
+same JSON catalog but render only as their scoped Workload-lane comparisons;
+they must not also produce a truth card or lifecycle-circle connector.
+
+Every visible red truth card has exactly one decorative red dashed connector to
+the circular `t0…tn` anchor that locates its **current-main actual phase**. The
+card separately names the target phase, so the connector cannot be read as a
+target transition. Scrolling, filtering, resize, and responsive reflow must
+recompute this one-to-one mapping; a hidden or clipped card does not leave a
+floating connector. The SVG is accessibility-hidden, while each card's text and
+accessible name state actual phase, target phase, and verdict without relying on
+color. These dashed paths are difference annotations, not reducer-journal edges,
+machine transitions, native timing evidence, or proof that current main emits a
+canonical `t*` milestone. They connect only to the always-present timeline
+circles, never to an executed-path machine node that may be absent from the
+current journal.
+
+The **Timing 时序** projection gives every mismatch exactly one lane owner.
+Non-workload lifecycle differences appear in the reviewer-only **08/09 生命周期**
+lane after their explicit `actual.anchor` is present. Each red lifecycle card
+keeps one dashed path to that column's circular milestone. Workload-related
+truth is omitted from this lane so it cannot appear once as lifecycle and again
+as workload.
+
+Workload differences live inside the existing **Workload** lane; there is no
+standalone comparison band or second Workload lane. Their canonical records are
+loaded from the repository JSON manifest, and the controller must not duplicate
+records, ownership IDs, or derived counts. A record has an explicit
+`differenceType` of `timing` or `semantic`, one scoped current-main path and
+checkpoint, evidence-backed actual/target anchors, and the lifecycle-truth IDs
+whose Workload-lane representation it owns.
+
+Every canonical reducer workload effect remains present. A manifest-owned
+current-main difference appears as a red **实际 · 不一致** annotation in the
+`actualVisibleAfter` reviewer visibility/upstream projection column only after its JSON
+`scenarioGroupID` matches; the annotation separately names the coarse
+`actual.anchor` lifecycle period. Its corresponding prototype workload is
+the already-rendered trace effect uniquely selected by event type, workload ID,
+resulting status, and occurrence; that existing effect is blue and retains its
+normal focus/status behavior. Exactly one dashed SVG connector joins the two
+when the target exists.
+
+The red annotation states mismatch kind, checkpoint, real source scope/trigger,
+actual and target phases, target reachability, and the reviewer projection
+event. It focuses that projection column, which controls only when the source-
+grounded difference becomes visible; it does not claim that current main ran the
+actual workload during that prototype reducer event.
+If the target effect is absent, it says **既有 trace effect 尚未出现** and
+renders no synthetic blue target, future trace column, milestone node, reducer
+event, workload transition, marker effect, or phone-state mutation. The card
+shows target lifecycle-anchor reachability separately from the exact existing
+workload effect's canonical `Eligible` / `Running` / `Ready` status. Current-main
+placement remains source-order or predicate inference, not an instrumented
+timestamp, elapsed duration, or device-performance claim.
+
 On click, the workbench first searches the current playback history for a real
 snapshot matching all three registered moment fields whose tail event effects
 also contain that workload. It restores that exact moment—not the most recent

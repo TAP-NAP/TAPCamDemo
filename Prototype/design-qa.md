@@ -279,14 +279,14 @@ final result: passed
 - Task: `TAP-0087`; P0 prerequisite for `TAP-0008`, `TAP-0009`, and
   `TAP-0083`.
 - Candidate entry: `startup-lifecycle.html`.
-- Shared-tree revision: `v11`.
-- Verification pass: `v11f`.
-- Status: `candidate`; `ownerReviewRequired`. Exact owner approval of the v11
+- Shared-tree revision: `v16`.
+- Verification pass: `v16a`.
+- Status: `candidate`; `ownerReviewRequired`. Exact owner approval of the v16
   TAP-0087 composition and synchronized lifecycle contract is pending. The
   existing TAP-0008-r2, TAP-0009-r1, and TAP-0081-r3 approvals remain
   independent and do not approve this workbench revision.
 
-### v11 contract represented
+### v16 contract represented
 
 - The workbench uses one UI surface catalog with contextual legal operations,
   one `393 x 852` app-owned preview, and one lifecycle/workload/state inspector.
@@ -305,6 +305,41 @@ final result: passed
   `target { trigger, owner, earliest, blocks, network, evidence }`, plus an
   alignment result. `t0…t5` are target reducer milestones. Any current-main
   `t*` association is source-order inference, not device timing evidence.
+- The JSON source catalog contains 14 truths: 12 mismatches and 2 aligned facts.
+  The default **08 / 09 真值** panel now lists only the six lifecycle-owned
+  mismatches plus the two aligned facts; the six workload-owned mismatch truths
+  render only in the Workload lane. Red comes from the explicit `mismatch`
+  field, never a parsed phase string or generic workload `gap` label.
+- Every visible red record has one red dashed SVG path to its explicit
+  current-main `actual.anchor` circular `t0…tn` node. The card separately shows
+  the target anchor/phase. Connectors are decorative review annotations, not
+  reducer transitions, and are recomputed after scroll, filter, resize, and
+  responsive reflow.
+- Timing gives each mismatch one owner. The reviewer-only **08/09 生命周期**
+  lane contains only the six non-workload mismatch truths; workload-owned truth
+  is excluded there. A lifecycle red card appears only after its actual
+  milestone and keeps one dashed path to that circular Timing anchor.
+- The 14 lifecycle-truth records and 13 workload-difference records have one
+  JSON authority in `manifest.json`; `startup-model.mjs` loads them through a
+  shallow top-level shape gate instead of embedding a second list or count. The
+  test suite validates record fields, IDs, ownership, bindings, uniqueness, and
+  replay resolution. A failed reviewer-data load or top-level shape gate yields
+  empty comparison registries without preventing reducer/model import.
+- The existing **Workload** lane owns 10 timing and 3 semantic workload
+  differences. Each JSON record declares its applicable scenario group, real
+  source trigger, reviewer visibility/upstream checkpoint, and exact prototype
+  event/workload/status binding. The focusable red **实际 · 不一致** annotation
+  stays in that JSON-selected projection column and labels the real trigger;
+  the column is not claimed as the current-main execution event. When the exact prototype workload effect has been recorded, that
+  existing trace element becomes blue and one dashed path connects the two;
+  the target decoration never creates a second causal event.
+- There is no standalone workload-comparison band, fixed duplicate axis, or
+  second Workload lane. If the exact target effect is absent, the red actual
+  card says **既有 trace effect 尚未出现**; no synthetic blue target, connector,
+  event column, milestone, workload transition, marker effect, or phone-state
+  mutation is created. Target lifecycle `tN` reachability is shown separately
+  from the existing workload effect's own `Eligible` / `Running` / `Ready`
+  status.
 - Viewfinder mirrors the current SwiftUI hierarchy and relative geometry. Its
   controls remain functionally deferred to TAP-0088; there is no
   prototype-only mock badge.
@@ -318,17 +353,18 @@ final result: passed
 
 ### Stale evidence boundary
 
-All earlier TAP-0087 captures and v10 measurements are stale for v11f. This
-includes the old `1600 x 941` screenshot and SHA, page/inspector/timing scroll
+All earlier TAP-0087 captures through v15 and v10/v11/v12 measurements are
+stale for v16a. This includes the old `1600 x 941` screenshot and SHA,
+page/inspector/timing scroll
 measurements, playback-button coordinates, single-catalog DOM measurements,
 mobile viewport captures, console result, and historical automated-test count.
-They remain historical comparison inputs only and do not establish current v11f
+They remain historical comparison inputs only and do not establish current v16a
 parity or acceptance.
 
-No new v11f screenshot file, mobile/responsive run, native Simulator/device
+No mobile/responsive run, native Simulator/device
 parity result, physical-device timing, or owner approval is claimed here.
 
-### v11f browser-verified interaction facts
+### Historical v11f browser-verified interaction facts
 
 - Codex in-app Browser viewport: `1703 x 1204`. The body reported
   `scrollHeight = 1204` and `clientHeight = 1204`, so this desktop pass had no
@@ -350,10 +386,158 @@ parity result, physical-device timing, or owner approval is claimed here.
 
 ### Current automated and static checks
 
-- `node --test Prototype/*.test.mjs`: `51/51` passed.
-- `node --check` passed for all four checked MJS files.
+- `node --test Prototype/*.test.mjs`: `58/58` passed.
+- `node --check` passed for all six Prototype MJS files.
 - `Prototype/manifest.json` parsed successfully.
 - `git diff --check` passed for the checked change set.
+
+### Historical v12a browser-verified lifecycle-difference map
+
+- Codex in-app Browser loaded the candidate at `1703 x 1204`; the default
+  filter was `truth` and rendered 14 records, including 12 red mismatch cards
+  and 2 aligned green cards.
+- All seven lifecycle anchors computed `border-radius: 50%`. The six anchors
+  referenced by current differences (`t0` through `t5`) showed the red
+  difference treatment; `tn` remained neutral.
+- At the top of the scrollable truth list, exactly 2 red cards were visible and
+  exactly 2 SVG paths existed, each carrying the matching truth ID and actual
+  anchor ID.
+- After browser-native scrolling to the final record, the four visible red
+  cards were `libraryReadinessPredicate`, `initializationCommit`,
+  `resourceInitializationSurface`, and `deferredWorkGuard`; exactly four paths
+  with those IDs existed. No connector from a clipped card remained floating.
+- The rendered screenshot was visually inspected: red backgrounds, visible
+  **不一致** verdicts, actual-to-target phase rows, circular anchors, and dashed
+  links remained legible without covering the phone canvas or event console.
+
+### Historical v13a browser-verified Timing differences
+
+- The Viewfinder canonical fixture reached sequence `8` with actual milestone
+  anchors `t0`, `t1`, `t2`, `t3`, and `t4` present. `t5` was not reached and no
+  future `t5` Timing anchor/card was fabricated.
+- The Timing grid exposed lanes in this order: Timing, **08/09 差异**, UI,
+  Reducer, Workload, Marker. The additional lane remained a reviewer annotation;
+  the Reducer lane still contained the same 8 journal events.
+- Eleven reached mismatch cards and exactly eleven dashed SVG paths existed.
+  Every path's truth ID and actual-anchor ID matched one card one-to-one.
+- Switching **Timing → 顺序日志 → Timing** restored all 11 cards and all 11
+  connectors. Switching the right-hand card filter to **当前** removed the
+  separate truth-card list but left the Timing lane's 11 cards/connectors
+  unchanged, matching the annotated owner state.
+- Visual evidence:
+  `evidence/TAP-0087-r1-v13-timing-lifecycle-differences.png`.
+
+### Historical v14a browser-verified standalone Workload comparison
+
+- Codex in-app Browser loaded Viewfinder at reducer sequence `8` in the default
+  `1703 x 1204` desktop viewport. The body remained `1204 / 1204` with no page-
+  level vertical scrolling; the Timing panel owns its internal scroll.
+- The comparison phase axis contained `t0`, `t1`, `t2`, `t3`, `t4`, and `t5`.
+  Ten red actual cards, ten blue prototype cards, and exactly ten dashed paths
+  rendered. The actual-card, target-card, and connector ID sets matched one-to-
+  one; the SVG-derived connector count was also `10`.
+- The red actual card computed a red gradient/border and the prototype card a
+  blue gradient/border. Each visible pair exposed separate **实际 Workload** and
+  **原型 Workload** rows plus its explicit mismatch label and phase movement.
+- Timing -> Ordered log -> Timing preserved Viewfinder `seq 8`, all `8` reducer
+  journal events, and all `10 + 10 + 10` comparison elements. Switching the
+  independent truth-card filter to **当前** removed that card list but preserved
+  every workload pair and path.
+- Internal Timing scroll exposed paired cards without detaching their lines.
+  A temporary `1500 x 1000` viewport produced the same 10 paths; the viewport
+  override was reset to the default afterward. Browser console inspection
+  returned no warning or error.
+- Visual evidence:
+  `evidence/TAP-0087-r1-v14-workload-timing-comparison.png`.
+- Claim boundary: source-order comparison and prototype-review evidence only;
+  not native instrumentation, elapsed duration, Simulator/device parity,
+  physical-device performance, or owner approval.
+
+### Historical v15a browser-verified integrated Workload differences
+
+- Codex in-app Browser loaded the ordinary process-launch Viewfinder fixture at
+  sequence `8` in the default `1703 x 1204` viewport. Body height remained
+  `1204 / 1204`; Timing retained its own internal scroll.
+- The Timing lane order is **Timing**, **08/09 生命周期**, **UI**, **Reducer**,
+  **Workload**, **Marker**. The lifecycle lane contains six non-workload red
+  cards and six dashed paths. The previous standalone workload comparison has
+  zero DOM nodes.
+- The one existing Workload lane contains 12 JSON-backed pairs: 10 timing and 2
+  semantic. Every pair has exactly one red actual region, one inline dashed
+  connector, and one blue prototype region. All four ID sets were unique and
+  equal. Actual-anchor distribution was `t0: 3`, `t2: 8`, `t3: 1`.
+- Four target phases at `t5` visibly say **原型目标 · 未到达投影** inside their
+  pairs. No `t5` event column, reducer event, or milestone was created.
+- Clicking the W01 actual region focused sequence `2` while the reducer state
+  stayed at sequence `8`; **Follow latest** restored the latest focus. Switching
+  **Timing → 顺序日志 → Timing** preserved eight reducer events, all 12 pairs,
+  and the six lifecycle links.
+- Browser console inspection returned no warning or error. The v14 and v15
+  screenshots were inspected together: the lower duplicate comparison is gone,
+  and actual/target workload differences are now visibly grouped inside the
+  Workload row.
+- Visual evidence:
+  `evidence/TAP-0087-r1-v15-integrated-workload-differences.png`.
+- Claim boundary: source-order/predicate comparison and prototype-review
+  evidence only; not native instrumentation, elapsed duration, Simulator/device
+  parity, physical-device performance, or owner approval.
+
+### v16a browser-verified trace-bound Workload differences
+
+- Codex in-app Browser used the same `1703 x 1204` desktop viewport. Body height
+  remained `1204 / 1204`; Timing retained one internal scroll surface and one
+  Workload lane. The previous standalone comparison had zero DOM nodes.
+- At ordinary Viewfinder sequence `8`, eight applicable red actual annotations
+  appeared. Three exact prototype effects already existed and therefore became
+  blue with three one-to-one dashed paths. The catalog and four deferred targets
+  remained visibly **既有 trace effect 尚未出现** with no synthetic target
+  element, connector, or future `t5` column.
+- At ordinary sequence `9`, the existing `t5` workload effects became available:
+  seven exact prototype effects were blue and all seven red-to-blue path IDs
+  matched. Opening Library additionally bound the existing catalog effect, for
+  eight targets and eight paths.
+- The complete fresh-install journey at sequence `20` rendered eleven applicable
+  actual records and the same eleven exact target/path IDs. The first-install
+  credential difference stayed in its Continue visibility/upstream projection
+  column (`seq 13`), while its card named the real post-camera fixed-delay trigger,
+  while its prototype App Attest effect remained in `seq 5`; the dashed path
+  correctly ran backward across columns instead of moving the actual card to a
+  coarse `t2` column.
+- `ordinaryForegroundResume` sequence `2` rendered zero actual, target, and
+  connector records, confirming that JSON scenario bindings do not leak
+  first-install or ordinary-launch differences into unrelated paths.
+- The persistent model test replays all 154 concrete record/scenario bindings;
+  every applicable visibility checkpoint and exact target effect resolves, with
+  no duplicate target or cross-scenario match.
+- In the Resource Initialization ordering where Library catalog publication
+  preceded camera completion, the catalog semantic actual appeared at its
+  JSON visibility checkpoint while `t4` was still absent
+  (`actualAnchorReached = false`).
+  Its exact existing catalog target was blue and connected; the coarse `t4`
+  anchor remained a label rather than an incorrect visibility gate.
+- Every recorded reducer workload effect remains in the Workload lane. At the
+  complete fresh-install checkpoint there were 23 trace effects, 11 red actual
+  annotations, 11 existing blue targets, and 11 paths; no path contained
+  `NaN` or `undefined`.
+- Clicking the first-install credential actual focused `seq 13` without changing
+  reducer state; **跟随最新** restored `seq 20`. Switching **Timing → 顺序日志 →
+  Timing** restored all 11 actuals, targets, paths, and 23 trace effects.
+- Computed styles confirmed red and blue gradients/borders, `4px 4px` dashed
+  paths, and `pointer-events: none`. Browser console inspection returned no
+  warning or error.
+- The red card's visible copy and accessible name include mismatch kind,
+  checkpoint, source scope/trigger, actual phase, target phase, and target
+  reachability. Connector lookup uses a reviewer-only target-element data ID;
+  the source-focus button does not falsely claim ARIA control of the blue target.
+- The v15 and v16 screenshots were inspected together at the same viewport. v16
+  preserves the canonical Workload trace and connects red current-main source
+  annotations directly to corresponding existing blue prototype workload
+  elements.
+- Visual evidence:
+  `evidence/TAP-0087-r1-v16-trace-bound-workload-differences.png`.
+- Claim boundary: code-grounded source-order/predicate comparison and
+  prototype-review evidence only; not native instrumentation, elapsed duration,
+  Simulator/device parity, physical-device performance, or owner approval.
 
 ### Owner-corrected workload navigation — browser verified
 
@@ -382,7 +566,7 @@ no screenshot file was saved.
 ### Remaining gate
 
 Mobile/responsive coverage, native Simulator/device parity, and physical-device
-timing remain unclaimed. Exact product-owner review of the v11 workbench and
+timing remain unclaimed. Exact product-owner review of the v16 workbench and
 synchronized contract remains required.
 
 final result: candidate; owner review required

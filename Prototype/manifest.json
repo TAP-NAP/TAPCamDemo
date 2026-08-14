@@ -305,7 +305,7 @@
       ],
       "coveredPhoneSurfaces": ["iOS Launch Screen static reference", "app-owned First App Frame bridge", "First-Install Setup", "Required Permission Check", "Resource Initialization", "Viewfinder", "TAP Library", "Photo Viewer"],
       "workbench": {
-        "revision": "v11",
+        "revision": "v16",
         "ownerCorrection": "Three simultaneous regions from the owner-provided 流程 2.png: UI surface plus contextual operations; exact iPhone visual truth; current-surface business, lifecycle, workload, marker, and machine causality.",
         "left": {
           "role": "one combined UI page directory and selected-surface operations",
@@ -368,6 +368,388 @@
               "canonicalFixtureRequirements": ["registered workload-to-fixture and event/status/page inspection-moment mapping", "declared canonical initial facts", "ordered events accepted by the normal reducer and guards", "stop at the registered inspection moment", "no direct snapshot mutation", "no synthetic event", "no skipped predecessor", "no fabricated Ready or succeeded state"],
               "stateFidelity": "an inspection moment whose real workload state is eligible, running, or skipped remains in that exact state across the catalog, phone, and inspector"
             }
+          },
+          "tap0008Tap0009CodeTruth": {
+            "defaultFilter": "truth",
+            "recordShape": {
+              "identity": ["id", "taskIDs", "alignment", "mismatch"],
+              "actual": ["anchor", "phase", "summary", "evidence"],
+              "target": ["anchor", "phase", "summary", "evidence"]
+            },
+            "recordCount": 14,
+            "mismatchCount": 12,
+            "alignedCount": 2,
+            "dataSource": "Prototype/manifest.json#independentCandidates.startupLifecycle.workbench.right.tap0008Tap0009CodeTruth",
+            "records": [
+              {
+                "id": "legacyReceiptAndMarker",
+                "label": "Setup 与 Initialization 被一个 Bool 合并",
+                "taskIDs": ["TAP-0008", "TAP-0009"],
+                "alignment": "gap",
+                "mismatch": true,
+                "actual": { "anchor": "t0", "phase": "Δt0–t1 · local facts", "summary": "current main 只读写 didCompleteFirstInstallPermissions；false 进 Setup，true 直接构造普通 CameraView。", "evidence": "App/StartupGateView.swift:16-40; App/StartupGatePolicy.swift:93-95" },
+                "target": { "anchor": "t0", "phase": "Δt0–t1 · structured facts", "summary": "原型读取彼此独立的 S / P / I，并在 t1 后用固定优先级归约路由。", "evidence": "StartupLifecycleContract.md:95-145" }
+              },
+              {
+                "id": "preFrameLibraryObserver",
+                "label": "Library observer 在首个 App frame 前创建",
+                "taskIDs": ["TAP-0009", "TAP-0083"],
+                "alignment": "gap",
+                "mismatch": true,
+                "actual": { "anchor": "t0", "phase": "Δt0–t1 · pre-frame", "summary": "TAPCamDemoApp.init 创建 LibraryMediaStore，随即注册 app notification 与 PhotoKit observer。", "evidence": "App/TAPCamDemoApp.swift:37-42; MediaLibrary/LibraryMediaStore.swift:38-67" },
+                "target": { "anchor": "t2", "phase": "after t2 · permission-safe owner", "summary": "首帧前只允许最小 facts；Library observer 必须移出 Δt0–t1，并受已选路由与 Photos 边界约束。", "evidence": "StartupLifecycleContract.md:248-255,319" }
+              },
+              {
+                "id": "explicitPermissionActions",
+                "label": "四个系统权限由各自行按钮显式触发",
+                "taskIDs": ["TAP-0008"],
+                "alignment": "aligned",
+                "mismatch": false,
+                "actual": { "anchor": "t2", "phase": "after t2 · Setup action", "summary": "Camera、Photos、Location、Microphone 的系统请求都只从对应行的方法调用。", "evidence": "App/WelcomeStartupSetupView.swift:35-79; App/StartupGateCoordinator.swift:132-227" },
+                "target": { "anchor": "t2", "phase": "after t2 · explicit owner action", "summary": "原型同样把每个系统 permission sheet 放在明确的用户动作边界之后。", "evidence": "ProductContract.md:90-117; StartupLifecycleContract.md:254" }
+              },
+              {
+                "id": "optionalPermissionPolicy",
+                "label": "Location 与 Microphone 当前为可跳过项",
+                "taskIDs": ["TAP-0008"],
+                "alignment": "aligned",
+                "mismatch": false,
+                "actual": { "anchor": "t2", "phase": "after t2 · Setup", "summary": "Continue 只要求 Network、Camera、Photos；Location 与 Microphone 可 Skip。", "evidence": "App/StartupGatePolicy.swift:62-89; App/WelcomeStartupSetupView.swift:55-79" },
+                "target": { "anchor": "t2", "phase": "after t2 · Setup", "summary": "原型也将 Location 与 Microphone 保持为 feature-context optional。", "evidence": "StartupLifecycleContract.md:95-113" }
+              },
+              {
+                "id": "networkBootstrap",
+                "label": "Network 行并未完成 App Attest bootstrap",
+                "taskIDs": ["TAP-0008"],
+                "alignment": "gap",
+                "mismatch": true,
+                "actual": { "anchor": "t2", "phase": "after t2 · Setup Network action", "summary": "显式点击只运行 bounded /healthz GET；一旦状态为 denied，Setup onAppear 或 foreground refresh 又会静默重启它。", "evidence": "App/StartupBackendSecurityPreflight.swift:9-14,37-110; App/StartupGateCoordinator.swift:90-98; App/WelcomeStartupSetupView.swift:89-95" },
+                "target": { "anchor": "t2", "phase": "after t2 · explicit App Attest action", "summary": "原型要求完成 App Attest registration / verification；超时后只能显式 Retry，前台刷新不得另起序列。", "evidence": "ProductContract.md:118-123; StartupLifecycleContract.md:95-108,320" }
+              },
+              {
+                "id": "permissionRecoverySemantics",
+                "label": "denied / restricted 被合并，恢复入口不是逐行所有",
+                "taskIDs": ["TAP-0008"],
+                "alignment": "gap",
+                "mismatch": true,
+                "actual": { "anchor": "t2", "phase": "after t2 · Setup recovery", "summary": "四类权限都把 denied 与 restricted 合并；Camera / Photos 共用页底 Open Settings，Location / Microphone denied 后没有逐行恢复。", "evidence": "App/StartupGateCoordinator.swift:132-227; App/WelcomeStartupSetupView.swift:127-159" },
+                "target": { "anchor": "t2", "phase": "after t2 · row-owned recovery", "summary": "原型保留 denied 与 restricted 的不同语义，并由受影响行拥有 Allow、Open Settings 或受限说明。", "evidence": "StartupLifecycleContract.md:109-171" }
+              },
+              {
+                "id": "requiredPermissionRoute",
+                "label": "Setup 之后没有 Required Permission Check 路由",
+                "taskIDs": ["TAP-0008"],
+                "alignment": "gap",
+                "mismatch": true,
+                "actual": { "anchor": "t2", "phase": "t2 · route commit", "summary": "legacy Bool 为 true 时直接进 CameraView；Camera .notDetermined 还可能由 CameraViewModel.start 隐式请求，Photos 不参与根路由。", "evidence": "App/StartupGateView.swift:22-40; CameraCapture/UI/CameraViewModel.swift:425-457" },
+                "target": { "anchor": "t2", "phase": "t2 · P reducer", "summary": "原型在 S 有效但 Camera / Photos 不可用时进入独立 Permission Check，并只刷新受影响项。", "evidence": "ProductContract.md:196-200; StartupLifecycleContract.md:109-145,187-190" }
+              },
+              {
+                "id": "retainedContainerRouting",
+                "label": "更新、覆盖安装、Offload 与 restore 不会使 I 失效",
+                "taskIDs": ["TAP-0008", "TAP-0009"],
+                "alignment": "gap",
+                "mismatch": true,
+                "actual": { "anchor": "t2", "phase": "t2 · legacy route", "summary": "只要保留的 Bool 为 true，changed build、same-device restore、cross-device migration 都直接进入 Camera；只有新 container 回 Setup。", "evidence": "App/StartupGateView.swift:16-40; App/StartupGatePolicy.swift:93-95" },
+                "target": { "anchor": "t2", "phase": "t2 · S/P/I route", "summary": "原型按 build / schema / install-device generation 判定 I，并在 credential binding 无效时进入 Setup recovery。", "evidence": "StartupLifecycleContract.md:114-145,173-192" }
+              },
+              {
+                "id": "returningCameraConstruction",
+                "label": "Returning path 在目标 route shell 前做 camera discovery",
+                "taskIDs": ["TAP-0009", "TAP-0083"],
+                "alignment": "gap",
+                "mismatch": true,
+                "actual": { "anchor": "t0", "phase": "Δt0–t1 · returning path", "summary": "CameraView 构造默认 CameraViewModel；默认参数同步枚举 capability 并创建 CaptureSessionController。", "evidence": "CameraCapture/UI/CameraView.swift:115-144; CameraCapture/UI/CameraViewModel.swift:235-293" },
+                "target": { "anchor": "t2", "phase": "after t2 · camera route shell", "summary": "原型要求 camera discovery / session ownership 只在 Camera 或 Resource Initialization route commit 后开始。", "evidence": "StartupLifecycleContract.md:252-255,321-322" }
+              },
+              {
+                "id": "cameraReadinessPredicate",
+                "label": "首次 camera gate 不消费真实 preview 与完整交互安全",
+                "taskIDs": ["TAP-0009"],
+                "alignment": "gap",
+                "mismatch": true,
+                "actual": { "anchor": "t3", "phase": "t3 · readiness checkpoint", "summary": "gate 只检查 active configuration、depth ready、haptics；isPreviewing KVO 只服务后续 path transition，快门安全 predicate 也未直接接入。", "evidence": "CameraCapture/UI/CameraInitialReadinessGate.swift:35-67; CameraCapture/UI/CameraView.swift:348-418,1934-1964" },
+                "target": { "anchor": "t3", "phase": "t3→t4 · preview then interaction", "summary": "原型要求真实首帧先到 t3，再由安全快门 / 主控件与 haptics 达到 t4。", "evidence": "ProductContract.md:147-155" }
+              },
+              {
+                "id": "libraryReadinessPredicate",
+                "label": "首次可用 Library catalog 不参与 Initialization gate",
+                "taskIDs": ["TAP-0009"],
+                "alignment": "gap",
+                "mismatch": true,
+                "actual": { "anchor": "t1", "phase": "after t1 · root task / observer", "summary": "根 task 先 await poster backfill 再 refresh catalog；Photos granted 或 observer 也可另触发，但 camera gate 从不读取 hasUsableSnapshot。", "evidence": "App/StartupGateView.swift:43-60,80-85; MediaLibrary/LibraryMediaStore.swift:84-122" },
+                "target": { "anchor": "t4", "phase": "before t4 · Initialization blocker", "summary": "原型仅等待首个可用 identity/order snapshot；成功空 catalog 也算 ready，media bytes 与 poster 不在 gate 内。", "evidence": "ProductContract.md:157-170; StartupLifecycleContract.md:325-328" }
+              },
+              {
+                "id": "initializationCommit",
+                "label": "完成标记在 camera-only gate 后过早写入且无版本",
+                "taskIDs": ["TAP-0009"],
+                "alignment": "gap",
+                "mismatch": true,
+                "actual": { "anchor": "t4", "phase": "t4-like · current gate callback", "summary": "active configuration + depth + haptics 一旦 ready 就立即把 legacy Bool 写 true；preview 与 catalog 仍可未完成。", "evidence": "App/StartupGateView.swift:88-90; CameraCapture/UI/CameraView.swift:388-418" },
+                "target": { "anchor": "t4", "phase": "t4 · atomic versioned I commit", "summary": "原型只在 camera interactive 与 catalog 都 ready 后原子提交包含 version / build / schema / device generation 的 I。", "evidence": "ProductContract.md:178-203; StartupLifecycleContract.md:114-120" }
+              },
+              {
+                "id": "resourceInitializationSurface",
+                "label": "当前 readiness UI 暴露 Failed / Retry / Settings",
+                "taskIDs": ["TAP-0009"],
+                "alignment": "gap",
+                "mismatch": true,
+                "actual": { "anchor": "t2", "phase": "after t2 · first-install camera gate", "summary": "全屏标题是 Preparing camera；代码拥有 failed state，并展示 Retry 与可选 Settings。", "evidence": "CameraCapture/UI/CameraInitialReadinessGate.swift:20-32,81-155" },
+                "target": { "anchor": "t2", "phase": "after t2 · stable Initialization", "summary": "原型稳定显示 Resource Initialization / Please Wait；无 Failed、Retry、timeout、skip 或 degraded entry。", "evidence": "ProductContract.md:142-165" }
+              },
+              {
+                "id": "deferredWorkGuard",
+                "label": "后置维护没有统一等待 t5 release",
+                "taskIDs": ["TAP-0008", "TAP-0009", "TAP-0083"],
+                "alignment": "partial",
+                "mismatch": true,
+                "actual": { "anchor": "t5", "phase": "before / around t5 · trigger-specific", "summary": "poster backfill 在根 task 先跑；recent cover、App Attest health 与 Pending recovery 使用固定 delay / foreground 等触发，并不消费统一 t5 guard。", "evidence": "App/StartupGateView.swift:43-53; CameraCapture/UI/CaptureLifecycleCoordinator.swift:61-103,177-202" },
+                "target": { "anchor": "t5", "phase": "after t5 · deferred release", "summary": "原型在稳定 t4 后统一释放可取消、受 guard 的 maintenance，且它们永不成为 Viewfinder blocker。", "evidence": "ProductContract.md:167-176; StartupLifecycleContract.md:256-257,327-331" }
+              }
+            ],
+            "mismatchPresentation": "red card with visible 不一致 verdict",
+            "alignedPresentation": "non-red green card with visible 一致 verdict",
+            "anchorPolicy": "explicit fields only; never parse observed or target prose",
+            "connector": {
+              "cardinality": "exactly one connector for every visible red mismatch card",
+              "target": "the circular t0…tn node named by current-main actual.anchor",
+              "targetPhasePlacement": "shown separately inside the card",
+              "style": "red dashed decorative SVG path",
+              "reflow": ["filter", "internal scroll", "window resize", "ResizeObserver"],
+              "clipping": "a hidden or clipped card leaves no floating connector",
+              "accessibility": "SVG aria-hidden; verdict and actual/target phases remain in card text and accessible name",
+              "claimBoundary": "difference annotation only; not a reducer edge, machine transition, native timestamp, device measurement, or proof that current main emits a target milestone"
+            },
+            "timingProjection": {
+              "lane": "08/09 生命周期",
+              "lifecycleLaneRecordIDs": ["legacyReceiptAndMarker", "permissionRecoverySemantics", "requiredPermissionRoute", "retainedContainerRouting", "initializationCommit", "resourceInitializationSurface"],
+              "workloadLaneTruthRecordIDs": ["preFrameLibraryObserver", "networkBootstrap", "returningCameraConstruction", "cameraReadinessPredicate", "libraryReadinessPredicate", "deferredWorkGuard"],
+              "ownershipPolicy": "a mismatch has exactly one Timing owner: workload-related truth is represented only by JSON-backed records inside the existing Workload lane; all other mismatches stay in the lifecycle lane",
+              "visibility": "lifecycle cards require actual.anchor; workload annotations additionally require their JSON scenarioGroupID and actualVisibleAfter selector",
+              "futurePolicy": "never fabricate an unreached t* column",
+              "presentation": "lifecycle truth remains a red compact card; workload truth uses a red current-main annotation plus an existing blue reducer workload effect",
+              "connector": "lifecycle cards link to their circular actual milestone; workload annotations link only to the uniquely bound existing target workload effect when reached",
+              "stateEffect": "none; reviewer annotation does not add or mutate reducer events, workloads, markers, phone state, or causal edges"
+            },
+            "workloadDifferenceComparison": {
+              "schemaVersion": 2,
+              "dataSource": "Prototype/manifest.json#independentCandidates.startupLifecycle.workbench.right.tap0008Tap0009CodeTruth.workloadDifferenceComparison",
+              "comparisonBasis": "current-main source-order and readiness-consumption evidence versus TAP-0087 target workload placement/meaning; no duration or device-performance claim",
+              "scenarioGroups": {
+                "processLaunch": ["freshInstall", "freshInstallOffline", "inPlaceUpdate", "updateWithRevokedPhotos", "developmentReplacement", "developmentReplacementSameBuild", "deleteReinstall", "offloadReinstall", "offloadReinstallChangedBuild", "sameDeviceRestore", "sameDeviceRestoreValidBinding", "crossDeviceMigration", "localMarkerLoss", "interruptedInitialization", "setupInterrupted", "ordinaryProcessLaunch", "ordinaryProcessLaunchEmptyLibrary"],
+                "processLaunchWithTargetCatalogWork": ["freshInstall", "freshInstallOffline", "inPlaceUpdate", "updateWithRevokedPhotos", "developmentReplacement", "developmentReplacementSameBuild", "deleteReinstall", "offloadReinstall", "offloadReinstallChangedBuild", "sameDeviceRestore", "sameDeviceRestoreValidBinding", "crossDeviceMigration", "localMarkerLoss", "interruptedInitialization", "setupInterrupted", "ordinaryProcessLaunch"],
+                "legacyReturningCamera": ["inPlaceUpdate", "updateWithRevokedPhotos", "developmentReplacement", "developmentReplacementSameBuild", "offloadReinstall", "offloadReinstallChangedBuild", "sameDeviceRestore", "sameDeviceRestoreValidBinding", "crossDeviceMigration", "localMarkerLoss", "interruptedInitialization", "ordinaryProcessLaunch", "ordinaryProcessLaunchEmptyLibrary"],
+                "legacyFirstInstallGate": ["freshInstall", "freshInstallOffline", "deleteReinstall", "setupInterrupted"],
+                "legacyInitialAttestationAction": ["freshInstall", "freshInstallOffline", "deleteReinstall"],
+                "targetResourceInitialization": ["freshInstall", "freshInstallOffline", "inPlaceUpdate", "updateWithRevokedPhotos", "developmentReplacement", "deleteReinstall", "offloadReinstallChangedBuild", "sameDeviceRestore", "sameDeviceRestoreValidBinding", "crossDeviceMigration", "localMarkerLoss", "interruptedInitialization", "setupInterrupted"]
+              },
+              "recordShape": {
+                "identity": ["id", "taskIDs", "lifecycleTruthIDs", "differenceType", "differenceKind", "checkpoint", "mismatch", "scope", "traceBinding"],
+                "actual": ["workloadID", "label", "anchor", "phase", "qualifier", "summary", "evidence"],
+                "target": ["workloadID", "label", "anchor", "phase", "qualifier", "summary", "evidence"],
+                "traceBinding": ["scenarioGroupID", "actualVisibleAfter", "targetEffect"]
+              },
+              "recordCount": 13,
+              "mismatchCount": 13,
+              "timingMismatchCount": 10,
+              "semanticMismatchCount": 3,
+              "projectionCounts": {
+                "lifecycleMismatchCards": 6,
+                "migratedLifecycleTruthSources": 6,
+                "workloadDifferenceCards": 13,
+                "workloadTimingCards": 10,
+                "workloadSemanticCards": 3,
+                "maximumRenderedMismatchCards": 19
+              },
+              "presentation": {
+                "container": "Timing 时序",
+                "lane": "existing Workload lane only",
+                "actualMismatch": "red reviewer annotation in the JSON actualVisibleAfter reviewer visibility/upstream projection column, labeled with the real current-main trigger and coarse actual lifecycle anchor; the projection event is not claimed as the current-main execution event",
+                "target": "the matching existing reducer-trace workload effect, visibly blue when reached",
+                "connector": "exactly one dashed SVG connector from each visible red actual annotation to its uniquely bound existing prototype workload effect; zero connector while that target effect is unreached",
+                "accessibility": "color is redundant; the red annotation names the actual and target workload, phases, checkpoint, scenario scope, exact target-effect presence, and target lifecycle-anchor reachability; the blue target keeps its canonical workload status",
+                "targetProjectionPolicy": "an absent target effect is named only inside the red annotation; it never creates a reducer event, future trace column, milestone node, or synthetic blue target; target lifecycle-anchor reachability remains separate from the existing effect's Eligible, Running, or Ready status",
+                "bindingPolicy": "scenarioGroupID plus target event type, workload ID, status, and occurrence uniquely bind a difference to an existing reducer-trace effect; reviewer visibility is gated by actualVisibleAfter, which is an upstream projection checkpoint rather than an assertion that current main executed the actual workload at that event",
+                "deduplication": "workload-related lifecycle truth is omitted from the lifecycle lane and represented only here",
+                "stateEffect": "none"
+              },
+              "excludedFromWorkloadMismatch": [
+                { "comparisonID": "startupFactsShapeOnly", "workloadID": "startupFacts", "checkpoint": "start", "reason": "minimal local S/I and passive Camera/Photos reads are allowed in Δt0–t1; its current gap is fact shape and route semantics" },
+                { "comparisonID": "thumbnailDecodeAligned", "workloadID": "thumbnailDecode", "checkpoint": "start", "reason": "actual and target are both visible-cell demand after Library entry" }
+              ],
+              "records": [
+                {
+                  "id": "libraryObserverStartsPreFrame",
+                  "taskIDs": ["TAP-0008", "TAP-0009", "TAP-0083"],
+                  "lifecycleTruthIDs": ["preFrameLibraryObserver"],
+                  "differenceType": "timing",
+                  "differenceKind": "startsTooEarly",
+                  "checkpoint": "start",
+                  "mismatch": true,
+                  "scope": { "path": "processLaunch", "trigger": "TAPCamDemoApp.init", "anchorMeaning": "earliestProvenStart" },
+                  "traceBinding": { "scenarioGroupID": "processLaunch", "actualVisibleAfter": { "eventTypes": ["ACTIVATION_REQUESTED"], "occurrence": 1 }, "targetEffect": { "eventTypes": ["INITIAL_ROUTE_COMMITTED", "SYSTEM_PERMISSION_RETURNED", "PERMISSIONS_RECHECKED"], "workloadID": "libraryRootObservation", "status": "succeeded", "occurrence": 1 } },
+                  "actual": { "workloadID": "libraryRootObservation", "label": "Library observer construction", "anchor": "t0", "phase": "Δt0–t1 · pre-frame", "qualifier": "sourceOrderInferred", "summary": "TAPCamDemoApp.init 同步创建 LibraryMediaStore，并立即注册 PhotoKit 与 app observer。", "evidence": "App/TAPCamDemoApp.swift:37-42; MediaLibrary/LibraryMediaStore.swift:38-67" },
+                  "target": { "workloadID": "libraryRootObservation", "label": "Permission-safe Library observation", "anchor": "t2", "phase": "after t2 · selected route", "qualifier": "targetContract", "summary": "Observer activation 移到 permission-safe route commit 后；Setup 未完成时还受 Photos 明确动作边界约束。", "evidence": "StartupLifecycleContract.md:250-254,319" }
+                },
+                {
+                  "id": "cameraDiscoveryStartsPreRoute",
+                  "taskIDs": ["TAP-0009", "TAP-0083"],
+                  "lifecycleTruthIDs": ["returningCameraConstruction"],
+                  "differenceType": "timing",
+                  "differenceKind": "startsTooEarly",
+                  "checkpoint": "start",
+                  "mismatch": true,
+                  "scope": { "path": "returningProcessLaunch", "trigger": "CameraView default construction", "anchorMeaning": "earliestProvenStart" },
+                  "traceBinding": { "scenarioGroupID": "legacyReturningCamera", "actualVisibleAfter": { "eventTypes": ["ACTIVATION_REQUESTED"], "occurrence": 1 }, "targetEffect": { "eventTypes": ["CAMERA_DISCOVERY_STARTED"], "workloadID": "cameraDiscovery", "status": "running", "occurrence": 1 } },
+                  "actual": { "workloadID": "cameraDiscovery", "label": "Camera capability discovery", "anchor": "t0", "phase": "Δt0–t1 · returning construction", "qualifier": "sourceOrderInferred", "summary": "CameraView 默认参数在 SwiftUI 构造期同步执行 device/format discovery。", "evidence": "CameraCapture/UI/CameraView.swift:115-144; CameraCapture/UI/CameraViewModel.swift:235-237; CameraCapture/Planning/CameraCapabilityResolver.swift:27-54" },
+                  "target": { "workloadID": "cameraDiscovery", "label": "Route-owned camera discovery", "anchor": "t2", "phase": "after t2 · C0", "qualifier": "targetContract", "summary": "只在 Viewfinder 或 Resource Initialization route shell commit 后开始。", "evidence": "StartupLifecycleContract.md:252-255,321" }
+                },
+                {
+                  "id": "cameraSessionConstructionStartsPreRoute",
+                  "taskIDs": ["TAP-0009", "TAP-0083"],
+                  "lifecycleTruthIDs": ["returningCameraConstruction"],
+                  "differenceType": "timing",
+                  "differenceKind": "startsTooEarly",
+                  "checkpoint": "construction",
+                  "mismatch": true,
+                  "scope": { "path": "returningProcessLaunch", "trigger": "CameraViewModel default construction", "anchorMeaning": "objectConstructionOnly" },
+                  "traceBinding": { "scenarioGroupID": "legacyReturningCamera", "actualVisibleAfter": { "eventTypes": ["ACTIVATION_REQUESTED"], "occurrence": 1 }, "targetEffect": { "eventTypes": ["CAMERA_DISCOVERY_STARTED"], "workloadID": "cameraSession", "status": "scheduled", "occurrence": 1 } },
+                  "actual": { "workloadID": "cameraSession", "label": "Capture-session object graph", "anchor": "t0", "phase": "Δt0–t1 · returning construction", "qualifier": "sourceOrderInferred", "summary": "CameraViewModel 默认参数创建 AVCaptureSession、outputs、queue 与 observers；这里只标 object construction，不声称 graph queue 早于 t2。", "evidence": "CameraCapture/UI/CameraViewModel.swift:235-250; CameraCapture/Runtime/CaptureSessionController.swift:42-67" },
+                  "target": { "workloadID": "cameraSession", "label": "Route-owned capture graph", "anchor": "t2", "phase": "after t2 · C0/C1", "qualifier": "targetContract", "summary": "Session construction/config/start 属于已选 Camera route 的工作。", "evidence": "StartupLifecycleContract.md:252-255,322" }
+                },
+                {
+                  "id": "libraryCatalogStartsBeforeRouteOwnership",
+                  "taskIDs": ["TAP-0008", "TAP-0009"],
+                  "lifecycleTruthIDs": ["libraryReadinessPredicate"],
+                  "differenceType": "timing",
+                  "differenceKind": "startsTooEarly",
+                  "checkpoint": "start",
+                  "mismatch": true,
+                  "scope": { "path": "firstInstallSetupOrRootTask", "trigger": "StartupGateView root task or Photos-granted change", "anchorMeaning": "routeSelectedButBeforeS4OrRIOwnership" },
+                  "traceBinding": { "scenarioGroupID": "processLaunchWithTargetCatalogWork", "actualVisibleAfter": { "eventTypes": ["INITIAL_ROUTE_COMMITTED"], "occurrence": 1 }, "targetEffect": { "eventTypes": ["LIBRARY_CATALOG_STARTED", "LIBRARY_OPENED"], "workloadID": "libraryCatalog", "status": "running", "occurrence": 1 } },
+                  "actual": { "workloadID": "libraryCatalog", "label": "First usable Library catalog", "anchor": "t2", "phase": "after t2 · Setup / root-mounted", "qualifier": "sourceOrderInferred", "summary": "Root task 或 Setup 内 Photos-granted change 可在 Continue/RI ownership 前启动 catalog；root path 还先被 poster backfill 串行阻塞。即使 hasUsableSnapshot ready，camera-only gate 也不消费它。", "evidence": "App/StartupGateView.swift:43-60,80-85; MediaLibrary/LibraryMediaStore.swift:84-122,164-192; CameraCapture/UI/CameraInitialReadinessGate.swift:35-59" },
+                  "target": { "workloadID": "libraryCatalog", "label": "RI or Library-owned catalog", "anchor": "t2", "phase": "after t2 · route-owned start", "qualifier": "targetContract", "summary": "仅在 stale-I Resource Initialization 或明确 Library entry 后开始；RI usable snapshot 在 t4 前完成。", "evidence": "ProductContract.md:157-170; StartupLifecycleContract.md:254-255,325" }
+                },
+                {
+                  "id": "libraryCatalogReadyNotConsumedByInitialization",
+                  "taskIDs": ["TAP-0009"],
+                  "lifecycleTruthIDs": ["libraryReadinessPredicate"],
+                  "differenceType": "semantic",
+                  "differenceKind": "missingReadyDependency",
+                  "checkpoint": "readyConsumption",
+                  "mismatch": true,
+                  "scope": { "path": "resourceInitialization", "trigger": "first usable catalog publication", "anchorMeaning": "readyPublicationDoesNotBlockLegacyCommit" },
+                  "traceBinding": { "scenarioGroupID": "targetResourceInitialization", "actualVisibleAfter": { "eventTypes": ["LIBRARY_CATALOG_PUBLISHED"], "occurrence": 1 }, "targetEffect": { "eventTypes": ["LIBRARY_CATALOG_PUBLISHED"], "workloadID": "libraryCatalog", "status": "succeeded", "occurrence": 1 } },
+                  "actual": { "workloadID": "libraryCatalog", "label": "Usable catalog outside legacy gate", "anchor": "t4", "phase": "t4-like · completion callback does not consume catalog", "qualifier": "sourceSemanticsT4LikeNotInstrumented", "summary": "LibraryMediaStore 能发布首个可用 snapshot（成功空 catalog 也成立），但 legacy camera-only gate 与 Bool commit 从不读取 hasUsableSnapshot。", "evidence": "App/StartupGateView.swift:43-60,80-90; MediaLibrary/LibraryMediaStore.swift:84-122,164-192; CameraCapture/UI/CameraInitialReadinessGate.swift:35-59" },
+                  "target": { "workloadID": "libraryCatalog", "label": "Catalog readiness blocks Initialization", "anchor": "t4", "phase": "t4 · C3/C4 hard prerequisite", "qualifier": "targetContract", "summary": "Resource Initialization 只有在首个 usable identity/order snapshot 与 camera interactive 都 ready 后，才允许提交 I 并到达 t4。", "evidence": "ProductContract.md:157-170,178-184; StartupLifecycleContract.md:220,233,255-256,325" }
+                },
+                {
+                  "id": "videoPosterStartsBeforeDeferredRelease",
+                  "taskIDs": ["TAP-0008", "TAP-0009", "TAP-0083"],
+                  "lifecycleTruthIDs": ["deferredWorkGuard"],
+                  "differenceType": "timing",
+                  "differenceKind": "startsTooEarly",
+                  "checkpoint": "start",
+                  "mismatch": true,
+                  "scope": { "path": "processLaunchRootTask", "trigger": "StartupGateView root task", "anchorMeaning": "rootMountedBeforeDeferredRelease" },
+                  "traceBinding": { "scenarioGroupID": "processLaunch", "actualVisibleAfter": { "eventTypes": ["INITIAL_ROUTE_COMMITTED"], "occurrence": 1 }, "targetEffect": { "eventTypes": ["DEFERRED_WORK_RELEASED"], "workloadID": "videoPosterBackfill", "status": "eligible", "occurrence": 1 } },
+                  "actual": { "workloadID": "videoPosterBackfill", "label": "Video poster backfill", "anchor": "t2", "phase": "after t2 · root / Setup mount", "qualifier": "sourceOrderInferredExactBoundaryUnmeasured", "summary": "Root task 从 Setup/RI/Viewfinder 根视图 mount 起即可 await poster backfill，再做首次 root catalog refresh；它不等待统一 t5 release，源码也未提供精确 t1/t2 埋点。", "evidence": "App/StartupGateView.swift:43-53; MediaLibrary/LibraryVideoPosterService.swift:70-89" },
+                  "target": { "workloadID": "videoPosterBackfill", "label": "Deferred video poster maintenance", "anchor": "t5", "phase": "after t5 · maintenance", "qualifier": "targetContract", "summary": "Poster 只在 deferred-work release 后运行，且不得串在首次 catalog 前。", "evidence": "StartupLifecycleContract.md:254,256-257,327" }
+                },
+                {
+                  "id": "firstInstallCredentialStartsAfterContinue",
+                  "taskIDs": ["TAP-0008"],
+                  "lifecycleTruthIDs": ["networkBootstrap"],
+                  "differenceType": "timing",
+                  "differenceKind": "startsTooLate",
+                  "checkpoint": "start",
+                  "mismatch": true,
+                  "scope": { "path": "firstInstallAfterContinue", "trigger": "camera start returned plus fixed credential delay", "anchorMeaning": "sameAnchorDifferentOrderingWindow", "preconditions": ["didAutoPrepare is false or credential health requires work"] },
+                  "traceBinding": { "scenarioGroupID": "legacyInitialAttestationAction", "actualVisibleAfter": { "eventTypes": ["SETUP_CONTINUE_TAPPED"], "occurrence": 1 }, "targetEffect": { "eventTypes": ["SETUP_ATTESTATION_TAPPED"], "workloadID": "initialAttestation", "status": "running", "occurrence": 1 } },
+                  "actual": { "workloadID": "appAttestMaintenance", "label": "Real credential prepare/health", "anchor": "t2", "phase": "after t2 · post-Continue / camera start + delay", "qualifier": "sourceOrderInferred", "summary": "Network 行只做 /healthz；真实 credential prepare/validation 要等 Continue、Camera start 返回并延迟约 1.5 秒；不把该延迟冒充 t3 preview。", "evidence": "App/StartupBackendSecurityPreflight.swift:41-110; CameraCapture/UI/CameraViewLifecycleModifier.swift:54-65; CameraCapture/UI/CaptureLifecycleCoordinator.swift:61-82; App/AppAttestRuntimeController.swift:68-87,151-178" },
+                  "target": { "workloadID": "initialAttestation", "label": "First-install App Attest bootstrap", "anchor": "t2", "phase": "Setup S1→S3 · before Continue", "qualifier": "targetContract", "summary": "真实 App Attest registration/verification 由 Network 行显式触发，并在 Continue 前完成。", "evidence": "ProductContract.md:96-135; StartupLifecycleContract.md:319-320" }
+                },
+                {
+                  "id": "cameraInteractionReadyEligibilityOmitsPreviewSafety",
+                  "taskIDs": ["TAP-0009"],
+                  "lifecycleTruthIDs": ["cameraReadinessPredicate"],
+                  "differenceType": "timing",
+                  "differenceKind": "readyEligibilityTooEarly",
+                  "checkpoint": "ready",
+                  "mismatch": true,
+                  "scope": { "path": "firstInstallReadiness", "trigger": "configuration plus depth plus haptics", "anchorMeaning": "earliestAllowedReadyPublication" },
+                  "traceBinding": { "scenarioGroupID": "legacyFirstInstallGate", "actualVisibleAfter": { "eventTypes": ["CAMERA_SESSION_CONFIGURED"], "occurrence": 1 }, "targetEffect": { "eventTypes": ["CAMERA_INTERACTION_READY"], "workloadID": "cameraInteraction", "status": "succeeded", "occurrence": 1 } },
+                  "actual": { "workloadID": "cameraInteraction", "label": "Legacy camera interaction readiness", "anchor": "t2", "phase": "after t2 · config/depth/haptics eligibility", "qualifier": "predicateInferredOrderingUnmeasured", "summary": "Predicate 允许 config + depth + haptics 在未消费真实 preview 与完整 shutter/control 安全条件时变成 ready；源码证明依赖缺失，不声称每次运行都已观测到提前发布。", "evidence": "CameraCapture/UI/CameraInitialReadinessGate.swift:35-59; CameraCapture/UI/CameraView.swift:401-418,574-585; CameraCapture/UI/CameraViewModel.swift:135-147" },
+                  "target": { "workloadID": "cameraInteraction", "label": "Safe interaction checkpoint", "anchor": "t4", "phase": "after t3 · C3→t4", "qualifier": "targetContract", "summary": "真实 preview 已在 t3 到达后，安全 shutter/primary controls 与 required haptics 才共同完成 t4。", "evidence": "ProductContract.md:147-155; StartupLifecycleContract.md:220,233,255,323" }
+                },
+                {
+                  "id": "recentCoverLacksDeferredReleaseGuard",
+                  "taskIDs": ["TAP-0008", "TAP-0083"],
+                  "lifecycleTruthIDs": ["deferredWorkGuard"],
+                  "differenceType": "timing",
+                  "differenceKind": "missingDeferredReleaseGuard",
+                  "checkpoint": "start",
+                  "mismatch": true,
+                  "scope": { "path": "cameraProcessLaunch", "trigger": "camera configuration completion plus 900 ms", "anchorMeaning": "earliestPostRouteWindow" },
+                  "traceBinding": { "scenarioGroupID": "processLaunch", "actualVisibleAfter": { "eventTypes": ["CAMERA_SESSION_CONFIGURED"], "occurrence": 1 }, "targetEffect": { "eventTypes": ["DEFERRED_WORK_RELEASED"], "workloadID": "recentLibraryCover", "status": "eligible", "occurrence": 1 } },
+                  "actual": { "workloadID": "recentLibraryCover", "label": "Recent Library cover", "anchor": "t2", "phase": "after t2 · camera configuration + 900 ms", "qualifier": "triggerWindowInferredOrderingUnmeasured", "summary": "Camera start 完成后即 schedule 900 ms cover refresh，不消费统一 t5 guard；源码证明 eligibility 缺口，实际墙钟完成先后未测量。", "evidence": "CameraCapture/UI/CameraViewModel.swift:425-440; CameraCapture/UI/CameraViewModel+Capture.swift:140-186" },
+                  "target": { "workloadID": "recentLibraryCover", "label": "Deferred recent cover", "anchor": "t5", "phase": "after t5 · cancellable request", "qualifier": "targetContract", "summary": "只在 deferred release 后运行，且永不阻塞 Viewfinder。", "evidence": "StartupLifecycleContract.md:329" }
+                },
+                {
+                  "id": "postSetupAttestLacksDeferredReleaseGuard",
+                  "taskIDs": ["TAP-0008", "TAP-0009", "TAP-0083"],
+                  "lifecycleTruthIDs": ["deferredWorkGuard"],
+                  "differenceType": "timing",
+                  "differenceKind": "missingDeferredReleaseGuard",
+                  "checkpoint": "start",
+                  "mismatch": true,
+                  "scope": { "path": "ordinaryCameraProcessLaunch", "trigger": "camera start returned plus fixed 1.5 s", "anchorMeaning": "earliestPostRouteWindow" },
+                  "traceBinding": { "scenarioGroupID": "processLaunch", "actualVisibleAfter": { "eventTypes": ["CAMERA_SESSION_CONFIGURED"], "occurrence": 1 }, "targetEffect": { "eventTypes": ["DEFERRED_WORK_RELEASED"], "workloadID": "appAttestMaintenance", "status": "eligible", "occurrence": 1 } },
+                  "actual": { "workloadID": "appAttestMaintenance", "label": "Post-setup App Attest health", "anchor": "t2", "phase": "after t2 · camera start + fixed 1.5 s", "qualifier": "triggerWindowInferredOrderingUnmeasured", "summary": "Process-launch timer 不消费真实 preview、interaction 或统一 t5 release；源码证明缺少 guard，不把 fixed delay 映射成已证明的 t3 或确定提前完成。", "evidence": "CameraCapture/UI/CameraViewLifecycleModifier.swift:54-65; CameraCapture/UI/CaptureLifecycleCoordinator.swift:19-20,61-87; CameraCapture/UI/CameraViewModel.swift:153-159" },
+                  "target": { "workloadID": "appAttestMaintenance", "label": "Deferred credential health", "anchor": "t5", "phase": "after t5 · credential owner", "qualifier": "targetContract", "summary": "Post-setup health/recovery 在 deferred release 后才 eligible，且不阻塞 route/preview/capture。", "evidence": "ProductContract.md:167-176; StartupLifecycleContract.md:254-257,330" }
+                },
+                {
+                  "id": "pendingRecoveryLacksDeferredReleaseGuard",
+                  "taskIDs": ["TAP-0008", "TAP-0083"],
+                  "lifecycleTruthIDs": ["deferredWorkGuard"],
+                  "differenceType": "timing",
+                  "differenceKind": "missingDeferredReleaseGuard",
+                  "checkpoint": "start",
+                  "mismatch": true,
+                  "scope": { "path": "ordinaryCameraProcessLaunch", "trigger": "camera start returned plus fixed pending-retry delay", "anchorMeaning": "earliestPostRouteWindow" },
+                  "traceBinding": { "scenarioGroupID": "processLaunch", "actualVisibleAfter": { "eventTypes": ["CAMERA_SESSION_CONFIGURED"], "occurrence": 1 }, "targetEffect": { "eventTypes": ["DEFERRED_WORK_RELEASED"], "workloadID": "pendingRecovery", "status": "eligible", "occurrence": 1 } },
+                  "actual": { "workloadID": "pendingRecovery", "label": "Pending Capture recovery", "anchor": "t2", "phase": "after t2 · post-camera fixed delay", "qualifier": "triggerWindowInferredOrderingUnmeasured", "summary": "Process-launch fixed-delay worker 没有 t5 guard；源码证明 eligibility 缺口，不把 foreground、Library return 与 credential completion 强压到同一 anchor。", "evidence": "CameraCapture/UI/CameraViewLifecycleModifier.swift:54-65; CameraCapture/UI/CaptureLifecycleCoordinator.swift:61-102; TAPLibrary/TAPPendingCaptureProcessor.swift:37-67" },
+                  "target": { "workloadID": "pendingRecovery", "label": "Guarded deferred Pending recovery", "anchor": "t5", "phase": "after t5 · guarded signals", "qualifier": "targetContract", "summary": "只在 deferred release 后，满足 camera-idle/protected-data/credential guard 时启动。", "evidence": "StartupLifecycleContract.md:331" }
+                },
+                {
+                  "id": "initialAttestationCompletionMeaning",
+                  "taskIDs": ["TAP-0008"],
+                  "lifecycleTruthIDs": ["networkBootstrap"],
+                  "differenceType": "semantic",
+                  "differenceKind": "wrongCompletionMeaning",
+                  "checkpoint": "completionAndRetryOwnership",
+                  "mismatch": true,
+                  "scope": { "path": "firstInstallSetup", "trigger": "Network row completion and denied refresh", "anchorMeaning": "samePhaseDifferentWorkloadMeaning" },
+                  "traceBinding": { "scenarioGroupID": "legacyInitialAttestationAction", "actualVisibleAfter": { "eventTypes": ["SETUP_ATTESTATION_COMPLETED"], "occurrence": 1 }, "targetEffect": { "eventTypes": ["SETUP_ATTESTATION_COMPLETED"], "workloadID": "initialAttestation", "status": "succeeded", "occurrence": 1 } },
+                  "actual": { "workloadID": "initialAttestation", "label": "Network row /healthz completion", "anchor": "t2", "phase": "after t2 · Setup Network action", "qualifier": "sourceSemantics", "summary": "Network 行只把 bounded /healthz GET 的 2xx 当 Ready；denied 后 Setup onAppear 或 foreground refresh 还能静默重启同一请求。", "evidence": "App/StartupBackendSecurityPreflight.swift:9-14,37-110; App/StartupGateCoordinator.swift:90-98; App/WelcomeStartupSetupView.swift:89-95" },
+                  "target": { "workloadID": "initialAttestation", "label": "Initial App Attest ready", "anchor": "t2", "phase": "after t2 · explicit Setup action", "qualifier": "targetContract", "summary": "Ready 表示 registration / verification 完成；超时后只有显式 Retry 能开始新序列。", "evidence": "ProductContract.md:118-123; StartupLifecycleContract.md:95-108,320" }
+                },
+                {
+                  "id": "firstPreviewGateConsumption",
+                  "taskIDs": ["TAP-0009"],
+                  "lifecycleTruthIDs": ["cameraReadinessPredicate"],
+                  "differenceType": "semantic",
+                  "differenceKind": "missingReadyDependency",
+                  "checkpoint": "readyConsumption",
+                  "mismatch": true,
+                  "scope": { "path": "firstInstallCameraReadiness", "trigger": "PreviewLayer isPreviewing callback", "anchorMeaning": "sameCheckpointMissingDependency" },
+                  "traceBinding": { "scenarioGroupID": "legacyFirstInstallGate", "actualVisibleAfter": { "eventTypes": ["CAMERA_PREVIEW_PRESENTED"], "occurrence": 1 }, "targetEffect": { "eventTypes": ["CAMERA_PREVIEW_PRESENTED"], "workloadID": "firstPreview", "status": "succeeded", "occurrence": 1 } },
+                  "actual": { "workloadID": "firstPreview", "label": "Preview callback outside initial gate", "anchor": "t3", "phase": "t3 · callback not consumed", "qualifier": "sourceSemantics", "summary": "isPreviewing KVO 在 session start 后到达，但 initial gate 的 observers/predicate 不读取它；callback 只服务后续 camera-path transition overlay。", "evidence": "CameraCapture/UI/CameraPreviewView.swift:116-148; CameraCapture/UI/CameraView.swift:348-364,605-660,1934-1964" },
+                  "target": { "workloadID": "firstPreview", "label": "Preview is a hard readiness predecessor", "anchor": "t3", "phase": "t3 · blocks C3/t4", "qualifier": "targetContract", "summary": "真实 preview ready 必须先于 camera interaction 与 t4 initialization commit。", "evidence": "ProductContract.md:147-155; StartupLifecycleContract.md:219-220,233" }
+                }
+              ]
+            }
           }
         },
         "globalReviewPlayback": {
@@ -389,16 +771,25 @@
       "inspector": [
         "t0…tn",
         "S/P/C/L/V spans",
+        "TAP-0008/TAP-0009 source-grounded truth cards with red mismatch backgrounds and one-to-one dashed links to circular actual-phase anchors",
         "observed and target workload records with trigger/owner/earliest/blocks/network/evidence plus alignment",
         "directed state-machine node-edge flow diagrams with active transitions",
         "marker effects",
         "t0…tn/Δ event sequence with UI/Reducer/Workload/Marker swimlanes",
+        "reviewer-only Timing 08/09 lifecycle lane containing only reached non-workload truth cards with one-to-one dashed links to circular milestone anchors",
+        "the existing Workload lane with 10 timing plus 3 semantic JSON-backed red actual annotations, dashed links, and uniquely bound existing blue prototype workload effects",
         "switchable bounded ordered event log",
         "reviewer-only previous-event snapshot rewind",
         "desktop single-window left combined page directory/operations + center phone + right causality inspector composition"
       ],
-      "qaEvidence": ["design-qa.md"],
+      "qaEvidence": [
+        "design-qa.md",
+        "evidence/TAP-0087-r1-v16-trace-bound-workload-differences.png"
+      ],
       "staleQaEvidence": [
+        "evidence/TAP-0087-r1-v15-integrated-workload-differences.png",
+        "evidence/TAP-0087-r1-v14-workload-timing-comparison.png",
+        "evidence/TAP-0087-r1-v13-timing-lifecycle-differences.png",
         "evidence/TAP-0087-r1-launch-screen-phone.png",
         "evidence/TAP-0087-r1-first-app-frame-phone.png",
         "evidence/TAP-0087-r1-setup-phone.png",
@@ -436,15 +827,15 @@
       },
       "desktopReviewerLayout": "left single combined UI page directory/contextual-operation catalog, center 393 x 852 phone preview, and right lifecycle/workload/state/event causality inspector remain visible in one supported desktop browser window without page-level scrolling; dense regions may scroll internally",
       "qaRefresh": {
-        "status": "browserAndAutomationVerifiedOwnerCorrectionVerifiedOwnerReviewRequired",
-        "verificationRevision": "v11f",
-        "historicalEvidenceNotCurrentPass": ["all existing TAP-0087 screenshot evidence", "v10 1600 x 941 geometry and scroll measurements", "v10 control coordinates", "pre-v11 console and automated-test results", "pre-correction responsive table"],
+        "status": "browserAndAutomationVerifiedTraceBoundWorkloadLaneOwnerReviewRequired",
+        "verificationRevision": "v16a",
+        "historicalEvidenceNotCurrentPass": ["pre-v16 TAP-0087 screenshot evidence including v13, v14, and v15", "v10/v11/v12 geometry and scroll measurements", "v10 control coordinates", "pre-v16 console and automated-test results", "pre-correction responsive table"],
         "browserEnvironment": {
           "client": "Codex in-app Browser",
           "viewport": { "width": 1703, "height": 1204 },
           "bodyScroll": { "scrollHeight": 1204, "clientHeight": 1204, "pageLevelVerticalScroll": false },
-          "screenshotFile": null,
-          "screenshotEvidence": "inspected inline in the Codex in-app Browser; no file was saved"
+          "screenshotFiles": ["evidence/TAP-0087-r1-v16-trace-bound-workload-differences.png"],
+          "screenshotEvidence": "saved after inline inspection in the Codex in-app Browser"
         },
         "v11fBrowserVerified": [
           "Viewfinder has two top-chrome rows, three FOV chips, PHOTO and VIDEO, and page viewfinder is interactive at seq 8",
@@ -467,21 +858,117 @@
           "screenshotBoundary": "inline in-app Browser inspection only; no screenshot file saved",
           "claimBoundary": "browser interaction evidence only; not native Simulator/device parity or owner approval"
         },
+        "v12aLifecycleDifferenceMap": {
+          "status": "browserVerified",
+          "defaultFilter": "truth",
+          "recordCounts": { "total": 14, "mismatch": 12, "aligned": 2 },
+          "anchorShape": "all t0…tn anchors computed border-radius 50%; t0…t5 carry current difference indication while tn remains neutral",
+          "topScrollObservation": "2 visible red cards and exactly 2 SVG paths with matching truth and actual-anchor IDs",
+          "bottomScrollObservation": "libraryReadinessPredicate, initializationCommit, resourceInitializationSurface, and deferredWorkGuard were the 4 visible red cards and exactly those 4 SVG path IDs existed",
+          "connectorResult": "one-to-one for every visible red card; clipped cards leave no floating path",
+          "evidenceBoundary": "historical inline Browser inspection only; superseded files were not retained after v13",
+          "claimBoundary": "source-grounded reviewer visualization only; not native implementation, timing, Simulator/device parity, or owner approval"
+        },
+        "v13aTimingDifferenceMap": {
+          "status": "browserVerified",
+          "scenario": "ordinaryProcessLaunch Viewfinder at seq 8",
+          "laneOrder": ["Timing", "08/09 差异", "UI", "Reducer", "Workload", "Marker"],
+          "reachedActualAnchors": ["t0", "t1", "t2", "t3", "t4"],
+          "futureAnchorPolicyVerified": "t5 was unreached and absent from the Timing difference projection",
+          "renderedMismatchCards": 11,
+          "renderedDashedPaths": 11,
+          "connectorResult": "every card ID and actual-anchor ID matched exactly one dashed path",
+          "viewToggleResult": "Timing to Ordered log to Timing restored all 11 cards and 11 paths",
+          "rightFilterIndependence": "switching the right-hand workload filter to 当前 removed truth cards there but preserved all 11 Timing cards and paths",
+          "reducerJournalEventCount": 8,
+          "stateEffect": "none",
+          "evidence": ["evidence/TAP-0087-r1-v13-timing-lifecycle-differences.png"],
+          "claimBoundary": "reviewer annotation only; not a reducer edge, native implementation, performance evidence, Simulator/device parity, or owner approval"
+        },
+        "v14aWorkloadTimingComparison": {
+          "status": "browserVerified",
+          "scenario": "ordinaryProcessLaunch Viewfinder at seq 8",
+          "phaseAxis": ["t0", "t1", "t2", "t3", "t4", "t5"],
+          "recordCounts": { "timingMismatch": 10, "actualCards": 10, "prototypeCards": 10, "dashedPaths": 10 },
+          "connectorResult": "actual-card, prototype-card, and connector ID sets matched one-to-one; SVG connectorCount was 10",
+          "presentation": "red actual mismatch gradient/border, blue prototype target gradient/border, explicit Actual/Prototype rows, mismatch kind, checkpoint, and phase movement",
+          "viewToggleResult": "Timing to Ordered log to Timing preserved Viewfinder seq 8, eight reducer events, ten pairs, and ten paths",
+          "rightFilterIndependence": "switching the lifecycle truth-card filter to 当前 removed that list but preserved all workload timing pairs and paths",
+          "scrollResult": "internal Timing scroll exposed paired cards while all ten connections remained attached",
+          "resizeResult": "temporary 1500 x 1000 viewport retained ten paths; override reset to default",
+          "consoleResult": "no warning or error",
+          "stateEffect": "none",
+          "evidence": ["evidence/TAP-0087-r1-v14-workload-timing-comparison.png"],
+          "claimBoundary": "source-order reviewer comparison only; not native instrumentation, duration, performance evidence, Simulator/device parity, or owner approval"
+        },
+        "v15aIntegratedWorkloadDifferences": {
+          "status": "browserVerified",
+          "scenario": "ordinaryProcessLaunch Viewfinder at seq 8",
+          "laneOrder": ["Timing", "08/09 生命周期", "UI", "Reducer", "Workload", "Marker"],
+          "ownership": { "truthPanelCards": 8, "lifecycleMismatchCards": 6, "lifecycleDashedPaths": 6, "workloadDifferenceCards": 12, "standaloneComparisonBands": 0 },
+          "recordCounts": { "timingMismatch": 10, "semanticMismatch": 2, "actualRegions": 12, "prototypeRegions": 12, "inlineDashedConnectors": 12 },
+          "actualAnchorDistribution": { "t0": 3, "t1": 0, "t2": 8, "t3": 1, "t4": 0, "t5": 0 },
+          "connectorResult": "workload pair, actual-region, target-region, and inline-connector ID sets matched one-to-one with no duplicates",
+          "futureTargetResult": "the four t5 targets remained inside their workload pairs as 未到达投影; no t5 reducer column or event was created",
+          "focusResult": "clicking libraryObserverStartsPreFrame actual focused seq 2 while the reducer state remained at seq 8; Follow latest restored the latest focus",
+          "viewToggleResult": "Timing to Ordered log to Timing preserved seq 8, eight reducer events, twelve workload pairs, six lifecycle cards, and six lifecycle dashed paths",
+          "visualComparison": "v14 standalone lower comparison was removed; v15 places red actual, dashed link, and blue prototype inside the one existing Workload lane",
+          "consoleResult": "no warning or error",
+          "stateEffect": "none",
+          "evidence": ["evidence/TAP-0087-r1-v15-integrated-workload-differences.png"],
+          "claimBoundary": "source-order and predicate reviewer comparison only; not native instrumentation, elapsed duration, performance evidence, Simulator/device parity, or owner approval"
+        },
+        "v16aTraceBoundWorkloadDifferences": {
+          "status": "browserVerified",
+          "environment": "Codex in-app Browser 1703 x 1204; body scrollHeight/clientHeight 1204/1204; one internal Timing scroll surface",
+          "laneOrder": ["Timing", "08/09 生命周期", "UI", "Reducer", "Workload", "Marker"],
+          "dataSource": "manifest workloadDifferenceComparison schemaVersion 2 with scenarioGroupID plus actualVisibleAfter and exact targetEffect bindings",
+          "ordinarySeq8": { "actualAnnotations": 8, "existingBlueTargets": 3, "dashedPaths": 3, "futureT5Columns": 0, "unreachedTargets": 5 },
+          "ordinarySeq9": { "actualAnnotations": 8, "existingBlueTargets": 7, "dashedPaths": 7, "t5Reached": true },
+          "ordinaryLibraryOpened": { "existingBlueTargets": 8, "dashedPaths": 8, "catalogTargetEvent": "LIBRARY_OPENED" },
+          "freshInstallSeq20": { "actualAnnotations": 11, "existingBlueTargets": 11, "dashedPaths": 11, "canonicalTraceEffectsPreserved": 23, "lifecycleMismatchCards": 6, "lifecycleDashedPaths": 6 },
+          "crossScenarioIsolation": "ordinaryForegroundResume seq 2 rendered zero actual annotations, targets, and connectors",
+          "bindingMatrix": "persistent automated replay covers all 154 concrete record/scenario bindings with exact visibility and target-effect resolution",
+          "visibilityBeforeCoarseAnchor": "in Resource Initialization, LIBRARY_CATALOG_PUBLISHED exposed libraryCatalogReadyNotConsumedByInitialization with actualAnchorReached false while t4 was absent; the exact existing catalog target and connector still rendered",
+          "visibilityProjection": "firstInstallCredentialStartsAfterContinue uses Continue seq 13 as its reviewer visibility/upstream projection while the card names the real post-camera fixed-delay trigger; the exact prototype initialAttestation effect remains in seq 5 and the dashed path runs backward across existing columns",
+          "unreachedTargetPolicy": "red actual distinguishes exact prototype effect presence from target lifecycle-anchor reachability; no blue target, connector, future event column, reducer event, or workload effect is synthesized when the exact effect is absent",
+          "tracePreservation": "every entry.effects.workloads transition remains rendered in the one Workload lane; comparison annotations never filter or replace canonical effects",
+          "connectorResult": "actual, exact target, and dashed path ID sets matched at every reached checkpoint; no path contained NaN or undefined",
+          "focusResult": "clicking the first-install credential actual focused seq 13 without changing reducer state; Follow latest restored seq 20",
+          "viewToggleResult": "Timing to Ordered log to Timing restored all 11 fresh-install actuals, 11 targets, 11 paths, and 23 trace effects",
+          "computedStyles": "red and blue gradients/borders; connector stroke-dasharray 4px 4px; connector pointer-events none",
+          "accessibilityResult": "red visible copy and accessible name include mismatch kind, checkpoint, source scope and trigger, actual phase, target phase, and reachability; connector lookup uses data-target-element-id rather than claiming aria-controls semantics",
+          "visualComparison": "v15 and v16 were inspected together at the same viewport; v16 preserves the canonical Workload trace and links red current-main source annotations to existing blue prototype workload elements",
+          "consoleResult": "no warning or error",
+          "stateEffect": "none",
+          "evidence": ["evidence/TAP-0087-r1-v16-trace-bound-workload-differences.png"],
+          "claimBoundary": "code-grounded source-order and predicate reviewer comparison only; not native instrumentation, elapsed duration, performance evidence, Simulator/device parity, or owner approval"
+        },
         "automatedChecks": {
-          "nodeTests": "node --test Prototype/*.test.mjs: 51/51 passed",
-          "nodeCheck": "all four checked MJS files passed",
+          "nodeTests": "node --test Prototype/*.test.mjs: 58/58 passed",
+          "nodeCheck": "all six Prototype MJS files passed",
           "manifestParse": "passed",
           "diffCheck": "passed"
         },
-        "notClaimed": ["saved screenshot file for the final workload-navigation pass", "mobile or responsive coverage", "native Simulator parity", "physical-device parity or timing", "owner approval"],
-        "closureRequires": ["fresh saved visual evidence if separately required by the owner", "product-owner approval of the exact v11 composition"]
+        "notClaimed": ["mobile or responsive coverage", "native Simulator parity", "physical-device parity or timing", "owner approval"],
+        "closureRequires": ["product-owner approval of the exact v16 composition"]
       },
       "currentMainGaps": [
+        "one legacy UserDefaults Boolean merges Setup completion with Resource Initialization completion; there is no structured S/P/I route state",
         "TAPCamDemoApp.init constructs LibraryMediaStore and registers PhotoKit observation on the pre-frame path",
         "returning-user CameraViewModel construction performs capability discovery and constructs session ownership before the target route shell boundary",
         "the legacy Setup Network action performs /healthz rather than required first-install App Attest registration and verification",
+        "a denied Network state is silently restarted by Setup appearance or foreground status refresh",
+        "permission denied and restricted states are collapsed; Camera and Photos share one footer Settings action while optional denied rows have no row-owned recovery",
+        "there is no post-setup Required Permission Check route; returning CameraViewModel.start may implicitly request Camera while Photos is absent from root routing",
+        "updates, replacement installs, offload/reinstall, and restore or migration retain a true legacy Boolean without version, schema, installation, device-generation, or local App Attest binding validation",
         "preview-layer isPreviewing KVO does not feed the current initial readiness gate",
+        "the initial readiness gate checks active configuration, depth readiness, and haptics but not the complete shutter and primary-control safety predicate",
+        "the first usable Library catalog snapshot does not feed the current initial readiness gate",
+        "the legacy completion Boolean is written after the camera-only gate and can precede real preview and catalog completion",
+        "the current Preparing camera overlay exposes Failed, Retry, and Settings while the target Resource Initialization invariant has no public failure branch",
         "root task awaits video-poster backfill before the first Library catalog refresh",
+        "poster backfill, recent cover, post-setup App Attest, and Pending recovery do not share one t5 deferred-work release guard",
         "RAW Viewer original or iCloud resource loading and full analysis begin alongside bounded display"
       ],
       "excluded": ["importing TAP-0081 Share behavior/events/workloads/payload preparation into TAP-0087/TAP-0008/TAP-0009", "AirDrop and system activity-sheet simulation", "Locked Camera", "iPad", "native implementation", "performance proof"],

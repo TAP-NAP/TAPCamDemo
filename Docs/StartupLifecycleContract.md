@@ -462,6 +462,54 @@ focused event; switching views cannot dispatch a product event or alter state.
 The left-side action controls are therefore never used as substitutes for the
 flow graph or timing sequence.
 
+Reviewer workload differences are projected inside the existing **Workload**
+lane. They never create a standalone comparison band, a second Workload lane,
+or an additional reducer lane. Their canonical records are stored in the
+prototype JSON manifest with this minimum shape:
+
+```text
+id, taskIDs, lifecycleTruthIDs, differenceType = timing | semantic,
+differenceKind, checkpoint, mismatch
+scope { path, trigger, anchorMeaning }
+actual { workloadID, label, anchor, phase, qualifier, summary, evidence }
+target { workloadID, label, anchor, phase, qualifier, summary, evidence }
+traceBinding {
+  scenarioGroupID,
+  actualVisibleAfter { eventTypes, occurrence },
+  targetEffect { eventTypes, workloadID, status, occurrence }
+}
+```
+
+The controller loads those JSON records and derives the rendered count; it does
+not hardcode a second copy. Lifecycle truth IDs are partitioned explicitly:
+workload-owned mismatches render only in Workload, while route, persistence,
+permission-recovery, marker-commit, and presented-state gaps remain in the
+**08/09 生命周期** lane. The two ownership sets are disjoint and together cover
+every mismatch source truth.
+
+A workload difference preserves every canonical reducer workload effect in the
+existing lane. Its manifest-owned current-main annotation appears as a red
+**实际 · 不一致** card in the `actualVisibleAfter` reviewer visibility/upstream
+projection column only
+when the selected scenario belongs to `scenarioGroupID`; the card separately
+labels its explicit coarse `actual.anchor` lifecycle period.
+The corresponding prototype workload is the existing reducer-trace effect that
+uniquely matches event type, workload ID, resulting status, and one-based
+occurrence; that existing effect becomes visibly blue and keeps its original
+focus/status semantics.
+
+When both ends exist, exactly one dashed SVG connector joins the red actual card
+to that blue trace effect. If the target effect is not yet in the journal, the
+red card says **既有 trace effect 尚未出现** but creates no blue substitute,
+future milestone column, reducer event, workload transition, marker effect, or
+phone-state change. Target lifecycle-anchor reachability is rendered separately
+from the exact workload effect's canonical status, so `Eligible` or `Running`
+cannot be misread as completion. Current-main anchors and `actualVisibleAfter`
+remain reviewer source-order or predicate visibility projections. The selected
+prototype reducer event is an upstream review checkpoint, not a claim that the
+current-main workload executed there; neither placement is a native timestamp,
+elapsed duration, or device-performance measurement.
+
 ### 5.2 Reviewer workbench, playback, and desktop composition
 
 The workbench binds three regions to the same selected surface and trace:
@@ -542,18 +590,23 @@ durations are labels for sequencing and never device-performance evidence.
 
 ## 7. Current Mainline Gaps And Ownership
 
-At baseline `main@985425f`, the major known mismatches are:
+At the refreshed source-audit baseline `main@4cc02e5f12f2`, the major known
+mismatches are:
 
 | Gap | Delivery owner |
 | --- | --- |
 | Setup Network currently proves only `/healthz` reachability, not completion of the required first-install App Attest registration/verification; a denied state can also auto-retry after foreground refresh | `TAP-0008` after this contract/prototype gate |
 | Setup completion and Resource Initialization use one legacy Boolean rather than separate `S/I` facts | `TAP-0008` and `TAP-0009` |
 | No global Required Permission Check route exists | `TAP-0008` route implementation, consuming `TAP-0087` visual/state contract |
+| Setup collapses `.denied` and `.restricted`; Camera/Photos share one footer Settings action and optional denied rows have no row-owned recovery | `TAP-0008` |
+| A returning route can reach `CameraViewModel.start()` with Camera `.notDetermined`, which starts an implicit Camera request; Photos is not part of the root route | `TAP-0008` |
+| A retained true legacy Boolean sends changed-build update/replacement/offload and restore/migration cases directly to Camera without version/schema/install-device or local credential-binding validation | `TAP-0008` and `TAP-0009` |
 | `TAPCamDemoApp.init` constructs `LibraryMediaStore` and registers its PhotoKit observer on the pre-frame path | `TAP-0083` optimization after measurement |
 | Returning-user root construction creates `CameraViewModel`, performs synchronous camera capability discovery, and constructs capture-session ownership before the target route shell/first-frame boundary | `TAP-0083` optimization, coordinated with `TAP-0009` readiness |
 | Root `.task` awaits video-poster backfill before its first Library catalog refresh, so maintenance can delay the catalog path | `TAP-0083` or a scoped follow-up produced by its audit |
 | The preview-layer `isPreviewing` KVO callback exists, but current initial readiness does not consume it as a gate; it currently feeds only path-transition presentation | `TAP-0009` |
 | Resource Initialization does not gate on the first usable Library catalog snapshot or own a versioned marker | `TAP-0009` |
+| The current first-install overlay says **Preparing camera** and exposes Failed/Retry/Settings branches instead of the stable **Resource Initialization / Please Wait** invariant | `TAP-0009` |
 | Foreground active can start recent-cover and Pending Capture work before a root required-permission route | `TAP-0008`/`TAP-0083` integration |
 | Pending worker and notification-driven catalog refresh can repeat full-directory scans | Scoped follow-up after `TAP-0083` evidence |
 | RAW Viewer requests original/possibly iCloud-backed resources and eagerly begins full analysis input work alongside bounded display; this can contend with Viewer readiness and supplies later 2D/3D and existing Share inputs | Observation in `TAP-0087`; behavior changes belong to `TAP-0089` or another approved Viewer/resource Task |

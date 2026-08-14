@@ -84,6 +84,42 @@ displayed `t0…t5` sequence belongs to the target reducer. Current-main interva
 labels are source-order inferences only, not native timestamps or device
 measurements.
 
+Use the default **08 / 09 真值** filter to compare current-main source truth with
+the TAP-0008/TAP-0009 prototype target. The JSON catalog has 14 source truths,
+but this panel shows only the six lifecycle-owned mismatches plus two aligned
+facts; six workload-owned mismatch truths render only in Timing's Workload lane.
+Each visible lifecycle red card owns one dashed line to its circular `t0…tn`
+actual-phase node. The connector is a reviewer annotation—not a reducer edge,
+native timestamp, device measurement, or claim that current main emits that
+target milestone.
+
+The **Timing 时序** view places non-workload gaps in the **08/09 生命周期**
+lane. A red lifecycle card appears only after its actual anchor is reached and
+keeps one dashed path to that column's circular milestone. Workload-owned gaps
+are omitted there and appear only in the existing **Workload** lane.
+
+Each Workload mismatch keeps the canonical reducer trace intact. A red
+**实际 · 不一致** annotation appears in the JSON-selected reviewer visibility/
+upstream projection column and separately labels its real source trigger and
+coarse lifecycle anchor. The projection event controls visibility only; it does
+not mean current main executed the actual workload there. Its dashed connector terminates at
+the matching existing workload trace effect, which is highlighted blue without
+losing its original status or focus action. If the target effect has not been
+recorded yet, the red annotation says **既有 trace effect 尚未出现** and no blue
+substitute or future event column is created. Target lifecycle `tN` reachability
+is shown separately from the workload effect's canonical status. There is no
+lower comparison band or duplicate Workload lane.
+
+The lifecycle truth records and workload difference records are read from
+[`manifest.json`](manifest.json) under
+`independentCandidates.startupLifecycle.workbench.right.tap0008Tap0009CodeTruth`.
+The page does not maintain a second hardcoded list, lane-ownership list, or
+count. Ten timing records and three semantic workload records render from JSON;
+already aligned or non-workload cases remain outside this projection. Each
+record scopes one current-main path/trigger, names the lifecycle truth that it
+represents, and carries the scenario/event/workload/status binding used to find
+the existing prototype trace effect.
+
 Settings is catalogued only as **Pending — no approved slice**. It has no
 invented phone preview or operations. The system Settings handoff used for
 permission recovery remains a system-owned boundary.

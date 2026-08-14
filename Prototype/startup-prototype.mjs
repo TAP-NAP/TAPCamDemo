@@ -5,14 +5,18 @@ import {
   chooseRoute,
   createState,
   initializationIdentityMatches,
+  lifecycleTimingLaneRecordIDs,
+  lifecycleTruthRegistry,
   machineRegistry,
   nextEvent,
   photosUsable,
   publicSnapshot,
   reduce,
+  resolveWorkloadDifferenceTraceBinding,
   scenarioFixtures,
   setupRequiredReady,
   timelineRegistry,
+  workloadDifferenceRegistry,
   workloadInspectionReached,
   workloadRegistry
 } from "./startup-model.mjs";
@@ -20,6 +24,7 @@ import { mountTapShareSlice } from "./tap-share-slice.mjs";
 
 const byID = (id) => document.getElementById(id);
 const clone = (value) => JSON.parse(JSON.stringify(value));
+const lifecycleTimingLaneRecordIDSet = new Set(lifecycleTimingLaneRecordIDs);
 
 const pageLabels = Object.freeze({
   dormant: "Dormant",
@@ -192,7 +197,7 @@ function makeInitialReviewEntry() {
     state: fallback,
     history: [clone(fallback)],
     focusSeq: null,
-    workloadFilter: "relevant",
+    workloadFilter: "truth",
     eventViewMode: "timing",
     autoTransition: true
   };
@@ -834,6 +839,8 @@ function renderTimeline() {
     highlightSequence(li, trace, trace?.effects.milestones.includes(item.id));
     const label = document.createElement("strong");
     const name = document.createElement("span");
+    label.className = "timeline-anchor";
+    label.dataset.lifecycleAnchorId = item.id;
     label.textContent = item.id;
     name.textContent = item.label;
     li.append(label, name);
@@ -1073,13 +1080,86 @@ function workloadIsRelevant(id, registry) {
   return status !== "dormant" || registry.pages.includes(state.phone.page);
 }
 
+function renderLifecycleTruthCards() {
+  return lifecycleTruthRegistry
+    .filter((truth) => !truth.mismatch || lifecycleTimingLaneRecordIDSet.has(truth.id))
+    .map((truth) => {
+    const card = document.createElement("article");
+    card.className = "workload-card lifecycle-truth-card";
+    card.classList.toggle("is-lifecycle-mismatch", truth.mismatch);
+    card.classList.toggle("is-lifecycle-aligned", !truth.mismatch);
+    card.dataset.lifecycleTruthId = truth.id;
+    card.dataset.lifecycleActualAnchor = truth.actual.anchor;
+    card.dataset.lifecycleTargetAnchor = truth.target.anchor;
+    if (truth.mismatch) card.dataset.lifecycleDifferenceId = truth.id;
+    card.setAttribute(
+      "aria-label",
+      `${truth.label}。${truth.mismatch ? "生命周期不一致" : "生命周期一致"}。真实阶段 ${truth.actual.anchor} ${truth.actual.phase}。原型阶段 ${truth.target.anchor} ${truth.target.phase}。`
+    );
+
+    const title = document.createElement("span");
+    title.className = "workload-title";
+    const strong = document.createElement("strong");
+    const meta = document.createElement("small");
+    strong.textContent = truth.label;
+    meta.textContent = truth.taskIDs.join(" · ");
+    title.append(strong, meta);
+
+    const badge = document.createElement("span");
+    badge.className = `lifecycle-truth-verdict ${truth.mismatch ? "is-mismatch" : "is-aligned"}`;
+    badge.textContent = truth.mismatch ? "不一致" : "一致";
+
+    const phase = document.createElement("div");
+    phase.className = "lifecycle-truth-phase";
+    phase.innerHTML = `<span><em>真实</em><strong></strong><small></small></span><i aria-hidden="true">→</i><span><em>原型</em><strong></strong><small></small></span>`;
+    const phaseColumns = phase.querySelectorAll("span");
+    phaseColumns[0].querySelector("strong").textContent = truth.actual.anchor;
+    phaseColumns[0].querySelector("small").textContent = truth.actual.phase;
+    phaseColumns[1].querySelector("strong").textContent = truth.target.anchor;
+    phaseColumns[1].querySelector("small").textContent = truth.target.phase;
+
+    const detail = document.createElement("div");
+    detail.className = "lifecycle-truth-detail";
+    detail.innerHTML = `<span><strong>Current main · 代码真实情况</strong><small></small></span><span><strong>Prototype · 目标情况</strong><small></small></span>`;
+    const detailColumns = detail.querySelectorAll("small");
+    detailColumns[0].textContent = truth.actual.summary;
+    detailColumns[1].textContent = truth.target.summary;
+
+    const evidence = document.createElement("small");
+    evidence.className = "lifecycle-truth-evidence";
+    evidence.textContent = `代码：${truth.actual.evidence} · 目标：${truth.target.evidence}`;
+    card.append(title, badge, phase, detail, evidence);
+      return card;
+    });
+}
+
+function updateTimelineDifferenceAnchors() {
+  const mismatchAnchors = workloadFilter === "truth"
+    ? new Set(lifecycleTruthRegistry
+      .filter((truth) => truth.mismatch && lifecycleTimingLaneRecordIDSet.has(truth.id))
+      .map((truth) => truth.actual.anchor))
+    : new Set();
+  document.querySelectorAll("[data-lifecycle-anchor-id]").forEach((anchor) => {
+    anchor.classList.toggle("has-lifecycle-difference", mismatchAnchors.has(anchor.dataset.lifecycleAnchorId));
+  });
+}
+
 function renderWorkloads() {
   const trace = focusedTrace();
+  document.documentElement.dataset.workloadFilter = workloadFilter;
   document.querySelectorAll("[data-workload-filter]").forEach((button) => {
     button.setAttribute("aria-pressed", String(button.dataset.workloadFilter === workloadFilter));
   });
   const list = byID("workload-list");
+  if (workloadFilter === "truth") {
+    list.replaceChildren(...renderLifecycleTruthCards());
+    byID("workload-inspector-summary").textContent = `${lifecycleTimingLaneRecordIDs.length} 处生命周期不一致 · workload 差异见 Timing`;
+    updateTimelineDifferenceAnchors();
+    scheduleLifecycleDifferenceConnectors();
+    return;
+  }
   const entries = Object.entries(workloadRegistry).filter(([id, registry]) => workloadIsRelevant(id, registry));
+  byID("workload-inspector-summary").textContent = workloadFilter === "all" ? "全部 workload" : "当前 surface workload";
   list.replaceChildren(...entries.map(([id, registry]) => {
     const status = state.workloads[id];
     const card = document.createElement("button");
@@ -1112,6 +1192,77 @@ function renderWorkloads() {
     card.append(title, badge, detail);
     return card;
   }));
+  updateTimelineDifferenceAnchors();
+  scheduleLifecycleDifferenceConnectors();
+}
+
+let lifecycleConnectorFrame = null;
+
+function renderLifecycleDifferenceConnectors() {
+  lifecycleConnectorFrame = null;
+  const svg = byID("lifecycle-difference-connectors");
+  const inspector = document.querySelector(".inspector-panel");
+  const list = byID("workload-list");
+  svg.replaceChildren();
+  if (workloadFilter !== "truth") {
+    svg.dataset.visibleConnectorCount = "0";
+    return;
+  }
+
+  const inspectorRect = inspector.getBoundingClientRect();
+  const listRect = list.getBoundingClientRect();
+  svg.setAttribute("viewBox", `0 0 ${inspectorRect.width} ${inspectorRect.height}`);
+  svg.setAttribute("width", String(inspectorRect.width));
+  svg.setAttribute("height", String(inspectorRect.height));
+
+  const namespace = "http://www.w3.org/2000/svg";
+  const cards = [...list.querySelectorAll("[data-lifecycle-difference-id]")];
+  let visibleConnectorCount = 0;
+  cards.forEach((card) => {
+    const cardRect = card.getBoundingClientRect();
+    const visibleTop = Math.max(cardRect.top, listRect.top, inspectorRect.top);
+    const visibleBottom = Math.min(cardRect.bottom, listRect.bottom, inspectorRect.bottom);
+    const anchor = document.querySelector(`[data-lifecycle-anchor-id="${card.dataset.lifecycleActualAnchor}"]`);
+    if (!anchor || visibleBottom <= visibleTop) {
+      card.classList.remove("has-visible-connector");
+      return;
+    }
+
+    const anchorRect = anchor.getBoundingClientRect();
+    const path = document.createElementNS(namespace, "path");
+    const cardMidY = (visibleTop + visibleBottom) / 2 - inspectorRect.top;
+    const isBesideTimeline = cardRect.left > anchorRect.right + 20;
+    let pathData;
+    if (isBesideTimeline) {
+      const startX = anchorRect.right - inspectorRect.left;
+      const startY = anchorRect.top + anchorRect.height / 2 - inspectorRect.top;
+      const endX = cardRect.left - inspectorRect.left;
+      const endY = cardMidY;
+      const controlX = startX + Math.max(24, (endX - startX) * 0.5);
+      pathData = `M ${startX} ${startY} C ${controlX} ${startY}, ${controlX} ${endY}, ${endX} ${endY}`;
+    } else {
+      const startX = anchorRect.left + anchorRect.width / 2 - inspectorRect.left;
+      const startY = anchorRect.bottom - inspectorRect.top;
+      const endX = Math.min(Math.max(startX, cardRect.left - inspectorRect.left + 18), cardRect.right - inspectorRect.left - 18);
+      const endY = visibleTop - inspectorRect.top;
+      const controlY = startY + Math.max(20, (endY - startY) * 0.5);
+      pathData = `M ${startX} ${startY} C ${startX} ${controlY}, ${endX} ${controlY}, ${endX} ${endY}`;
+    }
+    path.setAttribute("d", pathData);
+    path.dataset.connectorId = card.dataset.lifecycleDifferenceId;
+    path.dataset.sourceTruthId = card.dataset.lifecycleTruthId;
+    path.dataset.targetAnchorId = card.dataset.lifecycleActualAnchor;
+    path.classList.add("lifecycle-difference-connector");
+    svg.append(path);
+    card.classList.add("has-visible-connector");
+    visibleConnectorCount += 1;
+  });
+  svg.dataset.visibleConnectorCount = String(visibleConnectorCount);
+}
+
+function scheduleLifecycleDifferenceConnectors() {
+  if (lifecycleConnectorFrame != null) window.cancelAnimationFrame(lifecycleConnectorFrame);
+  lifecycleConnectorFrame = window.requestAnimationFrame(renderLifecycleDifferenceConnectors);
 }
 
 function workloadInspectionHistoryIndex(workloadId) {
@@ -1190,6 +1341,7 @@ function timingColumns() {
     return {
       entry,
       interval,
+      milestones: reached,
       milestone: reached.join(" + ") || null,
       stateAfter: stateSnapshotAtSequence(entry.seq)
     };
@@ -1229,6 +1381,269 @@ function makeTimingLane(label, laneId, columns, renderColumn) {
   return lane;
 }
 
+function makeTimingLifecycleDifference(truth) {
+  const card = document.createElement("article");
+  card.className = "timing-lifecycle-difference";
+  card.dataset.timingDifferenceId = truth.id;
+  card.dataset.timingActualAnchor = truth.actual.anchor;
+  card.dataset.timingTargetAnchor = truth.target.anchor;
+  card.setAttribute(
+    "aria-label",
+    `${truth.label}。当前不一致。真实阶段 ${truth.actual.anchor} ${truth.actual.phase}；原型阶段 ${truth.target.anchor} ${truth.target.phase}。`
+  );
+  const label = document.createElement("strong");
+  const phase = document.createElement("small");
+  label.textContent = truth.label;
+  phase.textContent = `真实 ${truth.actual.anchor} → 原型 ${truth.target.anchor}`;
+  card.append(label, phase);
+  card.title = `${truth.actual.summary}\n→ ${truth.target.summary}`;
+  return card;
+}
+
+const workloadDifferenceLabels = Object.freeze({
+  startsTooEarly: "开始过早",
+  startsTooLate: "开始过晚",
+  wrongTriggerWindow: "触发窗口不一致",
+  readyPublishedTooEarly: "Ready 发布过早",
+  readyEligibilityTooEarly: "Ready 条件过早",
+  missingDeferredReleaseGuard: "缺少 t5 guard",
+  wrongCompletionMeaning: "完成含义不一致",
+  missingReadyDependency: "缺少 Ready 前置"
+});
+
+const timingDOMID = (value) => String(value).replace(/[^a-zA-Z0-9_-]/g, "-");
+const timingWorkloadEffectKey = (seq, workloadId, effectIndex) => `${seq}:${workloadId}:${effectIndex}`;
+const timingWorkloadEffectDOMID = (seq, workloadId, effectIndex) => (
+  `timing-workload-effect-${seq}-${timingDOMID(workloadId)}-${effectIndex + 1}`
+);
+
+function buildTimingWorkloadDifferenceProjection(columns) {
+  const actualBySequence = new Map();
+  const targetByEffect = new Map();
+
+  for (const difference of workloadDifferenceRegistry) {
+    if (!difference.mismatch) continue;
+    const resolved = resolveWorkloadDifferenceTraceBinding(difference, state.scenarioId, columns);
+    if (!resolved.visible) continue;
+    const { actualColumn, visibilityColumn, targetColumn } = resolved;
+  const targetBinding = difference.traceBinding.targetEffect;
+    const targetEffectIndex = targetColumn
+      ? (targetColumn.entry.effects.workloads || []).findIndex((workloadId) => workloadId === targetBinding.workloadID)
+      : -1;
+    const targetEffectReached = targetColumn != null && targetEffectIndex >= 0;
+    const targetAnchorReached = columns.some(({ milestones }) => milestones?.includes(difference.target.anchor));
+    const projection = {
+      difference,
+      actualColumn,
+      visibilityColumn,
+      targetColumn: targetEffectReached ? targetColumn : null,
+      targetEffectIndex,
+      targetAnchorReached
+    };
+
+    const actuals = actualBySequence.get(visibilityColumn.entry.seq) || [];
+    actuals.push(projection);
+    actualBySequence.set(visibilityColumn.entry.seq, actuals);
+    if (targetEffectReached) {
+      targetByEffect.set(
+        timingWorkloadEffectKey(targetColumn.entry.seq, targetBinding.workloadID, targetEffectIndex),
+        projection
+      );
+    }
+  }
+
+  return { actualBySequence, targetByEffect };
+}
+
+function makeTimingWorkloadActual(projection) {
+  const {
+    difference,
+    actualColumn,
+    visibilityColumn,
+    targetColumn,
+    targetEffectIndex,
+    targetAnchorReached
+  } = projection;
+  const targetEffectReached = targetColumn != null;
+  const kindLabel = workloadDifferenceLabels[difference.differenceKind] || difference.differenceKind;
+  const actual = document.createElement("button");
+  actual.type = "button";
+  actual.id = `timing-workload-actual-${timingDOMID(difference.id)}`;
+  actual.className = "timing-workload-actual";
+  actual.dataset.workloadDifferenceActualId = difference.id;
+  actual.dataset.differenceType = difference.differenceType;
+  actual.dataset.actualWorkloadId = difference.actual.workloadID;
+  actual.dataset.targetWorkloadId = difference.target.workloadID;
+  actual.dataset.actualAnchor = difference.actual.anchor;
+  actual.dataset.targetAnchor = difference.target.anchor;
+  actual.dataset.targetEffectReached = String(targetEffectReached);
+  actual.dataset.targetAnchorReached = String(targetAnchorReached);
+  actual.dataset.lifecycleTruthIds = difference.lifecycleTruthIDs.join(" ");
+  actual.dataset.scopePath = difference.scope.path;
+  actual.dataset.scenarioGroupId = difference.traceBinding.scenarioGroupID;
+  actual.dataset.actualVisibleSeq = String(visibilityColumn.entry.seq);
+  actual.dataset.actualAnchorReached = String(actualColumn != null);
+  actual.dataset.actualAnchorSeq = actualColumn ? String(actualColumn.entry.seq) : "";
+  actual.dataset.focusSeq = String(visibilityColumn.entry.seq);
+  actual.setAttribute("aria-current", String(focusedTrace()?.seq === visibilityColumn.entry.seq));
+  if (targetEffectReached) {
+    actual.dataset.targetElementId = timingWorkloadEffectDOMID(
+      targetColumn.entry.seq,
+      difference.traceBinding.targetEffect.workloadID,
+      targetEffectIndex
+    );
+  }
+  actual.setAttribute(
+    "aria-label",
+    `${difference.actual.label}。实际不一致。差异：${kindLabel}；检查点：${difference.checkpoint}。真实来源范围：${difference.scope.path}；真实触发：${difference.scope.trigger}。审阅投影点：事件 #${visibilityColumn.entry.seq} ${eventLabels[visibilityColumn.entry.event.type] || visibilityColumn.entry.event.type}；该点只控制差异何时显示，不代表真实 workload 在此执行。实际阶段：${difference.actual.anchor}，${difference.actual.phase}。对应原型 Workload：${difference.target.label}；既有原型 Workload effect ${targetEffectReached ? "已出现" : "尚未出现"}。目标生命周期：${difference.target.anchor} ${targetAnchorReached ? "已到达" : "尚未到达"}，${difference.target.phase}。按下后聚焦该 reviewer visibility/upstream 投影事件；生命周期归属仍是 ${difference.actual.anchor}。`
+  );
+
+  const verdict = document.createElement("em");
+  verdict.textContent = "Actual · 不一致";
+  const label = document.createElement("strong");
+  label.textContent = difference.actual.label;
+  const kind = document.createElement("small");
+  kind.className = "timing-workload-difference-kind";
+  kind.textContent = `${kindLabel} · ${difference.checkpoint}`;
+  const sourceScope = document.createElement("small");
+  sourceScope.className = "timing-workload-source-scope";
+  sourceScope.textContent = `真实触发 · ${difference.scope.path} · ${difference.scope.trigger}`;
+  const projectionScope = document.createElement("small");
+  projectionScope.className = "timing-workload-projection-scope";
+  projectionScope.textContent = `审阅投影 · after #${visibilityColumn.entry.seq} ${eventLabels[visibilityColumn.entry.event.type] || visibilityColumn.entry.event.type} · 非实际执行点`;
+  const phase = document.createElement("small");
+  phase.textContent = `${difference.actual.anchor} · ${difference.actual.phase}`;
+  const targetStatus = document.createElement("span");
+  targetStatus.className = "timing-workload-target-status";
+  targetStatus.textContent = `对应原型 Workload · ${difference.target.label} · 既有 trace effect ${targetEffectReached ? "已出现" : "尚未出现"}`;
+  const targetPhase = document.createElement("small");
+  targetPhase.className = "timing-workload-target-phase";
+  targetPhase.textContent = `目标生命周期 · ${difference.target.anchor} ${targetAnchorReached ? "已到达" : "尚未到达"} · ${difference.target.phase}`;
+  actual.append(verdict, label, kind, sourceScope, projectionScope, phase, targetStatus, targetPhase);
+  actual.title = `实际：${difference.actual.summary}\n目标：${difference.target.summary}\n代码：${difference.actual.evidence}\n契约：${difference.target.evidence}`;
+  return actual;
+}
+
+function makeTimingWorkloadTraceEffect(workloadId, effectIndex, entry, stateAfter, targetProjection = null) {
+  const registry = workloadRegistry[workloadId];
+  const status = stateAfter?.workloads?.[workloadId];
+  const statusLabel = status ? statusLabels[status] || status : null;
+  const button = makeCausalEvent(
+    `${registry?.label || workloadId}${statusLabel ? ` · ${statusLabel}` : ""}`,
+    entry.seq
+  );
+  button.id = timingWorkloadEffectDOMID(entry.seq, workloadId, effectIndex);
+  button.classList.add("timing-workload-trace-effect");
+  button.dataset.workloadId = workloadId;
+  button.dataset.workloadEffectIndex = String(effectIndex);
+  button.title = `原型 reducer trace · ${registry?.family || "work"}`;
+  button.setAttribute(
+    "aria-label",
+    `原型 reducer workload：${registry?.label || workloadId}${statusLabel ? `，状态 ${statusLabel}` : ""}。事件 #${entry.seq} ${eventLabels[entry.event.type] || entry.event.type}。按下后聚焦该 reducer 事件。`
+  );
+  if (targetProjection) {
+    const { difference } = targetProjection;
+    button.classList.add("is-workload-difference-target");
+    button.dataset.workloadDifferenceTargetId = difference.id;
+    button.dataset.targetAnchor = difference.target.anchor;
+    button.dataset.actualAnnotationId = `timing-workload-actual-${timingDOMID(difference.id)}`;
+    const targetBadge = document.createElement("span");
+    targetBadge.className = "timing-workload-target-badge";
+    targetBadge.textContent = `原型 Workload effect · 目标 ${difference.target.anchor}`;
+    button.append(targetBadge);
+    button.title = `既有原型 Workload effect · 目标生命周期 ${difference.target.anchor} ${targetProjection.targetAnchorReached ? "已到达" : "尚未到达"} · ${button.title}`;
+    button.setAttribute(
+      "aria-label",
+      `既有原型 Workload effect。对应目标生命周期 ${difference.target.anchor} ${targetProjection.targetAnchorReached ? "已到达" : "尚未到达"}。原型 reducer workload：${registry?.label || workloadId}${statusLabel ? `，状态 ${statusLabel}` : ""}。事件 #${entry.seq} ${eventLabels[entry.event.type] || entry.event.type}。按下后聚焦该 reducer 事件。`
+    );
+  }
+  return button;
+}
+
+let timingDifferenceConnectorFrame = null;
+
+function renderTimingDifferenceConnectors() {
+  timingDifferenceConnectorFrame = null;
+  const timingView = byID("timing-event-view");
+  const grid = timingView.querySelector(".timing-axis-grid");
+  const svg = timingView.querySelector(".timing-difference-connectors");
+  if (!grid || !svg || timingView.hidden) return;
+
+  const gridRect = grid.getBoundingClientRect();
+  svg.replaceChildren();
+  svg.setAttribute("viewBox", `0 0 ${grid.scrollWidth} ${grid.scrollHeight}`);
+  svg.setAttribute("width", String(grid.scrollWidth));
+  svg.setAttribute("height", String(grid.scrollHeight));
+  const namespace = "http://www.w3.org/2000/svg";
+  const lifecycleCards = [...grid.querySelectorAll("[data-timing-difference-id]")];
+  lifecycleCards.forEach((card) => {
+    const anchorID = card.dataset.timingActualAnchor;
+    const anchor = grid.querySelector(`[data-timing-lifecycle-anchor-id="${anchorID}"]`);
+    if (!anchor) return;
+    const peers = lifecycleCards.filter((candidate) => candidate.dataset.timingActualAnchor === anchorID);
+    const peerIndex = peers.indexOf(card);
+    const anchorRect = anchor.getBoundingClientRect();
+    const cardRect = card.getBoundingClientRect();
+    const startX = anchorRect.left + anchorRect.width / 2 - gridRect.left + (peerIndex - (peers.length - 1) / 2) * 2;
+    const startY = anchorRect.bottom - gridRect.top;
+    const railX = cardRect.left - gridRect.left - 4 - peerIndex * 2.2;
+    const endX = cardRect.left - gridRect.left;
+    const endY = cardRect.top + Math.min(12, cardRect.height / 2) - gridRect.top;
+    const path = document.createElementNS(namespace, "path");
+    path.setAttribute("d", `M ${startX} ${startY} C ${startX} ${startY + 6}, ${railX} ${startY + 6}, ${railX} ${startY + 12} L ${railX} ${endY} L ${endX} ${endY}`);
+    path.dataset.timingConnectorId = card.dataset.timingDifferenceId;
+    path.dataset.targetAnchorId = anchorID;
+    path.classList.add("timing-difference-connector");
+    svg.append(path);
+  });
+  let workloadConnectorCount = 0;
+  const actualCards = [...grid.querySelectorAll("[data-workload-difference-actual-id]")];
+  actualCards.forEach((actual) => {
+    const targetID = actual.dataset.targetElementId;
+    const target = targetID ? byID(targetID) : null;
+    if (!target || !grid.contains(target)) return;
+
+    const actualRect = actual.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    const sameColumn = actual.closest(".timing-interval-column") === target.closest(".timing-interval-column");
+    let pathData;
+    if (sameColumn) {
+      const startX = actualRect.left + actualRect.width / 2 - gridRect.left;
+      const startY = actualRect.bottom - gridRect.top;
+      const endX = targetRect.left + targetRect.width / 2 - gridRect.left;
+      const endY = targetRect.top - gridRect.top;
+      const bend = Math.max(7, Math.abs(endY - startY) / 2);
+      pathData = `M ${startX} ${startY} C ${startX} ${startY + bend}, ${endX} ${endY - bend}, ${endX} ${endY}`;
+    } else {
+      const targetIsRight = targetRect.left >= actualRect.left;
+      const startX = (targetIsRight ? actualRect.right : actualRect.left) - gridRect.left;
+      const startY = actualRect.top + actualRect.height / 2 - gridRect.top;
+      const endX = (targetIsRight ? targetRect.left : targetRect.right) - gridRect.left;
+      const endY = targetRect.top + targetRect.height / 2 - gridRect.top;
+      const bend = Math.max(18, Math.abs(endX - startX) * 0.42);
+      pathData = targetIsRight
+        ? `M ${startX} ${startY} C ${startX + bend} ${startY}, ${endX - bend} ${endY}, ${endX} ${endY}`
+        : `M ${startX} ${startY} C ${startX - bend} ${startY}, ${endX + bend} ${endY}, ${endX} ${endY}`;
+    }
+
+    const path = document.createElementNS(namespace, "path");
+    path.setAttribute("d", pathData);
+    path.dataset.workloadDifferenceConnectorId = actual.dataset.workloadDifferenceActualId;
+    path.dataset.actualElementId = actual.id;
+    path.dataset.targetElementId = target.id;
+    path.classList.add("timing-workload-difference-connector");
+    svg.append(path);
+    workloadConnectorCount += 1;
+  });
+  svg.dataset.workloadConnectorCount = String(workloadConnectorCount);
+  svg.dataset.connectorCount = String(svg.childElementCount);
+}
+
+function scheduleTimingDifferenceConnectors() {
+  if (timingDifferenceConnectorFrame != null) window.cancelAnimationFrame(timingDifferenceConnectorFrame);
+  timingDifferenceConnectorFrame = window.requestAnimationFrame(renderTimingDifferenceConnectors);
+}
+
 function renderTimingEventView() {
   const columns = timingColumns();
   const grid = document.createElement("div");
@@ -1241,16 +1656,46 @@ function renderTimingEventView() {
     empty.textContent = "尚无 reducer trace；选择 UI 或启动场景后，将按 timing 与因果泳道显示。";
     grid.append(empty);
     byID("timing-event-view").replaceChildren(grid);
+    scheduleTimingDifferenceConnectors();
     return;
   }
 
-  grid.append(makeTimingLane("Timing", "timing", columns, ({ entry, interval, milestone }) => {
+  grid.append(makeTimingLane("Timing", "timing", columns, ({ entry, interval, milestone, milestones }) => {
     const button = makeCausalEvent(milestone || interval, entry.seq);
     button.classList.add("timing-axis-event");
     const detail = document.createElement("small");
     detail.textContent = milestone ? interval : `#${entry.seq}`;
     button.append(detail);
+    milestones.forEach((milestoneID) => {
+      const anchor = document.createElement("span");
+      anchor.className = "timing-milestone-anchor";
+      anchor.dataset.timingLifecycleAnchorId = milestoneID;
+      anchor.textContent = milestoneID;
+      anchor.classList.toggle(
+        "has-lifecycle-difference",
+        lifecycleTruthRegistry.some((truth) => (
+          truth.mismatch
+          && lifecycleTimingLaneRecordIDSet.has(truth.id)
+          && truth.actual.anchor === milestoneID
+        ))
+      );
+      button.append(anchor);
+    });
     return button;
+  }));
+
+  grid.append(makeTimingLane("08/09 生命周期", "difference", columns, ({ milestones }) => {
+    const reached = new Set(milestones);
+    const differences = lifecycleTruthRegistry.filter((truth) => (
+      truth.mismatch
+      && lifecycleTimingLaneRecordIDSet.has(truth.id)
+      && reached.has(truth.actual.anchor)
+    ));
+    if (!differences.length) return null;
+    const stack = document.createElement("div");
+    stack.className = "timing-difference-stack";
+    stack.append(...differences.map(makeTimingLifecycleDifference));
+    return stack;
   }));
 
   grid.append(makeTimingLane("UI", "ui", columns, ({ entry }) => {
@@ -1267,20 +1712,24 @@ function renderTimingEventView() {
     { primary: true }
   )));
 
+  const workloadDifferenceProjection = buildTimingWorkloadDifferenceProjection(columns);
   grid.append(makeTimingLane("Workload", "workload", columns, ({ entry, stateAfter }) => {
-    const workloadIds = entry.effects.workloads || [];
-    if (!workloadIds.length) return null;
-    const details = workloadIds.map((workloadId) => {
-      const registry = workloadRegistry[workloadId];
-      const status = stateAfter?.workloads?.[workloadId];
-      return `${registry?.label || workloadId}${status ? ` · ${statusLabels[status] || status}` : ""}`;
-    });
-    const families = [...new Set(workloadIds.map((workloadId) => workloadRegistry[workloadId]?.family || "work"))];
-    const statuses = [...new Set(workloadIds.map((workloadId) => statusLabels[stateAfter?.workloads?.[workloadId]] || stateAfter?.workloads?.[workloadId]).filter(Boolean))];
-    const summary = `${workloadIds.length} · ${families.join("/")}${statuses.length ? ` · ${statuses.join("/")}` : ""}`;
-    const button = makeCausalEvent(summary, entry.seq);
-    button.title = details.join("\n");
-    return button;
+    const differences = workloadDifferenceProjection.actualBySequence.get(entry.seq) || [];
+    const traceWorkloadIds = entry.effects.workloads || [];
+    if (!differences.length && !traceWorkloadIds.length) return null;
+    const stack = document.createElement("div");
+    stack.className = "timing-workload-stack";
+    stack.append(
+      ...differences.map(makeTimingWorkloadActual),
+      ...traceWorkloadIds.map((workloadId, effectIndex) => makeTimingWorkloadTraceEffect(
+        workloadId,
+        effectIndex,
+        entry,
+        stateAfter,
+        workloadDifferenceProjection.targetByEffect.get(timingWorkloadEffectKey(entry.seq, workloadId, effectIndex)) || null
+      ))
+    );
+    return stack;
   }));
 
   grid.append(makeTimingLane("Marker", "marker", columns, ({ entry }) => {
@@ -1292,12 +1741,19 @@ function renderTimingEventView() {
     return button;
   }));
 
+  const connectorSVG = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  connectorSVG.classList.add("timing-difference-connectors");
+  connectorSVG.setAttribute("aria-hidden", "true");
+  connectorSVG.setAttribute("focusable", "false");
+  grid.append(connectorSVG);
+
   const timingView = byID("timing-event-view");
   timingView.replaceChildren(grid);
   const focusedColumn = timingView.querySelector(`[data-causal-seq="${focusedTrace()?.seq ?? ""}"]`);
   if (focusedColumn) {
     timingView.scrollLeft = Math.max(0, focusedColumn.offsetLeft - timingView.clientWidth + focusedColumn.offsetWidth + 12);
   }
+  scheduleTimingDifferenceConnectors();
 }
 
 function renderEventViews() {
@@ -1309,6 +1765,7 @@ function renderEventViews() {
     button.setAttribute("aria-pressed", String(button.dataset.eventView === eventViewMode));
   });
   document.documentElement.dataset.prototypeEventView = eventViewMode;
+  if (eventViewMode === "timing") scheduleTimingDifferenceConnectors();
 }
 
 function renderAll() {
@@ -1367,6 +1824,15 @@ document.querySelectorAll("[data-workload-filter]").forEach((button) => {
     renderWorkloads();
   });
 });
+byID("workload-list").addEventListener("scroll", scheduleLifecycleDifferenceConnectors, { passive: true });
+byID("timing-event-view").addEventListener("scroll", scheduleTimingDifferenceConnectors, { passive: true });
+window.addEventListener("resize", scheduleLifecycleDifferenceConnectors, { passive: true });
+window.addEventListener("resize", scheduleTimingDifferenceConnectors, { passive: true });
+const lifecycleConnectorResizeObserver = new ResizeObserver(scheduleLifecycleDifferenceConnectors);
+lifecycleConnectorResizeObserver.observe(document.querySelector(".inspector-panel"));
+lifecycleConnectorResizeObserver.observe(byID("workload-list"));
+const timingConnectorResizeObserver = new ResizeObserver(scheduleTimingDifferenceConnectors);
+timingConnectorResizeObserver.observe(byID("timing-event-view"));
 byID("workload-list").addEventListener("click", (event) => {
   const card = event.target.closest("[data-workload-id]");
   if (!card) return;

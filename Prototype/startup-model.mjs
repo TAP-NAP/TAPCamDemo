@@ -1,5 +1,106 @@
 const clone = (value) => JSON.parse(JSON.stringify(value));
 
+async function loadPrototypeManifest() {
+  const manifestURL = new URL("./manifest.json", import.meta.url);
+  if (manifestURL.protocol === "file:") {
+    const { readFile } = await import("node:fs/promises");
+    return JSON.parse(await readFile(manifestURL, "utf8"));
+  }
+  const response = await fetch(manifestURL, { cache: "no-store" });
+  if (!response.ok) throw new Error(`Unable to load prototype manifest: ${response.status}`);
+  return response.json();
+}
+
+let prototypeDifferenceDataError = null;
+const prototypeManifest = await loadPrototypeManifest().catch((error) => {
+  prototypeDifferenceDataError = error instanceof Error ? error.message : String(error);
+  return null;
+});
+const loadedLifecycleDifferenceManifest = prototypeManifest
+  ?.independentCandidates
+  ?.startupLifecycle
+  ?.workbench
+  ?.right
+  ?.tap0008Tap0009CodeTruth;
+const lifecycleDifferenceManifest = Array.isArray(loadedLifecycleDifferenceManifest?.records)
+  ? loadedLifecycleDifferenceManifest
+  : { records: [], timingProjection: {}, workloadDifferenceComparison: { records: [] } };
+const loadedWorkloadDifferenceManifest = lifecycleDifferenceManifest.workloadDifferenceComparison;
+const workloadDifferenceManifest = Array.isArray(loadedWorkloadDifferenceManifest?.records)
+  ? loadedWorkloadDifferenceManifest
+  : { records: [], scenarioGroups: {} };
+const loadedWorkloadDifferenceScenarioGroups = workloadDifferenceManifest.scenarioGroups;
+const workloadDifferenceScenarioGroups = (
+  loadedWorkloadDifferenceScenarioGroups
+  && typeof loadedWorkloadDifferenceScenarioGroups === "object"
+  && !Array.isArray(loadedWorkloadDifferenceScenarioGroups)
+  && Object.values(loadedWorkloadDifferenceScenarioGroups).every((scenarioIDs) => Array.isArray(scenarioIDs))
+)
+  ? loadedWorkloadDifferenceScenarioGroups
+  : {};
+const loadedTimingProjection = lifecycleDifferenceManifest.timingProjection;
+const timingProjection = (
+  Array.isArray(loadedTimingProjection?.lifecycleLaneRecordIDs)
+  && Array.isArray(loadedTimingProjection?.workloadLaneTruthRecordIDs)
+)
+  ? loadedTimingProjection
+  : { lifecycleLaneRecordIDs: [], workloadLaneTruthRecordIDs: [] };
+if (
+  !prototypeDifferenceDataError
+  && (
+    lifecycleDifferenceManifest !== loadedLifecycleDifferenceManifest
+    || workloadDifferenceManifest !== loadedWorkloadDifferenceManifest
+    || workloadDifferenceScenarioGroups !== loadedWorkloadDifferenceScenarioGroups
+    || timingProjection !== loadedTimingProjection
+  )
+) {
+  prototypeDifferenceDataError = "Prototype difference manifest has an invalid record shape";
+}
+
+export const PROTOTYPE_DIFFERENCE_DATA_SOURCE = "Prototype/manifest.json";
+export const PROTOTYPE_DIFFERENCE_DATA_STATUS = Object.freeze({
+  loaded: prototypeDifferenceDataError == null,
+  error: prototypeDifferenceDataError
+});
+export const lifecycleTruthRegistry = Object.freeze(clone(lifecycleDifferenceManifest.records));
+export const lifecycleTimingLaneRecordIDs = Object.freeze(clone(timingProjection.lifecycleLaneRecordIDs));
+export const workloadLaneTruthRecordIDs = Object.freeze(clone(timingProjection.workloadLaneTruthRecordIDs));
+export const workloadDifferenceRegistry = Object.freeze(clone(workloadDifferenceManifest.records));
+export const workloadDifferenceScenarioRegistry = Object.freeze(clone(workloadDifferenceScenarioGroups));
+
+function occurrenceMatch(columns, matcher, { requireWorkload = false } = {}) {
+  const eventTypes = Array.isArray(matcher?.eventTypes) ? matcher.eventTypes : [];
+  const occurrence = Number.isInteger(matcher?.occurrence) && matcher.occurrence > 0 ? matcher.occurrence : 1;
+  const matches = columns.filter(({ entry, stateAfter }) => {
+    if (!eventTypes.includes(entry?.event?.type)) return false;
+    if (!requireWorkload) return true;
+    const workloadID = matcher.workloadID;
+    if (!entry?.effects?.workloads?.includes(workloadID)) return false;
+    return matcher.status == null || stateAfter?.workloads?.[workloadID] === matcher.status;
+  });
+  return matches[occurrence - 1] || null;
+}
+
+export function resolveWorkloadDifferenceTraceBinding(difference, scenarioID, columns) {
+  const binding = difference?.traceBinding;
+  const scenarioIDs = workloadDifferenceScenarioRegistry[binding?.scenarioGroupID];
+  const applicable = Array.isArray(scenarioIDs) && scenarioIDs.includes(scenarioID);
+  if (!applicable) {
+    return Object.freeze({ applicable: false, visible: false, actualColumn: null, visibilityColumn: null, targetColumn: null });
+  }
+
+  const visibilityColumn = occurrenceMatch(columns, binding.actualVisibleAfter);
+  const actualColumn = columns.find(({ milestones }) => milestones?.includes(difference.actual.anchor)) || null;
+  const targetColumn = occurrenceMatch(columns, binding.targetEffect, { requireWorkload: true });
+  return Object.freeze({
+    applicable: true,
+    visible: Boolean(visibilityColumn),
+    actualColumn,
+    visibilityColumn,
+    targetColumn
+  });
+}
+
 export const REVISION = "TAP-0087-r1-candidate";
 export const TARGET_INITIALIZATION_IDENTITY = Object.freeze({
   bundleID: "com.tapnap.TAPCamDemo",
@@ -387,7 +488,7 @@ export const workloadRegistry = Object.freeze({
   startupFacts: {
     label: "Lifecycle facts + permission snapshot", machineId: "routeDecision", family: "startup", pages: ["systemLaunchScreen", "firstAppFrame"], alignment: "gap",
     observed: { trigger: "App/root construction", owner: "MainActor + legacy StartupGate", earliest: "Δt0–t1 (inferred)", blocks: "Legacy Boolean route; snapshot is not consumed", network: "denied refresh may start /healthz", evidence: "App/StartupGateView.swift:16; App/StartupGateCoordinator.swift:90" },
-    target: { trigger: "After first app frame", owner: "Bounded S/P/I route snapshot", earliest: "Δt1–t2", blocks: "Route only", network: "never", forbiddenDuring: [], task: "TAP-0087 → TAP-0008/0009" }
+    target: { trigger: "Activation facts read", owner: "Bounded structured S/P/I route snapshot", earliest: "Δt0–t1", blocks: "Route only", network: "never", forbiddenDuring: [], task: "TAP-0087 → TAP-0008/0009" }
   },
   libraryRootObservation: {
     label: "Library store + PhotoKit observer construction", machineId: "libraryCatalog", family: "library", pages: ["systemLaunchScreen", "firstInstallSetup", "viewfinder"], alignment: "gap",
@@ -420,7 +521,7 @@ export const workloadRegistry = Object.freeze({
     target: { trigger: "Real preview is ready", owner: "Bounded camera readiness", earliest: "after t3", blocks: "t4", network: "never", forbiddenDuring: [], task: "TAP-0009" }
   },
   libraryCatalog: {
-    label: "First usable Library catalog snapshot", machineId: "libraryCatalog", family: "library", pages: ["resourceInitialization", "library"], alignment: "gap",
+    label: "First usable Library catalog snapshot", machineId: "libraryCatalog", family: "library", pages: ["firstInstallSetup", "resourceInitialization", "library"], alignment: "gap",
     observed: { trigger: "Root task / permission / observer / cover refresh", owner: "MainActor + actors + detached merge", earliest: "Root mounted task", blocks: "No I marker; root refresh waits behind poster backfill", network: "PhotoKit conditional by caller", evidence: "DepthAnalysis/DepthAlbumItemProvider.swift:83; App/StartupGateView.swift:43" },
     target: { trigger: "Stale initialization marker or Library entry", owner: "Generation-aware catalog service", earliest: "after t2", blocks: "RI only when I is stale", network: "never for identity catalog", forbiddenDuring: ["Δt0–t1"], task: "TAP-0009" }
   },
@@ -430,7 +531,7 @@ export const workloadRegistry = Object.freeze({
     target: { trigger: "Visible cell demand", owner: "On-demand visible cells", earliest: "Library entry", blocks: "Cell only", network: "never", forbiddenDuring: ["startup critical path"], task: "TAP-0087" }
   },
   videoPosterBackfill: {
-    label: "Video poster backfill", machineId: "libraryCatalog", family: "library", pages: ["viewfinder", "library"], alignment: "gap",
+    label: "Video poster backfill", machineId: "libraryCatalog", family: "library", pages: ["firstInstallSetup", "viewfinder", "library"], alignment: "gap",
     observed: { trigger: "Root mounted task", owner: "Backfill actor + detached utility", earliest: "Before root catalog refresh", blocks: "Indirectly delays root catalog; candidate-count-scaled", network: "never", evidence: "App/StartupGateView.swift:43; MediaLibrary/LibraryVideoPosterService.swift:70" },
     target: { trigger: "Deferred-work release", owner: "Bounded maintenance owner", earliest: "after t5", blocks: "nothing", network: "never", forbiddenDuring: ["Δt0–t5"], task: "TAP-0083 follow-up" }
   },
@@ -483,7 +584,7 @@ export const workloadRegistry = Object.freeze({
 // exact states; the inspector must not upgrade them to a synthetic Ready state.
 export const workloadInspectionRegistry = Object.freeze({
   startupFacts: { scenarioId: "ordinaryProcessLaunch", eventType: "APP_FIRST_FRAME_COMMITTED", status: "succeeded", page: "firstAppFrame" },
-  libraryRootObservation: { scenarioId: "ordinaryProcessLaunch", eventType: "APP_FIRST_FRAME_COMMITTED", status: "succeeded", page: "firstAppFrame" },
+  libraryRootObservation: { scenarioId: "ordinaryProcessLaunch", eventType: "INITIAL_ROUTE_COMMITTED", status: "succeeded", page: "viewfinder" },
   initialAttestation: { scenarioId: "freshInstall", eventType: "SETUP_ATTESTATION_COMPLETED", status: "succeeded", page: "firstInstallSetup" },
   cameraDiscovery: { scenarioId: "ordinaryProcessLaunch", eventType: "CAMERA_SESSION_CONFIGURED", status: "succeeded", page: "viewfinder" },
   cameraSession: { scenarioId: "ordinaryProcessLaunch", eventType: "CAMERA_SESSION_CONFIGURED", status: "succeeded", page: "viewfinder" },
@@ -615,6 +716,13 @@ function work(tx, id, status) {
   if (!tx.effects.workloads.includes(id)) tx.effects.workloads.push(id);
 }
 
+function activateLibraryRootObservationIfAllowed(tx) {
+  if (tx.state.facts.activation.kind !== "processLaunch") return;
+  if (!photosUsable(tx.state.facts.permissions.photos)) return;
+  if (tx.state.workloads.libraryRootObservation !== "dormant") return;
+  work(tx, "libraryRootObservation", "succeeded");
+}
+
 function mark(tx, id, from, to) {
   tx.effects.markers.push({ id, from: clone(from), to: clone(to) });
 }
@@ -678,6 +786,7 @@ function enterRoute(tx, decision = chooseRoute(tx.state.facts), { initial = fals
     reach(tx, "t2");
     move(tx, "activation", "routeCommitted", "activation.routeCommitted");
   }
+  activateLibraryRootObservationIfAllowed(tx);
 
   switch (decision.page) {
     case "firstInstallSetup":
@@ -1031,7 +1140,6 @@ export function reduce(previous, event) {
       if (state.facts.activation.kind === "processLaunch") {
         setPage(tx, "systemLaunchScreen", "staticReference");
         move(tx, "activation", "launchRequested", "activation.launchRequested");
-        work(tx, "libraryRootObservation", "running");
       } else {
         setPage(tx, state.facts.activation.returnPage || "viewfinder", "suspendedSnapshot");
         move(tx, "activation", "sceneResumed", "activation.sceneResumed");
@@ -1040,9 +1148,6 @@ export function reduce(previous, event) {
     case "APP_FIRST_FRAME_COMMITTED":
       reach(tx, "t1");
       work(tx, "startupFacts", "succeeded");
-      if (state.facts.activation.kind === "processLaunch" && state.workloads.libraryRootObservation === "running") {
-        work(tx, "libraryRootObservation", "succeeded");
-      }
       move(tx, "activation", "appFirstFrame", "activation.appFirstFrame");
       move(tx, "routeDecision", "readingFacts", "routeDecision.readingFacts");
       if (state.facts.activation.kind === "processLaunch") {
@@ -1097,6 +1202,7 @@ export function reduce(previous, event) {
       break;
     case "SYSTEM_PERMISSION_RETURNED":
       state.facts.permissions[event.permission] = event.status;
+      activateLibraryRootObservationIfAllowed(tx);
       updateFirstInstallSetupMachine(tx);
       break;
     case "SETUP_OPTIONAL_SKIPPED":
