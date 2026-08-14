@@ -2,8 +2,8 @@
 
 This directory is the lightweight, statically served prototype foundation for
 `TAP-0006`. Its current vertical slices are the TAP Share flow owned by
-`TAP-0081` and the first-install resource-initialization flow owned by
-`TAP-0009`.
+`TAP-0081`, the first-install setup flow owned by `TAP-0008`, and the separate
+resource-initialization flow owned by `TAP-0009`.
 It is intentionally plain HTML, CSS, and JavaScript: no backend, package manager,
 framework runtime, production hosting configuration, or persistent cache is
 required.
@@ -68,6 +68,37 @@ integrity, payload-progress, and system-presentation work.
 
 The exact state coverage, source-image hashes, native symbol intent, system
 boundaries, and approval status are recorded in [manifest.json](manifest.json).
+
+## Review owner-approved TAP-0008 first-install setup
+
+The product owner approved exact revision `TAP-0008-r2-candidate` on
+2026-08-13 with “现在原型已经确认没有问题”. It remains deliberately separate
+from the already-approved TAP-0009 initialization slice.
+
+1. Select **首次安装设置** under Flow and choose **Untouched**. Confirm that all
+   five rows are idle. Merely entering or foregrounding this page performs only
+   passive status refresh: no permission UI, network preflight, PhotoKit change
+   observation, camera start, or background warm-up begins. The header uses the
+   exact current `LaunchLogo` asset from the app catalog; it does not substitute
+   a text wordmark or redraw the brand. Every setup-row icon is exported from
+   the exact SF Symbol identity used by `WelcomeStartupSetupView.swift`;
+   Unicode or hand-drawn approximations are forbidden.
+2. Tap an individual row's **允许** button. Confirm only that row changes to
+   requesting and the app-owned system-boundary note appears. The real iOS
+   permission sheet is deliberately not imitated.
+3. Choose **Camera tapped** to review the exact camera handoff boundary. Other
+   permission rows remain idle, proving that one explicit action cannot fan out
+   into unrelated requests.
+4. Choose **Network failed**. Confirm Retry belongs to the network row and does
+   not request any system permission.
+5. Choose **Required ready**. Network, Camera, and Photos are complete;
+   optional Location and Microphone are shown as skipped for this fixture, but
+   they do not block **继续** and may remain untouched in the product flow.
+6. Select **继续** and confirm the prototype advances to the independent
+   TAP-0009 **资源初始化** screen rather than directly entering the Viewfinder.
+
+The prototype records the app-owned state before the action and after iOS
+returns. It never draws or claims control over a system permission sheet.
 
 ## Review TAP-0009 resource initialization
 

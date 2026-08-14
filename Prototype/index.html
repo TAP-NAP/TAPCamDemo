@@ -18,10 +18,22 @@
 
         <fieldset>
           <legend>Flow</legend>
-          <div class="segmented two-up" id="flow-control">
+          <div class="segmented" id="flow-control">
             <button type="button" data-flow="share" aria-pressed="true">TAP Share</button>
+            <button type="button" data-flow="setup" aria-pressed="false">首次安装设置</button>
             <button type="button" data-flow="startup" aria-pressed="false">冷启动资源初始化</button>
           </div>
+        </fieldset>
+
+        <fieldset class="setup-controls" hidden>
+          <legend>First-install fixture</legend>
+          <div class="fixture-grid" id="setup-control">
+            <button type="button" data-setup="untouched" aria-pressed="true">Untouched</button>
+            <button type="button" data-setup="cameraRequesting">Camera tapped</button>
+            <button type="button" data-setup="networkFailed">Network failed</button>
+            <button type="button" data-setup="requiredReady">Required ready</button>
+          </div>
+          <p class="fixture-note">进入或回到此页只刷新被动状态，不请求权限、不发起网络预检。每项操作只由该行按钮触发；系统权限页属于 iOS，本原型不仿制。</p>
         </fieldset>
 
         <fieldset class="startup-controls" hidden>
@@ -94,6 +106,52 @@
       <section class="phone-stage" aria-label="TAPCam mobile prototype">
         <div class="device-frame" data-testid="device-frame">
           <div class="device-screen" data-testid="device-screen">
+            <section class="first-install-setup" id="first-install-setup" hidden>
+              <header class="setup-header">
+                <img class="setup-brand-logo" src="assets/tapcam-launch-logo.png" alt="TAPCam">
+                <h2>欢迎使用 TAPCam</h2>
+                <span>在使用之前请先容许我们使用必要的权限</span>
+              </header>
+
+              <div class="setup-requirements" aria-label="First-install setup requirements">
+                <article class="setup-row" data-setup-row="network">
+                  <span class="setup-icon" aria-hidden="true"><img src="assets/system-symbols/setup-wifi.png" alt=""></span>
+                  <span class="setup-copy"><strong>网络访问</strong><small>在首次相机设置前检查服务是否可访问。</small></span>
+                  <span class="setup-actions"><button type="button" data-setup-action="network">允许</button></span>
+                </article>
+                <article class="setup-row" data-setup-row="camera">
+                  <span class="setup-icon" aria-hidden="true"><img src="assets/system-symbols/setup-camera.png" alt=""></span>
+                  <span class="setup-copy"><strong>相机访问</strong><small>用于拍摄带有深度数据的照片。</small></span>
+                  <span class="setup-actions"><button type="button" data-setup-action="camera">允许</button></span>
+                </article>
+                <article class="setup-row" data-setup-row="photos">
+                  <span class="setup-icon" aria-hidden="true"><img src="assets/system-symbols/setup-photos.png" alt=""></span>
+                  <span class="setup-copy"><strong>照片图库访问</strong><small>用于保存和读取照片。</small></span>
+                  <span class="setup-actions"><button type="button" data-setup-action="photos">允许</button></span>
+                </article>
+                <article class="setup-row" data-setup-row="location">
+                  <span class="setup-icon" aria-hidden="true"><img src="assets/system-symbols/setup-location.png" alt=""></span>
+                  <span class="setup-copy"><strong>位置访问(可选)</strong><small>用于将拍摄地点写入照片元数据。</small></span>
+                  <span class="setup-actions"><button type="button" data-setup-action="location">允许</button><button type="button" data-setup-skip="location">跳过</button></span>
+                </article>
+                <article class="setup-row" data-setup-row="microphone">
+                  <span class="setup-icon" aria-hidden="true"><img src="assets/system-symbols/setup-microphone.png" alt=""></span>
+                  <span class="setup-copy"><strong>麦克风访问(可选)</strong><small>用于实况照片和视频录音。</small></span>
+                  <span class="setup-actions"><button type="button" data-setup-action="microphone">允许</button><button type="button" data-setup-skip="microphone">跳过</button></span>
+                </article>
+              </div>
+
+              <div class="setup-footer" id="setup-footer">
+                <p id="setup-guidance">请先完成网络、相机与照片图库访问。位置与麦克风为可选项。</p>
+                <button type="button" class="setup-continue" id="setup-continue" disabled>继续</button>
+              </div>
+
+              <aside class="system-boundary-note" id="system-boundary-note" hidden>
+                <strong>iOS 系统边界</strong>
+                <span id="system-boundary-copy">点击“允许”后，对应的系统权限页才会接管；此原型不仿制系统界面。</span>
+              </aside>
+              <p class="visually-hidden" id="setup-announcement" role="status" aria-live="polite" aria-atomic="true"></p>
+            </section>
             <section class="startup-initialization" id="startup-initialization" hidden>
               <div class="startup-spinner" id="startup-spinner" aria-hidden="true"></div>
               <h2 id="startup-title">资源初始化</h2>
@@ -191,6 +249,6 @@
         </div>
       </section>
     </main>
-    <script src="prototype.js?revision=tap-0081-r3"></script>
+    <script src="prototype.js?revision=tap-0008-r2-tap-0081-r3"></script>
   </body>
 </html>

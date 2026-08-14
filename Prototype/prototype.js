@@ -5,6 +5,11 @@
 
   const state = {
     flow: "share",
+    setup: "untouched",
+    setupStatuses: null,
+    setupBoundary: null,
+    setupGuidance: "",
+    setupWarning: false,
     startup: "preparing",
     media: "photo",
     resource: "localReady",
@@ -20,7 +25,9 @@
   };
 
   const shareControls = document.querySelector(".share-controls");
+  const setupControls = document.querySelector(".setup-controls");
   const startupControls = document.querySelector(".startup-controls");
+  const firstInstallSetup = byID("first-install-setup");
   const startupInitialization = byID("startup-initialization");
   const startupEntryBoundary = byID("startup-entry-boundary");
   const shareFlowScreen = byID("share-flow-screen");
@@ -29,6 +36,83 @@
   const startupLibraryCheck = byID("startup-library-check");
   const flowTaskLabel = byID("flow-task-label");
   const flowDescription = byID("flow-description");
+
+  const setupFixtures = Object.freeze({
+    untouched: {
+      statuses: { network: "idle", camera: "idle", photos: "idle", location: "idle", microphone: "idle" },
+      guidance: "请先完成网络、相机与照片图库访问。位置与麦克风为可选项。"
+    },
+    cameraRequesting: {
+      statuses: { network: "idle", camera: "requesting", photos: "idle", location: "idle", microphone: "idle" },
+      guidance: "只有点击相机行的“允许”后，iOS 相机权限页才会接管。",
+      boundary: "camera"
+    },
+    networkFailed: {
+      statuses: { network: "denied", camera: "granted", photos: "granted", location: "skipped", microphone: "skipped" },
+      guidance: "网络访问检查失败。请检查连接，然后在网络行重试。",
+      warning: true
+    },
+    requiredReady: {
+      statuses: { network: "granted", camera: "granted", photos: "granted", location: "skipped", microphone: "skipped" },
+      guidance: "必要设置已完成。点击继续后进入独立的资源初始化阶段。"
+    }
+  });
+
+  const setupLabels = Object.freeze({
+    network: "网络访问", camera: "相机访问", photos: "照片图库访问", location: "位置访问", microphone: "麦克风访问"
+  });
+
+  function copySetupStatuses(statuses) {
+    return { ...statuses };
+  }
+
+  function resetSetupFixture() {
+    const fixture = setupFixtures[state.setup];
+    state.setupStatuses = copySetupStatuses(fixture.statuses);
+    state.setupBoundary = fixture.boundary || null;
+    state.setupGuidance = fixture.guidance;
+    state.setupWarning = Boolean(fixture.warning);
+  }
+
+  function setupRequiredReady() {
+    return ["network", "camera", "photos"].every((key) => state.setupStatuses[key] === "granted");
+  }
+
+  function renderSetupRow(key) {
+    const row = document.querySelector(`[data-setup-row="${key}"]`);
+    const actions = row.querySelector(".setup-actions");
+    const status = state.setupStatuses[key];
+    if (status === "idle") {
+      actions.innerHTML = `<button type="button" data-setup-action="${key}">允许</button>${key === "location" || key === "microphone" ? `<button type="button" data-setup-skip="${key}">跳过</button>` : ""}`;
+      return;
+    }
+    const statusPresentation = {
+      granted: ["✓", "setup-status", "已完成"],
+      skipped: ["−", "setup-status is-skipped", "已跳过"],
+      requesting: ["", "setup-status is-requesting", "正在请求"],
+      denied: ["!", "setup-status is-denied", "需要处理"]
+    }[status];
+    actions.innerHTML = `<span class="${statusPresentation[1]}" role="img" aria-label="${statusPresentation[2]}">${statusPresentation[0]}</span>${status === "denied" && key === "network" ? `<button type="button" data-setup-action="network">重试</button>` : ""}`;
+  }
+
+  function renderSetupState() {
+    if (!state.setupStatuses) resetSetupFixture();
+    Object.keys(setupLabels).forEach(renderSetupRow);
+    const requiredReady = setupRequiredReady();
+    const guidance = byID("setup-guidance");
+    guidance.textContent = state.setupGuidance;
+    guidance.classList.toggle("is-warning", state.setupWarning);
+    byID("setup-continue").disabled = !requiredReady;
+    const boundary = byID("system-boundary-note");
+    boundary.hidden = !state.setupBoundary;
+    if (state.setupBoundary) {
+      byID("system-boundary-copy").textContent = `点击“允许”后，${setupLabels[state.setupBoundary]}才由 ${state.setupBoundary === "network" ? "TAPCam 网络预检" : "iOS 系统权限页"}接管；此原型只记录接管前后的应用状态，不仿制系统界面。`;
+    }
+    byID("setup-announcement").textContent = state.setupBoundary
+      ? `${setupLabels[state.setupBoundary]}由用户点击允许后开始。`
+      : state.setupGuidance;
+    exposeState();
+  }
 
   const startupFixtures = Object.freeze({
     preparing: {
@@ -74,17 +158,23 @@
   }
 
   function renderFlow() {
+    const isSetup = state.flow === "setup";
     const isStartup = state.flow === "startup";
-    flowTaskLabel.textContent = isStartup ? "TAP-0006 · TAP-0009" : "TAP-0006 · TAP-0081";
-    flowDescription.textContent = isStartup
-      ? "Review the Resource Initialization shown on the first launch after installation, reinstallation, or an app update. It completes before the interactive camera; ordinary repeated launches skip it."
-      : "Review the app-owned TAP Share selection and preparation flow. The system activity controller remains a documented boundary.";
+    flowTaskLabel.textContent = isSetup ? "TAP-0006 · TAP-0008" : isStartup ? "TAP-0006 · TAP-0009" : "TAP-0006 · TAP-0081";
+    flowDescription.textContent = isSetup
+      ? "Review the first-install setup page. Entering or foregrounding the page only refreshes status; every permission request and network preflight begins after its own explicit button action."
+      : isStartup
+        ? "Review the Resource Initialization shown on the first launch after installation, reinstallation, or an app update. It completes before the interactive camera; ordinary repeated launches skip it."
+        : "Review the app-owned TAP Share selection and preparation flow. The system activity controller remains a documented boundary.";
+    firstInstallSetup.hidden = !isSetup;
     startupInitialization.hidden = !isStartup;
     startupEntryBoundary.hidden = true;
-    shareFlowScreen.hidden = isStartup;
+    shareFlowScreen.hidden = isSetup || isStartup;
+    setupControls.hidden = !isSetup;
     startupControls.hidden = !isStartup;
-    shareControls.hidden = isStartup;
-    if (isStartup) renderStartupState();
+    shareControls.hidden = isSetup || isStartup;
+    if (isSetup) renderSetupState();
+    else if (isStartup) renderStartupState();
     else renderResourceState();
     exposeState();
   }
@@ -122,6 +212,7 @@
   function exposeState() {
     document.documentElement.dataset.prototypeState = state.panel;
     document.documentElement.dataset.prototypeFlow = state.flow;
+    document.documentElement.dataset.setupFixture = state.setup;
     document.documentElement.dataset.startupFixture = state.startup;
     document.documentElement.dataset.media = state.media;
     document.documentElement.dataset.resource = state.resource;
@@ -336,7 +427,7 @@
   });
   document.querySelectorAll("[data-flow]").forEach((button) => button.addEventListener("click", () => {
     clearTimers();
-    if (button.dataset.flow === "startup" && state.panel !== "closed") cancelAttempt(true);
+    if (button.dataset.flow !== "share" && state.panel !== "closed") cancelAttempt(true);
     state.flow = button.dataset.flow;
     document.querySelectorAll("[data-flow]").forEach((candidate) => candidate.setAttribute("aria-pressed", String(candidate === button)));
     renderFlow();
@@ -348,6 +439,49 @@
     renderStartupState();
     exposeState();
   }));
+  document.querySelectorAll("[data-setup]").forEach((button) => button.addEventListener("click", () => {
+    clearTimers();
+    state.setup = button.dataset.setup;
+    resetSetupFixture();
+    document.querySelectorAll("[data-setup]").forEach((candidate) => candidate.setAttribute("aria-pressed", String(candidate === button)));
+    renderSetupState();
+  }));
+  firstInstallSetup.addEventListener("click", (event) => {
+    const actionButton = event.target.closest("[data-setup-action]");
+    const skipButton = event.target.closest("[data-setup-skip]");
+    if (actionButton) {
+      const key = actionButton.dataset.setupAction;
+      state.setupStatuses[key] = "requesting";
+      state.setupBoundary = key;
+      state.setupGuidance = `${setupLabels[key]}正在等待${key === "network" ? "预检结果" : "系统授权结果"}。`;
+      state.setupWarning = false;
+      renderSetupState();
+      later(() => {
+        if (state.flow !== "setup" || state.setupStatuses[key] !== "requesting") return;
+        state.setupStatuses[key] = "granted";
+        state.setupBoundary = null;
+        state.setupGuidance = setupRequiredReady()
+          ? "必要设置已完成。点击继续后进入独立的资源初始化阶段。"
+          : `${setupLabels[key]}已完成；其余项目仍等待你的明确操作。`;
+        renderSetupState();
+      }, 900);
+      return;
+    }
+    if (skipButton) {
+      const key = skipButton.dataset.setupSkip;
+      state.setupStatuses[key] = "skipped";
+      state.setupBoundary = null;
+      state.setupGuidance = `${setupLabels[key]}已跳过；这不会触发系统权限页。`;
+      state.setupWarning = false;
+      renderSetupState();
+    }
+  });
+  byID("setup-continue").addEventListener("click", () => {
+    if (!setupRequiredReady()) return;
+    state.flow = "startup";
+    document.querySelectorAll("[data-flow]").forEach((candidate) => candidate.setAttribute("aria-pressed", String(candidate.dataset.flow === "startup")));
+    renderFlow();
+  });
   resolveIntegrityButton.addEventListener("click", () => resolveIntegrity());
   byID("failure-cancel").addEventListener("click", () => { cancelAttempt(false); renderSelector(); });
   byID("retry-button").addEventListener("click", () => state.selectedOption && prepare(state.selectedOption));

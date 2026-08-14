@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
-  "revision": "TAP-0081-r3-TAP-0009-r1-candidate",
+  "revision": "TAP-0008-r2-TAP-0009-r1-TAP-0081-r3-candidate",
   "baseRevision": "TAP-0081-r1",
   "kind": "lightweight-interactive-visual-contract",
   "implementation": "static-html-css-javascript",
-  "taskIds": ["TAP-0006", "TAP-0009", "TAP-0081"],
+  "taskIds": ["TAP-0006", "TAP-0008", "TAP-0009", "TAP-0081"],
   "contracts": [
-    "Docs/ProductContract.md §2.4",
+    "Docs/ProductContract.md §2.1-2.5",
     "Docs/ProductContract.md §5.2",
     "Docs/ProductContract.md §5.3",
     "Docs/ProductContract.md §6",
@@ -15,7 +15,38 @@
   ],
   "viewport": { "cssWidth": 393, "cssHeight": 852, "deviceFrame": "generic iPhone review frame" },
   "coveredMedia": ["photo", "livePhoto", "video"],
-  "coveredFirstInstallStates": ["resourcePreparing", "cameraReadyCatalogPending", "catalogReadyCameraPending", "cameraAndCatalogReadyHandoff"],
+  "coveredFirstInstallStates": ["setupUntouched", "explicitCameraRequest", "networkFailed", "requiredSetupReady", "resourcePreparing", "cameraReadyCatalogPending", "catalogReadyCameraPending", "cameraAndCatalogReadyHandoff"],
+  "firstInstallSetupBoundary": {
+    "taskID": "TAP-0008",
+    "revision": "TAP-0008-r2-candidate",
+    "entryBehavior": "passive authorization-status refresh only",
+    "explicitActions": ["network preflight", "camera authorization", "photo-library authorization", "location authorization or skip", "microphone authorization or skip"],
+    "continueRequires": ["network preflight", "camera authorization", "photo-library authorization"],
+    "optionalRowsDoNotBlockContinue": ["location", "microphone"],
+    "systemOwnedUI": "documented boundary only; permission sheets are never imitated",
+    "photoLibraryObservation": "must not be activated by passive first-install entry before the explicit Photos action",
+    "approvalStatus": "ownerApproved",
+    "approvedAt": "2026-08-13",
+    "ownerStatement": "现在原型已经确认没有问题"
+  },
+  "firstInstallBrandAsset": {
+    "path": "assets/tapcam-launch-logo.png",
+    "nativeSource": "TAPCamDemo/Assets.xcassets/LaunchLogo.imageset/launch_logo@3x.png",
+    "sha256": "ec4a28fb75b3c3fb87b036c3f0885e169857fab950c163efeca1e53958e0c236",
+    "policy": "exact repository asset; no synthetic TAPCAM wordmark"
+  },
+  "firstInstallSetupSymbolSpec": {
+    "authority": "TAPCamDemo/App/WelcomeStartupSetupView.swift StartupRequirementRow call sites",
+    "nativeConfiguration": { "pointSize": 19, "weight": "semibold", "framePoints": 34 },
+    "webAssetPolicy": "system symbols are exported at 2x from their exact SF Symbol identities; Unicode glyph approximations are forbidden",
+    "symbols": {
+      "network": { "systemName": "wifi", "path": "assets/system-symbols/setup-wifi.png", "sha256": "e7cc0a19e5640baf21cc8ea67ddb1b0f751aab11e868e4e19b8ed16881e9d09e" },
+      "camera": { "systemName": "camera", "path": "assets/system-symbols/setup-camera.png", "sha256": "09870a69d83fb158597cd6a8b49d7d0b22701c08f433baa75a33eeecd298383d" },
+      "photos": { "systemName": "photo.on.rectangle", "path": "assets/system-symbols/setup-photos.png", "sha256": "31da3d43039ae80417be4503840ba428208b88449f218bbf16d22b8bc7fdc79e" },
+      "location": { "systemName": "location", "path": "assets/system-symbols/setup-location.png", "sha256": "4f65be5d3eadffe31b84179f2cfcef8d8d8ff7333a5954d111dc810823b334bd" },
+      "microphone": { "systemName": "mic", "path": "assets/system-symbols/setup-microphone.png", "sha256": "3f4d6b789a54407c0e11cbe4011864efa84c2d27d55df516a5364fcb5b6b8aed" }
+    }
+  },
   "firstInstallInitializationBoundary": {
     "trigger": "first launch after fresh installation or reinstallation, and first launch after an app update or initialization-schema change; skipped by ordinary subsequent launches whose resource-initialization marker matches the current update and schema generation",
     "waitsFor": ["camera interactive readiness including real first preview frame", "first usable TAP Library catalog metadata snapshot including an empty snapshot"],
@@ -37,6 +68,15 @@
     }
   },
   "slices": {
+    "firstInstallSetup": {
+      "taskID": "TAP-0008",
+      "revision": "TAP-0008-r2-candidate",
+      "stateFixture": "states/first-install-setup.json",
+      "approvalStatus": "ownerApproved",
+      "approvedAt": "2026-08-13",
+      "ownerStatement": "现在原型已经确认没有问题",
+      "evidence": ["design-qa.md", "evidence/TAP-0008-r2-candidate-untouched-full.png", "evidence/TAP-0008-r2-candidate-camera-request-full.png"]
+    },
     "tapShare": {
       "taskID": "TAP-0081",
       "revision": "TAP-0081-r3-candidate",
@@ -58,7 +98,7 @@
       "evidence": ["design-qa.md"]
     }
   },
-  "stateFixtures": ["states/tap-share-local-integrity.json", "states/first-install-resource-initialization.json"],
+  "stateFixtures": ["states/tap-share-local-integrity.json", "states/first-install-setup.json", "states/first-install-resource-initialization.json"],
   "coveredResourceStates": ["localReady", "iCloudLoading", "iCloudReady", "iCloudUnavailable", "privateQueue"],
   "coveredCredentialStates": ["verified", "retryPending", "failed"],
   "coveredIntegrityStates": ["textFreeResolvingSkeleton", "passed", "mismatch"],
@@ -187,6 +227,9 @@
   ],
   "evidence": [
     "design-qa.md",
+    "evidence/TAP-0008-r2-candidate-untouched-full.png",
+    "evidence/TAP-0008-r2-candidate-untouched-phone.png",
+    "evidence/TAP-0008-r2-candidate-camera-request-full.png",
     "evidence/TAP-0081-r2-candidate-resource-loading-full.png",
     "evidence/TAP-0081-r2-candidate-integrity-checking-full.png",
     "evidence/TAP-0081-r2-candidate-failed-integrity-full.png",
@@ -195,6 +238,7 @@
     "evidence/TAP-0081-r2-candidate-selection-comparison.png"
   ],
   "deliberateNativeDifferences": [
+    "The Web prototype does not imitate iOS camera, Photos, location, or microphone permission sheets; it renders only the app-owned state before the explicit action and after control returns.",
     "The Web prototype does not imitate UIActivityViewController, AirDrop targets, or third-party destinations.",
     "When payload preparation reaches ready, the Web prototype ends the app-owned popover immediately; the subsequently presented system activity controller is a documented text boundary rather than another simulated screen.",
     "The Viewer toolbar uses the exact recorded share-network and trash template vectors; other HTML icons remain optical analogues whose recorded SF Symbol identities apply only to their native rows.",
@@ -204,12 +248,18 @@
   ],
   "outOfScope": ["TAP Video tapnap transport", "3D Sticker implementation", "Share Link implementation", "backend", "membership", "billing", "external Verify", "real iCloud transfer", "real local cryptographic work"],
   "approval": {
-    "status": "ownerApproved",
+    "status": "composedFromIndependentlyOwnerApprovedSlices",
     "owner": "product owner",
-    "approvedAt": "2026-08-14",
-    "approvedRevision": "TAP-0081-r3-TAP-0009-r1-candidate",
-    "ownerStatement": "对的 现在原型是我想要的",
-    "candidateRevision": "TAP-0081-r3-TAP-0009-r1-candidate",
+    "compositionRecordedAt": "2026-08-14",
+    "composedRevision": "TAP-0008-r2-TAP-0009-r1-TAP-0081-r3-candidate",
+    "wholeCompositionApproval": "not separately claimed",
+    "composition": "Each task slice retains its independently recorded owner approval; merging TAP-0008-r2 into the current source does not revise TAP-0009-r1 or TAP-0081-r3.",
+    "firstInstallSetupApproval": {
+      "status": "ownerApproved",
+      "revision": "TAP-0008-r2-candidate",
+      "approvedAt": "2026-08-13",
+      "ownerStatement": "现在原型已经确认没有问题"
+    },
     "candidateDirection": {
       "status": "ownerApproved",
       "recordedAt": "2026-08-14",

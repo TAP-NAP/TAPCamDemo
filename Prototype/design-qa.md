@@ -1,4 +1,4 @@
-# TAP-0081-r3 Candidate / TAP-0009-r1 Approved Design QA
+# TAP-0008-r2 / TAP-0081-r3 / TAP-0009-r1 Owner-Approved Slice Design QA
 
 - Source visual truth:
   - `assets/references/tap-share-format-selection.png`
@@ -18,6 +18,13 @@
   and exact owner visual approval on 2026-08-14
 
 ## Approval boundary
+
+The product owner approved exact first-install revision
+`TAP-0008-r2-candidate` on 2026-08-13 with “现在原型已经确认没有问题”. Its
+visible hierarchy, copy, exact SF Symbol identities, explicit-action
+transitions, and system-owned UI boundary are SwiftUI visual authority. This
+prototype-only migration composes that independently approved slice with the
+current TAP-0081-r3 and TAP-0009-r1 sources without revising either slice.
 
 The product owner approved exact visual revision `TAP-0081-r2-candidate` on
 2026-08-13 with “已确认没有问题 请继续实施 Swift UI”. On 2026-08-14 the owner
@@ -204,6 +211,47 @@ rather than restating the numbers at each rule.
 - [x] Obtain exact owner visual approval for `TAP-0081-r3-candidate`.
 
 current result: static contract and browser geometry checks passed; owner visual approval recorded
+
+## TAP-0008 first-install setup QA
+
+- Revision: exact `TAP-0008-r2-candidate`; approval status `ownerApproved`.
+- Brand correction: the temporary `TAPCAM` text mark was removed. The header
+  uses an exact copy of
+  `TAPCamDemo/Assets.xcassets/LaunchLogo.imageset/launch_logo@3x.png` with SHA-256
+  `ec4a28fb75b3c3fb87b036c3f0885e169857fab950c163efeca1e53958e0c236`.
+- Owner-comment revision on 2026-08-13:
+  - Subtitle changed to `在使用之前请先容许我们使用必要的权限`.
+  - Location and Microphone titles changed to `位置访问(可选)` and
+    `麦克风访问(可选)`.
+  - All five placeholder glyphs were removed.
+- Icon fidelity: Web assets are 2x exports of the exact code-owned SF Symbol
+  identities and configuration (`19 pt`, semibold, `34 pt` container): `wifi`,
+  `camera`, `photo.on.rectangle`, `location`, and `mic`. Their paths and
+  SHA-256 values are machine-readable in `manifest.json`; Unicode
+  approximations are an explicit contract violation.
+- Visible states: untouched, camera request initiated by its own Allow action,
+  network failure with row-scoped Retry, and required checks ready with the
+  optional checks represented as skipped.
+- Entry behavior: the untouched fixture contains no automatic request,
+  preflight, observer activation, camera start, or background work.
+- Action isolation: each row owns one explicit operation. An individual Allow
+  action changes only that row; Location and Microphone additionally own Skip.
+- Continue boundary: only Network, Camera, and Photos are required. Location
+  and Microphone do not block Continue and may remain idle, be granted, or be
+  skipped.
+- System boundary: the prototype describes the transition after a user action
+  but never imitates an iOS permission sheet.
+- Flow boundary: Continue routes to the separate TAP-0009 Resource
+  Initialization slice rather than directly to the camera.
+- Browser evidence: Codex in-app Browser at desktop review size and exact
+  `393 x 852` mobile viewport; no console warnings or errors.
+- Captures:
+  - `evidence/TAP-0008-r2-candidate-untouched-full.png`
+  - `evidence/TAP-0008-r2-candidate-untouched-phone.png`
+  - `evidence/TAP-0008-r2-candidate-camera-request-full.png`
+- Owner approval recorded on 2026-08-13: “现在原型已经确认没有问题”.
+
+final result: passed visual prototype gate
 
 ## TAP-0009 resource-initialization candidate QA
 

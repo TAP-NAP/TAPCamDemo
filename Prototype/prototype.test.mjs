@@ -7,16 +7,40 @@ const script = fs.readFileSync(new URL("prototype.js", import.meta.url), "utf8")
 const css = fs.readFileSync(new URL("prototype.css", import.meta.url), "utf8");
 const manifest = JSON.parse(fs.readFileSync(new URL("manifest.json", import.meta.url), "utf8"));
 const states = JSON.parse(fs.readFileSync(new URL("states/tap-share-local-integrity.json", import.meta.url), "utf8"));
+const setupStates = JSON.parse(fs.readFileSync(new URL("states/first-install-setup.json", import.meta.url), "utf8"));
 const startupStates = JSON.parse(fs.readFileSync(new URL("states/first-install-resource-initialization.json", import.meta.url), "utf8"));
 const sha256 = (relativePath) => crypto
   .createHash("sha256")
   .update(fs.readFileSync(new URL(relativePath, import.meta.url)))
   .digest("hex");
 
-assert.equal(manifest.revision, "TAP-0081-r3-TAP-0009-r1-candidate");
+assert.equal(manifest.revision, "TAP-0008-r2-TAP-0009-r1-TAP-0081-r3-candidate");
 assert.equal(manifest.baseRevision, "TAP-0081-r1");
-assert.deepEqual(manifest.taskIds, ["TAP-0006", "TAP-0009", "TAP-0081"]);
-assert.deepEqual(manifest.coveredFirstInstallStates, ["resourcePreparing", "cameraReadyCatalogPending", "catalogReadyCameraPending", "cameraAndCatalogReadyHandoff"]);
+assert.deepEqual(manifest.taskIds, ["TAP-0006", "TAP-0008", "TAP-0009", "TAP-0081"]);
+assert.deepEqual(manifest.coveredFirstInstallStates, [
+  "setupUntouched",
+  "explicitCameraRequest",
+  "networkFailed",
+  "requiredSetupReady",
+  "resourcePreparing",
+  "cameraReadyCatalogPending",
+  "catalogReadyCameraPending",
+  "cameraAndCatalogReadyHandoff",
+]);
+assert.equal(manifest.slices.firstInstallSetup.revision, "TAP-0008-r2-candidate");
+assert.equal(manifest.slices.firstInstallSetup.approvalStatus, "ownerApproved");
+assert.equal(manifest.slices.firstInstallSetup.ownerStatement, "现在原型已经确认没有问题");
+assert.deepEqual(manifest.firstInstallSetupBoundary.continueRequires, ["network preflight", "camera authorization", "photo-library authorization"]);
+assert.deepEqual(manifest.firstInstallSetupBoundary.optionalRowsDoNotBlockContinue, ["location", "microphone"]);
+assert.equal(setupStates.revision, "TAP-0008-r2-candidate");
+assert.equal(setupStates.approvalStatus, "ownerApproved");
+assert.equal(setupStates.ownerApproval.ownerStatement, "现在原型已经确认没有问题");
+assert.match(setupStates.transition.continueCondition, /location and microphone do not block Continue/);
+assert.match(setupStates.systemOwnedBoundary, /never imitates/);
+assert.equal(sha256(manifest.firstInstallBrandAsset.path), manifest.firstInstallBrandAsset.sha256);
+for (const symbol of Object.values(manifest.firstInstallSetupSymbolSpec.symbols)) {
+  assert.equal(sha256(symbol.path), symbol.sha256);
+}
 assert.equal(manifest.firstInstallInitializationBoundary.approvalStatus, "ownerApproved");
 assert.equal(manifest.firstInstallInitializationBoundary.ownerApproval.ownerStatement, "原型我检查了 没有问题");
 assert.match(manifest.firstInstallInitializationBoundary.trigger, /installation or reinstallation/);
@@ -67,11 +91,12 @@ assert.equal(manifest.prototypeGeometryValidation.tapnapPackageBeforeEqualsPrepa
 assert.equal(manifest.prototypeGeometryValidation.shareImageBeforeEqualsPreparing, true);
 assert.equal(manifest.prototypeGeometryValidation.percentageTextPresent, false);
 assert.equal(manifest.prototypeGeometryValidation.cancelControlPresent, false);
-assert.equal(manifest.approval.status, "ownerApproved");
-assert.equal(manifest.approval.approvedAt, "2026-08-14");
-assert.equal(manifest.approval.approvedRevision, "TAP-0081-r3-TAP-0009-r1-candidate");
-assert.equal(manifest.approval.ownerStatement, "对的 现在原型是我想要的");
-assert.equal(manifest.approval.candidateRevision, "TAP-0081-r3-TAP-0009-r1-candidate");
+assert.equal(manifest.approval.status, "composedFromIndependentlyOwnerApprovedSlices");
+assert.equal(manifest.approval.compositionRecordedAt, "2026-08-14");
+assert.equal(manifest.approval.composedRevision, "TAP-0008-r2-TAP-0009-r1-TAP-0081-r3-candidate");
+assert.equal(manifest.approval.wholeCompositionApproval, "not separately claimed");
+assert.match(manifest.approval.composition, /independently recorded owner approval/);
+assert.equal(manifest.approval.firstInstallSetupApproval.revision, "TAP-0008-r2-candidate");
 assert.equal(manifest.approval.candidateDirection.status, "ownerApproved");
 assert.equal(manifest.approval.behaviorAuthority.status, "ownerApproved");
 assert.equal(manifest.approval.baseRevisionApproval.revision, "TAP-0081-r1");
@@ -127,7 +152,7 @@ assert.equal(sha256(toolbar.delete.assetPath), toolbar.delete.assetSha256);
 assert.deepEqual(toolbar.delete.cssOpticalTranslationPx, { x: 0, y: 0 });
 assert.deepEqual(toolbar.delete.intrinsicArtworkCenterOffsetAt20Px, { x: 0, y: -0.625 });
 
-for (const id of ["share-button", "delete-button", "share-popover", "share-options", "retry-button", "resource-overlay", "resource-progress", "resolve-integrity-button", "startup-initialization", "startup-entry-boundary", "startup-title", "startup-subtitle", "startup-announcement", "startup-camera-check", "startup-library-check"]) {
+for (const id of ["share-button", "delete-button", "share-popover", "share-options", "retry-button", "resource-overlay", "resource-progress", "resolve-integrity-button", "first-install-setup", "setup-continue", "setup-guidance", "setup-announcement", "system-boundary-note", "startup-initialization", "startup-entry-boundary", "startup-title", "startup-subtitle", "startup-announcement", "startup-camera-check", "startup-library-check"]) {
   assert.match(html, new RegExp(`id="${id}"`));
 }
 
@@ -137,6 +162,12 @@ for (const state of ["integrityChecking", "selector", "failure"]) {
 
 assert.match(html, /细进度条在完全相同的副标题槽内替换原文字；标题、图标、推荐标记和全部布局不动/);
 assert.match(html, /iOS 系统分享面板只作为文案边界，本原型不伪造/);
+assert.match(html, /在使用之前请先容许我们使用必要的权限/);
+assert.match(html, /位置访问\(可选\)/);
+assert.match(html, /麦克风访问\(可选\)/);
+for (const asset of ["setup-wifi.png", "setup-camera.png", "setup-photos.png", "setup-location.png", "setup-microphone.png"]) {
+  assert.match(html, new RegExp(asset.replace(".", "\\.")));
+}
 assert.doesNotMatch(html, /id="return-button"|data-panel="boundary"|data-panel="preparing"|资料已准备完成|模拟系统页关闭/);
 assert.match(script, /progressPresentation:\s*"immediate"/);
 assert.match(script, /minimumVisibleHold:\s*false/);
@@ -163,10 +194,14 @@ assert.match(script, /showPanel\("integrityChecking"\)/);
 assert.match(script, /本地完整性检查未通过/);
 assert.match(script, /无法保证可验证性/);
 assert.match(script, /renderStartupState/);
+assert.match(script, /function setupRequiredReady\(\)[\s\S]*\["network", "camera", "photos"\]/);
+assert.match(script, /shareFlowScreen\.hidden = isSetup \|\| isStartup/);
+assert.match(script, /state\.flow = "startup";[\s\S]*renderFlow\(\);/);
+assert.match(script, /setupStatuses\[key\] = "requesting"/);
+assert.match(script, /state\.setupStatuses\[key\] = "skipped"/);
 assert.match(script, /ordinary repeated launches skip it/);
 assert.match(script, /资源初始化/);
 assert.match(script, /首个媒体目录已建立/);
-assert.match(script, /shareFlowScreen\.hidden = isStartup/);
 assert.match(script, /catalogReadyCameraPending/);
 assert.match(script, /startupEntryBoundary\.hidden = false/);
 assert.doesNotMatch(script, /startupRetry|cameraFailed|catalogTimedOut/);
