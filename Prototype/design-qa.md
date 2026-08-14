@@ -280,7 +280,7 @@ final result: passed
   `TAP-0083`.
 - Candidate entry: `startup-lifecycle.html`.
 - Shared-tree revision: `v16`.
-- Verification pass: `v16a`.
+- Verification pass: `v16b`.
 - Status: `candidate`; `ownerReviewRequired`. Exact owner approval of the v16
   TAP-0087 composition and synchronized lifecycle contract is pending. The
   existing TAP-0008-r2, TAP-0009-r1, and TAP-0081-r3 approvals remain
@@ -310,6 +310,13 @@ final result: passed
   mismatches plus the two aligned facts; the six workload-owned mismatch truths
   render only in the Workload lane. Red comes from the explicit `mismatch`
   field, never a parsed phase string or generic workload `gap` label.
+- Each mismatch also carries a JSON `fix0809Disposition`. Eleven lifecycle
+  truths are `approvedToFix`; `networkBootstrap` is the one
+  `deferredFrozen` lifecycle truth. Workload children may narrow their parent:
+  nine are approved and the first-install credential, Network completion,
+  post-setup App Attest, and credential/network-dependent Pending records are
+  frozen. Both dispositions remain red mismatches; neither rewrites current
+  `/healthz` behavior as the target or approves the complete v16 composition.
 - Every visible red record has one red dashed SVG path to its explicit
   current-main `actual.anchor` circular `t0…tn` node. The card separately shows
   the target anchor/phase. Connectors are decorative review annotations, not
@@ -353,12 +360,15 @@ final result: passed
 
 ### Stale evidence boundary
 
-All earlier TAP-0087 captures through v15 and v10/v11/v12 measurements are
-stale for v16a. This includes the old `1600 x 941` screenshot and SHA,
+All earlier TAP-0087 captures through v16a and v10/v11/v12 measurements are
+historical for the v16b disposition pass. The v16a capture still supports its
+trace-binding observations, but it predates the disposition badges and cannot
+prove their layout, accessible copy, or connector reflow. This also includes
+the old `1600 x 941` screenshot and SHA,
 page/inspector/timing scroll
 measurements, playback-button coordinates, single-catalog DOM measurements,
 mobile viewport captures, console result, and historical automated-test count.
-They remain historical comparison inputs only and do not establish current v16a
+They remain historical comparison inputs only and do not establish current v16b
 parity or acceptance.
 
 No mobile/responsive run, native Simulator/device
@@ -538,6 +548,39 @@ parity result, physical-device timing, or owner approval is claimed here.
 - Claim boundary: code-grounded source-order/predicate comparison and
   prototype-review evidence only; not native instrumentation, elapsed duration,
   Simulator/device parity, physical-device performance, or owner approval.
+
+### v16b browser-verified fix0809 dispositions
+
+- Codex in-app Browser loaded the current working tree at `1604 x 1204`.
+  `body.scrollHeight` and `body.clientHeight` were both `1204`; Timing retained
+  one internal `1019 / 336` scroll surface.
+- In fresh-install sequence `5`, `initialAttestationCompletionMeaning` remained
+  a red mismatch, visibly said **本轮暂缓 · Network frozen**, decorated the
+  existing blue target, and owned one `4px 4px` dashed path. At sequence `12`,
+  `firstInstallCredentialStartsAfterContinue` appeared with the same frozen
+  treatment and its own backward connector to the existing Setup App Attest
+  effect.
+- In ordinary-process sequence `9`, eight actual annotations rendered with
+  seven existing blue targets and seven paths. The non-network poster and
+  recent-cover guard records said **fix0809 · 已批准修复**. Post-setup App Attest
+  and credential/network-dependent Pending recovery remained red and said
+  **本轮暂缓 · Network frozen**.
+- Every actual whose exact target existed had one target and one connector; no
+  connector was orphaned, empty, `NaN`, or `undefined`. Red/blue gradients and
+  borders remained intact. Switching **Timing → 顺序日志 → Timing** preserved
+  ordinary sequence `9` and restored all `8 / 7 / 7` elements plus both frozen
+  children.
+- Visible and accessible disposition labels came from the manifest registry.
+  Deferred items remained mismatches rather than becoming aligned, and the
+  accessible copy continued to state that `/healthz` is not the target.
+- Browser console inspection returned no warning or error. Both evidence files
+  are real PNG images:
+  `evidence/TAP-0087-r1-v16b-fix0809-dispositions.png` and
+  `evidence/TAP-0087-r1-v16b-fix0809-timing-workload.png`.
+- Claim boundary: current prototype disposition and connector evidence only;
+  not native implementation, a Network/App Attest behavior change,
+  Simulator/device parity, physical-device timing, or approval of the complete
+  TAP-0087 v16 composition.
 
 ### Owner-corrected workload navigation — browser verified
 

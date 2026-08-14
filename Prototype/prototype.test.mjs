@@ -103,6 +103,18 @@ assert.equal(manifest.approval.baseRevisionApproval.revision, "TAP-0081-r1");
 assert.equal(manifest.approval.sourceCommit, null);
 assert.match(manifest.approval.sourceCommitNote, /attended device acceptance/);
 assert.equal(manifest.approval.inheritedFoundationCommit, "70e8b60d4e20486a6d4847d726b393a50e22c7ba");
+const startupLifecycleCandidate = manifest.independentCandidates.startupLifecycle;
+assert.equal(startupLifecycleCandidate.status, "ownerReviewRequired");
+assert.equal(startupLifecycleCandidate.qaRefresh.verificationRevision, "v16b");
+assert.deepEqual(startupLifecycleCandidate.qaEvidence, [
+  "design-qa.md",
+  "evidence/TAP-0087-r1-v16b-fix0809-dispositions.png",
+  "evidence/TAP-0087-r1-v16b-fix0809-timing-workload.png",
+]);
+for (const relativePath of startupLifecycleCandidate.qaRefresh.browserEnvironment.screenshotFiles) {
+  const bytes = fs.readFileSync(new URL(relativePath, import.meta.url));
+  assert.deepEqual([...bytes.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+}
 assert.deepEqual(manifest.coveredMedia, ["photo", "livePhoto", "video"]);
 assert.deepEqual(manifest.coveredResourceStates, ["localReady", "iCloudLoading", "iCloudReady", "iCloudUnavailable", "privateQueue"]);
 assert.deepEqual(manifest.coveredCredentialStates, ["verified", "retryPending", "failed"]);

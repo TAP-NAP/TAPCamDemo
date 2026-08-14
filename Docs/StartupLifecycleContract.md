@@ -20,6 +20,20 @@ the **required target window**. A Web prototype can make the route and state
 relationships reviewable, but it cannot prove native first-frame timing,
 AVFoundation readiness, PhotoKit behavior, or device performance.
 
+The product owner has assigned a per-mismatch `fix0809Disposition` in the
+prototype manifest: eleven mismatches are `approvedToFix`, while
+`networkBootstrap` is `deferredFrozen`. The latter remains a confirmed red
+mismatch, but Network/App Attest behavior is frozen and excluded from the
+current fix0809 implementation scope. This delivery disposition does not turn
+the existing `/healthz` preflight into the target state, does not approve a
+Network behavior change, and does not change this contract's pending whole-
+revision approval status. Its two Workload-lane projections inherit the same
+disposition. Workload-level disposition may also narrow a broader parent truth:
+the post-setup App Attest and credential/network-dependent Pending recovery
+children of `deferredWorkGuard` are likewise `deferredFrozen`, while that parent
+remains `approvedToFix` for its non-network children. The manifest remains the
+single source for these per-record decisions.
+
 ## 1. Canonical Vocabulary
 
 Installation, activation, resource temperature, and visible surface are
@@ -469,7 +483,7 @@ prototype JSON manifest with this minimum shape:
 
 ```text
 id, taskIDs, lifecycleTruthIDs, differenceType = timing | semantic,
-differenceKind, checkpoint, mismatch
+differenceKind, checkpoint, mismatch, fix0809Disposition
 scope { path, trigger, anchorMeaning }
 actual { workloadID, label, anchor, phase, qualifier, summary, evidence }
 target { workloadID, label, anchor, phase, qualifier, summary, evidence }

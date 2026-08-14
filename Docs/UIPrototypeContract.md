@@ -183,6 +183,19 @@ Anchors are data, never parsed from prose. Records whose current-main behavior
 differs from the prototype target use a red background and the visible word
 **不一致**; aligned facts remain non-red and say **一致**.
 
+Each mismatch also reads its `fix0809Disposition` from the prototype manifest.
+`approvedToFix` and `deferredFrozen` both remain visibly red because disposition
+does not rewrite code truth. A deferred record must additionally show the
+manifest label **本轮暂缓 · Network frozen** in visible copy and its accessible
+name. For `networkBootstrap`, this means Network/App Attest behavior is excluded
+from the current fix0809 implementation scope; it never means that `/healthz`
+has become the target state or that the mismatch is resolved.
+
+A workload record may narrow its broader lifecycle parent: Network/App Attest
+and credential/network-dependent children remain `deferredFrozen` even when a
+non-network portion of the parent truth is `approvedToFix`. The child record's
+JSON disposition controls the visible badge and accessible name.
+
 The default truth-card list renders the six non-workload mismatch records plus
 the two aligned records. The six workload-owned mismatch sources remain in the
 same JSON catalog but render only as their scoped Workload-lane comparisons;

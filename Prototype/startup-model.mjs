@@ -24,7 +24,23 @@ const loadedLifecycleDifferenceManifest = prototypeManifest
   ?.tap0008Tap0009CodeTruth;
 const lifecycleDifferenceManifest = Array.isArray(loadedLifecycleDifferenceManifest?.records)
   ? loadedLifecycleDifferenceManifest
-  : { records: [], timingProjection: {}, workloadDifferenceComparison: { records: [] } };
+  : { records: [], timingProjection: {}, workloadDifferenceComparison: { records: [] }, fix0809DispositionCatalog: {} };
+const loadedFix0809DispositionCatalog = lifecycleDifferenceManifest.fix0809DispositionCatalog;
+const fix0809DispositionCatalog = (
+  loadedFix0809DispositionCatalog
+  && typeof loadedFix0809DispositionCatalog === "object"
+  && !Array.isArray(loadedFix0809DispositionCatalog)
+  && Object.values(loadedFix0809DispositionCatalog).every((disposition) => (
+    disposition
+    && typeof disposition === "object"
+    && typeof disposition.visibleLabel === "string"
+    && typeof disposition.accessibleLabel === "string"
+    && typeof disposition.includedInFix0809 === "boolean"
+    && disposition.renderAsMismatch === true
+  ))
+)
+  ? loadedFix0809DispositionCatalog
+  : {};
 const loadedWorkloadDifferenceManifest = lifecycleDifferenceManifest.workloadDifferenceComparison;
 const workloadDifferenceManifest = Array.isArray(loadedWorkloadDifferenceManifest?.records)
   ? loadedWorkloadDifferenceManifest
@@ -49,6 +65,7 @@ if (
   !prototypeDifferenceDataError
   && (
     lifecycleDifferenceManifest !== loadedLifecycleDifferenceManifest
+    || fix0809DispositionCatalog !== loadedFix0809DispositionCatalog
     || workloadDifferenceManifest !== loadedWorkloadDifferenceManifest
     || workloadDifferenceScenarioGroups !== loadedWorkloadDifferenceScenarioGroups
     || timingProjection !== loadedTimingProjection
@@ -63,6 +80,7 @@ export const PROTOTYPE_DIFFERENCE_DATA_STATUS = Object.freeze({
   error: prototypeDifferenceDataError
 });
 export const lifecycleTruthRegistry = Object.freeze(clone(lifecycleDifferenceManifest.records));
+export const fix0809DispositionRegistry = Object.freeze(clone(fix0809DispositionCatalog));
 export const lifecycleTimingLaneRecordIDs = Object.freeze(clone(timingProjection.lifecycleLaneRecordIDs));
 export const workloadLaneTruthRecordIDs = Object.freeze(clone(timingProjection.workloadLaneTruthRecordIDs));
 export const workloadDifferenceRegistry = Object.freeze(clone(workloadDifferenceManifest.records));

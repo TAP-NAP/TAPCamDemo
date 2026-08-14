@@ -5,7 +5,7 @@
 - Canonical Product Contract: [ProductContract.md](ProductContract.md)
 - UI Prototype Contract: [UIPrototypeContract.md](UIPrototypeContract.md)
 - Board Steward Session: `019ff4ea-acba-7051-bd0f-3d489f1caadc`
-- Last updated: `2026-08-14`
+- Last updated: `2026-08-15`
 
 This Markdown file is the task database of record. Task records are permanent;
 their IDs are never reused. The Kanban section is a human-readable view derived
@@ -612,6 +612,18 @@ Every active Task uses these stable fields:
   completion and receive owner approval before native TAP-0008 implementation.
   The previously recorded no-Network Setup candidate is historical only and is
   not part of the current prototype gate.
+- Current `fix0809` Boundary: The owner directed the current Network/App Attest
+  implementation and behavior to remain unchanged during this correction pass.
+  `networkBootstrap` remains a confirmed current-main mismatch and must remain
+  visible as deferred; `fix0809` neither implements its target bootstrap/retry
+  behavior nor represents `/healthz` as the target completion state. The same
+  freeze narrows the otherwise approved `deferredWorkGuard`: its App Attest
+  maintenance child and every credential/network-dependent or Network-owned
+  Pending Capture recovery-scheduling child are deferred from `fix0809`; only
+  non-Network/App-Attest guard-placement children such as video-poster backfill
+  and recent-cover work remain approved in this pass. This bounded deferral is
+  not a product-semantics reversal, prototype approval, native acceptance, or
+  completion of TAP-0008.
 - Done When: Product Contract, Startup Lifecycle Contract, approved
   TAP-0008-r2/TAP-0087-r1 semantics, native implementation, and focused tests
   agree that all five operations are explicit-action-only; Attestation,
@@ -624,7 +636,7 @@ Every active Task uses these stable fields:
   post-setup credential optimization `TAP-0015`; production App Attest evidence
   `TAP-0046`; deprecated implicit-trigger behavior `TAP-0063`
 - Created: `2026-08-12`
-- Updated: `2026-08-14`
+- Updated: `2026-08-15`
 - Revision History:
   - `2026-08-12` Expanded from Photos-only to every first-install action.
   - `2026-08-12` Repository audit added early Photo Library observer
@@ -662,6 +674,20 @@ Every active Task uses these stable fields:
     and delegated its corrected state-machine/inspector semantics to
     TAP-0087-r1-candidate. The false interim direction above remains history;
     TAP-0008 remains Todo.
+  - `2026-08-15` Owner confirmed `networkBootstrap` as a real current-main
+    mismatch but deferred its fix from the bounded `fix0809` pass. The current
+    Network/App Attest implementation remains unchanged for this pass, the
+    mismatch remains visible, and `/healthz` remains an observed current state
+    rather than the target state. This partial decision supplies no native
+    implementation, focused tests, attended TAP-0040 evidence, whole-prototype
+    approval, or Done condition; TAP-0008 remains Todo.
+  - `2026-08-15` Follow-up clarification applied the same Network/App Attest
+    freeze inside the broader approved `deferredWorkGuard`: App Attest
+    maintenance and credential/network-dependent or Network-owned Pending
+    Capture recovery scheduling are deferred from `fix0809`. Only non-Network/
+    App-Attest children such as video-poster backfill and recent-cover guard
+    placement remain approved. This narrows implementation scope without
+    changing TAP-0008 status, acceptance, or completion evidence.
 
 ### TAP-0009 — Enforce first-frame camera-interactive readiness
 
@@ -3842,7 +3868,26 @@ Every active Task uses these stable fields:
   a frozen input. The Launch Screen is visibly labeled system-owned reference
   material, and the inspector is visibly labeled reviewer-only tooling. Exact
   owner approval of `TAP-0087-r1-candidate` and the synchronized contract
-  revision remains pending.
+  revision remains pending. The mismatch-specific `fix0809` decision below is
+  partial review only and does not satisfy this whole-composition approval gate.
+- Current `fix0809` Owner Decision: The owner approved-to-fix the following 11
+  canonical lifecycle mismatches in this bounded pass:
+  `legacyReceiptAndMarker`, `preFrameLibraryObserver`,
+  `permissionRecoverySemantics`, `requiredPermissionRoute`,
+  `retainedContainerRouting`, `returningCameraConstruction`,
+  `cameraReadinessPredicate`, `libraryReadinessPredicate`,
+  `initializationCommit`, `resourceInitializationSurface`, and
+  `deferredWorkGuard`. That parent approval is child-scoped: App Attest
+  maintenance and every credential/network-dependent or Network-owned Pending
+  Capture recovery-scheduling child are `deferredFrozen`; only non-Network/
+  App-Attest guard-placement children such as video-poster backfill and recent
+  cover remain approved in this pass. The owner also confirmed
+  `networkBootstrap` as a real mismatch, but deferred its fix from `fix0809`; it
+  remains displayed while the current Network/App Attest implementation and
+  behavior remain unchanged, and `/healthz` must not be presented as the target
+  state. This decision approves only the stated mismatch-fix boundary, not the
+  complete TAP-0087 v16 composition, synchronized contract revision, native
+  implementation, or downstream acceptance.
 - Done When:
   - The canonical glossary and deterministic scenario/route/marker matrix are
     recorded, including required first-install Attestation + Camera + Photos,
@@ -3885,7 +3930,7 @@ Every active Task uses these stable fields:
   `TAP-0051`; first-install retry re-scope `TAP-0010`; thumbnail policy
   `TAP-0027`
 - Created: `2026-08-14`
-- Updated: `2026-08-14`
+- Updated: `2026-08-15`
 - Revision History:
   - `2026-08-14` Allocated after the development session completed a full
     Inbox/Todo/Doing/Done/Deprecated search. TAP-0006 is the completed static
@@ -3954,6 +3999,25 @@ Every active Task uses these stable fields:
     TAP-0087 composition. TAP-0087 remains Doing, and exact owner approval of
     `TAP-0087-r1-candidate` plus the synchronized contract revision remains
     pending. No implementation, validation, or status completion is inferred.
+  - `2026-08-15` Owner completed a mismatch-specific partial review for the
+    bounded `fix0809` pass: the eleven non-Network canonical lifecycle mismatch
+    IDs recorded in the current `fix0809` boundary are approved-to-fix.
+    `networkBootstrap` is also confirmed as a real mismatch, but its fix is
+    deferred from this pass; the existing Network/App Attest implementation is
+    retained, the mismatch remains visible, and `/healthz` remains current-main
+    evidence rather than a target-state claim. This decision does not approve
+    the complete TAP-0087 v16 composition or synchronized contract revision,
+    does not satisfy the exact owner-approval Done condition, and causes no
+    TAP-0008/TAP-0009/TAP-0083 or acceptance status transition. TAP-0087 remains
+    Doing.
+  - `2026-08-15` Follow-up clarification narrowed the approved
+    `deferredWorkGuard` parent without changing its lifecycle-card disposition:
+    its App Attest maintenance child and every credential/network-dependent or
+    Network-owned Pending Capture recovery-scheduling child are
+    `deferredFrozen`. Only non-Network/App-Attest guard-placement children such
+    as video-poster backfill and recent cover remain in the bounded `fix0809`
+    scope. TAP-0087 remains Doing; no whole-composition approval, downstream
+    implementation authority, acceptance, or status transition is inferred.
 
 ### TAP-0088 — Prototype functional Viewfinder-control workload interactions
 

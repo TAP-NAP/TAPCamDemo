@@ -562,6 +562,23 @@ select {
 .lifecycle-truth-verdict { align-self: start; padding: 4px 6px; border-radius: 999px; font-size: 7px; font-weight: 720; }
 .lifecycle-truth-verdict.is-mismatch { color: #fff; background: rgba(255,69,58,.38); border: 1px solid rgba(255,190,186,.34); }
 .lifecycle-truth-verdict.is-aligned { color: #c9f9d3; background: rgba(48,209,88,.14); border: 1px solid rgba(48,209,88,.26); }
+.fix0809-disposition {
+  grid-column: 1 / -1;
+  width: fit-content;
+  padding: 3px 5px;
+  color: #d7ebff;
+  background: rgba(10,132,255,.16);
+  border: 1px solid rgba(98,173,255,.32);
+  border-radius: 999px;
+  font-size: 6.5px;
+  font-weight: 760;
+  line-height: 1.1;
+}
+.fix0809-disposition[data-fix0809-disposition="deferredFrozen"] {
+  color: #ffe2a8;
+  background: rgba(255,159,10,.18);
+  border-color: rgba(255,190,89,.48);
+}
 .lifecycle-truth-phase {
   grid-column: 1 / -1;
   display: grid;
@@ -657,6 +674,8 @@ html[data-workload-filter="truth"] .journey-spans { display: none; }
   -webkit-line-clamp: 2;
 }
 .timing-lifecycle-difference small { color: rgba(255,255,255,.66); font-size: 5.5px; line-height: 1.15; }
+.timing-lifecycle-difference .fix0809-disposition,
+.timing-workload-actual .fix0809-disposition { padding: 2px 4px; font-size: 5.25px; }
 .timing-difference-connectors {
   position: absolute;
   inset: 0;

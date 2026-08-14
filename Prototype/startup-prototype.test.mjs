@@ -33,6 +33,7 @@ test("TAP-0087 has a separate candidate entry and does not rewrite prior approva
   assert.equal(manifest.slices.firstInstallSetup.approvalStatus, "ownerApproved");
   assert.equal(manifest.slices.firstInstallResourceInitialization.approvalStatus, "ownerApproved");
   assert.equal(manifest.approval.wholeCompositionApproval, "not separately claimed");
+  assert.deepEqual(candidate.qaRefresh.notClaimed.includes("owner approval"), true);
 });
 
 test("the dedicated lifecycle page contains every requested surface and the reviewer inspector", () => {
@@ -76,7 +77,9 @@ test("TAP-0008/TAP-0009 code truth uses red mismatch cards with one dashed conne
   assert.match(controller, /label\.dataset\.lifecycleAnchorId = item\.id/);
   assert.match(controller, /card\.classList\.toggle\("is-lifecycle-mismatch", truth\.mismatch\)/);
   assert.match(controller, /\.filter\(\(truth\) => !truth\.mismatch \|\| lifecycleTimingLaneRecordIDSet\.has\(truth\.id\)\)/);
-  assert.match(controller, /if \(truth\.mismatch\) card\.dataset\.lifecycleDifferenceId = truth\.id/);
+  assert.match(controller, /if \(truth\.mismatch\) \{[\s\S]*card\.dataset\.lifecycleDifferenceId = truth\.id/);
+  assert.match(controller, /card\.dataset\.fix0809Disposition = truth\.fix0809Disposition/);
+  assert.match(controller, /makeFix0809DispositionBadge\(truth\)/);
   assert.match(controller, /path\.dataset\.connectorId = card\.dataset\.lifecycleDifferenceId/);
   assert.match(controller, /path\.dataset\.targetAnchorId = card\.dataset\.lifecycleActualAnchor/);
   assert.match(controller, /visibleBottom <= visibleTop/);
@@ -84,6 +87,7 @@ test("TAP-0008/TAP-0009 code truth uses red mismatch cards with one dashed conne
   assert.match(controller, /addEventListener\("resize", scheduleLifecycleDifferenceConnectors/);
   assert.match(controller, /new ResizeObserver\(scheduleLifecycleDifferenceConnectors\)/);
   assert.match(css, /\.lifecycle-truth-card\.is-lifecycle-mismatch[\s\S]*background: linear-gradient/);
+  assert.match(css, /\.fix0809-disposition\[data-fix0809-disposition="deferredFrozen"\]/);
   assert.match(css, /\.lifecycle-difference-connector[\s\S]*stroke-dasharray: 5 5/);
   assert.match(css, /\.timeline li \.timeline-anchor[\s\S]*border-radius: 50%/);
   assert.match(css, /html\[data-workload-filter="truth"\] \.timeline[\s\S]*grid-template-columns: 1fr/);
@@ -113,11 +117,31 @@ test("Timing keeps only non-workload truth in the lifecycle lane and links it to
 
 test("Timing decorates the existing Workload trace with scenario-bound actual and target differences", () => {
   const comparisonManifest = candidate.workbench.right.tap0008Tap0009CodeTruth.workloadDifferenceComparison;
+  const truthManifest = candidate.workbench.right.tap0008Tap0009CodeTruth;
+  assert.equal(truthManifest.schemaVersion, 2);
+  assert.equal(comparisonManifest.schemaVersion, 3);
   assert.equal(comparisonManifest.recordCount, 13);
   assert.equal(comparisonManifest.recordCount, comparisonManifest.records.length);
   assert.equal(comparisonManifest.mismatchCount, comparisonManifest.records.filter(({ mismatch }) => mismatch).length);
   assert.equal(comparisonManifest.timingMismatchCount, 10);
   assert.equal(comparisonManifest.semanticMismatchCount, 3);
+  assert.equal(truthManifest.fix0809DispositionSummary.approvedToFixMismatchCount, 11);
+  assert.equal(truthManifest.fix0809DispositionSummary.deferredFrozenMismatchCount, 1);
+  assert.equal(truthManifest.records.find(({ id }) => id === "networkBootstrap").fix0809Disposition, "deferredFrozen");
+  assert.deepEqual(
+    comparisonManifest.records
+      .filter(({ fix0809Disposition }) => fix0809Disposition === "deferredFrozen")
+      .map(({ id }) => id)
+      .sort(),
+    [
+      "firstInstallCredentialStartsAfterContinue",
+      "initialAttestationCompletionMeaning",
+      "pendingRecoveryLacksDeferredReleaseGuard",
+      "postSetupAttestLacksDeferredReleaseGuard"
+    ]
+  );
+  assert.equal(comparisonManifest.fix0809DispositionSummary.approvedToFixMismatchCount, 9);
+  assert.equal(comparisonManifest.fix0809DispositionSummary.deferredFrozenMismatchCount, 4);
   const targetBindingKeys = new Set();
   for (const difference of comparisonManifest.records) {
     const binding = difference.traceBinding;
@@ -142,6 +166,7 @@ test("Timing decorates the existing Workload trace with scenario-bound actual an
   }
   assert.match(model, /loadPrototypeManifest\(\)/);
   assert.match(model, /workloadDifferenceRegistry = Object\.freeze\(clone\(workloadDifferenceManifest\.records\)\)/);
+  assert.match(model, /fix0809DispositionRegistry = Object\.freeze\(clone\(fix0809DispositionCatalog\)\)/);
   assert.match(model, /workloadDifferenceScenarioRegistry = Object\.freeze/);
   assert.match(model, /export function resolveWorkloadDifferenceTraceBinding/);
   assert.match(model, /lifecycleTimingLaneRecordIDs = Object\.freeze/);
@@ -180,6 +205,8 @@ test("Timing decorates the existing Workload trace with scenario-bound actual an
   assert.match(controller, /actual\.dataset\.targetElementId = timingWorkloadEffectDOMID/);
   assert.match(controller, /actual\.dataset\.targetEffectReached = String\(targetEffectReached\)/);
   assert.match(controller, /actual\.dataset\.targetAnchorReached = String\(targetAnchorReached\)/);
+  assert.match(controller, /actual\.dataset\.fix0809Disposition = difference\.fix0809Disposition/);
+  assert.match(controller, /makeFix0809DispositionBadge\(difference\)/);
   assert.match(controller, /targetStatus\.textContent = `对应原型 Workload · \$\{difference\.target\.label\} · 既有 trace effect \$\{targetEffectReached \? "已出现" : "尚未出现"\}`/);
   const actualAnnotationSource = sourceBetween(
     controller,
@@ -187,6 +214,7 @@ test("Timing decorates the existing Workload trace with scenario-bound actual an
     "function makeTimingWorkloadTraceEffect("
   );
   assert.match(actualAnnotationSource, /差异：\$\{kindLabel\}；检查点：\$\{difference\.checkpoint\}/);
+  assert.match(actualAnnotationSource, /disposition\.accessibleLabel/);
   assert.match(actualAnnotationSource, /真实来源范围：\$\{difference\.scope\.path\}；真实触发：\$\{difference\.scope\.trigger\}/);
   assert.match(actualAnnotationSource, /审阅投影点：事件 #\$\{visibilityColumn\.entry\.seq\}/);
   assert.match(actualAnnotationSource, /该点只控制差异何时显示，不代表真实 workload 在此执行/);
@@ -200,6 +228,8 @@ test("Timing decorates the existing Workload trace with scenario-bound actual an
   assert.match(controller, /button\.id = timingWorkloadEffectDOMID\(entry\.seq, workloadId, effectIndex\)/);
   assert.match(controller, /button\.classList\.add\("is-workload-difference-target"\)/);
   assert.match(controller, /button\.dataset\.workloadDifferenceTargetId = difference\.id/);
+  assert.match(controller, /button\.dataset\.fix0809Disposition = difference\.fix0809Disposition/);
+  assert.match(controller, /disposition\.visibleLabel/);
   assert.match(controller, /targetBadge\.textContent = `原型 Workload effect · 目标 \$\{difference\.target\.anchor\}`/);
   assert.match(controller, /button\.setAttribute\(\s*"aria-label"/);
   assert.doesNotMatch(controller, /workloadDifferenceWorkloadIDSet|makeTimingWorkloadDifference\(/);

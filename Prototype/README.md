@@ -120,6 +120,16 @@ record scopes one current-main path/trigger, names the lifecycle truth that it
 represents, and carries the scenario/event/workload/status binding used to find
 the existing prototype trace effect.
 
+The same JSON records carry the owner-reviewed `fix0809Disposition`. Eleven
+lifecycle mismatches are `approvedToFix`; `networkBootstrap` is
+`deferredFrozen`. A workload child may narrow an approved parent, so the
+first-install credential, Network completion, post-setup App Attest, and
+credential/network-dependent Pending records are also frozen. Both states stay
+red because they are still current-main mismatches: the badge communicates
+delivery scope, not alignment. `fix0809` therefore does not change current
+Network/App Attest behavior or reinterpret `/healthz` as the target, and this
+partial decision does not approve the complete TAP-0087 v16 composition.
+
 Settings is catalogued only as **Pending — no approved slice**. It has no
 invented phone preview or operations. The system Settings handoff used for
 permission recovery remains a system-owned boundary.

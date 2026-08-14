@@ -4,6 +4,7 @@ import {
   canReduce,
   chooseRoute,
   createState,
+  fix0809DispositionRegistry,
   initializationIdentityMatches,
   lifecycleTimingLaneRecordIDs,
   lifecycleTruthRegistry,
@@ -25,6 +26,20 @@ import { mountTapShareSlice } from "./tap-share-slice.mjs";
 const byID = (id) => document.getElementById(id);
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const lifecycleTimingLaneRecordIDSet = new Set(lifecycleTimingLaneRecordIDs);
+
+function fix0809DispositionFor(record) {
+  return fix0809DispositionRegistry[record?.fix0809Disposition] || null;
+}
+
+function makeFix0809DispositionBadge(record) {
+  const disposition = fix0809DispositionFor(record);
+  if (!disposition) return null;
+  const badge = document.createElement("span");
+  badge.className = "fix0809-disposition";
+  badge.dataset.fix0809Disposition = record.fix0809Disposition;
+  badge.textContent = disposition.visibleLabel;
+  return badge;
+}
 
 const pageLabels = Object.freeze({
   dormant: "Dormant",
@@ -1091,10 +1106,14 @@ function renderLifecycleTruthCards() {
     card.dataset.lifecycleTruthId = truth.id;
     card.dataset.lifecycleActualAnchor = truth.actual.anchor;
     card.dataset.lifecycleTargetAnchor = truth.target.anchor;
-    if (truth.mismatch) card.dataset.lifecycleDifferenceId = truth.id;
+    const disposition = truth.mismatch ? fix0809DispositionFor(truth) : null;
+    if (truth.mismatch) {
+      card.dataset.lifecycleDifferenceId = truth.id;
+      card.dataset.fix0809Disposition = truth.fix0809Disposition;
+    }
     card.setAttribute(
       "aria-label",
-      `${truth.label}。${truth.mismatch ? "生命周期不一致" : "生命周期一致"}。真实阶段 ${truth.actual.anchor} ${truth.actual.phase}。原型阶段 ${truth.target.anchor} ${truth.target.phase}。`
+      `${truth.label}。${truth.mismatch ? "生命周期不一致" : "生命周期一致"}。${disposition ? `${disposition.accessibleLabel}。` : ""}真实阶段 ${truth.actual.anchor} ${truth.actual.phase}。原型阶段 ${truth.target.anchor} ${truth.target.phase}。`
     );
 
     const title = document.createElement("span");
@@ -1128,7 +1147,10 @@ function renderLifecycleTruthCards() {
     const evidence = document.createElement("small");
     evidence.className = "lifecycle-truth-evidence";
     evidence.textContent = `代码：${truth.actual.evidence} · 目标：${truth.target.evidence}`;
-    card.append(title, badge, phase, detail, evidence);
+    const dispositionBadge = truth.mismatch ? makeFix0809DispositionBadge(truth) : null;
+    card.append(title, badge);
+    if (dispositionBadge) card.append(dispositionBadge);
+    card.append(phase, detail, evidence);
       return card;
     });
 }
@@ -1382,20 +1404,25 @@ function makeTimingLane(label, laneId, columns, renderColumn) {
 }
 
 function makeTimingLifecycleDifference(truth) {
+  const disposition = fix0809DispositionFor(truth);
   const card = document.createElement("article");
   card.className = "timing-lifecycle-difference";
   card.dataset.timingDifferenceId = truth.id;
   card.dataset.timingActualAnchor = truth.actual.anchor;
   card.dataset.timingTargetAnchor = truth.target.anchor;
+  card.dataset.fix0809Disposition = truth.fix0809Disposition;
   card.setAttribute(
     "aria-label",
-    `${truth.label}。当前不一致。真实阶段 ${truth.actual.anchor} ${truth.actual.phase}；原型阶段 ${truth.target.anchor} ${truth.target.phase}。`
+    `${truth.label}。当前不一致。${disposition ? `${disposition.accessibleLabel}。` : ""}真实阶段 ${truth.actual.anchor} ${truth.actual.phase}；原型阶段 ${truth.target.anchor} ${truth.target.phase}。`
   );
   const label = document.createElement("strong");
   const phase = document.createElement("small");
   label.textContent = truth.label;
   phase.textContent = `真实 ${truth.actual.anchor} → 原型 ${truth.target.anchor}`;
-  card.append(label, phase);
+  const dispositionBadge = makeFix0809DispositionBadge(truth);
+  card.append(label);
+  if (dispositionBadge) card.append(dispositionBadge);
+  card.append(phase);
   card.title = `${truth.actual.summary}\n→ ${truth.target.summary}`;
   return card;
 }
@@ -1466,6 +1493,7 @@ function makeTimingWorkloadActual(projection) {
   } = projection;
   const targetEffectReached = targetColumn != null;
   const kindLabel = workloadDifferenceLabels[difference.differenceKind] || difference.differenceKind;
+  const disposition = fix0809DispositionFor(difference);
   const actual = document.createElement("button");
   actual.type = "button";
   actual.id = `timing-workload-actual-${timingDOMID(difference.id)}`;
@@ -1480,6 +1508,7 @@ function makeTimingWorkloadActual(projection) {
   actual.dataset.targetAnchorReached = String(targetAnchorReached);
   actual.dataset.lifecycleTruthIds = difference.lifecycleTruthIDs.join(" ");
   actual.dataset.scopePath = difference.scope.path;
+  actual.dataset.fix0809Disposition = difference.fix0809Disposition;
   actual.dataset.scenarioGroupId = difference.traceBinding.scenarioGroupID;
   actual.dataset.actualVisibleSeq = String(visibilityColumn.entry.seq);
   actual.dataset.actualAnchorReached = String(actualColumn != null);
@@ -1495,11 +1524,12 @@ function makeTimingWorkloadActual(projection) {
   }
   actual.setAttribute(
     "aria-label",
-    `${difference.actual.label}。实际不一致。差异：${kindLabel}；检查点：${difference.checkpoint}。真实来源范围：${difference.scope.path}；真实触发：${difference.scope.trigger}。审阅投影点：事件 #${visibilityColumn.entry.seq} ${eventLabels[visibilityColumn.entry.event.type] || visibilityColumn.entry.event.type}；该点只控制差异何时显示，不代表真实 workload 在此执行。实际阶段：${difference.actual.anchor}，${difference.actual.phase}。对应原型 Workload：${difference.target.label}；既有原型 Workload effect ${targetEffectReached ? "已出现" : "尚未出现"}。目标生命周期：${difference.target.anchor} ${targetAnchorReached ? "已到达" : "尚未到达"}，${difference.target.phase}。按下后聚焦该 reviewer visibility/upstream 投影事件；生命周期归属仍是 ${difference.actual.anchor}。`
+    `${difference.actual.label}。实际不一致。${disposition ? `${disposition.accessibleLabel}。` : ""}差异：${kindLabel}；检查点：${difference.checkpoint}。真实来源范围：${difference.scope.path}；真实触发：${difference.scope.trigger}。审阅投影点：事件 #${visibilityColumn.entry.seq} ${eventLabels[visibilityColumn.entry.event.type] || visibilityColumn.entry.event.type}；该点只控制差异何时显示，不代表真实 workload 在此执行。实际阶段：${difference.actual.anchor}，${difference.actual.phase}。对应原型 Workload：${difference.target.label}；既有原型 Workload effect ${targetEffectReached ? "已出现" : "尚未出现"}。目标生命周期：${difference.target.anchor} ${targetAnchorReached ? "已到达" : "尚未到达"}，${difference.target.phase}。按下后聚焦该 reviewer visibility/upstream 投影事件；生命周期归属仍是 ${difference.actual.anchor}。`
   );
 
   const verdict = document.createElement("em");
   verdict.textContent = "Actual · 不一致";
+  const dispositionBadge = makeFix0809DispositionBadge(difference);
   const label = document.createElement("strong");
   label.textContent = difference.actual.label;
   const kind = document.createElement("small");
@@ -1519,7 +1549,9 @@ function makeTimingWorkloadActual(projection) {
   const targetPhase = document.createElement("small");
   targetPhase.className = "timing-workload-target-phase";
   targetPhase.textContent = `目标生命周期 · ${difference.target.anchor} ${targetAnchorReached ? "已到达" : "尚未到达"} · ${difference.target.phase}`;
-  actual.append(verdict, label, kind, sourceScope, projectionScope, phase, targetStatus, targetPhase);
+  actual.append(verdict);
+  if (dispositionBadge) actual.append(dispositionBadge);
+  actual.append(label, kind, sourceScope, projectionScope, phase, targetStatus, targetPhase);
   actual.title = `实际：${difference.actual.summary}\n目标：${difference.target.summary}\n代码：${difference.actual.evidence}\n契约：${difference.target.evidence}`;
   return actual;
 }
@@ -1543,18 +1575,20 @@ function makeTimingWorkloadTraceEffect(workloadId, effectIndex, entry, stateAfte
   );
   if (targetProjection) {
     const { difference } = targetProjection;
+    const disposition = fix0809DispositionFor(difference);
     button.classList.add("is-workload-difference-target");
     button.dataset.workloadDifferenceTargetId = difference.id;
     button.dataset.targetAnchor = difference.target.anchor;
+    button.dataset.fix0809Disposition = difference.fix0809Disposition;
     button.dataset.actualAnnotationId = `timing-workload-actual-${timingDOMID(difference.id)}`;
     const targetBadge = document.createElement("span");
     targetBadge.className = "timing-workload-target-badge";
     targetBadge.textContent = `原型 Workload effect · 目标 ${difference.target.anchor}`;
     button.append(targetBadge);
-    button.title = `既有原型 Workload effect · 目标生命周期 ${difference.target.anchor} ${targetProjection.targetAnchorReached ? "已到达" : "尚未到达"} · ${button.title}`;
+    button.title = `${disposition ? `${disposition.visibleLabel} · ` : ""}既有原型 Workload effect · 目标生命周期 ${difference.target.anchor} ${targetProjection.targetAnchorReached ? "已到达" : "尚未到达"} · ${button.title}`;
     button.setAttribute(
       "aria-label",
-      `既有原型 Workload effect。对应目标生命周期 ${difference.target.anchor} ${targetProjection.targetAnchorReached ? "已到达" : "尚未到达"}。原型 reducer workload：${registry?.label || workloadId}${statusLabel ? `，状态 ${statusLabel}` : ""}。事件 #${entry.seq} ${eventLabels[entry.event.type] || entry.event.type}。按下后聚焦该 reducer 事件。`
+      `既有原型 Workload effect。${disposition ? `${disposition.accessibleLabel}。` : ""}对应目标生命周期 ${difference.target.anchor} ${targetProjection.targetAnchorReached ? "已到达" : "尚未到达"}。原型 reducer workload：${registry?.label || workloadId}${statusLabel ? `，状态 ${statusLabel}` : ""}。事件 #${entry.seq} ${eventLabels[entry.event.type] || entry.event.type}。按下后聚焦该 reducer 事件。`
     );
   }
   return button;
