@@ -94,15 +94,46 @@ constructs the canonical capture `signingBinding`, and asks
 request-oriented `generateAssertion(credentialName:request:)` and does not ask
 the backend for an assertion challenge.
 
-## Credential Preparation And Health Token
+## First-Install Credential Bootstrap
 
-Credential warmup begins after entry into the interactive camera as background
-work; it is not part of first-install permission setup or the first-frame
-readiness gate.
+First-Install Setup owns one required **Network** row. The row is not a system
+permission and is not satisfied by a generic reachability or `/healthz` check.
+Its explicit action starts the initial `photo_keyid` App Attest registration and
+backend verification sequence. Camera and Photos remain separate required
+permission rows; Location and Microphone remain optional.
+
+The initial sequence follows these boundaries:
+
+- page appearance, passive refresh, and Foreground Resume never start it;
+- one explicit Network action may own a bounded automatic-retry sequence;
+- after that sequence times out, connectivity recovery alone does not start a
+  new attempt and the row waits for an explicit Retry;
+- Setup Continue remains unavailable until this bootstrap, Camera, and Photos
+  are ready; and
+- a Network failure remains a First-Install Setup row state. It never routes to
+  Required Permission Check, which owns only Camera and Photos.
+
+A successful bootstrap contributes the local credential binding recorded by
+the Setup receipt. It does not promise that the network or credential remains
+healthy forever. Once Setup is complete, ordinary Viewfinder entry and local
+capture are network-independent.
+
+The current main implementation still exposes a legacy `/healthz` preflight in
+this row. Replacing that preflight with the complete initial App Attest
+registration/verification contract belongs to `TAP-0008` after the
+`TAP-0087` candidate is approved.
+
+## Post-Setup Credential Preparation And Health Token
+
+Post-setup credential health/recovery is a different operation from the
+required first-install bootstrap. It becomes eligible only after the
+interactive Viewfinder milestone (`t5`) as guarded background work and never
+participates in Setup, Required Permission Check, Resource Initialization, the
+first-frame gate, preview readiness, or ordinary local capture readiness.
 
 TAPCam stores a local credential-health token bound to the app bundle id,
 version/build, backend URL, App Attest environment, and the fixed
-`photo_keyid` name. If any input changes, the controller resets local
+`photo_keyid` name. If any input changes, the post-setup controller resets local
 `photo_keyid` metadata, runs `prepare`, and validates that the prepared
 credential can generate an assertion. If the token still matches, it may reuse
 the local credential through `prepareIfNeeded`.

@@ -43,6 +43,10 @@ button { font: inherit; }
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
 }
 
+.prototype-switcher { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 4px; background: #16171a; border: 1px solid rgba(255,255,255,.1); border-radius: 12px; }
+.prototype-switcher a { min-width: 0; padding: 8px 9px; overflow: hidden; color: #929399; border-radius: 9px; font-size: 10px; font-weight: 700; text-align: center; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
+.prototype-switcher a[aria-current="page"] { color: #fff; background: rgba(10,132,255,.2); box-shadow: inset 0 0 0 1px rgba(10,132,255,.45); }
+
 .eyebrow { margin: 0 0 8px; color: var(--blue); font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
 h1 { margin: 0; font-size: 28px; }
 .lede, .contract-notes { color: #acadb2; line-height: 1.55; }

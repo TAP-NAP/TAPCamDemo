@@ -25,6 +25,9 @@
     "optionalRowsDoNotBlockContinue": ["location", "microphone"],
     "systemOwnedUI": "documented boundary only; permission sheets are never imitated",
     "photoLibraryObservation": "must not be activated by passive first-install entry before the explicit Photos action",
+    "semanticStatus": "historical TAP-0008-r2 approval record; not the current behavior authority",
+    "currentBehaviorAuthority": "independentCandidates.startupLifecycle.setupMeaning",
+    "historicalTerminologyNote": "The network preflight label is retained only to describe the independently approved TAP-0008-r2 slice. Current behavior requires the explicit Network row to complete initial App Attest registration/verification; a generic /healthz success is insufficient.",
     "approvalStatus": "ownerApproved",
     "approvedAt": "2026-08-13",
     "ownerStatement": "现在原型已经确认没有问题"
@@ -223,6 +226,14 @@
       "sha256": "84970451e1e1324fefdc8fca8f57f8bf012efe17c888f31d449d05a89e5bc52f",
       "role": "prototype-only media fixture without baked UI",
       "approvalBoundary": "not a product image approval source"
+    },
+    {
+      "path": "assets/media/viewfinder-camera-fixture.png",
+      "sha256": "1549a85b103ccb209817fe326c739cd040c68b0cdcabdccb384d24e3107b3619",
+      "role": "TAP-0087 prototype-only camera preview fixture without baked UI",
+      "source": "OpenAI built-in image generation",
+      "promptSummary": "Photorealistic portrait iPhone camera fixture with a matte dark ceramic cup, plant, concrete objects, soft window light, and no UI, text, logo, or watermark.",
+      "approvalBoundary": "candidate visual fixture; not native camera or device-performance evidence"
     }
   ],
   "evidence": [
@@ -247,6 +258,220 @@
     "Haptics, PhotoKit, AVPlayer, signing, ZIP generation, cancellation at the resource layer, and temporary-file cleanup require native tests."
   ],
   "outOfScope": ["TAP Video tapnap transport", "3D Sticker implementation", "Share Link implementation", "backend", "membership", "billing", "external Verify", "real iCloud transfer", "real local cryptographic work"],
+  "independentCandidates": {
+    "startupLifecycle": {
+      "taskID": "TAP-0087",
+      "priority": "P0",
+      "revision": "TAP-0087-r1-candidate",
+      "entry": "startup-lifecycle.html",
+      "model": "startup-model.mjs",
+      "controller": "startup-prototype.mjs",
+      "contract": "Docs/StartupLifecycleContract.md",
+      "status": "ownerReviewRequired",
+      "prerequisiteFor": ["TAP-0008", "TAP-0009", "TAP-0083"],
+      "coveredInstallationContexts": [
+        "Fresh Installation",
+        "In-place App Update",
+        "Development Replacement Install",
+        "Delete-and-Reinstall",
+        "Offload-and-Reinstall",
+        "Same-Device Backup Restore",
+        "Cross-Device Migration Restore",
+        "Local State Inconsistency"
+      ],
+      "coveredActivationContexts": ["Foreground Process Launch", "Foreground Resume", "Settings Return", "Interrupted Relaunch"],
+      "scenarioFixtures": [
+        "freshInstall",
+        "freshInstallOffline",
+        "inPlaceUpdate",
+        "updateWithRevokedPhotos",
+        "developmentReplacement",
+        "developmentReplacementSameBuild",
+        "deleteReinstall",
+        "offloadReinstall",
+        "offloadReinstallChangedBuild",
+        "sameDeviceRestore",
+        "sameDeviceRestoreValidBinding",
+        "crossDeviceMigration",
+        "localMarkerLoss",
+        "interruptedInitialization",
+        "setupInterrupted",
+        "ordinaryProcessLaunch",
+        "ordinaryProcessLaunchEmptyLibrary",
+        "foregroundResumeRevoked",
+        "foregroundResumeRestrictedCamera",
+        "ordinaryForegroundResume",
+        "settingsReturn"
+      ],
+      "coveredPhoneSurfaces": ["iOS Launch Screen static reference", "app-owned First App Frame bridge", "First-Install Setup", "Required Permission Check", "Resource Initialization", "Viewfinder", "TAP Library", "Photo Viewer"],
+      "workbench": {
+        "revision": "v11",
+        "ownerCorrection": "Three simultaneous regions from the owner-provided 流程 2.png: UI surface plus contextual operations; exact iPhone visual truth; current-surface business, lifecycle, workload, marker, and machine causality.",
+        "left": {
+          "role": "one combined UI page directory and selected-surface operations",
+          "topLevelNavigation": "singleCombinedUISurfaceDirectory",
+          "forbiddenParallelEntries": ["approved visual slices", "TAP-0087 lifecycle"],
+          "controlsAreVisualization": false,
+          "surfaceCatalog": [
+            { "id": "launchScreen", "label": "Launch Screen", "status": "coveredSystemBoundaryReference", "operationScope": "choose an installation/activation scenario and start its deterministic simulation" },
+            { "id": "firstInstallSetup", "label": "First-Install Setup", "status": "candidateFromOwnerApprovedVisualInput", "operationScope": "explicit Network/App Attest and permission-row actions" },
+            { "id": "requiredPermissionCheck", "label": "Required Permission Check", "status": "candidate", "operationScope": "Camera/Photos Allow, Open Settings, and targeted return recheck" },
+            { "id": "resourceInitialization", "label": "Resource Initialization", "status": "candidateFromOwnerApprovedVisualInput", "operationScope": "review Camera/catalog completion order" },
+            { "id": "viewfinder", "label": "Viewfinder", "status": "candidate", "visualSource": "current SwiftUI hierarchy and relative geometry", "operationScope": "Library navigation only; visible camera controls are functionally deferred to TAP-0088 without a prototype-only mock badge" },
+            { "id": "tapLibrary", "label": "TAP Library", "status": "candidate", "operationScope": "catalog/thumbnail fixtures, open photo, and return" },
+            { "id": "photoViewer", "label": "Photo Viewer", "status": "candidateWithApprovedBoundary", "operationScope": "return navigation and same-page independently owned TAP-0081 local Share presentation; 2D/3D remain TAP-0089 visual mocks" },
+            { "id": "settings", "label": "Settings", "status": "pendingNoApprovedSlice", "preview": false, "operations": [], "policy": "do not fabricate app-owned UI; permission recovery may show only the system Settings boundary" }
+          ]
+        },
+        "center": {
+          "role": "app-owned UI visual truth",
+          "cssCanvas": { "width": 393, "height": 852 },
+          "swiftUIParity": "after exact owner approval, visible elements and relative geometry are strict SwiftUI constraints",
+          "existingNativeWithoutPrototype": "first map the current native page one-to-one before redesign or parity claims",
+          "viewfinderMapping": "current SwiftUI two-row top chrome, Dynamic Island clearance, rounded inset preview, FOV chips, flexible middle space, professional-toolbar slot, capture row, and mode strip; visual truth is present while control behavior remains TAP-0088 deferred",
+          "systemOwnedException": "iOS Launch Screen is a labeled static reference rather than app-owned UI"
+        },
+        "right": {
+          "role": "selected-surface business, lifecycle, workload, marker, and state causality",
+          "stateMachine": {
+            "primaryForm": "directed node-edge flow diagram",
+            "candidateLabel": "Executed reducer path",
+            "mustShow": ["recorded branch condition or explicit unrecorded label", "current node", "active transition"],
+            "buttonOrCardListAloneIsSufficient": false,
+            "candidateGraphSource": "node-edge transitions actually recorded in the reducer journal",
+            "machineRegistryNodesAreTransitionGraph": false,
+            "inferencePolicy": "never infer a legal edge or next node from machineRegistry.nodes array order",
+            "completeGraphPrerequisite": "an explicit transition registry with legal from/to edges and branch conditions"
+          },
+          "events": {
+            "primaryForm": "t0…tn and Δ timing sequence/swimlane",
+            "lanes": ["UI", "Reducer", "Workload", "Marker"],
+            "mustShow": ["ordering", "cause-and-effect connectors", "user/system/network wait distinct from app work"],
+            "source": "recorded reducer trace effects only; do not infer unrecorded work, markers, or causality",
+            "alternateForm": "bounded ordered log",
+            "switchDoesNotMutateState": true,
+            "timingAuthority": "t0…t5 and Δ intervals belong to the TAP-0087 target reducer; current-main interval placement is explicitly source-order inferred and is not an instrumented timestamp, duration, or device measurement"
+          },
+          "workloads": {
+            "recordShape": {
+              "observed": ["trigger", "owner", "earliest", "blocks", "network", "evidence"],
+              "target": ["trigger", "owner", "earliest", "blocks", "network", "evidence"],
+              "alignment": ["aligned", "partial", "gap", "deferred"]
+            },
+            "focusBehavior": "selecting a workload focuses its owning machine and most recent real reducer-journal sequence; no matching sequence means no synthetic event"
+          }
+        },
+        "globalReviewPlayback": {
+          "controls": ["Previous logical event", "Next logical event", "Reset"],
+          "layout": "one shared row",
+          "position": "before Launch scenario controls in the left rail",
+          "repeatedInContextualOperations": false,
+          "eventSemantics": "review transport only; no new product event semantics are introduced by this layout rule"
+        },
+        "traceSynchronization": "surface operations, phone, flow graph, timing swimlane, workload and marker projections, ordered log, focus, Previous, Next, and Reset all use one reducer trace and complete snapshots"
+      },
+      "setupMeaning": {
+        "required": ["Network-triggered initial App Attest registration/verification", "Camera authorization", "Photos authorized or limited"],
+        "optional": ["Location", "Microphone"],
+        "genericHealthzIsSufficient": false,
+        "ordinaryCameraRequiresNetwork": false,
+        "contextOperationPolicy": "show only phone actions whose corresponding event canReduce from the current snapshot; Setup waitingSystem therefore exposes no contextual action until SYSTEM_PERMISSION_RETURNED"
+      },
+      "inspector": [
+        "t0…tn",
+        "S/P/C/L/V spans",
+        "observed and target workload records with trigger/owner/earliest/blocks/network/evidence plus alignment",
+        "directed state-machine node-edge flow diagrams with active transitions",
+        "marker effects",
+        "t0…tn/Δ event sequence with UI/Reducer/Workload/Marker swimlanes",
+        "switchable bounded ordered event log",
+        "reviewer-only previous-event snapshot rewind",
+        "desktop single-window left combined page directory/operations + center phone + right causality inspector composition"
+      ],
+      "qaEvidence": ["design-qa.md"],
+      "staleQaEvidence": [
+        "evidence/TAP-0087-r1-launch-screen-phone.png",
+        "evidence/TAP-0087-r1-first-app-frame-phone.png",
+        "evidence/TAP-0087-r1-setup-phone.png",
+        "evidence/TAP-0087-r1-setup-comparison.png",
+        "evidence/TAP-0087-r1-permission-restricted-phone.png",
+        "evidence/TAP-0087-r1-resource-initialization-phone.png",
+        "evidence/TAP-0087-r1-viewfinder-phone.png",
+        "evidence/TAP-0087-r1-library-phone.png",
+        "evidence/TAP-0087-r1-library-empty-phone.png",
+        "evidence/TAP-0087-r1-photo-viewer-phone.png",
+        "evidence/TAP-0087-r1-inspector-full.png"
+      ],
+      "visualOnlyDeferred": {
+        "TAP-0088": ["Viewfinder capture and camera controls"],
+        "TAP-0089": ["Photo Viewer 2D and 3D analysis interactions"]
+      },
+      "existingApprovedBoundary": {
+        "name": "Viewer Share",
+        "taskID": "TAP-0081",
+        "revision": "TAP-0081-r3-candidate",
+        "hostSurface": "photoViewer",
+        "presentation": "samePageIndependentLocalPresentation",
+        "stateOwner": "TAP-0081 local controller",
+        "entry": "in-place from the Photo Viewer Share control without URL navigation, resume key, session storage, or reducer replay",
+        "return": "close the local presentation and preserve the same in-memory TAP-0087 Photo Viewer snapshot; first Back closes Share and the next Back reduces to Library",
+        "payloadReady": "close only the app-owned popover and record the TAP-0081-local system boundary",
+        "systemUI": "activity sheet, AirDrop targets, and destinations are not simulated",
+        "visualRole": "preserve the owner-approved Share control and state presentation inside Photo Viewer",
+        "tap0087TraceEffect": "none; TAP-0081 activity is not a TAP-0087/TAP-0008/TAP-0009 reducer event, workload, timing span, marker effect, route, or acceptance claim"
+      },
+      "reviewPlayback": {
+        "previousLogicalEvent": "restore the prior complete reviewer snapshot without dispatching or logging a product/reducer event",
+        "nextAfterRewind": "reduce forward again from the restored snapshot",
+        "controlOwnership": "Previous, Next, and Reset share one global row and are absent from contextual operation lists"
+      },
+      "desktopReviewerLayout": "left single combined UI page directory/contextual-operation catalog, center 393 x 852 phone preview, and right lifecycle/workload/state/event causality inspector remain visible in one supported desktop browser window without page-level scrolling; dense regions may scroll internally",
+      "qaRefresh": {
+        "status": "v11fBrowserAndAutomationVerifiedOwnerReviewRequired",
+        "verificationRevision": "v11f",
+        "historicalEvidenceNotCurrentPass": ["all existing TAP-0087 screenshot evidence", "v10 1600 x 941 geometry and scroll measurements", "v10 control coordinates", "pre-v11 console and automated-test results", "pre-correction responsive table"],
+        "browserEnvironment": {
+          "client": "Codex in-app Browser",
+          "viewport": { "width": 1703, "height": 1204 },
+          "bodyScroll": { "scrollHeight": 1204, "clientHeight": 1204, "pageLevelVerticalScroll": false },
+          "screenshotFile": null
+        },
+        "v11fBrowserVerified": [
+          "Viewfinder has two top-chrome rows, three FOV chips, PHOTO and VIDEO, and page viewfinder is interactive at seq 8",
+          "after Setup Camera action phone.stage and permission machine are waitingSystem and contextual operations are empty; after SYSTEM_PERMISSION_RETURNED stage is awaitingExplicitActions and legal actions return",
+          "same-page Share reaches selector without changing URL or TAP-0087 seq 15; first Back closes Share and stays Viewer at seq 15; second Back returns to Library at seq 16",
+          "selecting a workload card focuses its owning machine and a real matching seq",
+          "incremental dev.logs before and after exercised actions contain no new error entry"
+        ],
+        "automatedChecks": {
+          "nodeTests": "node --test Prototype/*.test.mjs: 49/49 passed",
+          "nodeCheck": "all four checked MJS files passed",
+          "manifestParse": "passed",
+          "diffCheck": "passed"
+        },
+        "notClaimed": ["new v11f screenshot file", "v11f mobile or responsive coverage", "native Simulator parity", "physical-device parity or timing", "owner approval"],
+        "closureRequires": ["fresh visual screenshot evidence if separately required by the owner", "product-owner approval of the exact v11 composition"]
+      },
+      "currentMainGaps": [
+        "TAPCamDemoApp.init constructs LibraryMediaStore and registers PhotoKit observation on the pre-frame path",
+        "returning-user CameraViewModel construction performs capability discovery and constructs session ownership before the target route shell boundary",
+        "the legacy Setup Network action performs /healthz rather than required first-install App Attest registration and verification",
+        "preview-layer isPreviewing KVO does not feed the current initial readiness gate",
+        "root task awaits video-poster backfill before the first Library catalog refresh",
+        "RAW Viewer original or iCloud resource loading and full analysis begin alongside bounded display"
+      ],
+      "excluded": ["importing TAP-0081 Share behavior/events/workloads/payload preparation into TAP-0087/TAP-0008/TAP-0009", "AirDrop and system activity-sheet simulation", "Locked Camera", "iPad", "native implementation", "performance proof"],
+      "symbolAssets": {
+        "navigationBack": { "systemName": "chevron.left", "path": "assets/system-symbols/navigation-back.png", "sha256": "3b7252cae9668699459984554fb7a47053c1f201f145d5cbdd4c645d9305f493" },
+        "viewfinderFlashOff": { "systemName": "bolt.slash", "path": "assets/system-symbols/viewfinder-flash-off.png", "sha256": "7c5c4e681f19e720e1711d5f7d769b5e47e5863b73536b7c810614fbb8a82e5d" },
+        "viewfinderLivePhoto": { "systemName": "livephoto", "path": "assets/system-symbols/viewfinder-live-photo.png", "sha256": "2abf223b4fb5b56df59346a96637fc2835d0c2c87dbc160e6662bcd17e4d243d" },
+        "viewfinderSettings": { "systemName": "gearshape", "path": "assets/system-symbols/viewfinder-settings.png", "sha256": "af9c6d0a6dc21c19738bc0abfe3c6295ebe0eca7d128c072089f449889ef1160" },
+        "viewfinderSwitchCamera": { "systemName": "arrow.triangle.2.circlepath.camera", "path": "assets/system-symbols/viewfinder-switch-camera.png", "sha256": "6d0519af26f10887b1ba3694ddbd0fbba624990e0137a746d6be809f2beedace" },
+        "viewfinderLibrary": { "systemName": "photo.on.rectangle", "path": "assets/system-symbols/viewfinder-library.png", "sha256": "100a0d387d23efbb42358984106ebaa3495c4598e3024a1445e121446e7de970" }
+      },
+      "approvalBoundary": "Existing TAP-0008-r2, TAP-0009-r1, and TAP-0081-r3 slice approvals remain independent. TAP-0081 approval supplies the preserved same-page local Share presentation only; it does not import Share behavior into TAP-0087/TAP-0008/TAP-0009 or approve the TAP-0087 composition, new semantics, new screens, workbench, reviewer playback, flow graph, timing swimlane, or inspector. TAP-0087 remains a candidate with ownerReviewRequired status."
+    }
+  },
   "approval": {
     "status": "composedFromIndependentlyOwnerApprovedSlices",
     "owner": "product owner",

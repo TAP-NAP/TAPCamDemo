@@ -1,7 +1,7 @@
 # TAPCam UI Prototype Contract
 
 - Status: canonical UI design-to-implementation workflow
-- Last updated: 2026-08-14
+- Last updated: 2026-08-15
 
 ## 1. Two Complementary Sources Of Truth
 
@@ -112,6 +112,150 @@ An urgent runtime or safety defect may precede prototype work only when the fix
 does not intentionally change the UI, or when the product owner explicitly
 authorizes that exception. Any visible divergence must be synchronized back to
 the prototype, reviewed, and recorded before the Task closes.
+
+### 4.1 TAP-0087 review workbench and lifecycle inspector
+
+`TAP-0087` adds reviewer-only chrome outside the iPhone canvas for startup and
+heavy-work analysis. It is not product UI and creates no iPad, Mac, or runtime
+dashboard requirement.
+
+The supported desktop workbench has three simultaneous regions:
+
+1. **One combined UI page directory and operation catalog** on the left. Its
+   top-level navigation is a single catalog containing Launch Screen,
+   First-Install Setup, Required Permission Check, Resource Initialization,
+   Viewfinder, TAP Library, Photo Viewer, and later approved surfaces. It must
+   not retain parallel **approved visual slices** and **TAP-0087 lifecycle**
+   entries, tabs, or switches. Selecting a surface reveals only that surface's
+   applicable simulation actions, such as choosing a Launch scenario, acting
+   on one permission row, opening Library, or opening the approved TAP-0081
+   local Share presentation inside Photo Viewer. These controls are inputs to
+   the simulation; they are not the state-machine visualization.
+2. **iPhone visual truth** in the center. The app-owned canvas remains exactly
+   `393 x 852` CSS px and owns the hierarchy, visible elements, and relative
+   geometry that an approved revision constrains in SwiftUI. When a native page
+   already exists but has no Web counterpart, its first prototype slice must
+   map the current native page one-to-one before proposing a redesign or
+   claiming parity. The iOS Launch Screen is the explicit system-owned static
+   reference exception.
+3. **Current-surface causality** on the right. It shows the business rules,
+   lifecycle intervals, workloads and owners, marker effects, and machine
+   changes associated with the selected surface and focused trace event.
+
+The surface catalog may name an uncovered future or existing page only as a
+disabled **Pending — no approved slice** entry. In particular, Settings has no
+approved TAP-0087 slice, so this candidate may not invent its preview,
+operations, copy, or geometry. A system Settings boundary used for permission
+recovery is not an app-owned Settings-page design.
+
+The right-side inspector may show:
+
+- installation and activation scenario facts;
+- `t0…tn` milestones and the active interval;
+- logical workloads plus observed and intended actor/queue ownership;
+- state-machine nodes and transition edges;
+- lifecycle-marker effects; and
+- a bounded deterministic event log.
+
+Every workload entry presents two explicit records plus an alignment verdict:
+
+```text
+observed { trigger, owner, earliest, blocks, network, evidence }
+target   { trigger, owner, earliest, blocks, network, evidence }
+alignment = aligned | partial | gap | deferred
+```
+
+`observed` describes current-main source placement and cites source evidence;
+`target` describes the contract-required placement and cites its contract or
+Task evidence. A workload card is interactive reviewer tooling: selecting it
+focuses its owning machine and the most recent real reducer-journal sequence
+that affected that workload. If no such sequence exists, the inspector may
+select the machine but must not fabricate an event or sequence.
+
+State machines must be rendered as actual node-edge flow diagrams with
+direction, any recorded branch condition, current node, and active transition
+visible. An absent branch condition is labeled unrecorded rather than invented.
+Rows of state buttons, pills, or cards alone do not satisfy this requirement.
+The current candidate may draw only node-edge paths that actually occurred in
+the reducer journal and labels this projection **Executed reducer path**. A
+`machineRegistry.nodes` vocabulary is not a transition graph, and its array
+order must never be interpreted as a legal edge or next state. A future complete
+normative graph requires an explicit transition registry before it can be
+rendered or claimed.
+
+Events default to a timing-axis sequence/swimlane view organized by `t0…tn`
+points and their `Δ` intervals. At minimum it separates **UI**, **Reducer**,
+**Workload**, and **Marker** lanes and draws their order and causal connection.
+Every lane item and connector comes from the focused trace event's recorded
+effects; the visualization must not infer unrecorded work, markers, or causes.
+The existing bounded ordered log remains available through an explicit view
+switch; it is a secondary textual projection of the same trace, not another
+event source.
+
+The workbench's `t0…t5` points and `Δ` intervals belong to the TAP-0087 target
+reducer. A current-main workload may be mapped beside one of those intervals
+only as an explicitly labeled source-order inference. Such a mapping is not an
+instrumented timestamp, device measurement, duration, or proof that current
+native execution satisfies the target milestone.
+
+One reducer/event trace must drive the phone surface and every inspector
+highlight, including both diagram modes and the selected UI's contextual
+operations. The inspector cannot maintain a second state machine that
+disagrees with the simulated product flow. Current-source placement and
+intended target placement remain visibly distinct until native evidence proves
+alignment.
+
+The Launch Screen fixture is labeled as a static iOS-owned reference and cannot
+show progress or claim measured duration. Deterministic delays in the Web page
+are interaction fixtures only; they are never native performance evidence.
+Controls deliberately deferred to a child Task remain disabled/inert and are
+identified by that Task. Their visual presence is not simulated functional
+coverage.
+
+The TAP-0087 Viewfinder candidate maps the current SwiftUI hierarchy and
+relative geometry one-to-one: the two-row top chrome, Dynamic Island clearance,
+rounded inset preview, FOV chips, flexible middle space, professional-toolbar
+slot, capture row, and mode strip remain structurally distinct. The current
+controls are present as visual truth but their functional simulation is deferred
+to TAP-0088. The phone surface does not add a prototype-only mock badge or use
+that deferral to redesign the current hierarchy.
+
+At the supported desktop reviewer viewport, the left catalog/operations, center
+phone preview, and right lifecycle/workload/state/event inspector are visible
+in the same browser window without page-level scrolling. Dense inspector
+regions may scroll internally. This composition is reviewer tooling only and
+does not scale or adapt the iPhone product UI.
+
+The reviewer may advance or rewind one logical event. **Previous logical
+event** restores the preceding complete review snapshot; it does not dispatch a
+product event, append a reducer token, run a workload, or mutate a lifecycle
+marker. Phone, timing swimlane, flow graph, workload, marker, and ordered-log
+projections all move to that same restored snapshot and focus. A subsequent
+Next action reduces forward again from the restored state.
+
+**Previous logical event**, **Next logical event**, and **Reset** are one global
+review-playback group, remain on the same row, and appear before the Launch
+scenario controls in the left rail. They are not repeated inside the selected
+surface's contextual operation list. Contextual actions contain only controls
+whose corresponding event can legally reduce from the current snapshot, or an
+explicitly labeled independent local-presentation boundary; they do not
+duplicate review transport. In particular, First-Install Setup exposes no
+context action while a permission row is in `waitingSystem`; legal row actions
+reappear only after the recorded system return changes the reducer state.
+
+`TAP-0087` preserves the owner-approved Viewer Share control and presents the
+independently approved `TAP-0081` slice locally inside the same Photo Viewer.
+It is an independently owned local presentation, not a page navigation or a
+startup route: opening, selecting, preparing, completing, or closing it does
+not change the browser URL and uses no resume key, session storage, or reducer
+replay. Its local state may be shown in a separately labeled TAP-0081 inspector,
+but it is never imported into the TAP-0087, TAP-0008, or TAP-0009 reducer,
+event log, workload registry, timing spans, markers, or acceptance claims.
+Payload readiness closes only the app-owned popover and records the local
+system boundary; the Web prototype does not imitate an activity sheet, AirDrop,
+or destinations. While Share is open, the first Viewer Back closes only that
+local presentation; a subsequent Back follows the normal Viewer-to-Library
+reducer path.
 
 ## 5. Evidence Levels
 

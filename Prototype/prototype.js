@@ -24,6 +24,25 @@
     systemActivityBoundaryReached: false
   };
 
+  const reviewQuery = new URLSearchParams(window.location.search);
+  const requestedFlow = reviewQuery.get("flow");
+  if (["share", "setup", "startup"].includes(requestedFlow)) state.flow = requestedFlow;
+  const bridgeSource = reviewQuery.get("source");
+  const resumeKey = reviewQuery.get("resumeKey");
+  const bridgeMode = reviewQuery.get("viewerMode");
+  const returnToLifecycle = byID("return-to-lifecycle");
+  const viewerBackReference = byID("viewer-back-reference");
+  if (bridgeSource === "tap0087" && /^[a-z0-9-]{12,80}$/i.test(resumeKey || "")) {
+    returnToLifecycle.href = `startup-lifecycle.html?resumeKey=${encodeURIComponent(resumeKey)}`;
+    returnToLifecycle.hidden = false;
+    viewerBackReference.hidden = true;
+    if (bridgeMode === "raw") {
+      document.querySelectorAll(".viewer-toolbar .mode-capsule button").forEach((button) => {
+        button.classList.toggle("selected", button.textContent.trim() === "RAW");
+      });
+    }
+  }
+
   const shareControls = document.querySelector(".share-controls");
   const setupControls = document.querySelector(".setup-controls");
   const startupControls = document.querySelector(".startup-controls");
@@ -520,6 +539,9 @@
   }));
 
   updateCredentialControls();
+  document.querySelectorAll("[data-flow]").forEach((candidate) => {
+    candidate.setAttribute("aria-pressed", String(candidate.dataset.flow === state.flow));
+  });
   renderResourceState();
   renderFlow();
   exposeState();

@@ -10,6 +10,10 @@
   <body>
     <main class="prototype-shell">
       <section class="control-panel" aria-label="Prototype controls">
+        <nav class="prototype-switcher" aria-label="原型页面">
+          <a href="./" aria-current="page">已批准视觉切片</a>
+          <a href="startup-lifecycle.html">TAP-0087 生命周期</a>
+        </nav>
         <div>
           <p class="eyebrow" id="flow-task-label">TAP-0006 · TAP-0081</p>
           <h1>TAPCam visual contract</h1>
@@ -171,7 +175,8 @@
             <div class="share-flow-screen" id="share-flow-screen">
             <img class="viewer-photo" src="assets/media/rainy-street-viewer-fixture.png" alt="Rainy street Viewer fixture">
             <div class="viewer-shade" aria-hidden="true"></div>
-            <span class="viewer-back-reference" aria-hidden="true"><img src="assets/icons/caret-left.svg" alt=""></span>
+            <span class="viewer-back-reference" id="viewer-back-reference" aria-hidden="true"><img src="assets/icons/caret-left.svg" alt=""></span>
+            <a class="viewer-back-reference" id="return-to-lifecycle" href="startup-lifecycle.html" aria-label="返回 TAP-0087 Photo Viewer" hidden><img src="assets/icons/caret-left.svg" alt=""></a>
             <div class="media-chip" id="media-chip">PHOTO</div>
 
             <section class="resource-overlay" id="resource-overlay" aria-live="polite" hidden>

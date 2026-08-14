@@ -273,3 +273,92 @@ final result: passed visual prototype gate
   acceptance remain separate evidence.
 
 final result: passed
+
+## TAP-0087-r1 startup-lifecycle candidate QA
+
+- Task: `TAP-0087`; P0 prerequisite for `TAP-0008`, `TAP-0009`, and
+  `TAP-0083`.
+- Candidate entry: `startup-lifecycle.html`.
+- Shared-tree revision: `v11`.
+- Verification pass: `v11f`.
+- Status: `candidate`; `ownerReviewRequired`. Exact owner approval of the v11
+  TAP-0087 composition and synchronized lifecycle contract is pending. The
+  existing TAP-0008-r2, TAP-0009-r1, and TAP-0081-r3 approvals remain
+  independent and do not approve this workbench revision.
+
+### v11 contract represented
+
+- The workbench uses one UI surface catalog with contextual legal operations,
+  one `393 x 852` app-owned preview, and one lifecycle/workload/state inspector.
+  Previous, Next, and Reset share one playback row before Launch scenario
+  controls and are not repeated as contextual actions.
+- The target state authority remains `startup-model.mjs`. Phone state, legal
+  operations, timing swimlane, executed node-edge path, marker effects,
+  workload focus, ordered log, Previous, and Next are projections of the same
+  reducer trace and complete reviewer snapshots.
+- A machine graph contains only node-edge transitions observed in the reducer
+  journal. `machineRegistry.nodes` is a node vocabulary, not a transition
+  registry; array order is never treated as a legal edge. Timing causality is
+  likewise derived only from real trace effects.
+- Workload records compare
+  `observed { trigger, owner, earliest, blocks, network, evidence }` with
+  `target { trigger, owner, earliest, blocks, network, evidence }`, plus an
+  alignment result. `t0…t5` are target reducer milestones. Any current-main
+  `t*` association is source-order inference, not device timing evidence.
+- Viewfinder mirrors the current SwiftUI hierarchy and relative geometry. Its
+  controls remain functionally deferred to TAP-0088; there is no
+  prototype-only mock badge.
+- Photo Viewer mounts the independently approved TAP-0081 Share presentation
+  locally on the same page. Share does not enter the TAP-0087/TAP-0008/TAP-0009
+  reducer, event, workload, timing, or marker model. Payload readiness closes
+  only the app-owned presentation and records a system boundary; neither an
+  activity sheet nor AirDrop is simulated.
+- Settings remains only a pending catalog entry because there is no approved
+  slice. No Settings phone preview, copy, geometry, or action is inferred.
+
+### Stale evidence boundary
+
+All earlier TAP-0087 captures and v10 measurements are stale for v11f. This
+includes the old `1600 x 941` screenshot and SHA, page/inspector/timing scroll
+measurements, playback-button coordinates, single-catalog DOM measurements,
+mobile viewport captures, console result, and historical automated-test count.
+They remain historical comparison inputs only and do not establish current v11f
+parity or acceptance.
+
+No new v11f screenshot file, mobile/responsive run, native Simulator/device
+parity result, physical-device timing, or owner approval is claimed here.
+
+### v11f browser-verified interaction facts
+
+- Codex in-app Browser viewport: `1703 x 1204`. The body reported
+  `scrollHeight = 1204` and `clientHeight = 1204`, so this desktop pass had no
+  page-level vertical scrolling. No screenshot file was produced.
+- Viewfinder showed two top-chrome rows, three FOV chips, `PHOTO` and `VIDEO`,
+  and the interactive `viewfinder` page at reducer sequence `8`.
+- After the Setup Camera action, both `phone.stage` and the permission machine
+  were `waitingSystem`, and contextual operations were empty. After
+  `SYSTEM_PERMISSION_RETURNED`, the stage was `awaitingExplicitActions` and the
+  legally reducible actions returned.
+- Share stayed inside Photo Viewer. Opening it reached `selector` while the URL
+  and TAP-0087 sequence remained unchanged at `15`. The first Back closed only
+  Share and stayed in Viewer at sequence `15`; the second Back returned to TAP
+  Library at sequence `16`.
+- Clicking a workload card focused its owning machine and a real matching trace
+  sequence; it did not append or fabricate an event.
+- Incremental `dev.logs` inspection before and after the exercised actions
+  contained no new `error` entry.
+
+### v11f automated and static checks
+
+- `node --test Prototype/*.test.mjs`: `49/49` passed.
+- `node --check` passed for all four checked MJS files.
+- `Prototype/manifest.json` parsed successfully.
+- `git diff --check` passed for the checked change set.
+
+### Remaining gate
+
+Mobile/responsive coverage, native Simulator/device parity, and physical-device
+timing remain unclaimed. Exact product-owner review of the v11 workbench and
+synchronized contract remains required.
+
+final result: candidate; owner review required

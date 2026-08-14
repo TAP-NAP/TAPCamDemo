@@ -78,7 +78,9 @@ Every action row on the first-install setup page follows the same rule:
 
 - Camera, Photos, Location, and Microphone system prompts may be requested only
   by tapping that row's explicit **Allow** action.
-- Network preflight may start only from its explicit setup-page action.
+- The Network row is the explicit user action that may start the initial App
+  Attest registration and verification operation. A generic backend
+  reachability check alone does not complete that row.
 - Page appearance, status refresh, `Continue`, app foregrounding, returning from
   Settings, retrying unrelated work, media reads, observers, capture warmup,
   and background preparation must not implicitly start one of these operations.
@@ -91,8 +93,9 @@ Every action row on the first-install setup page follows the same rule:
 
 ### 2.2 Required and optional setup rows
 
-- Required before `Continue`: Network preflight, Camera authorization, and
-  Photos authorization.
+- Required before `Continue`: successful first-install App Attest registration
+  and verification through the Network row, Camera authorization, and Photos
+  authorization.
 - Optional and skippable: Location and Microphone authorization.
 - Skipping Location means captures may continue without location metadata.
 - Skipping Microphone means Live Photos and TAP Video may continue without
@@ -101,15 +104,20 @@ Every action row on the first-install setup page follows the same rule:
   decisions. An OS grant does not force the corresponding data-use switch on
   after the user has explicitly opted out.
 
-### 2.3 Network retry
+### 2.3 First-install App Attest and Network retry
 
-One explicit Network action may run a bounded sequence of automatic attempts:
+One explicit Network action may run a bounded App Attest bootstrap sequence:
 
-1. Attempt the preflight.
+1. Reach the App Attest backend and attempt the required challenge,
+   registration, and verification work.
 2. On a retryable failure, wait for the policy-defined interval and retry.
 3. Stop automatic attempts when the total wall-clock timeout is reached.
 4. After timeout, remain on setup and require the user to press **Retry** to
    start a new bounded attempt sequence.
+
+A `/healthz` or equivalent reachability result may be used as diagnostics, but
+it is not the success condition. The row is complete only when the initial App
+Attest credential operation has completed successfully.
 
 Returning from the background or Settings may refresh displayed state, but it
 must not silently start a new sequence after the previous sequence timed out.
@@ -161,9 +169,11 @@ downloads, all thumbnail decoding, local proof or media hashing, ZIP/package
 generation, system activity-controller prewarming, App Attest/network warmup,
 or Pending Capture Queue retry/batch completion.
 
-App Attest credential warmup and Pending Capture Queue retry begin after camera
-entry as background work. They do not block the first interactive frame and are
-not the same operation as the required Network preflight.
+The initial App Attest credential operation has already completed through the
+required first-install Network row before `Continue`. Later credential health
+validation, recovery/re-attestation, and Pending Capture Queue retry begin only
+after camera entry as background work. They do not block the first interactive
+frame, ordinary Viewfinder entry, or local capture.
 
 ### 2.5 Completion markers
 
@@ -176,18 +186,43 @@ readiness groups have both succeeded.
 - It is not proof that any permission remains authorized forever.
 - It is not a recurring permission gate for later launches.
 - An absent marker, a marker for another installed update, or an initialization-
-  schema mismatch requires the gate. A fresh installation or reinstallation has
-  no matching marker.
+  schema mismatch requires the gate. Fresh Installation and
+  Delete-and-Reinstall have no matching marker. Offload-and-Reinstall may retain
+  a current marker and must be routed from the actual retained `S/P/I` facts.
 - An interrupted or abnormally incomplete run leaves the marker absent or stale
   so the next launch remains in Resource Initialization.
 - Ordinary later launches whose marker exactly matches the current update and
   schema generation silently skip Resource Initialization.
-- If a permission changes later, the affected feature handles the missing
-  permission in context. The app does not send the user through first-install
-  setup again.
+- If Camera or Photos changes later to an unusable state, the app enters the
+  app-owned **Required Permission Check** page. That page does not replay
+  first-install setup and automatically re-evaluates the startup route after a
+  targeted status refresh. Location and Microphone remain feature-context
+  optional permissions.
 - A legacy persisted key name may remain as an implementation compatibility
   detail, but it cannot merge setup permission state with this versioned
   readiness marker or redefine the marker's product meaning.
+
+### 2.6 Startup route, installation, and timing vocabulary
+
+[StartupLifecycleContract.md](StartupLifecycleContract.md) defines the
+canonical distinction among Fresh Installation, In-place App Update,
+Development Replacement Install, Delete-and-Reinstall,
+Offload-and-Reinstall, Same-Device Backup Restore, Cross-Device Migration
+Restore, Foreground Process Launch, Foreground Resume, and Cold/Warm Resource
+Paths. Those labels describe a
+scenario; route selection reads a structured local Setup receipt, current
+required-permission status, and the initialization marker. The Setup receipt
+is locally bound to the App Attest credential created by the required Network
+row. A restored receipt whose local credential binding is missing is invalid
+and returns to Setup recovery without automatically replaying already-granted
+Camera/Photos prompts.
+
+After first-install setup, Required Permission Check is triggered only by an
+unusable Camera or Photos status. Network unavailability does not enter that
+page and does not block ordinary camera entry or capture. The same lifecycle
+contract owns the `t0…tn` milestones, allowed work intervals, execution-owner
+registry, and Debug-versus-Release measurement method used by TAP-0008,
+TAP-0009, and TAP-0083.
 
 ## 3. Camera And Capture
 

@@ -104,6 +104,31 @@ flowchart TD
     click Pipeline "../Runtime/CapturePipeline.swift"
 ```
 
+## Startup Work Placement
+
+[StartupLifecycleContract.md](../../../Docs/StartupLifecycleContract.md) owns
+the `t0…tn` sequence and workload registry. Camera UI must be cheap enough to
+commit the selected app-owned route before scalable camera work starts.
+
+The target boundary is:
+
+```text
+route surface committed
+  -> capability discovery and capture graph configuration
+  -> current PreviewLayer reports a real preview
+  -> shutter, primary controls, and haptics are safe
+  -> Viewfinder interactive
+  -> release post-entry App Attest, Pending Capture, and maintenance work
+```
+
+Current main does not yet meet that placement: constructing `CameraView`
+synchronously constructs `CameraViewModel`, performs capability discovery, and
+creates capture-session objects; the first-install readiness gate also does not
+consume the existing preview-layer readiness callback. `TAP-0083` owns measured
+work placement and `TAP-0009` owns the Resource Initialization/readiness gate.
+Debug/compiler and debugger attachment are recorded as measurement variables,
+not product-state inputs.
+
 ## Current Release Camera Surface
 
 The camera remains one portrait-layout surface. Rotation changes supported
@@ -206,7 +231,7 @@ capture crop.
   Photographer Mode defaults off and always has a safe Standard fallback.
 - Basic EV follows its reset-on-launch policy. PRO ISO/S modes, meter baseline,
   pending samples, AF/MF mode, manual lens position, open parameter strip, and
-  suspended rear intent are not persisted across a cold launch.
+  suspended rear intent are not persisted across a Foreground Process Launch.
 - Location and Microphone data-use choices remain distinct from OS permission.
   A saved opt-out is not overwritten on foreground return or reauthorization.
 - Debug-only capture prioritization, depth-warning, shutter-sound, Focus
@@ -301,7 +326,7 @@ If this directory is new to you, read it in this order:
 navigation. It owns live route state: whether the depth album is presented,
 which TAP Library item was selected, and which visible item should be used as
 the current restore anchor. It still does not persist `destination`; foreground
-and fresh launch return to camera.
+and a new Foreground Process Launch returns to camera.
 
 `CameraRouteContextStore` is the durable boundary. It persists only protected
 HMAC restore tokens for the latest TAP Library anchor, not raw

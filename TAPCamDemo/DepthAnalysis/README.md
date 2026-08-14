@@ -29,6 +29,24 @@ Terminology is strict:
   name `TAPCamDemo/TAPLibrary`, but product and architecture prose must not call
   that private queue the TAP Library.
 
+## Startup And Entry Work Placement
+
+[StartupLifecycleContract.md](../../Docs/StartupLifecycleContract.md) owns the
+cross-module workload registry. The first usable TAP Library identity/order
+metadata snapshot is a Resource Initialization blocker only when the current
+initialization marker is absent or stale. Thumbnail/poster decoding, iCloud
+originals, visible-cell rendering, and Viewer analysis are never startup
+readiness facts.
+
+TAP Library entry keeps its shell stable while catalog and visible thumbnails
+progress independently. Opening a photo commits stable Viewer chrome and a
+bounded display rendition before scalable media/depth work publishes. Current
+main still begins full analysis-input loading for the current still even when
+RAW is selected; the TAP-0087 inspector reports that observed behavior without
+claiming it as a desired optimization. Functional Viewfinder-control inspection
+is deferred to `TAP-0088`; functional Photo Viewer 2D/3D workload interaction
+is deferred to `TAP-0089`, after TAP-0008/TAP-0009/TAP-0083.
+
 ## Current Viewer Contract
 
 The current Viewer is the Photos-style mixed-media browser. It keeps one

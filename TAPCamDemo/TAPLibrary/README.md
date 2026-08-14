@@ -53,6 +53,21 @@ technical optimization tracked only by
 Those unimplemented details are not part of this current module contract and
 must not be copied into another active design document.
 
+## Startup Eligibility
+
+[StartupLifecycleContract.md](../../Docs/StartupLifecycleContract.md) classifies
+this module as post-Viewfinder deferred work. Startup, foreground, Library
+return, and credential events may make the one worker eligible, but processing
+must not block the first app frame, startup route, real camera preview, or safe
+primary camera interaction. A missing credential may make an individual record
+wait for App Attest/network recovery; it does not make ordinary camera entry a
+network gate.
+
+The first-install Network row is different: it owns the initial App Attest
+registration/verification before Setup Continue. This module does not own that
+page or its retry UX. It consumes the resulting credential later when a pending
+record needs signing.
+
 ## Code Map
 
 | Responsibility | Code |
@@ -211,8 +226,9 @@ without App Attest hardware, network, or Photos side effects.
 - `assetLocalIdentifier` is kept after export so saved TAP photos remain
   discoverable even when Photos access is limited.
 - Exported large files are cleaned up; records and thumbnails remain.
-- Saved Photos assets can later be exported from the signature-verification
-  panel as verification originals. Still-photo captures export the original
+- The unmounted legacy signature-verification panel can export saved Photos
+  assets as verification originals, but it is not a current mounted Viewer or
+  startup workload. Still-photo captures export the original
   `.photo` resource as a single HEIC/JPG. Complete Live Photo captures export
   a ZIP containing `primary-photo.heic` or `primary-photo.jpg`,
   `paired-video.mov`, and an unsigned minimal `tapcam-export.json` sidecar.
