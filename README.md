@@ -1,6 +1,6 @@
 # TAPCamDemo
 
-TAPCamDemo is an iOS SingleCam photo-depth and TAP Video capture app. Release capture exposes
+TAPCamDemo is an iPhone-only iOS SingleCam photo-depth and TAP Video capture app. Release capture exposes
 field-of-view choices such as `13mm`, `24mm`, `48mm`, and `77mm`; each choice is
 resolved into one Apple-compatible RGB source, depth source, and depth-safe raw
 `AVCaptureDevice.videoZoomFactor` before capture.
@@ -14,7 +14,9 @@ it to Photos, and verifies TAP Video readback.
 
 Current non-goals: watermarking, destructive final crop, MultiCam capture,
 RAW/ProRAW provider runtime, arbitrary non-TAP video formats, external session
-scaffolding, sidecar JSON, and Release debug bundles.
+scaffolding, sidecar JSON, Release debug bundles, iPad runtime/layout support,
+Mac Catalyst or native macOS, Designed for iPhone/iPad on Mac, and Apple Vision
+Pro compatibility.
 
 ## Quick Links
 

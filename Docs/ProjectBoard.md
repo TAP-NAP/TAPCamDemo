@@ -1,7 +1,7 @@
 # TAPCam Project Board
 
 - Schema: `1`
-- Next Task ID: `TAP-0085`
+- Next Task ID: `TAP-0086`
 - Canonical Product Contract: [ProductContract.md](ProductContract.md)
 - UI Prototype Contract: [UIPrototypeContract.md](UIPrototypeContract.md)
 - Board Steward Session: `019ff4ea-acba-7051-bd0f-3d489f1caadc`
@@ -67,6 +67,7 @@ from each record's `Status` field.
 ### Doing
 
 - `TAP-0083` Eliminate cold-path UI starvation and codify responsiveness guardrails
+- `TAP-0085` Restrict the current runtime target to iPhone
 
 ### Done
 
@@ -544,22 +545,30 @@ Every active Task uses these stable fields:
 - Kind: `Decision`
 - Priority: `P2`
 - Domain: `App Store`
-- Labels: `app-store`, `media`, `6.9-inch`, `ipad`, `rights`
-- Contract: `UIPrototypeContract §7`
-- Match Keys: `P3, screenshots, store media, device frame, universal media`
+- Labels: `app-store`, `media`, `6.9-inch`, `iphone`, `rights`
+- Contract: `UIPrototypeContract §9`
+- Match Keys: `P3, screenshots, store media, device frame, iPhone App Store
+  screenshots`
 - Assignee: `Product owner`
 - Dev Session: `Unassigned`
 - Branch/Worktree: `Unassigned`
-- Scope: Decide whether and how to resume 6.9-inch and iPad store media after
+- Scope: Decide whether and how to resume 6.9-inch iPhone App Store media after
   the Web prototype foundation exists.
-- Out of Scope: Treating Sketch exports as submit-ready runtime evidence.
+- Out of Scope: iPad store media while the current runtime target is iPhone-
+  only; changing runtime platform support; treating Sketch exports as submit-
+  ready runtime evidence.
 - Done When: The owner approves or rejects a scoped Store task with real-media
   and rights requirements.
-- Related: `TAP-0006`
+- Related: `TAP-0006`, `TAP-0085`
 - Created: `2026-08-12`
-- Updated: `2026-08-12`
+- Updated: `2026-08-14`
 - Revision History:
   - `2026-08-12` Migrated unfinished Sketch P3 from implicit roadmap to Inbox.
+  - `2026-08-14` Removed iPad media from the active decision after the owner
+    set the current TAPCamDemo runtime boundary to iPhone only under TAP-0085.
+    The original Universal/iPad scope remains in this history; TAP-0007 stays
+    Inbox and now concerns only separately approved 6.9-inch iPhone App Store
+    media, asset rights, and submission evidence.
 
 ### TAP-0008 — Enforce explicit-action-only first-install operations
 
@@ -3215,6 +3224,81 @@ Every active Task uses these stable fields:
     TAP-0084 in Inbox for prototype-first scope decisions; no code, approval,
     Todo/Doing transition, or implementation evidence is inferred.
 
+### TAP-0085 — Restrict the current runtime target to iPhone
+
+- Status: `Doing`
+- Kind: `Technical`
+- Priority: `P1`
+- Domain: `Platform / Build Configuration`
+- Labels: `iphone-only`, `supported-platforms`, `device-family`, `ipad`,
+  `mac-catalyst`, `macos`, `visionos`, `build-settings`
+- Contract: `ProductContract §1.1`; `UIPrototypeContract §3`; `§9`
+- Match Keys: `iPhone only, no iPad support, no Mac support, Universal target,
+  TARGETED_DEVICE_FAMILY, SUPPORTED_PLATFORMS, SUPPORTS_MACCATALYST,
+  Designed for iPhone/iPad, visionOS compatibility, unrelated platform code`
+- Assignee: `/root` documentation and validation reconciliation; product owner
+  authored the existing Xcode project setting change
+- Dev Session: `019ff4ea-acba-7051-bd0f-3d489f1caadc`
+- Branch/Worktree: `codex/tap-share-system-handoff-recovery`; delivery requires
+  a separate TAP-0085 commit from TAP-0081/TAP-0082
+- Scope: Make the main TAPCamDemo application target iPhone-only in both Debug
+  and Release. Its supported build platforms are iPhone device and iPhone
+  Simulator; the Simulator remains a development/validation destination rather
+  than an additional production platform. Preserve the owner-authored main-app
+  settings that target device family `1` and disable Mac Catalyst, Designed for
+  iPhone/iPad on Mac, and visionOS compatibility routes.
+- Out of Scope: iPad UI or runtime support, adaptive iPad layout, multitasking,
+  Stage Manager, pointer/keyboard work, Mac Catalyst, native macOS, Designed for
+  iPhone/iPad on Mac, visionOS compatibility, any platform-specific refactor or
+  acceptance undertaken only for those unsupported platforms, or producing App
+  Store media under TAP-0007. App Store Connect Mac or Vision availability is
+  an external distribution setting and is not proven or fully controlled by
+  these Xcode project flags.
+- Prototype Impact: `N/A`; this is a build/product-support boundary and does
+  not intentionally change visible iPhone UI.
+- Current Evidence: Product Contract §1.1, UI Prototype Contract §3/§9, and the
+  root README now state the same iPhone-only boundary. Independent Debug and
+  Release effective-setting checks for the main application resolve
+  `SUPPORTED_PLATFORMS` to `iphoneos iphonesimulator`,
+  `SUPPORTS_MACCATALYST`, `SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD`, and
+  `SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD` to `NO`, and
+  `TARGETED_DEVICE_FAMILY` to `1`. The existing generic iphoneos
+  `build-for-testing` passed, and its built app `Info.plist` reports
+  `UIDeviceFamily = [1]`. TAP-0007 is synchronized to the distinct 6.9-inch
+  iPhone App Store-media decision.
+- Done When: The Product Contract, UI Prototype Contract, and root README all
+  state the same iPhone-only current scope; main-app Debug and Release effective
+  settings resolve to iPhone device/Simulator only with device family `1` and
+  the unsupported compatibility routes disabled; a built app reports
+  `UIDeviceFamily = [1]`; a generic iOS build gate passes; TAP-0007 remains a
+  distinct 6.9-inch iPhone App Store-media decision; and the owner-authored
+  project settings plus documentation and validation evidence are frozen in a
+  separate TAP-0085 commit.
+- Related: `TAP-0007`
+- Created: `2026-08-14`
+- Updated: `2026-08-14`
+- Revision History:
+  - `2026-08-14` Allocated after a complete Inbox/Todo/Doing/Done/Deprecated
+    search found no runtime-platform Task. TAP-0007 overlaps only in historical
+    iPad store-media wording and remains a separate App Store asset decision.
+    Created TAP-0085 in Inbox.
+  - `2026-08-14` The owner stated that the `project.pbxproj` change is owner-
+    authored and that the current product does not consider iPad or Mac support,
+    because doing so would introduce unrelated factors while changing code.
+    This explicitly approved the bounded iPhone-only scope; moved Inbox -> Todo
+    -> Doing because the owner patch already exists. Product-contract,
+    UI-prototype-contract, README, effective-build-setting, built-plist, generic
+    iOS build, and separate-commit evidence remain open, so no Done transition
+    is inferred.
+  - `2026-08-14` Reconciled current documentation and build evidence. Product
+    Contract §1.1, UI Prototype Contract §3/§9, and the root README now agree on
+    the iPhone-only scope. Debug and Release effective settings independently
+    report iPhone device/Simulator only, all three unsupported compatibility
+    flags `NO`, and device family `1`; generic iphoneos `build-for-testing`
+    passed and the built app reports `UIDeviceFamily = [1]`. All recorded Done
+    When conditions except the required separate TAP-0085 commit are now met,
+    so TAP-0085 remains Doing solely for that freeze point.
+
 ## 5. Inbox Decision Registry
 
 The following records deliberately remain compact until the owner decides
@@ -3581,4 +3665,197 @@ not replace the Product Contract, and linked device evidence may remain open.
   Fixed-build install, launch, Files, AirDrop receipt/artifact inspection, and
   owner verdict evidence remain Pending. TAP-0081 remains Doing, TAP-0082
   remains Todo, and no other Task status or Next Task ID changed.
-- `2026-08-14` Recorded the owner's failed physical-device result for candidate- `2026-08-14` The owner declined a separate rollback commit with “这条就算了- `2026-08-14` Recorded the uncommitted TAP-0081 recovery implementation- `2026-08-14` Recorded the owner's requirement that AirDrop/Save to Files- `2026-08-14` Superseded the destination-completion auto-close direction after- `2026-08-14` Recorded the owner's explicit “验收通过” verdict against the- `2026-08-14` Reconciled the owner's post-Pass `.tapnap` Share console sample- `2026-08-14` Board Steward recorded the direct-file-URL transport checkpoint- `2026-08-14` Board Steward recorded the owner's replacement TAP Share- `2026-08-14` Board Steward recorded the owner's explicit correction to TAP- `2026-08-14` Board Steward recorded the owner quote “对的 现在原型是我想要的”- `2026-08-14` Board Steward synchronized the implemented native- `2026-08-14` Board Steward recorded the owner's explicit current closure
+- `2026-08-14` Recorded the owner's failed physical-device result for candidate
+  `35745be`. AirDrop remained at “未找到用户” without a received artifact, and
+  ordinary-image Share produced the same failure and repeated LaunchServices
+  `Code=-54` diagnostics as `.tapnap`. This cross-format evidence rejects the
+  package/custom-UTI-only diagnosis and the copy-backed manual provider
+  candidate; its compile and provider-test results are retained as historical
+  evidence but cannot close TAP-0081 or TAP-0082.
+- `2026-08-14` The owner declined a separate rollback commit with “这条就算了
+  直接开始改吧” and approved immediate recovery on the unpushed
+  `codex/tap-share-system-handoff-recovery` branch. TAP-0081 remains Doing with
+  revised scope to restore the pre-`bf20b52` system-native file-URL activity
+  item for ordinary media and `.tapnap`, preserve the anchored UI/progress/
+  exact-attempt lease, and prevent source cleanup before the system consumer's
+  terminal boundary. The prior active prohibition on bare file-URL handoff is
+  superseded; private LaunchServices entitlements remain prohibited. TAP-0082
+  remains Todo and now requires received Save to Files and AirDrop artifacts
+  for representative ordinary-media and `.tapnap` paths. Its acceptance file
+  must be synchronized before execution. No recovery implementation, test,
+  device delivery, or owner pass is inferred, and no other Task status or Next
+  Task ID changed.
+- `2026-08-14` Recorded the uncommitted TAP-0081 recovery implementation
+  handoff. Package, image, and video artifacts now pass `[artifact.fileURL]`
+  directly to the system activity controller; the failed shared manual
+  `UIActivityItemsConfiguration` / `NSItemProvider` transport is removed. The
+  activity controller strongly retains the artifact and explicitly performs
+  idempotent cleanup when that final owner deinitializes; completion,
+  `onDismiss`, and representable dismantle end coordinator state but are not
+  source-deletion signals, and artifact-lease deinitialization remains an
+  abnormal fallback. Product Contract §5.3, the DepthAnalysis README, and the
+  TAP-0082 acceptance record are synchronized. Generic iphoneos
+  `build-for-testing` passed and compiled the revised tests, but those tests
+  were not run. The recovery is not committed or pushed; no device operation,
+  installation, launch, received artifact, or owner verdict is claimed.
+  TAP-0081 remains Doing, TAP-0082 remains Todo, and no other Task status or
+  Next Task ID changed.
+- `2026-08-14` Recorded the owner's requirement that AirDrop/Save to Files
+  completion ends TAPCam's app-owned Share presentation and returns to the same
+  stable Viewer; system destination UI remains system-owned and the TAP Share
+  popover does not reopen automatically. The uncommitted implementation now
+  keys an item-scoped system-sheet presenter by presentation UUID and routes
+  binding, `onDismiss`, appearance, completion, and dismantle with an
+  `expectedArtifactID`, preventing stale callbacks from attempt A from
+  dismissing B. Controller callbacks capture the UUID rather than the
+  presentation object, and presentation initialization always transfers
+  artifact ownership to the controller. Generic iphoneos `build-for-testing`
+  passed after this hardening and compiled the revised tests, but those tests
+  were not run. Nothing is committed or pushed, no device operation or owner
+  verdict is claimed, TAP-0081 remains Doing, TAP-0082 remains Todo, and no
+  other Task status or Next Task ID changed.
+- `2026-08-14` Superseded the destination-completion auto-close direction after
+  the owner explained that it never worked and directed its related code to be
+  removed. Current TAP-0081 no longer installs `completionWithItemsHandler` or
+  carries its unused completion-state machinery; user/system dismissal,
+  representable dismantle, and never-appeared recovery end coordinator state,
+  while controller release owns normal per-attempt temporary-file cleanup.
+  Exact presentation-ID guards and system-native file-URL transport remain.
+  The cache audit confirms no persistent Share payload cache or prewarm;
+  `SIGKILL` or exhausted cleanup retries may leave OS-temporary residue but do
+  not constitute an app cache. Generic iphoneos `build-for-testing` passed
+  after cleanup and compiled tests without running them. No Codex device
+  operation, commit, or push is claimed. The owner reported “现在的话分享功能已经
+  正常” and asked to implement TAP-0082, so TAP-0082 moved Todo -> Doing with a
+  broad positive human result. Done still requires explicit confirmation of
+  ordinary image and `.tapnap` through both Save to Files and AirDrop with
+  saved/received artifacts that open. TAP-0081 remains Doing; no other Task
+  status or Next Task ID changed.
+- `2026-08-14` Recorded the owner's explicit “验收通过” verdict against the
+  immediately preceding ordinary image/`.tapnap` × Save to Files/AirDrop
+  matrix. All four transport paths and artifact openability are Pass; no
+  filename, hash, log, receiving-device identity, commit, or final build
+  identity is inferred. The acceptance record and Device Acceptance Registry
+  now reflect that exact verdict. TAP-0081 and TAP-0082 remain Doing because
+  the accepted recovery is still uncommitted/unpushed, focused tests were
+  compiled rather than run, and cancellation/lifecycle evidence remains open.
+  No other Task status or Next Task ID changed.
+- `2026-08-14` Allocated TAP-0085 after an all-status search found no existing
+  runtime-platform Task and advanced Next Task ID to TAP-0086. The owner
+  identified the current `project.pbxproj` platform restriction as owner-
+  authored and explicitly limited current product support to iPhone so iPad and
+  Mac concerns do not introduce unrelated implementation factors. TAP-0085
+  moved Inbox -> Todo -> Doing with product/document/build validation and a
+  separate commit still open. Revised TAP-0007 without changing its Inbox
+  status: it now owns only a future 6.9-inch iPhone App Store-media decision,
+  while its prior Universal/iPad wording remains append-only history. No
+  TAP-0081/TAP-0082 status or acceptance evidence changed.
+- `2026-08-14` Reconciled TAP-0085 documentation and validation evidence.
+  Product Contract §1.1, UI Prototype Contract §3/§9, and the root README now
+  agree on the iPhone-only runtime boundary. Independent Debug and Release
+  effective-setting checks report `iphoneos iphonesimulator`, all three
+  unsupported compatibility flags `NO`, and device family `1`; the existing
+  generic iphoneos build passed and its app reports `UIDeviceFamily = [1]`.
+  TAP-0085 remains Doing solely until these owner-authored settings and their
+  synchronized evidence are frozen in a separate TAP-0085 commit. No other
+  Task status or Next Task ID changed.
+- `2026-08-14` Reconciled the owner's post-Pass `.tapnap` Share console sample
+  with a read-only current-source audit. TAP-0081/TAP-0082 now record that the
+  production handoff is one direct file URL in one activity controller, with no
+  residual manual provider, open-in-place, or destination-completion callback;
+  LaunchServices `-10814`/`Code=-54`, CKShare/SWY, FileProvider, and persona
+  messages are system probing and do not negate the successful four-path
+  transport verdict or authorize private entitlements/document handlers. The
+  gesture-gate timeout is observation-only unless paired with a reproducible
+  visible stall and correlated structured milestones. Also recorded removal of
+  the unused TAPNAP `UTType` helper, repair of the stale presentation-binding
+  source assertion, and generic iphoneos `build-for-testing` exit 0. No device
+  or Simulator run, commit, push, lifecycle transition, or Next Task ID change
+  is claimed; TAP-0081 and TAP-0082 remain Doing.
+- `2026-08-14` Board Steward recorded the direct-file-URL transport checkpoint
+  that will be identified by the commit containing this revision under subject
+  `Checkpoint working Share transport before lifecycle repair`; no prospective
+  hash is fabricated. The owner's ordinary-image/`.tapnap` Save to Files and
+  AirDrop matrix remains Pass. The newly supplied detailed log and source audit
+  keep lifecycle explicitly open: both artifact kinds trigger system URL probes
+  after controller creation but before coordinator handoff, while current
+  pending-handoff discard may delete that already-inspected source; `.tapnap`
+  dismissal is not followed by controller-dismantled or `artifactLease`
+  terminal cleanup before the next Share; and an `under50ms` construction
+  measurement precedes `over50ms` feedback attributed to the same construction
+  phase. This checkpoint separates working transport from the still-defective
+  source-lifetime, teardown, and progress-attribution state. TAP-0081 and
+  TAP-0082 remain Doing. No other Task record/status or Next Task ID changed.
+- `2026-08-14` Board Steward recorded the owner's replacement TAP Share
+  lifecycle decision after the complete repeated-sheet log disproved controller
+  deinitialization as a prompt normal cleanup boundary. The approved flow removes
+  the app-owned ready/boundary page and the 50 ms reveal plus 400 ms hold: a
+  format tap immediately shows preparation progress, payload readiness closes
+  the popover, and `UIActivityViewController` is constructed only after actual
+  popover disappearance at the real system-sheet boundary, without
+  preconstruction or early system probes. The matching sheet-end signal owns
+  asynchronous, idempotent artifact cleanup even if SwiftUI/UIKit retains the
+  old controller; stale A termination cannot affect B. The direct-file-URL
+  transport matrix remains Pass, but the current lifecycle candidate is
+  uncommitted and unaccepted. TAP-0081 and TAP-0082 remain Doing; no other Task
+  status or Next Task ID changed.
+- `2026-08-14` Board Steward recorded the owner's explicit correction to TAP
+  Share progress geometry. Preparation does not replace the whole popover: the
+  selector hierarchy stays mounted, the clicked option row alone changes in
+  place to progress plus current percentage, and every sibling option remains
+  visible but disabled. Payload readiness then closes the popover before the
+  real system-sheet boundary. TAP-0081 and TAP-0082 remain Doing, the current
+  candidate remains unaccepted, and no implementation, prototype sync, build,
+  test, device run, commit, push, other status, or Next Task ID change is
+  claimed.
+- `2026-08-14` Board Steward recorded the owner quote “对的 现在原型是我想要的”
+  as exact `ownerApproved` status for `TAP-0081-r3-candidate`. The final UI
+  contract shows subtitle text before preparation, then swaps only the clicked
+  row's same fixed slot to a 2px determinate track; it shows no percentage or
+  Cancel, preserves selector/title/icon/badge/row/popover/sibling geometry and
+  identity, keeps all other rows visible but disabled, and introduces no
+  independent preparation or ready page. Payload readiness closes the popover
+  before the system sheet. TAP-0081 and TAP-0082 remain Doing pending native
+  build/test and attended device acceptance; no other status or Next Task ID
+  changed.
+- `2026-08-14` Board Steward synchronized the implemented native
+  `TAP-0081-r3-candidate` without converting compilation into acceptance. The
+  selected row now replaces only its fixed subtitle slot with a 2px determinate
+  track, with no preparation percentage/Cancel and no geometry/identity change;
+  payload readiness closes the popover before the sheet boundary constructs the
+  one direct-file-URL controller. Exact item-Binding and SwiftUI `onDismiss`
+  signals converge on one exact-ID, idempotent end transition that schedules
+  cleanup off the main thread; stale A cannot end B, and no destination-
+  completion auto-close callback or timed watchdog remains. Generic Simulator
+  and iphoneos `build-for-testing` each exited 0 without launching Simulator;
+  prototype, static/source, diff, and Swift parse checks passed, but tests were
+  compiled rather than run. No device run, owner native verdict, commit, push,
+  status transition, or Next Task ID change is claimed. TAP-0081 and TAP-0082
+  remain Doing pending owner self-installation and acceptance.
+- `2026-08-14` Board Steward recorded the owner's explicit current closure
+  decision and moved TAP-0081/TAP-0082 Doing -> Done. Exact r3 progress remains
+  an honest app-payload indicator only: no 99% system-readiness wait, fake
+  completion, 400 ms hold, or ready overlay is introduced; payload readiness
+  closes the popover and iOS owns the following Share sheet. The previously
+  accepted ordinary-image/`.tapnap` x Save to Files/AirDrop matrix remains the
+  direct-image transport evidence. The newest log fully proves one `.tapnap`
+  attempt only: intermediate cleanup L70, payload ready L72, handoff L73,
+  controller creation under 50 ms L74, system probes L75–85, sheet appearance
+  L86, dismissal L93, controller release L94, and final artifact cleanup L95.
+  It does not prove direct-image teardown, stale-A/new-B isolation, or cleanup
+  independent of controller release; focused r3 XCTest was compiled but not
+  run. The owner explicitly accepted these evidence exceptions. No prospective
+  commit hash is fabricated; the containing closure commit supplies it.
+  Cold-state evidence is deliberately separated and emphasized: the same
+  session overlaps camera startup, Locked Camera import/context despite
+  `managerSessionCount=0`, a 908-item first catalog snapshot taking `7795 ms`,
+  and App Attest reset/network failure, while Share fetch/package/controller
+  work is only about `11.7 ms`/`27.5 ms`/under 50 ms. This reprioritizes
+  investigation toward startup/catalog/credential/lifecycle overlap without
+  proving MainActor causation. TAP-0008 remains Todo because the log has no
+  setup-row/button timeline and TAP-0040 still needs an independent clean-
+  install run. TAP-0009 remains Todo because the 7.795 s catalog measurement is
+  only its second readiness group and supplies no first-frame, controls/
+  shutter/haptics, marker, interruption, or repeated-launch evidence; TAP-0041
+  remains Todo pending a revised procedure. TAP-0083 remains Doing. TAP-0010
+  and all other Task records/statuses and Next Task ID are unchanged.

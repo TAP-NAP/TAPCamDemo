@@ -50,6 +50,26 @@ It does not independently declare a current product capability. Conversely, a
 missing device test is tracked through an evidence task and does not make an
 implemented feature a Todo again.
 
+### 1.1 Current runtime platform
+
+The current TAPCamDemo product target supports iPhone only. `iphoneos` is the
+shipping runtime platform and `iphonesimulator` is retained only for iPhone
+Simulator compilation, automated tests, and UI validation. Simulator support
+does not expand the product platform and does not replace attended iPhone
+device acceptance.
+
+iPad and iPad multitasking, Mac Catalyst or native macOS, running the iOS app
+as Designed for iPhone/iPad on Mac, and Apple Vision Pro compatibility are
+explicit non-goals for the current product. Current implementation, prototype,
+build, and acceptance work must not introduce conditional branches, layout
+adaptation, or validation obligations solely for those unsupported platforms.
+Any future platform expansion requires a separate owner-approved Task, updated
+contract and prototype coverage, and its own build and device evidence.
+
+Xcode target settings express the repository build boundary; availability of
+an iOS app on Mac or Apple Vision Pro is also controlled by App Store Connect
+and is not proven by repository settings alone.
+
 ## 2. First-Install Setup
 
 ### 2.1 Explicit action owns every setup operation
