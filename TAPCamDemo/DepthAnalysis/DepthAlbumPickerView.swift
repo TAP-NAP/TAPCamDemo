@@ -97,12 +97,7 @@ struct DepthAlbumPickerView: View {
             guard routeStore.isDepthAlbumPresented else {
                 return
             }
-            let lockedImportReason = routeStore.consumePendingLockedImportReason()
-            await viewModel.loadForPresentation(lockedImportReason: lockedImportReason)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .tapCamLockedCaptureImportDidAddPendingCaptures).receive(on: RunLoop.main)) { _ in
-            routeStore.finishAwaitingLockedCaptureImport()
-            viewModel.scheduleRefresh()
+            await viewModel.loadForPresentation()
         }
         .navigationDestination(isPresented: $isViewerPresented) {
             viewerDestination()
@@ -123,13 +118,6 @@ struct DepthAlbumPickerView: View {
     @ViewBuilder
     private func albumContent(thumbnailPixelLength: Int, returnScrollRowStride: CGFloat) -> some View {
         ScrollView {
-            if routeStore.isAwaitingLockedCaptureImport {
-                lockedImportWaitingBanner
-                    .padding(.horizontal, 12)
-                    .padding(.top, 12)
-                    .padding(.bottom, 6)
-            }
-
             if viewModel.shouldShowLoading {
                 ProgressView()
                     .accessibilityLabel(
@@ -200,27 +188,6 @@ struct DepthAlbumPickerView: View {
             // Unknown future loader diagnostics are values, not localization keys.
             Text(verbatim: message)
         }
-    }
-
-    private var lockedImportWaitingBanner: some View {
-        HStack(spacing: 10) {
-            ProgressView()
-                .controlSize(.small)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Waiting for locked captures")
-                    .font(.footnote.weight(.semibold))
-                Text("TAP Library will refresh when iOS finishes the transfer.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer(minLength: 0)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
     }
 
     private func returnToCameraWithoutAnimation() {

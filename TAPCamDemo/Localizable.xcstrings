@@ -660,16 +660,6 @@
         }
       }
     },
-    "Capture photos with TAPCam from the Lock Screen." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "从锁定屏幕使用 TAPCam 拍摄照片。"
-          }
-        }
-      }
-    },
     "Capture Prioritization" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1506,17 +1496,6 @@
         }
       }
     },
-    "Importing locked captures..." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在导入锁定屏幕拍摄内容…"
-          }
-        }
-      }
-    },
     "Inliers" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1653,6 +1632,7 @@
       }
     },
     "Library" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -2057,16 +2037,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "位置数据"
-          }
-        }
-      }
-    },
-    "Locked capture imported" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已导入锁定屏幕拍摄内容"
           }
         }
       }
@@ -2479,16 +2449,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "打开 TAP 相机"
-          }
-        }
-      }
-    },
-    "Open TAPCam" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "打开 TAPCam"
           }
         }
       }
@@ -4369,32 +4329,13 @@
         }
       }
     },
-    "TAP Library will refresh when iOS finishes the transfer." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iOS 完成传输后，TAP 图库将自动刷新。"
-          }
-        }
-      }
-    },
     "TAPCam" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "TAPCam"
-          }
-        }
-      }
-    },
-    "TAPCam Camera" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "TAPCam 相机"
           }
         }
       }
@@ -4774,16 +4715,6 @@
         }
       }
     },
-    "Unlock and open TAPCam from a Lock Screen control without starting locked camera capture." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "从锁定屏幕控制项解锁并打开 TAPCam，而不启动锁定屏幕拍摄。"
-          }
-        }
-      }
-    },
     "unsupported" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -5052,26 +4983,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "视图"
-          }
-        }
-      }
-    },
-    "Waiting for locked capture" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在等待锁定屏幕拍摄"
-          }
-        }
-      }
-    },
-    "Waiting for locked captures" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在等待锁定屏幕拍摄内容"
           }
         }
       }

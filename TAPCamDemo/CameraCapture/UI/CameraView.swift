@@ -7,7 +7,6 @@
 
 @preconcurrency import AVFoundation
 import Combine
-import LockedCameraCapture
 import OSLog
 import SwiftUI
 import UIKit
@@ -212,9 +211,6 @@ struct CameraView: View {
         .onAppear(perform: cameraViewDidAppear)
         .onReceive(NotificationCenter.default.publisher(for: .tapCamIntentHandoffDidChange)) { _ in
             applyPendingIntentHandoff()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .tapCamLockedCaptureImportDidAddPendingCaptures).receive(on: RunLoop.main)) { _ in
-            retryPendingCapturesAfterLockedImport()
         }
         .onDisappear {
             persistRememberedViewfinderControlStateIfNeeded()
@@ -592,19 +588,17 @@ struct CameraView: View {
         guard let handoff = intentHandoffStore.loadAndClearHandoff() else {
             return
         }
-        LockedCameraDiagnostics.logger.info(
-            "locked_camera_handoff_apply destination=\(handoff.destination.rawValue, privacy: .public) tapAction=\(handoff.tapAction ?? "none", privacy: .public) reason=\(handoff.reason ?? "none", privacy: .public) managerSessionCount=\(LockedCameraCaptureManager.shared.sessionContentURLs.count, privacy: .public) routeDepthAlbumPresented=\(routeStore.isDepthAlbumPresented, privacy: .public) routeAwaitingImport=\(routeStore.isAwaitingLockedCaptureImport, privacy: .public)"
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.cameraCapture.info(
+            "app_intent_handoff_apply destination=\(handoff.destination.rawValue, privacy: .public) routeDepthAlbumPresented=\(routeStore.isDepthAlbumPresented, privacy: .public)"
         )
+        #endif
 
         switch handoff.destination {
         case .camera:
             routeStore.returnToCamera()
         case .tapLibrary:
             presentTAPLibrary()
-        case .tapLibraryAwaitingLockedImport:
-            presentTAPLibrary(awaitingLockedCaptureImport: true)
-        case .lockedImportNeutral:
-            routeStore.returnToCamera()
         }
     }
 
@@ -1778,17 +1772,14 @@ struct CameraView: View {
         presentTAPLibrary()
     }
 
-    private func presentTAPLibrary(
-        lockedImportReason: String? = nil,
-        awaitingLockedCaptureImport: Bool = false
-    ) {
+    private func presentTAPLibrary() {
         guard !routeStore.isDepthAlbumPresented else {
             return
         }
 
-        LockedCameraDiagnostics.logger.info(
-            "tap_library_present requestedLockedImportReason=\(lockedImportReason ?? "none", privacy: .public) awaitingLockedCaptureImport=\(awaitingLockedCaptureImport, privacy: .public) managerSessionCount=\(LockedCameraCaptureManager.shared.sessionContentURLs.count, privacy: .public)"
-        )
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.photoLibrary.info("tap_library_present")
+        #endif
         isBasicEVStripVisible = false
         activeAdjustmentControl = nil
         focusMode = .auto
@@ -1798,10 +1789,7 @@ struct CameraView: View {
         focusLoupePulseID = nil
 
         viewModel.pauseForAnalysis()
-        routeStore.presentDepthAlbum(
-            lockedImportReason: lockedImportReason,
-            awaitingLockedCaptureImport: awaitingLockedCaptureImport
-        )
+        routeStore.presentDepthAlbum()
     }
 
     private func handleLibraryReturnCompleted(
@@ -1823,19 +1811,6 @@ struct CameraView: View {
                 showViewfinderHint("Video mode unavailable")
             }
             completeCameraPathRuntimeTransition()
-        }
-    }
-
-    private func retryPendingCapturesAfterLockedImport() {
-        LockedCameraDiagnostics.logger.info(
-            "locked_camera_import_notification_received routeDepthAlbumPresented=\(routeStore.isDepthAlbumPresented, privacy: .public) routeAwaitingImport=\(routeStore.isAwaitingLockedCaptureImport, privacy: .public)"
-        )
-        routeStore.finishAwaitingLockedCaptureImport()
-        Task {
-            await lifecycleCoordinator.retryPendingCaptures(
-                viewModel: viewModel,
-                appAttestController: appAttestController
-            )
         }
     }
 

@@ -276,6 +276,11 @@ Locked Camera is **experimental**, not a current production capability.
   experiment branch until explicitly promoted.
 - Production promotion requires a separate decision and attended device
   acceptance.
+- The main shipping project embeds no Locked Camera capture or control
+  extension and owns no Locked Camera shared intent, URL or user-activity
+  entry, app-context publication, or session-content import runtime.
+  Experimental implementations belong only on dedicated experiment branches;
+  Git history remains the archive for removed main-tree code.
 
 The extension does not own App Attest, Photos export, network work, Live Photo,
 or unsolicited permission requests. Those remain explicit non-goals for the

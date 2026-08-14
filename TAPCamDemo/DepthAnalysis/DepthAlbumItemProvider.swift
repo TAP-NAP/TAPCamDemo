@@ -118,9 +118,11 @@ struct DepthAlbumItemProvider {
             )
             return (items: items, summaries: items.map(\.summary))
         }.value
-        LockedCameraDiagnostics.logger.info(
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.photoLibrary.info(
             "tap_library_snapshot_loaded visiblePendingCount=\(pendingRecords.count, privacy: .public) exportedRecordCount=\(exportedRecords.count, privacy: .public) photoAssetCount=\(photoCatalogSnapshot.albumAssets.count, privacy: .public) itemCount=\(reconciled.items.count, privacy: .public) itemSources=\(Self.itemSourceCountsDescription(reconciled.items), privacy: .public) photoAssetsErrorPresent=\(photoAssetsError != nil, privacy: .public)"
         )
+        #endif
         return DepthAlbumItemSnapshot(
             items: reconciled.items,
             summaries: reconciled.summaries,
@@ -151,10 +153,11 @@ struct DepthAlbumItemProvider {
             do {
                 try await exportedRecordRemover(record.captureID)
             } catch {
-                let nsError = error as NSError
-                LockedCameraDiagnostics.logger.error(
-                    "tap_library_orphan_cleanup_failed domain=\(nsError.domain, privacy: .public) code=\(nsError.code, privacy: .public)"
+                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                TAPDiagnostics.photoLibrary.error(
+                    "tap_library_orphan_cleanup_failed error=\(TAPDiagnostics.describe(error), privacy: .public)"
                 )
+                #endif
             }
         }
         return retained

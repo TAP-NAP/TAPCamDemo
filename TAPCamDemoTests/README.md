@@ -48,7 +48,6 @@ flowchart TD
     Tests --> ExposureControl["TAPCameraExposureControlStateTests.swift"]
     Tests --> ManualBoundary["TAPCameraManualControlBoundaryGuardTests.swift"]
     Tests --> ControlService["TAPCameraControlServiceTests.swift"]
-    Tests --> LockedCamera["TAPLockedCameraSessionContentTests.swift"]
     Tests --> Route["TAPLibraryRouteTests.swift"]
     Tests --> Storage["TAPLibraryStorageTests.swift"]
     Tests --> Processing["TAPLibraryProcessingTests.swift"]
@@ -74,7 +73,6 @@ flowchart TD
     ManualCommandPlan --> Unit
     ManualBoundary --> Unit
     ControlService --> Unit
-    LockedCamera --> Unit
     Route --> Unit
     Storage --> Unit
     Processing --> Unit
@@ -123,7 +121,6 @@ flowchart TD
     click ExposureControl "TAPCameraExposureControlStateTests.swift"
     click ManualBoundary "TAPCameraManualControlBoundaryGuardTests.swift"
     click ControlService "TAPCameraControlServiceTests.swift"
-    click LockedCamera "TAPLockedCameraSessionContentTests.swift"
     click Route "TAPLibraryRouteTests.swift"
     click Storage "TAPLibraryStorageTests.swift"
     click Processing "TAPLibraryProcessingTests.swift"
@@ -134,24 +131,6 @@ The app-hosted test path renders a minimal black host view instead of entering
 first-launch permissions, camera startup, pending-capture signing credential
 warmup, or pending queue processing. This avoids the AI/CI hang pattern caused
 by app startup side effects during tests.
-
-[TAPLockedCameraSessionContentTests.swift](TAPLockedCameraSessionContentTests.swift)
-is the simulator-safe Locked Camera Capture POC test entry. It covers the shared
-session-content path policy, direct and legacy layout recognition, and locked
-final-artifact-marked ingest into the existing pending queue semantics. It also
-asserts that raw depth HEIC staging is rejected at the pending-store boundary
-unless the importer first upgrades it to a final TAP artifact. The same suite
-guards duplicate locked ingest returning the existing pending record, AppContext
-projection from enabled main-app FOV options, the locked extension lens/FOV
-selector source boundary, startup scheduling of `sessionContentUpdates`,
-App-level locked import runtime ownership, locked fallback handoff action
-routing, foreground-resume import guardrails, per-presentation Library reload guardrails,
-locked-import pending-worker wakeup, missing-first-frame watchdog guardrails,
-the shared lock-camera UI state visibility/capture gates, and metadata persistence of the resolved
-capture-device position. It does not replace real-device lock-screen launch,
-camera stream, depth capture, black-screen soak, first-entry TAP Library visual
-confirmation, or positive real-depth HEIC import-time manifest/proof-slot
-validation.
 
 ## Shared Fixtures
 
@@ -632,9 +611,8 @@ leaving location and microphone optional. Backend preflight policy tests prove
 retry, delay, deadline, and timeout decisions without sleeping on wall-clock
 time or calling a live backend. `CameraViewLifecycleModifier` compiles as the SwiftUI adapter for
 those policies, but the default tests do not boot a real camera, simulate iOS
-protected-data locking, run a lock-screen extension, validate real-device
-background/foreground timing, prove SwiftUI lifecycle hook delivery, or prove
-backend/App Attest acceptance.
+protected-data locking, validate real-device background/foreground timing,
+prove SwiftUI lifecycle hook delivery, or prove backend/App Attest acceptance.
 
 [TAPCaptureOutputProfileTests.swift](TAPCaptureOutputProfileTests.swift)
 contains the output profile unit contract checks. They prove the Release

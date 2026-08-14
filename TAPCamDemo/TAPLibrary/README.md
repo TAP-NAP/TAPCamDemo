@@ -64,7 +64,6 @@ must not be copied into another active design document.
 | Serialized queue repository and public API | [TAPPendingCaptureStore.swift](TAPPendingCaptureStore.swift) |
 | Video workspace ownership and ingest validation | [TAPPendingVideoWorkspaceCoordinator.swift](TAPPendingVideoWorkspaceCoordinator.swift), [TAPPendingVideoIngestValidator.swift](TAPPendingVideoIngestValidator.swift) |
 | Pure video record transitions and focused maintenance | [TAPPendingVideoRecordTransitions.swift](TAPPendingVideoRecordTransitions.swift), [TAPPendingCaptureMaintenance.swift](TAPPendingCaptureMaintenance.swift) |
-| Locked-capture staging/import validation | [TAPPendingLockedCaptureImporter.swift](TAPPendingLockedCaptureImporter.swift) |
 | Shared artifact paths plus Pending Capture Queue notification/root policies | [TAPPendingCaptureArtifacts.swift](TAPPendingCaptureArtifacts.swift), [TAPLibraryNotifications.swift](TAPLibraryNotifications.swift) |
 | Queue record JSON encoding/decoding policy | [TAPPendingCaptureRecordCoding.swift](TAPPendingCaptureRecordCoding.swift) |
 | Processing route and candidate priority policy | [TAPPendingCaptureProcessingPolicy.swift](TAPPendingCaptureProcessingPolicy.swift) |

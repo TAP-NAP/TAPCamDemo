@@ -89,7 +89,6 @@ production_files=(
     "TAPCamDemo/TAPLibrary/TAPPendingCaptureOperations.swift"
     "TAPCamDemo/TAPLibrary/TAPPendingCaptureProcessor.swift"
     "TAPCamDemo/TAPLibrary/TAPPendingCaptureStore.swift"
-    "TAPCamDemo/TAPLibrary/TAPPendingLockedCaptureImporter.swift"
     "TAPCamDemo/TAPLibrary/TAPPendingVideoIngestValidator.swift"
     "TAPCamDemo/TAPLibrary/TAPPendingVideoRecordTransitions.swift"
     "TAPCamDemo/TAPLibrary/TAPPendingVideoWorkspaceCoordinator.swift"

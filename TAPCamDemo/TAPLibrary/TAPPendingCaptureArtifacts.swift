@@ -35,22 +35,3 @@ nonisolated struct TAPPendingVideoCaptureArtifact: Sendable {
         self.location = location
     }
 }
-
-nonisolated struct TAPPendingLockedCaptureImport: Sendable {
-    let captureID: String
-    let capturedAt: Date
-    let unsignedPhotoURL: URL
-    let metadata: TAPCamLockedRawCaptureMetadata
-
-    init(
-        captureID: String,
-        capturedAt: Date,
-        unsignedPhotoURL: URL,
-        metadata: TAPCamLockedRawCaptureMetadata
-    ) {
-        self.captureID = captureID
-        self.capturedAt = capturedAt
-        self.unsignedPhotoURL = unsignedPhotoURL
-        self.metadata = metadata
-    }
-}

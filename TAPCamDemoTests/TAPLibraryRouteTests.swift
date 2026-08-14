@@ -40,23 +40,6 @@ struct TAPLibraryRouteTests {
         #expect(!routeStore.isDepthAlbumPresented)
     }
 
-    @Test @MainActor func cameraRouteStoreTracksAwaitingLockedCaptureImport() throws {
-        let routeStore = try Self.makeRouteStore()
-
-        routeStore.presentDepthAlbum(awaitingLockedCaptureImport: true)
-
-        #expect(routeStore.destination == .depthAlbum)
-        #expect(routeStore.isAwaitingLockedCaptureImport)
-        #expect(routeStore.consumePendingLockedImportReason() == nil)
-
-        routeStore.finishAwaitingLockedCaptureImport()
-        #expect(!routeStore.isAwaitingLockedCaptureImport)
-
-        routeStore.presentDepthAlbum(awaitingLockedCaptureImport: true)
-        routeStore.returnToCamera()
-        #expect(!routeStore.isAwaitingLockedCaptureImport)
-    }
-
     @Test @MainActor func cameraRouteStoreTracksVisibleAndSelectedAlbumAnchors() throws {
         let routeStore = try Self.makeRouteStore()
 

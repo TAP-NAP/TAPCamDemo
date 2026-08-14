@@ -43,8 +43,6 @@ final class CameraRouteStore: ObservableObject {
 
     @Published private(set) var destination: Destination = .camera
     @Published private(set) var albumState = AlbumState()
-    @Published private(set) var pendingLockedImportReason: String?
-    @Published private(set) var isAwaitingLockedCaptureImport = false
 
     private let contextStore: any CameraRouteContextPersisting
     private var selectedItemAnchor: CameraRouteAlbumAnchor?
@@ -72,35 +70,13 @@ final class CameraRouteStore: ObservableObject {
         }
     }
 
-    func presentDepthAlbum(
-        lockedImportReason: String? = nil,
-        awaitingLockedCaptureImport: Bool = false
-    ) {
-        if let lockedImportReason {
-            pendingLockedImportReason = lockedImportReason
-        }
-        if awaitingLockedCaptureImport {
-            isAwaitingLockedCaptureImport = true
-        }
+    func presentDepthAlbum() {
         destination = .depthAlbum
     }
 
     func returnToCamera() {
         persistAlbumState()
-        pendingLockedImportReason = nil
-        isAwaitingLockedCaptureImport = false
         destination = .camera
-    }
-
-    func finishAwaitingLockedCaptureImport() {
-        isAwaitingLockedCaptureImport = false
-    }
-
-    func consumePendingLockedImportReason() -> String? {
-        defer {
-            pendingLockedImportReason = nil
-        }
-        return pendingLockedImportReason
     }
 
     func restoreCameraOnForeground() {

@@ -8,8 +8,6 @@ import Foundation
 nonisolated enum TAPCamIntentHandoffDestination: String, Codable, Equatable, Sendable {
     case camera
     case tapLibrary
-    case tapLibraryAwaitingLockedImport
-    case lockedImportNeutral
 }
 
 nonisolated struct TAPCamIntentHandoff: Codable, Equatable, Sendable {
@@ -17,19 +15,13 @@ nonisolated struct TAPCamIntentHandoff: Codable, Equatable, Sendable {
 
     let destination: TAPCamIntentHandoffDestination
     let requestedAt: Date
-    let tapAction: String?
-    let reason: String?
 
     init(
         destination: TAPCamIntentHandoffDestination,
-        requestedAt: Date = Date(),
-        tapAction: String? = nil,
-        reason: String? = nil
+        requestedAt: Date = Date()
     ) {
         self.destination = destination
         self.requestedAt = requestedAt
-        self.tapAction = tapAction
-        self.reason = reason
     }
 
     func isFresh(
@@ -38,65 +30,6 @@ nonisolated struct TAPCamIntentHandoff: Codable, Equatable, Sendable {
     ) -> Bool {
         now.timeIntervalSince(requestedAt) <= timeToLive
             && requestedAt <= now.addingTimeInterval(60)
-    }
-
-    var shouldRegenerateLockedCameraContext: Bool {
-        tapAction == TAPCamLockedCameraHandoff.regenerateLockedCameraContext
-    }
-
-    var shouldDelayAppearanceForLockedContent: Bool {
-        reason == "saved"
-            || tapAction == TAPCamLockedCameraHandoff.openTAPLibraryAfterLockedCapture
-            || tapAction == TAPCamLockedCameraHandoff.openTAPLibraryAwaitingLockedImport
-    }
-}
-
-extension TAPCamIntentHandoff {
-    init?(
-        lockedCameraActivity activity: NSUserActivity,
-        requestedAt: Date = Date()
-    ) {
-        guard activity.activityType == TAPCamLockedCameraHandoff.activityType else {
-            return nil
-        }
-
-        let tapAction = activity.userInfo?[TAPCamLockedCameraHandoff.tapActionKey] as? String
-        let reason = activity.userInfo?[TAPCamLockedCameraHandoff.reasonKey] as? String
-        let source = activity.userInfo?[TAPCamLockedCameraHandoff.sourceKey] as? String
-        guard tapAction != nil || reason != nil || source != nil else {
-            return nil
-        }
-
-        let destination: TAPCamIntentHandoffDestination
-        switch tapAction {
-        case TAPCamLockedCameraHandoff.openTAPCamera:
-            destination = .camera
-        case TAPCamLockedCameraHandoff.openTAPLibrary:
-            destination = .tapLibrary
-        case TAPCamLockedCameraHandoff.openTAPLibraryAwaitingLockedImport:
-            destination = .tapLibraryAwaitingLockedImport
-        case TAPCamLockedCameraHandoff.openTAPLibraryRuntimeImport:
-            destination = .tapLibraryAwaitingLockedImport
-        case TAPCamLockedCameraHandoff.openTAPCameraRuntimeImport:
-            destination = .camera
-        case TAPCamLockedCameraHandoff.openTAPNeutralRuntimeImport:
-            destination = .lockedImportNeutral
-        case TAPCamLockedCameraHandoff.openTAPMainAppOnly:
-            destination = .camera
-        case TAPCamLockedCameraHandoff.openTAPLibraryAfterLockedCapture:
-            destination = .tapLibrary
-        case TAPCamLockedCameraHandoff.regenerateLockedCameraContext:
-            destination = .camera
-        default:
-            destination = .camera
-        }
-
-        self.init(
-            destination: destination,
-            requestedAt: requestedAt,
-            tapAction: tapAction,
-            reason: reason
-        )
     }
 }
 

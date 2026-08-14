@@ -141,16 +141,20 @@ final class LibraryMediaStore: NSObject, PHPhotoLibraryChangeObserver {
         var refreshOutcome = "cancelled"
         var refreshedItemCount = snapshot.items.count
         var didChangeSemantics = false
-        LockedCameraDiagnostics.logger.info(
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.photoLibrary.info(
             "tap_library_store_refresh_begin currentItemCount=\(refreshedItemCount, privacy: .public)"
         )
+        #endif
         defer {
             let durationMilliseconds = Int(
                 ((ProcessInfo.processInfo.systemUptime - refreshStartedAt) * 1_000).rounded()
             )
-            LockedCameraDiagnostics.logger.info(
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.photoLibrary.info(
                 "tap_library_store_refresh_end outcome=\(refreshOutcome, privacy: .public) durationMs=\(durationMilliseconds, privacy: .public) itemCount=\(refreshedItemCount, privacy: .public) semanticChanged=\(didChangeSemantics, privacy: .public)"
             )
+            #endif
             if refreshGeneration == generation {
                 inFlightRefreshTask = nil
                 isRefreshing = false

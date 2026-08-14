@@ -227,7 +227,7 @@ final class TAPVideoDepthMetadataOutput: NSObject, AVPlayerItemMetadataOutputPus
         decodeOwner: TAPVideoDepthDecodeAdmission.Owner
     ) {
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        LockedCameraDiagnostics.logger.info("tap_video_depth_pipeline_backpressure_drop presentationTime=\(presentationTimeSeconds, privacy: .public) pending=\(decodeAdmission.activeDecodeCount, privacy: .public)")
+        TAPDiagnostics.depthAnalysis.info("tap_video_depth_pipeline_backpressure_drop presentationTime=\(presentationTimeSeconds, privacy: .public) pending=\(decodeAdmission.activeDecodeCount, privacy: .public)")
         #endif
         let generation = decodeAdmission.currentGeneration(for: decodeOwner) ?? 0
         Task { @MainActor [weak self] in

@@ -274,7 +274,6 @@ struct TAPLocalizationTests {
 
         #expect(libraryModelSource.contains("enum DepthAlbumLoadingPresentation"))
         #expect(libraryModelSource.contains(#"case library = "Loading TAP Library...""#))
-        #expect(libraryModelSource.contains(#"case lockedCaptureImport = "Importing locked captures...""#))
         #expect(librarySource.contains("LocalizedStringKey(viewModel.loadingPresentation.rawValue)"))
         #expect(librarySource.contains("albumErrorDescription(errorMessage)"))
         #expect(librarySource.contains("Text(verbatim: message)"))
@@ -291,34 +290,15 @@ struct TAPLocalizationTests {
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func permissionPromptsAreLocalizedPerBundle() throws {
+    func mainPermissionPromptsAreLocalized() throws {
         let mainChinese = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/zh-Hans.lproj/InfoPlist.strings"
-        )
-        let captureChinese = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamLockedCameraCaptureExtension/zh-Hans.lproj/InfoPlist.strings"
-        )
-        let controlChinese = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamLockedCameraControlExtension/zh-Hans.lproj/InfoPlist.strings"
-        )
-        let captureInterfaceChinese = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamLockedCameraCaptureExtension/zh-Hans.lproj/Localizable.strings"
-        )
-        let controlInterfaceChinese = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamLockedCameraControlExtension/zh-Hans.lproj/Localizable.strings"
         )
 
         #expect(mainChinese.contains("\"NSCameraUsageDescription\""))
         #expect(mainChinese.contains("\"NSLocationWhenInUseUsageDescription\""))
         #expect(mainChinese.contains("\"NSMicrophoneUsageDescription\""))
         #expect(mainChinese.contains("\"NSPhotoLibraryUsageDescription\""))
-        #expect(captureChinese.contains("\"NSCameraUsageDescription\""))
-        #expect(controlChinese.contains("\"CFBundleDisplayName\""))
-        #expect(captureInterfaceChinese.contains(#""Starting Camera" = "正在启动相机";"#))
-        #expect(captureInterfaceChinese.contains(#""Capture" = "拍摄";"#))
-        #expect(captureInterfaceChinese.contains(#""TAPCam Camera" = "TAPCam 相机";"#))
-        #expect(controlInterfaceChinese.contains(#""Open TAPCam" = "打开 TAPCam";"#))
-        #expect(controlInterfaceChinese.contains("从锁定屏幕打开 TAPCam"))
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))

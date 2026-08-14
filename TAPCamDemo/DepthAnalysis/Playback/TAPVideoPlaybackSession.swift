@@ -445,7 +445,7 @@ final class TAPVideoPlaybackSession {
         state = .ready
         fetchState.finish()
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        LockedCameraDiagnostics.logger.info("tap_video_playback_loaded source=\(self.source.diagnosticsLabel, privacy: .public) autoPlay=false")
+        TAPDiagnostics.depthAnalysis.info("tap_video_playback_loaded source=\(self.source.diagnosticsLabel, privacy: .public) autoPlay=false")
         #endif
     }
 
@@ -494,8 +494,7 @@ final class TAPVideoPlaybackSession {
             hasPreview: hasLoadingPreview
         )
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        let nsError = error as NSError
-        LockedCameraDiagnostics.logger.error("tap_video_playback_load_failed source=\(self.source.diagnosticsLabel, privacy: .public) error=\(nsError.domain, privacy: .public)(\(nsError.code, privacy: .public))")
+        TAPDiagnostics.depthAnalysis.error("tap_video_playback_load_failed source=\(self.source.diagnosticsLabel, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
         #endif
     }
 
@@ -527,8 +526,7 @@ final class TAPVideoPlaybackSession {
         )
         fetchState.finish()
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        let nsError = error as NSError
-        LockedCameraDiagnostics.logger.error("tap_video_playback_prepare_failed source=\(self.source.diagnosticsLabel, privacy: .public) error=\(nsError.domain, privacy: .public)(\(nsError.code, privacy: .public)) originalReady=true")
+        TAPDiagnostics.depthAnalysis.error("tap_video_playback_prepare_failed source=\(self.source.diagnosticsLabel, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public) originalReady=true")
         #endif
     }
 

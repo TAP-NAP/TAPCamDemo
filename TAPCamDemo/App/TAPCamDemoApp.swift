@@ -28,7 +28,6 @@ struct TAPCamDemoApp: App {
     @UIApplicationDelegateAdaptor(TAPCamAppDelegate.self) private var appDelegate
     @AppStorage(AppLanguage.storageKey)
     private var appLanguageRawValue = AppLanguage.defaultValue.rawValue
-    @StateObject private var lockedCaptureImportRuntime = LockedCaptureSessionContentImportRuntime()
     @State private var libraryStore: LibraryMediaStore
     private let libraryMediaFetcher: any LibraryMediaFetching
     private let videoPosterBackfillService = LibraryVideoPosterBackfillService.pendingCaptureStore(
@@ -78,12 +77,6 @@ struct TAPCamDemoApp: App {
                 videoPosterBackfillService: videoPosterBackfillService
             )
                 .preferredColorScheme(.dark)
-                .onAppear {
-                    lockedCaptureImportRuntime.start()
-                }
-                .onDisappear {
-                    lockedCaptureImportRuntime.stop()
-                }
         }
     }
 }

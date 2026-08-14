@@ -101,7 +101,6 @@ actor TAPPendingCaptureStore {
     private let storage: TAPPendingCaptureBundleStorage
     private var videoWorkspaces: TAPPendingVideoWorkspaceCoordinator
     private let maintenance: TAPPendingCaptureMaintenance
-    private let lockedCaptureImporter: TAPPendingLockedCaptureImporter
     private let shareSnapshotLinker: @Sendable (URL, URL) throws -> Void
     private let videoSigningRecordPreparationFault: @Sendable (TAPPendingCaptureRecord) throws -> Void
     private var activeVideoSigningAttempts: [String: UUID] = [:]
@@ -121,7 +120,6 @@ actor TAPPendingCaptureStore {
         self.storage = storage
         self.videoWorkspaces = TAPPendingVideoWorkspaceCoordinator(storage: storage)
         self.maintenance = TAPPendingCaptureMaintenance(storage: storage)
-        self.lockedCaptureImporter = TAPPendingLockedCaptureImporter(storage: storage)
         self.shareSnapshotLinker = shareSnapshotLinker
         self.videoSigningRecordPreparationFault = videoSigningRecordPreparationFault
     }
@@ -274,22 +272,6 @@ actor TAPPendingCaptureStore {
     @discardableResult
     func removeStaleVideoCaptureWorkspaces() throws -> Int {
         try videoWorkspaces.removeStaleWorkspaces()
-    }
-
-    func ingestLockedCapture(
-        _ lockedCapture: TAPPendingLockedCaptureImport
-    ) throws -> TAPPendingCaptureRecord {
-        try lockedCaptureImporter.validate(lockedCapture)
-        try storage.ensureRootDirectoryExists()
-        let captureID = lockedCapture.captureID
-        let finalURL = try storage.bundleURL(captureID: captureID)
-        if storage.bundleExists(at: finalURL),
-           let existing = try? readRecord(captureID: captureID) {
-            return existing
-        }
-        let result = try lockedCaptureImporter.ingest(lockedCapture)
-        TAPLibraryChangeNotifier.post()
-        return result.record
     }
 
     func allRecords() throws -> [TAPPendingCaptureRecord] {

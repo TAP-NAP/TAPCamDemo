@@ -9,8 +9,7 @@ import Foundation
 ///
 /// The worker reads private HEIC bundles, manifests, proofs, and Photos export
 /// identifiers. Keep this decision separate from signing/export routing so
-/// future protected-data or locked-camera policy changes have one small place
-/// to start.
+/// future protected-data policy changes have one small place to start.
 nonisolated enum TAPPendingCaptureWorkerReadiness: Equatable, Sendable {
     case ready
     case protectedDataUnavailable

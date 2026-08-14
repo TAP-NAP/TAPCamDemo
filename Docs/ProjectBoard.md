@@ -1,7 +1,7 @@
 # TAPCam Project Board
 
 - Schema: `1`
-- Next Task ID: `TAP-0086`
+- Next Task ID: `TAP-0087`
 - Canonical Product Contract: [ProductContract.md](ProductContract.md)
 - UI Prototype Contract: [UIPrototypeContract.md](UIPrototypeContract.md)
 - Board Steward Session: `019ff4ea-acba-7051-bd0f-3d489f1caadc`
@@ -97,6 +97,7 @@ from each record's `Status` field.
 - `TAP-0081` Unify TAP Share selection and preparation into an anchored handoff
 - `TAP-0082` Device acceptance: TAP Share anchored handoff and anti-flash progress
 - `TAP-0085` Restrict the current runtime target to iPhone
+- `TAP-0086` Remove Locked Camera integration and entry points from main
 
 ### Deprecated
 
@@ -3332,6 +3333,197 @@ Every active Task uses these stable fields:
     and remains untouched under the owner's instruction to preserve the current
     mainline rather than pop, rewrite, or redo another Task.
 
+### TAP-0086 — Remove Locked Camera integration and entry points from main
+
+- Status: `Done`
+- Kind: `Technical`
+- Priority: `P0`
+- Domain: `Locked Camera / Main-Tree Simplification`
+- Labels: `instant`, `locked-camera`, `remove-production-integration`,
+  `extension-targets`, `startup-lifecycle`, `cold-path`, `main-tree-cleanup`
+- Contract: `ProductContract §4`; root `AGENTS.md` implementation and
+  documentation-impact rules
+- Match Keys: `delete locked camera, remove lock-screen launch, remove capture
+  extension, remove control extension, remove appex, delete lock-screen entry,
+  删除锁屏启动, 删除锁屏相机, 删除入口`
+- Assignee: `/root`
+- Dev Session: `/root` instant implementation authorized by the product owner
+- Branch/Worktree: `main` working tree; actual implementation baseline
+  `main@6c45a77`
+- Build/Commit: Containing closure commit with subject
+  `Remove Locked Camera integration from main`. Its exact hash is supplied by
+  Git after this Board update is included and is not fabricated prospectively.
+- Scope: Remove the current main-tree Locked Camera integration completely:
+  delete the `TAPCamLockedCameraCaptureExtension` and
+  `TAPCamLockedCameraControlExtension` native targets, products, dependencies,
+  embed phases, build configurations, file groups, and their source/resource
+  directories; delete the shared `TAPCamLockedCameraIntents` sources used by
+  those targets and the containing app; remove main-app Locked Camera framework
+  imports, app-context publication, session-content importing, intent handoff,
+  URL/user-activity/startup routing, transition/import state, and Library/
+  Pending Capture Queue wiring that exists only for the removed entry; and
+  remove tests, fixtures, localizations, lint inputs, entitlements, URL/activity
+  declarations, and documentation that serve only that main-tree integration.
+  Keep ordinary Camera capture, TAP Library and Pending Capture Queue behavior,
+  normal App Intents/manual-control intents, and unrelated app startup paths
+  intact.
+- Out of Scope: Implementing or promoting a replacement Locked Camera feature;
+  changing the lifecycle-correct experiment defined by TAP-0013 or its blocked
+  TAP-0049 attended procedure; deleting or rewriting Git history or the
+  dedicated experiment branch; removing ordinary Camera, Library, queue, or App
+  Intents functionality merely because it shares a module; changing current
+  media/signing formats; or treating this removal as proof that the future
+  experiment passes.
+- Prototype Path/Revision/Approval: `N/A by explicit owner direction.` This
+  removes a non-current experimental/system entry from main and intentionally
+  adds no app-owned iPhone UI. Any future Locked Camera experiment or promotion
+  remains independently prototype/acceptance-gated under TAP-0013/TAP-0049.
+- Implemented Scope: The accepted main-tree implementation removes both Locked
+  Camera extension targets, their `.appex` products/embed phases/build
+  configurations/source-resource directories, and the shared
+  `TAPCamLockedCameraIntents` source. It removes the containing app's Locked
+  Camera framework import, context publication, session-content import runtime,
+  URL/user-activity/intent handoff, startup routing, route state, Library wait/
+  refresh state, Pending Capture Queue import path, dedicated notifications,
+  localizations, project declarations, tests, and lint references. Ordinary
+  Camera capture, TAP Library, the ordinary Pending Capture Queue, retained App
+  Intents/manual-control intents, and unrelated startup behavior remain in the
+  project and compile.
+- Tests And Builds Run: A fresh generic iPhone Debug `build-for-testing` with
+  `CODE_SIGNING_ALLOWED=NO` completed with exit code 0 and compiled the app plus
+  test targets. The resulting project exposes only three retained targets; the
+  built app contains zero `.appex` products, and its parsed `Info.plist` has no
+  Locked Camera URL declaration. Repository production-source scans, the
+  project-object `F2E` identifier scan, `plutil`, `jq`, and `git diff --check`
+  passed. Simulator and physical device were not launched, and runtime tests
+  were not executed. `Scripts/lint-tap-video-refactor.sh` successfully passed
+  the removed-file/reference portion, then exited nonzero on three pre-existing
+  non-TAP-0086 complexity/length violations; that run is not reported as a lint
+  pass and those unrelated findings do not block this bounded removal. A final
+  read-only review reported no P0 or P1 finding.
+- Development Handoff:
+  - Contract Sections Read: `ProductContract §4`; TAP-0080, TAP-0013,
+    TAP-0049, TAP-0070, TAP-0083, and this TAP-0086 record.
+  - Approved Scope: Remove the main-tree Locked Camera code and entry while
+    preserving normal Camera/Library/Queue/App Intents plus the isolated future
+    experiment and Git history.
+  - Prototype/Manifest: `N/A`; no new app-owned UI, and the removed lock-screen
+    surface is experimental/system-owned rather than an approved current UI.
+  - Product Contract: `Docs/ProductContract.md` §4 now states that the shipping
+    main project embeds no Locked Camera extension or runtime entry/import path
+    and that experiments belong only on dedicated branches.
+  - UI Prototype Contract: `N/A`; prototype authority/workflow did not change.
+  - Root README: `N/A`; it contained no current Locked Camera integration claim.
+  - Module README: `TAPCamDemo/TAPLibrary/README.md` removes the deleted locked-
+    capture importer ownership row.
+  - Test README: `TAPCamDemoTests/README.md` removes the deleted suite and its
+    claimed coverage.
+  - Specialized Contract: `N/A`; no public media, signing, security, or cross-
+    project format contract changed.
+  - Acceptance Record: `N/A for this removal`; TAP-0049 remains the blocked,
+    independent attended procedure for a future TAP-0013 experiment and was not
+    executed or satisfied.
+  - AGENTS.md: `N/A`; repository workflow/governance did not change.
+  - Other synchronized artifacts: `TAPCamDemo/Localizable.xcstrings` removes
+    Locked Camera-only copy; `TAPCamDemo-Info.plist` removes its URL entry;
+    `TAPDiagnosticsOSLogPrivacyTests` and associated tests reflect the retained
+    production logging/source set; the lint manifest no longer requires the
+    deleted importer.
+  - Obsolete Files Removed: the complete
+    `TAPCamLockedCameraCaptureExtension/`,
+    `TAPCamLockedCameraControlExtension/`, and
+    `TAPCamLockedCameraIntents/` trees;
+    `LockedCameraAppContextPublisher.swift`,
+    `LockedCaptureSessionContentImporter.swift`,
+    `TAPPendingLockedCaptureImporter.swift`, and
+    `TAPLockedCameraSessionContentTests.swift`.
+  - Remaining Gaps/Risks: Runtime tests and device/Simulator execution were
+    deliberately not run and are not claimed; they are not required by this
+    Instant removal's Done When after the retained targets compiled and static/
+    product evidence found no unresolved runtime dependency. The three existing
+    lint complexity/length violations are outside TAP-0086 and remain visible
+    without weakening this Task's evidence.
+  - Follow-up Tasks: TAP-0013/TAP-0049 remain the isolated experiment/evidence
+    path; TAP-0083 remains the independent cold-path governance Task.
+  - Proposed Status: `Done` after explicit product-owner acceptance and Board
+    Steward completion audit; the containing closure commit uses the recorded
+    subject without a fabricated prospective hash.
+- Done When: A complete repository source/project/product scan finds no Locked
+  Camera production target, embedded `.appex`, source import, shared intent,
+  startup/context/handoff/import route, app-owned entry, runtime localization,
+  build entitlement/declaration, or test/lint dependency in main. Only explicit
+  Product Contract, Board, acceptance-procedure, or historical references that
+  preserve the isolated future experiment boundary may remain, and none may
+  describe a main-tree production integration. A generic iPhone
+  `build-for-testing` and test-target compilation pass; the built main app
+  contains no Locked Camera extension product; ordinary Camera, Library,
+  Pending Capture Queue, and retained App Intents still compile; `git diff
+  --check` passes; and the development handoff reconciles Project Board,
+  Product Contract §4, affected module/test READMEs, acceptance impact, removed
+  files, validation commands, and every remaining experimental/historical
+  reference. Simulator and physical-device launch are not required for this
+  Instant removal unless build/source evidence exposes an unresolved runtime
+  dependency.
+- Current Closure Gate: `Passed by explicit product-owner acceptance.` The
+  owner stated “完成验收现在把 0086 标记为 done 并提交”. Board Steward verified
+  the accepted implementation, recorded validation limits and documentation
+  impact, and moved TAP-0086 Doing -> Done. This acceptance does not turn the
+  unrun Simulator/device/runtime checks or unrelated lint findings into passes.
+- Related: Distinct from documentation cleanup `TAP-0080`, isolated replacement
+  experiment `TAP-0013`, its attended evidence `TAP-0049`, deprecated capability
+  claim `TAP-0070`, and cross-cutting cold-path governance `TAP-0083`
+- Created: `2026-08-14`
+- Updated: `2026-08-14`
+- Revision History:
+  - `2026-08-14` Allocated after a complete Inbox/Todo/Doing/Done/Deprecated
+    search. TAP-0080 removed competing experiment prose and explicitly did not
+    own code deletion; TAP-0013 and TAP-0049 retain a lifecycle-correct
+    dedicated-branch experiment and attended procedure; TAP-0083 owns general
+    cold-path responsiveness rather than feature removal; and deprecated
+    TAP-0070 rejects the old production-capability claim without removing the
+    integration. No existing Task owns complete main-tree target, entry,
+    startup/handoff/import, source, and resource removal, so TAP-0086 is not a
+    duplicate.
+  - `2026-08-14` The owner directed “删除锁屏启动相关的代码和入口” and
+    authorized allocation with “可以在 kanban 中新建一个 instant task 如果
+    kanban 中没有类似的任务”. Created TAP-0086 in Inbox, recorded the
+    bounded deletion/preservation scope and objective Done When, approved it to
+    Todo, assigned `/root`, and moved Todo -> Doing for immediate execution on
+    `main@6c45a77`. No implementation, deletion, build, test, documentation
+    synchronization, commit, or Done transition is inferred by this allocation.
+  - `2026-08-14` Corrected the implementation baseline from the earlier
+    allocation placeholder `main@37d0c61` to actual `main@6c45a77` and recorded
+    the complete uncommitted development handoff. Both extension targets and
+    `.appex` products, shared intents, containing-app startup/context/session-
+    import/URL/user-activity/route/queue integration, and dedicated resources/
+    tests are removed while ordinary Camera/Library/Queue/App Intents remain.
+    Product Contract §4, the TAP Library/test READMEs, localization, Info.plist,
+    privacy harness, and lint inputs are synchronized; UI prototype, UI
+    Prototype Contract, TAP-0049 acceptance, specialized contracts, root README,
+    and AGENTS.md are N/A for the recorded reasons. A fresh generic iPhone Debug
+    build-for-testing with signing disabled exited 0, only three targets remain,
+    the app contains zero `.appex`, built Info has no Locked Camera URL, and
+    source/project scans plus `plutil`, `jq`, and diff-check passed. Simulator/
+    device and runtime tests were not run. The lint script passed its deleted-
+    file gate but exited nonzero on three pre-existing unrelated complexity/
+    length findings, so no lint pass is claimed; final read-only review found no
+    P0/P1 issue. Per the owner's review-before-commit rule, TAP-0086 remains
+    Doing pending result acceptance; only then may the containing commit subject
+    `Remove Locked Camera integration from main` be created and closure audited.
+  - `2026-08-14` The owner explicitly completed acceptance with “完成验收现在把
+    0086 标记为 done 并提交”. Board Steward audited the accepted removal against
+    Done When and moved TAP-0086 Doing -> Done. The generic iPhone Debug build-
+    for-testing remains the build evidence; the retained project has three
+    targets, the built app has zero `.appex` and no Locked Camera URL, and the
+    recorded production-source/project/product scans passed. Simulator/device
+    launches and runtime tests remain unrun and are not recharacterized as
+    passes. The lint command still exited nonzero only for the three recorded
+    pre-existing non-task complexity/length findings; no full lint pass is
+    claimed. The implementation and Board closure are carried by the containing
+    commit subject `Remove Locked Camera integration from main`; no prospective
+    hash is written before Git creates it. TAP-0013, TAP-0049, TAP-0083, all
+    other statuses, and Next Task ID remain unchanged.
+
 ## 5. Inbox Decision Registry
 
 The following records deliberately remain compact until the owner decides
@@ -3906,3 +4098,62 @@ not replace the Product Contract, and linked device evidence may remain open.
   completion evidence and remains untouched under the owner's instruction to
   preserve current mainline state. TAP-0007 remains Inbox; Next Task ID and all
   other Task records/statuses are unchanged.
+- `2026-08-14` Allocated TAP-0086 after a complete all-status Locked Camera
+  duplicate search and advanced Next Task ID to TAP-0087. Existing TAP-0080 is
+  completed documentation migration with no code-deletion scope; TAP-0013 and
+  TAP-0049 preserve the separate lifecycle-correct experiment/evidence path;
+  TAP-0083 owns cross-cutting cold-path governance; and deprecated TAP-0070
+  rejects the old capability claim. None owns complete removal of the current
+  main-tree Locked Camera targets, embedded products, entry routes, shared
+  intents, containing-app startup/context/handoff/import wiring, and dedicated
+  tests/resources. The owner explicitly directed “删除锁屏启动相关的代码和
+  入口” and authorized a new Instant Task when no match existed. TAP-0086 moved
+  Inbox -> Todo -> Doing, assigned to `/root` on baseline `main@6c45a77`, with
+  ordinary Camera/Library/Pending Queue/App Intents, Git history, and the
+  dedicated experiment branch preserved. Prototype impact is N/A by owner
+  direction. Done requires a zero-production-reference source/project/product
+  scan, generic iPhone build plus test compilation, a built app with no Locked
+  Camera `.appex`, retained-path compilation, and full documentation/handoff
+  reconciliation. No implementation, deletion, validation, commit, or Done
+  transition is claimed; all other statuses are unchanged.
+- `2026-08-14` Board Steward recorded the complete uncommitted TAP-0086
+  implementation and validation handoff while deliberately keeping the Task in
+  Doing for product-owner review. The actual baseline is `main@6c45a77`. The
+  candidate removes both Locked Camera extension targets and embedded `.appex`
+  products, their shared intents, the containing app's framework/context/
+  session-import/URL/user-activity/startup/route/queue wiring, and dedicated
+  resources and tests, while preserving ordinary Camera, Library, Pending
+  Capture Queue, retained App Intents, Git history, and the isolated experiment
+  path. Product Contract §4, TAP Library/test READMEs, localization, Info.plist,
+  privacy diagnostics, and lint inputs are synchronized; prototype/manifest,
+  UI Prototype Contract, acceptance record, specialized contract, root README,
+  and AGENTS.md are N/A for the reasons recorded in the Task handoff. A fresh
+  generic iPhone Debug `build-for-testing` with code signing disabled exited 0;
+  only three retained targets remain, the built app contains zero `.appex`, its
+  parsed Info has no Locked Camera URL, and source/project scans plus `plutil`,
+  `jq`, and diff-check passed. Simulator/device launch and runtime tests were
+  not performed. The lint script cleared its removed-file/reference gate but
+  exited nonzero on three pre-existing unrelated complexity/length violations,
+  so no full lint pass is claimed; final read-only review found no P0/P1 issue.
+  Per the owner's review-before-commit rule, no commit, push, acceptance, or
+  Done transition is recorded. After owner acceptance, the implementation may
+  be committed separately with subject `Remove Locked Camera integration from
+  main`, then returned to the Board Steward for closure. TAP-0013, TAP-0049,
+  TAP-0083, every other Task status, and Next Task ID remain unchanged.
+- `2026-08-14` The owner explicitly accepted TAP-0086 with “完成验收现在把 0086
+  标记为 done 并提交”. Board Steward completed the Done When audit and moved
+  TAP-0086 Doing -> Done. The accepted main-tree result removes both extension
+  targets, embedded `.appex` products, shared intents, all containing-app Locked
+  Camera startup/context/session-import/URL/user-activity/route/queue wiring,
+  and dedicated resources/tests while preserving ordinary Camera, Library,
+  Pending Capture Queue, retained App Intents, Git history, and the isolated
+  experiment path. The generic iPhone Debug build-for-testing exited 0; three
+  retained targets remain, the built app has zero `.appex` and no Locked Camera
+  URL, and the recorded source/project/product and document-impact checks
+  passed. Simulator/device launches and runtime tests remain unrun and are not
+  claimed as passes. The lint command remains nonzero only for the three
+  recorded pre-existing unrelated complexity/length violations, so no full lint
+  pass is claimed. The implementation plus closure record belong to the
+  containing commit subject `Remove Locked Camera integration from main`; no
+  prospective hash is fabricated before Git creates it. TAP-0013, TAP-0049,
+  TAP-0083, all other statuses, and Next Task ID remain unchanged.

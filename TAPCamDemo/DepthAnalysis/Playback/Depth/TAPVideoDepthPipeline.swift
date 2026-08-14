@@ -228,7 +228,7 @@ final class TAPVideoDepthPipeline {
         case .frame(let frame):
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             if frame.frameIndex == 0 {
-                LockedCameraDiagnostics.logger.info("tap_video_depth_playback_first_frame width=\(frame.width, privacy: .public) height=\(frame.height, privacy: .public) pixelFormat=\(frame.pixelFormat, privacy: .public) presentationTime=\(frame.presentationTimeSeconds, privacy: .public)")
+                TAPDiagnostics.depthAnalysis.info("tap_video_depth_playback_first_frame width=\(frame.width, privacy: .public) height=\(frame.height, privacy: .public) pixelFormat=\(frame.pixelFormat, privacy: .public) presentationTime=\(frame.presentationTimeSeconds, privacy: .public)")
             }
             #endif
             store(frame)
@@ -256,7 +256,7 @@ final class TAPVideoDepthPipeline {
         guard isPresentationRequested,
               frameCache.insert(frame, around: currentPlaybackTimeSeconds) else {
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            LockedCameraDiagnostics.logger.info("tap_video_depth_cache_reject frameIndex=\(frame.frameIndex, privacy: .public) bytes=\(frame.retainedByteCount, privacy: .public) retained=\(self.frameCache.retainedByteCount, privacy: .public) budget=\(self.frameCache.maximumRetainedBytes, privacy: .public)")
+            TAPDiagnostics.depthAnalysis.info("tap_video_depth_cache_reject frameIndex=\(frame.frameIndex, privacy: .public) bytes=\(frame.retainedByteCount, privacy: .public) retained=\(self.frameCache.retainedByteCount, privacy: .public) budget=\(self.frameCache.maximumRetainedBytes, privacy: .public)")
             #endif
             return
         }
@@ -365,7 +365,7 @@ final class TAPVideoDepthPipeline {
         let nearestDelta = frameCache.frames
             .map { abs($0.presentationTimeSeconds - playbackTimeSeconds) }
             .min() ?? -1
-        LockedCameraDiagnostics.logger.info("tap_video_depth_pipeline_miss source=\(self.sourceLabel, privacy: .public) playbackTime=\(playbackTimeSeconds, privacy: .public) cacheCount=\(self.frameCache.frames.count, privacy: .public) cacheBytes=\(self.frameCache.retainedByteCount, privacy: .public) nearestDelta=\(nearestDelta, privacy: .public) missCount=\(self.frameSelectionMissCount, privacy: .public)")
+        TAPDiagnostics.depthAnalysis.info("tap_video_depth_pipeline_miss source=\(self.sourceLabel, privacy: .public) playbackTime=\(playbackTimeSeconds, privacy: .public) cacheCount=\(self.frameCache.frames.count, privacy: .public) cacheBytes=\(self.frameCache.retainedByteCount, privacy: .public) nearestDelta=\(nearestDelta, privacy: .public) missCount=\(self.frameSelectionMissCount, privacy: .public)")
         #endif
     }
 
