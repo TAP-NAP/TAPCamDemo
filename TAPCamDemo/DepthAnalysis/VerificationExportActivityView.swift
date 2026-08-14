@@ -3,95 +3,60 @@
 //  TAPCamDemo
 //
 
+import Dispatch
 import OSLog
 import SwiftUI
 import UIKit
 
 struct VerificationExportActivityView: UIViewControllerRepresentable {
-    private let preparedSharePresentation: TAPShareActivityPresentation
-    var onAppeared: (() -> Void)?
-    var onDismantled: (() -> Void)?
+    private let sharePresentation: TAPShareActivityPresentation
 
-    init(
-        preparedSharePresentation: TAPShareActivityPresentation,
-        onAppeared: (() -> Void)? = nil,
-        onDismantled: (() -> Void)? = nil
-    ) {
-        self.preparedSharePresentation = preparedSharePresentation
-        self.onAppeared = onAppeared
-        self.onDismantled = onDismantled
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
+    init(sharePresentation: TAPShareActivityPresentation) {
+        self.sharePresentation = sharePresentation
     }
 
     func makeUIViewController(context: Context) -> UIActivityViewController {
-        let controller = preparedSharePresentation.controller
-        context.coordinator.onDismantled = onDismantled
-        controller.onFirstAppearance = {
-            Task { @MainActor in
-                onAppeared?()
-            }
-        }
-        return controller
+        sharePresentation.makeViewController()
     }
 
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {
-        context.coordinator.onDismantled = onDismantled
-    }
-
-    static func dismantleUIViewController(
-        _ uiViewController: UIActivityViewController,
-        coordinator: Coordinator
-    ) {
-        (uiViewController as? TAPObservedActivityViewController)?.onFirstAppearance = nil
-        coordinator.onDismantled?()
-        coordinator.onDismantled = nil
-    }
-
-    final class Coordinator {
-        var onDismantled: (() -> Void)?
-    }
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 @MainActor
 final class TAPShareActivityPresentation: Identifiable {
     let artifact: TAPNAPShareArtifact
-    let controller: TAPObservedActivityViewController
-    let constructionDuration: Duration
 
     var id: UUID { artifact.id }
 
-    init(
-        artifact: TAPNAPShareArtifact,
-        controller: TAPObservedActivityViewController,
-        constructionDuration: Duration
-    ) {
+    init(artifact: TAPNAPShareArtifact) {
         self.artifact = artifact
-        self.controller = controller
-        self.constructionDuration = constructionDuration
-        controller.retainShareArtifact(artifact)
     }
 
-    static func prepare(for artifact: TAPNAPShareArtifact) -> Self {
+    func makeViewController() -> TAPShareActivityViewController {
         let clock = ContinuousClock()
         let startedAt = clock.now
-        let controller = TAPObservedActivityViewController(
-            activityItems: activityItems(for: artifact),
-            applicationActivities: nil
+        let controller = TAPShareActivityViewController(
+            artifact: artifact,
+            activityItems: Self.activityItems(for: artifact)
         )
         let duration = startedAt.duration(to: clock.now)
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.sharePackaging.info(
-            "tap_share_activity_controller_created kind=\(artifact.kind.rawValue, privacy: .public) durationBucket=\(Self.durationBucket(duration), privacy: .public) transport=fileURL"
+            "tap_share_activity_controller_created kind=\(self.artifact.kind.rawValue, privacy: .public) durationBucket=\(Self.durationBucket(duration), privacy: .public) transport=fileURL"
         )
         #endif
-        return Self(
-            artifact: artifact,
-            controller: controller,
-            constructionDuration: duration
-        )
+        return controller
+    }
+
+    /// The item binding's dismissal is the app-owned lifetime boundary for
+    /// this attempt. UIKit has already accepted or cancelled the activity by
+    /// then, so cleanup no longer depends on when SwiftUI releases a cached
+    /// controller instance.
+    func scheduleTemporaryDirectoryCleanup() {
+        let artifact = artifact
+        TAPShareArtifactCleanup.schedule {
+            artifact.removeTemporaryDirectory()
+        }
     }
 
     /// Every supported Share kind uses the same system-native file URL item.
@@ -115,20 +80,36 @@ final class TAPShareActivityPresentation: Identifiable {
     }
 }
 
-final class TAPObservedActivityViewController: UIActivityViewController {
-    var onFirstAppearance: (() -> Void)?
+@MainActor
+final class TAPShareActivityViewController: UIActivityViewController {
+    let artifact: TAPNAPShareArtifact
     private var hasReportedAppearance = false
-    private var retainedShareArtifact: TAPNAPShareArtifact?
 
-    func retainShareArtifact(_ artifact: TAPNAPShareArtifact) {
-        retainedShareArtifact = artifact
+    init(
+        artifact: TAPNAPShareArtifact,
+        activityItems: [Any]
+    ) {
+        // Construction now happens only when SwiftUI begins presenting the
+        // system sheet. Retain the artifact through that system-owned UI.
+        self.artifact = artifact
+        super.init(
+            activityItems: activityItems,
+            applicationActivities: nil
+        )
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is unavailable")
     }
 
     deinit {
-        // This is the app's final ownership boundary for a materialized file
-        // handed to UIKit. Coordinator callbacks may end SwiftUI state earlier,
-        // but only controller release authorizes deleting the source.
-        retainedShareArtifact?.removeTemporaryDirectory()
+        let artifact = artifact
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.sharePackaging.info(
+            "tap_share_activity_controller_released kind=\(artifact.kind.rawValue, privacy: .public)"
+        )
+        #endif
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -137,8 +118,21 @@ final class TAPObservedActivityViewController: UIActivityViewController {
             return
         }
         hasReportedAppearance = true
-        let callback = onFirstAppearance
-        onFirstAppearance = nil
-        callback?()
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.sharePackaging.info(
+            "tap_share_activity_sheet_appeared kind=\(self.artifact.kind.rawValue, privacy: .public)"
+        )
+        #endif
+    }
+}
+
+nonisolated enum TAPShareArtifactCleanup {
+    private static let queue = DispatchQueue(
+        label: "net.tapnap.tapcam.share-artifact-cleanup",
+        qos: .utility
+    )
+
+    static func schedule(_ cleanup: @escaping @Sendable () -> Void) {
+        queue.async(execute: cleanup)
     }
 }

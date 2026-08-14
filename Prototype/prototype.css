@@ -133,18 +133,20 @@ legend { margin-bottom: 10px; color: #c8c8cc; font-size: 13px; font-weight: 600;
 .credential-row { display: flex; align-items: center; gap: 9px; height: 31px; color: #bfc0c4; font-size: 15px; }
 .icon-mask { display: inline-block; width: 29px; height: 29px; flex: 0 0 auto; background: currentColor; mask: var(--icon) center / contain no-repeat; -webkit-mask: var(--icon) center / contain no-repeat; }
 .credential-mask { --icon: url("assets/icons/check-circle.svg"); width: 19px; height: 19px; color: var(--green); }
-.package-mask { --icon: url("assets/icons/package.svg"); }
 .warning-mask { --icon: url("assets/icons/warning-circle.svg"); }
-.share-mask { --icon: url("assets/icons/share-network.svg"); }
 .divider { height: 1px; background: var(--divider); margin: 8px 0; }
 .share-options { display: grid; }
-.share-option { width: 100%; min-height: 64px; display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: 10px; padding: 9px 0; color: #fff; background: transparent; border: 0; border-bottom: 1px solid var(--divider); text-align: left; cursor: pointer; }
-.share-option:last-child { border-bottom: 0; }
+.share-option-row { border-bottom: 1px solid var(--divider); }
+.share-option-row:last-child { border-bottom: 0; }
+.share-option { width: 100%; min-height: 64px; display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: 10px; padding: 9px 0; color: #fff; background: transparent; border: 0; text-align: left; cursor: pointer; }
 .share-option img { width: 28px; height: 28px; filter: brightness(0) invert(1); }
+.share-option-copy { position: relative; min-width: 0; }
 .share-option strong { display: block; font-size: 15px; font-weight: 650; }
-.share-option small { display: block; margin-top: 3px; color: #aaaab0; font-size: 12px; }
+.share-option small { position: relative; display: block; height: 14px; margin-top: 3px; color: #aaaab0; font-size: 12px; line-height: 14px; }
 .share-option .badge { color: var(--blue); font-size: 12px; }
 .share-option[disabled] { opacity: .38; cursor: default; }
+.share-option-row.is-preparing .share-option[disabled] { opacity: 1; }
+.subtitle-progress-track { position: absolute; left: 0; right: 0; top: 50%; width: 100%; height: 2px; transform: translateY(-50%); pointer-events: none; }
 
 .integrity-state { min-height: 334px; }
 .integrity-skeleton { display: grid; }
@@ -165,17 +167,13 @@ legend { margin-bottom: 10px; color: #c8c8cc; font-size: 13px; font-weight: 600;
 .preparing-heading { display: flex; gap: 13px; align-items: flex-start; }
 .preparing-heading h2 { margin: 1px 0 5px; font-size: 16px; font-weight: 600; }
 .preparing-heading p { margin: 0; color: #aaaab0; font-size: 13px; line-height: 1.4; }
-.progress-row { display: grid; grid-template-columns: 1fr 42px; gap: 10px; align-items: center; margin: 19px 0 12px 42px; }
 progress { width: 100%; height: 5px; border: 0; border-radius: 99px; overflow: hidden; background: #4b4b4e; }
 progress::-webkit-progress-bar { background: #4b4b4e; }
 progress::-webkit-progress-value { background: var(--blue); border-radius: 99px; }
 progress::-moz-progress-bar { background: var(--blue); border-radius: 99px; }
-.progress-row output { color: #c9c9cd; font-variant-numeric: tabular-nums; }
-.preparing-footer { display: flex; justify-content: space-between; align-items: center; color: #98999e; font-size: 12px; }
-.preparing-footer button, .failure-actions button, .primary-action { color: var(--blue); background: transparent; border: 0; padding: 8px; cursor: pointer; }
+.failure-actions button { color: var(--blue); background: transparent; border: 0; padding: 8px; cursor: pointer; }
 .failure-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
-.failure-actions button:last-child, .primary-action { font-weight: 650; }
-.primary-action { width: 100%; margin-top: 10px; }
+.failure-actions button:last-child { font-weight: 650; }
 
 [hidden] { display: none !important; }
 .visually-hidden { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border: 0 !important; }

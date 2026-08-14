@@ -1,9 +1,10 @@
-# TAP-0081-r2 / TAP-0009-r1 Approved Design QA
+# TAP-0081-r3 Candidate / TAP-0009-r1 Approved Design QA
 
 - Source visual truth:
   - `assets/references/tap-share-format-selection.png`
   - `assets/references/tap-share-preparing.png`
-  - owner-approved `TAP-0081-r1` geometry and anchored-handoff behavior
+  - owner-approved `TAP-0081-r2-candidate` geometry, resource states, local
+    integrity states, and anchored app-owned popover
 - Implementation: `index.html` served at `http://localhost:4173/`
 - Source pixels: `853 x 1844` for each owner-selected reference
 - Implementation viewport: `393 x 852` CSS px, `devicePixelRatio = 1`
@@ -11,16 +12,25 @@
 - Density normalization: each source reference was downsampled to `393 x 852`
   for the combined comparisons listed below. The Web frame is a relationship
   reference and does not claim native pixel identity.
-- Browser evidence: Codex in-app Browser on 2026-08-13
-- Browser console: no warnings or errors after the exercised paths
+- Inherited browser evidence: `TAP-0081-r2-candidate`, Codex in-app Browser on
+  2026-08-13
+- Current r3 evidence: static contract test plus Chrome bounding-box comparison
+  and exact owner visual approval on 2026-08-14
 
 ## Approval boundary
 
-The product owner approved exact base revision `TAP-0081-r1` on 2026-08-12 and
-approved exact visual revision `TAP-0081-r2-candidate` on 2026-08-13 with
-“已确认没有问题 请继续实施 Swift UI”. The approval covers the recorded
-local-integrity states and refined toolbar geometry; native and device evidence
-remain separate from Web approval.
+The product owner approved exact visual revision `TAP-0081-r2-candidate` on
+2026-08-13 with “已确认没有问题 请继续实施 Swift UI”. On 2026-08-14 the owner
+directed the r3 lifecycle delta: implemented share types show preparation
+as a thin track replacing the selected option's subtitle text inside the exact
+same fixed-height slot while every other row remains visible but disabled. The
+title, icon, badge, row height, popover dimensions, and sibling positions do not
+move; subtitle text and progress are not shown together, and no percentage or
+Cancel control is inserted. No independent preparation page, artificial reveal
+delay, or minimum-visible hold is inserted; payload readiness ends the app-owned
+popover, and no completed/system dismissal page is simulated. The owner approved
+exact `TAP-0081-r3-candidate` with “对的 现在原型是我想要的”; the prior approval
+continues to govern inherited geometry and states.
 
 ## Captures and combined comparisons
 
@@ -34,15 +44,18 @@ remain separate from Web approval.
   - `evidence/TAP-0081-r2-candidate-failed-integrity-full.png`
   - `evidence/TAP-0081-r2-candidate-selection-comparison.png`
 
-The combined comparisons place the normalized selected source at left and the
-candidate state at right. No separate-image or memory-only comparison is used.
+These r2 combined comparisons remain evidence for the geometry and states that
+r3 deliberately inherits. They are not represented as new r3 lifecycle
+captures.
 
 ## Full-view comparison
 
-The candidate preserves the approved Viewer hierarchy: full-screen media,
+The r3 candidate preserves the approved Viewer hierarchy: full-screen media,
 bottom-left Share, centered `RAW / 2D / 3D`, bottom-right Delete, and a compact
 material surface anchored above Share. The r1 Share control, toolbar, popover
-anchor, popover width, row rhythm, and preparation geometry are unchanged.
+anchor, popover width, and option-row rhythm are unchanged. The selected row does
+not expand; its fixed-height subtitle slot swaps text for an absolutely positioned
+thin track and contributes no new layout size.
 
 The incremental states preserve that geometry:
 
@@ -66,22 +79,53 @@ The incremental states preserve that geometry:
 - Failed Photo/Live Photo disables `tapnapPackage` while keeping `image`
   enabled. Failed Video keeps `videoPackage` disabled and `video` enabled with
   the same unverifiability warning.
-- Fast 35 ms preparation reached the system boundary with
-  `progressVisible = false`. The existing 50/400 preparation contract remains
-  unchanged by this candidate.
+- Selecting TAPNAP Package, Share Image, or Share Video keeps all four selector
+  rows visible and replaces only the selected row's subtitle text with determinate
+  progress inside the same slot in the same event turn. The icon, title, badge,
+  row box, and popover box remain unchanged. The other rows become disabled
+  without disappearing, and progress remains monotonic.
+- Progress displays neither percentage text nor a Cancel control.
+- There is no independent preparation panel or full-popover preparation state.
+- Payload readiness closes the app-owned popover immediately. There is no
+  `资料已准备完成` panel, no `模拟系统页关闭` action, and no artificial
+  post-completion hold.
+- The real iOS activity controller exists only as explanatory boundary copy in
+  the review controls; the phone surface does not imitate it.
 - The script contains no `fetch`, `XMLHttpRequest`, `WebSocket`, backend Verify
   route, or persistent browser storage. iCloud and integrity are deterministic
   visual fixtures only.
 
+## Preparation geometry measurement
+
+Chrome `getBoundingClientRect()` measurements compared selector state with the
+live determinate preparation state on 2026-08-14. The TAPNAP Package and Share
+Image paths both returned exact structural equality for the popover, all four
+row wrappers/buttons, and every icon/title/subtitle-slot/badge box.
+
+| Surface | Before `[x, y, width, height]` | Preparing | Result |
+| --- | --- | --- | --- |
+| Popover | `[891.5, 456.8828125, 288, 337]` | identical | exact |
+| TAPNAP row | `[908.5, 519.8828125, 254, 65]` | identical | exact |
+| Share Image row | `[908.5, 584.8828125, 254, 65]` | identical | exact |
+| Sticker row | `[908.5, 649.8828125, 254, 65]` | identical | exact |
+| Share Link row | `[908.5, 714.8828125, 254, 64]` | identical | exact |
+| TAPNAP subtitle slot | `[952.5, 556.8828125, 175.4921875, 14]` | identical | exact |
+| Share Image subtitle slot | `[952.5, 621.8828125, 200, 14]` | identical | exact |
+
+The selected subtitle text was absent while preparing, the 2 px determinate
+track occupied that same slot, every option was disabled but remained visible,
+and neither percentage text nor a Cancel control existed. A Share Image sample
+observed progress value `0.32` without any geometry delta.
+
 ## Required fidelity surfaces
 
 - Fonts and typography: the existing Apple/system stack, status hierarchy,
-  option-title weights, subtitles, and preparation type scale are unchanged.
-  The new Viewer resource card uses the same title/subtitle hierarchy.
+  option-title weights, and subtitles are unchanged. The preparation track adds
+  no text.
 - Spacing and layout rhythm: the 393 x 852 Viewer, bottom toolbar, 42 px Share
-  control, 288 px popover, 19 px radius, caret, row heights, dividers, and
-  preparation spacing remain inherited from r1. New skeleton rows match the
-  selector's four-row footprint.
+  control, 288 px popover, 19 px radius, caret, and base row heights/dividers
+  remain inherited from r1. The selected row and every sibling retain the same
+  footprint because the track is an absolute overlay.
 - Colors and visual tokens: existing dark material, semantic green/orange/red,
   iOS blue, dividers, and disabled opacity remain unchanged. Resource progress
   reuses the existing blue progress token.
@@ -130,10 +174,11 @@ rather than restating the numbers at each rule.
   a general fixture. Fixed by disabling `待重试` unless `Private queue` is the
   selected resource source and by recording the invariant in the state fixture
   and static test.
-- No remaining actionable P0/P1/P2 difference was found. The loading card is a
-  new owner-approved behavior state rather than an r1 source-image mismatch.
-  Native material optics, PhotoKit/iCloud activity, cryptographic work, and the
-  real system activity controller remain native evidence boundaries.
+- The prior r2 comparison found no remaining actionable P0/P1/P2 geometry
+  difference. R3 intentionally removes the post-ready boundary panel and the
+  timing fixtures; exact r3 visual approval is recorded. Native material
+  optics, PhotoKit/iCloud activity, cryptographic work, and the real system
+  activity controller remain native evidence boundaries.
 
 ## Implementation checklist
 
@@ -143,11 +188,22 @@ rather than restating the numbers at each rule.
 - [x] Cover Failed package disable plus warned ordinary-media sharing.
 - [x] Restrict Needs Retry to the private queue fixture.
 - [x] Keep backend Verify, package pre-generation, and persistent caching absent.
-- [x] Run static tests, interactive Browser paths, console inspection, and
-  normalized combined-image review.
-- [x] Obtain exact owner approval for `TAP-0081-r2-candidate`.
+- [x] Make preparation progress immediate for every implemented share type.
+- [x] Keep the selector and all non-selected rows visible during preparation;
+  disable non-selected rows and replace only the selected subtitle text with
+  progress inside that same slot.
+- [x] Preserve all row/popover bounding boxes, selected title/icon/badge, and
+  sibling positions; show subtitle text or progress, never both, and show neither
+  percentage nor Cancel UI.
+- [x] Remove the independent preparation panel.
+- [x] Remove reveal-delay, minimum-hold, completed-page, and simulated-dismissal
+  behavior from the prototype.
+- [x] End the app-owned popover when the fixture payload becomes ready while
+  keeping the system activity controller as explanatory copy only.
+- [x] Run the static prototype contract test.
+- [x] Obtain exact owner visual approval for `TAP-0081-r3-candidate`.
 
-final result: passed
+current result: static contract and browser geometry checks passed; owner visual approval recorded
 
 ## TAP-0009 resource-initialization candidate QA
 

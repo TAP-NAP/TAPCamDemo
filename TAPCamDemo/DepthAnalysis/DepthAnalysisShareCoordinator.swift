@@ -29,27 +29,6 @@ enum DepthAnalysisSharePreparationState {
     case idle
     case preparing(option: DepthAnalysisShareOption, progress: Double)
     case failed(option: DepthAnalysisShareOption)
-    case ready(option: DepthAnalysisShareOption)
-}
-
-nonisolated struct DepthAnalysisShareProgressPresentationPolicy: Equatable, Sendable {
-    static let standard = Self(
-        revealDelay: .milliseconds(50),
-        minimumVisibleDuration: .milliseconds(400)
-    )
-
-    let revealDelay: Duration
-    let minimumVisibleDuration: Duration
-}
-
-nonisolated struct DepthAnalysisShareActivityPresentationPolicy: Equatable, Sendable {
-    static let standard = Self(
-        appearanceTimeout: .seconds(5),
-        dismantleTimeout: .seconds(1)
-    )
-
-    let appearanceTimeout: Duration
-    let dismantleTimeout: Duration
 }
 
 nonisolated protocol DepthAnalysisShareArtifactPreparing: Sendable {
@@ -131,19 +110,15 @@ nonisolated struct DepthAnalysisShareArtifactPreparer: DepthAnalysisShareArtifac
 class DepthAnalysisShareCoordinator: ObservableObject {
     @Published private(set) var certificationState: DepthAnalysisShareCertificationState?
     @Published private(set) var preparationState: DepthAnalysisSharePreparationState = .idle
-    @Published private(set) var isPreparationProgressVisible = false
     @Published private(set) var isPopoverPresented = false
     @Published private(set) var activityPresentation: TAPShareActivityPresentation?
 
     private let recordResolver: DepthAnalysisShareRecordResolver
     private let artifactPreparer: any DepthAnalysisShareArtifactPreparing
     private let localIntegrityValidator: any DepthAnalysisShareLocalIntegrityValidating
-    private let progressPresentationPolicy: DepthAnalysisShareProgressPresentationPolicy
-    private let activityPresentationPolicy: DepthAnalysisShareActivityPresentationPolicy
     private let activityPresentationBuilder: @MainActor (
         TAPNAPShareArtifact
     ) -> TAPShareActivityPresentation
-    private let continuousClock = ContinuousClock()
 
     private(set) var subject: DepthAnalysisShareSubject?
     private var originalResource: DepthAnalysisShareOriginalResource?
@@ -151,19 +126,11 @@ class DepthAnalysisShareCoordinator: ObservableObject {
     private var presentationID: UUID?
     private var preparationID: UUID?
     private var preparationTask: Task<Void, Never>?
-    private var progressRevealTask: Task<Void, Never>?
-    private var activityAppearanceWatchdogTask: Task<Void, Never>?
-    private var activityDismantleWatchdogTask: Task<Void, Never>?
     private var refreshTask: Task<Void, Never>?
     private var certificationRefreshID: UUID?
     private var hasDeferredCertificationRefresh = false
     private var popoverHasAppeared = false
-    private var preparationStartedAt: ContinuousClock.Instant?
-    private var progressVisibleAt: ContinuousClock.Instant?
     private var pendingHandoffPresentation: TAPShareActivityPresentation?
-    private var activeActivityLease: TAPNAPShareArtifact?
-    private var activitySheetArtifactID: UUID?
-    private var activitySheetHasAppeared = false
 
     init(
         subject: DepthAnalysisShareSubject? = nil,
@@ -172,12 +139,10 @@ class DepthAnalysisShareCoordinator: ObservableObject {
         artifactPreparer: any DepthAnalysisShareArtifactPreparing = DepthAnalysisShareArtifactPreparer(),
         localIntegrityValidator: any DepthAnalysisShareLocalIntegrityValidating =
             DepthAnalysisShareLocalIntegrityValidator(),
-        progressPresentationPolicy: DepthAnalysisShareProgressPresentationPolicy = .standard,
-        activityPresentationPolicy: DepthAnalysisShareActivityPresentationPolicy = .standard,
         activityPresentationBuilder: @escaping @MainActor (
             TAPNAPShareArtifact
         ) -> TAPShareActivityPresentation = { artifact in
-            TAPShareActivityPresentation.prepare(for: artifact)
+            TAPShareActivityPresentation(artifact: artifact)
         }
     ) {
         self.subject = subject
@@ -185,8 +150,6 @@ class DepthAnalysisShareCoordinator: ObservableObject {
         self.recordResolver = recordResolver
         self.artifactPreparer = artifactPreparer
         self.localIntegrityValidator = localIntegrityValidator
-        self.progressPresentationPolicy = progressPresentationPolicy
-        self.activityPresentationPolicy = activityPresentationPolicy
         self.activityPresentationBuilder = activityPresentationBuilder
         if let subject,
            let originalResource,
@@ -238,21 +201,24 @@ class DepthAnalysisShareCoordinator: ObservableObject {
     }
 
     var visibleProgress: Double? {
-        guard isPreparationProgressVisible else {
-            return nil
-        }
         switch preparationState {
         case .preparing(_, let progress):
             return progress
-        case .ready:
-            return 1
         case .idle, .failed:
             return nil
         }
     }
 
+    func preparationProgress(for option: DepthAnalysisShareOption) -> Double? {
+        guard case .preparing(let activeOption, let progress) = preparationState,
+              activeOption == option else {
+            return nil
+        }
+        return progress
+    }
+
     var hasActiveActivityPresentation: Bool {
-        activeActivityLease != nil || activitySheetArtifactID != nil
+        pendingHandoffPresentation != nil || activityPresentation != nil
     }
 
     func shareButtonTapped(
@@ -346,39 +312,16 @@ class DepthAnalysisShareCoordinator: ObservableObject {
         if let presentation = pendingHandoffPresentation {
             let payload = presentation.artifact
             pendingHandoffPresentation = nil
-            activeActivityLease = payload
-            activitySheetArtifactID = payload.id
-            activitySheetHasAppeared = false
             activityPresentation = presentation
-            scheduleActivityAppearanceWatchdog(expectedArtifactID: payload.id)
+            preparationState = .idle
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.sharePackaging.info(
-                "tap_share_activity_handoff_started kind=\(payload.kind.rawValue, privacy: .public) progressVisible=\(self.isPreparationProgressVisible, privacy: .public) controllerPreconstructed=true"
+                "tap_share_activity_handoff_started kind=\(payload.kind.rawValue, privacy: .public)"
             )
             #endif
         } else {
             dismissPresentation()
         }
-    }
-
-    /// Keeps any already-visible 100% progress on the stable Viewer toolbar
-    /// until SwiftUI has mounted the system activity controller. This avoids a
-    /// blank handoff interval if controller construction takes noticeable time.
-    func activitySheetDidAppear(expectedArtifactID: UUID) {
-        guard activitySheetArtifactID == expectedArtifactID,
-              activeActivityLease?.id == expectedArtifactID else {
-            return
-        }
-        activitySheetHasAppeared = true
-        activityAppearanceWatchdogTask?.cancel()
-        activityAppearanceWatchdogTask = nil
-        activityDismantleWatchdogTask?.cancel()
-        activityDismantleWatchdogTask = nil
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.sharePackaging.info(
-            "tap_share_activity_sheet_appeared kind=\(self.activeActivityLease?.kind.rawValue ?? "none", privacy: .public) progressVisible=\(self.isPreparationProgressVisible, privacy: .public)"
-        )
-        #endif
     }
 
     func refreshCertification() async {
@@ -464,12 +407,7 @@ class DepthAnalysisShareCoordinator: ObservableObject {
         discardPendingHandoff()
         let currentPreparationID = UUID()
         preparationID = currentPreparationID
-        preparationStartedAt = continuousClock.now
         preparationState = .preparing(option: option, progress: 0)
-        scheduleProgressReveal(
-            presentationID: presentationID,
-            preparationID: currentPreparationID
-        )
 
         preparationTask = Task { [weak self] in
             guard let self else {
@@ -518,30 +456,35 @@ class DepthAnalysisShareCoordinator: ObservableObject {
                     }
                 }
                 try Task.checkCancellation()
-                ownsArtifact = !(try await finishPreparation(
+                guard let preparedPresentation = makeActivityPresentation(
                     artifact,
                     option: option,
                     presentationID: presentationID,
                     preparationID: currentPreparationID
-                ))
+                ) else {
+                    return
+                }
+                // The presentation owns the artifact before any later await.
+                // The system controller is intentionally not constructed until
+                // SwiftUI begins presenting the system sheet.
+                ownsArtifact = false
+                try finishPreparation(
+                    preparedPresentation,
+                    option: option,
+                    presentationID: presentationID,
+                    preparationID: currentPreparationID
+                )
             } catch is CancellationError {
                 finishCancellation(
                     presentationID: presentationID,
                     preparationID: currentPreparationID
                 )
             } catch {
-                do {
-                    try await finishFailure(
-                        option: option,
-                        presentationID: presentationID,
-                        preparationID: currentPreparationID
-                    )
-                } catch {
-                    finishCancellation(
-                        presentationID: presentationID,
-                        preparationID: currentPreparationID
-                    )
-                }
+                finishFailure(
+                    option: option,
+                    presentationID: presentationID,
+                    preparationID: currentPreparationID
+                )
             }
         }
     }
@@ -554,8 +497,6 @@ class DepthAnalysisShareCoordinator: ObservableObject {
         preparationTask?.cancel()
         preparationTask = nil
         preparationID = nil
-        preparationStartedAt = nil
-        resetProgressPresentation()
         if case .preparing = preparationState {
             preparationState = .idle
         }
@@ -579,70 +520,24 @@ class DepthAnalysisShareCoordinator: ObservableObject {
         prepare(option)
     }
 
-    private func endActivityPresentationAfterSystemDismissal(
-        expectedArtifactID: UUID
-    ) {
-        guard activitySheetArtifactID == expectedArtifactID,
-              activeActivityLease?.id == expectedArtifactID else {
+    /// The system sheet's item binding is the primary app-owned lifecycle
+    /// signal. SwiftUI `onDismiss` is an exact-ID, idempotent fallback into the
+    /// same transition. Only the matching attempt ends, and its temporary file
+    /// cleanup does not wait for UIKit to release a cached controller instance.
+    func activityPresentationDidEnd(expectedArtifactID: UUID) {
+        guard let endedPresentation = activityPresentation,
+              endedPresentation.id == expectedArtifactID else {
             return
         }
-        // Ending app-owned presentation state must not explicitly delete a
-        // file already handed to the system. The activity controller retains
-        // the artifact until UIKit releases the controller; the artifact's
-        // last-owner lease then performs idempotent cleanup.
+        let kind = endedPresentation.artifact.kind.rawValue
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.sharePackaging.info(
+            "tap_share_activity_sheet_dismissed kind=\(kind, privacy: .public)"
+        )
+        #endif
         activityPresentation = nil
-        activeActivityLease = nil
-        activitySheetArtifactID = nil
-        activityAppearanceWatchdogTask?.cancel()
-        activityAppearanceWatchdogTask = nil
-        activityDismantleWatchdogTask?.cancel()
-        activityDismantleWatchdogTask = nil
-        discardPendingHandoff()
         resetPresentationState()
-    }
-
-    /// The system/user dismissal, not destination completion, ends this
-    /// app-owned lifecycle. The immutable attempt ID rejects late callbacks
-    /// from an older activity controller.
-    func activitySheetDidDismiss(expectedArtifactID: UUID) {
-        guard activitySheetArtifactID == expectedArtifactID else {
-            return
-        }
-        let appeared = activitySheetHasAppeared
-        let kind = activeActivityLease?.kind.rawValue ?? "released"
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.sharePackaging.info(
-            "tap_share_activity_sheet_dismissed kind=\(kind, privacy: .public) appeared=\(appeared, privacy: .public)"
-        )
-        #endif
-        endActivityPresentationAfterSystemDismissal(
-            expectedArtifactID: expectedArtifactID
-        )
-    }
-
-    /// SwiftUI may clear the item binding before its dismissal callback. Stop
-    /// advertising a presented sheet without releasing the system controller's
-    /// retained file lease; item-scoped dismissal/dismantle owns state cleanup.
-    func activityBindingDidDismiss(expectedArtifactID: UUID) {
-        guard activitySheetArtifactID == expectedArtifactID,
-              activityPresentation?.id == expectedArtifactID else {
-            return
-        }
-        activityPresentation = nil
-    }
-
-    func activityControllerDidDismantle(expectedArtifactID: UUID) {
-        guard activitySheetArtifactID == expectedArtifactID else {
-            return
-        }
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.sharePackaging.info(
-            "tap_share_activity_controller_dismantled kind=\(self.activeActivityLease?.kind.rawValue ?? "released", privacy: .public)"
-        )
-        #endif
-        endActivityPresentationAfterSystemDismissal(
-            expectedArtifactID: expectedArtifactID
-        )
+        endedPresentation.scheduleTemporaryDirectoryCleanup()
     }
 
     func dismissPresentation() {
@@ -695,7 +590,7 @@ class DepthAnalysisShareCoordinator: ObservableObject {
 
         // A lookup can already be in flight when the user chooses a format.
         // Freeze certification for that attempt so a late notification cannot
-        // cancel the 400 ms hold or consume a ready handoff artifact.
+        // replace its preparation state or consume its pending handoff artifact.
         if isPreparing {
             hasDeferredCertificationRefresh = true
             return
@@ -878,78 +773,65 @@ class DepthAnalysisShareCoordinator: ObservableObject {
         )
     }
 
-    private func finishPreparation(
+    private func makeActivityPresentation(
         _ artifact: TAPNAPShareArtifact,
         option: DepthAnalysisShareOption,
         presentationID: UUID,
         preparationID: UUID
-    ) async throws -> Bool {
+    ) -> TAPShareActivityPresentation? {
         guard self.presentationID == presentationID,
               self.preparationID == preparationID else {
-            return false
+            return nil
         }
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.sharePackaging.info(
-            "tap_share_payload_ready kind=\(artifact.kind.rawValue, privacy: .public) option=\(option.rawValue, privacy: .public) progressVisible=\(self.isPreparationProgressVisible, privacy: .public)"
+            "tap_share_payload_ready kind=\(artifact.kind.rawValue, privacy: .public) option=\(option.rawValue, privacy: .public)"
         )
         #endif
 
-        // Construct while the already-appeared TAP Share popover remains on
-        // screen. `VerificationExportActivityView.makeUIViewController` then
-        // returns this prepared controller and cannot cold-block the bare
-        // Viewer between the app-owned and system-owned presentations.
-        let preparedPresentation = activityPresentationBuilder(artifact)
-        revealProgressAfterSynchronousColdWorkIfNeeded(
-            option: option,
-            presentationID: presentationID,
-            preparationID: preparationID,
-            synchronousDuration: preparedPresentation.constructionDuration
-        )
-        try Task.checkCancellation()
-        guard self.presentationID == presentationID,
-              self.preparationID == preparationID else {
-            return false
-        }
-        if isPreparationProgressVisible {
-            preparationState = .preparing(option: option, progress: 1)
-        }
-        try await waitForMinimumProgressVisibility()
-        try Task.checkCancellation()
-        guard self.presentationID == presentationID,
-              self.preparationID == preparationID else {
-            return false
-        }
+        // Only create an attempt-scoped artifact owner here. UIKit construction
+        // belongs to the later system-sheet presentation boundary; doing it in
+        // this app-owned popover would make LaunchServices inspect the file too
+        // early.
+        return activityPresentationBuilder(artifact)
+    }
 
+    private func finishPreparation(
+        _ preparedPresentation: TAPShareActivityPresentation,
+        option: DepthAnalysisShareOption,
+        presentationID: UUID,
+        preparationID: UUID
+    ) throws {
+        var transferredToPendingHandoff = false
+        defer {
+            if !transferredToPendingHandoff {
+                preparedPresentation.scheduleTemporaryDirectoryCleanup()
+            }
+        }
+        try Task.checkCancellation()
+        guard self.presentationID == presentationID,
+              self.preparationID == preparationID else {
+            return
+        }
+        preparationState = .preparing(option: option, progress: 1)
         self.preparationID = nil
-        preparationStartedAt = nil
         preparationTask = nil
-        progressRevealTask?.cancel()
-        progressRevealTask = nil
-        preparationState = .ready(option: option)
         pendingHandoffPresentation = preparedPresentation
+        transferredToPendingHandoff = true
         isPopoverPresented = false
-        return true
     }
 
     private func finishFailure(
         option: DepthAnalysisShareOption,
         presentationID: UUID,
         preparationID: UUID
-    ) async throws {
-        guard self.presentationID == presentationID,
-              self.preparationID == preparationID else {
-            return
-        }
-        try await waitForMinimumProgressVisibility()
-        try Task.checkCancellation()
+    ) {
         guard self.presentationID == presentationID,
               self.preparationID == preparationID else {
             return
         }
         self.preparationID = nil
-        preparationStartedAt = nil
         preparationTask = nil
-        resetProgressPresentation()
         preparationState = .failed(option: option)
         runDeferredCertificationRefreshIfNeeded()
     }
@@ -963,171 +845,23 @@ class DepthAnalysisShareCoordinator: ObservableObject {
             return
         }
         self.preparationID = nil
-        preparationStartedAt = nil
         preparationTask = nil
-        resetProgressPresentation()
         preparationState = .idle
         runDeferredCertificationRefreshIfNeeded()
     }
 
-    private func scheduleProgressReveal(
-        presentationID: UUID,
-        preparationID: UUID
-    ) {
-        resetProgressPresentation()
-        let revealDelay = progressPresentationPolicy.revealDelay
-        progressRevealTask = Task { @MainActor [weak self] in
-            do {
-                try await Task.sleep(for: revealDelay)
-            } catch {
-                return
-            }
-            guard let self,
-                  self.presentationID == presentationID,
-                  self.preparationID == preparationID,
-                  self.isPreparing else {
-                return
-            }
-            self.progressRevealTask = nil
-            self.progressVisibleAt = self.continuousClock.now
-            self.isPreparationProgressVisible = true
-        }
-    }
-
-    private func waitForMinimumProgressVisibility() async throws {
-        guard let progressVisibleAt else {
-            return
-        }
-        let elapsed = progressVisibleAt.duration(to: continuousClock.now)
-        let remaining = progressPresentationPolicy.minimumVisibleDuration - elapsed
-        if remaining > .zero {
-            try await Task.sleep(for: remaining)
-        }
-    }
-
-    private func resetProgressPresentation() {
-        progressRevealTask?.cancel()
-        progressRevealTask = nil
-        progressVisibleAt = nil
-        isPreparationProgressVisible = false
-    }
-
-    private func revealProgressAfterSynchronousColdWorkIfNeeded(
-        option: DepthAnalysisShareOption,
-        presentationID: UUID,
-        preparationID: UUID,
-        synchronousDuration: Duration
-    ) {
-        guard !isPreparationProgressVisible,
-              popoverHasAppeared,
-              self.presentationID == presentationID,
-              self.preparationID == preparationID,
-              let preparationStartedAt,
-              synchronousDuration >= progressPresentationPolicy.revealDelay
-                || preparationStartedAt.duration(to: continuousClock.now)
-                    >= progressPresentationPolicy.revealDelay else {
-            return
-        }
-        progressRevealTask?.cancel()
-        progressRevealTask = nil
-        progressVisibleAt = continuousClock.now
-        isPreparationProgressVisible = true
-        let currentProgress: Double
-        if case .preparing(_, let progress) = preparationState {
-            currentProgress = progress
-        } else {
-            currentProgress = 0
-        }
-        preparationState = .preparing(option: option, progress: currentProgress)
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.sharePackaging.info(
-            "tap_share_activity_wait_feedback_revealed kind=\(self.subject?.mediaKind.diagnosticValue ?? "none", privacy: .public) threshold=over50ms phase=controllerConstruction"
-        )
-        #endif
-    }
-
-    private func scheduleActivityAppearanceWatchdog(expectedArtifactID: UUID) {
-        activityAppearanceWatchdogTask?.cancel()
-        activityAppearanceWatchdogTask = Task { @MainActor [weak self] in
-            do {
-                guard let self else {
-                    return
-                }
-                try await Task.sleep(
-                    for: self.activityPresentationPolicy.appearanceTimeout
-                )
-            } catch {
-                return
-            }
-            guard let self,
-                  self.activitySheetArtifactID == expectedArtifactID,
-                  self.activeActivityLease?.id == expectedArtifactID,
-                  !self.activitySheetHasAppeared,
-                  self.activityPresentation?.id == expectedArtifactID else {
-                return
-            }
-            self.activityAppearanceWatchdogTask = nil
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.sharePackaging.info(
-                "tap_share_activity_never_appeared kind=\(self.activeActivityLease?.kind.rawValue ?? "none", privacy: .public) outcome=dismantleRequested"
-            )
-            #endif
-            self.activityPresentation = nil
-            self.scheduleActivityDismantleWatchdog(
-                expectedArtifactID: expectedArtifactID
-            )
-        }
-    }
-
-    private func scheduleActivityDismantleWatchdog(expectedArtifactID: UUID) {
-        activityDismantleWatchdogTask?.cancel()
-        activityDismantleWatchdogTask = Task { @MainActor [weak self] in
-            do {
-                guard let self else {
-                    return
-                }
-                try await Task.sleep(
-                    for: self.activityPresentationPolicy.dismantleTimeout
-                )
-            } catch {
-                return
-            }
-            guard let self,
-                  self.activitySheetArtifactID == expectedArtifactID,
-                  self.activeActivityLease?.id == expectedArtifactID,
-                  !self.activitySheetHasAppeared else {
-                return
-            }
-            self.activityDismantleWatchdogTask = nil
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.sharePackaging.error(
-                "tap_share_activity_dismantle_timeout kind=\(self.activeActivityLease?.kind.rawValue ?? "none", privacy: .public) outcome=forcedStateRelease"
-            )
-            #endif
-            self.endActivityPresentationAfterSystemDismissal(
-                expectedArtifactID: expectedArtifactID
-            )
-        }
-    }
-
     private func discardPendingHandoff() {
-        let pendingPresentation = pendingHandoffPresentation
+        let discardedPresentation = pendingHandoffPresentation
         pendingHandoffPresentation = nil
-        pendingPresentation?.artifact.removeTemporaryDirectory()
+        discardedPresentation?.scheduleTemporaryDirectoryCleanup()
         if !hasActiveActivityPresentation, !isPreparing {
             preparationState = .idle
         }
     }
 
     private func resetPresentationState() {
-        activityAppearanceWatchdogTask?.cancel()
-        activityAppearanceWatchdogTask = nil
-        activityDismantleWatchdogTask?.cancel()
-        activityDismantleWatchdogTask = nil
-        activitySheetHasAppeared = false
         presentationID = nil
         preparationID = nil
-        preparationStartedAt = nil
         certificationRefreshID = nil
         subject = nil
         originalResource = nil
@@ -1138,9 +872,7 @@ class DepthAnalysisShareCoordinator: ObservableObject {
         popoverHasAppeared = false
         pendingHandoffPresentation = nil
         activityPresentation = nil
-        activeActivityLease = nil
         hasDeferredCertificationRefresh = false
-        resetProgressPresentation()
     }
 
     nonisolated private static func durationBucket(

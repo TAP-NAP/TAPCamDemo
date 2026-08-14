@@ -3,6 +3,7 @@
 //  TAPCamDemo
 //
 
+import Foundation
 import SwiftUI
 
 /// Stable Share leaf shared by photo, Live Photo, and TAP Video. The popover
@@ -47,9 +48,8 @@ struct DepthViewerShareControl: View {
         .background {
             DepthViewerSystemSharePresenter(
                 coordinator: coordinator,
-                presentation: coordinator.activityPresentation
+                expectedPresentationID: coordinator.activityPresentation?.id
             )
-            .id(coordinator.activityPresentation?.id)
         }
         .onReceive(
             NotificationCenter.default.publisher(for: .tapLibraryDidChange)
@@ -115,56 +115,51 @@ struct DepthViewerShareControl: View {
     }
 }
 
-/// Gives every system sheet an immutable attempt ID. SwiftUI may deliver the
-/// old sheet's binding and dismissal callbacks after a newer attempt begins;
-/// routing through this item-scoped presenter lets the coordinator reject
-/// those stale callbacks instead of closing the new sheet.
+/// Gives every system sheet an immutable attempt ID. The item binding is the
+/// primary end signal; SwiftUI `onDismiss` is an exact-ID, idempotent fallback.
+/// Neither path uses UIKit controller release as a resource-lifetime protocol.
 private struct DepthViewerSystemSharePresenter: View {
     @ObservedObject var coordinator: DepthAnalysisShareCoordinator
-    let presentation: TAPShareActivityPresentation?
+    let expectedPresentationID: UUID?
 
     var body: some View {
         Color.clear
             .frame(width: 0, height: 0)
             .sheet(
                 item: presentationBinding,
-                onDismiss: sheetDidDismiss
+                onDismiss: activitySheetDidDismiss
             ) { presentation in
                 VerificationExportActivityView(
-                    preparedSharePresentation: presentation,
-                    onAppeared: { [presentationID = presentation.id] in
-                        coordinator.activitySheetDidAppear(
-                            expectedArtifactID: presentationID
-                        )
-                    },
-                    onDismantled: { [presentationID = presentation.id] in
-                        coordinator.activityControllerDidDismantle(
-                            expectedArtifactID: presentationID
-                        )
-                    }
+                    sharePresentation: presentation
                 )
             }
     }
 
+    private func activitySheetDidDismiss() {
+        guard let expectedPresentationID else {
+            return
+        }
+        coordinator.activityPresentationDidEnd(
+            expectedArtifactID: expectedPresentationID
+        )
+    }
+
     private var presentationBinding: Binding<TAPShareActivityPresentation?> {
         Binding(
-            get: { presentation },
+            get: {
+                guard coordinator.activityPresentation?.id == expectedPresentationID else {
+                    return nil
+                }
+                return coordinator.activityPresentation
+            },
             set: { newPresentation in
-                if newPresentation == nil, let presentation {
-                    coordinator.activityBindingDidDismiss(
-                        expectedArtifactID: presentation.id
+                if newPresentation == nil, let expectedPresentationID {
+                    coordinator.activityPresentationDidEnd(
+                        expectedArtifactID: expectedPresentationID
                     )
                 }
             }
         )
-    }
-
-    private func sheetDidDismiss() {
-        if let presentation {
-            coordinator.activitySheetDidDismiss(
-                expectedArtifactID: presentation.id
-            )
-        }
     }
 }
 

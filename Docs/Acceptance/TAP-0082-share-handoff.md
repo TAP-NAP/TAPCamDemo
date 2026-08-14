@@ -1,6 +1,7 @@
 # TAP-0082 — TAP Share system handoff acceptance
 
-- Status: `In progress — four-path transport Pass; lifecycle repair pending`
+- Status: `Completed — four-path transport and integrated r3 lifecycle accepted;
+  explicit evidence exceptions retained below`
 - Related implementation: `TAP-0081`
 - Product Contract: §5.3, §8
 - Updated: `2026-08-14`
@@ -29,11 +30,13 @@ The current recovery restores the previously working system-native file-URL
 activity item for ordinary media and `.tapnap`. It removes the shared manual
 `NSItemProvider`/`UIActivityItemsConfiguration` transport while preserving the
 materialized package, exported `.tapnap` UTI, one system activity controller,
-and app-owned Share UI. The system controller is the final source owner:
-system/user dismissal, representable dismantling, or never-appeared recovery may
-end app state but must not explicitly delete its file; controller release
-performs the attempt-scoped idempotent cleanup. TAPCam does not install a
-destination-completion callback to proactively close the system presentation.
+and app-owned Share UI. The system controller retains the artifact while UIKit
+may inspect the file URL. The exact attempt's SwiftUI item binding and
+`onDismiss` fallback feed one exact-ID, idempotent app-owned end transition and
+schedule off-main cleanup without waiting for UIKit to release a cached
+controller; there is no timed appearance/dismantle watchdog or
+destination-completion callback. Controller release is observational only; it
+does not own or delay attempt-scoped cleanup.
 After the ineffective destination-completion callback was removed, the owner
 explicitly replied **“验收通过”** to the immediately preceding confirmation of
 the complete ordinary-image/`.tapnap` × Save to Files/AirDrop matrix, including
@@ -69,8 +72,13 @@ or terminal `scope=artifactLease` cleanup milestone before the next attempt.
 1. Launch the fixed build after a clean installation or cleared container, open
    TAP Library, enter the selected Viewer, open TAP Share, and first choose the
    ordinary **Share Image** path.
-   - Expected: app-owned preparation reaches ready and presents exactly one
-     system activity controller.
+   - Expected: selecting the format keeps the option list mounted and changes
+     only that row's existing subtitle slot from text to a thin determinate
+     preparation track. The title, icon, badge, row, popover, and sibling frames
+     do not move; no percentage or Cancel control appears. Other rows stay
+     visible but disabled. Payload readiness closes the app popover with no
+     separate preparation/ready page and presents exactly one system activity
+     controller.
 2. Choose **Save to Files**.
    - Expected: the Files destination picker remains presented; it must not flash
      and dismiss or report an invalid argument.
@@ -93,12 +101,12 @@ or terminal `scope=artifactLease` cleanup milestone before the next attempt.
 7. Repeat once, cancelling the system activity controller before choosing a
    destination, then share again.
    - Expected: cancellation dismisses cleanly, no stale activity blocks the next
-     attempt, that attempt's temporary package/media is cleaned after the
-     controller is released, and the next Save to Files/AirDrop handoff
-     succeeds.
+     attempt, that attempt's temporary package/media is cleaned after the exact
+     system-sheet binding ends even if UIKit retains its controller, and the
+     next Save to Files/AirDrop handoff succeeds.
 8. Review the fixed-build logs.
    - Expected: no manual-provider representation error; lifecycle logs identify
-     one preparation, one system presentation, and one controller-owned terminal
+     one preparation, one system presentation, and one exact-attempt terminal
      cleanup for each attempt, with no terminal
      `tap_share_temp_cleanup_failed` result. LaunchServices `Code=-54` alone is
      diagnostic context, not a pass or fail verdict.
@@ -134,9 +142,11 @@ supplied, so none is inferred here.
 - Transport checkpoint: the containing commit, subject **“Checkpoint working
   Share transport before lifecycle repair”**, on
   `codex/tap-share-system-handoff-recovery`. Candidate `35745be` failed
-  attended behavior. A lifecycle-fixed commit/build remains `Pending`.
-- Automated build: generic iPhoneOS `build-for-testing` passed. Tests compiled
-  but were not run.
+  attended behavior. A lifecycle-fixed commit and attended device build remain
+  `Pending`.
+- Automated build: the current uncommitted lifecycle/UI candidate passed both
+  generic iOS Simulator and generic iPhoneOS `build-for-testing` without
+  launching Simulator. Tests compiled but were not run.
 - Sending device/iOS: `iPhone 15 Pro (iPhone16,1), iOS 26.6`; attended actions
   were installed and performed by the owner; Codex did not install, launch, or
   debug the device.
@@ -145,7 +155,7 @@ supplied, so none is inferred here.
   Filenames, sizes, and hashes: `Pending`.
 - AirDrop result: ordinary image **Pass**; `.tapnap` **Pass**; both received and
   open. Receiving-device identity, filenames, sizes, and hashes: `Pending`.
-- Relevant runtime log: ordinary image and `.tapnap` both reached the system
+- Historical pre-repair runtime log: ordinary image and `.tapnap` both reached the system
   sheet. The `.tapnap` attempt recorded `activity_sheet_dismissed`, but no
   subsequent `activity_controller_dismantled` or terminal
   `tap_share_temp_cleanup_finished scope=artifactLease` before the next Share
@@ -155,8 +165,127 @@ supplied, so none is inferred here.
 - Human confirmation: **Pass** — owner replied **“验收通过”** to the explicit
   four-path matrix and artifact-openability confirmation.
 
-The attended transport matrix is complete and frozen by the containing
-checkpoint commit. Source ownership between controller construction and the
-coordinator's later handoff, prompt controller teardown, terminal temporary-file
-cleanup, corrected progress attribution, focused tests, and a lifecycle-fixed
-device build remain before this record can leave `In progress`.
+The attended transport matrix is complete. The later r3 implementation moves
+controller construction to the real post-popover system-sheet boundary and
+makes exact sheet end schedule off-main attempt cleanup. The current owner-
+supplied device log records one complete `.tapnap` attempt through system-sheet
+appearance, dismissal, controller release, and final artifact cleanup. The
+owner subsequently directed the current Share task to be treated as complete;
+the evidence that was not collected is preserved explicitly below rather than
+inferred.
+
+## Lifecycle repair item 1 candidate — presentation-bound construction and cleanup
+
+The first uncommitted lifecycle candidate made controller deinitialization the
+normal cleanup boundary. The owner's complete device log disproved that model:
+attempt A emitted `activity_sheet_dismissed`, attempt B subsequently reached
+`activity_sheet_appeared`, and A still emitted neither `controller_released` nor
+terminal `scope=artifactLease` cleanup. SwiftUI/UIKit may retain a dismissed
+controller, so its deinitialization is not an app-controlled resource protocol.
+
+The corrected uncommitted candidate retains direct `[fileURL]` transport,
+package bytes, UTI, Share choices, and popover UI while removing early system
+controller construction and deinit-dependent cleanup.
+
+- [x] Preparation creates only an attempt-scoped artifact presentation. It does
+      not construct `UIActivityViewController` while the app popover is visible.
+- [x] `UIActivityViewController` is created only when SwiftUI begins presenting
+      the system sheet, so LaunchServices URL inspection starts at handoff rather
+      than during app-owned preparation.
+- [x] A pending artifact presentation already counts as active; repeat Share
+      cannot start over it.
+- [x] The representable has no coordinator, appearance callback, dismantle
+      callback, or controller-to-coordinator closure.
+- [x] Appearance/dismantle watchdog state was removed. The exact item-binding
+      end and SwiftUI `onDismiss` fallback both feed one exact-ID, idempotent
+      transition that resets app-owned state.
+- [x] Exact sheet dismissal schedules the matching attempt's idempotent cleanup
+      on a utility serial queue even if UIKit retains its controller. Stale A
+      dismissal cannot clean or close B.
+- [x] Cancelling or discarding a pending handoff schedules the same exact
+      artifact cleanup without constructing a system controller.
+- [x] Generic iOS Simulator and generic iphoneos `build-for-testing` compile the
+      corrected app and tests without launching Simulator.
+- [x] Owner installs the candidate and accepts the revised lifecycle after
+      exercising the current device build. The earlier accepted four-path
+      transport matrix continues to cover image and `.tapnap` through Save to
+      Files and AirDrop; the latest lifecycle log itself contains one complete
+      `.tapnap` attempt only.
+- [ ] A single current log independently confirms both image and `.tapnap` paths:
+      open TAP Share, choose the format, enter the system sheet, cancel/finish,
+      immediately reopen TAP Share, and repeat once. Pass requires no blocked
+      Share button, no stale sheet, and successful Save to Files/AirDrop bytes.
+- [ ] Logs for each attempt show
+      `handoff_started → activity_controller_created → activity_sheet_appeared →
+      activity_sheet_dismissed → temp_cleanup_finished scope=artifactLease`.
+      `activity_controller_released` may occur later and is observational only;
+      it is no longer a cleanup prerequisite. Removed watchdog/dismantle and
+      `activity_wait_feedback_revealed ... phase=controllerConstruction`
+      milestones must not reappear.
+
+This item has now received the owner's device acceptance and completion
+direction. The closure commit containing this record freezes the accepted r3
+implementation; no hash is predeclared in this file. The owner superseded the 50/400 policy:
+the format tap now reveals progress immediately, payload readiness has no
+artificial minimum hold, and the system controller is constructed only after
+the app popover has ended.
+
+## Owner-approved progress and handoff simplification
+
+- [x] Remove the app-owned **ready / system-boundary** page and its simulated
+      system-sheet-close action from the prototype and native state model.
+- [x] An implemented format tap keeps the selector mounted and immediately
+      replaces only the clicked row's subtitle text with a thin determinate
+      track in the same fixed-height slot; no percentage or Cancel control is
+      added, and every other option stays visible but disabled.
+- [x] Remove the whole-popover preparation page rather than moving the old
+      ready/boundary transition one step earlier.
+- [x] Remove the 50 ms delayed reveal and 400 ms minimum-visible hold rather
+      than retaining timing branches or a compatibility shim.
+- [x] Payload readiness ends the app popover immediately; only then does the
+      sibling system sheet create `UIActivityViewController` and let UIKit /
+      LaunchServices inspect the file URL.
+- [x] Owner installed and accepted the revised lifecycle on device and directed
+      the current Share task to be marked complete.
+
+## Final lifecycle evidence and accepted exceptions
+
+The owner's final console sample records this exact `.tapnap` sequence:
+
+1. `tap_share_temp_cleanup_finished scope=tapnapResources` removes the
+   intermediate packaging resources.
+2. `tap_share_payload_ready` is followed by handoff and one direct-file-URL
+   activity-controller construction, reported as `under50ms`.
+3. LaunchServices, CKShare/SWY, and FileProvider probes occur before
+   `tap_share_activity_sheet_appeared`; they do not prevent the system sheet
+   from appearing and do not authorize private entitlements or a return to the
+   failed manual item-provider transport.
+4. `tap_share_activity_sheet_dismissed` is followed by
+   `tap_share_activity_controller_released` and
+   `tap_share_temp_cleanup_finished scope=artifactLease`, proving the final
+   temporary directory is absent at the end of that attempt.
+
+The owner explicitly directed closure with “当前任务我觉得可以视为标记为完成”.
+That decision accepts these disclosed evidence exceptions:
+
+- focused XCTest targets compiled successfully but were not executed for the
+  final r3 candidate;
+- the final console sample independently proves one `.tapnap` lifecycle, not a
+  second direct-image lifecycle or a controlled stale-attempt-A/new-attempt-B
+  sequence;
+- controller release precedes final cleanup in this sample, so the log does
+  not independently prove cleanup timing when UIKit retains the controller;
+- receiving-device identity, filenames, sizes, and hashes remain unrecorded.
+
+None of those uncollected facts is presented as observed. The earlier explicit
+four-path owner verdict remains the transport evidence for ordinary image and
+`.tapnap` through Save to Files and AirDrop. The final r3 log and owner verdict
+supply the integrated presentation/cleanup acceptance used for closure.
+
+The selected-row 2px determinate track represents only app-owned payload
+preparation. Payload readiness closes the popover immediately; TAPCam does not
+hold a false 99% state, restore the removed 400ms delay, or claim it can predict
+when the system-owned activity sheet is ready. Cold-install/update resource
+initialization and the observed 7.795-second first Library catalog load remain
+separate open work under TAP-0009/TAP-0083 and are not absorbed by this Share
+acceptance.

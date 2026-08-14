@@ -544,7 +544,7 @@ struct TAPDepthAnalysisPresentationTests {
         #expect(coordinatorSource.contains("case idle"))
         #expect(coordinatorSource.contains("case preparing"))
         #expect(coordinatorSource.contains("case failed"))
-        #expect(coordinatorSource.contains("case ready"))
+        #expect(!coordinatorSource.contains("case ready"))
         #expect(popoverSource.contains("share.option.package.title"))
         #expect(popoverSource.contains("share.option.image.title"))
         #expect(popoverSource.contains("share.option.sticker.title"))
@@ -558,7 +558,6 @@ struct TAPDepthAnalysisPresentationTests {
         #expect(coordinatorSource.contains("message=本地完整性检查通过"))
         for identifier in [
             "tap.share.selection",
-            "tap.share.preparation",
             "tap.share.failure",
             "tap.share.status",
             "tap.share.package",
@@ -566,7 +565,6 @@ struct TAPDepthAnalysisPresentationTests {
             "tap.share.sticker",
             "tap.share.link",
             "tap.share.progress",
-            "tap.share.progress.phase",
             "tap.share.cancel",
             "tap.share.retry"
         ] {
@@ -574,13 +572,15 @@ struct TAPDepthAnalysisPresentationTests {
         }
         #expect(popoverSource.contains("private var activeContent"))
         #expect(popoverSource.contains("case .selection:"))
-        #expect(popoverSource.contains("case .preparation:"))
         #expect(popoverSource.contains("case .failure:"))
         #expect(!popoverSource.contains(".opacity(shows"))
         #expect(!popoverSource.contains("tap.share.presentation"))
         #expect(controlSource.contains("for: .tapLibraryDidChange"))
-        #expect(popoverSource.contains("share.preparing.package.title"))
-        #expect(popoverSource.contains("format: .percent"))
+        #expect(!popoverSource.contains("private var preparationContent"))
+        #expect(popoverSource.contains("coordinator.preparationProgress(for: option)"))
+        #expect(popoverSource.contains("ProgressView(value: progress ?? 0)"))
+        #expect(popoverSource.contains(".frame(height: 2)"))
+        #expect(!popoverSource.contains("format: .percent"))
         #expect(coordinatorSource.contains("TAPNAPShareArtifactBuilder"))
         #expect(!coordinatorSource.contains("hasValidCredential"))
         #expect(!coordinatorSource.contains("TAPVerificationExportBuilder"))

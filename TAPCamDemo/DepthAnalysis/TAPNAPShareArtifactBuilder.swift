@@ -155,9 +155,9 @@ nonisolated final class TAPNAPShareArtifact: Identifiable, @unchecked Sendable {
     }
 }
 
-/// Shared by every reference to one artifact. Explicit cleanup after
-/// pre-handoff cancellation or controller release is the normal path; deinit
-/// is the abnormal-presentation fallback that prevents a
+/// Shared by every reference to one artifact. Explicit cleanup after a
+/// pre-handoff cancellation or the exact system-sheet binding end is the normal
+/// path; deinit is the abnormal-presentation fallback that prevents a
 /// temporary package from leaking if its SwiftUI owner disappears mid-handoff.
 private nonisolated final class TAPNAPShareTemporaryDirectoryLease: @unchecked Sendable {
     private let directoryURL: URL
@@ -268,8 +268,8 @@ nonisolated enum TAPNAPShareArtifactError: LocalizedError, Equatable, Sendable {
 /// user explicitly selects the package option in the anchored TAP Share popover.
 /// Background pre-generation and persistent package caching are prohibited.
 /// Every output lives in a per-share temporary directory. A cancelled or stale
-/// pre-handoff attempt cleans immediately; after handoff, the activity
-/// controller's release performs the attempt-scoped cleanup.
+/// pre-handoff attempt cleans immediately; after handoff, the exact system-sheet
+/// binding end schedules attempt-scoped cleanup away from the main thread.
 nonisolated struct TAPNAPShareArtifactBuilder: Sendable {
     typealias ProgressHandler = @Sendable (Double?) -> Void
     typealias PendingSnapshotter = @Sendable (

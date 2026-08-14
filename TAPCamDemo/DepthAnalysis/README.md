@@ -101,10 +101,10 @@ Share uses the app-owned, on-demand flow:
 1. Open one lightweight TAP Share popover anchored to the Viewer's bottom-left
    Share control. Photo, Live Photo, and TAP Video use this same stable control,
    coordinator, presentation, and preparation state machine.
-2. Keep credential state, format selection, hidden fast preparation, visible
-   progress, cancellation, public-safe failure, and Retry in that one anchored
-   app-owned surface. The Viewer, mixed-media pager, playback session, and
-   toolbar remain mounted behind it.
+2. Keep credential state, format selection, immediate preparation progress,
+   public-safe failure, and Retry in that one anchored app-owned
+   surface. The Viewer, mixed-media pager, playback session, and toolbar remain
+   mounted behind it.
 3. While the Viewer is open, resolve the complete original from local storage
    or iCloud. Share remains disabled until the photo original, complete Live
    Photo pair, or video original is held by a short-lived Viewer lease.
@@ -114,21 +114,28 @@ Share uses the app-owned, on-demand flow:
    object because the registered public key remains backend-owned. It never
    contacts the TAP backend or App Attest Verify service. The same popover shows
    a text-free skeleton until the three-state result is known.
-5. Generate the selected payload only after the user chooses it. Work
-   completed within 50 ms does not insert progress UI. If work is still running
-   after 50 ms, the popover changes in place to determinate, monotonic progress;
-   once shown, progress remains visible for at least 400 ms and reaches 100%
-   before handoff.
-6. Dismiss the app-owned popover only after the payload is ready, then present
-   exactly one sibling system activity controller. TAPCam does not nest,
-   imitate, or embed the system destination chooser inside its popover.
+5. Generate the selected payload only after the user chooses it. Keep the option
+   list mounted and replace only the clicked row's existing subtitle text with a
+   thin, determinate, monotonic track inside the same fixed-height slot. Keep its
+   title, icon, badge, row height, popover size, and sibling positions unchanged;
+   do not add a percentage or Cancel control. Every other option remains visible
+   but disabled. There is no separate preparation page, delayed reveal, or
+   artificial minimum display duration.
+6. As soon as the payload is ready, dismiss the app-owned popover and present
+   exactly one sibling system activity controller. There is no intermediate
+   whole-popover preparation page or app-owned ready/boundary page. TAPCam does
+   not nest, imitate, or embed the system destination chooser inside its
+   popover.
 7. Remove an attempt immediately when it is cancelled or invalidated before
-   system handoff. After handoff, system/user dismissal, representable
-   dismantling, or never-appeared recovery ends app-owned presentation state,
-   while the activity controller keeps the materialized file alive until UIKit
-   releases that controller; only then does the shared attempt lease perform
-   idempotent cleanup. TAPCam does not install a destination-completion
-   callback to proactively close the system activity controller.
+   system presentation. Do not preconstruct `UIActivityViewController` inside
+   the app-owned popover: its initializer already causes LaunchServices to
+   inspect the URL. Construct it only when the sibling system sheet begins.
+   The exact attempt's SwiftUI item binding and `onDismiss` fallback feed one
+   exact-ID, idempotent end transition and schedule cleanup away from the main
+   thread. A controller retained internally by UIKit after dismissal does not
+   extend the temporary file lifetime. TAPCam does not install a
+   destination-completion callback to proactively close the system activity
+   controller.
 
 TAPCam-owned captures display their persisted credential/protection and
 verifiability state. Viewing or sharing one does not run a new backend Verify
@@ -161,24 +168,18 @@ per-attempt temporary directory only while the system activity controller may
 read it. System handoff gives `UIActivityViewController` one materialized file
 URL for every supported artifact kind; UIKit and LaunchServices resolve the
 file type from the URL plus the app's exported UTI declaration. The activity
-controller strongly owns the source lease. System/user sheet dismissal,
-representable dismantling, or never-appeared recovery may clear coordinator
-state, but must not explicitly delete a handed-off source while that controller
-still exists. Controller release performs the attempt-scoped, idempotent
-directory cleanup. Attempts cancelled or superseded before handoff clean immediately. A
-later share tap starts a new on-demand generation. The share path
-never asks the backend to attest or verify a capture again; it only checks that
-the embedded digest/content binding still matches the exact local or
-iCloud-downloaded bytes about to be shared. This local gate must not be
+controller is created only after the app-owned popover has disappeared and the
+system sheet begins presentation; UIKit must not inspect a future activity item
+during app-owned preparation. The pending presentation counts as an active
+attempt and owns the source until that handoff. The exact attempt's sheet
+binding is the normal terminal boundary and schedules idempotent directory
+cleanup on a utility serial queue. UIKit controller caching after dismissal is
+not a source-lifetime protocol. Attempts cancelled before system presentation
+clean immediately. A later share tap starts a new on-demand generation. The
+share path never asks the backend to attest or verify a capture again; it only
+checks that the embedded digest/content binding still matches the exact local
+or iCloud-downloaded bytes about to be shared. This local gate must not be
 described as independent App Attest assertion-authenticity proof.
-
-The transport checkpoint intentionally leaves one ownership gap open: UIKit
-begins probing the file URL while the preconstructed activity controller is
-created, before the coordinator's later popover-disappearance handoff. Until
-that lifecycle is simplified, code must not treat every pending presentation as
-safe for eager deletion merely because the SwiftUI sheet has not appeared yet.
-The checkpoint proves working transport, not terminal controller release or
-attempt-directory cleanup.
 
 Still photos and Live Photos can prepare the current `.tapnap` still/live
 package contract. TAP Video opens the same TAP Share popover and can prepare an

@@ -66,8 +66,6 @@ from each record's `Status` field.
 
 ### Doing
 
-- `TAP-0081` Unify TAP Share selection and preparation into an anchored handoff
-- `TAP-0082` Device acceptance: TAP Share anchored handoff and anti-flash progress
 - `TAP-0083` Eliminate cold-path UI starvation and codify responsiveness guardrails
 
 ### Done
@@ -96,6 +94,9 @@ from each record's `Status` field.
 - `TAP-0078` Extract the canonical TAP Video format contract and remove old video plans
 - `TAP-0079` Migrate historical evidence and remove AITrace, dated scorecards, and old acceptance snapshots
 - `TAP-0080` Migrate Locked Camera experiment guardrails and remove main-tree experiment prose
+- `TAP-0081` Unify TAP Share selection and preparation into an anchored handoff
+- `TAP-0082` Device acceptance: TAP Share anchored handoff and anti-flash progress
+
 ### Deprecated
 
 - `TAP-0063` First-install page appearance implicitly requests permissions
@@ -579,12 +580,18 @@ Every active Task uses these stable fields:
   all five rows.
 - Related: `TAP-0040`, `TAP-0050`, `TAP-0063`
 - Created: `2026-08-12`
-- Updated: `2026-08-12`
+- Updated: `2026-08-14`
 - Revision History:
   - `2026-08-12` Expanded from Photos-only to every first-install action.
   - `2026-08-12` Repository audit added early Photo Library observer
     registration and startup poster backfill as explicit implementation paths
     that must be removed or proven inert before the corresponding Allow action.
+  - `2026-08-14` Classified the latest cold/overwrite-install device log without
+    changing status. The excerpt begins after runtime startup work and contains
+    no setup-row/button timeline, so it neither proves nor disproves an
+    explicit-action violation. TAP-0008 remains Todo, and TAP-0040 still owns a
+    separate clean-install run that starts before the first setup interaction;
+    Share completion under TAP-0081/TAP-0082 supplies no substitute evidence.
 
 ### TAP-0009 — Enforce first-frame camera-interactive readiness
 
@@ -677,7 +684,7 @@ Every active Task uses these stable fields:
   attended acceptance.
 - Related: `TAP-0006`, `TAP-0041`, `TAP-0047`, `TAP-0083`
 - Created: `2026-08-12`
-- Updated: `2026-08-13`
+- Updated: `2026-08-14`
 - Revision History:
   - `2026-08-12` Owner clarified that session configuration alone is not ready.
   - `2026-08-12` Repository audit confirmed the current readiness state does
@@ -734,6 +741,16 @@ Every active Task uses these stable fields:
     statement, fixture, and QA evidence. This closes the previously recorded
     metadata-sync remainder without changing scope or implementation status.
     TAP-0009 remains Todo pending native implementation and TAP-0041 evidence.
+  - `2026-08-14` Added a diagnostic baseline from the owner's latest cold/
+    overwrite-install session: the first usable 908-item catalog snapshot
+    completed in `7795 ms`. This is evidence for the second readiness group in
+    the approved Resource Initialization invariant, not implementation or
+    acceptance. The excerpt does not contain a first-frame checkpoint, safe
+    shutter/control/haptics readiness, an initialization-version marker write,
+    interruption behavior, or current-marker repeated-launch bypass. TAP-0009
+    therefore remains Todo and TAP-0041 still requires its independently
+    revised clean-install/reinstall/update procedure. TAP-0081/TAP-0082 closure
+    does not absorb or close this work.
 
 ### TAP-0010 — Align Network bounded auto-retry and manual Retry
 
@@ -1361,7 +1378,7 @@ Every active Task uses these stable fields:
 
 ### TAP-0081 — Unify TAP Share selection and preparation into an anchored handoff
 
-- Status: `Doing`
+- Status: `Done`
 - Kind: `Fix`
 - Priority: `P0`
 - Domain: `Share / Viewer`
@@ -1396,16 +1413,28 @@ Every active Task uses these stable fields:
   embedded-proof/content-binding byte-integrity gate. It must not call the TAP backend or
   run App Attest assertion/credential Verify. Share-specific copying, TAPNAP
   packaging, or other payload generation still begins only after format
-  selection, and the system activity controller appears only after the selected
-  payload is ready. Photo, Live Photo, and TAP Video use the same presentation
-  and lifecycle while retaining their existing capability matrix. Synchronize
+  selection. Before preparation, each option row shows its normal subtitle
+  text. Selecting a Share type keeps the selector hierarchy mounted and
+  immediately replaces only that clicked row's subtitle text, inside the same
+  fixed slot, with a 2px determinate progress track. No percentage or Cancel
+  control appears; every sibling option remains visible but disabled. The
+  title, icon, recommendation badge, row, popover, sibling geometry, and view
+  identity remain stable. There is no whole-popover preparation page and no
+  separate app-owned ready/boundary page. As soon as the payload is ready,
+  TAPCam closes the popover. Only after the real popover-dismissal/system-sheet
+  presentation boundary may TAPCam construct `UIActivityViewController`; it
+  must not preconstruct the controller or trigger LaunchServices/FileProvider
+  probing while the app-owned popover is still visible. Photo, Live Photo, and
+  TAP Video use the same presentation and
+  lifecycle while retaining their existing capability matrix. Synchronize
   the Viewer toolbar with the refined approved prototype treatment: Share and
   Delete use the prototype's custom vector glyphs in 20pt boxes, optically
   centered in 42pt circular backgrounds matching the top-left Back button.
   The middle `RAW / 2D / 3D` mode capsule remains compact and centered at its
   intrinsic approved width; it must not flex-fill the remaining toolbar space.
-  The Share preparation ring must use the same 42pt control center without
-  moving or resizing the 20pt vector when progress appears.
+  The Viewer Share control's existing pre-selector resource-readiness ring must
+  use the same 42pt control center without moving or resizing the 20pt vector;
+  it is not the selected option's payload-preparation indicator.
 - States: Resource readiness precedes credential presentation. While an
   original resource is absent or downloading from iCloud, the Viewer owns the
   loading state and keeps Share disabled; this is not a fourth credential
@@ -1418,30 +1447,36 @@ Every active Task uses these stable fields:
   inferred for a Photos/iCloud asset. `failed` covers local proof/binding or
   resource-set mismatch and terminal queue failure. A missing Pending Capture
   Queue record for a Photos/iCloud asset is not itself failure evidence; the
-  ready media determines the result. Idle format selection, the hidden
-  fast-preparation grace period, visible preparing progress, completed handoff,
-  cancellation, and recoverable preparation failure remain part of the same
-  state machine. Work completed within 50 ms never inserts progress UI. Work
-  still running after 50 ms reveals progress, and once revealed it remains
-  visible for at least 400 ms. Progress is monotonic; early completion shows
-  100% until the minimum duration elapses, then hands directly to the system
-  controller without an intermediate blank frame, Viewer rebuild, or
-  full-screen flash. Destination selection, transfer progress, completion, and
+  ready media determines the result. Idle format selection shows normal
+  subtitle text. Preparation keeps the selector hierarchy mounted and swaps
+  only the clicked row's fixed subtitle slot to an immediately visible 2px
+  determinate track; title, icon, badge, row, popover, sibling geometry, and
+  identity do not change, and sibling options remain visible but disabled. No
+  percentage or Cancel control is shown. Payload-ready popover dismissal,
+  completed handoff, and recoverable preparation failure remain part of the
+  same state machine. The former 50 ms delayed reveal and 400 ms minimum-visible
+  hold are superseded and
+  must be removed; payload readiness, not an artificial timer, whole-popover
+  preparation page, or app-owned ready page, advances the flow. After
+  the popover has actually disappeared, TAPCam constructs the controller at the
+  real system-sheet boundary and presents it without preconstruction or early
+  system probing. Destination selection, transfer progress, completion, and
   dismissal remain system-owned once the activity controller is presented;
   TAPCam does not install a destination-completion callback to proactively
   close that controller.
-- Failure / Recovery: Cancel stops the active preparation and removes its
-  per-attempt temporary directory when no system handoff owns that source. A
-  public-safe preparation failure remains in the anchored surface and offers
+- Failure / Recovery: There is no app-owned Cancel control during preparation.
+  If the app-owned presentation is torn down before system handoff, the active
+  preparation stops and its per-attempt temporary directory is removed when no
+  system handoff owns that source. A public-safe preparation failure remains in
+  the anchored surface and offers
   Retry for the same option. Dismissing the app-owned surface cleans an
-  unhanded attempt. Once a source has been handed to the system activity
-  controller, user/system dismissal, representable dismantle, or the bounded
-  never-appeared recovery ends coordinator/presentation state but is not an
-  independent signal that a destination has finished reading the URL and must
-  not delete the source. The activity
-  controller strongly owns the artifact; controller deinitialization performs
-  explicit, attempt-scoped, idempotent cleanup after that final owner releases
-  it, while artifact-lease deinitialization remains an abnormal-path fallback.
+  unhanded attempt. Controller construction begins only at the exact system-
+  sheet boundary after popover dismissal. The exact attempt's sheet-end signal
+  ends coordinator/presentation state and asynchronously performs idempotent
+  cleanup of that attempt's artifact; a stale attempt-A end signal must not
+  clean attempt B. Controller deinitialization is not a normal cleanup boundary
+  because SwiftUI/UIKit may retain or cache the controller after dismissal;
+  artifact-lease deinitialization remains only an abnormal-path fallback.
   Credential refresh may invalidate an option but must not delete an attachment
   still owned by a system consumer. Local integrity failure disables the TAPNAP
   package option but preserves the applicable ordinary image/video share option
@@ -1461,24 +1496,32 @@ Every active Task uses these stable fields:
   50 ms reveal plus 200 ms minimum visibility, with progress in a sheet footer
   rather than the approved Share-anchored state. This remains historical
   comparison evidence, not a description of the current implementation.
-- Current Implementation Evidence: The native Share implementation is split
-  across `DepthAnalysisShareCoordinator`, `DepthAnalysisSharePopover`, and the
-  stable `DepthViewerShareControl` leaf shared by Photo, Live Photo, and TAP
-  Video. The control anchors one app-owned popover to the Viewer Share action;
-  coordinator-owned selection/preparation/failure state stays outside the
-  Viewer, pager, and playback session; the later system activity controller is
-  a sibling presentation rather than a nested app-owned modal flow. The active
-  policy is 50 ms delayed reveal plus 400 ms minimum visibility with monotonic
-  visible progress. `SharePopoverDismissalObserver` provides an explicit UIKit
-  `viewDidDisappear` completion signal so interactive popover dismissal runs
-  coordinator-state cleanup instead of relying only on a SwiftUI binding write.
-  `TAPNAPShareArtifact` carries a shared, reference-counted temporary-directory
-  lease. The current recovery makes `TAPObservedActivityViewController` the
-  strong final owner of a handed-off artifact: user/system dismissal,
-  representable dismantle, and never-appeared recovery only release app-owned
-  state, while
-  controller deinitialization explicitly performs idempotent cleanup and the
-  artifact lease supplies an abnormal-path fallback. The previous
+- Current Native r3 Candidate Evidence: The accepted direct-file-URL transport
+  checkpoint and the current uncommitted r3 implementation are split across
+  `DepthAnalysisShareCoordinator`, `DepthAnalysisSharePopover`,
+  `DepthViewerShareControl`, and `VerificationExportActivityView`. The stable
+  control still anchors one app-owned popover to the Viewer Share action, while
+  coordinator-owned selection/preparation/failure state remains outside the
+  Viewer, pager, and playback session. The selector hierarchy now remains
+  mounted during preparation: the clicked row keeps its title, icon, badge, row,
+  and fixed subtitle slot, and that slot overlays the normal subtitle with an
+  immediately visible 2px determinate track. No preparation percentage or
+  Cancel control is inserted, other rows remain visible but disabled, and the
+  selector/row/popover geometry and identity remain stable. The ready page,
+  50 ms reveal delay, and 400 ms minimum hold are removed. Payload readiness
+  closes the popover and stores an artifact-owning pending presentation without
+  constructing UIKit;
+  only the actual popover-disappearance/system-sheet boundary promotes that
+  attempt, and `makeUIViewController` then constructs its one
+  `UIActivityViewController`. The exact item Binding is the primary end signal;
+  SwiftUI `onDismiss` is an exact-ID, idempotent fallback into the same end
+  transition. That transition schedules attempt-scoped cleanup away from the
+  main thread, does not wait for controller deinitialization, and ignores a stale
+  attempt-A end after B becomes active. There is no destination-completion auto-
+  close callback or timed appearance/dismantle watchdog, and package, image, and
+  video continue to pass the materialized file URL directly to the system
+  controller. The candidate is implemented but remains uncommitted and has not
+  received native/device owner acceptance. The previous
   `DepthAnalysisShareSheet.swift` implementation has been removed. Photo and
   Live Photo now publish a complete original-photo lease, including the paired
   MOV required by Live Photo, before depth analysis finishes; TAP Video owns an
@@ -1626,61 +1669,69 @@ Every active Task uses these stable fields:
   and launched on the same recorded iPhone 15 Pro / iOS 26.6. The product owner
   explicitly accepted the fixed result and directed TAP-0081/TAP-0082 closure.`
 - Prototype Path/Revision/Approval: `Prototype/index.html`; approved geometry
-  and anchored-handoff base `TAP-0081-r1`; current incremental visual revision
-  `TAP-0081-r2-candidate`; manifest `Prototype/manifest.json`; QA
-  `Prototype/design-qa.md`. The owner approved exact base revision
-  `TAP-0081-r1` on `2026-08-12` and approved the incremental local-integrity
-  behavior on `2026-08-13`. After the final 42pt/20pt/compact toolbar update,
-  the owner explicitly approved the exact current candidate with “已确认没有问题
-  请继续实施 Swift UI”; its Board approval state is now `ownerApproved`.
-  Prototype source commit `70e8b60d4e20486a6d4847d726b393a50e22c7ba`
-  synchronizes `Prototype/manifest.json` and `Prototype/design-qa.md` to that
-  exact `TAP-0081-r2-candidate` approval. The
+  and anchored-handoff base `TAP-0081-r1`; approved resource/local-integrity and
+  toolbar revision `TAP-0081-r2-candidate`; exact current preparation revision
+  `TAP-0081-r3-candidate`; manifest `Prototype/manifest.json`; QA
+  `Prototype/design-qa.md`. The owner approved the exact r3 candidate on
+  `2026-08-14` with “对的 现在原型是我想要的”; its Board approval state is
+  `ownerApproved`. The r3 authority keeps every option row and the selector
+  mounted, shows normal subtitle text before preparation, and replaces only the
+  clicked row's subtitle inside the same fixed slot with a 2px determinate track
+  during preparation. It adds no percentage or Cancel control; title, icon,
+  recommendation badge, row, popover, sibling geometry, and identity remain
+  stable; other rows stay visible but disabled; payload readiness closes the
+  popover without an independent preparation or ready page. Prototype source
+  commit `70e8b60d4e20486a6d4847d726b393a50e22c7ba` remains the historical r2
+  approval checkpoint. The
   owner selected the anchored format reference
   `exec-23c261dc-836c-4ffb-8bb0-492a01ab9816.png`, approved the preparation
   reference `exec-5f02b050-0547-4bd2-aed2-7243a9da1c5e.png`, and explicitly
-  approved the 50 ms reveal / 400 ms minimum-visible policy in the development
-  conversation. Those generated images are review evidence, not the canonical
-  prototype. The repository-owned final updated r2 revision—not the generated
-  images—is the approved authority. Its refined toolbar uses custom Share/Delete
+  previously approved the 50 ms reveal / 400 ms minimum-visible policy in the
+  development conversation; exact r3 supersedes that preparation behavior.
+  Those generated images are review evidence, not the canonical prototype. The
+  repository-owned r3 revision—not the generated images—is the current approved
+  authority. Its refined toolbar uses custom Share/Delete
   vectors in 20pt boxes, 42pt circular backgrounds matching Back, optically
   concentric vector/background/progress-ring centers, and a compact
   intrinsic-width center mode capsule. `/root` is authorized to implement the
   full approved revision in SwiftUI.
-- Prototype Evidence: `node Prototype/prototype.test.mjs` passes; browser review
-  exercised selection, slow/threshold preparation, Cancel, Failure, Retry,
-  system-dismissal return, media variants, and credential variants. The 120 ms
-  threshold fixture observed reveal at 51 ms and system-boundary handoff at
-  452 ms. Review captures are
+- Prototype Evidence: The earlier `node Prototype/prototype.test.mjs` pass and
+  browser review exercised r1/r2 selection, slow/threshold preparation, Cancel,
+  Failure, Retry, system-dismissal return, media variants, and credential
+  variants. The earlier 120 ms threshold fixture observed reveal at 51 ms and
+  system-boundary handoff at 452 ms. Those timer/Cancel observations are now
+  superseded UI history. Review captures are
   `Prototype/evidence/TAP-0081-r1-selection-full.png` and
   `Prototype/evidence/TAP-0081-r1-preparing-full.png`. The r2 candidate adds
   repository captures for resource loading, text-free local-integrity resolving,
   and failed-integrity degradation, together with combined comparison images
-  listed in `Prototype/manifest.json`. These establish Web visual/state QA only,
-  while the owner's explicit statement establishes exact visual approval. They
-  do not establish native timing, cryptographic assertion authenticity, or
-  physical-device acceptance.
-- Prototype Impact: Approved `TAP-0081-r1` remains the anchored
-  selection/preparation authority except for the toolbar geometry explicitly
-  superseded by the owner's refined 42pt/20pt/compact-capsule decision.
-  `TAP-0081-r2-candidate` now covers the
+  listed in `Prototype/manifest.json`. Exact r3 manifest/QA evidence records the
+  stable selector, rows, icons, titles, subtitle slots, badges, and popover
+  geometry plus the selected-slot 2px track, with neither percentage nor Cancel
+  UI. These establish Web visual/state QA only, while the owner's exact quote
+  establishes `ownerApproved`; they do not establish native parity, timing,
+  cryptographic assertion authenticity, or physical-device acceptance.
+- Prototype Impact: Approved `TAP-0081-r1` remains the anchored selector base,
+  and `TAP-0081-r2-candidate` remains authority for the
   previously missing Share-disabled original loading/unavailability states,
   text-free local-integrity resolution, queue-only Needs Retry, and Failed
   package-disabled/warned-direct-media degradation for Photo, Live Photo, and
-  TAP Video. Exact r2 visual approval and the owner's native result acceptance
-  are complete. The approved
-  current revision requires 42pt Back-matched outer circles, custom vectors in
+  TAP Video and the refined toolbar. Exact `TAP-0081-r3-candidate` supersedes
+  r1/r2 preparation timing and Cancel UI: the selected subtitle slot swaps to a
+  2px determinate track with no percentage or Cancel while all geometry and
+  identity remain stable. The approved current revision requires 42pt
+  Back-matched outer circles, custom vectors in
   concentric 20pt boxes, a shared Share progress-ring center, and a compact
-  non-flex-fill mode capsule. SwiftUI and the prototype manifest/QA carry this
-  authority. The interim 54/25/18/flexible geometry has no continuing authority.
+  non-flex-fill mode capsule. The prototype manifest/QA carries this current
+  authority; SwiftUI must be synchronized and accepted against it. The interim
+  54/25/18/flexible geometry has no continuing authority.
 - Implementation Gate: `TAP-0006` supplies the repository-owned prototype
   foundation. Exact Share revision `TAP-0081-r1` received owner approval on
   `2026-08-12`; the prototype gate is satisfied and SwiftUI implementation is
   authorized. The owner subsequently approved the local-integrity behavior and
   directed implementation to continue. Native implementation and focused-test
   handoff plus a generic-Simulator Release build are recorded above. The owner
-  has now approved the exact final updated r2 prototype and explicitly directed
-  `/root` to continue SwiftUI implementation. The resulting
+  previously approved exact r2 and its native implementation. That historical
   native build was delivered to the connected physical device at the owner's
   direction; post-change Simulator comparison was intentionally skipped. The
   owner-approved narrow regression fix removed `CameraView`'s forced outer
@@ -1688,14 +1739,18 @@ Every active Task uses these stable fields:
   visibility with `isViewerPresented`, and changes fallback bottom padding from
   20 to the prototype-matched 25. Diff check, prototype static tests, and the
   repeated Debug device build/install/launch passed. Commit `bf20b52` freezes
-  the final cold-share remediation; its device delivery and owner verdict are
-  recorded under TAP-0082. Handoff review is accepted and this Task is Done.
+  that historical cold-share remediation; its device delivery and owner verdict
+  are recorded under TAP-0082. The reopened current gate is now satisfied only
+  at the Web-prototype layer: exact `TAP-0081-r3-candidate` is ownerApproved, but
+  native r3 parity, focused build/test evidence, and TAP-0082 attended device
+  acceptance remain open, so TAP-0081 stays Doing.
 - Documentation Impact: `Docs/ProductContract.md §5.3/§6`,
   `TAPCamDemo/DepthAnalysis/README.md`,
-  `TAPCamDemo/DepthAnalysis/Playback/PLAYBACK.md`, the r2 candidate Web
-  prototype/manifest/QA, and
-  `Docs/Acceptance/TAP-0048-web-swiftui-parity.md` are synchronized with the
-  revised implementation boundary. `Docs/UIPrototypeContract.md` needs no
+  `TAPCamDemo/DepthAnalysis/Playback/PLAYBACK.md`, the r2 historical Web sources,
+  and `Docs/Acceptance/TAP-0048-web-swiftui-parity.md` record the historical
+  implementation boundary. Exact r3 prototype/manifest/QA now defines the
+  owner-approved current UI authority; native/module/acceptance synchronization
+  remains required before Done. `Docs/UIPrototypeContract.md` needs no
   behavior-specific change because the prototype-first authority model is
   unchanged. `Docs/TAPVideoFormatContract.md §7` is synchronized with the
   independent-inode working generation, atomic media/record commit, rollback,
@@ -1717,8 +1772,9 @@ Every active Task uses these stable fields:
 - Done When: A repository-owned prototype and manifest cover Photo, Live Photo,
   and TAP Video fixtures plus resource-not-ready Share disabling, local
   integrity resolving/result states, the failed-integrity ordinary-media
-  warning/package-disabled degradation, credential selection, hidden-fast,
-  visible progress, 100%-handoff, Cancel, failure, and Retry states; the owner
+  warning/package-disabled degradation, credential selection, the normal
+  pre-preparation subtitle, selected-row determinate preparation, payload-ready
+  popover dismissal, failure, and Retry states; the owner
   approves that revision; SwiftUI matches it without the separate app-owned
   modal format sheet; complete original readiness gates Share for every media
   kind; Photos/iCloud certification comes from local validation of the actual
@@ -1726,12 +1782,15 @@ Every active Task uses these stable fields:
   remains queue-only; no Share path calls backend/App Attest Verify; and the
   exact locally validated resource stays bound to the later payload attempt.
   The resource/status matrix, local pass/mismatch, missing exported record,
-  iCloud loading/unavailability, package-disable/media-warning behavior, 50/400
-  timing policy, monotonic progress, cancellation, cleanup, stale-callback, and
-  ready-only system-presentation boundaries have focused tests. The custom UTI
+  iCloud loading/unavailability, package-disable/media-warning behavior,
+  subtitle-to-2px-determinate-track swap, stable geometry/identity, disabled
+  visible sibling rows, absence of percentage/Cancel and independent prep/ready
+  pages, monotonic progress, cleanup, stale-callback, and ready-only system-
+  presentation boundaries have focused tests. The custom UTI
   declares public data/content/ZIP conformances; the system handoff carries its
-  explicit type; activity completion and sheet/UIKit dismissal are tested in
-  either order with stale-attempt protection and idempotent cleanup; and a cold
+  explicit type; exact-attempt sheet end, SwiftUI/UIKit dismissal, stale-attempt
+  protection, and asynchronous idempotent cleanup are tested without depending
+  on a destination-completion callback or controller deinitialization; and a cold
   first Share publishes an app-owned visible response before scalable work,
   with structured milestones through system-controller appearance/dismissal.
   An attended
@@ -1744,8 +1803,8 @@ Every active Task uses these stable fields:
   prototype manifest, and acceptance impact are synchronized; and the owner
   completes the requested implementation/process audit, explicitly accepts the
   transient TAP Video disk/I/O tradeoff, and accepts the development handoff.
-  Physical-device system-share/iCloud evidence may remain open under `TAP-0082`
-  and does not silently become Simulator evidence.
+  Linked `TAP-0082` supplies attended physical-device system-share and exact r3
+  UI acceptance; Simulator evidence cannot substitute for that open gate.
 - Completion Audit: `Satisfied and owner-accepted for bf20b52 on 2026-08-13.`
   Approved Web states, native implementation, focused tests, Release build,
   custom UTI/provider lifecycle, cold-share remediation, module/contract sync,
@@ -1773,7 +1832,7 @@ Every active Task uses these stable fields:
   package/custom-UTI-specific explanation and points to their shared manual
   `UIActivityItemsConfiguration` / `NSItemProvider` handoff or source lifetime.
   The logs do not authorize a private LaunchServices entitlement.
-- Reopened Approved Scope: Do not create a rollback commit for the already
+- Superseded Reopened Approved Scope: Do not create a rollback commit for the already
   pushed candidate. On `codex/tap-share-system-handoff-recovery`, restore the
   pre-`bf20b52` system-native file-URL activity-item handoff for every current
   Share artifact kind, including ordinary media and `.tapnap`, while preserving
@@ -1803,6 +1862,26 @@ Every active Task uses these stable fields:
   persistent Share cache. This is
   a non-visual transport/lifetime repair: app-owned Share states, UI copy/text,
   geometry, icons, interaction, and the approved Web prototype do not change.
+- Current Owner-Approved Lifecycle Scope: Preserve the owner-accepted direct
+  file-URL transport and anchored format selector, but remove the app-owned
+  ready/boundary page and the 50 ms reveal delay plus 400 ms minimum hold.
+  Before preparation, each option shows its normal subtitle. Selecting a format
+  keeps the selector hierarchy mounted and immediately replaces only the
+  clicked row's subtitle, in the same fixed slot, with a 2px determinate track.
+  No percentage or Cancel control appears; title, icon, recommendation badge,
+  row, popover, sibling geometry, and identity remain stable, and all other rows
+  remain visible but disabled. There is no whole-popover preparation page.
+  Payload readiness immediately dismisses the app-owned popover; only after its
+  real disappearance may the system-sheet presenter construct
+  `UIActivityViewController`. No controller preconstruction or early
+  LaunchServices/FileProvider probing is
+  permitted. The exact attempt's system-sheet end signal asynchronously cleans
+  its artifact, independently of UIKit controller deinitialization, and stale
+  attempt-A termination cannot affect B. The affected Web prototype/manifest,
+  native implementation, tests, module/contract prose, and TAP-0082 device
+  procedure must be synchronized before Done. Exact `TAP-0081-r3-candidate` is
+  ownerApproved as the Web UI authority; the current native r3 implementation
+  remains uncommitted and awaits the owner's self-install/device verdict.
 - Failed Candidate Implementation Handoff: Candidate `35745be`
   registers each app-private per-attempt temporary file with default copy-backed
   `fileOptions: []` instead of `[.openInPlace]`. It remains one typed provider
@@ -1828,7 +1907,8 @@ Every active Task uses these stable fields:
   candidate commit `35745be` (`Fix TAPNAP system share transport`), and its
   signed iPhone build succeeded, but its subsequent physical-device transport
   result failed and therefore those automated checks do not satisfy TAP-0081.
-- Current Recovery Implementation State: The recovery represented by this Board
+- Historical Direct-File-URL Checkpoint State: The recovery represented by the
+  pre-r3 checkpoint
   revision is being frozen on `codex/tap-share-system-handoff-recovery` by the
   self-referential checkpoint commit titled
   `Checkpoint working Share transport before lifecycle repair`. The commit
@@ -1866,7 +1946,7 @@ Every active Task uses these stable fields:
   transport path only; TAP-0081 remains Doing until its focused tests execute
   successfully and the open teardown/progress lifecycle defects are repaired
   and evidenced.
-- Current Console-Warning And Lifecycle Audit: After the successful four-path
+- Superseded Checkpoint Console-Warning And Lifecycle Audit: After the successful four-path
   device verdict, the owner supplied Share console samples containing
   `NSOSStatusErrorDomain -10814`, CKShare/SWY option-loading, FileProvider,
   LaunchServices `Code=-54`, persona-service, and `System gesture gate timed
@@ -1902,18 +1982,73 @@ Every active Task uses these stable fields:
   `activityPresentationBinding` source-shape assertion. Generic iphoneos
   `build-for-testing` completed with exit code 0 after that cleanup; no new
   device or Simulator run is claimed by `/root`.
+- Owner-Approved Replacement Decision: The complete repeated-Share log proves
+  that the first attempt can publish its sheet-end milestone and clear
+  coordinator state while SwiftUI/UIKit still retains the old activity
+  controller through the next system sheet; controller deinitialization is
+  therefore rejected as the normal artifact-cleanup boundary. The owner also
+  rejected the app-owned ready/boundary page and the timer-shaped 50/400
+  transition. Exact owner-approved prototype `TAP-0081-r3-candidate` keeps the
+  anchored selector hierarchy mounted: normal subtitle before preparation ->
+  option tap -> only the clicked row's same fixed subtitle slot swaps to a 2px
+  determinate track while title/icon/badge/row/popover/sibling geometry and
+  identity stay fixed and sibling rows remain visible but disabled -> payload
+  ready -> immediate popover close -> controller construction at the real
+  system-sheet boundary -> system-owned sheet -> exact-attempt sheet end ->
+  asynchronous, idempotent artifact cleanup. No percentage, Cancel control, or
+  whole-popover preparation page is part of this sequence. The controller must
+  not be constructed and may not start system URL probes before the app-owned
+  popover is gone. This
+  decision preserves the accepted direct-file-URL transport matrix. The owner
+  explicitly approved the exact r3 Web prototype with “对的 现在原型是我想要的”,
+  but this does not accept a native candidate or claim native build, test,
+  device run, commit, or push evidence.
+- Pre-Closure Native r3 Candidate Validation: Generic iOS Simulator and generic
+  iphoneos `build-for-testing` both completed with exit code 0; Simulator was
+  not launched. The repository Web-prototype test, focused static/source
+  contract checks, `git diff --check`, and Swift parse checks passed. XCTest
+  targets were compiled by the builds but were not executed, so no XCTest pass
+  was claimed at that checkpoint. No physical-device install/run, owner native
+  verdict, commit, or push had yet been recorded for that candidate.
+- Current Closure Decision: `Accepted by the product owner on 2026-08-14.` The
+  owner reviewed the current log and explicitly directed “当前任务我觉得可以视为
+  标记为完成”. The exact r3 Web authority and native behavior retain
+  the same contract: a row's fixed subtitle slot alone becomes a 2px
+  determinate app-payload track; it is not held at 99%, padded by 400 ms, or
+  repurposed as a claim that the system sheet is ready. Payload readiness closes
+  the popover and the subsequent iOS-owned sheet takes over. The supplied log
+  completely covers one `.tapnap` attempt only: intermediate resource cleanup
+  at L70, payload ready at L72, handoff start at L73, controller creation in
+  under 50 ms at L74, system LaunchServices/FileProvider probes at L75–85,
+  sheet appearance at L86, dismissal at L93, controller release at L94, and
+  `artifactLease` cleanup at L95. It does not prove direct-image cleanup,
+  stale-attempt A/B isolation, or cleanup independent of controller release;
+  direct-image transport remains supported by the owner's earlier accepted
+  ordinary-image/`.tapnap` x Save to Files/AirDrop four-path matrix. Focused r3
+  XCTest remains compiled but unexecuted. The owner explicitly accepted these
+  evidence exceptions and directed closure; no missing test/device fact is
+  invented. The exact Git identity will be the commit containing this closure
+  record; no prospective hash is recorded. TAP-0008, TAP-0009, TAP-0083, and
+  TAP-0041 remain independent open cold-path work.
 - Reopened Done When: A fixed build uses the system-native file-URL activity
-  handoff for both ordinary media and `.tapnap`; focused tests protect the
-  activity-item matrix, exact-attempt ownership, controller-last-owner cleanup,
-  stale-A/new-B dismissal/teardown boundary, and the separation between
-  coordinator-state termination and source cleanup; once controller
-  construction can start system URL probing, pending cancellation/discard
-  cannot delete that source; controller-construction feedback uses an accurate
-  phase and timing boundary; no proactive destination-
+  handoff for both ordinary media and `.tapnap`; selecting a type keeps the
+  selector hierarchy mounted, retains normal pre-preparation subtitle text, and
+  swaps only the clicked row's same fixed subtitle slot to a 2px determinate
+  track while title, icon, recommendation badge, row, popover, sibling geometry,
+  and identity stay fixed and every sibling option stays visible but disabled.
+  No percentage, Cancel control, whole-popover preparation page, app-owned
+  ready/boundary page, 50 ms delayed reveal, or 400 ms minimum hold appears;
+  payload readiness closes the popover. Controller construction and system URL
+  probing begin only after actual popover disappearance at the system-sheet
+  boundary. Focused tests protect the
+  activity-item matrix, exact-attempt ownership, stale-A/new-B termination, and
+  asynchronous idempotent artifact cleanup from the matching sheet-end signal
+  even when SwiftUI/UIKit retain an old controller. No proactive destination-
   completion callback, private LaunchServices entitlement, persistent Share
-  payload cache, or Share prewarm is introduced; and TAP-0082
-  records successful physical-device Save to Files plus AirDrop receipt for the
-  representative ordinary-media and `.tapnap` paths.
+  payload cache, or Share prewarm is introduced; and TAP-0082 records successful
+  physical-device Save to Files plus AirDrop receipt for the representative
+  ordinary-media and `.tapnap` paths together with attended exact-r3 native UI
+  and lifecycle acceptance.
   The current evidence record is
   [TAP-0082 Share handoff](Acceptance/TAP-0082-share-handoff.md).
 - Related: Follow-up to `TAP-0061`; contrasts with deprecated `TAP-0068`;
@@ -2246,10 +2381,73 @@ Every active Task uses these stable fields:
     checkpoint. TAP-0081 remains Doing; the next implementation may repair
     these lifecycle defects without weakening the successful direct-file-URL
     transport path.
+  - `2026-08-14` Recorded the owner's replacement lifecycle decision after the
+    complete two-system-sheet log showed attempt A's app state ending without
+    controller release or `artifactLease` cleanup before attempt B appeared.
+    Removed the app-owned ready/boundary page from the approved flow and
+    superseded the 50 ms delayed reveal plus 400 ms minimum hold. A format tap
+    now immediately enters preparation progress; payload readiness immediately
+    closes the popover; `UIActivityViewController` is constructed only after the
+    popover has actually disappeared at the real system-sheet boundary, so no
+    early system URL probe is permitted. The exact attempt's sheet end must
+    asynchronously perform idempotent artifact cleanup without waiting for
+    UIKit deinitialization. The direct-file-URL transport verdict remains Pass,
+    but the current lifecycle candidate is uncommitted and unaccepted; prototype,
+    implementation, tests, documentation, and device evidence remain open.
+    TAP-0081 stays Doing.
+  - `2026-08-14` Recorded the owner's explicit progress-geometry correction:
+    preparation is not a replacement page for the whole popover. The anchored
+    selector hierarchy remains mounted; only the clicked option row changes in
+    place to progress plus current percentage, while all sibling options remain
+    visible but disabled. Payload readiness then closes the popover before the
+    later system-sheet boundary. This clarification changes current authority
+    and acceptance but claims no accepted implementation, prototype sync,
+    build, test, device run, commit, or push. TAP-0081 remains Doing.
+  - `2026-08-14` Recorded the owner's exact prototype verdict, “对的 现在原型是
+    我想要的”, and marked `TAP-0081-r3-candidate` `ownerApproved`. This final
+    UI authority supersedes the preceding percentage-shaped description: each
+    row shows its subtitle before preparation; after a format tap, only the
+    clicked row's same fixed subtitle slot swaps to a 2px determinate track.
+    There is no percentage or Cancel control, and title, icon, recommendation
+    badge, row, popover, sibling geometry, and identity remain stable while
+    other rows stay visible but disabled. There is no independent preparation
+    or ready page; payload readiness closes the popover before the system sheet.
+    Prototype approval does not accept a native candidate. TAP-0081 remains
+    Doing pending native build/test evidence and attended TAP-0082 acceptance.
+  - `2026-08-14` Synchronized the implemented native r3 candidate without
+    converting compilation into acceptance. The selector remains mounted and
+    replaces only the clicked row's fixed subtitle slot with a 2px determinate
+    track; no preparation percentage or Cancel appears, sibling rows remain
+    visible but disabled, and row/popover geometry stays stable. Payload
+    readiness closes the popover, then the real sheet boundary constructs the
+    one file-URL `UIActivityViewController`. The exact item Binding and SwiftUI
+    `onDismiss` fallback feed one exact-ID, idempotent end transition; cleanup is
+    scheduled off the main thread, stale A cannot end B, and no destination-
+    completion auto-close callback or appearance/dismantle watchdog remains.
+    Generic Simulator and iphoneos `build-for-testing` each exited 0 without
+    launching Simulator; prototype, static/source, diff, and Swift parse checks
+    passed. Tests compiled but were not executed. No device run, owner native
+    verdict, commit, or push is claimed; TAP-0081 remains Doing.
+  - `2026-08-14` The owner reviewed the latest integrated log, accepted the
+    recorded evidence exceptions, and directed the current Task to be treated
+    as complete. Moved TAP-0081 Doing -> Done. The log proves one complete
+    `.tapnap` sequence through payload readiness, post-popover system handoff,
+    sheet appearance/dismissal, controller release, and final
+    `artifactLease` cleanup; its LaunchServices/FileProvider messages are
+    system probes that precede successful sheet appearance. It does not prove
+    the direct-image attempt, stale-A/new-B isolation, or cleanup independent of
+    controller release. Direct image continues to rely on the previously
+    owner-accepted four-path transport matrix, and focused r3 XCTest remains
+    compiled but unexecuted. The owner explicitly accepted those gaps for this
+    closure. No 99% system-readiness wait, fake progress, 400 ms hold, ready
+    overlay, private entitlement, Share prewarm, or persistent payload cache is
+    authorized. The containing closure commit supplies the Git identity; no
+    hash is predeclared. TAP-0008, TAP-0009, TAP-0083, TAP-0040, and TAP-0041
+    remain open and are not absorbed by TAP-0081.
 
 ### TAP-0082 — Device acceptance: TAP Share anchored handoff and anti-flash progress
 
-- Status: `Doing`
+- Status: `Done`
 - Kind: `DeviceAcceptance`
 - Priority: `P0`
 - Domain: `Share / Viewer`
@@ -2462,66 +2660,115 @@ Every active Task uses these stable fields:
   verdicts, received artifacts, and relevant logs in
   [TAP-0082 Share handoff](Acceptance/TAP-0082-share-handoff.md). The prior
   `bf20b52` verdict remains history and may not be reused for the fixed build.
-- Current Retest State: The native file-URL recovery represented by this Board
-  revision is the transport checkpoint being frozen by the commit titled
-  `Checkpoint working Share transport before lifecycle repair`; the containing
-  commit supplies its identity without a predeclared hash. Its item-scoped
-  presenter and expected-artifact-ID routing preserve exact-attempt dismissal/
-  teardown isolation without a destination-completion callback. Intended
-  ownership makes controller release the normal per-attempt temporary-directory
-  cleanup boundary and the shared artifact lease the abnormal fallback, but the
-  detailed log has not yet demonstrated that terminal release after dismissal.
-  There is no persistent Share payload cache or prewarm; a `SIGKILL` or
-  exhausted removal retries can leave OS temporary residue but do not create an
-  app cache. Generic iphoneos
-  `build-for-testing` passed after the dead-code cleanup and compiled the
-  revised tests, but those tests were not run. The linked acceptance record now
-  captures the exact four-path received/openable-artifact matrix as Pass. No
-  Codex device operation, filename, hash, receiving-device identity, or final
-  lifecycle-fixed build identity is claimed. TAP-0082 remains Doing until the
-  remaining lifecycle race, teardown/progress attribution, and focused-test
-  evidence are reconciled.
-- Current Console Observation: The owner's post-Pass logs still contain
+- Pre-Closure Retest State: The owner-approved Web r3 contract was implemented in
+  the uncommitted native candidate. Preparation keeps the selector mounted and
+  replaces only the clicked row's normal subtitle slot with a 2px determinate
+  track; there is no preparation percentage or Cancel, sibling rows remain
+  visible but disabled, and selector/row/popover geometry and identity remain
+  stable. Payload readiness closes the popover; only the subsequent real sheet
+  boundary constructs the one direct-file-URL `UIActivityViewController`. The
+  exact item Binding and SwiftUI `onDismiss` fallback converge on one exact-ID,
+  idempotent
+  end transition, which schedules artifact cleanup off the main thread without
+  waiting for controller deinitialization; a stale attempt-A signal cannot end
+  B. Destination completion/dismissal remains system-owned, with no proactive
+  auto-close callback or timed appearance/dismantle watchdog. Generic iOS
+  Simulator and generic iphoneos `build-for-testing` each completed with exit
+  code 0 without launching Simulator. Prototype, static/source, diff, and Swift
+  parse checks passed; XCTest targets compiled but were not run. The accepted
+  direct-file-URL four-path transport matrix remains baseline evidence, not
+  acceptance of this r3 candidate. No owner self-install/device verdict, fixed
+  commit, or push existed at this checkpoint, so TAP-0082 remained Doing.
+- Superseded Checkpoint Console Observation: The owner's post-Pass logs contain
   LaunchServices `-10814`/`Code=-54`, CKShare/SWY, FileProvider, persona, and
   one gesture-gate timeout while preparing `.tapnap`. The corresponding source
   audit found no stale manual provider/open-in-place/completion transport code:
-  the current path remains one direct file-URL activity controller. Both
+  the checkpoint path remained one direct file-URL activity controller. Both
   `.tapnap` and ordinary-image sequences show the system's LaunchServices/
   FileProvider URL probes after `tap_share_activity_controller_created` but
   before coordinator `tap_share_activity_handoff_started`. During that interval
   the coordinator still classifies the presentation as a pending handoff, and
   `discardPendingHandoff()` can explicitly remove its artifact even though the
   constructed controller has already caused the system to inspect the URL.
-  This is an open source-lifetime race. The `.tapnap` sequence additionally
+  This was the checkpoint source-lifetime race that the r3 source candidate now
+  replaces; its integrated physical-device verdict remains open. The `.tapnap`
+  sequence additionally
   reaches `tap_share_activity_sheet_dismissed` without a subsequent controller-
   dismantled or `artifactLease` terminal-cleanup milestone before the next
   Share begins, and it reports controller construction `under50ms` before
   revealing `over50ms` feedback attributed to `controllerConstruction`.
   System-probe warnings do not negate the received/openable four-path verdict,
-  but source ownership, teardown, and progress attribution are not accepted.
+  but source ownership, teardown, and progress attribution were not accepted at
+  that checkpoint.
+- Replacement Acceptance Scope: On the next fixed build, a format tap must
+  keep the anchored selector hierarchy mounted, replace only the clicked row's
+  normal subtitle in the same fixed slot with a 2px determinate track, and leave
+  every sibling option visible but disabled. Title, icon, recommendation badge,
+  row, popover, sibling geometry, and identity must remain stable. There must be
+  no percentage, Cancel control, whole-popover preparation page, app-owned
+  ready/boundary page, 50 ms delayed reveal, or 400 ms minimum hold. Payload
+  readiness must close the popover; only after actual disappearance may
+  controller creation and LaunchServices/FileProvider probes begin at the real
+  system-sheet boundary. Closing each system sheet must publish the matching
+  attempt's asynchronous `artifactLease` cleanup even if SwiftUI/UIKit retain
+  that controller, and a late attempt-A end must not clean B. The previously
+  accepted four-path direct-file-URL transport verdict remains historical Pass,
+  but it does not accept this new lifecycle/progress implementation.
 - Current Human Confirmation: `Pass for the current recovery transport matrix
   on 2026-08-14. The owner replied “验收通过” to the immediately preceding
   explicit confirmation that ordinary image and .tapnap each succeeded through
-  Save to Files and AirDrop and that every saved/received artifact opens.`
+  Save to Files and AirDrop and that every saved/received artifact opens. After
+  reviewing the later integrated log and its stated evidence limits, the owner
+  explicitly directed on 2026-08-14 “当前任务我觉得可以视为标记为完成”.`
+- Current Prototype Confirmation: `Exact TAP-0081-r3-candidate is ownerApproved
+  on 2026-08-14 from the owner quote “对的 现在原型是我想要的”. This confirms the
+  Web UI contract only and is not native-build or device-acceptance evidence.`
 - Reopened Done When: Both physical-device destinations pass on the fixed build
   for representative ordinary media and `.tapnap`, AirDrop produces received
-  artifacts for both paths, sources remain readable from controller creation
-  through the activity controller's final ownership release, coordinator-state
-  termination and source cleanup are evidenced separately, stale dismissal/
-  teardown callbacks cannot release a newer attempt, no proactive destination-
+  artifacts for both paths, and native UI matches ownerApproved
+  `TAP-0081-r3-candidate`: the selector stays mounted, only the clicked row's
+  normal subtitle swaps in the same fixed slot to a 2px determinate track,
+  sibling rows remain visible but disabled, all listed geometry and identity
+  remain stable, and neither percentage nor Cancel appears. The payload-ready-
+  popover-close/post-dismiss controller-construction sequence is visible. No
+  independent preparation/ready page or early system URL probe occurs, and the
+  matching sheet-end signal asynchronously cleans its exact artifact even if the
+  old controller remains retained. Stale dismissal/teardown callbacks cannot
+  release a newer attempt, no proactive destination-
   completion callback or persistent payload cache exists, and the linked
   acceptance record carries the owner's explicit four-path artifact verdict.
   Build/install/launch, the historical
   provider tests, candidate `35745be`, or the `bf20b52` acceptance
   alone cannot return TAP-0082 to Done.
-- Current Closure Gate: `The four-path attended transport matrix is complete
+- Superseded Pre-Closure Gate: `The four-path attended transport matrix was complete
   and its direct-file-URL baseline is frozen by the checkpoint commit containing
-  this Board revision. Remaining before Done: eliminate the pending-handoff/
-  controller-read source-lifetime race, prove terminal teardown and artifact
-  cleanup, correct progress-phase attribution, execute the focused tests that
-  have only compiled, and complete the linked lifecycle evidence. No additional
-  Save-to-Files/AirDrop rerun is requested unless the frozen build differs from
-  the owner-tested recovery.`
+  this Board revision. Native r3 implementation and generic compilation are now
+  present, but tests were compiled rather than run and neither a fixed commit nor
+  attended device evidence exists. Remaining before Done: execute the focused
+  tests, freeze the candidate, and have the owner self-install and accept the
+  integrated exact-r3 UI, payload-ready popover-to-sheet boundary, exact-ID
+  Binding/onDismiss end behavior, off-main cleanup, and stale-A/new-B isolation.
+  Transport need not be re-proven by a separate scope unless the fixed build
+  changes the accepted direct-file-URL path, but the integrated fixed build still
+  requires owner acceptance.`
+- Current Completion Audit: `Done by explicit owner decision on 2026-08-14.`
+  Exact `TAP-0081-r3-candidate` is ownerApproved and its native implementation
+  compiled for generic Simulator and iphoneos without launching Simulator.
+  Focused r3 XCTest was compiled but not executed. The owner's earlier attended
+  matrix remains the evidence for ordinary image and `.tapnap` through Save to
+  Files and AirDrop with openable artifacts. The later supplied log completely
+  proves only one `.tapnap` attempt: L70 intermediate cleanup, L72 payload
+  ready, L73 handoff, L74 controller construction under 50 ms, L75–85 system
+  probes, L86 sheet appearance, L93 dismissal, L94 controller release, and L95
+  final `artifactLease` cleanup. It does not independently prove direct-image
+  cleanup, stale-A/new-B isolation, or artifact cleanup before/independent of
+  controller release. The owner explicitly accepted those evidence exceptions
+  and directed closure. The determinate 2px track remains scoped to app-owned
+  payload work: it is not stalled at 99%, extended by 400 ms, or used to fake
+  system-sheet readiness; payload readiness closes the popover and iOS owns the
+  following presentation. The containing closure commit supplies the final Git
+  identity, with no guessed hash. TAP-0008/TAP-0040, TAP-0009/TAP-0041, and
+  TAP-0083 remain independently open.
 - Created: `2026-08-12`
 - Updated: `2026-08-14`
 - Revision History:
@@ -2709,6 +2956,60 @@ Every active Task uses these stable fields:
     before the next attempt, and its `under50ms` controller measurement precedes
     `over50ms` feedback attributed to controller construction. Source lifetime,
     teardown, and progress attribution remain open, so TAP-0082 stays Doing.
+  - `2026-08-14` Synchronized the owner-approved replacement flow into the open
+    device gate. The current candidate's app-owned ready/boundary page, 50 ms
+    delayed reveal, 400 ms minimum hold, preconstructed controller, early system
+    probing, and controller-deinit normal cleanup boundary are superseded.
+    Acceptance now requires immediate preparation progress after format
+    selection, payload-ready popover dismissal, controller construction only at
+    the subsequent real system-sheet boundary, and matching sheet-end
+    asynchronous artifact cleanup even while UIKit retains the old controller.
+    The four-path direct-file-URL transport result remains Pass, but no fixed
+    replacement build, prototype synchronization, commit, or owner verdict is
+    claimed. TAP-0082 remains Doing.
+  - `2026-08-14` Synchronized the owner's progress-geometry correction into the
+    open device gate. Acceptance must show the selector hierarchy remaining
+    mounted, only the clicked option row changing in place to progress plus
+    current percentage, and every sibling option staying visible but disabled.
+    A whole-popover preparation page is explicitly rejected; payload readiness
+    closes the popover before the system sheet. The current candidate remains
+    unaccepted, and TAP-0082 remains Doing.
+  - `2026-08-14` Synchronized owner approval of exact Web revision
+    `TAP-0081-r3-candidate` (“对的 现在原型是我想要的”) into the open device
+    gate. The native acceptance target is the same-slot subtitle-to-2px-
+    determinate-track swap with no percentage or Cancel, stable selector/title/
+    icon/badge/row/popover/sibling geometry and identity, and visible disabled
+    sibling rows. No independent preparation or ready page may appear; payload
+    readiness closes the popover before the system sheet. Web approval clears
+    the prototype gate only; the native build and attended device verdict remain
+    open, so TAP-0082 remains Doing.
+  - `2026-08-14` Synchronized the native r3 implementation and compilation
+    evidence into the open device gate. The candidate implements the approved
+    same-slot 2px progress geometry with no preparation percentage/Cancel,
+    closes the popover when payload is ready, constructs the controller only at
+    the later sheet boundary, and converges exact item-Binding plus SwiftUI
+    `onDismiss` through one exact-ID, idempotent, off-main cleanup transition;
+    stale A cannot end B, and no destination-completion auto-close callback or
+    timed watchdog remains. Generic Simulator and iphoneos
+    `build-for-testing` each exited 0 without launching Simulator; prototype,
+    static/source, diff, and Swift parse checks passed. Tests compiled but were
+    not run. No owner self-install/device verdict, commit, or push is claimed;
+    TAP-0082 remains Doing.
+  - `2026-08-14` The owner reviewed the latest integrated log, accepted its
+    explicit evidence limitations, and directed the current Task to be treated
+    as complete. Moved TAP-0082 Doing -> Done. The earlier attended four-path
+    ordinary-image/`.tapnap` x Save to Files/AirDrop matrix remains Pass. The
+    new log proves one complete `.tapnap` attempt only, through intermediate
+    cleanup, payload-ready handoff, system probes, sheet appearance/dismissal,
+    controller release, and final artifact cleanup; it does not establish the
+    direct-image teardown, stale-A/new-B isolation, or cleanup independent of
+    controller release. Focused r3 XCTest remains compiled but unexecuted. The
+    owner explicitly accepted those gaps rather than asking that missing
+    artifacts be inferred. App-payload progress remains truthful and immediate;
+    it does not wait at 99% for system readiness, add a 400 ms hold, or show a
+    ready overlay. The containing closure commit supplies its own hash. This
+    evidence closure does not close TAP-0008, TAP-0009, TAP-0083, TAP-0040, or
+    TAP-0041.
 
 ### TAP-0083 — Eliminate cold-path UI starvation and codify responsiveness guardrails
 
@@ -2762,7 +3063,17 @@ Every active Task uses these stable fields:
   observation that re-entry was fast is consistent with a cold-cache/main-
   run-loop amplification, but it is not itself proof of any single cause. The
   Share-specific typed-UTI, system handoff, and attachment-lease regression was
-  closed under TAP-0081/TAP-0082 for `bf20b52`.
+  closed under TAP-0081/TAP-0082 for `bf20b52`. A later cold/overwrite-install
+  log adds a more discriminating baseline: camera configuration/start overlaps
+  startup, Locked Camera import/context starts while
+  `managerSessionCount=0`, the first 908-item Library catalog snapshot takes
+  `7795 ms`, and App Attest reset/network work ends in a credential-preparation
+  failure. By contrast, the observed Share source fetch is about `11.7 ms`,
+  `.tapnap` packaging about `27.5 ms`, and activity-controller construction
+  under 50 ms. This shifts the diagnostic priority away from ZIP/Share payload
+  work toward cold startup/catalog/credential and unnecessary lifecycle overlap,
+  but the log does not establish that any one operation ran synchronously on
+  MainActor or caused the visible stall.
 - Failure / Recovery: Coalescing must preserve the latest and terminal value,
   cancellation, monotonicity where the source guarantees it, and request/source
   identity. Snapshot suppression must not hide changed items or changed public
@@ -2809,7 +3120,7 @@ Every active Task uses these stable fields:
   adjacent first-camera/resource readiness `TAP-0009`; thumbnail policy
   `TAP-0027`
 - Created: `2026-08-13`
-- Updated: `2026-08-13`
+- Updated: `2026-08-14`
 - Revision History:
   - `2026-08-13` Allocated after a complete Inbox/Todo/Doing/Done/Deprecated
     search. The active TAP-0081 already owns its Share-specific first-response,
@@ -2836,6 +3147,17 @@ Every active Task uses these stable fields:
     TAP-0047 respectively, so this implementation handoff does not establish
     attended cold-path acceptance. TAP-0083 remains Doing pending full
     Validation Gate and documentation-handoff reconciliation.
+  - `2026-08-14` Added the owner's cold/overwrite-install log as a diagnostic
+    baseline and retained Doing. In the same session, camera startup,
+    `managerSessionCount=0` Locked Camera import/context work, a 908-item first
+    Library catalog snapshot taking `7795 ms`, and App Attest reset/network
+    failure overlap the cold path. Share itself fetches its source in about
+    `11.7 ms`, builds `.tapnap` in about `27.5 ms`, and constructs the system
+    controller in under 50 ms. The evidence therefore prioritizes startup/
+    catalog/credential/lifecycle overlap over ZIP or Share packaging, but does
+    not prove a MainActor causal chain. TAP-0083 stays Doing until its focused
+    validation and documentation handoff complete. TAP-0081/TAP-0082 closure
+    does not close this cross-cutting responsiveness Task.
 
 ### TAP-0084 — Design a Library-to-Viewer zoom transition with stable top chrome
 
@@ -2920,8 +3242,8 @@ owner before execution.
 
 | ID | Status | Priority | Related delivery | Scope | Procedure | Dev Session | Human Confirmation | History |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `TAP-0040` | Todo | P0 | `TAP-0008` | Clean install: every setup operation starts only after its corresponding button | [Procedure](Acceptance/TAP-0040-first-install-operations.md) | Unassigned | Pending | Created 2026-08-12 from permission regression; executable draft added 2026-08-12 |
-| `TAP-0041` | Todo | P0 | `TAP-0009` | First launch after fresh install/reinstall and app update: Resource Initialization remains until real first frame/safe shutter-controls plus the first usable Library catalog metadata snapshot both succeed, then atomically marks the current update/generation and enters camera; an ordinary repeated launch with the current marker bypasses it; no Retry/Failed/timeout/skip/degraded UI and no Share/iCloud/thumb/hash/ZIP/network/queue prewarm | [Procedure](Acceptance/TAP-0041-camera-readiness.md) must be revised and owner-confirmed for install/update/repeated-launch reset cases, marker persistence/interruption, invariant checkpoint logs, and owner-approved `TAP-0009-r1-candidate` | Unassigned | Pending | Exact Web prototype approved 2026-08-13; native implementation has not started and the existing acceptance draft predates the Library-catalog/versioned-marker invariant, so this remains non-executable until revised |
+| `TAP-0040` | Todo | P0 | `TAP-0008` | Clean install: every setup operation starts only after its corresponding button | [Procedure](Acceptance/TAP-0040-first-install-operations.md) | Unassigned | Pending | Created 2026-08-12 from permission regression; executable draft added 2026-08-12. The 2026-08-14 cold/overwrite-install log has no setup-row/button timeline and therefore is diagnostic context only, not explicit-action evidence; a separate clean-install run remains required. |
+| `TAP-0041` | Todo | P0 | `TAP-0009` | First launch after fresh install/reinstall and app update: Resource Initialization remains until real first frame/safe shutter-controls plus the first usable Library catalog metadata snapshot both succeed, then atomically marks the current update/generation and enters camera; an ordinary repeated launch with the current marker bypasses it; no Retry/Failed/timeout/skip/degraded UI and no Share/iCloud/thumb/hash/ZIP/network/queue prewarm | [Procedure](Acceptance/TAP-0041-camera-readiness.md) must be revised and owner-confirmed for install/update/repeated-launch reset cases, marker persistence/interruption, invariant checkpoint logs, and owner-approved `TAP-0009-r1-candidate` | Unassigned | Pending | Exact Web prototype approved 2026-08-13; native implementation has not started and the existing acceptance draft predates the Library-catalog/versioned-marker invariant. The 2026-08-14 log contributes only a 908-item first-catalog baseline of `7795 ms`; it lacks first frame, safe controls/shutter/haptics, marker, interruption, and repeated-launch evidence, so the procedure remains non-executable until revised. |
 | `TAP-0042` | Todo | P1 | `TAP-0053` | EV direction, ISO/S clamp, AF→MF, focus assist, front gating, transitions, device matrix | [Procedure](Acceptance/TAP-0042-pro-controls.md) | Unassigned | Pending | Migrated from camera evidence gaps; executable draft added 2026-08-12 |
 | `TAP-0043` | Todo | P0 | `TAP-0012` | Standard RGB/depth per FOV and PRO fixed uncropped output | [Procedure](Acceptance/TAP-0043-fov-depth-pro-no-crop.md) | Unassigned | Pending | Created 2026-08-12 from FOV conflict; executable draft added 2026-08-12 |
 | `TAP-0044` | Todo | P1 | `TAP-0056` | Live Photo capture, paired MOV, signing, Photos readback, audio and playback | [Procedure](Acceptance/TAP-0044-live-photo-chain.md) | Unassigned | Pending | Migrated from Live Photo evidence gaps; executable draft added 2026-08-12 |
@@ -2930,7 +3252,7 @@ owner before execution.
 | `TAP-0047` | Todo | P1 | `TAP-0058`, `TAP-0059`, `TAP-0083` | Limited access, Photos system delete, pending confirm, adjacency, empty close, plus first cold large-Library entry with no repeated semantic snapshot churn or UI starvation | [Procedure](Acceptance/TAP-0047-library-permission-delete.md) must add a fresh/cleared-cache large-catalog run and structured milestone evidence | Unassigned | Pending | Existing Library draft remains; 2026-08-13 added cold large-catalog responsiveness evidence without changing status |
 | `TAP-0048` | Todo | P0 | `TAP-0006` | Approved Web states versus SwiftUI geometry, icons, layout, navigation and state presentation | [Procedure](Acceptance/TAP-0048-web-swiftui-parity.md) | Unassigned | Pending | Created for HTML-first workflow; executable draft added 2026-08-12 |
 | `TAP-0049` | Todo | P0 | `TAP-0013` | Locked launch/first-frame/soak/capture/suspend/exit/relaunch | [Blocked Procedure](Acceptance/TAP-0049-locked-camera-lifecycle.md) | Unassigned | Pending | Executable draft added 2026-08-12; cannot run until lifecycle-correct experiment is ready |
-| `TAP-0082` | Doing | P0 | `TAP-0081` | Revalidate the fixed system-native file-URL handoff on physical-device Save to Files and AirDrop for representative ordinary media and `.tapnap`, including received/openable artifacts, controller-last-owner source lifetime, and exact-attempt dismissal/teardown isolation; destination completion remains system-owned and no proactive completion callback is allowed; the previously accepted anti-flash and Viewer-toolbar results remain historical | [Procedure and evidence record](Acceptance/TAP-0082-share-handoff.md) records the superseded auto-close condition, native file-URL recovery, and exact four-path matrix Pass; old `bf20b52` Board evidence remains history only | `/root` delivery/evidence reconciliation; product-owner attended retest and self-installation | Four-path attended transport matrix Pass; direct-file-URL checkpoint self-identified by its containing commit; lifecycle/test evidence Pending | Reopened 2026-08-14 after Save to Files selector crash and AirDrop failure; candidate `35745be` later failed ordinary-image and `.tapnap` paths, ruling out a package-only cause. The owner subsequently passed ordinary image plus `.tapnap` through Save to Files plus AirDrop and confirmed every artifact opens. The checkpoint commit containing this record freezes that transport baseline under subject `Checkpoint working Share transport before lifecycle repair`, without a guessed hash. Detailed logs keep lifecycle open: both types trigger system URL probing after controller creation but before coordinator handoff while pending discard can delete the artifact; `.tapnap` dismissal lacks controller-dismantled/`artifactLease` cleanup evidence before the next attempt; and `under50ms` construction precedes `over50ms` controller-construction feedback. Focused tests compiled but were not run. TAP-0082 remains Doing; historical `bf20b52` acceptance remains history and TAP-0084 remains independent. |
+| `TAP-0082` | Done | P0 | `TAP-0081` | System-native direct-file-URL handoff for ordinary media and `.tapnap`; ownerApproved r3 native flow uses the same-slot 2px app-payload track with no percentage/Cancel/400 ms hold/ready overlay, closes the popover at payload readiness, and then yields to the iOS-owned sheet. | [Procedure and evidence record](Acceptance/TAP-0082-share-handoff.md) plus this Board's explicit evidence-exception audit; old `bf20b52` evidence remains history only. | `/root` delivery/evidence reconciliation; product-owner attended retest and closure decision | Accepted 2026-08-14: prior ordinary-image/`.tapnap` x Save to Files/AirDrop matrix Pass with openable artifacts; exact r3 Web ownerApproved and native candidate compiled; latest log proves one complete `.tapnap` lifecycle. | Owner directed closure after reviewing the evidence limits. Focused r3 XCTest was compiled, not run. The latest log proves only `.tapnap` L70 intermediate cleanup -> L72 payload ready -> L73 handoff -> L74 controller under 50 ms -> L75–85 system probes -> L86 sheet appeared -> L93 dismissed -> L94 controller released -> L95 artifact cleanup. Direct image relies on the earlier accepted four-path matrix; stale-A/B and cleanup independent of controller release are not claimed. TAP-0008/0009/0083/0040/0041 remain open and independent. The containing closure commit supplies the final hash. |
 
 ## 7. Completed Task Registry
 
@@ -3259,3 +3581,4 @@ not replace the Product Contract, and linked device evidence may remain open.
   Fixed-build install, launch, Files, AirDrop receipt/artifact inspection, and
   owner verdict evidence remain Pending. TAP-0081 remains Doing, TAP-0082
   remains Todo, and no other Task status or Next Task ID changed.
+- `2026-08-14` Recorded the owner's failed physical-device result for candidate- `2026-08-14` The owner declined a separate rollback commit with “这条就算了- `2026-08-14` Recorded the uncommitted TAP-0081 recovery implementation- `2026-08-14` Recorded the owner's requirement that AirDrop/Save to Files- `2026-08-14` Superseded the destination-completion auto-close direction after- `2026-08-14` Recorded the owner's explicit “验收通过” verdict against the- `2026-08-14` Reconciled the owner's post-Pass `.tapnap` Share console sample- `2026-08-14` Board Steward recorded the direct-file-URL transport checkpoint- `2026-08-14` Board Steward recorded the owner's replacement TAP Share- `2026-08-14` Board Steward recorded the owner's explicit correction to TAP- `2026-08-14` Board Steward recorded the owner quote “对的 现在原型是我想要的”- `2026-08-14` Board Steward synchronized the implemented native- `2026-08-14` Board Steward recorded the owner's explicit current closure

@@ -310,7 +310,7 @@ The canonical Share flow is:
    first decoded video frame is not sufficient Share readiness.
 2. Open one lightweight app-owned format-selection surface anchored to the
    Viewer's Share action. The same stable surface owns selection, preparation,
-   cancellation, public-safe failure, and Retry; it is not a separate modal
+   public-safe failure, and Retry; it is not a separate modal
    page. On opening, check the actual ready original resource locally against
    its embedded TAP proof and content binding before resolving the public
    credential state. This local integrity gate must not contact the TAP
@@ -318,31 +318,39 @@ The canonical Share flow is:
 3. Copy, package, or otherwise generate a Share-specific payload only after the
    user selects a format. Normal Viewer original-resource loading is not Share
    prewarming and must not pre-generate a package or persistent Share payload.
-4. Present the system activity controller only after that payload is ready.
-   The app-owned surface hands off directly to this one system-owned
-   presentation; TAPCam does not imitate or embed controls inside it.
+4. Selecting an implemented format keeps the selector hierarchy mounted and
+   immediately replaces only that row's existing subtitle text with a thin,
+   determinate preparation track inside the exact same fixed-height subtitle
+   slot. The title, icon, badge, row, popover, and sibling positions do not
+   change; no percentage or Cancel control is inserted. Other options remain
+   visible but disabled. As soon as the payload is ready, dismiss that app-owned
+   surface and present exactly one system activity controller. There is no
+   whole-popover preparation page or app-owned ready/boundary page between
+   selection and the system sheet, and TAPCam does not imitate or embed controls
+   inside the system-owned presentation.
 5. Remove a per-attempt temporary resource immediately when preparation is
    cancelled or becomes stale before system handoff. After handoff, pass the
-   materialized file URL directly to the one system activity controller and
-   keep its source lease alive for that controller's lifetime. System/user
-   dismissal, representable dismantling, or never-appeared recovery may end
-   the app-owned presentation state, but must not explicitly delete a source
-   that UIKit still owns. Controller release is the terminal cleanup boundary,
-   and cleanup remains attempt-scoped and idempotent. TAPCam does not observe a
-   destination-completion callback to proactively dismiss the system activity
-   controller; closing that system-owned presentation is an iOS/user action.
+   materialized file URL directly to the one system activity controller. Do
+   not construct that controller while the app-owned popover is still visible:
+   UIKit and LaunchServices begin inspecting the URL during initialization, so
+   construction belongs to the actual system-sheet presentation boundary. The
+   the exact attempt's SwiftUI item binding and `onDismiss` fallback feed one
+   exact-ID, idempotent app-owned end transition; there is no timed
+   appearance/dismantle watchdog or destination-completion callback. When that
+   sheet ends, schedule attempt-scoped source cleanup away from the main thread.
+   UIKit may retain a dismissed controller internally, but that implementation
+   detail must not retain the temporary file or block a later Share attempt.
+   Closing the system-owned presentation remains an iOS/user action.
 
-Preparation presentation follows one anti-flash policy across still photos,
-Live Photos, and TAP Video:
-
-- work completed within 50 ms never inserts progress UI;
-- work still running after 50 ms reveals progress in the same anchored surface;
-- once revealed, progress remains visible for at least 400 ms, advances
-  monotonically, and reaches 100% before handoff when preparation completes
-  early; and
-- selection, preparation, and system handoff must not create an intermediate
-  blank frame, rebuild the Viewer/pager/chrome, or flash a full-screen loading
-  state.
+Preparation follows one direct policy across still photos, Live Photos, and TAP
+Video: the option tap immediately replaces the clicked row's subtitle with a
+thin, determinate, monotonic track in that same layout slot while the selector
+remains mounted. No percentage, Cancel control, delayed-reveal threshold, or
+artificial minimum-visible duration may postpone handoff or change geometry.
+Payload readiness closes the popover immediately; the sibling system sheet then
+constructs its controller and takes over. This sequence must not create a
+separate app-owned preparation/ready page or blank frame, rebuild the
+Viewer/pager/chrome, or flash a full-screen loading state.
 
 The app must not pre-generate packages, background-prewarm them, or keep a
 persistent share cache. The old direct-preparation/direct-system-share design

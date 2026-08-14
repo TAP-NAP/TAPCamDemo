@@ -4,22 +4,13 @@
 //
 
 import Foundation
+import SwiftUI
 import Testing
 import UIKit
 @testable import TAPCamDemo
 
 @Suite("Depth Analysis share presentation")
 struct TAPDepthAnalysisSharePresentationTests {
-    @Test func standardProgressPolicyUses50MillisecondRevealAnd400MillisecondMinimum() {
-        #expect(
-            DepthAnalysisShareProgressPresentationPolicy.standard
-                == DepthAnalysisShareProgressPresentationPolicy(
-                    revealDelay: .milliseconds(50),
-                    minimumVisibleDuration: .milliseconds(400)
-                )
-        )
-    }
-
     @Test func builtAppExportsTapnapCapturePackageTypeWithoutDocumentImportRoute() throws {
         let declarations = try #require(
             Bundle.main.object(forInfoDictionaryKey: "UTExportedTypeDeclarations")
@@ -1239,9 +1230,9 @@ struct TAPDepthAnalysisSharePresentationTests {
         #expect(model.activityPayload != nil)
         #expect(FileManager.default.fileExists(atPath: artifactURL.path))
 
-        model.activitySheetDidDismiss(expectedArtifactID: artifact.id)
+        model.activityPresentationDidEnd(expectedArtifactID: artifact.id)
         #expect(model.activityPayload == nil)
-        #expect(!FileManager.default.fileExists(atPath: artifactDirectoryURL.path))
+        try await Self.waitUntilDirectoryIsRemoved(artifactDirectoryURL)
     }
 
     @MainActor
@@ -1322,8 +1313,8 @@ struct TAPDepthAnalysisSharePresentationTests {
         #expect(model.certificationState == .retryPending)
         #expect(FileManager.default.fileExists(atPath: artifactURL.path))
 
-        model.activitySheetDidDismiss(expectedArtifactID: artifact.id)
-        #expect(!FileManager.default.fileExists(atPath: artifactDirectoryURL.path))
+        model.activityPresentationDidEnd(expectedArtifactID: artifact.id)
+        try await Self.waitUntilDirectoryIsRemoved(artifactDirectoryURL)
     }
 
     @MainActor
@@ -1387,11 +1378,7 @@ struct TAPDepthAnalysisSharePresentationTests {
             ),
             recordResolver: resolver,
             artifactPreparer: preparer,
-            localIntegrityValidator: ShareLocalIntegrityValidatorStub.unexpected,
-            progressPresentationPolicy: .init(
-                revealDelay: .seconds(30),
-                minimumVisibleDuration: .zero
-            )
+            localIntegrityValidator: ShareLocalIntegrityValidatorStub.unexpected
         )
 
         await model.refreshCertification()
@@ -1419,8 +1406,8 @@ struct TAPDepthAnalysisSharePresentationTests {
         #expect(model.certificationState == .retryPending)
         #expect(FileManager.default.fileExists(atPath: artifactURL.path))
 
-        model.activitySheetDidDismiss(expectedArtifactID: artifact.id)
-        #expect(!FileManager.default.fileExists(atPath: artifactDirectoryURL.path))
+        model.activityPresentationDidEnd(expectedArtifactID: artifact.id)
+        try await Self.waitUntilDirectoryIsRemoved(artifactDirectoryURL)
     }
 
     @MainActor
@@ -1476,6 +1463,72 @@ struct TAPDepthAnalysisSharePresentationTests {
         }
         #expect(option == .tapnapPackage)
         #expect(progress == 0)
+        #expect(model.visibleProgress == 0)
+        #expect(model.preparationProgress(for: .tapnapPackage) == 0)
+        #expect(model.preparationProgress(for: .image) == nil)
+        #expect(model.isImageAvailable)
+        #expect(!model.canPrepareImage)
+        model.cancelPreparation()
+    }
+
+    @MainActor
+    @Test func inlinePreparationProgressKeepsTheFittedPopoverSizeStable() async throws {
+        let record = TAPCamDemoTestFixtures.samplePendingRecord(
+            captureID: "stable-inline-progress-geometry",
+            capturedAt: Date(timeIntervalSince1970: 1_750_000_000),
+            status: .signed,
+            signedHEICFilename: "signed.heic"
+        )
+        let model = DepthAnalysisShareCoordinator(
+            subject: Self.pendingPhotoSubject(captureID: record.captureID),
+            originalResource: try Self.makePhotoResource(
+                origin: .pendingCapture(
+                    captureID: record.captureID,
+                    selectedSignedPhoto: true
+                )
+            ),
+            recordResolver: .init(
+                captureLoader: { _ in record },
+                assetLoader: { _ in nil }
+            ),
+            artifactPreparer: ProgressReportingShareArtifactPreparerStub(
+                packageProgress: 0.58
+            ),
+            localIntegrityValidator: ShareLocalIntegrityValidatorStub.succeeding
+        )
+        await model.refreshCertification()
+
+        let hostingController = UIHostingController(
+            rootView: DepthAnalysisSharePopover(
+                coordinator: model,
+                onOptionSelected: {},
+                onAppearanceCompleted: {},
+                onDismissalCompleted: {}
+            )
+        )
+        _ = hostingController.view
+        let fittingConstraint = CGSize(width: 288, height: 1_000)
+        let idleSize = hostingController.sizeThatFits(in: fittingConstraint)
+
+        model.prepare(.tapnapPackage)
+        await Task.yield()
+        hostingController.view.layoutIfNeeded()
+        let zeroProgressSize = hostingController.sizeThatFits(in: fittingConstraint)
+
+        for _ in 0..<100 where model.preparationProgress(for: .tapnapPackage) != 0.58 {
+            await Task.yield()
+        }
+        #expect(model.preparationProgress(for: .tapnapPackage) == 0.58)
+        hostingController.view.layoutIfNeeded()
+        let updatedProgressSize = hostingController.sizeThatFits(in: fittingConstraint)
+
+        #expect(idleSize.width == 288)
+        #expect(idleSize.height > 0)
+        #expect(abs(idleSize.width - zeroProgressSize.width) <= 0.5)
+        #expect(abs(idleSize.height - zeroProgressSize.height) <= 0.5)
+        #expect(abs(idleSize.width - updatedProgressSize.width) <= 0.5)
+        #expect(abs(idleSize.height - updatedProgressSize.height) <= 0.5)
+
         model.cancelPreparation()
     }
 
@@ -1608,86 +1661,9 @@ struct TAPDepthAnalysisSharePresentationTests {
     }
 
     @MainActor
-    @Test func fastPackageCompletionNeverRevealsTransientProgress() async throws {
+    @Test func optionSelectionImmediatelyShowsProgressAndReadyPayloadClosesPopoverWithoutHold() async throws {
         let record = TAPCamDemoTestFixtures.samplePendingRecord(
-            captureID: "fast-progress",
-            capturedAt: Date(timeIntervalSince1970: 1_750_000_000),
-            status: .signed,
-            signedHEICFilename: "signed.heic"
-        )
-        let resolver = DepthAnalysisShareRecordResolver(
-            captureLoader: { _ in record },
-            assetLoader: { _ in nil }
-        )
-        let artifactDirectoryURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
-        let artifactURL = artifactDirectoryURL.appendingPathComponent("TAPNAP-Capture.tapnap")
-        try Data("fast-package".utf8).write(to: artifactURL)
-        let artifact = TAPNAPShareArtifact(
-            id: UUID(),
-            kind: .tapnapPackage,
-            fileURL: artifactURL,
-            temporaryDirectoryURL: artifactDirectoryURL,
-            warnings: []
-        )
-        let preparer = ShareArtifactPreparerStub(
-            packageOperation: { _ in artifact },
-            imageOperation: { _, _ in
-                throw TestError.unexpectedSignedImagePolicy
-            }
-        )
-        let preconstructedActivityController = TAPObservedActivityViewController(
-            activityItems: [],
-            applicationActivities: nil
-        )
-        let preparedPresentation = TAPShareActivityPresentation(
-            artifact: artifact,
-            controller: preconstructedActivityController,
-            constructionDuration: .zero
-        )
-        let model = DepthAnalysisShareCoordinator(
-            subject: DepthAnalysisShareSubject(
-                id: "fast-progress",
-                mediaID: .tapCapture(record.captureID),
-                captureID: record.captureID,
-                assetID: nil
-            ),
-            originalResource: try Self.makePhotoResource(
-                origin: .pendingCapture(
-                    captureID: record.captureID,
-                    selectedSignedPhoto: true
-                )
-            ),
-            recordResolver: resolver,
-            artifactPreparer: preparer,
-            localIntegrityValidator: ShareLocalIntegrityValidatorStub.succeeding,
-            progressPresentationPolicy: DepthAnalysisShareProgressPresentationPolicy(
-                revealDelay: .seconds(1),
-                minimumVisibleDuration: .seconds(5)
-            ),
-            activityPresentationBuilder: { _ in preparedPresentation }
-        )
-
-        await model.refreshCertification()
-        model.prepare(.tapnapPackage)
-        for _ in 0..<100 where model.isPopoverPresented {
-            await Task.yield()
-        }
-        model.popoverDidDisappear()
-        for _ in 0..<100 where model.activityPayload == nil {
-            await Task.yield()
-        }
-
-        #expect(model.activityPayload != nil)
-        #expect(!model.isPreparationProgressVisible)
-        model.activitySheetDidDismiss(expectedArtifactID: artifact.id)
-        #expect(FileManager.default.fileExists(atPath: artifactDirectoryURL.path))
-        artifact.removeTemporaryDirectory()
-    }
-
-    @MainActor
-    @Test func visibleProgressReachesCompletionAndRemainsStableBeforeSystemShare() async throws {
-        let record = TAPCamDemoTestFixtures.samplePendingRecord(
-            captureID: "stable-progress",
+            captureID: "immediate-progress",
             capturedAt: Date(timeIntervalSince1970: 1_750_000_000),
             status: .signed,
             signedHEICFilename: "signed.heic"
@@ -1699,7 +1675,7 @@ struct TAPDepthAnalysisSharePresentationTests {
         let gate = ShareArtifactReturnGate()
         let artifactDirectoryURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
         let artifactURL = artifactDirectoryURL.appendingPathComponent("TAPNAP-Capture.tapnap")
-        try Data("stable-package".utf8).write(to: artifactURL)
+        try Data("immediate-progress-package".utf8).write(to: artifactURL)
         let artifact = TAPNAPShareArtifact(
             id: UUID(),
             kind: .tapnapPackage,
@@ -1718,7 +1694,7 @@ struct TAPDepthAnalysisSharePresentationTests {
         )
         let model = DepthAnalysisShareCoordinator(
             subject: DepthAnalysisShareSubject(
-                id: "stable-progress",
+                id: "immediate-progress",
                 mediaID: .tapCapture(record.captureID),
                 captureID: record.captureID,
                 assetID: nil
@@ -1731,54 +1707,48 @@ struct TAPDepthAnalysisSharePresentationTests {
             ),
             recordResolver: resolver,
             artifactPreparer: preparer,
-            localIntegrityValidator: ShareLocalIntegrityValidatorStub.succeeding,
-            progressPresentationPolicy: DepthAnalysisShareProgressPresentationPolicy(
-                revealDelay: .milliseconds(10),
-                minimumVisibleDuration: .milliseconds(200)
-            )
+            localIntegrityValidator: ShareLocalIntegrityValidatorStub.succeeding
         )
 
         await model.refreshCertification()
         model.prepare(.tapnapPackage)
-        await gate.waitUntilArtifactIsReady()
-        #expect(!model.isPreparationProgressVisible)
 
-        for _ in 0..<20 where !model.isPreparationProgressVisible {
-            try await Task.sleep(for: .milliseconds(5))
-        }
-        #expect(model.isPreparationProgressVisible)
-
-        await gate.releaseArtifact()
-        try await Task.sleep(for: .milliseconds(40))
-        #expect(model.activityPayload == nil)
+        #expect(model.isPopoverPresented)
+        #expect(model.isPreparing)
+        #expect(model.visibleProgress == 0)
         guard case .preparing(let option, let progress) = model.preparationState else {
-            Issue.record("Expected progress to remain visible before presenting the system share sheet")
+            Issue.record("Expected immediate determinate preparation progress")
             return
         }
         #expect(option == .tapnapPackage)
-        #expect(progress == 1)
+        #expect(progress == 0)
 
+        await gate.waitUntilArtifactIsReady()
+        #expect(model.isPopoverPresented)
+        #expect(model.activityPayload == nil)
+
+        await gate.releaseArtifact()
         for _ in 0..<100 where model.isPopoverPresented {
-            try await Task.sleep(for: .milliseconds(5))
+            await Task.yield()
         }
-        #expect(model.isPreparationProgressVisible)
+
+        #expect(!model.isPopoverPresented)
+        #expect(model.activityPayload == nil)
+        #expect(model.hasActiveActivityPresentation)
         #expect(model.visibleProgress == 1)
+        #expect(model.preparationProgress(for: .tapnapPackage) == 1)
+        #expect(model.preparationProgress(for: .image) == nil)
+
         model.popoverDidDisappear()
-        #expect(model.activityPayload != nil)
-        #expect(model.isPreparationProgressVisible)
-        #expect(model.visibleProgress == 1)
-        model.activitySheetDidAppear(expectedArtifactID: artifact.id)
-        // Keep the ring behind the system sheet. Clearing it only after the
-        // sheet finishes prevents a brief disappear/reappear flash during the
-        // native presentation animation.
-        #expect(model.isPreparationProgressVisible)
-        #expect(model.visibleProgress == 1)
-        model.activitySheetDidDismiss(expectedArtifactID: artifact.id)
-        #expect(!FileManager.default.fileExists(atPath: artifactDirectoryURL.path))
+        #expect(model.activityPresentation?.id == artifact.id)
+        #expect(model.visibleProgress == nil)
+
+        model.activityPresentationDidEnd(expectedArtifactID: artifact.id)
+        try await Self.waitUntilDirectoryIsRemoved(artifactDirectoryURL)
     }
 
     @MainActor
-    @Test func activityDismissalReleasesCoordinatorBeforeControllerOwnedFile() async throws {
+    @Test func bindingEndCleansArtifactWhileUIKitStillRetainsController() async throws {
         let record = TAPCamDemoTestFixtures.samplePendingRecord(
             captureID: "activity-cleanup",
             capturedAt: Date(timeIntervalSince1970: 1_750_000_000),
@@ -1834,30 +1804,26 @@ struct TAPDepthAnalysisSharePresentationTests {
         }
         #expect(model.activityPayload != nil)
         #expect(FileManager.default.fileExists(atPath: artifactDirectoryURL.path))
-        var retainedController = model.activityPresentation?.controller
-        #expect(retainedController != nil)
+        let presentation = try #require(model.activityPresentation)
+        var retainedController: TAPShareActivityViewController? = presentation.makeViewController()
+        #expect(retainedController?.artifact === artifact)
 
-        model.activityBindingDidDismiss(expectedArtifactID: artifact.id)
-        #expect(model.activityPayload == nil)
-        #expect(model.hasActiveActivityPresentation)
-        #expect(FileManager.default.fileExists(atPath: artifactDirectoryURL.path))
-
-        model.activitySheetDidDismiss(expectedArtifactID: artifact.id)
+        model.activityPresentationDidEnd(expectedArtifactID: artifact.id)
 
         #expect(model.activityPayload == nil)
         #expect(!model.hasActiveActivityPresentation)
-        #expect(FileManager.default.fileExists(atPath: artifactDirectoryURL.path))
         guard case .idle = model.preparationState else {
             Issue.record("Expected dismissal to reset preparation state")
             return
         }
 
+        try await Self.waitUntilDirectoryIsRemoved(artifactDirectoryURL)
+        #expect(retainedController != nil)
         retainedController = nil
-        #expect(!FileManager.default.fileExists(atPath: artifactDirectoryURL.path))
     }
 
     @MainActor
-    @Test func activitySheetDismissalIsIdempotent() async throws {
+    @Test func activityBindingAndOnDismissEndSignalsAreIdempotent() async throws {
         let record = TAPCamDemoTestFixtures.samplePendingRecord(
             captureID: "activity-idempotent",
             capturedAt: Date(timeIntervalSince1970: 1_750_000_000),
@@ -1871,12 +1837,16 @@ struct TAPDepthAnalysisSharePresentationTests {
         let artifactDirectoryURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
         let artifactURL = artifactDirectoryURL.appendingPathComponent("TAPNAP-Capture.tapnap")
         try Data("typed-package".utf8).write(to: artifactURL)
+        let removalRecorder = ShareTemporaryDirectoryRemovalRecorder()
         let artifact = TAPNAPShareArtifact(
             id: UUID(),
             kind: .tapnapPackage,
             fileURL: artifactURL,
             temporaryDirectoryURL: artifactDirectoryURL,
-            warnings: []
+            warnings: [],
+            temporaryDirectoryRemover: { url in
+                try removalRecorder.remove(url)
+            }
         )
         let model = DepthAnalysisShareCoordinator(
             subject: DepthAnalysisShareSubject(
@@ -1907,16 +1877,84 @@ struct TAPDepthAnalysisSharePresentationTests {
             await Task.yield()
         }
         model.popoverDidDisappear()
-        var retainedController = model.activityPresentation?.controller
-        #expect(retainedController != nil)
+        #expect(model.activityPresentation?.id == artifact.id)
 
-        model.activitySheetDidDismiss(expectedArtifactID: artifact.id)
-        model.activitySheetDidDismiss(expectedArtifactID: artifact.id)
+        // SwiftUI may deliver the Binding nil write and onDismiss for the same
+        // exact sheet. Both feed the same exact-ID transition.
+        model.activityPresentationDidEnd(expectedArtifactID: artifact.id)
+        model.activityPresentationDidEnd(expectedArtifactID: artifact.id)
         #expect(!model.hasActiveActivityPresentation)
+
+        try await Self.waitUntilDirectoryIsRemoved(artifactDirectoryURL)
+        #expect(removalRecorder.removalCount == 1)
+    }
+
+    @MainActor
+    @Test func supersedingPendingHandoffCleansTheDiscardedArtifactExactlyOnce() async throws {
+        let record = TAPCamDemoTestFixtures.samplePendingRecord(
+            captureID: "discard-pending-handoff",
+            capturedAt: Date(timeIntervalSince1970: 1_750_000_000),
+            status: .signed,
+            signedHEICFilename: "signed.heic"
+        )
+        let artifactDirectoryURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        let artifactURL = artifactDirectoryURL.appendingPathComponent("TAPNAP-Capture.tapnap")
+        try Data("discard-pending-handoff".utf8).write(to: artifactURL)
+        let removalRecorder = ShareTemporaryDirectoryRemovalRecorder()
+        let artifact = TAPNAPShareArtifact(
+            id: UUID(),
+            kind: .tapnapPackage,
+            fileURL: artifactURL,
+            temporaryDirectoryURL: artifactDirectoryURL,
+            warnings: [],
+            temporaryDirectoryRemover: { url in
+                try removalRecorder.remove(url)
+            }
+        )
+        let model = DepthAnalysisShareCoordinator(
+            subject: Self.pendingPhotoSubject(captureID: record.captureID),
+            originalResource: try Self.makePhotoResource(
+                origin: .pendingCapture(
+                    captureID: record.captureID,
+                    selectedSignedPhoto: true
+                )
+            ),
+            recordResolver: .init(
+                captureLoader: { _ in record },
+                assetLoader: { _ in nil }
+            ),
+            artifactPreparer: ShareArtifactPreparerStub(
+                packageOperation: { _ in artifact },
+                imageOperation: { _, _ in
+                    try await Task.sleep(nanoseconds: 30_000_000_000)
+                    throw CancellationError()
+                }
+            ),
+            localIntegrityValidator: ShareLocalIntegrityValidatorStub.succeeding
+        )
+
+        await model.refreshCertification()
+        model.prepare(.tapnapPackage)
+        for _ in 0..<100 where model.isPopoverPresented {
+            await Task.yield()
+        }
+
+        #expect(model.activityPresentation == nil)
+        #expect(model.hasActiveActivityPresentation)
         #expect(FileManager.default.fileExists(atPath: artifactDirectoryURL.path))
 
-        retainedController = nil
-        #expect(!FileManager.default.fileExists(atPath: artifactDirectoryURL.path))
+        // A late app-owned reopen can supersede an unpromoted pending handoff.
+        // Starting the new preparation must discard only the old artifact.
+        model.cancelPreparation()
+        model.setPopoverPresented(true)
+        model.prepare(.image)
+
+        try await Self.waitUntilDirectoryIsRemoved(artifactDirectoryURL)
+        #expect(removalRecorder.removalCount == 1)
+        #expect(model.isPreparing)
+        #expect(model.visibleProgress == 0)
+
+        model.cancelPreparation()
     }
 
     @MainActor
@@ -1937,22 +1975,30 @@ struct TAPDepthAnalysisSharePresentationTests {
         let firstDirectoryURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
         let firstFileURL = firstDirectoryURL.appendingPathComponent("TAPNAP-Capture.tapnap")
         try Data("first-attempt".utf8).write(to: firstFileURL)
+        let firstRemovalRecorder = ShareTemporaryDirectoryRemovalRecorder()
         let firstArtifact = TAPNAPShareArtifact(
             id: UUID(),
             kind: .tapnapPackage,
             fileURL: firstFileURL,
             temporaryDirectoryURL: firstDirectoryURL,
-            warnings: []
+            warnings: [],
+            temporaryDirectoryRemover: { url in
+                try firstRemovalRecorder.remove(url)
+            }
         )
         let secondDirectoryURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
         let secondFileURL = secondDirectoryURL.appendingPathComponent("TAPNAP-Photo.heic")
         try Data("second-attempt".utf8).write(to: secondFileURL)
+        let secondRemovalRecorder = ShareTemporaryDirectoryRemovalRecorder()
         let secondArtifact = TAPNAPShareArtifact(
             id: UUID(),
             kind: .image,
             fileURL: secondFileURL,
             temporaryDirectoryURL: secondDirectoryURL,
-            warnings: []
+            warnings: [],
+            temporaryDirectoryRemover: { url in
+                try secondRemovalRecorder.remove(url)
+            }
         )
         let model = DepthAnalysisShareCoordinator(
             subject: subject,
@@ -1977,12 +2023,12 @@ struct TAPDepthAnalysisSharePresentationTests {
         for _ in 0..<100 where model.activityPresentation?.id != firstArtifact.id {
             await Task.yield()
         }
-        var firstController = model.activityPresentation?.controller
-        #expect(firstController != nil)
+        #expect(model.activityPresentation?.id == firstArtifact.id)
 
-        model.activitySheetDidDismiss(expectedArtifactID: firstArtifact.id)
+        model.activityPresentationDidEnd(expectedArtifactID: firstArtifact.id)
         #expect(!model.hasActiveActivityPresentation)
-        firstController = nil
+        try await Self.waitUntilDirectoryIsRemoved(firstDirectoryURL)
+        #expect(firstRemovalRecorder.removalCount == 1)
 
         model.present(subject: subject, resource: resource)
         await model.refreshCertification()
@@ -1994,171 +2040,18 @@ struct TAPDepthAnalysisSharePresentationTests {
         for _ in 0..<100 where model.activityPresentation?.id != secondArtifact.id {
             await Task.yield()
         }
-        var secondController = model.activityPresentation?.controller
-        #expect(secondController != nil)
         #expect(model.activityPresentation?.id == secondArtifact.id)
 
-        model.activityBindingDidDismiss(expectedArtifactID: firstArtifact.id)
-        model.activitySheetDidDismiss(expectedArtifactID: firstArtifact.id)
+        model.activityPresentationDidEnd(expectedArtifactID: firstArtifact.id)
 
         #expect(model.activityPresentation?.id == secondArtifact.id)
         #expect(model.hasActiveActivityPresentation)
         #expect(FileManager.default.fileExists(atPath: secondDirectoryURL.path))
+        #expect(secondRemovalRecorder.removalCount == 0)
 
-        model.activitySheetDidDismiss(expectedArtifactID: secondArtifact.id)
-        secondController = nil
-    }
-
-    @MainActor
-    @Test func systemHandoffWaitsForMinimumProgressThenDismissalCleansImmediately() async throws {
-        let record = TAPCamDemoTestFixtures.samplePendingRecord(
-            captureID: "activity-progress-hold",
-            capturedAt: Date(timeIntervalSince1970: 1_750_000_000),
-            status: .signed,
-            signedHEICFilename: "signed.heic"
-        )
-        let artifactDirectoryURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
-        let artifactURL = artifactDirectoryURL.appendingPathComponent("TAPNAP-Capture.tapnap")
-        try Data("activity-progress-hold".utf8).write(to: artifactURL)
-        let artifact = TAPNAPShareArtifact(
-            id: UUID(),
-            kind: .tapnapPackage,
-            fileURL: artifactURL,
-            temporaryDirectoryURL: artifactDirectoryURL,
-            warnings: []
-        )
-        let preconstructedActivityController = TAPObservedActivityViewController(
-            activityItems: [],
-            applicationActivities: nil
-        )
-        let preparedPresentation = TAPShareActivityPresentation(
-            artifact: artifact,
-            controller: preconstructedActivityController,
-            constructionDuration: .milliseconds(150)
-        )
-        let model = DepthAnalysisShareCoordinator(
-            subject: Self.pendingPhotoSubject(captureID: record.captureID),
-            originalResource: try Self.makePhotoResource(
-                origin: .pendingCapture(
-                    captureID: record.captureID,
-                    selectedSignedPhoto: true
-                )
-            ),
-            recordResolver: .init(
-                captureLoader: { _ in record },
-                assetLoader: { _ in nil }
-            ),
-            artifactPreparer: ShareArtifactPreparerStub(
-                packageOperation: { _ in artifact },
-                imageOperation: { _, _ in
-                    throw TestError.unexpectedSignedImagePolicy
-                }
-            ),
-            localIntegrityValidator: ShareLocalIntegrityValidatorStub.succeeding,
-            progressPresentationPolicy: .init(
-                revealDelay: .milliseconds(100),
-                minimumVisibleDuration: .milliseconds(250)
-            ),
-            activityPresentationBuilder: { _ in preparedPresentation }
-        )
-
-        await model.refreshCertification()
-        model.prepare(.tapnapPackage)
-        for _ in 0..<100 where !model.isPreparationProgressVisible {
-            await Task.yield()
-        }
-        #expect(model.isPreparationProgressVisible)
-        #expect(model.isPopoverPresented)
-        #expect(model.activityPayload == nil)
-
-        try await Task.sleep(for: .milliseconds(100))
-        #expect(model.isPopoverPresented)
-        #expect(model.isPreparationProgressVisible)
-
-        for _ in 0..<40 where model.isPopoverPresented {
-            try await Task.sleep(for: .milliseconds(10))
-        }
-        #expect(!model.isPopoverPresented)
-        model.popoverDidDisappear()
-        #expect(model.activityPayload?.id == artifact.id)
-        #expect(model.activityPresentation?.controller === preconstructedActivityController)
-
-        model.activitySheetDidDismiss(expectedArtifactID: artifact.id)
-        #expect(!model.hasActiveActivityPresentation)
-        #expect(FileManager.default.fileExists(atPath: artifactDirectoryURL.path))
-        #expect(!model.isPreparationProgressVisible)
-        artifact.removeTemporaryDirectory()
-    }
-
-    @MainActor
-    @Test func activityNeverAppearingReleasesCoordinatorWithoutPrematureFileDeletion() async throws {
-        let record = TAPCamDemoTestFixtures.samplePendingRecord(
-            captureID: "activity-never-appears",
-            capturedAt: Date(timeIntervalSince1970: 1_750_000_000),
-            status: .signed,
-            signedHEICFilename: "signed.heic"
-        )
-        let artifactDirectoryURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
-        let artifactURL = artifactDirectoryURL.appendingPathComponent("TAPNAP-Capture.tapnap")
-        try Data("activity-never-appears".utf8).write(to: artifactURL)
-        let artifact = TAPNAPShareArtifact(
-            id: UUID(),
-            kind: .tapnapPackage,
-            fileURL: artifactURL,
-            temporaryDirectoryURL: artifactDirectoryURL,
-            warnings: []
-        )
-        let preparedPresentation = TAPShareActivityPresentation(
-            artifact: artifact,
-            controller: TAPObservedActivityViewController(
-                activityItems: [],
-                applicationActivities: nil
-            ),
-            constructionDuration: .zero
-        )
-        let model = DepthAnalysisShareCoordinator(
-            subject: Self.pendingPhotoSubject(captureID: record.captureID),
-            originalResource: try Self.makePhotoResource(
-                origin: .pendingCapture(
-                    captureID: record.captureID,
-                    selectedSignedPhoto: true
-                )
-            ),
-            recordResolver: .init(
-                captureLoader: { _ in record },
-                assetLoader: { _ in nil }
-            ),
-            artifactPreparer: ShareArtifactPreparerStub(
-                packageOperation: { _ in artifact },
-                imageOperation: { _, _ in
-                    throw TestError.unexpectedSignedImagePolicy
-                }
-            ),
-            localIntegrityValidator: ShareLocalIntegrityValidatorStub.succeeding,
-            activityPresentationPolicy: .init(
-                appearanceTimeout: .milliseconds(20),
-                dismantleTimeout: .milliseconds(20)
-            ),
-            activityPresentationBuilder: { _ in preparedPresentation }
-        )
-
-        await model.refreshCertification()
-        model.prepare(.tapnapPackage)
-        for _ in 0..<100 where model.isPopoverPresented {
-            await Task.yield()
-        }
-        model.popoverDidDisappear()
-        #expect(model.activityPayload?.id == artifact.id)
-        #expect(model.hasActiveActivityPresentation)
-
-        for _ in 0..<40 where model.hasActiveActivityPresentation {
-            try await Task.sleep(for: .milliseconds(5))
-        }
-
-        #expect(model.activityPayload == nil)
-        #expect(!model.hasActiveActivityPresentation)
-        #expect(FileManager.default.fileExists(atPath: artifactDirectoryURL.path))
-        artifact.removeTemporaryDirectory()
+        model.activityPresentationDidEnd(expectedArtifactID: secondArtifact.id)
+        try await Self.waitUntilDirectoryIsRemoved(secondDirectoryURL)
+        #expect(secondRemovalRecorder.removalCount == 1)
     }
 
     @MainActor
@@ -2187,34 +2080,6 @@ struct TAPDepthAnalysisSharePresentationTests {
             #expect(items.first as? URL == fileURL)
             artifact.removeTemporaryDirectory()
         }
-    }
-
-    @MainActor
-    @Test func activityControllerOwnsHandedOffFileUntilControllerRelease() throws {
-        let directoryURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
-        let fileURL = directoryURL.appendingPathComponent("TAPNAP-Capture.tapnap")
-        try Data("controller-owned-file".utf8).write(to: fileURL)
-        var artifact: TAPNAPShareArtifact? = TAPNAPShareArtifact(
-            id: UUID(),
-            kind: .tapnapPackage,
-            fileURL: fileURL,
-            temporaryDirectoryURL: directoryURL,
-            warnings: []
-        )
-        var presentation: TAPShareActivityPresentation? = TAPShareActivityPresentation.prepare(
-            for: try #require(artifact)
-        )
-        var controller: TAPObservedActivityViewController? = presentation?.controller
-
-        artifact = nil
-        presentation = nil
-
-        #expect(controller != nil)
-        #expect(FileManager.default.fileExists(atPath: directoryURL.path))
-
-        controller = nil
-
-        #expect(!FileManager.default.fileExists(atPath: directoryURL.path))
     }
 
     @Test func abandonedShareArtifactLeaseRemovesTemporaryDirectory() throws {
@@ -2252,36 +2117,123 @@ struct TAPDepthAnalysisSharePresentationTests {
         let readme = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/DepthAnalysis/README.md"
         )
+        let availableRowStart = try #require(
+            popoverSource.range(of: "private func availableOptionRow(")
+        )
+        let availableRowEnd = try #require(
+            popoverSource.range(
+                of: "private func unavailableOptionRow(",
+                range: availableRowStart.upperBound..<popoverSource.endIndex
+            )
+        )
+        let availableRowSource = String(
+            popoverSource[availableRowStart.lowerBound..<availableRowEnd.lowerBound]
+        )
+        let optionLabelStart = try #require(
+            popoverSource.range(of: "private func optionLabel(")
+        )
+        let optionLabelEnd = try #require(
+            popoverSource.range(
+                of: "private struct StableShareOptionButtonStyle",
+                range: optionLabelStart.upperBound..<popoverSource.endIndex
+            )
+        )
+        let optionLabelSource = String(
+            popoverSource[optionLabelStart.lowerBound..<optionLabelEnd.lowerBound]
+        )
 
         #expect(popoverSource.contains("isAvailable: coordinator.isPackageAvailable"))
         #expect(popoverSource.contains("canPrepare: coordinator.canPreparePackage"))
         #expect(popoverSource.contains(".buttonStyle(StableShareOptionButtonStyle())"))
         #expect(popoverSource.contains(".opacity(isAvailable ? 1 : 0.38)"))
-        #expect(popoverSource.contains("ProgressView(value: coordinator.visibleProgress ?? 0)"))
+        #expect(availableRowSource.contains("let progress = coordinator.preparationProgress(for: option)"))
+        #expect(availableRowSource.contains("coordinator.prepare(option)"))
+        #expect(availableRowSource.contains(".disabled(!canPrepare)"))
+        #expect(!availableRowSource.contains("cancelPreparation"))
+        #expect(optionLabelSource.contains("Text(String(localized: subtitleKey))"))
+        #expect(optionLabelSource.contains("ProgressView(value: progress ?? 0)"))
+        #expect(optionLabelSource.contains(".progressViewStyle(.linear)"))
+        #expect(optionLabelSource.contains(".frame(height: 2)"))
+        #expect(
+            optionLabelSource.contains("ZStack(")
+                || optionLabelSource.contains(".overlay(")
+        )
+        #expect(!optionLabelSource.contains("if let progress"))
+        #expect(!optionLabelSource.contains("format: .percent"))
+        #expect(!optionLabelSource.contains("Text(\"Cancel\")"))
+        #expect(!optionLabelSource.contains("Button(\"Cancel\")"))
+        #expect(optionLabelSource.contains("Image(systemName: systemImage)"))
+        #expect(optionLabelSource.contains("Text(String(localized: titleKey))"))
+        #expect(optionLabelSource.contains("if let badgeKey"))
+        #expect(optionLabelSource.contains(".frame(minHeight: 64)"))
+        #expect(popoverSource.contains(".frame(width: 288)"))
+        #expect(popoverSource.contains("case .preparing:"))
+        #expect(popoverSource.contains("return .selection"))
         #expect(!popoverSource.contains("ProgressView()"))
-        #expect(coordinatorSource.contains("revealDelay: .milliseconds(50)"))
-        #expect(coordinatorSource.contains("minimumVisibleDuration: .milliseconds(400)"))
-        #expect(popoverSource.contains("tap.share.preparation"))
+        #expect(!popoverSource.contains("case preparation"))
+        #expect(!popoverSource.contains("preparationContent"))
+        #expect(!popoverSource.contains("tap.share.preparation"))
+        #expect(!popoverSource.contains("private extension DepthAnalysisShareOption"))
+        #expect(!popoverSource.contains(".transition("))
+        #expect(!popoverSource.contains(".id("))
+        #expect(coordinatorSource.contains("preparationState = .preparing(option: option, progress: 0)"))
+        #expect(!coordinatorSource.contains("DepthAnalysisShareProgressPresentationPolicy"))
+        #expect(!coordinatorSource.contains("revealDelay"))
+        #expect(!coordinatorSource.contains("minimumVisibleDuration"))
+        #expect(!coordinatorSource.contains("scheduleProgressReveal"))
+        #expect(!coordinatorSource.contains("waitForMinimumProgressVisibility"))
         #expect(!popoverSource.contains("safeAreaInset"))
         #expect(!popoverSource.contains("pinnedPreparationFooter"))
         #expect(controlSource.contains(".popover("))
-        #expect(controlSource.contains("expectedArtifactID: presentation.id"))
-        #expect(controlSource.contains(".id(coordinator.activityPresentation?.id)"))
-        #expect(controlSource.contains("activitySheetDidAppear("))
-        #expect(controlSource.contains("onAppeared:"))
-        #expect(controlSource.contains("preparedSharePresentation:"))
-        #expect(controlSource.contains("onDismantled:"))
-        #expect(activitySource.contains("activityItems: activityItems(for: artifact)"))
-        #expect(activitySource.contains("controller.retainShareArtifact(artifact)"))
+        #expect(controlSource.contains("expectedPresentationID: coordinator.activityPresentation?.id"))
+        #expect(controlSource.contains("sharePresentation: presentation"))
+        #expect(controlSource.contains("onDismiss: activitySheetDidDismiss"))
+        #expect(controlSource.contains("private func activitySheetDidDismiss()"))
+        #expect(controlSource.contains("expectedArtifactID: expectedPresentationID"))
+        #expect(controlSource.contains("activityPresentationDidEnd("))
+        #expect(!controlSource.contains("preparedSharePresentation:"))
+        #expect(!controlSource.contains("onAppeared:"))
+        #expect(!controlSource.contains("onDismantled:"))
+        #expect(!controlSource.contains("onFirstAppearance"))
+        #expect(activitySource.contains("private let sharePresentation: TAPShareActivityPresentation"))
+        #expect(activitySource.contains("sharePresentation.makeViewController()"))
+        #expect(activitySource.contains("let artifact: TAPNAPShareArtifact"))
+        #expect(activitySource.contains("init(artifact: TAPNAPShareArtifact)"))
+        #expect(activitySource.contains("func makeViewController() -> TAPShareActivityViewController"))
+        #expect(activitySource.contains("let controller = TAPShareActivityViewController("))
+        #expect(activitySource.contains("self.artifact = artifact"))
+        #expect(activitySource.contains("super.init("))
+        #expect(activitySource.contains("func scheduleTemporaryDirectoryCleanup()"))
+        #expect(!activitySource.contains("constructionDuration"))
+        #expect(!activitySource.contains("cleanupScheduler"))
+        #expect(!activitySource.contains("private let controller"))
+        #expect(!activitySource.contains("let controller: TAPShareActivityViewController"))
+        #expect(!activitySource.contains("var controller:"))
+        #expect(!activitySource.contains("onFirstAppearance"))
+        #expect(!activitySource.contains("retainShareArtifact"))
+        #expect(!activitySource.contains("makeCoordinator()"))
+        #expect(!activitySource.contains("dismantleUIViewController"))
         #expect(!activitySource.contains("UIActivityItemsConfiguration"))
         #expect(!activitySource.contains("registerFileRepresentation"))
+        #expect(!coordinatorSource.contains("TAPShareActivityViewController("))
+        #expect(!coordinatorSource.contains("constructionDuration"))
+        #expect(!coordinatorSource.contains("controllerPreconstructed"))
+        #expect(!coordinatorSource.contains("phase=controllerConstruction"))
+        #expect(!coordinatorSource.contains("onFirstAppearance"))
+        #expect(coordinatorSource.contains("return activityPresentationBuilder(artifact)"))
+        #expect(coordinatorSource.contains("pendingHandoffPresentation = preparedPresentation"))
+        #expect(coordinatorSource.contains("isPopoverPresented = false"))
         #expect(coordinatorSource.contains("func popoverDidAppear()"))
-        #expect(coordinatorSource.contains("scheduleActivityAppearanceWatchdog"))
+        #expect(!coordinatorSource.contains("scheduleActivityAppearanceWatchdog"))
+        #expect(!coordinatorSource.contains("scheduleActivityDismantleWatchdog"))
+        #expect(!coordinatorSource.contains("DepthAnalysisShareActivityPresentationPolicy"))
         #expect(!coordinatorSource.contains("scheduleActivityProgressReveal"))
         #expect(!controlSource.contains("onFinished:"))
         #expect(!activitySource.contains("completionWithItemsHandler"))
-        #expect(coordinatorSource.contains("endActivityPresentationAfterSystemDismissal"))
-        #expect(coordinatorSource.contains("func activitySheetDidDismiss(expectedArtifactID: UUID)"))
+        #expect(!coordinatorSource.contains("endActivityPresentationAfterSystemDismissal"))
+        #expect(coordinatorSource.contains("func activityPresentationDidEnd(expectedArtifactID: UUID)"))
+        #expect(coordinatorSource.contains("endedPresentation.scheduleTemporaryDirectoryCleanup()"))
+        #expect(coordinatorSource.contains("discardedPresentation?.scheduleTemporaryDirectoryCleanup()"))
         #expect(popoverSource.contains("SharePopoverDismissalObserver"))
         #expect(popoverSource.contains("override func viewDidAppear"))
         #expect(popoverSource.contains("onAppearanceCompleted()"))
@@ -2295,7 +2247,8 @@ struct TAPDepthAnalysisSharePresentationTests {
         #expect(builderSource.contains("FileManager.default.temporaryDirectory"))
         #expect(!builderSource.contains("cachesDirectory"))
         #expect(readme.contains("must never pre-generate a package"))
-        #expect(readme.contains("Controller release performs the attempt-scoped, idempotent"))
+        #expect(readme.contains("UIKit controller caching after dismissal is"))
+        #expect(readme.contains("not a source-lifetime protocol."))
 
         let productionPaths = try TAPCamDemoTestSourceInspection.swiftSourceRelativePathsRecursively(
             under: "TAPCamDemo"
@@ -2311,7 +2264,7 @@ struct TAPDepthAnalysisSharePresentationTests {
     }
 
     @MainActor
-    @Test func cancellationCleansArtifactReturnedByCancellationIgnoringPreparer() async throws {
+    @Test func cancellationBeforePendingHandoffCleansReturnedArtifactExactlyOnce() async throws {
         let record = TAPCamDemoTestFixtures.samplePendingRecord(
             captureID: "cancel-after-build",
             capturedAt: Date(timeIntervalSince1970: 1_750_000_000),
@@ -2326,12 +2279,16 @@ struct TAPDepthAnalysisSharePresentationTests {
         let artifactDirectoryURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
         let artifactURL = artifactDirectoryURL.appendingPathComponent("TAPNAP-Photo.heic")
         try Data("opaque-share".utf8).write(to: artifactURL)
+        let removalRecorder = ShareTemporaryDirectoryRemovalRecorder()
         let artifact = TAPNAPShareArtifact(
             id: UUID(),
             kind: .image,
             fileURL: artifactURL,
             temporaryDirectoryURL: artifactDirectoryURL,
-            warnings: []
+            warnings: [],
+            temporaryDirectoryRemover: { url in
+                try removalRecorder.remove(url)
+            }
         )
         let preparer = ShareArtifactPreparerStub(
             packageOperation: { _ in
@@ -2369,10 +2326,21 @@ struct TAPDepthAnalysisSharePresentationTests {
         model.cancelPreparation()
         await gate.releaseArtifact()
 
-        for _ in 0..<100 where FileManager.default.fileExists(atPath: artifactDirectoryURL.path) {
-            await Task.yield()
+        try await Self.waitUntilDirectoryIsRemoved(artifactDirectoryURL)
+        #expect(removalRecorder.removalCount == 1)
+        #expect(!model.isPreparing)
+        #expect(model.activityPresentation == nil)
+        #expect(!model.hasActiveActivityPresentation)
+    }
+
+    private static func waitUntilDirectoryIsRemoved(_ directoryURL: URL) async throws {
+        for _ in 0..<100 {
+            if !FileManager.default.fileExists(atPath: directoryURL.path) {
+                return
+            }
+            try await Task.sleep(for: .milliseconds(5))
         }
-        #expect(!FileManager.default.fileExists(atPath: artifactDirectoryURL.path))
+        Issue.record("Expected Share artifact directory to be removed")
     }
 
     private static func pendingPhotoSubject(
@@ -2439,6 +2407,22 @@ struct TAPDepthAnalysisSharePresentationTests {
 private enum ShareLocalIntegrityStubError: Error {
     case mismatch
     case unexpectedValidation
+}
+
+private nonisolated final class ShareTemporaryDirectoryRemovalRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    var removalCount: Int {
+        lock.withLock { count }
+    }
+
+    func remove(_ directoryURL: URL) throws {
+        lock.withLock {
+            count += 1
+        }
+        try FileManager.default.removeItem(at: directoryURL)
+    }
 }
 
 private nonisolated struct ShareLocalIntegrityValidatorStub:

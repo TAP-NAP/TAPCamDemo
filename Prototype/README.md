@@ -18,14 +18,21 @@ python3 -m http.server 4173 --directory Prototype
 
 Then open `http://127.0.0.1:4173/`.
 
-## Review TAP-0081-r2-candidate
+## Review TAP-0081-r3-candidate
 
-This is the exact incremental revision based on the owner-approved geometry and
-handoff flow in `TAP-0081-r1`. On 2026-08-13 the product owner approved the full
-`TAP-0081-r2-candidate`: complete-original readiness gates Share, the ready bytes
-receive a local integrity check without backend Verify, Failed disables TAPNAP
-but keeps warned ordinary-media sharing, Needs Retry remains queue-only, and the
-refined Viewer toolbar geometry is native implementation authority.
+This owner-directed candidate preserves the geometry, resource/integrity states,
+and capability matrix approved in `TAP-0081-r2-candidate`. It changes only the
+app-owned preparation lifecycle: choosing TAPNAP Package or another implemented
+share type keeps the selector visible and immediately adds determinate progress
+as a 2 px track that replaces the selected option's subtitle text inside the
+exact same fixed-height subtitle slot. The title, icon, badge, row height, popover
+dimensions, and every sibling position remain unchanged; the subtitle text and
+track are never shown together, and no percentage or Cancel control is inserted.
+Every other option remains visible but is temporarily disabled. There is no
+independent preparation page, artificial reveal delay, or minimum-visible hold.
+When the payload becomes ready, the app-owned popover ends immediately. The
+subsequently presented iOS activity controller remains a text-only boundary and
+is never imitated by this Web prototype.
 
 1. Choose Photo, Live Photo, or Video.
 2. Choose **iCloud · Loading**. Confirm the Viewer shows original-resource
@@ -40,20 +47,24 @@ refined Viewer toolbar geometry is native implementation authority.
    verified Photo/Live Photo; Video Package, Sticker, and Link remain disabled.
    In Failed, TAPNAP stays disabled while Share Image/Video remains enabled with
    the explicit warning “无法保证可验证性”.
-6. Use Fast to confirm that preparation completed within 50 ms never inserts a
-   progress surface.
-7. Use Threshold to inspect work that completes around 120 ms: progress appears
-   after 50 ms, reaches 100%, then remains until its 400 ms minimum-visible
-   duration is satisfied. Use Slow to confirm that longer progress never moves
-   backwards.
-8. Use Cancel, Failure, and Retry. Confirm the Viewer, media, pager region, and
+6. Keep **Success · observable** selected and choose any implemented format.
+   Confirm the original subtitle text is replaced immediately by a thin progress
+   track inside the same slot, without moving the title, icon, badge, row, popover,
+   or sibling rows, and that progress never moves backwards. The subtitle and
+   track must not appear together; no percentage or Cancel control appears. The
+   other three rows stay visible and disabled. When the payload becomes ready,
+   confirm the app-owned popover closes without inserting a preparation or
+   completion screen.
+7. Use Cancel, Failure, and Retry. Confirm the Viewer, media, pager region, and
    toolbar never disappear or rebuild.
-9. Inspect the final system handoff boundary. The real iOS activity controller
-   is deliberately not imitated.
+8. Read the System boundary note in the control panel. It documents the native
+   handoff only; the real iOS activity controller and its dismissal are not
+   simulated.
 
 The prototype performs no PhotoKit, iCloud, proof parsing, hashing, App Attest,
-or backend request. Those fixtures describe visible state relationships only;
-the native implementation owns actual resource and integrity work.
+or backend request. The observable success/failure fixtures describe visible
+state relationships only; the native implementation owns actual resource,
+integrity, payload-progress, and system-presentation work.
 
 The exact state coverage, source-image hashes, native symbol intent, system
 boundaries, and approval status are recorded in [manifest.json](manifest.json).
