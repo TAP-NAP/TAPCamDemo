@@ -3,6 +3,7 @@ import fs from "node:fs";
 import test from "node:test";
 
 import {
+  buildWorkloadInspectionJourney,
   canReduce,
   chooseRoute,
   createState,
@@ -17,6 +18,8 @@ import {
   setupRequiredReady,
   TARGET_INITIALIZATION_IDENTITY,
   timelineRegistry,
+  workloadInspectionReached,
+  workloadInspectionRegistry,
   workloadRegistry,
   workloadStates
 } from "./startup-model.mjs";
@@ -603,6 +606,103 @@ test("every workload names its machine, current/target placement, alignment, and
     assert.equal(typeof workload.target.task, "string", `${workloadId}:target.task`);
     assert.ok(workload.target.task.length > 0, `${workloadId}:target.task`);
   }
+});
+
+test("workload inspection journeys replay canonical reducer journals without synthetic focus events", () => {
+  assert.deepEqual(
+    Object.keys(workloadInspectionRegistry).sort(),
+    Object.keys(workloadRegistry).sort()
+  );
+
+  for (const [workloadId, plan] of Object.entries(workloadInspectionRegistry)) {
+    const journey = buildWorkloadInspectionJourney(workloadId);
+    assert.equal(workloadInspectionReached(journey.state, workloadId), true, workloadId);
+    assert.equal(journey.plan.scenarioId, plan.scenarioId, `${workloadId}:scenarioId`);
+    assert.equal(journey.state.scenarioId, plan.scenarioId, `${workloadId}:state.scenarioId`);
+    assert.equal(journey.state.phone.page, plan.page, `${workloadId}:page`);
+    assert.equal(journey.state.workloads[workloadId], plan.status, `${workloadId}:status`);
+    assert.equal(journey.state.log.at(-1).event.type, plan.eventType, `${workloadId}:eventType`);
+    assert.ok(journey.state.log.at(-1).effects.workloads.includes(workloadId), `${workloadId}:matching trace`);
+    assert.equal(journey.history.at(-1).seq, journey.state.seq, `${workloadId}:history tail`);
+    assert.deepEqual(journey.history.map(({ seq }) => seq),
+      Array.from({ length: journey.state.seq + 1 }, (_, index) => index),
+      `${workloadId}:complete history`);
+
+    const replayed = journey.state.log.reduce(
+      (state, entry) => reduce(state, entry.event),
+      createState(plan.scenarioId)
+    );
+    assert.deepEqual(publicSnapshot(replayed), publicSnapshot(journey.state), `${workloadId}:journal replay`);
+    assert.doesNotMatch(
+      journey.state.log.map((entry) => entry.event.type).join(" "),
+      /WORKLOAD_(?:FOCUSED|READY)|INSPECTION_(?:OPENED|READY)/,
+      `${workloadId}:synthetic event`
+    );
+
+    const withoutMatchingEffect = structuredClone(journey.state);
+    withoutMatchingEffect.log.at(-1).effects.workloads = withoutMatchingEffect.log.at(-1).effects.workloads
+      .filter((candidate) => candidate !== workloadId);
+    assert.equal(workloadInspectionReached(withoutMatchingEffect, workloadId), false, `${workloadId}:effect required`);
+
+    if (plan.status === "succeeded") {
+      for (const nonReadyStatus of ["cancelled", "stale"]) {
+        const nonReady = structuredClone(journey.state);
+        nonReady.workloads[workloadId] = nonReadyStatus;
+        assert.equal(workloadInspectionReached(nonReady, workloadId), false, `${workloadId}:${nonReadyStatus}`);
+      }
+    }
+  }
+
+  assert.throws(
+    () => buildWorkloadInspectionJourney("not-a-workload"),
+    /Unknown workload inspection target/
+  );
+  assert.throws(
+    () => buildWorkloadInspectionJourney("initialAttestation", { stepLimit: 0 }),
+    /Canonical journal did not reach workload inspection target/
+  );
+});
+
+test("initial Attestation inspection opens successful fresh-install Setup while deferred and eligible targets stay non-Ready", () => {
+  const attestationReview = buildWorkloadInspectionJourney("initialAttestation");
+  assert.equal(attestationReview.plan.scenarioId, "freshInstall");
+  assert.equal(attestationReview.state.phone.page, "firstInstallSetup");
+  assert.equal(attestationReview.state.workloads.initialAttestation, "succeeded");
+  assert.equal(attestationReview.state.machines.appAttestCredential, "bootstrapReady");
+  assert.deepEqual(attestationReview.state.log.map(({ event }) => event.type), [
+    "SCENARIO_SELECTED",
+    "ACTIVATION_REQUESTED",
+    "APP_FIRST_FRAME_COMMITTED",
+    "INITIAL_ROUTE_COMMITTED",
+    "SETUP_ATTESTATION_TAPPED",
+    "SETUP_ATTESTATION_COMPLETED"
+  ]);
+  assert.ok(attestationReview.state.log.at(-1).effects.workloads.includes("initialAttestation"));
+  const laterSetupState = reduce(attestationReview.state, nextEvent(attestationReview.state));
+  assert.equal(workloadInspectionReached(laterSetupState, "initialAttestation"), false);
+  assert.equal(workloadInspectionReached(attestationReview.state, "initialAttestation"), true);
+
+  for (const workloadId of ["viewfinderControls", "viewer2D", "viewer3D"]) {
+    const journey = buildWorkloadInspectionJourney(workloadId);
+    assert.equal(journey.plan.status, "skipped", workloadId);
+    assert.equal(journey.state.workloads[workloadId], "skipped", workloadId);
+    assert.notEqual(journey.state.workloads[workloadId], "succeeded", workloadId);
+  }
+  const viewfinderControls = buildWorkloadInspectionJourney("viewfinderControls");
+  assert.equal(viewfinderControls.plan.scenarioId, "inPlaceUpdate");
+  assert.equal(viewfinderControls.state.phone.page, "viewfinder");
+  assert.equal(viewfinderControls.state.log.at(-1).event.type, "CAMERA_INTERACTION_READY");
+  assert.ok(viewfinderControls.state.log.at(-1).effects.workloads.includes("viewfinderControls"));
+  for (const workloadId of ["appAttestMaintenance", "pendingRecovery", "videoPosterBackfill", "recentLibraryCover"]) {
+    const journey = buildWorkloadInspectionJourney(workloadId);
+    assert.equal(journey.plan.status, "eligible", workloadId);
+    assert.equal(journey.state.workloads[workloadId], "eligible", workloadId);
+    assert.notEqual(journey.state.workloads[workloadId], "succeeded", workloadId);
+  }
+  const runningAnalysis = buildWorkloadInspectionJourney("viewerFullAnalysis");
+  assert.equal(runningAnalysis.plan.status, "running");
+  assert.equal(runningAnalysis.state.workloads.viewerFullAnalysis, "running");
+  assert.notEqual(runningAnalysis.state.workloads.viewerFullAnalysis, "succeeded");
 });
 
 test("nextEvent uses the canonical t0/t1/t2 and offline App Attest sequence", () => {

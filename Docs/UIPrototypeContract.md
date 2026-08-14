@@ -167,10 +167,30 @@ alignment = aligned | partial | gap | deferred
 
 `observed` describes current-main source placement and cites source evidence;
 `target` describes the contract-required placement and cites its contract or
-Task evidence. A workload card is interactive reviewer tooling: selecting it
-focuses its owning machine and the most recent real reducer-journal sequence
-that affected that workload. If no such sequence exists, the inspector may
-select the machine but must not fabricate an event or sequence.
+Task evidence. Every workload also registers one inspection moment as
+`{ event, status, page }`: the lifecycle point the owner intends “click to
+inspect,” normally the moment that workload becomes prepared for its role. A
+workload card is reviewer navigation into the complete reducer snapshot at that
+moment, not merely a machine-focus shortcut.
+
+On click, the workbench first searches the current playback history for a real
+snapshot matching all three registered moment fields whose tail event effects
+also contain that workload. It restores that exact moment—not the most recent
+arbitrary effect and not a later cancellation, stale publication, or unrelated
+terminal state. The left selected UI surface and legal contextual operations,
+center phone, and right machine, timing, workload, marker, ordered-log,
+sequence, and focus projections all restore together. The workbench must not
+combine a historical inspector state with the current phone or catalog.
+
+If playback history has no qualifying snapshot, that deliberate card click is
+itself authorization to switch immediately to the workload's **registered
+canonical inspection fixture**; no second confirmation control is required.
+The fixture declares canonical initial facts and ordered inputs, then dispatches
+only events accepted by the same reducer until the registered moment is reached.
+It may not insert a synthetic event, mutate a snapshot directly, skip a
+predecessor, or force a workload or phone surface to `Ready`/`succeeded`. A
+registered moment whose real state is `eligible`, `running`, or `skipped`
+remains exactly that state in every synchronized region.
 
 State machines must be rendered as actual node-edge flow diagrams with
 direction, any recorded branch condition, current node, and active transition
@@ -203,7 +223,9 @@ highlight, including both diagram modes and the selected UI's contextual
 operations. The inspector cannot maintain a second state machine that
 disagrees with the simulated product flow. Current-source placement and
 intended target placement remain visibly distinct until native evidence proves
-alignment.
+alignment. Workload-card navigation therefore changes the review cursor or
+explicitly replaces the review trace with a registered canonical fixture; it
+never patches only the right-side inspector.
 
 The Launch Screen fixture is labeled as a static iOS-owned reference and cannot
 show progress or claim measured duration. Deterministic delays in the Web page

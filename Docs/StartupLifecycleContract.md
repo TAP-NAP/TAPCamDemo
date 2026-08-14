@@ -280,9 +280,28 @@ ownership placement with its contract or Task evidence. Neither side may omit a
 field or silently substitute a target statement for a current observation.
 When `observed.earliest` uses a target-style interval name, it must include an
 `inferred from source order` qualifier; it is never device timing evidence.
-Selecting a workload focuses its owning machine and the most recent actual
-reducer-journal sequence whose effects include that workload. With no matching
-trace, the machine may be selected but no event is invented.
+Each workload registers an inspection moment
+`{ event, status, page }`, representing the lifecycle point the card should
+open. Selecting the card first searches current playback history for a real
+snapshot matching the complete registered moment and whose tail effects contain
+that workload. It restores that matching snapshot, not the most recent arbitrary
+effect or a later `cancelled`, `stale`, or unrelated terminal snapshot.
+
+This is an atomic review-cursor change: the left UI surface and legal
+operations, center phone, and right machine, timing, workload, marker,
+ordered-log, sequence, and focus projections all come from the same snapshot.
+Focusing only the machine/sequence while leaving another surface or phone
+snapshot visible is invalid.
+
+When current playback history has no qualifying snapshot, the same intentional
+card click immediately authorizes switching to that workload's registered
+canonical inspection fixture; it does not require a second confirmation button.
+The registration identifies canonical initial facts and an ordered legal-event
+path to the same inspection moment. The fixture is rebuilt through the normal
+reducer and guards; direct snapshot mutation, synthetic events, skipped
+predecessors, and fabricated `Ready`/`succeeded` states are forbidden. A
+registered inspection moment at `eligible`, `running`, or `skipped` remains in
+that exact real state across the catalog, phone, and inspector.
 
 Unified inspector states are:
 
@@ -451,6 +470,15 @@ The workbench binds three regions to the same selected surface and trace:
 - a center `393 x 852` iPhone visual-truth canvas; and
 - a right business/lifecycle/workload/state inspector containing the node-edge
   flow graph and timing-axis event projection.
+
+Workload navigation obeys the same binding. A playback-history match rewinds or
+advances the review cursor to the complete existing snapshot for the workload's
+registered `{ event, status, page }` inspection moment, with the workload in the
+tail effects. An absent match makes that card click itself the explicit fixture-
+switch action: the registered canonical inspection fixture is replayed through
+legal reducer events from its declared initial facts and stops at the registered
+moment. Either path updates all three regions atomically; neither is a right-
+inspector-only focus effect or permission to fabricate Ready.
 
 The center canvas is the geometry authority only after the exact candidate is
 owner-approved. If a native page exists without a prototype slice, the first

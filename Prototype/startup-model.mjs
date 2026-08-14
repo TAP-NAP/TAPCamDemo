@@ -476,6 +476,32 @@ export const workloadRegistry = Object.freeze({
   }
 });
 
+// Reviewer navigation targets are explicit because a workload's owning page and
+// meaningful inspection moment cannot be inferred from registry order or from
+// whichever event happens to be focused. Each target is reached only by replaying
+// canonical reducer events. "eligible", "running", and "skipped" remain those
+// exact states; the inspector must not upgrade them to a synthetic Ready state.
+export const workloadInspectionRegistry = Object.freeze({
+  startupFacts: { scenarioId: "ordinaryProcessLaunch", eventType: "APP_FIRST_FRAME_COMMITTED", status: "succeeded", page: "firstAppFrame" },
+  libraryRootObservation: { scenarioId: "ordinaryProcessLaunch", eventType: "APP_FIRST_FRAME_COMMITTED", status: "succeeded", page: "firstAppFrame" },
+  initialAttestation: { scenarioId: "freshInstall", eventType: "SETUP_ATTESTATION_COMPLETED", status: "succeeded", page: "firstInstallSetup" },
+  cameraDiscovery: { scenarioId: "ordinaryProcessLaunch", eventType: "CAMERA_SESSION_CONFIGURED", status: "succeeded", page: "viewfinder" },
+  cameraSession: { scenarioId: "ordinaryProcessLaunch", eventType: "CAMERA_SESSION_CONFIGURED", status: "succeeded", page: "viewfinder" },
+  firstPreview: { scenarioId: "ordinaryProcessLaunch", eventType: "CAMERA_PREVIEW_PRESENTED", status: "succeeded", page: "viewfinder" },
+  cameraInteraction: { scenarioId: "ordinaryProcessLaunch", eventType: "CAMERA_INTERACTION_READY", status: "succeeded", page: "viewfinder" },
+  libraryCatalog: { scenarioId: "inPlaceUpdate", eventType: "LIBRARY_CATALOG_PUBLISHED", status: "succeeded", page: "resourceInitialization" },
+  thumbnailDecode: { scenarioId: "ordinaryProcessLaunch", eventType: "THUMBNAIL_BATCH_PUBLISHED", status: "succeeded", page: "library" },
+  videoPosterBackfill: { scenarioId: "ordinaryProcessLaunch", eventType: "DEFERRED_WORK_RELEASED", status: "eligible", page: "viewfinder" },
+  recentLibraryCover: { scenarioId: "ordinaryProcessLaunch", eventType: "DEFERRED_WORK_RELEASED", status: "eligible", page: "viewfinder" },
+  appAttestMaintenance: { scenarioId: "ordinaryProcessLaunch", eventType: "DEFERRED_WORK_RELEASED", status: "eligible", page: "viewfinder" },
+  pendingRecovery: { scenarioId: "ordinaryProcessLaunch", eventType: "DEFERRED_WORK_RELEASED", status: "eligible", page: "viewfinder" },
+  viewerDisplay: { scenarioId: "ordinaryProcessLaunch", eventType: "VIEWER_DISPLAY_READY", status: "succeeded", page: "photoViewer" },
+  viewerFullAnalysis: { scenarioId: "ordinaryProcessLaunch", eventType: "PHOTO_OPENED", status: "running", page: "photoViewer" },
+  viewer2D: { scenarioId: "ordinaryProcessLaunch", eventType: "PHOTO_OPENED", status: "skipped", page: "photoViewer" },
+  viewer3D: { scenarioId: "ordinaryProcessLaunch", eventType: "PHOTO_OPENED", status: "skipped", page: "photoViewer" },
+  viewfinderControls: { scenarioId: "inPlaceUpdate", eventType: "CAMERA_INTERACTION_READY", status: "skipped", page: "viewfinder" }
+});
+
 const initialWorkloadStates = () => Object.fromEntries(
   Object.keys(workloadRegistry).map((id) => [id, "dormant"])
 );
@@ -1319,6 +1345,40 @@ export function nextEvent(state) {
   }
 
   return null;
+}
+
+export function workloadInspectionReached(state, workloadId) {
+  const plan = workloadInspectionRegistry[workloadId];
+  if (!plan || !Object.hasOwn(workloadRegistry, workloadId)) return false;
+  const trace = state.log.at(-1) || null;
+  return trace?.event.type === plan.eventType
+    && trace.effects.workloads.includes(workloadId)
+    && state.phone.page === plan.page
+    && state.workloads[workloadId] === plan.status;
+}
+
+export function buildWorkloadInspectionJourney(workloadId, { stepLimit = 64 } = {}) {
+  const plan = workloadInspectionRegistry[workloadId];
+  if (!plan || !Object.hasOwn(workloadRegistry, workloadId)) {
+    throw new Error(`Unknown workload inspection target: ${workloadId}`);
+  }
+
+  const base = createState(plan.scenarioId);
+  let state = reduce(base, { type: "SCENARIO_SELECTED", scenarioId: plan.scenarioId });
+  const history = [clone(base), clone(state)];
+
+  for (let step = 0; step < stepLimit && !workloadInspectionReached(state, workloadId); step += 1) {
+    const event = nextEvent(state);
+    if (!event || !canReduce(state, event)) break;
+    state = reduce(state, event);
+    history.push(clone(state));
+  }
+
+  if (!workloadInspectionReached(state, workloadId)) {
+    throw new Error(`Canonical journal did not reach workload inspection target: ${workloadId}`);
+  }
+
+  return { plan: clone(plan), state: clone(state), history };
 }
 
 export function publicSnapshot(state) {

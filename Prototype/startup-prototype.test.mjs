@@ -204,10 +204,11 @@ test("the state-machine diagram draws only executed reducer edges and treats reg
   assert.doesNotMatch(vocabularyLegendSource, /machine-flow-arrow/);
 });
 
-test("workload cards expose placement evidence and focus only a real matching trace plus the registered machine", () => {
+test("workload buttons install or restore one canonical reviewer snapshot for phone, machine, focus, and timing", () => {
   const renderSource = sourceBetween(controller, "function renderWorkloads()", "function focusWorkload(");
   assert.match(renderSource, /const card = document\.createElement\("button"\)/);
   assert.match(renderSource, /card\.dataset\.workloadId = id/);
+  assert.match(renderSource, /跳转到对应 UI 与生命周期审阅时刻/);
   assert.match(renderSource, /registry\.observed\.earliest/);
   assert.match(renderSource, /registry\.observed\.trigger/);
   assert.match(renderSource, /registry\.observed\.owner/);
@@ -217,13 +218,69 @@ test("workload cards expose placement evidence and focus only a real matching tr
   assert.match(renderSource, /registry\.observed\.evidence/);
   assert.match(renderSource, /registry\.alignment/);
 
+  assert.match(controller, /buildWorkloadInspectionJourney/);
+  assert.match(controller, /workloadInspectionReached/);
+  const reachedSource = sourceBetween(
+    model,
+    "export function workloadInspectionReached(",
+    "export function buildWorkloadInspectionJourney("
+  );
+  assert.match(reachedSource, /trace\?\.event\.type === plan\.eventType/);
+  assert.match(reachedSource, /trace\.effects\.workloads\.includes\(workloadId\)/);
+  assert.match(reachedSource, /state\.phone\.page === plan\.page/);
+  assert.match(reachedSource, /state\.workloads\[workloadId\] === plan\.status/);
+  const builderSource = sourceBetween(
+    model,
+    "export function buildWorkloadInspectionJourney(",
+    "export function publicSnapshot("
+  );
+  assert.match(builderSource, /const base = createState\(plan\.scenarioId\)/);
+  assert.match(builderSource, /let state = reduce\(base, \{ type: "SCENARIO_SELECTED", scenarioId: plan\.scenarioId \}\)/);
+  assert.match(builderSource, /const history = \[clone\(base\), clone\(state\)\]/);
+  assert.match(builderSource, /const event = nextEvent\(state\)/);
+  assert.match(builderSource, /if \(!event \|\| !canReduce\(state, event\)\) break/);
+  assert.match(builderSource, /state = reduce\(state, event\)/);
+  assert.match(builderSource, /history\.push\(clone\(state\)\)/);
+  assert.match(builderSource, /throw new Error\(`Canonical journal did not reach workload inspection target/);
+  assert.doesNotMatch(builderSource, /state\.(?:phone|machines|workloads)(?:\.[A-Za-z0-9_$]+|\[[^\]]+\])?\s*=(?!=)/);
+  assert.doesNotMatch(builderSource, /state\.log\.(?:push|splice|unshift)\s*\(/);
+
+  const historyLookupSource = sourceBetween(
+    controller,
+    "function workloadInspectionHistoryIndex(",
+    "function focusWorkload("
+  );
+  assert.match(historyLookupSource, /for \(let index = playbackHistory\.length - 1; index >= 0; index -= 1\)/);
+  assert.match(historyLookupSource, /workloadInspectionReached\(playbackHistory\[index\], workloadId\)/);
+
   const focusSource = sourceBetween(controller, "function focusWorkload(", "function renderEventLog()");
   assert.match(focusSource, /if \(!registry \|\| !machineRegistry\[registry\.machineId\]\) return snapshot\(\)/);
-  assert.match(focusSource, /\[\.\.\.state\.log\]\.reverse\(\)\.find\(\(entry\) => entry\.effects\.workloads\.includes\(workloadId\)\) \|\| null/);
+  assert.match(focusSource, /const historyIndex = workloadInspectionHistoryIndex\(workloadId\)/);
+  assert.match(focusSource, /const usedCanonicalFixture = historyIndex < 0/);
+  assert.match(focusSource, /const journey = buildWorkloadInspectionJourney\(workloadId\)/);
+  assert.match(focusSource, /playbackHistory = journey\.history\.map\(clone\)/);
+  assert.match(focusSource, /state = clone\(journey\.state\)/);
+  assert.match(focusSource, /playbackHistory = playbackHistory\.slice\(0, historyIndex \+ 1\)\.map\(clone\)/);
+  assert.match(focusSource, /state = clone\(playbackHistory\.at\(-1\)\)/);
+  assert.match(focusSource, /const trace = state\.log\.at\(-1\) \|\| null/);
   assert.match(focusSource, /selectedMachineId = registry\.machineId/);
-  assert.match(focusSource, /if \(trace\) focusSeq = trace\.seq/);
-  assert.doesNotMatch(focusSource, /else\s+focusSeq\s*=/);
-  assert.match(focusSource, /在本次 journal 尚未发生；已切换到对应状态机，不虚构事件/);
+  assert.match(focusSource, /focusSeq = trace\?\.seq \?\? null/);
+  assert.match(focusSource, /selectedMachineFocusSeq = focusSeq \?\? `page:\$\{state\.phone\.page\}:\$\{state\.seq\}`/);
+  assert.match(focusSource, /renderAll\(\)/);
+  assert.doesNotMatch(focusSource, /state\.(?:phone|machines|workloads)(?:\.[A-Za-z0-9_$]+|\[[^\]]+\])?\s*=(?!=)/);
+  assert.doesNotMatch(focusSource, /state\.log\.(?:push|splice|unshift)\s*\(/);
+
+  const snapshotSource = sourceBetween(controller, "function snapshot()", "function stepBack()");
+  assert.match(snapshotSource, /\.\.\.publicSnapshot\(state\)/);
+  assert.match(snapshotSource, /focusedTrace: clone\(focusedTrace\(\)\)/);
+  assert.match(snapshotSource, /currentSurface: currentReviewSurface\(\)/);
+  assert.match(snapshotSource, /currentPhonePage: state\.phone\.page/);
+  assert.match(snapshotSource, /selectedMachineId/);
+  assert.match(snapshotSource, /selectedWorkloadId/);
+
+  const timingColumnSource = sourceBetween(controller, "function timingColumns()", "function makeCausalEvent(");
+  assert.match(timingColumnSource, /\[\.\.\.state\.log\]\.sort/);
+  assert.match(timingColumnSource, /stateAfter: stateSnapshotAtSequence\(entry\.seq\)/);
 
   const workloadListener = sourceBetween(
     controller,

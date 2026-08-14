@@ -356,9 +356,18 @@
             "recordShape": {
               "observed": ["trigger", "owner", "earliest", "blocks", "network", "evidence"],
               "target": ["trigger", "owner", "earliest", "blocks", "network", "evidence"],
-              "alignment": ["aligned", "partial", "gap", "deferred"]
+              "alignment": ["aligned", "partial", "gap", "deferred"],
+              "inspectionMoment": ["event", "status", "page"]
             },
-            "focusBehavior": "selecting a workload focuses its owning machine and most recent real reducer-journal sequence; no matching sequence means no synthetic event"
+            "focusBehavior": {
+              "meaning": "jump to the registered lifecycle-prepared inspection moment rather than the latest arbitrary workload effect",
+              "playbackHistoryMatch": "restore a complete real reducer snapshot matching the registered event, status, and page whose tail effects contain the workload; never select a later cancelled, stale, or unrelated terminal effect",
+              "atomicProjection": ["left selected UI surface", "legal contextual operations", "center phone snapshot", "right machine and edge", "timing swimlane", "workload states", "marker effects", "ordered log", "sequence", "focus"],
+              "crossRegionRule": "all projections come from the same snapshot; machine or sequence focus alone is insufficient",
+              "playbackHistoryMiss": "the intentional card click itself immediately authorizes switching to the registered canonical inspection fixture; no second confirmation control is required",
+              "canonicalFixtureRequirements": ["registered workload-to-fixture and event/status/page inspection-moment mapping", "declared canonical initial facts", "ordered events accepted by the normal reducer and guards", "stop at the registered inspection moment", "no direct snapshot mutation", "no synthetic event", "no skipped predecessor", "no fabricated Ready or succeeded state"],
+              "stateFidelity": "an inspection moment whose real workload state is eligible, running, or skipped remains in that exact state across the catalog, phone, and inspector"
+            }
           }
         },
         "globalReviewPlayback": {
@@ -427,30 +436,45 @@
       },
       "desktopReviewerLayout": "left single combined UI page directory/contextual-operation catalog, center 393 x 852 phone preview, and right lifecycle/workload/state/event causality inspector remain visible in one supported desktop browser window without page-level scrolling; dense regions may scroll internally",
       "qaRefresh": {
-        "status": "v11fBrowserAndAutomationVerifiedOwnerReviewRequired",
+        "status": "browserAndAutomationVerifiedOwnerCorrectionVerifiedOwnerReviewRequired",
         "verificationRevision": "v11f",
         "historicalEvidenceNotCurrentPass": ["all existing TAP-0087 screenshot evidence", "v10 1600 x 941 geometry and scroll measurements", "v10 control coordinates", "pre-v11 console and automated-test results", "pre-correction responsive table"],
         "browserEnvironment": {
           "client": "Codex in-app Browser",
           "viewport": { "width": 1703, "height": 1204 },
           "bodyScroll": { "scrollHeight": 1204, "clientHeight": 1204, "pageLevelVerticalScroll": false },
-          "screenshotFile": null
+          "screenshotFile": null,
+          "screenshotEvidence": "inspected inline in the Codex in-app Browser; no file was saved"
         },
         "v11fBrowserVerified": [
           "Viewfinder has two top-chrome rows, three FOV chips, PHOTO and VIDEO, and page viewfinder is interactive at seq 8",
           "after Setup Camera action phone.stage and permission machine are waitingSystem and contextual operations are empty; after SYSTEM_PERMISSION_RETURNED stage is awaitingExplicitActions and legal actions return",
           "same-page Share reaches selector without changing URL or TAP-0087 seq 15; first Back closes Share and stays Viewer at seq 15; second Back returns to Library at seq 16",
-          "selecting a workload card focuses its owning machine and a real matching seq",
+          "the earlier machine-and-sequence-only workload focus check was superseded by the owner-corrected complete-snapshot verification",
           "incremental dev.logs before and after exercised actions contain no new error entry"
         ],
+        "ownerCorrectedWorkloadNavigationVerification": {
+          "status": "browserVerified",
+          "environment": "Codex in-app Browser 1703 x 1204; body scrollHeight/clientHeight 1204/1204; no page-level scroll",
+          "observations": [
+            "cameraSession matched current playback history and restored ordinaryProcessLaunch Viewfinder seq 6, Capture graph configured, Ready, and cameraReadiness together",
+            "initialAttestation missed current history; one card click switched directly to the registered freshInstall canonical fixture and legally replayed to First-Install Setup seq 6, Initial App Attest ready, Ready, and appAttestCredential, with left catalog firstInstallSetup",
+            "videoPosterBackfill restored ordinary Viewfinder seq 9 and remained Eligible rather than fabricated Ready",
+            "viewfinderControls restored In-place App Update Viewfinder seq 10 and remained Deferred child task rather than fabricated Ready",
+            "every exercised workload card used aria-label 跳转到对应 UI 与生命周期审阅时刻",
+            "incremental dev.logs contained 0 new error entries"
+          ],
+          "screenshotBoundary": "inline in-app Browser inspection only; no screenshot file saved",
+          "claimBoundary": "browser interaction evidence only; not native Simulator/device parity or owner approval"
+        },
         "automatedChecks": {
-          "nodeTests": "node --test Prototype/*.test.mjs: 49/49 passed",
+          "nodeTests": "node --test Prototype/*.test.mjs: 51/51 passed",
           "nodeCheck": "all four checked MJS files passed",
           "manifestParse": "passed",
           "diffCheck": "passed"
         },
-        "notClaimed": ["new v11f screenshot file", "v11f mobile or responsive coverage", "native Simulator parity", "physical-device parity or timing", "owner approval"],
-        "closureRequires": ["fresh visual screenshot evidence if separately required by the owner", "product-owner approval of the exact v11 composition"]
+        "notClaimed": ["saved screenshot file for the final workload-navigation pass", "mobile or responsive coverage", "native Simulator parity", "physical-device parity or timing", "owner approval"],
+        "closureRequires": ["fresh saved visual evidence if separately required by the owner", "product-owner approval of the exact v11 composition"]
       },
       "currentMainGaps": [
         "TAPCamDemoApp.init constructs LibraryMediaStore and registers PhotoKit observation on the pre-frame path",

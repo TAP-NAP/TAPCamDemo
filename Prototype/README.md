@@ -69,10 +69,20 @@ than a scenario-button panel beside a phone:
 The workload inspector compares complete
 `observed { trigger, owner, earliest, blocks, network, evidence }` and
 `target { trigger, owner, earliest, blocks, network, evidence }` records plus an
-alignment verdict. Clicking a workload selects its owning machine and its most
-recent real reducer-journal sequence; it never fabricates an event. The displayed
-`t0…t5` sequence belongs to the target reducer. Current-main interval labels are
-source-order inferences only, not native timestamps or device measurements.
+alignment verdict. Clicking a workload restores the real reducer snapshot for
+its registered `{ event, status, page }` inspection moment,
+including the left UI surface/operations, center phone, and complete right
+inspector—not only its owning machine and sequence. The match must also contain
+the workload in the tail effects; a recent arbitrary effect, cancellation, or
+stale result is not a match. If playback history has no qualifying snapshot,
+the same card click immediately switches to its registered canonical inspection
+fixture and legally replays to that moment; no second confirmation is needed.
+No synthetic event, direct state mutation, skipped predecessor, or fabricated
+Ready state is allowed. A real `eligible`, `running`, or `skipped` inspection
+moment remains in that state. The
+displayed `t0…t5` sequence belongs to the target reducer. Current-main interval
+labels are source-order inferences only, not native timestamps or device
+measurements.
 
 Settings is catalogued only as **Pending — no approved slice**. It has no
 invented phone preview or operations. The system Settings handoff used for
@@ -122,9 +132,15 @@ permission recovery remains a system-owned boundary.
    adding a product/reducer event; Next then reduces forward again from that
    snapshot. Confirm **Previous logical event**, **Next logical event**, and
    **Reset** share one row and do not reappear in the selected surface's
-   contextual operations. Click workload cards to focus their owning machine and
-   most recent real sequence; a workload absent from the journal must not create
-   a synthetic event.
+   contextual operations. Click a workload with a playback-history match and
+   confirm its registered event/status/page plus tail workload effect select one
+   real snapshot; the left selected surface/operations, center phone, and entire
+   right inspector must restore together. If no qualifying history exists, the
+   same click must switch directly to the registered canonical inspection
+   fixture and legally replay to that moment, without a second confirmation.
+   It must not create a synthetic event, select a later cancel/stale effect,
+   skip a predecessor, fabricate Ready, or promote a real
+   `eligible`/`running`/`skipped` state.
 8. Compare Debug attached/detached and Release attached/detached using identical
    scenario facts. The Web prototype proves route invariance only; TAP-0083 must
    measure `t0/t1` and lag on the same physical iPhone.

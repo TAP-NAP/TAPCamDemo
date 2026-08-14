@@ -343,17 +343,41 @@ parity result, physical-device timing, or owner approval is claimed here.
   and TAP-0087 sequence remained unchanged at `15`. The first Back closed only
   Share and stayed in Viewer at sequence `15`; the second Back returned to TAP
   Library at sequence `16`.
-- Clicking a workload card focused its owning machine and a real matching trace
-  sequence; it did not append or fabricate an event.
+- The earlier machine-and-sequence-only workload focus check was superseded by
+  the owner-corrected complete-snapshot verification recorded below.
 - Incremental `dev.logs` inspection before and after the exercised actions
   contained no new `error` entry.
 
-### v11f automated and static checks
+### Current automated and static checks
 
-- `node --test Prototype/*.test.mjs`: `49/49` passed.
+- `node --test Prototype/*.test.mjs`: `51/51` passed.
 - `node --check` passed for all four checked MJS files.
 - `Prototype/manifest.json` parsed successfully.
 - `git diff --check` passed for the checked change set.
+
+### Owner-corrected workload navigation — browser verified
+
+The final Codex in-app Browser pass used the same `1703 x 1204` viewport. The
+body remained `scrollHeight = 1204` / `clientHeight = 1204`, with no page-level
+vertical scrolling. The screenshot was inspected inline in the in-app Browser;
+no screenshot file was saved.
+
+- `cameraSession` found its registered moment in current playback history and
+  restored `ordinaryProcessLaunch`, Viewfinder, sequence `6`, **Capture graph
+  configured**, `Ready`, and the `cameraReadiness` machine together.
+- `initialAttestation` had no qualifying snapshot in the current history. One
+  card click directly switched to the registered `freshInstall` canonical
+  fixture and legally replayed to First-Install Setup, sequence `6`, **Initial
+  App Attest ready**, `Ready`, and `appAttestCredential`; the left catalog
+  selected `firstInstallSetup`. No second confirmation was required.
+- `videoPosterBackfill` restored the registered ordinary Viewfinder inspection
+  moment at sequence `9` and remained `Eligible`; it was not promoted to Ready.
+- `viewfinderControls` restored the registered In-place App Update Viewfinder
+  inspection moment at sequence `10` and remained `Deferred child task`; it was
+  not promoted to Ready.
+- Every exercised workload card exposed the accessibility label
+  `跳转到对应 UI 与生命周期审阅时刻`.
+- Across these actions, incremental `dev.logs` contained `0` new error entries.
 
 ### Remaining gate
 

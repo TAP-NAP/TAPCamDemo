@@ -1,5 +1,6 @@
 import {
   REVISION,
+  buildWorkloadInspectionJourney,
   canReduce,
   chooseRoute,
   createState,
@@ -12,6 +13,7 @@ import {
   scenarioFixtures,
   setupRequiredReady,
   timelineRegistry,
+  workloadInspectionReached,
   workloadRegistry
 } from "./startup-model.mjs";
 import { mountTapShareSlice } from "./tap-share-slice.mjs";
@@ -1085,7 +1087,7 @@ function renderWorkloads() {
     card.className = "workload-card";
     card.dataset.workloadId = id;
     card.setAttribute("aria-pressed", String(selectedWorkloadId === id));
-    card.setAttribute("aria-label", `${registry.label}，${statusLabels[status] || status}，聚焦对应状态机与最近事件`);
+    card.setAttribute("aria-label", `${registry.label}，${statusLabels[status] || status}，跳转到对应 UI 与生命周期审阅时刻`);
     highlightSequence(card, trace, selectedWorkloadId === id || trace?.effects.workloads.includes(id));
     const title = document.createElement("span");
     title.className = "workload-title";
@@ -1112,19 +1114,40 @@ function renderWorkloads() {
   }));
 }
 
+function workloadInspectionHistoryIndex(workloadId) {
+  for (let index = playbackHistory.length - 1; index >= 0; index -= 1) {
+    if (workloadInspectionReached(playbackHistory[index], workloadId)) return index;
+  }
+  return -1;
+}
+
 function focusWorkload(workloadId) {
   const registry = workloadRegistry[workloadId];
   if (!registry || !machineRegistry[registry.machineId]) return snapshot();
-  const trace = [...state.log].reverse().find((entry) => entry.effects.workloads.includes(workloadId)) || null;
+  dismissTapSharePresentation();
+  clearLaunchTransition();
+
+  const historyIndex = workloadInspectionHistoryIndex(workloadId);
+  const usedCanonicalFixture = historyIndex < 0;
+  if (usedCanonicalFixture) {
+    const journey = buildWorkloadInspectionJourney(workloadId);
+    playbackHistory = journey.history.map(clone);
+    state = clone(journey.state);
+  } else {
+    playbackHistory = playbackHistory.slice(0, historyIndex + 1).map(clone);
+    state = clone(playbackHistory.at(-1));
+  }
+
+  const trace = state.log.at(-1) || null;
   selectedWorkloadId = workloadId;
   selectedMachineId = registry.machineId;
-  if (trace) focusSeq = trace.seq;
-  const focusKey = focusedTrace()?.seq ?? `page:${state.phone.page}:${state.seq}`;
-  selectedMachineFocusSeq = focusKey;
+  focusSeq = trace?.seq ?? null;
+  selectedMachineFocusSeq = focusSeq ?? `page:${state.phone.page}:${state.seq}`;
   renderAll();
-  byID("prototype-announcement").textContent = trace
-    ? `已聚焦 ${registry.label} 最近一次真实事件，seq ${trace.seq}。`
-    : `${registry.label} 在本次 journal 尚未发生；已切换到对应状态机，不虚构事件。`;
+  const status = statusLabels[state.workloads[workloadId]] || state.workloads[workloadId];
+  byID("prototype-announcement").textContent = usedCanonicalFixture
+    ? `已通过注册的 ${scenarioFixtures[state.scenarioId].label} reducer journal 打开 ${registry.label} 的 ${status} 审阅快照；UI、手机预览与 inspector 已同步。`
+    : `已恢复 ${registry.label} 的真实 ${status} reducer 快照，seq ${trace.seq}；UI、手机预览与 inspector 已同步。`;
   return snapshot();
 }
 
