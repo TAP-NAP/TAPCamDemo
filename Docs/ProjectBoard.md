@@ -5,7 +5,7 @@
 - Canonical Product Contract: [ProductContract.md](ProductContract.md)
 - UI Prototype Contract: [UIPrototypeContract.md](UIPrototypeContract.md)
 - Board Steward Session: `019ff4ea-acba-7051-bd0f-3d489f1caadc`
-- Last updated: `2026-08-13`
+- Last updated: `2026-08-14`
 
 This Markdown file is the task database of record. Task records are permanent;
 their IDs are never reused. The Kanban section is a human-readable view derived
@@ -63,9 +63,11 @@ from each record's `Status` field.
 - `TAP-0047` Device acceptance: Library permission and deletion semantics
 - `TAP-0048` Acceptance: Web prototype to SwiftUI parity
 - `TAP-0049` Device acceptance: lifecycle-correct Locked Camera (blocked)
+- `TAP-0082` Device acceptance: TAP Share anchored handoff and anti-flash progress
 
 ### Doing
 
+- `TAP-0081` Unify TAP Share selection and preparation into an anchored handoff
 - `TAP-0083` Eliminate cold-path UI starvation and codify responsiveness guardrails
 
 ### Done
@@ -94,9 +96,6 @@ from each record's `Status` field.
 - `TAP-0078` Extract the canonical TAP Video format contract and remove old video plans
 - `TAP-0079` Migrate historical evidence and remove AITrace, dated scorecards, and old acceptance snapshots
 - `TAP-0080` Migrate Locked Camera experiment guardrails and remove main-tree experiment prose
-- `TAP-0081` Unify TAP Share selection and preparation into an anchored handoff
-- `TAP-0082` Device acceptance: TAP Share anchored handoff and anti-flash progress
-
 ### Deprecated
 
 - `TAP-0063` First-install page appearance implicitly requests permissions
@@ -1362,7 +1361,7 @@ Every active Task uses these stable fields:
 
 ### TAP-0081 — Unify TAP Share selection and preparation into an anchored handoff
 
-- Status: `Done`
+- Status: `Doing`
 - Kind: `Fix`
 - Priority: `P0`
 - Domain: `Share / Viewer`
@@ -1380,9 +1379,9 @@ Every active Task uses these stable fields:
   compact mode capsule, 42pt control, 20pt vector, 图标背景, 同心,
   紧凑模式胶囊, cold install, first Share hang, no loading surface,
   activity sheet onDismiss, stale attachment lease, LaunchServices -10814`
-- Assignee: `Codex development session /root`
+- Assignee: `/root`
 - Dev Session: `/root`
-- Branch/Worktree: `Current main working tree; baseline main@a4cf808`
+- Branch/Worktree: `Current main working tree; baseline main@fe0d308`
 - Scope: Replace the separate app-owned modal format sheet with one stable,
   lightweight app-owned presentation anchored to the Viewer's bottom Share
   action. During ordinary browsing, the Viewer may fetch and retain the complete
@@ -1733,15 +1732,64 @@ Every active Task uses these stable fields:
   fixed device delivery, transient TAP Video tradeoff, implementation/process
   audit, and development handoff are reconciled. TAP-0082 records the attended
   verdict. The newly observed Library-grid-to-Viewer navigation motion belongs
-  to TAP-0084 and does not reopen Share or Viewer paging.
+  to TAP-0084 and does not reopen Share or Viewer paging. This completion audit
+  is retained as historical evidence for `bf20b52`; the 2026-08-14 transport
+  regression below invalidates it as proof of the current typed handoff.
+- Reopened Transport Regression: The owner deliberately reopened TAP-0081 after
+  a current real-device run on `main@fe0d308`: choosing Save to Files caused the
+  system file selector to crash, AirDrop remained waiting without a received
+  artifact, and the supplied attachment repeatedly reports `Could not load
+  representation public.zip-archive from the item provider for opening in
+  place`. The current typed item-provider path therefore does not satisfy the
+  original handoff Done evidence. The historical Done transition and attended
+  `bf20b52` verdict remain recorded, but they cannot close this regression.
+- Reopened Approved Scope: Preserve the explicit `.tapnap` type and the existing
+  single system activity controller, but make its typed `NSItemProvider`
+  representation copy-backed rather than opening the app-private temporary file
+  in place. Add provider-load tests that request the registered representation
+  and verify its filename, declared type, and bytes, plus lifetime/cleanup tests
+  proving the temporary-artifact lease remains valid until the consumer load and
+  presentation lifecycle finish. Do not regress to a bare-URL-only handoff.
+  This is a non-visual transport/lifetime repair: app-owned Share states, UI
+  copy/text, geometry, icons, interaction, and the approved Web prototype do
+  not change.
+- Current Reopen Implementation Handoff: The production typed provider now
+  registers each app-private per-attempt temporary file with default copy-backed
+  `fileOptions: []` instead of `[.openInPlace]`. It remains one typed provider
+  with the custom TAPNAP UTI first and `public.zip-archive` as its fallback; no
+  bare URL is added. Focused tests now call both `loadFileRepresentation` and
+  `loadInPlaceFileRepresentation`, compare the consumer-visible bytes, require
+  `isInPlace == false`, verify `suggestedName`, and prove the captured artifact
+  lease keeps the source directory alive through provider loading. Cleanup now
+  publishes the low-cardinality success milestone
+  `tap_share_temp_cleanup_finished` without media paths or identifiers.
+  `TAPCamDemo/DepthAnalysis/README.md` and
+  `Docs/Acceptance/TAP-0082-share-handoff.md` are synchronized to the same
+  copy-backed provider, lease, cleanup, and device-retest contract.
+- Current Reopen Validation: `git diff --check` passed. Generic iOS Simulator
+  `build-for-testing` compiled successfully without launching Simulator, and
+  generic iphoneos `build-for-testing` completed with exit code 0. An audit run
+  exercised the new provider tests twice and those provider tests passed both
+  times. The containing suite nevertheless failed in those runs only because a
+  source-shape assertion still expected the README's old wording; the README
+  assertion source is now repaired, but that entire suite has not been rerun,
+  so no current full-suite pass is claimed. This working-tree implementation is
+  not yet a frozen fixed commit or installed device build.
+- Reopened Done When: A fixed build uses a copy-backed typed provider, the new
+  provider load and artifact-lifetime tests pass, and TAP-0082 records successful
+  physical-device Save to Files plus AirDrop receipt of the resulting artifact.
+  The current evidence record is
+  [TAP-0082 Share handoff](Acceptance/TAP-0082-share-handoff.md).
 - Related: Follow-up to `TAP-0061`; contrasts with deprecated `TAP-0068`;
   prototype dependency `TAP-0006`; parity evidence `TAP-0048`; attended evidence
-  `TAP-0082`; cold-path implementation standard `TAP-0083`; credential wording
+  `TAP-0082` and its current
+  [acceptance record](Acceptance/TAP-0082-share-handoff.md); cold-path
+  implementation standard `TAP-0083`; credential wording
   boundary `TAP-0014`; independent Library-to-Viewer visual follow-up
   `TAP-0084`; future capabilities
   `TAP-0023`, `TAP-0024`, `TAP-0025`
 - Created: `2026-08-12`
-- Updated: `2026-08-13`
+- Updated: `2026-08-14`
 - Revision History:
   - `2026-08-12` Created in Inbox after a full Inbox/Todo/Doing/Done/Deprecated
     search. `TAP-0061` remains correctly Done because its original app-owned,
@@ -1922,10 +1970,37 @@ Every active Task uses these stable fields:
     for exact `TAP-0081-r2-candidate`, including the approval date, owner
     statement, fixture, and QA evidence. This is post-closure evidence
     synchronization only; TAP-0081 remains Done.
+  - `2026-08-14` The owner deliberately reopened TAP-0081 through the historical
+    sequence Done -> Todo -> Doing on baseline `main@fe0d308`. A current
+    real-device run made Save to Files crash its selector and left AirDrop
+    waiting, while the supplied log repeatedly states `Could not load
+    representation public.zip-archive from the item provider for opening in
+    place`. The old `bf20b52` Done and acceptance facts remain append-only
+    history, but no longer prove the current typed handoff. Approved remediation
+    is limited to a copy-backed typed `NSItemProvider`, provider load and
+    temporary-artifact lifetime tests, and the linked TAP-0082 device recheck;
+    no UI copy/text, state, prototype, or unrelated Task scope changes. Assigned
+    to `/root`; final status is Doing.
+  - `2026-08-14` Appended the current `/root` implementation handoff without a
+    lifecycle transition. Production changes the app-private temporary-file
+    provider from `[.openInPlace]` to copy-backed `[]`, while preserving custom
+    UTI first, ZIP fallback, one typed provider, and no bare URL. New tests load
+    both provider APIs, verify copied bytes, `isInPlace == false`, suggested
+    name, and source-lease lifetime; cleanup gains the low-cardinality
+    `tap_share_temp_cleanup_finished` milestone. The DepthAnalysis README and
+    TAP-0082 acceptance record are synchronized, and this non-visual repair
+    changes no Share UI copy/text, state, geometry, icons, interaction, or Web
+    prototype. `git diff --check`, generic Simulator build-for-testing without
+    launching Simulator, and generic iphoneos build-for-testing passed. The new
+    provider tests passed in two audit runs, but the containing suite then
+    failed only on its stale README wording assertion; that source assertion is
+    repaired and the full suite has not been rerun. The iPhone 15 Pro currently
+    reports CoreDevice unavailable, no fixed build is installed, and TAP-0082
+    Save to Files/AirDrop owner retest remains Pending. TAP-0081 stays Doing.
 
 ### TAP-0082 — Device acceptance: TAP Share anchored handoff and anti-flash progress
 
-- Status: `Done`
+- Status: `Todo`
 - Kind: `DeviceAcceptance`
 - Priority: `P0`
 - Domain: `Share / Viewer`
@@ -1942,11 +2017,17 @@ Every active Task uses these stable fields:
 - Dev Session: `Product-owner attended run reported; /root evidence and revised-build reconciliation`
 - Branch/Worktree: `N/A; evidence Task consumes a fixed TAP-0081 build`
 - Related Delivery: `TAP-0081`
-- Build/Commit: `Frozen commit bf20b52452512aefe745624bd9f80c09355abae5
+- Acceptance Record:
+  [TAP-0082 Share handoff](Acceptance/TAP-0082-share-handoff.md)
+- Historical Build/Commit (`bf20b52`): `Frozen commit bf20b52452512aefe745624bd9f80c09355abae5
   (bf20b52, Fix cold share handoff and media loading). Its iphoneos build was
   installed and launched successfully as TAP-NAP.TAPCamDemo on the recorded
   device. Earlier delivered artifacts remain superseded historical evidence.`
-- Device/iOS: `Connected iPhone 15 Pro; model identifier iPhone16,1; iOS 26.6;
+- Current Reopen Build/Install: `Working-tree copy-backed provider implementation
+  builds for generic Simulator and generic iphoneos, but is not yet frozen or
+  installed. The recorded iPhone 15 Pro currently reports CoreDevice
+  unavailable.`
+- Historical Device/iOS (`bf20b52`): `Connected iPhone 15 Pro; model identifier iPhone16,1; iOS 26.6;
   CoreDevice 8104D5C9-6503-5A80-BBE3-6BBF1EB04CE7.`
 - Scope: On a physical device, verify the approved anchored app-owned Share
   selection/preparation presentation and its direct handoff to the single
@@ -2036,9 +2117,11 @@ Every active Task uses these stable fields:
   exercised.
 - Evidence Location: `Frozen commit bf20b52 plus this detailed Board record.
   Build/install/launch and device identity are recorded here. No separate
-  Docs/Acceptance/TAP-0082-share-handoff.md, recording bundle, or received-
-  artifact attachment was supplied; the owner explicitly chose direct attended
-  acceptance and Board closure as sufficient for this run.`
+  acceptance file, recording bundle, or received-artifact attachment was
+  supplied; the owner explicitly chose direct attended acceptance and Board
+  closure as sufficient for that historical run. Current reopened evidence must
+  be written to
+  [Docs/Acceptance/TAP-0082-share-handoff.md](Acceptance/TAP-0082-share-handoff.md).`
 - Pass Conditions: Every numbered action has its expected result, timing and
   lifecycle evidence is attributable to the fixed build, received artifacts
   match the selected options, and the owner explicitly accepts the run.
@@ -2077,9 +2160,30 @@ Every active Task uses these stable fields:
   The missing standalone acceptance file/recording bundle is an explicit owner-
   accepted evidence exception, not silently fabricated evidence. TAP-0084 owns
   the later Library-to-Viewer transition issue and does not invalidate this
-  Share verdict.
+  Share verdict. This audit remains historical and does not satisfy the reopened
+  transport check.
+- Reopened Acceptance Scope: On the fixed TAP-0081 build, perform attended
+  physical-device Save to Files and AirDrop. Save to Files must complete without
+  a selector crash and produce the selected `.tapnap` file. AirDrop must advance
+  beyond waiting, and the receiving device must supply the received artifact so
+  its filename, declared type, bytes, and openability can be checked. Record the
+  build/commit, device/iOS, numbered actions, verdicts, received artifact, and
+  relevant logs in
+  [TAP-0082 Share handoff](Acceptance/TAP-0082-share-handoff.md). The prior
+  `bf20b52` verdict remains history and may not be reused for the fixed build.
+- Current Retest State: `Docs/Acceptance/TAP-0082-share-handoff.md` now contains
+  the regression, prerequisites, numbered Save to Files/AirDrop procedure, and
+  verdict/evidence rules. The iPhone 15 Pro is currently unavailable through
+  CoreDevice, so the working-tree build has not been installed and neither
+  destination has been rerun. This is Blocked execution evidence, not a failed
+  or passing owner verdict; TAP-0082 remains Todo.
+- Current Human Confirmation: `Pending for the fixed TAP-0081 build.`
+- Reopened Done When: Both physical-device destinations pass on the fixed build,
+  AirDrop produces a received artifact, and the linked acceptance record carries
+  the owner verdict. Build/install/launch or the historical `bf20b52` acceptance
+  alone cannot return TAP-0082 to Done.
 - Created: `2026-08-12`
-- Updated: `2026-08-13`
+- Updated: `2026-08-14`
 - Revision History:
   - `2026-08-12` Created in Inbox as the evidence follow-up to `TAP-0081` so
     native system-share destinations and human-visible anti-flash behavior are
@@ -2165,6 +2269,22 @@ Every active Task uses these stable fields:
     invented detail. Moved TAP-0082 Doing -> Done. The newly observed Library
     grid-to-Viewer title/Back animation is independently tracked by TAP-0084 and
     does not reopen the accepted Share flow.
+  - `2026-08-14` The owner deliberately reopened TAP-0082 Done -> Todo after the
+    current build failed the system transport boundary: the Save to Files
+    selector crashed, AirDrop remained waiting without a received artifact, and
+    the supplied attachment reports `Could not load representation
+    public.zip-archive from the item provider for opening in place`. The
+    `bf20b52` acceptance and its evidence exception remain historical facts only.
+    The fixed TAP-0081 build now requires attended Save to Files success and an
+    actually received AirDrop artifact, documented in
+    `Docs/Acceptance/TAP-0082-share-handoff.md`; current Human Confirmation is
+    Pending.
+  - `2026-08-14` Synchronized the executable acceptance file and current
+    implementation handoff without changing status. Generic Simulator and
+    iphoneos build-for-testing checks succeeded, but the implementation is not
+    yet a frozen or installed device build. The recorded iPhone 15 Pro currently
+    reports CoreDevice unavailable; Save to Files, AirDrop receipt/artifact
+    inspection, and the owner's attended verdict therefore remain Pending.
 
 ### TAP-0083 — Eliminate cold-path UI starvation and codify responsiveness guardrails
 
@@ -2386,7 +2506,7 @@ owner before execution.
 | `TAP-0047` | Todo | P1 | `TAP-0058`, `TAP-0059`, `TAP-0083` | Limited access, Photos system delete, pending confirm, adjacency, empty close, plus first cold large-Library entry with no repeated semantic snapshot churn or UI starvation | [Procedure](Acceptance/TAP-0047-library-permission-delete.md) must add a fresh/cleared-cache large-catalog run and structured milestone evidence | Unassigned | Pending | Existing Library draft remains; 2026-08-13 added cold large-catalog responsiveness evidence without changing status |
 | `TAP-0048` | Todo | P0 | `TAP-0006` | Approved Web states versus SwiftUI geometry, icons, layout, navigation and state presentation | [Procedure](Acceptance/TAP-0048-web-swiftui-parity.md) | Unassigned | Pending | Created for HTML-first workflow; executable draft added 2026-08-12 |
 | `TAP-0049` | Todo | P0 | `TAP-0013` | Locked launch/first-frame/soak/capture/suspend/exit/relaunch | [Blocked Procedure](Acceptance/TAP-0049-locked-camera-lifecycle.md) | Unassigned | Pending | Executable draft added 2026-08-12; cannot run until lifecycle-correct experiment is ready |
-| `TAP-0082` | Done | P0 | `TAP-0081` | Fixed cold Share response, 50/400 anti-flash progress, explicit typed `.tapnap` handoff, cancellation/dismissal/cleanup, and approved Viewer toolbar parity | Frozen commit `bf20b52`; detailed Board record is the owner-accepted evidence record; no standalone file/recording bundle supplied | `/root` evidence reconciliation; product-owner attended verdict | Accepted 2026-08-13: “先把 8182 先给验收掉” | Fixed build installed/launched on iPhone 15 Pro / iOS 26.6; explicit owner evidence exception recorded; TAP-0084 separately owns the later grid-to-Viewer motion issue |
+| `TAP-0082` | Todo | P0 | `TAP-0081` | Revalidate the fixed copy-backed typed `.tapnap` handoff on physical-device Save to Files and AirDrop, including an actually received artifact; the previously accepted anti-flash and Viewer-toolbar results remain historical | [Current procedure and evidence record](Acceptance/TAP-0082-share-handoff.md) for the fixed build; old `bf20b52` Board evidence remains history only | `/root` delivery/evidence reconciliation; product-owner attended retest | Pending for fixed TAP-0081 build | Reopened 2026-08-14 after Save to Files selector crash, AirDrop waiting, and attachment error `Could not load representation public.zip-archive from the item provider for opening in place`; copy-backed implementation and generic build-for-testing evidence are recorded, but the iPhone 15 Pro is currently CoreDevice unavailable, no fixed build is installed, and the owner retest remains Pending; 2026-08-13 `bf20b52` acceptance retained as history; TAP-0084 remains independent |
 
 ## 7. Completed Task Registry
 
@@ -2672,3 +2792,34 @@ not replace the Product Contract, and linked device evidence may remain open.
   推送相关代码”. Moved TAP-0006 Doing -> Done in both its canonical record and
   Kanban view. Later prototype slices remain independent Tasks and do not reopen
   this completed foundation milestone; no other Task status changed.
+- `2026-08-14` Recorded the owner's deliberate Share-transport reopen after a
+  current real-device run on baseline `main@fe0d308`. TAP-0081 moved through
+  Done -> Todo -> Doing and is assigned to `/root`; TAP-0082 moved Done -> Todo.
+  Save to Files crashed its selector, AirDrop remained waiting without a
+  received artifact, and the supplied attachment repeatedly reports `Could not
+  load representation public.zip-archive from the item provider for opening in
+  place`, so the original typed-handoff Done evidence no longer proves the
+  current path. TAP-0081 is fixed to a copy-backed typed `NSItemProvider` plus
+  provider-load and temporary-artifact lifetime tests, with no UI/prototype
+  change. TAP-0082 now requires the fixed build to pass physical-device Save to
+  Files and AirDrop with an inspected received artifact, recorded in
+  `Docs/Acceptance/TAP-0082-share-handoff.md`. The `bf20b52` completion and owner
+  verdict remain append-only history. No other Task status or Next Task ID
+  changed.
+- `2026-08-14` Appended the TAP-0081 current implementation handoff and TAP-0082
+  pending evidence state without advancing either lifecycle. The app-private
+  temporary file is now registered by one copy-backed typed provider using
+  `fileOptions: []`, retaining custom TAPNAP UTI first, ZIP fallback, and no
+  bare URL. Real provider-load tests cover both load APIs, copied bytes,
+  `isInPlace == false`, suggested name, and source-lease lifetime; cleanup adds
+  the low-cardinality `tap_share_temp_cleanup_finished` success milestone. The
+  DepthAnalysis README and TAP-0082 acceptance record are synchronized, with no
+  Share UI copy/text, state, geometry, icon, interaction, or prototype change.
+  `git diff --check`, generic Simulator build-for-testing without launching
+  Simulator, and generic iphoneos build-for-testing passed. The new provider
+  tests passed in two audit runs, but their containing suite failed only on the
+  then-stale README wording assertion; that source assertion is repaired and
+  the full suite has not been rerun. The iPhone 15 Pro currently reports
+  CoreDevice unavailable, the fixed build is not installed, and attended Files
+  plus AirDrop artifact acceptance remains Pending. TAP-0081 stays Doing,
+  TAP-0082 stays Todo, and no other Task status or Next Task ID changed.

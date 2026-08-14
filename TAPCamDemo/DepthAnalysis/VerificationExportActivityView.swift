@@ -119,12 +119,15 @@ struct VerificationExportActivityView: UIViewControllerRepresentable {
         for typeIdentifier in artifact.activityTypeIdentifiers {
             provider.registerFileRepresentation(
                 forTypeIdentifier: typeIdentifier,
-                fileOptions: [.openInPlace],
+                fileOptions: [],
                 visibility: .all
             ) { completion in
-                // The provider and activity controller retain this closure;
-                // capturing the artifact therefore keeps its temporary file
-                // lease alive until the system has finished requesting it.
+                // The source lives in an app-private, per-attempt directory.
+                // Register the default copy-backed representation so Files,
+                // AirDrop, and other out-of-process consumers receive a
+                // transport-owned copy instead of trying to open that private
+                // URL in place. Capturing the artifact keeps the source lease
+                // alive until Foundation has completed its copy.
                 _ = artifact
                 completion(artifact.fileURL, false, nil)
                 return nil

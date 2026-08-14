@@ -225,6 +225,11 @@ nonisolated enum TAPShareTemporaryDirectoryCleanup {
                 if FileManager.default.fileExists(atPath: directoryURL.path) {
                     try remover(directoryURL)
                 }
+                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                TAPDiagnostics.sharePackaging.info(
+                    "tap_share_temp_cleanup_finished scope=\(scope, privacy: .public) attempt=\(attempt, privacy: .public)"
+                )
+                #endif
                 return true
             } catch {
                 let nsError = error as NSError

@@ -2065,12 +2065,13 @@ struct TAPDepthAnalysisSharePresentationTests {
     }
 
     @MainActor
-    @Test func tapnapSystemShareUsesOneTypedProviderWithZipFallback() throws {
+    @Test func tapnapSystemShareUsesCopyBackedTypedProviderWithZipFallback() async throws {
         let artifactDirectoryURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: artifactDirectoryURL) }
         let artifactURL = artifactDirectoryURL.appendingPathComponent("TAPNAP-Capture.tapnap")
-        try Data("typed-provider".utf8).write(to: artifactURL)
-        let artifact = TAPNAPShareArtifact(
+        let expectedData = Data("typed-provider".utf8)
+        try expectedData.write(to: artifactURL)
+        var artifact: TAPNAPShareArtifact? = TAPNAPShareArtifact(
             id: UUID(),
             kind: .tapnapPackage,
             fileURL: artifactURL,
@@ -2079,15 +2080,33 @@ struct TAPDepthAnalysisSharePresentationTests {
         )
 
         let configuration = VerificationExportActivityView
-            .activityItemsConfiguration(for: artifact)
+            .activityItemsConfiguration(for: try #require(artifact))
         let provider = try #require(
             configuration.itemProvidersForActivityItemsConfiguration.first
         )
+        artifact = nil
 
         #expect(configuration.itemProvidersForActivityItemsConfiguration.count == 1)
         #expect(provider.suggestedName == "TAPNAP-Capture.tapnap")
         #expect(provider.registeredTypeIdentifiers.first == UTType.tapnapCapturePackage.identifier)
         #expect(provider.registeredTypeIdentifiers.contains(UTType.zip.identifier))
+        #expect(FileManager.default.fileExists(atPath: artifactDirectoryURL.path))
+
+        let customTypeLoad = try await Self.loadFileRepresentation(
+            from: provider,
+            typeIdentifier: UTType.tapnapCapturePackage.identifier
+        )
+        #expect(customTypeLoad.data == expectedData)
+
+        let zipFallbackLoad = try await Self.loadInPlaceFileRepresentation(
+            from: provider,
+            typeIdentifier: UTType.zip.identifier
+        )
+        #expect(zipFallbackLoad.data == expectedData)
+        #expect(!zipFallbackLoad.isInPlace)
+        withExtendedLifetime((configuration, provider)) {
+            #expect(FileManager.default.fileExists(atPath: artifactDirectoryURL.path))
+        }
     }
 
     @Test func abandonedShareArtifactLeaseRemovesTemporaryDirectory() throws {
@@ -2153,6 +2172,7 @@ struct TAPDepthAnalysisSharePresentationTests {
         #expect(!popoverSource.contains("Task.yield()"))
         #expect(builderSource.contains("TAPNAPShareTemporaryDirectoryLease"))
         #expect(builderSource.contains("deinit"))
+        #expect(builderSource.contains("tap_share_temp_cleanup_finished"))
 
         #expect(builderSource.contains("Background pre-generation and persistent package caching are prohibited."))
         #expect(builderSource.contains("FileManager.default.temporaryDirectory"))
@@ -2288,6 +2308,61 @@ struct TAPDepthAnalysisSharePresentationTests {
             expectsPairedVideo: expectsPairedVideo,
             ownedTemporaryDirectoryURL: directoryURL
         ))
+    }
+
+    private static func loadFileRepresentation(
+        from provider: NSItemProvider,
+        typeIdentifier: String
+    ) async throws -> ProviderFileLoad {
+        try await withCheckedThrowingContinuation { continuation in
+            provider.loadFileRepresentation(forTypeIdentifier: typeIdentifier) { url, error in
+                do {
+                    if let error {
+                        throw error
+                    }
+                    let url = try #require(url)
+                    continuation.resume(
+                        returning: ProviderFileLoad(
+                            data: try Data(contentsOf: url),
+                            isInPlace: false
+                        )
+                    )
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    private static func loadInPlaceFileRepresentation(
+        from provider: NSItemProvider,
+        typeIdentifier: String
+    ) async throws -> ProviderFileLoad {
+        try await withCheckedThrowingContinuation { continuation in
+            provider.loadInPlaceFileRepresentation(
+                forTypeIdentifier: typeIdentifier
+            ) { url, isInPlace, error in
+                do {
+                    if let error {
+                        throw error
+                    }
+                    let url = try #require(url)
+                    continuation.resume(
+                        returning: ProviderFileLoad(
+                            data: try Data(contentsOf: url),
+                            isInPlace: isInPlace
+                        )
+                    )
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    private struct ProviderFileLoad: Sendable {
+        let data: Data
+        let isInPlace: Bool
     }
 
     private enum TestError: Error, Equatable {

@@ -153,12 +153,17 @@ cache.
 
 The generated package belongs to one active share attempt and stays in a
 per-attempt temporary directory only while the system activity controller may
-read it. Completion, cancellation, system-share dismissal, or TAP Share popover
-dismissal must remove that directory. A later share tap starts a new on-demand
-generation. The share path never asks the backend to attest or verify a capture
-again; it only checks that the embedded digest/content binding still matches
-the exact local or iCloud-downloaded bytes about to be shared. This local gate
-must not be described as independent App Attest assertion-authenticity proof.
+read it. System handoff uses one explicitly typed, copy-backed
+`NSItemProvider`: the app-private per-attempt URL must never be advertised as
+open-in-place to Files, AirDrop, or another process. The provider retains the
+source lease while Foundation creates the consumer-owned transport copy.
+Completion, cancellation, system-share dismissal, or TAP Share popover
+dismissal must remove that directory after any in-flight provider copy has
+finished. A later share tap starts a new on-demand generation. The share path
+never asks the backend to attest or verify a capture again; it only checks that
+the embedded digest/content binding still matches the exact local or
+iCloud-downloaded bytes about to be shared. This local gate must not be
+described as independent App Attest assertion-authenticity proof.
 
 Still photos and Live Photos can prepare the current `.tapnap` still/live
 package contract. TAP Video opens the same TAP Share popover and can prepare an
