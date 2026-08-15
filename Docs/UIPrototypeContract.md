@@ -179,47 +179,53 @@ differences are not forced into the workload state machine when they are not
 executable workloads. Each truth record has a stable ID, related Task IDs,
 `actual { anchor, phase, summary, evidence }`,
 `target { anchor, phase, summary, evidence }`, and an explicit alignment verdict.
-Anchors are data, never parsed from prose. Records whose audited current-main
-behavior differs from the prototype target keep the visible word **不一致**;
-aligned facts remain green and say **一致**. Card color may additionally
-project a later branch's owner-reviewed delivery and evidence status, but it
-never rewrites the audited baseline, `alignment`, `mismatch`, actual phase, or
-target phase.
+Anchors are data, never parsed from prose. The active v18 inspector is an
+**unresolved-only** projection: every loaded truth record still differs from
+the prototype target and keeps the visible word **不一致**. Removing a record
+from the active catalog does not rewrite its audited baseline, actual phase, or
+target phase. The complete v17 outcome catalog remains recoverable at
+`fix0809@d4b19d9`; accepted and originally aligned records from that revision
+are historical and are not copied into an active archive inside the manifest.
 
-Each mismatch also reads its `fix0809Disposition` from the prototype manifest.
-That field preserves the original owner-approved implementation boundary. A
-separate per-record `fix0809Outcome`, also loaded from the manifest rather than
-inferred from IDs or prose, projects the candidate result in all three actual-
-truth surfaces:
+Each active mismatch reads its `fix0809Disposition` and `fix0809Outcome` from
+the prototype manifest rather than inferring either field from IDs or prose.
+Only two unresolved outcome treatments are active in v18, and both project in
+the right lifecycle cards, Timing lifecycle cards, and Workload actual cards:
 
-- `implementedLogAccepted`: yellow background and yellow border. The fix0809 code
-  changed and the bounded physical-device log accepted the executed path.
 - `implementedNotLogVerified`: yellow background and red border. The code
-  changed, but the supplied log does not prove that record is aligned.
+  changed, but the supplied log did not cover enough of this record to claim
+  alignment.
 - `deferredFrozen`: red background and red border. Network, App Attest, and
   credential/network-dependent Pending behavior remain frozen and untreated.
-- an originally aligned record has no fix0809 outcome and keeps its existing
-  green presentation.
 
-Every yellow card still says **不一致** because it describes the immutable
-`main@4cc02e5f12f2` source audit beside a later fix0809 result. Its outcome badge
-and accessible name state whether the executed path was log-accepted or merely
-implemented without log coverage. A deferred record shows the manifest label
-**本轮冻结 · Network/App Attest/Pending**. For `networkBootstrap`, this means
-Network/App Attest behavior is excluded from fix0809; it never means that
-`/healthz` has become the target state or that the mismatch is resolved.
+No log-accepted or originally aligned lifecycle/workload record is loaded into
+the active JSON catalog or mounted into the DOM. Every active yellow card still
+says **不一致** because it records a remaining evidence gap beside the audited
+source/target difference. A deferred record shows the manifest label **本轮冻结
+· Network/App Attest/Pending**. For `networkBootstrap`, this means Network/App
+Attest behavior is excluded from fix0809; it never means that `/healthz` has
+become the target state or that the mismatch is resolved.
 
 A workload record may narrow its broader lifecycle parent: Network/App Attest
 and credential/network-dependent children remain `deferredFrozen` even when a
 non-network portion of the parent truth is `approvedToFix`. The child record's
 JSON disposition and outcome control the visible badge, color treatment, and
 accessible name. Outcome is always stored per child; it is never inherited from
-the parent lifecycle truth.
+the parent lifecycle truth. In particular, the active `deferredWorkGuard`
+parent remains yellow with a red border while its frozen App Attest and Pending
+children remain red with red borders.
 
-The default truth-card list renders the six non-workload mismatch records plus
-the two aligned records. The six workload-owned mismatch sources remain in the
-same JSON catalog but render only as their scoped Workload-lane comparisons;
-they must not also produce a truth card or lifecycle-circle connector.
+The v18 active catalog contains nine unresolved lifecycle truths. Five
+non-workload truths render as lifecycle cards; four workload-owned truths render
+only through eight scoped Workload-lane difference records, comprising seven
+timing differences and one semantic difference. Workload-owned truths must not
+also produce a lifecycle truth card or lifecycle-circle connector. Accepted and
+aligned v17 records produce no active JSON record, card, lane item, connector,
+filter result, accessible item, or DOM node.
+
+This unresolved-only composition is still `ownerReviewRequired`. Pruning
+accepted and aligned records approves neither the complete v18 workbench nor
+any remaining lifecycle target, native parity claim, or device scenario.
 
 Every visible mismatch truth card has exactly one decorative red dashed connector to
 the circular `t0…tn` anchor that locates its **current-main actual phase**. The

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="color-scheme" content="dark">
     <title>TAPCam Startup Lifecycle · TAP-0087</title>
-    <link rel="stylesheet" href="startup-lifecycle.css?revision=tap-0087-r1-workbench-v17">
+    <link rel="stylesheet" href="startup-lifecycle.css?revision=tap-0087-r1-workbench-v18">
   </head>
   <body>
     <main class="lifecycle-shell">
@@ -339,7 +339,7 @@
             <div class="implementation-legend" aria-label="当前实现与目标模型图例">
               <span>Current main · source observed</span>
               <span>TAP-0087 · target reducer</span>
-              <span class="difference-legend">黄色=本轮已改（黄边：log 已验收；红边：log 未覆盖）· 红底红边=冻结未处理 · 绿色=原本一致 · 生命周期卡 → 虚线 → 红色实际阶段圆点 · Workload 实际 → 虚线 → 蓝色原型</span>
+              <span class="difference-legend">活动面板仅显示尚待确认的问题 · 黄底红边=代码已改但 log 未覆盖 · 红底红边=Network / App Attest / Pending 冻结未处理 · 已验收与原本一致的历史见 d4b19d9 · 生命周期卡 → 虚线 → 红色实际阶段圆点 · Workload 实际 → 虚线 → 蓝色原型</span>
             </div>
           </div>
           <div class="surface-business-machines" id="surface-business-machines" aria-label="关联状态机"></div>
@@ -433,6 +433,6 @@
       </aside>
     </main>
     <p class="visually-hidden" id="prototype-announcement" role="status" aria-live="polite" aria-atomic="true"></p>
-    <script type="module" src="startup-prototype.mjs?revision=tap-0087-r1-workbench-v17"></script>
+    <script type="module" src="startup-prototype.mjs?revision=tap-0087-r1-workbench-v18"></script>
   </body>
 </html>

@@ -20,26 +20,32 @@ the **required target window**. A Web prototype can make the route and state
 relationships reviewable, but it cannot prove native first-frame timing,
 AVFoundation readiness, PhotoKit behavior, or device performance.
 
-The product owner has assigned a per-mismatch `fix0809Disposition` in the
-prototype manifest: eleven mismatches were `approvedToFix`, while
-`networkBootstrap` was `deferredFrozen`. After the bounded fix0809 physical-
-device run, every lifecycle truth and Workload difference also receives an
-independent JSON `fix0809Outcome`: `implementedLogAccepted` uses a yellow
-background and yellow border, `implementedNotLogVerified` uses a yellow
-background and red border, and `deferredFrozen` remains red with a red border.
-Originally aligned records remain green. Yellow is candidate progress evidence,
-not a rewrite of the immutable `main@4cc02e5f12f2` mismatch or a claim about an
-unexecuted scenario.
+The product owner assigned a per-mismatch `fix0809Disposition` and
+`fix0809Outcome` in the prototype manifest. The complete v17 catalog, including
+originally aligned and log-accepted records, remains historical at
+`fix0809@d4b19d9`. The active v18 panel is unresolved-only: it loads nine
+lifecycle truths, partitioned into five lifecycle projections and four
+workload-owned truths, plus eight Workload difference records comprising seven
+timing differences and one semantic difference. Accepted and originally aligned
+v17 records are not active JSON records or DOM nodes.
+
+Only two unresolved outcome treatments remain active. An
+`implementedNotLogVerified` record uses a yellow background with a red border:
+the code changed, but the supplied device log did not cover enough of that
+record to claim alignment. A `deferredFrozen` record remains red with a red
+border. These colors are reviewer evidence for unresolved records, not a rewrite
+of the audited source/target facts or a claim about an unexecuted scenario.
 
 The frozen outcome excludes Network/App Attest and credential/network-dependent
 Pending behavior from the current fix0809 implementation scope. It does not
 turn the existing `/healthz` preflight into the target state, approve a Network
 behavior change, or change this contract's pending whole-revision approval
-status. Workload-level outcome may narrow a broader parent truth: local
-deferred-work children can be implemented or log-accepted while post-setup App
-Attest and Pending recovery children of `deferredWorkGuard` remain frozen. The
-manifest remains the single source for every per-record disposition and
-outcome; renderers must not derive child outcome from the parent truth ID.
+status. Workload-level outcome may narrow a broader parent truth:
+`deferredWorkGuard` remains yellow with a red border while its post-setup App
+Attest and Pending recovery children remain frozen red records. The manifest
+remains the single source for every active per-record disposition and outcome;
+renderers must not derive child outcome from the parent truth ID. The complete
+v18 composition remains `ownerReviewRequired`.
 
 ## 1. Canonical Vocabulary
 
@@ -506,11 +512,14 @@ not hardcode a second copy. Lifecycle truth IDs are partitioned explicitly:
 workload-owned mismatches render only in Workload, while route, persistence,
 permission-recovery, marker-commit, and presented-state gaps remain in the
 **08/09 生命周期** lane. The two ownership sets are disjoint and together cover
-every mismatch source truth.
+every active mismatch source truth. In v18 that partition is four workload-owned
+truths plus five lifecycle-lane truths. The Workload projection contains eight
+active difference records—seven timing and one semantic—and contains no
+accepted or aligned historical record.
 
 A workload difference preserves every canonical reducer workload effect in the
 existing lane. Its manifest-owned current-main annotation appears as an
-outcome-colored **实际 · 不一致** card in the `actualVisibleAfter` reviewer
+unresolved-outcome-colored **实际 · 不一致** card in the `actualVisibleAfter` reviewer
 visibility/upstream
 projection column only
 when the selected scenario belongs to `scenarioGroupID`; the card separately

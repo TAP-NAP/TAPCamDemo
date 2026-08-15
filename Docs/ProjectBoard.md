@@ -617,7 +617,7 @@ Every active Task uses these stable fields:
   acceptance covers only the implemented slice above; it does not execute the
   complete TAP-0040 first-install matrix, lift the Network/App Attest/Pending
   hard freeze, connect canonical credential-bound `S`, approve the complete
-  TAP-0087 v17 composition, or satisfy TAP-0008's full Done When.
+  TAP-0087 v18 composition, or satisfy TAP-0008's full Done When.
 - Scope: First-Install Setup contains five explicit operations. Network,
   Camera, and Photos are required; Location and Microphone are optional and
   skippable. Camera, Photos, Location, and Microphone may request their system
@@ -639,7 +639,7 @@ Every active Task uses these stable fields:
   must update the state-machine/inspector meaning to first-install App Attest
   completion and receive owner approval before native TAP-0008 implementation
   outside the separately authorized, bounded non-Network `fix0809` scope above.
-  That partial implementation authorization does not approve the complete v17
+  That partial implementation authorization does not approve the complete v18
   composition. The previously recorded no-Network Setup candidate is historical
   only and is not part of the current prototype gate.
 - Current `fix0809` Boundary: The owner directed the current Network/App Attest
@@ -860,7 +860,7 @@ Every active Task uses these stable fields:
   copy `Please wait…`. `TAPCamDemo/CameraCapture/UI/README.md` records only a
   selected route-shell state followed by a later MainActor turn and explicitly
   does not claim a real shell-frame proof. These documentation updates do not
-  approve the complete TAP-0087 v17 composition or close native acceptance.
+  approve the complete TAP-0087 v18 composition or close native acceptance.
 - Current Remaining / Evidence Gaps: Exact native visual-parity comparison and
   the complete TAP-0041 scenario/fault-injection matrix have not run. Canonical
   credential-bound `S` and restore end-to-end behavior remain blocked by the
@@ -870,7 +870,7 @@ Every active Task uses these stable fields:
   have no direct candidate change; Required Permission Check may nevertheless
   indirectly postpone their existing camera-entry triggers by preventing
   `CameraView` mount. TAP-0009 remains Doing; no Done result or approval of the
-  complete TAP-0087 v17 composition is claimed.
+  complete TAP-0087 v18 composition is claimed.
 - Failure / Recovery: There is no product Retry, Failed, timeout, skip, or
   degraded-continuation state for this gate. Resource Initialization remains
   visible until both readiness groups succeed. Any abnormal noncompletion is a
@@ -4063,10 +4063,11 @@ Every active Task uses these stable fields:
   remains displayed while the current Network/App Attest implementation and
   behavior remain unchanged, and `/healthz` must not be presented as the target
   state. This decision approves only the stated mismatch-fix boundary, not the
-  complete TAP-0087 v17 composition, synchronized contract revision, native
+  complete TAP-0087 v18 composition, synchronized contract revision, native
   implementation, or downstream acceptance.
-- Current `fix0809` Reviewer Outcome Overlay Decision: The owner approved a
-  JSON-driven reviewer-only overlay that records the bounded `fix0809@66ac001`
+- Archived v17 `fix0809` Reviewer Outcome Overlay Decision (`d4b19d9`): The
+  owner approved a JSON-driven reviewer-only overlay that records the bounded
+  `fix0809@66ac001`
   implementation and evidence outcome without rewriting the source-audited
   `main@4cc02e5f12f2` `actual`, `target`, `alignment`, or `mismatch` baseline
   truth and without claiming mainline delivery. `implementedLogAccepted` uses a
@@ -4074,17 +4075,19 @@ Every active Task uses these stable fields:
   yellow background and red border and explicitly cannot be read as aligned;
   `deferredFrozen` keeps Network/App Attest and credential/network-dependent or
   Network-owned Pending records red with a red border; baseline-aligned records
-  keep their existing green presentation. The same manifest-backed outcome is
+  keep their existing green presentation. The same manifest-backed outcome was
   projected onto the right lifecycle cards, Timing lifecycle cards, and
   Workload **actual** difference cards. Existing dashed connector ownership and
   geometry, circular actual-phase anchors, and blue prototype Workload target
-  effects remain unchanged. This is reviewer chrome only and authorizes no
-  Swift change. TAP-0087, TAP-0008, and TAP-0009 remain Doing; the complete v17
-  composition and synchronized contract remain `ownerReviewRequired`.
-- Current v17 Reviewer Outcome QA (`2026-08-15`): The Git HEAD/native candidate
-  baseline remains `66ac001`, while the immutable source-audit baseline remains
-  `main@4cc02e5f12f2`; this reviewer-only change creates no Swift or native
-  commit. The manifest-backed four-state result is projected consistently onto
+  effects remained unchanged. This was reviewer chrome only and authorized no
+  Swift change. TAP-0087, TAP-0008, and TAP-0009 remained Doing; the complete
+  v17 composition and synchronized contract remained `ownerReviewRequired`.
+- Archived v17 Reviewer Outcome QA (`2026-08-15`; archive commit `d4b19d9`): The
+  native candidate baseline for this pass was `66ac001`, while the immutable
+  source-audit baseline was `main@4cc02e5f12f2`; the complete v17 reviewer state
+  is retained in Git commit `d4b19d9`. This reviewer-only change created no
+  Swift or native implementation commit. The manifest-backed four-state result
+  was projected consistently onto
   the right lifecycle cards, Timing lifecycle cards, and Workload **actual**
   cards, with dashed connectors, circular actual-phase anchors, and existing
   blue prototype Workload targets unchanged. In the Codex in-app Browser at
@@ -4098,8 +4101,43 @@ Every active Task uses these stable fields:
   or warnings. Visual evidence is
   `Prototype/evidence/TAP-0087-r1-v17-fix0809-outcome-cards.png` and
   `Prototype/evidence/TAP-0087-r1-v17-fix0809-outcome-workload.png`. This verifies
-  the reviewer overlay only; TAP-0087, TAP-0008, and TAP-0009 remain Doing and
-  the complete v17 composition remains `ownerReviewRequired`.
+  the archived v17 reviewer overlay only; it did not close TAP-0087, TAP-0008,
+  or TAP-0009.
+- Current v18 Active-Record Pruning Decision: The owner approved `d4b19d9` as
+  the complete v17 archive and approved a smaller active v18 reviewer catalog.
+  The active manifest and its right lifecycle, Timing lifecycle, and Workload
+  **actual** projections must remove records that were originally aligned and
+  records whose v17 outcome was `implementedLogAccepted`. Active v18 retains
+  only unresolved records: nine Lifecycle records and eight Workload records,
+  comprising `implementedNotLogVerified` and `deferredFrozen` outcomes. This is
+  active reviewer-record pruning, not a rewrite of the archived v17 facts, a
+  new native-alignment claim, or authorization to change Swift. TAP-0087,
+  TAP-0008, and TAP-0009 remain Doing; the complete v18 composition and
+  synchronized contract remain `ownerReviewRequired`.
+- Current v18 Active-Record Implementation And QA (`2026-08-15`): Active JSON
+  record deletion is complete rather than implemented as a display-only filter.
+  The active Lifecycle catalog has nine unresolved records, partitioned between
+  five lifecycle-lane owners and four workload-lane owners; eight are
+  `implementedNotLogVerified` yellow/red and one is `deferredFrozen` red/red.
+  The active Workload catalog has eight unresolved records, seven timing and one
+  semantic; four are `implementedNotLogVerified` and four are `deferredFrozen`.
+  Active `implementedLogAccepted` and originally aligned counts are both zero;
+  commit `d4b19d9` remains the complete v17 archive.
+  In the Codex in-app Browser at `1575 x 1204`, the right lifecycle panel showed
+  five cards. Resource Initialization sequence `10` rendered five lifecycle
+  cards/five dashed paths at actual anchors `t0` and `t2`, plus six Workload
+  actual cards (four yellow/red and two frozen), three existing blue targets,
+  three dashed paths, and all 16 canonical Workload trace effects. Fresh-install
+  sequence `6` rendered three Workload actual cards, including one frozen card,
+  with one existing blue target and one dashed path. Timing -> Ordered log ->
+  Timing restored the same records, targets, and connectors. Visual evidence is
+  `Prototype/evidence/TAP-0087-r1-v18-remaining-lifecycle.png` and
+  `Prototype/evidence/TAP-0087-r1-v18-remaining-workload.png`.
+  Prototype tests passed `58/58`; all six Prototype MJS syntax checks, manifest
+  parse, and `git diff --check` passed. There is no Swift diff. This closes the
+  active-record pruning implementation and reviewer QA only: TAP-0087, TAP-0008,
+  and TAP-0009 remain Doing, and the complete v18 composition remains
+  `ownerReviewRequired`.
 - Done When:
   - The canonical glossary and deterministic scenario/route/marker matrix are
     recorded, including required first-install Attestation + Camera + Photos,
@@ -4260,6 +4298,34 @@ Every active Task uses these stable fields:
     acceptance-matrix expansion, frozen behavior change, or push is inferred.
     TAP-0087, TAP-0008, and TAP-0009 remain Doing; the complete v17 composition
     remains `ownerReviewRequired`.
+  - `2026-08-15` Owner approved v18 active-record pruning after Git commit
+    `d4b19d9` preserved the complete v17 reviewer state as the archive. Active
+    v18 removes originally aligned and `implementedLogAccepted` records from the
+    manifest-backed right lifecycle, Timing lifecycle, and Workload actual
+    projections. The retained active catalog contains only unresolved records:
+    nine Lifecycle and eight Workload records whose outcomes are
+    `implementedNotLogVerified` or `deferredFrozen`. This approval does not
+    rewrite the v17 archive, claim that an unlisted historical record never
+    existed, authorize Swift changes, change native behavior, expand acceptance,
+    or approve the complete v18 composition. TAP-0087, TAP-0008, and TAP-0009
+    remain Doing; complete v18 remains `ownerReviewRequired`.
+  - `2026-08-15` Board Steward recorded completion and reviewer QA of the v18
+    active-record pruning without rewriting the preceding decision or any v17
+    history. The active JSON arrays now physically contain only nine unresolved
+    Lifecycle records (five lifecycle-lane owners plus four workload-lane
+    owners; eight yellow/red and one frozen) and eight unresolved Workload
+    records (seven timing plus one semantic; four yellow/red and four frozen).
+    Active accepted/aligned counts are zero; `d4b19d9` remains the complete v17
+    archive. At `1575 x 1204`, the Browser verified five right-side lifecycle
+    cards; Resource Initialization sequence `10` verified five lifecycle paths
+    at `t0`/`t2`, six Workload actual cards, three existing blue targets/paths,
+    and all 16 canonical Workload effects; fresh-install sequence `6` verified
+    three actuals including one frozen plus one blue target/path. Timing/log
+    round-trip restoration passed. Two v18 PNGs record the result. Prototype
+    tests passed `58/58`; six MJS syntax checks, manifest parse, and diff check
+    passed; no Swift diff exists. This closes only v18 pruning implementation
+    and reviewer QA. TAP-0087, TAP-0008, and TAP-0009 remain Doing; the complete
+    v18 composition remains `ownerReviewRequired`.
 
 ### TAP-0088 — Prototype functional Viewfinder-control workload interactions
 
@@ -5135,3 +5201,31 @@ not replace the Product Contract, and linked device evidence may remain open.
   status, frozen behavior, or push state. TAP-0008, TAP-0009, and TAP-0087 remain
   Doing; the complete v17 composition remains `ownerReviewRequired`; Next Task
   ID remains TAP-0090.
+- `2026-08-15` Board Steward recorded the owner's TAP-0087 v18 active-record
+  pruning decision. Commit `d4b19d9` remains the complete v17 reviewer archive;
+  active v18 removes originally aligned and `implementedLogAccepted` records
+  from the manifest-backed right lifecycle, Timing lifecycle, and Workload
+  actual projections and retains only nine unresolved Lifecycle records plus
+  eight unresolved Workload records with `implementedNotLogVerified` or
+  `deferredFrozen` outcomes. This Board-only synchronization preserves all
+  earlier v17 history and evidence, changes no Swift or native behavior, records
+  no new implementation/QA/acceptance claim, and changes no Task status or push
+  state. TAP-0008, TAP-0009, and TAP-0087 remain Doing; the complete v18
+  composition remains `ownerReviewRequired`; Next Task ID remains TAP-0090.
+- `2026-08-15` Board Steward synchronized completed v18 active-record deletion
+  and reviewer QA. Active JSON now contains nine unresolved Lifecycle records
+  (five lifecycle-lane plus four workload-lane owners; eight yellow/red plus one
+  frozen) and eight unresolved Workload records (seven timing plus one semantic;
+  four yellow/red plus four frozen); active accepted/aligned counts are zero,
+  while `d4b19d9` remains the complete v17 archive. Codex in-app Browser at
+  `1575 x 1204` verified five right lifecycle cards; Resource Initialization
+  sequence `10` verified five lifecycle cards/paths at `t0` and `t2`, six
+  Workload actual cards, three blue targets/paths, and 16 canonical effects;
+  fresh-install sequence `6` verified three actuals including one frozen and one
+  blue target/path. Timing/log round-trip restoration passed, and two v18 PNGs
+  record the evidence. Prototype tests passed `58/58`; all six MJS checks,
+  manifest parse, and diff check passed. This Board-only synchronization changes
+  no Swift or native behavior, Task or acceptance status, complete-composition
+  approval, or push state. TAP-0008, TAP-0009, and TAP-0087 remain Doing; the
+  complete v18 composition remains `ownerReviewRequired`; Next Task ID remains
+  TAP-0090.

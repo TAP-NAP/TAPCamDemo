@@ -279,14 +279,14 @@ final result: passed
 - Task: `TAP-0087`; P0 prerequisite for `TAP-0008`, `TAP-0009`, and
   `TAP-0083`.
 - Candidate entry: `startup-lifecycle.html`.
-- Shared-tree revision: `v17`.
-- Verification pass: `v17`.
-- Status: `candidate`; `ownerReviewRequired`. Exact owner approval of the v17
+- Shared-tree revision: `v18`.
+- Verification pass: `v18`.
+- Status: `candidate`; `ownerReviewRequired`. Exact owner approval of the v18
   TAP-0087 composition and synchronized lifecycle contract is pending. The
   existing TAP-0008-r2, TAP-0009-r1, and TAP-0081-r3 approvals remain
   independent and do not approve this workbench revision.
 
-### v17 contract represented
+### v18 contract represented
 
 - The workbench uses one UI surface catalog with contextual legal operations,
   one `393 x 852` app-owned preview, and one lifecycle/workload/state inspector.
@@ -305,39 +305,34 @@ final result: passed
   `target { trigger, owner, earliest, blocks, network, evidence }`, plus an
   alignment result. `t0…t5` are target reducer milestones. Any current-main
   `t*` association is source-order inference, not device timing evidence.
-- The JSON source catalog contains 14 truths: 12 mismatches and 2 aligned facts.
-  The default **08 / 09 真值** panel now lists only the six lifecycle-owned
-  mismatches plus the two aligned facts; the six workload-owned mismatch truths
-  render only in the Workload lane. The explicit `mismatch` field preserves the
-  immutable `main@4cc02e5f12f2` audit; card color is a separate fix0809 outcome
-  projection and never comes from a parsed phase string or generic workload
-  `gap` label.
-- Each mismatch also carries a JSON `fix0809Disposition`. Eleven lifecycle
-  truths are `approvedToFix`; `networkBootstrap` is the one
-  `deferredFrozen` lifecycle truth. Workload children may narrow their parent:
-  nine are approved and the first-install credential, Network completion,
-  post-setup App Attest, and credential/network-dependent Pending records are
-  frozen. A separate per-record `fix0809Outcome` renders implemented/log-
-  accepted records yellow with a yellow border, implemented but log-unverified
-  records yellow with a red border, and frozen records red with a red border.
-  Originally aligned records remain green. None rewrites current `/healthz`
-  behavior as the target or approves the complete v17 composition.
+- Active v18 is a remaining-problems view. Its JSON catalog contains nine
+  lifecycle truths, all mismatches: five lifecycle-owned records render in the
+  right panel and **08/09 生命周期** Timing lane, while four workload-owned truths
+  render only through their Workload children. The two originally aligned and
+  three device-log-accepted lifecycle records were removed from active JSON and
+  DOM; the complete v17 record set remains available at Git commit `d4b19d9`.
+- Eight active lifecycle records are `approvedToFix` with
+  `implementedNotLogVerified` outcome and therefore use a yellow background
+  with red border. `networkBootstrap` is `deferredFrozen`; its Network/App
+  Attest children and credential/network-dependent Pending children remain red
+  with red borders. The active panel has no green or yellow/yellow record and
+  does not reinterpret current `/healthz` behavior as the target.
 - Every visible mismatch record has one red dashed SVG path to its explicit
   current-main `actual.anchor` circular `t0…tn` node. The card separately shows
   the target anchor/phase. Connectors are decorative review annotations, not
   reducer transitions, and are recomputed after scroll, filter, resize, and
   responsive reflow.
 - Timing gives each mismatch one owner. The reviewer-only **08/09 生命周期**
-  lane contains only the six non-workload mismatch truths; workload-owned truth
+  lane contains only the five non-workload mismatch truths; workload-owned truth
   is excluded there. An outcome-colored lifecycle card appears only after its actual
   milestone and keeps one dashed path to that circular Timing anchor.
-- The 14 lifecycle-truth records and 13 workload-difference records have one
+- The nine lifecycle-truth records and eight workload-difference records have one
   JSON authority in `manifest.json`; `startup-model.mjs` loads them through a
   shallow top-level shape gate instead of embedding a second list or count. The
   test suite validates record fields, IDs, ownership, bindings, uniqueness, and
   replay resolution. A failed reviewer-data load or top-level shape gate yields
   empty comparison registries without preventing reducer/model import.
-- The existing **Workload** lane owns 10 timing and 3 semantic workload
+- The existing **Workload** lane owns seven timing and one semantic workload
   differences. Each JSON record declares its applicable scenario group, real
   source trigger, reviewer visibility/upstream checkpoint, and exact prototype
   event/workload/status binding. The focusable outcome-colored **实际 · 不一致** annotation
@@ -365,21 +360,21 @@ final result: passed
 
 ### Stale evidence boundary
 
-All earlier TAP-0087 captures through v16b and v10/v11/v12 measurements are
-historical for the v17 outcome-overlay pass. The v16a and v16b captures still
-support their named historical observations, but neither can prove the v17
-outcome colors, accessible copy, or connector reflow. This also includes
+The complete v17 outcome overlay, its removed records, and all earlier TAP-0087
+captures are historical for active v18. Git commit `d4b19d9` is the complete
+v17 archive. Earlier captures still support their explicitly named historical
+observations, but none proves the v18 remaining-problems composition. This also includes
 the old `1600 x 941` screenshot and SHA,
 page/inspector/timing scroll
 measurements, playback-button coordinates, single-catalog DOM measurements,
 mobile viewport captures, console result, and historical automated-test count.
-They remain historical comparison inputs only and do not establish current v17
+They remain historical comparison inputs only and do not establish current v18
 parity or acceptance.
 
 No mobile/responsive run, native Simulator/device
 parity result, physical-device timing, or owner approval is claimed here.
 
-### v17 browser-verified fix0809 outcome overlay
+### Historical v17 browser-verified fix0809 outcome overlay
 
 - Codex in-app Browser loaded `startup-lifecycle.html?revision=v17` at
   `1349 x 876`. The body stayed `876 / 876` with no page-level vertical scroll;
@@ -413,6 +408,39 @@ parity result, physical-device timing, or owner approval is claimed here.
   not a rewrite of the main baseline, not a frozen Network/App Attest/Pending
   implementation, not physical timing, and not approval of the complete v17
   composition.
+
+### v18 browser-verified remaining-problems view
+
+- Codex in-app Browser loaded `startup-lifecycle.html?revision=v18` at
+  `1575 x 1204`. The body stayed `1204 / 1204` with no page-level vertical
+  scroll; Timing remained one internal `929 / 332` scroll surface.
+- The right lifecycle list rendered exactly five yellow-background/red-border
+  cards. Active DOM contained zero `implementedLogAccepted` and zero aligned
+  cards. The five IDs were `legacyReceiptAndMarker`,
+  `permissionRecoverySemantics`, `requiredPermissionRoute`,
+  `retainedContainerRouting`, and `resourceInitializationSurface`.
+- At In-place Update sequence `10`, Timing rendered those same five lifecycle
+  cards and five red dashed paths. Only circular `t0` and `t2` actual anchors
+  remained red. The Workload lane rendered six applicable annotations: four
+  yellow/red and two frozen red/red. Three exact prototype effects remained
+  blue and exactly three dashed paths connected them. All 16 canonical workload
+  trace effects remained present.
+- Each inspected connector had a non-empty path without `NaN` or `undefined`.
+  Lifecycle/Workload dashed strokes remained red; prototype targets retained
+  blue treatment and no `fix0809Outcome` dataset. **Timing → 顺序日志 → Timing**
+  restored five lifecycle cards/paths and six Workload actuals with three paths
+  without changing reducer sequence `10`.
+- At Fresh Installation sequence `6`, three active Workload annotations were
+  visible. `initialAttestationCompletionMeaning` remained the single frozen
+  item, with one existing blue target and one dashed path.
+- Current PNG evidence:
+  `evidence/TAP-0087-r1-v18-remaining-lifecycle.png` and
+  `evidence/TAP-0087-r1-v18-remaining-workload.png`. Both files were verified as
+  real PNG images.
+- Claim boundary: reviewer-only remaining-problems visualization and connector
+  evidence; accepted/aligned history is archived at `d4b19d9`; this is not a
+  frozen Network/App Attest/Pending implementation, physical timing evidence,
+  or approval of the complete v18 composition.
 
 ### Historical v11f browser-verified interaction facts
 
@@ -651,23 +679,22 @@ no screenshot file was saved.
 Mobile/responsive coverage, exact prototype-to-native visual parity, and
 physical-device timing remain unclaimed. Separately, the owner accepted the
 bounded `fix0809` non-Network lifecycle path after exercising it on a physical
-device; that verdict is not approval of the exact v17 workbench or its complete
-scenario matrix. Exact product-owner review of the v17 workbench and
+device; that verdict is not approval of the exact v18 workbench or its complete
+scenario matrix. Exact product-owner review of the v18 workbench and
 synchronized contract remains required.
 
 ### 2026-08-15 `fix0809` native candidate
 
-- The manifest now keeps native implementation progress beside, but separate
-  from, the immutable `main@4cc02e5f12f2` truth records.
-- Seven mismatch IDs are recorded as fully implemented candidates. Setup/
-  marker separation, retained-container routing, camera construction, and
-  deferred release are recorded as partial. Camera mounting now follows route
+- The active manifest now keeps only unresolved native implementation records;
+  the complete implementation and acceptance record remains at `d4b19d9`.
+- Setup/marker separation, retained-container routing, camera construction, and
+  deferred release remain partial active records. Camera mounting now follows route
   selection and uses lazy `StateObject` construction, but `Task.yield()` is not
   a real shell-frame acknowledgement; canonical `S` and Network-owned deferred
   work also remain outside the approved frozen boundary.
 - The owner-approved TAP-0009 Resource Initialization hierarchy and two
   readiness rows are present in SwiftUI. Required Permission Check remains a
-  visual/copy candidate rather than a claimed v17 approval.
+  visual/copy candidate rather than a claimed v18 approval.
 - Marker I/O is off-MainActor and fails closed without Application Support;
   local poster/recent-cover work and pending App Intent navigation wait for a
   two-display-tick committed-Viewfinder barrier.
@@ -682,5 +709,5 @@ synchronized contract remains required.
   update/restore, measured timing, canonical `S`, and complete `W11/W12` remain
   outside that verdict.
 
-final result: native bounded path owner-accepted; exact v17 composition and full
+final result: native bounded path owner-accepted; exact v18 composition and full
 scenario matrix remain candidate work

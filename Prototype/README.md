@@ -85,20 +85,20 @@ labels are source-order inferences only, not native timestamps or device
 measurements.
 
 Use the default **08 / 09 真值** filter to compare current-main source truth with
-the TAP-0008/TAP-0009 prototype target. The JSON catalog has 14 source truths,
-but this panel shows only the six lifecycle-owned mismatches plus two aligned
-facts; six workload-owned mismatch truths render only in Timing's Workload lane.
-Each visible lifecycle mismatch card owns one dashed line to its circular `t0…tn`
-actual-phase node. The connector is a reviewer annotation—not a reducer edge,
-native timestamp, device measurement, or claim that current main emits that
-target milestone.
+the TAP-0008/TAP-0009 prototype target. The active v18 catalog is
+unresolved-only: it contains nine lifecycle truths. Five non-workload truths
+render as lifecycle cards, while four workload-owned truths render only through
+their scoped Workload differences. Each visible lifecycle card owns one dashed
+line to its circular `t0…tn` actual-phase node. The connector is a reviewer
+annotation—not a reducer edge, native timestamp, device measurement, or claim
+that current main emits that target milestone.
 
 The **Timing 时序** view places non-workload gaps in the **08/09 生命周期**
-lane. An outcome-colored lifecycle card appears only after its actual anchor is reached and
+lane. An unresolved-outcome-colored lifecycle card appears only after its actual anchor is reached and
 keeps one dashed path to that column's circular milestone. Workload-owned gaps
 are omitted there and appear only in the existing **Workload** lane.
 
-Each Workload mismatch keeps the canonical reducer trace intact. An outcome-colored
+Each Workload mismatch keeps the canonical reducer trace intact. An unresolved-outcome-colored
 **实际 · 不一致** annotation appears in the JSON-selected reviewer visibility/
 upstream projection column and separately labels its real source trigger and
 coarse lifecycle anchor. The projection event controls visibility only; it does
@@ -114,24 +114,27 @@ The lifecycle truth records and workload difference records are read from
 [`manifest.json`](manifest.json) under
 `independentCandidates.startupLifecycle.workbench.right.tap0008Tap0009CodeTruth`.
 The page does not maintain a second hardcoded list, lane-ownership list, or
-count. Ten timing records and three semantic workload records render from JSON;
-already aligned or non-workload cases remain outside this projection. Each
-record scopes one current-main path/trigger, names the lifecycle truth that it
-represents, and carries the scenario/event/workload/status binding used to find
-the existing prototype trace effect.
+count. Eight Workload differences render from active JSON—seven timing and one
+semantic. Each record scopes one current-main path/trigger, names the lifecycle
+truth that it represents, and carries the scenario/event/workload/status binding
+used to find the existing prototype trace effect.
 
 The same JSON records carry both the owner-reviewed `fix0809Disposition` and an
-independent `fix0809Outcome`. A yellow background with yellow border means the
-candidate code changed and the supplied physical-device log accepted the
-executed path. Yellow with a red border means the code changed but that log did
-not verify alignment. Red with a red border remains frozen Network/App Attest
-or credential/network-dependent Pending work. Originally aligned records stay
-green. Yellow cards still say **不一致** because their actual/target content is
-the immutable `main@4cc02e5f12f2` audit, not a rewritten mainline claim.
-Workload children store their own outcomes instead of inheriting a parent.
-`fix0809` therefore makes no direct change to the frozen executors or retry
-policy and does not reinterpret `/healthz` as the target. This partial overlay
-decision does not approve the complete TAP-0087 v17 composition.
+independent `fix0809Outcome`. Active v18 uses only two unresolved treatments:
+yellow with a red border means the code changed but the supplied log did not
+verify alignment; red with a red border remains frozen Network/App Attest or
+credential/network-dependent Pending work. Every active card still says
+**不一致**. Workload children store their own outcomes instead of inheriting a
+parent, so `deferredWorkGuard` can remain yellow/red while its App Attest and
+Pending children remain red/red. `fix0809` makes no direct change to those
+frozen executors or retry policy and does not reinterpret `/healthz` as the
+target.
+
+The complete v17 outcome view—including originally aligned and device-log-
+accepted records—is historical at `fix0809@d4b19d9`; those records are not
+loaded into active JSON and do not produce DOM nodes. This pruning does not
+approve the complete TAP-0087 v18 composition, which remains
+`ownerReviewRequired`.
 
 Settings is catalogued only as **Pending — no approved slice**. It has no
 invented phone preview or operations. The system Settings handoff used for
@@ -318,26 +321,26 @@ proof parsing, hashing, ZIP creation, or the system activity controller.
 ### `fix0809` native-candidate synchronization
 
 `manifest.json` records implementation progress separately from the audited
-current-main truth cards. The 2026-08-15 `fix0809` candidate implements seven
-approved mismatches and partial non-Network portions of four more. Camera
-construction is partial because the selected route shell precedes mounting and
-the model is lazy across parent updates, but no real shell-frame acknowledgement
-has been measured. The
-historical truth content stays unchanged so the reviewer never mistakes branch
-work for mainline source truth. The v17 reviewer overlay records branch
-implementation and log coverage in yellow while `networkBootstrap` and the App
-Attest/Pending children of deferred release remain red and frozen.
+current-main truth cards. The 2026-08-15 `fix0809` candidate changed the bounded
+non-Network lifecycle slice, but v18 deliberately shows only unresolved
+records. Its nine active lifecycle truths divide into five lifecycle cards and
+four workload-owned truths; the latter own eight Workload differences. Camera
+construction remains unresolved because the selected route shell precedes
+mounting and the model is lazy across parent updates, but no real shell-frame
+acknowledgement has been measured. The full v17 reviewer overlay and its
+accepted/aligned records remain available in Git at `d4b19d9` rather than in an
+active manifest archive.
 
 The owner-approved TAP-0009 Resource Initialization copy and its Camera/TAP
 Library readiness rows are implemented natively. Required Permission Check is
-a native candidate whose exact v17 visual/copy composition still requires owner
+a native candidate whose exact v18 visual/copy composition still requires owner
 review. The native marker write is off-MainActor and Application-Support-only;
 local poster/recent-cover work and pending App Intent navigation wait until a
 two-display-tick committed-Viewfinder barrier. The owner accepted the bounded
 non-Network lifecycle path after exercising it on a physical device. Exact
 prototype-to-native visual parity, Simulator parity, physical timing, and the
 unexecuted installation/restore/recovery matrix are not claimed by that
-verdict.
+verdict. The complete v18 workbench remains `ownerReviewRequired`.
 
 ## Evidence Boundary
 

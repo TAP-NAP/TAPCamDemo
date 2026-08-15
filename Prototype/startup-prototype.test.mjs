@@ -34,7 +34,7 @@ test("TAP-0087 has a separate candidate entry and does not rewrite prior approva
   assert.equal(manifest.slices.firstInstallResourceInitialization.approvalStatus, "ownerApproved");
   assert.equal(manifest.approval.wholeCompositionApproval, "not separately claimed");
   assert.deepEqual(
-    candidate.qaRefresh.notClaimed.includes("owner approval of the complete TAP-0087 v17 composition"),
+    candidate.qaRefresh.notClaimed.includes("owner approval of the complete TAP-0087 v18 composition"),
     true
   );
 });
@@ -75,7 +75,16 @@ test("the dedicated lifecycle page contains every requested surface and the revi
 test("TAP-0008/TAP-0009 code truth uses JSON outcome cards with one dashed connector per visible mismatch", () => {
   assert.match(html, /id="lifecycle-difference-connectors"[^>]*aria-hidden="true"/);
   assert.match(html, /data-workload-filter="truth" aria-pressed="true">08 \/ 09 真值/);
-  assert.match(html, /黄色=本轮已改（黄边：log 已验收；红边：log 未覆盖）· 红底红边=冻结未处理 · 绿色=原本一致/);
+  const differenceLegend = sourceBetween(
+    html,
+    '<span class="difference-legend">',
+    "</span>"
+  );
+  assert.match(differenceLegend, /活动面板仅显示尚待确认的问题/);
+  assert.match(differenceLegend, /黄底红边[^·]*log 未覆盖/);
+  assert.match(differenceLegend, /红底红边[^·]*冻结/);
+  assert.match(differenceLegend, /d4b19d9/);
+  assert.doesNotMatch(differenceLegend, /黄边：log 已验收|绿色=原本一致/);
   assert.match(html, /生命周期卡 → 虚线 → 红色实际阶段圆点 · Workload 实际 → 虚线 → 蓝色原型/);
   assert.match(controller, /lifecycleTruthRegistry/);
   assert.match(controller, /label\.dataset\.lifecycleAnchorId = item\.id/);
@@ -123,9 +132,37 @@ test("TAP-0008/TAP-0009 code truth uses JSON outcome cards with one dashed conne
   assert.match(css, /\.lifecycle-difference-connector[\s\S]*stroke: rgba\(255, 69, 58, \.92\)/);
   assert.match(css, /\.timeline li \.timeline-anchor[\s\S]*border-radius: 50%/);
   assert.match(css, /html\[data-workload-filter="truth"\] \.timeline[\s\S]*grid-template-columns: 1fr/);
-  assert.equal(candidate.workbench.revision, "v17");
-  assert.equal(candidate.workbench.right.tap0008Tap0009CodeTruth.recordCount, 14);
-  assert.equal(candidate.workbench.right.tap0008Tap0009CodeTruth.mismatchCount, 12);
+  const truthManifest = candidate.workbench.right.tap0008Tap0009CodeTruth;
+  const deletedLifecycleRecordIDs = [
+    "explicitPermissionActions",
+    "optionalPermissionPolicy",
+    "cameraReadinessPredicate",
+    "libraryReadinessPredicate",
+    "initializationCommit"
+  ];
+  assert.equal(candidate.workbench.revision, "v18");
+  assert.equal(truthManifest.schemaVersion, 4);
+  assert.equal(truthManifest.recordCount, 9);
+  assert.equal(truthManifest.mismatchCount, 9);
+  assert.equal(truthManifest.alignedCount, 0);
+  assert.equal(truthManifest.records.length, 9);
+  assert.equal(truthManifest.records.filter(({ mismatch }) => !mismatch).length, 0);
+  assert.equal(
+    truthManifest.records.filter(({ fix0809Outcome }) => fix0809Outcome === "implementedLogAccepted").length,
+    0
+  );
+  assert.equal(Object.hasOwn(truthManifest.fix0809OutcomeCatalog, "implementedLogAccepted"), false);
+  assert.deepEqual(
+    deletedLifecycleRecordIDs.filter((id) => truthManifest.records.some((record) => record.id === id)),
+    []
+  );
+  assert.equal(truthManifest.fix0809OutcomeSummary.archiveRef, "d4b19d9");
+  const truthCardSource = sourceBetween(
+    controller,
+    "function renderLifecycleTruthCards()",
+    "function updateTimelineDifferenceAnchors()"
+  );
+  assert.doesNotMatch(truthCardSource, /implementedLogAccepted/);
   for (const evidencePath of candidate.qaEvidence.filter((path) => path.endsWith(".png"))) {
     assert.ok(fs.existsSync(new URL(evidencePath, import.meta.url)), evidencePath);
   }
@@ -152,14 +189,21 @@ test("Timing keeps only non-workload truth in the lifecycle lane and links it to
 test("Timing decorates the existing Workload trace with scenario-bound JSON outcome differences", () => {
   const comparisonManifest = candidate.workbench.right.tap0008Tap0009CodeTruth.workloadDifferenceComparison;
   const truthManifest = candidate.workbench.right.tap0008Tap0009CodeTruth;
-  assert.equal(truthManifest.schemaVersion, 3);
-  assert.equal(comparisonManifest.schemaVersion, 4);
-  assert.equal(comparisonManifest.recordCount, 13);
+  const deletedWorkloadRecordIDs = [
+    "libraryCatalogStartsBeforeRouteOwnership",
+    "libraryCatalogReadyNotConsumedByInitialization",
+    "cameraInteractionReadyEligibilityOmitsPreviewSafety",
+    "recentCoverLacksDeferredReleaseGuard",
+    "firstPreviewGateConsumption"
+  ];
+  assert.equal(truthManifest.schemaVersion, 4);
+  assert.equal(comparisonManifest.schemaVersion, 5);
+  assert.equal(comparisonManifest.recordCount, 8);
   assert.equal(comparisonManifest.recordCount, comparisonManifest.records.length);
   assert.equal(comparisonManifest.mismatchCount, comparisonManifest.records.filter(({ mismatch }) => mismatch).length);
-  assert.equal(comparisonManifest.timingMismatchCount, 10);
-  assert.equal(comparisonManifest.semanticMismatchCount, 3);
-  assert.equal(truthManifest.fix0809DispositionSummary.approvedToFixMismatchCount, 11);
+  assert.equal(comparisonManifest.timingMismatchCount, 7);
+  assert.equal(comparisonManifest.semanticMismatchCount, 1);
+  assert.equal(truthManifest.fix0809DispositionSummary.approvedToFixMismatchCount, 8);
   assert.equal(truthManifest.fix0809DispositionSummary.deferredFrozenMismatchCount, 1);
   assert.equal(truthManifest.records.find(({ id }) => id === "networkBootstrap").fix0809Disposition, "deferredFrozen");
   assert.deepEqual(
@@ -174,14 +218,36 @@ test("Timing decorates the existing Workload trace with scenario-bound JSON outc
       "postSetupAttestLacksDeferredReleaseGuard"
     ]
   );
-  assert.equal(comparisonManifest.fix0809DispositionSummary.approvedToFixMismatchCount, 9);
+  assert.equal(comparisonManifest.fix0809DispositionSummary.approvedToFixMismatchCount, 4);
   assert.equal(comparisonManifest.fix0809DispositionSummary.deferredFrozenMismatchCount, 4);
-  assert.equal(truthManifest.fix0809OutcomeSummary.implementedLogAcceptedMismatchCount, 3);
   assert.equal(truthManifest.fix0809OutcomeSummary.implementedNotLogVerifiedMismatchCount, 8);
   assert.equal(truthManifest.fix0809OutcomeSummary.deferredFrozenMismatchCount, 1);
-  assert.equal(comparisonManifest.fix0809OutcomeSummary.implementedLogAcceptedMismatchCount, 5);
+  assert.equal(truthManifest.fix0809OutcomeSummary.activeRemainingMismatchCount, 9);
   assert.equal(comparisonManifest.fix0809OutcomeSummary.implementedNotLogVerifiedMismatchCount, 4);
   assert.equal(comparisonManifest.fix0809OutcomeSummary.deferredFrozenMismatchCount, 4);
+  assert.equal(comparisonManifest.fix0809OutcomeSummary.activeRemainingMismatchCount, 8);
+  assert.equal(Object.hasOwn(truthManifest.fix0809OutcomeSummary, "implementedLogAcceptedMismatchCount"), false);
+  assert.equal(Object.hasOwn(comparisonManifest.fix0809OutcomeSummary, "implementedLogAcceptedMismatchCount"), false);
+  assert.equal(
+    comparisonManifest.records.filter(({ fix0809Outcome }) => fix0809Outcome === "implementedLogAccepted").length,
+    0
+  );
+  assert.deepEqual(
+    deletedWorkloadRecordIDs.filter((id) => comparisonManifest.records.some((record) => record.id === id)),
+    []
+  );
+  assert.equal(truthManifest.fix0809OutcomeSummary.candidateRef, "fix0809@66ac001");
+  assert.equal(truthManifest.fix0809OutcomeSummary.archiveRef, "d4b19d9");
+  assert.equal(comparisonManifest.fix0809OutcomeSummary.archiveRef, "d4b19d9");
+
+  const lifecycleOwnerIDs = truthManifest.timingProjection.lifecycleLaneRecordIDs;
+  const workloadOwnerIDs = truthManifest.timingProjection.workloadLaneTruthRecordIDs;
+  const ownerIDs = [...lifecycleOwnerIDs, ...workloadOwnerIDs];
+  const activeTruthIDs = truthManifest.records.map(({ id }) => id);
+  assert.equal(lifecycleOwnerIDs.length, 5);
+  assert.equal(workloadOwnerIDs.length, 4);
+  assert.equal(new Set(ownerIDs).size, ownerIDs.length);
+  assert.deepEqual([...ownerIDs].sort(), [...activeTruthIDs].sort());
   const targetBindingKeys = new Set();
   for (const difference of comparisonManifest.records) {
     const binding = difference.traceBinding;
@@ -305,7 +371,7 @@ test("Timing decorates the existing Workload trace with scenario-bound JSON outc
   assert.match(css, /\.timing-difference-connectors[\s\S]*pointer-events: none/);
   assert.doesNotMatch(css, /\.timing-workload-difference\s*\{|\.timing-workload-inline-connector\s*\{/);
   assert.doesNotMatch(css, /\.workload-timing-comparison|\.workload-timing-pair|\.workload-timing-connectors/);
-  assert.match(html, /workbench-v17/);
+  assert.match(html, /workbench-v18/);
 });
 
 test("the workbench catalogs approved UI surfaces and keeps Settings visibly Pending without inventing a phone page", () => {
