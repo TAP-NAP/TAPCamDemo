@@ -4,6 +4,7 @@
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
   --blue: #0a84ff;
   --green: #30d158;
+  --yellow: #ffd60a;
   --orange: #ff9f0a;
   --red: #ff453a;
   --ink: #f5f5f7;
@@ -554,6 +555,30 @@ select {
   border-color: rgba(255,69,58,.78);
   box-shadow: inset 3px 0 0 var(--red), 0 0 0 1px rgba(255,69,58,.08);
 }
+.lifecycle-truth-card.is-lifecycle-mismatch[data-fix0809-outcome="implementedLogAccepted"],
+.lifecycle-truth-card.is-lifecycle-mismatch[data-fix0809-outcome="implementedLogAccepted"]:hover,
+.timing-lifecycle-difference[data-fix0809-outcome="implementedLogAccepted"],
+.timing-workload-actual[data-fix0809-outcome="implementedLogAccepted"] {
+  background: linear-gradient(115deg, rgba(116,87,9,.94), rgba(61,47,10,.97));
+  border-color: rgba(255,214,10,.9);
+  box-shadow: inset 3px 0 0 var(--yellow), 0 0 0 1px rgba(255,214,10,.1);
+}
+.lifecycle-truth-card.is-lifecycle-mismatch[data-fix0809-outcome="implementedNotLogVerified"],
+.lifecycle-truth-card.is-lifecycle-mismatch[data-fix0809-outcome="implementedNotLogVerified"]:hover,
+.timing-lifecycle-difference[data-fix0809-outcome="implementedNotLogVerified"],
+.timing-workload-actual[data-fix0809-outcome="implementedNotLogVerified"] {
+  background: linear-gradient(115deg, rgba(116,87,9,.94), rgba(61,47,10,.97));
+  border-color: rgba(255,69,58,.9);
+  box-shadow: inset 3px 0 0 var(--red), 0 0 0 1px rgba(255,69,58,.1);
+}
+.lifecycle-truth-card.is-lifecycle-mismatch[data-fix0809-outcome="deferredFrozen"],
+.lifecycle-truth-card.is-lifecycle-mismatch[data-fix0809-outcome="deferredFrozen"]:hover,
+.timing-lifecycle-difference[data-fix0809-outcome="deferredFrozen"],
+.timing-workload-actual[data-fix0809-outcome="deferredFrozen"] {
+  background: linear-gradient(115deg, rgba(126,29,33,.9), rgba(68,22,25,.94));
+  border-color: rgba(255,69,58,.82);
+  box-shadow: inset 3px 0 0 var(--red), 0 0 0 1px rgba(255,69,58,.1);
+}
 .lifecycle-truth-card.is-lifecycle-aligned,
 .lifecycle-truth-card.is-lifecycle-aligned:hover {
   background: rgba(48,209,88,.07);
@@ -562,22 +587,27 @@ select {
 .lifecycle-truth-verdict { align-self: start; padding: 4px 6px; border-radius: 999px; font-size: 7px; font-weight: 720; }
 .lifecycle-truth-verdict.is-mismatch { color: #fff; background: rgba(255,69,58,.38); border: 1px solid rgba(255,190,186,.34); }
 .lifecycle-truth-verdict.is-aligned { color: #c9f9d3; background: rgba(48,209,88,.14); border: 1px solid rgba(48,209,88,.26); }
-.fix0809-disposition {
+.fix0809-outcome {
   grid-column: 1 / -1;
   width: fit-content;
   padding: 3px 5px;
-  color: #d7ebff;
-  background: rgba(10,132,255,.16);
-  border: 1px solid rgba(98,173,255,.32);
+  color: #fff1a8;
+  background: rgba(255,214,10,.14);
+  border: 1px solid rgba(255,214,10,.45);
   border-radius: 999px;
   font-size: 6.5px;
   font-weight: 760;
   line-height: 1.1;
 }
-.fix0809-disposition[data-fix0809-disposition="deferredFrozen"] {
-  color: #ffe2a8;
-  background: rgba(255,159,10,.18);
-  border-color: rgba(255,190,89,.48);
+.fix0809-outcome[data-fix0809-outcome="implementedNotLogVerified"] {
+  color: #fff0a0;
+  background: rgba(255,214,10,.13);
+  border-color: rgba(255,69,58,.72);
+}
+.fix0809-outcome[data-fix0809-outcome="deferredFrozen"] {
+  color: #ffd2cf;
+  background: rgba(255,69,58,.2);
+  border-color: rgba(255,69,58,.58);
 }
 .lifecycle-truth-phase {
   grid-column: 1 / -1;
@@ -674,8 +704,8 @@ html[data-workload-filter="truth"] .journey-spans { display: none; }
   -webkit-line-clamp: 2;
 }
 .timing-lifecycle-difference small { color: rgba(255,255,255,.66); font-size: 5.5px; line-height: 1.15; }
-.timing-lifecycle-difference .fix0809-disposition,
-.timing-workload-actual .fix0809-disposition { padding: 2px 4px; font-size: 5.25px; }
+.timing-lifecycle-difference .fix0809-outcome,
+.timing-workload-actual .fix0809-outcome { padding: 2px 4px; font-size: 5.25px; }
 .timing-difference-connectors {
   position: absolute;
   inset: 0;

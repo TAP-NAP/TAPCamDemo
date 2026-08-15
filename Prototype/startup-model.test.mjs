@@ -8,6 +8,7 @@ import {
   chooseRoute,
   createState,
   fix0809DispositionRegistry,
+  fix0809OutcomeRegistry,
   initializationIdentityMatches,
   lifecycleTimingLaneRecordIDs,
   lifecycleTruthRegistry,
@@ -100,17 +101,22 @@ test("TAP-0008/TAP-0009 code-truth records use explicit lifecycle anchors", () =
   const aligned = lifecycleTruthRegistry.filter(({ mismatch }) => !mismatch).map(({ id }) => id);
   assert.deepEqual(aligned.sort(), ["explicitPermissionActions", "optionalPermissionPolicy"]);
   assert.equal(
-    lifecycleTruthRegistry.filter(({ mismatch }) => !mismatch).every(({ fix0809Disposition }) => fix0809Disposition == null),
+    lifecycleTruthRegistry.filter(({ mismatch }) => !mismatch).every(({ fix0809Disposition, fix0809Outcome }) => (
+      fix0809Disposition == null && fix0809Outcome == null
+    )),
     true,
-    "aligned records are outside mismatch disposition scope"
+    "aligned records are outside fix0809 mismatch scope"
   );
   const truthManifest = manifest.independentCandidates.startupLifecycle.workbench.right.tap0008Tap0009CodeTruth;
-  assert.equal(truthManifest.schemaVersion, 2);
+  assert.equal(truthManifest.schemaVersion, 3);
   const mismatchTruths = lifecycleTruthRegistry.filter(({ mismatch }) => mismatch);
   for (const truth of mismatchTruths) {
     const disposition = fix0809DispositionRegistry[truth.fix0809Disposition];
+    const outcome = fix0809OutcomeRegistry[truth.fix0809Outcome];
     assert.ok(disposition, `${truth.id} fix0809 disposition`);
+    assert.ok(outcome, `${truth.id} fix0809 outcome`);
     assert.equal(disposition.renderAsMismatch, true, `${truth.id} remains mismatch`);
+    assert.equal(outcome.preservesBaselineMismatch, true, `${truth.id} outcome preserves baseline mismatch`);
   }
   assert.deepEqual(
     mismatchTruths.filter(({ fix0809Disposition }) => fix0809Disposition === "approvedToFix").map(({ id }) => id).sort(),
@@ -140,11 +146,54 @@ test("TAP-0008/TAP-0009 code-truth records use explicit lifecycle anchors", () =
   assert.match(truthManifest.fix0809DispositionSummary.policy, /ownerReviewRequired/);
   assert.match(fix0809DispositionRegistry.deferredFrozen.visibleLabel, /本轮暂缓 · Network frozen/);
   assert.equal(fix0809DispositionRegistry.deferredFrozen.includedInFix0809, false);
+  assert.deepEqual(
+    mismatchTruths.filter(({ fix0809Outcome }) => fix0809Outcome === "implementedLogAccepted").map(({ id }) => id).sort(),
+    ["cameraReadinessPredicate", "initializationCommit", "libraryReadinessPredicate"]
+  );
+  assert.deepEqual(
+    mismatchTruths.filter(({ fix0809Outcome }) => fix0809Outcome === "implementedNotLogVerified").map(({ id }) => id).sort(),
+    [
+      "deferredWorkGuard",
+      "legacyReceiptAndMarker",
+      "permissionRecoverySemantics",
+      "preFrameLibraryObserver",
+      "requiredPermissionRoute",
+      "resourceInitializationSurface",
+      "retainedContainerRouting",
+      "returningCameraConstruction"
+    ]
+  );
+  assert.deepEqual(
+    mismatchTruths.filter(({ fix0809Outcome }) => fix0809Outcome === "deferredFrozen").map(({ id }) => id),
+    ["networkBootstrap"]
+  );
+  assert.deepEqual(truthManifest.fix0809OutcomeSummary, {
+    baselineRef: "main@4cc02e5f12f2",
+    candidateRef: "fix0809@66ac001",
+    implementedLogAcceptedMismatchCount: 3,
+    implementedNotLogVerifiedMismatchCount: 8,
+    deferredFrozenMismatchCount: 1,
+    alignedUnchangedCount: 2,
+    ownerDecisionRecordedAt: "2026-08-15",
+    evidence: "Docs/Acceptance/TAP-0041-camera-readiness.md#2026-08-15-bounded-device-observation",
+    policy: truthManifest.fix0809OutcomeSummary.policy
+  });
+  assert.match(truthManifest.fix0809OutcomeSummary.policy, /yellow\/yellow/);
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(fix0809OutcomeRegistry).map(([id, outcome]) => (
+      [id, [outcome.fillTone, outcome.borderTone]]
+    ))),
+    {
+      implementedLogAccepted: ["yellow", "yellow"],
+      implementedNotLogVerified: ["yellow", "red"],
+      deferredFrozen: ["red", "red"]
+    }
+  );
   const networkBootstrap = lifecycleTruthRegistry.find(({ id }) => id === "networkBootstrap");
   assert.match(networkBootstrap.actual.summary, /healthz/);
   assert.match(networkBootstrap.target.summary, /App Attest registration \/ verification/);
   assert.doesNotMatch(networkBootstrap.target.summary, /healthz/);
-  assert.equal(manifest.independentCandidates.startupLifecycle.workbench.revision, "v16");
+  assert.equal(manifest.independentCandidates.startupLifecycle.workbench.revision, "v17");
   assert.equal(truthManifest.recordCount, lifecycleTruthRegistry.length);
   assert.equal(truthManifest.mismatchCount, lifecycleTruthRegistry.filter(({ mismatch }) => mismatch).length);
   assert.equal(truthManifest.alignedCount, aligned.length);
@@ -160,7 +209,7 @@ test("TAP-0008/TAP-0009 code-truth records use explicit lifecycle anchors", () =
 test("lifecycle and workload mismatches have disjoint JSON-backed Timing owners", () => {
   const truthManifest = manifest.independentCandidates.startupLifecycle.workbench.right.tap0008Tap0009CodeTruth;
   const comparison = truthManifest.workloadDifferenceComparison;
-  assert.equal(comparison.schemaVersion, 3);
+  assert.equal(comparison.schemaVersion, 4);
   const timelineIDs = new Set(timelineRegistry.map(({ id }) => id));
   const workloadIDs = new Set(Object.keys(workloadRegistry));
   const recordIDs = workloadDifferenceRegistry.map(({ id }) => id);
@@ -186,6 +235,7 @@ test("lifecycle and workload mismatches have disjoint JSON-backed Timing owners"
     assert.ok(["timing", "semantic"].includes(difference.differenceType), difference.id);
     assert.equal(difference.mismatch, true, difference.id);
     assert.ok(fix0809DispositionRegistry[difference.fix0809Disposition], `${difference.id} fix0809 disposition`);
+    assert.ok(fix0809OutcomeRegistry[difference.fix0809Outcome], `${difference.id} fix0809 outcome`);
     const sourceTruthDispositions = new Set(difference.lifecycleTruthIDs.map((truthID) => (
       lifecycleTruthRegistry.find(({ id }) => id === truthID)?.fix0809Disposition
     )));
@@ -259,6 +309,55 @@ test("lifecycle and workload mismatches have disjoint JSON-backed Timing owners"
     [...comparison.fix0809DispositionSummary.deferredFrozenWorkloadRecordIDs].sort(),
     workloadDifferenceRegistry
       .filter(({ fix0809Disposition }) => fix0809Disposition === "deferredFrozen")
+      .map(({ id }) => id)
+      .sort()
+  );
+  assert.deepEqual(
+    workloadDifferenceRegistry
+      .filter(({ fix0809Outcome }) => fix0809Outcome === "implementedLogAccepted")
+      .map(({ id }) => id)
+      .sort(),
+    [
+      "cameraInteractionReadyEligibilityOmitsPreviewSafety",
+      "firstPreviewGateConsumption",
+      "libraryCatalogReadyNotConsumedByInitialization",
+      "libraryCatalogStartsBeforeRouteOwnership",
+      "recentCoverLacksDeferredReleaseGuard"
+    ]
+  );
+  assert.deepEqual(
+    workloadDifferenceRegistry
+      .filter(({ fix0809Outcome }) => fix0809Outcome === "implementedNotLogVerified")
+      .map(({ id }) => id)
+      .sort(),
+    [
+      "cameraDiscoveryStartsPreRoute",
+      "cameraSessionConstructionStartsPreRoute",
+      "libraryObserverStartsPreFrame",
+      "videoPosterStartsBeforeDeferredRelease"
+    ]
+  );
+  assert.equal(comparison.fix0809OutcomeSummary.implementedLogAcceptedMismatchCount, 5);
+  assert.equal(comparison.fix0809OutcomeSummary.implementedNotLogVerifiedMismatchCount, 4);
+  assert.equal(comparison.fix0809OutcomeSummary.deferredFrozenMismatchCount, 4);
+  assert.deepEqual(
+    [...comparison.fix0809OutcomeSummary.implementedLogAcceptedWorkloadRecordIDs].sort(),
+    workloadDifferenceRegistry
+      .filter(({ fix0809Outcome }) => fix0809Outcome === "implementedLogAccepted")
+      .map(({ id }) => id)
+      .sort()
+  );
+  assert.deepEqual(
+    [...comparison.fix0809OutcomeSummary.implementedNotLogVerifiedWorkloadRecordIDs].sort(),
+    workloadDifferenceRegistry
+      .filter(({ fix0809Outcome }) => fix0809Outcome === "implementedNotLogVerified")
+      .map(({ id }) => id)
+      .sort()
+  );
+  assert.deepEqual(
+    [...comparison.fix0809OutcomeSummary.deferredFrozenWorkloadRecordIDs].sort(),
+    workloadDifferenceRegistry
+      .filter(({ fix0809Outcome }) => fix0809Outcome === "deferredFrozen")
       .map(({ id }) => id)
       .sort()
   );

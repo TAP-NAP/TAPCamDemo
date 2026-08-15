@@ -279,14 +279,14 @@ final result: passed
 - Task: `TAP-0087`; P0 prerequisite for `TAP-0008`, `TAP-0009`, and
   `TAP-0083`.
 - Candidate entry: `startup-lifecycle.html`.
-- Shared-tree revision: `v16`.
-- Verification pass: `v16b`.
-- Status: `candidate`; `ownerReviewRequired`. Exact owner approval of the v16
+- Shared-tree revision: `v17`.
+- Verification pass: `v17`.
+- Status: `candidate`; `ownerReviewRequired`. Exact owner approval of the v17
   TAP-0087 composition and synchronized lifecycle contract is pending. The
   existing TAP-0008-r2, TAP-0009-r1, and TAP-0081-r3 approvals remain
   independent and do not approve this workbench revision.
 
-### v16 contract represented
+### v17 contract represented
 
 - The workbench uses one UI surface catalog with contextual legal operations,
   one `393 x 852` app-owned preview, and one lifecycle/workload/state inspector.
@@ -308,23 +308,28 @@ final result: passed
 - The JSON source catalog contains 14 truths: 12 mismatches and 2 aligned facts.
   The default **08 / 09 真值** panel now lists only the six lifecycle-owned
   mismatches plus the two aligned facts; the six workload-owned mismatch truths
-  render only in the Workload lane. Red comes from the explicit `mismatch`
-  field, never a parsed phase string or generic workload `gap` label.
+  render only in the Workload lane. The explicit `mismatch` field preserves the
+  immutable `main@4cc02e5f12f2` audit; card color is a separate fix0809 outcome
+  projection and never comes from a parsed phase string or generic workload
+  `gap` label.
 - Each mismatch also carries a JSON `fix0809Disposition`. Eleven lifecycle
   truths are `approvedToFix`; `networkBootstrap` is the one
   `deferredFrozen` lifecycle truth. Workload children may narrow their parent:
   nine are approved and the first-install credential, Network completion,
   post-setup App Attest, and credential/network-dependent Pending records are
-  frozen. Both dispositions remain red mismatches; neither rewrites current
-  `/healthz` behavior as the target or approves the complete v16 composition.
-- Every visible red record has one red dashed SVG path to its explicit
+  frozen. A separate per-record `fix0809Outcome` renders implemented/log-
+  accepted records yellow with a yellow border, implemented but log-unverified
+  records yellow with a red border, and frozen records red with a red border.
+  Originally aligned records remain green. None rewrites current `/healthz`
+  behavior as the target or approves the complete v17 composition.
+- Every visible mismatch record has one red dashed SVG path to its explicit
   current-main `actual.anchor` circular `t0…tn` node. The card separately shows
   the target anchor/phase. Connectors are decorative review annotations, not
   reducer transitions, and are recomputed after scroll, filter, resize, and
   responsive reflow.
 - Timing gives each mismatch one owner. The reviewer-only **08/09 生命周期**
   lane contains only the six non-workload mismatch truths; workload-owned truth
-  is excluded there. A lifecycle red card appears only after its actual
+  is excluded there. An outcome-colored lifecycle card appears only after its actual
   milestone and keeps one dashed path to that circular Timing anchor.
 - The 14 lifecycle-truth records and 13 workload-difference records have one
   JSON authority in `manifest.json`; `startup-model.mjs` loads them through a
@@ -335,13 +340,13 @@ final result: passed
 - The existing **Workload** lane owns 10 timing and 3 semantic workload
   differences. Each JSON record declares its applicable scenario group, real
   source trigger, reviewer visibility/upstream checkpoint, and exact prototype
-  event/workload/status binding. The focusable red **实际 · 不一致** annotation
+  event/workload/status binding. The focusable outcome-colored **实际 · 不一致** annotation
   stays in that JSON-selected projection column and labels the real trigger;
   the column is not claimed as the current-main execution event. When the exact prototype workload effect has been recorded, that
   existing trace element becomes blue and one dashed path connects the two;
   the target decoration never creates a second causal event.
 - There is no standalone workload-comparison band, fixed duplicate axis, or
-  second Workload lane. If the exact target effect is absent, the red actual
+  second Workload lane. If the exact target effect is absent, the actual
   card says **既有 trace effect 尚未出现**; no synthetic blue target, connector,
   event column, milestone, workload transition, marker effect, or phone-state
   mutation is created. Target lifecycle `tN` reachability is shown separately
@@ -360,19 +365,54 @@ final result: passed
 
 ### Stale evidence boundary
 
-All earlier TAP-0087 captures through v16a and v10/v11/v12 measurements are
-historical for the v16b disposition pass. The v16a capture still supports its
-trace-binding observations, but it predates the disposition badges and cannot
-prove their layout, accessible copy, or connector reflow. This also includes
+All earlier TAP-0087 captures through v16b and v10/v11/v12 measurements are
+historical for the v17 outcome-overlay pass. The v16a and v16b captures still
+support their named historical observations, but neither can prove the v17
+outcome colors, accessible copy, or connector reflow. This also includes
 the old `1600 x 941` screenshot and SHA,
 page/inspector/timing scroll
 measurements, playback-button coordinates, single-catalog DOM measurements,
 mobile viewport captures, console result, and historical automated-test count.
-They remain historical comparison inputs only and do not establish current v16b
+They remain historical comparison inputs only and do not establish current v17
 parity or acceptance.
 
 No mobile/responsive run, native Simulator/device
 parity result, physical-device timing, or owner approval is claimed here.
+
+### v17 browser-verified fix0809 outcome overlay
+
+- Codex in-app Browser loaded `startup-lifecycle.html?revision=v17` at
+  `1349 x 876`. The body stayed `876 / 876` with no page-level vertical scroll;
+  Timing remained one internal `1053 / 192` scroll surface.
+- The right lifecycle list rendered an implemented/log-accepted card with a
+  yellow gradient and `rgba(255,214,10,.9)` border, implemented/log-unverified
+  cards with the same yellow gradient and `rgba(255,69,58,.9)` border, and two
+  originally aligned cards with their unchanged green treatment. Visible and
+  accessible badges came from the JSON outcome catalog and continued to call
+  yellow records baseline mismatches.
+- In Resource Initialization sequence `10`, Timing rendered six lifecycle
+  mismatch cards and exactly six red dashed paths. `initializationCommit` used
+  yellow/yellow, the other visible lifecycle items used their JSON outcomes,
+  and circular `t0`, `t2`, and `t4` actual-phase anchors stayed red.
+- The same sequence rendered nine Workload actual annotations: three
+  implemented/log-accepted, four implemented/log-unverified, and two frozen.
+  Five exact prototype effects existed and remained blue; their five dashed
+  paths matched actual/target IDs one-to-one with no empty, `NaN`, or
+  `undefined` path.
+- In fresh-install sequence `6`, `initialAttestationCompletionMeaning` stayed
+  red/red with the visible frozen Network/App Attest/Pending label. Its exact
+  prototype effect stayed blue and one dashed path joined the pair. The Debug
+  attestation experiment is not used as failure evidence or an outcome input.
+- Internal Timing scroll and **Timing → 顺序日志 → Timing** preserved the six
+  lifecycle paths and five reached Workload paths. Browser console inspection
+  returned no warning or error.
+- Current PNG evidence:
+  `evidence/TAP-0087-r1-v17-fix0809-outcome-cards.png` and
+  `evidence/TAP-0087-r1-v17-fix0809-outcome-workload.png`.
+- Claim boundary: reviewer-only outcome visualization and connector evidence;
+  not a rewrite of the main baseline, not a frozen Network/App Attest/Pending
+  implementation, not physical timing, and not approval of the complete v17
+  composition.
 
 ### Historical v11f browser-verified interaction facts
 
@@ -492,7 +532,7 @@ parity result, physical-device timing, or owner approval is claimed here.
   evidence only; not native instrumentation, elapsed duration, Simulator/device
   parity, physical-device performance, or owner approval.
 
-### v16a browser-verified trace-bound Workload differences
+### Historical v16a browser-verified trace-bound Workload differences
 
 - Codex in-app Browser used the same `1703 x 1204` desktop viewport. Body height
   remained `1204 / 1204`; Timing retained one internal scroll surface and one
@@ -549,7 +589,7 @@ parity result, physical-device timing, or owner approval is claimed here.
   prototype-review evidence only; not native instrumentation, elapsed duration,
   Simulator/device parity, physical-device performance, or owner approval.
 
-### v16b browser-verified fix0809 dispositions
+### Historical v16b browser-verified fix0809 dispositions
 
 - Codex in-app Browser loaded the current working tree at `1604 x 1204`.
   `body.scrollHeight` and `body.clientHeight` were both `1204`; Timing retained
@@ -582,7 +622,7 @@ parity result, physical-device timing, or owner approval is claimed here.
   Simulator/device parity, physical-device timing, or approval of the complete
   TAP-0087 v16 composition.
 
-### Owner-corrected workload navigation — browser verified
+### Historical owner-corrected workload navigation — browser verified
 
 The final Codex in-app Browser pass used the same `1703 x 1204` viewport. The
 body remained `scrollHeight = 1204` / `clientHeight = 1204`, with no page-level
@@ -611,8 +651,8 @@ no screenshot file was saved.
 Mobile/responsive coverage, exact prototype-to-native visual parity, and
 physical-device timing remain unclaimed. Separately, the owner accepted the
 bounded `fix0809` non-Network lifecycle path after exercising it on a physical
-device; that verdict is not approval of the exact v16 workbench or its complete
-scenario matrix. Exact product-owner review of the v16 workbench and
+device; that verdict is not approval of the exact v17 workbench or its complete
+scenario matrix. Exact product-owner review of the v17 workbench and
 synchronized contract remains required.
 
 ### 2026-08-15 `fix0809` native candidate
@@ -627,7 +667,7 @@ synchronized contract remains required.
   work also remain outside the approved frozen boundary.
 - The owner-approved TAP-0009 Resource Initialization hierarchy and two
   readiness rows are present in SwiftUI. Required Permission Check remains a
-  visual/copy candidate rather than a claimed v16 approval.
+  visual/copy candidate rather than a claimed v17 approval.
 - Marker I/O is off-MainActor and fails closed without Application Support;
   local poster/recent-cover work and pending App Intent navigation wait for a
   two-display-tick committed-Viewfinder barrier.
@@ -642,5 +682,5 @@ synchronized contract remains required.
   update/restore, measured timing, canonical `S`, and complete `W11/W12` remain
   outside that verdict.
 
-final result: native bounded path owner-accepted; exact v16 composition and full
+final result: native bounded path owner-accepted; exact v17 composition and full
 scenario matrix remain candidate work

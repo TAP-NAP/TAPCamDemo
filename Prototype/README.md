@@ -88,24 +88,24 @@ Use the default **08 / 09 真值** filter to compare current-main source truth w
 the TAP-0008/TAP-0009 prototype target. The JSON catalog has 14 source truths,
 but this panel shows only the six lifecycle-owned mismatches plus two aligned
 facts; six workload-owned mismatch truths render only in Timing's Workload lane.
-Each visible lifecycle red card owns one dashed line to its circular `t0…tn`
+Each visible lifecycle mismatch card owns one dashed line to its circular `t0…tn`
 actual-phase node. The connector is a reviewer annotation—not a reducer edge,
 native timestamp, device measurement, or claim that current main emits that
 target milestone.
 
 The **Timing 时序** view places non-workload gaps in the **08/09 生命周期**
-lane. A red lifecycle card appears only after its actual anchor is reached and
+lane. An outcome-colored lifecycle card appears only after its actual anchor is reached and
 keeps one dashed path to that column's circular milestone. Workload-owned gaps
 are omitted there and appear only in the existing **Workload** lane.
 
-Each Workload mismatch keeps the canonical reducer trace intact. A red
+Each Workload mismatch keeps the canonical reducer trace intact. An outcome-colored
 **实际 · 不一致** annotation appears in the JSON-selected reviewer visibility/
 upstream projection column and separately labels its real source trigger and
 coarse lifecycle anchor. The projection event controls visibility only; it does
 not mean current main executed the actual workload there. Its dashed connector terminates at
 the matching existing workload trace effect, which is highlighted blue without
 losing its original status or focus action. If the target effect has not been
-recorded yet, the red annotation says **既有 trace effect 尚未出现** and no blue
+recorded yet, the actual annotation says **既有 trace effect 尚未出现** and no blue
 substitute or future event column is created. Target lifecycle `tN` reachability
 is shown separately from the workload effect's canonical status. There is no
 lower comparison band or duplicate Workload lane.
@@ -120,17 +120,18 @@ record scopes one current-main path/trigger, names the lifecycle truth that it
 represents, and carries the scenario/event/workload/status binding used to find
 the existing prototype trace effect.
 
-The same JSON records carry the owner-reviewed `fix0809Disposition`. Eleven
-lifecycle mismatches are `approvedToFix`; `networkBootstrap` is
-`deferredFrozen`. A workload child may narrow an approved parent, so the
-first-install credential, Network completion, post-setup App Attest, and
-credential/network-dependent Pending records are also frozen. Both states stay
-red because they are still current-main mismatches: the badge communicates
-delivery scope, not alignment. `fix0809` therefore makes no direct change to
-the Network/App Attest executors or retry policy and does not reinterpret
-`/healthz` as the target. Required Permission Check may postpone their existing
-camera-entry triggers while Camera/Photos are blocked; this partial decision
-does not approve the complete TAP-0087 v16 composition.
+The same JSON records carry both the owner-reviewed `fix0809Disposition` and an
+independent `fix0809Outcome`. A yellow background with yellow border means the
+candidate code changed and the supplied physical-device log accepted the
+executed path. Yellow with a red border means the code changed but that log did
+not verify alignment. Red with a red border remains frozen Network/App Attest
+or credential/network-dependent Pending work. Originally aligned records stay
+green. Yellow cards still say **不一致** because their actual/target content is
+the immutable `main@4cc02e5f12f2` audit, not a rewritten mainline claim.
+Workload children store their own outcomes instead of inheriting a parent.
+`fix0809` therefore makes no direct change to the frozen executors or retry
+policy and does not reinterpret `/healthz` as the target. This partial overlay
+decision does not approve the complete TAP-0087 v17 composition.
 
 Settings is catalogued only as **Pending — no approved slice**. It has no
 invented phone preview or operations. The system Settings handoff used for
@@ -322,13 +323,14 @@ approved mismatches and partial non-Network portions of four more. Camera
 construction is partial because the selected route shell precedes mounting and
 the model is lazy across parent updates, but no real shell-frame acknowledgement
 has been measured. The
-historical truth cards stay unchanged so the reviewer never mistakes branch
-work for mainline source truth. `networkBootstrap` and the App Attest/Pending
-children of deferred release remain red and frozen.
+historical truth content stays unchanged so the reviewer never mistakes branch
+work for mainline source truth. The v17 reviewer overlay records branch
+implementation and log coverage in yellow while `networkBootstrap` and the App
+Attest/Pending children of deferred release remain red and frozen.
 
 The owner-approved TAP-0009 Resource Initialization copy and its Camera/TAP
 Library readiness rows are implemented natively. Required Permission Check is
-a native candidate whose exact v16 visual/copy composition still requires owner
+a native candidate whose exact v17 visual/copy composition still requires owner
 review. The native marker write is off-MainActor and Application-Support-only;
 local poster/recent-cover work and pending App Intent navigation wait until a
 two-display-tick committed-Viewfinder barrier. The owner accepted the bounded

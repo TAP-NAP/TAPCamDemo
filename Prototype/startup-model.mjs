@@ -24,7 +24,7 @@ const loadedLifecycleDifferenceManifest = prototypeManifest
   ?.tap0008Tap0009CodeTruth;
 const lifecycleDifferenceManifest = Array.isArray(loadedLifecycleDifferenceManifest?.records)
   ? loadedLifecycleDifferenceManifest
-  : { records: [], timingProjection: {}, workloadDifferenceComparison: { records: [] }, fix0809DispositionCatalog: {} };
+  : { records: [], timingProjection: {}, workloadDifferenceComparison: { records: [] }, fix0809DispositionCatalog: {}, fix0809OutcomeCatalog: {} };
 const loadedFix0809DispositionCatalog = lifecycleDifferenceManifest.fix0809DispositionCatalog;
 const fix0809DispositionCatalog = (
   loadedFix0809DispositionCatalog
@@ -40,6 +40,25 @@ const fix0809DispositionCatalog = (
   ))
 )
   ? loadedFix0809DispositionCatalog
+  : {};
+const loadedFix0809OutcomeCatalog = lifecycleDifferenceManifest.fix0809OutcomeCatalog;
+const fix0809OutcomeCatalog = (
+  loadedFix0809OutcomeCatalog
+  && typeof loadedFix0809OutcomeCatalog === "object"
+  && !Array.isArray(loadedFix0809OutcomeCatalog)
+  && Object.values(loadedFix0809OutcomeCatalog).every((outcome) => (
+    outcome
+    && typeof outcome === "object"
+    && typeof outcome.visibleLabel === "string"
+    && typeof outcome.accessibleLabel === "string"
+    && ["implemented", "frozen"].includes(outcome.implementationState)
+    && ["deviceLogAccepted", "notCoveredByDeviceLog", "notApplicable"].includes(outcome.verificationState)
+    && ["yellow", "red"].includes(outcome.fillTone)
+    && ["yellow", "red"].includes(outcome.borderTone)
+    && outcome.preservesBaselineMismatch === true
+  ))
+)
+  ? loadedFix0809OutcomeCatalog
   : {};
 const loadedWorkloadDifferenceManifest = lifecycleDifferenceManifest.workloadDifferenceComparison;
 const workloadDifferenceManifest = Array.isArray(loadedWorkloadDifferenceManifest?.records)
@@ -66,6 +85,7 @@ if (
   && (
     lifecycleDifferenceManifest !== loadedLifecycleDifferenceManifest
     || fix0809DispositionCatalog !== loadedFix0809DispositionCatalog
+    || fix0809OutcomeCatalog !== loadedFix0809OutcomeCatalog
     || workloadDifferenceManifest !== loadedWorkloadDifferenceManifest
     || workloadDifferenceScenarioGroups !== loadedWorkloadDifferenceScenarioGroups
     || timingProjection !== loadedTimingProjection
@@ -81,6 +101,7 @@ export const PROTOTYPE_DIFFERENCE_DATA_STATUS = Object.freeze({
 });
 export const lifecycleTruthRegistry = Object.freeze(clone(lifecycleDifferenceManifest.records));
 export const fix0809DispositionRegistry = Object.freeze(clone(fix0809DispositionCatalog));
+export const fix0809OutcomeRegistry = Object.freeze(clone(fix0809OutcomeCatalog));
 export const lifecycleTimingLaneRecordIDs = Object.freeze(clone(timingProjection.lifecycleLaneRecordIDs));
 export const workloadLaneTruthRecordIDs = Object.freeze(clone(timingProjection.workloadLaneTruthRecordIDs));
 export const workloadDifferenceRegistry = Object.freeze(clone(workloadDifferenceManifest.records));

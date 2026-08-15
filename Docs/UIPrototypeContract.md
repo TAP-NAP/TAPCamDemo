@@ -179,29 +179,49 @@ differences are not forced into the workload state machine when they are not
 executable workloads. Each truth record has a stable ID, related Task IDs,
 `actual { anchor, phase, summary, evidence }`,
 `target { anchor, phase, summary, evidence }`, and an explicit alignment verdict.
-Anchors are data, never parsed from prose. Records whose current-main behavior
-differs from the prototype target use a red background and the visible word
-**不一致**; aligned facts remain non-red and say **一致**.
+Anchors are data, never parsed from prose. Records whose audited current-main
+behavior differs from the prototype target keep the visible word **不一致**;
+aligned facts remain green and say **一致**. Card color may additionally
+project a later branch's owner-reviewed delivery and evidence status, but it
+never rewrites the audited baseline, `alignment`, `mismatch`, actual phase, or
+target phase.
 
 Each mismatch also reads its `fix0809Disposition` from the prototype manifest.
-`approvedToFix` and `deferredFrozen` both remain visibly red because disposition
-does not rewrite code truth. A deferred record must additionally show the
-manifest label **本轮暂缓 · Network frozen** in visible copy and its accessible
-name. For `networkBootstrap`, this means Network/App Attest behavior is excluded
-from the current fix0809 implementation scope; it never means that `/healthz`
-has become the target state or that the mismatch is resolved.
+That field preserves the original owner-approved implementation boundary. A
+separate per-record `fix0809Outcome`, also loaded from the manifest rather than
+inferred from IDs or prose, projects the candidate result in all three actual-
+truth surfaces:
+
+- `implementedLogAccepted`: yellow background and yellow border. The fix0809 code
+  changed and the bounded physical-device log accepted the executed path.
+- `implementedNotLogVerified`: yellow background and red border. The code
+  changed, but the supplied log does not prove that record is aligned.
+- `deferredFrozen`: red background and red border. Network, App Attest, and
+  credential/network-dependent Pending behavior remain frozen and untreated.
+- an originally aligned record has no fix0809 outcome and keeps its existing
+  green presentation.
+
+Every yellow card still says **不一致** because it describes the immutable
+`main@4cc02e5f12f2` source audit beside a later fix0809 result. Its outcome badge
+and accessible name state whether the executed path was log-accepted or merely
+implemented without log coverage. A deferred record shows the manifest label
+**本轮冻结 · Network/App Attest/Pending**. For `networkBootstrap`, this means
+Network/App Attest behavior is excluded from fix0809; it never means that
+`/healthz` has become the target state or that the mismatch is resolved.
 
 A workload record may narrow its broader lifecycle parent: Network/App Attest
 and credential/network-dependent children remain `deferredFrozen` even when a
 non-network portion of the parent truth is `approvedToFix`. The child record's
-JSON disposition controls the visible badge and accessible name.
+JSON disposition and outcome control the visible badge, color treatment, and
+accessible name. Outcome is always stored per child; it is never inherited from
+the parent lifecycle truth.
 
 The default truth-card list renders the six non-workload mismatch records plus
 the two aligned records. The six workload-owned mismatch sources remain in the
 same JSON catalog but render only as their scoped Workload-lane comparisons;
 they must not also produce a truth card or lifecycle-circle connector.
 
-Every visible red truth card has exactly one decorative red dashed connector to
+Every visible mismatch truth card has exactly one decorative red dashed connector to
 the circular `t0…tn` anchor that locates its **current-main actual phase**. The
 card separately names the target phase, so the connector cannot be read as a
 target transition. Scrolling, filtering, resize, and responsive reflow must
@@ -216,8 +236,9 @@ current journal.
 
 The **Timing 时序** projection gives every mismatch exactly one lane owner.
 Non-workload lifecycle differences appear in the reviewer-only **08/09 生命周期**
-lane after their explicit `actual.anchor` is present. Each red lifecycle card
-keeps one dashed path to that column's circular milestone. Workload-related
+lane after their explicit `actual.anchor` is present. Each outcome-colored
+lifecycle card keeps one dashed path to that column's circular milestone.
+Workload-related
 truth is omitted from this lane so it cannot appear once as lifecycle and again
 as workload.
 
@@ -230,7 +251,7 @@ checkpoint, evidence-backed actual/target anchors, and the lifecycle-truth IDs
 whose Workload-lane representation it owns.
 
 Every canonical reducer workload effect remains present. A manifest-owned
-current-main difference appears as a red **实际 · 不一致** annotation in the
+current-main difference appears as an outcome-colored **实际 · 不一致** annotation in the
 `actualVisibleAfter` reviewer visibility/upstream projection column only after its JSON
 `scenarioGroupID` matches; the annotation separately names the coarse
 `actual.anchor` lifecycle period. Its corresponding prototype workload is
@@ -239,7 +260,7 @@ resulting status, and occurrence; that existing effect is blue and retains its
 normal focus/status behavior. Exactly one dashed SVG connector joins the two
 when the target exists.
 
-The red annotation states mismatch kind, checkpoint, real source scope/trigger,
+The actual annotation states mismatch kind, checkpoint, real source scope/trigger,
 actual and target phases, target reachability, and the reviewer projection
 event. It focuses that projection column, which controls only when the source-
 grounded difference becomes visible; it does not claim that current main ran the

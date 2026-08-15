@@ -21,18 +21,25 @@ relationships reviewable, but it cannot prove native first-frame timing,
 AVFoundation readiness, PhotoKit behavior, or device performance.
 
 The product owner has assigned a per-mismatch `fix0809Disposition` in the
-prototype manifest: eleven mismatches are `approvedToFix`, while
-`networkBootstrap` is `deferredFrozen`. The latter remains a confirmed red
-mismatch, but Network/App Attest behavior is frozen and excluded from the
-current fix0809 implementation scope. This delivery disposition does not turn
-the existing `/healthz` preflight into the target state, does not approve a
-Network behavior change, and does not change this contract's pending whole-
-revision approval status. Its two Workload-lane projections inherit the same
-disposition. Workload-level disposition may also narrow a broader parent truth:
-the post-setup App Attest and credential/network-dependent Pending recovery
-children of `deferredWorkGuard` are likewise `deferredFrozen`, while that parent
-remains `approvedToFix` for its non-network children. The manifest remains the
-single source for these per-record decisions.
+prototype manifest: eleven mismatches were `approvedToFix`, while
+`networkBootstrap` was `deferredFrozen`. After the bounded fix0809 physical-
+device run, every lifecycle truth and Workload difference also receives an
+independent JSON `fix0809Outcome`: `implementedLogAccepted` uses a yellow
+background and yellow border, `implementedNotLogVerified` uses a yellow
+background and red border, and `deferredFrozen` remains red with a red border.
+Originally aligned records remain green. Yellow is candidate progress evidence,
+not a rewrite of the immutable `main@4cc02e5f12f2` mismatch or a claim about an
+unexecuted scenario.
+
+The frozen outcome excludes Network/App Attest and credential/network-dependent
+Pending behavior from the current fix0809 implementation scope. It does not
+turn the existing `/healthz` preflight into the target state, approve a Network
+behavior change, or change this contract's pending whole-revision approval
+status. Workload-level outcome may narrow a broader parent truth: local
+deferred-work children can be implemented or log-accepted while post-setup App
+Attest and Pending recovery children of `deferredWorkGuard` remain frozen. The
+manifest remains the single source for every per-record disposition and
+outcome; renderers must not derive child outcome from the parent truth ID.
 
 ## 1. Canonical Vocabulary
 
@@ -483,7 +490,7 @@ prototype JSON manifest with this minimum shape:
 
 ```text
 id, taskIDs, lifecycleTruthIDs, differenceType = timing | semantic,
-differenceKind, checkpoint, mismatch, fix0809Disposition
+differenceKind, checkpoint, mismatch, fix0809Disposition, fix0809Outcome
 scope { path, trigger, anchorMeaning }
 actual { workloadID, label, anchor, phase, qualifier, summary, evidence }
 target { workloadID, label, anchor, phase, qualifier, summary, evidence }
@@ -502,8 +509,9 @@ permission-recovery, marker-commit, and presented-state gaps remain in the
 every mismatch source truth.
 
 A workload difference preserves every canonical reducer workload effect in the
-existing lane. Its manifest-owned current-main annotation appears as a red
-**实际 · 不一致** card in the `actualVisibleAfter` reviewer visibility/upstream
+existing lane. Its manifest-owned current-main annotation appears as an
+outcome-colored **实际 · 不一致** card in the `actualVisibleAfter` reviewer
+visibility/upstream
 projection column only
 when the selected scenario belongs to `scenarioGroupID`; the card separately
 labels its explicit coarse `actual.anchor` lifecycle period.
@@ -512,9 +520,9 @@ uniquely matches event type, workload ID, resulting status, and one-based
 occurrence; that existing effect becomes visibly blue and keeps its original
 focus/status semantics.
 
-When both ends exist, exactly one dashed SVG connector joins the red actual card
+When both ends exist, exactly one dashed SVG connector joins the actual card
 to that blue trace effect. If the target effect is not yet in the journal, the
-red card says **既有 trace effect 尚未出现** but creates no blue substitute,
+actual card says **既有 trace effect 尚未出现** but creates no blue substitute,
 future milestone column, reducer event, workload transition, marker effect, or
 phone-state change. Target lifecycle-anchor reachability is rendered separately
 from the exact workload effect's canonical status, so `Eligible` or `Running`
