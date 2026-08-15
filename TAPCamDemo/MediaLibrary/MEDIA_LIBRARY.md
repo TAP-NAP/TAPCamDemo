@@ -17,6 +17,7 @@ interpretation.
 | Live Photo callback adapter | `PhotoKitLivePhotoRequest.swift` |
 | Public-safe PhotoKit error mapping | `PhotoKitMediaFetchFailure.swift` |
 | Viewer loading/progress/failure overlay | `LibraryMediaFetchOverlay.swift` |
+| Canonical identity/order snapshot plus permission-safe change-observer activation | `LibraryMediaStore.swift` |
 
 ## Concurrency contract
 
@@ -28,6 +29,20 @@ interpretation.
   their sinks differ.
 - Image and Live Photo adapters keep their distinct PhotoKit callback semantics
   instead of entering one giant generic result interpreter.
+
+## Startup observation boundary
+
+`LibraryMediaStore` is safe to construct during app wiring, but construction is
+observer-inert by default. `StartupGateView` explicitly activates the TAP
+Library notification observer and `PHPhotoLibraryChangeObserver` only after an
+eligible Photos boundary: either the Photos row has just completed explicitly,
+or post-Setup routing passively confirms usable Photos access. Activation and
+deactivation are idempotent; deactivation also cancels queued and in-flight
+catalog refreshes so a stale callback cannot cross a revoked-permission route.
+
+Resource Initialization consumes only the first usable identity/order metadata
+snapshot. A successful empty catalog is usable. It does not wait for iCloud
+originals, thumbnail decoding, poster generation, hashing, or ZIP work.
 
 Focused tests cover cancellation before/after install, cancel followed by an
 error callback, concurrent terminal/install races, degraded image and Live

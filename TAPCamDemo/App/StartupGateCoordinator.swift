@@ -21,6 +21,7 @@ final class StartupGateCoordinator: NSObject, ObservableObject, CLLocationManage
     @Published private(set) var photoLibraryStatus: StartupGateRequirementStatus = .idle
     @Published private(set) var locationStatus: StartupGateRequirementStatus = .idle
     @Published private(set) var microphoneStatus: StartupGateRequirementStatus = .idle
+    @Published private(set) var requiredPermissionSnapshot: RequiredPermissionSnapshot = .unresolved
 
     private let locationManager = CLLocationManager()
     private let securityPreflight: any StartupSecurityPreflightChecking
@@ -43,10 +44,6 @@ final class StartupGateCoordinator: NSObject, ObservableObject, CLLocationManage
 
     var hasSecurityPreflightFailure: Bool {
         statusSnapshot.hasSecurityPreflightFailure
-    }
-
-    var hasSettingsResolvablePermissionFailure: Bool {
-        statusSnapshot.hasSettingsResolvablePermissionFailure
     }
 
     var statusSnapshot: StartupGateStatusSnapshot {
@@ -90,20 +87,8 @@ final class StartupGateCoordinator: NSObject, ObservableObject, CLLocationManage
     func refreshAuthorizationStatuses() {
         CameraCaptureDataUsePreferences.migrateLegacyMicrophonePreferenceIfNeeded()
 
-        if securityPreflightStatus == .denied {
-            Task { await requestSecurityPreflight() }
-        } else if securityPreflightStatus != .requesting,
-                  let status = securityPreflight.currentRequirementStatus() {
-            securityPreflightStatus = status
-        }
-
-        if cameraStatus != .requesting {
-            cameraStatus = Self.cameraStatus()
-        }
-
-        if photoLibraryStatus != .requesting {
-            photoLibraryStatus = Self.photoLibraryStatus()
-        }
+        refreshSecurityPreflightStatus()
+        refreshRequiredPermissionStatuses()
 
         if locationStatus != .requesting,
            locationStatus != .skipped {
@@ -112,6 +97,70 @@ final class StartupGateCoordinator: NSObject, ObservableObject, CLLocationManage
 
         if microphoneStatus != .requesting,
            microphoneStatus != .skipped {
+            microphoneStatus = Self.microphoneStatus()
+            if microphoneStatus == .granted {
+                CameraCaptureDataUsePreferences.enableMicrophoneDataAfterFirstAuthorizationIfNeeded()
+            }
+        }
+    }
+
+    /// Preserves the current frozen Network-row behavior exactly. Permission
+    /// recovery paths call the targeted methods below and never call this.
+    func refreshSecurityPreflightStatus() {
+        if securityPreflightStatus == .denied {
+            Task { await requestSecurityPreflight() }
+        } else if securityPreflightStatus != .requesting,
+                  let status = securityPreflight.currentRequirementStatus() {
+            securityPreflightStatus = status
+        }
+    }
+
+    /// Passive Camera/Photos snapshot used by the root route reducer.
+    func refreshRequiredPermissionStatuses() {
+        if cameraStatus != .requesting {
+            publishCameraPermissionStatus(
+                Self.cameraPermissionStatus(
+                    from: AVCaptureDevice.authorizationStatus(for: .video)
+                )
+            )
+        }
+
+        if photoLibraryStatus != .requesting {
+            publishPhotoLibraryPermissionStatus(
+                Self.photoLibraryPermissionStatus(
+                    from: PHPhotoLibrary.authorizationStatus(for: .readWrite)
+                )
+            )
+        }
+    }
+
+    /// Refreshes only the row that owned a Settings boundary. Network is
+    /// intentionally absent so Required Permission Check cannot restart it.
+    func refreshAuthorizationStatus(for requirement: StartupGateRequirementKind) {
+        switch requirement {
+        case .securityPreflight:
+            refreshSecurityPreflightStatus()
+        case .camera:
+            guard cameraStatus != .requesting else { return }
+            publishCameraPermissionStatus(
+                Self.cameraPermissionStatus(
+                    from: AVCaptureDevice.authorizationStatus(for: .video)
+                )
+            )
+        case .photoLibrary:
+            guard photoLibraryStatus != .requesting else { return }
+            publishPhotoLibraryPermissionStatus(
+                Self.photoLibraryPermissionStatus(
+                    from: PHPhotoLibrary.authorizationStatus(for: .readWrite)
+                )
+            )
+        case .location:
+            guard locationStatus != .requesting,
+                  locationStatus != .skipped else { return }
+            locationStatus = Self.locationStatus(from: locationManager.authorizationStatus)
+        case .microphone:
+            guard microphoneStatus != .requesting,
+                  microphoneStatus != .skipped else { return }
             microphoneStatus = Self.microphoneStatus()
             if microphoneStatus == .granted {
                 CameraCaptureDataUsePreferences.enableMicrophoneDataAfterFirstAuthorizationIfNeeded()
@@ -136,15 +185,17 @@ final class StartupGateCoordinator: NSObject, ObservableObject, CLLocationManage
 
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
-            cameraStatus = .granted
+            publishCameraPermissionStatus(.authorized)
         case .notDetermined:
             cameraStatus = .requesting
             let granted = await AVCaptureDevice.requestAccess(for: .video)
-            cameraStatus = granted ? .granted : .denied
-        case .denied, .restricted:
-            cameraStatus = .denied
+            publishCameraPermissionStatus(granted ? .authorized : .denied)
+        case .denied:
+            publishCameraPermissionStatus(.denied)
+        case .restricted:
+            publishCameraPermissionStatus(.restricted)
         @unknown default:
-            cameraStatus = .denied
+            publishCameraPermissionStatus(.unknown)
         }
     }
 
@@ -154,16 +205,22 @@ final class StartupGateCoordinator: NSObject, ObservableObject, CLLocationManage
         }
 
         switch PHPhotoLibrary.authorizationStatus(for: .readWrite) {
-        case .authorized, .limited:
-            photoLibraryStatus = .granted
+        case .authorized:
+            publishPhotoLibraryPermissionStatus(.authorized)
+        case .limited:
+            publishPhotoLibraryPermissionStatus(.limited)
         case .notDetermined:
             photoLibraryStatus = .requesting
             let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
-            photoLibraryStatus = Self.photoLibraryStatus(from: status)
-        case .denied, .restricted:
-            photoLibraryStatus = .denied
+            publishPhotoLibraryPermissionStatus(
+                Self.photoLibraryPermissionStatus(from: status)
+            )
+        case .denied:
+            publishPhotoLibraryPermissionStatus(.denied)
+        case .restricted:
+            publishPhotoLibraryPermissionStatus(.restricted)
         @unknown default:
-            photoLibraryStatus = .denied
+            publishPhotoLibraryPermissionStatus(.unknown)
         }
     }
 
@@ -182,8 +239,10 @@ final class StartupGateCoordinator: NSObject, ObservableObject, CLLocationManage
                 locationManager.requestWhenInUseAuthorization()
             }
             locationStatus = Self.locationStatus(from: status)
-        case .denied, .restricted:
+        case .denied:
             locationStatus = .denied
+        case .restricted:
+            locationStatus = .restricted
         @unknown default:
             locationStatus = .denied
         }
@@ -212,8 +271,10 @@ final class StartupGateCoordinator: NSObject, ObservableObject, CLLocationManage
             if granted {
                 CameraCaptureDataUsePreferences.enableMicrophoneDataAfterFirstAuthorizationIfNeeded()
             }
-        case .denied, .restricted:
+        case .denied:
             microphoneStatus = .denied
+        case .restricted:
+            microphoneStatus = .restricted
         @unknown default:
             microphoneStatus = .denied
         }
@@ -239,33 +300,58 @@ final class StartupGateCoordinator: NSObject, ObservableObject, CLLocationManage
         }
     }
 
-    private static func cameraStatus() -> StartupGateRequirementStatus {
-        switch AVCaptureDevice.authorizationStatus(for: .video) {
+    nonisolated static func cameraPermissionStatus(
+        from status: AVAuthorizationStatus
+    ) -> RequiredPermissionStatus {
+        switch status {
         case .authorized:
-            .granted
+            .authorized
         case .notDetermined:
-            .idle
-        case .denied, .restricted:
+            .notDetermined
+        case .denied:
             .denied
+        case .restricted:
+            .restricted
         @unknown default:
-            .denied
+            .unknown
         }
     }
 
-    private static func photoLibraryStatus() -> StartupGateRequirementStatus {
-        photoLibraryStatus(from: PHPhotoLibrary.authorizationStatus(for: .readWrite))
+    nonisolated static func photoLibraryPermissionStatus(
+        from status: PHAuthorizationStatus
+    ) -> RequiredPermissionStatus {
+        switch status {
+        case .authorized:
+            .authorized
+        case .limited:
+            .limited
+        case .notDetermined:
+            .notDetermined
+        case .denied:
+            .denied
+        case .restricted:
+            .restricted
+        @unknown default:
+            .unknown
+        }
     }
 
     nonisolated static func photoLibraryStatus(from status: PHAuthorizationStatus) -> StartupGateRequirementStatus {
+        requirementStatus(from: photoLibraryPermissionStatus(from: status))
+    }
+
+    nonisolated private static func requirementStatus(
+        from status: RequiredPermissionStatus
+    ) -> StartupGateRequirementStatus {
         switch status {
         case .authorized, .limited:
             .granted
         case .notDetermined:
             .idle
-        case .denied, .restricted:
+        case .denied, .unknown:
             .denied
-        @unknown default:
-            .denied
+        case .restricted:
+            .restricted
         }
     }
 
@@ -275,8 +361,10 @@ final class StartupGateCoordinator: NSObject, ObservableObject, CLLocationManage
             .granted
         case .notDetermined:
             .idle
-        case .denied, .restricted:
+        case .denied:
             .denied
+        case .restricted:
+            .restricted
         @unknown default:
             .denied
         }
@@ -288,10 +376,28 @@ final class StartupGateCoordinator: NSObject, ObservableObject, CLLocationManage
             .granted
         case .notDetermined:
             .idle
-        case .denied, .restricted:
+        case .denied:
             .denied
+        case .restricted:
+            .restricted
         @unknown default:
             .denied
         }
+    }
+
+    private func publishCameraPermissionStatus(_ status: RequiredPermissionStatus) {
+        cameraStatus = Self.requirementStatus(from: status)
+        requiredPermissionSnapshot = RequiredPermissionSnapshot(
+            camera: status,
+            photoLibrary: requiredPermissionSnapshot.photoLibrary
+        )
+    }
+
+    private func publishPhotoLibraryPermissionStatus(_ status: RequiredPermissionStatus) {
+        photoLibraryStatus = Self.requirementStatus(from: status)
+        requiredPermissionSnapshot = RequiredPermissionSnapshot(
+            camera: requiredPermissionSnapshot.camera,
+            photoLibrary: status
+        )
     }
 }

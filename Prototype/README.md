@@ -126,9 +126,11 @@ lifecycle mismatches are `approvedToFix`; `networkBootstrap` is
 first-install credential, Network completion, post-setup App Attest, and
 credential/network-dependent Pending records are also frozen. Both states stay
 red because they are still current-main mismatches: the badge communicates
-delivery scope, not alignment. `fix0809` therefore does not change current
-Network/App Attest behavior or reinterpret `/healthz` as the target, and this
-partial decision does not approve the complete TAP-0087 v16 composition.
+delivery scope, not alignment. `fix0809` therefore makes no direct change to
+the Network/App Attest executors or retry policy and does not reinterpret
+`/healthz` as the target. Required Permission Check may postpone their existing
+camera-entry triggers while Camera/Photos are blocked; this partial decision
+does not approve the complete TAP-0087 v16 composition.
 
 Settings is catalogued only as **Pending — no approved slice**. It has no
 invented phone preview or operations. The system Settings handoff used for
@@ -311,6 +313,29 @@ user-recoverable product state.
 
 This slice is independent from TAP Share. It does not prebuild or prewarm Share,
 proof parsing, hashing, ZIP creation, or the system activity controller.
+
+### `fix0809` native-candidate synchronization
+
+`manifest.json` records implementation progress separately from the audited
+current-main truth cards. The 2026-08-15 `fix0809` candidate implements seven
+approved mismatches and partial non-Network portions of four more. Camera
+construction is partial because the selected route shell precedes mounting and
+the model is lazy across parent updates, but no real shell-frame acknowledgement
+has been measured. The
+historical truth cards stay unchanged so the reviewer never mistakes branch
+work for mainline source truth. `networkBootstrap` and the App Attest/Pending
+children of deferred release remain red and frozen.
+
+The owner-approved TAP-0009 Resource Initialization copy and its Camera/TAP
+Library readiness rows are implemented natively. Required Permission Check is
+a native candidate whose exact v16 visual/copy composition still requires owner
+review. The native marker write is off-MainActor and Application-Support-only;
+local poster/recent-cover work and pending App Intent navigation wait until a
+two-display-tick committed-Viewfinder barrier. The owner accepted the bounded
+non-Network lifecycle path after exercising it on a physical device. Exact
+prototype-to-native visual parity, Simulator parity, physical timing, and the
+unexecuted installation/restore/recovery matrix are not claimed by that
+verdict.
 
 ## Evidence Boundary
 

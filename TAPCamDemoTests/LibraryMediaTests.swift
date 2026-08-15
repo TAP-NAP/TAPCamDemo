@@ -761,6 +761,7 @@ struct LibraryMediaTests {
         let firstRevision = store.snapshot.revision
         #expect(firstRevision > 0)
         #expect(store.snapshot.items.isEmpty)
+        #expect(store.hasUsableSnapshot)
 
         let publicationRecorder = LibraryMediaObservationRecorder()
         withObservationTracking {
@@ -774,6 +775,53 @@ struct LibraryMediaTests {
 
         #expect(store.snapshot.revision == firstRevision)
         #expect(publicationRecorder.count == 0)
+    }
+
+    @Test @MainActor func storeChangeObservationIsInertAndIdempotentUntilActivated() async throws {
+        let notificationCenter = NotificationCenter()
+        var loadCount = 0
+        let provider = DepthAlbumItemProvider(
+            pendingRecordsLoader: {
+                loadCount += 1
+                return []
+            },
+            exportedRecordsLoader: { [] },
+            photoCatalogLoader: { _ in .empty }
+        )
+        var registrations = 0
+        var unregistrations = 0
+        let store = LibraryMediaStore(
+            itemProvider: provider,
+            notificationCenter: notificationCenter,
+            registerPhotoLibraryChangeObserver: { _ in registrations += 1 },
+            unregisterPhotoLibraryChangeObserver: { _ in unregistrations += 1 }
+        )
+
+        #expect(!store.isObservingChanges)
+        #expect(registrations == 0)
+        notificationCenter.post(name: .tapLibraryDidChange, object: nil)
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(loadCount == 0)
+
+        #expect(store.startObservingChangesIfNeeded())
+        #expect(!store.startObservingChangesIfNeeded())
+        #expect(store.isObservingChanges)
+        #expect(registrations == 1)
+        notificationCenter.post(name: .tapLibraryDidChange, object: nil)
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(loadCount == 1)
+
+        notificationCenter.post(name: .tapLibraryDidChange, object: nil)
+        #expect(store.stopObservingChangesIfNeeded())
+        #expect(!store.stopObservingChangesIfNeeded())
+        #expect(!store.isObservingChanges)
+        #expect(unregistrations == 1)
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(loadCount == 1)
+
+        notificationCenter.post(name: .tapLibraryDidChange, object: nil)
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(loadCount == 1)
     }
 
     @Test @MainActor func storeDoesNotRepublishEquivalentNineHundredItemSnapshot() async {

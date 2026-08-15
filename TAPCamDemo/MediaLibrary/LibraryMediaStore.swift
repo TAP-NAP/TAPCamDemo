@@ -33,13 +33,23 @@ final class LibraryMediaStore: NSObject, PHPhotoLibraryChangeObserver {
     @ObservationIgnored
     private var libraryChangeObserver: NSObjectProtocol?
     @ObservationIgnored
-    private let observesChanges: Bool
+    private(set) var isObservingChanges = false
+    @ObservationIgnored
+    private let registerPhotoLibraryChangeObserver: (any PHPhotoLibraryChangeObserver) -> Void
+    @ObservationIgnored
+    private let unregisterPhotoLibraryChangeObserver: (any PHPhotoLibraryChangeObserver) -> Void
 
     init(
         itemProvider: DepthAlbumItemProvider? = nil,
         photoCatalog: (any DepthAlbumPhotoCataloging)? = nil,
         notificationCenter: NotificationCenter = .default,
-        observesChanges: Bool = true
+        observesChanges: Bool = false,
+        registerPhotoLibraryChangeObserver: @escaping (any PHPhotoLibraryChangeObserver) -> Void = {
+            PHPhotoLibrary.shared().register($0)
+        },
+        unregisterPhotoLibraryChangeObserver: @escaping (any PHPhotoLibraryChangeObserver) -> Void = {
+            PHPhotoLibrary.shared().unregisterChangeObserver($0)
+        }
     ) {
         let provider = itemProvider ?? DepthAlbumItemProvider(
             photoCatalog: photoCatalog ?? PhotoKitLibraryMediaFetcher()
@@ -48,22 +58,52 @@ final class LibraryMediaStore: NSObject, PHPhotoLibraryChangeObserver {
             try await provider.loadSnapshot()
         }
         self.notificationCenter = notificationCenter
-        self.observesChanges = observesChanges
+        self.registerPhotoLibraryChangeObserver = registerPhotoLibraryChangeObserver
+        self.unregisterPhotoLibraryChangeObserver = unregisterPhotoLibraryChangeObserver
         super.init()
 
-        guard observesChanges else {
-            return
+        if observesChanges {
+            startObservingChangesIfNeeded()
         }
+    }
+
+    /// Activates both TAP Library notifications and PhotoKit observation as one
+    /// idempotent boundary. Startup owns when this becomes eligible.
+    @discardableResult
+    func startObservingChangesIfNeeded() -> Bool {
+        guard !isObservingChanges else {
+            return false
+        }
+
         libraryChangeObserver = notificationCenter.addObserver(
             forName: .tapLibraryDidChange,
             object: nil,
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
+                guard self?.isObservingChanges == true else { return }
                 self?.scheduleRefresh()
             }
         }
-        PHPhotoLibrary.shared().register(self)
+        registerPhotoLibraryChangeObserver(self)
+        isObservingChanges = true
+        return true
+    }
+
+    @discardableResult
+    func stopObservingChangesIfNeeded() -> Bool {
+        guard isObservingChanges else {
+            return false
+        }
+
+        cancelRefresh()
+        if let libraryChangeObserver {
+            notificationCenter.removeObserver(libraryChangeObserver)
+            self.libraryChangeObserver = nil
+        }
+        unregisterPhotoLibraryChangeObserver(self)
+        isObservingChanges = false
+        return true
     }
 
     deinit {
@@ -72,8 +112,8 @@ final class LibraryMediaStore: NSObject, PHPhotoLibraryChangeObserver {
         if let libraryChangeObserver {
             notificationCenter.removeObserver(libraryChangeObserver)
         }
-        if observesChanges {
-            PHPhotoLibrary.shared().unregisterChangeObserver(self)
+        if isObservingChanges {
+            unregisterPhotoLibraryChangeObserver(self)
         }
     }
 
@@ -268,6 +308,7 @@ final class LibraryMediaStore: NSObject, PHPhotoLibraryChangeObserver {
 
     nonisolated func photoLibraryDidChange(_ changeInstance: PHChange) {
         Task { @MainActor [weak self] in
+            guard self?.isObservingChanges == true else { return }
             self?.scheduleRefresh()
         }
     }

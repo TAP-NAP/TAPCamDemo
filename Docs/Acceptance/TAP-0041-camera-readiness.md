@@ -1,15 +1,48 @@
 # TAP-0041 — First Camera-Interactive Readiness
 
-- Status: `Draft — not executed`
+- Status: `Draft — bounded fix0809 device path accepted; full matrix open`
 - Related Delivery: `TAP-0009`
 - Contract: `ProductContract §2.4–2.6`; `StartupLifecycleContract`
-- Build/Commit: `To be frozen before execution`
-- Device/iOS: `To be confirmed with the product owner`
-- Human Confirmation: `Pending`
+- Build/Commit: `fix0809 candidate; this commit`
+- Device/iOS: `Owner-attended physical device; exact identifiers not recorded in this evidence`
+- Human Confirmation: `Accepted 2026-08-15 for the bounded fix0809 non-Network executed path; full procedure pending`
 
 This attended procedure proves the ordering that prevents early camera entry
 and freezes. The Agent must first agree with the owner on a safe method for
 delaying or failing readiness; an unreviewed fault injection is not allowed.
+
+The 2026-08-15 `fix0809` native candidate contains the independent marker,
+camera-plus-catalog gate, stable Resource Initialization surface, and local
+poster/recent-cover release needed for this procedure. The owner exercised and
+accepted that bounded lifecycle path on a physical device. Frozen Network,
+App Attest, and credential/network-dependent Pending scheduling still mean the
+complete deferred-release target is not implemented by this candidate.
+
+For this branch, only the non-Network candidate subset is executable: validate
+Camera/Photos → Initialization routing with an existing compatible Setup fact;
+exercise the two readiness groups, marker interruption/invalidation, committed
+Viewfinder-frame barrier, local poster/recent-cover release, and permission
+recovery. Canonical credential-bound Setup receipt creation and the App Attest/
+Pending children of deferred release remain blocked by the owner freeze. The
+bounded device acceptance recorded below does not assign this full procedure a
+`Pass` verdict or substitute for its unexecuted scenario matrix.
+
+## 2026-08-15 Bounded Device Observation
+
+The owner ran the current `fix0809` working tree on a physical device, supplied
+the resulting lifecycle log, and accepted the experienced non-Network startup
+flow. The log records the usable TAP Library catalog publication before the
+camera readiness group, followed by initialization-marker commit and then the
+local recent-cover refresh release. The owner also exercised the resulting
+Viewfinder/Library experience without reporting an early marker, black or
+frozen preview, or unsafe first interaction.
+
+This observation covers only the executed path. It does not cover the second
+interruption round, readiness fault injection, Camera/Photos revocation and
+recovery, In-place App Update, restore/migration, exact marker-file inspection,
+or instrumented physical timing. Canonical credential-bound `S`, Network, and
+the App Attest/Pending children of `W11/W12` remain outside the accepted
+candidate scope under the existing owner freeze.
 
 ## Preconditions
 
@@ -46,6 +79,9 @@ delaying or failing readiness; an unreviewed fault injection is not allowed.
 4. Record the exact event order. The versioned initialization marker and
    Viewfinder transition must occur only after every camera condition and the
    Library snapshot, not after session configuration or either group alone.
+   Inspect the marker as one Application Support JSON value and verify its
+   bundle, version, build, initialization schema, installation generation, and
+   local device-generation fields.
 5. **Owner live:** immediately after dismissal, capture once and operate a FOV
    plus a primary mode/control. Confirm a real frame, normal haptic, no freeze,
    black screen, or unresponsive control.

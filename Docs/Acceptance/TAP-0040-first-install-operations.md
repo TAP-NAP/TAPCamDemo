@@ -11,6 +11,17 @@ This is an attended physical-device procedure. Before execution, the Agent must
 present the filled build, device, reset method, logging surface, and full scope
 to the product owner. Simulator permission fixtures are not a substitute.
 
+The 2026-08-15 `fix0809` native candidate implements the non-Network
+permission/recovery and observer boundaries in this procedure. It deliberately
+keeps `/healthz` and App Attest behavior frozen, so this record remains Draft
+and cannot receive a Pass verdict from that candidate alone.
+
+The branch-executable subset is limited to Camera/Photos row ownership,
+denied/restricted recovery, Required Permission Check targeted refresh, and the
+PhotoKit observer/catalog activation boundary. Steps that require initial App
+Attest registration, `/healthz` replacement, or retry delivery remain blocked;
+their current behavior must not be counted as target acceptance.
+
 ## Preconditions
 
 - The candidate build contains the explicit-action and bounded Network retry
@@ -63,6 +74,20 @@ to the product owner. Simulator permission fixtures are not a substitute.
 8. **Owner live:** confirm Continue is enabled only after App Attest, Camera,
    and Photos are complete and that the two optional rows remain skippable. Do
    not press Continue in this procedure; readiness belongs to `TAP-0041`.
+9. In separate reset rounds, deny Camera, Photos, Location, and Microphone one
+   row at a time. Confirm each denied row owns its **Open Settings** recovery;
+   a restricted fixture shows stable restricted guidance and does not promise
+   a Settings recovery that the system policy cannot provide.
+10. After Setup has completed, revoke Camera and then Photos. On each launch or
+    foreground return, confirm the root enters Required Permission Check with
+    only Camera and Photos represented and with no Continue button.
+11. Recover the affected required permission from its row/system boundary.
+    Confirm the targeted return refresh does not start Network, Location, or
+    Microphone work and automatically re-evaluates the route.
+12. For Photos, correlate observer registration and catalog logs: no observer
+    or catalog scan before the explicit eligible boundary; exactly one
+    idempotent observer activation afterward; revocation/deactivation cancels
+    queued catalog refresh work.
 
 ## Required Evidence
 

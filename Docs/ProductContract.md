@@ -140,7 +140,7 @@ when its independent marker does not match the current update and
 initialization-schema generation.
 
 The full-screen app-owned state is titled **Resource Initialization** with the
-subtitle **Please Wait**. It exists to prevent the app from entering the camera
+subtitle **Please wait…**. It exists to prevent the app from entering the camera
 surface too early and presenting a frozen or non-responsive page. It completes
 only after both readiness groups below are ready.
 

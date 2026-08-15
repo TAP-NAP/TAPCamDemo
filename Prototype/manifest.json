@@ -402,6 +402,40 @@
               "ownerDecision": "retain the existing Network and App Attest implementation; networkBootstrap remains a confirmed mismatch but is frozen and excluded from fix0809; fix0809 must not change network behavior or treat /healthz as the target state",
               "policy": "owner-confirmed mismatch disposition only; TAP-0087 remains ownerReviewRequired, every mismatch remains red, and deferredFrozen excludes Network/App Attest behavior changes from fix0809 without treating current /healthz behavior as the target"
             },
+            "fix0809NativeCandidate": {
+              "status": "implementedBoundedPhysicalDeviceAccepted",
+              "branch": "fix0809",
+              "recordedAt": "2026-08-15",
+              "baselinePolicy": "The 14 truth records continue to describe audited main@4cc02e5f12f2 and remain red/green reviewer evidence; this candidate record reports branch progress without rewriting that historical source truth or claiming mainline delivery.",
+              "ownerAcceptedBoundary": "On 2026-08-15 the owner exercised and accepted the bounded fix0809 non-Network lifecycle path on a physical device. This does not approve the complete TAP-0087 v16 composition or unexecuted install, interruption, permission-recovery, update, restore/migration, and measured-timing scenarios.",
+              "fullyImplementedMismatchIDs": [
+                "preFrameLibraryObserver",
+                "permissionRecoverySemantics",
+                "requiredPermissionRoute",
+                "cameraReadinessPredicate",
+                "libraryReadinessPredicate",
+                "initializationCommit",
+                "resourceInitializationSurface"
+              ],
+              "partiallyImplementedMismatchIDs": {
+                "legacyReceiptAndMarker": "Independent I and an explicit legacy Setup-completion record replace the combined Boolean as active writers, but frozen Network cannot yet produce canonical credential-bound S.",
+                "retainedContainerRouting": "Version/build/schema/install/device I invalidation is implemented with Application-Support-only atomic storage and corrupt local device-generation repair; canonical Setup restore validity still requires the frozen verified credential-binding producer.",
+                "returningCameraConstruction": "CameraView mounting is deferred until a selected route shell has survived a main-actor turn, and CameraViewModel now remains lazy across parent state updates; Task.yield is not proof that a real shell frame committed, so measured first-frame placement remains TAP-0083 evidence.",
+                "deferredWorkGuard": "A two-display-tick committed-Viewfinder barrier releases video poster backfill, every recent-cover entry point, and pending App Intent navigation; App Attest and credential/network-dependent Pending children remain frozen."
+              },
+              "deferredFrozenMismatchIDs": ["networkBootstrap"],
+              "hardFreeze": "No direct Network, /healthz, initial/post-Setup App Attest, or credential/network-dependent/Network-owned Pending executor or retry-policy change was made. Required Permission Check can postpone mounting CameraView and therefore postpone those components' existing camera-entry triggers while required permissions are blocked.",
+              "nativeVisualStatus": {
+                "resourceInitialization": "implemented from owner-approved TAP-0009-r1 title, subtitle, and Camera/TAP Library readiness rows; bounded physical-device lifecycle experience accepted, while exact prototype-to-native visual parity remains pending",
+                "requiredPermissionCheck": "native candidate implemented; exact v16 visual/copy composition remains ownerReviewRequired"
+              },
+              "validation": {
+                "simulatorBuild": "build-for-testing passed for iPhone 17 Pro / iOS 26.5 Simulator",
+                "focusedTests": "146 passed, 0 failed, 0 skipped: StartupGateCoordinatorTests, StartupInitializationPolicyTests, LibraryMediaTests, and TAPCameraCapturePresentationTests",
+                "simulatorVisualParity": "not run; the automated test host is not native visual parity evidence",
+                "physicalDeviceAcceptance": "owner accepted the bounded fix0809 non-Network lifecycle executed path on 2026-08-15; the complete scenario matrix and physical timing were not executed"
+              }
+            },
             "dataSource": "Prototype/manifest.json#independentCandidates.startupLifecycle.workbench.right.tap0008Tap0009CodeTruth",
             "records": [
               {
@@ -530,7 +564,7 @@
                 "mismatch": true,
                 "fix0809Disposition": "approvedToFix",
                 "actual": { "anchor": "t2", "phase": "after t2 · first-install camera gate", "summary": "全屏标题是 Preparing camera；代码拥有 failed state，并展示 Retry 与可选 Settings。", "evidence": "CameraCapture/UI/CameraInitialReadinessGate.swift:20-32,81-155" },
-                "target": { "anchor": "t2", "phase": "after t2 · stable Initialization", "summary": "原型稳定显示 Resource Initialization / Please Wait；无 Failed、Retry、timeout、skip 或 degraded entry。", "evidence": "ProductContract.md:142-165" }
+                "target": { "anchor": "t2", "phase": "after t2 · stable Initialization", "summary": "原型稳定显示 Resource Initialization / Please wait…；无 Failed、Retry、timeout、skip 或 degraded entry。", "evidence": "ProductContract.md:142-165" }
               },
               {
                 "id": "deferredWorkGuard",
@@ -1025,7 +1059,7 @@
           "manifestParse": "passed",
           "diffCheck": "passed"
         },
-        "notClaimed": ["mobile or responsive coverage", "native Simulator parity", "physical-device parity or timing", "owner approval"],
+        "notClaimed": ["mobile or responsive coverage", "native Simulator parity", "exact prototype-to-native physical-device visual parity or timing", "owner approval"],
         "closureRequires": ["product-owner approval of the exact v16 composition"]
       },
       "currentMainGaps": [

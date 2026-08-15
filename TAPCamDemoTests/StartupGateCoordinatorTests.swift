@@ -3,6 +3,7 @@
 //  TAPCamDemoTests
 //
 
+import AVFoundation
 import Foundation
 import Photos
 import Testing
@@ -66,12 +67,241 @@ struct StartupGateCoordinatorTests {
             microphone: .idle
         )
 
-        #expect(StartupGatePolicy.firstInstallContinueAction(for: completedSnapshot) == .enterCameraReadiness)
+        #expect(StartupGatePolicy.firstInstallContinueAction(for: completedSnapshot) == .enterResourceInitialization)
         #expect(StartupGatePolicy.firstInstallContinueAction(for: incompleteSnapshot) == .stayOnWelcome)
     }
 
     @Test func startupGateStoredKeyPreservesExistingInstallMarker() {
-        #expect(StartupGateDefaults.didCompleteFirstInstallSetupKey == "TAPCamDemo.StartupGate.didCompleteFirstInstallPermissions")
+        #expect(
+            StartupGateDefaults.legacyCombinedCompletionKey
+                == "TAPCamDemo.StartupGate.didCompleteFirstInstallPermissions"
+        )
+    }
+
+    @Test func requiredPermissionSnapshotKeepsLimitedAndRestrictedDistinct() {
+        #expect(
+            RequiredPermissionSnapshot(
+                camera: .authorized,
+                photoLibrary: .limited
+            ).isUsable
+        )
+        #expect(
+            !RequiredPermissionSnapshot(
+                camera: .restricted,
+                photoLibrary: .authorized
+            ).isUsable
+        )
+        #expect(
+            StartupGateCoordinator.cameraPermissionStatus(from: .notDetermined)
+                == .notDetermined
+        )
+        #expect(
+            StartupGateCoordinator.cameraPermissionStatus(from: .restricted)
+                == .restricted
+        )
+        #expect(
+            StartupGateCoordinator.photoLibraryPermissionStatus(from: .limited)
+                == .limited
+        )
+        #expect(
+            StartupGateCoordinator.photoLibraryStatus(from: .restricted)
+                == .restricted
+        )
+    }
+
+    @Test func startupRouteUsesSetupThenPermissionThenInitializationPriority() {
+        let usable = RequiredPermissionSnapshot(
+            camera: .authorized,
+            photoLibrary: .limited
+        )
+        let blocked = RequiredPermissionSnapshot(
+            camera: .denied,
+            photoLibrary: .authorized
+        )
+        let currentInitialization = InitializationCompletion(
+            storageSchemaVersion:
+                StartupInitializationRuntimeIdentity.currentStorageSchemaVersion,
+            runtimeIdentity: StartupInitializationRuntimeIdentity(
+                bundleIdentifier: "com.tap.test",
+                shortVersion: "1.0",
+                buildVersion: "1",
+                initializationSchemaVersion: 1
+            ),
+            installationGenerationID: UUID(),
+            deviceGenerationID: UUID(),
+            completedAt: Date(timeIntervalSince1970: 42)
+        )
+
+        #expect(StartupGatePolicy.route(for: StartupRouteFacts(
+            setup: .absent,
+            requiredPermissions: blocked,
+            initialization: .missing
+        )) == .firstInstallSetup(.initial))
+
+        #expect(StartupGatePolicy.route(for: StartupRouteFacts(
+            setup: .legacyCompleted(nil),
+            requiredPermissions: blocked,
+            initialization: .missing
+        )) == .requiredPermissionCheck(resumeTarget: .viewfinder))
+
+        #expect(StartupGatePolicy.route(for: StartupRouteFacts(
+            setup: .legacyCompleted(nil),
+            requiredPermissions: usable,
+            initialization: .missing
+        )) == .resourceInitialization)
+
+        #expect(StartupGatePolicy.route(for: StartupRouteFacts(
+            setup: .legacyCompleted(nil),
+            requiredPermissions: usable,
+            initialization: .current(currentInitialization)
+        )) == .viewfinder)
+    }
+
+    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
+    func requiredPermissionCheckKeepsRecoveryScopedToCameraAndPhotos() throws {
+        let permissionSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/App/RequiredPermissionCheckView.swift"
+        )
+        let startupSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/App/StartupGateView.swift"
+        )
+
+        #expect(permissionSource.contains("Required Permission Check"))
+        #expect(
+            permissionSource.components(
+                separatedBy: "StartupRequirementRow("
+            ).count - 1 == 2
+        )
+        #expect(permissionSource.contains("onOpenSettings(.camera)"))
+        #expect(permissionSource.contains("onOpenSettings(.photoLibrary)"))
+        #expect(!permissionSource.contains("secondaryActionTitle:"))
+        #expect(!permissionSource.contains("Text(\"Continue\")"))
+        #expect(startupSource.contains("case .requiredPermissionCheck"))
+        #expect(startupSource.contains("refreshRequiredPermissionStatuses()"))
+    }
+
+    @Test func invalidCanonicalReceiptNeverFallsBackToLegacyBoolean() throws {
+        let suiteName = "StartupGateCoordinatorTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        _ = StartupInstallationGenerationStore(userDefaults: defaults).currentOrCreate()
+        defaults.set(Data("corrupt".utf8), forKey: StartupGateDefaults.setupReceiptKey)
+
+        let fact = StartupSetupFactStore(
+            userDefaults: defaults,
+            bundleIdentifier: "com.tap.test"
+        ).load(legacyCombinedCompletion: true)
+
+        #expect(fact == .invalid(.corruptReceipt))
+    }
+
+    @Test func canonicalReceiptRequiresMatchingLocallyVerifiedCredentialBinding() throws {
+        let suiteName = "StartupGateCoordinatorTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let generation = StartupInstallationGenerationStore(
+            userDefaults: defaults
+        ).currentOrCreate()
+        let binding = SetupCredentialBinding(
+            credentialName: "install:test",
+            keyIDFingerprint: "fingerprint",
+            environment: "development"
+        )
+        let receipt = SetupReceipt(
+            schemaVersion: SetupReceipt.currentSchemaVersion,
+            bundleIdentifier: "com.tap.test",
+            installationGenerationID: generation,
+            credentialBinding: binding,
+            locationChoice: .skipped,
+            microphoneChoice: .granted,
+            completedAt: Date(timeIntervalSince1970: 42)
+        )
+        defaults.set(
+            try JSONEncoder().encode(receipt),
+            forKey: StartupGateDefaults.setupReceiptKey
+        )
+
+        let unverified = StartupSetupFactStore(
+            userDefaults: defaults,
+            bundleIdentifier: "com.tap.test"
+        ).load(legacyCombinedCompletion: true)
+        #expect(unverified == .invalid(.missingCredentialBinding))
+
+        let mismatched = StartupSetupFactStore(
+            userDefaults: defaults,
+            bundleIdentifier: "com.tap.test",
+            verifiedCredentialBinding: VerifiedStartupCredentialBinding(
+                value: SetupCredentialBinding(
+                    credentialName: "install:test",
+                    keyIDFingerprint: "other",
+                    environment: "development"
+                )
+            )
+        ).load(legacyCombinedCompletion: true)
+        #expect(mismatched == .invalid(.credentialBindingMismatch))
+
+        let verified = StartupSetupFactStore(
+            userDefaults: defaults,
+            bundleIdentifier: "com.tap.test",
+            verifiedCredentialBinding: VerifiedStartupCredentialBinding(value: binding)
+        ).load(legacyCombinedCompletion: true)
+        #expect(verified == .valid(receipt))
+    }
+
+    @Test func frozenHealthPreflightCompletionWritesNoCanonicalReceipt() throws {
+        let suiteName = "StartupGateCoordinatorTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let store = StartupSetupFactStore(
+            userDefaults: defaults,
+            bundleIdentifier: "com.tap.test"
+        )
+        let fact = store.recordFrozenLegacyCompletion(
+            statusSnapshot: StartupGateStatusSnapshot(
+                securityPreflight: .granted,
+                camera: .granted,
+                photoLibrary: .granted,
+                location: .skipped,
+                microphone: .idle
+            ),
+            now: Date(timeIntervalSince1970: 42)
+        )
+
+        #expect(defaults.object(forKey: StartupGateDefaults.setupReceiptKey) == nil)
+        #expect(defaults.data(forKey: StartupGateDefaults.legacySetupCompletionKey) != nil)
+        guard case let .legacyCompleted(record?) = fact else {
+            Issue.record("Expected explicit frozen legacy completion")
+            return
+        }
+        #expect(record.evidence == .frozenLegacySecurityPreflight)
+        #expect(record.locationChoice == .skipped)
+        #expect(record.microphoneChoice == .unresolved)
+    }
+
+    @Test func libraryObservationWaitsForSetupOrExplicitPhotosCompletion() {
+        #expect(!StartupGatePolicy.shouldActivatePhotoLibraryObservation(
+            setup: .absent,
+            didCompleteExplicitPhotosAction: false,
+            photoLibraryStatus: .authorized
+        ))
+        #expect(StartupGatePolicy.shouldActivatePhotoLibraryObservation(
+            setup: .absent,
+            didCompleteExplicitPhotosAction: true,
+            photoLibraryStatus: .limited
+        ))
+        #expect(StartupGatePolicy.shouldActivatePhotoLibraryObservation(
+            setup: .legacyCompleted(nil),
+            didCompleteExplicitPhotosAction: false,
+            photoLibraryStatus: .authorized
+        ))
+        #expect(!StartupGatePolicy.shouldActivatePhotoLibraryObservation(
+            setup: .legacyCompleted(nil),
+            didCompleteExplicitPhotosAction: true,
+            photoLibraryStatus: .denied
+        ))
     }
 
     @Test func securityPreflightPolicyNamesDeadlineAndRetryWindow() {
@@ -212,6 +442,17 @@ struct StartupGateCoordinatorTests {
         ))
     }
 
+    @Test @MainActor func requiredPermissionRefreshDoesNotStartNetworkPreflight() {
+        let preflight = RecordingSecurityPreflight(currentStatus: .denied)
+        let coordinator = StartupGateCoordinator(securityPreflight: preflight)
+
+        coordinator.refreshRequiredPermissionStatuses()
+        coordinator.refreshAuthorizationStatus(for: .camera)
+        coordinator.refreshAuthorizationStatus(for: .photoLibrary)
+
+        #expect(preflight.requestCount == 0)
+    }
+
     @Test func backendSecurityPreflightDeniesMissingBackendURLWithoutQuery() async {
         let clock = StartupPreflightTestClock()
         let query = StartupPreflightAttemptRecorder(outcomes: [.granted])
@@ -302,6 +543,29 @@ private struct StubSecurityPreflight: StartupSecurityPreflightChecking {
 
     func performRequiredPreflight() async -> StartupGateRequirementStatus {
         requestedStatus
+    }
+}
+
+private final class RecordingSecurityPreflight: StartupSecurityPreflightChecking, @unchecked Sendable {
+    private let lock = NSLock()
+    private let currentStatus: StartupGateRequirementStatus?
+    private var requests = 0
+
+    init(currentStatus: StartupGateRequirementStatus?) {
+        self.currentStatus = currentStatus
+    }
+
+    var requestCount: Int {
+        lock.withLock { requests }
+    }
+
+    func currentRequirementStatus() -> StartupGateRequirementStatus? {
+        currentStatus
+    }
+
+    func performRequiredPreflight() async -> StartupGateRequirementStatus {
+        lock.withLock { requests += 1 }
+        return .denied
     }
 }
 

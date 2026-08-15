@@ -620,7 +620,7 @@ mismatches are:
 | Root `.task` awaits video-poster backfill before its first Library catalog refresh, so maintenance can delay the catalog path | `TAP-0083` or a scoped follow-up produced by its audit |
 | The preview-layer `isPreviewing` KVO callback exists, but current initial readiness does not consume it as a gate; it currently feeds only path-transition presentation | `TAP-0009` |
 | Resource Initialization does not gate on the first usable Library catalog snapshot or own a versioned marker | `TAP-0009` |
-| The current first-install overlay says **Preparing camera** and exposes Failed/Retry/Settings branches instead of the stable **Resource Initialization / Please Wait** invariant | `TAP-0009` |
+| The current first-install overlay says **Preparing camera** and exposes Failed/Retry/Settings branches instead of the stable **Resource Initialization / Please wait…** invariant | `TAP-0009` |
 | Foreground active can start recent-cover and Pending Capture work before a root required-permission route | `TAP-0008`/`TAP-0083` integration |
 | Pending worker and notification-driven catalog refresh can repeat full-directory scans | Scoped follow-up after `TAP-0083` evidence |
 | RAW Viewer requests original/possibly iCloud-backed resources and eagerly begins full analysis input work alongside bounded display; this can contend with Viewer readiness and supplies later 2D/3D and existing Share inputs | Observation in `TAP-0087`; behavior changes belong to `TAP-0089` or another approved Viewer/resource Task |
@@ -629,3 +629,36 @@ mismatches are:
 `TAP-0087` defines and prototypes these relationships. It does not implement
 native setup/readiness, optimize every workload, or claim device performance.
 The current product remains iPhone-only.
+
+## 8. `fix0809` Native Candidate Delta
+
+The §7 table remains the immutable source-audit description of
+`main@4cc02e5f12f2`. As of 2026-08-15, the owner has accepted the bounded
+non-Network lifecycle path exercised from the `fix0809` native candidate on a
+physical device. The delta below records that candidate and its executed-path
+acceptance; it is not a rewrite of the target reducer, approval of the complete
+scenario matrix, or acceptance of the frozen Network-owned boundaries.
+
+| Candidate area | Current `fix0809` behavior | Remaining boundary |
+| --- | --- | --- |
+| Setup facts | Defines and validates canonical credential-bound `SetupReceipt`; reads a separate legacy Setup-completion record before the historical combined Boolean | Network is frozen, so production Continue cannot write canonical `S`; the compatibility record is never presented as credential evidence |
+| Required permissions | Root priority is Setup → Camera/Photos Required Permission Check → Initialization → Viewfinder; `.limited`, `.denied`, and `.restricted` remain distinct; requests and Settings recovery are row-owned | Exact Required Permission Check visual parity remains pending owner review |
+| Library observation | Store construction is observer-inert; eligible explicit/post-Setup Photos boundaries activate observation idempotently; stopping cancels queued refresh work | Device timing and large/cold Library evidence remain open |
+| Camera construction | The selected route installs a shell state and defers `CameraView` mounting until a later main-actor turn; default `CameraViewModel` creation remains lazy across later parent updates | `Task.yield()` is not a rendered-frame acknowledgement; `TAP-0083` still owns measured shell/first-frame placement proof, so this mismatch remains partially implemented |
+| Initialization fact | Independent atomic Application Support marker binds bundle, version, build, initialization schema, installation generation, and a ThisDeviceOnly device generation; marker preparation/fsync runs off MainActor, Application Support absence fails closed, and malformed device-generation data repairs to a new local generation | Canonical Setup restore validity still depends on future verified credential binding |
+| Readiness | Active-scene Initialization consumes completed session configuration, real preview, safe shutter/primary controls, haptics, and the first usable catalog, including empty; backgrounding cancels an in-flight candidate commit | The owner accepted the bounded physical-device executed path; interruption, fault-injection, permission-recovery, update, and restore/migration cases remain open |
+| Stable UI | Approved Resource Initialization title/subtitle and Camera/TAP Library readiness rows remain blocking; no public Failed, Retry, timeout, skip, or degraded branch exists | The bounded native experience was owner-accepted; exact prototype-to-native visual parity and Simulator comparison remain pending |
+| Deferred local work | A two-display-tick barrier observes the committed Viewfinder frame before releasing video poster backfill and every recent-cover entry point; pending App Intent navigation waits at the same boundary | App Attest and credential/network-dependent Pending children remain frozen, so the parent `deferredWorkGuard` mismatch is only partially addressed |
+
+The Network row, `/healthz`, initial/post-Setup App Attest executors, and
+credential/network-dependent or Network-owned Pending retry policies receive no
+direct change in this candidate. Required Permission Check may postpone mounting
+`CameraView` and thus postpone their existing camera-entry triggers while a
+required permission is blocked. `networkBootstrap` remains a confirmed mismatch
+rather than an accepted target behavior.
+
+The bounded device verdict is recorded in
+`Docs/Acceptance/TAP-0041-camera-readiness.md`. It covers only the lifecycle path
+the owner actually exercised; canonical `S` production/restore, the full
+installation and permission-recovery matrix, measured shell/first-frame timing,
+and complete `W11/W12` deferred guards remain open or frozen as stated above.

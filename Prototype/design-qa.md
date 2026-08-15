@@ -608,8 +608,39 @@ no screenshot file was saved.
 
 ### Remaining gate
 
-Mobile/responsive coverage, native Simulator/device parity, and physical-device
-timing remain unclaimed. Exact product-owner review of the v16 workbench and
+Mobile/responsive coverage, exact prototype-to-native visual parity, and
+physical-device timing remain unclaimed. Separately, the owner accepted the
+bounded `fix0809` non-Network lifecycle path after exercising it on a physical
+device; that verdict is not approval of the exact v16 workbench or its complete
+scenario matrix. Exact product-owner review of the v16 workbench and
 synchronized contract remains required.
 
-final result: candidate; owner review required
+### 2026-08-15 `fix0809` native candidate
+
+- The manifest now keeps native implementation progress beside, but separate
+  from, the immutable `main@4cc02e5f12f2` truth records.
+- Seven mismatch IDs are recorded as fully implemented candidates. Setup/
+  marker separation, retained-container routing, camera construction, and
+  deferred release are recorded as partial. Camera mounting now follows route
+  selection and uses lazy `StateObject` construction, but `Task.yield()` is not
+  a real shell-frame acknowledgement; canonical `S` and Network-owned deferred
+  work also remain outside the approved frozen boundary.
+- The owner-approved TAP-0009 Resource Initialization hierarchy and two
+  readiness rows are present in SwiftUI. Required Permission Check remains a
+  visual/copy candidate rather than a claimed v16 approval.
+- Marker I/O is off-MainActor and fails closed without Application Support;
+  local poster/recent-cover work and pending App Intent navigation wait for a
+  two-display-tick committed-Viewfinder barrier.
+- Build-for-testing passed on the iPhone 17 Pro / iOS 26.5 Simulator target;
+  the four focused suites passed 146/146 with zero failures or skips. These
+  automated facts do not replace browser evidence or a native visual
+  comparison, so Simulator parity remains pending.
+- On 2026-08-15, the owner exercised and accepted the bounded non-Network
+  lifecycle path on a physical device. The supplied log showed Library catalog
+  publication and camera readiness before initialization-marker commit, then
+  local recent-cover release. Interruption/fault injection, permission recovery,
+  update/restore, measured timing, canonical `S`, and complete `W11/W12` remain
+  outside that verdict.
+
+final result: native bounded path owner-accepted; exact v16 composition and full
+scenario matrix remain candidate work

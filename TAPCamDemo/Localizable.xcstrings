@@ -357,6 +357,9 @@
         }
       }
     },
+    "Authorized or Limited Access is required to save and browse." : {
+
+    },
     "Auto" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -433,6 +436,9 @@
         }
       }
     },
+    "Building media catalog" : {
+
+    },
     "Calibration" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -465,6 +471,9 @@
         }
       }
     },
+    "Camera access is required for capture and the viewfinder." : {
+
+    },
     "Camera access is required to capture depth photos." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -475,6 +484,12 @@
           }
         }
       }
+    },
+    "Camera access is restricted by system policy." : {
+
+    },
+    "Camera access was denied. You can change it in Settings." : {
+
     },
     "Camera Behavior" : {
       "extractionState" : "stale",
@@ -552,6 +567,9 @@
         }
       }
     },
+    "Camera Resources" : {
+
+    },
     "Camera service did not respond." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -619,6 +637,7 @@
       }
     },
     "Camera setup needs attention" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -902,6 +921,9 @@
         }
       }
     },
+    "Credential recovery remains unavailable while the existing Network implementation is preserved. A reachability check is not accepted as credential proof." : {
+
+    },
     "Cycle flash mode." : {
       "localizations" : {
         "zh-Hans" : {
@@ -1147,6 +1169,7 @@
       }
     },
     "Enable required camera or photo library access in Settings, then return." : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -1273,6 +1296,12 @@
           }
         }
       }
+    },
+    "First media catalog is ready" : {
+
+    },
+    "First preview and camera controls are ready" : {
+
     },
     "Flash %@" : {
       "localizations" : {
@@ -2030,6 +2059,12 @@
         }
       }
     },
+    "Location access is restricted by system policy." : {
+
+    },
+    "Location access was denied. You can change it in Settings." : {
+
+    },
     "Location Data" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2160,6 +2195,12 @@
         }
       }
     },
+    "Microphone access is restricted by system policy." : {
+
+    },
+    "Microphone access was denied. You can change it in Settings." : {
+
+    },
     "Native auxiliary depth-map resolution used for camera-coordinate plane fitting." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2234,6 +2275,9 @@
           }
         }
       }
+    },
+    "Network, Location, and Microphone do not participate in this check." : {
+
     },
     "No camera with depth-capable formats is available on this device." : {
       "extractionState" : "manual",
@@ -2591,6 +2635,12 @@
         }
       }
     },
+    "Photo Library access is restricted by system policy." : {
+
+    },
+    "Photo Library access was denied. You can change it in Settings." : {
+
+    },
     "Photo mode" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2818,6 +2868,9 @@
         }
       }
     },
+    "Please wait…" : {
+
+    },
     "Point colors map near-to-far depth in the same direction as the depth legend." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2917,6 +2970,7 @@
       }
     },
     "Preparing camera" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -2947,6 +3001,9 @@
           }
         }
       }
+    },
+    "Preparing first preview and controls" : {
+
     },
     "Preparing registered depth" : {
       "extractionState" : "stale",
@@ -3143,6 +3200,9 @@
         }
       }
     },
+    "Required Permission Check" : {
+
+    },
     "requiresMultiCam" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3208,6 +3268,12 @@
         }
       }
     },
+    "Resource Initialization" : {
+
+    },
+    "Restore Camera or Photo Library access to return to the viewfinder." : {
+
+    },
     "Restoring Pro mode…" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3240,6 +3306,9 @@
           }
         }
       }
+    },
+    "Restricted by system policy" : {
+
     },
     "Retry" : {
       "localizations" : {
@@ -3525,6 +3594,9 @@
           }
         }
       }
+    },
+    "Setup Recovery" : {
+
     },
     "Share" : {
       "extractionState" : "stale",
@@ -4489,6 +4561,9 @@
           }
         }
       }
+    },
+    "This installation's setup receipt is missing valid local credential evidence. Existing permissions are shown without being requested automatically." : {
+
     },
     "This is a local camera-coordinate point cloud preview. It is not cloud storage, cloud compute, or a semantic word cloud." : {
       "localizations" : {
