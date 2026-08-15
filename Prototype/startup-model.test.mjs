@@ -19,6 +19,7 @@ import {
   PROTOTYPE_DIFFERENCE_DATA_STATUS,
   publicSnapshot,
   reduce,
+  reviewStateRegistry,
   resolveWorkloadDifferenceTraceBinding,
   requiredPermissionsUsable,
   scenarioFixtures,
@@ -101,15 +102,21 @@ test("TAP-0008/TAP-0009 code-truth records use explicit lifecycle anchors", () =
   const aligned = lifecycleTruthRegistry.filter(({ mismatch }) => !mismatch).map(({ id }) => id);
   assert.deepEqual(aligned, []);
   const truthManifest = manifest.independentCandidates.startupLifecycle.workbench.right.tap0008Tap0009CodeTruth;
-  assert.equal(truthManifest.schemaVersion, 4);
+  assert.equal(truthManifest.schemaVersion, 5);
   const mismatchTruths = lifecycleTruthRegistry.filter(({ mismatch }) => mismatch);
   for (const truth of mismatchTruths) {
     const disposition = fix0809DispositionRegistry[truth.fix0809Disposition];
     const outcome = fix0809OutcomeRegistry[truth.fix0809Outcome];
+    const reviewState = reviewStateRegistry[truth.reviewState];
     assert.ok(disposition, `${truth.id} fix0809 disposition`);
     assert.ok(outcome, `${truth.id} fix0809 outcome`);
+    assert.ok(reviewState, `${truth.id} review state`);
     assert.equal(disposition.renderAsMismatch, true, `${truth.id} remains mismatch`);
     assert.equal(outcome.preservesBaselineMismatch, true, `${truth.id} outcome preserves baseline mismatch`);
+    assert.equal(truth.activeDifference, reviewState.activeDifference, `${truth.id} active difference`);
+    assert.ok(truth.followUpTaskIDs.length > 0, `${truth.id} follow-up tasks`);
+    assert.equal(truth.targetBinding.kind, "lifecycleAnchor", `${truth.id} target binding kind`);
+    assert.equal(truth.targetBinding.anchor, truth.target.anchor, `${truth.id} target binding anchor`);
   }
   assert.deepEqual(
     mismatchTruths.filter(({ fix0809Disposition }) => fix0809Disposition === "approvedToFix").map(({ id }) => id).sort(),
@@ -134,7 +141,7 @@ test("TAP-0008/TAP-0009 code-truth records use explicit lifecycle anchors", () =
   assert.match(truthManifest.fix0809DispositionSummary.ownerDecision, /retain the existing Network and App Attest implementation/);
   assert.match(truthManifest.fix0809DispositionSummary.ownerDecision, /must not change network behavior or treat \/healthz as the target state/);
   assert.match(truthManifest.fix0809DispositionSummary.policy, /ownerReviewRequired/);
-  assert.match(fix0809DispositionRegistry.deferredFrozen.visibleLabel, /本轮暂缓 · Network frozen/);
+  assert.match(fix0809DispositionRegistry.deferredFrozen.visibleLabel, /关联任务 · Network \/ App Attest \/ Pending/);
   assert.equal(fix0809DispositionRegistry.deferredFrozen.includedInFix0809, false);
   assert.deepEqual(
     mismatchTruths.filter(({ fix0809Outcome }) => fix0809Outcome === "implementedLogAccepted").map(({ id }) => id),
@@ -163,12 +170,14 @@ test("TAP-0008/TAP-0009 code-truth records use explicit lifecycle anchors", () =
     archiveRef: "d4b19d9",
     implementedNotLogVerifiedMismatchCount: 8,
     deferredFrozenMismatchCount: 1,
-    activeRemainingMismatchCount: 9,
+    activeRemainingMismatchCount: 1,
+    implementedAwaitingRegressionCount: 8,
+    deferredTaskOwnedCount: 1,
     ownerDecisionRecordedAt: "2026-08-15",
     evidence: "Docs/Acceptance/TAP-0041-camera-readiness.md#2026-08-15-bounded-device-observation",
     policy: truthManifest.fix0809OutcomeSummary.policy
   });
-  assert.match(truthManifest.fix0809OutcomeSummary.policy, /remaining-problems/);
+  assert.match(truthManifest.fix0809OutcomeSummary.policy, /target position/);
   assert.deepEqual(
     Object.fromEntries(Object.entries(fix0809OutcomeRegistry).map(([id, outcome]) => (
       [id, [outcome.fillTone, outcome.borderTone]]
@@ -178,11 +187,20 @@ test("TAP-0008/TAP-0009 code-truth records use explicit lifecycle anchors", () =
       deferredFrozen: ["red", "red"]
     }
   );
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(reviewStateRegistry).map(([id, reviewState]) => (
+      [id, [reviewState.projectionMode, reviewState.renderActualCard, reviewState.renderConnector, reviewState.decorateTarget, reviewState.activeDifference]]
+    ))),
+    {
+      implementedAwaitingRegression: ["mergeIntoTarget", false, false, true, false],
+      deferredTaskOwned: ["actualToTarget", true, true, false, true]
+    }
+  );
   const networkBootstrap = lifecycleTruthRegistry.find(({ id }) => id === "networkBootstrap");
   assert.match(networkBootstrap.actual.summary, /healthz/);
   assert.match(networkBootstrap.target.summary, /App Attest registration \/ verification/);
   assert.doesNotMatch(networkBootstrap.target.summary, /healthz/);
-  assert.equal(manifest.independentCandidates.startupLifecycle.workbench.revision, "v18");
+  assert.equal(manifest.independentCandidates.startupLifecycle.workbench.revision, "v19");
   assert.equal(truthManifest.recordCount, lifecycleTruthRegistry.length);
   assert.equal(truthManifest.mismatchCount, lifecycleTruthRegistry.filter(({ mismatch }) => mismatch).length);
   assert.equal(truthManifest.alignedCount, aligned.length);
@@ -232,6 +250,10 @@ test("lifecycle and workload mismatches have disjoint JSON-backed Timing owners"
     assert.equal(difference.mismatch, true, difference.id);
     assert.ok(fix0809DispositionRegistry[difference.fix0809Disposition], `${difference.id} fix0809 disposition`);
     assert.ok(fix0809OutcomeRegistry[difference.fix0809Outcome], `${difference.id} fix0809 outcome`);
+    const reviewState = reviewStateRegistry[difference.reviewState];
+    assert.ok(reviewState, `${difference.id} review state`);
+    assert.equal(difference.activeDifference, reviewState.activeDifference, `${difference.id} active difference`);
+    assert.ok(difference.followUpTaskIDs.length > 0, `${difference.id} follow-up tasks`);
     const sourceTruthDispositions = new Set(difference.lifecycleTruthIDs.map((truthID) => (
       lifecycleTruthRegistry.find(({ id }) => id === truthID)?.fix0809Disposition
     )));
@@ -275,12 +297,14 @@ test("lifecycle and workload mismatches have disjoint JSON-backed Timing owners"
   const coveredWorkloadTruthIDs = new Set(workloadDifferenceRegistry.flatMap(({ lifecycleTruthIDs }) => lifecycleTruthIDs));
   assert.deepEqual(coveredWorkloadTruthIDs, workloadOwnerIDs);
   assert.deepEqual(comparison.projectionCounts, {
-    lifecycleMismatchCards: 5,
+    lifecycleTargetFollowUpCards: 5,
+    lifecycleActiveDifferenceCards: 0,
     migratedLifecycleTruthSources: 4,
-    workloadDifferenceCards: 8,
+    workloadTargetFollowUpRecords: 4,
+    workloadActiveDifferenceRecords: 4,
     workloadTimingCards: 7,
     workloadSemanticCards: 1,
-    maximumRenderedMismatchCards: 13
+    maximumRenderedActualDifferenceCards: 4
   });
 
   const excludedIDs = comparison.excludedFromWorkloadMismatch.map(({ comparisonID }) => comparisonID);
@@ -331,9 +355,30 @@ test("lifecycle and workload mismatches have disjoint JSON-backed Timing owners"
       "videoPosterStartsBeforeDeferredRelease"
     ]
   );
+  assert.equal(
+    workloadDifferenceRegistry.filter(({ reviewState }) => reviewState === "implementedAwaitingRegression").length,
+    4
+  );
+  assert.equal(
+    workloadDifferenceRegistry.filter(({ reviewState }) => reviewState === "deferredTaskOwned").length,
+    4
+  );
+  assert.deepEqual(
+    Object.fromEntries(workloadDifferenceRegistry
+      .filter(({ reviewState }) => reviewState === "deferredTaskOwned")
+      .map(({ id, followUpTaskIDs }) => [id, followUpTaskIDs])),
+    {
+      firstInstallCredentialStartsAfterContinue: ["TAP-0010"],
+      postSetupAttestLacksDeferredReleaseGuard: ["TAP-0015"],
+      pendingRecoveryLacksDeferredReleaseGuard: ["TAP-0015"],
+      initialAttestationCompletionMeaning: ["TAP-0010"]
+    }
+  );
   assert.equal(comparison.fix0809OutcomeSummary.implementedNotLogVerifiedMismatchCount, 4);
   assert.equal(comparison.fix0809OutcomeSummary.deferredFrozenMismatchCount, 4);
-  assert.equal(comparison.fix0809OutcomeSummary.activeRemainingMismatchCount, 8);
+  assert.equal(comparison.fix0809OutcomeSummary.activeRemainingMismatchCount, 4);
+  assert.equal(comparison.fix0809OutcomeSummary.implementedAwaitingRegressionCount, 4);
+  assert.equal(comparison.fix0809OutcomeSummary.deferredTaskOwnedCount, 4);
   assert.equal(comparison.fix0809OutcomeSummary.archiveRef, "d4b19d9");
   assert.deepEqual(
     [...comparison.fix0809OutcomeSummary.implementedNotLogVerifiedWorkloadRecordIDs].sort(),
@@ -426,6 +471,23 @@ test("JSON workload bindings resolve only to applicable recorded target effects"
   const unresolved = resolveWorkloadDifferenceTraceBinding(deferred, "ordinaryProcessLaunch", earlyColumns);
   assert.equal(unresolved.visible, true);
   assert.equal(unresolved.targetColumn, null);
+
+  const targetMerged = workloadDifferenceRegistry.find(({ id }) => id === "libraryObserverStartsPreFrame");
+  const targetBeforeVisibility = resolveWorkloadDifferenceTraceBinding(
+    targetMerged,
+    "ordinaryProcessLaunch",
+    [{
+      entry: {
+        event: { type: "INITIAL_ROUTE_COMMITTED" },
+        effects: { workloads: ["libraryRootObservation"] }
+      },
+      milestones: ["t2"],
+      stateAfter: { workloads: { libraryRootObservation: "succeeded" } }
+    }]
+  );
+  assert.equal(targetBeforeVisibility.applicable, true);
+  assert.equal(targetBeforeVisibility.visible, false, "stale Actual visibility does not define target existence");
+  assert.ok(targetBeforeVisibility.targetColumn, "exact target binding resolves independently of Actual visibility");
 
 });
 

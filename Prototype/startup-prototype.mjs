@@ -14,6 +14,7 @@ import {
   photosUsable,
   publicSnapshot,
   reduce,
+  reviewStateRegistry,
   resolveWorkloadDifferenceTraceBinding,
   scenarioFixtures,
   setupRequiredReady,
@@ -36,6 +37,10 @@ function fix0809OutcomeFor(record) {
   return fix0809OutcomeRegistry[record?.fix0809Outcome] || null;
 }
 
+function reviewStateFor(record) {
+  return reviewStateRegistry[record?.reviewState] || null;
+}
+
 function makeFix0809OutcomeBadge(record) {
   const outcome = fix0809OutcomeFor(record);
   if (!outcome) return null;
@@ -44,6 +49,23 @@ function makeFix0809OutcomeBadge(record) {
   badge.dataset.fix0809Outcome = record.fix0809Outcome;
   badge.textContent = outcome.visibleLabel;
   return badge;
+}
+
+function makeFollowUpTaskBadge(record) {
+  const reviewState = reviewStateFor(record);
+  if (!reviewState || !record.followUpTaskIDs?.length) return null;
+  const badge = document.createElement("span");
+  badge.className = "follow-up-tasks";
+  badge.dataset.reviewState = record.reviewState;
+  badge.textContent = `${reviewState.taskLabel} ${record.followUpTaskIDs.join(" · ")}`;
+  return badge;
+}
+
+function lifecycleProjectionAnchor(truth) {
+  const reviewState = reviewStateFor(truth);
+  return reviewState?.projectionMode === "mergeIntoTarget"
+    ? truth.targetBinding.anchor
+    : truth.actual.anchor;
 }
 
 const pageLabels = Object.freeze({
@@ -1104,71 +1126,112 @@ function renderLifecycleTruthCards() {
   return lifecycleTruthRegistry
     .filter((truth) => !truth.mismatch || lifecycleTimingLaneRecordIDSet.has(truth.id))
     .map((truth) => {
-    const card = document.createElement("article");
-    card.className = "workload-card lifecycle-truth-card";
-    card.classList.toggle("is-lifecycle-mismatch", truth.mismatch);
-    card.classList.toggle("is-lifecycle-aligned", !truth.mismatch);
-    card.dataset.lifecycleTruthId = truth.id;
-    card.dataset.lifecycleActualAnchor = truth.actual.anchor;
-    card.dataset.lifecycleTargetAnchor = truth.target.anchor;
-    const outcome = truth.mismatch ? fix0809OutcomeFor(truth) : null;
-    if (truth.mismatch) {
-      card.dataset.lifecycleDifferenceId = truth.id;
-      card.dataset.fix0809Disposition = truth.fix0809Disposition;
-      card.dataset.fix0809Outcome = truth.fix0809Outcome;
-    }
-    card.setAttribute(
-      "aria-label",
-      `${truth.label}。${truth.mismatch ? "基线生命周期不一致" : "生命周期一致"}。${outcome ? `${outcome.accessibleLabel}。` : ""}真实阶段 ${truth.actual.anchor} ${truth.actual.phase}。原型阶段 ${truth.target.anchor} ${truth.target.phase}。`
-    );
+      const reviewState = reviewStateFor(truth);
+      const targetMerged = reviewState?.projectionMode === "mergeIntoTarget";
+      const activeDifference = truth.activeDifference && reviewState?.activeDifference;
+      const card = document.createElement("article");
+      card.className = "workload-card lifecycle-truth-card";
+      card.classList.toggle("is-lifecycle-follow-up", targetMerged);
+      card.classList.toggle("is-lifecycle-mismatch", activeDifference);
+      card.classList.toggle("is-lifecycle-aligned", !truth.mismatch);
+      card.dataset.lifecycleTruthId = truth.id;
+      card.dataset.lifecycleTargetAnchor = truth.targetBinding.anchor;
+      if (truth.mismatch) {
+        card.dataset.fix0809Disposition = truth.fix0809Disposition;
+        card.dataset.fix0809Outcome = truth.fix0809Outcome;
+        card.dataset.reviewState = truth.reviewState;
+      }
+      if (activeDifference && reviewState.renderConnector) {
+        card.dataset.lifecycleDifferenceId = truth.id;
+        card.dataset.lifecycleActualAnchor = truth.actual.anchor;
+      }
+      const tasks = `${reviewState?.taskLabel || "关联任务"} ${truth.followUpTaskIDs.join(" · ")}`;
+      card.setAttribute(
+        "aria-label",
+        targetMerged
+          ? `${truth.label}。${reviewState.accessibleLabel}。Candidate/Target 阶段 ${truth.targetBinding.anchor} ${truth.target.phase}。${tasks}。`
+          : `${truth.label}。仍有位置差异。${reviewState ? `${reviewState.accessibleLabel}。` : ""}Actual 阶段 ${truth.actual.anchor} ${truth.actual.phase}。Target 阶段 ${truth.target.anchor} ${truth.target.phase}。${tasks}。`
+      );
 
-    const title = document.createElement("span");
-    title.className = "workload-title";
-    const strong = document.createElement("strong");
-    const meta = document.createElement("small");
-    strong.textContent = truth.label;
-    meta.textContent = truth.taskIDs.join(" · ");
-    title.append(strong, meta);
+      const title = document.createElement("span");
+      title.className = "workload-title";
+      const strong = document.createElement("strong");
+      const meta = document.createElement("small");
+      strong.textContent = truth.label;
+      meta.textContent = targetMerged ? "Candidate / Target" : "Baseline Actual / Target";
+      title.append(strong, meta);
 
-    const badge = document.createElement("span");
-    badge.className = `lifecycle-truth-verdict ${truth.mismatch ? "is-mismatch" : "is-aligned"}`;
-    badge.textContent = truth.mismatch ? "不一致" : "一致";
+      const badge = document.createElement("span");
+      badge.className = `lifecycle-truth-verdict ${targetMerged ? "is-follow-up" : activeDifference ? "is-mismatch" : "is-aligned"}`;
+      badge.textContent = reviewState?.visibleLabel || (truth.mismatch ? "仍有位置差异" : "一致");
+      const outcomeBadge = truth.mismatch ? makeFix0809OutcomeBadge(truth) : null;
+      const taskBadge = truth.mismatch ? makeFollowUpTaskBadge(truth) : null;
+      card.append(title, badge);
+      if (outcomeBadge) card.append(outcomeBadge);
 
-    const phase = document.createElement("div");
-    phase.className = "lifecycle-truth-phase";
-    phase.innerHTML = `<span><em>真实</em><strong></strong><small></small></span><i aria-hidden="true">→</i><span><em>原型</em><strong></strong><small></small></span>`;
-    const phaseColumns = phase.querySelectorAll("span");
-    phaseColumns[0].querySelector("strong").textContent = truth.actual.anchor;
-    phaseColumns[0].querySelector("small").textContent = truth.actual.phase;
-    phaseColumns[1].querySelector("strong").textContent = truth.target.anchor;
-    phaseColumns[1].querySelector("small").textContent = truth.target.phase;
+      if (targetMerged) {
+        const phase = document.createElement("div");
+        phase.className = "lifecycle-target-follow-up-phase";
+        const phaseLabel = document.createElement("em");
+        const anchor = document.createElement("strong");
+        const detail = document.createElement("small");
+        phaseLabel.textContent = "Candidate / Target";
+        anchor.textContent = truth.targetBinding.anchor;
+        detail.textContent = truth.target.phase;
+        phase.append(phaseLabel, anchor, detail);
+        card.append(phase);
+        if (taskBadge) card.append(taskBadge);
+        card.title = `${truth.target.summary}\n目标：${truth.target.evidence}`;
+        return card;
+      }
 
-    const detail = document.createElement("div");
-    detail.className = "lifecycle-truth-detail";
-    detail.innerHTML = `<span><strong>Current main · 代码真实情况</strong><small></small></span><span><strong>Prototype · 目标情况</strong><small></small></span>`;
-    const detailColumns = detail.querySelectorAll("small");
-    detailColumns[0].textContent = truth.actual.summary;
-    detailColumns[1].textContent = truth.target.summary;
+      const phase = document.createElement("div");
+      phase.className = "lifecycle-truth-phase";
+      phase.innerHTML = `<span><em>Actual</em><strong></strong><small></small></span><i aria-hidden="true">→</i><span><em>Target</em><strong></strong><small></small></span>`;
+      const phaseColumns = phase.querySelectorAll("span");
+      phaseColumns[0].querySelector("strong").textContent = truth.actual.anchor;
+      phaseColumns[0].querySelector("small").textContent = truth.actual.phase;
+      phaseColumns[1].querySelector("strong").textContent = truth.target.anchor;
+      phaseColumns[1].querySelector("small").textContent = truth.target.phase;
 
-    const evidence = document.createElement("small");
-    evidence.className = "lifecycle-truth-evidence";
-    evidence.textContent = `代码：${truth.actual.evidence} · 目标：${truth.target.evidence}`;
-    const outcomeBadge = truth.mismatch ? makeFix0809OutcomeBadge(truth) : null;
-    card.append(title, badge);
-    if (outcomeBadge) card.append(outcomeBadge);
-    card.append(phase, detail, evidence);
+      const detail = document.createElement("div");
+      detail.className = "lifecycle-truth-detail";
+      detail.innerHTML = `<span><strong>Current main · Actual</strong><small></small></span><span><strong>Prototype · Target</strong><small></small></span>`;
+      const detailColumns = detail.querySelectorAll("small");
+      detailColumns[0].textContent = truth.actual.summary;
+      detailColumns[1].textContent = truth.target.summary;
+      const evidence = document.createElement("small");
+      evidence.className = "lifecycle-truth-evidence";
+      evidence.textContent = `代码：${truth.actual.evidence} · 目标：${truth.target.evidence}`;
+      card.append(phase, detail, evidence);
+      if (taskBadge) card.append(taskBadge);
       return card;
     });
 }
 
 function updateTimelineDifferenceAnchors() {
-  const mismatchAnchors = workloadFilter === "truth"
+  const activeDifferenceAnchors = workloadFilter === "truth"
     ? new Set(lifecycleTruthRegistry
-      .filter((truth) => truth.mismatch && lifecycleTimingLaneRecordIDSet.has(truth.id))
+      .filter((truth) => (
+        truth.mismatch
+        && lifecycleTimingLaneRecordIDSet.has(truth.id)
+        && truth.activeDifference
+        && reviewStateFor(truth)?.renderConnector
+      ))
       .map((truth) => truth.actual.anchor))
     : new Set();
+  const followUpAnchors = workloadFilter === "truth"
+    ? new Set(lifecycleTruthRegistry
+      .filter((truth) => (
+        truth.mismatch
+        && lifecycleTimingLaneRecordIDSet.has(truth.id)
+        && reviewStateFor(truth)?.projectionMode === "mergeIntoTarget"
+      ))
+      .map((truth) => truth.targetBinding.anchor))
+    : new Set();
   document.querySelectorAll("[data-lifecycle-anchor-id]").forEach((anchor) => {
-    anchor.classList.toggle("has-lifecycle-difference", mismatchAnchors.has(anchor.dataset.lifecycleAnchorId));
+    anchor.classList.toggle("has-lifecycle-difference", activeDifferenceAnchors.has(anchor.dataset.lifecycleAnchorId));
+    anchor.classList.toggle("has-lifecycle-follow-up", followUpAnchors.has(anchor.dataset.lifecycleAnchorId));
   });
 }
 
@@ -1181,7 +1244,10 @@ function renderWorkloads() {
   const list = byID("workload-list");
   if (workloadFilter === "truth") {
     list.replaceChildren(...renderLifecycleTruthCards());
-    byID("workload-inspector-summary").textContent = `${lifecycleTimingLaneRecordIDs.length} 处生命周期不一致 · workload 差异见 Timing`;
+    const lifecycleRecords = lifecycleTruthRegistry.filter((truth) => lifecycleTimingLaneRecordIDSet.has(truth.id));
+    const activeDifferenceCount = lifecycleRecords.filter((truth) => truth.activeDifference).length;
+    const followUpCount = lifecycleRecords.length - activeDifferenceCount;
+    byID("workload-inspector-summary").textContent = `${followUpCount} 个目标位置待回归 · ${activeDifferenceCount} 个仍有位置差异 · Workload 见 Timing`;
     updateTimelineDifferenceAnchors();
     scheduleLifecycleDifferenceConnectors();
     return;
@@ -1409,28 +1475,40 @@ function makeTimingLane(label, laneId, columns, renderColumn) {
   return lane;
 }
 
-function makeTimingLifecycleDifference(truth) {
-  const outcome = fix0809OutcomeFor(truth);
+function makeTimingLifecycleReviewCard(truth) {
+  const reviewState = reviewStateFor(truth);
+  const targetMerged = reviewState?.projectionMode === "mergeIntoTarget";
   const card = document.createElement("article");
-  card.className = "timing-lifecycle-difference";
-  card.dataset.timingDifferenceId = truth.id;
-  card.dataset.timingActualAnchor = truth.actual.anchor;
-  card.dataset.timingTargetAnchor = truth.target.anchor;
+  card.className = targetMerged ? "timing-lifecycle-follow-up" : "timing-lifecycle-difference";
+  card.dataset.lifecycleTruthId = truth.id;
+  card.dataset.timingTargetAnchor = truth.targetBinding.anchor;
   card.dataset.fix0809Disposition = truth.fix0809Disposition;
   card.dataset.fix0809Outcome = truth.fix0809Outcome;
+  card.dataset.reviewState = truth.reviewState;
+  if (truth.activeDifference && reviewState?.renderConnector) {
+    card.dataset.timingDifferenceId = truth.id;
+    card.dataset.timingActualAnchor = truth.actual.anchor;
+  }
+  const tasks = `${reviewState?.taskLabel || "关联任务"} ${truth.followUpTaskIDs.join(" · ")}`;
   card.setAttribute(
     "aria-label",
-    `${truth.label}。基线生命周期不一致。${outcome ? `${outcome.accessibleLabel}。` : ""}真实阶段 ${truth.actual.anchor} ${truth.actual.phase}；原型阶段 ${truth.target.anchor} ${truth.target.phase}。`
+    targetMerged
+      ? `${truth.label}。${reviewState.accessibleLabel}。Candidate/Target 阶段 ${truth.targetBinding.anchor} ${truth.target.phase}。${tasks}。`
+      : `${truth.label}。仍有位置差异。${reviewState ? `${reviewState.accessibleLabel}。` : ""}Actual 阶段 ${truth.actual.anchor} ${truth.actual.phase}；Target 阶段 ${truth.target.anchor} ${truth.target.phase}。${tasks}。`
   );
   const label = document.createElement("strong");
   const phase = document.createElement("small");
   label.textContent = truth.label;
-  phase.textContent = `真实 ${truth.actual.anchor} → 原型 ${truth.target.anchor}`;
+  phase.textContent = targetMerged
+    ? `Candidate / Target · ${truth.targetBinding.anchor} · ${truth.target.phase}`
+    : `Actual ${truth.actual.anchor} → Target ${truth.target.anchor}`;
   const outcomeBadge = makeFix0809OutcomeBadge(truth);
+  const taskBadge = makeFollowUpTaskBadge(truth);
   card.append(label);
   if (outcomeBadge) card.append(outcomeBadge);
   card.append(phase);
-  card.title = `${truth.actual.summary}\n→ ${truth.target.summary}`;
+  if (taskBadge) card.append(taskBadge);
+  card.title = targetMerged ? truth.target.summary : `${truth.actual.summary}\n→ ${truth.target.summary}`;
   return card;
 }
 
@@ -1457,10 +1535,13 @@ function buildTimingWorkloadDifferenceProjection(columns) {
 
   for (const difference of workloadDifferenceRegistry) {
     if (!difference.mismatch) continue;
+    const reviewState = reviewStateFor(difference);
+    if (!reviewState) continue;
     const resolved = resolveWorkloadDifferenceTraceBinding(difference, state.scenarioId, columns);
-    if (!resolved.visible) continue;
+    if (!resolved.applicable) continue;
+    if (reviewState.renderActualCard && !resolved.visible) continue;
     const { actualColumn, visibilityColumn, targetColumn } = resolved;
-  const targetBinding = difference.traceBinding.targetEffect;
+    const targetBinding = difference.traceBinding.targetEffect;
     const targetEffectIndex = targetColumn
       ? (targetColumn.entry.effects.workloads || []).findIndex((workloadId) => workloadId === targetBinding.workloadID)
       : -1;
@@ -1472,12 +1553,15 @@ function buildTimingWorkloadDifferenceProjection(columns) {
       visibilityColumn,
       targetColumn: targetEffectReached ? targetColumn : null,
       targetEffectIndex,
-      targetAnchorReached
+      targetAnchorReached,
+      reviewState
     };
 
-    const actuals = actualBySequence.get(visibilityColumn.entry.seq) || [];
-    actuals.push(projection);
-    actualBySequence.set(visibilityColumn.entry.seq, actuals);
+    if (reviewState.renderActualCard) {
+      const actuals = actualBySequence.get(visibilityColumn.entry.seq) || [];
+      actuals.push(projection);
+      actualBySequence.set(visibilityColumn.entry.seq, actuals);
+    }
     if (targetEffectReached) {
       targetByEffect.set(
         timingWorkloadEffectKey(targetColumn.entry.seq, targetBinding.workloadID, targetEffectIndex),
@@ -1496,7 +1580,8 @@ function makeTimingWorkloadActual(projection) {
     visibilityColumn,
     targetColumn,
     targetEffectIndex,
-    targetAnchorReached
+    targetAnchorReached,
+    reviewState
   } = projection;
   const targetEffectReached = targetColumn != null;
   const kindLabel = workloadDifferenceLabels[difference.differenceKind] || difference.differenceKind;
@@ -1517,6 +1602,7 @@ function makeTimingWorkloadActual(projection) {
   actual.dataset.scopePath = difference.scope.path;
   actual.dataset.fix0809Disposition = difference.fix0809Disposition;
   actual.dataset.fix0809Outcome = difference.fix0809Outcome;
+  actual.dataset.reviewState = difference.reviewState;
   actual.dataset.scenarioGroupId = difference.traceBinding.scenarioGroupID;
   actual.dataset.actualVisibleSeq = String(visibilityColumn.entry.seq);
   actual.dataset.actualAnchorReached = String(actualColumn != null);
@@ -1532,12 +1618,13 @@ function makeTimingWorkloadActual(projection) {
   }
   actual.setAttribute(
     "aria-label",
-    `${difference.actual.label}。基线实际不一致。${outcome ? `${outcome.accessibleLabel}。` : ""}差异：${kindLabel}；检查点：${difference.checkpoint}。真实来源范围：${difference.scope.path}；真实触发：${difference.scope.trigger}。审阅投影点：事件 #${visibilityColumn.entry.seq} ${eventLabels[visibilityColumn.entry.event.type] || visibilityColumn.entry.event.type}；该点只控制差异何时显示，不代表真实 workload 在此执行。实际阶段：${difference.actual.anchor}，${difference.actual.phase}。对应原型 Workload：${difference.target.label}；既有原型 Workload effect ${targetEffectReached ? "已出现" : "尚未出现"}。目标生命周期：${difference.target.anchor} ${targetAnchorReached ? "已到达" : "尚未到达"}，${difference.target.phase}。按下后聚焦该 reviewer visibility/upstream 投影事件；生命周期归属仍是 ${difference.actual.anchor}。`
+    `${difference.actual.label}。仍有位置差异。${reviewState.accessibleLabel}。${outcome ? `${outcome.accessibleLabel}。` : ""}差异：${kindLabel}；检查点：${difference.checkpoint}。真实来源范围：${difference.scope.path}；真实触发：${difference.scope.trigger}。审阅投影点：事件 #${visibilityColumn.entry.seq} ${eventLabels[visibilityColumn.entry.event.type] || visibilityColumn.entry.event.type}；该点只控制差异何时显示，不代表真实 workload 在此执行。Actual 阶段：${difference.actual.anchor}，${difference.actual.phase}。对应 Target Workload：${difference.target.label}；既有 Target effect ${targetEffectReached ? "已出现" : "尚未出现"}。目标生命周期：${difference.target.anchor} ${targetAnchorReached ? "已到达" : "尚未到达"}，${difference.target.phase}。${reviewState.taskLabel} ${difference.followUpTaskIDs.join("、")}。按下后聚焦该 reviewer visibility/upstream 投影事件；生命周期归属仍是 ${difference.actual.anchor}。`
   );
 
   const verdict = document.createElement("em");
-  verdict.textContent = "Actual · 不一致";
+  verdict.textContent = "Actual · 仍有位置差异";
   const outcomeBadge = makeFix0809OutcomeBadge(difference);
+  const taskBadge = makeFollowUpTaskBadge(difference);
   const label = document.createElement("strong");
   label.textContent = difference.actual.label;
   const kind = document.createElement("small");
@@ -1560,6 +1647,7 @@ function makeTimingWorkloadActual(projection) {
   actual.append(verdict);
   if (outcomeBadge) actual.append(outcomeBadge);
   actual.append(label, kind, sourceScope, projectionScope, phase, targetStatus, targetPhase);
+  if (taskBadge) actual.append(taskBadge);
   actual.title = `实际：${difference.actual.summary}\n目标：${difference.target.summary}\n代码：${difference.actual.evidence}\n契约：${difference.target.evidence}`;
   return actual;
 }
@@ -1582,22 +1670,43 @@ function makeTimingWorkloadTraceEffect(workloadId, effectIndex, entry, stateAfte
     `原型 reducer workload：${registry?.label || workloadId}${statusLabel ? `，状态 ${statusLabel}` : ""}。事件 #${entry.seq} ${eventLabels[entry.event.type] || entry.event.type}。按下后聚焦该 reducer 事件。`
   );
   if (targetProjection) {
-    const { difference } = targetProjection;
+    const { difference, reviewState } = targetProjection;
     const disposition = fix0809DispositionFor(difference);
-    button.classList.add("is-workload-difference-target");
-    button.dataset.workloadDifferenceTargetId = difference.id;
     button.dataset.targetAnchor = difference.target.anchor;
     button.dataset.fix0809Disposition = difference.fix0809Disposition;
-    button.dataset.actualAnnotationId = `timing-workload-actual-${timingDOMID(difference.id)}`;
+    button.dataset.reviewState = difference.reviewState;
     const targetBadge = document.createElement("span");
     targetBadge.className = "timing-workload-target-badge";
-    targetBadge.textContent = `原型 Workload effect · 目标 ${difference.target.anchor}`;
-    button.append(targetBadge);
-    button.title = `${disposition ? `${disposition.visibleLabel} · ` : ""}既有原型 Workload effect · 目标生命周期 ${difference.target.anchor} ${targetProjection.targetAnchorReached ? "已到达" : "尚未到达"} · ${button.title}`;
-    button.setAttribute(
-      "aria-label",
-      `既有原型 Workload effect。${disposition ? `${disposition.accessibleLabel}。` : ""}对应目标生命周期 ${difference.target.anchor} ${targetProjection.targetAnchorReached ? "已到达" : "尚未到达"}。原型 reducer workload：${registry?.label || workloadId}${statusLabel ? `，状态 ${statusLabel}` : ""}。事件 #${entry.seq} ${eventLabels[entry.event.type] || entry.event.type}。按下后聚焦该 reducer 事件。`
-    );
+    const taskBadge = makeFollowUpTaskBadge(difference);
+    if (reviewState.decorateTarget) {
+      button.classList.add("is-workload-follow-up-target");
+      button.dataset.workloadFollowUpTargetId = difference.id;
+      button.dataset.fix0809Outcome = difference.fix0809Outcome;
+      targetBadge.textContent = `Candidate / Target Workload · ${difference.target.anchor}`;
+      const outcomeBadge = makeFix0809OutcomeBadge(difference);
+      button.append(targetBadge);
+      if (outcomeBadge) button.append(outcomeBadge);
+      if (taskBadge) button.append(taskBadge);
+      button.title = `${reviewState.visibleLabel} · Candidate 已在目标生命周期 ${difference.target.anchor} · ${button.title}`;
+      button.setAttribute(
+        "aria-label",
+        `Candidate 已在既有 Target Workload effect。${reviewState.accessibleLabel}。目标生命周期 ${difference.target.anchor} ${targetProjection.targetAnchorReached ? "已到达" : "尚未到达"}。${reviewState.taskLabel} ${difference.followUpTaskIDs.join("、")}。原型 reducer workload：${registry?.label || workloadId}${statusLabel ? `，状态 ${statusLabel}` : ""}。事件 #${entry.seq} ${eventLabels[entry.event.type] || entry.event.type}。按下后聚焦该 reducer 事件。`
+      );
+    } else if (reviewState.activeDifference) {
+      button.classList.add("is-workload-difference-target");
+      button.dataset.workloadDifferenceTargetId = difference.id;
+      if (reviewState.renderActualCard) {
+        button.dataset.actualAnnotationId = `timing-workload-actual-${timingDOMID(difference.id)}`;
+      }
+      targetBadge.textContent = `Prototype Target · ${difference.target.anchor}`;
+      button.append(targetBadge);
+      if (taskBadge) button.append(taskBadge);
+      button.title = `${disposition ? `${disposition.visibleLabel} · ` : ""}既有 Target Workload effect · 目标生命周期 ${difference.target.anchor} ${targetProjection.targetAnchorReached ? "已到达" : "尚未到达"} · ${button.title}`;
+      button.setAttribute(
+        "aria-label",
+        `既有 Prototype Target Workload effect。${reviewState.accessibleLabel}。${disposition ? `${disposition.accessibleLabel}。` : ""}对应目标生命周期 ${difference.target.anchor} ${targetProjection.targetAnchorReached ? "已到达" : "尚未到达"}。${reviewState.taskLabel} ${difference.followUpTaskIDs.join("、")}。原型 reducer workload：${registry?.label || workloadId}${statusLabel ? `，状态 ${statusLabel}` : ""}。事件 #${entry.seq} ${eventLabels[entry.event.type] || entry.event.type}。按下后聚焦该 reducer 事件。`
+      );
+    }
   }
   return button;
 }
@@ -1718,7 +1827,18 @@ function renderTimingEventView() {
         lifecycleTruthRegistry.some((truth) => (
           truth.mismatch
           && lifecycleTimingLaneRecordIDSet.has(truth.id)
+          && truth.activeDifference
+          && reviewStateFor(truth)?.renderConnector
           && truth.actual.anchor === milestoneID
+        ))
+      );
+      anchor.classList.toggle(
+        "has-lifecycle-follow-up",
+        lifecycleTruthRegistry.some((truth) => (
+          truth.mismatch
+          && lifecycleTimingLaneRecordIDSet.has(truth.id)
+          && reviewStateFor(truth)?.projectionMode === "mergeIntoTarget"
+          && truth.targetBinding.anchor === milestoneID
         ))
       );
       button.append(anchor);
@@ -1731,12 +1851,12 @@ function renderTimingEventView() {
     const differences = lifecycleTruthRegistry.filter((truth) => (
       truth.mismatch
       && lifecycleTimingLaneRecordIDSet.has(truth.id)
-      && reached.has(truth.actual.anchor)
+      && reached.has(lifecycleProjectionAnchor(truth))
     ));
     if (!differences.length) return null;
     const stack = document.createElement("div");
     stack.className = "timing-difference-stack";
-    stack.append(...differences.map(makeTimingLifecycleDifference));
+    stack.append(...differences.map(makeTimingLifecycleReviewCard));
     return stack;
   }));
 

@@ -1,31 +1,35 @@
 # TAP-0041 — First Camera-Interactive Readiness
 
 - Status: `Draft — bounded fix0809 device path accepted; full matrix open`
-- Related Delivery: `TAP-0009`
+- Related Delivery: `TAP-0009`, `TAP-0010`, `TAP-0015`, `TAP-0090`
 - Contract: `ProductContract §2.4–2.6`; `StartupLifecycleContract`
 - Build/Commit: `fix0809 candidate; this commit`
 - Device/iOS: `Owner-attended physical device; exact identifiers not recorded in this evidence`
 - Human Confirmation: `Accepted 2026-08-15 for the bounded fix0809 non-Network executed path; full procedure pending`
 
 This attended procedure proves the ordering that prevents early camera entry
-and freezes. The Agent must first agree with the owner on a safe method for
-delaying or failing readiness; an unreviewed fault injection is not allowed.
+and an unresponsive startup. The Agent must first agree with the owner on a
+safe method for delaying or failing readiness; an unreviewed fault injection is
+not allowed.
 
 The 2026-08-15 `fix0809` native candidate contains the independent marker,
 camera-plus-catalog gate, stable Resource Initialization surface, and local
 poster/recent-cover release needed for this procedure. The owner exercised and
-accepted that bounded lifecycle path on a physical device. Frozen Network,
-App Attest, and credential/network-dependent Pending scheduling still mean the
-complete deferred-release target is not implemented by this candidate.
+accepted that bounded lifecycle path on a physical device. Post-Setup App
+Attest and credential/network-dependent Pending scheduling were not migrated
+and remain owned by `TAP-0015`, so the complete deferred-release target is not
+implemented by this candidate.
 
 For this branch, only the non-Network candidate subset is executable: validate
 Camera/Photos → Initialization routing with an existing compatible Setup fact;
 exercise the two readiness groups, marker interruption/invalidation, committed
 Viewfinder-frame barrier, local poster/recent-cover release, and permission
 recovery. Canonical credential-bound Setup receipt creation and the App Attest/
-Pending children of deferred release remain blocked by the owner freeze. The
-bounded device acceptance recorded below does not assign this full procedure a
-`Pass` verdict or substitute for its unexecuted scenario matrix.
+Pending children of deferred release remain blocked on `TAP-0010` and
+`TAP-0015`. The bounded device acceptance recorded below does not assign this
+full procedure a `Pass` verdict or substitute for its unexecuted scenario
+matrix. `TAP-0090` owns the non-Network structured ordering assertions reused by
+this attended procedure.
 
 ## 2026-08-15 Bounded Device Observation
 
@@ -35,14 +39,14 @@ flow. The log records the usable TAP Library catalog publication before the
 camera readiness group, followed by initialization-marker commit and then the
 local recent-cover refresh release. The owner also exercised the resulting
 Viewfinder/Library experience without reporting an early marker, black or
-frozen preview, or unsafe first interaction.
+stalled preview, or unsafe first interaction.
 
 This observation covers only the executed path. It does not cover the second
 interruption round, readiness fault injection, Camera/Photos revocation and
 recovery, In-place App Update, restore/migration, exact marker-file inspection,
 or instrumented physical timing. Canonical credential-bound `S`, Network, and
 the App Attest/Pending children of `W11/W12` remain outside the accepted
-candidate scope under the existing owner freeze.
+candidate scope under `TAP-0010`/`TAP-0015`.
 
 ## Preconditions
 
@@ -54,16 +58,19 @@ candidate scope under the existing owner freeze.
   metadata snapshot, initialization-marker write, Viewfinder entry, deferred
   App Attest health/recovery, and Pending Capture Queue retry.
 - A reviewed readiness delay/failure method and marker inspection are available.
+- The `TAP-0090` public-safe versioned JSON/JSONL trace schema and assertion
+  report are available for the non-Network ordering consumed here.
 - **Owner live:** the owner can observe the real frame, controls, shutter, and
   haptic response.
 
 ## Reset And Install
 
-1. Perform Delete-and-Reinstall with the frozen build; confirm setup is
+1. Perform Delete-and-Reinstall with the pinned build; confirm setup is
    incomplete.
 2. Complete the Network row's first-install App Attest bootstrap; then authorize
    Camera and Photos; optionally skip Location/Microphone.
-3. Start continuous recording and logs before pressing Continue.
+3. Start the structured device log before pressing Continue. Do not start or
+   retain a photo, screenshot, or screen recording as proof.
 4. Reserve a second Delete-and-Reinstall round for interruption/failure
    recovery.
 
@@ -83,7 +90,7 @@ candidate scope under the existing owner freeze.
    bundle, version, build, initialization schema, installation generation, and
    local device-generation fields.
 5. **Owner live:** immediately after dismissal, capture once and operate a FOV
-   plus a primary mode/control. Confirm a real frame, normal haptic, no freeze,
+   plus a primary mode/control. Confirm a real frame, normal haptic, no UI stall,
    black screen, or unresponsive control.
 6. On the second Delete-and-Reinstall round, use the approved method to terminate after
    Continue but before both readiness groups complete. Relaunch: the Setup
@@ -109,16 +116,31 @@ candidate scope under the existing owner freeze.
 
 ## Required Evidence
 
-- Continuous Continue-to-first-capture recording and event timeline.
+- A structured Continue-to-first-interaction event timeline with monotonic
+  ordering and automated assertions.
 - Setup-receipt and initialization-marker timestamps relative to Continue,
-  graph, first frame, controls/haptics, and Library catalog publication.
-- Interruption/failure relaunch evidence and marker inspection.
-- Successful first capture/control artifact and logs after readiness.
-- Foreground Process Launch recordings after Photos and Camera revocation, including
+  graph readiness, first real preview, safe controls/haptics, and Library
+  catalog publication.
+- Structured interruption/relaunch events plus a public-safe textual marker
+  inspection containing only schema/runtime/install/device-generation status,
+  never credential material.
+- A capture-success event and control/haptic interaction events after readiness;
+  no captured image is retained as proof.
+- Foreground Process Launch logs after Photos and Camera revocation, including
   Required Permission Check and automatic post-recovery routing.
-- Offline App Attest/queue logs showing camera readiness remains independent.
-- **Owner live:** confirmation of real preview, haptic, safe controls, and no
-  freeze.
+- Offline App Attest/queue scheduling logs showing camera readiness remains
+  independent. A deliberately rejected Debug attestation is not a lifecycle
+  failure verdict; only its scheduling position is relevant here.
+- Automated assertions for the required ordering and prohibited-early-work
+  conditions.
+- The machine-readable `TAP-0090` assertion report, with each result mapped to
+  its stable TAP-0087 lifecycle/workload record ID.
+- **Owner live:** a retained textual verdict confirming the real preview,
+  haptic, safe controls, and absence of a UI stall.
+
+Do not save a photo, screenshot, or screen recording as acceptance proof. The
+structured logs, automated assertions, and owner-live textual verdict are the
+durable evidence for this procedure.
 
 This procedure begins before Continue and proves readiness ordering, but it does
 not measure `Δt0–t1` or close a Launch Screen timing threshold. `TAP-0083`
@@ -129,7 +151,7 @@ owns the same-device 2 × 2 Debug/Release-by-debugger launch comparison.
 - **Pass:** both readiness groups precede marker/entry; interruption cannot
   leave a false marker; later Camera/Photos changes use Required Permission
   Check without replaying Setup; the owner accepts the first interaction.
-- **Fail:** the marker is early; a fake/black/frozen preview appears; shutter or
+- **Fail:** the marker is early; a fake, black, or stalled preview appears; shutter or
   controls are unsafe; background credential work blocks entry; or permission
   changes reopen setup.
 - **Blocked:** first-frame/marker ordering is not observable; no approved

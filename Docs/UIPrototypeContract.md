@@ -157,7 +157,8 @@ The right-side inspector may show:
 - lifecycle-marker effects; and
 - a bounded deterministic event log.
 
-Every workload entry presents two explicit records plus an alignment verdict:
+Every workload registry entry preserves two explicit records plus an alignment
+verdict:
 
 ```text
 observed { trigger, owner, earliest, blocks, network, evidence }
@@ -167,117 +168,119 @@ alignment = aligned | partial | gap | deferred
 
 `observed` describes current-main source placement and cites source evidence;
 `target` describes the contract-required placement and cites its contract or
-Task evidence. Every workload also registers one inspection moment as
-`{ event, status, page }`: the lifecycle point the owner intends “click to
-inspect,” normally the moment that workload becomes prepared for its role. A
-workload card is reviewer navigation into the complete reducer snapshot at that
-moment, not merely a machine-focus shortcut.
+Task evidence. The active reviewer presentation below determines whether those
+records remain a visible actual/target pair or the implemented candidate is
+shown once at its target effect. Every workload also registers one inspection
+moment as `{ event, status, page }`: the lifecycle point the owner intends
+“click to inspect,” normally the moment that workload becomes prepared for its
+role. A workload card is reviewer navigation into the complete reducer snapshot
+at that moment, not merely a machine-focus shortcut.
 
 The inspector also owns a separate, source-grounded **TAP-0008 / TAP-0009 code
 truth** projection. Route, persistence, recovery, readiness, and presentation
-differences are not forced into the workload state machine when they are not
-executable workloads. Each truth record has a stable ID, related Task IDs,
-`actual { anchor, phase, summary, evidence }`,
-`target { anchor, phase, summary, evidence }`, and an explicit alignment verdict.
-Anchors are data, never parsed from prose. The active v18 inspector is an
-**unresolved-only** projection: every loaded truth record still differs from
-the prototype target and keeps the visible word **不一致**. Removing a record
-from the active catalog does not rewrite its audited baseline, actual phase, or
-target phase. The complete v17 outcome catalog remains recoverable at
-`fix0809@d4b19d9`; accepted and originally aligned records from that revision
-are historical and are not copied into an active archive inside the manifest.
+facts are not forced into the workload state machine when they are not
+executable workloads. Each truth record has a stable ID, related Task IDs, and
+historical baseline fields
+`actual { anchor, phase, summary, evidence }` and
+`target { anchor, phase, summary, evidence }`. Anchors are data, never parsed
+from prose. Those baseline fields continue to describe the
+`main@4cc02e5f12f2` audit; they do not force the current candidate to render as
+if its implemented work still occupied the old actual position.
 
-Each active mismatch reads its `fix0809Disposition` and `fix0809Outcome` from
-the prototype manifest rather than inferring either field from IDs or prose.
-Only two unresolved outcome treatments are active in v18, and both project in
-the right lifecycle cards, Timing lifecycle cards, and Workload actual cards:
+The active candidate derives one of two review presentations from the manifest:
 
-- `implementedNotLogVerified`: yellow background and red border. The code
-  changed, but the supplied log did not cover enough of this record to claim
-  alignment.
-- `deferredFrozen`: red background and red border. Network, App Attest, and
-  credential/network-dependent Pending behavior remain frozen and untreated.
+- **Implemented at target position; validation pending.** The right-side card
+  uses a yellow background with a red border, names the candidate/target phase,
+  and links the derived follow-up Tasks. It is a pending-regression record,
+  not an active mismatch and does not display **不一致**, a current-main actual
+  phase, a blue comparison target, or an actual-to-target difference line.
+- **Task-owned behavior not migrated.** Network, App Attest, and
+  credential/network-dependent Pending behavior that remains outside the
+  candidate keeps a red actual card, an existing blue target, and one red
+  dashed actual-to-target difference line. Its visible label and accessible
+  name identify the owning implementation Task directly; active copy does not
+  use session-relative disposition language. For `networkBootstrap`, `/healthz`
+  remains current behavior and never becomes the target state.
 
-No log-accepted or originally aligned lifecycle/workload record is loaded into
-the active JSON catalog or mounted into the DOM. Every active yellow card still
-says **不一致** because it records a remaining evidence gap beside the audited
-source/target difference. A deferred record shows the manifest label **本轮冻结
-· Network/App Attest/Pending**. For `networkBootstrap`, this means Network/App
-Attest behavior is excluded from fix0809; it never means that `/healthz` has
-become the target state or that the mismatch is resolved.
+For this candidate, `TAP-0090` owns non-Network lifecycle-order and workload-
+period regression assertions; `TAP-0040`/`TAP-0041` own attended startup
+evidence; `TAP-0083` owns route-shell/first-frame placement and 2 × 2 timing;
+and `TAP-0048` owns exact prototype/native visual parity. Initial Network/App
+Attest that is not migrated is owned by `TAP-0010`; post-Setup App Attest and
+credential/network-dependent Pending are owned by `TAP-0015`.
 
-A workload record may narrow its broader lifecycle parent: Network/App Attest
-and credential/network-dependent children remain `deferredFrozen` even when a
-non-network portion of the parent truth is `approvedToFix`. The child record's
-JSON disposition and outcome control the visible badge, color treatment, and
-accessible name. Outcome is always stored per child; it is never inherited from
-the parent lifecycle truth. In particular, the active `deferredWorkGuard`
-parent remains yellow with a red border while its frozen App Attest and Pending
-children remain red with red borders.
+No device-log-accepted or originally aligned historical record is reintroduced
+into active JSON solely to provide an archive; the complete prior outcome
+catalog remains recoverable at `fix0809@d4b19d9`. Each active record still reads
+its implementation/verification disposition and linked Task IDs from the
+manifest rather than inferring them from its ID or prose.
 
-The v18 active catalog contains nine unresolved lifecycle truths. Five
-non-workload truths render as lifecycle cards; four workload-owned truths render
-only through eight scoped Workload-lane difference records, comprising seven
-timing differences and one semantic difference. Workload-owned truths must not
-also produce a lifecycle truth card or lifecycle-circle connector. Accepted and
-aligned v17 records produce no active JSON record, card, lane item, connector,
-filter result, accessible item, or DOM node.
+A Workload child may narrow a broader lifecycle parent. The child record's JSON
+state controls its badge, color, geometry, accessible name, and Task link; it is
+never inherited from the parent lifecycle truth. This lets an implemented local
+portion of `deferredWorkGuard` appear at its target workload effect while the
+unmigrated App Attest and Pending children remain explicit red actual-to-blue-
+target differences.
 
-This unresolved-only composition is still `ownerReviewRequired`. Pruning
-accepted and aligned records approves neither the complete v18 workbench nor
-any remaining lifecycle target, native parity claim, or device scenario.
+Lifecycle-truth ownership and Workload ownership remain disjoint. A
+workload-owned truth renders only through its scoped Workload records and must
+not also produce a lifecycle card or lifecycle-circle decoration. The manifest
+owns the active counts and partitions; the renderer must not hardcode them.
 
-Every visible mismatch truth card has exactly one decorative red dashed connector to
-the circular `t0…tn` anchor that locates its **current-main actual phase**. The
-card separately names the target phase, so the connector cannot be read as a
-target transition. Scrolling, filtering, resize, and responsive reflow must
-recompute this one-to-one mapping; a hidden or clipped card does not leave a
-floating connector. The SVG is accessibility-hidden, while each card's text and
-accessible name state actual phase, target phase, and verdict without relying on
-color. These dashed paths are difference annotations, not reducer-journal edges,
-machine transitions, native timing evidence, or proof that current main emits a
-canonical `t*` milestone. They connect only to the always-present timeline
-circles, never to an executed-path machine node that may be absent from the
-current journal.
+This candidate composition remains `ownerReviewRequired`. Moving implemented
+records to target placement and attaching verification Tasks does not claim
+that their regression procedures have passed, approve the complete workbench,
+or approve any Task-owned behavior that is still visibly unmigrated.
 
-The **Timing 时序** projection gives every mismatch exactly one lane owner.
-Non-workload lifecycle differences appear in the reviewer-only **08/09 生命周期**
-lane after their explicit `actual.anchor` is present. Each outcome-colored
-lifecycle card keeps one dashed path to that column's circular milestone.
-Workload-related
-truth is omitted from this lane so it cannot appear once as lifecycle and again
-as workload.
+Only a red not-migrated truth card owns a decorative red dashed connector to
+the circular `t0…tn` anchor for its current-main actual phase. Its blue target
+and target phase remain separate. Scrolling, filtering, resize, and responsive
+reflow recompute this one-to-one mapping; a hidden or clipped red actual card
+does not leave a floating connector. The SVG is accessibility-hidden, while
+the card and target state actual phase, target phase, owning Task, and verdict
+without relying on color. These paths are difference annotations, not reducer-
+journal edges, machine transitions, native timing evidence, or proof that
+current main emits a canonical `t*` milestone. An implemented-at-target yellow
+card owns no such path.
 
-Workload differences live inside the existing **Workload** lane; there is no
-standalone comparison band or second Workload lane. Their canonical records are
+The **Timing 时序** projection gives every active record exactly one lane owner.
+An implemented non-workload lifecycle record appears in the reviewer-only
+**08/09 生命周期** lane at its explicit `target.anchor`, uses the yellow/red
+pending-validation treatment, and has no difference line. A not-migrated
+non-workload lifecycle record appears at its `actual.anchor` as a red actual
+card with one dashed path to its blue target. Workload-related truth is omitted
+from this lane so it cannot appear once as lifecycle and again as workload.
+
+Workload follow-up and active-difference records live inside the existing
+**Workload** lane; there is no standalone comparison band or second Workload
+lane. Their canonical records are
 loaded from the repository JSON manifest, and the controller must not duplicate
 records, ownership IDs, or derived counts. A record has an explicit
 `differenceType` of `timing` or `semantic`, one scoped current-main path and
 checkpoint, evidence-backed actual/target anchors, and the lifecycle-truth IDs
 whose Workload-lane representation it owns.
 
-Every canonical reducer workload effect remains present. A manifest-owned
-current-main difference appears as an outcome-colored **实际 · 不一致** annotation in the
-`actualVisibleAfter` reviewer visibility/upstream projection column only after its JSON
-`scenarioGroupID` matches; the annotation separately names the coarse
-`actual.anchor` lifecycle period. Its corresponding prototype workload is
-the already-rendered trace effect uniquely selected by event type, workload ID,
-resulting status, and occurrence; that existing effect is blue and retains its
-normal focus/status behavior. Exactly one dashed SVG connector joins the two
-when the target exists.
+Every canonical reducer workload effect remains present. For an implemented
+record, the exact existing target effect selected by event type, workload ID,
+status, and occurrence receives the yellow background/red-border candidate
+decoration and linked verification Task directly. There is no separate
+**实际 · 不一致** annotation, blue duplicate, or dashed line. The effect keeps its
+canonical focus action and `Eligible` / `Running` / `Ready` state; the yellow
+decoration does not promote it to completion or imply that validation passed.
 
-The actual annotation states mismatch kind, checkpoint, real source scope/trigger,
-actual and target phases, target reachability, and the reviewer projection
-event. It focuses that projection column, which controls only when the source-
-grounded difference becomes visible; it does not claim that current main ran the
-actual workload during that prototype reducer event.
-If the target effect is absent, it says **既有 trace effect 尚未出现** and
-renders no synthetic blue target, future trace column, milestone node, reducer
-event, workload transition, marker effect, or phone-state mutation. The card
-shows target lifecycle-anchor reachability separately from the exact existing
-workload effect's canonical `Eligible` / `Running` / `Ready` status. Current-main
-placement remains source-order or predicate inference, not an instrumented
-timestamp, elapsed duration, or device-performance claim.
+For behavior that is still not migrated, the JSON-selected
+`actualVisibleAfter` projection may show one red actual annotation containing
+the source scope/trigger, actual phase, target phase, and owning Task. Its
+corresponding existing prototype effect remains blue, and exactly one dashed
+line joins the pair when that effect exists. The projection event controls only
+when the source-grounded actual becomes reviewable; it does not claim that
+current main executed the work during that prototype reducer event. If the
+target effect is absent, the red actual card says **既有 trace effect 尚未出现**
+and creates no synthetic target, connector, future column, milestone, reducer
+event, workload transition, marker effect, or phone-state mutation.
+
+Historical current-main placement remains source-order or predicate inference,
+not an instrumented timestamp, elapsed duration, or device-performance claim.
 
 On click, the workbench first searches the current playback history for a real
 snapshot matching all three registered moment fields whose tail event effects
@@ -327,11 +330,14 @@ native execution satisfies the target milestone.
 One reducer/event trace must drive the phone surface and every inspector
 highlight, including both diagram modes and the selected UI's contextual
 operations. The inspector cannot maintain a second state machine that
-disagrees with the simulated product flow. Current-source placement and
-intended target placement remain visibly distinct until native evidence proves
-alignment. Workload-card navigation therefore changes the review cursor or
-explicitly replaces the review trace with a registered canonical fixture; it
-never patches only the right-side inspector.
+disagrees with the simulated product flow. A Task-owned behavior that has not
+been migrated keeps its current-source and target placement visibly distinct.
+An implemented behavior instead occupies the target placement once, carries a
+yellow/red pending-regression treatment and its follow-up Tasks, and does not
+retain a synthetic actual-to-target difference solely because regression
+evidence remains open. Workload-card navigation therefore changes the review
+cursor or explicitly replaces the review trace with a registered canonical
+fixture; it never patches only the right-side inspector.
 
 The Launch Screen fixture is labeled as a static iOS-owned reference and cannot
 show progress or claim measured duration. Deterministic delays in the Web page
@@ -395,7 +401,10 @@ reducer path.
 
 A physical-device gap receives a separate `DeviceAcceptance` Task with explicit
 preconditions, numbered procedure, expected results, evidence outputs, and
-human confirmation.
+human confirmation. Durable acceptance evidence is limited to public-safe
+structured logs or JSON/JSONL, automated assertion reports, build/device
+identifiers, and an owner-live textual verdict. Do not retain a photo,
+screenshot, or screen recording as prototype or device-acceptance proof.
 
 ## 6. Current Viewer Visual Contract
 

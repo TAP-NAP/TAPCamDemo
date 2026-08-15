@@ -2,7 +2,7 @@
 
 - Status: canonical product constraint document
 - Owner: product owner
-- Last updated: 2026-08-14
+- Last updated: 2026-08-15
 
 This document is the single current product contract for TAPCamDemo. It defines
 what the product currently does, what it deliberately does not do, which work is
@@ -520,14 +520,20 @@ scope. Its acceptance record must include:
 - prerequisites and reset/install procedure;
 - numbered user actions;
 - an expected result for every action;
-- required logs, screenshots, recordings, and output artifacts;
+- required evidence types, such as structured logs, automated assertions,
+  textual owner verdicts, and output artifacts where the procedure actually
+  needs them;
 - explicit pass, fail, and blocked conditions;
 - final human confirmation.
 
-Simulator tests, automated UI tests, logs, and screenshots may contribute
-evidence, but they cannot impersonate an attended physical-device acceptance.
-Only an explicitly recorded owner acceptance can close a `DeviceAcceptance`
-task.
+Simulator tests, automated UI tests, structured logs, and procedure-approved
+artifacts may contribute evidence, but they cannot impersonate an attended
+physical-device acceptance. Image or video proof is retained only when the
+specific owner-approved procedure requires it. The TAP-0040/TAP-0041 startup
+lifecycle procedures retain no photo, screenshot, or screen recording; they
+use public-safe structured logs, automated assertions, and an owner-live
+textual verdict. Only an explicitly recorded owner acceptance can close a
+`DeviceAcceptance` task.
 
 Cold-path behavior is a separate required evidence condition whenever a
 capability performs first-install, empty-cache, first-open, large-catalog,

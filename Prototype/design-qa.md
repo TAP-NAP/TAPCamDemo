@@ -274,7 +274,46 @@ final result: passed visual prototype gate
 
 final result: passed
 
-## TAP-0087-r1 startup-lifecycle candidate QA
+## Active TAP-0087-r1 target-placement candidate QA
+
+- Candidate entry: `startup-lifecycle.html`.
+- Status: `candidate`; `ownerReviewRequired`.
+- The `main@4cc02e5f12f2` actual/target fields remain historical audit data.
+  Current rendering is derived from manifest `reviewState`,
+  `activeDifference`, and `followUpTaskIDs`.
+- An implemented lifecycle record renders once at `target.anchor` in the right
+  panel and **08/09 生命周期** Timing lane with a yellow background/red border.
+  It has no actual card, blue target duplicate, **不一致** verdict, or dashed
+  connector.
+- An implemented Workload record decorates its exact existing target effect
+  yellow/red. It has no separate Actual card, blue duplicate, or connector.
+- Initial Network/App Attest remains a `TAP-0010` red actual-to-blue-target
+  difference. Post-Setup App Attest and credential/network-dependent Pending
+  remain `TAP-0015` red actual-to-blue-target differences. Their active labels
+  name those owning Tasks directly.
+- Non-Network lifecycle ordering and workload-period regression is tracked by
+  `TAP-0090`; attended evidence remains in `TAP-0040`/`TAP-0041`, numeric
+  route-shell/first-frame and 2 × 2 timing in `TAP-0083`, and exact
+  prototype/native visual parity in `TAP-0048`.
+- Browser DOM/computed-style verification at
+  `startup-lifecycle.html?revision=v19` confirmed the new presentation without
+  saving an image. Ordinary Process Launch sequence `17` rendered five right
+  lifecycle target follow-ups and five Timing lifecycle target follow-ups with
+  zero lifecycle Actual cards/connectors; Workload rendered four yellow/red
+  target follow-ups plus two red Actual/two blue Target/two connector pairs.
+  Fresh Installation sequence `27` rendered two yellow/red target follow-ups
+  plus four task-owned Actual/Target/connector pairs. Yellow targets carried no
+  `actualAnnotationId`; every retained path was non-empty and contained no
+  `NaN` or `undefined`; Timing to Ordered log to Timing preserved the counts;
+  browser console inspection returned no warning or error.
+- Do not create or retain photo, screenshot, or screen-recording proof. Durable
+  evidence is the structured DOM/reducer assertion report, console result, and
+  owner-live textual verdict.
+
+final result: passed for v19 reviewer projection and no-image browser DOM/style
+verification; complete TAP-0087 composition approval remains separately open
+
+## Historical TAP-0087-r1 v18 startup-lifecycle candidate QA
 
 - Task: `TAP-0087`; P0 prerequisite for `TAP-0008`, `TAP-0009`, and
   `TAP-0083`.
@@ -286,7 +325,7 @@ final result: passed
   existing TAP-0008-r2, TAP-0009-r1, and TAP-0081-r3 approvals remain
   independent and do not approve this workbench revision.
 
-### v18 contract represented
+### Historical v18 contract represented
 
 - The workbench uses one UI surface catalog with contextual legal operations,
   one `393 x 852` app-owned preview, and one lifecycle/workload/state inspector.
@@ -409,7 +448,7 @@ parity result, physical-device timing, or owner approval is claimed here.
   implementation, not physical timing, and not approval of the complete v17
   composition.
 
-### v18 browser-verified remaining-problems view
+### Historical v18 browser-verified remaining-problems view
 
 - Codex in-app Browser loaded `startup-lifecycle.html?revision=v18` at
   `1575 x 1204`. The body stayed `1204 / 1204` with no page-level vertical
@@ -462,7 +501,7 @@ parity result, physical-device timing, or owner approval is claimed here.
 - Incremental `dev.logs` inspection before and after the exercised actions
   contained no new `error` entry.
 
-### Current automated and static checks
+### Historical v18 automated and static checks
 
 - `node --test Prototype/*.test.mjs`: `58/58` passed.
 - `node --check` passed for all six Prototype MJS files.
@@ -623,23 +662,23 @@ parity result, physical-device timing, or owner approval is claimed here.
   `body.scrollHeight` and `body.clientHeight` were both `1204`; Timing retained
   one internal `1019 / 336` scroll surface.
 - In fresh-install sequence `5`, `initialAttestationCompletionMeaning` remained
-  a red mismatch, visibly said **本轮暂缓 · Network frozen**, decorated the
-  existing blue target, and owned one `4px 4px` dashed path. At sequence `12`,
-  `firstInstallCredentialStartsAfterContinue` appeared with the same frozen
-  treatment and its own backward connector to the existing Setup App Attest
-  effect.
+  a red mismatch, used the old relative-time Network label archived at
+  `d4b19d9`, decorated the existing blue target, and owned one `4px 4px` dashed
+  path. At sequence `12`, `firstInstallCredentialStartsAfterContinue` appeared
+  with the same historical red treatment and its own backward connector to the
+  existing Setup App Attest effect.
 - In ordinary-process sequence `9`, eight actual annotations rendered with
   seven existing blue targets and seven paths. The non-network poster and
   recent-cover guard records said **fix0809 · 已批准修复**. Post-setup App Attest
   and credential/network-dependent Pending recovery remained red and said
-  **本轮暂缓 · Network frozen**.
+  the same old relative-time Network label archived at `d4b19d9`.
 - Every actual whose exact target existed had one target and one connector; no
   connector was orphaned, empty, `NaN`, or `undefined`. Red/blue gradients and
   borders remained intact. Switching **Timing → 顺序日志 → Timing** preserved
-  ordinary sequence `9` and restored all `8 / 7 / 7` elements plus both frozen
-  children.
+  ordinary sequence `9` and restored all `8 / 7 / 7` elements plus both
+  task-owned children.
 - Visible and accessible disposition labels came from the manifest registry.
-  Deferred items remained mismatches rather than becoming aligned, and the
+  Task-owned items remained mismatches rather than becoming aligned, and the
   accessible copy continued to state that `/healthz` is not the target.
 - Browser console inspection returned no warning or error. Both evidence files
   are real PNG images:
@@ -679,22 +718,26 @@ no screenshot file was saved.
 Mobile/responsive coverage, exact prototype-to-native visual parity, and
 physical-device timing remain unclaimed. Separately, the owner accepted the
 bounded `fix0809` non-Network lifecycle path after exercising it on a physical
-device; that verdict is not approval of the exact v18 workbench or its complete
-scenario matrix. Exact product-owner review of the v18 workbench and
-synchronized contract remains required.
+device; that verdict is not approval of the current workbench or its complete
+scenario matrix. `TAP-0048`, `TAP-0083`, `TAP-0090`, and the applicable
+attended `TAP-0040`/`TAP-0041` procedures retain those gates. Exact product-
+owner review of the synchronized workbench and contract remains required.
 
 ### 2026-08-15 `fix0809` native candidate
 
-- The active manifest now keeps only unresolved native implementation records;
-  the complete implementation and acceptance record remains at `d4b19d9`.
+- The complete earlier implementation/acceptance record remains at `d4b19d9`.
+  The active manifest presents implemented non-Network records at their target
+  positions with linked validation Tasks; it does not preserve them as active
+  actual-versus-target position mismatches.
 - Setup/marker separation, retained-container routing, camera construction, and
-  deferred release remain partial active records. Camera mounting now follows route
-  selection and uses lazy `StateObject` construction, but `Task.yield()` is not
-  a real shell-frame acknowledgement; canonical `S` and Network-owned deferred
-  work also remain outside the approved frozen boundary.
+  local deferred release are implemented candidate records. Camera mounting
+  follows route selection and uses lazy `StateObject` construction, but
+  `Task.yield()` is not a real shell-frame acknowledgement; `TAP-0083` owns
+  that placement/timing evidence and `TAP-0090` owns structured lifecycle
+  ordering regression.
 - The owner-approved TAP-0009 Resource Initialization hierarchy and two
   readiness rows are present in SwiftUI. Required Permission Check remains a
-  visual/copy candidate rather than a claimed v18 approval.
+  visual/copy candidate; exact parity is owned by `TAP-0048`.
 - Marker I/O is off-MainActor and fails closed without Application Support;
   local poster/recent-cover work and pending App Intent navigation wait for a
   two-display-tick committed-Viewfinder barrier.
@@ -706,8 +749,9 @@ synchronized contract remains required.
   lifecycle path on a physical device. The supplied log showed Library catalog
   publication and camera readiness before initialization-marker commit, then
   local recent-cover release. Interruption/fault injection, permission recovery,
-  update/restore, measured timing, canonical `S`, and complete `W11/W12` remain
-  outside that verdict.
+  update/restore, measured timing, and canonical `S` remain outside that
+  verdict. Initial Network/App Attest stays with `TAP-0010`; post-Setup App
+  Attest and credential/network-dependent Pending stay with `TAP-0015`.
 
-final result: native bounded path owner-accepted; exact v18 composition and full
-scenario matrix remain candidate work
+final result: native bounded path owner-accepted; linked regression, visual,
+timing, Network/App Attest/Pending, and full-scenario Tasks remain open

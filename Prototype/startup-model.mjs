@@ -51,7 +51,7 @@ const fix0809OutcomeCatalog = (
     && typeof outcome === "object"
     && typeof outcome.visibleLabel === "string"
     && typeof outcome.accessibleLabel === "string"
-    && ["implemented", "frozen"].includes(outcome.implementationState)
+    && ["implemented", "taskOwned"].includes(outcome.implementationState)
     && ["deviceLogAccepted", "notCoveredByDeviceLog", "notApplicable"].includes(outcome.verificationState)
     && ["yellow", "red"].includes(outcome.fillTone)
     && ["yellow", "red"].includes(outcome.borderTone)
@@ -59,6 +59,26 @@ const fix0809OutcomeCatalog = (
   ))
 )
   ? loadedFix0809OutcomeCatalog
+  : {};
+const loadedReviewStateCatalog = lifecycleDifferenceManifest.reviewStateCatalog;
+const reviewStateCatalog = (
+  loadedReviewStateCatalog
+  && typeof loadedReviewStateCatalog === "object"
+  && !Array.isArray(loadedReviewStateCatalog)
+  && Object.values(loadedReviewStateCatalog).every((reviewState) => (
+    reviewState
+    && typeof reviewState === "object"
+    && typeof reviewState.visibleLabel === "string"
+    && typeof reviewState.accessibleLabel === "string"
+    && ["mergeIntoTarget", "actualToTarget"].includes(reviewState.projectionMode)
+    && typeof reviewState.renderActualCard === "boolean"
+    && typeof reviewState.renderConnector === "boolean"
+    && typeof reviewState.decorateTarget === "boolean"
+    && typeof reviewState.activeDifference === "boolean"
+    && typeof reviewState.taskLabel === "string"
+  ))
+)
+  ? loadedReviewStateCatalog
   : {};
 const loadedWorkloadDifferenceManifest = lifecycleDifferenceManifest.workloadDifferenceComparison;
 const workloadDifferenceManifest = Array.isArray(loadedWorkloadDifferenceManifest?.records)
@@ -80,15 +100,40 @@ const timingProjection = (
 )
   ? loadedTimingProjection
   : { lifecycleLaneRecordIDs: [], workloadLaneTruthRecordIDs: [] };
+const lifecycleReviewRecordsValid = lifecycleDifferenceManifest.records.every((record) => {
+  const reviewState = reviewStateCatalog[record?.reviewState];
+  return Boolean(
+    reviewState
+    && record.activeDifference === reviewState.activeDifference
+    && Array.isArray(record.followUpTaskIDs)
+    && record.followUpTaskIDs.length > 0
+    && record.followUpTaskIDs.every((taskID) => typeof taskID === "string" && taskID.length > 0)
+    && record.targetBinding?.kind === "lifecycleAnchor"
+    && record.targetBinding.anchor === record.target?.anchor
+  );
+});
+const workloadReviewRecordsValid = workloadDifferenceManifest.records.every((record) => {
+  const reviewState = reviewStateCatalog[record?.reviewState];
+  return Boolean(
+    reviewState
+    && record.activeDifference === reviewState.activeDifference
+    && Array.isArray(record.followUpTaskIDs)
+    && record.followUpTaskIDs.length > 0
+    && record.followUpTaskIDs.every((taskID) => typeof taskID === "string" && taskID.length > 0)
+  );
+});
 if (
   !prototypeDifferenceDataError
   && (
     lifecycleDifferenceManifest !== loadedLifecycleDifferenceManifest
     || fix0809DispositionCatalog !== loadedFix0809DispositionCatalog
     || fix0809OutcomeCatalog !== loadedFix0809OutcomeCatalog
+    || reviewStateCatalog !== loadedReviewStateCatalog
     || workloadDifferenceManifest !== loadedWorkloadDifferenceManifest
     || workloadDifferenceScenarioGroups !== loadedWorkloadDifferenceScenarioGroups
     || timingProjection !== loadedTimingProjection
+    || !lifecycleReviewRecordsValid
+    || !workloadReviewRecordsValid
   )
 ) {
   prototypeDifferenceDataError = "Prototype difference manifest has an invalid record shape";
@@ -102,6 +147,7 @@ export const PROTOTYPE_DIFFERENCE_DATA_STATUS = Object.freeze({
 export const lifecycleTruthRegistry = Object.freeze(clone(lifecycleDifferenceManifest.records));
 export const fix0809DispositionRegistry = Object.freeze(clone(fix0809DispositionCatalog));
 export const fix0809OutcomeRegistry = Object.freeze(clone(fix0809OutcomeCatalog));
+export const reviewStateRegistry = Object.freeze(clone(reviewStateCatalog));
 export const lifecycleTimingLaneRecordIDs = Object.freeze(clone(timingProjection.lifecycleLaneRecordIDs));
 export const workloadLaneTruthRecordIDs = Object.freeze(clone(timingProjection.workloadLaneTruthRecordIDs));
 export const workloadDifferenceRegistry = Object.freeze(clone(workloadDifferenceManifest.records));

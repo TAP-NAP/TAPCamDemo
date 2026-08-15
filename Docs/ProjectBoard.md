@@ -1,7 +1,7 @@
 # TAPCam Project Board
 
 - Schema: `1`
-- Next Task ID: `TAP-0090`
+- Next Task ID: `TAP-0091`
 - Canonical Product Contract: [ProductContract.md](ProductContract.md)
 - UI Prototype Contract: [UIPrototypeContract.md](UIPrototypeContract.md)
 - Board Steward Session: `019ff4ea-acba-7051-bd0f-3d489f1caadc`
@@ -34,12 +34,12 @@ from each record's `Status` field.
 
 ### Todo
 
-- `TAP-0010` Align Network bounded auto-retry and manual Retry
+- `TAP-0010` Implement first-install Network/App Attest and Setup-receipt lifecycle
 - `TAP-0011` Make zero-depth TAP Video non-blocking
 - `TAP-0012` Align Standard FOV/depth and PRO no-crop behavior
 - `TAP-0013` Rebuild lifecycle-correct Locked Camera on the experiment branch
 - `TAP-0014` Remove redundant Verify UX for TAPCam-owned captures
-- `TAP-0015` Implement fine-grained credential retry optimization
+- `TAP-0015` Implement post-setup App Attest/Pending guards and retry optimization
 - `TAP-0016` Design and implement TAP Video 3D
 - `TAP-0017` Add white-balance UI
 - `TAP-0018` Design true camera source switching
@@ -63,11 +63,10 @@ from each record's `Status` field.
 - `TAP-0047` Device acceptance: Library permission and deletion semantics
 - `TAP-0048` Acceptance: Web prototype to SwiftUI parity
 - `TAP-0049` Device acceptance: lifecycle-correct Locked Camera (blocked)
+- `TAP-0090` Add machine-checkable non-Network startup lifecycle regression evidence
 
 ### Doing
 
-- `TAP-0008` Enforce explicit-action-only first-install operations
-- `TAP-0009` Enforce first-frame camera-interactive readiness
 - `TAP-0083` Eliminate cold-path UI starvation and codify responsiveness guardrails
 - `TAP-0087` Define startup lifecycle, heavy-work budgets, and an instrumented prototype
 
@@ -78,6 +77,8 @@ from each record's `Status` field.
 - `TAP-0003` Migrate unique facts, then remove obsolete documents
 - `TAP-0004` Normalize TAP Library and Pending Capture Queue terminology
 - `TAP-0006` Build the repository-owned HTML/Web UI prototype foundation
+- `TAP-0008` Enforce explicit-action-only first-install operations
+- `TAP-0009` Enforce first-frame camera-interactive readiness
 - `TAP-0050` Required versus optional first-install rows
 - `TAP-0051` Bounded Network retry policy foundation
 - `TAP-0052` PRO Photo and TAP Video Release capability
@@ -576,7 +577,7 @@ Every active Task uses these stable fields:
 
 ### TAP-0008 — Enforce explicit-action-only first-install operations
 
-- Status: `Doing`
+- Status: `Done`
 - Kind: `Fix`
 - Priority: `P0`
 - Domain: `Onboarding`
@@ -590,21 +591,23 @@ Every active Task uses these stable fields:
 - Assignee: `/root`
 - Dev Session: `/root`
 - Branch/Worktree: `fix0809`
-- Current Approved Implementation Scope (`fix0809`): Implement only the
-  non-Network portion of the owner-approved lifecycle corrections: introduce a
+- Delivered Implementation Scope (`fix0809`): The completed non-Network portion
+  of the owner-approved lifecycle corrections introduces a
   structured local `S/P` state-and-routing seam without changing Network or App
-  Attest facts/execution; implement row-owned permission-recovery semantics;
-  add the Camera/Photos-only Required Permission Check route; and keep PhotoKit/
+  Attest facts/execution, implements row-owned permission-recovery semantics,
+  adds the Camera/Photos-only Required Permission Check route, and keeps PhotoKit/
   Library observation inert until the corresponding explicit Photos action
   authorizes it. Focused tests for these bounded seams are included.
-- Current Hard Freeze: Do not change Network behavior, `/healthz`, initial or
-  post-setup App Attest implementation, or credential/network-dependent or
-  Network-owned Pending Capture recovery scheduling. These remain visible
-  deferred mismatches rather than target-state or completion claims.
+- Task-Owned Unmigrated Scope: Network `/healthz` replacement, the required
+  initial App Attest bootstrap/retry, canonical credential-bound `S` production
+  writer, and restore-binding validation belong to `TAP-0010`. Post-setup App
+  Attest and credential/network-dependent Pending Capture release/guard work
+  belongs to `TAP-0015`. Those records remain real actual-to-target differences
+  under their owning Tasks and are not incomplete TAP-0008 delivery.
 - Current Candidate Handoff (`fix0809`, committed as `66ac001`): The bounded
   candidate lands the structured `S/P/I` reducer seam, but intentionally does not connect
-  the canonical credential-bound `S` writer to production while Network is
-  frozen; the runtime compatibility input is independently named rather than
+  the canonical credential-bound `S` writer to production because that writer
+  belongs to TAP-0010; the runtime compatibility input is independently named rather than
   represented as canonical `S`. It adds Camera/Photos Required Permission
   Check, row-owned recovery, and inert/idempotent PhotoKit observation before
   Photos authorization. Network, `/healthz`, App Attest, Network/Pending
@@ -615,10 +618,11 @@ Every active Task uses these stable fields:
   `fix0809` bounded non-Network lifecycle flow on a physical device, reviewed
   the resulting behavior, and explicitly accepted that bounded flow. This
   acceptance covers only the implemented slice above; it does not execute the
-  complete TAP-0040 first-install matrix, lift the Network/App Attest/Pending
-  hard freeze, connect canonical credential-bound `S`, approve the complete
-  TAP-0087 v18 composition, or satisfy TAP-0008's full Done When.
-- Scope: First-Install Setup contains five explicit operations. Network,
+  complete TAP-0040 first-install matrix, complete TAP-0010/TAP-0015, connect
+  canonical credential-bound `S`, approve the complete TAP-0087 v19
+  composition, or close TAP-0090. Those are separate Task outcomes and do not
+  contradict TAP-0008 Done.
+- Product Contract Context: First-Install Setup contains five explicit operations. Network,
   Camera, and Photos are required; Location and Microphone are optional and
   skippable. Camera, Photos, Location, and Microphone may request their system
   prompts only from their corresponding **Allow** actions, with no protected
@@ -630,38 +634,34 @@ Every active Task uses these stable fields:
 - Out of Scope: Changing Network/Camera/Photos required or
   Location/Microphone optional classification; making later App Attest health,
   Pending Capture Queue retry, or future membership networking a normal camera-
-  entry gate; implementing TAP-0010's final retry mechanics before its exact
-  re-scope is frozen; treating initial credential bootstrap as verification of
+  entry gate; implementing TAP-0010's initial credential/Setup-receipt scope
+  inside TAP-0008; treating initial credential bootstrap as verification of
   a captured media proof; or implementing the broader startup/work-budget
   prototype owned by TAP-0087.
 - Prototype Dependency: Preserve approved `TAP-0008-r2`, including its visible
   Network row and non-system-permission presentation. `TAP-0087-r1-candidate`
-  must update the state-machine/inspector meaning to first-install App Attest
-  completion and receive owner approval before native TAP-0008 implementation
-  outside the separately authorized, bounded non-Network `fix0809` scope above.
-  That partial implementation authorization does not approve the complete v18
+  must keep the state-machine/inspector meaning as first-install App Attest
+  completion. Native Network/App Attest completion now belongs to TAP-0010;
+  completing TAP-0008's non-Network delivery does not approve the complete v19
   composition. The previously recorded no-Network Setup candidate is historical
   only and is not part of the current prototype gate.
-- Current `fix0809` Boundary: The owner directed the current Network/App Attest
-  implementation and behavior to remain unchanged during this correction pass.
-  `networkBootstrap` remains a confirmed current-main mismatch and must remain
-  visible as deferred; `fix0809` neither implements its target bootstrap/retry
-  behavior nor represents `/healthz` as the target completion state. The same
-  freeze narrows the otherwise approved `deferredWorkGuard`: its App Attest
-  maintenance child and every credential/network-dependent or Network-owned
-  Pending Capture recovery-scheduling child are deferred from `fix0809`; only
-  non-Network/App-Attest guard-placement children such as video-poster backfill
-  and recent-cover work remain approved in this pass. This bounded deferral is
-  not a product-semantics reversal, prototype approval, native acceptance, or
-  completion of TAP-0008.
-- Done When: Product Contract, Startup Lifecycle Contract, approved
-  TAP-0008-r2/TAP-0087-r1 semantics, native implementation, and focused tests
-  agree that all five operations are explicit-action-only; Attestation,
-  Camera, and Photos gate Continue; Location and Microphone remain optional;
-  the Network success condition is first-install App Attest registration/
-  verification rather than `/healthz`; and neither later network failure nor
-  later credential/Pending work becomes an ordinary camera-entry gate.
-- Related: Common prerequisite `TAP-0087`; acceptance `TAP-0040`; historical
+- Responsibility Boundary: The non-Network local lifecycle placement completed
+  here covers explicit Camera/Photos/Location/Microphone action ownership,
+  row-owned permission recovery, Camera/Photos Required Permission Check,
+  structured local route inputs, and permission-safe PhotoKit observation.
+  `networkBootstrap` plus its initial App Attest meaning is delivery owned by
+  `TAP-0010`; the App Attest/Pending children of deferred release are delivery
+  owned by `TAP-0015`. Active prototype copy must identify those Task IDs
+  directly rather than using a session-relative freeze label.
+- Done When: The non-Network local lifecycle seams above are implemented in the
+  target route positions, focused tests pass, the physical-device executed path
+  has an owner-accepted bounded verdict, and every unexecuted regression or
+  cross-boundary behavior has one separate owner. `TAP-0090` owns reusable
+  structured regression evidence; `TAP-0040` owns full attended first-install
+  evidence; `TAP-0010` and `TAP-0015` own the unmigrated credential/Network/
+  Pending behavior. Those open Tasks do not keep this delivery Task open.
+- Related: Common prerequisite `TAP-0087`; regression evidence `TAP-0090`;
+  acceptance `TAP-0040`; visual parity `TAP-0048`; historical
   classification `TAP-0050`; retry alignment/re-scope `TAP-0010`;
   post-setup credential optimization `TAP-0015`; production App Attest evidence
   `TAP-0046`; deprecated implicit-trigger behavior `TAP-0063`
@@ -756,10 +756,23 @@ Every active Task uses these stable fields:
     pre-commit record. TAP-0008 stays Doing, and no new implementation,
     acceptance scope, Network/App Attest/Pending behavior, Done result, complete
     v16 approval, or push is inferred from the commit fact.
+  - `2026-08-15` Owner approved the final delivery/evidence responsibility
+    split. The non-Network native lifecycle placement committed in `66ac001`
+    is the completed TAP-0008 delivery: explicit permission action ownership,
+    row recovery, Required Permission Check, structured local route inputs, and
+    permission-safe observer activation. Network `/healthz` replacement,
+    initial App Attest/bootstrap/retry, canonical credential-bound `S`, and
+    restore binding now belong to TAP-0010; post-setup App Attest and credential/
+    network-dependent Pending guards belong to TAP-0015. TAP-0090 owns the
+    derived machine-checkable regression evidence, TAP-0040 retains attended
+    device evidence, and TAP-0048 retains visual parity. Moved TAP-0008 Doing ->
+    Done without claiming those separate Tasks complete. Historical references
+    to a bounded pass or freeze remain append-only facts; active ownership is
+    now expressed by stable Task IDs.
 
 ### TAP-0009 — Enforce first-frame camera-interactive readiness
 
-- Status: `Doing`
+- Status: `Done`
 - Kind: `Fix`
 - Priority: `P0`
 - Domain: `Onboarding`
@@ -776,25 +789,26 @@ Every active Task uses these stable fields:
 - Assignee: `/root`
 - Dev Session: `/root`
 - Branch/Worktree: `fix0809`
-- Current Compatibility Dependency (`fix0809`): This bounded slice consumes the
+- Compatibility Responsibility: The delivered non-Network slice consumes the
   current legacy Setup compatibility seam. The canonical credential-bound,
-  Network-owned `S` writer remains intentionally unwired to production while
-  Network is frozen; the production route consumes an independently named
+  Network-owned `S` writer and its restore binding belong to `TAP-0010`; the
+  production route consumes an independently named
   legacy compatibility input rather than representing that input as canonical
   `S`. TAP-0009 must not change when or how Network, `/healthz`, or App Attest
   completes or writes Setup state.
-- Current Approved Implementation Scope (`fix0809`): Add an independent,
-  versioned `I`; require one camera group comprising a real preview frame, safe
+- Delivered Implementation Scope (`fix0809`): The candidate adds an independent,
+  versioned `I`; requires one camera group comprising a real preview frame, safe
   primary controls/shutter, and required haptics plus one Library group
   comprising the first usable identity/order catalog snapshot, including a
   successful empty catalog; commit `I` and leave the stable Resource
   Initialization surface only after both groups succeed. Resource Initialization
   exposes no product Retry, Failed, timeout, skip, or degraded branch.
-- Current Hard Freeze: Do not change Network behavior, `/healthz`, the canonical
-  Network-bound `S` writer, initial or post-setup App Attest implementation, or
-  credential/network-dependent or Network-owned Pending Capture recovery
-  scheduling. These remain outside this implementation slice.
-- Scope: Drive startup from the structured `S — SetupReceipt`,
+- Task-Owned Unmigrated Scope: Network `/healthz` replacement, initial App
+  Attest/bootstrap/retry, canonical credential-bound `S`, and restore-binding
+  validation belong to `TAP-0010`. Post-setup App Attest and credential/network-
+  dependent Pending Capture release/guard behavior belongs to `TAP-0015`.
+  Measured route-shell/real-first-frame placement belongs to `TAP-0083`.
+- Product Contract Context: Drive startup from the structured `S — SetupReceipt`,
   `P — RequiredPermissionSnapshot`, and `I — InitializationCompletion` facts.
   Resource Initialization is selected only after `S` is valid and `P` is usable
   when `I` is absent, corrupt, or stale. Fresh Installation and
@@ -843,9 +857,10 @@ Every active Task uses these stable fields:
   After the two readiness groups publish stable completion, two display ticks
   release only the local poster/recent-cover and App Intent deferred work in this
   candidate.
-  `returningCameraConstruction` is only partial: `Task.yield` changes source
-  ordering but is not proof that a real lightweight route-shell frame committed
-  before camera construction.
+  The source placement for `returningCameraConstruction` is delivered here;
+  `Task.yield` is not measurement proof that a real lightweight route-shell
+  frame committed before camera construction, so that evidence and any timing
+  correction remain explicitly owned by `TAP-0083` rather than TAP-0009.
 - Current Validation: `build-for-testing` passed for iPhone 17 Pro on iOS 26.5.
   The latest `/private/tmp/TAPCamDemo-fix0809-final-v4.xcresult` reports 146/146
   tests passed, 0 failed, and 0 skipped. Prototype tests report 58/58; MJS
@@ -860,17 +875,14 @@ Every active Task uses these stable fields:
   copy `Please wait…`. `TAPCamDemo/CameraCapture/UI/README.md` records only a
   selected route-shell state followed by a later MainActor turn and explicitly
   does not claim a real shell-frame proof. These documentation updates do not
-  approve the complete TAP-0087 v18 composition or close native acceptance.
-- Current Remaining / Evidence Gaps: Exact native visual-parity comparison and
-  the complete TAP-0041 scenario/fault-injection matrix have not run. Canonical
-  credential-bound `S` and restore end-to-end behavior remain blocked by the
-  Network freeze, and the complete W11 App Attest/W12 Pending Capture `t5`
-  release remains frozen.
-  Network, `/healthz`, App Attest, Network/Pending executors, and retry policy
-  have no direct candidate change; Required Permission Check may nevertheless
-  indirectly postpone their existing camera-entry triggers by preventing
-  `CameraView` mount. TAP-0009 remains Doing; no Done result or approval of the
-  complete TAP-0087 v18 composition is claimed.
+  approve the complete TAP-0087 v19 composition or close TAP-0041/TAP-0048.
+- Post-Delivery Validation And Separate Ownership: `TAP-0090` owns reusable
+  structured non-Network regression evidence; `TAP-0041` owns the remaining
+  attended scenario/fault-injection verdict; `TAP-0048` owns exact visual
+  parity; and `TAP-0083` owns real route-shell/first-frame placement and timing.
+  Canonical credential-bound `S`/restore belongs to `TAP-0010`, while W11 App
+  Attest/W12 Pending Capture release/guards belong to `TAP-0015`. None is an
+  unfinished TAP-0009 delivery item after the approved responsibility split.
 - Failure / Recovery: There is no product Retry, Failed, timeout, skip, or
   degraded-continuation state for this gate. Resource Initialization remains
   visible until both readiness groups succeed. Any abnormal noncompletion is a
@@ -906,23 +918,18 @@ Every active Task uses these stable fields:
   define Offload, replacement-install, or restore routing; the exact
   TAP-0087-r1 canonical scenario overlay/inspector remains a candidate requiring
   owner approval.
-- Done When: Product Contract §2.4–2.6, the owner-approved exact
-  StartupLifecycleContract/TAP-0087 semantic revision, the frozen
-  TAP-0009-r1 visual input, SwiftUI implementation, and focused tests use the
-  same `S -> P -> I` reducer and two-group readiness invariant. Tests cover
-  Fresh Installation and Delete-and-Reinstall after Setup; current versus stale
-  `I` for In-place App Update and Development Replacement Install;
-  Offload-and-Reinstall with a current build/current `I` bypass versus a changed
-  build/stale `I` gate; Same-Device Backup Restore and Cross-Device Migration
-  Restore revalidation; Local State Inconsistency; successful atomic marker
-  write; interruption; and valid-current-marker bypass. No prohibited work
-  blocks the gate; no timeout/Retry/Failed/skip/degraded UI or early camera
-  transition exists; developer diagnostics attribute abnormal noncompletion to
-  the last incomplete readiness checkpoint; the marker carries no Share/prewarm
-  meaning; later permission changes never reopen onboarding; and the fixed
-  build is ready for TAP-0041 attended acceptance.
-- Related: Common prerequisite `TAP-0087`; `TAP-0006`, `TAP-0041`,
-  `TAP-0047`, `TAP-0083`
+- Done When: The non-Network native target placement is present for independent
+  versioned `I`, Camera/Photos permission routing, the camera-plus-first-usable-
+  catalog readiness invariant, atomic marker commit/interruption behavior,
+  stable Resource Initialization without a product failure branch, and local
+  post-frame deferred release; focused tests and the owner-accepted bounded
+  device path pass. Separate regression, visual, attended, measured-timing, and
+  credential/Pending owners are linked explicitly and may remain open without
+  reopening this delivery Task.
+- Related: Common prerequisite/prototype `TAP-0087`; regression evidence
+  `TAP-0090`; attended evidence `TAP-0041`; visual parity `TAP-0048`; measured
+  route-shell/first-frame placement `TAP-0083`; initial credential/`S`/restore
+  `TAP-0010`; post-setup App Attest/Pending `TAP-0015`; `TAP-0006`, `TAP-0047`
 - Created: `2026-08-12`
 - Updated: `2026-08-15`
 - Revision History:
@@ -1063,45 +1070,67 @@ Every active Task uses these stable fields:
     pre-commit record. TAP-0009 stays Doing, and no new implementation,
     acceptance scope, frozen Network/App Attest/Pending behavior, Done result,
     complete-v16 approval, or push is inferred from the commit fact.
+  - `2026-08-15` Owner approved delivery/evidence separation and accepted the
+    committed non-Network native target placement as the completed TAP-0009
+    delivery. TAP-0090 now owns reusable structured regression evidence;
+    TAP-0041 retains attended scenario/fault-injection evidence; TAP-0048 owns
+    visual parity; TAP-0083 owns measured route-shell/real-first-frame placement
+    and the four-cell timing matrix; TAP-0010 owns initial Network/App Attest,
+    canonical credential-bound `S`, and restore binding; and TAP-0015 owns
+    post-setup App Attest/Pending guards. Moved TAP-0009 Doing -> Done without
+    claiming any of those separate Tasks complete or approving the complete
+    TAP-0087 composition. Historical bounded/frozen wording remains append-only
+    context and is superseded for active ownership by these stable Task IDs.
 
-### TAP-0010 — Align Network bounded auto-retry and manual Retry
+### TAP-0010 — Implement first-install Network/App Attest and Setup-receipt lifecycle
 
 - Status: `Todo`
 - Kind: `Fix`
-- Priority: `P1`
+- Priority: `P0`
 - Domain: `Onboarding`
-- Labels: `network`, `retry`, `timeout`, `manual-action`
+- Labels: `network`, `app-attest`, `setup-receipt`, `credential-binding`,
+  `restore`, `retry`, `timeout`, `manual-action`
 - Contract: `ProductContract §2.3`;
   `Docs/StartupLifecycleContract.md §2, §4`; related state-machine decision in
   `TAP-0087`
 - Match Keys: `security preflight retry, first-install App Attest retry,
-  attestation bootstrap, healthz, foreground retry`
+  attestation bootstrap, healthz, foreground retry, canonical S writer,
+  SetupReceipt, restore credential binding, networkBootstrap`
 - Assignee: `Unassigned`
 - Dev Session: `Unassigned`
 - Branch/Worktree: `Unassigned`
-- Scope: Align bounded automatic attempts and post-timeout explicit Retry for
-  the required Network row with first-install App Attest registration/
-  verification completion. The operation must not succeed on generic
-  `/healthz` reachability alone, restart after timeout from foreground/status
-  refresh, or become a recurring camera-entry gate after setup.
-- Re-scope Gate: `TAP-0087` must freeze whether this remains a separate retry
-  delivery or merges into TAP-0008/App Attest bootstrap implementation before
-  code work begins. Until then TAP-0010 remains Todo and is not implemented or
-  closed.
+- Scope: Own the complete task-visible behavior that was deliberately not
+  migrated with TAP-0008/TAP-0009: replace `/healthz` completion with the
+  required Network-row App Attest registration/verification bootstrap; preserve
+  bounded automatic attempts and post-timeout explicit Retry; prevent
+  foreground/status refresh from silently starting a new sequence; write the
+  canonical credential-bound `S — SetupReceipt` only after the required setup
+  facts and Continue; and validate local credential binding for retained or
+  restored receipts without treating Keychain residue as setup completion.
+  Ordinary post-setup Viewfinder entry and local capture remain network-
+  independent.
+- Responsibility Decision: The owner retained this as the stable implementation
+  Task rather than merging it back into completed TAP-0008/TAP-0009. Active
+  prototype records for `networkBootstrap`, first-install credential start/
+  completion meaning, canonical `S`, and restore binding must link TAP-0010
+  directly and remain true actual-to-target differences until this Task ships.
 - Out of Scope: Post-setup credential health/re-attestation and Pending Capture
   Queue retry optimization owned by TAP-0015; future membership networking; or
   requiring network for ordinary Viewfinder entry or local capture; capture-
   proof verification is not the first-install bootstrap success condition.
-- Done When: After the re-scope decision, the Product/Startup contracts,
-  prototype state machine, lifecycle behavior, and tests agree on App Attest
-  bootstrap retry ownership, bounded attempts, timeout, and explicit Retry,
-  without treating `/healthz` as completion or later network state as a camera-
-  entry gate.
-- Related: Historical foundation `TAP-0051`; first-install delivery `TAP-0008`;
-  common semantic prerequisite `TAP-0087`; separate post-setup credential
-  optimization `TAP-0015`
+- Done When: Product/Startup contracts, prototype records, native behavior, and
+  focused tests agree on explicit first-install App Attest bootstrap ownership,
+  bounded attempts/timeout/manual Retry, canonical credential-bound `S` commit,
+  retained/restore binding validation, and network-independent post-setup
+  camera entry. `/healthz`, foreground refresh, and stale Keychain residue
+  cannot satisfy or restart the operation. TAP-0040/TAP-0046 remain separate
+  attended/production evidence Tasks.
+- Related: Historical foundation `TAP-0051`; completed non-Network delivery
+  `TAP-0008`, `TAP-0009`; common semantic/prototype owner `TAP-0087`; attended
+  first-install evidence `TAP-0040`; production App Attest evidence `TAP-0046`;
+  separate post-setup credential/Pending delivery `TAP-0015`
 - Created: `2026-08-12`
-- Updated: `2026-08-14`
+- Updated: `2026-08-15`
 - Revision History:
   - `2026-08-12` Owner selected bounded automatic attempts followed by manual retry.
   - `2026-08-12` Repository audit identified a refresh path that can restart
@@ -1121,6 +1150,15 @@ Every active Task uses these stable fields:
     implementation is authorized yet. Later credential/Pending retry remains
     TAP-0015 scope, and ordinary post-setup camera entry/capture stays network-
     independent. The false interim deprecation remains append-only history.
+  - `2026-08-15` Owner resolved the prior re-scope gate through delivery/
+    evidence separation. Expanded TAP-0010 from retry mechanics to the complete
+    unmigrated initial Network/App Attest boundary: real bootstrap completion,
+    canonical credential-bound SetupReceipt commit, and retained/restore local-
+    binding validation. Raised priority P1 -> P0 because this operation is a
+    required first-install gate. TAP-0008/TAP-0009 remain closed over their
+    completed non-Network delivery; post-setup W11/W12 work remains TAP-0015.
+    TAP-0010 stays Todo and no Network/App Attest implementation or evidence is
+    inferred.
 
 ### TAP-0011 — Make zero-depth TAP Video non-blocking
 
@@ -1221,30 +1259,57 @@ Every active Task uses these stable fields:
 - Revision History:
   - `2026-08-12` Owner limited true Verify to possible future external imports.
 
-### TAP-0015 — Implement fine-grained credential retry optimization
+### TAP-0015 — Implement post-setup App Attest/Pending guards and retry optimization
 
 - Status: `Todo`
 - Kind: `Technical`
-- Priority: `P2`
-- Domain: `Pending Capture Queue`
-- Labels: `credential`, `retry-window`, `cooldown`, `pause`, `migration`
-- Contract: `ProductContract §6`
-- Match Keys: `nextAttemptAt, retry budget, credential stage, assertion stage`
+- Priority: `P1`
+- Domain: `App Attest / Pending Capture Queue`
+- Labels: `credential`, `app-attest`, `pending-capture`, `deferred-work`, `t5`,
+  `guard`, `retry-window`, `cooldown`, `pause`, `migration`
+- Contract: `ProductContract §2.4, §6`; `StartupLifecycleContract §3–4`
+- Match Keys: `nextAttemptAt, retry budget, credential stage, assertion stage,
+  post-setup App Attest, W11 W12, Pending recovery guard, t5 release`
 - Assignee: `Unassigned`
 - Dev Session: `Unassigned`
 - Branch/Worktree: `Unassigned`
-- Scope: Separate credential/assertion/export retry stages and add bounded
-  cooldown/window/pause state with migration.
-- Out of Scope: Treating this technical optimization as a missing core feature.
-- Done When: The approved state model, persistence migration, scheduling, UI
-  boundary, and tests are implemented.
-- Related: `ProductContract §6`, `TAPCamDemo/TAPLibrary/README.md`
+- Scope: Move post-setup App Attest health/recovery (`W11`) and credential/
+  network-dependent Pending Capture recovery (`W12`) behind the canonical
+  deferred-work release and their camera-idle/protected-data/credential guards,
+  without making either a route, preview, shutter, or local-capture blocker.
+  Within that owner boundary, separate credential/assertion/export retry stages
+  and add the approved bounded cooldown/window/pause state with persistence
+  migration and stale/cancel handling.
+- Responsibility Decision: Active prototype records for post-setup App Attest
+  and Pending recovery are true task-owned actual-to-target differences and
+  link TAP-0015 directly. They are not incomplete TAP-0008/TAP-0009 work and
+  must not use a session-relative freeze label.
+- Out of Scope: Initial Network-row App Attest/bootstrap, retry, canonical `S`,
+  and restore binding owned by TAP-0010; non-Network local poster/recent-cover/
+  App Intent release completed by TAP-0009; or treating this technical work as
+  a new ordinary camera-entry gate.
+- Done When: W11/W12 cannot become eligible before the committed deferred-work
+  release and their required guards; neither blocks route/preview/interaction/
+  local capture; the approved stage-specific retry model, persistence migration,
+  scheduling, cancellation/stale behavior, and focused tests are implemented;
+  and prototype records no longer show those Task-owned placement differences.
+- Related: `ProductContract §6`, `TAPCamDemo/TAPLibrary/README.md`; completed
+  non-Network delivery `TAP-0008`, `TAP-0009`; initial credential owner
+  `TAP-0010`; prototype owner `TAP-0087`; structured non-Network evidence
+  `TAP-0090`
 - Created: `2026-08-12`
-- Updated: `2026-08-12`
+- Updated: `2026-08-15`
 - Revision History:
   - `2026-08-12` Classified as future technical optimization.
   - `2026-08-12` Migrated the current coarse model to the Pending Capture Queue
     module README and retired the superseded standalone design document.
+  - `2026-08-15` Owner assigned the unmigrated post-setup lifecycle boundary to
+    this existing Task rather than creating another duplicate. Expanded scope
+    to place W11 App Attest health/recovery and W12 credential/network-dependent
+    Pending recovery after canonical deferred release with camera-idle/
+    protected-data/credential guards, while retaining the existing fine-grained
+    retry/migration work. Raised priority P2 -> P1. TAP-0015 remains Todo; no
+    executor, retry, prototype, test, or evidence completion is inferred.
 
 ### TAP-0016 — Design and implement TAP Video 3D
 
@@ -3448,6 +3513,13 @@ Every active Task uses these stable fields:
   changing TAPNAP or TAP Video formats; solving every performance issue in the
   repository; or using a warm second run as cold-path acceptance. The separate
   first-install readiness/resource-initialization state is owned by TAP-0009.
+- Lifecycle Placement Responsibility: TAP-0083 owns the remaining real route-
+  shell/first-frame proof and any resulting performance correction for
+  `returningCameraConstruction`, camera discovery, and capture-session object
+  construction. The implementation handoff in completed TAP-0009 establishes
+  source placement but `Task.yield` is not a committed-frame measurement.
+  TAP-0090 may assert deterministic non-Network event order, but it cannot close
+  this physical timing boundary or replace the four-cell iPhone matrix.
 - Prototype Path/Revision/Approval: `N/A for this non-visual runtime,
   backpressure, observability, and lifecycle repair. Existing TAP-0081 approved
   visible states remain unchanged. Any new loading copy, control, hierarchy, or
@@ -3492,9 +3564,10 @@ Every active Task uses these stable fields:
 - Related: Regression support for `TAP-0081`; attended Share evidence
   `TAP-0082`; TAP Video evidence `TAP-0045`; TAP Library evidence `TAP-0047`;
   adjacent first-camera/resource readiness `TAP-0009`; thumbnail policy
-  `TAP-0027`; common prerequisite `TAP-0087`
+  `TAP-0027`; common prerequisite `TAP-0087`; structured non-Network regression
+  evidence `TAP-0090`
 - Created: `2026-08-13`
-- Updated: `2026-08-14`
+- Updated: `2026-08-15`
 - Revision History:
   - `2026-08-13` Allocated after a complete Inbox/Todo/Doing/Done/Deprecated
     search. The active TAP-0081 already owns its Share-specific first-response,
@@ -3548,6 +3621,14 @@ Every active Task uses these stable fields:
     feature evidence boundaries and cannot substitute for this matrix. No matrix
     execution, threshold pass, exact StartupLifecycleContract/TAP-0087 candidate
     approval, or status transition is claimed; TAP-0083 remains Doing.
+  - `2026-08-15` Owner's delivery/evidence split assigned TAP-0083 the remaining
+    measured route-shell/real-first-frame placement for
+    `returningCameraConstruction`, camera discovery, and capture-session object
+    construction. TAP-0009 is Done for its native source-placement delivery;
+    TAP-0090 owns reusable non-Network structural assertions but cannot supply a
+    rendered-frame acknowledgement, native elapsed time, or the required four-
+    cell physical-iPhone matrix. TAP-0083 remains Doing and no timing threshold
+    or regression result is inferred.
 
 ### TAP-0084 — Design a Library-to-Viewer zoom transition with stable top chrome
 
@@ -3927,9 +4008,11 @@ Every active Task uses these stable fields:
 - Assignee: `/root`
 - Dev Session: `/root`
 - Branch/Worktree: `Current shared main working tree; baseline main@985425f`
-- Dependency Role: Owner-approved common prerequisite for `TAP-0008`,
-  `TAP-0009`, and `TAP-0083`. Completing TAP-0087 does not implement or close
-  those downstream Tasks.
+- Dependency Role: Owner-approved common prototype/semantic prerequisite that
+  TAP-0008 and TAP-0009 consumed for their now-completed non-Network delivery,
+  and that TAP-0083 still consumes for measured timing. Completing TAP-0087
+  does not close TAP-0010, TAP-0015, TAP-0040, TAP-0041, TAP-0048, TAP-0083,
+  or TAP-0090.
 - Scope:
   1. Define canonical, behavior-bearing terminology for Fresh Installation,
      In-place App Update, Development Replacement Install,
@@ -3981,8 +4064,8 @@ Every active Task uses these stable fields:
      approved TAP-0008/TAP-0009/TAP-0081 slices; those prior slice approvals
      remain intact but neither approve nor define the TAP-0087 composition.
      Preserve approved `TAP-0008-r2`, including its Network row, visual language,
-     assets, and geometry, and keep approved `TAP-0009-r1-candidate` as a frozen
-     input. Produce composed state-machine/inspector revision
+     assets, and geometry, and keep approved `TAP-0009-r1-candidate` as an
+     immutable visual input. Produce composed state-machine/inspector revision
      `TAP-0087-r1-candidate`; its Network node represents first-install App
      Attest registration/verification rather than generic reachability. The
      reviewable journey is system-owned Launch Screen reference fixture ->
@@ -4018,8 +4101,9 @@ Every active Task uses these stable fields:
     native Viewer/analysis delivery or claiming Video 3D.
   - Fixing or optimizing every inventoried heavy operation inside TAP-0087;
     gaps become scoped follow-up Tasks.
-  - Native implementation of the first-install App Attest bootstrap/retry;
-    TAP-0008 and TAP-0010 own that delivery after the re-scope decision.
+  - Native implementation of the first-install App Attest bootstrap/retry,
+    canonical credential-bound `S`, or restore binding; TAP-0010 owns that
+    delivery after the responsibility split.
   - Implementing post-setup App Attest/Pending retry optimization or inventing
     future membership networking; TAP-0015 separately owns credential retry
     optimization.
@@ -4042,29 +4126,25 @@ Every active Task uses these stable fields:
   from reachability to first-install App Attest completion without silently
   changing the approved phone geometry. The previously recorded no-Network
   Setup candidate is historical only. Approved `TAP-0009-r1-candidate` remains
-  a frozen input. The Launch Screen is visibly labeled system-owned reference
+  an immutable visual input. The Launch Screen is visibly labeled system-owned reference
   material, and the inspector is visibly labeled reviewer-only tooling. Exact
   owner approval of `TAP-0087-r1-candidate` and the synchronized contract
   revision remains pending. The mismatch-specific `fix0809` decision below is
   partial review only and does not satisfy this whole-composition approval gate.
-- Current `fix0809` Owner Decision: The owner approved-to-fix the following 11
-  canonical lifecycle mismatches in this bounded pass:
-  `legacyReceiptAndMarker`, `preFrameLibraryObserver`,
-  `permissionRecoverySemantics`, `requiredPermissionRoute`,
-  `retainedContainerRouting`, `returningCameraConstruction`,
-  `cameraReadinessPredicate`, `libraryReadinessPredicate`,
-  `initializationCommit`, `resourceInitializationSurface`, and
-  `deferredWorkGuard`. That parent approval is child-scoped: App Attest
-  maintenance and every credential/network-dependent or Network-owned Pending
-  Capture recovery-scheduling child are `deferredFrozen`; only non-Network/
-  App-Attest guard-placement children such as video-poster backfill and recent
-  cover remain approved in this pass. The owner also confirmed
-  `networkBootstrap` as a real mismatch, but deferred its fix from `fix0809`; it
-  remains displayed while the current Network/App Attest implementation and
-  behavior remain unchanged, and `/healthz` must not be presented as the target
-  state. This decision approves only the stated mismatch-fix boundary, not the
-  complete TAP-0087 v18 composition, synchronized contract revision, native
-  implementation, or downstream acceptance.
+- Current Responsibility-Split Owner Decision: TAP-0008 and TAP-0009 have
+  completed their non-Network native lifecycle placement and are Done as
+  delivery Tasks. Their implemented but unverified lifecycle/workload records
+  now derive regression ownership from TAP-0090, except that real route-shell/
+  first-frame placement for `returningCameraConstruction` derives from
+  TAP-0083. `networkBootstrap`, first-install credential start/completion,
+  canonical credential-bound `S`, and restore binding remain actual-to-target
+  differences owned by TAP-0010. Post-setup App Attest and credential/network-
+  dependent Pending release/guards remain actual-to-target differences owned
+  by TAP-0015. Exact native visual parity belongs to TAP-0048 and attended
+  evidence remains TAP-0040/TAP-0041. `/healthz` remains observed current
+  behavior and must never be shown as the target state. This stable Task-owned
+  split supersedes active per-pass freeze wording without rewriting archived
+  v17/v18 facts or approving the complete TAP-0087 composition.
 - Archived v17 `fix0809` Reviewer Outcome Overlay Decision (`d4b19d9`): The
   owner approved a JSON-driven reviewer-only overlay that records the bounded
   `fix0809@66ac001`
@@ -4103,7 +4183,7 @@ Every active Task uses these stable fields:
   `Prototype/evidence/TAP-0087-r1-v17-fix0809-outcome-workload.png`. This verifies
   the archived v17 reviewer overlay only; it did not close TAP-0087, TAP-0008,
   or TAP-0009.
-- Current v18 Active-Record Pruning Decision: The owner approved `d4b19d9` as
+- Archived v18 Active-Record Pruning Decision: The owner approved `d4b19d9` as
   the complete v17 archive and approved a smaller active v18 reviewer catalog.
   The active manifest and its right lifecycle, Timing lifecycle, and Workload
   **actual** projections must remove records that were originally aligned and
@@ -4114,7 +4194,7 @@ Every active Task uses these stable fields:
   new native-alignment claim, or authorization to change Swift. TAP-0087,
   TAP-0008, and TAP-0009 remain Doing; the complete v18 composition and
   synchronized contract remain `ownerReviewRequired`.
-- Current v18 Active-Record Implementation And QA (`2026-08-15`): Active JSON
+- Archived v18 Active-Record Implementation And QA (`2026-08-15`): Active JSON
   record deletion is complete rather than implemented as a display-only filter.
   The active Lifecycle catalog has nine unresolved records, partitioned between
   five lifecycle-lane owners and four workload-lane owners; eight are
@@ -4138,6 +4218,44 @@ Every active Task uses these stable fields:
   active-record pruning implementation and reviewer QA only: TAP-0087, TAP-0008,
   and TAP-0009 remain Doing, and the complete v18 composition remains
   `ownerReviewRequired`.
+- Implemented v19 Reviewer Semantics And Browser DOM QA (`2026-08-15`):
+  - An implemented-but-unverified non-Network lifecycle record is no longer an
+    active position mismatch. Merge its candidate/current context into the
+    existing target-position card, use a yellow background with a red border,
+    label it **已实现 · 待回归**, and link its stable verification owner. Do not
+    render a separate actual card, blue duplicate target, **不一致** label, or
+    dashed difference connector. TAP-0090 owns the general non-Network
+    regression records; `returningCameraConstruction` links TAP-0083 for its
+    real route-shell/first-frame timing boundary.
+  - Truly unmigrated behavior keeps the red current-main actual card, existing
+    blue target, and exactly one red dashed actual-to-target connector. Network/
+    initial App Attest/canonical `S`/restore records link TAP-0010; post-setup
+    App Attest and credential/network-dependent Pending records link TAP-0015.
+    Visible and accessible copy names the owning Task directly and does not use
+    a session-relative status label.
+  - The same semantics apply to the right lifecycle cards, the Timing
+    **08/09 生命周期** lane, and the existing Timing **Workload** lane. Workload-
+    owned truths remain only in Workload. Implemented Workload records decorate
+    their exact existing target effect yellow/red with no actual duplicate or
+    connector; unmigrated Workload records retain the red-actual/blue-target
+    difference pair and connector.
+  - Historical `actual`/`target` audit facts remain manifest data and the v17
+    archive remains recoverable at `d4b19d9`; placement in the active reviewer
+    is derived from the record's v19 state and linked Task IDs.
+  - The renderer, manifest, and tests now implement this v19 projection. Root
+    verified it in the Codex in-app Browser through DOM counts and computed
+    styles without retaining a screenshot. Ordinary sequence `17` rendered five
+    right-side follow-up target cards and zero right-side differences; five
+    Timing lifecycle follow-up cards and zero lifecycle paths; and four yellow
+    Workload targets plus two red actual cards, two blue targets, and two paths.
+    Fresh sequence `27` rendered two yellow Workload targets plus four red
+    actual cards, four blue targets, and four paths. The console had zero errors
+    or warnings. Prototype tests passed `58/58`; MJS syntax, manifest JSON, and
+    diff checks passed. This verifies the v19 reviewer implementation only; it
+    does not claim TAP-0090 regression completion, native visual parity, device
+    acceptance, or whole-composition approval. TAP-0087 remains `Doing` and the
+    complete composition remains `ownerReviewRequired` pending exact owner
+    review.
 - Done When:
   - The canonical glossary and deterministic scenario/route/marker matrix are
     recorded, including required first-install Attestation + Camera + Photos,
@@ -4170,12 +4288,14 @@ Every active Task uses these stable fields:
     deferred, first-install-versus-post-setup App Attest, and native differences.
   - The product owner explicitly approves exact `TAP-0087-r1-candidate` and
     the synchronized contract revision.
-  - Remaining native implementation and performance gaps are handed to
-    TAP-0008, TAP-0009, TAP-0083, or new scoped follow-ups; TAP-0087 completion
-    does not close those Tasks.
-- Related: Foundation `TAP-0006`; downstream prerequisites `TAP-0008`,
-  `TAP-0009`, `TAP-0083`; deferred prototype children `TAP-0088`, `TAP-0089`;
-  evidence `TAP-0040`, `TAP-0041`, `TAP-0045`, `TAP-0047`; credential
+  - Remaining native implementation, regression, parity, and performance gaps
+    are handed to TAP-0010, TAP-0015, TAP-0083, TAP-0090, TAP-0040, TAP-0041,
+    or TAP-0048; TAP-0087 completion does not close those Tasks.
+- Related: Foundation `TAP-0006`; completed non-Network native delivery
+  `TAP-0008`, `TAP-0009`; measured timing `TAP-0083`; deferred prototype
+  children `TAP-0088`, `TAP-0089`;
+  structured regression `TAP-0090`; evidence `TAP-0040`, `TAP-0041`,
+  `TAP-0045`, `TAP-0047`, `TAP-0048`; credential
   optimization `TAP-0015`; historical onboarding foundations `TAP-0050`,
   `TAP-0051`; first-install retry re-scope `TAP-0010`; thumbnail policy
   `TAP-0027`
@@ -4326,6 +4446,36 @@ Every active Task uses these stable fields:
     passed; no Swift diff exists. This closes only v18 pruning implementation
     and reviewer QA. TAP-0087, TAP-0008, and TAP-0009 remain Doing; the complete
     v18 composition remains `ownerReviewRequired`.
+  - `2026-08-15` Owner approved a tentative v19 reviewer meaning after
+    separating delivery from evidence. Implemented-but-unverified non-Network
+    records move to and merge with their target card/effect in yellow with a red
+    border, link TAP-0090 or the measured-timing owner TAP-0083, and render no
+    actual duplicate, **不一致** label, or dashed difference connector. Truly
+    unmigrated initial Network/App Attest/`S`/restore records retain a red actual
+    to blue target difference owned by TAP-0010; post-setup App Attest/Pending
+    differences retain that form under TAP-0015. Visible copy names stable Task
+    ownership instead of a session-relative freeze. TAP-0048 retains visual
+    parity and TAP-0040/TAP-0041 retain attended evidence. TAP-0008/TAP-0009
+    move to Done for their completed non-Network delivery; TAP-0087 remains
+    Doing until the v19 prototype/manifest/tests/QA and exact owner review are
+    complete. No regression, native, device, or whole-composition pass is
+    inferred.
+  - `2026-08-15` Board Steward synchronized the completed v19 reviewer
+    implementation and no-screenshot Browser QA. The manifest and renderer now
+    merge implemented-but-unverified records into yellow/red target cards or
+    workload effects with no actual duplicate or connector, while Task-owned
+    unmigrated records retain their red-actual/blue-target difference and
+    direct TAP-0010/TAP-0015 link. DOM/computed-style verification in the Codex
+    in-app Browser found, for ordinary sequence `17`, five right follow-up cards
+    with zero differences, five Timing lifecycle follow-ups with zero paths,
+    and four yellow Workload targets plus two red actuals/two blue targets/two
+    paths. Fresh sequence `27` produced two yellow Workload targets plus four
+    red actuals/four blue targets/four paths. Console errors/warnings were zero;
+    Prototype tests passed `58/58`, and MJS syntax, manifest JSON, and diff
+    checks passed. No photo, screenshot, or screen recording was retained as
+    proof. TAP-0087 remains Doing and the complete composition remains
+    `ownerReviewRequired`; no TAP-0090 regression, native parity, device
+    acceptance, commit, or owner approval is inferred.
 
 ### TAP-0088 — Prototype functional Viewfinder-control workload interactions
 
@@ -4413,6 +4563,89 @@ Every active Task uses these stable fields:
     native analysis, Video 3D, prototype implementation, approval, or
     prerequisite completion is inferred.
 
+### TAP-0090 — Add machine-checkable non-Network startup lifecycle regression evidence
+
+- Status: `Todo`
+- Kind: `Evidence`
+- Priority: `P0`
+- Domain: `Startup Lifecycle / Regression Observability`
+- Labels: `startup-lifecycle`, `non-network`, `structured-log`, `jsonl`,
+  `regression`, `event-order`, `simulator`, `device-evidence`, `no-screenshot`
+- Contract: `ProductContract §2.1–2.6`; `StartupLifecycleContract §2–5`;
+  `UIPrototypeContract §4.1`; evidence consumers `TAP-0040`, `TAP-0041`
+- Match Keys: `lifecycle regression harness, startup trace, structured startup
+  log, JSONL evidence, machine-checkable event order, implemented awaiting
+  regression, 黄色红边, log 不足, 无截图 proof`
+- Assignee: `Unassigned`
+- Dev Session: `Unassigned`
+- Branch/Worktree: `Unassigned`
+- Responsibility: Supply reusable regression instrumentation and assertions for
+  the non-Network native lifecycle placement completed by `TAP-0008` and
+  `TAP-0009`. This Task validates that delivery; it does not reopen those
+  delivery Tasks or absorb their attended evidence Tasks.
+- Scope:
+  1. Define one privacy-safe, versioned JSON/JSONL activation trace. Every event
+     carries at least schema version, run/scenario ID, monotonically increasing
+     sequence and clock value, source commit/build configuration, runtime
+     platform, activation kind, public-safe `S/P/I` disposition, route, event,
+     workload/checkpoint, logical owner/executor, result, and correlation or
+     predecessor ID. It must not contain media identifiers, file paths, URLs,
+     hashes, App Attest key material, or credential identifiers.
+  2. Add deterministic automated/Simulator assertions for the in-scope
+     non-Network boundaries: no permission request or protected Camera/PhotoKit
+     work before its explicit action; row-owned denied/restricted recovery;
+     Camera/Photos-only Required Permission Check routing and targeted refresh;
+     observer-inert startup followed by one eligible idempotent activation;
+     independent versioned `I` invalidation/atomic commit/interruption behavior;
+     camera-plus-first-usable-catalog readiness ordering; stable Resource
+     Initialization with no product failure branch; and local video-poster,
+     recent-cover, and App Intent release only after the committed local
+     deferred-work barrier.
+  3. Produce a machine-readable assertion report that maps each assertion to
+     the stable TAP-0087 lifecycle/workload record IDs it verifies, without
+     duplicating one lifecycle parent as multiple completion claims.
+  4. Make the same schema usable by the attended `TAP-0040`/`TAP-0041`
+     procedures. Automated and Simulator results prove deterministic structure
+     and ordering only; the separate owner-attended Tasks retain real system
+     permission, preview, haptic, capture, and device verdict ownership.
+- Evidence Form: Retain structured JSON/JSONL logs, the machine-readable
+  assertion report, build/commit/device metadata, and an owner-live textual
+  verdict when consumed by a DeviceAcceptance Task. Do not save a photo,
+  screenshot, or screen recording as proof.
+- Out of Scope: Changing product lifecycle behavior while adding evidence;
+  Network `/healthz` replacement, initial App Attest, canonical credential-
+  bound `S`, or restore binding owned by `TAP-0010`; post-setup App Attest and
+  credential/network-dependent Pending guards owned by `TAP-0015`; real route-
+  shell/first-frame placement and numeric 2 x 2 timing owned by `TAP-0083`;
+  prototype-to-native visual parity owned by `TAP-0048`; or closing attended
+  `TAP-0040`/`TAP-0041`. A failing assertion returns a scoped defect to the
+  responsible delivery Task instead of silently broadening TAP-0090.
+- Done When: The versioned public-safe schema, instrumentation, fixture matrix,
+  and assertions are committed; focused tests prove every in-scope positive and
+  prohibited-order condition; a clean automated/Simulator run emits parseable
+  artifacts with stable record-ID mapping and no sensitive fields; the
+  `TAP-0040`/`TAP-0041` procedures can consume the same trace without photo,
+  screenshot, or recording proof; and failures remain attributable to one
+  delivery owner. Device acceptance, visual parity, performance thresholds, and
+  Task-owned Network/App Attest/Pending behavior may remain open separately.
+- Related: Validates completed delivery `TAP-0008`, `TAP-0009`; prototype
+  projection `TAP-0087`; attended consumers `TAP-0040`, `TAP-0041`; measured
+  timing `TAP-0083`; visual parity `TAP-0048`; excluded initial credential
+  delivery `TAP-0010`; excluded post-setup credential/Pending delivery
+  `TAP-0015`
+- Created: `2026-08-15`
+- Updated: `2026-08-15`
+- Revision History:
+  - `2026-08-15` Allocated after a complete Inbox/Todo/Doing/Done/Deprecated
+    duplicate search. TAP-0040/TAP-0041 already own attended device verdicts,
+    TAP-0083 owns real shell/first-frame timing and its four-cell physical-
+    iPhone matrix, and TAP-0048 owns visual parity; none owns a reusable,
+    machine-checkable non-Network lifecycle trace and regression harness. The
+    owner approved that exact remaining evidence responsibility, so the Board
+    recorded the required lifecycle Inbox -> Todo without splitting one
+    assertion Task per prototype record. No instrumentation, regression result,
+    device verdict, or downstream Task closure is inferred.
+
 ## 5. Inbox Decision Registry
 
 The following records deliberately remain compact until the owner decides
@@ -4442,15 +4675,15 @@ owner before execution.
 
 | ID | Status | Priority | Related delivery | Scope | Procedure | Dev Session | Human Confirmation | History |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `TAP-0040` | Todo | P0 | `TAP-0008`, `TAP-0010`; common prerequisite `TAP-0087`; production App Attest evidence `TAP-0046` | Fresh Installation behavior, exercised for acceptance through the specified Delete-and-Reinstall reset path: all five Setup operations start only from their corresponding explicit actions; Network/App Attest, Camera, and Photos are required, Location/Microphone optional, and Continue requires Attestation + Camera + Photos. Network completion proves the approved initial App Attest bootstrap, not generic `/healthz` reachability. | [Procedure](Acceptance/TAP-0040-first-install-operations.md) has a concurrent TAP-0087 candidate revision covering first-install App Attest registration/verification and safe retry while retaining all five rows; it remains Draft/not executed and requires frozen build/device scope plus owner confirmation before use | Unassigned | Pending | Created 2026-08-12 from permission regression; executable draft added 2026-08-12. The 2026-08-14 cold/overwrite-install log has no setup-row/button timeline and therefore is diagnostic context only, not explicit-action evidence; a separate clean-install run remains required. On 2026-08-14 the owner removed Network from onboarding; the linked draft was marked stale for a four-row rewrite. Later the same day, the owner corrected that interim direction: Network remains required but means first-install App Attest completion. The concurrent TAP-0087 candidate now reflects that semantic/retry correction, but no procedure execution, evidence, or human verdict is claimed. Canonical terminology correction: the remaining attended evidence is Fresh Installation behavior exercised through the explicit Delete-and-Reinstall reset procedure; “cold/overwrite-install” and “clean-install” above remain historical wording only. Status remains Todo. |
-| `TAP-0041` | Todo | P0 | `TAP-0009`; common prerequisite `TAP-0087` | Under the `S -> P -> I` route, Resource Initialization remains only for valid `S`, usable `P`, and absent/corrupt/stale `I` until real first frame/safe shutter-controls/haptics plus the first usable Library catalog metadata snapshot both succeed; it then atomically writes current `I` and enters camera. Valid current `S/P/I` bypasses the gate regardless of installation label or cold caches; no Retry/Failed/timeout/skip/degraded UI and no Share/iCloud/thumb/hash/ZIP/network/queue prewarm. | [Procedure](Acceptance/TAP-0041-camera-readiness.md) records the `fix0809@66ac001` candidate and an explicitly bounded non-Network subset covering Camera/Photos routing, both readiness groups, marker interruption/invalidation, the Viewfinder-frame barrier, local poster/recent-cover release, and permission recovery. The owner exercised and accepted that bounded flow on a physical device on 2026-08-15. The complete procedure remains Draft/not fully executed: its remaining canonical scenario, fault-injection, and deferred-release evidence stays open, while canonical credential-bound `S`, restore end-to-end cases, and complete App Attest/Pending release remain blocked/frozen rather than silently accepted. | `/root` bounded device run; complete matrix unassigned | Bounded `fix0809` flow accepted 2026-08-15; complete matrix Pending | Exact Web prototype was approved 2026-08-13. The original registry history recorded that native implementation had not started; that statement is preserved as historical status. An earlier 2026-08-14 audit stated that the acceptance draft predated the Library-catalog/versioned-marker invariant. A later consistency audit confirmed that the concurrent candidate included the first usable catalog, versioned `I` marker, interruption, and current-marker bypass; its then-remaining gaps were the canonical installation matrix, Debug-only timing boundary, and owner confirmation. The 2026-08-14 log contributed only a 908-item first-catalog baseline of `7795 ms` and lacked first frame, safe controls/shutter/haptics, marker, interruption, and repeated-launch evidence. The 2026-08-15 candidate update adds `build-for-testing`, 146/146 focused tests with 0 failed/skipped, 58/58 Prototype tests, MJS checks, manifest parse, and `git diff --check`. Later on 2026-08-15 the owner exercised the bounded non-Network `fix0809` lifecycle flow on a physical device and explicitly accepted that bounded flow. Exact native visual parity and the complete TAP-0041 scenario/fault-injection matrix remain open; canonical credential-bound `S`/restore end-to-end behavior and complete W11/W12 `t5` remain blocked/frozen. TAP-0041 therefore remains Todo with a Pending full-matrix verdict; the bounded acceptance is not a complete Task Pass. |
+| `TAP-0040` | Todo | P0 | completed non-Network delivery `TAP-0008`; structured regression `TAP-0090`; initial Network/App Attest delivery `TAP-0010`; prototype `TAP-0087`; production App Attest evidence `TAP-0046` | Fresh Installation behavior, exercised for acceptance through the specified Delete-and-Reinstall reset path: all five Setup operations start only from their corresponding explicit actions; Network/App Attest, Camera, and Photos are required, Location/Microphone optional, and Continue requires Attestation + Camera + Photos. Network completion proves the approved initial App Attest bootstrap, not generic `/healthz` reachability. | [Procedure](Acceptance/TAP-0040-first-install-operations.md) remains Draft/not executed. It consumes TAP-0090 structured JSON/JSONL event-order assertions for the delivered non-Network boundaries and TAP-0010 instrumentation for the still-unmigrated initial Network/App Attest boundary. It requires a pinned build/device scope and owner confirmation; retained proof is structured logs/assertion reports plus an owner-live textual verdict, with no photo, screenshot, or screen recording. | Unassigned | Pending | Created 2026-08-12 from permission regression; executable draft added 2026-08-12. The 2026-08-14 cold/overwrite-install log has no setup-row/button timeline and therefore is diagnostic context only, not explicit-action evidence; a separate clean-install run remains required. On 2026-08-14 the owner removed Network from onboarding; the linked draft was marked stale for a four-row rewrite. Later the same day, the owner corrected that interim direction: Network remains required but means first-install App Attest completion. The concurrent TAP-0087 candidate now reflects that semantic/retry correction, but no procedure execution, evidence, or human verdict is claimed. Canonical terminology correction: the remaining attended evidence is Fresh Installation behavior exercised through the explicit Delete-and-Reinstall reset procedure; “cold/overwrite-install” and “clean-install” above remain historical wording only. On 2026-08-15 delivery/evidence separation marked TAP-0008 Done for non-Network placement, assigned its reusable regression evidence to TAP-0090, and assigned the initial Network/App Attest/`S`/restore implementation to TAP-0010. TAP-0040 remains Todo and is not closed by either delivery status. |
+| `TAP-0041` | Todo | P0 | completed non-Network delivery `TAP-0009`; structured regression `TAP-0090`; measured timing `TAP-0083`; visual parity `TAP-0048`; initial credential/restore `TAP-0010`; post-setup App Attest/Pending `TAP-0015`; prototype `TAP-0087` | Under the `S -> P -> I` route, Resource Initialization remains only for valid `S`, usable `P`, and absent/corrupt/stale `I` until real first frame/safe shutter-controls/haptics plus the first usable Library catalog metadata snapshot both succeed; it then atomically writes current `I` and enters camera. Valid current `S/P/I` bypasses the gate regardless of installation label or cold caches; no Retry/Failed/timeout/skip/degraded UI and no Share/iCloud/thumb/hash/ZIP/network/queue prewarm. | [Procedure](Acceptance/TAP-0041-camera-readiness.md) records the `fix0809@66ac001` candidate and the owner-accepted bounded non-Network device path. The full attended matrix remains open and consumes TAP-0090 structured ordering evidence; TAP-0083 separately supplies measured route-shell/first-frame timing, TAP-0048 supplies visual parity, TAP-0010 supplies canonical `S`/restore behavior, and TAP-0015 supplies W11/W12 guards. Durable proof is structured logs/assertion reports plus an owner-live textual verdict, with no photo, screenshot, or screen recording. | `/root` bounded device run; complete matrix unassigned | Bounded `fix0809` flow accepted 2026-08-15; complete matrix Pending | Exact Web prototype was approved 2026-08-13. The original registry history recorded that native implementation had not started; that statement is preserved as historical status. An earlier 2026-08-14 audit stated that the acceptance draft predated the Library-catalog/versioned-marker invariant. A later consistency audit confirmed that the concurrent candidate included the first usable catalog, versioned `I` marker, interruption, and current-marker bypass; its then-remaining gaps were the canonical installation matrix, Debug-only timing boundary, and owner confirmation. The 2026-08-14 log contributed only a 908-item first-catalog baseline of `7795 ms` and lacked first frame, safe controls/shutter/haptics, marker, interruption, and repeated-launch evidence. The 2026-08-15 candidate update adds `build-for-testing`, 146/146 focused tests with 0 failed/skipped, 58/58 Prototype tests, MJS checks, manifest parse, and `git diff --check`. Later on 2026-08-15 the owner exercised the bounded non-Network `fix0809` lifecycle flow on a physical device and explicitly accepted that bounded flow. Delivery/evidence separation now marks TAP-0009 Done for that non-Network delivery while TAP-0041 remains Todo for the unexecuted full owner-attended matrix. Canonical credential-bound `S`/restore is task-owned by TAP-0010, W11/W12 release is task-owned by TAP-0015, measured shell/first-frame placement by TAP-0083, and visual parity by TAP-0048; none is silently accepted by this bounded verdict. |
 | `TAP-0042` | Todo | P1 | `TAP-0053` | EV direction, ISO/S clamp, AF→MF, focus assist, front gating, transitions, device matrix | [Procedure](Acceptance/TAP-0042-pro-controls.md) | Unassigned | Pending | Migrated from camera evidence gaps; executable draft added 2026-08-12 |
 | `TAP-0043` | Todo | P0 | `TAP-0012` | Standard RGB/depth per FOV and PRO fixed uncropped output | [Procedure](Acceptance/TAP-0043-fov-depth-pro-no-crop.md) | Unassigned | Pending | Created 2026-08-12 from FOV conflict; executable draft added 2026-08-12 |
 | `TAP-0044` | Todo | P1 | `TAP-0056` | Live Photo capture, paired MOV, signing, Photos readback, audio and playback | [Procedure](Acceptance/TAP-0044-live-photo-chain.md) | Unassigned | Pending | Migrated from Live Photo evidence gaps; executable draft added 2026-08-12 |
 | `TAP-0045` | Todo | P0 | `TAP-0011`, `TAP-0057`, `TAP-0083` | Device codec/drop/RSS/thermal/registration, iCloud-only, broad formats, zero-depth path, and cold complete-original progress that remains responsive under bounded/coalesced UI publication | [Procedure](Acceptance/TAP-0045-tap-video-device.md) must add TAP-0083 cold/progress evidence before that path is executed | Unassigned | Pending | Existing video draft remains; 2026-08-13 added cold progress/backpressure evidence without changing status |
-| `TAP-0046` | Todo | P1 | `TAP-0056`, `TAP-0057` | Entitlement, production backend, assertion and final signed-export gate | [Procedure](Acceptance/TAP-0046-app-attest-production.md) | Unassigned | Pending | Migrated from App Attest evidence gaps; executable draft added 2026-08-12 |
+| `TAP-0046` | Todo | P1 | `TAP-0056`, `TAP-0057`; initial App Attest `TAP-0010`; post-setup credential/Pending `TAP-0015` | Entitlement, production backend, assertion and final signed-export gate | [Procedure](Acceptance/TAP-0046-app-attest-production.md) | Unassigned | Pending | Migrated from App Attest evidence gaps; executable draft added 2026-08-12. On 2026-08-15 linked the stable initial and post-setup implementation owners without changing this evidence Task's status. |
 | `TAP-0047` | Todo | P1 | `TAP-0058`, `TAP-0059`, `TAP-0083` | Limited access, Photos system delete, pending confirm, adjacency, empty close, plus first cold large-Library entry with no repeated semantic snapshot churn or UI starvation | [Procedure](Acceptance/TAP-0047-library-permission-delete.md) must add a fresh/cleared-cache large-catalog run and structured milestone evidence | Unassigned | Pending | Existing Library draft remains; 2026-08-13 added cold large-catalog responsiveness evidence without changing status |
-| `TAP-0048` | Todo | P0 | `TAP-0006` | Approved Web states versus SwiftUI geometry, icons, layout, navigation and state presentation | [Procedure](Acceptance/TAP-0048-web-swiftui-parity.md) | Unassigned | Pending | Created for HTML-first workflow; executable draft added 2026-08-12 |
+| `TAP-0048` | Todo | P0 | `TAP-0006`, completed delivery `TAP-0008`, `TAP-0009`; reviewer prototype `TAP-0087` | Approved Web states versus SwiftUI geometry, icons, layout, navigation and state presentation, including Required Permission Check and Resource Initialization | [Procedure](Acceptance/TAP-0048-web-swiftui-parity.md) | Unassigned | Pending | Created for HTML-first workflow; executable draft added 2026-08-12. On 2026-08-15 delivery/evidence separation made TAP-0048 the stable owner of exact native visual parity after TAP-0008/TAP-0009 delivery closure; no parity run or verdict is inferred. |
 | `TAP-0049` | Todo | P0 | `TAP-0013` | Locked launch/first-frame/soak/capture/suspend/exit/relaunch | [Blocked Procedure](Acceptance/TAP-0049-locked-camera-lifecycle.md) | Unassigned | Pending | Executable draft added 2026-08-12; cannot run until lifecycle-correct experiment is ready |
 | `TAP-0082` | Done | P0 | `TAP-0081` | System-native direct-file-URL handoff for ordinary media and `.tapnap`; ownerApproved r3 native flow uses the same-slot 2px app-payload track with no percentage/Cancel/400 ms hold/ready overlay, closes the popover at payload readiness, and then yields to the iOS-owned sheet. | [Procedure and evidence record](Acceptance/TAP-0082-share-handoff.md) plus this Board's explicit evidence-exception audit; old `bf20b52` evidence remains history only. | `/root` delivery/evidence reconciliation; product-owner attended retest and closure decision | Accepted 2026-08-14: prior ordinary-image/`.tapnap` x Save to Files/AirDrop matrix Pass with openable artifacts; exact r3 Web ownerApproved and native candidate compiled; latest log proves one complete `.tapnap` lifecycle. | Owner directed closure after reviewing the evidence limits. Focused r3 XCTest was compiled, not run. The latest log proves only `.tapnap` L70 intermediate cleanup -> L72 payload ready -> L73 handoff -> L74 controller under 50 ms -> L75–85 system probes -> L86 sheet appeared -> L93 dismissed -> L94 controller released -> L95 artifact cleanup. Direct image relies on the earlier accepted four-path matrix; stale-A/B and cleanup independent of controller release are not claimed. TAP-0008/0009/0083/0040/0041 remain open and independent. The containing closure commit supplies the final hash. |
 
@@ -5229,3 +5462,37 @@ not replace the Product Contract, and linked device evidence may remain open.
   approval, or push state. TAP-0008, TAP-0009, and TAP-0087 remain Doing; the
   complete v18 composition remains `ownerReviewRequired`; Next Task ID remains
   TAP-0090.
+- `2026-08-15` Board Steward recorded the owner's delivery/evidence split after
+  a complete all-status duplicate and responsibility audit. The committed
+  non-Network native lifecycle target placement is the completed TAP-0008 and
+  TAP-0009 delivery, so both moved Doing -> Done without treating separate
+  evidence or cross-boundary behavior as complete. Existing TAP-0010 was
+  re-scoped and raised to P0 for initial Network/App Attest, canonical
+  credential-bound `S`, and restore binding; existing TAP-0015 was re-scoped
+  and raised to P1 for post-setup App Attest/Pending deferred guards and retry
+  optimization; TAP-0083 retains measured route-shell/first-frame placement;
+  TAP-0048 retains visual parity; and TAP-0040/TAP-0041 retain attended device
+  acceptance. No existing Task owned reusable machine-checkable non-Network
+  lifecycle regression evidence, so allocated TAP-0090 Inbox -> Todo with a
+  privacy-safe JSON/JSONL schema, automated/Simulator assertion matrix, and an
+  explicit no-photo/no-screenshot/no-recording evidence boundary, then advanced
+  Next Task ID to TAP-0091. Tentative TAP-0087 v19 semantics merge implemented-
+  but-unverified records into yellow/red target cards/effects with no difference
+  connector; truly unmigrated records retain red-actual/blue-target differences
+  and link TAP-0010 or TAP-0015 directly instead of using per-session freeze
+  copy. TAP-0087 remains Doing; TAP-0010, TAP-0015, TAP-0040, TAP-0041,
+  TAP-0048, and TAP-0090 remain Todo; TAP-0083 remains Doing. This Board-only
+  update claims no new native/prototype implementation, regression pass, visual
+  parity, device verdict, commit, or push.
+- `2026-08-15` Board Steward synchronized the implemented TAP-0087 v19 reviewer
+  projection and root's no-screenshot in-app Browser DOM/computed-style QA.
+  Ordinary sequence `17` showed five right follow-up cards/zero differences,
+  five Timing lifecycle follow-ups/zero paths, and four yellow Workload targets
+  plus two red actuals/two blue targets/two paths. Fresh sequence `27` showed
+  two yellow Workload targets plus four red actuals/four blue targets/four
+  paths. The Browser console had zero errors/warnings; Prototype tests passed
+  `58/58`, and MJS syntax, manifest JSON, and diff checks passed. No photo,
+  screenshot, or screen recording was retained. TAP-0087 remains Doing and the
+  complete composition remains `ownerReviewRequired`; no TAP-0090 regression,
+  native parity, device acceptance, commit, owner approval, other status, or
+  Next Task ID change is inferred.

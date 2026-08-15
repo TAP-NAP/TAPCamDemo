@@ -34,7 +34,7 @@ test("TAP-0087 has a separate candidate entry and does not rewrite prior approva
   assert.equal(manifest.slices.firstInstallResourceInitialization.approvalStatus, "ownerApproved");
   assert.equal(manifest.approval.wholeCompositionApproval, "not separately claimed");
   assert.deepEqual(
-    candidate.qaRefresh.notClaimed.includes("owner approval of the complete TAP-0087 v18 composition"),
+    candidate.qaRefresh.notClaimed.includes("owner approval of the complete TAP-0087 v19 composition"),
     true
   );
 });
@@ -72,7 +72,7 @@ test("the dedicated lifecycle page contains every requested surface and the revi
   assert.match(html, /393 × 852 review viewport/);
 });
 
-test("TAP-0008/TAP-0009 code truth uses JSON outcome cards with one dashed connector per visible mismatch", () => {
+test("TAP-0008/TAP-0009 code truth projects JSON review states as target follow-ups or active differences", () => {
   assert.match(html, /id="lifecycle-difference-connectors"[^>]*aria-hidden="true"/);
   assert.match(html, /data-workload-filter="truth" aria-pressed="true">08 \/ 09 真值/);
   const differenceLegend = sourceBetween(
@@ -80,19 +80,23 @@ test("TAP-0008/TAP-0009 code truth uses JSON outcome cards with one dashed conne
     '<span class="difference-legend">',
     "</span>"
   );
-  assert.match(differenceLegend, /活动面板仅显示尚待确认的问题/);
-  assert.match(differenceLegend, /黄底红边[^·]*log 未覆盖/);
-  assert.match(differenceLegend, /红底红边[^·]*冻结/);
+  assert.match(differenceLegend, /目标位置待回归/);
+  assert.match(differenceLegend, /黄底红边[^·]*不再显示独立 Actual 或虚线/);
+  assert.match(differenceLegend, /红色 Actual → 虚线 → 蓝色 Target/);
+  assert.match(differenceLegend, /关联任务/);
   assert.match(differenceLegend, /d4b19d9/);
-  assert.doesNotMatch(differenceLegend, /黄边：log 已验收|绿色=原本一致/);
-  assert.match(html, /生命周期卡 → 虚线 → 红色实际阶段圆点 · Workload 实际 → 虚线 → 蓝色原型/);
+  assert.doesNotMatch(`${differenceLegend}${controller}${JSON.stringify(manifest)}`, /\u672c\u8f6e\u51bb\u7ed3|\u672c\u8f6e\u6682\u7f13/);
   assert.match(controller, /lifecycleTruthRegistry/);
   assert.match(controller, /label\.dataset\.lifecycleAnchorId = item\.id/);
-  assert.match(controller, /card\.classList\.toggle\("is-lifecycle-mismatch", truth\.mismatch\)/);
   assert.match(controller, /\.filter\(\(truth\) => !truth\.mismatch \|\| lifecycleTimingLaneRecordIDSet\.has\(truth\.id\)\)/);
-  assert.match(controller, /if \(truth\.mismatch\) \{[\s\S]*card\.dataset\.lifecycleDifferenceId = truth\.id/);
+  assert.match(controller, /card\.classList\.toggle\("is-lifecycle-follow-up", targetMerged\)/);
+  assert.match(controller, /card\.classList\.toggle\("is-lifecycle-mismatch", activeDifference\)/);
+  assert.match(controller, /if \(activeDifference && reviewState\.renderConnector\) \{[\s\S]*card\.dataset\.lifecycleDifferenceId = truth\.id/);
   assert.match(controller, /card\.dataset\.fix0809Disposition = truth\.fix0809Disposition/);
   assert.match(controller, /card\.dataset\.fix0809Outcome = truth\.fix0809Outcome/);
+  assert.match(controller, /card\.dataset\.reviewState = truth\.reviewState/);
+  assert.match(controller, /Candidate\/Target 阶段 \$\{truth\.targetBinding\.anchor\}/);
+  assert.match(controller, /makeFollowUpTaskBadge\(truth\)/);
   assert.match(controller, /makeFix0809OutcomeBadge\(truth\)/);
   assert.match(controller, /path\.dataset\.connectorId = card\.dataset\.lifecycleDifferenceId/);
   assert.match(controller, /path\.dataset\.targetAnchorId = card\.dataset\.lifecycleActualAnchor/);
@@ -101,33 +105,10 @@ test("TAP-0008/TAP-0009 code truth uses JSON outcome cards with one dashed conne
   assert.match(controller, /addEventListener\("resize", scheduleLifecycleDifferenceConnectors/);
   assert.match(controller, /new ResizeObserver\(scheduleLifecycleDifferenceConnectors\)/);
   assert.match(css, /\.lifecycle-truth-card\.is-lifecycle-mismatch[\s\S]*background: linear-gradient/);
-  assert.match(css, /\.fix0809-outcome\[data-fix0809-outcome="deferredFrozen"\]/);
-  assert.match(css, /\.lifecycle-truth-card\.is-lifecycle-mismatch\[data-fix0809-outcome="implementedLogAccepted"\]/);
-  assert.match(css, /\.lifecycle-truth-card\.is-lifecycle-mismatch\[data-fix0809-outcome="implementedNotLogVerified"\]/);
-  assert.match(css, /\.lifecycle-truth-card\.is-lifecycle-mismatch\[data-fix0809-outcome="deferredFrozen"\]/);
-  const acceptedOutcomeCSS = sourceBetween(
-    css,
-    '.lifecycle-truth-card.is-lifecycle-mismatch[data-fix0809-outcome="implementedLogAccepted"]',
-    '.lifecycle-truth-card.is-lifecycle-mismatch[data-fix0809-outcome="implementedNotLogVerified"]'
-  );
-  const unverifiedOutcomeCSS = sourceBetween(
-    css,
-    '.lifecycle-truth-card.is-lifecycle-mismatch[data-fix0809-outcome="implementedNotLogVerified"]',
-    '.lifecycle-truth-card.is-lifecycle-mismatch[data-fix0809-outcome="deferredFrozen"]'
-  );
-  const frozenOutcomeCSS = sourceBetween(
-    css,
-    '.lifecycle-truth-card.is-lifecycle-mismatch[data-fix0809-outcome="deferredFrozen"]',
-    '.lifecycle-truth-card.is-lifecycle-aligned'
-  );
-  assert.match(acceptedOutcomeCSS, /background: linear-gradient/);
-  assert.match(acceptedOutcomeCSS, /border-color: rgba\(255,214,10,\.9\)/);
-  assert.match(acceptedOutcomeCSS, /\.timing-lifecycle-difference\[data-fix0809-outcome="implementedLogAccepted"\]/);
-  assert.match(acceptedOutcomeCSS, /\.timing-workload-actual\[data-fix0809-outcome="implementedLogAccepted"\]/);
-  assert.match(unverifiedOutcomeCSS, /background: linear-gradient/);
-  assert.match(unverifiedOutcomeCSS, /border-color: rgba\(255,69,58,\.9\)/);
-  assert.match(frozenOutcomeCSS, /rgba\(126,29,33,\.9\)/);
-  assert.match(frozenOutcomeCSS, /border-color: rgba\(255,69,58,\.82\)/);
+  assert.match(css, /\.lifecycle-truth-card\.is-lifecycle-follow-up\[data-review-state="implementedAwaitingRegression"\]/);
+  assert.match(css, /\.lifecycle-truth-card\.is-lifecycle-mismatch\[data-review-state="deferredTaskOwned"\]/);
+  assert.match(css, /\.lifecycle-target-follow-up-phase/);
+  assert.match(css, /\.follow-up-tasks/);
   assert.match(css, /\.lifecycle-difference-connector[\s\S]*stroke-dasharray: 5 5/);
   assert.match(css, /\.lifecycle-difference-connector[\s\S]*stroke: rgba\(255, 69, 58, \.92\)/);
   assert.match(css, /\.timeline li \.timeline-anchor[\s\S]*border-radius: 50%/);
@@ -140,8 +121,8 @@ test("TAP-0008/TAP-0009 code truth uses JSON outcome cards with one dashed conne
     "libraryReadinessPredicate",
     "initializationCommit"
   ];
-  assert.equal(candidate.workbench.revision, "v18");
-  assert.equal(truthManifest.schemaVersion, 4);
+  assert.equal(candidate.workbench.revision, "v19");
+  assert.equal(truthManifest.schemaVersion, 5);
   assert.equal(truthManifest.recordCount, 9);
   assert.equal(truthManifest.mismatchCount, 9);
   assert.equal(truthManifest.alignedCount, 0);
@@ -153,6 +134,21 @@ test("TAP-0008/TAP-0009 code truth uses JSON outcome cards with one dashed conne
   );
   assert.equal(Object.hasOwn(truthManifest.fix0809OutcomeCatalog, "implementedLogAccepted"), false);
   assert.deepEqual(
+    Object.fromEntries(Object.entries(truthManifest.reviewStateCatalog).map(([id, state]) => (
+      [id, [state.projectionMode, state.renderActualCard, state.renderConnector, state.decorateTarget, state.activeDifference]]
+    ))),
+    {
+      implementedAwaitingRegression: ["mergeIntoTarget", false, false, true, false],
+      deferredTaskOwned: ["actualToTarget", true, true, false, true]
+    }
+  );
+  for (const record of truthManifest.records) {
+    assert.equal(record.activeDifference, truthManifest.reviewStateCatalog[record.reviewState].activeDifference, record.id);
+    assert.equal(record.targetBinding.kind, "lifecycleAnchor", record.id);
+    assert.equal(record.targetBinding.anchor, record.target.anchor, record.id);
+    assert.ok(record.followUpTaskIDs.length > 0, record.id);
+  }
+  assert.deepEqual(
     deletedLifecycleRecordIDs.filter((id) => truthManifest.records.some((record) => record.id === id)),
     []
   );
@@ -163,30 +159,34 @@ test("TAP-0008/TAP-0009 code truth uses JSON outcome cards with one dashed conne
     "function updateTimelineDifferenceAnchors()"
   );
   assert.doesNotMatch(truthCardSource, /implementedLogAccepted/);
-  for (const evidencePath of candidate.qaEvidence.filter((path) => path.endsWith(".png"))) {
-    assert.ok(fs.existsSync(new URL(evidencePath, import.meta.url)), evidencePath);
-  }
+  assert.deepEqual(candidate.qaEvidence.filter((path) => path.endsWith(".png")), []);
 });
 
-test("Timing keeps only non-workload truth in the lifecycle lane and links it to actual anchors", () => {
+test("Timing places lifecycle follow-ups at target anchors and only active differences link to Actual anchors", () => {
   assert.match(controller, /makeTimingLane\("08\/09 生命周期", "difference"/);
   assert.match(controller, /lifecycleTimingLaneRecordIDSet\.has\(truth\.id\)/);
-  assert.match(controller, /reached\.has\(truth\.actual\.anchor\)/);
-  assert.match(controller, /card\.dataset\.timingDifferenceId = truth\.id/);
+  assert.match(controller, /reached\.has\(lifecycleProjectionAnchor\(truth\)\)/);
+  assert.match(controller, /reviewState\?\.projectionMode === "mergeIntoTarget"[\s\S]*truth\.targetBinding\.anchor[\s\S]*truth\.actual\.anchor/);
+  assert.match(controller, /card\.className = targetMerged \? "timing-lifecycle-follow-up" : "timing-lifecycle-difference"/);
+  assert.match(controller, /if \(truth\.activeDifference && reviewState\?\.renderConnector\) \{[\s\S]*card\.dataset\.timingDifferenceId = truth\.id/);
   assert.match(controller, /card\.dataset\.fix0809Outcome = truth\.fix0809Outcome/);
+  assert.match(controller, /card\.dataset\.reviewState = truth\.reviewState/);
   assert.match(controller, /anchor\.dataset\.timingLifecycleAnchorId = milestoneID/);
+  assert.match(controller, /"has-lifecycle-follow-up"[\s\S]*truth\.targetBinding\.anchor === milestoneID/);
   assert.match(controller, /path\.dataset\.timingConnectorId = card\.dataset\.timingDifferenceId/);
   assert.match(controller, /path\.dataset\.targetAnchorId = anchorID/);
   assert.match(controller, /svg\.dataset\.connectorCount = String\(svg\.childElementCount\)/);
   assert.match(controller, /if \(!grid \|\| !svg \|\| timingView\.hidden\) return/);
   assert.match(css, /\.timing-milestone-anchor[\s\S]*border-radius: 50%/);
+  assert.match(css, /\.timing-milestone-anchor\.has-lifecycle-follow-up[\s\S]*background: #66510d[\s\S]*border-color: rgba\(255,69,58,\.9\)/);
   assert.match(css, /\.timing-milestone-anchor\.has-lifecycle-difference[\s\S]*background: #721f22[\s\S]*border-color: var\(--red\)/);
+  assert.match(css, /\.timing-lifecycle-follow-up\[data-review-state="implementedAwaitingRegression"\]/);
   assert.match(css, /\.timing-lifecycle-difference[\s\S]*background: linear-gradient/);
   assert.match(css, /\.timing-difference-connector[\s\S]*stroke-dasharray: 4 4/);
   assert.match(css, /\.timing-difference-connectors[\s\S]*pointer-events: none/);
 });
 
-test("Timing decorates the existing Workload trace with scenario-bound JSON outcome differences", () => {
+test("Timing merges implemented records into exact Workload targets and retains task-owned Actual connectors", () => {
   const comparisonManifest = candidate.workbench.right.tap0008Tap0009CodeTruth.workloadDifferenceComparison;
   const truthManifest = candidate.workbench.right.tap0008Tap0009CodeTruth;
   const deletedWorkloadRecordIDs = [
@@ -196,7 +196,7 @@ test("Timing decorates the existing Workload trace with scenario-bound JSON outc
     "recentCoverLacksDeferredReleaseGuard",
     "firstPreviewGateConsumption"
   ];
-  assert.equal(truthManifest.schemaVersion, 4);
+  assert.equal(truthManifest.schemaVersion, 5);
   assert.equal(comparisonManifest.schemaVersion, 5);
   assert.equal(comparisonManifest.recordCount, 8);
   assert.equal(comparisonManifest.recordCount, comparisonManifest.records.length);
@@ -222,10 +222,12 @@ test("Timing decorates the existing Workload trace with scenario-bound JSON outc
   assert.equal(comparisonManifest.fix0809DispositionSummary.deferredFrozenMismatchCount, 4);
   assert.equal(truthManifest.fix0809OutcomeSummary.implementedNotLogVerifiedMismatchCount, 8);
   assert.equal(truthManifest.fix0809OutcomeSummary.deferredFrozenMismatchCount, 1);
-  assert.equal(truthManifest.fix0809OutcomeSummary.activeRemainingMismatchCount, 9);
+  assert.equal(truthManifest.fix0809OutcomeSummary.activeRemainingMismatchCount, 1);
   assert.equal(comparisonManifest.fix0809OutcomeSummary.implementedNotLogVerifiedMismatchCount, 4);
   assert.equal(comparisonManifest.fix0809OutcomeSummary.deferredFrozenMismatchCount, 4);
-  assert.equal(comparisonManifest.fix0809OutcomeSummary.activeRemainingMismatchCount, 8);
+  assert.equal(comparisonManifest.fix0809OutcomeSummary.activeRemainingMismatchCount, 4);
+  assert.equal(comparisonManifest.fix0809OutcomeSummary.implementedAwaitingRegressionCount, 4);
+  assert.equal(comparisonManifest.fix0809OutcomeSummary.deferredTaskOwnedCount, 4);
   assert.equal(Object.hasOwn(truthManifest.fix0809OutcomeSummary, "implementedLogAcceptedMismatchCount"), false);
   assert.equal(Object.hasOwn(comparisonManifest.fix0809OutcomeSummary, "implementedLogAcceptedMismatchCount"), false);
   assert.equal(
@@ -250,6 +252,10 @@ test("Timing decorates the existing Workload trace with scenario-bound JSON outc
   assert.deepEqual([...ownerIDs].sort(), [...activeTruthIDs].sort());
   const targetBindingKeys = new Set();
   for (const difference of comparisonManifest.records) {
+    const reviewState = truthManifest.reviewStateCatalog[difference.reviewState];
+    assert.ok(reviewState, `${difference.id} review state`);
+    assert.equal(difference.activeDifference, reviewState.activeDifference, difference.id);
+    assert.ok(difference.followUpTaskIDs.length > 0, `${difference.id} follow-up tasks`);
     const binding = difference.traceBinding;
     const scenarioIDs = comparisonManifest.scenarioGroups[binding.scenarioGroupID];
     assert.ok(Array.isArray(scenarioIDs) && scenarioIDs.length > 0, `${difference.id} scenario binding`);
@@ -274,6 +280,7 @@ test("Timing decorates the existing Workload trace with scenario-bound JSON outc
   assert.match(model, /workloadDifferenceRegistry = Object\.freeze\(clone\(workloadDifferenceManifest\.records\)\)/);
   assert.match(model, /fix0809DispositionRegistry = Object\.freeze\(clone\(fix0809DispositionCatalog\)\)/);
   assert.match(model, /fix0809OutcomeRegistry = Object\.freeze\(clone\(fix0809OutcomeCatalog\)\)/);
+  assert.match(model, /reviewStateRegistry = Object\.freeze\(clone\(reviewStateCatalog\)\)/);
   assert.match(model, /workloadDifferenceScenarioRegistry = Object\.freeze/);
   assert.match(model, /export function resolveWorkloadDifferenceTraceBinding/);
   assert.match(model, /lifecycleTimingLaneRecordIDs = Object\.freeze/);
@@ -285,7 +292,10 @@ test("Timing decorates the existing Workload trace with scenario-bound JSON outc
     "function makeTimingWorkloadActual("
   );
   assert.match(projectionSource, /resolveWorkloadDifferenceTraceBinding\(difference, state\.scenarioId, columns\)/);
-  assert.match(projectionSource, /if \(!resolved\.visible\) continue/);
+  assert.match(projectionSource, /if \(!resolved\.applicable\) continue/);
+  assert.match(projectionSource, /if \(reviewState\.renderActualCard && !resolved\.visible\) continue/);
+  assert.doesNotMatch(projectionSource, /if \(!resolved\.visible\) continue/);
+  assert.match(projectionSource, /if \(reviewState\.renderActualCard\) \{[\s\S]*actualBySequence\.get\(visibilityColumn\.entry\.seq\)/);
   assert.match(projectionSource, /actualBySequence\.get\(visibilityColumn\.entry\.seq\)/);
   assert.match(projectionSource, /targetByEffect\.set/);
   assert.doesNotMatch(projectionSource, /scope\.(?:path|trigger)|actual\.anchor ===|target\.anchor ===/);
@@ -314,6 +324,7 @@ test("Timing decorates the existing Workload trace with scenario-bound JSON outc
   assert.match(controller, /actual\.dataset\.targetAnchorReached = String\(targetAnchorReached\)/);
   assert.match(controller, /actual\.dataset\.fix0809Disposition = difference\.fix0809Disposition/);
   assert.match(controller, /actual\.dataset\.fix0809Outcome = difference\.fix0809Outcome/);
+  assert.match(controller, /actual\.dataset\.reviewState = difference\.reviewState/);
   assert.match(controller, /makeFix0809OutcomeBadge\(difference\)/);
   assert.match(controller, /targetStatus\.textContent = `对应原型 Workload · \$\{difference\.target\.label\} · 既有 trace effect \$\{targetEffectReached \? "已出现" : "尚未出现"\}`/);
   const actualAnnotationSource = sourceBetween(
@@ -326,20 +337,33 @@ test("Timing decorates the existing Workload trace with scenario-bound JSON outc
   assert.match(actualAnnotationSource, /真实来源范围：\$\{difference\.scope\.path\}；真实触发：\$\{difference\.scope\.trigger\}/);
   assert.match(actualAnnotationSource, /审阅投影点：事件 #\$\{visibilityColumn\.entry\.seq\}/);
   assert.match(actualAnnotationSource, /该点只控制差异何时显示，不代表真实 workload 在此执行/);
-  assert.match(actualAnnotationSource, /实际阶段：\$\{difference\.actual\.anchor\}，\$\{difference\.actual\.phase\}/);
-  assert.match(actualAnnotationSource, /既有原型 Workload effect \$\{targetEffectReached \? "已出现" : "尚未出现"\}/);
+  assert.match(actualAnnotationSource, /Actual 阶段：\$\{difference\.actual\.anchor\}，\$\{difference\.actual\.phase\}/);
+  assert.match(actualAnnotationSource, /既有 Target effect \$\{targetEffectReached \? "已出现" : "尚未出现"\}/);
   assert.match(actualAnnotationSource, /目标生命周期：\$\{difference\.target\.anchor\} \$\{targetAnchorReached \? "已到达" : "尚未到达"\}/);
   assert.match(actualAnnotationSource, /sourceScope\.textContent = `真实触发 · \$\{difference\.scope\.path\} · \$\{difference\.scope\.trigger\}`/);
   assert.match(actualAnnotationSource, /projectionScope\.textContent = `审阅投影 · after #\$\{visibilityColumn\.entry\.seq\}/);
   assert.match(actualAnnotationSource, /targetPhase\.textContent = `目标生命周期 · \$\{difference\.target\.anchor\} \$\{targetAnchorReached \? "已到达" : "尚未到达"\} · \$\{difference\.target\.phase\}`/);
   assert.doesNotMatch(actualAnnotationSource, /aria-controls/);
   assert.match(controller, /button\.id = timingWorkloadEffectDOMID\(entry\.seq, workloadId, effectIndex\)/);
+  assert.match(controller, /if \(reviewState\.decorateTarget\) \{/);
+  assert.match(controller, /button\.classList\.add\("is-workload-follow-up-target"\)/);
+  assert.match(controller, /button\.dataset\.workloadFollowUpTargetId = difference\.id/);
+  assert.match(controller, /button\.dataset\.fix0809Outcome = difference\.fix0809Outcome/);
+  assert.match(controller, /targetBadge\.textContent = `Candidate \/ Target Workload · \$\{difference\.target\.anchor\}`/);
+  assert.match(controller, /if \(taskBadge\) button\.append\(taskBadge\)/);
+  assert.match(controller, /else if \(reviewState\.activeDifference\) \{/);
   assert.match(controller, /button\.classList\.add\("is-workload-difference-target"\)/);
   assert.match(controller, /button\.dataset\.workloadDifferenceTargetId = difference\.id/);
   assert.match(controller, /button\.dataset\.fix0809Disposition = difference\.fix0809Disposition/);
-  assert.doesNotMatch(controller, /button\.dataset\.fix0809Outcome = difference\.fix0809Outcome/);
   assert.match(controller, /disposition\.visibleLabel/);
-  assert.match(controller, /targetBadge\.textContent = `原型 Workload effect · 目标 \$\{difference\.target\.anchor\}`/);
+  assert.match(controller, /targetBadge\.textContent = `Prototype Target · \$\{difference\.target\.anchor\}`/);
+  const targetEffectSource = sourceBetween(
+    controller,
+    "function makeTimingWorkloadTraceEffect(",
+    "let timingDifferenceConnectorFrame"
+  );
+  assert.match(targetEffectSource, /if \(reviewState\.decorateTarget\)[\s\S]*is-workload-follow-up-target[\s\S]*workloadFollowUpTargetId/);
+  assert.match(targetEffectSource, /else if \(reviewState\.activeDifference\)[\s\S]*is-workload-difference-target[\s\S]*actualAnnotationId/);
   assert.match(controller, /button\.setAttribute\(\s*"aria-label"/);
   assert.doesNotMatch(controller, /workloadDifferenceWorkloadIDSet|makeTimingWorkloadDifference\(/);
   assert.doesNotMatch(controller, /className = "timing-workload-target"|timing-workload-inline-connector/);
@@ -361,9 +385,9 @@ test("Timing decorates the existing Workload trace with scenario-bound JSON outc
   assert.match(controller, /timingView\.replaceChildren\(grid\)/);
   assert.doesNotMatch(controller, /replaceChildren\(grid, comparison\)/);
 
-  assert.match(css, /\.timing-workload-actual\[data-fix0809-outcome="implementedLogAccepted"\]/);
-  assert.match(css, /\.timing-workload-actual\[data-fix0809-outcome="implementedNotLogVerified"\]/);
-  assert.match(css, /\.timing-workload-actual\[data-fix0809-outcome="deferredFrozen"\]/);
+  assert.match(css, /\.timing-workload-actual\[data-review-state="deferredTaskOwned"\]/);
+  assert.match(css, /\.timing-workload-trace-effect\.is-workload-follow-up-target[\s\S]*background: linear-gradient/);
+  assert.match(css, /\.timing-workload-trace-effect\.is-workload-follow-up-target[\s\S]*border-color: rgba\(255,69,58,\.9\)/);
   assert.match(css, /\.timing-workload-trace-effect\.is-workload-difference-target[\s\S]*background: linear-gradient/);
   assert.match(css, /\.timing-workload-trace-effect\.is-workload-difference-target[\s\S]*border-color: rgba\(10,132,255,\.78\)/);
   assert.match(css, /\.timing-workload-difference-connector[\s\S]*stroke-dasharray: 4 4/);
@@ -371,7 +395,7 @@ test("Timing decorates the existing Workload trace with scenario-bound JSON outc
   assert.match(css, /\.timing-difference-connectors[\s\S]*pointer-events: none/);
   assert.doesNotMatch(css, /\.timing-workload-difference\s*\{|\.timing-workload-inline-connector\s*\{/);
   assert.doesNotMatch(css, /\.workload-timing-comparison|\.workload-timing-pair|\.workload-timing-connectors/);
-  assert.match(html, /workbench-v18/);
+  assert.match(html, /workbench-v19/);
 });
 
 test("the workbench catalogs approved UI surfaces and keeps Settings visibly Pending without inventing a phone page", () => {

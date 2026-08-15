@@ -555,26 +555,18 @@ select {
   border-color: rgba(255,69,58,.78);
   box-shadow: inset 3px 0 0 var(--red), 0 0 0 1px rgba(255,69,58,.08);
 }
-.lifecycle-truth-card.is-lifecycle-mismatch[data-fix0809-outcome="implementedLogAccepted"],
-.lifecycle-truth-card.is-lifecycle-mismatch[data-fix0809-outcome="implementedLogAccepted"]:hover,
-.timing-lifecycle-difference[data-fix0809-outcome="implementedLogAccepted"],
-.timing-workload-actual[data-fix0809-outcome="implementedLogAccepted"] {
-  background: linear-gradient(115deg, rgba(116,87,9,.94), rgba(61,47,10,.97));
-  border-color: rgba(255,214,10,.9);
-  box-shadow: inset 3px 0 0 var(--yellow), 0 0 0 1px rgba(255,214,10,.1);
-}
-.lifecycle-truth-card.is-lifecycle-mismatch[data-fix0809-outcome="implementedNotLogVerified"],
-.lifecycle-truth-card.is-lifecycle-mismatch[data-fix0809-outcome="implementedNotLogVerified"]:hover,
-.timing-lifecycle-difference[data-fix0809-outcome="implementedNotLogVerified"],
-.timing-workload-actual[data-fix0809-outcome="implementedNotLogVerified"] {
+.lifecycle-truth-card.is-lifecycle-follow-up[data-review-state="implementedAwaitingRegression"],
+.lifecycle-truth-card.is-lifecycle-follow-up[data-review-state="implementedAwaitingRegression"]:hover,
+.timing-lifecycle-follow-up[data-review-state="implementedAwaitingRegression"],
+.timing-workload-trace-effect.is-workload-follow-up-target[data-review-state="implementedAwaitingRegression"] {
   background: linear-gradient(115deg, rgba(116,87,9,.94), rgba(61,47,10,.97));
   border-color: rgba(255,69,58,.9);
   box-shadow: inset 3px 0 0 var(--red), 0 0 0 1px rgba(255,69,58,.1);
 }
-.lifecycle-truth-card.is-lifecycle-mismatch[data-fix0809-outcome="deferredFrozen"],
-.lifecycle-truth-card.is-lifecycle-mismatch[data-fix0809-outcome="deferredFrozen"]:hover,
-.timing-lifecycle-difference[data-fix0809-outcome="deferredFrozen"],
-.timing-workload-actual[data-fix0809-outcome="deferredFrozen"] {
+.lifecycle-truth-card.is-lifecycle-mismatch[data-review-state="deferredTaskOwned"],
+.lifecycle-truth-card.is-lifecycle-mismatch[data-review-state="deferredTaskOwned"]:hover,
+.timing-lifecycle-difference[data-review-state="deferredTaskOwned"],
+.timing-workload-actual[data-review-state="deferredTaskOwned"] {
   background: linear-gradient(115deg, rgba(126,29,33,.9), rgba(68,22,25,.94));
   border-color: rgba(255,69,58,.82);
   box-shadow: inset 3px 0 0 var(--red), 0 0 0 1px rgba(255,69,58,.1);
@@ -586,6 +578,7 @@ select {
 }
 .lifecycle-truth-verdict { align-self: start; padding: 4px 6px; border-radius: 999px; font-size: 7px; font-weight: 720; }
 .lifecycle-truth-verdict.is-mismatch { color: #fff; background: rgba(255,69,58,.38); border: 1px solid rgba(255,190,186,.34); }
+.lifecycle-truth-verdict.is-follow-up { color: #fff0a0; background: rgba(255,214,10,.14); border: 1px solid rgba(255,69,58,.5); }
 .lifecycle-truth-verdict.is-aligned { color: #c9f9d3; background: rgba(48,209,88,.14); border: 1px solid rgba(48,209,88,.26); }
 .fix0809-outcome {
   grid-column: 1 / -1;
@@ -609,6 +602,32 @@ select {
   background: rgba(255,69,58,.2);
   border-color: rgba(255,69,58,.58);
 }
+.follow-up-tasks {
+  grid-column: 1 / -1;
+  width: fit-content;
+  padding: 3px 5px;
+  color: #dcecff;
+  background: rgba(10,132,255,.1);
+  border: 1px solid rgba(10,132,255,.3);
+  border-radius: 999px;
+  font-size: 6.5px;
+  font-weight: 720;
+  line-height: 1.15;
+}
+.lifecycle-target-follow-up-phase {
+  grid-column: 1 / -1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto auto minmax(0,1fr);
+  gap: 5px;
+  align-items: center;
+  padding: 6px;
+  background: rgba(0,0,0,.18);
+  border-radius: 7px;
+}
+.lifecycle-target-follow-up-phase em { color: #ffe889; font-size: 7px; font-style: normal; }
+.lifecycle-target-follow-up-phase strong { color: #fff; font-size: 8px; font-variant-numeric: tabular-nums; }
+.lifecycle-target-follow-up-phase small { overflow: hidden; color: rgba(255,255,255,.7); font-size: 7px; text-overflow: ellipsis; white-space: nowrap; }
 .lifecycle-truth-phase {
   grid-column: 1 / -1;
   display: grid;
@@ -675,15 +694,22 @@ html[data-workload-filter="truth"] .journey-spans { display: none; }
   font-weight: 760;
   line-height: 1;
 }
+.timing-milestone-anchor.has-lifecycle-follow-up {
+  color: #fff4b5;
+  background: #66510d;
+  border-color: rgba(255,69,58,.9);
+  box-shadow: 0 0 0 2px rgba(255,214,10,.12);
+}
 .timing-milestone-anchor.has-lifecycle-difference {
   color: #fff;
   background: #721f22;
   border-color: var(--red);
   box-shadow: 0 0 0 2px rgba(255,69,58,.13);
 }
-.timing-lane[data-timing-lane="difference"] .timing-lane-label { color: #ffd2cf; background: #321b1e; }
+.timing-lane[data-timing-lane="difference"] .timing-lane-label { color: #fff0a0; background: linear-gradient(#352d17, #251d1f); }
 .timing-difference-stack { position: relative; z-index: 2; display: grid; gap: 3px; padding-left: 13px; }
-.timing-lifecycle-difference {
+.timing-lifecycle-difference,
+.timing-lifecycle-follow-up {
   min-width: 0;
   display: grid;
   gap: 1px;
@@ -694,7 +720,8 @@ html[data-workload-filter="truth"] .journey-spans { display: none; }
   border-radius: 7px;
   box-shadow: inset 2px 0 0 var(--red);
 }
-.timing-lifecycle-difference strong {
+.timing-lifecycle-difference strong,
+.timing-lifecycle-follow-up strong {
   display: -webkit-box;
   overflow: hidden;
   font-size: 6px;
@@ -703,8 +730,12 @@ html[data-workload-filter="truth"] .journey-spans { display: none; }
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
-.timing-lifecycle-difference small { color: rgba(255,255,255,.66); font-size: 5.5px; line-height: 1.15; }
+.timing-lifecycle-difference small,
+.timing-lifecycle-follow-up small { color: rgba(255,255,255,.66); font-size: 5.5px; line-height: 1.15; }
 .timing-lifecycle-difference .fix0809-outcome,
+.timing-lifecycle-follow-up .fix0809-outcome,
+.timing-lifecycle-follow-up .follow-up-tasks,
+.timing-lifecycle-difference .follow-up-tasks,
 .timing-workload-actual .fix0809-outcome { padding: 2px 4px; font-size: 5.25px; }
 .timing-difference-connectors {
   position: absolute;
@@ -766,6 +797,12 @@ html[data-workload-filter="truth"] .journey-spans { display: none; }
   border-color: rgba(10,132,255,.78);
   box-shadow: inset 2px 0 0 var(--blue);
 }
+.timing-workload-trace-effect.is-workload-follow-up-target {
+  color: #fff7c8;
+  background: linear-gradient(115deg, rgba(116,87,9,.96), rgba(61,47,10,.98));
+  border-color: rgba(255,69,58,.9);
+  box-shadow: inset 2px 0 0 var(--red), 0 0 0 1px rgba(255,214,10,.08);
+}
 .timing-workload-target-badge {
   width: fit-content;
   padding: 2px 4px;
@@ -777,6 +814,14 @@ html[data-workload-filter="truth"] .journey-spans { display: none; }
   font-weight: 780;
   line-height: 1;
 }
+.timing-workload-trace-effect.is-workload-follow-up-target .timing-workload-target-badge {
+  color: #fff0a0;
+  background: rgba(255,214,10,.13);
+  border-color: rgba(255,69,58,.62);
+}
+.timing-workload-trace-effect .fix0809-outcome,
+.timing-workload-trace-effect .follow-up-tasks,
+.timing-workload-actual .follow-up-tasks { padding: 2px 4px; font-size: 5.25px; }
 .timing-workload-difference-connector {
   fill: none;
   stroke: rgba(255,91,82,.96);
