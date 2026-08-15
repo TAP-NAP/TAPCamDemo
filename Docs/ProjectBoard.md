@@ -1,7 +1,7 @@
 # TAPCam Project Board
 
 - Schema: `1`
-- Next Task ID: `TAP-0091`
+- Next Task ID: `TAP-0093`
 - Canonical Product Contract: [ProductContract.md](ProductContract.md)
 - UI Prototype Contract: [UIPrototypeContract.md](UIPrototypeContract.md)
 - Board Steward Session: `019ff4ea-acba-7051-bd0f-3d489f1caadc`
@@ -31,6 +31,8 @@ from each record's `Status` field.
 - `TAP-0084` Design a Library-to-Viewer zoom transition with stable top chrome
 - `TAP-0088` Prototype functional Viewfinder-control workload interactions
 - `TAP-0089` Prototype functional Photo Viewer analysis workload interactions
+- `TAP-0091` Eliminate out-of-preview Viewfinder chrome flicker during camera-path switching
+- `TAP-0092` Clean up brittle tests, unmounted legacy code, and redundant repository information
 
 ### Todo
 
@@ -1607,14 +1609,17 @@ Every active Task uses these stable fields:
   without changing product behavior.
 - Out of Scope: Claiming new feature coverage solely from file reorganization.
 - Done When: Approved structural boundaries and existing behavior tests pass.
-- Related: `None`
+- Related: `TAP-0092`
 - Created: `2026-08-12`
-- Updated: `2026-08-12`
+- Updated: `2026-08-15`
 - Revision History:
   - `2026-08-12` Combined closely related test-only debt during board bootstrap.
   - `2026-08-12` Historical R1–R4 production splits and most source-spelling
     assertions were already completed; remaining scope is only Debug support
     isolation and oversized test-suite organization.
+  - `2026-08-15` Kept this Task's structural scope intact after the repository-
+    health audit created `TAP-0092` for the separate semantic cleanup of brittle
+    tests, unmounted legacy code, and redundant or conflicting active prose.
 
 ### TAP-0075 — Migrate and remove obsolete Startup/Camera design documents
 
@@ -4646,6 +4651,141 @@ Every active Task uses these stable fields:
     assertion Task per prototype record. No instrumentation, regression result,
     device verdict, or downstream Task closure is inferred.
 
+### TAP-0091 — Eliminate out-of-preview Viewfinder chrome flicker during camera-path switching
+
+- Status: `Inbox`
+- Kind: `Fix`
+- Priority: `P1`
+- Domain: `Camera / Viewfinder Presentation`
+- Labels: `camera-path-switch`, `lens-switch`, `front-rear-switch`,
+  `viewfinder-chrome`, `redraw`, `flicker`, `transition-boundary`
+- Contract: `ProductContract §3.1`; `UIPrototypeContract §4`
+- Match Keys: `切换镜头闪烁, 切换相机闪烁, 设置按钮重绘, preview 外元素重绘,
+  camera switch flicker, lens switch redraw, settings button flash, chrome
+  remount, FOV switch flicker, front rear switch flicker`
+- Assignee: `Unassigned`
+- Dev Session: `Unassigned`
+- Branch/Worktree: `Unassigned`
+- Affected States: The exact reproducing path must be frozen before Todo,
+  distinguishing current Standard FOV selection, front/rear camera switching,
+  and Photographer Mode camera-path restoration. Cover transition start,
+  in-progress, successful readiness, and failure/recovery for the approved path.
+- Prototype Impact: Expected `N/A` only if the fix preserves the current
+  hierarchy, icon identity, geometry, copy, and intended transition appearance.
+  Any intentional visible change requires a Task-scoped Web-prototype revision
+  and explicit owner approval before native implementation closes.
+- Scope: Reproduce, diagnose, and remove the user-visible redraw/flicker of
+  Viewfinder chrome outside the preview window while the approved camera path
+  is switching. The Settings button and other out-of-preview controls must
+  retain stable visual identity and placement while interaction is safely
+  disabled or restored; preview-owned transition treatment remains confined to
+  its approved boundary.
+- Out of Scope: Designing true camera-source switching owned by `TAP-0018`;
+  changing capture/FOV/depth semantics; redesigning Viewfinder hierarchy,
+  controls, copy, icons, or layout; masking unrelated startup or camera-session
+  latency; or treating an unverified implementation mechanism as the cause.
+- Done When: The owner-approved reproduction matrix identifies the exact
+  trigger, build, iPhone/iOS, affected chrome, and expected stable boundary;
+  the approved native fix preserves out-of-preview chrome across the reproduced
+  success and failure/recovery states; contract-focused regression coverage and
+  Simulator checks pass; prototype/documentation impact is reconciled; and a
+  separate attended physical-device acceptance child records before/after
+  evidence without broadening `TAP-0018`.
+- Related: `TAP-0018`; `TAP-0088`; allocate a dedicated DeviceAcceptance child
+  when this Inbox scope is approved for Todo
+- Created: `2026-08-15`
+- Updated: `2026-08-15`
+- Revision History:
+  - `2026-08-15` Allocated after a complete Inbox/Todo/Doing/Done/Deprecated
+    search found camera switching and Viewfinder prototype Tasks but no Task
+    owning the reported runtime chrome flicker. Preserved the owner's raw
+    observation: “在切换镜头的时候 viewfinder 的 UI 元素会闪烁，或者更准确地说，
+    出现了 preview 窗口之外的元素的重绘，比如设置按钮等等”. Kept Inbox and
+    Unassigned pending an exact reproduction matrix; no root cause, UI redesign,
+    implementation, validation, prototype exception, or acceptance is claimed.
+  - `2026-08-15` Renumbered the uncommitted local allocation from provisional
+    `TAP-0090` to canonical `TAP-0091` during mainline synchronization because
+    main had already allocated `TAP-0090` to non-Network lifecycle regression
+    evidence. Preserved both Tasks and advanced the allocator without changing
+    either Task's scope or status.
+
+### TAP-0092 — Clean up brittle tests, unmounted legacy code, and redundant repository information
+
+- Status: `Inbox`
+- Kind: `Technical`
+- Priority: `P0`
+- Domain: `Repository Health / Tests / Documentation`
+- Labels: `repository-health`, `test-debt`, `brittle-test`, `source-spelling`,
+  `dead-code`, `legacy-unmounted`, `documentation-drift`, `cleanup`
+- Contract: `ProductContract §1`; `AGENTS.md §4`, `§5`, `§7`
+- Match Keys: `仓库清理, 不合适的测试, 过度测试, 源码拼写测试, 旧代码,
+  无用代码, 冗余信息, 重复文档, brittle tests, source inspection, dead code,
+  stale docs, repository cleanup`
+- Assignee: `Unassigned`
+- Dev Session: `Unassigned`
+- Branch/Worktree: `Unassigned`
+- Owner Target Date: `2026-08-24`
+- Responsibility: Execute one bounded repository-health cleanup pass against the
+  2026-08-15 audit baseline. Remove only debt that has evidence and an explicit
+  disposition; preserve current product behavior, security properties, public
+  formats, persistence migrations, and still-owned compatibility obligations.
+- Scope:
+  1. Freeze a per-file/per-test cleanup manifest classifying each candidate as
+     retain, replace with contract-focused behavior coverage, migrate then
+     delete, or defer to an existing Task, with evidence and an owning Task for
+     every non-deletion.
+  2. Remove or replace source-spelling, exact-layout, duplicated-fixture, and
+     implementation-order tests that do not protect a current contract. Retain
+     security, privacy, format, fail-closed, state-machine, and architecture
+     guards where source inspection is the appropriate boundary, and run them
+     through an explicit static-gate profile rather than presenting them as UI
+     behavior evidence.
+  3. Retire confirmed unmounted legacy production paths together with tests and
+     prose that exist only to preserve those paths, after migrating any unique
+     current obligation and verifying that no production route, public format,
+     persistence migration, or cross-project interface still depends on them.
+  4. Reconcile directly conflicting or duplicated active documentation, reduce
+     repeated implementation/test inventories to stable responsibility and
+     command summaries, update inbound links, and leave superseded detail in Git
+     history rather than another active archive.
+  5. Triage the current deterministic and parallel-sensitive test failures,
+     record declared/executed/passed/failed/skipped counts, and leave one
+     repeatable repository-health validation path for the cleaned scope.
+- Coordination Boundary: `TAP-0029` retains Debug-support isolation and large-
+  suite file organization; `TAP-0014` retains the product-facing owned-capture
+  Verify decision; `TAP-0002`, `TAP-0003`, and `TAP-0079` remain the completed
+  document-authority and historical-retention foundations. This Task consumes
+  their boundaries without silently changing their lifecycle states.
+- Out of Scope: Changing product behavior or visible UI; deleting a compatibility
+  seam solely because a static search finds no caller; removing security/privacy/
+  format coverage to improve a test count; restoring AITrace or creating a new
+  historical-prose archive; absorbing the structural work owned by `TAP-0029`;
+  or claiming the whole repository is permanently debt-free after one pass.
+- Done When: The owner-approved cleanup manifest is fully dispositioned; every
+  deleted test, source file, and document has its unique obligations migrated or
+  an evidence-backed `N/A`; retained legacy/compatibility seams have a current
+  owner and reason; directly conflicting active prose and broken inbound links
+  are resolved; the scoped lint/static, unit, integration, and prototype gates
+  report exact execution and skip counts without the identified deterministic or
+  parallel-sensitive failures; documentation-impact and obsolete-file records
+  are complete; and no product, security, format, persistence, or acceptance
+  boundary is broadened by the cleanup.
+- Related: Structural test debt `TAP-0029`; owned-capture Verify cleanup
+  `TAP-0014`; documentation authority and retention `TAP-0002`, `TAP-0003`,
+  `TAP-0079`; deprecated legacy UI responsibilities `TAP-0067`, `TAP-0069`
+- Created: `2026-08-15`
+- Updated: `2026-08-15`
+- Revision History:
+  - `2026-08-15` Allocated after an all-status duplicate and responsibility
+    search. The closest active match, `TAP-0029`, owns only Debug-support
+    isolation and oversized-suite organization, so it remains separate. The
+    owner explicitly set P0 and the target date `2026-08-24` for the broader
+    semantic cleanup of inappropriate tests, unmounted old code, redundant
+    information, and stale active documentation. Kept Inbox and Unassigned until
+    the exact cleanup manifest and safety boundaries are approved; no deletion,
+    test fix, document rewrite, product change, validation pass, commit, or push
+    is inferred.
+
 ## 5. Inbox Decision Registry
 
 The following records deliberately remain compact until the owner decides
@@ -4667,6 +4807,8 @@ duplicate matching.
 | `TAP-0084` | Fix | P1 | TAP Library / Viewer Transition | `zoom, shared element, stable top chrome, title/back animation, Photo/Live/Video parity` | Approve the exact forward/reverse motion, source-unavailable fallback, cancellation, and Reduce Motion Web prototype before native work | 2026-08-13 | Split from the post-acceptance observation; independent of Viewer paging and TAP Share |
 | `TAP-0088` | Technical | P1 | UI Prototype / Viewfinder Observability | `functional Viewfinder control mock, inspector, workload interaction` | Activate only after TAP-0008/TAP-0009/TAP-0083 complete; prototype control-state/workload interactions without duplicating native Camera delivery | 2026-08-14 | Owner-directed deferred TAP-0087 child; Inbox and Unassigned |
 | `TAP-0089` | Technical | P1 | UI Prototype / Photo Viewer Observability | `RAW 2D 3D inspector, analysis workload interaction, Deferred mode` | Activate only after TAP-0008/TAP-0009/TAP-0083 complete; prototype Photo Viewer analysis interactions without native or Video 3D claims | 2026-08-14 | Owner-directed deferred TAP-0087 child; Inbox and Unassigned |
+| `TAP-0091` | Fix | P1 | Camera / Viewfinder Presentation | `camera or lens switch, preview-external chrome redraw, settings button flicker` | Freeze the exact reproducing path/device/build and stable preview-versus-chrome boundary before implementation; decide prototype N/A only if visual intent remains unchanged | 2026-08-15 | Owner-reported runtime observation preserved and renumbered after mainline allocated TAP-0090; Inbox and Unassigned |
+| `TAP-0092` | Technical | P0 | Repository Health / Tests / Documentation | `不合适的测试, source-spelling, unmounted legacy code, redundant information, stale docs` | Approve the audit-baseline cleanup manifest and safety dispositions before removing tests, code, or prose; owner target date 2026-08-24 | 2026-08-15 | Broader semantic cleanup split from TAP-0029's structural test/debug-support scope; Inbox and Unassigned |
 
 ## 6. Device And Visual Acceptance Registry
 
@@ -5496,3 +5638,23 @@ not replace the Product Contract, and linked device evidence may remain open.
   complete composition remains `ownerReviewRequired`; no TAP-0090 regression,
   native parity, device acceptance, commit, owner approval, other status, or
   Next Task ID change is inferred.
+- `2026-08-15` Resolved the mainline synchronization ID collision without
+  dropping either Task. Mainline `TAP-0090` remains the approved Todo for
+  machine-checkable non-Network startup lifecycle regression evidence. The
+  uncommitted local Viewfinder chrome-flicker capture was renumbered to
+  `TAP-0091`, remains Inbox/P1/Unassigned with its original observation and
+  scope intact, and appears in the detailed registry plus Inbox projection.
+  Advanced Next Task ID to TAP-0092. This conflict resolution changes no
+  Product Contract, prototype, native code, Task lifecycle state, validation,
+  acceptance, commit, or push claim.
+- `2026-08-15` Board Steward allocated `TAP-0092` as an Inbox/P0 repository-
+  health cleanup after the owner clarified that the requested work concerns
+  inappropriate and brittle tests, unmounted old code, redundant information,
+  and stale active documentation rather than Agent Trace/PR integration. The
+  owner target date is `2026-08-24`. An all-status responsibility audit kept
+  `TAP-0029` separate for Debug-support isolation and oversized-suite structure,
+  while TAP-0092 owns one bounded semantic cleanup pass with per-item retention,
+  migration, replacement, or deletion evidence. Advanced Next Task ID to
+  TAP-0093. This Board-only allocation changes no Product Contract, product or
+  UI behavior, source/test/document content outside the Board, lifecycle state
+  of existing Tasks, validation, acceptance, commit, or push claim.
