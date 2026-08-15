@@ -15,10 +15,12 @@ status and known alignment work remain in
 | Responsibility | Code |
 | --- | --- |
 | SwiftUI app entry and XCTest host bypass | [TAPCamDemoApp.swift](TAPCamDemoApp.swift) |
-| First-install gate | [StartupGateView.swift](StartupGateView.swift) |
+| Root `S -> P -> I -> route` reducer, Library activation boundary, and deferred release | [StartupGateView.swift](StartupGateView.swift), [StartupGatePolicy.swift](StartupGatePolicy.swift) |
 | First-Install Setup UI | [WelcomeStartupSetupView.swift](WelcomeStartupSetupView.swift) |
-| First camera-interactive readiness state and blocking surface | [CameraInitialReadinessGate.swift](../CameraCapture/UI/CameraInitialReadinessGate.swift), [CameraView.swift](../CameraCapture/UI/CameraView.swift) |
-| Required versus optional startup policy | [StartupGatePolicy.swift](StartupGatePolicy.swift) |
+| Post-Setup Camera/Photos recovery UI | [RequiredPermissionCheckView.swift](RequiredPermissionCheckView.swift) |
+| Independent versioned Initialization completion store | [StartupInitializationPolicy.swift](StartupInitializationPolicy.swift) |
+| Camera-plus-Library readiness state and blocking surface | [CameraInitialReadinessGate.swift](../CameraCapture/UI/CameraInitialReadinessGate.swift), [CameraView.swift](../CameraCapture/UI/CameraView.swift) |
+| Setup facts, required-permission facts, route priority, and legacy compatibility | [StartupGatePolicy.swift](StartupGatePolicy.swift) |
 | Legacy Network-row retry and timeout policy; target App Attest bootstrap alignment is `TAP-0008` | [StartupSecurityPreflightPolicy.swift](StartupSecurityPreflightPolicy.swift) |
 | Legacy `/healthz` reachability execution; not the target completion condition | [StartupBackendSecurityPreflight.swift](StartupBackendSecurityPreflight.swift) |
 | Current Network, camera, photo, optional location, and optional microphone row state | [StartupGateCoordinator.swift](StartupGateCoordinator.swift) |
@@ -77,10 +79,12 @@ metadata snapshot"]
 ```
 
 This diagram is the target contract consumed by `TAP-0008` and `TAP-0009`.
-Current main still has one legacy Boolean, a generic `/healthz` Network
-preflight, no root Required Permission Check route, and no independent
-versioned initialization marker. Those are implementation gaps rather than a
-different product contract.
+The audited `main@4cc02e5f12f2` baseline had one legacy Boolean, no root
+Required Permission Check route, and no independent versioned Initialization
+marker. The `fix0809` native candidate now implements the `S/P/I` reducer seam,
+targeted Camera/Photos recovery, and independent `I`; the frozen Network row is
+still a generic `/healthz` preflight and therefore cannot produce the target
+App-Attest-bound canonical `S`.
 
 `StartupGatePolicy` remains the required/optional entry: initial App Attest,
 Camera, and Photos are required; Location and Microphone are optional and may
@@ -94,21 +98,29 @@ by each setup row. It does not own the camera-readiness gate.
 wall-clock timeout used by the current Network row. `TAP-0008` must align the
 operation itself with App Attest bootstrap rather than treating
 `StartupBackendSecurityPreflight` `/healthz` success as the required result.
-One explicit Network action starts one bounded sequence. After timeout, only
-the setup page's explicit Retry action may begin another sequence; page
-appearance, foreground return, and status refresh must not do so.
+Target behavior (not delivered by the Network-frozen `fix0809` candidate) is
+that one explicit Network action starts one bounded sequence. After timeout,
+only the setup page's explicit Retry action may begin another sequence; page
+appearance, foreground return, and status refresh must not do so. The frozen
+current `/healthz` path remains implementation evidence, not this target.
 
-After the required rows are complete, Continue atomically writes the structured
-Setup receipt. Resource Initialization owns a different marker and stays
-visible until camera-interactive readiness and the first usable TAP Library
-metadata snapshot are both ready. Session configuration by itself is not
-enough. Resource Initialization has no product Failed, Retry, timeout, skip, or
-degraded branch.
+In the target, Continue atomically writes the structured Setup receipt. In the
+current `fix0809` candidate, the Network hard freeze means Continue instead
+writes a separately named `LegacySetupCompletionRecord`; it never converts a
+`/healthz` result into credential evidence. Resource Initialization owns a
+different marker and stays visible until camera-interactive readiness and the
+first usable TAP Library metadata snapshot are both ready. Session
+configuration by itself is not enough. Resource Initialization has no product
+Failed, Retry, timeout, skip, or degraded branch. Marker preparation and fsync
+run off MainActor, storage fails closed when Application Support is unavailable,
+and local deferred work waits for a committed Viewfinder-frame barrier.
 
-Later App Attest health/recovery and Pending Capture Queue retry begin after
-camera entry as independent background work. They do not participate in the
-first interactive-frame gate and do not turn a normal launch or local capture
-into a network requirement.
+The target releases later App Attest health/recovery and Pending Capture Queue
+retry only after `t5` as independent background work. The frozen current
+coordinator still uses its existing camera-start delay, foreground, credential,
+and worker triggers; `fix0809` does not claim those triggers consume `t5`.
+Neither target nor current work participates in the first interactive-frame
+gate or turns ordinary local capture into a network requirement.
 
 ## Explicit Setup Actions
 
@@ -135,14 +147,18 @@ when the user has never chosen; a saved opt-out remains authoritative.
 
 ## Completion Marker And Later Launches
 
-Current main persists
-`TAPCamDemo.StartupGate.didCompleteFirstInstallPermissions`, but the target
-model must separate:
+The `fix0809` candidate reads the historical
+`TAPCamDemo.StartupGate.didCompleteFirstInstallPermissions` only as a final
+compatibility fallback. The active model separates:
 
-- a structured Setup receipt, written after initial App Attest, Camera, and
-  Photos are complete and Continue is accepted; and
+- a canonical structured Setup receipt shape, valid only with independently
+  verified local credential binding; until the frozen Network work supplies
+  that binding, a clearly non-canonical legacy Setup record preserves the
+  existing first-install completion path; and
 - a versioned Resource Initialization marker, written only after both readiness
-  groups succeed.
+  groups succeed. It is stored as one atomically replaced Application Support
+  file and binds bundle, version, build, initialization schema, installation
+  generation, and a non-migrating local device generation.
 
 The Setup receipt includes a local binding to the initial App Attest credential
 for the installation generation. It can be checked locally without making a
@@ -197,9 +213,9 @@ The app target also sets `APP_ATTEST_ENVIRONMENT` to `development` for Debug and
   First-Install Setup checks. Initial App Attest, camera, and photo library remain
   required; location and microphone remain optional. Current generic
   `/healthz` completion is an implementation gap, not the target requirement.
-- `StartupGateView` will own the route reducer and separate Setup receipt from
-  the Resource Initialization marker; current main has not implemented that
-  separation.
+- `StartupGateView` owns the route reducer and keeps Setup compatibility state
+  separate from the Resource Initialization marker. Invalid canonical Setup
+  data cannot fall back to the historical Boolean.
 - `CameraInitialReadinessGate` and `CameraView` own camera-interactive
   readiness; App code must not replace that gate with a timer or a
   configuration-completed flag.

@@ -5,31 +5,120 @@
 
 @preconcurrency import AVFoundation
 import SwiftUI
+import UIKit
+
+@MainActor
+protocol CameraViewfinderFrameAwaiting: AnyObject {
+    /// Returns only after a frame containing the newly published Viewfinder
+    /// state has had an opportunity to reach the display server.
+    func waitForCommittedViewfinderFrame() async
+}
+
+/// A two-tick display-link barrier for the `t4 -> t5` boundary. The first tick
+/// lets SwiftUI/Core Animation present the state change that removed Resource
+/// Initialization; the second tick observes that committed frame before local
+/// deferred work is released.
+@MainActor
+final class CameraViewfinderFrameBarrier: CameraViewfinderFrameAwaiting {
+    nonisolated init() {}
+
+    func waitForCommittedViewfinderFrame() async {
+        let waiter = CameraViewfinderDisplayLinkWaiter()
+        await waiter.waitForCommittedFrame()
+    }
+}
+
+@MainActor
+private final class CameraViewfinderDisplayLinkWaiter: NSObject {
+    private var displayLink: CADisplayLink?
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var remainingTicks = 2
+
+    func waitForCommittedFrame() async {
+        await withCheckedContinuation { continuation in
+            self.continuation = continuation
+            let displayLink = CADisplayLink(
+                target: self,
+                selector: #selector(displayLinkDidFire)
+            )
+            self.displayLink = displayLink
+            displayLink.add(to: .main, forMode: .common)
+        }
+    }
+
+    @objc private func displayLinkDidFire() {
+        remainingTicks -= 1
+        guard remainingTicks == 0 else { return }
+        displayLink?.invalidate()
+        displayLink = nil
+        continuation?.resume()
+        continuation = nil
+    }
+
+    deinit {
+        displayLink?.invalidate()
+    }
+}
 
 struct CameraInitialReadinessGate {
     let isEnabled: Bool
-    let onReady: () -> Void
+    let prepareCommit: @MainActor () async -> CameraInitialReadinessCommit?
 
-    static let disabled = CameraInitialReadinessGate(isEnabled: false, onReady: {})
+    static let disabled = CameraInitialReadinessGate(
+        isEnabled: false,
+        prepareCommit: { nil }
+    )
 
-    static func firstInstall(onReady: @escaping () -> Void) -> CameraInitialReadinessGate {
-        CameraInitialReadinessGate(isEnabled: true, onReady: onReady)
+    static func resourceInitialization(
+        prepareCommit: @escaping @MainActor () async ->
+            CameraInitialReadinessCommit?
+    ) -> CameraInitialReadinessGate {
+        CameraInitialReadinessGate(
+            isEnabled: true,
+            prepareCommit: prepareCommit
+        )
     }
+}
+
+/// The prepared I marker's point-of-no-return operations. `commit` is invoked
+/// synchronously with the CameraView `t4` state publication; `discard` removes
+/// the uncommitted temporary marker when the active journey is canceled.
+struct CameraInitialReadinessCommit {
+    let commit: @MainActor () -> Bool
+    let discard: @MainActor () -> Void
+}
+
+/// Low-cardinality attribution for an invariant that has not completed yet.
+/// These values are diagnostic checkpoints, not product recovery states.
+nonisolated enum ResourceInitializationPendingCheckpoint: String, Equatable {
+    case cameraAuthorization
+    case cameraSession
+    case firstPreview
+    case primaryControls
+    case haptics
+    case libraryCatalog
+    case markerCommit
 }
 
 nonisolated enum CameraInteractiveReadinessState: Equatable {
     case inactive
-    case preparing(message: String)
+    case preparing(ResourceInitializationPendingCheckpoint)
     case ready
-    case failed(message: String, canOpenSettings: Bool)
 
     var blocksInteraction: Bool {
         switch self {
-        case .inactive, .ready:
+        case .inactive:
             false
-        case .preparing, .failed:
+        case .preparing, .ready:
             true
         }
+    }
+
+    var pendingCheckpoint: ResourceInitializationPendingCheckpoint? {
+        if case .preparing(let checkpoint) = self {
+            return checkpoint
+        }
+        return nil
     }
 
     static func resolve(
@@ -39,178 +128,169 @@ nonisolated enum CameraInteractiveReadinessState: Equatable {
         isConfiguringSession: Bool,
         hasActiveSessionConfiguration: Bool,
         isDepthCaptureReady: Bool,
+        hasPresentedFirstPreview: Bool,
+        hasSafePrimaryControls: Bool,
         hasPreparedHaptics: Bool,
-        statusMessage: String
+        hasUsableLibraryCatalog: Bool,
+        isSceneActive: Bool = true
     ) -> CameraInteractiveReadinessState {
         guard isGateEnabled, !didCompleteGate else {
             return .inactive
         }
-
-        switch cameraAuthorizationStatus {
-        case .authorized:
-            if hasActiveSessionConfiguration, isDepthCaptureReady, hasPreparedHaptics {
-                return .ready
-            }
-
-            if isConfiguringSession || isPreparingStatusMessage(statusMessage) || !hasPreparedHaptics {
-                return .preparing(message: nonEmptyStatusMessage(statusMessage))
-            }
-
-            return .failed(message: nonEmptyStatusMessage(statusMessage), canOpenSettings: false)
-        case .notDetermined:
-            return .preparing(message: nonEmptyStatusMessage(statusMessage))
-        case .denied, .restricted:
-            return .failed(message: nonEmptyStatusMessage(statusMessage), canOpenSettings: true)
-        @unknown default:
-            return .failed(message: nonEmptyStatusMessage(statusMessage), canOpenSettings: true)
+        guard isSceneActive else {
+            return .preparing(.cameraSession)
         }
+        guard cameraAuthorizationStatus == .authorized else {
+            return .preparing(.cameraAuthorization)
+        }
+        guard !isConfiguringSession,
+              hasActiveSessionConfiguration,
+              isDepthCaptureReady else {
+            return .preparing(.cameraSession)
+        }
+        guard hasPresentedFirstPreview else {
+            return .preparing(.firstPreview)
+        }
+        guard hasSafePrimaryControls else {
+            return .preparing(.primaryControls)
+        }
+        guard hasPreparedHaptics else {
+            return .preparing(.haptics)
+        }
+        guard hasUsableLibraryCatalog else {
+            return .preparing(.libraryCatalog)
+        }
+        return .ready
     }
+}
 
-    private static func nonEmptyStatusMessage(_ statusMessage: String) -> String {
-        statusMessage.isEmpty ? "Preparing camera..." : statusMessage
-    }
-
-    private static func isPreparingStatusMessage(_ statusMessage: String) -> Bool {
-        let normalized = statusMessage.lowercased()
-        return normalized.isEmpty
-            || normalized.contains("preparing")
-            || normalized.contains("waiting")
+/// First stable app-owned frame shown before route-owned camera construction.
+struct ResourceInitializationLaunchView: View {
+    var body: some View {
+        ResourceInitializationContent(
+            isCameraReady: false,
+            isLibraryReady: false
+        )
+            .accessibilityIdentifier("camera.initialReadiness.overlay")
     }
 }
 
 struct CameraInitialReadinessOverlayView: View {
     let state: CameraInteractiveReadinessState
-    let onRetry: () -> Void
-    let onOpenSettings: () -> Void
+    let isCameraReady: Bool
+    let isLibraryReady: Bool
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
-
-            switch state {
-            case .inactive, .ready:
-                EmptyView()
-            case .preparing(let message):
-                VStack(spacing: 16) {
-                    ProgressView()
-                        .tint(.white)
-                        .scaleEffect(1.08)
-
-                    Text("Preparing camera")
-                        .font(.headline)
-                        .foregroundStyle(.white)
-
-                    CameraInitialReadinessMessageText(message: message)
-                        .font(.footnote)
-                        .foregroundStyle(.white.opacity(0.68))
-                        .multilineTextAlignment(.center)
-                        .lineLimit(3)
-                        .padding(.horizontal, 34)
-                }
-            case .failed(let message, let canOpenSettings):
-                VStack(spacing: 16) {
-                    Image(systemName: "exclamationmark.circle.fill")
-                        .font(.system(size: 34, weight: .semibold))
-                        .foregroundStyle(.yellow)
-
-                    Text("Camera setup needs attention")
-                        .font(.headline)
-                        .foregroundStyle(.white)
-
-                    CameraInitialReadinessMessageText(message: message)
-                        .font(.footnote)
-                        .foregroundStyle(.white.opacity(0.68))
-                        .multilineTextAlignment(.center)
-                        .lineLimit(4)
-                        .padding(.horizontal, 34)
-
-                    HStack(spacing: 12) {
-                        Button {
-                            onRetry()
-                        } label: {
-                            Label("Retry", systemImage: "arrow.clockwise")
-                                .font(.headline)
-                                .frame(minWidth: 108, minHeight: 44)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.white)
-                        .foregroundStyle(.black)
-
-                        if canOpenSettings {
-                            Button {
-                                onOpenSettings()
-                            } label: {
-                                Label("Settings", systemImage: "gearshape")
-                                    .font(.headline)
-                                    .frame(minWidth: 108, minHeight: 44)
-                            }
-                            .buttonStyle(.bordered)
-                            .tint(.white)
-                        }
-                    }
-                }
+            if state.blocksInteraction {
+                ResourceInitializationContent(
+                    isCameraReady: isCameraReady,
+                    isLibraryReady: isLibraryReady
+                )
+                    .accessibilityValue(
+                        state.pendingCheckpoint?.rawValue ?? "preparing"
+                    )
             }
         }
         .accessibilityIdentifier("camera.initialReadiness.overlay")
     }
 }
 
-private struct CameraInitialReadinessMessageText: View {
-    let message: String
+private struct ResourceInitializationContent: View {
+    let isCameraReady: Bool
+    let isLibraryReady: Bool
 
-    var body: Text {
-        Self.text(for: message)
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                ProgressView()
+                    .tint(.white)
+                    .scaleEffect(1.18)
+                    .padding(.bottom, 24)
+
+                Text("Resource Initialization")
+                    .font(.system(size: 21, weight: .semibold))
+                    .foregroundStyle(.white)
+
+                Text("Please wait…")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.white.opacity(0.62))
+                    .padding(.top, 9)
+
+                VStack(spacing: 0) {
+                    ResourceInitializationReadinessRow(
+                        title: "Camera Resources",
+                        loadingDetail: "Preparing first preview and controls",
+                        readyDetail: "First preview and camera controls are ready",
+                        isReady: isCameraReady
+                    )
+
+                    Divider()
+                        .overlay(.white.opacity(0.10))
+
+                    ResourceInitializationReadinessRow(
+                        title: "TAP Library",
+                        loadingDetail: "Building media catalog",
+                        readyDetail: "First media catalog is ready",
+                        isReady: isLibraryReady
+                    )
+                }
+                .frame(maxWidth: 286)
+                .background(.white.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 17, style: .continuous)
+                        .stroke(.white.opacity(0.12), lineWidth: 1)
+                }
+                .padding(.top, 34)
+            }
+            .padding(.horizontal, 44)
+        }
     }
+}
 
-    private static let localizedMessages: Set<String> = [
-        "Preparing camera...",
-        "Preparing capture session...",
-        "Camera service restarted. Waiting for it to recover.",
-        "Camera service did not respond.",
-        "Camera configuration did not finish.",
-        "Camera preview did not resume. Retry camera setup.",
-        "Camera service is ready to retry.",
-        "Camera service is still recovering.",
-        "Camera access is required to capture depth photos.",
-        "No camera with depth-capable formats is available on this device.",
-        "Unable to add the selected camera input to the capture session.",
-        "Unable to add photo output to the capture session.",
-        "Unable to add video output to the capture session.",
-        "Unable to add audio output to the capture session.",
-        "Unable to add depth output to the capture session.",
-        "The current session configuration does not support depth photo delivery.",
-        "The selected zoom factor does not support depth delivery on this camera.",
-        "The selected RGB source and depth source cannot produce a supported paired capture.",
-        "This RGB and depth pairing is outside the SingleCam photo-depth pipeline.",
-        "Camera controls are temporarily unavailable.",
-        "Camera configuration failed. See diagnostics for details."
-    ]
+private struct ResourceInitializationReadinessRow: View {
+    let title: LocalizedStringKey
+    let loadingDetail: LocalizedStringKey
+    let readyDetail: LocalizedStringKey
+    let isReady: Bool
 
-    private static func readyPairingKey(in message: String) -> String? {
-        let components = message.components(separatedBy: " · ")
-        guard components.count == 3,
-              components[0] == "Ready",
-              components[2] == "crop metadata" else {
-            return nil
+    var body: some View {
+        HStack(spacing: 12) {
+            Group {
+                if isReady {
+                    ZStack {
+                        Circle()
+                            .fill(Color.green.opacity(0.16))
+                        Circle()
+                            .fill(Color.green)
+                            .frame(width: 10, height: 10)
+                    }
+                } else {
+                    ProgressView()
+                        .tint(.white)
+                        .scaleEffect(0.58)
+                }
+            }
+            .frame(width: 18, height: 18)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+
+                Text(isReady ? readyDetail : loadingDetail)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.white.opacity(0.55))
+            }
+
+            Spacer(minLength: 0)
         }
-
-        switch components[1] {
-        case "rgbOnly", "rgbWithApplePairedDepth", "requiresMultiCam", "unsupported":
-            return components[1]
-        default:
-            return nil
-        }
-    }
-
-    private static func text(for message: String) -> Text {
-        if localizedMessages.contains(message) {
-            return Text(LocalizedStringKey(message))
-        }
-        if let pairingKey = readyPairingKey(in: message) {
-            return Text("Ready · \(Text(LocalizedStringKey(pairingKey))) · crop metadata")
-        }
-
-        // A future runtime diagnostic is a value, never an inferred catalog key.
-        return Text(verbatim: message)
+        .frame(minHeight: 66)
+        .padding(.horizontal, 16)
+        .accessibilityElement(children: .combine)
+        .accessibilityValue(isReady ? "Ready" : "Preparing")
     }
 }

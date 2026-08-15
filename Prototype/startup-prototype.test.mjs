@@ -33,6 +33,10 @@ test("TAP-0087 has a separate candidate entry and does not rewrite prior approva
   assert.equal(manifest.slices.firstInstallSetup.approvalStatus, "ownerApproved");
   assert.equal(manifest.slices.firstInstallResourceInitialization.approvalStatus, "ownerApproved");
   assert.equal(manifest.approval.wholeCompositionApproval, "not separately claimed");
+  assert.deepEqual(
+    candidate.qaRefresh.notClaimed.includes("owner approval of the complete TAP-0087 v19 composition"),
+    true
+  );
 });
 
 test("the dedicated lifecycle page contains every requested surface and the reviewer inspector", () => {
@@ -66,6 +70,332 @@ test("the dedicated lifecycle page contains every requested surface and the revi
   }
   assert.match(controller, /iOS system-owned reference/);
   assert.match(html, /393 × 852 review viewport/);
+});
+
+test("TAP-0008/TAP-0009 code truth projects JSON review states as target follow-ups or active differences", () => {
+  assert.match(html, /id="lifecycle-difference-connectors"[^>]*aria-hidden="true"/);
+  assert.match(html, /data-workload-filter="truth" aria-pressed="true">08 \/ 09 真值/);
+  const differenceLegend = sourceBetween(
+    html,
+    '<span class="difference-legend">',
+    "</span>"
+  );
+  assert.match(differenceLegend, /目标位置待回归/);
+  assert.match(differenceLegend, /黄底红边[^·]*不再显示独立 Actual 或虚线/);
+  assert.match(differenceLegend, /红色 Actual → 虚线 → 蓝色 Target/);
+  assert.match(differenceLegend, /关联任务/);
+  assert.match(differenceLegend, /d4b19d9/);
+  assert.doesNotMatch(`${differenceLegend}${controller}${JSON.stringify(manifest)}`, /\u672c\u8f6e\u51bb\u7ed3|\u672c\u8f6e\u6682\u7f13/);
+  assert.match(controller, /lifecycleTruthRegistry/);
+  assert.match(controller, /label\.dataset\.lifecycleAnchorId = item\.id/);
+  assert.match(controller, /\.filter\(\(truth\) => !truth\.mismatch \|\| lifecycleTimingLaneRecordIDSet\.has\(truth\.id\)\)/);
+  assert.match(controller, /card\.classList\.toggle\("is-lifecycle-follow-up", targetMerged\)/);
+  assert.match(controller, /card\.classList\.toggle\("is-lifecycle-mismatch", activeDifference\)/);
+  assert.match(controller, /if \(activeDifference && reviewState\.renderConnector\) \{[\s\S]*card\.dataset\.lifecycleDifferenceId = truth\.id/);
+  assert.match(controller, /card\.dataset\.fix0809Disposition = truth\.fix0809Disposition/);
+  assert.match(controller, /card\.dataset\.fix0809Outcome = truth\.fix0809Outcome/);
+  assert.match(controller, /card\.dataset\.reviewState = truth\.reviewState/);
+  assert.match(controller, /Candidate\/Target 阶段 \$\{truth\.targetBinding\.anchor\}/);
+  assert.match(controller, /makeFollowUpTaskBadge\(truth\)/);
+  assert.match(controller, /makeFix0809OutcomeBadge\(truth\)/);
+  assert.match(controller, /path\.dataset\.connectorId = card\.dataset\.lifecycleDifferenceId/);
+  assert.match(controller, /path\.dataset\.targetAnchorId = card\.dataset\.lifecycleActualAnchor/);
+  assert.match(controller, /visibleBottom <= visibleTop/);
+  assert.match(controller, /addEventListener\("scroll", scheduleLifecycleDifferenceConnectors/);
+  assert.match(controller, /addEventListener\("resize", scheduleLifecycleDifferenceConnectors/);
+  assert.match(controller, /new ResizeObserver\(scheduleLifecycleDifferenceConnectors\)/);
+  assert.match(css, /\.lifecycle-truth-card\.is-lifecycle-mismatch[\s\S]*background: linear-gradient/);
+  assert.match(css, /\.lifecycle-truth-card\.is-lifecycle-follow-up\[data-review-state="implementedAwaitingRegression"\]/);
+  assert.match(css, /\.lifecycle-truth-card\.is-lifecycle-mismatch\[data-review-state="deferredTaskOwned"\]/);
+  assert.match(css, /\.lifecycle-target-follow-up-phase/);
+  assert.match(css, /\.follow-up-tasks/);
+  assert.match(css, /\.lifecycle-difference-connector[\s\S]*stroke-dasharray: 5 5/);
+  assert.match(css, /\.lifecycle-difference-connector[\s\S]*stroke: rgba\(255, 69, 58, \.92\)/);
+  assert.match(css, /\.timeline li \.timeline-anchor[\s\S]*border-radius: 50%/);
+  assert.match(css, /html\[data-workload-filter="truth"\] \.timeline[\s\S]*grid-template-columns: 1fr/);
+  const truthManifest = candidate.workbench.right.tap0008Tap0009CodeTruth;
+  const deletedLifecycleRecordIDs = [
+    "explicitPermissionActions",
+    "optionalPermissionPolicy",
+    "cameraReadinessPredicate",
+    "libraryReadinessPredicate",
+    "initializationCommit"
+  ];
+  assert.equal(candidate.workbench.revision, "v19");
+  assert.equal(truthManifest.schemaVersion, 5);
+  assert.equal(truthManifest.recordCount, 9);
+  assert.equal(truthManifest.mismatchCount, 9);
+  assert.equal(truthManifest.alignedCount, 0);
+  assert.equal(truthManifest.records.length, 9);
+  assert.equal(truthManifest.records.filter(({ mismatch }) => !mismatch).length, 0);
+  assert.equal(
+    truthManifest.records.filter(({ fix0809Outcome }) => fix0809Outcome === "implementedLogAccepted").length,
+    0
+  );
+  assert.equal(Object.hasOwn(truthManifest.fix0809OutcomeCatalog, "implementedLogAccepted"), false);
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(truthManifest.reviewStateCatalog).map(([id, state]) => (
+      [id, [state.projectionMode, state.renderActualCard, state.renderConnector, state.decorateTarget, state.activeDifference]]
+    ))),
+    {
+      implementedAwaitingRegression: ["mergeIntoTarget", false, false, true, false],
+      deferredTaskOwned: ["actualToTarget", true, true, false, true]
+    }
+  );
+  for (const record of truthManifest.records) {
+    assert.equal(record.activeDifference, truthManifest.reviewStateCatalog[record.reviewState].activeDifference, record.id);
+    assert.equal(record.targetBinding.kind, "lifecycleAnchor", record.id);
+    assert.equal(record.targetBinding.anchor, record.target.anchor, record.id);
+    assert.ok(record.followUpTaskIDs.length > 0, record.id);
+  }
+  assert.deepEqual(
+    deletedLifecycleRecordIDs.filter((id) => truthManifest.records.some((record) => record.id === id)),
+    []
+  );
+  assert.equal(truthManifest.fix0809OutcomeSummary.archiveRef, "d4b19d9");
+  const truthCardSource = sourceBetween(
+    controller,
+    "function renderLifecycleTruthCards()",
+    "function updateTimelineDifferenceAnchors()"
+  );
+  assert.doesNotMatch(truthCardSource, /implementedLogAccepted/);
+  assert.deepEqual(candidate.qaEvidence.filter((path) => path.endsWith(".png")), []);
+});
+
+test("Timing places lifecycle follow-ups at target anchors and only active differences link to Actual anchors", () => {
+  assert.match(controller, /makeTimingLane\("08\/09 生命周期", "difference"/);
+  assert.match(controller, /lifecycleTimingLaneRecordIDSet\.has\(truth\.id\)/);
+  assert.match(controller, /reached\.has\(lifecycleProjectionAnchor\(truth\)\)/);
+  assert.match(controller, /reviewState\?\.projectionMode === "mergeIntoTarget"[\s\S]*truth\.targetBinding\.anchor[\s\S]*truth\.actual\.anchor/);
+  assert.match(controller, /card\.className = targetMerged \? "timing-lifecycle-follow-up" : "timing-lifecycle-difference"/);
+  assert.match(controller, /if \(truth\.activeDifference && reviewState\?\.renderConnector\) \{[\s\S]*card\.dataset\.timingDifferenceId = truth\.id/);
+  assert.match(controller, /card\.dataset\.fix0809Outcome = truth\.fix0809Outcome/);
+  assert.match(controller, /card\.dataset\.reviewState = truth\.reviewState/);
+  assert.match(controller, /anchor\.dataset\.timingLifecycleAnchorId = milestoneID/);
+  assert.match(controller, /"has-lifecycle-follow-up"[\s\S]*truth\.targetBinding\.anchor === milestoneID/);
+  assert.match(controller, /path\.dataset\.timingConnectorId = card\.dataset\.timingDifferenceId/);
+  assert.match(controller, /path\.dataset\.targetAnchorId = anchorID/);
+  assert.match(controller, /svg\.dataset\.connectorCount = String\(svg\.childElementCount\)/);
+  assert.match(controller, /if \(!grid \|\| !svg \|\| timingView\.hidden\) return/);
+  assert.match(css, /\.timing-milestone-anchor[\s\S]*border-radius: 50%/);
+  assert.match(css, /\.timing-milestone-anchor\.has-lifecycle-follow-up[\s\S]*background: #66510d[\s\S]*border-color: rgba\(255,69,58,\.9\)/);
+  assert.match(css, /\.timing-milestone-anchor\.has-lifecycle-difference[\s\S]*background: #721f22[\s\S]*border-color: var\(--red\)/);
+  assert.match(css, /\.timing-lifecycle-follow-up\[data-review-state="implementedAwaitingRegression"\]/);
+  assert.match(css, /\.timing-lifecycle-difference[\s\S]*background: linear-gradient/);
+  assert.match(css, /\.timing-difference-connector[\s\S]*stroke-dasharray: 4 4/);
+  assert.match(css, /\.timing-difference-connectors[\s\S]*pointer-events: none/);
+});
+
+test("Timing merges implemented records into exact Workload targets and retains task-owned Actual connectors", () => {
+  const comparisonManifest = candidate.workbench.right.tap0008Tap0009CodeTruth.workloadDifferenceComparison;
+  const truthManifest = candidate.workbench.right.tap0008Tap0009CodeTruth;
+  const deletedWorkloadRecordIDs = [
+    "libraryCatalogStartsBeforeRouteOwnership",
+    "libraryCatalogReadyNotConsumedByInitialization",
+    "cameraInteractionReadyEligibilityOmitsPreviewSafety",
+    "recentCoverLacksDeferredReleaseGuard",
+    "firstPreviewGateConsumption"
+  ];
+  assert.equal(truthManifest.schemaVersion, 5);
+  assert.equal(comparisonManifest.schemaVersion, 5);
+  assert.equal(comparisonManifest.recordCount, 8);
+  assert.equal(comparisonManifest.recordCount, comparisonManifest.records.length);
+  assert.equal(comparisonManifest.mismatchCount, comparisonManifest.records.filter(({ mismatch }) => mismatch).length);
+  assert.equal(comparisonManifest.timingMismatchCount, 7);
+  assert.equal(comparisonManifest.semanticMismatchCount, 1);
+  assert.equal(truthManifest.fix0809DispositionSummary.approvedToFixMismatchCount, 8);
+  assert.equal(truthManifest.fix0809DispositionSummary.deferredFrozenMismatchCount, 1);
+  assert.equal(truthManifest.records.find(({ id }) => id === "networkBootstrap").fix0809Disposition, "deferredFrozen");
+  assert.deepEqual(
+    comparisonManifest.records
+      .filter(({ fix0809Disposition }) => fix0809Disposition === "deferredFrozen")
+      .map(({ id }) => id)
+      .sort(),
+    [
+      "firstInstallCredentialStartsAfterContinue",
+      "initialAttestationCompletionMeaning",
+      "pendingRecoveryLacksDeferredReleaseGuard",
+      "postSetupAttestLacksDeferredReleaseGuard"
+    ]
+  );
+  assert.equal(comparisonManifest.fix0809DispositionSummary.approvedToFixMismatchCount, 4);
+  assert.equal(comparisonManifest.fix0809DispositionSummary.deferredFrozenMismatchCount, 4);
+  assert.equal(truthManifest.fix0809OutcomeSummary.implementedNotLogVerifiedMismatchCount, 8);
+  assert.equal(truthManifest.fix0809OutcomeSummary.deferredFrozenMismatchCount, 1);
+  assert.equal(truthManifest.fix0809OutcomeSummary.activeRemainingMismatchCount, 1);
+  assert.equal(comparisonManifest.fix0809OutcomeSummary.implementedNotLogVerifiedMismatchCount, 4);
+  assert.equal(comparisonManifest.fix0809OutcomeSummary.deferredFrozenMismatchCount, 4);
+  assert.equal(comparisonManifest.fix0809OutcomeSummary.activeRemainingMismatchCount, 4);
+  assert.equal(comparisonManifest.fix0809OutcomeSummary.implementedAwaitingRegressionCount, 4);
+  assert.equal(comparisonManifest.fix0809OutcomeSummary.deferredTaskOwnedCount, 4);
+  assert.equal(Object.hasOwn(truthManifest.fix0809OutcomeSummary, "implementedLogAcceptedMismatchCount"), false);
+  assert.equal(Object.hasOwn(comparisonManifest.fix0809OutcomeSummary, "implementedLogAcceptedMismatchCount"), false);
+  assert.equal(
+    comparisonManifest.records.filter(({ fix0809Outcome }) => fix0809Outcome === "implementedLogAccepted").length,
+    0
+  );
+  assert.deepEqual(
+    deletedWorkloadRecordIDs.filter((id) => comparisonManifest.records.some((record) => record.id === id)),
+    []
+  );
+  assert.equal(truthManifest.fix0809OutcomeSummary.candidateRef, "fix0809@66ac001");
+  assert.equal(truthManifest.fix0809OutcomeSummary.archiveRef, "d4b19d9");
+  assert.equal(comparisonManifest.fix0809OutcomeSummary.archiveRef, "d4b19d9");
+
+  const lifecycleOwnerIDs = truthManifest.timingProjection.lifecycleLaneRecordIDs;
+  const workloadOwnerIDs = truthManifest.timingProjection.workloadLaneTruthRecordIDs;
+  const ownerIDs = [...lifecycleOwnerIDs, ...workloadOwnerIDs];
+  const activeTruthIDs = truthManifest.records.map(({ id }) => id);
+  assert.equal(lifecycleOwnerIDs.length, 5);
+  assert.equal(workloadOwnerIDs.length, 4);
+  assert.equal(new Set(ownerIDs).size, ownerIDs.length);
+  assert.deepEqual([...ownerIDs].sort(), [...activeTruthIDs].sort());
+  const targetBindingKeys = new Set();
+  for (const difference of comparisonManifest.records) {
+    const reviewState = truthManifest.reviewStateCatalog[difference.reviewState];
+    assert.ok(reviewState, `${difference.id} review state`);
+    assert.equal(difference.activeDifference, reviewState.activeDifference, difference.id);
+    assert.ok(difference.followUpTaskIDs.length > 0, `${difference.id} follow-up tasks`);
+    const binding = difference.traceBinding;
+    const scenarioIDs = comparisonManifest.scenarioGroups[binding.scenarioGroupID];
+    assert.ok(Array.isArray(scenarioIDs) && scenarioIDs.length > 0, `${difference.id} scenario binding`);
+    assert.ok(binding.actualVisibleAfter.eventTypes.length > 0, `${difference.id} visibility binding`);
+    assert.ok(binding.targetEffect.eventTypes.length > 0, `${difference.id} target event binding`);
+    assert.equal(binding.targetEffect.workloadID, difference.target.workloadID, `${difference.id} target workload`);
+    assert.ok(Number.isInteger(binding.actualVisibleAfter.occurrence) && binding.actualVisibleAfter.occurrence > 0);
+    assert.ok(Number.isInteger(binding.targetEffect.occurrence) && binding.targetEffect.occurrence > 0);
+    for (const scenarioID of scenarioIDs) {
+      const targetKey = [
+        scenarioID,
+        [...binding.targetEffect.eventTypes].sort().join(","),
+        binding.targetEffect.workloadID,
+        binding.targetEffect.status,
+        binding.targetEffect.occurrence
+      ].join("|");
+      assert.equal(targetBindingKeys.has(targetKey), false, `${difference.id} one-to-one target binding`);
+      targetBindingKeys.add(targetKey);
+    }
+  }
+  assert.match(model, /loadPrototypeManifest\(\)/);
+  assert.match(model, /workloadDifferenceRegistry = Object\.freeze\(clone\(workloadDifferenceManifest\.records\)\)/);
+  assert.match(model, /fix0809DispositionRegistry = Object\.freeze\(clone\(fix0809DispositionCatalog\)\)/);
+  assert.match(model, /fix0809OutcomeRegistry = Object\.freeze\(clone\(fix0809OutcomeCatalog\)\)/);
+  assert.match(model, /reviewStateRegistry = Object\.freeze\(clone\(reviewStateCatalog\)\)/);
+  assert.match(model, /workloadDifferenceScenarioRegistry = Object\.freeze/);
+  assert.match(model, /export function resolveWorkloadDifferenceTraceBinding/);
+  assert.match(model, /lifecycleTimingLaneRecordIDs = Object\.freeze/);
+  assert.doesNotMatch(model, /id:\s*"libraryObserverStartsPreFrame"/);
+
+  const projectionSource = sourceBetween(
+    controller,
+    "function buildTimingWorkloadDifferenceProjection(",
+    "function makeTimingWorkloadActual("
+  );
+  assert.match(projectionSource, /resolveWorkloadDifferenceTraceBinding\(difference, state\.scenarioId, columns\)/);
+  assert.match(projectionSource, /if \(!resolved\.applicable\) continue/);
+  assert.match(projectionSource, /if \(reviewState\.renderActualCard && !resolved\.visible\) continue/);
+  assert.doesNotMatch(projectionSource, /if \(!resolved\.visible\) continue/);
+  assert.match(projectionSource, /if \(reviewState\.renderActualCard\) \{[\s\S]*actualBySequence\.get\(visibilityColumn\.entry\.seq\)/);
+  assert.match(projectionSource, /actualBySequence\.get\(visibilityColumn\.entry\.seq\)/);
+  assert.match(projectionSource, /targetByEffect\.set/);
+  assert.doesNotMatch(projectionSource, /scope\.(?:path|trigger)|actual\.anchor ===|target\.anchor ===/);
+
+  const workloadLaneSource = sourceBetween(
+    controller,
+    'grid.append(makeTimingLane("Workload", "workload"',
+    'grid.append(makeTimingLane("Marker", "marker"'
+  );
+  assert.match(workloadLaneSource, /const traceWorkloadIds = entry\.effects\.workloads \|\| \[\]/);
+  assert.match(workloadLaneSource, /\.\.\.traceWorkloadIds\.map\(\(workloadId, effectIndex\) => makeTimingWorkloadTraceEffect/);
+  assert.match(workloadLaneSource, /workloadDifferenceProjection\.targetByEffect\.get\(timingWorkloadEffectKey/);
+  assert.match(workloadLaneSource, /\.\.\.differences\.map\(makeTimingWorkloadActual\)/);
+  assert.doesNotMatch(workloadLaneSource, /traceWorkloadIds[\s\S]*?\.filter\(/);
+  assert.doesNotMatch(workloadLaneSource, /\breduce\(|\bdispatch\(|\breach\(|\bwork\(/);
+
+  assert.equal((controller.match(/makeTimingLane\("Workload", "workload"/g) || []).length, 1);
+  assert.doesNotMatch(controller, /renderWorkloadTimingComparison|workload-timing-comparison|workloadTimingConnectorFrame/);
+  assert.match(controller, /actual\.dataset\.workloadDifferenceActualId = difference\.id/);
+  assert.match(controller, /actual\.dataset\.scenarioGroupId = difference\.traceBinding\.scenarioGroupID/);
+  assert.match(controller, /actual\.dataset\.actualAnchorReached = String\(actualColumn != null\)/);
+  assert.match(controller, /actual\.dataset\.actualAnchorSeq = actualColumn \? String\(actualColumn\.entry\.seq\) : ""/);
+  assert.match(controller, /actual\.dataset\.focusSeq = String\(visibilityColumn\.entry\.seq\)/);
+  assert.match(controller, /actual\.dataset\.targetElementId = timingWorkloadEffectDOMID/);
+  assert.match(controller, /actual\.dataset\.targetEffectReached = String\(targetEffectReached\)/);
+  assert.match(controller, /actual\.dataset\.targetAnchorReached = String\(targetAnchorReached\)/);
+  assert.match(controller, /actual\.dataset\.fix0809Disposition = difference\.fix0809Disposition/);
+  assert.match(controller, /actual\.dataset\.fix0809Outcome = difference\.fix0809Outcome/);
+  assert.match(controller, /actual\.dataset\.reviewState = difference\.reviewState/);
+  assert.match(controller, /makeFix0809OutcomeBadge\(difference\)/);
+  assert.match(controller, /targetStatus\.textContent = `对应原型 Workload · \$\{difference\.target\.label\} · 既有 trace effect \$\{targetEffectReached \? "已出现" : "尚未出现"\}`/);
+  const actualAnnotationSource = sourceBetween(
+    controller,
+    "function makeTimingWorkloadActual(",
+    "function makeTimingWorkloadTraceEffect("
+  );
+  assert.match(actualAnnotationSource, /差异：\$\{kindLabel\}；检查点：\$\{difference\.checkpoint\}/);
+  assert.match(actualAnnotationSource, /outcome\.accessibleLabel/);
+  assert.match(actualAnnotationSource, /真实来源范围：\$\{difference\.scope\.path\}；真实触发：\$\{difference\.scope\.trigger\}/);
+  assert.match(actualAnnotationSource, /审阅投影点：事件 #\$\{visibilityColumn\.entry\.seq\}/);
+  assert.match(actualAnnotationSource, /该点只控制差异何时显示，不代表真实 workload 在此执行/);
+  assert.match(actualAnnotationSource, /Actual 阶段：\$\{difference\.actual\.anchor\}，\$\{difference\.actual\.phase\}/);
+  assert.match(actualAnnotationSource, /既有 Target effect \$\{targetEffectReached \? "已出现" : "尚未出现"\}/);
+  assert.match(actualAnnotationSource, /目标生命周期：\$\{difference\.target\.anchor\} \$\{targetAnchorReached \? "已到达" : "尚未到达"\}/);
+  assert.match(actualAnnotationSource, /sourceScope\.textContent = `真实触发 · \$\{difference\.scope\.path\} · \$\{difference\.scope\.trigger\}`/);
+  assert.match(actualAnnotationSource, /projectionScope\.textContent = `审阅投影 · after #\$\{visibilityColumn\.entry\.seq\}/);
+  assert.match(actualAnnotationSource, /targetPhase\.textContent = `目标生命周期 · \$\{difference\.target\.anchor\} \$\{targetAnchorReached \? "已到达" : "尚未到达"\} · \$\{difference\.target\.phase\}`/);
+  assert.doesNotMatch(actualAnnotationSource, /aria-controls/);
+  assert.match(controller, /button\.id = timingWorkloadEffectDOMID\(entry\.seq, workloadId, effectIndex\)/);
+  assert.match(controller, /if \(reviewState\.decorateTarget\) \{/);
+  assert.match(controller, /button\.classList\.add\("is-workload-follow-up-target"\)/);
+  assert.match(controller, /button\.dataset\.workloadFollowUpTargetId = difference\.id/);
+  assert.match(controller, /button\.dataset\.fix0809Outcome = difference\.fix0809Outcome/);
+  assert.match(controller, /targetBadge\.textContent = `Candidate \/ Target Workload · \$\{difference\.target\.anchor\}`/);
+  assert.match(controller, /if \(taskBadge\) button\.append\(taskBadge\)/);
+  assert.match(controller, /else if \(reviewState\.activeDifference\) \{/);
+  assert.match(controller, /button\.classList\.add\("is-workload-difference-target"\)/);
+  assert.match(controller, /button\.dataset\.workloadDifferenceTargetId = difference\.id/);
+  assert.match(controller, /button\.dataset\.fix0809Disposition = difference\.fix0809Disposition/);
+  assert.match(controller, /disposition\.visibleLabel/);
+  assert.match(controller, /targetBadge\.textContent = `Prototype Target · \$\{difference\.target\.anchor\}`/);
+  const targetEffectSource = sourceBetween(
+    controller,
+    "function makeTimingWorkloadTraceEffect(",
+    "let timingDifferenceConnectorFrame"
+  );
+  assert.match(targetEffectSource, /if \(reviewState\.decorateTarget\)[\s\S]*is-workload-follow-up-target[\s\S]*workloadFollowUpTargetId/);
+  assert.match(targetEffectSource, /else if \(reviewState\.activeDifference\)[\s\S]*is-workload-difference-target[\s\S]*actualAnnotationId/);
+  assert.match(controller, /button\.setAttribute\(\s*"aria-label"/);
+  assert.doesNotMatch(controller, /workloadDifferenceWorkloadIDSet|makeTimingWorkloadDifference\(/);
+  assert.doesNotMatch(controller, /className = "timing-workload-target"|timing-workload-inline-connector/);
+
+  const connectorSource = sourceBetween(
+    controller,
+    "function renderTimingDifferenceConnectors()",
+    "function scheduleTimingDifferenceConnectors()"
+  );
+  assert.match(connectorSource, /grid\.querySelectorAll\("\[data-workload-difference-actual-id\]"\)/);
+  assert.match(connectorSource, /const targetID = actual\.dataset\.targetElementId/);
+  assert.match(connectorSource, /if \(!target \|\| !grid\.contains\(target\)\) return/);
+  assert.match(connectorSource, /path\.dataset\.workloadDifferenceConnectorId = actual\.dataset\.workloadDifferenceActualId/);
+  assert.match(connectorSource, /path\.dataset\.actualElementId = actual\.id/);
+  assert.match(connectorSource, /path\.dataset\.targetElementId = target\.id/);
+  assert.match(connectorSource, /path\.classList\.add\("timing-workload-difference-connector"\)/);
+  assert.match(connectorSource, /svg\.dataset\.workloadConnectorCount = String\(workloadConnectorCount\)/);
+  assert.match(controller, /addEventListener\("scroll", scheduleTimingDifferenceConnectors/);
+  assert.match(controller, /timingView\.replaceChildren\(grid\)/);
+  assert.doesNotMatch(controller, /replaceChildren\(grid, comparison\)/);
+
+  assert.match(css, /\.timing-workload-actual\[data-review-state="deferredTaskOwned"\]/);
+  assert.match(css, /\.timing-workload-trace-effect\.is-workload-follow-up-target[\s\S]*background: linear-gradient/);
+  assert.match(css, /\.timing-workload-trace-effect\.is-workload-follow-up-target[\s\S]*border-color: rgba\(255,69,58,\.9\)/);
+  assert.match(css, /\.timing-workload-trace-effect\.is-workload-difference-target[\s\S]*background: linear-gradient/);
+  assert.match(css, /\.timing-workload-trace-effect\.is-workload-difference-target[\s\S]*border-color: rgba\(10,132,255,\.78\)/);
+  assert.match(css, /\.timing-workload-difference-connector[\s\S]*stroke-dasharray: 4 4/);
+  assert.match(css, /\.timing-workload-difference-connector[\s\S]*stroke: rgba\(255,91,82,\.96\)/);
+  assert.match(css, /\.timing-difference-connectors[\s\S]*pointer-events: none/);
+  assert.doesNotMatch(css, /\.timing-workload-difference\s*\{|\.timing-workload-inline-connector\s*\{/);
+  assert.doesNotMatch(css, /\.workload-timing-comparison|\.workload-timing-pair|\.workload-timing-connectors/);
+  assert.match(html, /workbench-v19/);
 });
 
 test("the workbench catalogs approved UI surfaces and keeps Settings visibly Pending without inventing a phone page", () => {

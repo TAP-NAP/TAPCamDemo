@@ -38,7 +38,10 @@ struct TAPCamDemoApp: App {
         let photoKitClient = PhotoKitLibraryMediaFetcher()
         self.libraryMediaFetcher = photoKitClient
         _libraryStore = State(
-            initialValue: LibraryMediaStore(photoCatalog: photoKitClient)
+            initialValue: LibraryMediaStore(
+                photoCatalog: photoKitClient,
+                observesChanges: false
+            )
         )
     }
 

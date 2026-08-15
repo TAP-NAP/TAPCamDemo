@@ -20,6 +20,40 @@ the **required target window**. A Web prototype can make the route and state
 relationships reviewable, but it cannot prove native first-frame timing,
 AVFoundation readiness, PhotoKit behavior, or device performance.
 
+The prototype manifest preserves the `main@4cc02e5f12f2` source-audit
+`actual`/`target` fields as historical evidence. The complete prior catalog,
+including originally aligned and device-log-accepted records, remains
+recoverable at `fix0809@d4b19d9`; it is not copied into the active manifest as a
+second archive.
+
+The active candidate derives two distinct review states from each record's
+manifest-owned state and Task links:
+
+- **Implemented at the target position; regression pending.** The candidate is
+  no longer an actual-versus-target position mismatch. It renders once at its
+  target anchor/effect with a yellow background and red border, names the
+  candidate/target phase, and links the applicable follow-up Task. Lifecycle
+  order and workload-period assertions are owned by `TAP-0090`; attended
+  startup evidence remains in `TAP-0040`/`TAP-0041`; route-shell/first-frame
+  placement and 2 × 2 timing remain in `TAP-0083`; exact prototype/native visual
+  parity remains in `TAP-0048`. This presentation does not claim that any open
+  regression or parity Task has passed.
+- **Task-owned behavior not migrated.** Initial Network/App Attest remains
+  owned by `TAP-0010`; post-Setup App Attest and credential/network-dependent
+  Pending remain owned by `TAP-0015`. These records keep a red actual card, an
+  existing blue target, and one red dashed actual-to-target line. Active copy
+  names the owning Task directly rather than using session-relative
+  disposition language.
+
+This distinction does not turn the existing `/healthz` preflight into the
+target state or approve a Network behavior change. A Workload child may narrow
+a broader lifecycle parent: the implemented local part of
+`deferredWorkGuard` appears once at its target effect, while its not-migrated
+App Attest and Pending children remain red actual-to-blue-target differences.
+The manifest remains the single source for each record's review state and Task
+links; renderers must not derive child state from the parent truth ID. The
+complete candidate composition remains `ownerReviewRequired`.
+
 ## 1. Canonical Vocabulary
 
 Installation, activation, resource temperature, and visible surface are
@@ -462,6 +496,57 @@ focused event; switching views cannot dispatch a product event or alter state.
 The left-side action controls are therefore never used as substitutes for the
 flow graph or timing sequence.
 
+Reviewer workload follow-up and active-difference records are projected inside
+the existing **Workload** lane. They never create a standalone comparison band,
+a second Workload lane, or an additional reducer lane. Their canonical records
+are stored in the prototype JSON manifest with this minimum shape:
+
+```text
+id, taskIDs, lifecycleTruthIDs, differenceType = timing | semantic,
+differenceKind, checkpoint, mismatch, fix0809Disposition, fix0809Outcome,
+reviewState, activeDifference, followUpTaskIDs
+scope { path, trigger, anchorMeaning }
+actual { workloadID, label, anchor, phase, qualifier, summary, evidence }
+target { workloadID, label, anchor, phase, qualifier, summary, evidence }
+traceBinding {
+  scenarioGroupID,
+  actualVisibleAfter { eventTypes, occurrence },
+  targetEffect { eventTypes, workloadID, status, occurrence }
+}
+```
+
+The historical `actual`, `target`, `differenceKind`, `mismatch`, disposition,
+and outcome fields preserve the source audit; `reviewState`,
+`activeDifference`, and `followUpTaskIDs` determine the current candidate
+presentation. The controller loads these JSON records and derives every count;
+it does not hardcode a second list. Lifecycle truth IDs remain explicitly and
+disjointly owned by either the **08/09 生命周期** lane or Workload.
+
+Every canonical reducer workload effect remains present. When a record is
+implemented at the target position, the exact existing target effect selected
+by event type, workload ID, resulting status, and one-based occurrence receives
+the yellow-background/red-border pending-regression decoration and its linked
+follow-up Task. It retains its normal focus action and canonical `Eligible`,
+`Running`, or `Ready` state. It does not create an **实际 · 不一致** annotation, a
+blue duplicate, or a dashed line, and the decoration does not imply that
+`TAP-0090`, `TAP-0083`, or attended acceptance has passed.
+
+When behavior is still owned but not migrated, its manifest-selected
+`actualVisibleAfter` projection may show one red actual annotation in the
+selected `scenarioGroupID`. The card states the source trigger, coarse actual
+anchor, target phase, and owning `TAP-0010` or `TAP-0015` Task. Its exact
+existing prototype effect remains blue and exactly one dashed line connects
+the two when that effect exists. If the target effect is not yet in the
+journal, the red actual card says **既有 trace effect 尚未出现** but creates no
+blue substitute, future milestone column, reducer event, workload transition,
+marker effect, or phone-state change.
+
+Target lifecycle-anchor reachability is rendered separately from an effect's
+canonical status, so `Eligible` or `Running` cannot be misread as completion.
+Historical current-main anchors and `actualVisibleAfter` are reviewer
+source-order or predicate-visibility projections, not native timestamps,
+elapsed durations, or device-performance measurements.
+
 ### 5.2 Reviewer workbench, playback, and desktop composition
 
 The workbench binds three regions to the same selected surface and trace:
@@ -535,25 +620,34 @@ Each run records:
 - Library and Pending Capture counts plus cold/warm resource context;
 - `Δt0–t1`, `Δt1–t2`, `Δt2–t3`, `Δt3–t4`, namespaced `S/P/C/L/V` spans, and deferred-work start;
 - MainActor stalls and the workload/owner active in that interval; and
-- whether the value is automated, signposted, screen-recorded, or attended.
+- whether the value came from an automated assertion, signpost, structured
+  JSON/JSONL trace, or an attended owner-live textual verdict.
+
+Do not retain a photo, screenshot, or screen recording as lifecycle or timing
+acceptance proof.
 
 The Web prototype uses deterministic simulated transitions only. Its displayed
 durations are labels for sequencing and never device-performance evidence.
 
 ## 7. Current Mainline Gaps And Ownership
 
-At baseline `main@985425f`, the major known mismatches are:
+At the refreshed source-audit baseline `main@4cc02e5f12f2`, the major known
+mismatches are:
 
 | Gap | Delivery owner |
 | --- | --- |
 | Setup Network currently proves only `/healthz` reachability, not completion of the required first-install App Attest registration/verification; a denied state can also auto-retry after foreground refresh | `TAP-0008` after this contract/prototype gate |
 | Setup completion and Resource Initialization use one legacy Boolean rather than separate `S/I` facts | `TAP-0008` and `TAP-0009` |
 | No global Required Permission Check route exists | `TAP-0008` route implementation, consuming `TAP-0087` visual/state contract |
+| Setup collapses `.denied` and `.restricted`; Camera/Photos share one footer Settings action and optional denied rows have no row-owned recovery | `TAP-0008` |
+| A returning route can reach `CameraViewModel.start()` with Camera `.notDetermined`, which starts an implicit Camera request; Photos is not part of the root route | `TAP-0008` |
+| A retained true legacy Boolean sends changed-build update/replacement/offload and restore/migration cases directly to Camera without version/schema/install-device or local credential-binding validation | `TAP-0008` and `TAP-0009` |
 | `TAPCamDemoApp.init` constructs `LibraryMediaStore` and registers its PhotoKit observer on the pre-frame path | `TAP-0083` optimization after measurement |
 | Returning-user root construction creates `CameraViewModel`, performs synchronous camera capability discovery, and constructs capture-session ownership before the target route shell/first-frame boundary | `TAP-0083` optimization, coordinated with `TAP-0009` readiness |
 | Root `.task` awaits video-poster backfill before its first Library catalog refresh, so maintenance can delay the catalog path | `TAP-0083` or a scoped follow-up produced by its audit |
 | The preview-layer `isPreviewing` KVO callback exists, but current initial readiness does not consume it as a gate; it currently feeds only path-transition presentation | `TAP-0009` |
 | Resource Initialization does not gate on the first usable Library catalog snapshot or own a versioned marker | `TAP-0009` |
+| The current first-install overlay says **Preparing camera** and exposes Failed/Retry/Settings branches instead of the stable **Resource Initialization / Please wait…** invariant | `TAP-0009` |
 | Foreground active can start recent-cover and Pending Capture work before a root required-permission route | `TAP-0008`/`TAP-0083` integration |
 | Pending worker and notification-driven catalog refresh can repeat full-directory scans | Scoped follow-up after `TAP-0083` evidence |
 | RAW Viewer requests original/possibly iCloud-backed resources and eagerly begins full analysis input work alongside bounded display; this can contend with Viewer readiness and supplies later 2D/3D and existing Share inputs | Observation in `TAP-0087`; behavior changes belong to `TAP-0089` or another approved Viewer/resource Task |
@@ -562,3 +656,43 @@ At baseline `main@985425f`, the major known mismatches are:
 `TAP-0087` defines and prototypes these relationships. It does not implement
 native setup/readiness, optimize every workload, or claim device performance.
 The current product remains iPhone-only.
+
+## 8. `fix0809` Native Candidate Delta
+
+The §7 table remains the immutable source-audit description of
+`main@4cc02e5f12f2`. As of 2026-08-15, the owner has accepted the bounded
+non-Network lifecycle path exercised from the `fix0809` native candidate on a
+physical device. The delta below records that candidate and its executed-path
+acceptance; it is not a rewrite of the target reducer, approval of the complete
+scenario matrix, or acceptance of the Task-owned Network/App Attest/Pending
+boundaries that were not migrated.
+
+| Candidate area | Current `fix0809` behavior | Remaining boundary |
+| --- | --- | --- |
+| Setup facts | Defines and validates canonical credential-bound `SetupReceipt`; reads a separate legacy Setup-completion record before the historical combined Boolean | Initial Network/App Attest remains in `TAP-0010`, so production Continue cannot yet write canonical `S`; the compatibility record is never presented as credential evidence |
+| Required permissions | Root priority is Setup → Camera/Photos Required Permission Check → Initialization → Viewfinder; `.limited`, `.denied`, and `.restricted` remain distinct; requests and Settings recovery are row-owned | Exact Required Permission Check visual parity remains pending owner review |
+| Library observation | Store construction is observer-inert; eligible explicit/post-Setup Photos boundaries activate observation idempotently; stopping cancels queued refresh work | Device timing and large/cold Library evidence remain open |
+| Camera construction | The selected route installs a shell state and defers `CameraView` mounting until a later main-actor turn; default `CameraViewModel` creation remains lazy across later parent updates | The implementation is presented at its target position, but `Task.yield()` is not a rendered-frame acknowledgement; `TAP-0083` still owns measured shell/first-frame placement proof |
+| Initialization fact | Independent atomic Application Support marker binds bundle, version, build, initialization schema, installation generation, and a ThisDeviceOnly device generation; marker preparation/fsync runs off MainActor, Application Support absence fails closed, and malformed device-generation data repairs to a new local generation | Canonical Setup restore validity still depends on future verified credential binding |
+| Readiness | Active-scene Initialization consumes completed session configuration, real preview, safe shutter/primary controls, haptics, and the first usable catalog, including empty; backgrounding cancels an in-flight candidate commit | The owner accepted the bounded physical-device executed path; interruption, fault-injection, permission-recovery, update, and restore/migration cases remain open |
+| Stable UI | Approved Resource Initialization title/subtitle and Camera/TAP Library readiness rows remain blocking; no public Failed, Retry, timeout, skip, or degraded branch exists | The bounded native experience was owner-accepted; exact prototype-to-native visual parity and Simulator comparison remain pending |
+| Deferred local work | A two-display-tick barrier observes the committed Viewfinder frame before releasing video poster backfill and every recent-cover entry point; pending App Intent navigation waits at the same boundary | The local implementation is presented at its target workload effects pending `TAP-0090` regression; post-Setup App Attest and credential/network-dependent Pending remain not migrated under `TAP-0015` |
+
+The Network row, `/healthz`, initial/post-Setup App Attest executors, and
+credential/network-dependent or Network-owned Pending retry policies receive no
+direct change in this candidate. Required Permission Check may postpone mounting
+`CameraView` and thus postpone their existing camera-entry triggers while a
+required permission is blocked. `networkBootstrap` remains a confirmed mismatch
+rather than an accepted target behavior: initial Network/App Attest is owned by
+`TAP-0010`, while post-Setup App Attest and credential/network-dependent Pending
+are owned by `TAP-0015`.
+
+The bounded device verdict is recorded in
+`Docs/Acceptance/TAP-0041-camera-readiness.md`. It covers only the lifecycle path
+the owner actually exercised; canonical `S` production/restore, the full
+installation and permission-recovery matrix, measured shell/first-frame timing,
+and complete `W11/W12` deferred guards remain open under their linked Tasks as
+stated above. Non-Network lifecycle event-order and workload-period regression
+evidence is tracked by `TAP-0090`; attended evidence remains in
+`TAP-0040`/`TAP-0041`, numeric route-shell/timing evidence in `TAP-0083`, and
+exact visual parity in `TAP-0048`.

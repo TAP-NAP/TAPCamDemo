@@ -82,6 +82,7 @@ final class CameraViewModel: ObservableObject {
     var recentLibraryCoverTask: Task<Void, Never>?
     var recentLibraryFetchGeneration: UInt64 = 0
     var lastHandledLibrarySnapshotRevision: UInt64 = 0
+    var hasReleasedDeferredLibraryCoverWork = false
     var standardRearSelectionBeforePhotographerMode: StandardCameraSelectionSnapshot?
     /// Set from the persisted startup policy before `start()` is awaited.
     /// The request is consumed once so fallback configuration cannot loop.
@@ -289,7 +290,16 @@ final class CameraViewModel: ObservableObject {
                 self?.handleVideoRecordingWriterFailure(failure)
             }
         }
+    }
+
+    /// Releases recent-cover observation/loading only after the first
+    /// Viewfinder interaction checkpoint. Catalog identity/order readiness is
+    /// owned separately by Resource Initialization.
+    func releaseDeferredLibraryCoverWork() {
+        guard !hasReleasedDeferredLibraryCoverWork else { return }
+        hasReleasedDeferredLibraryCoverWork = true
         beginObservingLibraryMediaStore()
+        scheduleRecentTAPLibraryPreviewRefresh(afterNanoseconds: 0)
     }
 
     private func handleCaptureSessionRuntimeFailure(
@@ -429,21 +439,15 @@ final class CameraViewModel: ObservableObject {
             if CameraCaptureDataUsePreferences.usesLocationData() {
                 locationProvider.warmLocationCache()
             }
-            scheduleRecentTAPLibraryPreviewRefresh()
         case .notDetermined:
-            let granted = await AVCaptureDevice.requestAccess(for: .video)
-            if granted {
-                await configureDefaultSelection()
-                if CameraCaptureDataUsePreferences.usesLocationData() {
-                    locationProvider.warmLocationCache()
-                }
-                scheduleRecentTAPLibraryPreviewRefresh()
-            } else {
-                statusMessage = CameraCaptureStatusPresentation.message(
-                    for: TAPDepthCaptureError.cameraAccessDenied,
-                    context: .configuration
-                )
-            }
+            // CameraView is downstream of StartupGateView's explicit
+            // permission reducer. It must never create a second, implicit
+            // system-prompt path if authorization changes between routing and
+            // camera startup.
+            statusMessage = CameraCaptureStatusPresentation.message(
+                for: TAPDepthCaptureError.cameraAccessDenied,
+                context: .configuration
+            )
         case .denied, .restricted:
             statusMessage = CameraCaptureStatusPresentation.message(
                 for: TAPDepthCaptureError.cameraAccessDenied,

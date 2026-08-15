@@ -368,23 +368,59 @@ struct TAPCameraCapturePresentationTests {
         let cameraSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/CameraCapture/UI/CameraView.swift"
         )
+        let cameraViewModelSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraViewModel.swift"
+        )
+        let cameraCaptureSource = try TAPCamDemoTestSourceInspection.source(
+            relativePath: "TAPCamDemo/CameraCapture/UI/CameraViewModel+Capture.swift"
+        )
         let readinessSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/CameraCapture/UI/CameraInitialReadinessGate.swift"
         )
 
-        #expect(startupSource.contains("isPreparingFirstInstallCameraReadiness"))
-        #expect(startupSource.contains("initialReadinessGate: .firstInstall {"))
-        #expect(startupSource.contains("completeFirstInstallSetupAfterCameraReadiness"))
+        #expect(startupSource.contains("case .resourceInitialization, .viewfinder"))
+        #expect(startupSource.contains("prepareCommit: prepareInitializationCommitIfReady"))
+        #expect(startupSource.contains("Task.detached(priority: .userInitiated)"))
+        #expect(startupSource.contains("store.prepareCurrent"))
+        #expect(startupSource.contains("guard route == .resourceInitialization else"))
+        #expect(!startupSource.contains("isPreparingFirstInstallCameraReadiness"))
         #expect(cameraSource.contains("initialReadinessGate: CameraInitialReadinessGate = .disabled"))
         #expect(cameraSource.contains("CameraInitialReadinessOverlayView("))
         #expect(cameraSource.contains("initialReadinessState.blocksInteraction"))
         #expect(cameraSource.contains("activeSessionConfiguration != nil"))
+        #expect(cameraSource.contains("isPreviewLayerPreviewing"))
+        #expect(cameraSource.contains("startupPrimaryControlsAreSafe"))
+        #expect(cameraSource.contains("libraryStore.hasUsableSnapshot"))
+        #expect(cameraSource.contains("waitForCommittedViewfinderFrame()"))
+        #expect(cameraSource.contains("guard didPublishViewfinderInteractive else { return }"))
+        #expect(cameraSource.contains("let didCommit = preparedCommit.commit()"))
+        #expect(cameraSource.contains("guard !Task.isCancelled else"))
+        #expect(cameraSource.contains("_viewModel = StateObject(wrappedValue: {"))
+        #expect(!cameraSource.contains("let resolvedViewModel = viewModel ?? CameraViewModel"))
+        #expect(!cameraViewModelSource.contains("AVCaptureDevice.requestAccess(for: .video)"))
+        #expect(
+            cameraCaptureSource.components(
+                separatedBy: "guard hasReleasedDeferredLibraryCoverWork else { return }"
+            ).count - 1 == 2
+        )
         #expect(readinessSource.contains("nonisolated enum CameraInteractiveReadinessState"))
-        #expect(readinessSource.contains("hasActiveSessionConfiguration, isDepthCaptureReady, hasPreparedHaptics"))
+        #expect(readinessSource.contains("hasPresentedFirstPreview"))
+        #expect(readinessSource.contains("hasSafePrimaryControls"))
+        #expect(readinessSource.contains("hasUsableLibraryCatalog"))
+        #expect(readinessSource.contains("private var remainingTicks = 2"))
+        #expect(readinessSource.contains("Resource Initialization"))
+        #expect(readinessSource.contains("Please wait…"))
+        #expect(readinessSource.contains("Camera Resources"))
+        #expect(readinessSource.contains("TAP Library"))
+        #expect(readinessSource.contains("First preview and camera controls are ready"))
+        #expect(readinessSource.contains("First media catalog is ready"))
+        #expect(!readinessSource.contains("Retry"))
+        #expect(!readinessSource.contains("Settings"))
+        #expect(!readinessSource.contains("case failed"))
         #expect(readinessSource.contains(#".accessibilityIdentifier("camera.initialReadiness.overlay")"#))
     }
 
-    @Test func initialCameraReadinessRequiresSessionDepthAndPreparedHaptics() {
+    @Test func resourceInitializationRequiresCameraInteractionAndUsableCatalog() {
         #expect(CameraInteractiveReadinessState.resolve(
             isGateEnabled: true,
             didCompleteGate: false,
@@ -392,20 +428,76 @@ struct TAPCameraCapturePresentationTests {
             isConfiguringSession: false,
             hasActiveSessionConfiguration: true,
             isDepthCaptureReady: true,
+            hasPresentedFirstPreview: true,
+            hasSafePrimaryControls: true,
             hasPreparedHaptics: true,
-            statusMessage: "Ready"
+            hasUsableLibraryCatalog: true
         ) == .ready)
 
         #expect(CameraInteractiveReadinessState.resolve(
             isGateEnabled: true,
             didCompleteGate: false,
             cameraAuthorizationStatus: .authorized,
+            isConfiguringSession: true,
+            hasActiveSessionConfiguration: true,
+            isDepthCaptureReady: true,
+            hasPresentedFirstPreview: true,
+            hasSafePrimaryControls: true,
+            hasPreparedHaptics: true,
+            hasUsableLibraryCatalog: true
+        ) == .preparing(.cameraSession))
+
+        #expect(CameraInteractiveReadinessState.resolve(
+            isGateEnabled: true,
+            didCompleteGate: false,
+            cameraAuthorizationStatus: .authorized,
             isConfiguringSession: false,
             hasActiveSessionConfiguration: true,
             isDepthCaptureReady: true,
+            hasPresentedFirstPreview: false,
+            hasSafePrimaryControls: true,
+            hasPreparedHaptics: true,
+            hasUsableLibraryCatalog: true
+        ) == .preparing(.firstPreview))
+
+        #expect(CameraInteractiveReadinessState.resolve(
+            isGateEnabled: true,
+            didCompleteGate: false,
+            cameraAuthorizationStatus: .authorized,
+            isConfiguringSession: false,
+            hasActiveSessionConfiguration: true,
+            isDepthCaptureReady: true,
+            hasPresentedFirstPreview: true,
+            hasSafePrimaryControls: false,
+            hasPreparedHaptics: true,
+            hasUsableLibraryCatalog: true
+        ) == .preparing(.primaryControls))
+
+        #expect(CameraInteractiveReadinessState.resolve(
+            isGateEnabled: true,
+            didCompleteGate: false,
+            cameraAuthorizationStatus: .authorized,
+            isConfiguringSession: false,
+            hasActiveSessionConfiguration: true,
+            isDepthCaptureReady: true,
+            hasPresentedFirstPreview: true,
+            hasSafePrimaryControls: true,
             hasPreparedHaptics: false,
-            statusMessage: "Ready"
-        ).blocksInteraction)
+            hasUsableLibraryCatalog: true
+        ) == .preparing(.haptics))
+
+        #expect(CameraInteractiveReadinessState.resolve(
+            isGateEnabled: true,
+            didCompleteGate: false,
+            cameraAuthorizationStatus: .authorized,
+            isConfiguringSession: false,
+            hasActiveSessionConfiguration: true,
+            isDepthCaptureReady: true,
+            hasPresentedFirstPreview: true,
+            hasSafePrimaryControls: true,
+            hasPreparedHaptics: true,
+            hasUsableLibraryCatalog: false
+        ) == .preparing(.libraryCatalog))
 
         #expect(CameraInteractiveReadinessState.resolve(
             isGateEnabled: true,
@@ -414,9 +506,25 @@ struct TAPCameraCapturePresentationTests {
             isConfiguringSession: false,
             hasActiveSessionConfiguration: false,
             isDepthCaptureReady: false,
+            hasPresentedFirstPreview: false,
+            hasSafePrimaryControls: false,
             hasPreparedHaptics: true,
-            statusMessage: "Camera access denied"
-        ) == .failed(message: "Camera access denied", canOpenSettings: true))
+            hasUsableLibraryCatalog: false
+        ) == .preparing(.cameraAuthorization))
+
+        #expect(CameraInteractiveReadinessState.resolve(
+            isGateEnabled: true,
+            didCompleteGate: false,
+            cameraAuthorizationStatus: .authorized,
+            isConfiguringSession: false,
+            hasActiveSessionConfiguration: true,
+            isDepthCaptureReady: true,
+            hasPresentedFirstPreview: true,
+            hasSafePrimaryControls: true,
+            hasPreparedHaptics: true,
+            hasUsableLibraryCatalog: true,
+            isSceneActive: false
+        ) == .preparing(.cameraSession))
     }
 
     @Test func cameraRouteForegroundPreferenceDefaultsToDisabled() throws {

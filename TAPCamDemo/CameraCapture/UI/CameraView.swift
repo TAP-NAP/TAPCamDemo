@@ -34,11 +34,17 @@ nonisolated enum CameraFeedbackPreferences {
 ///
 /// - Tag: CameraCaptureRootView
 struct CameraView: View {
+    private static let startupLifecycleLogger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "TAPCamDemo",
+        category: "StartupLifecycle"
+    )
+
     @Environment(\.scenePhase) private var scenePhase
-    @Environment(\.openURL) private var openURL
     private let libraryStore: LibraryMediaStore
     private let startsAutomatically: Bool
     private let initialReadinessGate: CameraInitialReadinessGate
+    private let onViewfinderInteractive: () -> Void
+    private let viewfinderFrameBarrier: any CameraViewfinderFrameAwaiting
     @StateObject private var lifecycleCoordinator: CaptureLifecycleCoordinator
     @StateObject private var viewModel: CameraViewModel
     @StateObject private var routeStore: CameraRouteStore
@@ -47,6 +53,14 @@ struct CameraView: View {
     @StateObject private var hapticFeedbackController: CameraHapticFeedbackController
     private let intentHandoffStore: TAPCamIntentHandoffStore
     @State private var didCompleteInitialReadinessGate = false
+    @State private var didFailInitialReadinessMarkerCommit = false
+    @State private var resourceInitializationMarkerCommitTask: Task<Void, Never>?
+    @State private var didPublishViewfinderInteractive = false
+    @State private var viewfinderInteractivePublicationTask: Task<Void, Never>?
+    @State private var didObserveStartupCameraReady = false
+    @State private var didObserveStartupCatalogReady = false
+    @State private var lastLoggedStartupCheckpoint: ResourceInitializationPendingCheckpoint?
+    @State private var resourceInitializationDiagnosticTask: Task<Void, Never>?
     @State private var isShowingSettings = false
     @State private var selectedMode: CameraCaptureModeOption = .photo
     @State private var flashMode: CameraFlashControlMode
@@ -122,6 +136,9 @@ struct CameraView: View {
         hapticFeedbackController: CameraHapticFeedbackController = CameraHapticFeedbackController(),
         intentHandoffStore: TAPCamIntentHandoffStore = TAPCamIntentHandoffStore(),
         initialReadinessGate: CameraInitialReadinessGate = .disabled,
+        onViewfinderInteractive: @escaping () -> Void = {},
+        viewfinderFrameBarrier: any CameraViewfinderFrameAwaiting =
+            CameraViewfinderFrameBarrier(),
         startsAutomatically: Bool = true
     ) {
         let initialGlobalEVBias = CameraEVPreferences.resolvedLaunchBias()
@@ -130,18 +147,33 @@ struct CameraView: View {
         let initialPhotographerModeEnabled = CameraPhotographerModePreferences.resolvedStartupIsEnabled()
         self.startsAutomatically = startsAutomatically
         self.initialReadinessGate = initialReadinessGate
+        self.onViewfinderInteractive = onViewfinderInteractive
+        self.viewfinderFrameBarrier = viewfinderFrameBarrier
         self.intentHandoffStore = intentHandoffStore
         _lifecycleCoordinator = StateObject(wrappedValue: lifecycleCoordinator)
         _hapticFeedbackController = StateObject(wrappedValue: hapticFeedbackController)
         let resolvedLibraryStore = viewModel?.libraryStore ?? libraryStore
         self.libraryStore = resolvedLibraryStore
-        let resolvedViewModel = viewModel ?? CameraViewModel(
-            libraryStore: resolvedLibraryStore,
-            libraryMediaFetcher: libraryMediaFetcher
-        )
-        resolvedViewModel.requestedGlobalAutoExposureBias = initialGlobalEVBias
-        resolvedViewModel.requestedPhotographerModeOnStart = initialPhotographerModeEnabled
-        _viewModel = StateObject(wrappedValue: resolvedViewModel)
+        if let viewModel {
+            viewModel.requestedGlobalAutoExposureBias = initialGlobalEVBias
+            viewModel.requestedPhotographerModeOnStart = initialPhotographerModeEnabled
+            _viewModel = StateObject(wrappedValue: viewModel)
+        } else {
+            // Keep construction inside StateObject's autoclosure. Parent route
+            // updates (I commit and t5 release) can re-evaluate this View value
+            // without eagerly discovering capabilities or discarding a second
+            // capture-session graph.
+            _viewModel = StateObject(wrappedValue: {
+                let created = CameraViewModel(
+                    libraryStore: resolvedLibraryStore,
+                    libraryMediaFetcher: libraryMediaFetcher
+                )
+                created.requestedGlobalAutoExposureBias = initialGlobalEVBias
+                created.requestedPhotographerModeOnStart =
+                    initialPhotographerModeEnabled
+                return created
+            }())
+        }
         _flashMode = State(initialValue: initialFlashMode)
         _isLivePhotoEnabled = State(initialValue: initialLivePhotoEnabled)
         _globalEVBias = State(initialValue: initialGlobalEVBias)
@@ -175,6 +207,8 @@ struct CameraView: View {
                     )
                 }
         }
+        .disabled(initialReadinessState.blocksInteraction)
+        .accessibilityHidden(initialReadinessState.blocksInteraction)
         .statusBarHidden(true)
         .environment(\.cameraHapticFeedbackController, hapticFeedbackController)
         .sheet(isPresented: $isShowingSettings) {
@@ -198,8 +232,8 @@ struct CameraView: View {
             if initialReadinessState.blocksInteraction {
                 CameraInitialReadinessOverlayView(
                     state: initialReadinessState,
-                    onRetry: retryInitialCameraReadiness,
-                    onOpenSettings: openAppSettings
+                    isCameraReady: startupCameraInteractionIsReady,
+                    isLibraryReady: libraryStore.hasUsableSnapshot
                 )
                 .transition(.opacity)
             }
@@ -219,6 +253,12 @@ struct CameraView: View {
             manualFocusModeEntryToken = nil
             viewModel.cancelManualFocusRuntime()
             cancelCameraPathTransitionPresentation()
+            resourceInitializationDiagnosticTask?.cancel()
+            resourceInitializationDiagnosticTask = nil
+            resourceInitializationMarkerCommitTask?.cancel()
+            resourceInitializationMarkerCommitTask = nil
+            viewfinderInteractivePublicationTask?.cancel()
+            viewfinderInteractivePublicationTask = nil
         }
         .onChange(of: isShowingSettings) { _, isPresented in
             if isPresented {
@@ -278,6 +318,10 @@ struct CameraView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active {
+                resourceInitializationMarkerCommitTask?.cancel()
+                resourceInitializationMarkerCommitTask = nil
+                viewfinderInteractivePublicationTask?.cancel()
+                viewfinderInteractivePublicationTask = nil
                 persistRememberedViewfinderControlStateIfNeeded()
                 let shouldRestoreAutoFocus = focusMode == .manual
                 if shouldRestoreAutoFocus {
@@ -301,7 +345,7 @@ struct CameraView: View {
                 }
             } else {
                 hapticFeedbackController.prepareForCameraInteraction()
-                completeInitialReadinessGateIfReady()
+                evaluateStartupReadiness()
             }
         }
     }
@@ -353,13 +397,29 @@ struct CameraView: View {
             }
         }
         .onChange(of: viewModel.isDepthCaptureReady) { _, _ in
-            completeInitialReadinessGateIfReady()
+            evaluateStartupReadiness()
         }
         .onChange(of: viewModel.isConfiguringSession) { _, _ in
-            completeInitialReadinessGateIfReady()
+            evaluateStartupReadiness()
+        }
+        .onChange(of: viewModel.activeSessionConfiguration != nil) { _, _ in
+            evaluateStartupReadiness()
+        }
+        .onChange(of: isPreviewLayerPreviewing) { _, _ in
+            evaluateStartupReadiness()
+        }
+        .onChange(of: startupPrimaryControlsAreSafe) { _, _ in
+            evaluateStartupReadiness()
         }
         .onChange(of: hapticFeedbackController.hasPreparedCameraInteraction) { _, _ in
-            completeInitialReadinessGateIfReady()
+            evaluateStartupReadiness()
+        }
+        .onChange(of: libraryStore.hasUsableSnapshot) { _, _ in
+            evaluateStartupReadiness()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            evaluateStartupReadiness()
         }
     }
 
@@ -385,7 +445,7 @@ struct CameraView: View {
         .ignoresSafeArea(.container, edges: .top)
     }
 
-    private var initialReadinessState: CameraInteractiveReadinessState {
+    private var resourceInitializationInputsState: CameraInteractiveReadinessState {
         CameraInteractiveReadinessState.resolve(
             isGateEnabled: initialReadinessGate.isEnabled,
             didCompleteGate: didCompleteInitialReadinessGate,
@@ -393,9 +453,43 @@ struct CameraView: View {
             isConfiguringSession: viewModel.isConfiguringSession,
             hasActiveSessionConfiguration: viewModel.activeSessionConfiguration != nil,
             isDepthCaptureReady: viewModel.isDepthCaptureReady,
+            hasPresentedFirstPreview: isPreviewLayerPreviewing,
+            hasSafePrimaryControls: startupPrimaryControlsAreSafe,
             hasPreparedHaptics: hapticFeedbackController.hasPreparedCameraInteraction,
-            statusMessage: viewModel.statusMessage
+            hasUsableLibraryCatalog: libraryStore.hasUsableSnapshot,
+            isSceneActive: scenePhase == .active
         )
+    }
+
+    private var initialReadinessState: CameraInteractiveReadinessState {
+        if resourceInitializationMarkerCommitTask != nil,
+           resourceInitializationInputsState == .ready {
+            return .preparing(.markerCommit)
+        }
+        if didFailInitialReadinessMarkerCommit,
+           resourceInitializationInputsState == .ready {
+            return .preparing(.markerCommit)
+        }
+        return resourceInitializationInputsState
+    }
+
+    private var startupCameraInteractionIsReady: Bool {
+        scenePhase == .active
+            && AVCaptureDevice.authorizationStatus(for: .video) == .authorized
+            && !viewModel.isConfiguringSession
+            && viewModel.activeSessionConfiguration != nil
+            && viewModel.isDepthCaptureReady
+            && isPreviewLayerPreviewing
+            && startupPrimaryControlsAreSafe
+            && hapticFeedbackController.hasPreparedCameraInteraction
+    }
+
+    private var startupPrimaryControlsAreSafe: Bool {
+        !viewModel.isConfiguringSession
+            && viewModel.activeSessionConfiguration != nil
+            && !isCameraPathTransitioning
+            && manualFocusAssistToken == nil
+            && shutterIsEnabled
     }
 
     private func cameraViewDidAppear() {
@@ -403,33 +497,137 @@ struct CameraView: View {
         hapticFeedbackController.cameraAudioInputDidChange(isActive: isCameraAudioInputActive)
         hapticFeedbackController.prepareForCameraInteraction()
         applyPendingIntentHandoff()
-        completeInitialReadinessGateIfReady()
+        scheduleResourceInitializationDiagnosticIfNeeded()
+        evaluateStartupReadiness()
     }
 
-    private func completeInitialReadinessGateIfReady() {
+    private func evaluateStartupReadiness() {
+        recordStartupReadinessMilestones()
+
+        if initialReadinessGate.isEnabled,
+           !didCompleteInitialReadinessGate,
+           resourceInitializationMarkerCommitTask == nil,
+           resourceInitializationInputsState == .ready {
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            Self.startupLifecycleLogger.info(
+                "resource_initialization_marker_commit started"
+            )
+            #endif
+            resourceInitializationMarkerCommitTask = Task { @MainActor in
+                let preparedCommit = await initialReadinessGate.prepareCommit()
+                guard !Task.isCancelled else {
+                    preparedCommit?.discard()
+                    return
+                }
+                guard resourceInitializationInputsState == .ready,
+                      let preparedCommit else {
+                    preparedCommit?.discard()
+                    resourceInitializationMarkerCommitTask = nil
+                    return
+                }
+                // No suspension is allowed between this atomic rename and the
+                // matching t4 state publication below.
+                let didCommit = preparedCommit.commit()
+                resourceInitializationMarkerCommitTask = nil
+                if didCommit {
+                    didFailInitialReadinessMarkerCommit = false
+                    didCompleteInitialReadinessGate = true
+                    resourceInitializationDiagnosticTask?.cancel()
+                    resourceInitializationDiagnosticTask = nil
+                    #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                    Self.startupLifecycleLogger.info(
+                        "resource_initialization_marker_commit succeeded"
+                    )
+                    #endif
+                } else {
+                    didFailInitialReadinessMarkerCommit = true
+                    #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                    Self.startupLifecycleLogger.error(
+                        "resource_initialization_marker_commit failed"
+                    )
+                    #endif
+                }
+                scheduleViewfinderInteractivePublicationIfReady()
+            }
+        }
+
+        scheduleViewfinderInteractivePublicationIfReady()
+    }
+
+    private func scheduleViewfinderInteractivePublicationIfReady() {
+        guard !didPublishViewfinderInteractive,
+              viewfinderInteractivePublicationTask == nil,
+              startupCameraInteractionIsReady,
+              !initialReadinessGate.isEnabled || didCompleteInitialReadinessGate else {
+            return
+        }
+
+        viewfinderInteractivePublicationTask = Task { @MainActor in
+            await viewfinderFrameBarrier.waitForCommittedViewfinderFrame()
+            guard !Task.isCancelled else { return }
+            viewfinderInteractivePublicationTask = nil
+            guard !didPublishViewfinderInteractive,
+                  startupCameraInteractionIsReady,
+                  !initialReadinessGate.isEnabled || didCompleteInitialReadinessGate else {
+                return
+            }
+            didPublishViewfinderInteractive = true
+            viewModel.releaseDeferredLibraryCoverWork()
+            onViewfinderInteractive()
+            applyPendingIntentHandoff()
+        }
+    }
+
+    private func recordStartupReadinessMilestones() {
+        if startupCameraInteractionIsReady, !didObserveStartupCameraReady {
+            didObserveStartupCameraReady = true
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            Self.startupLifecycleLogger.info(
+                "resource_initialization_camera_group ready"
+            )
+            #endif
+        }
+
+        if libraryStore.hasUsableSnapshot, !didObserveStartupCatalogReady {
+            didObserveStartupCatalogReady = true
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            Self.startupLifecycleLogger.info(
+                "resource_initialization_library_catalog ready"
+            )
+            #endif
+        }
+
+        let checkpoint = initialReadinessState.pendingCheckpoint
+        guard checkpoint != lastLoggedStartupCheckpoint else { return }
+        lastLoggedStartupCheckpoint = checkpoint
+        guard let checkpoint else { return }
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        Self.startupLifecycleLogger.info(
+            "resource_initialization_pending checkpoint=\(checkpoint.rawValue, privacy: .public)"
+        )
+        #endif
+    }
+
+    private func scheduleResourceInitializationDiagnosticIfNeeded() {
         guard initialReadinessGate.isEnabled,
-              !didCompleteInitialReadinessGate,
-              initialReadinessState == .ready else {
+              resourceInitializationDiagnosticTask == nil else {
             return
         }
-
-        didCompleteInitialReadinessGate = true
-        initialReadinessGate.onReady()
-    }
-
-    private func retryInitialCameraReadiness() {
-        hapticFeedbackController.prepareForCameraInteraction()
-        Task {
-            await viewModel.start()
-            completeInitialReadinessGateIfReady()
+        resourceInitializationDiagnosticTask = Task { @MainActor in
+            do {
+                try await Task.sleep(for: .seconds(10))
+            } catch {
+                return
+            }
+            guard !didCompleteInitialReadinessGate else { return }
+            let checkpoint = initialReadinessState.pendingCheckpoint
+                ?? .markerCommit
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            Self.startupLifecycleLogger.error(
+                "resource_initialization_incomplete checkpoint=\(checkpoint.rawValue, privacy: .public)"
+            )
+            #endif
         }
-    }
-
-    private func openAppSettings() {
-        guard let url = URL(string: UIApplication.openSettingsURLString) else {
-            return
-        }
-        openURL(url)
     }
 
     private var viewfinderHighlightColor: Color {
@@ -585,6 +783,10 @@ struct CameraView: View {
     }
 
     private func applyPendingIntentHandoff() {
+        // Programmatic handoffs cannot bypass Resource Initialization. Leaving
+        // the record in the store lets the first committed interactive frame
+        // consume it exactly once at t5.
+        guard didPublishViewfinderInteractive else { return }
         guard let handoff = intentHandoffStore.loadAndClearHandoff() else {
             return
         }
@@ -1933,6 +2135,7 @@ struct CameraView: View {
 
     private func previewLayerPreviewingDidChange(_ isPreviewing: Bool) {
         isPreviewLayerPreviewing = isPreviewing
+        evaluateStartupReadiness()
         guard cameraPathTransitionToken != nil else {
             return
         }

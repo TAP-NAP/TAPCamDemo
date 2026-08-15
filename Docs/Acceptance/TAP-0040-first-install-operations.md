@@ -1,15 +1,29 @@
 # TAP-0040 — First-Install Explicit Operations
 
 - Status: `Draft — not executed`
-- Related Delivery: `TAP-0008`, `TAP-0010`
+- Related Delivery: `TAP-0008`, `TAP-0010`, `TAP-0090`
 - Contract: `ProductContract §2.1–2.3`
-- Build/Commit: `To be frozen before execution`
+- Build/Commit: `To be pinned before execution`
 - Device/iOS: `To be confirmed with the product owner`
 - Human Confirmation: `Pending`
 
 This is an attended physical-device procedure. Before execution, the Agent must
 present the filled build, device, reset method, logging surface, and full scope
 to the product owner. Simulator permission fixtures are not a substitute.
+
+The 2026-08-15 `fix0809` native candidate implements the non-Network
+permission/recovery and observer boundaries in this procedure. It deliberately
+does not migrate `/healthz` and initial App Attest behavior; that work remains
+owned by `TAP-0010`. This record therefore remains Draft and cannot receive a
+Pass verdict from that candidate alone.
+
+The branch-executable subset is limited to Camera/Photos row ownership,
+denied/restricted recovery, Required Permission Check targeted refresh, and the
+PhotoKit observer/catalog activation boundary. Steps that require initial App
+Attest registration, `/healthz` replacement, or retry delivery remain blocked;
+their current behavior must not be counted as target acceptance. `TAP-0090`
+owns the non-Network structured event-order regression assertions used by this
+attended procedure.
 
 ## Preconditions
 
@@ -21,7 +35,11 @@ to the product owner. Simulator permission fixtures are not a substitute.
   credential material or key identifiers.
 - The device can return Camera, Photos, Location, and Microphone to
   `.notDetermined` and can be taken offline.
-- Screen recording and device-log capture are ready before process launch.
+- Structured device-log capture and its automated event-order assertions are
+  ready before process launch. The retained evidence contains no photo,
+  screenshot, or screen recording.
+- The `TAP-0090` public-safe versioned JSON/JSONL trace schema and assertion
+  report are available for the non-Network events consumed by this procedure.
 - **Owner live:** approve a Delete-and-Reinstall of the test app. If that reset
   does not restore `.notDetermined`, separately approve any system-level
   privacy reset.
@@ -29,10 +47,10 @@ to the product owner. Simulator permission fixtures are not a substitute.
 ## Reset And Install
 
 1. Archive earlier logs; do not delete existing Photos media.
-2. Perform Delete-and-Reinstall with the frozen signed build.
+2. Perform Delete-and-Reinstall with the pinned signed build.
 3. Confirm all four OS permission states are `.notDetermined`; otherwise stop
    as Blocked.
-4. Begin screen recording and logs before the first Foreground Process Launch.
+4. Begin the structured device log before the first Foreground Process Launch.
 5. Run one offline Delete-and-Reinstall round and one separately reset
    Delete-and-Reinstall optional-skip round.
 
@@ -63,20 +81,44 @@ to the product owner. Simulator permission fixtures are not a substitute.
 8. **Owner live:** confirm Continue is enabled only after App Attest, Camera,
    and Photos are complete and that the two optional rows remain skippable. Do
    not press Continue in this procedure; readiness belongs to `TAP-0041`.
+9. In separate reset rounds, deny Camera, Photos, Location, and Microphone one
+   row at a time. Confirm each denied row owns its **Open Settings** recovery;
+   a restricted fixture shows stable restricted guidance and does not promise
+   a Settings recovery that the system policy cannot provide.
+10. After Setup has completed, revoke Camera and then Photos. On each launch or
+    foreground return, confirm the root enters Required Permission Check with
+    only Camera and Photos represented and with no Continue button.
+11. Recover the affected required permission from its row/system boundary.
+    Confirm the targeted return refresh does not start Network, Location, or
+    Microphone work and automatically re-evaluates the route.
+12. For Photos, correlate observer registration and catalog logs: no observer
+    or catalog scan before the explicit eligible boundary; exactly one
+    idempotent observer activation afterward; revocation/deactivation cancels
+    queued catalog refresh work.
 
 ## Required Evidence
 
-- Continuous recordings of both Delete-and-Reinstall rounds, including system prompt
-  titles and actions.
-- Timestamped action/request/Network timeline plus negative evidence for early
-  PhotoKit work and camera warmup.
-- OS authorization screenshots before both rounds.
-- App Attest attempt table covering explicit start, bounded automatic retries,
-  timeout, background/foreground, connectivity recovery, manual Retry, and
-  final registration/verification success without private credential values.
-- Frozen build/commit, device, and iOS identifiers.
-- **Owner live:** recorded confirmation that there were no surprise prompts and
-  every operation followed its corresponding action.
+- One structured, monotonically ordered event log for each
+  Delete-and-Reinstall round. It records the app-owned action, system-boundary
+  entry/return, observed authorization enum, and resulting route without
+  retaining the system permission sheet as an image or video.
+- Automated assertions over that log proving the action/request/Network order
+  and the absence of early PhotoKit work or camera warmup.
+- The machine-readable `TAP-0090` assertion report, with each non-Network result
+  mapped to its stable TAP-0087 lifecycle/workload record ID.
+- Textual Camera/Photos/Location/Microphone authorization snapshots before each
+  round, recorded as public-safe enum values rather than screenshots.
+- A structured App Attest attempt table covering explicit start, bounded
+  automatic retries, timeout, background/foreground, connectivity recovery,
+  manual Retry, and final registration/verification success without private
+  credential values.
+- Pinned build/commit, device model, and iOS identifiers.
+- **Owner live:** a retained textual verdict confirming that no surprise prompt
+  appeared and every operation followed its corresponding action.
+
+Do not save a photo, screenshot, or screen recording as acceptance proof. The
+structured logs, automated assertions, and owner-live textual verdict are the
+durable evidence for this procedure.
 
 This procedure proves explicit trigger boundaries. It does not close Launch
 Screen-to-first-frame timing; that requires the `TAP-0083` 2 × 2

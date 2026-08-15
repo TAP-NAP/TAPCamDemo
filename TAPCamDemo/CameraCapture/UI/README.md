@@ -16,7 +16,7 @@ second camera-design document.
 | Responsibility | Code |
 | --- | --- |
 | Main camera screen shell, object lifetime, navigation, sheet, camera chrome state, and capture action owner | [CameraView.swift](CameraView.swift) |
-| First-install camera-interactive readiness state and blocking surface | [CameraInitialReadinessGate.swift](CameraInitialReadinessGate.swift), [CameraView.swift](CameraView.swift) |
+| Resource Initialization camera-plus-Library readiness state and blocking surface | [CameraInitialReadinessGate.swift](CameraInitialReadinessGate.swift), [CameraView.swift](CameraView.swift) |
 | Frosted camera-path transition presentation | [CameraViewfinderTransitionOverlayView.swift](CameraViewfinderTransitionOverlayView.swift), [CameraView.swift](CameraView.swift) |
 | Viewfinder chrome state, top shoulder Settings, and Flash/Live Photo toolbar | [CameraViewfinderChromeView.swift](CameraViewfinderChromeView.swift) |
 | Leaf-native recording timecode that updates without periodic SwiftUI invalidation | [CameraVideoRecordingTimecodeView.swift](CameraVideoRecordingTimecodeView.swift) |
@@ -121,11 +121,24 @@ route surface committed
   -> release post-entry App Attest, Pending Capture, and maintenance work
 ```
 
-Current main does not yet meet that placement: constructing `CameraView`
-synchronously constructs `CameraViewModel`, performs capability discovery, and
-creates capture-session objects; the first-install readiness gate also does not
-consume the existing preview-layer readiness callback. `TAP-0083` owns measured
-work placement and `TAP-0009` owns the Resource Initialization/readiness gate.
+The `fix0809` candidate installs the selected black route-shell state and
+defers `CameraView` mounting until a later main-actor turn, then keeps one
+stable camera identity while Resource Initialization becomes Viewfinder. This
+is not evidence that the shell rendered a frame before construction; measured
+first-frame placement remains a `TAP-0083` acceptance obligation. Its gate
+consumes active configuration,
+completed session configuration, depth readiness, the real preview-layer
+callback, safe primary controls/shutter, prepared haptics, and the first usable
+Library catalog. Only the successful atomic Initialization-marker commit
+removes the blocking surface. Marker preparation and durable write run off the
+MainActor; the UI stays at the marker checkpoint until completion. A two-tick
+display-link barrier observes the first committed Viewfinder frame before
+releasing recent-cover observation/loading and root poster maintenance. The
+same boundary defers any pending App Intent navigation so it cannot pause the
+camera during Resource Initialization. Network/App Attest and
+network-dependent Pending scheduling remain frozen and therefore are not
+claimed as full `t5` alignment. `TAP-0083` still owns measured first-frame work
+placement.
 Debug/compiler and debugger attachment are recorded as measurement variables,
 not product-state inputs.
 
