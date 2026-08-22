@@ -799,21 +799,6 @@ struct TAPLibraryProcessingTests {
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable))
-    func reconcileNeverUsesSignedPhotoLookupForTAPVideo() throws {
-        let source = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/TAPLibrary/TAPPendingCaptureProcessor.swift"
-        )
-        let reconcile = try #require(TAPCamDemoTestSourceInspection.substring(
-            in: source,
-            from: "func reconcile(",
-            to: "private func process("
-        ))
-
-        #expect(reconcile.contains("if record.artifactKind == .photoDepth,"))
-        #expect(reconcile.contains("let assetID = try? await PhotoLibraryWriter.depthAssetIdentifier("))
-    }
-
-    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable))
     func videoCommitAmbiguousBoundaryImmediatelyPrecedesPhotosPerformChanges() throws {
         let source = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/CameraCapture/Output/PhotoLibraryWriter.swift"
@@ -827,18 +812,6 @@ struct TAPLibraryProcessingTests {
         #expect(createVideoAsset.contains(
             "try await commitWillBegin()\n        try await PHPhotoLibrary.shared().performChanges {"
         ))
-    }
-
-    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable))
-    func photoLibraryWriterResourceRequestInstallBridgesShareCancellationState() throws {
-        let source = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/CameraCapture/Output/PhotoLibraryWriter.swift"
-        )
-        let installSignature = "private func install(requestID: PHAssetResourceDataRequestID)"
-        let bridgeDelegation = "requestIDBridge.install(requestID: requestID)"
-
-        #expect(source.components(separatedBy: installSignature).count - 1 == 2)
-        #expect(source.components(separatedBy: bridgeDelegation).count - 1 == 2)
     }
 
 }

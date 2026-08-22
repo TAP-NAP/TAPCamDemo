@@ -32,27 +32,11 @@ struct DepthAnalysisStageView: View {
     let planeSeedPoint: CGPoint?
     let highlightPalette: AnalysisHighlightPalette
     let isPlaneGridAnimationEnabled: Bool
-    let metadataSummary: CaptureMetadataSummary?
-    let scoreSummary: DepthAnalysisScoreSummary?
     let onSelectionCleared: () -> Void
     let onPlaneSeedSelected: (CGPoint) -> Void
 
     var body: some View {
-        ZStack(alignment: .top) {
-            stageContent
-
-            #if DEBUG
-            if let metadataSummary {
-                CaptureMetadataHUD(
-                    summary: metadataSummary,
-                    scoreSummary: scoreSummary
-                )
-                    .padding(.horizontal, 12)
-                    .padding(.top, 8)
-                    .allowsHitTesting(false)
-            }
-            #endif
-        }
+        stageContent
     }
 
     @ViewBuilder

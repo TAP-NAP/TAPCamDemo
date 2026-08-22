@@ -13,10 +13,9 @@ Output does not talk to Photos directly and does not own retry behavior.
 | --- | --- |
 | Output profile catalog | [CaptureOutputProfileCatalog.swift](CaptureOutputProfileCatalog.swift) |
 | Resolved Runtime output request and photo-output capability snapshot | [CaptureOutputProfileResolution.swift](CaptureOutputProfileResolution.swift) |
-| Future output profile selection intent | [CaptureOutputProfileSelectionIntent.swift](CaptureOutputProfileSelectionIntent.swift) |
+| Reviewed output profile selection intent | [CaptureOutputProfileSelectionIntent.swift](CaptureOutputProfileSelectionIntent.swift) |
 | App-level photo quality policy | [CapturePhotoQualityPolicy.swift](CapturePhotoQualityPolicy.swift) |
 | Output format/quality policy | [CaptureOutputProfile.swift](CaptureOutputProfile.swift) |
-| Output resource plan for future multi-resource formats | [CaptureOutputResourcePlan.swift](CaptureOutputResourcePlan.swift) |
 | Manifest output-facts policy | [CaptureOutputManifestPolicy.swift](CaptureOutputManifestPolicy.swift) |
 | Logical capture result | [CapturePackage.swift](CapturePackage.swift) |
 | Packager protocol and artifact model | [CapturePackager.swift](CapturePackager.swift) |
@@ -155,45 +154,37 @@ Read the output contract in this order:
    names the executable profile catalog. Release currently has reviewed HEIC
    and JPG photo-depth profiles; the default remains HEIC.
 2. [CaptureOutputProfileSelectionIntent.swift](CaptureOutputProfileSelectionIntent.swift)
-   is the pure future request boundary for choosing a profile from that
+   is the pure request boundary used to choose a profile from that
    catalog. It fails closed when the catalog is invalid, the requested profile
    is missing, or the selected profile violates its output contract.
    `CaptureOutputProfileSelectionPresentation` is the public-safe companion for
-   future UI text; use it instead of developer-facing `readerDescription`
+   visible status text; use it instead of developer-facing `readerDescription`
    strings when a requested profile is missing or invalid.
 3. [CapturePhotoQualityPolicy.swift](CapturePhotoQualityPolicy.swift) names the
    app-level quality policy before it resolves to AVFoundation settings.
 4. [CaptureOutputProfile.swift](CaptureOutputProfile.swift) names the current
    Release profiles: `releasePhotoDepthHEIC` and `releasePhotoDepthJPEG`.
-5. [CaptureOutputResourcePlan.swift](CaptureOutputResourcePlan.swift) names the
-   logical resources in the reviewed output contract. The current Release plan
-   requires the primary photo, Apple auxiliary depth, TAP manifest, and App
-   Attest capture proof before export. The plan is read from a validated
-   `ResolvedCaptureOutputProfile`, so future resources cannot use it as a
-   shortcut around the embedded photo-depth packaging gate. It stores no bytes,
-   paths, URLs, Photos identifiers, key IDs, capture IDs, manifests, or
-   AVFoundation objects.
-6. [CaptureOutputManifestPolicy.swift](CaptureOutputManifestPolicy.swift)
+5. [CaptureOutputManifestPolicy.swift](CaptureOutputManifestPolicy.swift)
    maps the reviewed Release profile to the durable manifest capture fields
    that the final signed-export gate must re-read before Photos save.
-7. [CaptureOutputProfileResolution.swift](CaptureOutputProfileResolution.swift)
+6. [CaptureOutputProfileResolution.swift](CaptureOutputProfileResolution.swift)
    is the Runtime handoff value and photo-output capability snapshot. It keeps
    codec, depth, and quality validation in one focused place after a catalog
    profile has passed contract validation.
-8. [CaptureSessionController.swift](../Runtime/CaptureSessionController.swift)
+7. [CaptureSessionController.swift](../Runtime/CaptureSessionController.swift)
    and
    [AVFoundationSingleCamPhotoProvider.swift](../Runtime/AVFoundationSingleCamPhotoProvider.swift)
    consume one `ResolvedCaptureOutputProfile`: Runtime resolves the raw policy
    once, then both prewarm and per-shot `AVCapturePhotoSettings` use that value.
-9. [CapturePackage.swift](CapturePackage.swift) checks the resolved output
+8. [CapturePackage.swift](CapturePackage.swift) checks the resolved output
    against the capture plan and actual `AVCapturePhoto.depthData`.
-10. [TAPDepthManifestBuilder.swift](TAPDepthManifestBuilder.swift) records the
+9. [TAPDepthManifestBuilder.swift](TAPDepthManifestBuilder.swift) records the
    same resolved output facts into the published manifest.
-11. [../../../TAPCamDemoTests/TAPCaptureOutputProfileTests.swift](../../../TAPCamDemoTests/TAPCaptureOutputProfileTests.swift)
+10. [../../../TAPCamDemoTests/TAPCaptureOutputProfileTests.swift](../../../TAPCamDemoTests/TAPCaptureOutputProfileTests.swift)
    has pure unit tests for valid and rejected profile combinations, quality
-   policy, resource-plan shape, fail-closed selection, and the
+   policy, fail-closed selection, and the
    `AVCapturePhotoSettings` handoff.
-12. The provenance focused tests split the final proof/export contract by
+11. The provenance focused tests split the final proof/export contract by
    responsibility:
    [TAPCaptureManifestEncodingTests.swift](../../../TAPCamDemoTests/TAPCaptureManifestEncodingTests.swift)
    covers payload/proof byte separation,
@@ -215,11 +206,11 @@ general multi-resource output profile. There is no hidden container fallback,
 quality slider, RAW output, 24 MP deferred delivery, or extra debug artifact in
 this change.
 
-`CaptureOutputProfileSelectionIntent` is also internal policy. It does not add
-an output setting, persist a preference, write a manifest field, or bypass
-Runtime. Future UI should use it only to resolve a requested profile from a
+`CaptureOutputProfileSelectionIntent` is internal policy. The Settings picker
+persists `CameraOutputFormatPreference`; the intent resolves that value from a
 reviewed catalog before handing a concrete `CaptureOutputProfile` to Runtime.
-Future visible status text should use `CaptureOutputProfileSelectionPresentation`
+It does not itself persist a preference, write a manifest field, or bypass
+Runtime. Visible status text should use `CaptureOutputProfileSelectionPresentation`
 so raw catalog/profile identifiers do not leak into UI labels.
 
 `ResolvedCaptureOutputProfile` is the Runtime handoff value. It is created by
@@ -235,25 +226,6 @@ one place while Runtime still owns the actual AVFoundation writes.
 `SessionConfigurationResult`; provider, package, packager, and manifest code
 then consume it instead of re-reading raw profile fields or writing AVFoundation
 format, depth, quality, or dimension settings directly.
-
-`CaptureOutputResourcePlan` is the resource-level companion to the resolved
-profile. It explains what kind of resources must exist for the current Release
-output without carrying the concrete data. It is exposed through
-`ResolvedCaptureOutputProfile.resourcePlan`, which reuses
-`validateForEmbeddedPhotoDepthPackaging()` before returning the current plan.
-Today it names one photo container with primary RGB, embedded Apple auxiliary
-depth, an embedded TAP manifest, and an App Attest proof record. The current
-Live Photo implementation adds a fixed paired MOV through the capture artifact,
-pending store, v2 manifest, and v3 content binding without changing that still
-photo resource plan. TAP Video uses its own MP4/KLV resource and validation
-contract. Future RAW, arbitrary non-TAP media, sidecar, or C2PA work should
-extend the relevant resource model before new packagers or Photos writers are added. The App
-Attest proof resource is
-required before export, but it is not itself an input to the App Attest content
-binding; the binding covers the current photo file bytes excluding the fixed
-proof slot, plus canonical manifest payload facts. Embedded auxiliary depth is
-therefore bound as format-native bytes in the photo file, while later metric
-depth conversion remains a consumer-side interpretation step.
 
 `PhotoLibraryWriter.saveDepthPhoto` receives only a `ValidatedTAPDepthPhoto`. It
 stages those final bytes as a temporary `.heic` or `.jpg` file and gives Photos
@@ -327,9 +299,6 @@ the asset but the Photos round-trip original lost `tapdepth:Manifest`.
   profile.
 - Add validation rules for every new invalid combination before UI can request
   it.
-- Add or update the resource plan so readers can tell whether App Attest signs
-  one TAP depth photo file, multiple resources, RAW bytes, Live Photo resources,
-  video resources, C2PA assertions, or some combination.
 - Explain whether the TAP manifest schema changes.
 - Explain what App Attest signs: one TAP depth photo file, multiple resources,
   RAW bytes, Live Photo resources, or video resources.

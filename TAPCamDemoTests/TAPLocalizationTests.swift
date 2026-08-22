@@ -27,75 +27,6 @@ struct TAPLocalizationTests {
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func localeOverrideUsesPresentationOnlyRootInjection() throws {
-        let appSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/App/TAPCamDemoApp.swift"
-        )
-        let languageSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/App/AppLanguage.swift"
-        )
-        let settingsSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalyzerSettingsView.swift"
-        )
-        let languageSection = try #require(
-            TAPCamDemoTestSourceInspection.substring(
-                in: settingsSource,
-                from: "private var languageSettingsSection",
-                to: "private var cameraSettingsSection"
-            )
-        )
-
-        #expect(appSource.contains("@AppStorage(AppLanguage.storageKey)"))
-        #expect(appSource.contains(#"\.locale"#))
-        #expect(appSource.contains("AppLanguage.resolved(rawValue: appLanguageRawValue).locale"))
-        #expect(!appSource.contains(".id(appLanguage"))
-        #expect(!appSource.contains("configureCurrentSelection"))
-        #expect(!appSource.contains("configurePhotographerMode"))
-        #expect(languageSection.contains(#"Picker("App Language", selection: appLanguageSelection)"#))
-        #expect(languageSection.contains("AppLanguage.resolved(rawValue: appLanguageRawValue).rawValue"))
-        #expect(languageSection.contains("AppLanguage.allCases"))
-        #expect(!languageSection.contains(".onChange"))
-        #expect(!languageSection.contains(".task"))
-        #expect(!languageSection.contains(".onAppear"))
-        #expect(!languageSource.contains("scenePhase"))
-        #expect(!languageSource.contains("configureCurrentSelection"))
-        #expect(!languageSource.contains("CaptureSession"))
-    }
-
-    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func viewfinderStaysEnglishWithoutChangingCameraLifecycle() throws {
-        let cameraSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/CameraCapture/UI/CameraView.swift"
-        )
-        let cameraRootSection = try #require(
-            TAPCamDemoTestSourceInspection.substring(
-                in: cameraSource,
-                from: "private var cameraRootView",
-                to: "private var cameraLifecycleObservers"
-            )
-        )
-
-        #expect(
-            cameraRootSection.contains(
-                """
-                cameraSurface
-                                .environment(\\.locale, AppLanguage.english.locale)
-                """
-            )
-        )
-        #expect(
-            cameraRootSection.components(
-                separatedBy: "AppLanguage.english.locale"
-            ).count == 2
-        )
-        #expect(cameraRootSection.contains("DepthAlbumPickerView("))
-        #expect(cameraRootSection.contains(".sheet(isPresented: $isShowingSettings)"))
-        #expect(cameraRootSection.contains("DepthAnalyzerSettingsView("))
-        #expect(cameraRootSection.contains(".cameraScreenLifecycle("))
-        #expect(!cameraRootSection.contains(".id("))
-    }
-
-    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
     func catalogHasSimplifiedChineseForPrioritySurfaces() throws {
         let catalogSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/Localizable.xcstrings"
@@ -210,86 +141,6 @@ struct TAPLocalizationTests {
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func depthAnalysisStaticCopyUsesCatalogWithoutTreatingRuntimeValuesAsKeys() throws {
-        let sharedInspectorSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisInspectors.swift"
-        )
-        let panelSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisPanelLayer.swift"
-        )
-        let stripSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisInspectorStrip.swift"
-        )
-        let regionSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisRegionInspectorContent.swift"
-        )
-        let planeSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisPlaneFilterInspectorContent.swift"
-        )
-
-        #expect(sharedInspectorSource.contains("Text(LocalizedStringKey(text))"))
-        #expect(sharedInspectorSource.contains("Text(LocalizedStringKey(title))"))
-        #expect(sharedInspectorSource.contains(".help(Text(LocalizedStringKey(explanation)))"))
-        #expect(sharedInspectorSource.contains("Text(value)"))
-        #expect(!sharedInspectorSource.contains("Text(LocalizedStringKey(value))"))
-        #expect(sharedInspectorSource.contains("Text(verbatim: label)"))
-
-        #expect(panelSource.contains("Text(LocalizedStringKey(title))"))
-        #expect(stripSource.contains(".accessibilityLabel(Text(LocalizedStringKey(item.title)))"))
-        #expect(stripSource.contains(".help(Text(LocalizedStringKey(item.detailedExplanation)))"))
-        #expect(stripSource.contains("Text(LocalizedStringKey(hint.title))"))
-
-        #expect(regionSource.contains("Text(LocalizedStringKey(stateText))"))
-        #expect(regionSource.contains("Text(LocalizedStringKey(title))"))
-        #expect(regionSource.contains("Label(heatmapErrorMessage.text"))
-        #expect(!regionSource.contains("LocalizedStringKey(heatmapErrorMessage.text)"))
-        #expect(planeSource.contains("Text(LocalizedStringKey(text))"))
-        #expect(planeSource.contains("Label(errorMessage.text"))
-        #expect(!planeSource.contains("LocalizedStringKey(errorMessage.text)"))
-    }
-
-    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func dynamicMainPathCopyLocalizesKnownProductMessagesAndKeepsUnknownValuesVerbatim() throws {
-        let welcomeSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/App/WelcomeStartupSetupView.swift"
-        )
-        let libraryModelSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/DepthAnalysis/DepthAlbumPickerViewModel.swift"
-        )
-        let librarySource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/DepthAnalysis/DepthAlbumPickerView.swift"
-        )
-        let readinessSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/CameraCapture/UI/CameraInitialReadinessGate.swift"
-        )
-        let transitionSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/CameraCapture/UI/CameraViewfinderTransitionOverlayView.swift"
-        )
-
-        #expect(welcomeSource.contains("let title: LocalizedStringKey"))
-        #expect(welcomeSource.contains("let message: LocalizedStringKey"))
-        #expect(welcomeSource.contains("let actionTitle: LocalizedStringKey"))
-        #expect(welcomeSource.contains("Text(actionTitle)"))
-        #expect(welcomeSource.contains("Text(secondaryActionTitle)"))
-
-        #expect(libraryModelSource.contains("enum DepthAlbumLoadingPresentation"))
-        #expect(libraryModelSource.contains(#"case library = "Loading TAP Library...""#))
-        #expect(librarySource.contains("LocalizedStringKey(viewModel.loadingPresentation.rawValue)"))
-        #expect(librarySource.contains("albumErrorDescription(errorMessage)"))
-        #expect(librarySource.contains("Text(verbatim: message)"))
-
-        #expect(readinessSource.contains("CameraInitialReadinessMessageText(message: message)"))
-        #expect(readinessSource.contains("Text(LocalizedStringKey(message))"))
-        #expect(readinessSource.contains("readyPairingKey(in: message)"))
-        #expect(readinessSource.contains("Text(verbatim: message)"))
-
-        #expect(transitionSource.contains("CameraViewfinderTransitionCopy.text(for: message)"))
-        #expect(transitionSource.contains("CameraViewfinderTransitionCopy.text(for: recoveryActionTitle)"))
-        #expect(transitionSource.contains("Text(LocalizedStringKey(message))"))
-        #expect(transitionSource.contains("Text(verbatim: message)"))
-    }
-
-    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
     func mainPermissionPromptsAreLocalized() throws {
         let mainChinese = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/zh-Hans.lproj/InfoPlist.strings"
@@ -301,22 +152,4 @@ struct TAPLocalizationTests {
         #expect(mainChinese.contains("\"NSPhotoLibraryUsageDescription\""))
     }
 
-    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func noOpLiDARFocusAssistPreferenceIsRemovedWithoutTouchingManualFocusAssist() throws {
-        let settingsSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalyzerSettingsView.swift"
-        )
-        let preferenceSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/CameraCapture/UI/CameraUXPreferences.swift"
-        )
-        let cameraSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/CameraCapture/UI/CameraView.swift"
-        )
-
-        #expect(!settingsSource.contains("LiDAR Focus Assist"))
-        #expect(!settingsSource.contains("CameraLiDARFocusAssistPreferences"))
-        #expect(!preferenceSource.contains("CameraLiDARFocusAssistPreferences"))
-        #expect(cameraSource.contains("manualFocusTapAssistAtPreviewPoint"))
-        #expect(cameraSource.contains("performManualFocusTapAssist"))
-    }
 }

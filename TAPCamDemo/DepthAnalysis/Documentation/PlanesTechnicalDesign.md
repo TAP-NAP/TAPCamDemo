@@ -1,8 +1,7 @@
 # Planes View Technical Design
 
 This document explains the geometry, data dependencies, current implementation,
-known failure modes, and engineering lessons behind the `Planes` view in Depth
-Analysis.
+current constraints behind the `Planes` view in Depth Analysis.
 
 The short version: `Planes` is not a color-thresholding feature and it is not an
 ARKit-style tracked plane detector. It is a photo-local geometry analysis tool.
@@ -15,15 +14,15 @@ that seed, and render the result back onto the image.
 
 | Area | Code |
 | --- | --- |
-| Analysis input model | [`TAPDepthAnalysisInput`](../DepthAnalysisModels.swift#L20) |
-| Metric depth map | [`TAPMetricDepthMap`](../DepthAnalysisModels.swift#L74) |
-| Plane result models | [`TAPPlaneEstimate`, `TAPPlaneRegion`, `TAPPlaneGrowthParameters`](../DepthAnalysisModels.swift#L109) |
-| HEIC/depth reader | [`TAPDepthMapReader.analysisInput`](../DepthAnalysisReader.swift#L46) |
-| Depth to metric samples | [`TAPDepthMapReader.metricDepthMap`](../DepthAnalysisReader.swift#L74) |
-| Calibration fallback | [`manifest?.payload.depth.cameraCalibration ?? metricDepthData.cameraCalibrationData`](../DepthAnalysisReader.swift#L97) |
-| Orientation mapping | [`TAPImageOrientationMapper`](../DepthOrientationMapper.swift#L17) |
-| Camera-space projection | [`TAPDepthGeometryProjector.point`](../AnalysisTools/DepthPointCloudProjector.swift#L45) |
-| Plane geometry cache | [`TAPDepthGeometryProjector.geometryCache`](../AnalysisTools/DepthPointCloudProjector.swift#L63) and [`TAPDepthGeometryCache`](../AnalysisTools/DepthPointCloudProjector.swift#L231) |
+| Analysis input model | [`TAPDepthAnalysisInput`](../DepthAnalysisModels.swift) |
+| Metric depth map | [`TAPMetricDepthMap`](../DepthAnalysisModels.swift) |
+| Plane result models | [`TAPPlaneEstimate`, `TAPPlaneRegion`, `TAPPlaneGrowthParameters`](../DepthAnalysisModels.swift) |
+| HEIC/depth reader | [`TAPDepthMapReader.analysisInput`](../DepthAnalysisReader.swift) |
+| Depth to metric samples | [`TAPDepthMapReader.metricDepthMap`](../DepthAnalysisReader.swift) |
+| Calibration fallback | [`manifest?.payload.depth.cameraCalibration ?? metricDepthData.cameraCalibrationData`](../DepthAnalysisReader.swift) |
+| Orientation mapping | [`TAPImageOrientationMapper`](../DepthOrientationMapper.swift) |
+| Camera-space projection | [`TAPDepthGeometryProjector.point`](../AnalysisTools/DepthPointCloudProjector.swift) |
+| Plane geometry cache | [`TAPDepthGeometryProjector.geometryCache`](../AnalysisTools/DepthPointCloudProjector.swift) and [`TAPDepthGeometryCache`](../AnalysisTools/DepthPointCloudProjector.swift) |
 | Plane estimator facade | [`TAPPlaneEstimator`](../AnalysisTools/DepthPlaneEstimator.swift) |
 | Seed plane growth entry | [`growPlaneRegion`](../AnalysisTools/DepthPlaneEstimator.swift) |
 | Weighted plane fitting | [`weightedPlaneModel`](../AnalysisTools/DepthPlaneEstimator+Fitting.swift) |
@@ -32,14 +31,13 @@ that seed, and render the result back onto the image.
 | Point acceptance | [`acceptsPixel`](../AnalysisTools/DepthPlaneEstimator+RegionGrowth.swift) |
 | Region output products | [`DepthPlaneEstimator+RegionOutput`](../AnalysisTools/DepthPlaneEstimator+RegionOutput.swift) |
 | Plane overlay UI | [`PlaneRegionOverlay`](../DepthAnalysisInteractiveImage.swift) |
-| Plane inspector UI | [`PlaneFilterInspectorContent`](../DepthAnalysisPlaneFilterInspectorContent.swift) |
 | View-mode model | [`DepthAnalysisViewMode.planes`](../DepthAnalysisViewMode.swift) |
-| View-mode routing | [`DepthAnalysisView.analysisContent`](../DepthAnalysisView.swift) |
+| View-mode routing | [`DepthAnalysisStageView`](../DepthAnalysisStageView.swift) |
 | Plane-region calculation boundary | [`DepthAnalysisPlaneRegionDetector`](../DepthAnalysisPlaneRegionDetector.swift) |
 | Async request state and cache prewarm scheduling | [`DepthAnalysisPlaneRegionRequestCoordinator`](../DepthAnalysisPlaneRegionRequestCoordinator.swift) |
 | Synchronous plane selection state | [`DepthAnalysisPlaneSelectionState`](../DepthAnalysisPlaneSelectionState.swift) |
-| View-model state bridge | [`DepthAnalysisViewModel`](../DepthAnalysisViewModel.swift) |
-| Plane robustness tests | [`seedPlaneGrowthFindsLargeTiltedPlaneRegion`](../../../TAPCamDemoTests/TAPCamDemoTests.swift) |
+| Per-entry selection bridge | [`AnalysisPhotoSlot+Selection`](../AnalysisPhotoSlot+Selection.swift) |
+| Plane robustness tests | [`TAPDepthAnalysisPlaneRegionTests`](../../../TAPCamDemoTests/TAPDepthAnalysisPlaneRegionTests.swift) |
 
 ## Product Problem
 
@@ -60,16 +58,9 @@ The current `Planes` view interaction is seed-based:
 4. The estimator fits a local plane from cached camera-space points.
 5. It grows a connected region whose points fit the same plane.
 6. The cancellable background task publishes the newest result only.
-7. The UI shows the seed, region overlay, boundary, confidence, and inspector
-   metrics.
+7. The UI shows the seed, region overlay, boundary, confidence, and progress.
 
-Rectangular `Region` selection is intentionally disabled in `Planes` mode by the
-screen routing in [`DepthAnalysisView`](../DepthAnalysisView.swift), and the
-inspector list for `Planes` excludes the rectangle `Region` inspector. The
-`Planes` label, icon, and explanation live with
-[`DepthAnalysisViewMode.planes`](../DepthAnalysisViewMode.swift). This avoids
-mixing two different interactions: rectangular measurement and seed-grown plane
-analysis.
+The current `DepthAnalysisStageView` routes `Planes` to point selection and keeps rectangular Region selection out of that mode.
 
 ## Data Inventory
 
@@ -78,14 +69,14 @@ No new capture-time data is required for this scope.
 
 | Data | Where It Comes From | What It Enables | Why It Matters |
 | --- | --- | --- | --- |
-| RGB image | Primary HEIC image via ImageIO in [`analysisInput`](../DepthAnalysisReader.swift#L46) | Visual reference and overlay target | The user taps and verifies surfaces on the visible photo. |
-| Auxiliary depth/disparity | Apple auxiliary depth/disparity rebuilt as `AVDepthData` in [`analysisInput`](../DepthAnalysisReader.swift#L53) | Dense per-pixel depth source | This is the geometric input. Without it, there are no 3D samples. |
-| Metric depth | `AVDepthData.converting(toDepthDataType: kCVPixelFormatType_DepthFloat32)` in [`metricDepthMap`](../DepthAnalysisReader.swift#L74) | Depth in meters | Plane residuals and area estimates need meter-scale distances. |
-| Camera intrinsics | TAP manifest calibration, with `AVDepthData.cameraCalibrationData` fallback in [`metricDepthMap`](../DepthAnalysisReader.swift#L97) | Back-project pixels into camera-space points | Intrinsics turn `(u, v, Z)` into `(X, Y, Z)`. |
-| Orientation / rotation metadata | `CGImagePropertyOrientation` in [`imageOrientation(from:)`](../DepthAnalysisReader.swift#L131) | Correct screen-to-depth mapping | Taps and overlays must land on the matching native depth pixels. |
-| Depth accuracy / quality | Manifest or `AVDepthData` metadata in [`analysisInput`](../DepthAnalysisReader.swift#L67) | Diagnostics in Plane Filter | Helps explain unreliable results when source depth quality is low. |
-| Prewarmed geometry cache | [`DepthAnalysisPlaneRegionDetector.prewarmGeometry`](../DepthAnalysisPlaneRegionDetector.swift) building [`TAPDepthGeometryCache`](../AnalysisTools/DepthPointCloudProjector.swift#L231) | Reusable camera-space points and local normals | Avoids recomputing image-level projection work on every seed tap. |
-| Calibration extrinsics | Stored in manifest from [`makeCalibration`](../../CameraCapture/Output/TAPDepthManifestBuilder.swift#L274) | Future alignment diagnostics | Current photo-local fitting mostly needs intrinsics. |
+| RGB image | Primary HEIC image via ImageIO in [`analysisInput`](../DepthAnalysisReader.swift) | Visual reference and overlay target | The user taps and verifies surfaces on the visible photo. |
+| Auxiliary depth/disparity | Apple auxiliary depth/disparity rebuilt as `AVDepthData` in [`analysisInput`](../DepthAnalysisReader.swift) | Dense per-pixel depth source | This is the geometric input. Without it, there are no 3D samples. |
+| Metric depth | `AVDepthData.converting(toDepthDataType: kCVPixelFormatType_DepthFloat32)` in [`metricDepthMap`](../DepthAnalysisReader.swift) | Depth in meters | Plane residuals and area estimates need meter-scale distances. |
+| Camera intrinsics | TAP manifest calibration, with `AVDepthData.cameraCalibrationData` fallback in [`metricDepthMap`](../DepthAnalysisReader.swift) | Back-project pixels into camera-space points | Intrinsics turn `(u, v, Z)` into `(X, Y, Z)`. |
+| Orientation / rotation metadata | `CGImagePropertyOrientation` in [`imageOrientation(from:)`](../DepthAnalysisReader.swift) | Correct screen-to-depth mapping | Taps and overlays must land on the matching native depth pixels. |
+| Depth accuracy / quality | Manifest or `AVDepthData` metadata in [`analysisInput`](../DepthAnalysisReader.swift) | Diagnostics in Plane Filter | Helps explain unreliable results when source depth quality is low. |
+| Prewarmed geometry cache | [`DepthAnalysisPlaneRegionDetector.prewarmGeometry`](../DepthAnalysisPlaneRegionDetector.swift) building [`TAPDepthGeometryCache`](../AnalysisTools/DepthPointCloudProjector.swift) | Reusable camera-space points and local normals | Avoids recomputing image-level projection work on every seed tap. |
+| Calibration extrinsics | Stored in manifest from [`makeCalibration`](../../CameraCapture/Output/TAPDepthManifestBuilder.swift) | Future alignment diagnostics | Current photo-local fitting mostly needs intrinsics. |
 
 Data not used in this scope:
 
@@ -109,7 +100,7 @@ Z = metric depth in meters
 
 The camera intrinsics provide `fx`, `fy`, `cx`, and `cy`. The current code scales
 the calibration reference dimensions to the actual depth-map resolution in
-[`TAPCameraIntrinsics`](../AnalysisTools/DepthPointCloudProjector.swift#L260).
+[`TAPCameraIntrinsics`](../AnalysisTools/DepthPointCloudProjector.swift).
 
 The back-projection is:
 
@@ -119,10 +110,10 @@ Y = (v - cy) / fy * Z
 Z = depthMeters
 ```
 
-This is implemented in [`TAPDepthGeometryProjector.point`](../AnalysisTools/DepthPointCloudProjector.swift#L45).
+This is implemented in [`TAPDepthGeometryProjector.point`](../AnalysisTools/DepthPointCloudProjector.swift).
 
 For the Plane Filter panel, the app also builds a per-image
-[`TAPDepthGeometryCache`](../AnalysisTools/DepthPointCloudProjector.swift#L231).
+[`TAPDepthGeometryCache`](../AnalysisTools/DepthPointCloudProjector.swift).
 That cache stores projected camera-space points and radius-2 local normals for
 valid depth samples. Repeated seed taps can then reuse the same image-level
 geometry instead of recomputing projection and normal estimates.
@@ -152,7 +143,7 @@ flowchart TD
     M["Grow connected region with 8-connected BFS<br/>Capability: expand only through neighboring inlier pixels<br/>Why: same-plane regions should be spatially connected and should not jump gaps"]
     N["Refit and grow second pass<br/>Capability: improve the model after seeing more inliers<br/>Why: a tiny seed window may not represent the full surface perfectly"]
     O["Generate mask, contour, grid cells, confidence, metrics<br/>Capability: produce renderable and inspectable results<br/>Why: UI needs both visual overlay and numeric diagnostics"]
-    P["Render Planes overlay and Plane Filter inspector<br/>Capability: show seed, region, confidence, strictness, diagnostics<br/>Why: users need to verify and tune the grown plane"]
+    P["Render Planes overlay<br/>Capability: show seed, region, confidence, and progress<br/>Why: users need visible feedback for the grown plane"]
 
     A --> B
     A --> C
@@ -180,7 +171,7 @@ flowchart TD
 
 ### 1. Reading Analysis Data
 
-[`TAPDepthMapReader.analysisInput`](../DepthAnalysisReader.swift#L46) constructs
+[`TAPDepthMapReader.analysisInput`](../DepthAnalysisReader.swift) constructs
 the analysis-ready object:
 
 - [`TAPDepthAnalysisInputValidation`](../DepthAnalysisInputValidation.swift)
@@ -194,9 +185,9 @@ the analysis-ready object:
 - Heatmap and mask visualizations are precomputed.
 - Depth accuracy and quality are copied from the manifest or `AVDepthData`.
 
-[`TAPDepthMapReader.metricDepthMap`](../DepthAnalysisReader.swift#L74) copies the
+[`TAPDepthMapReader.metricDepthMap`](../DepthAnalysisReader.swift) copies the
 `CVPixelBuffer` rows into a row-major `[Float]`. Invalid values remain in the
-array, but [`TAPMetricDepthMap.sample`](../DepthAnalysisModels.swift#L84) exposes
+array, but [`TAPMetricDepthMap.sample`](../DepthAnalysisModels.swift) exposes
 only finite positive values to statistics and geometry code.
 
 After the analysis input loads, the view model asks
@@ -210,13 +201,12 @@ uses it immediately.
 
 Calibration is loaded from the TAP manifest first and falls back to
 `AVDepthData.cameraCalibrationData` in
-[`metricDepthMap`](../DepthAnalysisReader.swift#L97). Invalid calibration is not
+[`metricDepthMap`](../DepthAnalysisReader.swift). Invalid calibration is not
 used for projection; RGB, Heatmap, and Valid Mask can still load because they
 are image-space analyses. If calibration is missing or invalid, seed plane
 growth throws
-[`TAPPlaneGrowthError.cameraCalibrationMissing`](../DepthAnalysisModels.swift#L194)
-and the UI shows `"Camera calibration missing."` in
-[`PlaneFilterInspectorContent`](../DepthAnalysisPlaneFilterInspectorContent.swift).
+[`TAPPlaneGrowthError.cameraCalibrationMissing`](../DepthAnalysisModels.swift)
+and `DepthAnalysisErrorPresentation` maps that failure to fixed public-safe copy.
 
 ### 2. Orientation And Tap Mapping
 
@@ -225,13 +215,13 @@ image with that orientation applied. The depth map is stored in its native pixel
 coordinate system, so any displayed tap must be inverted back into native depth
 coordinates.
 
-[`TAPImageOrientationMapper`](../DepthOrientationMapper.swift#L17) handles this.
+[`TAPImageOrientationMapper`](../DepthOrientationMapper.swift) handles this.
 The tap path is:
 
 1. [`InteractiveDepthImage.depthPoint(for:)`](../DepthAnalysisInteractiveImage.swift)
    converts a screen point into displayed depth coordinates.
 2. It calls
-   [`TAPImageOrientationMapper.nativeRect(fromDisplayed:)`](../DepthOrientationMapper.swift#L24)
+   [`TAPImageOrientationMapper.nativeRect(fromDisplayed:)`](../DepthOrientationMapper.swift)
    to convert the displayed point to native depth pixels.
 3. The result is clamped to the depth-map bounds.
 
@@ -240,64 +230,22 @@ is valid mathematically but lands on the wrong physical surface.
 
 ### 3. Planes View Interaction
 
-[`DepthAnalysisView.analysisContent`](../DepthAnalysisView.swift) routes the
-[`DepthAnalysisViewMode.planes`](../DepthAnalysisViewMode.swift) mode to
-`depthImageStage` with:
+[`DepthAnalysisStageView`](../DepthAnalysisStageView.swift) renders the heatmap
+backdrop, plane region, partial grid, progress, and seed marker for `planes`.
+[`AnalysisPhotoSlot+Selection`](../AnalysisPhotoSlot+Selection.swift) maps the
+tap into the per-entry `DepthAnalysisPlaneSelectionState` and submits work to
+[`DepthAnalysisPlaneRegionRequestCoordinator`](../DepthAnalysisPlaneRegionRequestCoordinator.swift).
 
-- the heatmap as a visual backdrop,
-- `planeRegion` and `planeSeedPoint` overlays,
-- rectangle selection disabled,
-- point selection enabled.
+The synchronous selection state owns strictness, seed, selected region,
+progress, and fixed public-safe failure text. The coordinator separately owns
+geometry-cache reuse, request IDs, cancellation, debounce, and detached
+detector work. A completion publishes only when its request ID still matches,
+so rapid taps and strictness changes cannot overwrite the newest selection.
+Double-tap clearing resets the current slot's region and plane selection state.
 
-When the user taps, [`onPointSelected`](../DepthAnalysisView.swift) calls
-[`DepthAnalysisViewModel.selectPlaneSeed`](../DepthAnalysisViewModel.swift), then
-opens the `Plane Filter` inspector.
+### 4. Async Detection Performance Path
 
-The view model publishes
-[`planeSelection`](../DepthAnalysisPlaneSelectionState.swift), a small
-synchronous state model for:
-
-- strictness
-- seed point
-- selected plane region
-- detecting flag
-- fixed public-safe plane-region error text
-
-Failure flow stays explicit: the request coordinator publishes `failed(Error)`,
-the view model forwards that error to `finishFailure`, and
-`DepthAnalysisPlaneSelectionState` asks `DepthAnalysisErrorPresentation` for the
-visible string before the Plane Filter inspector renders it.
-
-[`DepthAnalysisPlaneRegionRequestCoordinator`](../DepthAnalysisPlaneRegionRequestCoordinator.swift)
-separately owns the async resources that must stay outside that state model:
-
-- image-local geometry cache
-- request IDs for plane region and geometry prewarm work
-- region task / geometry prewarm task
-
-Changing strictness calls [`updatePlaneGrowthStrictness`](../DepthAnalysisViewModel.swift),
-which updates the synchronous state and asks the coordinator to regrow the same
-seed after a short debounce if one exists.
-
-[`DepthAnalysisPlaneRegionRequestCoordinator.requestRegion`](../DepthAnalysisPlaneRegionRequestCoordinator.swift)
-is the tap-time request path. It cancels any previous plane task, records a
-request ID, emits `.started`, and runs detector work in a detached task. A late
-result is ignored unless its request ID still matches, so rapid taps and slider
-drags only publish the newest `planeSelection.selectedRegion`.
-
-The same coordinator also owns cache reuse. If its image-local geometry cache is
-ready, the tap task passes it into
-[`DepthAnalysisPlaneRegionDetector.detectRegion`](../DepthAnalysisPlaneRegionDetector.swift).
-If the cache is missing, the tap task cancels the lower-priority prewarm task
-and lets the detector build the cache once before growing the region. The
-coordinator stores the returned matching cache for the next tap.
-
-Double-tap clearing calls [`clearSelection`](../DepthAnalysisViewModel.swift),
-which clears both rectangular selection products and seed-grown plane products.
-
-### 4. Panel Detection Performance Path
-
-The Plane Filter panel is optimized around the fact that several user actions
+The request path reuses the same image-level geometry across several user actions
 share the same image-level geometry:
 
 - selecting a new photo asks the coordinator to prewarm geometry for that depth
@@ -317,19 +265,19 @@ refit, and output metrics.
 
 ### 5. Camera-Space Projection And Cache
 
-[`TAPDepthGeometryProjector.point`](../AnalysisTools/DepthPointCloudProjector.swift#L45)
+[`TAPDepthGeometryProjector.point`](../AnalysisTools/DepthPointCloudProjector.swift)
 is the shared projection helper. It requires:
 
 - a valid depth-map shape with `samples.count == width * height`,
 - a finite positive depth sample,
 - scaled finite intrinsics for the depth-map size, with non-zero `fx` and `fy`.
 
-[`TAPCameraIntrinsics`](../AnalysisTools/DepthPointCloudProjector.swift#L260)
+[`TAPCameraIntrinsics`](../AnalysisTools/DepthPointCloudProjector.swift)
 scales the stored calibration reference dimensions into the actual depth-map
 resolution. This matters because Apple calibration data can be expressed against
 a reference size that is not identical to the depth buffer dimensions.
 
-[`TAPDepthGeometryProjector.geometryCache`](../AnalysisTools/DepthPointCloudProjector.swift#L63)
+[`TAPDepthGeometryProjector.geometryCache`](../AnalysisTools/DepthPointCloudProjector.swift)
 validates the depth-map shape and pixel budget before allocating per-pixel
 arrays, then uses the same intrinsics once for the whole loaded image. It
 stores:
@@ -339,7 +287,7 @@ stores:
 - precomputed radius-2 local normals for high-strictness growth.
 
 The cache is checked with
-[`TAPDepthGeometryCache.matches(depthMap:)`](../AnalysisTools/DepthPointCloudProjector.swift#L239)
+[`TAPDepthGeometryCache.matches(depthMap:)`](../AnalysisTools/DepthPointCloudProjector.swift)
 before reuse. `sampledPoints` and Plane Filter growth use the cache when it
 matches and fall back to direct projection only when a caller does not provide
 one.
@@ -412,7 +360,7 @@ implementation uses [`adaptiveResidualThreshold`](../AnalysisTools/DepthPlaneEst
 - clamp the result with a floor and ceiling derived from strictness.
 
 The strictness slider maps to
-[`TAPPlaneGrowthParameters`](../DepthAnalysisModels.swift#L170):
+[`TAPPlaneGrowthParameters`](../DepthAnalysisModels.swift):
 
 - lower strictness allows larger residual tolerance,
 - higher strictness tightens tolerance,
@@ -456,7 +404,7 @@ iterate accepted pixels instead of repeatedly scanning the full depth map.
 
 ### 10. Output Products
 
-The final result is [`TAPPlaneRegion`](../DepthAnalysisModels.swift#L157), which
+The final result is [`TAPPlaneRegion`](../DepthAnalysisModels.swift), which
 contains:
 
 - `seedPixel`: the native depth-map seed point,
@@ -485,130 +433,13 @@ table.
 
 ### 11. UI Rendering
 
-[`PlaneRegionOverlay`](../DepthAnalysisInteractiveImage.swift) renders the grown result
-on top of the image. It currently draws:
+[`PlaneRegionOverlay`](../DepthAnalysisInteractiveImage.swift) renders
+fit-confidence grid cells, cell edges, and sampled boundary points over the
+current image. [`PlaneSeedMarker`](../DepthAnalysisInteractiveImage.swift)
+marks the tapped seed, and `PlaneRegionBadge` presents confidence. The grown
+connected mask is the analysis result; grid cells are a visualization of local
+fit quality, not the detector itself.
 
-- fit-confidence grid cells,
-- colored cell edges,
-- sampled boundary points.
-
-[`PlaneSeedMarker`](../DepthAnalysisInteractiveImage.swift) marks the tapped seed, and
-[`PlaneRegionBadge`](../DepthAnalysisInteractiveImage.swift) displays confidence.
-
-The grid cells are a visualization choice, not the core detection algorithm. The
-actual plane region is the grown connected mask. The user's feedback that the
-view still looks like too many matrix boxes is valid: the next UI improvement
-should make the continuous grown mask and contour more visually dominant, and
-make grid cells optional or subtler.
-
-[`PlaneFilterInspectorContent`](../DepthAnalysisPlaneFilterInspectorContent.swift) exposes:
-
-- strictness slider,
-- confidence,
-- plane cells,
-- area,
-- flatness,
-- residual,
-- inliers,
-- normal,
-- depth size,
-- calibration status,
-- depth accuracy / quality.
-
-## Previous Approach And Failure Modes
-
-### Tile Rectangles Were Too Coarse
-
-[`detectPlanes`](../AnalysisTools/DepthPlaneEstimator+RegionOutput.swift) still exists as
-a candidate/tile detector. It divides the depth map into a small grid, estimates
-a plane per tile, filters by confidence, and returns rectangular candidates.
-
-That approach is useful as a quick hint, but it is not a satisfying main
-interaction:
-
-- rectangles do not match real plane boundaries,
-- large planes can be split across tiles,
-- small or angled surfaces can be missed,
-- the UI can look like a matrix of boxes instead of a surface analysis.
-
-The seed-grown region is the better primary interaction because the user can
-choose the exact surface of interest, and the result can follow connected
-geometry rather than fixed image tiles.
-
-### Raw Z-Depth Continuity Breaks Oblique Planes
-
-The main algorithmic bug to avoid is treating adjacent Z-depth difference as a
-hard continuity rule. For a wall angled relative to the camera, Z naturally
-changes from one side of the image to the other. The physical surface is
-continuous, but raw depth values are not constant.
-
-The better test is:
-
-```text
-Does this 3D point lie close to the fitted camera-space plane?
-```
-
-That test is implemented in
-[`acceptsPixel`](../AnalysisTools/DepthPlaneEstimator+RegionGrowth.swift), where
-point-to-plane residual is the primary gate.
-
-### Fixed Centimeter Thresholds Are Brittle
-
-A fixed residual threshold can work on a synthetic flat patch but fail across:
-
-- different subject distances,
-- different Apple depth quality levels,
-- filtered versus unfiltered depth,
-- low-resolution auxiliary depth,
-- noisy or partially invalid regions.
-
-The current median/MAD thresholding adapts to local residual distribution while
-still being bounded by strictness.
-
-### Rotation Bugs Are Easy To Misread As Geometry Bugs
-
-If orientation metadata is not applied consistently, the user can tap a wall but
-the estimator samples the floor, edge, or empty area. This looks like a plane
-algorithm failure, but the root cause is coordinate mapping.
-
-The code currently keeps selection and seed state in native depth coordinates,
-then maps to/from displayed coordinates through
-[`TAPImageOrientationMapper`](../DepthOrientationMapper.swift#L17). The
-orientation round-trip test starts at
-[`orientationMapperRoundTripsRightRotatedSelectionRect`](../../../TAPCamDemoTests/TAPCamDemoTests.swift#L495).
-
-## Tests And Verification
-
-Current test coverage includes:
-
-- planar fit on a flat map:
-  [`planeEstimatorFindsSyntheticFlatDepthRegion`](../../../TAPCamDemoTests/TAPCamDemoTests.swift#L303)
-- tile detector confidence filtering:
-  [`planeDetectorFindsAndFiltersHighConfidenceFlatRegions`](../../../TAPCamDemoTests/TAPCamDemoTests.swift#L328)
-- seed growth on a tilted plane:
-  [`seedPlaneGrowthFindsLargeTiltedPlaneRegion`](../../../TAPCamDemoTests/TAPCamDemoTests.swift#L354)
-- continuous planes across multiple tilt angles:
-  [`seedPlaneGrowthFindsContinuousPlanesAcrossTiltAngles`](../../../TAPCamDemoTests/TAPCamDemoTests.swift#L373)
-- noisy oblique wall:
-  [`seedPlaneGrowthKeepsNoisyObliqueWallConnected`](../../../TAPCamDemoTests/TAPCamDemoTests.swift#L404)
-- boundary protection between two planes:
-  [`seedPlaneGrowthDoesNotLeakAcrossObliqueWallBoundary`](../../../TAPCamDemoTests/TAPCamDemoTests.swift#L418)
-- curved/noisy surface strictness behavior:
-  [`seedPlaneGrowthShrinksOnCurvedDepthWhenStrictnessIncreases`](../../../TAPCamDemoTests/TAPCamDemoTests.swift#L431)
-- invalid seed:
-  [`seedPlaneGrowthRejectsInvalidSeed`](../../../TAPCamDemoTests/TAPCamDemoTests.swift#L449)
-- missing calibration:
-  [`seedPlaneGrowthReportsMissingCameraCalibration`](../../../TAPCamDemoTests/TAPCamDemoTests.swift#L473)
-- async request cache reuse across region cancellation:
-  [`depthAnalysisPlaneRegionRequestCoordinatorKeepsGeometryCacheAcrossRegionCancel`](../../../TAPCamDemoTests/TAPCamDemoTests.swift)
-- newest-request freshness:
-  [`depthAnalysisPlaneRegionRequestCoordinatorPublishesOnlyNewestRegionRequest`](../../../TAPCamDemoTests/TAPCamDemoTests.swift)
-
-The synthetic depth helpers generate actual oblique planes from plane normals and
-intrinsics in [`depthSamples`](../../../TAPCamDemoTests/TAPCamDemoTests.swift#L876).
-This matters: the tests are not just checking flat arrays of equal depth. They
-construct depth maps that should look sloped in Z but remain planar in
-camera-space.
 
 ## Data Sufficiency
 
@@ -636,21 +467,18 @@ current single-photo analyzer.
 
 1. The overlay still emphasizes grid cells.
 
-   `gridCells` are useful diagnostics, but visually they can look like the old
-   rectangle-based system. The next UI pass should render the accepted mask as a
-   smoother translucent fill with a clearer contour, then optionally show grid
-   diagnostics in the inspector.
+   `gridCells` can visually resemble a rectangle-based system even though the
+   underlying result is the connected grown mask.
 
 2. The contour is a set of boundary pixels, not a simplified polygon.
 
    [`contourPoints`](../AnalysisTools/DepthPlaneEstimator+RegionOutput.swift) emits
-   boundary samples. A marching-squares contour or polygon simplification would
-   produce a cleaner outline.
+   boundary samples rather than a simplified polygon.
 
 3. Lens distortion is not corrected in projection.
 
    The manifest records whether distortion lookup tables exist, but
-   [`TAPCameraIntrinsics`](../AnalysisTools/DepthPointCloudProjector.swift#L260)
+   [`TAPCameraIntrinsics`](../AnalysisTools/DepthPointCloudProjector.swift)
    uses the pinhole intrinsics directly. This is probably fine for many local
    center-region analyses, but edge cases near wide-angle image borders may
    benefit from undistortion later.
@@ -666,54 +494,6 @@ current single-photo analyzer.
    The area metric describes the visible grown region in camera coordinates. It
    does not infer the full real-world surface area beyond the visible mask.
 
-## Engineering Lessons
-
-1. Depth visualization is not depth geometry.
-
-   Heatmaps and masks help users see the data, but they are not enough to decide
-   planarity. Plane detection has to operate on reconstructed 3D points.
-
-2. A tilted plane is a stress test for the coordinate model.
-
-   If an algorithm fails on an angled wall, the problem is often not missing
-   data. It is usually the wrong acceptance rule: Z-depth continuity instead of
-   point-to-plane residual.
-
-3. UI interactions should match the geometric question.
-
-   Rectangular region selection asks "what are the stats inside this crop?"
-   Seed-based plane growth asks "what connected surface contains this point?"
-   Mixing both in `Planes` made the interface confusing, so `Planes` now favors
-   point selection.
-
-4. Diagnostics should distinguish data failure from geometry failure.
-
-   Missing calibration, invalid seed depth, low valid-sample count, and noisy
-   residuals should surface as specific messages. Otherwise the user sees only
-   "no plane" and cannot tell whether the photo, metadata, tap point, or
-   algorithm is at fault.
-
-5. Strictness should control geometry tolerance, not visual opacity.
-
-   The `Plane Filter` slider maps to residual tolerance and robustness settings.
-   It should make the region more conservative, not merely change the overlay's
-   appearance.
-
-## Future Work
-
-Recommended next improvements:
-
-- Replace grid-dominant overlay with a continuous translucent mask and clean
-  contour.
-- Keep grid cells as optional diagnostics, possibly only in `Plane Filter`.
-- Add marching-squares contour extraction and polygon simplification.
-- Add device-side debug logging for seed point, valid-sample count, residual
-  threshold, accepted samples, and calibration status.
-- Consider robust normal smoothing if local-normal confidence becomes important.
-- Consider lens undistortion for edge-of-frame precision.
-- Add real-device fixtures or captured sample HEICs for regression testing.
-- Add ARKit/gravity only if the product asks for world-space or semantic plane
-  categories.
 
 ## Glossary
 

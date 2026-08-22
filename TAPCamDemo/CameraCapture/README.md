@@ -160,8 +160,8 @@ memory before the pending queue can sign or export the movie.
 
 The format and quality boundary crosses layers in this order:
 
-1. Future UI or product policy should express the choice as
-   `CaptureOutputProfileSelectionIntent`, then resolve it against
+1. The current Settings format picker expresses its HEIC/JPG choice as
+   `CaptureOutputProfileSelectionIntent`, then resolves it against
    `CaptureOutputProfileCatalog.release`.
 2. `DepthAnalyzerSettingsView` stores `CameraOutputFormatPreference` as HEIC or
    JPG. `CameraViewModel.configureCurrentSelection()` resolves that preference
@@ -231,13 +231,6 @@ Debug depth-capable device makes that device the preview, RGB photo, and
 `AVCapturePhoto.depthData` source. It does not enable a second depth pipeline.
 
 Start with [UI/CameraViewModel+Debug.swift](UI/CameraViewModel+Debug.swift).
-
-## Important Bug History
-
-| Regression | Current protection |
-| --- | --- |
-| `48mm` fell back to the `24mm` view | UI passes raw `selectedZoomFactor`; Planning preserves it through [ZoomCapabilityResolver.swift](Planning/ZoomCapabilityResolver.swift) and [CapturePlan.swift](Planning/CapturePlan.swift). |
-| `77mm` briefly flashed the `24mm` view | [CaptureSessionController.swift](Runtime/CaptureSessionController.swift) reuses a compatible graph and only moves raw zoom for FOV-only changes. |
 
 ## Internal Documents
 

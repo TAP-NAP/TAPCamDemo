@@ -406,7 +406,6 @@ struct TAPDiagnosticsOSLogPrivacyTests {
             "TAPCamDemo/CameraCapture/UI/CameraViewModel+VideoCapture.swift",
             "TAPCamDemo/CameraCapture/UI/CaptureLifecycleCoordinator.swift",
             "TAPCamDemo/DepthAnalysis/AnalysisTools/DepthPointCloudPreview.swift",
-            "TAPCamDemo/DepthAnalysis/AppAttestSignatureVerification.swift",
             "TAPCamDemo/DepthAnalysis/DepthAlbumItemProvider.swift",
             "TAPCamDemo/DepthAnalysis/DepthAlbumPickerViewModel.swift",
             "TAPCamDemo/DepthAnalysis/DepthAnalysisShareCoordinator.swift",

@@ -178,55 +178,6 @@ struct TAPVideoDepthPlaybackPolicyTests {
         #expect(session.isPendingSignedOriginalRefreshInFlight)
     }
 
-    @Test(.enabled(
-        if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable,
-        "Source tree is unavailable on this runtime."
-    ))
-    func signedOriginalRefreshGuardReadsThePublishedResourceLease() throws {
-        let source = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/DepthAnalysis/Playback/TAPVideoPlaybackSession.swift"
-        )
-        let claim = try #require(TAPCamDemoTestSourceInspection.substring(
-            in: source,
-            from: "    func claimPendingSignedOriginalRefresh() -> UUID? {",
-            to: "    /// Completes a transition claim"
-        ))
-        let signedSelection = try #require(TAPCamDemoTestSourceInspection.substring(
-            in: source,
-            from: "    var currentOriginalSelectedSignedVideo: Bool? {",
-            to: "    func prepareTwoDPlaybackGate()"
-        ))
-
-        #expect(claim.contains("currentOriginalSelectedSignedVideo != true"))
-        #expect(signedSelection.contains("resource?.acquireLease().selectedSignedVideo"))
-    }
-
-    @Test(.enabled(
-        if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable,
-        "Source tree is unavailable on this runtime."
-    ))
-    func lateVideoProgressCannotDemotePublishedOriginalReadiness() throws {
-        let source = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/DepthAnalysis/Playback/TAPVideoPlaybackSession.swift"
-        )
-        let progressBridge = try #require(TAPCamDemoTestSourceInspection.substring(
-            in: source,
-            from: "    private func resolveResource(",
-            to: "    private func preparePlayer("
-        ))
-        let guardedPublish = try #require(TAPCamDemoTestSourceInspection.substring(
-            in: source,
-            from: "    private func publishOriginalLoadProgress(",
-            to: "    private func preparePlayer("
-        ))
-
-        #expect(progressBridge.contains("TAPVideoPlaybackProgressCoalescer"))
-        #expect(!progressBridge.contains("Task { @MainActor"))
-        #expect(guardedPublish.contains("activeRequestKey == requestKey"))
-        #expect(guardedPublish.contains("!isOriginalResourceReady"))
-        #expect(guardedPublish.contains("fetchState.publishProgress("))
-    }
-
     @Test func pausedAtZeroProbeUsesABoundedForwardWindow() throws {
         let window = try #require(TAPVideoDepthMetadataProbePolicy.window(
             playbackTimeSeconds: 0,

@@ -21,7 +21,7 @@ status and known alignment work remain in
 | Independent versioned Initialization completion store | [StartupInitializationPolicy.swift](StartupInitializationPolicy.swift) |
 | Camera-plus-Library readiness state and blocking surface | [CameraInitialReadinessGate.swift](../CameraCapture/UI/CameraInitialReadinessGate.swift), [CameraView.swift](../CameraCapture/UI/CameraView.swift) |
 | Setup facts, required-permission facts, route priority, and legacy compatibility | [StartupGatePolicy.swift](StartupGatePolicy.swift) |
-| Legacy Network-row retry and timeout policy; target App Attest bootstrap alignment is `TAP-0008` | [StartupSecurityPreflightPolicy.swift](StartupSecurityPreflightPolicy.swift) |
+| Legacy Network-row retry and timeout policy; canonical Setup/App Attest alignment remains `TAP-0010` | [StartupSecurityPreflightPolicy.swift](StartupSecurityPreflightPolicy.swift) |
 | Legacy `/healthz` reachability execution; not the target completion condition | [StartupBackendSecurityPreflight.swift](StartupBackendSecurityPreflight.swift) |
 | Current Network, camera, photo, optional location, and optional microphone row state | [StartupGateCoordinator.swift](StartupGateCoordinator.swift) |
 | App Attest runtime factory and diagnostics | [AppAttestRuntime.swift](AppAttestRuntime.swift) |
@@ -78,14 +78,6 @@ metadata snapshot"]
     click Coord "StartupGateCoordinator.swift"
 ```
 
-This diagram is the target contract consumed by `TAP-0008` and `TAP-0009`.
-The audited `main@4cc02e5f12f2` baseline had one legacy Boolean, no root
-Required Permission Check route, and no independent versioned Initialization
-marker. The `fix0809` native candidate now implements the `S/P/I` reducer seam,
-targeted Camera/Photos recovery, and independent `I`; the frozen Network row is
-still a generic `/healthz` preflight and therefore cannot produce the target
-App-Attest-bound canonical `S`.
-
 `StartupGatePolicy` remains the required/optional entry: initial App Attest,
 Camera, and Photos are required; Location and Microphone are optional and may
 be skipped. The setup UI may continue to present the first operation as
@@ -95,32 +87,28 @@ completes only after the initial App Attest registration/verification succeeds.
 `StartupGateCoordinator` owns passive status reads and the operations started
 by each setup row. It does not own the camera-readiness gate.
 `StartupSecurityPreflightPolicy` owns the bounded retry interval, deadline, and
-wall-clock timeout used by the current Network row. `TAP-0008` must align the
-operation itself with App Attest bootstrap rather than treating
-`StartupBackendSecurityPreflight` `/healthz` success as the required result.
-Target behavior (not delivered by the Network-frozen `fix0809` candidate) is
-that one explicit Network action starts one bounded sequence. After timeout,
-only the setup page's explicit Retry action may begin another sequence; page
-appearance, foreground return, and status refresh must not do so. The frozen
-current `/healthz` path remains implementation evidence, not this target.
+wall-clock timeout used by the current Network row. The remaining generic
+`/healthz` compatibility path is not canonical App Attest credential evidence;
+its replacement and receipt migration are owned by `TAP-0010`. One explicit
+Network action starts one bounded sequence. After timeout, only the setup
+page's explicit Retry action may begin another sequence; appearance, foreground
+return, and passive status refresh must not do so.
 
-In the target, Continue atomically writes the structured Setup receipt. In the
-current `fix0809` candidate, the Network hard freeze means Continue instead
-writes a separately named `LegacySetupCompletionRecord`; it never converts a
-`/healthz` result into credential evidence. Resource Initialization owns a
-different marker and stays visible until camera-interactive readiness and the
-first usable TAP Library metadata snapshot are both ready. Session
+Continue writes the canonical structured Setup receipt only when its credential
+binding is valid. The retained `LegacySetupCompletionRecord` is an explicit
+pre-release compatibility path and never converts `/healthz` into credential
+evidence. Resource Initialization owns a different marker and stays visible
+until camera-interactive readiness and the first usable TAP Library metadata
+snapshot are both ready. Session
 configuration by itself is not enough. Resource Initialization has no product
 Failed, Retry, timeout, skip, or degraded branch. Marker preparation and fsync
 run off MainActor, storage fails closed when Application Support is unavailable,
 and local deferred work waits for a committed Viewfinder-frame barrier.
 
-The target releases later App Attest health/recovery and Pending Capture Queue
-retry only after `t5` as independent background work. The frozen current
-coordinator still uses its existing camera-start delay, foreground, credential,
-and worker triggers; `fix0809` does not claim those triggers consume `t5`.
-Neither target nor current work participates in the first interactive-frame
-gate or turns ordinary local capture into a network requirement.
+Later App Attest health/recovery and Pending Capture Queue retry begin only
+after the interactive route barrier as independent background work. They do not
+participate in the first interactive-frame gate or turn ordinary local capture
+into a network requirement.
 
 ## Explicit Setup Actions
 
@@ -147,7 +135,7 @@ when the user has never chosen; a saved opt-out remains authoritative.
 
 ## Completion Marker And Later Launches
 
-The `fix0809` candidate reads the historical
+The current compatibility reader accepts the historical
 `TAPCamDemo.StartupGate.didCompleteFirstInstallPermissions` only as a final
 compatibility fallback. The active model separates:
 
@@ -198,9 +186,9 @@ sequenceDiagram
     Kit-->>Controller: AppAttestCredential
 ```
 
-Debug builds use `https://dev.tapnap.net` and development App Attest metadata.
-Release and TestFlight builds use `https://www.tapnap.net` and production App
-Attest metadata.
+Debug and Release builds use `https://www.tapnap.net`. Debug signs with
+development App Attest metadata; Release and TestFlight sign with production
+metadata.
 The app target also sets `APP_ATTEST_ENVIRONMENT` to `development` for Debug and
 `production` for Release, then injects that value into
 [`TAPCamDemo.entitlements`](../../TAPCamDemo.entitlements).

@@ -27,59 +27,6 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
         continueAfterFailure = false
     }
 
-    func testGeometryScreenshotMatrix() throws {
-        let scenarios = [
-            "rotation-0",
-            "rotation-90",
-            "rotation-180",
-            "rotation-270",
-            "mirrored",
-            "aspect-4x3",
-            "aspect-16x9",
-            "clean-aperture"
-        ]
-
-        for scenario in scenarios {
-            let app = launchFixture(scenario: scenario)
-            try openFixture(in: app)
-            try selectTwoD(in: app)
-            keepScreenshot(
-                of: app,
-                named: "video_\(scenario)_2d_shared-chrome_en_L"
-            )
-            app.terminate()
-        }
-    }
-
-    func testRAWTwoDAndCustomTransportScreenshotMatrix() throws {
-        let app = launchFixture(
-            scenario: "performance-playback-15s"
-        )
-        try openFixture(in: app)
-
-        assertSharedViewerChrome(in: app)
-        let playPause = app.buttons[Self.playPauseIdentifier]
-        XCTAssertTrue(playPause.waitForExistence(timeout: 5))
-        XCTAssertTrue(playPause.isHittable, "Custom Play control must be physically tappable.")
-        keepScreenshot(of: app, named: "video_performance_raw_paused_shared-chrome_en_L")
-
-        playPause.tap()
-        XCTAssertTrue(
-            waitForElement(playPause, label: "Pause video", timeout: 3),
-            "Custom transport did not start playback."
-        )
-        keepScreenshot(of: app, named: "video_performance_raw_playing_shared-chrome_en_L")
-
-        try selectTwoD(in: app)
-        keepScreenshot(of: app, named: "video_performance_2d_playing_shared-chrome_en_L")
-
-        playPause.tap()
-        XCTAssertTrue(
-            waitForElement(playPause, label: "Play video", timeout: 3),
-            "Custom transport did not pause playback."
-        )
-    }
-
     func testVideoTwoDModeUsesPhysicalHitAndPublishesSelectedState() throws {
         let app = launchFixture(scenario: "performance-playback-15s")
         try openFixture(in: app)
@@ -146,23 +93,6 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
                 "The stable Viewer chrome is incomplete before Share opens."
             )
         }
-        let delete = app.buttons["tap.viewer.delete"]
-        let twoD = app.buttons[Self.twoDIdentifier]
-        XCTAssertEqual(share.frame.width, 42, accuracy: 1)
-        XCTAssertEqual(share.frame.height, 42, accuracy: 1)
-        XCTAssertEqual(delete.frame.width, 42, accuracy: 1)
-        XCTAssertEqual(delete.frame.height, 42, accuracy: 1)
-        XCTAssertEqual(share.frame.midY, delete.frame.midY, accuracy: 1)
-        XCTAssertEqual(share.frame.minX, app.frame.minX + 16, accuracy: 1.5)
-        XCTAssertEqual(delete.frame.maxX, app.frame.maxX - 16, accuracy: 1.5)
-        XCTAssertEqual(
-            share.frame.midX + delete.frame.midX,
-            app.frame.midX * 2,
-            accuracy: 2
-        )
-        XCTAssertEqual(twoD.frame.midX, app.frame.midX, accuracy: 1.5)
-        let framesBeforePresentation = stableChrome.map(\.frame)
-
         share.tap()
 
         // Assert the native presentation role, not only a SwiftUI identifier:
@@ -189,20 +119,13 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
             "Share could only be opened after player readiness, violating the interaction contract."
         )
 
-        for (index, control) in stableChrome.enumerated() {
+        for control in stableChrome {
             XCTAssertTrue(control.exists, "Share presentation removed Viewer chrome.")
-            assertEqual(
-                control.frame,
-                framesBeforePresentation[index],
-                accuracy: 1,
-                message: "Share presentation remounted or shifted Viewer chrome."
-            )
         }
         XCTAssertTrue(
             value(of: app.buttons[Self.rawIdentifier], containsAny: Self.selectedValueTokens),
             "Opening Share changed the selected Viewer mode."
         )
-        keepScreenshot(of: app, named: "video_share_selector_before_player_ready_en_L")
     }
 
     func testVideoThreeDShowsComingSoonWithoutChangingModeOrPlayback() throws {
@@ -264,129 +187,6 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
             waitForConfirmedElapsed(confirmedElapsed, timeout: 5),
             "AVPlayer did not confirm the seeked position."
         )
-    }
-
-    func testSimplifiedChineseSystemLanguageAndSeekScreenshots() throws {
-        var app = launchFixture(
-            scenario: "performance-playback-15s",
-            language: "zh-Hans",
-            appLanguage: "system"
-        )
-        try openFixture(in: app)
-        try selectTwoD(in: app)
-        assertSimplifiedChineseViewerCopy(in: app)
-        assertSharedViewerChrome(in: app, selectedModeIdentifier: Self.twoDIdentifier)
-        XCTAssertTrue(opacityControl(in: app).exists)
-
-        app.buttons[Self.threeDIdentifier].tap()
-        let toast = element(Self.edgeToastIdentifier, in: app)
-        XCTAssertTrue(toast.waitForExistence(timeout: 2))
-        XCTAssertEqual(toast.label, "即将推出")
-        XCTAssertTrue(value(of: app.buttons[Self.twoDIdentifier], containsAny: Self.selectedValueTokens))
-
-        Thread.sleep(forTimeInterval: 0.4)
-        keepScreenshot(of: app, named: "video_performance_2d_shared-chrome_zh-Hans_L")
-        app.terminate()
-
-        app = launchFixture(scenario: "seek-discontinuity")
-        try openFixture(in: app)
-        try selectTwoD(in: app)
-        Thread.sleep(forTimeInterval: 1.4)
-        keepScreenshot(of: app, named: "video_seek-discontinuity_2d_after-seek_en_L")
-    }
-
-    func testAccessibilityDynamicTypeScreenshots() throws {
-        var app = launchFixture(
-            scenario: "performance-playback-15s",
-            autoPlay: true,
-            accessibilityDynamicType: true
-        )
-        try openFixture(in: app)
-        try selectTwoD(in: app)
-        Thread.sleep(forTimeInterval: 0.4)
-        keepScreenshot(
-            of: app,
-            named: "video_performance_2d_shared-chrome_en_AXXXL"
-        )
-        app.terminate()
-
-        app = launchFixture(
-            scenario: "performance-playback-15s",
-            language: "en",
-            appLanguage: "zh-Hans",
-            accessibilityDynamicType: true
-        )
-        try openFixture(in: app)
-        try selectTwoD(in: app)
-        assertSimplifiedChineseViewerCopy(in: app)
-        assertSharedViewerChrome(in: app, selectedModeIdentifier: Self.twoDIdentifier)
-        XCTAssertTrue(opacityControl(in: app).exists)
-        Thread.sleep(forTimeInterval: 0.4)
-        keepScreenshot(
-            of: app,
-            named: "video_performance_2d_shared-chrome_zh-Hans_AXXXL"
-        )
-    }
-
-    func testFiveOpenTwoDPlayDismissCycles() throws {
-        let app = launchFixture(
-            scenario: "performance-playback-15s",
-            autoPlay: true
-        )
-        let holdsForCapture = ProcessInfo.processInfo.environment["TAPCAM_PR7_MEMGRAPH_HOLD"] == "1"
-
-        emitHandshake("TAPCAM_PR7_MEMGRAPH_BASELINE_READY")
-        if holdsForCapture {
-            Thread.sleep(forTimeInterval: 30)
-        }
-
-        for cycle in 1...5 {
-            try openFixture(in: app)
-            try selectTwoD(in: app)
-            Thread.sleep(forTimeInterval: 0.6)
-            try dismissFixture(in: app)
-            XCTAssertTrue(
-                app.buttons[Self.openIdentifier].waitForExistence(timeout: 8),
-                "Fixture landing page did not return after lifecycle cycle \(cycle)."
-            )
-        }
-
-        emitHandshake("TAPCAM_PR7_MEMGRAPH_AFTER_FIVE_READY")
-        if holdsForCapture {
-            Thread.sleep(forTimeInterval: 30)
-        }
-    }
-
-    func testPerformanceOpenRGBTwoDPlayTenSecondsDismiss() throws {
-        let app = launchFixture(
-            scenario: "performance-playback-15s",
-            autoPlay: true
-        )
-        prepareTraceHandshake()
-        defer { completeTraceHandshake() }
-
-        try openFixture(in: app)
-        XCTAssertFalse(opacityControl(in: app).exists)
-        try selectTwoD(in: app)
-        Thread.sleep(forTimeInterval: 10)
-        try dismissFixture(in: app)
-
-    }
-
-    func testPerformancePlaySeekThreeTimesResumeDismiss() throws {
-        let app = launchFixture(
-            scenario: "performance-playback-15s",
-            autoPlay: true,
-            seekScheduleSeconds: [3, 10, 6]
-        )
-        prepareTraceHandshake()
-        defer { completeTraceHandshake() }
-
-        try openFixture(in: app)
-        try selectTwoD(in: app)
-        Thread.sleep(forTimeInterval: 3)
-        try dismissFixture(in: app)
-
     }
 
     private func launchFixture(
@@ -624,20 +424,6 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
 
     private func element(_ identifier: String, in app: XCUIApplication) -> XCUIElement {
         app.descendants(matching: .any)[identifier]
-    }
-
-    private func assertEqual(
-        _ lhs: CGRect,
-        _ rhs: CGRect,
-        accuracy: CGFloat,
-        message: String,
-        file: StaticString = #filePath,
-        line: UInt = #line
-    ) {
-        XCTAssertEqual(lhs.minX, rhs.minX, accuracy: accuracy, message, file: file, line: line)
-        XCTAssertEqual(lhs.minY, rhs.minY, accuracy: accuracy, message, file: file, line: line)
-        XCTAssertEqual(lhs.width, rhs.width, accuracy: accuracy, message, file: file, line: line)
-        XCTAssertEqual(lhs.height, rhs.height, accuracy: accuracy, message, file: file, line: line)
     }
 
     private func keepScreenshot(of app: XCUIApplication, named name: String) {

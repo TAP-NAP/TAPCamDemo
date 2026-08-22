@@ -211,65 +211,6 @@ struct TAPDepthAnalysisSelectionTests {
         #expect(state.completedGridToastID != nil)
     }
 
-    @Test @MainActor func depthAnalysisViewModelBuildsRegionProductsOnlyAfterExplicitSelection() throws {
-        let viewModel = DepthAnalysisViewModel()
-        let depthMap = TAPMetricDepthMap(
-            width: 4,
-            height: 4,
-            samples: (1...16).map(Float.init),
-            calibration: nil
-        )
-        viewModel.input = try TAPCamDemoTestFixtures.analysisInput(depthMap: depthMap)
-
-        #expect(viewModel.regionSelection.selectionRect == nil)
-        #expect(viewModel.regionSelection.interactionState == .idle)
-        #expect(viewModel.regionSelection.regionStats == nil)
-        #expect(viewModel.regionSelection.regionHeatmap == nil)
-
-        let explicitRegion = CGRect(x: 1, y: 1, width: 2, height: 2)
-        viewModel.finishSelection(explicitRegion)
-
-        #expect(viewModel.regionSelection.selectionRect == explicitRegion)
-        #expect(viewModel.regionSelection.interactionState == .regionSelected)
-        #expect(viewModel.regionSelection.regionStats?.validSampleCount == 4)
-        #expect(viewModel.regionSelection.regionStats?.totalSampleCount == 4)
-        #expect(viewModel.regionSelection.regionStats?.minimumDepthMeters == 6)
-        #expect(viewModel.regionSelection.regionStats?.maximumDepthMeters == 11)
-        #expect(viewModel.regionSelection.regionHeatmap?.rangeScope == .region)
-    }
-
-    @Test @MainActor func depthAnalysisViewModelClearSelectionRemovesDerivedRegionProducts() throws {
-        let viewModel = DepthAnalysisViewModel()
-        let stalePlaneEstimate = Self.samplePlaneEstimate()
-        viewModel.regionSelection.selectionRect = CGRect(x: 1, y: 1, width: 4, height: 4)
-        viewModel.regionSelection.interactionState = .regionSelected
-        viewModel.regionSelection.regionStats = TAPDepthRegionStats(
-            validSampleCount: 3,
-            totalSampleCount: 4,
-            minimumDepthMeters: 1,
-            maximumDepthMeters: 2,
-            medianDepthMeters: 1.5,
-            validRatio: 0.75
-        )
-        viewModel.regionSelection.planeEstimate = stalePlaneEstimate
-        viewModel.planeSelection.seedPoint = CGPoint(x: 3, y: 3)
-        viewModel.planeSelection.selectedRegion = Self.samplePlaneRegion()
-        viewModel.planeSelection.errorMessage = "stale plane"
-        viewModel.regionSelection.regionHeatmapErrorMessage = "stale"
-
-        viewModel.clearSelection()
-
-        #expect(viewModel.regionSelection.selectionRect == nil)
-        #expect(viewModel.regionSelection.interactionState == .idle)
-        #expect(viewModel.regionSelection.regionStats == nil)
-        #expect(viewModel.regionSelection.planeEstimate == nil)
-        #expect(viewModel.regionSelection.regionHeatmap == nil)
-        #expect(viewModel.regionSelection.regionHeatmapErrorMessage == nil)
-        #expect(viewModel.planeSelection.seedPoint == nil)
-        #expect(viewModel.planeSelection.selectedRegion == nil)
-        #expect(viewModel.planeSelection.errorMessage == nil)
-    }
-
     private static func syntheticPlaneDepthMap(width: Int, height: Int) -> TAPMetricDepthMap {
         let calibration = Self.calibration(width: width, height: height)
         let normal = simd_normalize(SIMD3<Float>(-0.18, 0.08, 1.0))

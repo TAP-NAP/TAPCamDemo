@@ -247,138 +247,21 @@ struct TAPDepthAnalysisInputTests {
         }
     }
 
-    @Test @MainActor func depthAnalysisViewModelLoadsInputAndClearsPreviousAnalysisState() async throws {
-        let loadedInput = try TAPCamDemoTestFixtures.analysisInput(depthMap: TAPMetricDepthMap(
-            width: 4,
-            height: 4,
-            samples: (1...16).map(Float.init),
-            calibration: nil
-        ))
-        let loader = DepthAnalysisInputLoader(
-            photosDataLoader: { _ in Data() },
-            pendingDataLoader: { _ in Data() },
-            analysisInputReader: { _ in loadedInput },
-            libraryRefreshPoster: {}
+    @MainActor
+    @Test func analysisPhotoSlotPublishesFixedPublicSafeLoadFailure() {
+        let slot = AnalysisPhotoSlot(
+            entry: DepthAnalysisCarouselEntry(source: .pendingCapture("private-capture-id"))
         )
-        let viewModel = DepthAnalysisViewModel(inputLoader: loader)
-        viewModel.input = loadedInput
-        viewModel.regionSelection.finishSelection(
-            CGRect(x: 1, y: 1, width: 2, height: 2),
-            depthMap: loadedInput.depthMap
-        )
-        viewModel.errorMessage = "Old error"
-        viewModel.errorTitle = "Old title"
-        viewModel.errorSystemImage = "old.icon"
 
-        await viewModel.load(source: .photosAsset("asset-private-id"))
+        slot.applyLoadError(DepthAnalysisInputLoaderError.pendingCaptureTemporarilyUnavailable)
 
-        #expect(viewModel.input?.depthMap.width == 4)
-        #expect(viewModel.regionSelection.selectionRect == nil)
-        #expect(viewModel.regionSelection.interactionState == .idle)
-        #expect(viewModel.regionSelection.regionStats == nil)
-        #expect(viewModel.errorMessage == nil)
-        #expect(viewModel.errorTitle == "Unable to analyze image")
-        #expect(viewModel.errorSystemImage == "exclamationmark.triangle")
+        #expect(slot.analysisPhase == .failed)
+        #expect(slot.errorTitle == "Image unavailable")
+        #expect(slot.errorMessage == "Temporarily not available. Return to TAP Library; it will refresh automatically.")
+        #expect(slot.errorSystemImage == "photo.badge.exclamationmark")
+        #expect(slot.errorMessage?.contains("private-capture-id") == false)
     }
 
-    @Test @MainActor func depthAnalysisViewModelUsesInputLoaderUnavailablePresentation() async throws {
-        let sensitiveCaptureID = "pending/private-capture-id"
-        let loader = DepthAnalysisInputLoader(
-            photosDataLoader: { _ in Data() },
-            pendingDataLoader: { captureID in
-                throw DepthAnalysisInputLoaderTestError.sensitivePendingFailure(captureID)
-            },
-            analysisInputReader: { _ in
-                Issue.record("Unavailable pending data should not be decoded.")
-                throw DepthAnalysisInputLoaderTestError.unexpectedData
-            },
-            libraryRefreshPoster: {}
-        )
-        let viewModel = DepthAnalysisViewModel(inputLoader: loader)
-
-        await viewModel.load(source: .pendingCapture(sensitiveCaptureID))
-
-        #expect(viewModel.input == nil)
-        #expect(viewModel.errorTitle == "Image unavailable")
-        #expect(viewModel.errorSystemImage == "photo.badge.exclamationmark")
-        #expect(viewModel.errorMessage == "Temporarily not available. Return to TAP Library; it will refresh automatically.")
-        #expect(viewModel.errorMessage?.contains(sensitiveCaptureID) == false)
-    }
-
-    @Test @MainActor func depthAnalysisViewModelUsesFixedGenericPresentationForReaderErrors() async throws {
-        let sensitiveAssetID = "photos-library://asset/private-id"
-        let sensitiveURL = "https://example.test/private-reader-path"
-        let loader = DepthAnalysisInputLoader(
-            photosDataLoader: { _ in Data("malformed-heic".utf8) },
-            pendingDataLoader: { _ in Data() },
-            analysisInputReader: { _ in
-                throw DepthAnalysisInputLoaderTestError.readerRejectedInput(sensitiveURL)
-            },
-            libraryRefreshPoster: {}
-        )
-        let viewModel = DepthAnalysisViewModel(inputLoader: loader)
-
-        await viewModel.load(source: .photosAsset(sensitiveAssetID))
-
-        #expect(viewModel.input == nil)
-        #expect(viewModel.errorTitle == "Unable to analyze image")
-        #expect(viewModel.errorSystemImage == "exclamationmark.triangle")
-        #expect(viewModel.errorMessage == "This image cannot be analyzed as a TAP depth photo.")
-        #expect(viewModel.errorMessage?.contains("Reader rejected input") == false)
-        #expect(viewModel.errorMessage?.contains(sensitiveAssetID) == false)
-        #expect(viewModel.errorMessage?.contains(sensitiveURL) == false)
-    }
-
-    @Test @MainActor func depthAnalysisViewModelMarksMissingDepthAsNoDepth() async throws {
-        let loader = DepthAnalysisInputLoader(
-            photosDataLoader: { _ in Data("no-depth-photo".utf8) },
-            pendingDataLoader: { _ in Data() },
-            analysisInputReader: { _ in
-                throw TAPDepthAnalysisError.missingDepthData
-            },
-            libraryRefreshPoster: {}
-        )
-        let viewModel = DepthAnalysisViewModel(inputLoader: loader)
-
-        await viewModel.load(source: .photosAsset("asset-without-depth"))
-
-        #expect(viewModel.input == nil)
-        #expect(viewModel.errorTitle == "No Depth")
-        #expect(viewModel.errorSystemImage == "photo.badge.exclamationmark")
-        #expect(viewModel.errorMessage == "Score 20/100. Depth unavailable for this capture.")
-    }
-
-    @Test @MainActor func depthAnalysisViewModelUsesFixedGenericPresentationForPhotosLoaderErrors() async throws {
-        let sensitiveAssetID = "photos-library://asset/private-id"
-        let sensitivePath = "/private/var/mobile/Containers/Data/private.heic"
-        let loader = DepthAnalysisInputLoader(
-            photosDataLoader: { _ in
-                throw NSError(
-                    domain: NSURLErrorDomain,
-                    code: NSURLErrorCannotOpenFile,
-                    userInfo: [
-                        NSLocalizedDescriptionKey: "Cannot open \(sensitivePath)"
-                    ]
-                )
-            },
-            pendingDataLoader: { _ in Data() },
-            analysisInputReader: { _ in
-                Issue.record("Failed Photos data should not be decoded.")
-                throw DepthAnalysisInputLoaderTestError.unexpectedData
-            },
-            libraryRefreshPoster: {}
-        )
-        let viewModel = DepthAnalysisViewModel(inputLoader: loader)
-
-        await viewModel.load(source: .photosAsset(sensitiveAssetID))
-
-        #expect(viewModel.input == nil)
-        #expect(viewModel.errorTitle == "Unable to analyze image")
-        #expect(viewModel.errorSystemImage == "exclamationmark.triangle")
-        #expect(viewModel.errorMessage == "This image cannot be analyzed as a TAP depth photo.")
-        #expect(viewModel.errorMessage?.contains(sensitiveAssetID) == false)
-        #expect(viewModel.errorMessage?.contains(sensitivePath) == false)
-    }
 }
 
 private enum DepthAnalysisInputLoaderTestError: LocalizedError {

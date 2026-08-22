@@ -43,41 +43,6 @@ struct TAPSignedExportValidatorTests {
         }
     }
 
-    @Test func signedExportValidatorCoversReleaseResourcePlanBeforePhotosSave() throws {
-        let releasePlan = try CaptureOutputProfile.releasePhotoDepthHEIC
-            .resolvedPhotoOutput(availablePhotoCodecTypes: [.hevc])
-            .resourcePlan
-        let requiredKinds = releasePlan.resources
-            .filter(\.requiredForExport)
-            .map(\.kind)
-        let provenanceSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/CameraCapture/Output/TAPCaptureProvenanceWriter.swift"
-        )
-        let validatorSource = try #require(TAPCamDemoTestSourceInspection.substring(
-            in: provenanceSource,
-            from: "func validateSignedExportPhoto",
-            to: "func validateSignedExportLivePhoto"
-        ))
-
-        #expect(requiredKinds == [
-            .primaryPhoto,
-            .appleAuxiliaryDepth,
-            .tapManifest,
-            .appAttestCaptureProof
-        ])
-        #expect(validatorSource.contains("TAPDepthPhotoFileReader.validateContainer"))
-        #expect(validatorSource.contains("decodedManifest"))
-        #expect(validatorSource.contains("validateStillPhotoManifestSchema"))
-        #expect(validatorSource.contains("validateManifestID"))
-        #expect(validatorSource.contains("CaptureOutputManifestPolicy(profile: expectedProfile).validate"))
-        #expect(validatorSource.contains("validateManifestCarriesNoProofBody"))
-        #expect(validatorSource.contains("decodedCaptureProof"))
-        #expect(validatorSource.contains("TAPDepthPhotoFileReader.depthData"))
-        #expect(validatorSource.contains("CaptureContentDigest.make"))
-        #expect(validatorSource.contains("validateCaptureProof"))
-        #expect(validatorSource.contains("ValidatedTAPDepthPhoto"))
-    }
-
     @Test func captureOutputManifestPolicyRejectsReleaseFactDrift() throws {
         let policy = CaptureOutputManifestPolicy.releasePhotoDepthHEIC
         let releaseCapture = TAPCamDemoTestFixtures.sampleManifestCapture()

@@ -10,9 +10,9 @@ import Foundation
 
 /// Result of a seed-plane request.
 ///
-/// The detector returns the geometry cache it used so `DepthAnalysisViewModel`
-/// can keep tap-time cache construction reusable without knowing how the cache
-/// is built.
+/// The detector returns the geometry cache it used so the current
+/// `AnalysisPhotoSlot` request path can reuse tap-time cache construction
+/// without knowing how the cache is built.
 nonisolated struct DepthAnalysisPlaneRegionDetection {
     let region: TAPPlaneRegion
     let geometryCache: TAPDepthGeometryCache?

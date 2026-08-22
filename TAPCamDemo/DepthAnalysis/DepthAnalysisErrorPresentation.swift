@@ -24,7 +24,7 @@ nonisolated enum DepthAnalysisErrorPresentation {
             case .missingDepthData:
                 return DepthAnalysisLoadErrorPresentation(
                     title: "No Depth",
-                    message: "Score \(DepthAnalysisScoreSummary.noDepth.scoreText). Depth unavailable for this capture.",
+                    message: "Score 20/100. Depth unavailable for this capture.",
                     systemImage: "photo.badge.exclamationmark"
                 )
             default:
@@ -77,52 +77,4 @@ nonisolated struct DepthAnalysisLoadErrorPresentation: Equatable, Sendable {
     let title: String
     let message: String
     let systemImage: String
-}
-
-/// Public-safe error copy accepted by concrete DepthAnalysis inspectors.
-///
-/// Region and Planes state still store strings because their tests assert local
-/// state transitions. The panel adapter must convert those strings into this
-/// type before SwiftUI `Text` or `Label` can render them, so direct state
-/// mutation or future call sites cannot accidentally pass raw paths, URLs,
-/// Photos identifiers, capture identifiers, proofs, or key IDs into inspectors.
-nonisolated struct DepthAnalysisInspectorErrorMessage: Equatable, Sendable {
-    let text: String
-
-    private init(_ text: String) {
-        self.text = text
-    }
-
-    static func regionHeatmap(_ message: String?) -> DepthAnalysisInspectorErrorMessage {
-        guard let message,
-              message == DepthAnalysisErrorPresentation.regionHeatmapErrorMessage else {
-            return DepthAnalysisInspectorErrorMessage(DepthAnalysisErrorPresentation.regionHeatmapErrorMessage)
-        }
-
-        return DepthAnalysisInspectorErrorMessage(message)
-    }
-
-    static func planeSelection(_ message: String?) -> DepthAnalysisInspectorErrorMessage? {
-        guard let message else {
-            return nil
-        }
-
-        guard isKnownPlaneSelectionMessage(message) else {
-            return DepthAnalysisInspectorErrorMessage(DepthAnalysisErrorPresentation.planeNoStableRegionMessage)
-        }
-
-        return DepthAnalysisInspectorErrorMessage(message)
-    }
-
-    private static func isKnownPlaneSelectionMessage(_ message: String) -> Bool {
-        switch message {
-        case DepthAnalysisErrorPresentation.planeInvalidSeedMessage,
-             DepthAnalysisErrorPresentation.planeCalibrationMissingMessage,
-             DepthAnalysisErrorPresentation.planeNotEnoughSamplesMessage,
-             DepthAnalysisErrorPresentation.planeNoStableRegionMessage:
-            true
-        default:
-            false
-        }
-    }
 }

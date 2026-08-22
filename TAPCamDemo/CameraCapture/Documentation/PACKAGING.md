@@ -278,22 +278,31 @@ Startup and foreground recovery reconcile partially completed work:
   That file is signed as part of v3 and is removed with the staged
   unsigned/signed photo files after export.
 
-## Important Future TODO
+## Future Work Ownership
 
-P1, intentionally not implemented in this slice: extend the file-format and
-manifest abstractions before adding RAW, arbitrary non-TAP media, deferred
-24 MP, or multi-camera capture formats.
+Future product and structural work is tracked by the canonical Project Board;
+this packaging document does not maintain a second backlog:
 
-Future work should introduce a focused design for `CaptureFormatProfile`,
-format-agnostic semantic manifests, container adapters, and resource roles with
-UTType bundles. The current Live Photo support is deliberately narrower: one
-reviewed photo-depth file plus one Apple paired MOV resource. TAP Video already
-owns a separate MP4/KLV manifest, provenance, pending-export, and readback
-validation contract; it must not be folded into the still-photo resource plan.
+- [TAP-0018](../../../Docs/ProjectBoard.md#tap-0018--design-true-camera-source-switching)
+  owns true camera-source selection, depth pairing, and capability recomputation.
+- [TAP-0019](../../../Docs/ProjectBoard.md#tap-0019--design-rawproraw-output-contracts)
+  owns RAW/ProRAW profiles, resources, manifests, signing, export, and readers.
+- [TAP-0020](../../../Docs/ProjectBoard.md#tap-0020--design-24-mp-deferred-photo-delivery)
+  owns the deferred 24 MP delivery and provenance contract.
+- [TAP-0022](../../../Docs/ProjectBoard.md#tap-0022--external-media-import-and-in-app-verify)
+  owns the product decision for external non-TAP media import and a true in-app
+  Verify flow.
+- [TAP-0029](../../../Docs/ProjectBoard.md#tap-0029--isolate-debug-fixtures-and-split-oversized-test-files)
+  owns moving Debug-only diagnostic fixture generation toward a support target.
 
-P2, intentionally not implemented in this slice: promote diagnostic fixture
-generation into a dedicated support target. The fixture code currently remains
-Debug-only app support; production capture and playback do not depend on it.
+Those Tasks must define and approve any required abstractions, such as format
+profiles, semantic manifests, container adapters, resource roles, or UTType
+bundles. Until then, the current format boundaries remain unchanged: Live Photo
+contains one reviewed photo-depth file plus one Apple paired MOV resource, and
+TAP Video retains its separate MP4/KLV manifest, provenance, pending-export,
+and readback-validation contract. TAP Video must not be folded into the
+still-photo resource plan. Production capture and playback do not depend on
+Debug-only fixture generation.
 
 ## Verification
 

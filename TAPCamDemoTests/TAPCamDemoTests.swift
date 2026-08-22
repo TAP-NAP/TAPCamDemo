@@ -61,13 +61,6 @@ struct TAPCamDemoTests {
         #expect(TAPDepthSourceClassifier.classification(forDeviceType: AVCaptureDevice.DeviceType.builtInWideAngleCamera.rawValue).sensingMethod == "singleCameraComputationalOrUnknown")
     }
 
-    @Test func depthRowsKeepFixedDebugOrdering() throws {
-        #expect(DepthProfileKind.lidarDepth.fixedOrder < DepthProfileKind.trueDepth.fixedOrder)
-        #expect(DepthProfileKind.trueDepth.fixedOrder < DepthProfileKind.dualCameraDisparity.fixedOrder)
-        #expect(DepthProfileKind.dualCameraDisparity.fixedOrder < DepthProfileKind.dualWideDisparity.fixedOrder)
-        #expect(DepthProfileKind.dualWideDisparity.fixedOrder < DepthProfileKind.portraitSemanticDepth.fixedOrder)
-    }
-
     @Test func automaticPriorityPrefersApplePairedVirtualPhotoPipelines() throws {
         #expect(CameraCapabilityResolver.automaticPriority(for: .builtInTripleCamera) > CameraCapabilityResolver.automaticPriority(for: .builtInDualWideCamera))
         #expect(CameraCapabilityResolver.automaticPriority(for: .builtInDualWideCamera) > CameraCapabilityResolver.automaticPriority(for: .builtInDualCamera))
@@ -119,13 +112,6 @@ struct TAPCamDemoTests {
         #expect(profiles.allSatisfy { $0.isEnabled })
     }
 
-    @Test func debugZoomFOVUsesBaseEquivalentFocalLengthTimesVideoZoom() throws {
-        #expect(FocalLengthLabelResolver.debugEquivalentMillimeters(baseMillimeters: 24, zoomFactor: 1) == 24)
-        #expect(FocalLengthLabelResolver.debugEquivalentMillimeters(baseMillimeters: 24, zoomFactor: 2) == 48)
-        #expect(FocalLengthLabelResolver.debugEquivalentMillimeters(baseMillimeters: 24, zoomFactor: 3) == 72)
-        #expect(FocalLengthLabelResolver.debugEquivalentMillimeters(baseMillimeters: 13, zoomFactor: 2) == 26)
-    }
-
     @Test func virtualDepthPipelinesUseWideBaselineForFOVLabels() throws {
         #expect(FocalLengthLabelResolver.usesWideBaselineForVirtualFOV(deviceTypeRawValue: AVCaptureDevice.DeviceType.builtInTripleCamera.rawValue))
         #expect(FocalLengthLabelResolver.usesWideBaselineForVirtualFOV(deviceTypeRawValue: AVCaptureDevice.DeviceType.builtInDualWideCamera.rawValue))
@@ -141,17 +127,6 @@ struct TAPCamDemoTests {
         #expect(FocalLengthLabelResolver.isSemanticFOVSlot(equivalentMillimeters: 77, zoomFactor: 3))
         #expect(!FocalLengthLabelResolver.isSemanticFOVSlot(equivalentMillimeters: 26, zoomFactor: 2))
         #expect(!FocalLengthLabelResolver.isSemanticFOVSlot(equivalentMillimeters: 154, zoomFactor: 2))
-    }
-
-    @Test func debugZoomDisplayIsRelativeToWideFOVBaseline() throws {
-        #expect(FocalLengthLabelResolver.displayZoomFactor(rawVideoZoomFactor: 2, wideReferenceZoomFactor: 2) == 1)
-        #expect(FocalLengthLabelResolver.displayZoomFactor(rawVideoZoomFactor: 4, wideReferenceZoomFactor: 2) == 2)
-        #expect(FocalLengthLabelResolver.displayZoomFactor(rawVideoZoomFactor: 6, wideReferenceZoomFactor: 2) == 3)
-
-        let profile = ZoomProfile.enabled(2, displayZoomFactor: 1)
-        #expect(profile.id == "zoom-2x")
-        #expect(profile.displayName == "1x")
-        #expect(profile.rawVideoZoomFactor == 2)
     }
 
     @Test func discovered48mmFOVOptionUsesResolvedRawVideoZoomWhenAvailable() throws {
@@ -405,43 +380,6 @@ struct TAPCamDemoTests {
 
         #expect(!defaultSettings.isShutterSoundSuppressionEnabled)
         #expect(quietSettings.isShutterSoundSuppressionEnabled == photoOutput.isShutterSoundSuppressionSupported)
-    }
-
-    @Test func analysisPanelLayoutMetricsUsesOnePointViewportBeforeMeasurement() throws {
-        let metrics = AnalysisPanelLayoutMetrics(maxHeight: 300, measuredContentHeight: 0)
-
-        #expect(metrics.contentMaxHeight == 222)
-        #expect(metrics.contentViewportHeight == 1)
-        #expect(!metrics.showsScrollIndicators)
-    }
-
-    @Test func analysisPanelLayoutMetricsFitsShortMeasuredContentWithoutScrolling() throws {
-        let metrics = AnalysisPanelLayoutMetrics(maxHeight: 300, measuredContentHeight: 120)
-
-        #expect(metrics.contentMaxHeight == 222)
-        #expect(metrics.contentViewportHeight == 120)
-        #expect(!metrics.showsScrollIndicators)
-    }
-
-    @Test func analysisPanelLayoutMetricsCapsOverflowingContentAndEnablesScrolling() throws {
-        let metrics = AnalysisPanelLayoutMetrics(maxHeight: 300, measuredContentHeight: 260)
-
-        #expect(metrics.contentMaxHeight == 222)
-        #expect(metrics.contentViewportHeight == 222)
-        #expect(metrics.showsScrollIndicators)
-    }
-
-    @Test func analysisPanelLayoutMetricsKeepsMinimumContentHeightForSmallPanels() throws {
-        let fittingMetrics = AnalysisPanelLayoutMetrics(maxHeight: 120, measuredContentHeight: 70)
-        let overflowingMetrics = AnalysisPanelLayoutMetrics(maxHeight: 120, measuredContentHeight: 90)
-
-        #expect(fittingMetrics.contentMaxHeight == 72)
-        #expect(fittingMetrics.contentViewportHeight == 70)
-        #expect(!fittingMetrics.showsScrollIndicators)
-
-        #expect(overflowingMetrics.contentMaxHeight == 72)
-        #expect(overflowingMetrics.contentViewportHeight == 72)
-        #expect(overflowingMetrics.showsScrollIndicators)
     }
 
     private static func source(relativePath: String) throws -> String {

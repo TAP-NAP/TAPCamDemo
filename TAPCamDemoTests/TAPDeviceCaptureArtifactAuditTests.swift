@@ -12,11 +12,9 @@ import Testing
 
 @Suite(.serialized)
 struct TAPDeviceCaptureArtifactAuditTests {
+    #if !targetEnvironment(simulator)
     @MainActor
     @Test func jpgPhysicalDeviceCaptureExportsAndReadsBackFromPhotos() async throws {
-        #if targetEnvironment(simulator)
-        return
-        #else
         let originalFormat = UserDefaults.standard.string(forKey: CameraOutputFormatPreference.storageKey)
         UserDefaults.standard.set(
             CameraOutputFormatPreference.jpeg.rawValue,
@@ -81,13 +79,9 @@ struct TAPDeviceCaptureArtifactAuditTests {
             ),
             filename: "TAPDeviceCaptureJPEGAudit.json"
         )
-        #endif
     }
 
     @Test func exportedPhysicalDeviceCaptureArtifactsReadBackFromPhotos() async throws {
-        #if targetEnvironment(simulator)
-        return
-        #else
         let records = try await TAPPendingCaptureStore.shared.exportedRecords()
         guard !records.isEmpty else {
             try Self.writeReport(
@@ -113,8 +107,8 @@ struct TAPDeviceCaptureArtifactAuditTests {
                 artifacts: artifacts
             )
         )
-        #endif
     }
+    #endif
 
     @MainActor
     private static func waitForCaptureReadiness(

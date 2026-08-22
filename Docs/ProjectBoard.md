@@ -5,7 +5,7 @@
 - Canonical Product Contract: [ProductContract.md](ProductContract.md)
 - UI Prototype Contract: [UIPrototypeContract.md](UIPrototypeContract.md)
 - Board Steward Session: `019ff4ea-acba-7051-bd0f-3d489f1caadc`
-- Last updated: `2026-08-15`
+- Last updated: `2026-08-23`
 
 This Markdown file is the task database of record. Task records are permanent;
 their IDs are never reused. The Kanban section is a human-readable view derived
@@ -32,7 +32,6 @@ from each record's `Status` field.
 - `TAP-0088` Prototype functional Viewfinder-control workload interactions
 - `TAP-0089` Prototype functional Photo Viewer analysis workload interactions
 - `TAP-0091` Eliminate out-of-preview Viewfinder chrome flicker during camera-path switching
-- `TAP-0092` Clean up brittle tests, unmounted legacy code, and redundant repository information
 
 ### Todo
 
@@ -104,6 +103,7 @@ from each record's `Status` field.
 - `TAP-0082` Device acceptance: TAP Share anchored handoff and anti-flash progress
 - `TAP-0085` Restrict the current runtime target to iPhone
 - `TAP-0086` Remove Locked Camera integration and entry points from main
+- `TAP-0092` Clean up brittle tests, unmounted legacy code, and redundant repository information
 
 ### Deprecated
 
@@ -4711,7 +4711,7 @@ Every active Task uses these stable fields:
 
 ### TAP-0092 — Clean up brittle tests, unmounted legacy code, and redundant repository information
 
-- Status: `Inbox`
+- Status: `Done`
 - Kind: `Technical`
 - Priority: `P0`
 - Domain: `Repository Health / Tests / Documentation`
@@ -4721,10 +4721,36 @@ Every active Task uses these stable fields:
 - Match Keys: `仓库清理, 不合适的测试, 过度测试, 源码拼写测试, 旧代码,
   无用代码, 冗余信息, 重复文档, brittle tests, source inspection, dead code,
   stale docs, repository cleanup`
-- Assignee: `Unassigned`
-- Dev Session: `Unassigned`
-- Branch/Worktree: `Unassigned`
+- Assignee: `/root` orchestrator with medium-reasoning child Agents
+- Dev Session: `/root` (single active coordinating Session; each approved
+  `replace` item may be delegated to one medium-reasoning child Agent)
+- Branch/Worktree: `main` shared checkout at approval baseline
+  `42c5e9355cbcdf9e6a0d7c7f750aeb4ef54ecb6f`; no dedicated worktree
 - Owner Target Date: `2026-08-24`
+- Prior Approved Execution Scope (`2026-08-21`): Replace-only. Approved rows are `T92-SRC-001`
+  through `T92-SRC-006`, `T92-START-011`, the replacement stage only of
+  `T92-CODE-002`, `T92-DOC-001` through `T92-DOC-003`, and conditional
+  `T92-DOC-004` only after its recorded code-decision prerequisite is met.
+  `retain`, `defer`, standalone/conditional `migrate-delete`, production-code
+  deletion after `T92-CODE-002`, and execution of `T92-DOC-004` before its
+  prerequisite remain unauthorized. Simulator validation is allowed, but every
+  Simulator test that does not change or strengthen a cleanup conclusion must
+  be recorded individually as non-contributing evidence rather than counted as
+  support for replacement or deletion.
+- Current Owner Expansion (`2026-08-23`): Direct deletion is approved for
+  production/support code proven unmounted, disabled, or legacy-only; tests
+  proven to assert source spelling, exact implementation shape, fake Simulator
+  success, or an already-removed path; stale or duplicated README prose; and
+  pre-release compatibility/version branches that do not serve current runtime,
+  security, public-format, persistence, or cross-project obligations. Preserve
+  active UX/UI and production behavior. Keep recovery, state-machine, security,
+  privacy, format, persistence, and future-change prerequisite regressions.
+  App Attest hardware/backend and physical-camera evidence remains device-only;
+  Simulator no-op returns must not count as passes. Execute independently
+  validated deletion slices and score the same repository-health rubric after
+  each slice; stop after three consecutive score increases. This owner decision
+  supersedes only the old replace-before-delete restriction and does not
+  authorize active-production refactoring.
 - Responsibility: Execute one bounded repository-health cleanup pass against the
   2026-08-15 audit baseline. Remove only debt that has evidence and an explicit
   disposition; preserve current product behavior, security properties, public
@@ -4760,21 +4786,153 @@ Every active Task uses these stable fields:
   seam solely because a static search finds no caller; removing security/privacy/
   format coverage to improve a test count; restoring AITrace or creating a new
   historical-prose archive; absorbing the structural work owned by `TAP-0029`;
-  or claiming the whole repository is permanently debt-free after one pass.
-- Done When: The owner-approved cleanup manifest is fully dispositioned; every
-  deleted test, source file, and document has its unique obligations migrated or
-  an evidence-backed `N/A`; retained legacy/compatibility seams have a current
-  owner and reason; directly conflicting active prose and broken inbound links
-  are resolved; the scoped lint/static, unit, integration, and prototype gates
-  report exact execution and skip counts without the identified deterministic or
-  parallel-sensitive failures; documentation-impact and obsolete-file records
-  are complete; and no product, security, format, persistence, or acceptance
+  claiming the whole repository is permanently debt-free after one pass; or
+  executing any `retain`, `defer`, or pure/next-stage `migrate-delete` item not
+  included in the replace-only approval above.
+- Done When: The owner-approved bounded cleanup manifest is fully dispositioned;
+  every deleted test, source file, document section, and localization key has an
+  evidence-backed obligation check; retained compatibility seams have a current
+  owner and reason; the same repository-health score increases after three
+  independently validated iterations and execution stops at that boundary;
+  builds, references, links, and retained focused gates show no new cleanup
+  regression; full and diagnostic runs report exact executed/passed/failed/
+  skipped counts with every residual failure classified rather than presented
+  as a pass; documentation-impact and obsolete-file records are complete; and
+  no current UX/UI, production, security, format, persistence, or acceptance
   boundary is broadened by the cleanup.
+- Prior Execution Handoff (`2026-08-21`):
+  - Task ID: `TAP-0092`
+  - Dev Session: `/root` orchestrator with medium-reasoning child Agents
+  - Branch/Worktree: shared `main`; baseline
+    `42c5e9355cbcdf9e6a0d7c7f750aeb4ef54ecb6f`; no commit or push
+  - Contract Sections Read: `ProductContract §1`; `AGENTS.md §4`, `§5`, `§7`;
+    complete Task and manifest
+  - Approved Scope: replace-only rows recorded above
+  - Implemented Scope: `T92-DOC-001`, `T92-DOC-002`, and `T92-DOC-003`
+    validated. `T92-SRC-001` through `006`, `T92-START-011`, and replacement-
+    stage `T92-CODE-002` could not prove an equal-strength controlled
+    regression through existing production behavior seams, so all attempted
+    Swift test edits were reverted and those items returned to Pending.
+    Conditional `T92-DOC-004` is Blocked/unchanged because its code-disposition
+    prerequisite is unmet.
+  - Prototype Path/Revision/Approval: N/A for product/UI change. Prototype
+    contract tests passed `20/20`; this is documentation/prototype health, not
+    new UI approval, Simulator parity, or device acceptance.
+  - Tests And Builds Run: pre-mutation Simulator baseline `822 executed / 813
+    passed / 9 failed / 0 skipped`; valid serialized diagnosis classified six
+    persistent and three parallel-sensitive failures. Final Debug Simulator
+    `build-for-testing` succeeded. Focused slice runs, invalid zero-executed
+    attempts, known failures, and every test whose contribution was `None` are
+    recorded individually in the evidence ledger. A green test did not satisfy
+    a Pending replacement without controlled-regression proof.
+  - Evidence And Acceptance:
+    [cleanup manifest](TAP-0092CleanupManifest.md) and
+    [execution evidence ledger](TAP-0092CleanupEvidence.md). Transient source
+    reports are `/private/tmp/TAP0092BaselineReport.md`, each
+    `/private/tmp/T92-*Result.md`, and `/private/tmp/TAP0092FinalValidation.md`.
+    The final validation snapshot predates the completed DOC-001 r3 wording
+    correction and evidence cross-link; current link/diff checks supersede only
+    those two stale observations. Fourth-round independent read-only review
+    accepted the ledger for Board handoff after confirming zero per-xcresult
+    count deltas, complete run inventory without duplicates, consistent
+    arithmetic, and reciprocal links. This evidence acceptance does not satisfy
+    any Pending/Blocked replacement or the Task Done When.
+  - Documentation Impact:
+    - Project Board: this record and global revision log updated by Board Steward
+    - Product Contract: N/A; no product behavior or claim boundary changed
+    - UI Prototype/Manifest: N/A; no prototype artifact changed
+    - UI Prototype Contract: N/A; workflow unchanged
+    - Module README: `TAPCamDemoTests/README.md` replaced with a stable
+      reader-first entry point; `DepthAnalysis/README.md` unchanged
+    - Specialized Contract: Camera packaging documentation now links five
+      canonical future-work Tasks without changing format/signing boundaries
+    - Acceptance Record: TAP-0048 procedure reconciled to the approved
+      r1-geometry/r3-behavior and TAP-0082 superseding decision; its parity
+      verdict remains Pending
+    - AGENTS.md: N/A; repository workflow unchanged
+  - Obsolete Files Removed: none; no production/test Swift deletion
+  - Remaining Gaps/Risks: eight approved replace scopes are Pending, conditional
+    `T92-DOC-004` is Blocked, and baseline/focused known failures remain open;
+    the accepted evidence ledger records rather than closes these gaps
+  - Follow-up Task IDs: existing owners `TAP-0029`, `TAP-0014`, `TAP-0048`
+  - Proposed Status: remain `Doing`; Done When is not met
+- Completion Handoff (`2026-08-23`):
+  - Task ID: `TAP-0092`
+  - Dev Session: `/root` Board Steward and implementation coordinator with
+    read-only legacy-code, test-value, and documentation/version auditors
+  - Branch/Worktree: shared `main` checkout from baseline
+    `42c5e9355cbcdf9e6a0d7c7f750aeb4ef54ecb6f`; no commit or push
+  - Build/Commit: Xcode 26.6 / macOS 26.6, iPhone 17 Pro iOS 26.5
+    Simulator `742A3184-E1C7-44FC-99E0-0C8DFE807698`; working tree only
+  - Contract Sections Read: complete cross-cutting `ProductContract`; complete
+    TAP-0092 record and Board operating rules; `UIPrototypeContract`; relevant
+    App Attest, startup, output, TAP Video, Live Photo, acceptance, module
+    README, current implementation, and test surfaces
+  - Approved Scope: the `2026-08-23` direct-deletion expansion and fixed-score
+    stop rule recorded above; preserve mounted behavior, UX/UI, security,
+    privacy, public formats, persistence, and cross-project obligations
+  - Implemented Scope: completed three independently reversible closures:
+    unmounted owned-capture backend Verify; speculative output-resource plan;
+    former analysis drawer/inspectors/ViewModel/HUD plus fake Camera/UI evidence.
+    Removed all `137` frozen low-value tests plus `16` tests exclusive to
+    deleted islands, added one current `AnalysisPhotoSlot` load-failure
+    regression, excluded two physical-device artifact tests from Simulator
+    declaration, removed `94` proven-orphan localization keys, reconciled active
+    documentation, and removed test-target-only marketing/build versions while
+    retaining app `0.2 (2)` and every current public/security schema version.
+  - Prototype Path/Revision/Approval: N/A for visual approval; no visible state,
+    hierarchy, copy placement, interaction, or native UI behavior changed.
+    Historical prototype QA prose was pruned without changing the approved
+    prototype revision or behavior.
+  - Tests And Builds Run: every iteration's Debug Simulator
+    `build-for-testing` passed. Iteration 1 focused `60 total / 58 passed / 2
+    known failed / 0 skipped`; Iteration 2 focused `39/39`; Iteration 3 retained
+    focused gates `161/159/2/0`; full Unit target `664/655/9/0`; serialized
+    failure diagnostics `109/105/4/0`. Five full-run-only failures passed
+    serialized. Final incremental `build-for-testing` after localization cleanup
+    also passed.
+  - Evidence And Acceptance: [cleanup manifest](TAP-0092CleanupManifest.md) and
+    [execution evidence ledger](TAP-0092CleanupEvidence.md). The fixed score rose
+    `20.0 -> 27.3 -> 33.4 -> 84.1`; the third consecutive increase triggers the
+    owner-required stop. Source declarations fell `822 -> 670`; Simulator-
+    executable tests `822 -> 668`; production Swift LOC `72,558 -> 69,020`;
+    test Swift LOC `29,132 -> 24,727`; localization keys `471 -> 377`; broken
+    local Markdown targets and lost public/security obligations remain zero.
+  - Files Updated:
+    - Project Board: this status, completion handoff, Kanban projection, and
+      append-only revision history
+    - Product Contract: N/A; no product behavior, state, term, or claim changed
+    - UI Prototype/Manifest: historical QA evidence only; active visual truth
+      unchanged
+    - UI Prototype Contract: N/A; workflow unchanged
+    - Module README: root, App, CameraCapture, Output, DepthAnalysis, and Tests
+      current-reading paths clarified
+    - Specialized Contract: App Attest endpoint prose and startup responsibility
+      clarified; current format/schema versions retained
+    - Acceptance Record: obsolete TAP-0082 attempt history removed; TAP-0046
+      physical-device plus production-backend trust boundary retained
+    - AGENTS.md: N/A; repository workflow unchanged
+  - Obsolete Files Removed: two owned-capture Verify files; speculative output-
+    resource plan; ten former analysis inspector/drawer files; legacy mutable
+    analysis ViewModel; never-mounted metadata HUD; fake Camera-controls test
+    harness; two fake UI-test files; and their exclusive tests, prose, model
+    slices, and localization keys. Git remains the archive.
+  - Remaining Gaps/Risks: four serialized failures remain explicit: frozen
+    Share stale-callback, OSLog reviewed-label, and Simplified Chinese catalog
+    failures, plus unsigned-Simulator Keychain `-34018`. Eight CameraCapture
+    micro-documents, three compatibility families, and four pre-release TODO
+    families remain intentionally owned; they are not a fourth cleanup
+    iteration. Device App Attest trust remains unaccepted under TAP-0046.
+  - Follow-up Task IDs: `TAP-0029` for Debug/support suite structure;
+    `TAP-0046` for physical-device App Attest production acceptance; existing
+    startup and compatibility owners including `TAP-0010` and `TAP-0022`
+  - Proposed Status: `Done`; the fixed three-increase stop condition and revised
+    objective Done When are satisfied without a product/UI change
 - Related: Structural test debt `TAP-0029`; owned-capture Verify cleanup
   `TAP-0014`; documentation authority and retention `TAP-0002`, `TAP-0003`,
   `TAP-0079`; deprecated legacy UI responsibilities `TAP-0067`, `TAP-0069`
 - Created: `2026-08-15`
-- Updated: `2026-08-15`
+- Updated: `2026-08-23`
 - Revision History:
   - `2026-08-15` Allocated after an all-status duplicate and responsibility
     search. The closest active match, `TAP-0029`, owns only Debug-support
@@ -4785,6 +4943,66 @@ Every active Task uses these stable fields:
     the exact cleanup manifest and safety boundaries are approved; no deletion,
     test fix, document rewrite, product change, validation pass, commit, or push
     is inferred.
+  - `2026-08-21` Product owner approved every manifest row whose disposition is
+    `replace`, with a strict replace-only boundary. Moved Inbox -> Todo after
+    recording the exact approved IDs, keeping every `retain`, `defer`, and pure
+    or later `migrate-delete` stage Pending. For `T92-CODE-002`, approval covers
+    replacement/migration of valuable tests to current seams only and does not
+    authorize production-code deletion. `T92-DOC-004` is approved only after
+    its code-decision prerequisite is satisfied. No implementation, validation,
+    deletion, product/UI change, commit, or push is inferred by this approval.
+  - `2026-08-21` Bound `/root` as the single coordinating development Session
+    on the shared `main` checkout and moved Todo -> Doing. The owner directed
+    one medium-reasoning child Agent per approved replace item and allowed
+    iPhone Simulator validation. Every Simulator test that contributes nothing
+    to the cleanup conclusion must be recorded individually as non-contributing;
+    running it cannot be used as replacement/deletion evidence. No test result,
+    code/document mutation outside the approved replace rows, Done transition,
+    commit, or push is inferred.
+  - `2026-08-21` Board Steward synchronized the replace-only execution handoff
+    to the [manifest](TAP-0092CleanupManifest.md) and
+    [evidence ledger](TAP-0092CleanupEvidence.md). Three documentation rows are
+    Validated; six source clusters, the startup row, and the CODE-002
+    replacement stage are Pending after equal-strength controlled regressions
+    could not be proved through existing production behavior seams; DOC-004 is
+    Blocked/unchanged on its unmet code-disposition prerequisite. Every
+    attempted Swift test edit was reverted, so production/test Swift diff is
+    zero. The baseline remains `822/813/9/0` with six persistent and three
+    parallel-sensitive failures; final Debug Simulator `build-for-testing` and
+    Prototype `20/20` passed, but green gates do not complete Pending rows.
+    Focused known failures, invalid zero-executed attempts, and per-test
+    non-contribution records are linked in the ledger. Evidence second review
+    is still running; TAP-0092 remains Doing with no deletion, acceptance,
+    commit, push, or Done claim.
+  - `2026-08-21` Superseded only the preceding evidence-review-status clause:
+    fourth-round independent read-only review accepted the evidence ledger for
+    Board handoff with zero per-xcresult count deltas, no missing or duplicate
+    run entries, consistent arithmetic, and factual reciprocal links. This
+    acceptance confirms evidence completeness; it does not turn green tests
+    into controlled-regression proof, resolve eight Pending scopes or blocked
+    DOC-004, close baseline/focused failures, or satisfy Done When. TAP-0092
+    remains Doing with no additional mutation, deletion, commit, or push.
+  - `2026-08-23` The owner broadened TAP-0092 from replace-only cleanup to
+    evidence-backed direct deletion of confirmed unmounted/disabled/legacy code,
+    source-spelling and fake-Simulator tests, stale README prose, and unnecessary
+    pre-release compatibility/version branches. Active UX/UI, production
+    behavior, security/privacy, public formats, persistence, and cross-project
+    obligations remain protected. Related cleanup Tasks may be reconciled in the
+    same pass. The owner also required one fixed health score after every bounded
+    iteration and termination after three consecutive improvements. No deletion,
+    validation result, status change, commit, or push is inferred by this scope
+    revision.
+  - `2026-08-23` Completed the owner-approved bounded cleanup in three
+    independently validated iterations. The fixed repository-health score rose
+    `20.0 -> 27.3 -> 33.4 -> 84.1`, satisfying the explicit three-consecutive-
+    increase stop rule. Removed `3,538` production Swift LOC, `4,405` test Swift
+    LOC, `152` net source test declarations, `154` Simulator-executable tests,
+    `94` orphan localization keys, and `47` brittle Markdown line anchors while
+    retaining zero broken local links and zero lost current public/security
+    obligations. All iteration and final Debug test builds passed; focused,
+    full, and serialized runs plus four classified residual failures are linked
+    in the evidence ledger. Moved Doing -> Done. No current UX/UI or mounted
+    production behavior, device/backend acceptance, commit, or push is claimed.
 
 ## 5. Inbox Decision Registry
 
@@ -4808,7 +5026,6 @@ duplicate matching.
 | `TAP-0088` | Technical | P1 | UI Prototype / Viewfinder Observability | `functional Viewfinder control mock, inspector, workload interaction` | Activate only after TAP-0008/TAP-0009/TAP-0083 complete; prototype control-state/workload interactions without duplicating native Camera delivery | 2026-08-14 | Owner-directed deferred TAP-0087 child; Inbox and Unassigned |
 | `TAP-0089` | Technical | P1 | UI Prototype / Photo Viewer Observability | `RAW 2D 3D inspector, analysis workload interaction, Deferred mode` | Activate only after TAP-0008/TAP-0009/TAP-0083 complete; prototype Photo Viewer analysis interactions without native or Video 3D claims | 2026-08-14 | Owner-directed deferred TAP-0087 child; Inbox and Unassigned |
 | `TAP-0091` | Fix | P1 | Camera / Viewfinder Presentation | `camera or lens switch, preview-external chrome redraw, settings button flicker` | Freeze the exact reproducing path/device/build and stable preview-versus-chrome boundary before implementation; decide prototype N/A only if visual intent remains unchanged | 2026-08-15 | Owner-reported runtime observation preserved and renumbered after mainline allocated TAP-0090; Inbox and Unassigned |
-| `TAP-0092` | Technical | P0 | Repository Health / Tests / Documentation | `不合适的测试, source-spelling, unmounted legacy code, redundant information, stale docs` | Approve the audit-baseline cleanup manifest and safety dispositions before removing tests, code, or prose; owner target date 2026-08-24 | 2026-08-15 | Broader semantic cleanup split from TAP-0029's structural test/debug-support scope; Inbox and Unassigned |
 
 ## 6. Device And Visual Acceptance Registry
 
@@ -5658,3 +5875,60 @@ not replace the Product Contract, and linked device evidence may remain open.
   TAP-0093. This Board-only allocation changes no Product Contract, product or
   UI behavior, source/test/document content outside the Board, lifecycle state
   of existing Tasks, validation, acceptance, commit, or push claim.
+- `2026-08-21` Board Steward recorded the owner's partial
+  [`TAP-0092` cleanup manifest](TAP-0092CleanupManifest.md) decision and started
+  execution through the required lifecycle sequence. Every row whose
+  disposition is `replace` moved from Pending to approved; TAP-0092 moved Inbox
+  -> Todo after the replace-only boundary was frozen, then Todo -> Doing after
+  `/root` was bound as the single coordinating Session on the shared `main`
+  checkout at baseline `42c5e9355cbcdf9e6a0d7c7f750aeb4ef54ecb6f`.
+  Each approved item may be delegated to one medium-reasoning child Agent.
+  `T92-CODE-002` permits replacement of valuable legacy-seam tests only, not
+  production-code deletion; `T92-DOC-004` may execute only after its code-
+  decision prerequisite is met. Every `retain`, `defer`, standalone/conditional
+  `migrate-delete`, and later deletion stage remains Pending. iPhone Simulator
+  validation is allowed, but each Simulator test that does not affect the
+  cleanup conclusion must be logged individually as non-contributing and cannot
+  support replacement, deletion, device acceptance, or product-behavior claims.
+  This lifecycle/approval synchronization records no implementation or test
+  result, product/UI change, deletion, Done transition, commit, or push; Next
+  Task ID remains TAP-0093.
+- `2026-08-21` Board Steward synchronized the TAP-0092 replace-only execution
+  handoff and established reciprocal links among the canonical Task,
+  [cleanup manifest](TAP-0092CleanupManifest.md), and
+  [execution evidence ledger](TAP-0092CleanupEvidence.md). DOC-001/002/003 are
+  Validated. SRC-001 through SRC-006, START-011, and the CODE-002 replacement
+  stage are Pending because existing production behavior seams could not prove
+  equal-strength controlled regressions; all experimental Swift test edits were
+  reverted and current production/test Swift diff is zero. Conditional DOC-004
+  is Blocked and unchanged because its code-disposition prerequisite is unmet.
+  The recorded validation boundary is baseline `822 executed / 813 passed / 9
+  failed / 0 skipped`, six persistent plus three parallel-sensitive failures,
+  successful final Debug Simulator `build-for-testing`, and Prototype `20/20`.
+  Focused known failures, zero-executed infrastructure attempts, and the
+  per-test `Contribution: None` ledger remain explicit; green tests are not
+  replacement completion evidence. Independent evidence second review remains
+  in progress, so TAP-0092 remains Doing. This update claims no product/UI
+  behavior change, production/test Swift mutation, device acceptance, complete
+  evidence approval, Done transition, commit, or push; Next Task ID remains
+  TAP-0093.
+- `2026-08-21` Board Steward superseded only the preceding TAP-0092 evidence-
+  review-status clause after fourth-round independent read-only review accepted
+  the execution ledger: every recorded xcresult count has zero delta, the run
+  inventory has no missing or duplicate entries, the arithmetic is consistent,
+  and reciprocal Board/manifest/evidence links are complete. This acceptance
+  validates the ledger as a handoff record; it does not complete the eight
+  Pending or one Blocked replacement scopes, authorize a deletion, satisfy Done
+  When, or change the Task from Doing. The earlier append-only history remains
+  intact. No product/UI behavior, production/test Swift content, device
+  acceptance, commit, push, or Next Task ID changed.
+- `2026-08-23` Board Steward synchronized the completed TAP-0092 three-iteration
+  cleanup from the [manifest](TAP-0092CleanupManifest.md) and
+  [evidence ledger](TAP-0092CleanupEvidence.md). The fixed health score increased
+  `20.0 -> 27.3 -> 33.4 -> 84.1`, so the owner-mandated stop condition is met
+  and the Task moved Doing -> Done. All Debug test builds passed; final focused,
+  full Unit, and serialized diagnostic counts and the four classified residual
+  failures remain explicit. Current UX/UI, mounted production behavior,
+  security/privacy, public formats, persistence readers, and device/backend
+  acceptance were not broadened or claimed. No commit, push, or Next Task ID
+  change is inferred.

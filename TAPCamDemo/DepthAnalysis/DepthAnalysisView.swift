@@ -1546,8 +1546,6 @@ private struct AnalysisToolPhotoStage: View {
                 planeSeedPoint: slot.planeSelection.seedPoint,
                 highlightPalette: highlightPalette,
                 isPlaneGridAnimationEnabled: isPlaneGridAnimationEnabled,
-                metadataSummary: nil,
-                scoreSummary: nil,
                 onSelectionCleared: {
                     slot.clearSelection()
                 },

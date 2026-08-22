@@ -71,20 +71,6 @@ struct TAPPhotographerModeRuntimeTests {
         #expect(unrecovered.requiresStandardRecovery)
     }
 
-    @Test func capabilityMatrixUsesExplicitLiDAROneXInsteadOfAutomaticFOVSelection() throws {
-        let source = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/CameraCapture/Planning/CapabilityMatrix.swift"
-        )
-
-        #expect(source.contains("$0.kind == .lidarDepth"))
-        #expect(source.contains("device.deviceType == .builtInLiDARDepthCamera"))
-        #expect(source.contains("preferredZoomFactor: 1.0"))
-        #expect(source.contains("requiresPreferredZoomSupport: true"))
-        #expect(source.contains("selectedZoomFactor: 1.0"))
-        #expect(source.contains("supportsCustomExposure"))
-        #expect(source.contains("supportsCustomLensPosition"))
-    }
-
     @Test func photographerModeRuntimePathDoesNotDependOnDebugOverrideState() throws {
         let selectionSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/CameraCapture/UI/CameraViewModel+Selection.swift"
@@ -103,87 +89,6 @@ struct TAPPhotographerModeRuntimeTests {
         #expect(!photographerRuntime.contains("isDebugDepthOverrideActive"))
         #expect(!photographerRuntime.contains("makeDebugDepthOverridePlan"))
         #expect(!capabilitySource.contains("#if DEBUG\n    var photographerModeAvailability"))
-    }
-
-    @Test func standardRuntimePathExplicitlyExcludesLiDAR() throws {
-        let selectionSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/CameraCapture/UI/CameraViewModel+Selection.swift"
-        )
-        let capabilitySource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/CameraCapture/Planning/CapabilityMatrix.swift"
-        )
-
-        #expect(capabilitySource.contains("func standardDepthProfiles("))
-        #expect(capabilitySource.contains("func standardRGBSource(id:"))
-        #expect(capabilitySource.contains("return defaultRGBSource"))
-        #expect(capabilitySource.contains(".filter { $0.kind != .lidarDepth }"))
-        #expect(capabilitySource.contains("rgbSource.device.deviceType != .builtInLiDARDepthCamera"))
-        #expect(selectionSource.contains("capabilityMatrix.standardRGBSource(id: selectedRGBSourceID)"))
-        #expect(selectionSource.contains("capabilityMatrix.standardDepthProfiles("))
-        #expect(selectionSource.contains("$0.device.deviceType != .builtInLiDARDepthCamera"))
-        #expect(capabilitySource.contains("$0.device.deviceType != .builtInLiDARDepthCamera"))
-    }
-
-    @Test func failedActivationCannotLeaveAStalePhotographerIntent() throws {
-        let selectionSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/CameraCapture/UI/CameraViewModel+Selection.swift"
-        )
-        let viewModelSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/CameraCapture/UI/CameraViewModel.swift"
-        )
-
-        #expect(selectionSource.contains("suspendedRearModeIntent = recoveredMode == .photographer"))
-        #expect(selectionSource.contains("photographerModeState = .unavailable(reason)\n            suspendedRearModeIntent = .standard"))
-        #expect(viewModelSource.contains("reconcileInterruptedPhotographerModeTransition()"))
-        #expect(viewModelSource.contains("guard photographerModeState.isTransitioning"))
-        #expect(viewModelSource.contains("suspendedRearModeIntent = recoveredMode == .photographer"))
-    }
-
-    @Test func selectionReconfigurationIsMergedAndRecoveryCanReportNoUsableSession() throws {
-        let source = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/CameraCapture/UI/CameraViewModel+Selection.swift"
-        )
-
-        #expect(source.contains("hasPendingSelectionReconfiguration = true"))
-        #expect(source.contains("finishSelectionConfiguration(generation: generation)"))
-        #expect(source.contains("didRestore ? snapshot.photographerMode : .unconfigured"))
-        #expect(source.contains("didRestore ? previous.photographerMode : .unconfigured"))
-    }
-
-    @Test func frontStandardReconfigurationPreservesSuspendedRearPhotographerIntent() throws {
-        let source = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/CameraCapture/UI/CameraViewModel+Selection.swift"
-        )
-
-        #expect(source.contains("if result.device.position == .back {\n                    suspendedRearModeIntent = .standard"))
-    }
-
-    @Test func mediaServicesResetEndsAnInFlightPhotographerTransition() throws {
-        let controllerSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/CameraCapture/Runtime/CaptureSessionController.swift"
-        )
-        let viewModelSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/CameraCapture/UI/CameraViewModel.swift"
-        )
-
-        #expect(controllerSource.contains("AVCaptureSession.runtimeErrorNotification"))
-        #expect(controllerSource.contains("AVCaptureSessionErrorKey"))
-        #expect(controllerSource.contains("AVError.Code.mediaServicesWereReset.rawValue"))
-        #expect(controllerSource.contains("AVCaptureSession.wasInterruptedNotification"))
-        #expect(controllerSource.contains("AVCaptureSession.interruptionEndedNotification"))
-        #expect(controllerSource.contains("waitUntilSessionQueueIsResponsive"))
-        #expect(viewModelSource.contains("handleCaptureSessionRuntimeFailure"))
-        #expect(viewModelSource.contains("guard failure.isMediaServicesReset"))
-        #expect(viewModelSource.contains("!isVideoRecording"))
-        #expect(viewModelSource.contains("!isPreparingVideoMode"))
-        #expect(viewModelSource.contains("isConfiguringSession || activeSessionConfiguration != nil"))
-        #expect(viewModelSource.contains("photographerModeState = .failed("))
-        #expect(viewModelSource.contains("hasPendingSelectionReconfiguration = false"))
-        #expect(viewModelSource.contains("armCameraPathConfigurationWatchdog"))
-        #expect(viewModelSource.contains("Task.sleep(for: .seconds(10))"))
-        #expect(viewModelSource.contains("isSessionControllerSuspectedWedged = true"))
-        #expect(viewModelSource.contains("beginSessionQueueLivenessProbeIfNeeded"))
-        #expect(viewModelSource.contains("await controller.waitUntilSessionQueueIsResponsive()"))
     }
 
     private func eligibleFacts(

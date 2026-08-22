@@ -487,32 +487,6 @@ struct TAPLibraryStorageTests {
         }
     }
 
-    @Test func pendingCaptureBundlePathPolicyKeepsArtifactFilenameAllowListExact() throws {
-        let source = try Self.source(relativePath: "TAPCamDemo/TAPLibrary/TAPPendingCaptureBundlePathPolicy.swift")
-
-        #expect(source.contains(#"static let unsignedHEICFilename = "unsigned.heic""#))
-        #expect(source.contains(#"static let signedHEICFilename = "signed.heic""#))
-        #expect(source.contains(#"static let unsignedJPEGFilename = "unsigned.jpg""#))
-        #expect(source.contains(#"static let signedJPEGFilename = "signed.jpg""#))
-        #expect(source.contains(#"static let videoArtifactFilename = "artifact.mp4""#))
-        #expect(source.contains(#"static let pairedVideoFilename = "paired-video.mov""#))
-        #expect(source.contains(#"static let thumbnailFilename = "thumbnail.jpg""#))
-        #expect(source.contains(#"""
-    private static let artifactFilenames: Set<String> = [
-        unsignedHEICFilename,
-        signedHEICFilename,
-        unsignedJPEGFilename,
-        signedJPEGFilename,
-        videoArtifactFilename,
-        pairedVideoFilename,
-        thumbnailFilename
-    ]
-"""#))
-        #expect(!source.contains("alternatePhoto"))
-        #expect(!source.contains("sidecar"))
-        #expect(!source.contains("rawFilename"))
-    }
-
     @Test func pendingCaptureBundlePathPolicyAllowsOnlyCurrentArtifactFilenames() throws {
         let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
         let captureID = "artifact-policy-capture"

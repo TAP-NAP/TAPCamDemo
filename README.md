@@ -8,15 +8,16 @@ resolved into one Apple-compatible RGB source, depth source, and depth-safe raw
 Photo capture produces a standard HEIC or JPG with primary RGB, Apple auxiliary
 depth/disparity, and a TAP XMP manifest. TAP Video produces an MP4 with RGB,
 optional audio, bounded KLV depth metadata, and an appended TAP manifest.
-Capture first stages an unsigned artifact in the app-private TAP Library queue;
+Capture first stages an unsigned artifact in the app-private Pending Capture Queue;
 a serial worker adds the App Attest proof, validates the final artifact, exports
 it to Photos, and verifies TAP Video readback.
 
 Current non-goals: watermarking, destructive final crop, MultiCam capture,
-RAW/ProRAW provider runtime, arbitrary non-TAP video formats, external session
-scaffolding, sidecar JSON, Release debug bundles, iPad runtime/layout support,
+arbitrary non-TAP video formats, external session scaffolding, sidecar JSON,
+Release debug bundles, iPad runtime/layout support,
 Mac Catalyst or native macOS, Designed for iPhone/iPad on Mac, and Apple Vision
-Pro compatibility.
+Pro compatibility. RAW/ProRAW and broader format work are future product tasks,
+not dormant implementations in the current capture path.
 
 ## Quick Links
 
@@ -102,12 +103,12 @@ sequenceDiagram
     VM->>Runtime: Configure SingleCam session
     Runtime-->>VM: Prepared AVCapturePhotoOutput
     VM->>Pipeline: Capture and package
-    Pipeline->>Store: Ingest unsigned HEIC
+    Pipeline->>Store: Ingest unsigned HEIC/JPG or TAP Video
     Store-->>VM: Pending capture ID
     VM->>Worker: Process pending captures
     Worker->>Worker: Add App Attest capture proof
-    Worker->>Worker: Validate signed HEIC export bytes
-    Worker->>Photos: Export signed HEIC
+    Worker->>Worker: Validate final signed artifact bytes
+    Worker->>Photos: Export validated media
 ```
 
 ## Module Responsibilities
@@ -124,7 +125,7 @@ Start with [TAPCamDemo/App/README.md](TAPCamDemo/App/README.md).
 
 [TAPCamDemo/CameraCapture](TAPCamDemo/CameraCapture) owns all camera UI,
 planning, AVFoundation runtime configuration, logical packaging, and the
-unsigned HEIC handoff into TAP Library. It is the only module that touches
+unsigned artifact handoff into the Pending Capture Queue. It is the only module that touches
 `AVCaptureSession`.
 
 Start with [TAPCamDemo/CameraCapture/README.md](TAPCamDemo/CameraCapture/README.md).
@@ -141,15 +142,16 @@ Start with [TAPCamDemo/TAPLibrary/README.md](TAPCamDemo/TAPLibrary/README.md).
 ### DepthAnalysis
 
 [TAPCamDemo/DepthAnalysis](TAPCamDemo/DepthAnalysis) reads validated saved or
-pending TAP HEIC inputs and presents RGB, heatmap, mask, point-cloud, and
-plane-filter views. The local analysis reader bounds HEIC size, primary-image
+pending photo inputs and TAP Video, then presents the approved RAW/2D/3D Viewer.
+Internal analysis renderers cover RGB, depth overlays, masks, point clouds, and
+planes. The local analysis reader bounds photo size, primary-image
 dimensions, depth-map pixel count, sample layout, and projection calibration
 before rendering or geometry tools allocate per-pixel products. It is
 deliberately separate from live capture.
 
 Start with [TAPCamDemo/DepthAnalysis/README.md](TAPCamDemo/DepthAnalysis/README.md).
-For presentation and privacy review, start with its Inspector/HUD Presentation
-Map before scanning the SwiftUI files.
+Its active code map separates Viewer, Share, video playback, privacy, and
+device-acceptance responsibilities.
 
 ## HEIC Contract
 
@@ -203,27 +205,19 @@ below 80 lines and cyclomatic complexity at or below 10 on the explicit scoped
 TAP Video production allowlist. It intentionally excludes tests,
 UI tests, Debug fixtures, benchmarks, remote package sources, and unrelated legacy code.
 
-For AI/CI compilation verification, use:
-
-```bash
-xcodebuild build-for-testing -project TAPCamDemo.xcodeproj -scheme TAPCamDemo -destination 'platform=iOS Simulator,OS=26.5,name=iPhone 17'
-```
-
-For execution, use a simulator that is already booted and pass its UDID
-explicitly. This avoids Xcode creating a temporary clone from a shutdown
-destination during test launch.
-
-```bash
-xcrun simctl list devices booted
-xcodebuild test -project TAPCamDemo.xcodeproj -scheme TAPCamDemo -destination 'id=<BOOTED_SIMULATOR_UDID>' -only-testing:TAPCamDemoTests
-```
-
-After `build-for-testing`, `test-without-building` can use the same
-`-destination 'id=<BOOTED_SIMULATOR_UDID>'` and
-`-only-testing:TAPCamDemoTests` arguments. Running by device name can still
-depend on CoreSimulator boot and migration state. UI tests and real-device
-camera/App Attest acceptance remain attended validation paths, not part of the
+Use the current, environment-neutral commands and evidence boundaries in
+[TAPCamDemoTests/README.md](TAPCamDemoTests/README.md). UI tests and real-device
+Camera/App Attest acceptance remain attended validation paths, not part of the
 default unit gate.
+
+## Pre-release Version TODO
+
+The current app version is `0.2 (2)`. Before the first public build, deliberately
+freeze or update that pair once. In the same release review, freeze the existing
+public/security schema matrix—or coordinate one explicit TAPCamVerifier and
+fixture migration. Still, Live Photo, TAP Video, KLV, binding, proof-slot, and
+storage schema numbers are parallel contracts, not old app versions, so this
+cleanup does not collapse or renumber them.
 
 ## Supporting Documents
 

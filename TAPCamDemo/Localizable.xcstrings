@@ -61,6 +61,7 @@
       }
     },
     "%lld sampled points" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -71,6 +72,7 @@
       }
     },
     "%lld selected points" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -91,6 +93,7 @@
       }
     },
     "%lld%% valid depth coverage" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -148,28 +151,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "3D 投影模型"
-          }
-        }
-      }
-    },
-    "A local plane estimate appears after the selected region has enough valid depth points for a stable fit." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "所选区域包含足够的有效深度点并可稳定拟合后，将显示局部平面估计。"
-          }
-        }
-      }
-    },
-    "A stable plane needs enough nearby samples with similar camera-coordinate depth geometry." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "稳定平面需要足够多、且在相机坐标系深度几何上相近的邻近样本。"
           }
         }
       }
@@ -238,17 +219,6 @@
         }
       }
     },
-    "Analysis" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "分析"
-          }
-        }
-      }
-    },
     "Analysis Animation" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -313,39 +283,6 @@
         }
       }
     },
-    "Apple depth accuracy and quality metadata for this captured photo." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "这张照片所包含的 Apple 深度精度与质量元数据。"
-          }
-        }
-      }
-    },
-    "Approximate visible surface area in camera coordinates." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "相机坐标系中可见表面的近似面积。"
-          }
-        }
-      }
-    },
-    "Area" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "面积"
-          }
-        }
-      }
-    },
     "Authorized" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -393,28 +330,6 @@
         }
       }
     },
-    "Average distance from inlier points to the fitted plane. Smaller values usually mean the selected surface is flatter." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "内点到拟合平面的平均距离。数值越小，通常表示所选表面越平整。"
-          }
-        }
-      }
-    },
-    "Average distance from inlier points to the selected plane." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "内点到所选平面的平均距离。"
-          }
-        }
-      }
-    },
     "Back to TAP Library" : {
       "localizations" : {
         "zh-Hans" : {
@@ -438,17 +353,6 @@
     },
     "Building media catalog" : {
 
-    },
-    "Calibration" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "标定"
-          }
-        }
-      }
     },
     "Camera" : {
       "localizations" : {
@@ -503,6 +407,7 @@
       }
     },
     "Camera calibration missing." : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -541,17 +446,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "相机控制暂时不可用。"
-          }
-        }
-      }
-    },
-    "Camera intrinsics used to project depth pixels into local camera coordinates." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "用于将深度像素投影到相机局部坐标系的相机内参。"
           }
         }
       }
@@ -733,42 +627,12 @@
         }
       }
     },
-    "Close analysis panel" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "关闭分析面板"
-          }
-        }
-      }
-    },
     "Close the analyzer and return to the camera." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "关闭分析器并返回相机。"
-          }
-        }
-      }
-    },
-    "Close this analysis panel." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "关闭此分析面板。"
-          }
-        }
-      }
-    },
-    "Cloud" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "点云"
           }
         }
       }
@@ -780,16 +644,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "点云信息"
-          }
-        }
-      }
-    },
-    "Cloud legend" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "点云图例"
           }
         }
       }
@@ -811,17 +665,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "点云视图使用相机内参，将有效深度像素投影为轻量的相机坐标系点预览。这里的点云并非云存储、云计算或语义词云。"
-          }
-        }
-      }
-    },
-    "Combined score from flatness, inlier ratio, and selected plane size." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "由平整度、内点比例和所选平面大小综合得出的评分。"
           }
         }
       }
@@ -856,17 +699,6 @@
         }
       }
     },
-    "Confidence" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "置信度"
-          }
-        }
-      }
-    },
     "Continue" : {
       "localizations" : {
         "zh-Hans" : {
@@ -895,17 +727,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "控制主图上生成叠加层的不透明度，以便将分析层与 RGB 照片进行比较。"
-          }
-        }
-      }
-    },
-    "Coverage is the share of depth pixels that can contribute to statistics, plane fitting, and point projection." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "覆盖率表示可参与统计、平面拟合和点投影的深度像素比例。"
           }
         }
       }
@@ -1041,28 +862,6 @@
         }
       }
     },
-    "Depth quality" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "深度质量"
-          }
-        }
-      }
-    },
-    "Depth size" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "深度尺寸"
-          }
-        }
-      }
-    },
     "Depth view overlays metric depth as a false-color heatmap. Near pixels use the low end of the legend and far pixels use the high end. Transparent pixels do not contain valid depth." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1105,16 +904,6 @@
         }
       }
     },
-    "Detecting plane region..." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在检测平面区域…"
-          }
-        }
-      }
-    },
     "Done" : {
       "localizations" : {
         "zh-Hans" : {
@@ -1143,27 +932,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在下载视频"
-          }
-        }
-      }
-    },
-    "Drag on the image to choose a depth region. Measurements update from the finite positive depth samples inside that selection." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在图像上拖动以选择深度区域。测量结果会根据所选区域内有限且为正的深度样本更新。"
-          }
-        }
-      }
-    },
-    "Drag on the image to choose a region. The region heatmap uses only the selected valid depth samples to recalculate its color range." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在图像上拖动以选择区域。区域热图只使用选中的有效深度样本重新计算颜色范围。"
           }
         }
       }
@@ -1232,17 +1000,6 @@
         }
       }
     },
-    "Far" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "远处"
-          }
-        }
-      }
-    },
     "Far %@" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1250,17 +1007,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "远处 %@"
-          }
-        }
-      }
-    },
-    "Far points" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "远处点"
           }
         }
       }
@@ -1333,17 +1079,6 @@
         }
       }
     },
-    "Flatness" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "平整度"
-          }
-        }
-      }
-    },
     "Focus Magnifier" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -1376,16 +1111,6 @@
         }
       }
     },
-    "Global depth legend" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "全局深度图例"
-          }
-        }
-      }
-    },
     "Green indicates valid depth coverage. Yellow outlines mark transitions between valid and invalid depth." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1403,17 +1128,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "网格"
-          }
-        }
-      }
-    },
-    "Grid cells inside the grown region that contain enough pixels fitting the selected plane." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "生长区域内包含足够多符合所选平面像素的网格单元。"
           }
         }
       }
@@ -1450,66 +1164,12 @@
         }
       }
     },
-    "High-fit cell" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "高拟合度单元格"
-          }
-        }
-      }
-    },
-    "Higher strictness keeps only pixels that fit the seed plane more tightly." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "更高的严格度只保留与种子平面拟合得更紧密的像素。"
-          }
-        }
-      }
-    },
     "Highlight Color" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "高亮颜色"
-          }
-        }
-      }
-    },
-    "How many pixels in the selected region contain finite positive depth. Plane fitting and point projection ignore invalid samples." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "所选区域内包含有限正深度的像素数量。平面拟合和点投影会忽略无效样本。"
-          }
-        }
-      }
-    },
-    "How many selected pixels contain finite positive depth." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "所选像素中包含有限正深度的数量。"
-          }
-        }
-      }
-    },
-    "How tightly the grown region fits a single local plane. Higher is flatter." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "生长区域与单个局部平面的拟合紧密程度。数值越高表示越平整。"
           }
         }
       }
@@ -1521,28 +1181,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "HTTP 后端已配置"
-          }
-        }
-      }
-    },
-    "Inliers" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "内点"
-          }
-        }
-      }
-    },
-    "Inspectors" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "检查器"
           }
         }
       }
@@ -2015,28 +1653,6 @@
         }
       }
     },
-    "Local heatmap" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "局部热图"
-          }
-        }
-      }
-    },
-    "Local range is recalculated from this selection, so it can show subtle depth changes inside the crop." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "局部范围会根据当前选择重新计算，因此能够显示裁剪区域内细微的深度变化。"
-          }
-        }
-      }
-    },
     "Location" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2076,28 +1692,6 @@
         }
       }
     },
-    "Loupe" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "放大镜"
-          }
-        }
-      }
-    },
-    "Lower-fit cell" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "较低拟合度单元格"
-          }
-        }
-      }
-    },
     "Manual focus" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2130,16 +1724,6 @@
         }
       }
     },
-    "Mask legend" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "遮罩图例"
-          }
-        }
-      }
-    },
     "Mask view highlights the pixels that contain finite positive depth samples. Green areas can contribute to statistics, plane fitting, and point projection; transparent areas are ignored." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2158,17 +1742,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "测量"
-          }
-        }
-      }
-    },
-    "Median depth" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "深度中位数"
           }
         }
       }
@@ -2201,28 +1774,6 @@
     "Microphone access was denied. You can change it in Settings." : {
 
     },
-    "Native auxiliary depth-map resolution used for camera-coordinate plane fitting." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "用于相机坐标系平面拟合的原生辅助深度图分辨率。"
-          }
-        }
-      }
-    },
-    "Near" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "近处"
-          }
-        }
-      }
-    },
     "Near %@" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2230,17 +1781,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "近处 %@"
-          }
-        }
-      }
-    },
-    "Near points" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "近处点"
           }
         }
       }
@@ -2310,64 +1850,13 @@
         }
       }
     },
-    "No generated legend." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "尚未生成图例。"
-          }
-        }
-      }
-    },
-    "No local plane estimate." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "没有本地平面估计结果。"
-          }
-        }
-      }
-    },
-    "No local region" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无局部区域"
-          }
-        }
-      }
-    },
-    "No region selected." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "尚未选择区域。"
-          }
-        }
-      }
-    },
     "No stable plane region found from this point." : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "未能从此点找到稳定的平面区域。"
-          }
-        }
-      }
-    },
-    "Normal" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "法向量"
           }
         }
       }
@@ -2433,16 +1922,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "开启"
-          }
-        }
-      }
-    },
-    "Opacity controls the global overlay on the main image. It does not change local region heatmap colors." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "不透明度控制主图上的全局叠加层，不会改变局部区域热图的颜色。"
           }
         }
       }
@@ -2557,16 +2036,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "叠加层"
-          }
-        }
-      }
-    },
-    "Overlay opacity" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "叠加层不透明度"
           }
         }
       }
@@ -2706,28 +2175,6 @@
         }
       }
     },
-    "Plane cell colors summarize local fit quality inside the grown region." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "平面单元格的颜色概括了生长区域内的局部拟合质量。"
-          }
-        }
-      }
-    },
-    "Plane cells" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "平面单元格"
-          }
-        }
-      }
-    },
     "Plane cells use stronger green for better local plane fit and warmer color for weaker fit; the bright edge marks the grown boundary." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2750,77 +2197,12 @@
         }
       }
     },
-    "Plane fitting needs camera intrinsics to project depth pixels into local camera coordinates." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "平面拟合需要使用相机内参，将深度像素投影到相机局部坐标系。"
-          }
-        }
-      }
-    },
-    "Plane inliers" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "平面内点"
-          }
-        }
-      }
-    },
-    "Plane normal" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "平面法向量"
-          }
-        }
-      }
-    },
-    "Plane region" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "平面区域"
-          }
-        }
-      }
-    },
-    "Plane residual" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "平面残差"
-          }
-        }
-      }
-    },
     "Plane seed point" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "平面种子点"
-          }
-        }
-      }
-    },
-    "Plane selection starts from one tapped depth point, then grows to neighboring pixels that fit the same surface." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "平面选择从轻点的一个深度点开始，再扩展到符合相同表面的相邻像素。"
           }
         }
       }
@@ -2878,17 +2260,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "点的颜色按照与深度图例相同的方向映射由近到远的深度。"
-          }
-        }
-      }
-    },
-    "Point colors map near-to-far depth so the preview stays comparable to the depth legend." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "点的颜色映射由近到远的深度，使预览能够与深度图例直接比较。"
           }
         }
       }
@@ -3081,17 +2452,6 @@
         }
       }
     },
-    "Range" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "范围"
-          }
-        }
-      }
-    },
     "Raw photo" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -3147,16 +2507,6 @@
         }
       }
     },
-    "Region" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "区域"
-          }
-        }
-      }
-    },
     "Registered depth unavailable" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -3164,17 +2514,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "配准深度不可用"
-          }
-        }
-      }
-    },
-    "Release your drag to finish the selection and calculate local depth statistics." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "松开拖动以完成选择并计算局部深度统计。"
           }
         }
       }
@@ -3253,17 +2592,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "重置并准备 App Attest 凭据。"
-          }
-        }
-      }
-    },
-    "Residual" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "残差"
           }
         }
       }
@@ -3427,34 +2755,12 @@
         }
       }
     },
-    "Sampled points are valid depth pixels projected through camera intrinsics for a lightweight preview." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "采样点是通过相机内参投影的有效深度像素，用于生成轻量预览。"
-          }
-        }
-      }
-    },
     "Score Detail" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "评分详情"
-          }
-        }
-      }
-    },
-    "Select a rectangular area on the image to inspect local depth, range, and plane fit values." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在图像上选择一个矩形区域，以检查局部深度、范围和平面拟合值。"
           }
         }
       }
@@ -3466,27 +2772,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已选中"
-          }
-        }
-      }
-    },
-    "Selected area loupe" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "所选区域放大镜"
-          }
-        }
-      }
-    },
-    "Selected plane direction in local camera coordinates." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "所选平面在相机局部坐标系中的方向。"
           }
         }
       }
@@ -3531,17 +2816,6 @@
         }
       }
     },
-    "Selected points use the same projection, limited to the active rectangular region." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "所选点使用相同的投影，但仅限于当前矩形区域。"
-          }
-        }
-      }
-    },
     "Selected, Preparing" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -3560,27 +2834,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已选中，已就绪"
-          }
-        }
-      }
-    },
-    "Selecting" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在选择"
-          }
-        }
-      }
-    },
-    "Selecting region..." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在选择区域…"
           }
         }
       }
@@ -3605,17 +2858,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "分享"
-          }
-        }
-      }
-    },
-    "Share and count of grown points that match the fitted plane." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "生长点中符合拟合平面的比例和数量。"
           }
         }
       }
@@ -4242,28 +3484,6 @@
         }
       }
     },
-    "Sort the selected valid depth samples from near to far; this is the value in the middle." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "将所选有效深度样本由近到远排序；此值位于中间。"
-          }
-        }
-      }
-    },
-    "Sort the selected valid depth samples from near to far; this is the value in the middle. It is less sensitive to isolated noisy pixels than an average." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "将所选有效深度样本由近到远排序；此值位于中间。与平均值相比，它对孤立噪声像素不那么敏感。"
-          }
-        }
-      }
-    },
     "Speed" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -4293,16 +3513,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "状态"
-          }
-        }
-      }
-    },
-    "Strictness" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "严格度"
           }
         }
       }
@@ -4371,26 +3581,6 @@
         }
       }
     },
-    "Tap a surface point in Planes view. The analyzer grows a connected camera-coordinate plane region from that seed." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在“平面”视图中轻点一个表面点。分析器会从该种子点扩展相连的相机坐标系平面区域。"
-          }
-        }
-      }
-    },
-    "Tap a surface point to grow a plane region." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "轻点表面点以扩展平面区域。"
-          }
-        }
-      }
-    },
     "TAP Library" : {
       "localizations" : {
         "zh-Hans" : {
@@ -4443,17 +3633,6 @@
         }
       }
     },
-    "The fitted plane direction in local camera coordinates. It is useful for comparing orientation, not for world tracking." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "拟合平面在相机局部坐标系中的方向。它适合比较朝向，不用于世界坐标跟踪。"
-          }
-        }
-      }
-    },
     "The legend maps the current depth range from near to far. Adjust opacity to compare the heatmap against the RGB image." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4461,39 +3640,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "图例将当前深度范围由近到远进行映射。调整不透明度可将热图与 RGB 图像进行比较。"
-          }
-        }
-      }
-    },
-    "The local heatmap needs enough finite positive depth pixels inside the selected region." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "局部热图需要所选区域内包含足够多有限且为正的深度像素。"
-          }
-        }
-      }
-    },
-    "The nearest and farthest valid metric depth samples found inside the selection." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "所选区域内找到的最近和最远有效公制深度样本。"
-          }
-        }
-      }
-    },
-    "The selected region's nearest and farthest valid depth samples." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "所选区域中最近和最远的有效深度样本。"
           }
         }
       }
@@ -4520,28 +3666,6 @@
         }
       }
     },
-    "The share of sampled points close enough to the fitted plane to count as inliers." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "采样点中足够接近拟合平面、可计为内点的比例。"
-          }
-        }
-      }
-    },
-    "The share of selected depth points that match the fitted local plane." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "所选深度点中符合拟合局部平面的比例。"
-          }
-        }
-      }
-    },
     "This capture has not finished exporting to Photos. Deleting it removes the local TAP copy and cannot be undone." : {
       "localizations" : {
         "zh-Hans" : {
@@ -4552,28 +3676,8 @@
         }
       }
     },
-    "This capture is still pending export to Photos. Return after export completes, then open the saved photo to verify its App Attest proof." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此拍摄内容仍在等待导出到“照片”。请在导出完成后返回，然后打开已保存的照片以验证其 App Attest 证明。"
-          }
-        }
-      }
-    },
     "This installation's setup receipt is missing valid local credential evidence. Existing permissions are shown without being requested automatically." : {
 
-    },
-    "This is a local camera-coordinate point cloud preview. It is not cloud storage, cloud compute, or a semantic word cloud." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "这是本地相机坐标系点云预览，并非云存储、云计算或语义词云。"
-          }
-        }
-      }
     },
     "This photo is still being processed in the TAPCam queue. Its credential will appear when processing finishes." : {
       "localizations" : {
@@ -4623,17 +3727,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "切换实况照片拍摄。"
-          }
-        }
-      }
-    },
-    "Try a nearby textured surface point with valid depth if the seed cannot grow a stable plane." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "如果种子无法生长出稳定平面，请尝试附近具有纹理且深度有效的表面点。"
           }
         }
       }
@@ -4898,17 +3991,6 @@
         }
       }
     },
-    "Valid samples" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "有效样本"
-          }
-        }
-      }
-    },
     "Valid/invalid edge" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4920,16 +4002,6 @@
         }
       }
     },
-    "Verification unavailable" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "验证不可用"
-          }
-        }
-      }
-    },
     "Verify" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4937,46 +4009,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "验证"
-          }
-        }
-      }
-    },
-    "Verify again" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "再次验证"
-          }
-        }
-      }
-    },
-    "Verify signature" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "验证签名"
-          }
-        }
-      }
-    },
-    "Verify the saved photo's App Attest proof." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "验证已保存照片的 App Attest 证明。"
-          }
-        }
-      }
-    },
-    "Verify this photo's App Attest proof again." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "再次验证此照片的 App Attest 证明。"
           }
         }
       }
@@ -5051,28 +4083,6 @@
         }
       }
     },
-    "Views" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "视图"
-          }
-        }
-      }
-    },
-    "Warnings" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "警告"
-          }
-        }
-      }
-    },
     "Welcome to TAPCam" : {
       "localizations" : {
         "zh-Hans" : {
@@ -5101,17 +4111,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "黄色"
-          }
-        }
-      }
-    },
-    "You can tap another surface point while this runs; the analyzer keeps the newest point." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "分析过程中可以轻点另一个表面点；分析器会保留最新的点。"
           }
         }
       }

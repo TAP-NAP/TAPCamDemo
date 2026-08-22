@@ -119,9 +119,9 @@ healthy forever. Once Setup is complete, ordinary Viewfinder entry and local
 capture are network-independent.
 
 The current main implementation still exposes a legacy `/healthz` preflight in
-this row. Replacing that preflight with the complete initial App Attest
-registration/verification contract belongs to `TAP-0008` after the
-`TAP-0087` candidate is approved.
+this row. Replacing it with the complete initial App Attest
+registration/verification contract belongs to `TAP-0010`; visual prototype
+status does not convert `/healthz` into credential evidence.
 
 ## Post-Setup Credential Preparation And Health Token
 
@@ -202,7 +202,7 @@ endpoint path.
 
 | Build | Backend | App Attest metadata |
 | --- | --- | --- |
-| Debug | `https://dev.tapnap.net` | `.development` |
+| Debug | `https://www.tapnap.net` | `.development` |
 | Release/TestFlight | `https://www.tapnap.net` | `.production` |
 
 Bare IP addresses, localhost, cleartext HTTP, and endpoint URLs such as

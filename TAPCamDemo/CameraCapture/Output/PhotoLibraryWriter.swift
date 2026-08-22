@@ -25,29 +25,6 @@ nonisolated enum PhotoLibraryWriter {
         "tap-\(packageID.uuidString.lowercased()).mp4"
     }
 
-    nonisolated struct SignatureVerificationResources: Sendable {
-        let photoData: Data
-        let pairedVideoURL: URL?
-        let temporaryDirectoryURL: URL?
-        let presentationAdjustmentResourceLabels: [String]
-
-        var hasPairedVideo: Bool {
-            pairedVideoURL != nil
-        }
-
-        var hasPresentationAdjustments: Bool {
-            !presentationAdjustmentResourceLabels.isEmpty
-        }
-
-        func removeTemporaryDirectory() {
-            guard let temporaryDirectoryURL else {
-                return
-            }
-
-            try? FileManager.default.removeItem(at: temporaryDirectoryURL)
-        }
-    }
-
     /// File-backed original resources for share preparation. The caller owns
     /// `temporaryDirectoryURL`; no photo or movie bytes are accumulated into a
     /// whole-file `Data` value on this path.
@@ -305,62 +282,6 @@ nonisolated enum PhotoLibraryWriter {
         }
     }
 
-    private static func signatureVerificationResources(for asset: PHAsset) async throws -> SignatureVerificationResources {
-        let resources = PHAssetResource.assetResources(for: asset)
-        guard let photoResource = resources.first(where: { $0.type == .photo }) else {
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.photoLibrary.error("signatureVerificationResources missing photo resource assetID=\(asset.localIdentifier, privacy: .private)")
-            #endif
-            throw TAPDepthCaptureError.assetCreationFailed
-        }
-
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.photoLibrary.info("signatureVerificationResources request start assetID=\(asset.localIdentifier, privacy: .private) resourceCount=\(resources.count, privacy: .public)")
-        #endif
-        let photoData = try await resourceData(
-            for: photoResource,
-            assetLocalIdentifier: asset.localIdentifier,
-            label: "signatureVerificationPhoto"
-        )
-        let presentationAdjustmentLabels = presentationAdjustmentResourceLabels(in: resources)
-
-        guard let pairedVideoResource = resources.first(where: { $0.type == .pairedVideo }) else {
-            return SignatureVerificationResources(
-                photoData: photoData,
-                pairedVideoURL: nil,
-                temporaryDirectoryURL: nil,
-                presentationAdjustmentResourceLabels: presentationAdjustmentLabels
-            )
-        }
-
-        let temporaryDirectoryURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("TAPSignatureVerification-\(UUID().uuidString)", isDirectory: true)
-        let pairedVideoURL = temporaryDirectoryURL
-            .appendingPathComponent(TAPPendingCaptureBundlePathPolicy.pairedVideoFilename)
-
-        do {
-            try FileManager.default.createDirectory(
-                at: temporaryDirectoryURL,
-                withIntermediateDirectories: true
-            )
-            try await writeResource(
-                pairedVideoResource,
-                to: pairedVideoURL,
-                assetLocalIdentifier: asset.localIdentifier,
-                label: "signatureVerificationPairedVideo"
-            )
-            return SignatureVerificationResources(
-                photoData: photoData,
-                pairedVideoURL: pairedVideoURL,
-                temporaryDirectoryURL: temporaryDirectoryURL,
-                presentationAdjustmentResourceLabels: presentationAdjustmentLabels
-            )
-        } catch {
-            try? FileManager.default.removeItem(at: temporaryDirectoryURL)
-            throw error
-        }
-    }
-
     /// Reads original photo bytes by resolving the asset inside a detached task.
     ///
     /// `PHAssetResource.assetResources(for:)` can force Photos to fetch
@@ -379,17 +300,6 @@ nonisolated enum PhotoLibraryWriter {
             }
 
             return try await originalPhotoData(for: asset)
-        }.value
-    }
-
-    static func signatureVerificationResources(localIdentifier: String) async throws -> SignatureVerificationResources {
-        try requireReadWriteAccess()
-        return try await Task.detached(priority: .userInitiated) {
-            guard let asset = asset(localIdentifier: localIdentifier) else {
-                throw TAPDepthCaptureError.assetNotFound
-            }
-
-            return try await signatureVerificationResources(for: asset)
         }.value
     }
 

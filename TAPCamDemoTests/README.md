@@ -1,770 +1,175 @@
-# TAPCamDemoTests
+# TAPCamDemo Tests
 
-`TAPCamDemoTests` is the default automation target for the shared
-`TAPCamDemo` scheme. It is intentionally focused on deterministic unit and
-app-hosted checks that can compile on Simulator without a depth-capable camera,
-App Attest hardware acceptance, Photos UI automation, or live backend calls.
+This directory contains the default deterministic automation target for the
+shared `TAPCamDemo` scheme. Start here to choose the smallest test surface that
+can answer a question; do not treat the number of passing tests as product or
+device acceptance.
 
-`TAPCamDemoUITests` is a separate, attended smoke-test target for real app UI
-automation. Its first test is
-`ShutterCaptureSmokeTests.testTappingShutterRequestsDepthCapture`, which launches
-the real app with `TAPCAM_UI_TEST_REAL_APP=1`, handles common permission alerts,
-and taps the shutter accessibility element. This target is useful for real
-device evidence, but it can fail before test code runs if XCTest cannot enable
-device automation mode.
+## Test entry points
 
-## Test Entry
+- `TAPCamDemoTests` contains Swift Testing and app-hosted checks that run on an
+  iPhone Simulator without a depth-capable camera, live App Attest backend,
+  Photos UI automation, or attended device interaction.
+- `TAPCamDemoUITests` is the separate app UI automation target. Its camera and
+  playback cases are attended evidence paths, not part of the default unit
+  gate.
+- The shared
+  [`TAPCamDemo` scheme](../TAPCamDemo.xcodeproj/xcshareddata/xcschemes/TAPCamDemo.xcscheme)
+  contains both targets and sets `TAPCAM_XCTEST_HOST=1`. The app-hosted unit
+  path uses the minimal XCTest host instead of entering first-install setup,
+  camera startup, credential warmup, or Pending Capture Queue processing.
 
-```mermaid
-flowchart TD
-    Scheme["TAPCamDemo.xcscheme"] --> Env["TAPCAM_XCTEST_HOST=1"]
-    Scheme --> Tests["TAPCamDemoTests.xctest"]
-    Scheme --> UITests["TAPCamDemoUITests.xctest"]
-    Env --> App["TAPCamDemoApp"]
-    App --> Host["XCTestHostView"]
-    UITests --> RealAppEnv["TAPCAM_UI_TEST_REAL_APP=1"]
-    RealAppEnv --> RealApp["StartupGateView + real capture UI"]
-    UITests --> ShutterSmoke["ShutterCaptureSmokeTests.swift"]
-    ShutterSmoke --> Shutter["Capture depth photo"]
-    Tests --> Main["TAPCamDemoTests.swift"]
-    Tests --> DepthInput["TAPDepthAnalysisInputTests.swift"]
-    Tests --> DepthSelection["TAPDepthAnalysisSelectionTests.swift"]
-    Tests --> DepthPlaneRegion["TAPDepthAnalysisPlaneRegionTests.swift"]
-    Tests --> DepthErrorPresentation["DepthAnalysisErrorPresentationTests.swift"]
-    Tests --> DepthAnalysisPresentation["TAPDepthAnalysisPresentationTests.swift"]
-    Tests --> LogPrivacy["TAPDiagnosticsOSLogPrivacyTests.swift"]
-    Tests --> Output["TAPCaptureOutputProfileTests.swift"]
-    Tests --> ManifestEncoding["TAPCaptureManifestEncodingTests.swift"]
-    Tests --> ContentDigest["TAPCaptureContentDigestTests.swift"]
-    Tests --> AssertionSigner["TAPCaptureAssertionSignerTests.swift"]
-    Tests --> ProvenanceSigning["TAPCaptureProvenanceWriterSigningTests.swift"]
-    Tests --> SignedExport["TAPSignedExportValidatorTests.swift"]
-    Tests --> CameraPresentation["TAPCameraCapturePresentationTests.swift"]
-    Tests --> Status["TAPCameraStatusPresentationTests.swift"]
-    Tests --> ManualIntent["TAPCameraManualControlIntentTests.swift"]
-    Tests --> ManualPresentation["TAPCameraManualControlPresentationTests.swift"]
-    Tests --> ManualSummary["TAPCameraManualControlSummaryTests.swift"]
-    Tests --> ManualCommandPlan["TAPCameraManualControlCommandPlanTests.swift"]
-    Tests --> ExposureControl["TAPCameraExposureControlStateTests.swift"]
-    Tests --> ManualBoundary["TAPCameraManualControlBoundaryGuardTests.swift"]
-    Tests --> ControlService["TAPCameraControlServiceTests.swift"]
-    Tests --> Route["TAPLibraryRouteTests.swift"]
-    Tests --> Storage["TAPLibraryStorageTests.swift"]
-    Tests --> Processing["TAPLibraryProcessingTests.swift"]
-    Tests --> Fixtures["TAPCamDemoTestFixtures.swift"]
-    Main --> Unit["Swift Testing functions"]
-    DepthInput --> Unit
-    DepthSelection --> Unit
-    DepthPlaneRegion --> Unit
-    DepthErrorPresentation --> Unit
-    DepthAnalysisPresentation --> Unit
-    LogPrivacy --> Unit
-    Output --> Unit
-    ManifestEncoding --> Unit
-    ContentDigest --> Unit
-    AssertionSigner --> Unit
-    ProvenanceSigning --> Unit
-    SignedExport --> Unit
-    CameraPresentation --> Unit
-    Status --> Unit
-    ManualIntent --> Unit
-    ManualPresentation --> Unit
-    ManualSummary --> Unit
-    ManualCommandPlan --> Unit
-    ManualBoundary --> Unit
-    ControlService --> Unit
-    Route --> Unit
-    Storage --> Unit
-    Processing --> Unit
-    Fixtures --> Main
-    Fixtures --> DepthInput
-    Fixtures --> DepthSelection
-    Fixtures --> Output
-    Fixtures --> ContentDigest
-    Fixtures --> AssertionSigner
-    Fixtures --> ProvenanceSigning
-    Fixtures --> SignedExport
-    Fixtures --> DepthAnalysisPresentation
-    Fixtures --> Status
-    Fixtures --> ManualIntent
-    Fixtures --> ManualPresentation
-    Fixtures --> ManualSummary
-    Fixtures --> ManualCommandPlan
-    Fixtures --> ManualBoundary
-    Fixtures --> ControlService
-    Fixtures --> Route
-    Fixtures --> Storage
-    Fixtures --> Processing
+Choose a Booted iPhone Simulator by UDID so Xcode does not create a temporary
+clone or spend the test timeout starting a shutdown destination:
 
-    click Scheme "../TAPCamDemo.xcodeproj/xcshareddata/xcschemes/TAPCamDemo.xcscheme"
-    click App "../TAPCamDemo/App/TAPCamDemoApp.swift"
-    click ShutterSmoke "../TAPCamDemoUITests/ShutterCaptureSmokeTests.swift"
-    click Main "TAPCamDemoTests.swift"
-    click DepthInput "TAPDepthAnalysisInputTests.swift"
-    click DepthSelection "TAPDepthAnalysisSelectionTests.swift"
-    click DepthPlaneRegion "TAPDepthAnalysisPlaneRegionTests.swift"
-    click DepthErrorPresentation "DepthAnalysisErrorPresentationTests.swift"
-    click DepthAnalysisPresentation "TAPDepthAnalysisPresentationTests.swift"
-    click LogPrivacy "TAPDiagnosticsOSLogPrivacyTests.swift"
-    click Output "TAPCaptureOutputProfileTests.swift"
-    click ManifestEncoding "TAPCaptureManifestEncodingTests.swift"
-    click ContentDigest "TAPCaptureContentDigestTests.swift"
-    click AssertionSigner "TAPCaptureAssertionSignerTests.swift"
-    click ProvenanceSigning "TAPCaptureProvenanceWriterSigningTests.swift"
-    click SignedExport "TAPSignedExportValidatorTests.swift"
-    click CameraPresentation "TAPCameraCapturePresentationTests.swift"
-    click Status "TAPCameraStatusPresentationTests.swift"
-    click ManualIntent "TAPCameraManualControlIntentTests.swift"
-    click ManualPresentation "TAPCameraManualControlPresentationTests.swift"
-    click ManualSummary "TAPCameraManualControlSummaryTests.swift"
-    click ManualCommandPlan "TAPCameraManualControlCommandPlanTests.swift"
-    click ExposureControl "TAPCameraExposureControlStateTests.swift"
-    click ManualBoundary "TAPCameraManualControlBoundaryGuardTests.swift"
-    click ControlService "TAPCameraControlServiceTests.swift"
-    click Route "TAPLibraryRouteTests.swift"
-    click Storage "TAPLibraryStorageTests.swift"
-    click Processing "TAPLibraryProcessingTests.swift"
-    click Fixtures "TAPCamDemoTestFixtures.swift"
+```sh
+xcrun simctl list devices booted
 ```
 
-The app-hosted test path renders a minimal black host view instead of entering
-first-launch permissions, camera startup, pending-capture signing credential
-warmup, or pending queue processing. This avoids the AI/CI hang pattern caused
-by app startup side effects during tests.
+Compile the shared test products:
 
-## Shared Fixtures
+```sh
+xcodebuild build-for-testing \
+  -project TAPCamDemo.xcodeproj \
+  -scheme TAPCamDemo \
+  -configuration Debug \
+  -destination 'id=<BOOTED_IPHONE_SIMULATOR_UDID>'
+```
 
-[TAPCamDemoTestFixtures.swift](TAPCamDemoTestFixtures.swift) is the shared
-test-only fixture entry for deterministic payloads, manifest captures, pending
-records, pending artifacts, manual-control capability snapshots, temporary
-directories, thumbnail bytes, and `bundle.json` helpers. Keep cross-suite
-fixtures there instead of copying helpers into individual test suites.
-Suite-specific fixtures that are only used by one file should stay beside that
-suite.
+Run the deterministic unit/app-hosted target:
 
-## Test Coverage Map
+```sh
+xcodebuild test-without-building \
+  -project TAPCamDemo.xcodeproj \
+  -scheme TAPCamDemo \
+  -configuration Debug \
+  -destination 'id=<BOOTED_IPHONE_SIMULATOR_UDID>' \
+  -only-testing:TAPCamDemoTests
+```
 
-| Area | Tests |
-| --- | --- |
-| App Attest runtime config, credential flow, backend public summary, and public-safe Settings presentation | [AppAttestRuntimeTests.swift](AppAttestRuntimeTests.swift) |
-| App Attest logging/UI privacy review | `diagnosticsDescriptionOmitsLocalizedDescriptionAndFailingURL`, `diagnosticsDescriptionKeepsVPNHintWithoutRawNetworkPath`, `diagnosticsDescriptionKeepsScalarStreamDiagnostics`, key ID presentation redaction tests, and credential failure status redaction tests in [AppAttestRuntimeTests.swift](AppAttestRuntimeTests.swift) |
-| OSLog source privacy harness | `allTAPDiagnosticsLoggingFilesAreCoveredByHarness`, `osLogInterpolationsDeclareReviewedPrivacy`, backend public-summary source guard, and `sensitiveOSLogLabelsAreNotAccidentallyBroadenedByPrefix` in [TAPDiagnosticsOSLogPrivacyTests.swift](TAPDiagnosticsOSLogPrivacyTests.swift) |
-| Startup `S/P/I` route priority, canonical/legacy Setup fact precedence, required Camera/Photos semantics, observer eligibility, frozen backend-preflight behavior, and coordination | route-priority, limited/restricted, corrupt-receipt precedence, verified credential-binding, frozen `/healthz`-does-not-write-`S`, observer-eligibility, targeted-refresh-does-not-start-Network, pure retry/timeout, and injected preflight tests in [StartupGateCoordinatorTests.swift](StartupGateCoordinatorTests.swift); atomic version/build/schema/install/device marker, pre-commit cleanup, Application-Support-unavailable fail-closed, and malformed Keychain generation repair tests in [StartupInitializationPolicyTests.swift](StartupInitializationPolicyTests.swift) |
-| Resource Initialization camera/catalog gate and local `t4→t5` boundaries | readiness policy covers real preview, safe controls, haptics, usable empty catalog, active scene, stable no-recovery UI, asynchronous marker write, two-display-tick publication barrier, deferred App Intent consumption, and central recent-cover guard in [TAPCameraCapturePresentationTests.swift](TAPCameraCapturePresentationTests.swift) |
-| Output profile selection, public-safe selection presentation, catalog, quality policy, resolved output execution token, resource plan, photo-output capability snapshot, and photo settings factory | `releaseOutputProfilesNameHEICAndJPGDepthPolicy`, `capturePhotoQualityPolicyNamesAppLevelQualityBeforeAVFoundation`, `tapDepthManifestUsesPhotoQualityPolicyManifestDescription`, `releaseOutputProfileCatalogNamesHEICDefaultAndJPGOption`, `outputProfileCatalogSurfacesInvalidProfileSets`, `releaseOutputProfileRequiresHEVCAndDoesNotFallbackToJPEG`, `releaseJPGProfileRequiresJPEGAndDoesNotFallbackToHEVC`, `largestStandardDimensionsPolicySkipsDeferredOnly24MP`, `outputProfileRejectsDepthAndQualityContractDrift`, `outputProfileResolutionProducesSingleRuntimeRequest`, `outputProfileResolutionSelectsFileSpecificCodecAndDimensions`, `resolvedOutputValidatesPhotoOutputCapabilities`, `runtimeResolvesAndReusesOutputThroughCapabilitySnapshot`, `outputResourcePlanNamesCurrentSignedPhotoResources`, `outputResourcePlanReusesResolvedPackagingValidation`, `outputResourcePlanStaysPurePolicyModel`, `currentPhotosExportSurfaceUsesSingleValidatedPhotoResource`, `resolvedOutputValidatesCapturePlanDepthContract`, `runtimePackageAndManifestUseResolvedOutputAsExecutionToken`, `outputProfileSelectionIntentResolvesReleaseDefaultProfile`, `outputProfileSelectionIntentResolvesExplicitProfileID`, output-profile selection presentation redaction tests, `outputProfileSelectionIntentRejectsEmptyProfileIDWithoutFallback`, `outputProfileSelectionIntentRejectsMissingProfile`, `outputProfileSelectionIntentFailsClosedForInvalidCatalog`, and `photoSettingsFactoryUsesReleaseOutputProfileDefaults` in [TAPCaptureOutputProfileTests.swift](TAPCaptureOutputProfileTests.swift) |
-| Pre-capture configuration snapshot, preview crop handoff, and Runtime fact preservation | crop update, selection-context crop update, Runtime execution-fact preservation, fixed zoom ID, custom raw release zoom, and source-guard tests in [TAPPreCaptureConfigurationBuilderTests.swift](TAPPreCaptureConfigurationBuilderTests.swift) |
-| Manifest payload/proof separation | `proofChangesDoNotAffectPayloadBytes` in [TAPCaptureManifestEncodingTests.swift](TAPCaptureManifestEncodingTests.swift) |
-| Capture content binding and proof-slot stability | `captureContentBindingCanonicalJSONIsStable`, `captureContentBindingDoesNotUsePlatformDecodedPixelsOrConvertedDepth`, fixed HEIC/JPG proof-slot exclusion tests, non-zero padding rejection, and duplicate proof-slot rejection in [TAPCaptureContentDigestTests.swift](TAPCaptureContentDigestTests.swift). The JS reference verifier mirrors the proof-slot parser checks in [../Tools/ContentBindingVerifier/tap-content-binding.test.mjs](../Tools/ContentBindingVerifier/tap-content-binding.test.mjs). |
-| App Attest capture assertion shape | `appAttestCaptureAssertionSignerBuildsProofValue` and `appAttestCaptureAssertionSignerStopsWhenPrepareIfNeededFails` in [TAPCaptureAssertionSignerTests.swift](TAPCaptureAssertionSignerTests.swift) |
-| Legacy App Attest capture-signature panel/service privacy | `signatureVerificationContextUsesPublicBackendSummary`, `signatureVerificationSuccessReportKeepsRawVerificationMaterialOutOfVisibleText`, `signatureVerificationFailureReportUsesGenericVisibleErrorText`, and `signatureVerificationPanelDoesNotRenderRawVerificationSections` in [TAPAppAttestSignatureVerificationTests.swift](TAPAppAttestSignatureVerificationTests.swift). The legacy panel has no export entry; current still/Live Photo `.tapnap` packaging, sidecar privacy, and exact resource-byte preservation are covered by [TAPNAPShareArtifactBuilderTests.swift](TAPNAPShareArtifactBuilderTests.swift). |
-| Pending-signing provenance writer guardrails | `unsignedCaptureManifestKeepsProofsEmptyWhenSignerIsMissing`, `unsignedCaptureManifestUsesFixedReasonWhenProofCannotBeCreated`, and `pendingSigningRejectsManifestIDMismatchBeforeSignerCall` in [TAPCaptureProvenanceWriterSigningTests.swift](TAPCaptureProvenanceWriterSigningTests.swift) |
-| Final Photos preflight gate | `signedExportValidatorRejectsWrongContainerBeforePhotosSave`, `validatedTAPDepthPhotoRejectsRawContainerBeforePhotosWriterCanBeCalled`, `signedExportValidatorCoversReleaseResourcePlanBeforePhotosSave`, `signedExportValidatorRejectsMissingProofAfterContainerCheck`, `signedExportValidatorRejectsInvalidProofEnvelopeAfterContainerCheck`, `signedExportValidatorRejectsMultipleManifestProofsBeforePhotosSave`, `signedExportValidatorRejectsManifestMismatchAfterContainerCheck`, `signedExportValidatorRejectsReleaseOutputPolicyDriftBeforePhotosSave`, and `signedExportValidatorRejectsMissingAuxiliaryDepthAfterContainerCheck` in [TAPSignedExportValidatorTests.swift](TAPSignedExportValidatorTests.swift) |
-| TAP Video streaming container, KLV, bounded depth codec, validator stages, manifest vectors, and diagnostic recommendation | [TAPVideoStreamingTests.swift](TAPVideoStreamingTests.swift), [TAPVideoManifestTests.swift](TAPVideoManifestTests.swift) |
-| TAP Video runtime-generated fixtures and playback/depth policies | [TAPVideoPlaybackFixtureHarnessTests.swift](TAPVideoPlaybackFixtureHarnessTests.swift), [TAPVideoDepthPlaybackPolicyTests.swift](TAPVideoDepthPlaybackPolicyTests.swift) |
-| TAP Video whole-file memory and legacy-artifact bans | [TAPVideoReleaseSourceGuardTests.swift](TAPVideoReleaseSourceGuardTests.swift). These source scans are retained only for architecture/security bans that are not practical runtime assertions. |
-| Physical-device exported artifact audit | `exportedPhysicalDeviceCaptureArtifactsReadBackFromPhotos` in [TAPDeviceCaptureArtifactAuditTests.swift](TAPDeviceCaptureArtifactAuditTests.swift) runs only on physical devices with exported TAP records. It reads Photos original resources, validates container, manifest policy, depth, image dimensions, proof count, capture score fields, and writes a sanitized `TAPDeviceCaptureArtifactAudit.json` report in app tmp. |
-| Physical-device JPG capture/export/readback audit | `jpgPhysicalDeviceCaptureExportsAndReadsBackFromPhotos` in [TAPDeviceCaptureArtifactAuditTests.swift](TAPDeviceCaptureArtifactAuditTests.swift) runs only on physical devices. It sets the output preference to JPG for the test, configures the real camera through `CameraViewModel`, captures into an injected pending store, signs with an App-Attest-shaped test proof, exports through the live Photos writer, reads original JPG bytes back from Photos, validates the same artifact and capture-score contract, and writes `TAPDeviceCaptureJPEGAudit.json` in app tmp. |
-| CameraCapture chrome, lifecycle, Resource Initialization, preview-stage, first-stage preferences, direct adjustment controls, and Debug presentation state | `cameraInitialReadinessGateBlocksFirstInstallUntilCameraIsInteractive`, `resourceInitializationRequiresCameraInteractionAndUsableCatalog`, `captureLifecycleCoordinatorKeepsPendingSigningWarmupAndRetryPoliciesExplicit`, shutter feedback preference checks, route foreground preference checks, guide/EV/LiDAR-focus/depth-hint/keep-awake preference checks, EV launch reset and clamp checks, temporary focus EV clamp checks, mode-strip availability checks, flash/Live Photo default policy and chrome checks, adjustment-control state checks, preview focus-point crop mapping checks, idle-timer policy checks, `cameraCaptureControlsStateLocksLibraryWhileCaptureWrites`, `cameraCaptureControlsStateDoesNotNameSensitiveInputs`, `cameraPreviewStageStateDoesNotNameCaptureSecurityOrOutputInputs`, `cameraViewfinderChromeStateDoesNotNameCaptureSecurityOrOutputInputs`, `cameraFocalLengthDisplayOptionDoesNotNameHardwarePlanningInputs`, and Debug overlay display-state reflection tests in [TAPCameraCapturePresentationTests.swift](TAPCameraCapturePresentationTests.swift). |
-| Camera status presentation and capture metrics failure text | `cameraCaptureStatusPresentationOmitsRawIdentifiersAndPaths`, `cameraCaptureStatusPresentationRedactsAssociatedReasons`, `cameraCaptureStatusPresentationRedactsNSErrorDescriptionURLAndPath`, `cameraCaptureStatusPresentationKeepsGenericRecoverableMessages`, and `capturePipelineMetricsUsePublicSafeFailureReason` in [TAPCameraStatusPresentationTests.swift](TAPCameraStatusPresentationTests.swift). |
-| Durable TAP Library route context, top-start picker boundary, clicked-item return bookmarks, cached picker loading, item merge rules, album error presentation, and thumbnail cache-key privacy | `cameraRouteStoreDefaultsToCamera`, `cameraRouteStoreReturnsToCameraWithoutDroppingAlbumAnchor`, `cameraRouteStorePersistsAlbumAnchorsAcrossInstances`, `cameraRouteStoreClearsUnavailablePersistedAlbumAnchors`, `cameraRouteStoreMigratesPersistedPendingAnchorToOwnedPhotoAnchor`, `cameraRouteContextPersistsTokensWithoutRawAlbumIdentifiers`, `cameraRouteContextPersistsOnlyHexTokenValues`, item merge/provider tests, `depthAlbumPickerReturnScrollBookmarkRestoresClickedItemViewportPosition`, `depthAlbumPickerReturnScrollBookmarkMatchesPendingItemAfterOwnedExport`, `depthAlbumPickerLoadIfNeededReusesCachedSnapshot`, `depthAlbumPickerLoadIfNeededCachesEmptySnapshot`, `depthAlbumPickerPresentationLoadRefreshesCachedEmptySnapshot`, `depthAlbumPickerLoadIfNeededCachesFailedSnapshotAttempt`, `depthAlbumPickerShowsPhotosErrorOnlyWhenNoItemsSurvive`, `depthAlbumPickerUsesFixedErrorWhenStoreLoadFails`, and Photos, owned-export, plus pending thumbnail cache-key privacy tests in [TAPLibraryRouteTests.swift](TAPLibraryRouteTests.swift) |
-| Shared PhotoKit request lifecycle, observer activation boundary, cold/empty/large-catalog publication, decoded thumbnail reuse, Data/file resource sinks, image/Live Photo result adapters, iCloud probes, and write-failure cleanup | inert/idempotent observer activation and stop cancellation, successful empty usable catalog, cancellation-before/after-install, error-after-cancel, concurrent terminal/install race, equivalent 900-item snapshot no-publish, off-MainActor catalog merge, decoded image reuse, shared resource bridge, degraded image/Live Photo, cloud-only probe, and file write-failure tests in [LibraryMediaTests.swift](LibraryMediaTests.swift) |
-| Manual camera control pure capability and intent model | Capability naming, no-op versus explicit auto, supported request acceptance, unsupported/out-of-range rejection, non-finite rejection, and depth-safe zoom rejection in [TAPCameraManualControlIntentTests.swift](TAPCameraManualControlIntentTests.swift) |
-| Manual camera control public-safe status presentation | No-op/ready/blocked copy, fixed control-group labels, blocked value redaction, hostile device-string redaction, reader-description separation, depth-unsafe zoom status, and Runtime error status copy in [TAPCameraManualControlPresentationTests.swift](TAPCameraManualControlPresentationTests.swift) |
-| Manual camera control field-row summary | No-change versus explicit-auto rows, executable requested rows, blocked row mapping, raw identifier redaction, zoom-only summary, and stored-field privacy checks in [TAPCameraManualControlSummaryTests.swift](TAPCameraManualControlSummaryTests.swift) |
-| Manual camera control Runtime command plan | No-op plans, ordered executable commands, blocked-plan no-command behavior, string/debug redaction, and no session/writer/input-model storage in [TAPCameraManualControlCommandPlanTests.swift](TAPCameraManualControlCommandPlanTests.swift) |
-| TAPCam exposure-priority and metering state | A/A, ISO priority, shutter priority, manual Meter, EV recalc of only the automatic side, pending meter samples, stale generation discard, configuration reset, and equivalent-exposure formula sign coverage in [TAPCameraExposureControlStateTests.swift](TAPCameraExposureControlStateTests.swift) |
-| Manual camera control architecture guards | Command-plan source dependency checks, CameraCapture UI source guard, and Runtime guard-before-lock source order in [TAPCameraManualControlBoundaryGuardTests.swift](TAPCameraManualControlBoundaryGuardTests.swift) |
-| Manual camera control Runtime write service | Matching-plan validation, blocked-plan rejection, stale-camera rejection, stale-control-surface rejection, public error copy, exposure-bias clamping, zoom clamping, and registered session-queue marking in [TAPCameraControlServiceTests.swift](TAPCameraControlServiceTests.swift) |
-| TAP Library record model, path policy, bundle storage, candidate selection, exporting-only recovery policy, exported-location minimization, and store-level failure-reason migration | `pendingCaptureRecordNamesIdentityLocationAndVisibilityWithoutStore`, `pendingCaptureStorePersistsLedgerAcrossInstances`, `pendingCaptureStoreWritesArtifactsThroughLocalStoragePolicy`, `pendingCaptureStoreRejectsUnsafeCaptureIDsBeforeBundlePathUse`, `pendingCaptureStoreRejectsHiddenAndUnicodeCaptureIDs`, `pendingCaptureStoreRejectsTamperedBundleFilenames`, `pendingCaptureBundlePathPolicyKeepsArtifactFilenameAllowListExact`, `pendingCaptureBundlePathPolicyAllowsOnlyCurrentArtifactFilenames`, `pendingCaptureStoreRejectsMismatchedBundleRecordCaptureID`, `pendingCaptureStoreSkipsThumbnailWhenSourceCannotDecode`, `pendingCaptureStoreTracksSigningExportAndCleanup`, `pendingCaptureStoreNormalizesFailureReasonAtWriteSink`, `pendingCaptureStoreClearsFailureReasonForNonFailureStatuses`, `pendingCaptureStoreNormalizesLegacyFailureReasonOnRead`, `pendingCaptureStoreMigratesLegacyBundleJSONFailureReason`, `pendingCaptureStoreMigrationSkipsInvalidBundlesAndNormalizesOthers`, `pendingCaptureStoreAllRecordsNormalizesLegacyFailureReasons`, `pendingCaptureStorePrioritizesSignedExportBeforeFreshSigningAndRetryBacklog`, `pendingCaptureStoreReturnsNextProcessingCandidateWithExclusions`, and thumbnail/exported-index checks in [TAPLibraryStorageTests.swift](TAPLibraryStorageTests.swift) |
-| TAP Library worker readiness, processor routing, retry classification, export-scan boundaries, and persisted failure-reason presentation | `pendingCaptureWorkerReadinessRequiresProtectedData`, `pendingCaptureProcessorStopsWhenProtectedDataIsUnavailable`, `pendingCaptureProcessorLeavesSignedRecordUntouchedWhenProtectedDataIsUnavailable`, `pendingCaptureProcessorDoesNotReconcileLegacyFailureReasonsWhenProtectedDataUnavailable`, `pendingCaptureProcessorSignsAndExportsInCandidatePriorityOrder`, `photoLibraryPendingCaptureExporterSkipsExistingAssetLookupForSignedFirstExport`, `photoLibraryPendingCaptureExporterUsesExistingAssetLookupOnlyForExportingRecovery`, `pendingCaptureProcessorClassifiesNetworkExportFailureAsWaitingNetwork`, `pendingCaptureRetryClassifierMapsTypedNetworkErrorsToWaitingNetwork`, `pendingCaptureRetryClassifierReadsUnderlyingNSErrorCodes`, `pendingCaptureRetryClassifierReadsMultipleUnderlyingNSErrorCodes`, `pendingCaptureRetryClassifierDoesNotClassifyByLocalizedDescription`, `pendingCaptureFailureReasonPresentationOmitsRawIdentifiersAndPaths`, `pendingCaptureProcessorPersistsPublicSafeNetworkFailureReason`, and `pendingCaptureProcessorPersistsPublicSafeRetryFailureReason` in [TAPLibraryProcessingTests.swift](TAPLibraryProcessingTests.swift) |
-| DepthAnalysis input validation, reader metadata/input rejection, source loading, load-error presentation, No Depth scoring copy, and load-state ViewModel bridge | `depthAnalysisInputValidationRejectsUnsafeDepthMapShapes`, `depthAnalysisInputValidationRejectsOversizedBudgetsBeforeAllocation`, `depthAnalysisReaderRejectsUnsupportedInputBeforeAnalysisDecode`, `imageOrientationReaderAcceptsImageIONumericMetadataTypes`, Photos/pending loader routing tests, pending temporary-unavailable mapping, reader refresh separation, fixed reader/Photos loader presentation tests, `depthAnalysisViewModelMarksMissingDepthAsNoDepth`, and `depthAnalysisViewModelLoadsInputAndClearsPreviousAnalysisState` in [TAPDepthAnalysisInputTests.swift](TAPDepthAnalysisInputTests.swift) |
-| DepthAnalysis rectangular region selection, Planes seed-selection state, and ViewModel selection bridge | `depthAnalysisRegionSelectionStateBeginsAndPreviewsWithoutDerivedProducts`, `depthAnalysisRegionSelectionStateFinishesWithStatsHeatmapAndPlaneEstimate`, `depthAnalysisRegionSelectionStateClearRemovesSelectionAndDerivedProducts`, `depthAnalysisRegionSelectionStateClampsOutOfBoundsSelection`, `depthAnalysisRegionSelectionStateMapsInvalidRegionHeatmapToGenericMessage`, `depthAnalysisPlaneSelectionStateClampsSeedAndStrictness`, `depthAnalysisPlaneSelectionStateStartSuccessFailureAndClearTransitions`, `depthAnalysisViewModelBuildsRegionProductsOnlyAfterExplicitSelection`, and `depthAnalysisViewModelClearSelectionRemovesDerivedRegionProducts` in [TAPDepthAnalysisSelectionTests.swift](TAPDepthAnalysisSelectionTests.swift) |
-| DepthAnalysis camera-space geometry, Planes estimator/growth, detector cache behavior, and async request freshness | `projectorUsesCalibrationToProduceCameraCoordinates`, `cameraIntrinsicsRejectNonFiniteAndZeroCalibration`, seed validation and growth tests, `planeEstimatorFindsSyntheticFlatDepthRegion`, `planeDetectorFindsAndFiltersHighConfidenceFlatRegions`, `depthAnalysisPlaneRegionDetectorBuildsGeometryAndDetectsRegion`, `depthAnalysisPlaneRegionDetectorReusesMatchingGeometryCache`, `depthAnalysisPlaneRegionRequestCoordinatorKeepsGeometryCacheAcrossRegionCancel`, and `depthAnalysisPlaneRegionRequestCoordinatorPublishesOnlyNewestRegionRequest` in [TAPDepthAnalysisPlaneRegionTests.swift](TAPDepthAnalysisPlaneRegionTests.swift) |
-| DepthAnalysis, album, Planes, inspector public-safe error presentation, and stats-presentation privacy guard | `depthAnalysisErrorPresentationKeepsAnalysisLoadCopyFixedAndPublicSafe`, `depthAnalysisErrorPresentationKeepsAlbumCopyFixedAndPublicSafe`, `depthAnalysisErrorPresentationKeepsPlaneSelectionCopyFixedAndPublicSafe`, `depthAnalysisInspectorErrorMessageKeepsRegionHeatmapCopyPublicSafe`, `depthAnalysisInspectorErrorMessageKeepsPlaneSelectionCopyPublicSafe`, `depthAnalysisInspectorViewsDoNotAcceptRawErrorStringSinks`, and `depthRegionStatsPresentationDoesNotAcceptSensitiveInputs` in [DepthAnalysisErrorPresentationTests.swift](DepthAnalysisErrorPresentationTests.swift) |
-| DepthAnalysis metadata HUD, scoring summary, view-mode, panel route, region-stats, help, interaction, and authorization presentation/privacy | `captureMetadataSummaryRequiresPayload`, `captureMetadataSummaryPublishesExpectedPublicText`, `captureMetadataSummaryOmitsIdentifiersAndLocation`, `captureMetadataSummaryFallsBackForSensitiveManifestDisplayFields`, `captureMetadataSummaryFallsBackForDepthSourceDeviceName`, `depthAnalysisScoreSummaryScoresHighQualityCalibratedDepth`, `depthAnalysisScoreSummaryUsesConservativeScoreWithoutManifestOrCalibration`, `depthAnalysisScoreSummaryNoDepthIsFixedAndPublicSafe`, `depthAnalysisScoreSummaryOmitsManifestIdentifiersAndLocation`, `analysisViewModesAllPublishUserFacingExplanations`, `analysisViewModesPublishInspectorRoutes`, `analysisDepthAndMaskViewModeButtonsAreDebugOnly`, `analysisInteractionStateSeparatesDrawingFromRegionInspection`, `analysisPanelDestinationSelectsInspectorsOnly`, `depthRegionStatsPresentationFormatsValidRegionStats`, `depthRegionStatsPresentationUsesFixedNoDepthCopy`, `depthRegionStatsPresentationRoundsValidSamplePercentage`, `analysisViewModesAndInspectorsExposeLabelsAndIcons`, and `analyzerAuthorizationStatusTextIsPassiveAndDeterministic` in [TAPDepthAnalysisPresentationTests.swift](TAPDepthAnalysisPresentationTests.swift). Signature-verification service/panel privacy has its own focused suite in [TAPAppAttestSignatureVerificationTests.swift](TAPAppAttestSignatureVerificationTests.swift). |
-| DepthAnalysis orientation, renderer products, pure adaptive panel layout metrics, and remaining broad depth-analysis model coverage | Orientation mapping, heatmap/mask rendering, adaptive panel metrics, and broad mixed capture/depth checks in [TAPCamDemoTests.swift](TAPCamDemoTests.swift). These are model and Simulator checks, not debug metadata HUD layout, rendered adaptive panel height layout, inspector body layout automation, real-device Photos UI regression, limited-access/deletion, App Attest/backend acceptance, or positive real HEIC/Photos acceptance evidence. |
-| Capture planning, manifest, and HEIC packaging | The remaining broad capture tests in [TAPCamDemoTests.swift](TAPCamDemoTests.swift). |
+To build and run in one command, replace `test-without-building` with `test`.
+Use additional `-only-testing:TAPCamDemoTests/<SuiteName>` arguments for a
+focused suite; verify the executed count because an invalid Swift Testing
+filter can succeed while executing zero tests.
 
-## Physical Device Artifact Audit
-
-Run the focused artifact audit only when the iPhone is unlocked, trusted, and
-kept awake. The command intentionally skips the UI test target so this audit
-does not build and sign the unrelated XCTest runner:
+Run UI automation explicitly and report it separately from the unit target:
 
 ```sh
 xcodebuild test \
   -project TAPCamDemo.xcodeproj \
   -scheme TAPCamDemo \
-  -destination 'id=<DEVICE_ID>' \
-  -only-testing:TAPCamDemoTests/TAPDeviceCaptureArtifactAuditTests \
-  -skip-testing:TAPCamDemoUITests \
-  -derivedDataPath /private/tmp/TAPCamDemoJPEGAuditDeviceTest \
-  -resultBundlePath /private/tmp/TAPCamDemoJPEGAuditDeviceTest.xcresult
+  -configuration Debug \
+  -destination 'id=<BOOTED_IPHONE_SIMULATOR_UDID>' \
+  -only-testing:TAPCamDemoUITests
 ```
 
-After a passing run, copy `tmp/TAPDeviceCaptureJPEGAudit.json` from the app data
-container and review the sanitized byte count, image dimensions, depth
-dimensions, container, and proof count.
+The TAP Video production-structure gate is also separate:
 
-## Capture Output Profile Focused Tests
-
-When reading the future format and quality boundary tests, start with
-[TAPCaptureOutputProfileTests.swift](TAPCaptureOutputProfileTests.swift). This
-file is the deterministic Simulator suite for the current Release HEIC/JPG
-depth profiles, app-level quality policy, fail-closed profile selection, and the
-AVFoundation photo-settings handoff.
-
-- `releaseOutputProfilesNameHEICAndJPGDepthPolicy` proves Release HEIC and JPG
-  are explicit profiles, each with required embedded depth.
-- `capturePhotoQualityPolicyNamesAppLevelQualityBeforeAVFoundation` proves
-  quality is named as app policy before it becomes AVFoundation settings, and
-  that the current policy makes no file-size or compression-ratio guarantee.
-- `releaseOutputProfileCatalogNamesHEICDefaultAndJPGOption` proves HEIC remains
-  the default while JPG is an executable option.
-- `releaseOutputProfileRequiresHEVCAndDoesNotFallbackToJPEG` proves JPEG-only
-  codec availability is rejected for HEIC instead of used as fallback.
-- `releaseJPGProfileRequiresJPEGAndDoesNotFallbackToHEVC` proves HEVC-only
-  codec availability is rejected for JPG instead of used as fallback.
-- `largestStandardDimensionsPolicySkipsDeferredOnly24MP` proves this release
-  selects the largest standard still-photo size instead of 24 MP deferred-only
-  candidates.
-- `outputProfileRejectsDepthAndQualityContractDrift` proves future profile
-  combinations cannot silently weaken depth or quality requirements.
-- `outputProfileSelectionIntent*` tests prove future UI requests must resolve
-  through a fail-closed selection boundary.
-- `outputProfileSelectionPresentation*` tests prove future visible format or
-  quality status text does not reuse developer-facing profile ids, paths, URLs,
-  proofs, or key labels from invalid profile requests or catalogs.
-- `resolvedOutputValidatesCapturePlanDepthContract` proves the resolved Runtime
-  request rejects capture plans that drift away from required depth delivery.
-- `runtimePackageAndManifestUseResolvedOutputAsExecutionToken` proves provider,
-  package, packager, and manifest paths consume `ResolvedCaptureOutputProfile`
-  instead of reinterpreting raw profile fields after configuration.
-- `outputResourcePlanNamesCurrentSignedPhotoResources` and
-  `outputResourcePlanStaysPurePolicyModel` prove the current Release resource
-  set is named without carrying bytes, paths, URLs, Photos identifiers, key IDs,
-  capture IDs, manifests, or AVFoundation objects.
-- `currentPhotosExportSurfaceUsesSingleValidatedPhotoResource` proves the
-  current Photos writer still exports exactly one validated `.photo`
-  resource and has not grown an unreviewed paired-video or alternate-photo path.
-- `photoSettingsFactoryUsesReleaseOutputProfileDefaults` proves the resolved
-  profile feeds depth, codec, quality, and max dimensions into
-  `AVCapturePhotoSettings`.
-
-These are policy and Runtime-request checks. They do not prove real-device
-codec availability, visual quality, output file size, Photos acceptance, or
-positive real-depth HEIC/JPG fixtures.
-
-## Capture Provenance Focused Tests
-
-When reading the capture proof and export gate tests, read these files in
-order. They form the deterministic Simulator suite for content digest
-stability, App Attest capture assertion shape, pending-signing guardrails, and
-the final signed TAP depth photo validation that runs before Photos export.
-
-- [TAPCaptureManifestEncodingTests.swift](TAPCaptureManifestEncodingTests.swift)
-  proves manifest proofs do not alter the canonical payload bytes that are
-  signed.
-- [TAPCaptureContentDigestTests.swift](TAPCaptureContentDigestTests.swift)
-  proves the digest JSON is stable and decodable.
-- [TAPCaptureAssertionSignerTests.swift](TAPCaptureAssertionSignerTests.swift)
-  proves the App Attest signer builds the expected proof value and client-data
-  hash, and that signer setup failure stops before device assertion generation.
-- [TAPCaptureProvenanceWriterSigningTests.swift](TAPCaptureProvenanceWriterSigningTests.swift)
-  proves unsigned fallback stays public-safe and pending signing checks queue
-  identity before invoking the signer.
-- [TAPSignedExportValidatorTests.swift](TAPSignedExportValidatorTests.swift)
-  binds the current required resource plan and `CaptureOutputManifestPolicy` to
-  the final export gate, then proves that raw JPEG data, missing, invalid, or
-  multiple proof records, manifest ID mismatch, Release output policy drift, and
-  missing auxiliary depth are rejected before Photos save.
-
-These are model and container checks. They do not prove real-device App Attest
-hardware acceptance, backend verification, Photos UI behavior, or a positive
-real-depth HEIC fixture.
-
-## TAP Library Focused Tests
-
-When reading the TAP Library queue tests, start with
-[TAPLibraryStorageTests.swift](TAPLibraryStorageTests.swift) for durable
-record, path, storage, migration, and candidate-selection behavior. Then read
-the worker, processor, retry-classifier, and processor failure-reason tests in
-[TAPLibraryProcessingTests.swift](TAPLibraryProcessingTests.swift).
-
-- `pendingCaptureRecordNamesIdentityLocationAndVisibilityWithoutStore` proves
-  the queue record model can be read without opening the store actor.
-- `pendingCaptureStoreRejectsUnsafeCaptureIDsBeforeBundlePathUse` and
-  `pendingCaptureStoreRejectsTamperedBundleFilenames` prove pending bundle paths
-  are generated from validated capture IDs and fixed artifact filenames.
-- `pendingCaptureBundlePathPolicyKeepsArtifactFilenameAllowListExact` is a
-  source guard for the current `unsigned.heic`, `signed.heic`, and
-  `thumbnail.jpg` allow-list; future multi-resource output must update this
-  policy and its tests deliberately.
-- `pendingCaptureBundlePathPolicyAllowsOnlyCurrentArtifactFilenames` proves the
-  path policy allows only the current three artifact names and rejects
-  path-safe but unauthorized future resource names.
-- `pendingCaptureStoreRejectsHiddenAndUnicodeCaptureIDs` proves capture IDs
-  cannot create hidden bundle directories or platform-dependent Unicode path
-  names.
-- `pendingCaptureStoreRejectsMismatchedBundleRecordCaptureID` proves
-  `bundle.json` identity must match the bundle directory being read.
-- `pendingCaptureStoreSkipsThumbnailWhenSourceCannotDecode` proves thumbnail
-  generation is optional and does not make ingest fail.
-- `pendingCaptureStoreTracksSigningExportAndCleanup` proves precise location is
-  available before Photos export and removed from the persisted exported record
-  afterward.
-- `pendingCaptureStorePrioritizesSignedExportBeforeFreshSigningAndRetryBacklog`
-  proves already signed exports are not starved behind newer unsigned captures
-  or retry backlog.
-- `pendingCaptureWorkerReadinessRequiresProtectedData` proves protected-data
-  readiness is a pure policy value.
-- `pendingCaptureProcessorStopsWhenProtectedDataIsUnavailable` and
-  `pendingCaptureProcessorLeavesSignedRecordUntouchedWhenProtectedDataIsUnavailable`
-  prove the worker returns before private artifact reads, signing, export,
-  retry updates, or failure-reason mutation.
-- `pendingCaptureProcessorDoesNotReconcileLegacyFailureReasonsWhenProtectedDataUnavailable`
-  proves the worker also returns before legacy failure-reason reconciliation
-  while protected data is unavailable.
-- `pendingCaptureProcessorSignsAndExportsInCandidatePriorityOrder` proves
-  signed/exporting, pending/signing, and retry backlog ordering stays explicit.
-- `photoLibraryPendingCaptureExporterSkipsExistingAssetLookupForSignedFirstExport`
-  proves normal signed first export does not scan the full Photos library for an
-  existing asset.
-- `photoLibraryPendingCaptureExporterUsesExistingAssetLookupOnlyForExportingRecovery`
-  proves existing-asset lookup is reserved for interrupted `.exporting`
-  recovery.
-- `pendingCaptureProcessorClassifiesNetworkExportFailureAsWaitingNetwork`
-  proves network export errors still map to `waitingNetwork`.
-- `pendingCaptureRetryClassifierMapsTypedNetworkErrorsToWaitingNetwork`,
-  `pendingCaptureRetryClassifierReadsUnderlyingNSErrorCodes`,
-  `pendingCaptureRetryClassifierReadsMultipleUnderlyingNSErrorCodes`, and
-  `pendingCaptureRetryClassifierDoesNotClassifyByLocalizedDescription` prove
-  retry classification is a named typed-error policy, not raw localized text
-  matching.
-- `pendingCaptureFailureReasonPresentationOmitsRawIdentifiersAndPaths` proves
-  persisted failure-reason text is fixed low-cardinality copy.
-- `pendingCaptureStoreNormalizesFailureReasonAtWriteSink` proves the durable
-  store writes fixed text rather than caller-supplied strings.
-- `pendingCaptureStoreClearsFailureReasonForNonFailureStatuses` proves
-  non-failure states cannot keep stale failure copy.
-- `pendingCaptureStoreNormalizesLegacyFailureReasonOnRead` proves raw legacy
-  strings do not escape through `readRecord`.
-- `pendingCaptureStoreMigratesLegacyBundleJSONFailureReason` proves the
-  explicit migration rewrites old `bundle.json` failure copy.
-- `pendingCaptureStoreMigrationSkipsInvalidBundlesAndNormalizesOthers` proves a
-  corrupt or tampered bundle does not stop migration of other readable legacy
-  records.
-- `pendingCaptureStoreAllRecordsNormalizesLegacyFailureReasons` proves
-  collection reads also return normalized legacy records.
-- `pendingCaptureProcessorPersistsPublicSafeNetworkFailureReason` and
-  `pendingCaptureProcessorPersistsPublicSafeRetryFailureReason` prove new
-  pending records do not persist raw URLs, paths, capture/manifest IDs, App
-  Attest key IDs, proofs, or associated error reasons into `bundle.json`.
-
-The legacy migration tests cover the explicit store migration method and prove
-that an invalid bundle does not stop migration of other readable records. They
-do not prove every old on-disk bundle has already been opened or reconciled on a
-user device, and they do not prove real-device file-protection attributes, App
-Attest, or Photos export.
-
-## CameraCapture UI Focused Tests
-
-When reading the CameraCapture UI tests, use these entry points before scanning
-the whole file:
-
-Start with
-[TAPCameraCapturePresentationTests.swift](TAPCameraCapturePresentationTests.swift)
-for CameraCapture chrome, lifecycle, preview-stage, and Debug display-state
-boundaries.
-
-- `captureLifecycleCoordinatorKeepsPendingSigningWarmupAndRetryPoliciesExplicit`
-  proves scene, route, App Attest pending-signing credential warmup, and
-  pending-queue retry policy from pure inputs.
-  `CameraViewLifecycleModifier` is a thin SwiftUI hook adapter around that
-  policy; these tests do not prove real SwiftUI lifecycle delivery.
-- `cameraRouteStorePersistsAlbumAnchorsAcrossInstances`,
-  `cameraRouteStoreClearsUnavailablePersistedAlbumAnchors`,
-  `cameraRouteStoreMigratesPersistedPendingAnchorToOwnedPhotoAnchor`, and
-  `cameraRouteContextPersistsTokensWithoutRawAlbumIdentifiers` in
-  [TAPLibraryRouteTests.swift](TAPLibraryRouteTests.swift) prove the camera to
-  TAP Library route context stores protected HMAC tokens instead of raw Photos
-  or pending identifiers.
-- `cameraRouteContextPersistsOnlyHexTokenValues` proves the durable route
-  context stores fixed-length token values, not raw item/capture/asset IDs.
-- `shutterHapticsPreferenceDefaultsToEnabled` and
-  `shutterSoundPreferenceDefaultsToEnabled` prove the default shutter feedback
-  preferences remain explicit.
-- `cameraCaptureControlsStateLocksLibraryWhileCaptureWrites` proves the bottom
-  camera chrome disables the TAP Library entry while a foreground write is still
-  finishing.
-- `cameraCaptureControlsStateDoesNotNameSensitiveInputs` proves the controls
-  presentation state does not expose raw-id, HEIC, proof, manifest, key, store,
-  or data-shaped inputs.
-- `cameraAdjustmentControlStatePublishesCapabilityGatedRanges`,
-  `cameraAdjustmentControlStateDisablesUnsupportedRows`, and
-  `cameraAdjustmentControlStateDoesNotNameCaptureSecurityOrOutputInputs` prove
-  the first-stage lower toolbar controls publish display ranges, disable
-  unsupported rows, and keep raw devices/security/output fields out of UI state.
-- `cameraPreviewStageStateDoesNotNameCaptureSecurityOrOutputInputs` proves the
-  preview stage state does not name App Attest, pending/export, Photos, HEIC,
-  manifest, proof, key, pipeline, route, or output-profile inputs.
-- `cameraPreviewFocusPointMapsThroughVisibleCrop` proves tap focus maps local
-  preview points through the visible crop metadata and clamps invalid unit
-  coordinates before the Runtime sees them.
-- `cameraFocalLengthDisplayOptionDoesNotNameHardwarePlanningInputs` proves the
-  Release FOV chips use display-only state rather than camera/depth profiles,
-  raw device/source objects, zoom plans, or format objects.
-- `cameraPreviewDebugStateDoesNotNameCaptureSecurityOrOutputInputs` proves the
-  DEBUG overlay state does not name App Attest, capture/export, Photos, HEIC,
-  manifest, proof, key, store, pipeline, route, session, controller, capability,
-  plan, profile, format, or device-shaped fields.
-- `cameraDebugDepthDisplayOptionDoesNotNameHardwarePlanningInputs` and
-  `cameraDebugZoomDisplayOptionDoesNotNameHardwarePlanningInputs` prove the
-  Debug overlay uses display-only rows rather than raw devices, camera profiles,
-  format selections, capture plans, or output/security objects.
-
-For camera status text, start with
-[TAPCameraStatusPresentationTests.swift](TAPCameraStatusPresentationTests.swift).
-It is the focused suite for public-safe camera status copy and capture metrics
-failure reasons.
-
-- `cameraCaptureStatusPresentationOmitsRawIdentifiersAndPaths`,
-  `cameraCaptureStatusPresentationRedactsAssociatedReasons`, and
-  `cameraCaptureStatusPresentationRedactsNSErrorDescriptionURLAndPath` prove
-  camera status and Debug failure text do not expose capture IDs, manifest IDs,
-  Photos IDs, URLs, paths, App Attest key IDs, proofs, or raw associated error
-  reasons.
-- `cameraCaptureStatusPresentationKeepsGenericRecoverableMessages` proves fixed
-  recoverable messages such as camera access, backpressure, and unsupported
-  zoom remain readable.
-- `capturePipelineMetricsUsePublicSafeFailureReason` proves
-  `CapturePipeline` records `CaptureJobMetrics.failureReason` through the same
-  public-safe presentation boundary consumed by `PerformancePanelView`.
-- Debug zoom display tests prove the visible FOV/debug labels still use the
-  expected wide-baseline and raw zoom values.
-
-These tests prove state, routing, preferences, and presentation contracts. They
-do not prove SwiftUI layout, real touch gestures, haptic or shutter sound
-behavior, physical camera capture, preview crop framing, Photos UI behavior, App
-Attest backend acceptance, or real-device depth capture. The preview-stage tests
-prove only state boundaries and compilation; they do not prove preview crop
-framing, physical camera framing, or Debug overlay layout. The Debug overlay
-tests prove field boundaries only; they do not prove overlay placement,
-animation, slider behavior, or hardware Debug source correctness. The camera
-status presentation tests prove visible text redaction; OSLog privacy tests are
-source-level harnesses for critical log call sites, not real unified-log capture
-tests. They do not prove real-device error coverage or migration of older TAP
-Library records that may already contain raw failure reasons.
-
-## DepthAnalysis Focused Tests
-
-When reading the DepthAnalysis tests, use these entry points before scanning the
-broad mixed suite:
-
-- [TAPDepthAnalysisInputTests.swift](TAPDepthAnalysisInputTests.swift) proves
-  the local analysis reader and loader safety boundary: photo byte and depth
-  pixel budgets, sample-count shape rejection, unsupported input rejection before
-  analysis decode, numeric ImageIO orientation metadata, Photos versus pending
-  source routing, pending unavailable refresh behavior, fixed user-visible
-  reader/Photos loader errors, No Depth score copy, and
-  `DepthAnalysisViewModel.load(source:)` cleanup of previous analysis state.
-  This is local reader safety, not the
-  final Photos export or App Attest trust gate.
-- [TAPDepthAnalysisSelectionTests.swift](TAPDepthAnalysisSelectionTests.swift)
-  proves rectangular region-selection state, Planes seed-selection state, and
-  the ViewModel bridge that finishes or clears those local selections. It uses
-  local depth-analysis fixtures only; it does not prove real gestures, rendered
-  SwiftUI layout, Photos limited access, App Attest/backend acceptance, or real
-  HEIC acceptance.
-- [TAPDepthAnalysisPlaneRegionTests.swift](TAPDepthAnalysisPlaneRegionTests.swift)
-  proves already-loaded `TAPMetricDepthMap` geometry, camera intrinsics
-  guardrails, seed-plane growth, `DepthAnalysisPlaneRegionDetector` cache
-  build/reuse, and `DepthAnalysisPlaneRegionRequestCoordinator`
-  cache/freshness behavior. It does not prove Photos or pending-source loading,
-  App Attest proof creation, backend verification, final Photos export, real
-  gestures, rendered SwiftUI layout, or positive real HEIC acceptance.
-- [DepthAnalysisErrorPresentationTests.swift](DepthAnalysisErrorPresentationTests.swift)
-  proves public-safe album and analysis load-error copy is fixed and does not
-  include raw localized errors, URLs, paths, asset IDs, or capture IDs.
-- [TAPDepthAnalysisPresentationTests.swift](TAPDepthAnalysisPresentationTests.swift)
-  proves the metadata HUD summary, local 0-100 analysis score summary,
-  view-mode labels/routes, panel destinations, region-stats text, help
-  defaults, interaction flags, and authorization status text stay deterministic
-  and public-safe. It is the presentation/privacy
-  companion to the error-copy suite, not a rendered SwiftUI layout test.
-- `depthAnalysisInputLoaderReadsPhotosSourceThenDecodesInput` proves the
-  Photos source uses the injected original-data path before decoding.
-- `depthAnalysisInputLoaderReadsPendingSourceThenDecodesInput` proves the
-  pending source uses the injected pending HEIC path before decoding.
-- `depthAnalysisInputLoaderMapsPendingFailureToGenericUnavailableError` proves
-  pending storage failures refresh TAP Library and do not expose raw capture
-  identifiers in the user-facing error.
-- `depthAnalysisInputLoaderLeavesReaderFailureGenericAndDoesNotRefreshLibrary`
-  proves malformed reader errors are not misclassified as pending refresh
-  failures and do not expose raw reader error text in visible copy.
-- `depthAnalysisViewModelUsesFixedGenericPresentationForPhotosLoaderErrors`
-  proves raw Photos loader errors do not reach visible analysis copy.
-- `depthAnalysisInputValidationRejectsUnsafeDepthMapShapes` proves mismatched
-  `width` / `height` / `samples.count` values fail closed before direct sample
-  access, region stats, geometry sampling, plane detection, or geometry-cache
-  allocation can use them.
-- `depthAnalysisInputValidationRejectsOversizedBudgetsBeforeAllocation` proves
-  photo byte count, depth pixel count, and overflow-prone dimensions are rejected
-  by the shared input validation policy without constructing oversized data.
-- `depthAnalysisReaderRejectsUnsupportedInputBeforeAnalysisDecode` proves the
-  analysis reader rejects unsupported photo bytes before local RGB/depth
-  analysis.
-- `cameraIntrinsicsRejectNonFiniteAndZeroCalibration` proves zero, NaN, and
-  infinite calibration inputs do not create camera intrinsics, projected points,
-  or Plane regions.
-- `seedPlaneGrowthRejectsNonFiniteSeedBeforePixelConversion` proves Plane
-  growth rejects non-finite taps before converting them to integer pixels.
-- `depthAnalysisRegionSelectionStateBeginsAndPreviewsWithoutDerivedProducts`
-  proves active drag state does not publish stale stats, heatmaps, or local
-  plane estimates.
-- `depthAnalysisRegionSelectionStateFinishesWithStatsHeatmapAndPlaneEstimate`
-  proves a completed rectangular selection creates stats, a local heatmap, and
-  a local rectangular plane estimate from an already-loaded depth map.
-- `depthAnalysisRegionSelectionStateClearRemovesSelectionAndDerivedProducts`
-  proves clearing removes the rectangular selection and all synchronous derived
-  products.
-- `depthAnalysisRegionSelectionStateClampsOutOfBoundsSelection` proves selection
-  bounds are clamped to the loaded depth map.
-- `depthAnalysisRegionSelectionStateMapsInvalidRegionHeatmapToGenericMessage`
-  proves invalid-only regions use the generic local heatmap failure message.
-- `depthAnalysisPlaneSelectionStateClampsSeedAndStrictness` proves Planes seed
-  taps and strictness values are clamped inside the loaded depth-map and
-  detector policy bounds before async work starts.
-- `depthAnalysisPlaneSelectionStateStartSuccessFailureAndClearTransitions`
-  proves Planes loading, selected-region, fixed public-safe failure text, and
-  clear transitions are local state, separate from the ViewModel's async task
-  owner, without surfacing raw detector error text.
-- `depthAnalysisInspectorErrorMessageKeepsRegionHeatmapCopyPublicSafe`,
-  `depthAnalysisInspectorErrorMessageKeepsPlaneSelectionCopyPublicSafe`, and
-  `depthAnalysisInspectorViewsDoNotAcceptRawErrorStringSinks` prove the
-  concrete Region and Plane Filter inspectors receive typed public-safe error
-  messages instead of raw `String?` sinks.
-- `depthAnalysisPlaneRegionRequestCoordinatorKeepsGeometryCacheAcrossRegionCancel`
-  proves the async request coordinator keeps image-local geometry reusable after
-  region request cancellation, without making ViewModel own the cache.
-- `depthAnalysisPlaneRegionRequestCoordinatorPublishesOnlyNewestRegionRequest`
-  proves rapid Planes requests publish only the newest region result, even when
-  an older detached task finishes later.
-- `depthAnalysisPlaneRegionDetectorBuildsGeometryAndDetectsRegion` proves the
-  detector can build camera-space geometry and return a grown plane region from
-  a synthetic depth map.
-- `depthAnalysisPlaneRegionDetectorReusesMatchingGeometryCache` proves the
-  detector reuses a matching prewarmed geometry cache instead of rebuilding it.
-- `depthAnalysisViewModelLoadsInputAndClearsPreviousAnalysisState` stays in the
-  input suite because its subject is `load(source:)` cleanup. The selection
-  suite owns `depthAnalysisViewModelBuildsRegionProductsOnlyAfterExplicitSelection`
-  and `depthAnalysisViewModelClearSelectionRemovesDerivedRegionProducts`, which
-  prove the ViewModel still routes and clears region-selection and
-  plane-selection state correctly.
-- `depthAnalysisViewModelUsesInputLoaderUnavailablePresentation` and
-  `depthAnalysisViewModelUsesFixedGenericPresentationForReaderErrors` prove the
-  ViewModel keeps pending-unavailable and reader-failure presentations distinct.
-- `analysisViewModesAndInspectorsExposeLabelsAndIcons` proves each analysis mode
-  and inspector still exposes the expected route labels/icons after inspector
-  body files are split.
-- `analysisViewModesPublishInspectorRoutes` proves each view mode publishes the
-  inspector route list consumed by `DepthAnalysisControlsView`, instead of
-  keeping the mode-to-inspector map inline in the screen body.
-- `captureMetadataSummaryRequiresPayload` proves the stage/HUD metadata summary
-  is absent when no manifest payload is loaded.
-- `captureMetadataSummaryPublishesExpectedPublicText` proves the normal sample
-  payload produces the intended public title, detail, and accessibility text.
-- `captureMetadataSummaryOmitsIdentifiersAndLocation` proves the stage/HUD
-  metadata summary does not expose capture IDs, timestamps, or GPS values in
-  visible strings.
-- `captureMetadataSummaryFallsBackForSensitiveManifestDisplayFields` and
-  `captureMetadataSummaryFallsBackForDepthSourceDeviceName` prove free-form
-  manifest display strings that look like paths, URLs, proofs, App Attest key
-  IDs, capture IDs, asset IDs, manifest IDs, or token values are replaced with
-  fixed public labels. These are privacy contract tests, not HUD layout tests.
-- `analysisViewModesAllPublishUserFacingExplanations` and
-  `analysisDepthAndMaskViewModeButtonsAreDebugOnly` prove the extracted
-  view-mode model still publishes explanations and keeps Depth/Mask buttons
-  debug-only.
-- `analysisPanelDestinationSelectsInspectorsOnly` proves panel destination
-  state still routes only inspector panels.
-- `depthRegionStatsPresentationFormatsValidRegionStats`,
-  `depthRegionStatsPresentationUsesFixedNoDepthCopy`, and
-  `depthRegionStatsPresentationRoundsValidSamplePercentage` prove Measurements
-  and Region inspectors share the same visible median/range/sample formatting,
-  fixed no-valid-depth fallback, and valid-sample rounding rule.
-- `analysisPanelLayoutMetricsUsesOnePointViewportBeforeMeasurement`,
-  `analysisPanelLayoutMetricsFitsShortMeasuredContentWithoutScrolling`,
-  `analysisPanelLayoutMetricsCapsOverflowingContentAndEnablesScrolling`, and
-  `analysisPanelLayoutMetricsKeepsMinimumContentHeightForSmallPanels` prove the
-  adaptive panel's pure height policy for unmeasured, fitting, overflowing, and
-  small-panel cases. They do not render SwiftUI or prove screenshot layout.
-
-These tests prove code boundaries and state transitions. They do not prove real
-Photos limited-access behavior, deletion while backgrounded, App Attest backend
-acceptance, UI restoration, debug metadata HUD layout, rendered adaptive panel
-height layout, inspector body layout, or real HEIC/Photos acceptance on a
-physical device.
-
-Startup and lifecycle tests use pure policy inputs. They prove the first-launch
-gate still requires backend security preflight, camera, and photo library while
-leaving location and microphone optional. Backend preflight policy tests prove
-retry, delay, deadline, and timeout decisions without sleeping on wall-clock
-time or calling a live backend. `CameraViewLifecycleModifier` compiles as the SwiftUI adapter for
-those policies, but the default tests do not boot a real camera, simulate iOS
-protected-data locking, validate real-device background/foreground timing,
-prove SwiftUI lifecycle hook delivery, or prove backend/App Attest acceptance.
-
-[TAPCaptureOutputProfileTests.swift](TAPCaptureOutputProfileTests.swift)
-contains the output profile unit contract checks. They prove the Release
-profile catalog has one executable default, selection intent fails closed
-instead of falling back on empty/missing/invalid profile requests, the Release
-profile requests HEVC-only HEIC with required embedded depth, the app-level
-quality policy maps to AVFoundation `.quality` and the manifest string
-`quality`, resolves into one Runtime request, and rejects invalid future
-combinations. They do not prove real-device codec availability, actual visual
-quality, file size, positive Apple auxiliary-depth fixture behavior, Photos
-export acceptance, or App Attest backend acceptance.
-
-Final export validation tests prove that wrong or raw containers, missing
-proofs, invalid proof envelopes, manifest mismatches, Release output policy
-drift, and missing auxiliary depth cannot reach the Photos writer through the
-current signed TAP depth photo gate. The Release drift check is split between a
-small manifest policy unit test and writer integration tests that still re-read
-the final signed bytes. Unsigned shutter-time manifest tests prove fallback
-signature status uses fixed public text instead of raw proof-creation errors.
-They do not prove external App Attest assertion verification by a backend.
-
-For manual-control coverage, start with
-[TAPCameraManualControlIntentTests.swift](TAPCameraManualControlIntentTests.swift),
-then read the presentation, summary, command-plan, boundary-guard, and Runtime
-service suites. These focused suites cover future EV, ISO, shutter, focus,
-white-balance, aperture, and zoom boundaries plus the first-stage Pro
-ISO/shutter/lens-position UI state.
-
-Manual-control intent tests prove pure value parsing and capability gating only.
-Presentation tests prove future UI/status copy can use fixed control groups
-without leaking raw device identifiers, reader descriptions, or requested raw
-values. Summary tests prove future field rows can distinguish no change,
-requested, blocked, and blocked requested control states without storing raw
-device identifiers, requested values, ranges, or writer handles. Command-plan
-tests prove only executable resolutions become ordered Runtime-executable commands,
-blocked resolutions produce no commands, target device ids plus control-surface
-signatures stay available for stale Runtime guards, and string/debug output
-stays redacted. Boundary-guard tests prove Planning, UI, and Runtime source
-boundaries do not drift. Runtime service tests prove blocked plans, stale camera
-ids, stale control surfaces, and queue misuse are rejected before device locking.
-They do not prove real-device EV, ISO, shutter, focus, white-balance, aperture,
-or zoom writes, rendered SwiftUI layout, persistence, Photos export behavior,
-or App Attest proof semantics.
-
-Worker readiness tests inject protected-data availability. They prove the unit
-policy and processor early exit do not mutate queue state or call signer/exporter,
-and that locked-state early exit happens before legacy failure-reason
-reconciliation. Processor tests use injected signer/exporter fakes; they do not
-simulate a real locked device, iOS protected-data notifications, Photos export
-acceptance, or App Attest hardware/backend acceptance.
-
-Diagnostic logging tests prove the shared public error formatter omits raw
-localized descriptions, failing URLs, and network paths while keeping scalar
-diagnostics. The OSLog privacy harness source-scans critical log files so
-`captureID`, `assetID`, `manifestID`, `credentialName`, `keyID`, and invalid
-bundle names stay `.private`, every interpolation declares privacy, reviewed
-scalar labels stay `.public`, and `error=` logs go through
-`TAPDiagnostics.describe(error)`. It does not read unified-log output from a
-device.
-
-## Queue Test Flow
-
-```mermaid
-sequenceDiagram
-    participant Test
-    participant Store as TAPPendingCaptureStore
-    participant Processor as TAPPendingCaptureProcessor
-    participant Signer as Fake signer
-    participant Exporter as Fake exporter
-
-    Test->>Store: ingest sample artifacts
-    Test->>Processor: processPendingCaptures(fake dependencies)
-    Processor->>Processor: check worker readiness
-    Processor->>Store: nextProcessingCandidate()
-    Processor->>Signer: sign(record)
-    Signer->>Store: storeSignedHEIC()
-    Processor->>Exporter: export(record)
-    Exporter->>Store: markExported()
-    Test->>Store: assert statuses and order
-```
-
-## Automation Commands
-
-Run the production structure gate before the compile/test commands:
-
-```bash
+```sh
 Scripts/lint-tap-video-refactor.sh
 ```
 
-This is a scoped TAP Video production-structure gate, not a repository-wide style
-pass. `.swiftlint-tap-video.yml` checks only the production allowlist for
-function bodies over 80 lines or cyclomatic complexity over 10; unit/UI tests,
-Debug fixtures, benchmarks, and resolved remote package sources remain outside its scope.
+It checks only the production allowlist configured by
+`.swiftlint-tap-video.yml`; it is not a repository-wide style pass and does not
+cover tests, UI tests, Debug fixtures, benchmarks, or resolved packages.
 
-Use `build-for-testing` as the default compile gate:
+## Fixture and golden-vector ownership
 
-```bash
-xcodebuild build-for-testing -project TAPCamDemo.xcodeproj -scheme TAPCamDemo -destination 'platform=iOS Simulator,OS=26.5,name=iPhone 17'
-```
+- [`TAPCamDemoTestFixtures.swift`](TAPCamDemoTestFixtures.swift) owns reusable,
+  deterministic test payloads, manifests, pending records and artifacts,
+  manual-control capability snapshots, temporary directories, thumbnails, and
+  `bundle.json` helpers. Keep a fixture beside one suite when no other suite
+  uses it.
+- [`TAPCaptureProvenanceTestFixtures.swift`](TAPCaptureProvenanceTestFixtures.swift)
+  owns capture-signing and export-validation fixtures; it deliberately does not
+  turn synthetic data into positive real-device depth evidence.
+- [`TAPCaptureAssertionTestDoubles.swift`](TAPCaptureAssertionTestDoubles.swift)
+  owns test doubles for the capture assertion boundary. These doubles do not
+  prove App Attest hardware or backend acceptance.
+- [`TAPVideoManifestV2GoldenVectors.json`](../Docs/Fixtures/TAPVideoManifestV2GoldenVectors.json)
+  is the interoperability vector owned by
+  [`TAPVideoFormatContract.md`](../Docs/TAPVideoFormatContract.md). Do not
+  regenerate it to fit an incompatible writer; a change requires a version and
+  compatibility review.
+- TAP Video playback fixtures are generated at runtime by
+  [`TAPVideoPlaybackFixtureHarnessTests.swift`](TAPVideoPlaybackFixtureHarnessTests.swift).
+  They must not create a second checked-in binary-fixture authority.
+- The JavaScript content-binding reference checks live in
+  [`Tools/ContentBindingVerifier`](../Tools/ContentBindingVerifier/). They are
+  cross-language parser evidence, not a replacement for Swift tests or real
+  exported-resource verification.
 
-To execute the tests, choose a simulator that is already booted and pass its
-UDID explicitly:
+Debug fixtures and oversized-suite organization belong to `TAP-0029`. Moving
+helpers, splitting files, or changing target boundaries is outside this
+README's responsibility.
 
-```bash
-xcrun simctl list devices booted
-xcodebuild test -project TAPCamDemo.xcodeproj -scheme TAPCamDemo -destination 'id=<BOOTED_SIMULATOR_UDID>' -only-testing:TAPCamDemoTests
-```
+## Stable responsibility map
 
-The focused unit gate used for the TAP Video branch refactor is:
+Use the source directory and suite names to find the exact current tests. This
+map records durable responsibilities rather than a file-by-file or
+function-by-function inventory.
 
-```bash
-xcodebuild test-without-building \
+| Responsibility | Required property |
+| --- | --- |
+| Startup and Resource Initialization | Structured Setup/permission/initialization facts route deterministically; only explicit actions own prompts and initial Network/App Attest work; Camera and Photos recovery does not replay Setup; readiness markers commit atomically only after camera-interactive and usable-catalog readiness. |
+| Capture output policy | Release HEIC/JPG profiles, depth requirements, quality policy, pre-capture configuration, and the resolved Runtime output request fail closed instead of silently falling back. |
+| Capture provenance and export | Manifest payload bytes, content binding, proof-slot exclusions, assertion input, resource plans, and final Photos preflight remain deterministic and fail closed. Synthetic signer data does not claim backend verification. |
+| TAP Video format | BMFF/KLV bounds, manifest schema, depth codec, streaming behavior, parser rejection, playback policy, and the contract-owned golden vector remain compatible and bounded. |
+| Pending Capture Queue | Bundle paths and filenames are constrained; records, migration, retry classification, protected-data readiness, signing/export order, cleanup, and public-safe failure reasons remain durable and deterministic. |
+| TAP Library and PhotoKit | Catalog identity/order publication, observer lifecycle, cancellation, stale-result rejection, thumbnail/resource loading, pending-to-owned handoff, and route restoration remain race-safe. |
+| Camera and manual controls | Camera presentation state, preferences, exposure/focus intent, capability resolution, Runtime command ordering, stale-camera guards, and public-safe status copy remain deterministic. |
+| Depth analysis | Input budgets, depth-map shape, geometry, selection, async freshness, scoring, presentation state, and public-safe error/statistics boundaries fail safely without treating synthetic inputs as real capture evidence. |
+| Share, Viewer, and localization | Share preparation state, Viewer paging/identity, cancellation, localization catalog coverage, hostile dynamic values, and public-safe visible copy follow the current product/prototype contracts. |
+| Security, privacy, and architecture static gates | Forbidden dependencies, whole-file reads, decoded-pixel binding, local backend Verify calls, unsafe paths, sensitive logging, and Release-only boundary drift remain prohibited when runtime observation is not the right enforcement seam. |
+| Persistence and compatibility | Explicit legacy migrations, public formats, cross-project contracts, and fail-closed readers remain covered even when the current Runtime no longer writes the legacy shape. |
+
+Source-inspection tests are architecture, security, privacy, or format gates;
+they are not UI-behavior evidence. Prefer observable state, event, output, or
+parser behavior for ordinary product logic, and keep a static gate only when it
+protects an explicit boundary that cannot be observed reliably at runtime.
+
+## Evidence boundaries
+
+- A Simulator unit pass proves only the exercised deterministic model,
+  integration, parser, or app-hosted boundary. It does not prove rendered
+  SwiftUI geometry, touch/gesture delivery, haptics, shutter sound, physical
+  camera behavior, depth quality, Photos UI behavior, App Attest hardware or
+  backend acceptance, iCloud timing, thermal behavior, or device performance.
+- UI automation contributes Simulator or attended-device interaction evidence
+  only for the executed path. It does not replace an approved Web-prototype
+  comparison or owner-attended physical-device acceptance.
+- Static source gates prove the named prohibition or dependency boundary. They
+  do not prove that a user flow works.
+- Runtime-generated and synthetic fixtures prove deterministic handling of
+  known shapes. Positive HEIC/JPG auxiliary-depth, physical camera, Photos
+  readback, and production credential claims require their separate device or
+  backend procedures.
+- A warm rerun is comparison evidence, not cold-path proof. First-install,
+  empty-cache, large-catalog, iCloud, and first-presentation work follows
+  [`ColdPathResponsiveness.md`](../Docs/ColdPathResponsiveness.md).
+- Report declared, executed, passed, failed, and skipped counts. A command that
+  executes zero tests, a skipped physical-device case, or a passing unrelated
+  suite is not evidence for the requested conclusion.
+- Physical-device acceptance remains governed by
+  [`Docs/Acceptance/README.md`](../Docs/Acceptance/README.md) and its Task-linked
+  procedure. Simulator automation never supplies the required human verdict.
+
+## Physical-device artifact audit
+
+Run the focused exported-artifact audit only under its approved, attended
+procedure with an unlocked, trusted iPhone. Skip the unrelated UI target:
+
+```sh
+xcodebuild test \
   -project TAPCamDemo.xcodeproj \
   -scheme TAPCamDemo \
-  -destination 'id=<BOOTED_SIMULATOR_UDID>' \
-  -only-testing:TAPCamDemoTests/TAPVideoStreamingTests \
-  -only-testing:TAPCamDemoTests/TAPVideoManifestTests \
-  -only-testing:TAPCamDemoTests/TAPVideoPlaybackFixtureHarnessTests \
-  -only-testing:TAPCamDemoTests/TAPVideoDepthPlaybackPolicyTests \
-  -only-testing:TAPCamDemoTests/LibraryMediaTests \
-  -only-testing:TAPCamDemoTests/TAPLibraryStorageTests \
-  -only-testing:TAPCamDemoTests/TAPLibraryProcessingTests \
-  -only-testing:TAPCamDemoTests/TAPDepthAnalysisPresentationTests \
-  -only-testing:TAPCamDemoTests/TAPDepthAnalysisSelectionTests \
-  -only-testing:TAPCamDemoTests/DepthAlbumRouteAdapterTests \
-  -only-testing:TAPCamDemoTests/TAPLibraryRouteTests \
-  -only-testing:TAPCamDemoTests/TAPVideoReleaseSourceGuardTests
+  -destination 'id=<DEVICE_UDID>' \
+  -only-testing:TAPCamDemoTests/TAPDeviceCaptureArtifactAuditTests \
+  -skip-testing:TAPCamDemoUITests \
+  -derivedDataPath /private/tmp/TAPCamDemoDeviceArtifactAudit \
+  -resultBundlePath /private/tmp/TAPCamDemoDeviceArtifactAudit.xcresult
 ```
 
-The corresponding attended TAP Video UI command is recorded separately so it
-cannot be mistaken for the default unit gate:
-
-```bash
-xcodebuild test-without-building \
-  -project TAPCamDemo.xcodeproj \
-  -scheme TAPCamDemo \
-  -destination 'id=<BOOTED_SIMULATOR_UDID>' \
-  -only-testing:TAPCamDemoUITests/TAPVideoPlaybackFixtureUITests
-```
-
-The focused UI suite was not rerun for the current refactor validation; its
-screenshot, interaction, and performance cases remain attended evidence.
-
-After `build-for-testing`, `test-without-building` can use the same
-`-destination 'id=<BOOTED_SIMULATOR_UDID>'` and
-`-only-testing:TAPCamDemoTests` arguments. Using a shutdown destination by name
-can make Xcode create a temporary clone and wait on CoreSimulator
-launch/migration before test functions run.
-
-## Test Surfaces
-
-The shared scheme still contains `TAPCamDemoUITests`, but the default automated
-unit gate selects only `TAPCamDemoTests`. UI tests, live App Attest backend
-acceptance, and real-device camera/App Attest validation remain attended paths.
+The suite may validate real exported resources and write sanitized audit JSON
+inside the app container. A passing XCTest result still needs the evidence and
+human confirmation required by the owning DeviceAcceptance Task.

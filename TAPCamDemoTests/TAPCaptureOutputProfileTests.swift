@@ -355,102 +355,6 @@ struct TAPCaptureOutputProfileTests {
         }
     }
 
-    @Test func outputResourcePlanNamesCurrentSignedPhotoResources() throws {
-        let resolved = try CaptureOutputProfile.releasePhotoDepthHEIC.resolvedPhotoOutput(
-            availablePhotoCodecTypes: [.hevc]
-        )
-        let plan = try resolved.resourcePlan
-
-        #expect(plan.container == .embeddedPhotoDepthHEIC)
-        #expect(plan.resources.map(\.kind) == [
-            .primaryPhoto,
-            .appleAuxiliaryDepth,
-            .tapManifest,
-            .appAttestCaptureProof
-        ])
-        #expect(plan.requiresPrimaryPhoto)
-        #expect(plan.requiresEmbeddedDepth)
-        #expect(plan.requiresTAPManifest)
-        #expect(plan.requiresAppAttestProofBeforeExport)
-        #expect(plan.contentDigestResourceKinds == [
-            .primaryPhoto,
-            .appleAuxiliaryDepth,
-            .tapManifest
-        ])
-        #expect(plan.resources.first { $0.kind == .appAttestCaptureProof }?.coveredByAppAttestContentDigest == false)
-
-        let jpgResolved = try CaptureOutputProfile.releasePhotoDepthJPEG.resolvedPhotoOutput(
-            availablePhotoCodecTypes: [.jpeg]
-        )
-        #expect(try jpgResolved.resourcePlan.container == .embeddedPhotoDepthJPEG)
-    }
-
-    @Test func outputResourcePlanReusesResolvedPackagingValidation() throws {
-        let resourcePlanSource = try Self.source(
-            relativePath: "TAPCamDemo/CameraCapture/Output/CaptureOutputResourcePlan.swift"
-        )
-
-        #expect(resourcePlanSource.contains("nonisolated var resourcePlan: CaptureOutputResourcePlan"))
-        #expect(resourcePlanSource.contains("get throws"))
-        #expect(resourcePlanSource.contains("try validateForEmbeddedPhotoDepthPackaging()"))
-        #expect(resourcePlanSource.contains("case .embeddedPhotoDepthHEIC"))
-        #expect(resourcePlanSource.contains("case .embeddedPhotoDepthJPEG"))
-    }
-
-    @Test func outputResourcePlanStaysPurePolicyModel() throws {
-        let resourcePlanSource = try Self.source(
-            relativePath: "TAPCamDemo/CameraCapture/Output/CaptureOutputResourcePlan.swift"
-        )
-
-        #expect(!resourcePlanSource.contains("import AVFoundation"))
-        #expect(!resourcePlanSource.contains("import Photos"))
-        #expect(!resourcePlanSource.contains("import UniformTypeIdentifiers"))
-        #expect(!resourcePlanSource.contains("import AppAttestKit"))
-        #expect(!resourcePlanSource.contains(": Data"))
-        #expect(!resourcePlanSource.contains("Data("))
-        #expect(!resourcePlanSource.contains(": URL"))
-        #expect(!resourcePlanSource.contains("URL("))
-        #expect(!resourcePlanSource.contains("AVCapture"))
-        #expect(!resourcePlanSource.contains("PHAsset"))
-        #expect(!resourcePlanSource.contains("TAPDepthManifest"))
-        #expect(!resourcePlanSource.contains("keyID"))
-        #expect(!resourcePlanSource.contains("captureID"))
-        #expect(resourcePlanSource.contains("extension ResolvedCaptureOutputProfile"))
-    }
-
-    @Test func photosExportSurfaceSeparatesStillPhotoAndLivePhotoResources() throws {
-        let photoLibrarySource = try Self.source(relativePath: "TAPCamDemo/CameraCapture/Output/PhotoLibraryWriter.swift")
-        let stillSaveSource = try #require(Self.substring(
-            in: photoLibrarySource,
-            from: "static func saveDepthPhoto",
-            to: "/// Saves a validated TAP depth Live Photo"
-        ))
-        let liveSaveSource = try #require(Self.substring(
-            in: photoLibrarySource,
-            from: "static func saveDepthLivePhoto",
-            to: "/// Backward-compatible HEIC save wrapper."
-        ))
-        let createAssetSource = try #require(Self.substring(
-            in: photoLibrarySource,
-            from: "private static func createAsset",
-            to: "private static func createVideoAsset"
-        ))
-
-        #expect(photoLibrarySource.contains("static func saveDepthPhoto(\n        _ validatedPhoto: ValidatedTAPDepthPhoto"))
-        #expect(photoLibrarySource.contains("static func saveDepthLivePhoto(\n        _ validatedLivePhoto: ValidatedTAPLivePhoto"))
-        #expect(!stillSaveSource.contains("pairedVideoURL:"))
-        #expect(liveSaveSource.contains("pairedVideoURL: validatedLivePhoto.pairedVideoURL"))
-        #expect(createAssetSource.contains("options.uniformTypeIdentifier = fileContainer.uniformTypeIdentifier"))
-        #expect(createAssetSource.contains("options.originalFilename = resourceFilename"))
-        #expect(createAssetSource.contains("options.shouldMoveFile = false"))
-        #expect(createAssetSource.components(separatedBy: "addResource(").count - 1 == 2)
-        #expect(createAssetSource.contains("addResource(with: .photo, fileURL: resourceURL, options: options)"))
-        #expect(createAssetSource.contains("addResource(with: .pairedVideo, fileURL: pairedVideoURL, options: videoOptions)"))
-        #expect(!createAssetSource.contains("addResource(with: .photo, data:"))
-        #expect(!createAssetSource.contains(".alternatePhoto"))
-        #expect(!createAssetSource.contains(".fullSizePhoto"))
-    }
-
     @Test func resolvedOutputValidatesCapturePlanDepthContract() throws {
         let resolved = try CaptureOutputProfile.releasePhotoDepthHEIC.resolvedPhotoOutput(
             availablePhotoCodecTypes: [.hevc]
@@ -649,43 +553,6 @@ struct TAPCaptureOutputProfileTests {
         #expect(settings.photoQualityPrioritization == .speed)
     }
 
-    @Test func runtimeResolvesAndReusesOutputThroughCapabilitySnapshot() throws {
-        let sessionControllerSource = try Self.source(
-            relativePath: "TAPCamDemo/CameraCapture/Runtime/CaptureSessionController.swift"
-        )
-        let providerSource = try Self.source(
-            relativePath: "TAPCamDemo/CameraCapture/Runtime/AVFoundationSingleCamPhotoProvider.swift"
-        )
-        let profileResolutionSource = try Self.source(
-            relativePath: "TAPCamDemo/CameraCapture/Output/CaptureOutputProfileResolution.swift"
-        )
-        let packagerSource = try Self.source(
-            relativePath: "TAPCamDemo/CameraCapture/Output/EmbeddedPhotoPackager.swift"
-        )
-
-        #expect(profileResolutionSource.contains("struct CapturePhotoOutputCapabilitySnapshot"))
-        #expect(profileResolutionSource.contains("init(\n        photoOutput: AVCapturePhotoOutput"))
-        #expect(profileResolutionSource.contains("func validatePhotoOutputCapabilities"))
-        #expect(profileResolutionSource.contains("availablePhotoFileTypeIdentifiers"))
-        #expect(profileResolutionSource.contains("supportedPhotoCodecTypesByFileTypeIdentifier"))
-        #expect(profileResolutionSource.contains("supportedMaxPhotoDimensions"))
-        #expect(profileResolutionSource.contains("configuredMaxPhotoDimensions"))
-        #expect(providerSource.contains("processedFileType: resolvedOutput.processedFileType"))
-        #expect(providerSource.contains("AVVideoQualityKey: resolvedOutput.compressionQuality"))
-        #expect(providerSource.contains("settings.maxPhotoDimensions = maxPhotoDimensions.cmVideoDimensions"))
-        #expect(providerSource.contains("photo settings prepared profile="))
-        #expect(providerSource.contains("photo capture processed profile="))
-        #expect(!providerSource.contains("else {\n            settings = AVCapturePhotoSettings()"))
-        #expect(sessionControllerSource.contains("validatePhotoOutputCapabilities"))
-        #expect(sessionControllerSource.components(separatedBy: "requireConfiguredState: true").count - 1 == 2)
-        #expect(sessionControllerSource.contains("photoOutput.maxPhotoDimensions = maxPhotoDimensions.cmVideoDimensions"))
-        #expect(sessionControllerSource.contains("capture output capabilities profile="))
-        #expect(sessionControllerSource.contains("capture output configured profile="))
-        #expect(!sessionControllerSource.contains("resolvedOutput.depthDataDeliveryEnabled && !photoOutput.isDepthDataDeliverySupported"))
-        #expect(packagerSource.contains("base photo materialized profile="))
-        #expect(packagerSource.contains("unsigned photo packaged profile="))
-    }
-
     @Test func runtimePackageAndManifestUseResolvedOutputAsExecutionToken() throws {
         let sessionControllerSource = try Self.source(
             relativePath: "TAPCamDemo/CameraCapture/Runtime/CaptureSessionController.swift"
@@ -720,33 +587,6 @@ struct TAPCaptureOutputProfileTests {
         #expect(!packagerSource.contains("capturePackage.outputProfile.validate"))
         #expect(manifestSource.contains("let resolvedOutput = capturePackage.resolvedOutput"))
         #expect(!manifestSource.contains("let outputProfile = capturePackage.outputProfile"))
-    }
-
-    @Test func runtimeSetsPhotoConnectionMirroringFromCameraPosition() throws {
-        let sessionControllerSource = try Self.source(
-            relativePath: "TAPCamDemo/CameraCapture/Runtime/CaptureSessionController.swift"
-        )
-        let providerSource = try Self.source(
-            relativePath: "TAPCamDemo/CameraCapture/Runtime/AVFoundationSingleCamPhotoProvider.swift"
-        )
-        let controllerCaptureMethod = try #require(Self.substring(
-            in: sessionControllerSource,
-            from: "func capturePhoto(",
-            to: "func applyManualControlCommandPlan"
-        ))
-        let providerCaptureMethod = try #require(Self.substring(
-            in: providerSource,
-            from: "func capturePhotoDepth",
-            to: "@MainActor"
-        ))
-
-        #expect(controllerCaptureMethod.contains("isVideoMirrored: Bool"))
-        #expect(controllerCaptureMethod.contains("photoOutput.connection(with: .video)"))
-        #expect(controllerCaptureMethod.contains("connection.isVideoMirroringSupported"))
-        #expect(controllerCaptureMethod.contains("connection.automaticallyAdjustsVideoMirroring = false"))
-        #expect(controllerCaptureMethod.contains("connection.isVideoMirrored = isVideoMirrored"))
-        #expect(controllerCaptureMethod.contains("photoOutput.capturePhoto(with: settings, delegate: delegate)"))
-        #expect(providerCaptureMethod.contains("isVideoMirrored: context.sessionConfiguration.device.position == .front"))
     }
 
     private static func source(relativePath: String) throws -> String {

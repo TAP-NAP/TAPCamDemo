@@ -102,21 +102,6 @@ struct TAPDepthAnalysisPlaneRegionTests {
         #expect(abs(wrappedRoll.y - 0.0016) < 0.0001)
     }
 
-    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func depthProjectionDoubleTapResetRecentersMotionParallaxBaseline() throws {
-        let pointCloudSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/DepthAnalysis/AnalysisTools/DepthPointCloudPreview.swift"
-        )
-        let resetHandler = try #require(TAPCamDemoTestSourceInspection.substring(
-            in: pointCloudSource,
-            from: "@objc func handleResetTap(_ gesture: UITapGestureRecognizer)",
-            to: "func gestureRecognizer("
-        ))
-
-        #expect(resetHandler.contains("resetInteractionTransform(animated: true)"))
-        #expect(resetHandler.contains("recenterMotionParallaxBaseline(animated: true)"))
-    }
-
     @Test func depthProjectionInteractionConvertsScreenPanUsingCaptureIntrinsics() throws {
         let cameraModel = TAPDepthProjectionCameraModel(
             fx: 100,

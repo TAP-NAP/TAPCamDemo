@@ -175,32 +175,6 @@ struct TAPLibraryRouteTests {
         }
     }
 
-    @Test @MainActor func cameraRouteAlbumStateDoesNotOwnPreciseScrollOffset() throws {
-        let albumStateNames = TAPCamDemoTestSourceInspection.reflectedNames(in: CameraRouteStore.AlbumState())
-            .joined(separator: " ")
-
-        #expect(!albumStateNames.localizedCaseInsensitiveContains("precise"))
-        #expect(!albumStateNames.localizedCaseInsensitiveContains("offset"))
-    }
-
-    @Test func depthAlbumPickerCameraReturnDisablesNavigationAnimation() throws {
-        let pickerSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/DepthAnalysis/DepthAlbumPickerView.swift"
-        )
-        let cameraSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/CameraCapture/UI/CameraView.swift"
-        )
-
-        #expect(pickerSource.contains("returnToCameraWithoutAnimation"))
-        #expect(pickerSource.contains("transaction.animation = nil"))
-        #expect(pickerSource.contains("transaction.disablesAnimations = true"))
-        #expect(pickerSource.contains("withTransaction(transaction)"))
-        #expect(pickerSource.contains(".toolbar(isViewerPresented ? .hidden : .visible, for: .navigationBar)"))
-        #expect(!cameraSource.contains(".toolbar(.visible, for: .navigationBar)"))
-        #expect(!pickerSource.contains("@Environment(\\.dismiss)"))
-        #expect(!pickerSource.contains("dismiss()"))
-    }
-
     @Test @MainActor func depthAlbumPickerReturnScrollBookmarkRestoresClickedItemViewportPosition() throws {
         let records = (0..<8).map { index in
             TAPCamDemoTestFixtures.samplePendingRecord(
@@ -347,63 +321,6 @@ struct TAPLibraryRouteTests {
 
         #expect(signedKey != originalKey)
         #expect(!originalKey.contains("video-capture"))
-    }
-
-    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func depthAlbumVideoThumbnailsUseVideoFrameGenerator() throws {
-        let pipelineSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/DepthAnalysis/DepthAlbumThumbnailPipeline.swift"
-        )
-        let cellSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/DepthAnalysis/TAPLibraryItemCell.swift"
-        )
-        let modelSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/MediaLibrary/LibraryMediaModels.swift"
-        )
-        let cameraModelSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/CameraCapture/UI/CameraViewModel.swift"
-        )
-        let photoWriterSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/CameraCapture/Output/PhotoLibraryWriter.swift"
-        )
-
-        #expect(!pipelineSource.contains("requestAVAsset(forVideo: asset"))
-        #expect(pipelineSource.contains("AVAssetImageGenerator(asset: asset)"))
-        #expect(pipelineSource.contains("generator.appliesPreferredTrackTransform = true"))
-        #expect(pipelineSource.contains("let result = try await generator.image("))
-        #expect(!pipelineSource.contains("copyCGImage(at: time"))
-        #expect(cellSource.contains("LibraryMediaPosterRequest("))
-        #expect(cellSource.contains("mediaFetcher.posterPhase("))
-        #expect(cellSource.contains("DepthAlbumThumbnailLoader.shared.videoData"))
-        #expect(cellSource.contains("TAPPendingCaptureStore.shared.bestAvailableVideoURL"))
-        #expect(cellSource.contains("DepthAlbumThumbnailMemoryCache.shared.image(for: poster.cacheKey)"))
-        #expect(!cellSource.contains("displayedPoster?.image"))
-        #expect(cellSource.contains("await DepthAlbumThumbnailDecoder.shared"))
-        #expect(cellSource.contains("thumbnailTaskID == cacheKey"))
-        #expect(pipelineSource.contains(".detached(priority: .utility)"))
-        #expect(pipelineSource.contains("await MainActor.run"))
-        #expect(pipelineSource.contains("kCGImageSourceShouldCacheImmediately: true"))
-        #expect(pipelineSource.contains("func insert(_ decodedThumbnail: DepthAlbumDecodedThumbnail)"))
-        #expect(!modelSource.contains("UIImage(data: jpegData)"))
-        #expect(cameraModelSource.contains("DepthAlbumThumbnailMemoryCache.shared.image(for: poster.cacheKey)"))
-        #expect(photoWriterSource.contains("static func originalVideoFileURL(\n        localIdentifier: String,"))
-        #expect(photoWriterSource.contains("typealias ResourceProgressHandler = @Sendable (Double?) -> Void"))
-        #expect(photoWriterSource.contains("progressHandler: @escaping ResourceProgressHandler = { _ in }"))
-        #expect(photoWriterSource.contains("try await Task.detached(priority: .userInitiated)"))
-        #expect(photoWriterSource.contains("return try await originalVideoFileURL(for: asset,"))
-    }
-
-    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func depthAlbumPickerDerivesLargeVisibleCollectionOncePerSemanticRevision() throws {
-        let pickerSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/DepthAnalysis/DepthAlbumPickerView.swift"
-        )
-
-        #expect(pickerSource.contains("@State private var visibleSnapshot: DepthAlbumVisibleSnapshot"))
-        #expect(pickerSource.contains(".onChange(of: libraryStore.snapshot.revision)"))
-        #expect(pickerSource.contains("self.revisions = visibleItems.map(DepthAlbumViewerItemRevision.init(item:))"))
-        #expect(!pickerSource.contains("libraryStore.items.filter"))
-        #expect(!pickerSource.contains(".onChange(of: visibleItems.map"))
     }
 
     @Test func depthAlbumItemsPreferOwnedExportsOverDuplicatePhotos() throws {

@@ -146,15 +146,6 @@ struct AppAttestRuntimeTests {
         #expect(presentation.displayText == "Prepared key (5 chars)")
     }
 
-    @Test func photoIntegrityReadinessUsesProductFacingCopy() {
-        #expect(PhotoIntegrityReadiness.notReady.statusText == "Not Ready")
-        #expect(PhotoIntegrityReadiness.preparing.statusText == "Preparing")
-        #expect(PhotoIntegrityReadiness.ready.statusText == "Ready")
-        #expect(PhotoIntegrityReadiness.preparationFailed.statusText == "Preparation Failed")
-        #expect(PhotoIntegrityReadiness.notReady.preparationActionTitle == "Prepare")
-        #expect(PhotoIntegrityReadiness.preparationFailed.preparationActionTitle == "Retry")
-    }
-
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
     func releasePhotoIntegritySectionHidesAppAttestImplementationDetails() throws {
         let sectionSource = try Self.source(

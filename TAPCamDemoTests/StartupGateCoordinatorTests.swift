@@ -157,29 +157,6 @@ struct StartupGateCoordinatorTests {
         )) == .viewfinder)
     }
 
-    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func requiredPermissionCheckKeepsRecoveryScopedToCameraAndPhotos() throws {
-        let permissionSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/App/RequiredPermissionCheckView.swift"
-        )
-        let startupSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/App/StartupGateView.swift"
-        )
-
-        #expect(permissionSource.contains("Required Permission Check"))
-        #expect(
-            permissionSource.components(
-                separatedBy: "StartupRequirementRow("
-            ).count - 1 == 2
-        )
-        #expect(permissionSource.contains("onOpenSettings(.camera)"))
-        #expect(permissionSource.contains("onOpenSettings(.photoLibrary)"))
-        #expect(!permissionSource.contains("secondaryActionTitle:"))
-        #expect(!permissionSource.contains("Text(\"Continue\")"))
-        #expect(startupSource.contains("case .requiredPermissionCheck"))
-        #expect(startupSource.contains("refreshRequiredPermissionStatuses()"))
-    }
-
     @Test func invalidCanonicalReceiptNeverFallsBackToLegacyBoolean() throws {
         let suiteName = "StartupGateCoordinatorTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))

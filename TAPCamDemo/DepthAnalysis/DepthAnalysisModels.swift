@@ -219,90 +219,10 @@ enum TAPPlaneGrowthError: LocalizedError, Equatable {
     }
 }
 
-enum AnalysisPanelDestination: Equatable {
-    case inspector(AnalysisInspector)
-    case signatureVerification
-
-    var selectedInspector: AnalysisInspector? {
-        switch self {
-        case .inspector(let inspector):
-            return inspector
-        case .signatureVerification:
-            return nil
-        }
-    }
-}
-
-enum AnalysisInspector: String, CaseIterable, Identifiable, Equatable {
-    case measurements
-    case legend
-    case overlay
-    case region
-    case planeFilter
-    case cloudInfo
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .measurements:
-            "Measurements"
-        case .legend:
-            "Legend"
-        case .overlay:
-            "Overlay"
-        case .region:
-            "Region"
-        case .planeFilter:
-            "Plane Filter"
-        case .cloudInfo:
-            "Cloud Info"
-        }
-    }
-
-    var systemImage: String {
-        switch self {
-        case .measurements:
-            "chart.bar.xaxis"
-        case .legend:
-            "paintpalette"
-        case .overlay:
-            "slider.horizontal.3"
-        case .region:
-            "viewfinder"
-        case .planeFilter:
-            "square.3.layers.3d"
-        case .cloudInfo:
-            "point.3.connected.trianglepath.dotted"
-        }
-    }
-
-    var detailedExplanation: String {
-        switch self {
-        case .measurements:
-            "Shows numeric depth measurements for the selected region, including median depth, range, valid samples, and any local plane estimate."
-        case .legend:
-            "Explains the current view's color mapping, such as near-to-far depth colors, valid-depth coverage, or point-cloud distance colors."
-        case .overlay:
-            "Controls the opacity of generated overlays on the main image, so you can compare the analysis layer against the RGB photo."
-        case .region:
-            "Shows measurements and previews for a completed rectangular selection. In Depth view, the selected crop is recolored using only local valid depth samples."
-        case .planeFilter:
-            "Controls seed-grown plane strictness and reports the selected plane region's cells, area, confidence, flatness, residual, and calibration diagnostics."
-        case .cloudInfo:
-            "Explains the local camera-coordinate point cloud preview and reports point counts and near-to-far color meaning."
-        }
-    }
-}
-
 nonisolated enum AnalysisInteractionState: Equatable {
     case idle
     case drawingSelection
     case regionSelected
-
-    var showsRegionInspector: Bool {
-        self == .regionSelected
-    }
 }
 
 enum TAPDepthAnalysisError: LocalizedError {

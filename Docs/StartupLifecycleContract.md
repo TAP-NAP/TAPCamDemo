@@ -20,39 +20,6 @@ the **required target window**. A Web prototype can make the route and state
 relationships reviewable, but it cannot prove native first-frame timing,
 AVFoundation readiness, PhotoKit behavior, or device performance.
 
-The prototype manifest preserves the `main@4cc02e5f12f2` source-audit
-`actual`/`target` fields as historical evidence. The complete prior catalog,
-including originally aligned and device-log-accepted records, remains
-recoverable at `fix0809@d4b19d9`; it is not copied into the active manifest as a
-second archive.
-
-The active candidate derives two distinct review states from each record's
-manifest-owned state and Task links:
-
-- **Implemented at the target position; regression pending.** The candidate is
-  no longer an actual-versus-target position mismatch. It renders once at its
-  target anchor/effect with a yellow background and red border, names the
-  candidate/target phase, and links the applicable follow-up Task. Lifecycle
-  order and workload-period assertions are owned by `TAP-0090`; attended
-  startup evidence remains in `TAP-0040`/`TAP-0041`; route-shell/first-frame
-  placement and 2 × 2 timing remain in `TAP-0083`; exact prototype/native visual
-  parity remains in `TAP-0048`. This presentation does not claim that any open
-  regression or parity Task has passed.
-- **Task-owned behavior not migrated.** Initial Network/App Attest remains
-  owned by `TAP-0010`; post-Setup App Attest and credential/network-dependent
-  Pending remain owned by `TAP-0015`. These records keep a red actual card, an
-  existing blue target, and one red dashed actual-to-target line. Active copy
-  names the owning Task directly rather than using session-relative
-  disposition language.
-
-This distinction does not turn the existing `/healthz` preflight into the
-target state or approve a Network behavior change. A Workload child may narrow
-a broader lifecycle parent: the implemented local part of
-`deferredWorkGuard` appears once at its target effect, while its not-migrated
-App Attest and Pending children remain red actual-to-blue-target differences.
-The manifest remains the single source for each record's review state and Task
-links; renderers must not derive child state from the parent truth ID. The
-complete candidate composition remains `ownerReviewRequired`.
 
 ## 1. Canonical Vocabulary
 
@@ -629,43 +596,13 @@ acceptance proof.
 The Web prototype uses deterministic simulated transitions only. Its displayed
 durations are labels for sequencing and never device-performance evidence.
 
-## 7. Current Mainline Gaps And Ownership
 
-At the refreshed source-audit baseline `main@4cc02e5f12f2`, the major known
-mismatches are:
+## 7. Current Native Boundaries
 
-| Gap | Delivery owner |
-| --- | --- |
-| Setup Network currently proves only `/healthz` reachability, not completion of the required first-install App Attest registration/verification; a denied state can also auto-retry after foreground refresh | `TAP-0008` after this contract/prototype gate |
-| Setup completion and Resource Initialization use one legacy Boolean rather than separate `S/I` facts | `TAP-0008` and `TAP-0009` |
-| No global Required Permission Check route exists | `TAP-0008` route implementation, consuming `TAP-0087` visual/state contract |
-| Setup collapses `.denied` and `.restricted`; Camera/Photos share one footer Settings action and optional denied rows have no row-owned recovery | `TAP-0008` |
-| A returning route can reach `CameraViewModel.start()` with Camera `.notDetermined`, which starts an implicit Camera request; Photos is not part of the root route | `TAP-0008` |
-| A retained true legacy Boolean sends changed-build update/replacement/offload and restore/migration cases directly to Camera without version/schema/install-device or local credential-binding validation | `TAP-0008` and `TAP-0009` |
-| `TAPCamDemoApp.init` constructs `LibraryMediaStore` and registers its PhotoKit observer on the pre-frame path | `TAP-0083` optimization after measurement |
-| Returning-user root construction creates `CameraViewModel`, performs synchronous camera capability discovery, and constructs capture-session ownership before the target route shell/first-frame boundary | `TAP-0083` optimization, coordinated with `TAP-0009` readiness |
-| Root `.task` awaits video-poster backfill before its first Library catalog refresh, so maintenance can delay the catalog path | `TAP-0083` or a scoped follow-up produced by its audit |
-| The preview-layer `isPreviewing` KVO callback exists, but current initial readiness does not consume it as a gate; it currently feeds only path-transition presentation | `TAP-0009` |
-| Resource Initialization does not gate on the first usable Library catalog snapshot or own a versioned marker | `TAP-0009` |
-| The current first-install overlay says **Preparing camera** and exposes Failed/Retry/Settings branches instead of the stable **Resource Initialization / Please wait…** invariant | `TAP-0009` |
-| Foreground active can start recent-cover and Pending Capture work before a root required-permission route | `TAP-0008`/`TAP-0083` integration |
-| Pending worker and notification-driven catalog refresh can repeat full-directory scans | Scoped follow-up after `TAP-0083` evidence |
-| RAW Viewer requests original/possibly iCloud-backed resources and eagerly begins full analysis input work alongside bounded display; this can contend with Viewer readiness and supplies later 2D/3D and existing Share inputs | Observation in `TAP-0087`; behavior changes belong to `TAP-0089` or another approved Viewer/resource Task |
-| 3D workload lacks public queued/building/installing/ready state | `TAP-0089` prototype contract, then a separately approved native delivery Task |
-
-`TAP-0087` defines and prototypes these relationships. It does not implement
-native setup/readiness, optimize every workload, or claim device performance.
-The current product remains iPhone-only.
-
-## 8. `fix0809` Native Candidate Delta
-
-The §7 table remains the immutable source-audit description of
-`main@4cc02e5f12f2`. As of 2026-08-15, the owner has accepted the bounded
-non-Network lifecycle path exercised from the `fix0809` native candidate on a
-physical device. The delta below records that candidate and its executed-path
-acceptance; it is not a rewrite of the target reducer, approval of the complete
-scenario matrix, or acceptance of the Task-owned Network/App Attest/Pending
-boundaries that were not migrated.
+The owner accepted the bounded non-Network lifecycle path exercised on a
+physical device. The table records current implementation boundaries; it does
+not approve the complete scenario matrix or the Task-owned Network/App Attest/
+Pending work that remains open.
 
 | Candidate area | Current `fix0809` behavior | Remaining boundary |
 | --- | --- | --- |
