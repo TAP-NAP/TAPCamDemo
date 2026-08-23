@@ -1,7 +1,7 @@
 # Packaging
 
 The shared
-[TAPArtifactContracts contract index](https://github.com/TAP-NAP/TAPArtifactContracts/blob/50d83e9b5916f0fa4621b24b5c5c5702c59ee7de/CONTRACTS.md)
+[TAPArtifactContracts contract index](https://github.com/TAP-NAP/TAPArtifactContracts/blob/ca3b223e0717242ce1016b34dc34f04ef2417936/CONTRACTS.md)
 owns the shared Still/Live artifact conventions. This document owns only
 TAPCamDemo's capture, pending-signing, Photos export, and local-integrity
 orchestration.
@@ -48,7 +48,7 @@ The Pending Capture Queue later:
 6. records the Photos asset identity before cleaning up large staged files.
 
 The complete producer order and Still/Live hash inputs are defined once in the
-[shared binding/proof contract](https://github.com/TAP-NAP/TAPArtifactContracts/blob/50d83e9b5916f0fa4621b24b5c5c5702c59ee7de/bindings/capture-binding-and-proof-v1.md).
+[shared binding/proof contract](https://github.com/TAP-NAP/TAPArtifactContracts/blob/ca3b223e0717242ce1016b34dc34f04ef2417936/bindings/capture-binding-and-proof-v1.md).
 `TAPCaptureProvenanceWriter.validateSignedExportPhoto` and
 `validateSignedExportLivePhoto` implement TAPCamDemo's final local guard. Queue
 status and filenames are scheduling hints, not trust claims.

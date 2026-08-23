@@ -54,7 +54,7 @@ time scheduler of its own.
 Future credential/assertion/export stage separation, `nextAttemptAt`, bounded
 retry windows, cooldown, and pause state are one
 technical optimization tracked only by
-[`TAP-0015`](../../Docs/ProjectBoard.md#tap-0015--implement-fine-grained-credential-retry-optimization).
+[`TAP-0015`](../../Docs/ProjectBoard.md#tap-0015--implement-post-setup-app-attestpending-guards-and-retry-optimization).
 Those unimplemented details are not part of this current module contract and
 must not be copied into another active design document.
 
@@ -236,7 +236,7 @@ without App Attest hardware, network, or Photos side effects.
   the export path may provide only the primary photo and must warn that Live
   Photo verification remains incomplete. Package layout and unsigned routing
   metadata live in the shared
-  [transport contract](https://github.com/TAP-NAP/TAPArtifactContracts/blob/50d83e9b5916f0fa4621b24b5c5c5702c59ee7de/transport/tapnap-v1.md).
+  [transport contract](https://github.com/TAP-NAP/TAPArtifactContracts/blob/ca3b223e0717242ce1016b34dc34f04ef2417936/transport/tapnap-v1.md).
 - Precise capture location is kept only while the record is pending, signing,
   or exporting so Photos can receive the location at save time. `markExported`
   clears the persisted queue copy after Photos has accepted the asset.

@@ -68,6 +68,15 @@ Queue description in the TAP Library README, and the stale queue-state summary
 in [PACKAGING.md](../TAPCamDemo/CameraCapture/Documentation/PACKAGING.md). They are recorded instead of expanded into a fourth
 iteration because the owner's stop rule is satisfied.
 
+At TAP-0092 closure, `M=8` meant that eight single-inbound CameraCapture
+micro-documents remained because their unique obligations had not yet been
+migrated. This is historical score evidence, not permission to delete those
+documents without a current obligation and reference audit.
+
+At TAP-0092 closure, `L=3` named Startup fallback, Pending persistence, and
+legacy Verifier-input compatibility. TAP-0093 later resolved all three through
+the disposable-development-data and current-`.tapnap`-only policy decisions.
+
 ## Iteration 1 — Owned-Capture Backend Verify
 
 Deleted the unmounted owned-capture backend Verify closure:
@@ -144,41 +153,10 @@ Verify/inspector/HUD sources and had zero exact literal reference in current
 Swift. Interpolated, App Intent, dynamic, and unrelated catalog keys were not
 part of that closure.
 
-Local Markdown target validation reports zero missing targets. Eight
-CameraCapture micro-documents remain because their unique current obligations
-must be migrated before deletion; this is represented by `M=8` above.
-
-## Version Decisions and Pre-release TODO
-
-TAP-0092 retained app version `0.2 (2)` and the then-current parallel schema
-matrix. The owner subsequently superseded that format decision in `TAP-0093`:
-the app version remains unchanged while every distinct current public/security
-family starts at its own v1, and old development artifacts are unsupported.
-
-Before the first public/open-source release:
-
-1. Deliberately freeze or update app marketing/build version `0.2 (2)` once.
-2. Freeze the public/security schema matrix, or perform one coordinated
-   TAPCamVerifier and fixture migration. Resolved by `TAP-0093`.
-3. Choose the developer-container reset/compatibility policy and an explicit
-   Pending Capture schema policy before deleting HEIC aliases, global
-   maintenance migrations, or startup compatibility fallbacks. Resolved by
-   `TAP-0093`: clear development data; do not migrate it.
-4. Consolidate prototype revision labels into one current approved revision
-   without changing visual behavior.
-
-These four marked families make `T=0`; marking a TODO is not permission to
-perform the migration in TAP-0092.
-
 ## Retained Follow-ups
 
 - Physical-device App Attest production acceptance remains TAP-0046.
 - Debug-support isolation and large-suite file organization remain TAP-0029.
-- TAP-0093 removed the startup fallback and Pending persistence migration
-  families after the owner chose a clear-container pre-release policy. The
-  owner subsequently removed the Verifier's old ZIP input, generic ZIP routing,
-  and missing/invalid-sidecar fallback in favor of current `.tapnap` plus its v1
-  sidecar.
 - The known Share stale-callback, OSLog reviewed-label, Simplified Chinese
   catalog, and unsigned-Simulator Keychain failures are recorded in the evidence
   ledger; none is caused by a deleted path.

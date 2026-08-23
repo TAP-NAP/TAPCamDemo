@@ -52,12 +52,11 @@ key, require the expected active credential and environment, and enforce App
 Attest sign-counter semantics. A valid assertion for one request must not be
 accepted for another request or a second use.
 
-TAPCam capture signing is an offline file-signing claim and deliberately does
-not use a server assertion challenge. Its canonical `signingBinding` binds the
-schema, operation, capture id, and content digest. Verification can establish
-that the registered active key signed that submitted binding; it does not by
-itself prove server-issued freshness, prevent every replay of the same valid
-artifact, or prove real-world scene authenticity.
+TAPCam capture signing is an offline file-signing claim and deliberately has no
+server assertion challenge. Verification can establish that the registered
+active key signed the submitted shared binding; it does not by itself prove
+server-issued freshness, prevent every replay of the same valid artifact, or
+prove real-world scene authenticity.
 
 ## Challenge Endpoint
 
@@ -131,33 +130,17 @@ binding.
 
 ## TAPCam Capture Signature Verification
 
-The shared `signingBinding`, proof-envelope, and artifact content-binding wire
-shapes are defined by the documentation-only
-[TAPArtifactContracts](https://github.com/TAP-NAP/TAPArtifactContracts)
-repository. This section owns the backend endpoint, trust, replay, and response
-semantics that consume those shapes.
-
-TAPCam capture signing is not sent automatically after capture. The proof is
-stored in the family-specific fixed slot defined by the shared photo/video
-container contracts so a later verifier can submit the signature materials to
-the server:
+The shared
+[backend App Attest gate](https://github.com/TAP-NAP/TAPArtifactContracts/blob/ca3b223e0717242ce1016b34dc34f04ef2417936/bindings/capture-binding-and-proof-v1.md#backend-app-attest-gate)
+owns the request fields, local-reconstruction precondition, `clientDataHash`,
+and cryptographic checks. This section owns endpoint deployment, credential
+trust, counter persistence, replay, HTTP response, and audit semantics.
 
 `POST /tapcam/capture-signatures/verify`
 
-Request:
-
-```json
-{
-  "keyId": "apple-key-id",
-  "assertionObject": "base64url-assertion-object",
-  "signingBinding": {
-    "bodySHA256": "base64url-sha256-content-digest",
-    "captureID": "capture-id",
-    "operation": "tapcam.capture.sign",
-    "schemaID": "urn:tapnap:tapcam:app-attest-capture-signing:v1"
-  }
-}
-```
+The request carries only the shared `keyId`, `assertionObject`, and complete
+`signingBinding`; it does not upload the original media, depth, manifest, or
+content digest.
 
 Valid response:
 
@@ -170,13 +153,5 @@ Valid response:
 ```
 
 Invalid semantic verification returns HTTP 200 with `status: "invalid"` and a
-machine-readable `reason`. This endpoint verifies that a registered active
-`keyId` signed the submitted `signingBinding`; it does not upload or re-hash
-the original media, depth, manifest, or `contentDigest`.
-
-The shared binding/proof contract owns the caller's required local
-reconstruction order, the exact `clientDataHash`, and the minimum cryptographic
-App Attest gate. This backend contract adds endpoint deployment, credential
-trust, counter persistence, replay, HTTP response, and audit semantics. A
-backend `valid` response never replaces the caller's already-passing local
-artifact-binding scope.
+machine-readable `reason`. A backend `valid` response never replaces the
+caller's already-passing local artifact-binding scope.

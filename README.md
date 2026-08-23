@@ -5,12 +5,9 @@ field-of-view choices such as `13mm`, `24mm`, `48mm`, and `77mm`; each choice is
 resolved into one Apple-compatible RGB source, depth source, and depth-safe raw
 `AVCaptureDevice.videoZoomFactor` before capture.
 
-Photo capture produces a standard HEIC or JPG with primary RGB, Apple auxiliary
-depth/disparity, and a TAP XMP manifest. TAP Video produces an MP4 with RGB,
-optional audio, bounded KLV depth metadata, and an appended TAP manifest.
-Capture first stages an unsigned artifact in the app-private Pending Capture Queue;
-a serial worker adds the App Attest proof, validates the final artifact, exports
-it to Photos, and verifies TAP Video readback.
+Photo and TAP Video capture each stage a reviewed shared-contract artifact in
+the app-private Pending Capture Queue. A serial worker signs and validates the
+finalized artifact, exports it to Photos, and verifies TAP Video readback.
 
 Current non-goals: watermarking, destructive final crop, MultiCam capture,
 arbitrary non-TAP video formats, external session scaffolding, sidecar JSON,
@@ -156,7 +153,7 @@ device-acceptance responsibilities.
 ## Artifact Contract Boundary
 
 The shared
-[TAPArtifactContracts contract index](https://github.com/TAP-NAP/TAPArtifactContracts/blob/50d83e9b5916f0fa4621b24b5c5c5702c59ee7de/CONTRACTS.md)
+[TAPArtifactContracts contract index](https://github.com/TAP-NAP/TAPArtifactContracts/blob/ca3b223e0717242ce1016b34dc34f04ef2417936/CONTRACTS.md)
 is the source of truth for Still/Live/Video manifests, container locations,
 signing, verification, and hash participation. TAPCamDemo keeps only its
 product and producer lifecycle responsibilities here.
@@ -201,7 +198,7 @@ The current app version is `0.2 (2)`. Before the first public build, deliberatel
 freeze or update that pair once, then review compatibility against
 [Product Contract §1.2](Docs/ProductContract.md#12-pre-release-version-and-compatibility-policy)
 and the shared
-[artifact-contract versioning policy](https://github.com/TAP-NAP/TAPArtifactContracts/blob/50d83e9b5916f0fa4621b24b5c5c5702c59ee7de/VERSIONING.md).
+[artifact-contract versioning policy](https://github.com/TAP-NAP/TAPArtifactContracts/blob/ca3b223e0717242ce1016b34dc34f04ef2417936/VERSIONING.md).
 
 ## Supporting Documents
 
@@ -211,7 +208,7 @@ and the shared
 | [Docs/ProductContract.md](Docs/ProductContract.md) | Canonical current capability, state-machine, non-goal, future, experimental, and evidence boundaries. |
 | [Docs/ProjectBoard.md](Docs/ProjectBoard.md) | Markdown task database and Kanban views. |
 | [Docs/UIPrototypeContract.md](Docs/UIPrototypeContract.md) | HTML/Web prototype to SwiftUI and acceptance workflow. |
-| [TAPArtifactContracts](https://github.com/TAP-NAP/TAPArtifactContracts) | Documentation-only shared artifact manifest, binding/proof, container, and transport conventions. |
+| [TAPArtifactContracts](https://github.com/TAP-NAP/TAPArtifactContracts/blob/ca3b223e0717242ce1016b34dc34f04ef2417936/CONTRACTS.md) | Documentation-only shared artifact conventions. |
 | [Docs/AppAttest/README.md](Docs/AppAttest/README.md) | App Attest client/backend boundary and capture proof notes. |
 | [TAPCamDemo/CameraCapture/Documentation/ARCHITECTURE.md](TAPCamDemo/CameraCapture/Documentation/ARCHITECTURE.md) | Camera module dependency direction. |
 | [TAPCamDemo/CameraCapture/Documentation/PIPELINE.md](TAPCamDemo/CameraCapture/Documentation/PIPELINE.md) | Single executable capture path. |
@@ -220,11 +217,10 @@ and the shared
 
 ## Release Data Policy
 
-Release still-photo output is a single embedded photo artifact. TAP Video uses
-one MP4 artifact containing its RGB track, bounded KLV depth track, manifest,
-and proof contract. Release builds must not write sidecar JSON, debug bundles,
-raw bundles, independent depth files, independent metadata files, metrics
-files, or intermediate capture artifacts.
+Release emits only the reviewed Still/Live Photo or TAP Video artifact selected
+by current product scope. It must not write sidecar JSON, debug bundles, raw
+bundles, independent depth files, independent metadata files, metrics files, or
+intermediate capture artifacts.
 
 If a requested still-photo RGB/depth pair cannot be embedded as a valid Apple
 photo-depth HEIC, capture is rejected instead of silently generating another

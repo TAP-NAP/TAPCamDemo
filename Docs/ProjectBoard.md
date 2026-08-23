@@ -5,7 +5,7 @@
 - Canonical Product Contract: [ProductContract.md](ProductContract.md)
 - UI Prototype Contract: [UIPrototypeContract.md](UIPrototypeContract.md)
 - Board Steward Session: `019ff4ea-acba-7051-bd0f-3d489f1caadc`
-- Last updated: `2026-08-23`
+- Last updated: `2026-08-24`
 
 This Markdown file is the task database of record. Task records are permanent;
 their IDs are never reused. The Kanban section is a human-readable view derived
@@ -5429,6 +5429,13 @@ Every active Task uses these stable fields:
       historical prose whose current obligation is already owned elsewhere,
       while recording why every retained local document or fixture cannot move
       to the shared artifact-contract authority.
+  11. Enforce a one-way documentation dependency: TAPCamDemo and
+      TAPCamVerifier may pin and link TAPArtifactContracts, while
+      TAPArtifactContracts must remain independently interpretable and must not
+      link either source repository or retain their source snapshots,
+      implementation-gap ledgers, or executable-mirror inventories. Migrate
+      those local responsibilities back to their owner repositories before the
+      shared deletion is published.
 - Commit / Push Boundary: The owner explicitly approved starting TAP-0095 and
   creating task-owned documentation commits in each affected repository.
   TAPArtifactContracts already has a Private remote `main`; this approval does
@@ -5474,7 +5481,9 @@ Every active Task uses these stable fields:
   repository diff checks pass; changed content is limited to task-owned docs/
   examples and no runtime, dependency, wire-format, or embedding-location delta
   exists; TAPArtifactContracts remains Private unless the owner separately
-  decides otherwise; separate task-owned commits are created for each affected
+  decides otherwise; the effective dependency graph is source repositories ->
+  shared contract repository with no shared -> source backlink or interpretive
+  dependency; separate task-owned commits are created for each affected
   repository with exact path inventories and push status, and TAPCamVerifier's
   pre-existing dirty changes are demonstrably excluded; the complete §2.6
   structured handoff records documentation impact, removed prose/examples,
@@ -5485,7 +5494,7 @@ Every active Task uses these stable fields:
   Photo browser contract; `TAP-0078` TAP Video contract extraction; `TAP-0092`
   bounded repository cleanup
 - Created: `2026-08-23`
-- Updated: `2026-08-23`
+- Updated: `2026-08-24`
 - Development Handoff (`2026-08-23`):
   - Task ID: `TAP-0095`
   - Dev Session: `/root` current collaboration session
@@ -5645,15 +5654,11 @@ Every active Task uses these stable fields:
     current Product/Verifier flow, while unimplemented historical behavior was
     deliberately not promoted. Duplicate format/signing prose and the incorrect
     root README proof-placement diagram were removed from retained documents.
-  - Remaining Gaps/Risks: no TAP-0095 closure blocker remains. The stale Swift
-    comment at
-    `TAPCamDemo/CameraCapture/Output/TAPDepthManifestSchema.swift:37-39` still
-    says proof data belongs in manifest `proofs`; changing code comments was
-    outside this docs-only Task. Shared `KNOWN_DIVERGENCES.md` continues to
-    record Verifier `mebx` key-mapping enforcement, no-depth reconstruction,
-    TAP Video semantic-validation breadth, and canonical-JSON edge-vector gaps.
-    Four groups of pre-existing broken links outside the touched documentation
-    surface remain unchanged and were not used as TAP-0095 evidence.
+  - Remaining Gaps/Risks: this is the prior-closure snapshot preserved for
+    history and superseded by the reopened reconciliation state below. It
+    recorded one stale Swift `proofs` comment and delegated implementation gaps
+    to the then-current shared divergence ledger; the owner later rejected that
+    reverse dependency.
   - Follow-up Task IDs: none allocated; the explicit existing divergences and
     untouched repository-health facts remain recorded without broadening this
     Task or creating an unapproved follow-up
@@ -5666,8 +5671,55 @@ Every active Task uses these stable fields:
   append-only history, but its link check proved only that existing links were
   valid. It did not prove that all index entries which should be links were
   clickable, and the renewed three-repository audit found additional safely
-  removable duplicate/historical prose. TAPArtifactContracts remains Private;
-  no runtime, wire, dependency, or embedding-location change is authorized.
+  removable duplicate/historical prose. The owner additionally required a
+  one-way dependency from each source repository to the shared contract. The
+  shared self-contained commit exists locally but must not be pushed until both
+  downstream implementation ledgers and pinned links are committed.
+- Reopened Reconciliation State (`2026-08-24`):
+  - TAPArtifactContracts local commit
+    `ca3b223e0717242ce1016b34dc34f04ef2417936` (`docs: make shared contract
+    self-contained`) deletes `SOURCE_SNAPSHOT.md` and
+    `KNOWN_DIVERGENCES.md`, removes every Demo/Verifier backlink and downstream
+    runtime snapshot, defines exact raw-`payload` byte hashing, makes KLV
+    `FRAM` the contiguous zero-based timed-depth MP4 sample ordinal, and adds
+    the 491-byte synthetic canonical-JSON vector. It contains exactly `15`
+    Markdown/JSON/Agent-guidance paths (`+298/-385`) and is local-only, one
+    commit ahead of `origin/main`, pending downstream migration before push.
+  - Demo-local implementation ledger:
+    1. `TAPDepthManifestSchema.swift:37-39` still says proof data belongs in
+       `manifest.proofs`; the v1 array is required empty and the envelope belongs
+       in the fixed slot.
+    2. The same schema's lines `29-33` retain HEIC-only prose and line `50`
+       retains the non-authoritative `TAPDepthHEIC/1` EXIF UserComment even for
+       JPEG; XMP remains authoritative and no wire rename is authorized here.
+    3. Decoder initializers at lines `305-308` and `511-514` default missing
+       required availability fields to `.available` instead of failing closed.
+    4. Photo and Video final gates decode the embedded manifest and then
+       re-encode `payload` through `CaptureContentDigest.swift:308` and `:131`;
+       this proves this app's own canonical output but does not implement the
+       shared consumer rule to hash the exact embedded raw member bytes.
+    5. No local executable test yet compares a full embedded raw payload slice,
+       the standalone payload hash input, and the new shared canonical-JSON
+       vector byte-for-byte. Existing deterministic/round-trip tests are not
+       promoted as that missing cross-implementation evidence.
+  - Verifier-local implementation gaps are owned by the isolated candidate's
+    `Docs/Roadmap.md`: unavailable no-depth reconstruction; complete TAP Video
+    semantic enforcement; `mebx` key-table resolution; contiguous `FRAM`
+    ordinals; exact raw Video payload-byte hashing; complete `.tapnap` field and
+    resource-set validation; padded-base64url compatibility; and local codec/
+    bounded-input policy. `Docs/VerificationFlow.md` points to that local ledger,
+    not to the deleted shared file.
+  - Demo's composite Video fixture remains only because executable tests load
+    it; `TAPCamDemoTests/README.md` now owns its drift and the KLV/transform
+    mirror inventory. Shared proof reserved bytes are not a local divergence:
+    producers must zero them, while a v1 reader may reject non-zero values and
+    must not assign them semantics.
+  - TAPCamVerifier's final isolated candidate is still outside the real dirty
+    checkout pending the owner's exact approval for its historical-document
+    deletions. Until that index-only commit exists, TAP-0095 remains `Doing` and
+    the shared commit remains unpushed. No runtime, wire, SDK/codegen,
+    embedding-location, visibility, device, or backend-acceptance change is
+    claimed.
 - Revision History:
   - `2026-08-23` Captured in Inbox after an all-status title/label/match-key/
     domain/contract/scope search. TAP-0002, TAP-0003, TAP-0078, and TAP-0092 are
@@ -5757,6 +5809,23 @@ Every active Task uses these stable fields:
     staged but uncommitted pending the owner's explicit approval. TAP-0095
     remains Doing; no Demo/Verifier push, runtime, wire,
     dependency, SDK/codegen, or embedding-location change is claimed.
+  - `2026-08-24` The owner clarified the required dependency direction:
+    TAPArtifactContracts must not depend on non-shared producer/verifier
+    repositories; each source repository instead depends on the independently
+    readable shared contract. Added approved scope item 11, required migration
+    of source snapshots, implementation gaps, and executable-mirror locations
+    back to their downstream owners, and preserved the docs-only/no-wire/no-
+    runtime/no-visibility boundaries. TAP-0095 remains Doing; this decision does
+    not itself authorize the still-pending Verifier historical-document commit.
+  - `2026-08-24` Independent reviews accepted local shared commit
+    `ca3b223e0717242ce1016b34dc34f04ef2417936` after raw-payload,
+    canonical-vector, `FRAM`, link, JSON, MUST-delta, and reverse-dependency
+    checks. Demo module docs now state the exact decode/re-encode limitation and
+    this Task owns the five Demo-local conformance gaps. The isolated Verifier
+    candidate points its flow to a local Roadmap covering all migrated consumer
+    gaps. The shared commit is intentionally not pushed until the candidate is
+    approved and committed; no runtime, wire, SDK/codegen, embedding, or
+    visibility change is claimed.
 
 ## 5. Inbox Decision Registry
 
@@ -6820,3 +6889,17 @@ not replace the Product Contract, and linked device evidence may remain open.
   explicitly approves those broader historical/visual-evidence deletions.
   TAP-0095 remains Doing; no Demo/Verifier push or runtime/wire/
   dependency/SDK/codegen/embedding change is claimed.
+- `2026-08-24` The owner required strict one-way documentation dependency:
+  TAPCamDemo/TAPCamVerifier -> TAPArtifactContracts, never the reverse. Board
+  Steward added TAP-0095 scope item 11 and moved source snapshots,
+  implementation-gap ownership, and executable-mirror inventories back to the
+  downstream repositories without changing Private visibility, runtime, wire,
+  SDK/codegen, or embedding location. TAP-0095 remains Doing.
+- `2026-08-24` Local shared commit `ca3b223` passed two independent staged
+  reviews with `15` task paths, `10/10` JSON, valid links/anchors, an exact
+  491-byte canonical-JSON vector, raw-payload hashing, and a determinate KLV
+  `FRAM` rule. Demo records its five local conformance gaps; the isolated
+  Verifier candidate records its consumer gaps and no longer relies on a shared
+  divergence ledger. The shared commit remains unpushed pending the owner's
+  exact approval and commit of the broader Verifier document deletions; no
+  closure or source-repository push is claimed.

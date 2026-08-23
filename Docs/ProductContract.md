@@ -80,9 +80,8 @@ registration, proof, or attestation objects interchangeable. Their specialized
 contracts own the exact identifiers and fail-closed routing rules.
 
 The documentation-only
-[TAPArtifactContracts](https://github.com/TAP-NAP/TAPArtifactContracts)
-repository owns the shared wire-level field, serialization, binding, proof,
-container, and transport conventions consumed by TAPCam and external
+[TAPArtifactContracts contract index](https://github.com/TAP-NAP/TAPArtifactContracts/blob/ca3b223e0717242ce1016b34dc34f04ef2417936/CONTRACTS.md)
+owns the shared wire-level conventions consumed by TAPCam and external
 verifiers. This Product Contract continues to own which format families are
 current product capabilities, their claim boundaries, and their non-goals.
 Repository-local documents own runtime and operational behavior and must not
@@ -295,8 +294,8 @@ as ordinary preview zoom.
   The user receives a non-blocking `Depth unavailable` indication.
 - Live Photo capture, paired MOV handling, signing, export, playback, and the
   existing versioned verification contract are current capabilities.
-- Live Photo depth belongs to the primary still photo. The paired MOV is a
-  signed resource; TAPCam does not claim per-frame MOV depth.
+- Live Photo depth comes from the primary still photo; TAPCam does not claim
+  per-frame MOV depth.
 - A per-frame Live Photo video-depth product is an explicit non-goal for the
   current Live Photo contract and would require a separately designed format.
 
@@ -304,8 +303,7 @@ as ordinary preview zoom.
 
 TAP Video's current product contract includes:
 
-- one MP4 containing RGB, optional audio, private KLV depth metadata, manifest,
-  and proof contract;
+- capture and finalization of the current shared-contract TAP Video family;
 - pending ingest, signing, export, and original-resource readback;
 - TAP Library poster and local foreground RAW playback;
 - registered 2D playback when registration is available;
@@ -499,22 +497,19 @@ therefore:
   Capture Queue rather than maintaining a second durable signed/unsigned index
   for every exported Photos asset;
 - may expose the queue state for private pending captures in Share presentation;
-- locally recomputes the embedded proof/content binding over a complete
-  original resource before sharing it, including the paired MOV for a Live
-  Photo and the original MP4/MOV bytes for TAP Video;
+- runs the shared
+  [local artifact-binding gate](https://github.com/TAP-NAP/TAPArtifactContracts/blob/ca3b223e0717242ce1016b34dc34f04ef2417936/bindings/capture-binding-and-proof-v1.md#local-artifact-binding-gate)
+  over the complete original resource set before sharing, including the paired
+  MOV for a Live Photo and the original video bytes for TAP Video;
 - does not submit a new App Attest Verify request to the TAP verification
   backend every time the user views or shares an owned capture;
 - does not require a separate Verify button for its own attested captures.
 
-The local content-binding gate confirms that the actual resource bytes match
-the digest and signing binding embedded alongside the App Attest assertion. It
-does not re-sign the capture, verify the assertion object's cryptographic
-signature with a registered App Attest public key, or independently establish a
-new backend credential verdict. The current App keeps only the App Attest key
-handle; complete assertion authenticity remains the responsibility of the TAP
-backend (or a future verifier with an explicitly provisioned public key).
-iCloud may be used only to retrieve the original Photos resources needed by
-this byte-integrity gate.
+Passing that local gate does not re-sign the capture or establish registered-key
+App Attest assertion authenticity. The current App keeps only its key handle;
+complete assertion authenticity remains a backend or explicitly provisioned
+verifier responsibility. iCloud may be used only to retrieve the original
+Photos resources needed by the local gate.
 
 A true in-app Verify workflow becomes relevant only if a future product accepts
 external media whose origin and credential state are not already owned by the
@@ -522,10 +517,11 @@ current capture pipeline. External import and Verify are future work and need a
 separate product contract.
 
 The browser Live Photo verification flow remains an important cross-repository
-delivery boundary. Its shared artifact bytes and fields are defined by
-`TAPArtifactContracts`; TAPCamDemo retains its app-side behavior and handoff
-responsibility. Neither document claims that the external browser verifier is
-implemented inside TAPCamDemo.
+delivery boundary. Its artifact conventions are defined by the shared
+[contract index](https://github.com/TAP-NAP/TAPArtifactContracts/blob/ca3b223e0717242ce1016b34dc34f04ef2417936/CONTRACTS.md);
+TAPCamDemo retains its app-side behavior and handoff responsibility. Neither
+document claims that the external browser verifier is implemented inside
+TAPCamDemo.
 
 Fine-grained credential cooldown, retry windows, and stage-specific pause are
 future technical optimization. A public-release persistence policy must be an

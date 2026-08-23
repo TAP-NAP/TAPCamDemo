@@ -88,12 +88,25 @@ cover tests, UI tests, Debug fixtures, benchmarks, or resolved packages.
   prove App Attest hardware or backend acceptance.
 - [`TAPVideoManifestV1GoldenVectors.json`](../Docs/Fixtures/TAPVideoManifestV1GoldenVectors.json)
   is a repository-local composite fixture because
-  `TAPVideoManifestTests` loads that exact path. Its `depthFrame` member mirrors
-  the exact KLV/zstd v1 vector owned by
-  [`TAPArtifactContracts`](https://github.com/TAP-NAP/TAPArtifactContracts/blob/50d83e9b5916f0fa4621b24b5c5c5702c59ee7de/examples/vectors/tap-video-klv-zstd1-v1-golden-vector.json).
-  Its separate manifest object is local decoder input, not current manifest
-  authority; the shared manifest contract and example are authoritative. Do not
-  regenerate the shared byte vector to fit an incompatible reader.
+  [`TAPVideoManifestTests.swift`](TAPVideoManifestTests.swift) loads that exact
+  path. Its `depthFrame` member mirrors the shared
+  [exact KLV/zstd v1 vector](https://github.com/TAP-NAP/TAPArtifactContracts/blob/ca3b223e0717242ce1016b34dc34f04ef2417936/examples/vectors/tap-video-klv-zstd1-v1-golden-vector.json).
+  Its separate manifest object deliberately exercises local decoding, nullable
+  track timing, metadata codec, and calibration-index relationships. Its
+  fixture-specific nullable timing and older synchronization/software values
+  are not a conformance oracle; the shared
+  [manifest contract](https://github.com/TAP-NAP/TAPArtifactContracts/blob/ca3b223e0717242ce1016b34dc34f04ef2417936/manifests/tap-video-v1.md)
+  and [manifest example](https://github.com/TAP-NAP/TAPArtifactContracts/blob/ca3b223e0717242ce1016b34dc34f04ef2417936/examples/manifests/tap-video-v1.json)
+  are authoritative.
+- [`TAPVideoStreamingTests.swift`](TAPVideoStreamingTests.swift) embeds the raw,
+  zstd1, and complete KLV bytes from the same
+  [exact shared vector](https://github.com/TAP-NAP/TAPArtifactContracts/blob/ca3b223e0717242ce1016b34dc34f04ef2417936/examples/vectors/tap-video-klv-zstd1-v1-golden-vector.json)
+  so deterministic producer encoding remains a hermetic test. Do not regenerate
+  either local mirror to fit an incompatible reader.
+- [`TAPVideoDepthPlaybackPolicyTests.swift`](TAPVideoDepthPlaybackPolicyTests.swift)
+  exercises all four rotations with and without horizontal mirroring against the
+  eight cases in the shared
+  [display-transform vector](https://github.com/TAP-NAP/TAPArtifactContracts/blob/ca3b223e0717242ce1016b34dc34f04ef2417936/examples/vectors/tap-video-display-transform-v1.json).
 - TAP Video playback fixtures are generated at runtime by
   [`TAPVideoPlaybackFixtureHarnessTests.swift`](TAPVideoPlaybackFixtureHarnessTests.swift).
   They must not create a second checked-in binary-fixture authority.

@@ -17,10 +17,10 @@ separate backend contract remains active because it owns a cross-project HTTP
 and server-trust boundary.
 
 The capture artifact's shared signing-binding, proof-envelope, proof-slot, and
-content-binding wire conventions are owned by the documentation-only
-[TAPArtifactContracts](https://github.com/TAP-NAP/TAPArtifactContracts)
-repository. This guide continues to own TAPCamDemo client lifecycle, storage,
-runtime selection, privacy, and Settings behavior.
+content-binding wire conventions are owned by the shared
+[binding/proof contract](https://github.com/TAP-NAP/TAPArtifactContracts/blob/ca3b223e0717242ce1016b34dc34f04ef2417936/bindings/capture-binding-and-proof-v1.md).
+This guide continues to own TAPCamDemo client lifecycle, storage, runtime
+selection, privacy, and Settings behavior.
 
 ## Code Boundaries
 
@@ -149,9 +149,11 @@ the local credential through `prepareIfNeeded`.
 Capture signing reuses the registered `photo_keyid` credential. The pending
 queue calls `AppAttestCaptureAssertionSigner` and
 `TAPCaptureProvenanceWriter`; those producer types implement the ordered
-construction, App Attest input, proof-envelope, slot-write, and final local
-reconstruction rules in the shared
-[binding/proof contract](https://github.com/TAP-NAP/TAPArtifactContracts/blob/50d83e9b5916f0fa4621b24b5c5c5702c59ee7de/bindings/capture-binding-and-proof-v1.md).
+construction, App Attest input, proof-envelope, and slot-write rules in the shared
+[binding/proof contract](https://github.com/TAP-NAP/TAPArtifactContracts/blob/ca3b223e0717242ce1016b34dc34f04ef2417936/bindings/capture-binding-and-proof-v1.md).
+Their final gate checks this app's canonical artifacts by decoding and
+re-encoding the payload; exact raw-member-byte consumer reconstruction remains
+a local conformance gap recorded by [`TAP-0095`](../ProjectBoard.md#tap-0095--deduplicate-migrated-artifact-contract-prose-across-source-repositories).
 
 This client guide owns one local distinction: capture signing asks
 `DCAppAttestService` to sign the capture binding directly. It does not use the
@@ -256,20 +258,3 @@ backend URL remains an internal request and credential-health-token input.
 User-visible failure text is generic; raw localized errors, failing URLs, paths,
 backend URLs, backend text, and full key IDs stay out of Settings text and
 accessibility labels.
-
-## Boundary Rules
-
-- `AppAttestKit` accepts only `credentialName: String` from the caller.
-- TAPCamDemo decides that `photo_keyid` is the capture credential name.
-- Apple attests the generated App Attest key, not `credentialName`.
-- The kit never intercepts API requests automatically.
-- TAPCamDemo chooses which operations need App Attest.
-- App Attest entitlements and dependency pinning are visible in the checkout so
-  reviewers do not need to infer security setup from runtime code alone.
-
-## Active Documents
-
-- This README: TAPCamDemo client calls, naming, storage, privacy, runtime, and
-  capture-signing boundaries.
-- [BackendContract.md](BackendContract.md): cross-project HTTP contract, server
-  trust decisions, replay controls, and capture-signature verification duties.

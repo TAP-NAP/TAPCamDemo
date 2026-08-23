@@ -12,9 +12,9 @@ The documentation-only
 repository is the sole shared authority for TAP Video v1 manifest fields,
 canonical JSON, MP4 UUID boxes, proof-slot layout, KLV records/codecs/bounds,
 content binding, signing, verification, and hash participation. Start with its
-[TAP Video manifest](https://github.com/TAP-NAP/TAPArtifactContracts/blob/50d83e9b5916f0fa4621b24b5c5c5702c59ee7de/manifests/tap-video-v1.md),
-[container/KLV contract](https://github.com/TAP-NAP/TAPArtifactContracts/blob/50d83e9b5916f0fa4621b24b5c5c5702c59ee7de/containers/tap-video-container-v1.md), and
-[binding/proof contract](https://github.com/TAP-NAP/TAPArtifactContracts/blob/50d83e9b5916f0fa4621b24b5c5c5702c59ee7de/bindings/capture-binding-and-proof-v1.md).
+[TAP Video manifest](https://github.com/TAP-NAP/TAPArtifactContracts/blob/ca3b223e0717242ce1016b34dc34f04ef2417936/manifests/tap-video-v1.md),
+[container/KLV contract](https://github.com/TAP-NAP/TAPArtifactContracts/blob/ca3b223e0717242ce1016b34dc34f04ef2417936/containers/tap-video-container-v1.md), and
+[binding/proof contract](https://github.com/TAP-NAP/TAPArtifactContracts/blob/ca3b223e0717242ce1016b34dc34f04ef2417936/bindings/capture-binding-and-proof-v1.md).
 
 This document owns only how TAPCamDemo implements that artifact through its
 local lifecycle. Product scope comes from [ProductContract.md](ProductContract.md),
@@ -147,18 +147,9 @@ The playback implementation boundary is documented in
 
 ## Fixtures And Evidence
 
-The exact shared KLV/zstd v1 vector lives at
-[`TAPArtifactContracts/examples/vectors/tap-video-klv-zstd1-v1-golden-vector.json`](https://github.com/TAP-NAP/TAPArtifactContracts/blob/50d83e9b5916f0fa4621b24b5c5c5702c59ee7de/examples/vectors/tap-video-klv-zstd1-v1-golden-vector.json).
-[`Docs/Fixtures/TAPVideoManifestV1GoldenVectors.json`](Fixtures/TAPVideoManifestV1GoldenVectors.json)
-remains local because `TAPVideoManifestTests` reads it by path. Only its
-`depthFrame` member mirrors the shared exact vector; its separate manifest
-object is a local decoder fixture and does not override the current shared
-manifest contract/example.
-
-Changing shared vector bytes requires version/compatibility review, not
-regeneration to fit an incompatible implementation. Runtime-generated playback
-fixtures remain local executable test inputs and are not a second checked-in
-binary authority.
+Executable vector mirrors and runtime-generated fixture ownership are recorded
+once in the test
+[fixture and golden-vector ledger](../TAPCamDemoTests/README.md#fixture-and-golden-vector-ownership).
 
 Current evidence gaps remain tracked by their canonical Tasks:
 

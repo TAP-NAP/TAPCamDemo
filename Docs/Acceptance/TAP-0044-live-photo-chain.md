@@ -3,15 +3,13 @@
 - Status: `Draft — blocked until the owner freezes the matrix and run budget`
 - Related Delivery: `TAP-0056`
 - Contract: [ProductContract §3.2 and §5.2](../ProductContract.md),
-  [shared Live Photo manifest, binding, container, and transport contracts](https://github.com/TAP-NAP/TAPArtifactContracts)
+  [shared artifact contract index](https://github.com/TAP-NAP/TAPArtifactContracts/blob/ca3b223e0717242ce1016b34dc34f04ef2417936/CONTRACTS.md)
 - Build/Commit: `OWNER-LIVE: freeze before execution`
 - Device/iOS Matrix: `OWNER-LIVE: approve before execution`
 - Human Confirmation: `Pending`
 
 This is an attended physical-device procedure for the current Live Photo
-chain. It does not test or imply per-frame MOV depth. The signed depth resource
-is the primary still photo; the paired MOV is a separately bound binary
-resource.
+chain. It does not test or imply per-frame MOV depth.
 
 Before execution, the product owner must freeze the supported physical
 device/iOS rows, HEIC/JPG and audio-state coverage, repetitions, maximum capture
@@ -80,14 +78,14 @@ Run the numbered steps for every frozen matrix row and repetition.
 | 1 | Record the row ID, output-format setting, both Microphone states, capture mode, and pre-capture queue count. | The recorded settings exactly match the frozen row. Changing OS authorization alone does not override a saved TAPCam data-use opt-out. | Pending | Pending |
 | 2 | **OWNER-LIVE:** frame the approved moving scene, produce the approved audible cue for audio-on rows, and press the shutter once. | The shutter responds once, the live camera remains interactive, and exactly one candidate capture enters the pipeline. | Pending | Pending |
 | 3 | Observe photo completion and the Apple movie-complement callback. | A successful Live Photo row produces one primary HEIC/JPG and one `paired-video.mov`. If the complement fails, the app may produce a valid still-photo v1 artifact, but it must not label or export a partial Live Photo v1 artifact; that row has not passed Live Photo acceptance. | Pending | Pending |
-| 4 | Before cleanup, inspect the pending resource inventory and hash the exact resources through the approved diagnostic path. | The bundle has the selected primary container and exactly one paired MOV under the fixed resource role. No decoded frame, preview image, or adjusted Photos resource replaces either signed source. | Pending | Pending |
-| 5 | Decode the embedded manifest from the primary photo. | A complete Live Photo uses `live-photo-manifest:v1`, declares `presence = paired-video`, the fixed paired filename, and truthful duration/display-time/dimensions/codec facts. `audio` is `captured` only for an audio-on row and `not-captured` for an audio-off row. Primary-photo depth presence is truthful; the manifest makes no per-frame MOV-depth claim. | Pending | Pending |
-| 6 | Allow the Pending Capture Queue to sign the capture and inspect the resulting proof through the approved audit tool. | Signing uses `live-photo-content-binding:v1`; `signedResources` contains `primaryPhoto`, `tapDepthManifestPayload`, and `pairedLivePhotoVideo`. The photo hash excludes exactly the fixed proof slot, the payload hash uses canonical JSON, and the MOV hash covers its complete bytes. One App Attest capture assertion binds the canonical content digest. | Pending | Pending |
-| 7 | Observe the final local gate and Photos commit. | `validateSignedExportLivePhoto` accepts the exact signed photo/MOV pair before `saveDepthLivePhoto` can commit it. No unsigned, partially bound, wrong-ID, wrong-format, duplicate-slot, or MOV-mismatched pair is exported. | Pending | Pending |
-| 8 | Load the saved asset's original Photos resources using the approved original-resource path. | Photos exposes the original `.photo` and `.pairedVideo`. Recomputed photo, canonical-payload, and full-MOV hashes match the embedded Live Photo v1 descriptors. Adjustment or presentation resources, if any, are recorded separately and are never substituted as signed inputs. | Pending | Pending |
+| 4 | Before cleanup, inspect the pending resource inventory and hash the exact resources through the approved diagnostic path. | The bundle has the selected primary container and exactly one paired MOV. No decoded frame, preview image, or adjusted Photos resource replaces either source. | Pending | Pending |
+| 5 | Decode the embedded manifest from the primary photo. | The manifest passes the current shared Live Photo contract, reports the observed audio and primary-photo depth facts truthfully, and makes no per-frame MOV-depth claim. | Pending | Pending |
+| 6 | Allow the Pending Capture Queue to sign the capture and inspect the resulting proof through the approved audit tool. | The exact photo/MOV pair passes the complete shared producer-binding checks and one App Attest capture assertion is written without changing the bound resources. | Pending | Pending |
+| 7 | Observe the final local gate and Photos commit. | `validateSignedExportLivePhoto` accepts the exact signed photo/MOV pair before `saveDepthLivePhoto` can commit it; any shared-contract mismatch is rejected before export. | Pending | Pending |
+| 8 | Load the saved asset's original Photos resources using the approved original-resource path. | Photos exposes the original `.photo` and `.pairedVideo`, and the complete shared local binding reproduces from those resources. Adjustment or presentation resources, if any, are recorded separately and never substituted. | Pending | Pending |
 | 9 | Open the saved item in TAP Library, page away and back, then press and hold the Live Photo. | The correct item remains selected, native Live Photo motion plays without a blank replacement or crash, and release returns to the still presentation. Record the Viewer mute policy separately; this step does not silently convert captured-audio acceptance into a requirement for surprise sound in TAP Library. | Pending | Pending |
 | 10 | Inspect the original paired MOV's audio tracks, then **OWNER-LIVE** plays it on the approved sound-enabled diagnostic or system surface. | Audio-on rows contain the captured audio track, report `audio = captured`, and reproduce the approved cue when sound is explicitly enabled. Audio-off rows contain no captured audio, report `audio = not-captured`, and remain silent. Ambient privacy-sensitive audio is not retained as acceptance evidence. | Pending | Pending |
-| 11 | Export verification originals through the approved TAP verification-resource path and compare them with the Photos readback. | The primary file and paired MOV remain byte-bound without re-encoding. Any minimal sidecar is treated only as unsigned transport metadata and contains no capture ID, key ID, assertion, signing binding, proof, hash, or server verdict. | Pending | Pending |
+| 11 | Export verification originals through the approved TAP verification-resource path and compare them with the Photos readback. | The primary file and paired MOV remain byte-identical to the Photos readback; transport routing metadata remains unsigned and supplies no trust facts. | Pending | Pending |
 | 12 | Repeat steps 1–11 for the frozen matrix without changing counts or pass thresholds. | Every selected row produces a complete result record. A failed repetition remains in the report; it is not overwritten by a later success. | Pending | Pending |
 
 ## Required Evidence
@@ -99,9 +97,8 @@ Run the numbered steps for every frozen matrix row and repetition.
 - Per-capture public-safe event timeline: shutter, primary photo, movie
   complement, queue states, signing, final gate, Photos commit/readback, and
   playback.
-- Primary format, Photos resource-type inventory, manifest schema/live-photo
-  fields, proof-slot count, content-binding schema, signed-resource roles, and
-  redacted App Attest proof summary.
+- Primary format, Photos resource-type inventory, shared-contract conformance
+  report, and redacted App Attest proof summary.
 - SHA-256 audit table for the exact pre-export resources and Photos original
   readback. Raw media and proof material must remain in the owner-approved
   access-controlled evidence location; the Markdown result stores only
@@ -115,7 +112,7 @@ Run the numbered steps for every frozen matrix row and repetition.
 ## Verdict Conditions
 
 - **Pass:** every frozen row and repetition completes the primary-photo plus
-  paired-MOV chain; Live Photo manifest v1 and content-binding v1 facts are truthful; signing,
+  paired-MOV chain; shared Live Photo contract facts are truthful; signing,
   final gate, Photos original readback, and native motion playback all succeed;
   the original MOV's audio behavior matches both permission layers on the
   approved sound-enabled surface; and the owner accepts the result.

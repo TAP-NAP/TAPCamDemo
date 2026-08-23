@@ -6,6 +6,19 @@ owned by the documentation-only
 repository. This module keeps the Swift producer implementation and local
 orchestration; its types must implement, not redefine, that shared contract.
 
+`TAPDepthManifestEncoder`, `TAPVideoManifestEncoder`, and
+`JSONEncoder.tapCaptureCanonical` are the producer-encoding mapping for
+[TAP capture canonical JSON](https://github.com/TAP-NAP/TAPArtifactContracts/blob/ca3b223e0717242ce1016b34dc34f04ef2417936/bindings/capture-binding-and-proof-v1.md#tap-capture-canonical-json)
+with `JSONEncoder` `.sortedKeys` and `.withoutEscapingSlashes`. This is a local
+implementation mapping, not a claim of RFC 8785 or complete floating-point and
+Unicode edge-vector coverage.
+
+The current final gates decode and re-encode `manifest.payload` with that same
+mapping. This proves self-consistency for this app's canonical output, but it
+does not yet implement the shared consumer rule that hashes the exact embedded
+raw member bytes. The local conformance gap is recorded by
+[`TAP-0095`](../../../Docs/ProjectBoard.md#tap-0095--deduplicate-migrated-artifact-contract-prose-across-source-repositories).
+
 `CameraCapture/Output` converts a successful photo-depth capture into the TAP
 depth photo contract. It builds the logical package, constructs the TAP
 manifest, embeds that manifest into an Apple HEIC or JPG photo-depth file, and
@@ -58,9 +71,11 @@ depth frame payload at a time; no stage may read an entire MP4 into `Data`.
 ## TAP Video Signing Boundary
 
 A finalized, ingested pending MP4 is the app-owned source artifact. The signing
-path validates capture/package identity, implements the ordered procedure in the
-[shared binding/proof contract](https://github.com/TAP-NAP/TAPArtifactContracts/blob/50d83e9b5916f0fa4621b24b5c5c5702c59ee7de/bindings/capture-binding-and-proof-v1.md),
-then immediately repeats its local reconstruction and relationship checks.
+path validates capture/package identity and implements the producer-signing
+portion of the ordered procedure in the
+[shared binding/proof contract](https://github.com/TAP-NAP/TAPArtifactContracts/blob/ca3b223e0717242ce1016b34dc34f04ef2417936/bindings/capture-binding-and-proof-v1.md),
+then immediately repeats its own-artifact reconstruction and relationship
+checks subject to the raw-member-byte limitation above.
 
 Normal Photos export and original-resource readback repeat this byte-binding
 authentication with `validatesDepthTrack: false`. They do not reinterpret

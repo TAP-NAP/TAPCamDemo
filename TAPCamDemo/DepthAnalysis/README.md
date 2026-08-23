@@ -100,7 +100,7 @@ App Attest evidence.
   [TAP-0046](../../Docs/Acceptance/TAP-0046-app-attest-production.md); Simulator,
   source scans, and synthetic signers cannot close it.
 - Shared artifact families remain independent under the
-  [versioning policy](https://github.com/TAP-NAP/TAPArtifactContracts/blob/50d83e9b5916f0fa4621b24b5c5c5702c59ee7de/VERSIONING.md);
+  [versioning policy](https://github.com/TAP-NAP/TAPArtifactContracts/blob/ca3b223e0717242ce1016b34dc34f04ef2417936/VERSIONING.md);
   repository cleanup must not collapse them.
 - Temporary Share artifacts are lease-owned and removed after the system share
   lifecycle releases them.

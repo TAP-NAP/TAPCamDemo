@@ -146,11 +146,3 @@ backend acceptance procedure.
 - Acceptance: obsolete TAP-0082 attempt history removed; TAP-0046 device trust
   boundary retained.
 - AGENTS.md: N/A; repository workflow unchanged.
-
-## Remaining Risks
-
-Eight CameraCapture micro-documents still require obligation migration before
-deletion. Startup, Pending persistence, and legacy verifier-input compatibility
-remain reset/cross-project decisions. Four pre-release TODO families are marked
-in the manifest. Per the owner's stop rule, these are not expanded into a fourth
-cleanup iteration.
