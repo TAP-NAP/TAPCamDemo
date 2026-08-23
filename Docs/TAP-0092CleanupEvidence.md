@@ -115,7 +115,7 @@ The four serialized failures are not deletion regressions:
 
 - Deleted production/test symbols: zero Swift references.
 - Deleted active-document paths: zero non-ledger references.
-- `Prototype/manifest.json`: valid JSON.
+- [`Prototype/manifest.json`](../Prototype/manifest.json): valid JSON.
 - `git diff --check`: passed.
 - Local Markdown targets: zero missing.
 - Brittle Markdown line anchors: zero.

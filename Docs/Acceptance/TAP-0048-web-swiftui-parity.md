@@ -41,7 +41,7 @@ presented. The Web prototype deliberately stops at that native system boundary.
 
 - **Met:** the Project Board names `TAP-0081` as the implementation Task and
   `TAP-0006` as its prototype-foundation dependency.
-- **Met:** `Prototype/manifest.json` at closure commit `f2bf8d2` preserves the
+- **Met:** [`Prototype/manifest.json`](../../Prototype/manifest.json) at closure commit `f2bf8d2` preserves the
   `TAP-0081-r1` geometry baseline and freezes owner-approved
   `TAP-0081-r3-candidate` behavior across Photo/Live Photo/TAP Video fixtures,
   three credential states, selection, immediate same-slot progress,
@@ -93,7 +93,7 @@ background-prewarmed, or retained as a persistent cache.
 
 ## Reset / Install Procedure
 
-1. Confirm `Prototype/manifest.json` names the owner-reviewed revision. The
+1. Confirm [`Prototype/manifest.json`](../../Prototype/manifest.json) names the owner-reviewed revision. The
    previously approved `TAP-0081-r1` remains the geometry baseline; exact
    `TAP-0081-r3-candidate`, including local-integrity states, refined toolbar
    geometry, immediate same-slot progress, no visible Cancel, and immediate

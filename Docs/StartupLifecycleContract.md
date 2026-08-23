@@ -626,8 +626,8 @@ rather than an accepted target behavior: initial Network/App Attest is owned by
 `TAP-0010`, while post-Setup App Attest and credential/network-dependent Pending
 are owned by `TAP-0015`.
 
-The bounded device verdict is recorded in
-`Docs/Acceptance/TAP-0041-camera-readiness.md`. It covers only the lifecycle path
+The bounded device verdict is recorded in the
+[TAP-0041 acceptance procedure](Acceptance/TAP-0041-camera-readiness.md). It covers only the lifecycle path
 the owner actually exercised; canonical `S` production/restore, the full
 installation and permission-recovery matrix, measured shell/first-frame timing,
 and complete `W11/W12` deferred guards remain open under their linked Tasks as

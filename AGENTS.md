@@ -1,6 +1,6 @@
 # TAPCam Repository Agent Rules
 
-This root `AGENTS.md` is the mandatory entry point for every Agent working in
+This root [AGENTS.md](AGENTS.md) is the mandatory entry point for every Agent working in
 this repository. Do not create a competing `agent.md`, private task list, or
 second source of product truth.
 
@@ -9,14 +9,14 @@ second source of product truth.
 Before giving a substantive design proposal, planning implementation, or
 changing files, read in this order:
 
-1. `AGENTS.md` in full.
-2. `Docs/ProductContract.md` §1 plus every section relevant to the request.
+1. [AGENTS.md](AGENTS.md) in full.
+2. [Docs/ProductContract.md](Docs/ProductContract.md) §1 plus every section relevant to the request.
    Read the whole contract when the change is cross-cutting or changes product
    scope, state machines, claims, non-goals, or terminology.
-3. `Docs/ProjectBoard.md` operating rules, then search the complete registry
+3. [Docs/ProjectBoard.md](Docs/ProjectBoard.md) operating rules, then search the complete registry
    across Inbox, Todo, Doing, Done, and Deprecated. Read the complete matching
    Task record and every directly related or blocking Task.
-4. `Docs/UIPrototypeContract.md` in full for any user-visible UI, navigation,
+4. [Docs/UIPrototypeContract.md](Docs/UIPrototypeContract.md) in full for any user-visible UI, navigation,
    interaction, copy, icon, layout, or presented-state change.
 5. The relevant module README and any specialized interface, format, security,
    cross-project, or acceptance contract linked by the Task.
@@ -105,13 +105,13 @@ scope before using the new decision as implementation authority.
 - Development sessions do not maintain competing boards or silently broaden
   their Task.
 - During multi-Agent work, only the designated Board Steward edits
-  `Docs/ProjectBoard.md`; other Agents return structured updates by Task ID.
+  [Docs/ProjectBoard.md](Docs/ProjectBoard.md); other Agents return structured updates by Task ID.
 
 ## 3. UI Prototype Gate
 
 Any change to visible hierarchy, geometry, spacing, copy, icons, navigation,
 gestures, controls, or presented states must use the prototype-first workflow in
-`Docs/UIPrototypeContract.md`:
+[Docs/UIPrototypeContract.md](Docs/UIPrototypeContract.md):
 
 1. Record the affected product states and UI scope in the Task.
 2. Create or revise the repository-owned HTML/Web prototype.
@@ -162,14 +162,14 @@ short reason.
 
 | Change made or decision reached | Required tracking file |
 | --- | --- |
-| Task scope, status, assignee, session, dependency, decision, completion, revision, or handoff | `Docs/ProjectBoard.md` through the Board Steward |
-| Product behavior, state machine, terminology, capability, future scope, explicit non-goal, experiment status, or claim boundary | `Docs/ProductContract.md` |
+| Task scope, status, assignee, session, dependency, decision, completion, revision, or handoff | [Docs/ProjectBoard.md](Docs/ProjectBoard.md) through the Board Steward |
+| Product behavior, state machine, terminology, capability, future scope, explicit non-goal, experiment status, or claim boundary | [Docs/ProductContract.md](Docs/ProductContract.md) |
 | Visual hierarchy, layout, icons, copy placement, interaction, responsive behavior, or simulated UI states | HTML/Web prototype and its repository manifest/revision record |
-| The design-to-code workflow or prototype authority itself changes | `Docs/UIPrototypeContract.md` |
+| The design-to-code workflow or prototype authority itself changes | [Docs/UIPrototypeContract.md](Docs/UIPrototypeContract.md) |
 | Module ownership, lifecycle, architecture, integration seam, or operational behavior changes | Relevant module `README.md` |
-| Public interface, media/file format, security boundary, or cross-project obligation changes | Relevant specialized contract, such as `Docs/TAPVideoFormatContract.md`, `Docs/AppAttest/`, or the repository-recorded `TAPArtifactContracts` authority |
+| Public interface, media/file format, security boundary, or cross-project obligation changes | Relevant specialized contract, such as [Docs/TAPVideoFormatContract.md](Docs/TAPVideoFormatContract.md), [Docs/AppAttest/](Docs/AppAttest/), or the repository-recorded `TAPArtifactContracts` authority |
 | Testable acceptance procedure, build/device run, evidence, or human verdict changes | Matching `Docs/Acceptance/TAP-xxxx-*.md` and its linked DeviceAcceptance Task |
-| Repository-wide Agent workflow changes | Root `AGENTS.md` and the governance Task revision |
+| Repository-wide Agent workflow changes | Root [AGENTS.md](AGENTS.md) and the governance Task revision |
 | A canonical source replaces old prose | Migrate unique obligations, update inbound links, then delete the obsolete document; Git remains the archive |
 
 A Task is not ready for Done merely because code compiles. Before proposing

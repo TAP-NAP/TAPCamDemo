@@ -153,7 +153,7 @@ observed progress value `0.32` without any geometry delta.
 The product owner explicitly selected the prototype toolbar icons, circular
 backgrounds, and their relative placement as the native replacement target.
 The corresponding machine-readable values now live in
-`manifest.json.viewerToolbarVisualSpec`, and the CSS consumes named tokens
+[`manifest.json`](manifest.json) under `viewerToolbarVisualSpec`, and the CSS consumes named tokens
 rather than restating the numbers at each rule.
 
 - Share and Delete each use a 42 x 42 px circular control, matching the visible
@@ -227,7 +227,7 @@ current result: static contract and browser geometry checks passed; owner visual
 - Icon fidelity: Web assets are 2x exports of the exact code-owned SF Symbol
   identities and configuration (`19 pt`, semibold, `34 pt` container): `wifi`,
   `camera`, `photo.on.rectangle`, `location`, and `mic`. Their paths and
-  SHA-256 values are machine-readable in `manifest.json`; Unicode
+  SHA-256 values are machine-readable in [`manifest.json`](manifest.json); Unicode
   approximations are an explicit contract violation.
 - Visible states: untouched, camera request initiated by its own Allow action,
   network failure with row-scoped Retry, and required checks ready with the

@@ -322,7 +322,7 @@ proof parsing, hashing, ZIP creation, or the system activity controller.
 
 ### `fix0809` native-candidate synchronization
 
-`manifest.json` records implementation progress separately from the audited
+[manifest.json](manifest.json) records implementation progress separately from the audited
 current-main truth cards. The 2026-08-15 `fix0809` candidate changed the bounded
 non-Network lifecycle slice. Implemented records therefore appear at their
 target lifecycle anchors or target workload effects with the yellow/red

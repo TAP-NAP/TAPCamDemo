@@ -65,7 +65,7 @@ The final documentation score uses `C=3`, `B=0`, `A=0`, `H=277`, `M=8`,
 `L=3`, `T=0`, and `O=0`. The remaining contradictions are the old streaming
 statement in the Camera pipeline micro-doc, the incomplete photo-only Pending
 Queue description in the TAP Library README, and the stale queue-state summary
-in `PACKAGING.md`. They are recorded instead of expanded into a fourth
+in [PACKAGING.md](../TAPCamDemo/CameraCapture/Documentation/PACKAGING.md). They are recorded instead of expanded into a fourth
 iteration because the owner's stop rule is satisfied.
 
 ## Iteration 1 — Owned-Capture Backend Verify
