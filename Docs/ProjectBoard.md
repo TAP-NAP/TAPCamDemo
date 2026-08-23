@@ -69,7 +69,6 @@ from each record's `Status` field.
 
 - `TAP-0083` Eliminate cold-path UI starvation and codify responsiveness guardrails
 - `TAP-0087` Define startup lifecycle, heavy-work budgets, and an instrumented prototype
-- `TAP-0095` Deduplicate migrated artifact-contract prose across source repositories
 
 ### Done
 
@@ -106,6 +105,7 @@ from each record's `Status` field.
 - `TAP-0092` Clean up brittle tests, unmounted legacy code, and redundant repository information
 - `TAP-0093` Freeze pre-release v1 schemas and remove developer compatibility layers
 - `TAP-0094` Establish the documentation-only TAPArtifactContracts repository
+- `TAP-0095` Deduplicate migrated artifact-contract prose across source repositories
 
 ### Deprecated
 
@@ -5365,7 +5365,7 @@ Every active Task uses these stable fields:
 
 ### TAP-0095 — Deduplicate migrated artifact-contract prose across source repositories
 
-- Status: `Doing`
+- Status: `Done`
 - Kind: `Documentation`
 - Priority: `P0`
 - Domain: `Cross-project contracts / Documentation retention`
@@ -5667,24 +5667,22 @@ Every active Task uses these stable fields:
     isolated task commits exist with exact push status, validation passes, and
     no runtime, dependency, wire-format, embedding, or visibility change is
     claimed
-- Closure Gate: `Pending after deliberate reopening`; the prior closure remains
-  append-only history, but its link check proved only that existing links were
-  valid. It did not prove that all index entries which should be links were
-  clickable, and the renewed three-repository audit found additional safely
-  removable duplicate/historical prose. The owner additionally required a
-  one-way dependency from each source repository to the shared contract. The
-  shared self-contained commit exists locally but must not be pushed until both
-  downstream implementation ledgers and pinned links are committed.
+- Closure Gate: `Passed after deliberate reopening`; all three repositories now
+  have isolated task commits, every retained index/reference is clickable, the
+  shared repository is self-contained, downstream gap/mirror ownership is local,
+  and Private `origin/main` contains the reviewed shared revision. Demo and
+  Verifier commits remain local-only under the approved push boundary; their
+  push status is not a closure requirement.
 - Reopened Reconciliation State (`2026-08-24`):
-  - TAPArtifactContracts local commit
+  - TAPArtifactContracts published commit
     `ca3b223e0717242ce1016b34dc34f04ef2417936` (`docs: make shared contract
     self-contained`) deletes `SOURCE_SNAPSHOT.md` and
     `KNOWN_DIVERGENCES.md`, removes every Demo/Verifier backlink and downstream
     runtime snapshot, defines exact raw-`payload` byte hashing, makes KLV
     `FRAM` the contiguous zero-based timed-depth MP4 sample ordinal, and adds
     the 491-byte synthetic canonical-JSON vector. It contains exactly `15`
-    Markdown/JSON/Agent-guidance paths (`+298/-385`) and is local-only, one
-    commit ahead of `origin/main`, pending downstream migration before push.
+    Markdown/JSON/Agent-guidance paths (`+298/-385`) and is pushed to the
+    existing Private `origin/main` after both downstream ledgers were committed.
   - Demo-local implementation ledger:
     1. `TAPDepthManifestSchema.swift:37-39` still says proof data belongs in
        `manifest.proofs`; the v1 array is required empty and the envelope belongs
@@ -5714,12 +5712,127 @@ Every active Task uses these stable fields:
     mirror inventory. Shared proof reserved bytes are not a local divergence:
     producers must zero them, while a v1 reader may reject non-zero values and
     must not assign them semantics.
-  - TAPCamVerifier's final isolated candidate is still outside the real dirty
-    checkout pending the owner's exact approval for its historical-document
-    deletions. Until that index-only commit exists, TAP-0095 remains `Doing` and
-    the shared commit remains unpushed. No runtime, wire, SDK/codegen,
-    embedding-location, visibility, device, or backend-acceptance change is
-    claimed.
+  - The owner approved the exact Verifier deletion boundary. Index-only commit
+    `b6d84303eec494cb68c0354298d550b1ed3c3b3b` applies the audited `17`-file
+    candidate (`12` deletions plus `5` retained-document edits, `+108/-1254`)
+    with stable patch ID `09b58c54c1df6a321eb29f37a0ad33613769000a`.
+    Every pre-existing unstaged code/document change and untracked asset or
+    historical-file copy remains outside the commit. Shared commit `ca3b223`
+    is now pushed to Private `origin/main`; source-repository commits remain
+    local-only as approved.
+- Final Reconciliation Handoff (`2026-08-24`):
+  - Task ID: `TAP-0095`
+  - Dev Session: `/root`
+  - Branch/Worktree: TAPArtifactContracts
+    `codex/tap-0094-artifact-contracts`; TAPCamDemo shared `main` with a clean
+    worktree; TAPCamVerifier existing dirty `main`, with the task commit created
+    exclusively from the independently audited index
+  - Build/Commit:
+    - TAPArtifactContracts
+      `ca3b223e0717242ce1016b34dc34f04ef2417936` (`docs: make shared contract
+      self-contained`) is pushed and equals Private `origin/main`; its exact
+      paths are `AGENTS.md`, deleted `KNOWN_DIVERGENCES.md`, `README.md`, deleted
+      `SOURCE_SNAPSHOT.md`, `VERSIONING.md`,
+      `bindings/capture-binding-and-proof-v1.md`,
+      `containers/photo-containers-v1.md`,
+      `containers/tap-video-container-v1.md`, `examples/README.md`,
+      `examples/manifests/tap-video-v1.json`, added
+      `examples/vectors/tap-capture-canonical-json-v1.json`,
+      `manifests/live-photo-v1.md`, `manifests/still-photo-v1.md`,
+      `manifests/tap-video-v1.md`, and `transport/tapnap-v1.md`.
+    - TAPCamDemo
+      `5ef52bedde9af88d6c066e48cbb0082a5b1f2d6a` (`docs: complete shared
+      artifact contract adoption`) is local-only; its exact paths are
+      `README.md`, `Docs/ProductContract.md`, `Docs/ProjectBoard.md`,
+      `Docs/TAPVideoFormatContract.md`, `Docs/TAP-0092CleanupManifest.md`,
+      `Docs/TAP-0092CleanupEvidence.md`, `Docs/AppAttest/README.md`,
+      `Docs/AppAttest/BackendContract.md`,
+      `Docs/Acceptance/TAP-0044-live-photo-chain.md`,
+      `Docs/Acceptance/TAP-0046-app-attest-production.md`,
+      `TAPCamDemo/CameraCapture/README.md`,
+      `TAPCamDemo/CameraCapture/Documentation/PACKAGING.md`,
+      `TAPCamDemo/CameraCapture/Output/README.md`,
+      `TAPCamDemo/DepthAnalysis/README.md`,
+      `TAPCamDemo/TAPLibrary/README.md`, and `TAPCamDemoTests/README.md`.
+      Board-only progress commit `d0e53a5` records this content commit; the
+      final closure record is carried by the subsequent Board-only commit.
+    - TAPCamVerifier
+      `b6d84303eec494cb68c0354298d550b1ed3c3b3b` (`docs: adopt shared artifact
+      contracts`) is local-only. Its `5` modified paths are `README.md`,
+      `Docs/VerificationFlow.md`, `Docs/Roadmap.md`,
+      `Docs/LandingDesignPrompt.zh-CN.md`, and `test/README.md`; its `12`
+      deleted paths are `.trae/specs/ui-navigation-onboarding/checklist.md`,
+      `.trae/specs/ui-navigation-onboarding/spec.md`,
+      `.trae/specs/ui-navigation-onboarding/tasks.md`,
+      `Docs/AITrace/2026-07-04-live-photo-scoped-verification.md`,
+      `Docs/DevLog/2026-06-22-bootstrap-verifier.md`,
+      `Docs/DevLog/2026-06-23-depth-visualization-roadmap.md`,
+      `Docs/DevLog/2026-06-24-signed-depth-pixel-back-projection.md`,
+      `Docs/DevLog/2026-07-04-verification-gated-analysis.md`,
+      `Docs/DevLog/2026-07-16-location-metadata-hash-precision.md`,
+      `Docs/Scorecard.md`, `artifacts/design-qa/design-qa.md`, and
+      `design-qa.md`.
+  - Contract Sections Read: ProductContract `§1`, `§1.2`, `§3.2`–`§3.4`, and
+    `§6`; ProjectBoard operating rules and complete TAP-0094/TAP-0095 records;
+    repository retention rules; all affected module, App Attest, TAP Video,
+    binding/proof, manifest, container, transport, example, and flow documents
+  - Approved Scope: all eleven TAP-0095 scope items, including shared signing,
+    verification and per-family hash-participation completeness; fixture
+    ownership; three-repository deduplication/clickability; isolated commits;
+    and source repositories -> shared repository dependency only
+  - Implemented Scope: made the shared contract independently readable; removed
+    shared source snapshots and downstream gap/mirror ledgers; migrated those
+    responsibilities to their owning source repositories; removed covered wire,
+    signing, hash, container, transport, version, historical, AITrace, DevLog,
+    scorecard, design-QA, and obsolete `.trae` prose; preserved every current
+    product/runtime/backend/acceptance/flow/test responsibility; and pinned all
+    downstream contract links to the published shared revision
+  - Prototype Path/Revision/Approval: `N/A`; documentation ownership and
+    navigation changed, but no product UI, copy, hierarchy, or presented state
+    changed
+  - Tests And Builds Run: docs-only risk gate; full Markdown target/anchor and
+    Mermaid-click audits; shared pinned-link target checks; all tracked JSON
+    parse checks; exact canonical-vector byte/hash checks; identifier/version/
+    reverse-dependency scans; per-commit `git diff --check`; no product build was
+    required because no runtime or project file changed
+  - Evidence And Acceptance: shared audit passed `12` Markdown/`56` link targets
+    with `0` errors and `10/10` JSON; Demo audit passed `51` Markdown, `569`
+    relative links, `8` anchors, `87` Mermaid targets, `28` shared pinned links,
+    and `12/12` JSON; Verifier candidate and commit have identical raw diff
+    SHA-256 `b7254c8a700e6c4da3837ec667f20ffd586a43b4f21007e754f63f6d281644af`
+    and stable patch ID `09b58c54c1df6a321eb29f37a0ad33613769000a`.
+    Private remote readback resolves `origin/main` to `ca3b223`.
+  - Files Updated:
+    - Project Board: this final handoff, exact commit/path/push inventory,
+      closure gate, Revision History, Kanban, and global Revision Log
+    - Product Contract: retained product capability/non-goal authority and
+      replaced duplicated wire prose with pinned shared links
+    - UI Prototype/Manifest: `N/A`; no visual state changed
+    - UI Prototype Contract: `N/A`; workflow unchanged
+    - Module README: retained only producer, queue, Photos, playback, browser,
+      fixture, runtime-budget, and local implementation-gap ownership
+    - Specialized Contract: TAPArtifactContracts owns all shared manifest,
+      signing, verification, hash, container, KLV, proof, and transport rules;
+      Demo owns App Attest client/backend operations and TAP Video lifecycle;
+      Verifier owns its route/scope/report/server-join and consumer gaps
+    - Acceptance Record: TAP-0044 and TAP-0046 retain device actions and evidence
+      while linking shared artifact/security rules; no verdict changed
+    - AGENTS.md: shared repository guidance now enforces self-containment and
+      the no-reverse-dependency boundary; Demo Agent workflow is unchanged
+  - Obsolete Files Removed: shared `ADOPTION.md`, `CHANGELOG.md`,
+    `SOURCE_SNAPSHOT.md`, and `KNOWN_DIVERGENCES.md` across the reopened cleanup
+    chain; Demo's obsolete Live browser document in the earlier task commit;
+    and the `12` exact Verifier historical documents listed above. Git history
+    remains the archive.
+  - Remaining Gaps/Risks: no documentation-closure blocker. Demo's five
+    implementation conformance gaps remain in this Task's local ledger;
+    Verifier consumer gaps remain in `Docs/Roadmap.md`; hermetic Video mirrors
+    remain only where executable tests read them. Shared checkout has one local
+    untracked `.DS_Store`, excluded from every commit and remote tree.
+  - Follow-up Task IDs: no new Task allocated; runtime fixes were outside this
+    docs-only scope and remain explicit in their owner repositories
+  - Proposed Status: `Done`; all Done When evidence is satisfied with shared
+    pushed and source-repository push status explicitly local-only
 - Revision History:
   - `2026-08-23` Captured in Inbox after an all-status title/label/match-key/
     domain/contract/scope search. TAP-0002, TAP-0003, TAP-0078, and TAP-0092 are
@@ -5836,6 +5949,15 @@ Every active Task uses these stable fields:
     shared commit `ca3b223`, and `12/12` valid tracked JSON files. The Demo
     commit is local-only and TAP-0095 remains Doing while the Verifier deletion
     approval and shared push remain pending.
+  - `2026-08-24` The owner approved the exact isolated Verifier boundary.
+    Commit `b6d84303eec494cb68c0354298d550b1ed3c3b3b` contains only the audited
+    `17` Markdown paths and is byte-for-byte patch-equivalent to the clean
+    candidate; its index is empty afterward while all unrelated working-tree
+    changes remain. Shared commit `ca3b223` was then pushed to Private
+    `origin/main`. Final shared, Demo, and Verifier audits found no broken link,
+    anchor, JSON, reverse dependency, or retained duplicate authority blocker.
+    Board Steward accepted the final handoff and moved TAP-0095 Doing -> Done;
+    Demo and Verifier remain deliberately unpushed.
 
 ## 5. Inbox Decision Registry
 
@@ -6919,3 +7041,13 @@ not replace the Product Contract, and linked device evidence may remain open.
   and no code, SDK/codegen, wire, or embedding-location change. Demo remains
   unpushed; TAP-0095 remains Doing pending the exact Verifier deletion approval
   and the intentionally delayed shared `ca3b223` push.
+- `2026-08-24` The owner approved and the Session created isolated Verifier
+  commit `b6d8430`: exactly `12` historical-document deletions plus `5`
+  retained-document edits (`+108/-1254`), with all unrelated code, documents,
+  untracked historical copies, and QR assets preserved outside an empty index.
+  Shared `ca3b223` was then pushed and read back as Private `origin/main`.
+  Three-repository completion audits passed self-containment, one-way
+  dependency, clickable links/anchors, JSON, fixture ownership, exact patch,
+  and diff gates. Board Steward recorded the final structured handoff and moved
+  TAP-0095 Doing -> Done; no Demo/Verifier push or runtime/wire/SDK/codegen/
+  embedding/visibility change is claimed.
