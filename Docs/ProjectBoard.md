@@ -5826,6 +5826,16 @@ Every active Task uses these stable fields:
     gaps. The shared commit is intentionally not pushed until the candidate is
     approved and committed; no runtime, wire, SDK/codegen, embedding, or
     visibility change is claimed.
+  - `2026-08-24` Demo commit
+    `5ef52bedde9af88d6c066e48cbb0082a5b1f2d6a` (`docs: complete shared
+    artifact contract adoption`) recorded the downstream ownership, fixed
+    shared-revision links, local implementation gaps, executable-mirror ledger,
+    and bounded duplicate-prose cleanup across exactly `16` Markdown files
+    (`+234/-214`). Independent review found `569` valid relative links, `8`
+    valid anchors, `87` valid Mermaid click targets, `28` valid links pinned to
+    shared commit `ca3b223`, and `12/12` valid tracked JSON files. The Demo
+    commit is local-only and TAP-0095 remains Doing while the Verifier deletion
+    approval and shared push remain pending.
 
 ## 5. Inbox Decision Registry
 
@@ -6903,3 +6913,9 @@ not replace the Product Contract, and linked device evidence may remain open.
   divergence ledger. The shared commit remains unpushed pending the owner's
   exact approval and commit of the broader Verifier document deletions; no
   closure or source-repository push is claimed.
+- `2026-08-24` Local Demo commit `5ef52be` completed the producer-side adoption
+  and deduplication across `16` Markdown files (`+234/-214`). Its independent
+  audit found all local, anchor, Mermaid, pinned-shared, and JSON targets valid,
+  and no code, SDK/codegen, wire, or embedding-location change. Demo remains
+  unpushed; TAP-0095 remains Doing pending the exact Verifier deletion approval
+  and the intentionally delayed shared `ca3b223` push.
