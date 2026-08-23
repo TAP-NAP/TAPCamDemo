@@ -19,7 +19,7 @@ struct TAPLibraryStorageTests {
         #expect(record.captureID == "sample-capture")
         #expect(record.status == .pending)
         #expect(record.captureScoreSummary == artifact.captureScoreSummary)
-        #expect(try await store.unsignedHEICData(captureID: record.captureID) == Data("unsigned".utf8))
+        #expect(try await store.unsignedPhotoData(captureID: record.captureID) == Data("unsigned".utf8))
 
         let reloadedStore = TAPPendingCaptureStore(rootURL: rootURL)
         let reloadedRecords = try await reloadedStore.visiblePendingRecords()
@@ -74,6 +74,32 @@ struct TAPLibraryStorageTests {
         #expect(!record.isVisiblePendingItem)
     }
 
+    @Test func pendingCaptureRecordRejectsMissingCurrentRequiredFields() throws {
+        let record = TAPCamDemoTestFixtures.samplePendingRecord(
+            captureID: "current-record",
+            capturedAt: Date(timeIntervalSince1970: 0)
+        )
+        let encoded = try JSONEncoder().encode(record)
+        let currentObject = try #require(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+
+        for key in [
+            "artifactKind",
+            "photoFileContainer",
+            "photoQualityLevel",
+            "captureScoreSummary"
+        ] {
+            var incompleteObject = currentObject
+            incompleteObject.removeValue(forKey: key)
+            let incompleteData = try JSONSerialization.data(withJSONObject: incompleteObject)
+
+            #expect(throws: DecodingError.self) {
+                try JSONDecoder().decode(TAPPendingCaptureRecord.self, from: incompleteData)
+            }
+        }
+    }
+
     @Test func pendingCaptureStoreWritesArtifactsThroughLocalStoragePolicy() async throws {
         let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
         let store = TAPPendingCaptureStore(rootURL: rootURL)
@@ -86,7 +112,7 @@ struct TAPLibraryStorageTests {
         #expect(FileManager.default.fileExists(atPath: bundleURL.appendingPathComponent("bundle.json").path))
         #expect(FileManager.default.fileExists(atPath: bundleURL.appendingPathComponent("unsigned.heic").path))
 
-        _ = try await store.storeSignedHEIC(Data("signed".utf8), captureID: record.captureID)
+        _ = try await store.storeSignedPhoto(Data("signed".utf8), captureID: record.captureID)
 
         #expect(FileManager.default.fileExists(atPath: bundleURL.appendingPathComponent("signed.heic").path))
     }
@@ -103,7 +129,6 @@ struct TAPLibraryStorageTests {
 
         #expect(record.photoFileContainer == .jpeg)
         #expect(record.unsignedPhotoFilename == "unsigned.jpg")
-        #expect(record.unsignedHEICFilename == nil)
         #expect(FileManager.default.fileExists(atPath: bundleURL.appendingPathComponent("unsigned.jpg").path))
         #expect(!FileManager.default.fileExists(atPath: bundleURL.appendingPathComponent("unsigned.heic").path))
         #expect(try await store.unsignedPhotoData(captureID: record.captureID) == Data("unsigned-jpg".utf8))
@@ -111,7 +136,6 @@ struct TAPLibraryStorageTests {
         let signedRecord = try await store.storeSignedPhoto(Data("signed-jpg".utf8), captureID: record.captureID)
 
         #expect(signedRecord.signedPhotoFilename == "signed.jpg")
-        #expect(signedRecord.signedHEICFilename == nil)
         #expect(FileManager.default.fileExists(atPath: bundleURL.appendingPathComponent("signed.jpg").path))
         #expect(try await store.signedPhotoData(captureID: record.captureID) == Data("signed-jpg".utf8))
     }
@@ -174,7 +198,6 @@ struct TAPLibraryStorageTests {
         #expect(record.artifactKind == .tapVideo)
         #expect(record.unsignedPhotoFilename == nil)
         #expect(record.videoArtifactFilename == TAPPendingCaptureBundlePathPolicy.videoArtifactFilename)
-        #expect(record.videoFormatRevision == 2)
         #expect(record.videoArtifactState == .unsigned)
         #expect(record.pairedVideoFilename == nil)
         #expect(!FileManager.default.fileExists(atPath: workspaceURL.path))
@@ -473,12 +496,12 @@ struct TAPLibraryStorageTests {
         let tamperedRecord = TAPCamDemoTestFixtures.samplePendingRecord(
             captureID: "tampered-filename-capture",
             capturedAt: Date(timeIntervalSince1970: 0),
-            unsignedHEICFilename: "../unsigned.heic"
+            unsignedPhotoFilename: "../unsigned.heic"
         )
         try TAPCamDemoTestFixtures.writePendingRecord(tamperedRecord, rootURL: rootURL)
 
         do {
-            _ = try await store.unsignedHEICData(captureID: tamperedRecord.captureID)
+            _ = try await store.unsignedPhotoData(captureID: tamperedRecord.captureID)
             Issue.record("Expected tampered pending artifact filename to be rejected.")
         } catch TAPDepthCaptureError.invalidPendingCaptureBundlePath(let reason) {
             #expect(reason.contains("filename"))
@@ -584,7 +607,7 @@ struct TAPLibraryStorageTests {
         #expect(!result.publicDestinationSummary.contains("sample-capture"))
         #expect(result.signatureStatus == .pending(reason: "Queued for App Attest signing."))
         #expect(result.captureScoreSummary == artifact.captureScoreSummary)
-        #expect(try await store.unsignedHEICData(captureID: "sample-capture") == Data("unsigned".utf8))
+        #expect(try await store.unsignedPhotoData(captureID: "sample-capture") == Data("unsigned".utf8))
     }
 
     @Test func pendingCaptureStoreTracksSigningExportAndCleanup() async throws {
@@ -604,8 +627,8 @@ struct TAPLibraryStorageTests {
         #expect(waitingRecord.failureReason == "Network unavailable. Capture will retry.")
         #expect(waitingRecord.retryCount == 1)
 
-        _ = try await store.storeSignedHEIC(Data("signed".utf8), captureID: record.captureID)
-        #expect(try await store.signedHEICData(captureID: record.captureID) == Data("signed".utf8))
+        _ = try await store.storeSignedPhoto(Data("signed".utf8), captureID: record.captureID)
+        #expect(try await store.signedPhotoData(captureID: record.captureID) == Data("signed".utf8))
         let signedBundleJSON = try TAPCamDemoTestFixtures.pendingCaptureBundleJSON(
             rootURL: rootURL,
             captureID: record.captureID
@@ -674,19 +697,19 @@ struct TAPLibraryStorageTests {
         }
     }
 
-    @Test func pendingCaptureStoreNormalizesLegacyFailureReasonOnRead() async throws {
+    @Test func pendingCaptureStoreNormalizesStoredFailureReasonOnRead() async throws {
         let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
         let store = TAPPendingCaptureStore(rootURL: rootURL)
-        let legacyReason = "capture pending/private-capture-id failed at /private/tmp/secret.heic token=secret-token"
-        let legacyRecord = TAPCamDemoTestFixtures.samplePendingRecord(
-            captureID: "legacy-read-capture",
+        let unsafeStoredReason = "capture pending/private-capture-id failed at /private/tmp/secret.heic token=secret-token"
+        let storedRecord = TAPCamDemoTestFixtures.samplePendingRecord(
+            captureID: "unsafe-read-capture",
             capturedAt: Date(timeIntervalSince1970: 0),
             status: .waitingNetwork,
-            failureReason: legacyReason
+            failureReason: unsafeStoredReason
         )
-        try TAPCamDemoTestFixtures.writePendingRecord(legacyRecord, rootURL: rootURL)
+        try TAPCamDemoTestFixtures.writePendingRecord(storedRecord, rootURL: rootURL)
 
-        let readRecord = try await store.readRecord(captureID: legacyRecord.captureID)
+        let readRecord = try await store.readRecord(captureID: storedRecord.captureID)
         let reason = try #require(readRecord.failureReason)
 
         #expect(reason == "Network unavailable. Capture will retry.")
@@ -695,135 +718,17 @@ struct TAPLibraryStorageTests {
         #expect(!reason.contains("token=secret-token"))
     }
 
-    @Test func pendingCaptureStoreMigratesLegacyBundleJSONFailureReason() async throws {
-        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
-        let store = TAPPendingCaptureStore(rootURL: rootURL)
-        let legacyReason = "manifest actual-manifest-id-2 failed at /private/tmp/signed.heic proof=secret-proof"
-        let legacyRecord = TAPCamDemoTestFixtures.samplePendingRecord(
-            captureID: "legacy-migrate-capture",
-            capturedAt: Date(timeIntervalSince1970: 0),
-            status: .failedRetryable,
-            failureReason: legacyReason
-        )
-        try TAPCamDemoTestFixtures.writePendingRecord(legacyRecord, rootURL: rootURL)
-
-        let normalizedCount = try await store.normalizePersistedFailureReasons()
-        let migratedJSON = try TAPCamDemoTestFixtures.pendingCaptureBundleJSON(rootURL: rootURL, captureID: legacyRecord.captureID)
-        let migratedRecord = try await store.readRecord(captureID: legacyRecord.captureID)
-
-        #expect(normalizedCount == 1)
-        #expect(migratedRecord.failureReason == "Capture processing failed. It will retry.")
-        #expect(migratedJSON.contains("Capture processing failed. It will retry."))
-        #expect(!migratedJSON.contains("actual-manifest-id-2"))
-        #expect(!migratedJSON.contains("/private/tmp/signed.heic"))
-        #expect(!migratedJSON.contains("secret-proof"))
-    }
-
-    @Test func pendingCaptureStoreOnlyReopensLegacyUnsignedVideoValidationFailures() async throws {
-        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: rootURL) }
-        let store = TAPPendingCaptureStore(rootURL: rootURL)
-
-        let invalidUnsigned = try await TAPCamDemoTestFixtures.ingestPendingTAPVideo(
-            store: store,
-            captureID: "legacy-invalid-unsigned"
-        )
-        _ = try await store.markTerminalFailure(
-            captureID: invalidUnsigned.captureID,
-            code: .invalidVideoArtifact
-        )
-
-        let proofUnsigned = try await TAPCamDemoTestFixtures.ingestPendingTAPVideo(
-            store: store,
-            captureID: "legacy-proof-unsigned"
-        )
-        _ = try await store.markTerminalFailure(
-            captureID: proofUnsigned.captureID,
-            code: .proofValidationFailed
-        )
-
-        let missingDepth = try await TAPCamDemoTestFixtures.ingestPendingTAPVideo(
-            store: store,
-            captureID: "terminal-missing-depth"
-        )
-        _ = try await store.markTerminalFailure(
-            captureID: missingDepth.captureID,
-            code: .missingDepthData
-        )
-
-        let invalidSigned = try await TAPCamDemoTestFixtures.ingestPendingTAPVideo(
-            store: store,
-            captureID: "terminal-invalid-signed"
-        )
-        _ = try await store.markVideoSigned(captureID: invalidSigned.captureID)
-        _ = try await store.markTerminalFailure(
-            captureID: invalidSigned.captureID,
-            code: .invalidVideoArtifact
-        )
-
-        let reopenedCount = try await store.reopenLegacyUnsignedVideoValidationFailures()
-
-        #expect(reopenedCount == 2)
-        #expect(try await store.readRecord(captureID: invalidUnsigned.captureID).status == .failedRetryable)
-        #expect(try await store.readRecord(captureID: proofUnsigned.captureID).status == .failedRetryable)
-        #expect(try await store.readRecord(captureID: missingDepth.captureID).status == .failedTerminal)
-        #expect(try await store.readRecord(captureID: invalidSigned.captureID).status == .failedTerminal)
-    }
-
-    @Test func pendingCaptureStoreMigrationSkipsInvalidBundlesAndNormalizesOthers() async throws {
-        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
-        let store = TAPPendingCaptureStore(rootURL: rootURL)
-        let legacyReason = "legacy capture failed at /private/tmp/legacy.heic token=secret-token"
-        let legacyRecord = TAPCamDemoTestFixtures.samplePendingRecord(
-            captureID: "legacy-continue-capture",
-            capturedAt: Date(timeIntervalSince1970: 0),
-            status: .waitingNetwork,
-            failureReason: legacyReason
-        )
-        let invalidRecord = TAPCamDemoTestFixtures.samplePendingRecord(
-            captureID: "record-mismatch-capture",
-            capturedAt: Date(timeIntervalSince1970: 1),
-            status: .failedRetryable,
-            failureReason: "bad bundle should not block migration"
-        )
-        try TAPCamDemoTestFixtures.writePendingRecord(legacyRecord, rootURL: rootURL)
-        try TAPCamDemoTestFixtures.writePendingRecord(
-            invalidRecord,
-            rootURL: rootURL,
-            bundleCaptureID: "bundle-mismatch-capture"
-        )
-
-        let normalizedCount = try await store.normalizePersistedFailureReasons()
-        let migratedJSON = try TAPCamDemoTestFixtures.pendingCaptureBundleJSON(rootURL: rootURL, captureID: legacyRecord.captureID)
-        let migratedRecord = try await store.readRecord(captureID: legacyRecord.captureID)
-
-        #expect(normalizedCount == 1)
-        #expect(migratedRecord.failureReason == "Network unavailable. Capture will retry.")
-        #expect(migratedJSON.contains("Network unavailable. Capture will retry."))
-        #expect(!migratedJSON.contains("/private/tmp/legacy.heic"))
-        #expect(!migratedJSON.contains("secret-token"))
-
-        do {
-            _ = try await store.readRecord(captureID: "bundle-mismatch-capture")
-            Issue.record("Expected mismatched bundle to remain invalid after migration skips it.")
-        } catch TAPDepthCaptureError.invalidPendingCaptureBundlePath(let reason) {
-            #expect(reason.contains("match bundle directory"))
-        } catch {
-            Issue.record("Unexpected invalid bundle error: \(error)")
-        }
-    }
-
-    @Test func pendingCaptureStoreAllRecordsNormalizesLegacyFailureReasons() async throws {
+    @Test func pendingCaptureStoreAllRecordsNormalizesStoredFailureReasons() async throws {
         let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
         let store = TAPPendingCaptureStore(rootURL: rootURL)
         let retryRecord = TAPCamDemoTestFixtures.samplePendingRecord(
-            captureID: "legacy-retry-capture",
+            captureID: "unsafe-retry-capture",
             capturedAt: Date(timeIntervalSince1970: 0),
             status: .failedRetryable,
             failureReason: "raw retry path /private/tmp/retry.heic"
         )
         let exportedRecord = TAPCamDemoTestFixtures.samplePendingRecord(
-            captureID: "legacy-exported-capture",
+            captureID: "unsafe-exported-capture",
             capturedAt: Date(timeIntervalSince1970: 1),
             status: .exported,
             assetLocalIdentifier: "asset-id",
@@ -1096,20 +1001,20 @@ struct TAPLibraryStorageTests {
         let signedURL = bundleURL.appendingPathComponent("signed.heic")
         let unsignedURL = bundleURL.appendingPathComponent("unsigned.heic")
 
-        #expect(try await store.bestAvailableHEICData(captureID: record.captureID) == Data("unsigned".utf8))
+        #expect(try await store.bestAvailablePhotoData(captureID: record.captureID) == Data("unsigned".utf8))
         #expect(try await store.bestAvailablePhotoURL(captureID: record.captureID) == unsignedURL)
 
-        _ = try await store.storeSignedHEIC(Data("signed".utf8), captureID: record.captureID)
-        #expect(try await store.bestAvailableHEICData(captureID: record.captureID) == Data("signed".utf8))
+        _ = try await store.storeSignedPhoto(Data("signed".utf8), captureID: record.captureID)
+        #expect(try await store.bestAvailablePhotoData(captureID: record.captureID) == Data("signed".utf8))
         #expect(try await store.bestAvailablePhotoURL(captureID: record.captureID) == signedURL)
 
         try FileManager.default.removeItem(at: signedURL)
-        #expect(try await store.bestAvailableHEICData(captureID: record.captureID) == Data("unsigned".utf8))
+        #expect(try await store.bestAvailablePhotoData(captureID: record.captureID) == Data("unsigned".utf8))
         #expect(try await store.bestAvailablePhotoURL(captureID: record.captureID) == unsignedURL)
 
         try FileManager.default.removeItem(at: unsignedURL)
         do {
-            _ = try await store.bestAvailableHEICData(captureID: record.captureID)
+            _ = try await store.bestAvailablePhotoData(captureID: record.captureID)
             Issue.record("Expected missing pending HEIC data to throw.")
         } catch TAPDepthCaptureError.pendingCaptureDataMissing {
             // Expected path.
@@ -1160,7 +1065,7 @@ struct TAPLibraryStorageTests {
         #expect(pendingRecord.isProcessingCandidate)
         #expect(!pendingRecord.shouldAttemptExistingAssetRecoveryBeforeExport)
 
-        let signedRecord = try await store.storeSignedHEIC(Data("signed".utf8), captureID: pendingRecord.captureID)
+        let signedRecord = try await store.storeSignedPhoto(Data("signed".utf8), captureID: pendingRecord.captureID)
         #expect(signedRecord.processingRoute == .exportSigned)
         #expect(signedRecord.processingPriority == 0)
         #expect(!signedRecord.shouldAttemptExistingAssetRecoveryBeforeExport)
@@ -1250,7 +1155,7 @@ struct TAPLibraryStorageTests {
             captureID: "signed-capture",
             capturedAt: Date(timeIntervalSince1970: 2)
         ))
-        _ = try await store.storeSignedHEIC(Data("signed".utf8), captureID: signedRecord.captureID)
+        _ = try await store.storeSignedPhoto(Data("signed".utf8), captureID: signedRecord.captureID)
 
         let candidates = try await store.processingCandidates()
         #expect(candidates.map(\.captureID) == [
@@ -1276,7 +1181,7 @@ struct TAPLibraryStorageTests {
             captureID: "signed-capture",
             capturedAt: Date(timeIntervalSince1970: 2)
         ))
-        _ = try await store.storeSignedHEIC(Data("signed".utf8), captureID: signedRecord.captureID)
+        _ = try await store.storeSignedPhoto(Data("signed".utf8), captureID: signedRecord.captureID)
 
         let retryRecord = try await store.ingest(TAPCamDemoTestFixtures.samplePendingArtifact(
             photoData: Data("retry".utf8),

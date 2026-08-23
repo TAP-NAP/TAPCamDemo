@@ -29,7 +29,7 @@ enum TAPCaptureProvenanceTestFixtures {
     ) throws -> Data {
         let sourceHEIC = try sampleHEICSourceData()
         let manifestWithoutProofBody = TAPDepthManifest(payload: manifest.payload)
-        let unsignedHEIC = try TAPDepthHEICWriter.injectingManifest(manifestWithoutProofBody, into: sourceHEIC)
+        let unsignedHEIC = try TAPDepthPhotoFileWriter.injectingManifest(manifestWithoutProofBody, into: sourceHEIC)
         var signedHEIC = try TAPProofSlot.ensuringEmptySlot(in: unsignedHEIC, fileContainer: .heic)
         if let proof = manifest.proofs.first {
             let proofEnvelope = try JSONEncoder.tapCaptureCanonical.encode(proof)
@@ -117,7 +117,7 @@ enum TAPCaptureProvenanceTestFixtures {
             ),
             metadataHash: CaptureContentDigest.MetadataHash(
                 kind: "canonical-json",
-                mediaType: "application/vnd.tapnap.depth-manifest.payload+json;version=1",
+                mediaType: "application/vnd.tapnap.still-photo-manifest.payload+json;version=1",
                 algorithm: "SHA-256",
                 value: "metadata-digest"
             ),

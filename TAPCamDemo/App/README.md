@@ -20,9 +20,9 @@ status and known alignment work remain in
 | Post-Setup Camera/Photos recovery UI | [RequiredPermissionCheckView.swift](RequiredPermissionCheckView.swift) |
 | Independent versioned Initialization completion store | [StartupInitializationPolicy.swift](StartupInitializationPolicy.swift) |
 | Camera-plus-Library readiness state and blocking surface | [CameraInitialReadinessGate.swift](../CameraCapture/UI/CameraInitialReadinessGate.swift), [CameraView.swift](../CameraCapture/UI/CameraView.swift) |
-| Setup facts, required-permission facts, route priority, and legacy compatibility | [StartupGatePolicy.swift](StartupGatePolicy.swift) |
-| Legacy Network-row retry and timeout policy; canonical Setup/App Attest alignment remains `TAP-0010` | [StartupSecurityPreflightPolicy.swift](StartupSecurityPreflightPolicy.swift) |
-| Legacy `/healthz` reachability execution; not the target completion condition | [StartupBackendSecurityPreflight.swift](StartupBackendSecurityPreflight.swift) |
+| Setup facts, required-permission facts, route priority, and current pre-release completion | [StartupGatePolicy.swift](StartupGatePolicy.swift) |
+| Frozen Network-row retry and timeout policy; canonical Setup/App Attest alignment remains `TAP-0010` | [StartupSecurityPreflightPolicy.swift](StartupSecurityPreflightPolicy.swift) |
+| Current `/healthz` reachability execution; not the target completion condition | [StartupBackendSecurityPreflight.swift](StartupBackendSecurityPreflight.swift) |
 | Current Network, camera, photo, optional location, and optional microphone row state | [StartupGateCoordinator.swift](StartupGateCoordinator.swift) |
 | App Attest runtime factory and diagnostics | [AppAttestRuntime.swift](AppAttestRuntime.swift) |
 | App Attest credential preparation state | [AppAttestRuntimeController.swift](AppAttestRuntimeController.swift) |
@@ -88,16 +88,16 @@ completes only after the initial App Attest registration/verification succeeds.
 by each setup row. It does not own the camera-readiness gate.
 `StartupSecurityPreflightPolicy` owns the bounded retry interval, deadline, and
 wall-clock timeout used by the current Network row. The remaining generic
-`/healthz` compatibility path is not canonical App Attest credential evidence;
-its replacement and receipt migration are owned by `TAP-0010`. One explicit
+`/healthz` path is not canonical App Attest credential evidence;
+its replacement and canonical receipt delivery are owned by `TAP-0010`. One explicit
 Network action starts one bounded sequence. After timeout, only the setup
 page's explicit Retry action may begin another sequence; appearance, foreground
 return, and passive status refresh must not do so.
 
 Continue writes the canonical structured Setup receipt only when its credential
-binding is valid. The retained `LegacySetupCompletionRecord` is an explicit
-pre-release compatibility path and never converts `/healthz` into credential
-evidence. Resource Initialization owns a different marker and stays visible
+binding is valid. Until TAP-0010 supplies that binding, the current
+`SetupCompletionRecord` preserves the mounted completion path without converting
+`/healthz` into credential evidence. Resource Initialization owns a different marker and stays visible
 until camera-interactive readiness and the first usable TAP Library metadata
 snapshot are both ready. Session
 configuration by itself is not enough. Resource Initialization has no product
@@ -135,13 +135,12 @@ when the user has never chosen; a saved opt-out remains authoritative.
 
 ## Completion Marker And Later Launches
 
-The current compatibility reader accepts the historical
-`TAPCamDemo.StartupGate.didCompleteFirstInstallPermissions` only as a final
-compatibility fallback. The active model separates:
+Pre-release builds read only the current records; old development keys require
+clearing the app container or deleting and reinstalling. The active model separates:
 
 - a canonical structured Setup receipt shape, valid only with independently
   verified local credential binding; until the frozen Network work supplies
-  that binding, a clearly non-canonical legacy Setup record preserves the
+  that binding, a clearly non-canonical `SetupCompletionRecord` preserves the
   existing first-install completion path; and
 - a versioned Resource Initialization marker, written only after both readiness
   groups succeed. It is stored as one atomically replaced Application Support
@@ -201,9 +200,9 @@ The app target also sets `APP_ATTEST_ENVIRONMENT` to `development` for Debug and
   First-Install Setup checks. Initial App Attest, camera, and photo library remain
   required; location and microphone remain optional. Current generic
   `/healthz` completion is an implementation gap, not the target requirement.
-- `StartupGateView` owns the route reducer and keeps Setup compatibility state
-  separate from the Resource Initialization marker. Invalid canonical Setup
-  data cannot fall back to the historical Boolean.
+- `StartupGateView` owns the route reducer and keeps the current pre-release
+  Setup completion separate from the Resource Initialization marker. Invalid
+  canonical Setup data fails closed and never falls back to old development keys.
 - `CameraInitialReadinessGate` and `CameraView` own camera-interactive
   readiness; App code must not replace that gate with a timer or a
   configuration-completed flag.

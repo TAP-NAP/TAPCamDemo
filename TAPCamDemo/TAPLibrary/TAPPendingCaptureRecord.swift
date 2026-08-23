@@ -88,7 +88,6 @@ nonisolated struct TAPPendingCaptureRecord: Codable, Equatable, Identifiable, Se
     var unsignedPhotoFilename: String?
     var signedPhotoFilename: String?
     var videoArtifactFilename: String?
-    var videoFormatRevision: Int?
     var videoArtifactState: TAPPendingVideoArtifactState?
     var videoPhotosExportPhase: TAPPendingVideoPhotosExportPhase?
     var posterRevision: Int?
@@ -118,24 +117,6 @@ nonisolated struct TAPPendingCaptureRecord: Codable, Equatable, Identifiable, Se
         )
     }
 
-    /// Legacy HEIC field retained for older tests and decoded records.
-    var unsignedHEICFilename: String? {
-        get { photoFileContainer == .heic ? unsignedPhotoFilename : nil }
-        set {
-            photoFileContainer = .heic
-            unsignedPhotoFilename = newValue
-        }
-    }
-
-    /// Legacy HEIC field retained for older tests and decoded records.
-    var signedHEICFilename: String? {
-        get { photoFileContainer == .heic ? signedPhotoFilename : nil }
-        set {
-            photoFileContainer = .heic
-            signedPhotoFilename = newValue
-        }
-    }
-
     init(
         captureID: String,
         packageID: UUID,
@@ -150,7 +131,6 @@ nonisolated struct TAPPendingCaptureRecord: Codable, Equatable, Identifiable, Se
         unsignedPhotoFilename: String? = nil,
         signedPhotoFilename: String? = nil,
         videoArtifactFilename: String? = nil,
-        videoFormatRevision: Int? = nil,
         videoArtifactState: TAPPendingVideoArtifactState? = nil,
         videoPhotosExportPhase: TAPPendingVideoPhotosExportPhase? = nil,
         posterRevision: Int? = nil,
@@ -159,8 +139,6 @@ nonisolated struct TAPPendingCaptureRecord: Codable, Equatable, Identifiable, Se
         failureCode: TAPPendingCaptureFailureCode? = nil,
         duplicateExportWarning: String? = nil,
         pairedVideoFilename: String? = nil,
-        unsignedHEICFilename: String? = nil,
-        signedHEICFilename: String? = nil,
         thumbnailFilename: String?,
         assetLocalIdentifier: String?,
         failureReason: String?,
@@ -177,10 +155,9 @@ nonisolated struct TAPPendingCaptureRecord: Codable, Equatable, Identifiable, Se
         self.photoFileContainer = photoFileContainer
         self.photoQualityLevel = photoQualityLevel
         self.captureScoreSummary = captureScoreSummary
-        self.unsignedPhotoFilename = unsignedPhotoFilename ?? unsignedHEICFilename
-        self.signedPhotoFilename = signedPhotoFilename ?? signedHEICFilename
+        self.unsignedPhotoFilename = unsignedPhotoFilename
+        self.signedPhotoFilename = signedPhotoFilename
         self.videoArtifactFilename = videoArtifactFilename
-        self.videoFormatRevision = videoFormatRevision
         self.videoArtifactState = videoArtifactState
         self.videoPhotosExportPhase = videoPhotosExportPhase
         self.posterRevision = posterRevision
@@ -210,7 +187,6 @@ nonisolated struct TAPPendingCaptureRecord: Codable, Equatable, Identifiable, Se
         case unsignedPhotoFilename
         case signedPhotoFilename
         case videoArtifactFilename
-        case videoFormatRevision
         case videoArtifactState
         case videoPhotosExportPhase
         case posterRevision
@@ -219,8 +195,6 @@ nonisolated struct TAPPendingCaptureRecord: Codable, Equatable, Identifiable, Se
         case failureCode
         case duplicateExportWarning
         case pairedVideoFilename
-        case unsignedHEICFilename
-        case signedHEICFilename
         case thumbnailFilename
         case assetLocalIdentifier
         case failureReason
@@ -230,11 +204,6 @@ nonisolated struct TAPPendingCaptureRecord: Codable, Equatable, Identifiable, Se
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        let photoFileContainer = try container.decodeIfPresent(
-            CapturePhotoFileContainer.self,
-            forKey: .photoFileContainer
-        ) ?? .heic
-
         self.init(
             captureID: try container.decode(String.self, forKey: .captureID),
             packageID: try container.decode(UUID.self, forKey: .packageID),
@@ -242,23 +211,25 @@ nonisolated struct TAPPendingCaptureRecord: Codable, Equatable, Identifiable, Se
             createdAt: try container.decode(Date.self, forKey: .createdAt),
             updatedAt: try container.decode(Date.self, forKey: .updatedAt),
             status: try container.decode(TAPPendingCaptureStatus.self, forKey: .status),
-            artifactKind: try container.decodeIfPresent(
+            artifactKind: try container.decode(
                 TAPPendingCaptureArtifactKind.self,
                 forKey: .artifactKind
-            ) ?? .photoDepth,
-            photoFileContainer: photoFileContainer,
-            photoQualityLevel: try container.decodeIfPresent(
+            ),
+            photoFileContainer: try container.decode(
+                CapturePhotoFileContainer.self,
+                forKey: .photoFileContainer
+            ),
+            photoQualityLevel: try container.decode(
                 CapturePhotoQualityLevel.self,
                 forKey: .photoQualityLevel
-            ) ?? .quality,
-            captureScoreSummary: try container.decodeIfPresent(
+            ),
+            captureScoreSummary: try container.decode(
                 CaptureScoreSummary.self,
                 forKey: .captureScoreSummary
-            ) ?? .unknown,
+            ),
             unsignedPhotoFilename: try container.decodeIfPresent(String.self, forKey: .unsignedPhotoFilename),
             signedPhotoFilename: try container.decodeIfPresent(String.self, forKey: .signedPhotoFilename),
             videoArtifactFilename: try container.decodeIfPresent(String.self, forKey: .videoArtifactFilename),
-            videoFormatRevision: try container.decodeIfPresent(Int.self, forKey: .videoFormatRevision),
             videoArtifactState: try container.decodeIfPresent(TAPPendingVideoArtifactState.self, forKey: .videoArtifactState),
             videoPhotosExportPhase: try container.decodeIfPresent(
                 TAPPendingVideoPhotosExportPhase.self,
@@ -270,8 +241,6 @@ nonisolated struct TAPPendingCaptureRecord: Codable, Equatable, Identifiable, Se
             failureCode: try container.decodeIfPresent(TAPPendingCaptureFailureCode.self, forKey: .failureCode),
             duplicateExportWarning: try container.decodeIfPresent(String.self, forKey: .duplicateExportWarning),
             pairedVideoFilename: try container.decodeIfPresent(String.self, forKey: .pairedVideoFilename),
-            unsignedHEICFilename: try container.decodeIfPresent(String.self, forKey: .unsignedHEICFilename),
-            signedHEICFilename: try container.decodeIfPresent(String.self, forKey: .signedHEICFilename),
             thumbnailFilename: try container.decodeIfPresent(String.self, forKey: .thumbnailFilename),
             assetLocalIdentifier: try container.decodeIfPresent(String.self, forKey: .assetLocalIdentifier),
             failureReason: try container.decodeIfPresent(String.self, forKey: .failureReason),
@@ -295,7 +264,6 @@ nonisolated struct TAPPendingCaptureRecord: Codable, Equatable, Identifiable, Se
         try container.encodeIfPresent(unsignedPhotoFilename, forKey: .unsignedPhotoFilename)
         try container.encodeIfPresent(signedPhotoFilename, forKey: .signedPhotoFilename)
         try container.encodeIfPresent(videoArtifactFilename, forKey: .videoArtifactFilename)
-        try container.encodeIfPresent(videoFormatRevision, forKey: .videoFormatRevision)
         try container.encodeIfPresent(videoArtifactState, forKey: .videoArtifactState)
         try container.encodeIfPresent(videoPhotosExportPhase, forKey: .videoPhotosExportPhase)
         try container.encodeIfPresent(posterRevision, forKey: .posterRevision)

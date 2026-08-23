@@ -113,7 +113,7 @@ nonisolated enum TAPDepthKLV {
 }
 
 nonisolated struct TAPDepthKLVFrame: Equatable, Sendable {
-    static let schemaVersion: UInt32 = 2
+    static let schemaVersion: UInt32 = 1
 
     let frameIndex: UInt32
     let timestampValue: Int64

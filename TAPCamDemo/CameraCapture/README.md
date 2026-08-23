@@ -189,7 +189,7 @@ The format and quality boundary crosses layers in this order:
 This is still not a broad image-quality feature. The visible photo format choice is
 limited to the two reviewed TAP depth photo profiles. Live Photo is a narrow
 extension on top of those profiles: when the active photo output supports it,
-the app captures one paired MOV resource and signs it through the v2/v3 Live
+the app captures one paired MOV resource and signs it through the Live Photo v1
 Photo contract. TAP Video uses its own reviewed movie contract. Future RAW,
 arbitrary non-TAP video formats, 24MP deferred delivery, or new
 quality-level work should add a new profile/catalog entry plus validation,
@@ -212,7 +212,7 @@ flowchart TD
     click Package "Output/CapturePackage.swift"
     click Manifest "Output/TAPDepthManifestBuilder.swift"
     click Provenance "Output/TAPCaptureProvenanceWriter.swift"
-    click Writer "Output/TAPDepthHEICWriter.swift"
+    click Writer "Output/TAPDepthPhotoFile.swift"
     click Store "../TAPLibrary/TAPPendingCaptureStore.swift"
 ```
 

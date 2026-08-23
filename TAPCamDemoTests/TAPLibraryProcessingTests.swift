@@ -48,7 +48,7 @@ struct TAPLibraryProcessingTests {
             photoData: Data("unsigned".utf8),
             captureID: "signed-capture"
         ))
-        _ = try await store.storeSignedHEIC(Data("signed".utf8), captureID: signedRecord.captureID)
+        _ = try await store.storeSignedPhoto(Data("signed".utf8), captureID: signedRecord.captureID)
         let signer = RecordingPendingCaptureSigner()
         let exporter = RecordingPendingCaptureExporter()
         let processor = TAPPendingCaptureProcessor()
@@ -64,44 +64,7 @@ struct TAPLibraryProcessingTests {
         #expect(unchangedRecord.status == .signed)
         #expect(unchangedRecord.retryCount == 0)
         #expect(unchangedRecord.failureReason == nil)
-        #expect(unchangedRecord.signedHEICFilename != nil)
-        #expect(await signer.signedCaptureIDs().isEmpty)
-        #expect(await exporter.exportedCaptureIDs().isEmpty)
-    }
-
-    @Test func pendingCaptureProcessorDoesNotReconcileLegacyFailureReasonsWhenProtectedDataUnavailable() async throws {
-        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
-        let store = TAPPendingCaptureStore(rootURL: rootURL)
-        let legacyReasonTokens = [
-            "captureID=pending/private-capture-id",
-            "url=https://secret.tapnap.net/export?token=secret-token",
-            "path=/private/secret/signed.heic",
-            "keyID=prepared-key-id"
-        ]
-        let legacyReason = legacyReasonTokens.joined(separator: " ")
-        let legacyRecord = TAPCamDemoTestFixtures.samplePendingRecord(
-            captureID: "locked-legacy-capture",
-            capturedAt: Date(timeIntervalSince1970: 0),
-            status: .failedRetryable,
-            failureReason: legacyReason
-        )
-        try TAPCamDemoTestFixtures.writePendingRecord(legacyRecord, rootURL: rootURL)
-        let signer = RecordingPendingCaptureSigner()
-        let exporter = RecordingPendingCaptureExporter()
-        let processor = TAPPendingCaptureProcessor()
-
-        await processor.processPendingCaptures(
-            store: store,
-            signer: signer,
-            exporter: exporter,
-            protectedDataIsAvailable: { false }
-        )
-
-        let bundleJSON = try TAPCamDemoTestFixtures.pendingCaptureBundleJSON(
-            rootURL: rootURL,
-            captureID: legacyRecord.captureID
-        )
-        #expect(bundleJSON.contains(legacyReason))
+        #expect(unchangedRecord.signedPhotoFilename != nil)
         #expect(await signer.signedCaptureIDs().isEmpty)
         #expect(await exporter.exportedCaptureIDs().isEmpty)
     }
@@ -130,7 +93,7 @@ struct TAPLibraryProcessingTests {
             captureID: "signed-capture",
             capturedAt: Date(timeIntervalSince1970: 2)
         ))
-        _ = try await store.storeSignedHEIC(Data("already-signed".utf8), captureID: signedRecord.captureID)
+        _ = try await store.storeSignedPhoto(Data("already-signed".utf8), captureID: signedRecord.captureID)
         let signer = RecordingPendingCaptureSigner()
         let exporter = RecordingPendingCaptureExporter()
         let processor = TAPPendingCaptureProcessor()
@@ -212,7 +175,7 @@ struct TAPLibraryProcessingTests {
             photoData: Data("unsigned".utf8),
             captureID: "signed-first-export"
         ))
-        let signedRecord = try await store.storeSignedHEIC(
+        let signedRecord = try await store.storeSignedPhoto(
             Data("signed-first-export-data".utf8),
             captureID: record.captureID
         )
@@ -235,7 +198,7 @@ struct TAPLibraryProcessingTests {
             photoData: Data("unsigned".utf8),
             captureID: "exporting-recovery"
         ))
-        _ = try await store.storeSignedHEIC(
+        _ = try await store.storeSignedPhoto(
             Data("exporting-recovery-data".utf8),
             captureID: record.captureID
         )
@@ -518,37 +481,6 @@ struct TAPLibraryProcessingTests {
         #expect(failed.videoArtifactState == .signed)
     }
 
-    @Test func reconcileReopensAndRetriesLegacyUnsignedVideoTerminalFailure() async throws {
-        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: rootURL) }
-        let store = TAPPendingCaptureStore(rootURL: rootURL)
-        let record = try await TAPCamDemoTestFixtures.ingestPendingTAPVideo(
-            store: store,
-            captureID: "legacy-terminal-video-retry"
-        )
-        _ = try await store.markTerminalFailure(
-            captureID: record.captureID,
-            code: .invalidVideoArtifact
-        )
-        let exporter = RecordingPendingCaptureExporter()
-        let recorder = PendingCaptureStageRecorder()
-
-        await TAPPendingCaptureProcessor().processPendingCaptures(
-            store: store,
-            signer: MarkingPendingVideoSigner(),
-            exporter: exporter,
-            readback: StageRecordingPendingCaptureReadback(recorder: recorder),
-            protectedDataIsAvailable: { true }
-        )
-
-        let retried = try await store.readRecord(captureID: record.captureID)
-        #expect(retried.status == .exported)
-        #expect(retried.failureCode == nil)
-        #expect(retried.videoArtifactState == .signed)
-        #expect(await exporter.exportedCaptureIDs() == [record.captureID])
-        #expect(await recorder.recordedStages() == ["readback"])
-    }
-
     @Test func videoReadbackTransportFailureKeepsCommittedAssetInRecovery() async throws {
         let store = TAPPendingCaptureStore(rootURL: try TAPCamDemoTestFixtures.makeTemporaryDirectory())
         let pending = try await TAPCamDemoTestFixtures.ingestPendingTAPVideo(
@@ -828,7 +760,7 @@ private actor RecordingPendingCaptureSigner: TAPPendingCaptureSigning {
         store: TAPPendingCaptureStore
     ) async throws -> TAPPendingCaptureRecord {
         captureIDs.append(record.captureID)
-        return try await store.storeSignedHEIC(
+        return try await store.storeSignedPhoto(
             Data("signed-\(record.captureID)".utf8),
             captureID: record.captureID
         )
@@ -897,7 +829,7 @@ private struct StageRecordingPendingCaptureSigner: TAPPendingCaptureSigning {
         store: TAPPendingCaptureStore
     ) async throws -> TAPPendingCaptureRecord {
         await recorder.record("sign")
-        return try await store.storeSignedHEIC(
+        return try await store.storeSignedPhoto(
             Data("signed-\(record.captureID)".utf8),
             captureID: record.captureID
         )
@@ -975,7 +907,7 @@ private actor RecordingPhotoLibraryExportActions {
                 await self.recordExistingLookup(captureID)
                 return existingAssetID
             },
-            saveValidatedSignedHEIC: { _, record in
+            saveValidatedSignedPhoto: { _, record in
                 await self.recordSave(record.captureID)
                 return "saved-\(record.captureID)"
             }

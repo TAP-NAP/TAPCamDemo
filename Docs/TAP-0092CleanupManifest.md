@@ -150,20 +150,20 @@ must be migrated before deletion; this is represented by `M=8` above.
 
 ## Version Decisions and Pre-release TODO
 
-Retain app version `0.2 (2)` for current runtime and manifest consumers. Retain
-all current parallel public/security versions, including still manifest v1,
-Live Photo manifest v2, still/Live/video bindings v2/v3/v4, TAP Video/KLV v2,
-registration v1, proof slot v1, App Attest capture schema v1, and verification
-export v1. They are independent contracts, not obsolete releases.
+TAP-0092 retained app version `0.2 (2)` and the then-current parallel schema
+matrix. The owner subsequently superseded that format decision in `TAP-0093`:
+the app version remains unchanged while every distinct current public/security
+family starts at its own v1, and old development artifacts are unsupported.
 
 Before the first public/open-source release:
 
 1. Deliberately freeze or update app marketing/build version `0.2 (2)` once.
 2. Freeze the public/security schema matrix, or perform one coordinated
-   TAPCamVerifier and fixture migration.
+   TAPCamVerifier and fixture migration. Resolved by `TAP-0093`.
 3. Choose the developer-container reset/compatibility policy and an explicit
    Pending Capture schema policy before deleting HEIC aliases, global
-   maintenance migrations, or startup compatibility fallbacks.
+   maintenance migrations, or startup compatibility fallbacks. Resolved by
+   `TAP-0093`: clear development data; do not migrate it.
 4. Consolidate prototype revision labels into one current approved revision
    without changing visual behavior.
 
@@ -174,9 +174,11 @@ perform the migration in TAP-0092.
 
 - Physical-device App Attest production acceptance remains TAP-0046.
 - Debug-support isolation and large-suite file organization remain TAP-0029.
-- Three compatibility families remain until an explicit reset/cross-project
-  decision: startup fallback, Pending persistence migrations, and the verifier's
-  old ZIP input.
+- TAP-0093 removed the startup fallback and Pending persistence migration
+  families after the owner chose a clear-container pre-release policy. The
+  owner subsequently removed the Verifier's old ZIP input, generic ZIP routing,
+  and missing/invalid-sidecar fallback in favor of current `.tapnap` plus its v1
+  sidecar.
 - The known Share stale-callback, OSLog reviewed-label, Simplified Chinese
   catalog, and unsigned-Simulator Keychain failures are recorded in the evidence
   ledger; none is caused by a deleted path.

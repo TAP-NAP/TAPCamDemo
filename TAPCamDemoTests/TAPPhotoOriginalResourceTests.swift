@@ -288,7 +288,7 @@ struct TAPPhotoOriginalResourceTests {
                 location: nil,
                 livePhoto: livePhoto
             ),
-            schema: .livePhotoV2
+            schema: .livePhoto
         )
         let photoData = try TAPCaptureProvenanceWriter().writeManifest(
             manifest,
@@ -352,7 +352,7 @@ struct TAPPhotoOriginalResourceTests {
                 captureID: status.rawValue,
                 capturedAt: capturedAt,
                 status: status,
-                signedHEICFilename: nil
+                signedPhotoFilename: nil
             )
             #expect(
                 TAPPendingPhotoSharePolicy.disposition(
@@ -366,7 +366,7 @@ struct TAPPhotoOriginalResourceTests {
             captureID: "terminal",
             capturedAt: capturedAt,
             status: .failedTerminal,
-            signedHEICFilename: nil
+            signedPhotoFilename: nil
         )
         #expect(
             TAPPendingPhotoSharePolicy.disposition(
@@ -379,7 +379,7 @@ struct TAPPhotoOriginalResourceTests {
             captureID: "signed",
             capturedAt: capturedAt,
             status: .signed,
-            signedHEICFilename: "signed.heic"
+            signedPhotoFilename: "signed.heic"
         )
         #expect(
             TAPPendingPhotoSharePolicy.disposition(

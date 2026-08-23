@@ -61,7 +61,7 @@ nonisolated enum TAPPendingCaptureFailureReasonPresentation {
         return persistedFailureReason(for: statusReason)
     }
 
-    static func normalizedLegacyFailureReason(
+    static func normalizedStoredFailureReason(
         _ failureReason: String?,
         status: TAPPendingCaptureStatus
     ) -> String? {

@@ -43,11 +43,7 @@ struct StartupGateView: View {
         self.setupFactStore = store
         self.initializationStore = initializationStore
         _setupFact = State(
-            initialValue: store.load(
-                legacyCombinedCompletion: userDefaults.bool(
-                    forKey: StartupGateDefaults.legacyCombinedCompletionKey
-                )
-            )
+            initialValue: store.load()
         )
         _initializationFact = State(initialValue: initializationStore.load())
         _startupCoordinator = StateObject(wrappedValue: StartupGateCoordinator())
@@ -156,7 +152,7 @@ struct StartupGateView: View {
             for: startupCoordinator.statusSnapshot
         ) == .enterResourceInitialization,
         case .firstInstallSetup(.initial) = route,
-        let completedFact = setupFactStore.recordFrozenLegacyCompletion(
+        let completedFact = setupFactStore.recordCurrentCompletion(
             statusSnapshot: startupCoordinator.statusSnapshot
         ) else {
             return

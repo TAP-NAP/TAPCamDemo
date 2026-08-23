@@ -80,7 +80,7 @@ the compact, time-indexed KLV pattern associated with GPMF, but this is a
 TAP-private namespace and schema; it does not adopt GoPro field meanings or
 claim that the track is a standard depth-video track.
 
-### 3.1 KLV frame version 2
+### 3.1 KLV frame version 1
 
 Every record is:
 
@@ -88,11 +88,11 @@ Every record is:
 fourCC[4] | payloadLengthUInt32BE[4] | payload | zero padding to 4 bytes
 ```
 
-Current frame version 2 emits these records:
+Current frame version 1 emits these records:
 
 | Key | Meaning |
 | --- | --- |
-| `TVER` | KLV frame schema version, currently `2`. |
+| `TVER` | KLV frame schema version, currently `1`. |
 | `FRAM` | Stored depth-frame index. |
 | `PTS ` | Capture-relative presentation value and timescale. |
 | `COMP` | `raw`, `lzfse`, or `zstd1`. |
@@ -116,7 +116,7 @@ manifest, currently little-endian.
   synthesize, interpolate, or duplicate samples to match the RGB cadence.
 - Each frame is compressed independently. The writer prefers Zstandard level 1
   and stores the raw frame whenever compression fails or is not smaller.
-- Version-2 readers accept `raw`, `lzfse`, and `zstd1`. The current writer's
+- Version-1 readers accept `raw`, `lzfse`, and `zstd1`. The current writer's
   declared policy is `per-frame:zstd1|raw`; LZFSE remains a readable codec, not
   a claim that every current file uses it.
 - One uncompressed frame is bounded to 32 MiB. A KLV frame has a bounded record
@@ -127,14 +127,14 @@ KLV records carry timing, codec, byte count, optional calibration index, and
 payload. Real missing intervals are represented as signed gap ranges with a
 reason; they are not filled with fabricated depth.
 
-## 4. Manifest Version 2
+## 4. Manifest Version 1
 
 The current identifiers are:
 
 ```text
-schema.id    = urn:tapnap:tapcam:video-manifest:v2
-schema.version = 2
-mediaType    = application/vnd.tapnap.video-manifest+json;version=2
+schema.id    = urn:tapnap:tapcam:video-manifest:v1
+schema.version = 1
+mediaType    = application/vnd.tapnap.video-manifest+json;version=1
 ```
 
 The writer encodes canonical JSON with sorted keys and without escaped slashes.
@@ -216,7 +216,7 @@ Duplicate, missing, malformed, overflowing, or non-zero-padded slots fail
 closed.
 
 The video content binding is
-`urn:tapnap:tapcam:content-binding:v4`:
+`urn:tapnap:tapcam:video-content-binding:v1`:
 
 ```text
 assetHash = SHA-256(MP4 bytes in file order, excluding exactly the complete
@@ -230,7 +230,8 @@ capture/manifest identity, capture time, the excluded proof-slot descriptor,
 and the depth-resource presence rule.
 
 Signing then uses
-`urn:tapnap:tapcam:app-attest-capture-signing:v1`: SHA-256 of the canonical v4
+`urn:tapnap:tapcam:app-attest-capture-signing:v1`: SHA-256 of the canonical
+video-content-binding v1
 binding becomes `bodySHA256`; SHA-256 of the canonical signing binding becomes
 the App Attest `clientDataHash`. The resulting
 `appAttestAssertion` / `TAPCam.AppAttestCaptureSignature.v1` proof envelope is
@@ -241,7 +242,7 @@ validation succeeds.
 
 Proof authentication and depth-track health are deliberately separate:
 
-1. Recompute and authenticate the proof and v4 byte binding first.
+1. Recompute and authenticate the proof and v1 byte binding first.
 2. Run the AVFoundation track/KLV/timeline semantic scan only when a caller
    explicitly requests it.
 
@@ -287,7 +288,7 @@ Photos export follows a crash-recoverable boundary:
 3. Persist commit-ambiguous/committed state before assuming another create is
    safe.
 4. Stream the Photos original resource into a temporary file and run the same
-   proof and v4 byte-binding gate.
+   proof and v1 byte-binding gate.
 5. Only after successful readback mark the record exported and remove the
    app-private large MP4. Keep the small record/poster needed by TAP Library.
 
@@ -339,11 +340,15 @@ versioned private contract. Unknown KLV keys are skippable; unsupported schema
 versions and malformed bounded structures fail closed.
 
 The repository interoperability fixture is
-[TAPVideoManifestV2GoldenVectors.json](Fixtures/TAPVideoManifestV2GoldenVectors.json).
-It fixes a manifest-v2 JSON example, KLV-v2 frame, Float16 bit-pattern payload,
+[TAPVideoManifestV1GoldenVectors.json](Fixtures/TAPVideoManifestV1GoldenVectors.json).
+It fixes a manifest-v1 JSON example, KLV-v1 frame, Float16 bit-pattern payload,
 and Zstandard 1.5.7 level-1 vector. Readers must reproduce the decoded bytes and
 semantic values. Changing the vector requires a version/compatibility review,
 not regeneration to fit an incompatible writer.
+
+Because the app is pre-release, superseded development schema identifiers are
+not compatibility inputs. A reader rejects them as unsupported; developers
+regenerate fixtures and artifacts with the current v1 writer.
 
 Current proof and resource design must preserve a migration path toward C2PA
 compatibility, but TAPCam does not claim C2PA certification or complete C2PA

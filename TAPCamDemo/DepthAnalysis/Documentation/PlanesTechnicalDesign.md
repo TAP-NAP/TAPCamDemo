@@ -180,7 +180,7 @@ the analysis-ready object:
   calibration intrinsics before reader output fans out into rendering or
   geometry.
 - The primary `CGImage` becomes the RGB display image.
-- `TAPDepthHEICReader.depthData` recovers the Apple auxiliary depth/disparity.
+- `TAPDepthPhotoFileReader.depthData` recovers the Apple auxiliary depth/disparity.
 - The auxiliary depth is converted to Float32 metric depth.
 - Heatmap and mask visualizations are precomputed.
 - Depth accuracy and quality are copied from the manifest or `AVDepthData`.

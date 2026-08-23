@@ -78,14 +78,10 @@ struct StartupInitializationPolicyTests {
         #expect(migratedDevice.load() == .invalid(.deviceGenerationMismatch))
     }
 
-    @Test func corruptMarkerNeverFallsBackToHistoricalCombinedBoolean() throws {
+    @Test func corruptMarkerFailsClosed() throws {
         let fixture = try InitializationStoreFixture()
         defer { fixture.cleanup() }
 
-        fixture.defaults.set(
-            true,
-            forKey: StartupGateDefaults.legacyCombinedCompletionKey
-        )
         try FileManager.default.createDirectory(
             at: fixture.markerURL.deletingLastPathComponent(),
             withIntermediateDirectories: true

@@ -149,9 +149,6 @@ actor TAPPendingCaptureProcessor {
         cleanup: any TAPPendingCaptureCleaning = TAPPendingCaptureLargeFileCleanup()
     ) async throws {
         try await store.removeStaleVideoCaptureWorkspaces()
-        try await store.removeUnshippedLegacyVideoBundles()
-        try await store.normalizePersistedFailureReasons()
-        try await store.reopenLegacyUnsignedVideoValidationFailures()
         let records = try await store.allRecords()
         for record in records {
             switch record.status {

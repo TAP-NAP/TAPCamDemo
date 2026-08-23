@@ -312,6 +312,19 @@ struct TAPVideoStreamingTests {
         #expect(try decoded.decodedPackedBytes() == packed)
     }
 
+    @Test func depthKLVFrameRejectsSupersededSchemaVersion() throws {
+        let oldSchemaData = TAPDepthKLV.encode([
+            TAPDepthKLV.Record(
+                key: .schemaVersion,
+                payload: Data([0x00, 0x00, 0x00, 0x02])
+            )
+        ])
+
+        #expect(throws: TAPDepthCaptureError.self) {
+            try TAPDepthKLVFrame.decode(oldSchemaData)
+        }
+    }
+
     @Test func depthTimelineRejectsNegativeDuplicateAndOutOfRangePTS() throws {
         let common = (
             trackStartSeconds: 0.0,
@@ -998,7 +1011,7 @@ struct TAPVideoStreamingTests {
         )
         #expect(
             try frame.encodedData().base64EncodedString()
-                == "VFZFUgAAAAQAAAACRlJBTQAAAAQAAAARUFRTIAAAAAwAAAAAAAAwOQAAAlhDT01QAAAABXpzdGQxAAAAVUxFTgAAAAQAAAAoQ0FMSQAAAAQAAAAARFBUSAAAACMotS/9ICjVAACgVEFQX0RFUFRIX1ZFQ1RPUl9WMjoBAI6eTAA="
+                == "VFZFUgAAAAQAAAABRlJBTQAAAAQAAAARUFRTIAAAAAwAAAAAAAAwOQAAAlhDT01QAAAABXpzdGQxAAAAVUxFTgAAAAQAAAAoQ0FMSQAAAAQAAAAARFBUSAAAACMotS/9ICjVAACgVEFQX0RFUFRIX1ZFQ1RPUl9WMjoBAI6eTAA="
         )
         #expect(try frame.decodedPackedBytes() == raw)
     }

@@ -160,7 +160,7 @@ struct DepthAlbumRouteAdapterTests {
             captureID: "legacy-live",
             capturedAt: capturedAt,
             status: .exported,
-            signedHEICFilename: nil,
+            signedPhotoFilename: nil,
             pairedVideoFilename: nil,
             assetLocalIdentifier: "legacy-live-asset"
         )

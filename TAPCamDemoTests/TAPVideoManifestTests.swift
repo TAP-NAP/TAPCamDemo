@@ -32,8 +32,9 @@ struct TAPVideoManifestTests {
 
         #expect(first == second)
         #expect(decoded == payload)
-        #expect(manifest.schema.id == "urn:tapnap:tapcam:video-manifest:v2")
-        #expect(manifest.schema.mediaType == "application/vnd.tapnap.video-manifest+json;version=2")
+        #expect(manifest.schema.id == "urn:tapnap:tapcam:video-manifest:v1")
+        #expect(manifest.schema.version == 1)
+        #expect(manifest.schema.mediaType == "application/vnd.tapnap.video-manifest+json;version=1")
         #expect(payloadJSON.contains(#""depthCoverage":{"deliveredSampleCount":0,"encodingDropCount":0,"format":null,"gapCount":0,"gaps":[],"metadataDropCount":0,"outputDropCount":0,"sampleCount":0,"trackCodec":null,"trackDurationSeconds":null,"trackID":null,"trackTimeScale":null}"#))
         #expect(manifestJSON.contains(#""proofs":[]"#))
         #expect(!manifestJSON.contains("depth-video-manifest"))
@@ -268,7 +269,7 @@ struct TAPVideoManifestTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
         let data = try Data(contentsOf: rootURL.appendingPathComponent(
-            "Docs/Fixtures/TAPVideoManifestV2GoldenVectors.json"
+            "Docs/Fixtures/TAPVideoManifestV1GoldenVectors.json"
         ))
         let root = try #require(
             try JSONSerialization.jsonObject(with: data) as? [String: Any]
@@ -298,7 +299,7 @@ struct TAPVideoManifestTests {
         #expect(decodedManifest.payload.spatialRegistration.calibrationTable.count == 1)
 
         let depthFrame = try #require(root["depthFrame"] as? [String: Any])
-        let klvBase64 = try #require(depthFrame["klvV2Base64"] as? String)
+        let klvBase64 = try #require(depthFrame["klvV1Base64"] as? String)
         let klvData = try #require(Data(base64Encoded: klvBase64))
         let frame = try TAPDepthKLVFrame.decode(klvData)
         let calibrationIndex = try #require(frame.calibrationIndex)

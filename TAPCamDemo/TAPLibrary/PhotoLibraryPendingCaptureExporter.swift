@@ -29,16 +29,6 @@ nonisolated struct PhotoLibraryPendingCaptureExportActions: Sendable {
         self.saveValidatedSignedPhoto = saveValidatedSignedPhoto
     }
 
-    init(
-        existingAssetIdentifier: @escaping @Sendable (String) async throws -> String?,
-        saveValidatedSignedHEIC: @escaping @Sendable (Data, TAPPendingCaptureRecord) async throws -> String
-    ) {
-        self.init(
-            existingAssetIdentifier: existingAssetIdentifier,
-            saveValidatedSignedPhoto: saveValidatedSignedHEIC
-        )
-    }
-
     static func live(
         provenanceWriter: TAPCaptureProvenanceWriter = TAPCaptureProvenanceWriter()
     ) -> Self {

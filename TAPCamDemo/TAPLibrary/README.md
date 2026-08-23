@@ -47,7 +47,7 @@ control. The queue may be retriggered by its callers, but it has no fine-grained
 time scheduler of its own.
 
 Future credential/assertion/export stage separation, `nextAttemptAt`, bounded
-retry windows, cooldown, pause state, and persistence migration are one
+retry windows, cooldown, and pause state are one
 technical optimization tracked only by
 [`TAP-0015`](../../Docs/ProjectBoard.md#tap-0015--implement-fine-grained-credential-retry-optimization).
 Those unimplemented details are not part of this current module contract and
@@ -84,7 +84,7 @@ record needs signing.
 | Processing route and candidate priority policy | [TAPPendingCaptureProcessingPolicy.swift](TAPPendingCaptureProcessingPolicy.swift) |
 | Worker protected-data readiness policy | [TAPPendingCaptureWorkerReadiness.swift](TAPPendingCaptureWorkerReadiness.swift) |
 | Retry status classification from worker errors | [TAPPendingCaptureRetryClassifier.swift](TAPPendingCaptureRetryClassifier.swift) |
-| Public-safe persisted failure reason types, text, and legacy normalization | [TAPPendingCaptureFailureReasonPresentation.swift](TAPPendingCaptureFailureReasonPresentation.swift) |
+| Public-safe persisted failure reason types, text, and read-time normalization | [TAPPendingCaptureFailureReasonPresentation.swift](TAPPendingCaptureFailureReasonPresentation.swift) |
 | Local artifact write and file-protection policy | [TAPLocalArtifactStoragePolicy.swift](TAPLocalArtifactStoragePolicy.swift) |
 | Camera writer adapter | [TAPPendingCaptureArtifactWriter.swift](TAPPendingCaptureArtifactWriter.swift) |
 | Pending item thumbnail renderer | [TAPPendingCaptureThumbnailRenderer.swift](TAPPendingCaptureThumbnailRenderer.swift) |
@@ -208,7 +208,7 @@ without App Attest hardware, network, or Photos side effects.
   succeeds.
 - `paired-video.mov` is present only for Live Photo captures whose Apple movie
   complement was delivered. It is copied into the pending bundle before commit,
-  signed as `content-binding:v3`, and removed with the staged photo files after
+  signed as `live-photo-content-binding:v1`, and removed with the staged photo files after
   export.
 - The signed photo file is exported only after `validateSignedExportPhoto`
   re-reads the final bytes and verifies the source container, manifest
@@ -226,9 +226,7 @@ without App Attest hardware, network, or Photos side effects.
 - `assetLocalIdentifier` is kept after export so saved TAP photos remain
   discoverable even when Photos access is limited.
 - Exported large files are cleaned up; records and thumbnails remain.
-- The unmounted legacy signature-verification panel can export saved Photos
-  assets as verification originals, but it is not a current mounted Viewer or
-  startup workload. Still-photo captures export the original
+- Share exports the original
   `.photo` resource as a single HEIC/JPG. Complete Live Photo captures export
   a ZIP containing `primary-photo.heic` or `primary-photo.jpg`,
   `paired-video.mov`, and an unsigned minimal `tapcam-export.json` sidecar.
@@ -266,7 +264,7 @@ The queue still stores raw `captureID` and `assetLocalIdentifier` where product
 behavior needs them. Persisted `failureReason` values come from
 `TAPPendingCaptureFailureReasonPresentation` through the
 `TAPPendingCaptureStore` write boundary, not from raw
-`error.localizedDescription`. Legacy stored reasons are normalized before
+`error.localizedDescription`. Non-canonical stored reasons are normalized before
 records leave the store. Public error summaries come from
 `TAPDiagnostics.describe`, which keeps domain/code and scalar network hints but
 omits localized messages, failing URLs, raw network paths, proof bodies, photo
@@ -297,23 +295,14 @@ The persisted reason must not include capture IDs, manifest IDs, Photos asset
 IDs, URLs, paths, App Attest key IDs, proofs, photo bytes, or raw associated
 error reasons.
 
-Older `bundle.json` files may contain raw strings from builds before this
-boundary existed. Store reads normalize those legacy values before returning
-records to UI or worker code: retry states return the fixed text above, and
-non-failure states return `nil`. `normalizePersistedFailureReasons()` is the
-explicit disk migration entry point; the processor calls it during reconcile
-after protected-data readiness passes. Until that migration runs, an unopened
-legacy bundle can still contain its old raw string on disk, but store read APIs
-do not return it.
+Store reads defensively normalize any non-canonical persisted reason before it
+reaches UI or worker code: retry states return the fixed text above, and
+non-failure states return `nil`. This is a privacy boundary, not an old-record
+migration. Current `bundle.json` fields are required; superseded development
+record shapes are rejected and developers clear the app container.
 
-Worker reconcile also repairs one historical video-state mistake. A TAP Video
-record persisted as `failedTerminal` by the former pre-sign manifest/track
-validator is reopened only when it remains `.unsigned`, still has its local
-artifact, has no Photos/export-recovery state, and carries
-`invalidVideoArtifact` or `proofValidationFailed`. It becomes
-`failedRetryable` and can be signed in the same worker run. Signed integrity
-failures, external mutation, Photos readback failures, and missing source files
-may remain terminal. Missing depth alone is not a valid terminal product result:
+Signed integrity failures, external mutation, Photos readback failures, and
+missing source files may remain terminal. Missing depth alone is not a valid terminal product result:
 the Product Contract requires the RGB/audio artifact to continue through
 signing and export with truthful zero-depth state and a non-blocking warning.
 Any remaining terminal missing-depth code path is the implementation gap tracked
@@ -369,11 +358,10 @@ tests listed below:
   hidden-directory and Unicode capture ID rejection, bundle-directory versus
   `bundle.json` capture ID consistency, thumbnail-optional ingest, candidate
   priority, exported-thumbnail index behavior, store-level failure-reason write
-  normalization, legacy read normalization, and explicit bundle migration that
-  skips invalid bundles while continuing valid migrations.
+  normalization, defensive read normalization, and rejection of invalid bundles.
 - `TAPLibraryProcessingTests.swift` covers the pure worker readiness model,
   protected-data early exit without sign/export/retry/failure mutation,
-  protected-data early exit before legacy failure-reason reconciliation,
+  protected-data early exit before private queue access,
   sign/export ordering, typed network failure classification as
   `waitingNetwork`, and public-safe persisted failure reasons for network and
   retryable processing failures.

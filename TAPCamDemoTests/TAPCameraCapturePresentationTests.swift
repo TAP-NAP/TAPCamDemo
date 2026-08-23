@@ -722,9 +722,6 @@ struct TAPCameraCapturePresentationTests {
         userDefaults.set(true, forKey: CameraLivePhotoPreferences.lastEnabledKey)
         #expect(CameraLivePhotoPreferences.resolvedStartupIsEnabled(in: userDefaults))
 
-        userDefaults.removeObject(forKey: CameraLivePhotoPreferences.lastEnabledKey)
-        userDefaults.set(true, forKey: CameraLivePhotoPreferences.legacyIsEnabledKey)
-        #expect(CameraLivePhotoPreferences.resolvedStartupIsEnabled(in: userDefaults))
     }
 
     @Test func cameraCaptureDataUsePreferencesDefaultToLocationOnMicrophoneOff() throws {
@@ -744,28 +741,6 @@ struct TAPCameraCapturePresentationTests {
         #expect(CameraCaptureDataUsePreferences.usesMicrophoneData(in: userDefaults))
     }
 
-    @Test func microphoneDataPreferenceMigratesTheLegacyChoice() throws {
-        let suiteName = "TAPCameraMicrophoneLegacyMigrationTests-\(UUID().uuidString)"
-        let userDefaults = try #require(UserDefaults(suiteName: suiteName))
-        defer {
-            userDefaults.removePersistentDomain(forName: suiteName)
-        }
-
-        userDefaults.set(
-            true,
-            forKey: CameraCaptureDataUsePreferences.legacyUsesMicrophoneDataKey
-        )
-
-        #expect(CameraCaptureDataUsePreferences.usesMicrophoneData(in: userDefaults))
-        #expect(
-            userDefaults.object(forKey: CameraCaptureDataUsePreferences.usesMicrophoneDataKey) as? Bool
-                == true
-        )
-        #expect(!CameraCaptureDataUsePreferences.migrateLegacyMicrophonePreferenceIfNeeded(
-            in: userDefaults
-        ))
-    }
-
     @Test func firstMicrophoneAuthorizationEnablesDataUseOnlyWithoutAPriorChoice() throws {
         let suiteName = "TAPCameraMicrophoneFirstAuthorizationTests-\(UUID().uuidString)"
         let userDefaults = try #require(UserDefaults(suiteName: suiteName))
@@ -782,33 +757,10 @@ struct TAPCameraCapturePresentationTests {
         ))
 
         userDefaults.set(false, forKey: CameraCaptureDataUsePreferences.usesMicrophoneDataKey)
-        userDefaults.set(true, forKey: CameraCaptureDataUsePreferences.legacyUsesMicrophoneDataKey)
         #expect(!CameraCaptureDataUsePreferences.enableMicrophoneDataAfterFirstAuthorizationIfNeeded(
             in: userDefaults
         ))
         #expect(!CameraCaptureDataUsePreferences.usesMicrophoneData(in: userDefaults))
-    }
-
-    @Test func firstMicrophoneAuthorizationPreservesAnExplicitLegacyOptOut() throws {
-        let suiteName = "TAPCameraMicrophoneLegacyOptOutTests-\(UUID().uuidString)"
-        let userDefaults = try #require(UserDefaults(suiteName: suiteName))
-        defer {
-            userDefaults.removePersistentDomain(forName: suiteName)
-        }
-
-        userDefaults.set(
-            false,
-            forKey: CameraCaptureDataUsePreferences.legacyUsesMicrophoneDataKey
-        )
-
-        #expect(!CameraCaptureDataUsePreferences.enableMicrophoneDataAfterFirstAuthorizationIfNeeded(
-            in: userDefaults
-        ))
-        #expect(!CameraCaptureDataUsePreferences.usesMicrophoneData(in: userDefaults))
-        #expect(
-            userDefaults.object(forKey: CameraCaptureDataUsePreferences.usesMicrophoneDataKey) as? Bool
-                == false
-        )
     }
 
     @Test func cameraAdjustmentControlStatePublishesCapabilityGatedRanges() throws {

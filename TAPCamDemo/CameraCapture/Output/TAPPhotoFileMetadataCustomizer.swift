@@ -15,7 +15,7 @@ import Foundation
 ///
 /// TAP-specific data is intentionally not written here. This customizer keeps
 /// generic photo metadata compatible with normal image tools, while
-/// `TAPDepthHEICWriter` owns the XMP `tapdepth:Manifest` that defines our
+/// `TAPDepthPhotoFileWriter` owns the XMP `tapdepth:Manifest` that defines our
 /// format extension. The short EXIF UserComment is only a pointer that tells
 /// parsers where to find the authoritative manifest.
 nonisolated final class TAPPhotoFileMetadataCustomizer: NSObject, AVCapturePhotoFileDataRepresentationCustomizer {

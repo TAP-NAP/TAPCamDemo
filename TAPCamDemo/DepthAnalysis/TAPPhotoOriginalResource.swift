@@ -421,7 +421,7 @@ nonisolated struct TAPPhotoLocalIntegrityValidator: Sendable {
             manifest: manifest
         )
 
-        if manifest.schema == TAPDepthManifest.Schema.livePhotoV2 {
+        if manifest.schema == TAPDepthManifest.Schema.livePhoto {
             guard let pairedVideoURL = resource.pairedVideoURL else {
                 throw TAPPhotoLocalIntegrityError.livePhotoPairedVideoMissing
             }

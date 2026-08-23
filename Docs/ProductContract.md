@@ -70,6 +70,34 @@ Xcode target settings express the repository build boundary; availability of
 an iOS app on Mac or Apple Vision Pro is also controlled by App Store Connect
 and is not proven by repository settings alone.
 
+### 1.2 Pre-release version and compatibility policy
+
+The current App marketing/build version remains `0.2 (2)`. Before the first
+public release, every distinct current public-format and security-schema family
+starts at its own unambiguous `v1`; a shared numeric version does not make
+structurally different still-photo, Live Photo, TAP Video, content-binding,
+registration, proof, or attestation objects interchangeable. Their specialized
+contracts own the exact identifiers and fail-closed routing rules.
+
+Superseded development-format identifiers are unsupported and must not remain
+as compatibility readers in TAPCam or TAPCamVerifier. Pre-release local app
+data is also disposable: a developer moving between incompatible builds clears
+the app container or deletes and reinstalls instead of relying on preference,
+database, queue-record, cache, or setup-marker migration. This policy does not
+weaken validation of current data and does not define the eventual compatibility
+policy for data or artifacts created by a public release.
+
+TAPCamVerifier accepts a capture package only through the `.tapnap` extension or
+the registered TAPNAP MIME and requires its current v1 root sidecar. Legacy
+`.zip`, `application/zip`, generic ZIP-magic discovery, and missing/invalid-
+sidecar filename fallback are unsupported. `.tapnap` remains ZIP-compatible
+internally; this input boundary does not remove bounded archive parsing.
+
+Prototype revision identifiers remain unchanged until a separate owner decision.
+Historical or redundant Prototype prose and assertions may be removed when no
+current fixture, approved visual truth, behavior, or acceptance obligation is
+lost.
+
 ## 2. First-Install Setup
 
 ### 2.1 Explicit action owns every setup operation
@@ -198,9 +226,9 @@ readiness groups have both succeeded.
   first-install setup and automatically re-evaluates the startup route after a
   targeted status refresh. Location and Microphone remain feature-context
   optional permissions.
-- A legacy persisted key name may remain as an implementation compatibility
-  detail, but it cannot merge setup permission state with this versioned
-  readiness marker or redefine the marker's product meaning.
+- Pre-release builds read and write only the current setup and initialization
+  records. Earlier development keys and record shapes are not migrated; clearing
+  the app container or deleting and reinstalling is the supported recovery.
 
 ### 2.6 Startup route, installation, and timing vocabulary
 
@@ -488,9 +516,11 @@ The browser Live Photo verification specification is an important
 cross-repository delivery contract. It does not claim that the external browser
 verifier is implemented inside TAPCamDemo.
 
-Fine-grained credential cooldown, retry windows, stage-specific pause, and
-migration are future technical optimization. Current product documentation must
-describe the current coarse Pending Capture Queue behavior separately.
+Fine-grained credential cooldown, retry windows, and stage-specific pause are
+future technical optimization. A public-release persistence policy must be an
+explicit later decision; pre-release development records are not migrated.
+Current product documentation must describe the current coarse Pending Capture
+Queue behavior separately.
 
 ## 7. Claim Boundaries
 

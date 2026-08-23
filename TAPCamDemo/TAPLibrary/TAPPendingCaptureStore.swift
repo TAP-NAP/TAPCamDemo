@@ -237,7 +237,6 @@ actor TAPPendingCaptureStore {
             unsignedPhotoFilename: nil,
             signedPhotoFilename: nil,
             videoArtifactFilename: TAPPendingCaptureBundlePathPolicy.videoArtifactFilename,
-            videoFormatRevision: 2,
             videoArtifactState: .unsigned,
             posterRevision: 1,
             exportResourceFilename: PhotoLibraryWriter.tapVideoResourceFilename(
@@ -261,7 +260,7 @@ actor TAPPendingCaptureStore {
         videoWorkspaces.didCommit(captureID: captureID)
         TAPLibraryChangeNotifier.post()
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.pendingCapture.info("store video ingest created captureID=\(captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public) videoBytes=\(byteCount, privacy: .public) formatRevision=2")
+        TAPDiagnostics.pendingCapture.info("store video ingest created captureID=\(captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public) videoBytes=\(byteCount, privacy: .public)")
         #endif
         return record
     }
@@ -374,20 +373,12 @@ actor TAPPendingCaptureStore {
         return try storage.photoData(filename: filename, captureID: captureID)
     }
 
-    func unsignedHEICData(captureID: String) throws -> Data {
-        try unsignedPhotoData(captureID: captureID)
-    }
-
     func signedPhotoData(captureID: String) throws -> Data {
         let record = try readRecord(captureID: captureID)
         guard let filename = record.signedPhotoFilename else {
             throw TAPDepthCaptureError.pendingCaptureDataMissing
         }
         return try storage.photoData(filename: filename, captureID: captureID)
-    }
-
-    func signedHEICData(captureID: String) throws -> Data {
-        try signedPhotoData(captureID: captureID)
     }
 
     func videoArtifactURL(captureID: String) throws -> URL {
@@ -948,10 +939,6 @@ actor TAPPendingCaptureStore {
         }
     }
 
-    func bestAvailableHEICData(captureID: String) throws -> Data {
-        try bestAvailablePhotoData(captureID: captureID)
-    }
-
     func thumbnailData(captureID: String) throws -> Data? {
         let record = try readRecord(captureID: captureID)
         guard let filename = record.thumbnailFilename else {
@@ -1000,24 +987,6 @@ actor TAPPendingCaptureStore {
         return record
     }
 
-    @discardableResult
-    func normalizePersistedFailureReasons() throws -> Int {
-        let count = try maintenance.normalizePersistedFailureReasons()
-        if count > 0 {
-            TAPLibraryChangeNotifier.post()
-        }
-        return count
-    }
-
-    @discardableResult
-    func reopenLegacyUnsignedVideoValidationFailures() throws -> Int {
-        let count = try maintenance.reopenLegacyUnsignedVideoValidationFailures()
-        if count > 0 {
-            TAPLibraryChangeNotifier.post()
-        }
-        return count
-    }
-
     func storeSignedPhoto(_ data: Data, captureID: String) throws -> TAPPendingCaptureRecord {
         var record = try readRecord(captureID: captureID)
         try storage.writeSignedPhoto(data, fileContainer: record.photoFileContainer, captureID: captureID)
@@ -1031,10 +1000,6 @@ actor TAPPendingCaptureStore {
         TAPDiagnostics.pendingCapture.info("store signedPhoto stored captureID=\(captureID, privacy: .private) container=\(record.photoFileContainer.rawValue, privacy: .public) bytes=\(data.count, privacy: .public) status=\(record.status.rawValue, privacy: .public)")
         #endif
         return record
-    }
-
-    func storeSignedHEIC(_ data: Data, captureID: String) throws -> TAPPendingCaptureRecord {
-        try storeSignedPhoto(data, captureID: captureID)
     }
 
     func markVideoSigned(captureID: String) throws -> TAPPendingCaptureRecord {
@@ -1169,17 +1134,6 @@ actor TAPPendingCaptureStore {
 
     func cleanupExportedLargeFiles() throws {
         try maintenance.cleanupExportedLargeFiles(records: allRecords())
-    }
-
-    @discardableResult
-    func removeUnshippedLegacyVideoBundles() throws -> Int {
-        let removedCount = try maintenance.removeUnshippedLegacyVideoBundles(
-            records: allRecords()
-        )
-        if removedCount > 0 {
-            TAPLibraryChangeNotifier.post()
-        }
-        return removedCount
     }
 
     func removeRecord(captureID: String) throws {

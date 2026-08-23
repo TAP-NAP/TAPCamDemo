@@ -293,7 +293,7 @@ extension CameraViewModel {
             )
             let cacheKey = DepthAlbumThumbnailCacheKey.make(
                 mediaID: .tapCapture(record.captureID),
-                version: "video-poster-v1|\(record.videoFormatRevision ?? 0)|\(record.updatedAt.timeIntervalSince1970)",
+                version: "video-poster-v1|\(record.updatedAt.timeIntervalSince1970)",
                 pixelLength: 512
             )
             let data = try await videoPosterGenerator.posterData(

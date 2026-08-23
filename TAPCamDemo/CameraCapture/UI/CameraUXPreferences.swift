@@ -235,9 +235,6 @@ nonisolated enum CameraLivePhotoPreferences {
     static let defaultStartupPolicy = CameraViewfinderControlDefaultPolicy.rememberLastState
     static let lastEnabledKey = "CameraLivePhotoLastEnabled"
     static let defaultLastEnabled = false
-    static let legacyIsEnabledKey = "CameraLivePhotoEnabled"
-    static let soundEnabledKey = "CameraLivePhotoSoundEnabled"
-    static let defaultSoundEnabled = false
 
     static func resolvedStartupIsEnabled(
         policyRawValue: String,
@@ -259,7 +256,6 @@ nonisolated enum CameraLivePhotoPreferences {
     static func resolvedStartupIsEnabled(in userDefaults: UserDefaults = .standard) -> Bool {
         let policyRawValue = userDefaults.string(forKey: startupPolicyKey) ?? defaultStartupPolicy.rawValue
         let lastIsEnabled = userDefaults.object(forKey: lastEnabledKey) as? Bool
-            ?? userDefaults.object(forKey: legacyIsEnabledKey) as? Bool
             ?? defaultLastEnabled
         return resolvedStartupIsEnabled(
             policyRawValue: policyRawValue,

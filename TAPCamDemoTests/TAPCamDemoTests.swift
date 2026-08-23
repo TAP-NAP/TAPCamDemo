@@ -15,8 +15,8 @@ struct TAPCamDemoTests {
     @Test func manifestSchemaDefinesThePublishedXMPContract() throws {
         let manifest = TAPDepthManifest(payload: TAPCamDemoTestFixtures.samplePayload(location: nil))
 
-        #expect(manifest.schema.id == "urn:tapnap:tapcam:depth-manifest:v1")
-        #expect(manifest.schema.mediaType == "application/vnd.tapnap.depth-manifest+json;version=1")
+        #expect(manifest.schema.id == "urn:tapnap:tapcam:still-photo-manifest:v1")
+        #expect(manifest.schema.mediaType == "application/vnd.tapnap.still-photo-manifest+json;version=1")
         #expect(manifest.schema.xmpNamespaceURI == "urn:tapnap:tapcam:depth:1.0")
         #expect(manifest.schema.xmpPrefix == "tapdepth")
         #expect(manifest.schema.xmpManifestPath == "tapdepth:Manifest")

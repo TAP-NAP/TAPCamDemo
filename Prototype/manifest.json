@@ -943,20 +943,6 @@
         "notClaimed": ["mobile or responsive coverage", "native Simulator parity", "exact prototype-to-native physical-device visual parity or timing", "owner approval of the complete TAP-0087 v19 composition"],
         "closureRequires": ["product-owner approval of the exact v19 composition"]
       },
-      "currentMainGaps": [
-        "one legacy UserDefaults Boolean merges Setup completion with Resource Initialization completion; there is no structured S/P/I route state",
-        "TAPCamDemoApp.init constructs LibraryMediaStore and registers PhotoKit observation on the pre-frame path",
-        "returning-user CameraViewModel construction performs capability discovery and constructs session ownership before the target route shell boundary",
-        "the legacy Setup Network action performs /healthz rather than required first-install App Attest registration and verification",
-        "a denied Network state is silently restarted by Setup appearance or foreground status refresh",
-        "permission denied and restricted states are collapsed; Camera and Photos share one footer Settings action while optional denied rows have no row-owned recovery",
-        "there is no post-setup Required Permission Check route; returning CameraViewModel.start may implicitly request Camera while Photos is absent from root routing",
-        "updates, replacement installs, offload/reinstall, and restore or migration retain a true legacy Boolean without version, schema, installation, device-generation, or local App Attest binding validation",
-        "the current Preparing camera overlay exposes Failed, Retry, and Settings while the target Resource Initialization invariant has no public failure branch",
-        "root task awaits video-poster backfill before the first Library catalog refresh",
-        "poster backfill, post-setup App Attest, and Pending recovery do not share one t5 deferred-work release guard",
-        "RAW Viewer original or iCloud resource loading and full analysis begin alongside bounded display"
-      ],
       "excluded": ["importing TAP-0081 Share behavior/events/workloads/payload preparation into TAP-0087/TAP-0008/TAP-0009", "AirDrop and system activity-sheet simulation", "Locked Camera", "iPad", "native implementation", "performance proof"],
       "symbolAssets": {
         "navigationBack": { "systemName": "chevron.left", "path": "assets/system-symbols/navigation-back.png", "sha256": "3b7252cae9668699459984554fb7a47053c1f201f145d5cbdd4c645d9305f493" },

@@ -124,11 +124,13 @@ metadata only.
     recovery. The current startup recovery target is Viewfinder. TAP Library or
     Viewer restoration requires its own explicitly approved route behavior.
 
-The exact native storage schema and migration are owned by `TAP-0008` and
-`TAP-0009`; these semantics may not be collapsed into one Boolean. A restored
-Setup receipt without its locally bound App Attest credential is invalid and
-enters Setup recovery. Existing Camera/Photos grants are shown passively and
-are not requested again merely because the receipt needs credential recovery.
+TAP-0093 owns the current v1 storage-schema freeze; TAP-0008 and TAP-0009 own
+the startup semantics, which may not be collapsed into one Boolean. Pre-release
+development records are not migrated: delete/reinstall the app or clear its
+container. A restored Setup receipt without its locally bound App Attest
+credential is invalid and enters Setup recovery. Existing Camera/Photos grants
+are shown passively and are not requested again merely because the receipt
+needs credential recovery.
 
 ### 2.2 Deterministic route reducer
 
@@ -606,7 +608,7 @@ Pending work that remains open.
 
 | Candidate area | Current `fix0809` behavior | Remaining boundary |
 | --- | --- | --- |
-| Setup facts | Defines and validates canonical credential-bound `SetupReceipt`; reads a separate legacy Setup-completion record before the historical combined Boolean | Initial Network/App Attest remains in `TAP-0010`, so production Continue cannot yet write canonical `S`; the compatibility record is never presented as credential evidence |
+| Setup facts | Defines and validates canonical credential-bound `SetupReceipt`; the mounted frozen Network path writes only current pre-release `SetupCompletionRecord` v1 | Initial Network/App Attest remains in `TAP-0010`, so production Continue cannot yet write canonical `S`; the non-canonical completion record is never presented as credential evidence, and older development keys are not migrated |
 | Required permissions | Root priority is Setup → Camera/Photos Required Permission Check → Initialization → Viewfinder; `.limited`, `.denied`, and `.restricted` remain distinct; requests and Settings recovery are row-owned | Exact Required Permission Check visual parity remains pending owner review |
 | Library observation | Store construction is observer-inert; eligible explicit/post-Setup Photos boundaries activate observation idempotently; stopping cancels queued refresh work | Device timing and large/cold Library evidence remain open |
 | Camera construction | The selected route installs a shell state and defers `CameraView` mounting until a later main-actor turn; default `CameraViewModel` creation remains lazy across later parent updates | The implementation is presented at its target position, but `Task.yield()` is not a rendered-frame acknowledgement; `TAP-0083` still owns measured shell/first-frame placement proof |

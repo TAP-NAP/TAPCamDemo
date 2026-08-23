@@ -71,13 +71,6 @@ struct StartupGateCoordinatorTests {
         #expect(StartupGatePolicy.firstInstallContinueAction(for: incompleteSnapshot) == .stayOnWelcome)
     }
 
-    @Test func startupGateStoredKeyPreservesExistingInstallMarker() {
-        #expect(
-            StartupGateDefaults.legacyCombinedCompletionKey
-                == "TAPCamDemo.StartupGate.didCompleteFirstInstallPermissions"
-        )
-    }
-
     @Test func requiredPermissionSnapshotKeepsLimitedAndRestrictedDistinct() {
         #expect(
             RequiredPermissionSnapshot(
@@ -131,6 +124,13 @@ struct StartupGateCoordinatorTests {
             deviceGenerationID: UUID(),
             completedAt: Date(timeIntervalSince1970: 42)
         )
+        let currentCompletion = SetupCompletionRecord(
+            schemaVersion: SetupCompletionRecord.currentSchemaVersion,
+            installationGenerationID: UUID(),
+            locationChoice: .skipped,
+            microphoneChoice: .skipped,
+            completedAt: Date(timeIntervalSince1970: 42)
+        )
 
         #expect(StartupGatePolicy.route(for: StartupRouteFacts(
             setup: .absent,
@@ -139,25 +139,25 @@ struct StartupGateCoordinatorTests {
         )) == .firstInstallSetup(.initial))
 
         #expect(StartupGatePolicy.route(for: StartupRouteFacts(
-            setup: .legacyCompleted(nil),
+            setup: .currentCompleted(currentCompletion),
             requiredPermissions: blocked,
             initialization: .missing
         )) == .requiredPermissionCheck(resumeTarget: .viewfinder))
 
         #expect(StartupGatePolicy.route(for: StartupRouteFacts(
-            setup: .legacyCompleted(nil),
+            setup: .currentCompleted(currentCompletion),
             requiredPermissions: usable,
             initialization: .missing
         )) == .resourceInitialization)
 
         #expect(StartupGatePolicy.route(for: StartupRouteFacts(
-            setup: .legacyCompleted(nil),
+            setup: .currentCompleted(currentCompletion),
             requiredPermissions: usable,
             initialization: .current(currentInitialization)
         )) == .viewfinder)
     }
 
-    @Test func invalidCanonicalReceiptNeverFallsBackToLegacyBoolean() throws {
+    @Test func corruptCanonicalReceiptFailsClosed() throws {
         let suiteName = "StartupGateCoordinatorTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -168,9 +168,45 @@ struct StartupGateCoordinatorTests {
         let fact = StartupSetupFactStore(
             userDefaults: defaults,
             bundleIdentifier: "com.tap.test"
-        ).load(legacyCombinedCompletion: true)
+        ).load()
 
         #expect(fact == .invalid(.corruptReceipt))
+    }
+
+    @Test func currentSetupCompletionRejectsCorruptOrMismatchedRecords() throws {
+        let suiteName = "StartupGateCoordinatorTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let installationGeneration = StartupInstallationGenerationStore(
+            userDefaults: defaults
+        ).currentOrCreate()
+        let invalidRecords = [
+            Data("corrupt".utf8),
+            try JSONEncoder().encode(SetupCompletionRecord(
+                schemaVersion: SetupCompletionRecord.currentSchemaVersion + 1,
+                installationGenerationID: installationGeneration,
+                locationChoice: .skipped,
+                microphoneChoice: .skipped,
+                completedAt: Date(timeIntervalSince1970: 42)
+            )),
+            try JSONEncoder().encode(SetupCompletionRecord(
+                schemaVersion: SetupCompletionRecord.currentSchemaVersion,
+                installationGenerationID: UUID(),
+                locationChoice: .skipped,
+                microphoneChoice: .skipped,
+                completedAt: Date(timeIntervalSince1970: 42)
+            ))
+        ]
+
+        for data in invalidRecords {
+            defaults.set(data, forKey: StartupGateDefaults.setupCompletionKey)
+            let fact = StartupSetupFactStore(
+                userDefaults: defaults,
+                bundleIdentifier: "com.tap.test"
+            ).load()
+            #expect(fact == .invalid(.corruptSetupCompletion))
+        }
     }
 
     @Test func canonicalReceiptRequiresMatchingLocallyVerifiedCredentialBinding() throws {
@@ -203,7 +239,7 @@ struct StartupGateCoordinatorTests {
         let unverified = StartupSetupFactStore(
             userDefaults: defaults,
             bundleIdentifier: "com.tap.test"
-        ).load(legacyCombinedCompletion: true)
+        ).load()
         #expect(unverified == .invalid(.missingCredentialBinding))
 
         let mismatched = StartupSetupFactStore(
@@ -216,18 +252,18 @@ struct StartupGateCoordinatorTests {
                     environment: "development"
                 )
             )
-        ).load(legacyCombinedCompletion: true)
+        ).load()
         #expect(mismatched == .invalid(.credentialBindingMismatch))
 
         let verified = StartupSetupFactStore(
             userDefaults: defaults,
             bundleIdentifier: "com.tap.test",
             verifiedCredentialBinding: VerifiedStartupCredentialBinding(value: binding)
-        ).load(legacyCombinedCompletion: true)
+        ).load()
         #expect(verified == .valid(receipt))
     }
 
-    @Test func frozenHealthPreflightCompletionWritesNoCanonicalReceipt() throws {
+    @Test func currentHealthPreflightCompletionWritesNoCanonicalReceipt() throws {
         let suiteName = "StartupGateCoordinatorTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -236,7 +272,7 @@ struct StartupGateCoordinatorTests {
             userDefaults: defaults,
             bundleIdentifier: "com.tap.test"
         )
-        let fact = store.recordFrozenLegacyCompletion(
+        let fact = store.recordCurrentCompletion(
             statusSnapshot: StartupGateStatusSnapshot(
                 securityPreflight: .granted,
                 camera: .granted,
@@ -248,17 +284,23 @@ struct StartupGateCoordinatorTests {
         )
 
         #expect(defaults.object(forKey: StartupGateDefaults.setupReceiptKey) == nil)
-        #expect(defaults.data(forKey: StartupGateDefaults.legacySetupCompletionKey) != nil)
-        guard case let .legacyCompleted(record?) = fact else {
-            Issue.record("Expected explicit frozen legacy completion")
+        #expect(defaults.data(forKey: StartupGateDefaults.setupCompletionKey) != nil)
+        guard case let .currentCompleted(record) = fact else {
+            Issue.record("Expected current pre-release completion")
             return
         }
-        #expect(record.evidence == .frozenLegacySecurityPreflight)
         #expect(record.locationChoice == .skipped)
         #expect(record.microphoneChoice == .unresolved)
     }
 
     @Test func libraryObservationWaitsForSetupOrExplicitPhotosCompletion() {
+        let currentCompletion = SetupCompletionRecord(
+            schemaVersion: SetupCompletionRecord.currentSchemaVersion,
+            installationGenerationID: UUID(),
+            locationChoice: .skipped,
+            microphoneChoice: .skipped,
+            completedAt: Date(timeIntervalSince1970: 42)
+        )
         #expect(!StartupGatePolicy.shouldActivatePhotoLibraryObservation(
             setup: .absent,
             didCompleteExplicitPhotosAction: false,
@@ -270,12 +312,12 @@ struct StartupGateCoordinatorTests {
             photoLibraryStatus: .limited
         ))
         #expect(StartupGatePolicy.shouldActivatePhotoLibraryObservation(
-            setup: .legacyCompleted(nil),
+            setup: .currentCompleted(currentCompletion),
             didCompleteExplicitPhotosAction: false,
             photoLibraryStatus: .authorized
         ))
         #expect(!StartupGatePolicy.shouldActivatePhotoLibraryObservation(
-            setup: .legacyCompleted(nil),
+            setup: .currentCompleted(currentCompletion),
             didCompleteExplicitPhotosAction: true,
             photoLibraryStatus: .denied
         ))

@@ -24,7 +24,7 @@ Output does not talk to Photos directly and does not own retry behavior.
 | TAP manifest schema | [TAPDepthManifestSchema.swift](TAPDepthManifestSchema.swift) |
 | Manifest construction | [TAPDepthManifestBuilder.swift](TAPDepthManifestBuilder.swift) |
 | Manifest encoding/support | [TAPDepthManifestEncoding.swift](TAPDepthManifestEncoding.swift), [TAPDepthManifestSupport.swift](TAPDepthManifestSupport.swift) |
-| TAP depth photo XMP injection and HEIC compatibility wrappers | [TAPDepthHEICWriter.swift](TAPDepthHEICWriter.swift) |
+| TAP depth photo XMP injection and readback | [TAPDepthPhotoFile.swift](TAPDepthPhotoFile.swift) |
 | Photo metadata customization | [TAPPhotoFileMetadataCustomizer.swift](TAPPhotoFileMetadataCustomizer.swift) |
 | App Attest capture digest and signer | [CaptureContentDigest.swift](CaptureContentDigest.swift), [AppAttestCaptureAssertionSigner.swift](AppAttestCaptureAssertionSigner.swift) |
 | Photos writer used by the Pending Capture Queue | [PhotoLibraryWriter.swift](PhotoLibraryWriter.swift) |
@@ -86,7 +86,7 @@ flowchart TD
     click Package "CapturePackage.swift"
     click Manifest "TAPDepthManifestBuilder.swift"
     click Provenance "TAPCaptureProvenanceWriter.swift"
-    click Writer "TAPDepthHEICWriter.swift"
+    click Writer "TAPDepthPhotoFile.swift"
     click Pending "../../TAPLibrary/TAPPendingCaptureStore.swift"
 ```
 
@@ -140,11 +140,11 @@ Live Photo capture adds one optional MOV resource without changing the still
 photo path. If `AVCapturePhotoOutput` delivers the movie complement,
 `CapturePackage` and `PackagedCaptureArtifact` carry it to the Pending Capture
 Queue. The
-manifest switches from `depth-manifest:v1` to `depth-manifest:v2` and records
-`payload.livePhoto`; signing switches from `content-binding:v2` to
-`content-binding:v3` and adds `signedResources` for the primary photo, manifest
+manifest switches from `still-photo-manifest:v1` to `live-photo-manifest:v1` and records
+`payload.livePhoto`; signing switches from `still-photo-content-binding:v1` to
+`live-photo-content-binding:v1` and adds `signedResources` for the primary photo, manifest
 payload, and paired MOV. If the movie complement fails, the package has no MOV
-and the still-photo v1/v2 path is used.
+and the current still-photo v1 families are used.
 
 ## Output Profile Contract
 

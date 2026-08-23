@@ -38,10 +38,12 @@ nonisolated enum CaptureDepthAvailability: String, Codable, Equatable, Sendable 
 /// isolated under `payload` so verification code can canonicalize exactly that
 /// subtree without chasing duplicate metadata in EXIF, GPS, or Photos.
 nonisolated struct TAPDepthManifest: Codable, Equatable {
-    static let schemaIdentifier = "urn:tapnap:tapcam:depth-manifest:v1"
-    static let mediaType = "application/vnd.tapnap.depth-manifest+json;version=1"
-    static let livePhotoSchemaIdentifier = "urn:tapnap:tapcam:depth-manifest:v2"
-    static let livePhotoMediaType = "application/vnd.tapnap.depth-manifest+json;version=2"
+    static let schemaIdentifier = "urn:tapnap:tapcam:still-photo-manifest:v1"
+    static let mediaType = "application/vnd.tapnap.still-photo-manifest+json;version=1"
+    static let payloadMediaType = "application/vnd.tapnap.still-photo-manifest.payload+json;version=1"
+    static let livePhotoSchemaIdentifier = "urn:tapnap:tapcam:live-photo-manifest:v1"
+    static let livePhotoMediaType = "application/vnd.tapnap.live-photo-manifest+json;version=1"
+    static let livePhotoPayloadMediaType = "application/vnd.tapnap.live-photo-manifest.payload+json;version=1"
     static let xmpNamespaceURI = "urn:tapnap:tapcam:depth:1.0"
     static let xmpPrefix = "tapdepth"
     static let xmpManifestPath = "tapdepth:Manifest"
@@ -80,10 +82,10 @@ extension TAPDepthManifest {
             self.xmpManifestPath = TAPDepthManifest.xmpManifestPath
         }
 
-        nonisolated static var livePhotoV2: Schema {
+        nonisolated static var livePhoto: Schema {
             Schema(
                 id: TAPDepthManifest.livePhotoSchemaIdentifier,
-                version: 2,
+                version: 1,
                 mediaType: TAPDepthManifest.livePhotoMediaType
             )
         }

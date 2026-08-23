@@ -10,8 +10,9 @@ import Foundation
 /// The artifact is always one MP4 resource. Depth coverage is a fact inside the
 /// payload, not a separate product or verification family.
 nonisolated struct TAPVideoManifest: Codable, Equatable, Sendable {
-    static let schemaIdentifier = "urn:tapnap:tapcam:video-manifest:v2"
-    static let mediaType = "application/vnd.tapnap.video-manifest+json;version=2"
+    static let schemaIdentifier = "urn:tapnap:tapcam:video-manifest:v1"
+    static let mediaType = "application/vnd.tapnap.video-manifest+json;version=1"
+    static let payloadMediaType = "application/vnd.tapnap.video-manifest.payload+json;version=1"
 
     let schema: Schema
     let payload: Payload
@@ -32,7 +33,7 @@ extension TAPVideoManifest {
 
         init(
             id: String = TAPVideoManifest.schemaIdentifier,
-            version: Int = 2,
+            version: Int = 1,
             mediaType: String = TAPVideoManifest.mediaType
         ) {
             self.id = id

@@ -141,10 +141,6 @@ nonisolated struct TAPPendingCaptureBundleStorage {
         )
     }
 
-    func writeUnsignedHEIC(_ data: Data, to bundleURL: URL) throws {
-        try writeUnsignedPhoto(data, fileContainer: .heic, to: bundleURL)
-    }
-
     func writeThumbnail(_ data: Data, to bundleURL: URL) throws {
         try storagePolicy.write(
             data,
@@ -177,10 +173,6 @@ nonisolated struct TAPPendingCaptureBundleStorage {
         )
     }
 
-    func writeSignedHEIC(_ data: Data, captureID: String) throws {
-        try writeSignedPhoto(data, fileContainer: .heic, captureID: captureID)
-    }
-
     func readRecord(captureID: String) throws -> TAPPendingCaptureRecord {
         try readNormalizedRecord(
             in: try bundleURL(captureID: captureID),
@@ -203,7 +195,7 @@ nonisolated struct TAPPendingCaptureBundleStorage {
         expectedCaptureID: String? = nil
     ) throws -> TAPPendingCaptureRecord {
         var record = try readStoredRecord(in: bundleURL, expectedCaptureID: expectedCaptureID)
-        record.failureReason = TAPPendingCaptureFailureReasonPresentation.normalizedLegacyFailureReason(
+        record.failureReason = TAPPendingCaptureFailureReasonPresentation.normalizedStoredFailureReason(
             record.failureReason,
             status: record.status
         )
@@ -234,14 +226,6 @@ nonisolated struct TAPPendingCaptureBundleStorage {
             return nil
         }
         return url
-    }
-
-    func heicData(filename: String, captureID: String) throws -> Data {
-        try photoData(filename: filename, captureID: captureID)
-    }
-
-    func heicDataIfPresent(filename: String, captureID: String) throws -> Data? {
-        try photoDataIfPresent(filename: filename, captureID: captureID)
     }
 
     func thumbnailData(filename: String, captureID: String) throws -> Data? {

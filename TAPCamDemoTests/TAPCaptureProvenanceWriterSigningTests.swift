@@ -44,16 +44,17 @@ struct TAPCaptureProvenanceWriterSigningTests {
             id: "embedded-capture",
             location: nil
         ))
-        let unsignedData = try TAPDepthHEICWriter.injectingManifest(
+        let unsignedData = try TAPDepthPhotoFileWriter.injectingManifest(
             embeddedManifest,
             into: TAPCaptureProvenanceTestFixtures.sampleHEICSourceData()
         )
         let signer = CountingCaptureAssertionSigner()
 
         do {
-            _ = try await TAPCaptureProvenanceWriter().signedHEICData(
+            _ = try await TAPCaptureProvenanceWriter().signedPhotoData(
                 from: unsignedData,
                 expectedCaptureID: "record-capture",
+                expectedProfile: .releasePhotoDepthHEIC,
                 assertionSigner: signer
             )
             Issue.record("Expected manifest id mismatch to stop pending signing.")

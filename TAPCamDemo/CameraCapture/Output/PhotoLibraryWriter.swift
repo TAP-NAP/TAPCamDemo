@@ -145,23 +145,6 @@ nonisolated enum PhotoLibraryWriter {
         return assetID
     }
 
-    /// Backward-compatible HEIC save wrapper.
-    static func saveDepthHEIC(
-        _ validatedHEIC: ValidatedTAPDepthHEIC,
-        capturedAt: Date,
-        location: CLLocation?
-    ) async throws -> String {
-        try await saveDepthPhoto(
-            ValidatedTAPDepthPhoto(
-                data: validatedHEIC.data,
-                manifest: validatedHEIC.manifest,
-                fileContainer: .heic
-            ),
-            capturedAt: capturedAt,
-            location: location
-        )
-    }
-
     private static func originalPhotoData(for asset: PHAsset) async throws -> Data {
         guard let resource = PHAssetResource.assetResources(for: asset).first(where: { $0.type == .photo }) else {
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS

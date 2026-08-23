@@ -231,25 +231,6 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
         )
     }
 
-    /// Backward-compatible pending-queue helper for existing HEIC call sites.
-    func signedHEICData(
-        from unsignedHEICData: Data,
-        expectedCaptureID: String,
-        assertionSigner: any CaptureAssertionSigning
-    ) async throws -> TAPCaptureProvenanceSignedHEICResult {
-        let result = try await signedPhotoData(
-            from: unsignedHEICData,
-            expectedCaptureID: expectedCaptureID,
-            expectedProfile: .releasePhotoDepthHEIC,
-            assertionSigner: assertionSigner
-        )
-        return TAPCaptureProvenanceSignedHEICResult(
-            data: result.data,
-            manifest: result.manifest,
-            keyID: result.keyID
-        )
-    }
-
     /// Final fail-closed gate before a signed TAP depth artifact may leave the
     /// app-private pending store.
     ///
@@ -385,7 +366,7 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
         let depthData = try TAPDepthPhotoFileReader.depthData(from: signedPhotoData)
         try validateDepthReadback(depthData, manifest: manifest)
 
-        let recomputedPrimaryDigest = try CaptureContentDigest.make(
+        let recomputedPrimaryDigest = try CaptureContentDigest.makeLivePhotoPrimaryComponents(
             manifest: manifest,
             basePhotoData: signedPhotoData,
             fileContainer: expectedProfile.fileContainer,
@@ -476,19 +457,6 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
         return ValidatedTAPVideoFile(fileURL: videoFileURL, manifest: manifest)
     }
 
-    /// Backward-compatible final gate for existing HEIC call sites.
-    func validateSignedExportHEIC(
-        _ signedHEICData: Data,
-        expectedCaptureID: String
-    ) throws -> ValidatedTAPDepthHEIC {
-        let validated = try validateSignedExportPhoto(
-            signedHEICData,
-            expectedCaptureID: expectedCaptureID,
-            expectedProfile: .releasePhotoDepthHEIC
-        )
-        return ValidatedTAPDepthHEIC(data: validated.data, manifest: validated.manifest)
-    }
-
     private func validateStillPhotoManifestSchema(_ manifest: TAPDepthManifest) throws {
         guard manifest.schema == TAPDepthManifest.Schema() else {
             throw TAPDepthCaptureError.invalidTAPManifest("unexpected schema metadata")
@@ -496,7 +464,7 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
     }
 
     private func validateLivePhotoManifestSchema(_ manifest: TAPDepthManifest) throws {
-        guard manifest.schema == TAPDepthManifest.Schema.livePhotoV2 else {
+        guard manifest.schema == TAPDepthManifest.Schema.livePhoto else {
             throw TAPDepthCaptureError.invalidTAPManifest("unexpected Live Photo schema metadata")
         }
     }
@@ -780,7 +748,7 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
     private func validateLivePhotoPrimaryProof(
         _ proof: TAPDepthManifest.Proof,
         proofValue: CaptureAssertionProofValue,
-        recomputedPrimaryDigest: CaptureContentDigest,
+        recomputedPrimaryDigest: CaptureContentDigest.LivePhotoPrimaryComponents,
         manifest: TAPDepthManifest,
         fileContainer: CapturePhotoFileContainer
     ) throws {
@@ -917,12 +885,6 @@ nonisolated struct TAPSignedVideoFile: Sendable {
     let keyID: String
 }
 
-nonisolated struct TAPCaptureProvenanceSignedHEICResult: Sendable {
-    let data: Data
-    let manifest: TAPDepthManifest
-    let keyID: String
-}
-
 nonisolated struct ValidatedTAPDepthPhoto: Sendable {
     let data: Data
     let manifest: TAPDepthManifest
@@ -947,14 +909,4 @@ nonisolated struct ValidatedTAPLivePhoto: Sendable {
 nonisolated struct ValidatedTAPVideoFile: Sendable {
     let fileURL: URL
     let manifest: TAPVideoManifest
-}
-
-nonisolated struct ValidatedTAPDepthHEIC: Sendable {
-    let data: Data
-    let manifest: TAPDepthManifest
-
-    init(data: Data, manifest: TAPDepthManifest) {
-        self.data = data
-        self.manifest = manifest
-    }
 }

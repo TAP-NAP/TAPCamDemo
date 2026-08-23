@@ -20,7 +20,7 @@ struct TAPCaptureContentDigestTests {
         #expect(first == second)
         #expect(decoded == digest)
         #expect(json.contains("\"captureID\":\"sample-capture\""))
-        #expect(json.contains("\"schemaID\":\"urn:tapnap:tapcam:content-binding:v2\""))
+        #expect(json.contains("\"schemaID\":\"urn:tapnap:tapcam:still-photo-content-binding:v1\""))
         #expect(json.contains("\"kind\":\"c2pa-style-format-native-byte-ranges\""))
         #expect(json.contains("\"depthResource\""))
     }
@@ -60,7 +60,7 @@ struct TAPCaptureContentDigestTests {
                     audio: "not-captured"
                 )
             ),
-            schema: .livePhotoV2
+            schema: .livePhoto
         )
 
         let digest = try CaptureContentDigest.make(
@@ -70,17 +70,27 @@ struct TAPCaptureContentDigestTests {
             depthData: nil,
             pairedVideoURL: movieURL
         )
+        let primaryDigest = try CaptureContentDigest.makeLivePhotoPrimaryComponents(
+            manifest: manifest,
+            basePhotoData: photoData,
+            fileContainer: .heic,
+            depthData: nil
+        )
         let resources = try #require(digest.signedResources)
         let expectedMovieHash = try Self.sha256Base64URL(movieData)
 
         #expect(digest.schemaID == CaptureContentBinding.livePhotoSchemaIdentifier)
         #expect(digest.manifestSchemaID == TAPDepthManifest.livePhotoSchemaIdentifier)
-        #expect(digest.metadataHash.mediaType == "application/vnd.tapnap.depth-manifest.payload+json;version=2")
+        #expect(digest.metadataHash.mediaType == "application/vnd.tapnap.live-photo-manifest.payload+json;version=1")
         #expect(resources.map(\.role) == ["primaryPhoto", "tapDepthManifestPayload", "pairedLivePhotoVideo"])
         #expect(resources.last?.mediaType == "com.apple.quicktime-movie")
         #expect(resources.last?.byteCount == movieData.count)
         #expect(resources.last?.value == expectedMovieHash)
         #expect(try String(data: digest.canonicalJSONData(), encoding: .utf8)?.contains("\"signedResources\"") == true)
+        #expect(primaryDigest.assetHash == digest.assetHash)
+        #expect(primaryDigest.metadataHash == digest.metadataHash)
+        #expect(primaryDigest.captureID == digest.captureID)
+        #expect(primaryDigest.capturedAt == digest.capturedAt)
     }
 
     @Test func videoContentBindingHashesMP4BytesExcludingBMFFProofSlot() throws {
@@ -105,13 +115,13 @@ struct TAPCaptureContentDigestTests {
         #expect(emptyDigest.manifestSchemaID == TAPVideoManifest.schemaIdentifier)
         #expect(emptyDigest.assetHash.fileContainer == "mp4")
         #expect(emptyDigest.assetHash.value == proofDigest.assetHash.value)
-        #expect(emptyDigest.metadataHash.mediaType == "application/vnd.tapnap.video-manifest.payload+json;version=2")
+        #expect(emptyDigest.metadataHash.mediaType == "application/vnd.tapnap.video-manifest.payload+json;version=1")
         #expect(emptyDigest.depthResource.presence == "captured")
         #expect(emptyDigest.proofSlot.offset == Int(slot.containerRange.offset))
         #expect(try TAPProofSlot.proofEnvelopeData(fromBMFFFileAt: fileURL) == Data("proof-envelope".utf8))
     }
 
-    @Test func videoContentBindingUsesV2ManifestAndCapturedDepthCoverage() throws {
+    @Test func videoContentBindingUsesV1ManifestAndCapturedDepthCoverage() throws {
         let manifest = Self.sampleVideoManifest(depthSampleCount: 1)
         let fileURL = try Self.makeTemporaryVideoFile()
         _ = try TAPProofSlot.ensureEmptyBMFFSlot(inFileAt: fileURL)
@@ -121,11 +131,29 @@ struct TAPCaptureContentDigestTests {
             mp4FileURL: fileURL
         )
 
-        #expect(digest.schemaID == "urn:tapnap:tapcam:content-binding:v4")
-        #expect(digest.manifestSchemaID == "urn:tapnap:tapcam:video-manifest:v2")
+        #expect(digest.schemaID == "urn:tapnap:tapcam:video-content-binding:v1")
+        #expect(digest.manifestSchemaID == "urn:tapnap:tapcam:video-manifest:v1")
         #expect(digest.depthResource.presence == "captured")
         #expect(digest.depthResource.binding == "covered-by-assetHash")
         #expect(digest.signedResources == nil)
+    }
+
+    @Test func videoContentBindingRejectsNonCurrentManifestSchema() throws {
+        let currentManifest = Self.sampleVideoManifest(depthSampleCount: 0)
+        let oldManifest = TAPVideoManifest(
+            payload: currentManifest.payload,
+            schema: TAPVideoManifest.Schema(
+                id: "urn:tapnap:tapcam:video-manifest:v2",
+                version: 2,
+                mediaType: "application/vnd.tapnap.video-manifest+json;version=2"
+            )
+        )
+        let fileURL = try Self.makeTemporaryVideoFile()
+        _ = try TAPProofSlot.ensureEmptyBMFFSlot(inFileAt: fileURL)
+
+        #expect(throws: TAPDepthCaptureError.self) {
+            try CaptureContentDigest.makeVideo(manifest: oldManifest, mp4FileURL: fileURL)
+        }
     }
 
     @Test func bmffProofSlotIsFixedSizeAndExcludedFromAssetHash() throws {

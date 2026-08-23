@@ -102,7 +102,7 @@ nonisolated struct PendingCaptureVideoPosterBackfillSource: LibraryVideoPosterBa
         for record in records {
             try Task.checkCancellation()
             let videoURL = try await store.videoArtifactURL(captureID: record.captureID)
-            let revision = "video-poster-v1|\(record.videoFormatRevision ?? 0)|\(record.updatedAt.timeIntervalSince1970)"
+            let revision = "video-poster-v1|\(record.updatedAt.timeIntervalSince1970)"
             candidates.append(LibraryVideoPosterBackfillCandidate(
                 captureID: record.captureID,
                 videoURL: videoURL,

@@ -479,7 +479,7 @@ struct TAPNAPShareArtifactBuilderTests {
             captureID: "exported-live",
             capturedAt: Date(timeIntervalSince1970: 1_750_000_000),
             status: .exported,
-            signedHEICFilename: nil,
+            signedPhotoFilename: nil,
             pairedVideoFilename: nil,
             assetLocalIdentifier: "photos-live"
         )

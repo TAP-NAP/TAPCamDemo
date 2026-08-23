@@ -85,8 +85,6 @@ final class StartupGateCoordinator: NSObject, ObservableObject, CLLocationManage
     }
 
     func refreshAuthorizationStatuses() {
-        CameraCaptureDataUsePreferences.migrateLegacyMicrophonePreferenceIfNeeded()
-
         refreshSecurityPreflightStatus()
         refreshRequiredPermissionStatuses()
 

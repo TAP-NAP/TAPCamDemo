@@ -47,8 +47,8 @@ Verify action for TAPCam-owned captures.
   ready. Logs must not expose full credential names derived from users, key IDs,
   assertion objects, proofs, URLs with private paths, media bytes, or response
   bodies.
-- The verifier can rebuild Still v2, Live Photo v3, and TAP Video v4 content
-  bindings from exact original bytes before submitting the unchanged
+- The verifier can rebuild the distinct Still, Live Photo, and TAP Video v1
+  content-binding families from exact original bytes before submitting the unchanged
   `/tapcam/capture-signatures/verify` request.
 - An owner-reviewed mutation harness can alter a disposable copy outside its
   proof slot without touching a Photos asset or production source artifact.
@@ -60,10 +60,10 @@ Verify action for TAPCam-owned captures.
 
 | Row | Artifact | Required representative boundary | Repetitions | Owner decision |
 | --- | --- | --- | --- | --- |
-| A1 | HEIC still | `depth-manifest:v1` + `content-binding:v2` and photo final gate | `OWNER-LIVE` | `OWNER-LIVE` |
-| A2 | JPG still | `depth-manifest:v1` + `content-binding:v2` and photo final gate | `OWNER-LIVE` | `OWNER-LIVE` |
-| A3 | Live Photo | Owner-selected HEIC/JPG primary, original paired MOV, `depth-manifest:v2` + `content-binding:v3` live gate | `OWNER-LIVE` | `OWNER-LIVE` |
-| A4 | TAP Video | Owner-selected approved depth/audio state, `video-manifest:v2` + `content-binding:v4` file gate and original-video readback | `OWNER-LIVE` | `OWNER-LIVE` |
+| A1 | HEIC still | `still-photo-manifest:v1` + `still-photo-content-binding:v1` and photo final gate | `OWNER-LIVE` | `OWNER-LIVE` |
+| A2 | JPG still | `still-photo-manifest:v1` + `still-photo-content-binding:v1` and photo final gate | `OWNER-LIVE` | `OWNER-LIVE` |
+| A3 | Live Photo | Owner-selected HEIC/JPG primary, original paired MOV, `live-photo-manifest:v1` + `live-photo-content-binding:v1` live gate | `OWNER-LIVE` | `OWNER-LIVE` |
+| A4 | TAP Video | Owner-selected approved depth/audio state, `video-manifest:v1` + `video-content-binding:v1` file gate and original-video readback | `OWNER-LIVE` | `OWNER-LIVE` |
 
 The four artifact classes are the proposed representative minimum. The owner
 must freeze inclusion, repetitions, capture budget, and the exact A3/A4 media
@@ -99,7 +99,7 @@ state before the run. A missing decision is Blocked, not an Agent default.
 | 3 | **OWNER-LIVE:** enter the camera or use the Release `Photo Integrity` Prepare/Retry action according to the approved branch, then wait for the preparation result. | Fresh branch: the backend issues and atomically consumes an attestation challenge, validates Apple's attestation/app/environment/public key/initial counter, and accepts the credential before local persistence. Reuse branch: the existing ready `photo_keyid` mapping resolves to an active matching production credential. Release UI reaches `Ready` only after its assertion health check; it exposes no backend details or full key ID. | Pending | Pending |
 | 4 | Backend operator correlate the preparation trace with the device trace. | Exactly the approved branch occurred. Credential name remains a lookup name, not a user identity or trust claim. The backend, not the client-ready flag, is the trust decision point. | Pending | Pending |
 | 5 | For each frozen A1–A4 row, capture one approved test artifact and let the Pending Capture Queue process it. | The record moves through the applicable pending/signing/signed/exporting/exported/readback states without an unsigned fallback or silent trust downgrade. Counts stay within the approved production budget. | Pending | Pending |
-| 6 | Audit the proof generated for every artifact before Photos export. | The device uses the registered production key to sign `SHA256(canonical signingBinding JSON)`. `signingBinding` uses operation `tapcam.capture.sign`, the expected capture identity and schema, and `bodySHA256 = SHA256(canonical contentDigest JSON)`. Still uses `depth-manifest:v1`/`content-binding:v2`, Live Photo uses `depth-manifest:v2`/`content-binding:v3` with its three signed resources, and TAP Video uses `video-manifest:v2`/`content-binding:v4`. Capture signing does not request an online business-request assertion challenge. | Pending | Pending |
+| 6 | Audit the proof generated for every artifact before Photos export. | The device uses the registered production key to sign `SHA256(canonical signingBinding JSON)`. `signingBinding` uses operation `tapcam.capture.sign`, the expected capture identity and schema, and `bodySHA256 = SHA256(canonical contentDigest JSON)`. Still uses `still-photo-manifest:v1`/`still-photo-content-binding:v1`, Live Photo uses `live-photo-manifest:v1`/`live-photo-content-binding:v1` with its three signed resources, and TAP Video uses `video-manifest:v1`/`video-content-binding:v1`. Capture signing does not request an online business-request assertion challenge. | Pending | Pending |
 | 7 | Observe the final local export gate for A1–A4. | HEIC/JPG pass `validateSignedExportPhoto`; Live Photo passes `validateSignedExportLivePhoto` for the exact primary/MOV pair; TAP Video passes `validateSignedExportVideoFile` for the exact MP4. Each gate recomputes byte binding and checks expected identity/proof before Photos commit. Queue status or a filename never substitutes for validation. | Pending | Pending |
 | 8 | Read the saved Photos originals through the approved resource APIs and run the same applicable binding check. | HEIC/JPG originals retain the signed container/proof; Live Photo exposes the bound original `.photo` plus `.pairedVideo`; TAP Video streams its original video resource to disk-backed validation. The recomputed binding still matches, with no compatibility export or re-encoding substituted. | Pending | Pending |
 | 9 | In the acceptance verifier, rebuild each content binding locally from the exact readback bytes, compare it with the embedded proof, then submit only the proof's `keyId`, `assertionObject`, and `signingBinding` to the production verification endpoint. | Local file/resource checks pass before the request. The backend confirms that the registered active production key signed the submitted canonical binding and returns the contracted `valid` result. No photo, MOV, MP4, manifest payload, depth data, or recomputed resource hash is uploaded to the endpoint. | Pending | Pending |

@@ -268,8 +268,6 @@ struct DepthAnalyzerSettingsView: View {
 
         if snapshot.isMicrophoneAuthorized {
             CameraCaptureDataUsePreferences.enableMicrophoneDataAfterFirstAuthorizationIfNeeded()
-        } else {
-            CameraCaptureDataUsePreferences.migrateLegacyMicrophonePreferenceIfNeeded()
         }
         usesMicrophoneData = CameraCaptureDataUsePreferences.usesMicrophoneData()
     }

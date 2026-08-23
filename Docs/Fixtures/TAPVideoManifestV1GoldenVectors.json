@@ -19,16 +19,16 @@
     "uncompressedBase64": "VEFQX0RFUFRIX1ZFQ1RPUl9WMjpUQVBfREVQVEhfVkVDVE9SX1YyOg==",
     "compressedByteCount": 35,
     "compressedBase64": "KLUv/SAo1QAAoFRBUF9ERVBUSF9WRUNUT1JfVjI6AQCOnkw=",
-    "klvV2Base64": "VFZFUgAAAAQAAAACRlJBTQAAAAQAAAARUFRTIAAAAAwAAAAAAAAwOQAAAlhDT01QAAAABXpzdGQxAAAAVUxFTgAAAAQAAAAoQ0FMSQAAAAQAAAAARFBUSAAAACMotS/9ICjVAACgVEFQX0RFUFRIX1ZFQ1RPUl9WMjoBAI6eTAA="
+    "klvV1Base64": "VFZFUgAAAAQAAAABRlJBTQAAAAQAAAARUFRTIAAAAAwAAAAAAAAwOQAAAlhDT01QAAAABXpzdGQxAAAAVUxFTgAAAAQAAAAoQ0FMSQAAAAQAAAAARFBUSAAAACMotS/9ICjVAACgVEFQX0RFUFRIX1ZFQ1RPUl9WMjoBAI6eTAA="
   },
   "manifest": {
     "schema": {
-      "id": "urn:tapnap:tapcam:video-manifest:v2",
-      "version": 2,
-      "mediaType": "application/vnd.tapnap.video-manifest+json;version=2"
+      "id": "urn:tapnap:tapcam:video-manifest:v1",
+      "version": 1,
+      "mediaType": "application/vnd.tapnap.video-manifest+json;version=1"
     },
     "payload": {
-      "id": "golden-capture-v2",
+      "id": "golden-capture-v1",
       "packageID": "00000000-0000-0000-0000-000000000777",
       "capturedAt": "2026-07-11T00:00:00Z",
       "selectedCameraPlan": {

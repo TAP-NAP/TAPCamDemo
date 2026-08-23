@@ -11,25 +11,25 @@ stop at the app-side capture/sign/export/verification path plus the external
 contract documented here.
 
 The important boundary is: Live Photo is an extension of the existing TAP
-capture proof model. It must not change the manifest, content binding, or
-verification behavior of existing still-photo captures.
+capture proof model. Still Photo and Live Photo use distinct v1 format families
+so a verifier never infers one structure from the other's version number.
 
 ## Non-Negotiable Boundaries
 
 - Existing still-photo captures keep the current contract:
-  - `urn:tapnap:tapcam:depth-manifest:v1`
-  - `urn:tapnap:tapcam:content-binding:v2`
+  - `urn:tapnap:tapcam:still-photo-manifest:v1`
+  - `urn:tapnap:tapcam:still-photo-content-binding:v1`
   - one original Photos `.photo` resource, HEIC or JPG
   - fixed TAP proof slot in the photo container
   - SHA-256 over format-native photo bytes excluding exactly one proof slot
   - SHA-256 over canonical `manifest.payload` JSON
-- Live Photo captures use a new versioned contract:
-  - `urn:tapnap:tapcam:depth-manifest:v2`
-  - `urn:tapnap:tapcam:content-binding:v3`
+- Live Photo captures use their own v1 contract:
+  - `urn:tapnap:tapcam:live-photo-manifest:v1`
+  - `urn:tapnap:tapcam:live-photo-content-binding:v1`
   - one original Photos `.photo` resource plus one `.pairedVideo` MOV resource
   - the same fixed TAP proof slot in the photo resource
   - the paired video is signed as an additional binary resource
-- `manifest.payload.livePhoto` is present only for v2 Live Photo manifests:
+- `manifest.payload.livePhoto` is present only for Live Photo manifests:
   - `presence: "paired-video"`
   - `pairedVideoFilename: "paired-video.mov"`
   - `durationSeconds`
@@ -39,25 +39,25 @@ verification behavior of existing still-photo captures.
   - `videoCodec`
   - `audio`, either `"not-captured"` for silent Live Photos or `"captured"` when
     Live Photo sound was enabled at capture time
-- `proof.value.contentDigest.signedResources` is present only for v3 Live Photo
+- `proof.value.contentDigest.signedResources` is present only for Live Photo
   bindings and uses these roles:
   - `primaryPhoto`
   - `tapDepthManifestPayload`
   - `pairedLivePhotoVideo`
-- Do not add Live Photo fields to the v1 manifest payload.
-- Do not reinterpret v2 content binding as a Live Photo binding.
+- Do not add Live Photo fields to the still-photo manifest payload.
+- Do not reinterpret the still-photo content-binding family as a Live Photo binding.
 - Do not make the backend re-hash photo or video bytes. The backend continues
   to verify only the App Attest assertion over the submitted `signingBinding`.
 - Do not use platform-decoded pixels, browser canvas pixels, decoded video
   frames, or metric depth conversion as inputs to the base signature check.
-- Do not claim per-frame video depth for Live Photo v2/v3. The depth resource
+- Do not claim per-frame video depth for Live Photo. The depth resource
   is the original still photo's `AVCapturePhoto.depthData` embedded in the
   primary `.photo` resource. The paired MOV is signed as video bytes, not as a
   synchronized stream of video frames plus depth frames.
 
 If Live Photo capture is requested but the movie complement fails, the capture
 should be signed and exported as the still-photo contract above, not as a
-partial v2/v3 Live Photo.
+partial Live Photo.
 
 ## Primary Photo, Paired MOV, and Hash Chain
 
@@ -92,7 +92,7 @@ flowchart TD
 
     Movie["paired-video.mov<br/>original Photos .pairedVideo bytes"] --> MovieHash["SHA-256 full file<br/>signedResources.pairedLivePhotoVideo"]
 
-    PhotoHash --> Digest["contentDigest v3"]
+    PhotoHash --> Digest["live-photo-content-binding v1"]
     PayloadHash --> Digest
     MovieHash --> Digest
     Digest --> DigestJSON["Canonical JSON contentDigest"]
@@ -111,11 +111,11 @@ Inside `proof.value.contentDigest`, the required Live Photo descriptors are:
 | `signedResources.primaryPhoto` | Primary HEIC/JPG | Same hash material as `assetHash`, repeated as a named Live Photo resource. |
 | `signedResources.tapDepthManifestPayload` | `manifest.payload` | Same hash material as `metadataHash`, repeated as a named Live Photo resource. |
 | `signedResources.pairedLivePhotoVideo` | Paired MOV | SHA-256 over the complete MOV file bytes. |
-| `signingBinding.bodySHA256` | Canonical `contentDigest` JSON | SHA-256 over the full v3 digest object above. |
+| `signingBinding.bodySHA256` | Canonical `contentDigest` JSON | SHA-256 over the full Live Photo v1 digest object above. |
 
 The manifest itself does not store the MOV hash. It declares that this is a
 Live Photo contract and names the required paired video filename. The hash lives
-in the proof value's v3 `contentDigest`, which is then bound to App Attest by
+in the proof value's Live Photo v1 `contentDigest`, which is then bound to App Attest by
 `signingBinding.bodySHA256`.
 
 ## Depth Scope and Streaming Depth Non-Goal
@@ -138,7 +138,7 @@ video/depth sample.
 Future work may define a separate video-depth capture format using
 `AVCaptureVideoDataOutput`, `AVCaptureDepthDataOutput`, and
 `AVCaptureDataOutputSynchronizer`. That future format must not reuse the current
-v2/v3 Live Photo verifier as if it certified per-frame video depth.
+Live Photo verifier as if it certified per-frame video depth.
 
 ## Version Routing
 
@@ -147,10 +147,10 @@ proof value's content-binding schema.
 
 | Input | Required verifier behavior |
 | --- | --- |
-| v1 manifest + v2 content binding | Run the current still-photo verifier. Do not require a paired video. |
-| v2 manifest + v3 content binding | Run the Live Photo verifier. Require the photo checks and then validate the paired video resource if supplied. |
-| v2 manifest + missing paired video file | Report still photo proof status separately, then report Live Photo video resource missing. |
-| v2 manifest + paired video hash mismatch | Report still photo proof status separately, then report Live Photo video resource failed. |
+| Still-photo manifest v1 + still-photo content binding v1 | Run the current still-photo verifier. Do not require a paired video. |
+| Live Photo manifest v1 + Live Photo content binding v1 | Run the Live Photo verifier. Require the photo checks and then validate the paired video resource if supplied. |
+| Live Photo manifest v1 + missing paired video file | Report still photo proof status separately, then report Live Photo video resource missing. |
+| Live Photo manifest v1 + paired video hash mismatch | Report still photo proof status separately, then report Live Photo video resource failed. |
 | Unknown manifest or content-binding schema | Fail as unsupported schema, not as tampered media. |
 
 The report model should separate:
@@ -213,15 +213,11 @@ TAPNAP-Capture.tapnap
 ```
 
 `.tapnap` is a ZIP-compatible transport container only. It is written without
-media re-encoding or entry compression, and browser verification must not trust
-the archive container or sidecar as signature evidence. The verifier must read
-`primary-photo.*`, parse the embedded TAP proof, and then hash
+media re-encoding or entry compression. Its current v1 root sidecar is required
+to resolve exact resource entries, but neither the archive nor sidecar is
+signature evidence. The verifier must read the sidecar-declared
+`primary-photo.*`, parse the embedded TAP proof, and then hash the declared
 `paired-video.mov` against `proof.value.contentDigest.signedResources`.
-
-`tapcam-live-photo-verification.zip` is a legacy input filename. A verifier may
-continue accepting that byte-compatible historical package, but TAPCam must not
-emit it or present `.zip` as a current user-facing output. Legacy acceptance
-does not change any proof, resource-role, hashing, or trust rule.
 
 `tapcam-export.json` is intentionally minimal and unsigned. It may contain only
 the export schema/version, package kind, resource roles, filenames, media
@@ -229,21 +225,21 @@ types, and warning labels. It must not contain capture IDs, App Attest key
 IDs, assertion objects, signing bindings, proof bodies, resource hashes, or
 server verification results.
 
-If a saved Live Photo `.photo` carries the v2 manifest but the original
+If a saved Live Photo `.photo` carries the Live Photo manifest but the original
 `.pairedVideo` resource is missing, TAPCam may export `tapcam-primary-photo-only`
 as a single HEIC/JPG and warn that Live Photo verification remains incomplete.
 That fallback is not a successful Live Photo package.
 
 ## Browser Verification Flow
 
-For still-photo v1/v2 captures, keep the current flow:
+For still-photo v1 captures, keep the current flow:
 
 1. Read the supplied HEIC or JPG as bytes.
 2. Parse XMP `tapdepth:Manifest`.
 3. Require `manifest.proofs` to be empty.
 4. Locate exactly one fixed TAP proof slot.
 5. Read and decode the proof envelope from the slot.
-6. Recompute the v2 content binding from photo bytes excluding the proof slot
+6. Recompute the still-photo v1 content binding from photo bytes excluding the proof slot
    plus canonical `manifest.payload` JSON.
 7. Compare the recomputed content binding with `proof.value.contentDigest`.
 8. Canonically encode `signingBinding` and confirm its `bodySHA256` matches the
@@ -251,14 +247,14 @@ For still-photo v1/v2 captures, keep the current flow:
 9. Submit only `keyId`, `assertionObject`, and `signingBinding` to
    `/tapcam/capture-signatures/verify`.
 
-For Live Photo v2/v3 captures, extend the local browser step before backend
+For Live Photo v1 captures, extend the local browser step before backend
 submission:
 
 1. Read the supplied photo resource as HEIC or JPG bytes.
 2. Read the supplied paired video resource as MOV bytes when present.
-3. Parse XMP `tapdepth:Manifest` and require schema v2.
+3. Parse XMP `tapdepth:Manifest` and require the Live Photo manifest v1 family.
 4. Locate the same fixed proof slot in the photo resource.
-5. Decode the proof value and require content-binding schema v3.
+5. Decode the proof value and require the Live Photo content-binding v1 family.
 6. Recompute `signedResources` from local bytes:
    - primary photo: SHA-256 over HEIC/JPG bytes excluding the proof slot
    - manifest payload: SHA-256 over canonical `manifest.payload` JSON
@@ -282,8 +278,8 @@ submission:
 }
 ```
 
-The server does not need to know whether `bodySHA256` came from v2 still-photo
-content binding or v3 Live Photo content binding. That distinction is owned by
+The server does not need to know whether `bodySHA256` came from the still-photo
+or Live Photo v1 content-binding family. That distinction is owned by
 the local verifier.
 
 ## Cross-Platform Verification Requirements
@@ -294,9 +290,9 @@ CLI as long as it receives byte-preserving inputs.
 
 Required support:
 
-- Accept TAPCam's `.tapnap` package as the current user-facing Live Photo
-  transport, and accept `tapcam-live-photo-verification.zip` only as legacy
-  input.
+- Accept TAPCam's `.tapnap` package through its extension or registered TAPNAP
+  MIME. Require the current v1 root sidecar and reject missing, malformed,
+  superseded, or invalid resource mappings.
 - Preserve entry bytes exactly when reading `primary-photo.*` and
   `paired-video.mov`.
 - Parse the TAP manifest and proof slot from HEIC/BMFF or JPEG bytes without
@@ -312,9 +308,8 @@ Supported input modes:
 | Platform / source | Required behavior |
 | --- | --- |
 | TAPCam `.tapnap` package | Current primary path. Read the ZIP-compatible entries, verify the primary photo, then verify the paired MOV. |
-| Legacy `tapcam-live-photo-verification.zip` | Backward-compatible input only. Apply the same byte and trust rules; never describe it as current TAPCam output. |
 | Developer fixture with separate photo and MOV | Supported for tests if the MOV is explicitly selected as the paired resource. |
-| Single HEIC/JPG still photo | Supported only for v1/v2 still-photo contracts. If the embedded manifest is Live Photo v2, report missing MOV. |
+| Single HEIC/JPG still photo | Supported only for the still-photo v1 family. If the embedded manifest is Live Photo v1, report missing MOV. |
 | Generic share, AirDrop, social app export, or platform "compatible" export | Not a stable verification source. These paths may transcode, compress, drop resources, or export presentation edits. |
 
 Non-goals for cross-platform verification:
@@ -331,8 +326,8 @@ The browser verifier needs these implementation tools:
 
 | Need | Browser-side tool |
 | --- | --- |
-| Read user-selected photo, MOV, `.tapnap`, or legacy ZIP bytes | File input / drag-drop plus `Blob.arrayBuffer()` |
-| Unpack current `.tapnap` and legacy Live Photo ZIP inputs | ZIP reader that preserves entry bytes; trust only the embedded TAP proof after unpacking |
+| Read user-selected photo, MOV, or `.tapnap` bytes | File input / drag-drop plus `Blob.arrayBuffer()` |
+| Unpack current `.tapnap` input | Bounded ZIP-compatible reader that requires the current v1 root sidecar, preserves declared entry bytes, and trusts only the embedded TAP proof after unpacking |
 | Parse binary containers | TAP-owned HEIC/BMFF and JPEG byte parsers, preferably in the existing Rust/WASM verifier path |
 | Locate and validate the TAP proof slot | Extend `Tools/ContentBindingVerifier/tap-content-binding.mjs` rules or port the same rules into WASM |
 | Parse TAP XMP manifest | TAP-owned XMP extraction for JPEG APP1 and HEIC/BMFF metadata, then JSON parse the `tapdepth:Manifest` value |
@@ -340,7 +335,7 @@ The browser verifier needs these implementation tools:
 | SHA-256 | Web Crypto `crypto.subtle.digest("SHA-256", data)` for in-memory buffers; add a WASM/JS streaming hasher if MOV size makes whole-file hashing too expensive |
 | Base64url | TAP-owned base64url no-padding encode/decode helpers |
 | Backend verification call | `fetch()` POST with JSON to `/tapcam/capture-signatures/verify` after local byte checks pass |
-| Test vectors | Still-photo v1/v2 fixtures plus Live Photo v2/v3 fixtures with matching, missing, and mismatched paired MOV resources |
+| Test vectors | Still-photo v1 plus Live Photo v1 fixtures with matching, missing, and mismatched paired MOV resources |
 
 The optional browser-side streaming hasher above is only a memory optimization
 for hashing one MOV file. It is not camera streaming depth capture.
@@ -377,7 +372,7 @@ The server verifies that a registered App Attest key signed the canonical
 `signingBinding`. It does not receive the photo, paired MOV, manifest payload,
 or recomputed resource hashes.
 
-For Live Photo, the browser/app local verifier must compute the v3 content
+For Live Photo, the browser/app local verifier must compute the Live Photo v1 content
 binding first. The resulting canonical content binding hash is still represented
 only through `signingBinding.bodySHA256`, so the server does not need a Live
 Photo-specific branch unless a future protocol changes the App Attest signing
@@ -388,8 +383,7 @@ binding schema itself.
 Implementation belongs in the TAPCamVerifier repository. TAPCamDemo only
 publishes the artifact contract and fixtures/spec expectations.
 
-- Accept either a single still-photo file, a current TAPCam `.tapnap` package,
-  or the explicitly legacy `tapcam-live-photo-verification.zip` input. Raw
+- Accept a single still-photo file or a current TAPCam `.tapnap` package. Raw
   photo-plus-MOV pairs may remain a developer fixture path, but the current
   user-facing Live Photo transport is `.tapnap`.
 - Keep the visible verifier simple: file selection or drag-drop should start
@@ -397,11 +391,11 @@ publishes the artifact contract and fixtures/spec expectations.
 - Preserve the current server split:
   - browser proves the media bytes match the embedded content binding
   - server proves the registered App Attest key signed the binding
-- Add v3 fixtures before changing UI:
-  - still HEIC/JPG v1/v2 remains green
-  - Live Photo v2/v3 with matching MOV is fully green
-  - Live Photo v2/v3 without MOV shows still proof status plus video missing
-  - Live Photo v2/v3 with wrong MOV shows still proof status plus video mismatch
+- Keep current v1 fixtures before changing UI:
+  - still HEIC/JPG v1 remains green
+  - Live Photo v1 with matching MOV is fully green
+  - Live Photo v1 without MOV shows still proof status plus video missing
+  - Live Photo v1 with wrong MOV shows still proof status plus video mismatch
   - unknown schema is unsupported
 - Keep CORS expectations unchanged for the backend JSON POST. Browser transport
   failures are separate from local hash verification failures.

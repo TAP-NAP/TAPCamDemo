@@ -50,7 +50,7 @@ struct TAPDepthAnalysisSharePresentationTests {
                 captureID: "unsigned-photo-\(status.rawValue)",
                 capturedAt: now,
                 status: status,
-                signedHEICFilename: nil
+                signedPhotoFilename: nil
             )
             #expect(
                 TAPPendingPhotoSharePolicy.disposition(
@@ -64,7 +64,7 @@ struct TAPDepthAnalysisSharePresentationTests {
             captureID: "signed-photo",
             capturedAt: now,
             status: .failedTerminal,
-            signedHEICFilename: "signed.heic"
+            signedPhotoFilename: "signed.heic"
         )
         #expect(
             TAPPendingPhotoSharePolicy.disposition(
@@ -275,7 +275,7 @@ struct TAPDepthAnalysisSharePresentationTests {
             captureID: "pending-unsigned",
             capturedAt: Date(timeIntervalSince1970: 1_750_000_000),
             status: .waitingNetwork,
-            signedHEICFilename: nil
+            signedPhotoFilename: nil
         )
         let invocationRecorder = ShareLocalIntegrityInvocationRecorder()
         let model = DepthAnalysisShareCoordinator(
@@ -314,7 +314,7 @@ struct TAPDepthAnalysisSharePresentationTests {
             captureID: "pending-signed",
             capturedAt: Date(timeIntervalSince1970: 1_750_000_000),
             status: .failedTerminal,
-            signedHEICFilename: "signed.heic"
+            signedPhotoFilename: "signed.heic"
         )
         let invocationRecorder = ShareLocalIntegrityInvocationRecorder()
         let model = DepthAnalysisShareCoordinator(
@@ -698,7 +698,7 @@ struct TAPDepthAnalysisSharePresentationTests {
             captureID: "owned-capture",
             capturedAt: Date(timeIntervalSince1970: 1_750_000_000),
             status: .exported,
-            signedHEICFilename: "signed.heic",
+            signedPhotoFilename: "signed.heic",
             assetLocalIdentifier: "owned-asset"
         )
         let resolver = DepthAnalysisShareRecordResolver(
@@ -755,7 +755,7 @@ struct TAPDepthAnalysisSharePresentationTests {
             captureID: "owned-conflict",
             capturedAt: Date(timeIntervalSince1970: 1_750_000_000),
             status: .exported,
-            signedHEICFilename: "signed.heic",
+            signedPhotoFilename: "signed.heic",
             assetLocalIdentifier: "different-asset"
         )
         let invocationRecorder = ShareLocalIntegrityInvocationRecorder()
@@ -869,7 +869,7 @@ struct TAPDepthAnalysisSharePresentationTests {
             captureID: "verified-notification-isolation",
             capturedAt: Date(timeIntervalSince1970: 1_750_000_000),
             status: .signed,
-            signedHEICFilename: "signed.heic"
+            signedPhotoFilename: "signed.heic"
         )
         let invocationRecorder = ShareLocalIntegrityInvocationRecorder()
         let model = DepthAnalysisShareCoordinator(
@@ -929,7 +929,7 @@ struct TAPDepthAnalysisSharePresentationTests {
             captureID: "legacy-capture",
             capturedAt: Date(timeIntervalSince1970: 1_750_000_000),
             status: .exported,
-            signedHEICFilename: nil,
+            signedPhotoFilename: nil,
             assetLocalIdentifier: "legacy-asset"
         )
         let resolver = DepthAnalysisShareRecordResolver(
@@ -954,13 +954,13 @@ struct TAPDepthAnalysisSharePresentationTests {
             captureID: "notification-isolation",
             capturedAt: Date(timeIntervalSince1970: 1_750_000_000),
             status: .waitingNetwork,
-            signedHEICFilename: nil
+            signedPhotoFilename: nil
         )
         let signedRecord = TAPCamDemoTestFixtures.samplePendingRecord(
             captureID: "notification-isolation",
             capturedAt: Date(timeIntervalSince1970: 1_750_000_000),
             status: .signed,
-            signedHEICFilename: "signed.heic"
+            signedPhotoFilename: "signed.heic"
         )
         let box = ShareRecordBox(pendingRecord)
         let invocationRecorder = ShareLocalIntegrityInvocationRecorder()
@@ -1006,13 +1006,13 @@ struct TAPDepthAnalysisSharePresentationTests {
             captureID: "status-only-change",
             capturedAt: Date(timeIntervalSince1970: 1_750_000_000),
             status: .waitingNetwork,
-            signedHEICFilename: nil
+            signedPhotoFilename: nil
         )
         let statusOnlyRecord = TAPCamDemoTestFixtures.samplePendingRecord(
             captureID: "status-only-change",
             capturedAt: Date(timeIntervalSince1970: 1_750_000_000),
             status: .failedRetryable,
-            signedHEICFilename: nil
+            signedPhotoFilename: nil
         )
         let box = ShareRecordBox(initialRecord)
         let invocationRecorder = ShareLocalIntegrityInvocationRecorder()
@@ -1056,13 +1056,13 @@ struct TAPDepthAnalysisSharePresentationTests {
             captureID: "refresh-capture",
             capturedAt: Date(timeIntervalSince1970: 1_750_000_000),
             status: .waitingNetwork,
-            signedHEICFilename: nil
+            signedPhotoFilename: nil
         )
         let signedRecord = TAPCamDemoTestFixtures.samplePendingRecord(
             captureID: "refresh-capture",
             capturedAt: Date(timeIntervalSince1970: 1_750_000_000),
             status: .signed,
-            signedHEICFilename: "signed.heic"
+            signedPhotoFilename: "signed.heic"
         )
         let box = ShareRecordBox(pendingRecord)
         let resolver = DepthAnalysisShareRecordResolver(
@@ -1116,13 +1116,13 @@ struct TAPDepthAnalysisSharePresentationTests {
             captureID: "active-refresh",
             capturedAt: capturedAt,
             status: .waitingNetwork,
-            signedHEICFilename: nil
+            signedPhotoFilename: nil
         )
         let signedRecord = TAPCamDemoTestFixtures.samplePendingRecord(
             captureID: "active-refresh",
             capturedAt: capturedAt,
             status: .signed,
-            signedHEICFilename: "signed.heic"
+            signedPhotoFilename: "signed.heic"
         )
         let recordBox = ShareRecordBox(pendingRecord)
         let resolver = DepthAnalysisShareRecordResolver(
@@ -1209,13 +1209,13 @@ struct TAPDepthAnalysisSharePresentationTests {
             captureID: "deferred-refresh",
             capturedAt: capturedAt,
             status: .waitingNetwork,
-            signedHEICFilename: nil
+            signedPhotoFilename: nil
         )
         let signedRecord = TAPCamDemoTestFixtures.samplePendingRecord(
             captureID: "deferred-refresh",
             capturedAt: capturedAt,
             status: .signed,
-            signedHEICFilename: "signed.heic"
+            signedPhotoFilename: "signed.heic"
         )
         let recordBox = ShareRecordBox(pendingRecord)
         let resolver = DepthAnalysisShareRecordResolver(
@@ -1291,13 +1291,13 @@ struct TAPDepthAnalysisSharePresentationTests {
             captureID: "in-flight-refresh",
             capturedAt: capturedAt,
             status: .waitingNetwork,
-            signedHEICFilename: nil
+            signedPhotoFilename: nil
         )
         let signedRecord = TAPCamDemoTestFixtures.samplePendingRecord(
             captureID: "in-flight-refresh",
             capturedAt: capturedAt,
             status: .signed,
-            signedHEICFilename: "signed.heic"
+            signedPhotoFilename: "signed.heic"
         )
         let recordGate = ShareRecordRefreshGate(
             initialRecord: pendingRecord,
@@ -1383,7 +1383,7 @@ struct TAPDepthAnalysisSharePresentationTests {
             captureID: "stable-row",
             capturedAt: Date(timeIntervalSince1970: 1_750_000_000),
             status: .signed,
-            signedHEICFilename: "signed.heic"
+            signedPhotoFilename: "signed.heic"
         )
         let resolver = DepthAnalysisShareRecordResolver(
             captureLoader: { _ in record },
@@ -1444,7 +1444,7 @@ struct TAPDepthAnalysisSharePresentationTests {
             captureID: "progress-bridge",
             capturedAt: Date(timeIntervalSince1970: 1_750_000_000),
             status: .signed,
-            signedHEICFilename: "signed.heic"
+            signedPhotoFilename: "signed.heic"
         )
         let resolver = DepthAnalysisShareRecordResolver(
             captureLoader: { _ in record },
@@ -1494,7 +1494,7 @@ struct TAPDepthAnalysisSharePresentationTests {
             captureID: "monotonic-share-progress",
             capturedAt: Date(timeIntervalSince1970: 1_750_000_000),
             status: .signed,
-            signedHEICFilename: "signed.heic"
+            signedPhotoFilename: "signed.heic"
         )
         let model = DepthAnalysisShareCoordinator(
             subject: DepthAnalysisShareSubject(
@@ -1572,7 +1572,7 @@ struct TAPDepthAnalysisSharePresentationTests {
             captureID: "immediate-progress",
             capturedAt: Date(timeIntervalSince1970: 1_750_000_000),
             status: .signed,
-            signedHEICFilename: "signed.heic"
+            signedPhotoFilename: "signed.heic"
         )
         let resolver = DepthAnalysisShareRecordResolver(
             captureLoader: { _ in record },
@@ -1659,7 +1659,7 @@ struct TAPDepthAnalysisSharePresentationTests {
             captureID: "activity-cleanup",
             capturedAt: Date(timeIntervalSince1970: 1_750_000_000),
             status: .signed,
-            signedHEICFilename: "signed.heic"
+            signedPhotoFilename: "signed.heic"
         )
         let resolver = DepthAnalysisShareRecordResolver(
             captureLoader: { _ in record },
@@ -1734,7 +1734,7 @@ struct TAPDepthAnalysisSharePresentationTests {
             captureID: "activity-idempotent",
             capturedAt: Date(timeIntervalSince1970: 1_750_000_000),
             status: .signed,
-            signedHEICFilename: "signed.heic"
+            signedPhotoFilename: "signed.heic"
         )
         let resolver = DepthAnalysisShareRecordResolver(
             captureLoader: { _ in record },
@@ -1801,7 +1801,7 @@ struct TAPDepthAnalysisSharePresentationTests {
             captureID: "discard-pending-handoff",
             capturedAt: Date(timeIntervalSince1970: 1_750_000_000),
             status: .signed,
-            signedHEICFilename: "signed.heic"
+            signedPhotoFilename: "signed.heic"
         )
         let artifactDirectoryURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
         let artifactURL = artifactDirectoryURL.appendingPathComponent("TAPNAP-Capture.tapnap")
@@ -1869,7 +1869,7 @@ struct TAPDepthAnalysisSharePresentationTests {
             captureID: "stale-sheet-callback",
             capturedAt: Date(timeIntervalSince1970: 1_750_000_000),
             status: .signed,
-            signedHEICFilename: "signed.heic"
+            signedPhotoFilename: "signed.heic"
         )
         let subject = Self.pendingPhotoSubject(captureID: record.captureID)
         let resource = try Self.makePhotoResource(
@@ -2014,7 +2014,7 @@ struct TAPDepthAnalysisSharePresentationTests {
             captureID: "cancel-after-build",
             capturedAt: Date(timeIntervalSince1970: 1_750_000_000),
             status: .waitingNetwork,
-            signedHEICFilename: nil
+            signedPhotoFilename: nil
         )
         let resolver = DepthAnalysisShareRecordResolver(
             captureLoader: { _ in record },

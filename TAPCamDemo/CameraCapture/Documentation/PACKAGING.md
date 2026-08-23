@@ -61,8 +61,8 @@ Live Photo is an extension of this still-photo contract. When
 that MOV as `paired-video.mov` next to the unsigned photo in the pending bundle.
 Signing then uses `validateSignedExportLivePhoto`: the photo still carries the
 fixed TAP proof slot, while the paired MOV is bound as an additional full-file
-resource in `content-binding:v3`. If the movie complement is unavailable, the
-capture is signed and exported as the still-photo v1/v2 contract rather than as
+resource in `live-photo-content-binding:v1`. If the movie complement is unavailable, the
+capture is signed and exported as the still-photo v1 contract rather than as
 a partial Live Photo.
 
 If the device is locked, protected data is unavailable, the network is down, or
@@ -158,7 +158,7 @@ hashes format-native bytes instead of platform-decoded pixels or Apple-converted
 depth samples. Still-photo captures use this schema identifier:
 
 ```text
-urn:tapnap:tapcam:content-binding:v2
+urn:tapnap:tapcam:still-photo-content-binding:v1
 ```
 
 The binding contains:
@@ -176,10 +176,10 @@ The binding contains:
 Live Photo captures use:
 
 ```text
-urn:tapnap:tapcam:content-binding:v3
+urn:tapnap:tapcam:live-photo-content-binding:v1
 ```
 
-The v3 binding keeps the still-photo fields above and adds `signedResources`:
+The v1 Live Photo binding keeps the still-photo fields above and adds `signedResources`:
 
 - `primaryPhoto`: the same HEIC/JPG byte hash excluding the proof slot.
 - `tapDepthManifestPayload`: the canonical `manifest.payload` JSON hash.
@@ -195,7 +195,7 @@ flowchart TD
     Manifest["tapdepth:Manifest payload"] --> PayloadJSON["Canonical JSON"]
     PayloadJSON --> ManifestHash["SHA-256 payload<br/>metadataHash + manifest resource"]
     MOV["Original Photos .pairedVideo<br/>paired-video.mov"] --> MOVHash["SHA-256 full MOV<br/>pairedLivePhotoVideo resource"]
-    PrimaryHash --> Digest["content-binding:v3"]
+    PrimaryHash --> Digest["live-photo-content-binding:v1"]
     ManifestHash --> Digest
     MOVHash --> Digest
     Digest --> BindingHash["SHA-256 canonical digest<br/>signingBinding.bodySHA256"]
@@ -203,12 +203,12 @@ flowchart TD
 ```
 
 The MOV hash is not stored in `manifest.payload.livePhoto`. The manifest names
-the required paired-video role and filename; the proof value's v3 content
+the required paired-video role and filename; the proof value's v1 Live Photo content
 binding stores the actual resource hash descriptors. This keeps the manifest as
 capture metadata and the proof as the trust-bearing hash chain.
 
 Live Photo manifests use
-`urn:tapnap:tapcam:depth-manifest:v2` and add
+`urn:tapnap:tapcam:live-photo-manifest:v1` and add
 `manifest.payload.livePhoto` with the fixed `pairedVideoFilename`, duration,
 photo-display time, dimensions, optional video codec, and audio state. Silent
 Live Photos record `audio: "not-captured"`. Live Photos with sound record
@@ -275,7 +275,7 @@ Startup and foreground recovery reconcile partially completed work:
 - `exported` records have staged large files cleaned up again if a previous
   cleanup was interrupted.
 - Live Photo records may also carry `pairedVideoFilename: paired-video.mov`.
-  That file is signed as part of v3 and is removed with the staged
+  That file is signed as part of the Live Photo v1 binding and is removed with the staged
   unsigned/signed photo files after export.
 
 ## Future Work Ownership
@@ -325,8 +325,8 @@ To verify a signed TAP depth photo:
 10. Treat the capture proof as valid only if the content binding check and App
    Attest signature check both pass.
 
-To verify a TAP Live Photo, route by `depth-manifest:v2` and
-`content-binding:v3`, then perform the still-photo checks above plus the
+To verify a TAP Live Photo, route by `live-photo-manifest:v1` and
+`live-photo-content-binding:v1`, then perform the still-photo checks above plus the
 `signedResources.pairedLivePhotoVideo` MOV hash check before backend App Attest
 verification. The browser/server split and required browser tools are specified
 in [Docs/LivePhotoBrowserVerification.md](../../../Docs/LivePhotoBrowserVerification.md).

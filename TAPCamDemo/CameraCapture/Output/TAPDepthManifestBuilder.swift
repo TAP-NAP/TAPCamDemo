@@ -79,7 +79,7 @@ nonisolated enum TAPDepthManifestBuilder {
 
         let schema: TAPDepthManifest.Schema = capturePackage.livePhotoMovie == nil
             ? TAPDepthManifest.Schema()
-            : .livePhotoV2
+            : .livePhoto
         return TAPDepthManifest(payload: payload, schema: schema)
     }
 
@@ -209,10 +209,9 @@ nonisolated enum TAPDepthManifestBuilder {
         device: AVCaptureDevice
     ) -> TAPDepthManifest.DepthBackendSelection {
         /*
-         This legacy section remains for readers that already understand the
-         v1 `depthBackend` field. In SingleCam mode, the resolved backend is
-         exactly the selected depth camera, and the selected zoom is recorded in
-         `selectedZoom` as well as `actualVideoZoomFactor`.
+         In SingleCam mode, the resolved backend is exactly the selected depth
+         camera, and the selected zoom is recorded in `selectedZoom` as well as
+         `actualVideoZoomFactor`.
         */
         return TAPDepthManifest.DepthBackendSelection(
             selectionMode: selectionContext.selectionMode.rawValue,

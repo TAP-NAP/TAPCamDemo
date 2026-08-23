@@ -48,7 +48,7 @@ nonisolated struct StartupGateStatusSnapshot: Equatable, Sendable {
     }
 }
 
-// MARK: - Canonical setup fact and frozen compatibility fact
+// MARK: - Canonical setup fact and current pre-release completion fact
 
 /// Credential evidence required by a canonical Setup receipt.
 ///
@@ -94,19 +94,12 @@ nonisolated struct SetupReceipt: Codable, Equatable, Sendable {
 }
 
 /// Explicitly non-canonical completion record used while Network/App Attest is
-/// frozen. It separates Setup completion from the legacy camera-readiness bit
-/// without claiming that `/healthz` supplied a credential binding.
-nonisolated struct LegacySetupCompletionRecord: Codable, Equatable, Sendable {
-    enum Evidence: String, Codable, Equatable, Sendable {
-        case frozenLegacySecurityPreflight
-        case migratedCombinedBoolean
-    }
-
+/// frozen. It does not claim that `/healthz` supplied a credential binding.
+nonisolated struct SetupCompletionRecord: Codable, Equatable, Sendable {
     static let currentSchemaVersion = 1
 
     let schemaVersion: Int
     let installationGenerationID: UUID
-    let evidence: Evidence
     let locationChoice: OptionalSetupChoice
     let microphoneChoice: OptionalSetupChoice
     let completedAt: Date
@@ -119,18 +112,18 @@ nonisolated enum SetupReceiptInvalidReason: Equatable, Sendable {
     case installationGenerationMismatch
     case missingCredentialBinding
     case credentialBindingMismatch
-    case corruptLegacyCompletion
+    case corruptSetupCompletion
 }
 
 nonisolated enum StartupSetupFact: Equatable, Sendable {
     case absent
     case valid(SetupReceipt)
     case invalid(SetupReceiptInvalidReason)
-    case legacyCompleted(LegacySetupCompletionRecord?)
+    case currentCompleted(SetupCompletionRecord)
 
     var permitsPostSetupRouting: Bool {
         switch self {
-        case .valid, .legacyCompleted:
+        case .valid, .currentCompleted:
             true
         case .absent, .invalid:
             false
@@ -164,9 +157,8 @@ nonisolated struct StartupInstallationGenerationStore {
     }
 }
 
-/// Reads canonical S first, then the explicitly named frozen compatibility
-/// record, and only then the historical combined Boolean. A present but invalid
-/// newer record never falls back to the old Boolean.
+/// Reads canonical S first, then the current pre-release completion record.
+/// Superseded development keys and record shapes are intentionally ignored.
 struct StartupSetupFactStore {
     private let userDefaults: UserDefaults
     private let bundleIdentifier: String
@@ -186,7 +178,7 @@ struct StartupSetupFactStore {
         )
     }
 
-    func load(legacyCombinedCompletion: Bool) -> StartupSetupFact {
+    func load() -> StartupSetupFact {
         let installationGenerationID = installationGenerationStore.currentOrCreate()
 
         if userDefaults.object(forKey: StartupGateDefaults.setupReceiptKey) != nil {
@@ -200,27 +192,27 @@ struct StartupSetupFactStore {
             )
         }
 
-        if userDefaults.object(forKey: StartupGateDefaults.legacySetupCompletionKey) != nil {
+        if userDefaults.object(forKey: StartupGateDefaults.setupCompletionKey) != nil {
             guard let data = userDefaults.data(
-                forKey: StartupGateDefaults.legacySetupCompletionKey
+                forKey: StartupGateDefaults.setupCompletionKey
             ), let record = try? JSONDecoder().decode(
-                LegacySetupCompletionRecord.self,
+                SetupCompletionRecord.self,
                 from: data
-            ), record.schemaVersion == LegacySetupCompletionRecord.currentSchemaVersion,
+            ), record.schemaVersion == SetupCompletionRecord.currentSchemaVersion,
                record.installationGenerationID == installationGenerationID else {
-                return .invalid(.corruptLegacyCompletion)
+                return .invalid(.corruptSetupCompletion)
             }
-            return .legacyCompleted(record)
+            return .currentCompleted(record)
         }
 
-        return legacyCombinedCompletion ? .legacyCompleted(nil) : .absent
+        return .absent
     }
 
-    /// Records only the current frozen compatibility fact. This method cannot
+    /// Records only the current pre-release completion fact. This method cannot
     /// write `SetupReceipt` and therefore cannot turn `/healthz` into App Attest
     /// credential evidence.
     @discardableResult
-    func recordFrozenLegacyCompletion(
+    func recordCurrentCompletion(
         statusSnapshot: StartupGateStatusSnapshot,
         now: Date = Date()
     ) -> StartupSetupFact? {
@@ -228,10 +220,9 @@ struct StartupSetupFactStore {
             return nil
         }
 
-        let record = LegacySetupCompletionRecord(
-            schemaVersion: LegacySetupCompletionRecord.currentSchemaVersion,
+        let record = SetupCompletionRecord(
+            schemaVersion: SetupCompletionRecord.currentSchemaVersion,
             installationGenerationID: installationGenerationStore.currentOrCreate(),
-            evidence: .frozenLegacySecurityPreflight,
             locationChoice: Self.optionalChoice(for: statusSnapshot.location),
             microphoneChoice: Self.optionalChoice(for: statusSnapshot.microphone),
             completedAt: now
@@ -239,8 +230,8 @@ struct StartupSetupFactStore {
         guard let data = try? JSONEncoder().encode(record) else {
             return nil
         }
-        userDefaults.set(data, forKey: StartupGateDefaults.legacySetupCompletionKey)
-        return .legacyCompleted(record)
+        userDefaults.set(data, forKey: StartupGateDefaults.setupCompletionKey)
+        return .currentCompleted(record)
     }
 
     private func validate(
@@ -374,7 +365,7 @@ nonisolated enum StartupGatePolicy {
             return .firstInstallSetup(.initial)
         case .invalid:
             return .firstInstallSetup(.credentialRecovery)
-        case .valid, .legacyCompleted:
+        case .valid, .currentCompleted:
             break
         }
 
@@ -398,13 +389,9 @@ nonisolated enum StartupGatePolicy {
 }
 
 nonisolated enum StartupGateDefaults {
-    /// Historical combined Setup/camera-readiness bit. New code reads it only
-    /// as a compatibility input and never calls it a canonical S or I marker.
-    static let legacyCombinedCompletionKey =
-        "TAPCamDemo.StartupGate.didCompleteFirstInstallPermissions"
     static let setupReceiptKey = "TAPCamDemo.StartupGate.setupReceipt.v1"
-    static let legacySetupCompletionKey =
-        "TAPCamDemo.StartupGate.legacySetupCompletion.v1"
+    static let setupCompletionKey =
+        "TAPCamDemo.StartupGate.setupCompletion.v1"
     static let installationGenerationKey =
         "TAPCamDemo.StartupGate.installationGeneration.v1"
 }

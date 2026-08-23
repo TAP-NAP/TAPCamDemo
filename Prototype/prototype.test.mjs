@@ -109,18 +109,6 @@ assert.equal(startupLifecycleCandidate.qaRefresh.verificationRevision, "v19");
 assert.equal(startupLifecycleCandidate.qaRefresh.status, "browserDOMVerifiedV19TargetMergeOwnerReviewRequired");
 assert.match(startupLifecycleCandidate.qaRefresh.currentEvidencePolicy, /no screenshot proof saved for v19/);
 assert.deepEqual(startupLifecycleCandidate.qaEvidence, ["design-qa.md"]);
-assert.ok(startupLifecycleCandidate.staleQaEvidence.includes("evidence/TAP-0087-r1-v18-remaining-lifecycle.png"));
-assert.ok(startupLifecycleCandidate.staleQaEvidence.includes("evidence/TAP-0087-r1-v18-remaining-workload.png"));
-assert.ok(startupLifecycleCandidate.staleQaEvidence.includes("evidence/TAP-0087-r1-v17-fix0809-outcome-cards.png"));
-assert.ok(startupLifecycleCandidate.staleQaEvidence.includes("evidence/TAP-0087-r1-v17-fix0809-outcome-workload.png"));
-assert.ok(startupLifecycleCandidate.staleQaEvidence.includes("evidence/TAP-0087-r1-v16b-fix0809-dispositions.png"));
-assert.ok(startupLifecycleCandidate.staleQaEvidence.includes("evidence/TAP-0087-r1-v16b-fix0809-timing-workload.png"));
-assert.equal(startupLifecycleCandidate.qaRefresh.v18RemainingProblemsOnly.archiveRef, "d4b19d9");
-assert.equal(startupLifecycleCandidate.qaRefresh.v18RemainingProblemsOnly.resourceInitializationSeq10.lifecycleCards, 5);
-assert.equal(startupLifecycleCandidate.qaRefresh.v18RemainingProblemsOnly.resourceInitializationSeq10.workloadActualAnnotations, 6);
-assert.equal(startupLifecycleCandidate.qaRefresh.v18RemainingProblemsOnly.resourceInitializationSeq10.existingBlueTargets, 3);
-assert.equal(startupLifecycleCandidate.qaRefresh.v18RemainingProblemsOnly.rightLifecycle.implementedLogAcceptedCount, 0);
-assert.equal(startupLifecycleCandidate.qaRefresh.v18RemainingProblemsOnly.rightLifecycle.alignedCount, 0);
 assert.equal(startupLifecycleCandidate.qaRefresh.v19TargetMergedFollowUps.status, "browserDOMVerified");
 assert.match(startupLifecycleCandidate.qaRefresh.v19TargetMergedFollowUps.timingWorkload, /creates no Actual annotation/);
 assert.deepEqual(

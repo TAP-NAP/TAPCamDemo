@@ -1,5 +1,5 @@
 //
-//  TAPDepthHEICWriter.swift
+//  TAPDepthPhotoFile.swift
 //  TAPCamDemo
 //
 
@@ -189,61 +189,5 @@ nonisolated enum TAPDepthPhotoFileReader {
         }
 
         return info as? [AnyHashable: Any]
-    }
-}
-
-/// Backward-compatible HEIC wrapper for older call sites and tests.
-nonisolated enum TAPDepthHEICWriter {
-    static func injectingManifest(_ manifest: TAPDepthManifest, into heicData: Data) throws -> Data {
-        try TAPDepthPhotoFileWriter.injectingManifest(manifest, into: heicData)
-    }
-
-    static func injectingManifestWithMetrics(
-        _ manifest: TAPDepthManifest,
-        into heicData: Data
-    ) throws -> TAPDepthHEICWriteResult {
-        let result = try TAPDepthPhotoFileWriter.injectingManifestWithMetrics(manifest, into: heicData)
-        return TAPDepthHEICWriteResult(
-            data: result.data,
-            xmpInjectDuration: result.xmpInjectDuration,
-            xmpVerifyDuration: result.xmpVerifyDuration
-        )
-    }
-}
-
-nonisolated struct TAPDepthHEICWriteResult: Sendable {
-    let data: Data
-    let xmpInjectDuration: TimeInterval
-    let xmpVerifyDuration: TimeInterval
-}
-
-/// Backward-compatible HEIC wrapper for older call sites and tests.
-nonisolated enum TAPDepthHEICReader {
-    static func manifestJSON(from heicData: Data) throws -> String {
-        try TAPDepthPhotoFileReader.manifestJSON(from: heicData)
-    }
-
-    static func decodedManifest(from heicData: Data) throws -> TAPDepthManifest {
-        try TAPDepthPhotoFileReader.decodedManifest(from: heicData)
-    }
-
-    static func containerTypeIdentifier(from heicData: Data) throws -> String {
-        try TAPDepthPhotoFileReader.containerTypeIdentifier(from: heicData)
-    }
-
-    static func validateHEICContainer(_ heicData: Data) throws {
-        try TAPDepthPhotoFileReader.validateHEICContainer(heicData)
-    }
-
-    static func depthAuxiliaryInfo(from heicData: Data) -> [AnyHashable: Any]? {
-        TAPDepthPhotoFileReader.depthAuxiliaryInfo(from: heicData)
-    }
-
-    static func disparityAuxiliaryInfo(from heicData: Data) -> [AnyHashable: Any]? {
-        TAPDepthPhotoFileReader.disparityAuxiliaryInfo(from: heicData)
-    }
-
-    static func depthData(from heicData: Data) throws -> AVDepthData? {
-        try TAPDepthPhotoFileReader.depthData(from: heicData)
     }
 }

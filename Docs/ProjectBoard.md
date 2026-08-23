@@ -1,7 +1,7 @@
 # TAPCam Project Board
 
 - Schema: `1`
-- Next Task ID: `TAP-0093`
+- Next Task ID: `TAP-0094`
 - Canonical Product Contract: [ProductContract.md](ProductContract.md)
 - UI Prototype Contract: [UIPrototypeContract.md](UIPrototypeContract.md)
 - Board Steward Session: `019ff4ea-acba-7051-bd0f-3d489f1caadc`
@@ -52,7 +52,6 @@ from each record's `Status` field.
 - `TAP-0025` Implement Link sharing
 - `TAP-0026` Cancel superseded PhotoKit display requests at the request layer
 - `TAP-0027` Define thumbnail retention and purge policy
-- `TAP-0028` Migrate legacy exported GPS copies
 - `TAP-0029` Isolate Debug fixtures and split oversized test files
 - `TAP-0040` Device acceptance: explicit first-install operations
 - `TAP-0041` Device acceptance: first camera-interactive readiness
@@ -104,9 +103,11 @@ from each record's `Status` field.
 - `TAP-0085` Restrict the current runtime target to iPhone
 - `TAP-0086` Remove Locked Camera integration and entry points from main
 - `TAP-0092` Clean up brittle tests, unmounted legacy code, and redundant repository information
+- `TAP-0093` Freeze pre-release v1 schemas and remove developer compatibility layers
 
 ### Deprecated
 
+- `TAP-0028` Migrate legacy exported GPS copies
 - `TAP-0063` First-install page appearance implicitly requests permissions
 - `TAP-0064` Video and Live Photo are globally unimplemented
 - `TAP-0065` PRO is Photo-only
@@ -1268,7 +1269,7 @@ Every active Task uses these stable fields:
 - Priority: `P1`
 - Domain: `App Attest / Pending Capture Queue`
 - Labels: `credential`, `app-attest`, `pending-capture`, `deferred-work`, `t5`,
-  `guard`, `retry-window`, `cooldown`, `pause`, `migration`
+  `guard`, `retry-window`, `cooldown`, `pause`
 - Contract: `ProductContract §2.4, §6`; `StartupLifecycleContract §3–4`
 - Match Keys: `nextAttemptAt, retry budget, credential stage, assertion stage,
   post-setup App Attest, W11 W12, Pending recovery guard, t5 release`
@@ -1280,8 +1281,8 @@ Every active Task uses these stable fields:
   deferred-work release and their camera-idle/protected-data/credential guards,
   without making either a route, preview, shutter, or local-capture blocker.
   Within that owner boundary, separate credential/assertion/export retry stages
-  and add the approved bounded cooldown/window/pause state with persistence
-  migration and stale/cancel handling.
+  and add the approved bounded cooldown/window/pause state from one clean current
+  persistence shape with stale/cancel handling.
 - Responsibility Decision: Active prototype records for post-setup App Attest
   and Pending recovery are true task-owned actual-to-target differences and
   link TAP-0015 directly. They are not incomplete TAP-0008/TAP-0009 work and
@@ -1292,7 +1293,7 @@ Every active Task uses these stable fields:
   a new ordinary camera-entry gate.
 - Done When: W11/W12 cannot become eligible before the committed deferred-work
   release and their required guards; neither blocks route/preview/interaction/
-  local capture; the approved stage-specific retry model, persistence migration,
+  local capture; the approved stage-specific retry model and current persistence,
   scheduling, cancellation/stale behavior, and focused tests are implemented;
   and prototype records no longer show those Task-owned placement differences.
 - Related: `ProductContract §6`, `TAPCamDemo/TAPLibrary/README.md`; completed
@@ -1312,6 +1313,11 @@ Every active Task uses these stable fields:
     protected-data/credential guards, while retaining the existing fine-grained
     retry/migration work. Raised priority P2 -> P1. TAP-0015 remains Todo; no
     executor, retry, prototype, test, or evidence completion is inferred.
+  - `2026-08-23` TAP-0093 superseded only the earlier development-data migration
+    requirement. TAP-0015 must introduce one current pre-release persistence
+    shape from a cleared container and carries no upgrade reader for old
+    development records. Its deferred-work, retry, cancellation, and stale-work
+    responsibilities remain Todo and unchanged.
 
 ### TAP-0016 — Design and implement TAP Video 3D
 
@@ -1574,7 +1580,7 @@ Every active Task uses these stable fields:
 
 ### TAP-0028 — Migrate legacy exported GPS copies
 
-- Status: `Todo`
+- Status: `Deprecated`
 - Kind: `Technical`
 - Priority: `P2`
 - Domain: `Pending Capture Queue`
@@ -1592,6 +1598,11 @@ Every active Task uses these stable fields:
 - Updated: `2026-08-12`
 - Revision History:
   - `2026-08-12` Imported from the scorecard as technical debt.
+  - `2026-08-23` Deprecated under TAP-0093's owner-approved pre-release reset
+    policy. Current export completion already clears precise location from the
+    retained record; old development containers are deleted/reinstalled rather
+    than migrated. No current pre-export location use or Photos metadata is
+    removed by this decision.
 
 ### TAP-0029 — Isolate Debug fixtures and split oversized test files
 
@@ -5004,6 +5015,128 @@ Every active Task uses these stable fields:
     in the evidence ledger. Moved Doing -> Done. No current UX/UI or mounted
     production behavior, device/backend acceptance, commit, or push is claimed.
 
+### TAP-0093 — Freeze pre-release v1 schemas and remove developer compatibility layers
+
+- Status: `Done`
+- Kind: `Task`
+- Priority: `P0`
+- Domain: `Release Readiness / Public Formats / Security / Persistence / Documentation`
+- Labels / Match Keys: `pre-release, schema v1, TAPCamVerifier, reset developer data, remove migration, prototype pruning`
+- Owner / Agent: Product owner / `/root`
+- Dev Session: `/root` on shared `main`
+- Contract: `ProductContract §1.2`, `§2.5`, `§3.2`–`§3.4`, and `§6`;
+  `TAPVideoFormatContract`; `LivePhotoBrowserVerification`; `AppAttest` contracts;
+  `StartupLifecycleContract`
+- Current Behavior: The unreleased app remains at `0.2 (2)`. Every distinct
+  current public/security family uses its own v1 identifier in TAPCamDemo and
+  TAPCamVerifier. The Verifier accepts current capture packages only through
+  `.tapnap` or the TAPNAP MIME with a valid current-v1 root sidecar. Pre-release
+  local development compatibility readers and migrations are removed under the
+  clear-container recovery policy. Prototype revisions and active visual truth
+  remain unchanged.
+- Approved Scope:
+  1. Keep the App marketing/build version at `0.2 (2)`.
+  2. Give every distinct current public-format or security-schema family its
+     own unambiguous `v1` identifier and version field. Synchronize TAPCamDemo,
+     TAPCamVerifier, fixtures, tests, contracts, and acceptance procedures; reject
+     the superseded development identifiers instead of carrying readers for them.
+  3. Treat all pre-release local development data as disposable. Remove old
+     preference keys, fallback decoders, maintenance migrations, compatibility
+     aliases, and their migration-only tests. A developer with old data must clear
+     the app container or delete and reinstall.
+  4. Remove redundant Prototype history/assertions while preserving every active
+     fixture, behavior, approved/candidate revision string, and current UI truth.
+  5. Remove legacy `.zip`/`application/zip`/ZIP-magic package recognition and
+     missing/invalid-sidecar fallback after the owner's explicit approval. Keep
+     bounded ZIP-compatible parsing inside current `.tapnap` packages.
+- Out Of Scope: No App version change; no unrelated visible UI, navigation,
+  layout, or interaction change beyond removing the obsolete ZIP token from the
+  Verifier's supported-format filter/copy; no weakening of App Attest, proof-slot, canonicalization,
+  hashing, fail-closed validation, privacy, current Pending Capture Queue state
+  transitions, or Photos export gates; no production-data upgrade promise; no
+  Prototype revision consolidation; no device/backend acceptance claim.
+- Failure / Recovery: Unknown or superseded public schema identifiers fail as
+  unsupported. Old local development data is not migrated; clearing the app
+  container or deleting and reinstalling is the only supported recovery. Current
+  malformed data, missing proof/resources, credential mismatch, and cryptographic
+  failures remain fail-closed.
+- Done When: App `0.2 (2)` and all unrelated current UX/UI remain unchanged;
+  every distinct current public/security schema family reports `v1` in both
+  repositories; the verifier accepts the new current families only through
+  current raw-media or `.tapnap`/TAPNAP-MIME inputs with a valid v1 sidecar;
+  pre-release local compatibility readers/keys/migrations and exclusive tests are
+  gone without removing active runtime transitions; Prototype tests pass with the
+  current revision unchanged; TAPCamDemo builds and focused format, integrity,
+  startup, preference, persistence, and Prototype tests pass; TAPCamVerifier Rust,
+  TypeScript, and production builds pass; contracts, READMEs, fixtures, and
+  acceptance procedures describe only current truth; both worktrees preserve
+  unrelated user files; and no commit or push is made without owner direction.
+- Related: `TAP-0092` repository-health cleanup; `TAP-0010` canonical Setup receipt;
+  `TAP-0022` external import; `TAP-0023` TAP Video `.tapnap` transport;
+  `TAP-0044` Live Photo acceptance; `TAP-0046` App Attest production acceptance;
+  `TAP-0062` browser verification contract; `TAP-0078` TAP Video format contract
+- Created: `2026-08-23`
+- Updated: `2026-08-23`
+- Revision History:
+  - `2026-08-23` Allocated after an all-status responsibility search. TAP-0092 is
+    already Done and intentionally retained current versions/compatibility for an
+    owner decision; TAP-0010, TAP-0022, and TAP-0023 own future feature delivery,
+    not this pre-release reset. The owner explicitly kept App `0.2 (2)`, approved
+    purpose-specific v1 renumbering in TAPCamDemo and TAPCamVerifier, allowed all
+    development data to be cleared instead of migrated, and kept Prototype
+    revisions while authorizing redundant-history deletion. Recorded the new item
+    through Inbox -> Todo approval, assigned `/root`, and moved Todo -> Doing for
+    implementation on `main@334ba24`. Advanced Next Task ID to `TAP-0094`. No
+    implementation, validation result, UI change, device acceptance, commit, or
+    push is inferred by this allocation.
+  - `2026-08-23` `/root` completed the bounded implementation candidate in both
+    worktrees. App `0.2 (2)` and all mounted UI remain unchanged. Still Photo,
+    Live Photo, TAP Video, their content bindings, TAP Video KLV, and the already-
+    current registration/proof/App Attest families now use distinct v1
+    identifiers; old wire identifiers fail closed, and TAPCamVerifier has the
+    same family routing plus a mixed-family negative regression. Pre-release
+    startup, preference, and Pending compatibility readers/migrations were
+    removed in favor of clear-container recovery while protected-data, privacy,
+    crash, export/readback, and current queue transitions remain. Prototype
+    revision/copy is unchanged; only unreferenced evidence, one unused tool,
+    one unused history array, and stale assertions were removed. The Verifier's
+    existing `.zip`/ZIP-magic/missing-sidecar compatibility remains implemented
+    and documented because removing that current public input needs an explicit
+    owner decision beyond schema renumbering.
+  - `2026-08-23` Validation passed: final Simulator `build-for-testing`; final
+    six-suite schema/signing/startup run `95 passed / 0 failed / 0 skipped`;
+    supplemental production-path runs `132/132` and `81/81`; Prototype `58/58`;
+    JS proof-slot reference `4/4`; TAPCamVerifier Rust `44/44`, Vitest `119/119`
+    including four local real HEIC/JPEG decoder regressions, TypeScript
+    typecheck, rustfmt, and production build. A separate Startup run remained
+    `32 passed / 1 failed`, with only the pre-existing Simulator Keychain
+    `errSecMissingEntitlement (-34018)` baseline. Both Markdown link scans and
+    `git diff --check` passed. No physical-device/App Attest backend acceptance,
+    commit, or push is claimed. TAP-0093 remains Doing only for the explicit
+    legacy `.zip` retain/remove decision.
+  - `2026-08-23` The owner explicitly approved removing the Verifier's legacy
+    `.zip`, `application/zip`, generic ZIP-magic, and missing/invalid-sidecar
+    fallback. `resolveCaptureInput` now accepts package input only through the
+    `.tapnap` extension or TAPNAP MIME, requires the current v1 root sidecar,
+    resolves only exact declared resources, and directly rejects unsupported
+    archive markers. Bounded `fflate` parsing and every size/entry/resource
+    limit remain because `.tapnap` is still ZIP-compatible internally. The file
+    picker, Chinese/English supported-format copy, README, verifier flow,
+    cross-project browser contract, and cleanup manifest now describe only the
+    current input. Input cases reduced `19 -> 11`; full Verifier validation
+    passed Rust `44/44`, Vitest `111/111`, TypeScript/production build, and both
+    worktree diff checks. No Demo runtime code, App version, Prototype revision,
+    layout/navigation, ignored local media fixture, device/backend acceptance,
+    commit, or push changed. Moved Doing -> Done.
+  - `2026-08-23` The owner classified
+    `StartupInitializationPolicyTests.corruptKeychainDeviceGenerationRepairsInPlace`
+    returning `errSecMissingEntitlement (-34018)` under the unsigned Simulator
+    test host as a known legacy test-infrastructure issue. It predates TAP-0093,
+    remains recorded as a failure rather than pass/skip, establishes no
+    production Keychain regression, does not block TAP-0093 closure, and does
+    not alter or satisfy TAP-0046 physical-device acceptance. No new Task was
+    created for this owner-classified non-blocking baseline.
+
 ## 5. Inbox Decision Registry
 
 The following records deliberately remain compact until the owner decides
@@ -5932,3 +6065,27 @@ not replace the Product Contract, and linked device evidence may remain open.
   security/privacy, public formats, persistence readers, and device/backend
   acceptance were not broadened or claimed. No commit, push, or Next Task ID
   change is inferred.
+- `2026-08-23` Board Steward synchronized the TAP-0093 implementation and
+  validation candidate. App `0.2 (2)`, mounted UX/UI, and Prototype revision/copy
+  remain unchanged; distinct Still/Live/Video public and security families are
+  v1 in TAPCamDemo and TAPCamVerifier; pre-release local compatibility layers
+  are removed under clear-container recovery; and redundant Prototype/docs/tests
+  were pruned without deleting real fixture decoder coverage. Final Demo build,
+  focused `95/95`, Verifier Rust `44/44`, Vitest `119/119`, Prototype `58/58`,
+  JS `4/4`, typecheck, rustfmt, production build, link scans, and diff checks
+  passed. The only separate Startup failure is the recorded Simulator Keychain
+  `-34018` baseline. TAP-0093 stays Doing pending an explicit owner decision on
+  deleting the Verifier's currently supported legacy `.zip` input; current code
+  and contracts continue to support it. No device/backend acceptance, commit,
+  push, other lifecycle transition, or Next Task ID change is inferred.
+- `2026-08-23` Board Steward recorded the owner's final TAP-0093 decisions. The
+  Verifier now rejects legacy `.zip`, `application/zip`, generic ZIP-magic, and
+  missing/invalid-sidecar fallback while retaining bounded ZIP-compatible
+  parsing for current `.tapnap` packages. Rust `44/44`, Vitest `111/111`,
+  TypeScript/production build, contract scans, and diff checks passed; prior
+  Demo/Prototype validation remains applicable because this closure changed no
+  Demo runtime or Prototype file. The separate unsigned-Simulator Keychain
+  `errSecMissingEntitlement (-34018)` failure is owner-classified as a known
+  legacy non-blocking test-infrastructure issue, not a production or TAP-0046
+  acceptance verdict. TAP-0093 moved Doing -> Done. No new Task, App version,
+  device/backend acceptance, commit, push, or Next Task ID change is inferred.

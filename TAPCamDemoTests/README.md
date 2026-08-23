@@ -86,7 +86,7 @@ cover tests, UI tests, Debug fixtures, benchmarks, or resolved packages.
 - [`TAPCaptureAssertionTestDoubles.swift`](TAPCaptureAssertionTestDoubles.swift)
   owns test doubles for the capture assertion boundary. These doubles do not
   prove App Attest hardware or backend acceptance.
-- [`TAPVideoManifestV2GoldenVectors.json`](../Docs/Fixtures/TAPVideoManifestV2GoldenVectors.json)
+- [`TAPVideoManifestV1GoldenVectors.json`](../Docs/Fixtures/TAPVideoManifestV1GoldenVectors.json)
   is the interoperability vector owned by
   [`TAPVideoFormatContract.md`](../Docs/TAPVideoFormatContract.md). Do not
   regenerate it to fit an incompatible writer; a change requires a version and

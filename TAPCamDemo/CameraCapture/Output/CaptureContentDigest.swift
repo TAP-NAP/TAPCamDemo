@@ -17,9 +17,18 @@ import Foundation
 typealias CaptureContentDigest = CaptureContentBinding
 
 nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
-    static let schemaIdentifier = "urn:tapnap:tapcam:content-binding:v2"
-    static let livePhotoSchemaIdentifier = "urn:tapnap:tapcam:content-binding:v3"
-    static let videoSchemaIdentifier = "urn:tapnap:tapcam:content-binding:v4"
+    static let schemaIdentifier = "urn:tapnap:tapcam:still-photo-content-binding:v1"
+    static let livePhotoSchemaIdentifier = "urn:tapnap:tapcam:live-photo-content-binding:v1"
+    static let videoSchemaIdentifier = "urn:tapnap:tapcam:video-content-binding:v1"
+
+    typealias LivePhotoPrimaryComponents = (
+        captureID: String,
+        capturedAt: String,
+        assetHash: AssetHash,
+        metadataHash: MetadataHash,
+        proofSlot: ProofSlot,
+        depthResource: DepthResource
+    )
 
     let schemaID: String
     let manifestSchemaID: String
@@ -101,6 +110,9 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
         mp4FileURL: URL
     ) throws -> CaptureContentBinding {
         try Task<Never, Never>.checkCancellation()
+        guard manifest.schema == TAPVideoManifest.Schema() else {
+            throw TAPDepthCaptureError.invalidTAPManifest("unexpected video schema metadata")
+        }
         let slot = try TAPProofSlot.locateBMFF(inFileAt: mp4FileURL)
         let fileHash = try TAPBMFFStreamingFile.sha256AndByteCountBase64URL(
             of: mp4FileURL,
@@ -117,7 +129,7 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
         )
         try Task<Never, Never>.checkCancellation()
         let payloadData = try TAPVideoManifestEncoder.payloadDataExcludingProofs(manifest.payload)
-        let metadataHash = MetadataHash(videoPayloadData: payloadData, schemaVersion: manifest.schema.version)
+        let metadataHash = MetadataHash(videoPayloadData: payloadData)
 
         return CaptureContentBinding(
             schemaID: CaptureContentBinding.videoSchemaIdentifier,
@@ -166,6 +178,112 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
         pairedVideoURL: URL? = nil
     ) throws -> CaptureContentDigestBuildResult {
         try Task<Never, Never>.checkCancellation()
+        let isLivePhoto: Bool
+        if manifest.schema == TAPDepthManifest.Schema(),
+           manifest.payload.livePhoto == nil,
+           pairedVideoURL == nil {
+            isLivePhoto = false
+        } else if manifest.schema == TAPDepthManifest.Schema.livePhoto,
+                  manifest.payload.livePhoto != nil,
+                  pairedVideoURL != nil {
+            isLivePhoto = true
+        } else {
+            throw TAPDepthCaptureError.pendingCaptureProofInvalid(
+                "manifest and paired video do not identify one supported photo family"
+            )
+        }
+        return try makePhotoWithMetrics(
+            manifest: manifest,
+            basePhotoData: basePhotoData,
+            fileContainer: fileContainer,
+            depthData: depthData,
+            isLivePhoto: isLivePhoto,
+            pairedVideoURL: pairedVideoURL
+        )
+    }
+
+    /// Recomputes the signed primary-photo components when a Live Photo MOV is
+    /// unavailable. The caller must still validate the original full binding
+    /// and must not treat this result as a complete Live Photo.
+    static func makeLivePhotoPrimaryComponents(
+        manifest: TAPDepthManifest,
+        basePhotoData: Data,
+        fileContainer: CapturePhotoFileContainer,
+        depthData: AVDepthData?
+    ) throws -> LivePhotoPrimaryComponents {
+        guard manifest.schema == TAPDepthManifest.Schema.livePhoto,
+              manifest.payload.livePhoto != nil else {
+            throw TAPDepthCaptureError.pendingCaptureProofInvalid(
+                "manifest does not identify a Live Photo"
+            )
+        }
+        let components = try makePhotoComponents(
+            manifest: manifest,
+            basePhotoData: basePhotoData,
+            fileContainer: fileContainer,
+            depthData: depthData,
+            isLivePhoto: true,
+            pairedVideoURL: nil
+        )
+        return (
+            captureID: manifest.payload.id,
+            capturedAt: manifest.payload.capturedAt,
+            assetHash: components.assetHash,
+            metadataHash: components.metadataHash,
+            proofSlot: components.proofSlot,
+            depthResource: components.depthResource
+        )
+    }
+
+    private static func makePhotoWithMetrics(
+        manifest: TAPDepthManifest,
+        basePhotoData: Data,
+        fileContainer: CapturePhotoFileContainer,
+        depthData: AVDepthData?,
+        isLivePhoto: Bool,
+        pairedVideoURL: URL?
+    ) throws -> CaptureContentDigestBuildResult {
+        let components = try makePhotoComponents(
+            manifest: manifest,
+            basePhotoData: basePhotoData,
+            fileContainer: fileContainer,
+            depthData: depthData,
+            isLivePhoto: isLivePhoto,
+            pairedVideoURL: pairedVideoURL
+        )
+        return CaptureContentDigestBuildResult(
+            digest: CaptureContentBinding(
+                schemaID: isLivePhoto
+                    ? CaptureContentBinding.livePhotoSchemaIdentifier
+                    : CaptureContentBinding.schemaIdentifier,
+                manifestSchemaID: manifest.schema.id,
+                captureID: manifest.payload.id,
+                capturedAt: manifest.payload.capturedAt,
+                assetHash: components.assetHash,
+                metadataHash: components.metadataHash,
+                proofSlot: components.proofSlot,
+                depthResource: components.depthResource,
+                signedResources: components.signedResources
+            ),
+            metrics: components.metrics
+        )
+    }
+
+    private static func makePhotoComponents(
+        manifest: TAPDepthManifest,
+        basePhotoData: Data,
+        fileContainer: CapturePhotoFileContainer,
+        depthData: AVDepthData?,
+        isLivePhoto: Bool,
+        pairedVideoURL: URL?
+    ) throws -> (
+        assetHash: AssetHash,
+        metadataHash: MetadataHash,
+        proofSlot: ProofSlot,
+        depthResource: DepthResource,
+        signedResources: [SignedResource]?,
+        metrics: CaptureContentDigestMetrics
+    ) {
         var metrics = CaptureContentDigestMetrics()
 
         let contentStart = Date()
@@ -188,10 +306,15 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
 
         let metadataStart = Date()
         let payloadData = try TAPDepthManifestEncoder.payloadDataExcludingProofs(manifest.payload)
-        let metadataHash = MetadataHash(payloadData: payloadData, schemaVersion: manifest.schema.version)
+        let metadataHash = MetadataHash(
+            payloadData: payloadData,
+            mediaType: isLivePhoto
+                ? TAPDepthManifest.livePhotoPayloadMediaType
+                : TAPDepthManifest.payloadMediaType
+        )
         metrics.metadataDigestDuration = Date().timeIntervalSince(metadataStart)
         let livePhotoSignedResources: [SignedResource]?
-        if let pairedVideoURL {
+        if isLivePhoto, let pairedVideoURL {
             try Task<Never, Never>.checkCancellation()
             livePhotoSignedResources = try signedResources(
                 pairedVideoURL: pairedVideoURL,
@@ -204,20 +327,12 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
             livePhotoSignedResources = nil
         }
 
-        return CaptureContentDigestBuildResult(
-            digest: CaptureContentBinding(
-                schemaID: pairedVideoURL == nil
-                    ? CaptureContentBinding.schemaIdentifier
-                    : CaptureContentBinding.livePhotoSchemaIdentifier,
-                manifestSchemaID: manifest.schema.id,
-                captureID: manifest.payload.id,
-                capturedAt: manifest.payload.capturedAt,
-                assetHash: assetHash,
-                metadataHash: metadataHash,
-                proofSlot: ProofSlot(slot),
-                depthResource: depthResource,
-                signedResources: livePhotoSignedResources
-            ),
+        return (
+            assetHash: assetHash,
+            metadataHash: metadataHash,
+            proofSlot: ProofSlot(slot),
+            depthResource: depthResource,
+            signedResources: livePhotoSignedResources,
             metrics: metrics
         )
     }
@@ -390,19 +505,19 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
 
         nonisolated init(payload: TAPDepthManifest.Payload) throws {
             let payloadData = try TAPDepthManifestEncoder.payloadDataExcludingProofs(payload)
-            self.init(payloadData: payloadData, schemaVersion: 1)
+            self.init(payloadData: payloadData, mediaType: TAPDepthManifest.payloadMediaType)
         }
 
-        nonisolated init(payloadData: Data, schemaVersion: Int) {
+        nonisolated init(payloadData: Data, mediaType: String) {
             self.kind = "canonical-json"
-            self.mediaType = "application/vnd.tapnap.depth-manifest.payload+json;version=\(schemaVersion)"
+            self.mediaType = mediaType
             self.algorithm = "SHA-256"
             self.value = TAPContentBindingHash.sha256Base64URL(data: payloadData)
         }
 
-        nonisolated init(videoPayloadData: Data, schemaVersion: Int) {
+        nonisolated init(videoPayloadData: Data) {
             self.kind = "canonical-json"
-            self.mediaType = "application/vnd.tapnap.video-manifest.payload+json;version=\(schemaVersion)"
+            self.mediaType = TAPVideoManifest.payloadMediaType
             self.algorithm = "SHA-256"
             self.value = TAPContentBindingHash.sha256Base64URL(data: videoPayloadData)
         }
