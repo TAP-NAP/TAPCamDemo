@@ -5742,6 +5742,21 @@ Every active Task uses these stable fields:
     and visual-evidence deletions are broader than contract-prose migration.
     TAP-0095 therefore remains Doing; no Demo/Verifier push, runtime change,
     wire change, or final closure is claimed.
+  - `2026-08-23` The shared repository published supplementary clickable-source
+    commit `190e5c3eee073c64cdc1fddb1f302003d88d6dd3` on top of semantic cleanup
+    commit `50d83e9b5916f0fa4621b24b5c5c5702c59ee7de`; local `HEAD`, tracking
+    `origin/main`, and remote `main` match and the worktree is clean. Demo local
+    commits `b83c323` and `f7f8ec1` respectively remove covered repeated wire
+    prose from nine retained documents plus this Task record and make the
+    remaining seven stable active-document references clickable. The complete
+    Demo scan covers `51` tracked Markdown files, `564` inline relative links,
+    and `87` Mermaid click targets with zero missing target; remaining unlinked
+    `.json` names outside the append-only Board are runtime filenames or generic
+    patterns, not document references. TAPCamVerifier's isolated patch—nine
+    historical-document deletions plus five supporting document edits—remains
+    staged but uncommitted pending the owner's explicit approval. TAP-0095
+    remains Doing; no Demo/Verifier push, runtime, wire,
+    dependency, SDK/codegen, or embedding-location change is claimed.
 
 ## 5. Inbox Decision Registry
 
@@ -6795,3 +6810,13 @@ not replace the Product Contract, and linked device evidence may remain open.
   nine broader historical/visual-evidence documents requires one explicit owner
   confirmation before commit. TAP-0095 remains Doing; no Demo or Verifier push,
   runtime/wire/dependency change, or closure is claimed.
+- `2026-08-23` TAP-0095 follow-through pushed shared clickable-source commit
+  `190e5c3` after semantic cleanup `50d83e9`; remote `main` and the clean local
+  shared checkout match. Local Demo commits `b83c323` and `f7f8ec1` complete
+  covered-prose reduction and stable active-reference clickability; its full
+  tracked Markdown and Mermaid target scans report zero missing target. The
+  isolated Verifier patch of nine historical-document deletions plus five
+  supporting document edits remains staged and uncommitted until the owner
+  explicitly approves those broader historical/visual-evidence deletions.
+  TAP-0095 remains Doing; no Demo/Verifier push or runtime/wire/
+  dependency/SDK/codegen/embedding change is claimed.
