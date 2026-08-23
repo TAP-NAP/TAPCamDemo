@@ -12,9 +12,9 @@ The documentation-only
 repository is the sole shared authority for TAP Video v1 manifest fields,
 canonical JSON, MP4 UUID boxes, proof-slot layout, KLV records/codecs/bounds,
 content binding, signing, verification, and hash participation. Start with its
-[TAP Video manifest](https://github.com/TAP-NAP/TAPArtifactContracts/blob/63f96b31de193c3ad456ffa500cc0db03fb97142/manifests/tap-video-v1.md),
-[container/KLV contract](https://github.com/TAP-NAP/TAPArtifactContracts/blob/63f96b31de193c3ad456ffa500cc0db03fb97142/containers/tap-video-container-v1.md), and
-[binding/proof contract](https://github.com/TAP-NAP/TAPArtifactContracts/blob/63f96b31de193c3ad456ffa500cc0db03fb97142/bindings/capture-binding-and-proof-v1.md).
+[TAP Video manifest](https://github.com/TAP-NAP/TAPArtifactContracts/blob/50d83e9b5916f0fa4621b24b5c5c5702c59ee7de/manifests/tap-video-v1.md),
+[container/KLV contract](https://github.com/TAP-NAP/TAPArtifactContracts/blob/50d83e9b5916f0fa4621b24b5c5c5702c59ee7de/containers/tap-video-container-v1.md), and
+[binding/proof contract](https://github.com/TAP-NAP/TAPArtifactContracts/blob/50d83e9b5916f0fa4621b24b5c5c5702c59ee7de/bindings/capture-binding-and-proof-v1.md).
 
 This document owns only how TAPCamDemo implements that artifact through its
 local lifecycle. Product scope comes from [ProductContract.md](ProductContract.md),
@@ -26,11 +26,11 @@ hash rule, or reader rule repeated in Git history is not a second authority.
 
 ```text
 AVAssetWriter workspace
-  -> finish standard RGB/audio and optional TAP depth track
+  -> finish capture media
   -> read finalized track facts
-  -> build the shared-contract manifest
-  -> append manifest box and one empty proof slot
-  -> validate file/manifest agreement
+  -> assemble shared-contract metadata
+  -> complete shared-contract container finalization
+  -> validate the finalized artifact against the inspected facts
   -> atomically publish into the Pending Capture Queue
 ```
 
@@ -40,11 +40,8 @@ TAPCamDemo keeps these operational obligations:
   JSON sidecar, ZIP wrapper, or debug derivative;
 - postflight values come from the finalized asset rather than requested
   settings;
-- appending private boxes does not rewrite existing media tables or offsets;
-- stored-depth output has one RGB track, one TAP metadata track, and zero or
-  one audio track; zero-depth output has one RGB track, optional audio, and no
-  TAP metadata track;
-- container/manifest consistency, calibration accounting, KLV samples, and
+- container finalization does not rewrite existing media tables or offsets;
+- shared-contract consistency, calibration accounting, depth samples, and
   timeline/gap checks are bounded and stream payloads rather than loading the
   complete MP4 into `Data`; and
 - the current 180-second UI stop is Runtime policy, not a decoder or format
@@ -151,7 +148,7 @@ The playback implementation boundary is documented in
 ## Fixtures And Evidence
 
 The exact shared KLV/zstd v1 vector lives at
-[`TAPArtifactContracts/examples/vectors/tap-video-klv-zstd1-v1-golden-vector.json`](https://github.com/TAP-NAP/TAPArtifactContracts/blob/63f96b31de193c3ad456ffa500cc0db03fb97142/examples/vectors/tap-video-klv-zstd1-v1-golden-vector.json).
+[`TAPArtifactContracts/examples/vectors/tap-video-klv-zstd1-v1-golden-vector.json`](https://github.com/TAP-NAP/TAPArtifactContracts/blob/50d83e9b5916f0fa4621b24b5c5c5702c59ee7de/examples/vectors/tap-video-klv-zstd1-v1-golden-vector.json).
 [`Docs/Fixtures/TAPVideoManifestV1GoldenVectors.json`](Fixtures/TAPVideoManifestV1GoldenVectors.json)
 remains local because `TAPVideoManifestTests` reads it by path. Only its
 `depthFrame` member mirrors the shared exact vector; its separate manifest

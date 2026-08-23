@@ -216,9 +216,11 @@ flowchart TD
     click Store "../TAPLibrary/TAPPendingCaptureStore.swift"
 ```
 
-`EmbeddedPhotoPackager` writes `proofs: []` through
-`TAPCaptureProvenanceWriter.writeManifest`. App Attest digesting, proof
-injection, and final Photos export are retried by
+`EmbeddedPhotoPackager` stages the contract-conforming unsigned photo defined
+by the shared
+[artifact contract index](https://github.com/TAP-NAP/TAPArtifactContracts/blob/50d83e9b5916f0fa4621b24b5c5c5702c59ee7de/CONTRACTS.md)
+through `TAPCaptureProvenanceWriter.writeManifest`. Signing, local final
+validation, and Photos export are retried by
 [TAPPendingCaptureProcessor](../TAPLibrary/TAPPendingCaptureProcessor.swift),
 not by the shutter-time capture job. The pending signing path calls the same
 provenance writer in throwing mode so export cannot silently fall back to an

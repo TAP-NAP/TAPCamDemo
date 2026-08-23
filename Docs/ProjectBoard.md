@@ -69,6 +69,7 @@ from each record's `Status` field.
 
 - `TAP-0083` Eliminate cold-path UI starvation and codify responsiveness guardrails
 - `TAP-0087` Define startup lifecycle, heavy-work budgets, and an instrumented prototype
+- `TAP-0095` Deduplicate migrated artifact-contract prose across source repositories
 
 ### Done
 
@@ -105,7 +106,6 @@ from each record's `Status` field.
 - `TAP-0092` Clean up brittle tests, unmounted legacy code, and redundant repository information
 - `TAP-0093` Freeze pre-release v1 schemas and remove developer compatibility layers
 - `TAP-0094` Establish the documentation-only TAPArtifactContracts repository
-- `TAP-0095` Deduplicate migrated artifact-contract prose across source repositories
 
 ### Deprecated
 
@@ -5365,7 +5365,7 @@ Every active Task uses these stable fields:
 
 ### TAP-0095 — Deduplicate migrated artifact-contract prose across source repositories
 
-- Status: `Done`
+- Status: `Doing`
 - Kind: `Documentation`
 - Priority: `P0`
 - Domain: `Cross-project contracts / Documentation retention`
@@ -5422,6 +5422,13 @@ Every active Task uses these stable fields:
   9. Prepare separate, reviewable task-owned documentation/example commits for
      each affected repository. In TAPCamVerifier, stage only TAP-0095 paths or
      hunks and exclude every pre-existing dirty change from the Task commit.
+  10. Re-audit every tracked Markdown/JSON document in all three repositories.
+      Make every repository-local document reference clickable when a stable
+      target exists; make the shared repository's README, contract index, and
+      example index complete click-through entry points. Merge or delete duplicate and
+      historical prose whose current obligation is already owned elsewhere,
+      while recording why every retained local document or fixture cannot move
+      to the shared artifact-contract authority.
 - Commit / Push Boundary: The owner explicitly approved starting TAP-0095 and
   creating task-owned documentation commits in each affected repository.
   TAPArtifactContracts already has a Private remote `main`; this approval does
@@ -5434,8 +5441,9 @@ Every active Task uses these stable fields:
   identifier, field, canonicalization, proof semantic, container layout, or
   manifest embedding-location change; no deletion of unique local product,
   implementation, operations, or verification-flow obligations; no broad
-  repository cleanup; no mixing of TAPCamVerifier's pre-existing dirty changes;
-  and no TAPArtifactContracts visibility change.
+  runtime/source/asset cleanup outside documentation retention; no mixing of
+  unrelated TAPCamVerifier pre-existing dirty changes; and no
+  TAPArtifactContracts visibility change.
 - Failure / Recovery: If exact shared coverage cannot be demonstrated, retain
   the source prose until the shared repository is completed and validated. If a
   TAPCamVerifier edit cannot be isolated from pre-existing dirty work, do not
@@ -5454,6 +5462,11 @@ Every active Task uses these stable fields:
   necessary hermetic dependencies remain local only as clearly identified
   mirrors of shared canonical vectors, while examples without a necessary local
   dependency are present in TAPArtifactContracts and removed from source repos.
+  Every tracked Markdown/JSON document is accounted for by a unique current
+  responsibility, executable dependency, or explicit retained-history reason;
+  shared-repository README/index/example entries and every stable repository-local
+  document reference are direct clickable links; no retained active document
+  points at a deleted or untracked target.
   TAPCamDemo and TAPCamVerifier retain concise authority links plus only their
   product/implementation/operations/flow responsibilities; Markdown links and
   anchors, all JSON examples/vectors, identifier/version scans, signing and
@@ -5649,11 +5662,12 @@ Every active Task uses these stable fields:
     isolated task commits exist with exact push status, validation passes, and
     no runtime, dependency, wire-format, embedding, or visibility change is
     claimed
-- Closure Gate: `Passed`; Board Steward reconciled the migration and fixture
-  ledgers, commit trees, validation, remaining gaps, and documentation-impact
-  matrix against Done When, then moved Doing -> Done. TAPArtifactContracts
-  remains Private and pushed; TAPCamDemo and TAPCamVerifier commits remain local
-  and unpushed as explicitly recorded.
+- Closure Gate: `Pending after deliberate reopening`; the prior closure remains
+  append-only history, but its link check proved only that existing links were
+  valid. It did not prove that all index entries which should be links were
+  clickable, and the renewed three-repository audit found additional safely
+  removable duplicate/historical prose. TAPArtifactContracts remains Private;
+  no runtime, wire, dependency, or embedding-location change is authorized.
 - Revision History:
   - `2026-08-23` Captured in Inbox after an all-status title/label/match-key/
     domain/contract/scope search. TAP-0002, TAP-0003, TAP-0078, and TAP-0092 are
@@ -5703,6 +5717,31 @@ Every active Task uses these stable fields:
     removed without migrating stale or false behavior. No runtime, dependency,
     wire, embedding, visibility, device, or backend-acceptance change occurred.
     The complete handoff satisfies Done When; moved TAP-0095 Doing -> Done.
+  - `2026-08-23` The owner found that several shared-repository README/index entries were
+    still plain text and explicitly expanded the objective to complete clickable
+    cross-document navigation plus the broadest safe three-repository prose
+    reduction. The previous `28/28` link result checked only already-authored
+    links, so approved scope item 8 and the original Done When were not fully
+    satisfied. Board Steward deliberately reopened TAP-0095 Done -> Doing,
+    preserved the prior closure as history, and added the full Markdown/JSON
+    inventory, clickable-entrypoint, retain-reason, and redundant-document
+    deletion gates. No new Task ID, implementation edit, deletion, commit, push,
+    visibility change, runtime change, or wire-format change is inferred by this
+    lifecycle correction.
+  - `2026-08-23` The reopened implementation published shared commit
+    `50d83e9b5916f0fa4621b24b5c5c5702c59ee7de` to the existing Private
+    `origin/main`. It deletes redundant `ADOPTION.md` and unreleased
+    `CHANGELOG.md`, makes all README/contract/example index entries directly
+    clickable, centralizes common proof-slot and divergence prose, and preserves
+    every reviewed `MUST`/`MUST NOT` security relationship. The Demo working
+    tree removes only covered wire prose from nine local documents and pins
+    retained links to that shared revision. An isolated Verifier index patch
+    would delete nine historical AITrace/DevLog/Scorecard/design-QA documents
+    and retain only current flow/roadmap/research/fixture responsibilities, but
+    its commit is explicitly pending owner confirmation because those historical
+    and visual-evidence deletions are broader than contract-prose migration.
+    TAP-0095 therefore remains Doing; no Demo/Verifier push, runtime change,
+    wire change, or final closure is claimed.
 
 ## 5. Inbox Decision Registry
 
@@ -6739,3 +6778,20 @@ not replace the Product Contract, and linked device evidence may remain open.
   dependencies, wire bytes, embedding, Private visibility, or acceptance. Done
   When is satisfied; TAP-0095 moved Doing -> Done. No new Task or Next Task ID
   change was made, and no Demo/Verifier push is claimed.
+- `2026-08-23` The owner found non-clickable shared-repository index entries and broadened
+  the active objective to a complete three-repository documentation-retention
+  and clickability audit. The earlier link gate validated only existing links;
+  it did not prove complete navigation. Board Steward therefore deliberately
+  reopened TAP-0095 Done -> Doing under its original reconcile-indexes and
+  delete-covered-duplication completion condition, added a full tracked
+  Markdown/JSON inventory and retained-item rationale gate, and preserved the
+  previous closure evidence as append-only history. Next Task ID remains
+  TAP-0096; this Board correction itself makes no content deletion, commit,
+  push, visibility, runtime, wire, dependency, or embedding-location claim.
+- `2026-08-23` Reopened TAP-0095 implementation pushed the complete clickable
+  and deduplicated shared authority as Private `origin/main@50d83e9`. Demo's
+  covered-prose reduction and revision-pinned links are ready locally. The
+  isolated Verifier patch is validated and staged separately, but deletion of
+  nine broader historical/visual-evidence documents requires one explicit owner
+  confirmation before commit. TAP-0095 remains Doing; no Demo or Verifier push,
+  runtime/wire/dependency change, or closure is claimed.

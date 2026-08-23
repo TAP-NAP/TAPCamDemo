@@ -236,7 +236,7 @@ without App Attest hardware, network, or Photos side effects.
   the export path may provide only the primary photo and must warn that Live
   Photo verification remains incomplete. Package layout and unsigned routing
   metadata live in the shared
-  [transport contract](https://github.com/TAP-NAP/TAPArtifactContracts/blob/63f96b31de193c3ad456ffa500cc0db03fb97142/transport/tapnap-v1.md).
+  [transport contract](https://github.com/TAP-NAP/TAPArtifactContracts/blob/50d83e9b5916f0fa4621b24b5c5c5702c59ee7de/transport/tapnap-v1.md).
 - Precise capture location is kept only while the record is pending, signing,
   or exporting so Photos can receive the location at save time. `markExported`
   clears the persisted queue copy after Photos has accepted the asset.

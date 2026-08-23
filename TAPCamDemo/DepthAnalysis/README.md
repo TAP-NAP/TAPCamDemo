@@ -99,9 +99,9 @@ App Attest evidence.
 - App Attest hardware/backend acceptance is owned by
   [TAP-0046](../../Docs/Acceptance/TAP-0046-app-attest-production.md); Simulator,
   source scans, and synthetic signers cannot close it.
-- Still, Live Photo, TAP Video, KLV, content-binding, proof-slot, and export
-  schema version numbers name different public/security contracts. They are not
-  app-release history and must not be collapsed during repository cleanup.
+- Shared artifact families remain independent under the
+  [versioning policy](https://github.com/TAP-NAP/TAPArtifactContracts/blob/50d83e9b5916f0fa4621b24b5c5c5702c59ee7de/VERSIONING.md);
+  repository cleanup must not collapse them.
 - Temporary Share artifacts are lease-owned and removed after the system share
   lifecycle releases them.
 - Analysis geometry is camera-coordinate/local unless a specialized contract

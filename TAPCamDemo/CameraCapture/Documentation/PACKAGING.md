@@ -1,11 +1,10 @@
 # Packaging
 
-The documentation-only
-[TAPArtifactContracts](https://github.com/TAP-NAP/TAPArtifactContracts)
-repository owns the shared Still/Live manifest fields, HEIC/JPEG container
-locations, proof slot, signing and verification procedures, hash participation,
-and `.tapnap` routing format. This document owns only TAPCamDemo's capture,
-pending-signing, Photos export, and local-integrity orchestration.
+The shared
+[TAPArtifactContracts contract index](https://github.com/TAP-NAP/TAPArtifactContracts/blob/50d83e9b5916f0fa4621b24b5c5c5702c59ee7de/CONTRACTS.md)
+owns the shared Still/Live artifact conventions. This document owns only
+TAPCamDemo's capture, pending-signing, Photos export, and local-integrity
+orchestration.
 
 ## Local Artifact Flow
 
@@ -20,19 +19,15 @@ producer.
 ```text
 CapturePackage
   -> EmbeddedPhotoPackager
-  -> unsigned HEIC/JPG with embedded manifest and empty fixed proof slot
-     + optional paired-video.mov
+  -> contract-conforming unsigned HEIC/JPG + optional paired-video.mov
   -> app-private Pending Capture Queue
   -> asynchronous App Attest signing and local final validation
   -> Photos .photo + optional .pairedVideo
 ```
 
 Release does not create a manifest sidecar, independent depth file, metrics
-file, debug bundle, or other intermediate export. The photo contains the
-primary image, Apple auxiliary depth/disparity when delivered, and the embedded
-TAP manifest. Shutter-time packaging leaves `manifest.proofs` empty; the proof
-envelope belongs only in the separate fixed slot defined by the shared
-contract.
+file, debug bundle, or other intermediate export. It stages only a
+shared-contract photo artifact for the Pending Capture Queue.
 
 When `AVCapturePhotoOutput` delivers a Live Photo movie complement, the package
 stages it as `paired-video.mov` beside the unsigned photo. If the complement is
@@ -53,7 +48,7 @@ The Pending Capture Queue later:
 6. records the Photos asset identity before cleaning up large staged files.
 
 The complete producer order and Still/Live hash inputs are defined once in the
-[shared binding/proof contract](https://github.com/TAP-NAP/TAPArtifactContracts/blob/63f96b31de193c3ad456ffa500cc0db03fb97142/bindings/capture-binding-and-proof-v1.md).
+[shared binding/proof contract](https://github.com/TAP-NAP/TAPArtifactContracts/blob/50d83e9b5916f0fa4621b24b5c5c5702c59ee7de/bindings/capture-binding-and-proof-v1.md).
 `TAPCaptureProvenanceWriter.validateSignedExportPhoto` and
 `validateSignedExportLivePhoto` implement TAPCamDemo's final local guard. Queue
 status and filenames are scheduling hints, not trust claims.
@@ -83,30 +78,6 @@ The Live Photo path therefore does not add `AVCaptureDepthDataOutput` or a
 video/depth synchronizer. A future streaming-depth product would require its own
 timestamp mapping, storage, manifest, and binding decisions and must not be
 inferred from the current Live Photo family.
-
-## Verification And Consumer Boundary
-
-TAPCamDemo's pre-export check is a local self-consistency gate. External
-verification follows the shared contract:
-
-```text
-received original bytes
-  -> local family/container/binding reconstruction
-  -> compare the binding required for the reported scope
-  -> backend App Attest assertion verification
-  -> join both gates into the scoped verdict
-```
-
-Decoded RGB, browser canvas pixels, converted depth planes, and playback state
-are downstream interpretation, never base-signature inputs. A Live Photo
-primary may receive a clearly limited primary-photo result when its MOV is
-absent, but no consumer may claim that absent video bytes were verified.
-
-The backend HTTP, registered-key trust, counter, and replay boundary remains in
-[Docs/AppAttest/BackendContract.md](../../../Docs/AppAttest/BackendContract.md).
-The JavaScript reference parser remains an implementation aid at
-[`Tools/ContentBindingVerifier/tap-content-binding.mjs`](../../../Tools/ContentBindingVerifier/tap-content-binding.mjs);
-it is not a second format authority.
 
 ## Diagnostic Boundary
 

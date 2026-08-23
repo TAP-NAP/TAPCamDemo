@@ -155,14 +155,11 @@ device-acceptance responsibilities.
 
 ## Artifact Contract Boundary
 
-The documentation-only
-[TAPArtifactContracts](https://github.com/TAP-NAP/TAPArtifactContracts)
-repository is the source of truth for Still/Live/Video manifests, exact
-container locations, proof slots, signing, verification, and hash
-participation. In particular, photo `manifest.proofs` stays empty; the App
-Attest proof envelope is stored in the separate fixed proof slot.
-This adoption was reviewed against shared revision
-[`63f96b31de193c3ad456ffa500cc0db03fb97142`](https://github.com/TAP-NAP/TAPArtifactContracts/commit/63f96b31de193c3ad456ffa500cc0db03fb97142).
+The shared
+[TAPArtifactContracts contract index](https://github.com/TAP-NAP/TAPArtifactContracts/blob/50d83e9b5916f0fa4621b24b5c5c5702c59ee7de/CONTRACTS.md)
+is the source of truth for Still/Live/Video manifests, container locations,
+signing, verification, and hash participation. TAPCamDemo keeps only its
+product and producer lifecycle responsibilities here.
 
 Before a signed TAP HEIC/JPG is saved to Photos, the queue re-reads the final
 file bytes and passes the shared local binding relationships plus the selected
@@ -201,11 +198,10 @@ default unit gate.
 ## Pre-release Version TODO
 
 The current app version is `0.2 (2)`. Before the first public build, deliberately
-freeze or update that pair once. In the same release review, freeze the existing
-public/security schema matrix—or coordinate one explicit TAPCamVerifier and
-fixture migration. Still, Live Photo, TAP Video, KLV, binding, proof-slot, and
-storage schema numbers are parallel contracts, not old app versions, so this
-cleanup does not collapse or renumber them.
+freeze or update that pair once, then review compatibility against
+[Product Contract §1.2](Docs/ProductContract.md#12-pre-release-version-and-compatibility-policy)
+and the shared
+[artifact-contract versioning policy](https://github.com/TAP-NAP/TAPArtifactContracts/blob/50d83e9b5916f0fa4621b24b5c5c5702c59ee7de/VERSIONING.md).
 
 ## Supporting Documents
 

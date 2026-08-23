@@ -59,7 +59,7 @@ depth frame payload at a time; no stage may read an entire MP4 into `Data`.
 
 A finalized, ingested pending MP4 is the app-owned source artifact. The signing
 path validates capture/package identity, implements the ordered procedure in the
-[shared binding/proof contract](https://github.com/TAP-NAP/TAPArtifactContracts/blob/63f96b31de193c3ad456ffa500cc0db03fb97142/bindings/capture-binding-and-proof-v1.md),
+[shared binding/proof contract](https://github.com/TAP-NAP/TAPArtifactContracts/blob/50d83e9b5916f0fa4621b24b5c5c5702c59ee7de/bindings/capture-binding-and-proof-v1.md),
 then immediately repeats its local reconstruction and relationship checks.
 
 Normal Photos export and original-resource readback repeat this byte-binding
@@ -101,7 +101,7 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    Unsigned["unsigned HEIC/JPG\nempty proof slot"] --> Digest["CaptureContentDigest"]
+    Unsigned["contract-conforming\nunsigned HEIC/JPG"] --> Digest["CaptureContentDigest"]
     Digest --> Assertion["AppAttestCaptureAssertionSigner"]
     Assertion --> Proof["CaptureAssertionProof"]
     Proof --> Provenance["TAPCaptureProvenanceWriter"]
@@ -119,9 +119,9 @@ and return a locally revalidated artifact. Slot reservation creates a slot only
 when none exists; duplicate or malformed slots fail closed instead of being
 repaired.
 
-The shutter-time packager does not create a proof. It keeps `proofs: []` and
-returns a fixed public `unsigned` reason while the app-private pending worker
-owns proof creation, validation, and export retry. It does not place raw
+The shutter-time packager creates no capture assertion and returns a fixed
+public `unsigned` reason while the app-private pending worker owns signing,
+validation, and export retry. It does not place raw
 `localizedDescription`, paths, identifiers, App Attest key IDs, proofs, or photo
 bytes into signature status.
 

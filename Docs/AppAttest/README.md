@@ -151,7 +151,7 @@ queue calls `AppAttestCaptureAssertionSigner` and
 `TAPCaptureProvenanceWriter`; those producer types implement the ordered
 construction, App Attest input, proof-envelope, slot-write, and final local
 reconstruction rules in the shared
-[binding/proof contract](https://github.com/TAP-NAP/TAPArtifactContracts/blob/63f96b31de193c3ad456ffa500cc0db03fb97142/bindings/capture-binding-and-proof-v1.md).
+[binding/proof contract](https://github.com/TAP-NAP/TAPArtifactContracts/blob/50d83e9b5916f0fa4621b24b5c5c5702c59ee7de/bindings/capture-binding-and-proof-v1.md).
 
 This client guide owns one local distinction: capture signing asks
 `DCAppAttestService` to sign the capture binding directly. It does not use the
