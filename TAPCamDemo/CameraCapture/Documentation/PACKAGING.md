@@ -1,355 +1,121 @@
 # Packaging
 
-`CapturePackage` is the logical result of one shutter press. It records selected
-RGB source, depth source, pairing status, zoom, crop metadata, `AVCapturePhoto`,
-location, and diagnostics facts.
+The documentation-only
+[TAPArtifactContracts](https://github.com/TAP-NAP/TAPArtifactContracts)
+repository owns the shared Still/Live manifest fields, HEIC/JPEG container
+locations, proof slot, signing and verification procedures, hash participation,
+and `.tapnap` routing format. This document owns only TAPCamDemo's capture,
+pending-signing, Photos export, and local-integrity orchestration.
 
-`PackagedCaptureArtifact` is the physical output. The only runtime strategy is
-`EmbeddedPhotoPackager`, and runtime export is intentionally split from capture.
+## Local Artifact Flow
+
+`CapturePackage` is the logical result of one shutter press. It records the
+selected RGB/depth sources, output-profile result, Live Photo pairing state,
+zoom/crop metadata, `AVCapturePhoto`, location, and diagnostics needed by the
+producer.
+
+`PackagedCaptureArtifact` is the physical handoff. Release has one packager,
+`EmbeddedPhotoPackager`:
 
 ```text
 CapturePackage
-      |
-      v
-EmbeddedPhotoPackager only
-      |
-      v
-Unsigned Single Photo Artifact
-      |
-      v
-Pending Capture Queue
-      |
-      +--> optional paired-video.mov for Live Photo
-      |
-      v
-Async App Attest Signer
-      |
-      v
-Final Signed-Export Validator
-      |
-      v
-Signed HEIC/JPG or Live Photo Export to TAPCamDepth Photos Album
+  -> EmbeddedPhotoPackager
+  -> unsigned HEIC/JPG with embedded manifest and empty fixed proof slot
+     + optional paired-video.mov
+  -> app-private Pending Capture Queue
+  -> asynchronous App Attest signing and local final validation
+  -> Photos .photo + optional .pairedVideo
 ```
 
-Sidecar JSON, debug bundles, independent depth files, independent metadata
-files, metrics files, and intermediate artifacts are absent from runtime code.
+Release does not create a manifest sidecar, independent depth file, metrics
+file, debug bundle, or other intermediate export. The photo contains the
+primary image, Apple auxiliary depth/disparity when delivered, and the embedded
+TAP manifest. Shutter-time packaging leaves `manifest.proofs` empty; the proof
+envelope belongs only in the separate fixed slot defined by the shared
+contract.
 
-## Signed Embedded TAP Depth Photo
+When `AVCapturePhotoOutput` delivers a Live Photo movie complement, the package
+stages it as `paired-video.mov` beside the unsigned photo. If the complement is
+unavailable, the producer takes the Still Photo route rather than publishing a
+partial Live Photo family.
 
-Still-photo captures export one photo file. The current reviewed photo
-containers are HEIC and JPG. The primary image stores the RGB photo, Apple's
-auxiliary depth/disparity attachment stores depth, and TAP's manifest is stored
-in XMP at `tapdepth:Manifest`.
+## Pending Signing And Export
 
-At shutter time, `EmbeddedPhotoPackager` creates an unsigned HEIC or JPG with
-`proofs: []`. The app writes that file to the app-private Pending Capture Queue
-first, not directly to Photos. A background worker later reads the pending
-photo file, ensures the fixed TAP proof slot exists, recomputes the canonical
-content binding over the file bytes excluding that slot, creates the App Attest
-assertion, writes the proof envelope into the slot, validates the final signed
-bytes, and exports the signed photo file into the TAPCamDepth Photos album.
+The foreground capture-write job ends after the artifact is durably staged.
+The Pending Capture Queue later:
 
-The final validator is `TAPCaptureProvenanceWriter.validateSignedExportPhoto`.
-It opens the exact bytes that will be exported, then checks the HEIC/JPG source
-type, manifest schema and `payload.id`, no proof bodies in the manifest, exactly
-one fixed proof slot, proof value/digest/signing binding, and Apple auxiliary
-depth/disparity presence. Queue status and signed filenames are not trust claims
-by themselves.
+1. reopens the exact staged files and validates queue/manifest identity plus
+   actual container/depth/pairing facts;
+2. constructs and signs the shared family-specific binding;
+3. writes only the existing proof slot;
+4. reopens the final bytes and repeats local binding/relationship validation;
+5. gives Photos only a validated photo or validated Live Photo wrapper; and
+6. records the Photos asset identity before cleaning up large staged files.
 
-Live Photo is an extension of this still-photo contract. When
-`AVCapturePhotoOutput` delivers a Live Photo movie complement, the app stages
-that MOV as `paired-video.mov` next to the unsigned photo in the pending bundle.
-Signing then uses `validateSignedExportLivePhoto`: the photo still carries the
-fixed TAP proof slot, while the paired MOV is bound as an additional full-file
-resource in `live-photo-content-binding:v1`. If the movie complement is unavailable, the
-capture is signed and exported as the still-photo v1 contract rather than as
-a partial Live Photo.
+The complete producer order and Still/Live hash inputs are defined once in the
+[shared binding/proof contract](https://github.com/TAP-NAP/TAPArtifactContracts/blob/63f96b31de193c3ad456ffa500cc0db03fb97142/bindings/capture-binding-and-proof-v1.md).
+`TAPCaptureProvenanceWriter.validateSignedExportPhoto` and
+`validateSignedExportLivePhoto` implement TAPCamDemo's final local guard. Queue
+status and filenames are scheduling hints, not trust claims.
 
-If the device is locked, protected data is unavailable, the network is down, or
-App Attest fails transiently, the capture remains in the pending store as
-`pending`, `waitingNetwork`, or `failedRetryable`. The app does not automatically
-export unsigned captures to Photos.
-When protected data is unavailable, `TAPPendingCaptureWorkerReadiness` stops the
-worker before signing, validation, export, retry mutation, or failure-reason
-updates.
+This local guard checks the received container, manifest/output identity,
+proof-slot structure, reconstructed binding relationships, and actual Apple
+auxiliary-depth presence. It does not hold the registered App Attest public key
+and therefore is not the backend cryptographic signature verdict.
 
-The pending store status model is:
+Temporary protected-data, network, or App Attest failures leave the capture in
+the app-private queue; they never authorize unsigned Photos export. The worker
+stops before private reads or mutations when protected data is unavailable.
+Detailed states, retry ordering, storage, recovery, and cleanup live in the
+[Pending Capture Queue README](../../TAPLibrary/README.md).
 
-- `pending`
-- `waitingNetwork`
-- `signing`
-- `signed`
-- `exporting`
-- `exported`
-- `failedRetryable`
+TAP Library entry is blocked only while the foreground write queue is still
+turning shutter output into a durable pending record. Once staged, the item can
+appear with its pending/signing/export state while asynchronous work continues.
 
-After a signed photo file is exported successfully, Photos becomes the
-user-visible source. The worker records the Photos `assetLocalIdentifier` and
-removes the large staged photo files in the background.
+## Live Photo Depth Boundary
 
-Camera UI gating is intentionally narrower than the pending-store state model.
-The TAP Library button is disabled only while the foreground capture-write
-queue is still turning shutter requests into staged pending records. Once a
-capture has landed in the pending store, TAP Library can open and show that
-record even if the async worker has not signed or exported it yet. In other
-words, `waitingNetwork`, `signing`, `signed`, `exporting`, and
-`failedRetryable` are Library-visible states, not reasons to block Library
-entry.
+Current Live Photo depth is the one `AVCapturePhoto.depthData` resource
+associated with the primary still photo. The paired MOV is an additional
+full-file signed resource; TAPCam does not claim per-frame MOV depth.
 
-The App Attest credential name is fixed by the app as `photo_keyid`. The proof's
-`keyID` is the actual key id returned by the registered App Attest credential.
+The Live Photo path therefore does not add `AVCaptureDepthDataOutput` or a
+video/depth synchronizer. A future streaming-depth product would require its own
+timestamp mapping, storage, manifest, and binding decisions and must not be
+inferred from the current Live Photo family.
 
-## Proof Format
+## Verification And Consumer Boundary
 
-The proof record uses the existing TAP proof JSON shape, but it is stored in the
-fixed TAP proof slot rather than inside `manifest.proofs`. The embedded manifest
-continues to carry only the TAP payload. This keeps proof bytes, App Attest
-assertion bytes, and the signature out of the signed content binding.
-
-The current slots are:
-
-- HEIC/BMFF: one top-level `uuid` box with the TAP proof-slot UUID.
-- JPEG: one APP11 segment inserted immediately after SOI.
-
-Both variants reserve a 60 KiB payload. The payload begins with
-`TAPCAM-PROOF-SLOT-V1`, version `1`, a 32-bit envelope length, then canonical
-proof JSON bytes. Remaining bytes must be zero-filled. Non-zero padding,
-missing slots, duplicate slots, or oversized envelopes fail validation.
-
-The proof envelope JSON is:
-
-```json
-{
-  "type": "appAttestAssertion",
-  "algorithm": "TAPCam.AppAttestCaptureSignature.v1",
-  "keyID": "<App Attest key id>",
-  "createdAt": "<ISO-8601 capture time>",
-  "value": "<base64url canonical JSON>"
-}
-```
-
-Decoding `value` yields canonical JSON with four fields:
-
-- `contentDigest`: the signed digest package.
-- `keyId`: the App Attest credential id used to verify the signature.
-- `assertionObject`: the App Attest assertion object, base64url no padding.
-- `signingBinding`: the TAPCam capture signing binding submitted to App Attest.
-
-The signing binding is canonical JSON with these fields:
-
-```json
-{
-  "bodySHA256": "<SHA-256 over canonical contentDigest JSON>",
-  "captureID": "<captureID>",
-  "operation": "tapcam.capture.sign",
-  "schemaID": "urn:tapnap:tapcam:app-attest-capture-signing:v1"
-}
-```
-
-The app computes `clientDataHash` as `SHA256(canonical signingBinding JSON)` and
-passes that hash directly to `DCAppAttestService.generateAssertion`. Capture
-signing does not request an assertion challenge and does not use
-`challengeId`, `requestBinding`, or `challengeSHA256`.
-
-## Content Digest
-
-The signed `contentDigest` is now a C2PA-aligned content binding. It deliberately
-hashes format-native bytes instead of platform-decoded pixels or Apple-converted
-depth samples. Still-photo captures use this schema identifier:
+TAPCamDemo's pre-export check is a local self-consistency gate. External
+verification follows the shared contract:
 
 ```text
-urn:tapnap:tapcam:still-photo-content-binding:v1
+received original bytes
+  -> local family/container/binding reconstruction
+  -> compare the binding required for the reported scope
+  -> backend App Attest assertion verification
+  -> join both gates into the scoped verdict
 ```
 
-The binding contains:
+Decoded RGB, browser canvas pixels, converted depth planes, and playback state
+are downstream interpretation, never base-signature inputs. A Live Photo
+primary may receive a clearly limited primary-photo result when its MOV is
+absent, but no consumer may claim that absent video bytes were verified.
 
-- `assetHash`: SHA-256 over the exported HEIC/JPG bytes after excluding exactly
-  one fixed TAP proof slot. The excluded range records offset, length, and
-  reason `tap-proof-slot`.
-- `metadataHash`: SHA-256 over canonical JSON for `manifest.payload`.
-- `proofSlot`: the slot kind, byte range, payload range, and zero-padding rule.
-- `depthResource`: records that depth is required and covered as format-native
-  bytes by `assetHash`, while metric interpretation is not part of the base
-  signature.
-- `captureID`, `capturedAt`, `schemaID`, and `manifestSchemaID`.
+The backend HTTP, registered-key trust, counter, and replay boundary remains in
+[Docs/AppAttest/BackendContract.md](../../../Docs/AppAttest/BackendContract.md).
+The JavaScript reference parser remains an implementation aid at
+[`Tools/ContentBindingVerifier/tap-content-binding.mjs`](../../../Tools/ContentBindingVerifier/tap-content-binding.mjs);
+it is not a second format authority.
 
-Live Photo captures use:
+## Diagnostic Boundary
 
-```text
-urn:tapnap:tapcam:live-photo-content-binding:v1
-```
+Foreground packaging metrics may time manifest construction, photo
+materialization, injection, and readback. Signing and Photos export timing
+belongs to the asynchronous queue. Diagnostics are not written into the saved
+artifact and must not expose raw paths, identifiers, key IDs, assertion/proof
+bodies, photo bytes, location, or localized backend errors.
 
-The v1 Live Photo binding keeps the still-photo fields above and adds `signedResources`:
-
-- `primaryPhoto`: the same HEIC/JPG byte hash excluding the proof slot.
-- `tapDepthManifestPayload`: the canonical `manifest.payload` JSON hash.
-- `pairedLivePhotoVideo`: SHA-256 over the complete MOV file bytes with media
-  type `com.apple.quicktime-movie`.
-
-The Live Photo hash chain is:
-
-```mermaid
-flowchart TD
-    Primary["Original Photos .photo<br/>HEIC or JPG"] --> Slot["Exclude TAP proof slot"]
-    Slot --> PrimaryHash["SHA-256 photo bytes<br/>assetHash + primaryPhoto resource"]
-    Manifest["tapdepth:Manifest payload"] --> PayloadJSON["Canonical JSON"]
-    PayloadJSON --> ManifestHash["SHA-256 payload<br/>metadataHash + manifest resource"]
-    MOV["Original Photos .pairedVideo<br/>paired-video.mov"] --> MOVHash["SHA-256 full MOV<br/>pairedLivePhotoVideo resource"]
-    PrimaryHash --> Digest["live-photo-content-binding:v1"]
-    ManifestHash --> Digest
-    MOVHash --> Digest
-    Digest --> BindingHash["SHA-256 canonical digest<br/>signingBinding.bodySHA256"]
-    BindingHash --> AppAttest["App Attest assertion"]
-```
-
-The MOV hash is not stored in `manifest.payload.livePhoto`. The manifest names
-the required paired-video role and filename; the proof value's v1 Live Photo content
-binding stores the actual resource hash descriptors. This keeps the manifest as
-capture metadata and the proof as the trust-bearing hash chain.
-
-Live Photo manifests use
-`urn:tapnap:tapcam:live-photo-manifest:v1` and add
-`manifest.payload.livePhoto` with the fixed `pairedVideoFilename`, duration,
-photo-display time, dimensions, optional video codec, and audio state. Silent
-Live Photos record `audio: "not-captured"`. Live Photos with sound record
-`audio: "captured"` only when system microphone authorization, the app
-microphone data-use switch, and the configured capture session audio input are
-all enabled.
-
-### Live Photo Depth Scope
-
-Live Photo does not change the depth contract. Depth remains the
-`AVCapturePhoto.depthData` associated with the original still photo resource and
-embedded in the primary HEIC/JPG container. The paired MOV is signed as one
-full-file binary resource; the current manifest and content binding do not
-claim depth for every MOV frame.
-
-The app intentionally does not use `AVCaptureDepthDataOutput` for the current
-Live Photo path. Streaming depth would be a different product boundary: it
-would need video/depth timestamp synchronization, a retained depth-frame storage
-format, manifest fields for the depth stream, and a new content-binding schema.
-Until that exists, verification must state that Live Photo depth is bound to the
-original still photo only.
-
-The final photo bytes are bound directly except for the reserved proof slot. This
-matches the C2PA hard-binding principle of hashing asset bytes while excluding
-the provenance container whose contents necessarily change when the proof is
-written. TAP's current slot is a project-local container, not a complete C2PA
-Content Credential or JUMBF manifest store.
-
-The base signature does not call `CGImageSource`, `CGContext`, browser canvas,
-libheif image decode, or `AVDepthData.converting(toDepthDataType:)`. It only
-needs a byte parser that can locate and exclude the proof slot. The JavaScript
-reference parser for this rule lives at
-[`Tools/ContentBindingVerifier/tap-content-binding.mjs`](../../../Tools/ContentBindingVerifier/tap-content-binding.mjs).
-
-Foreground capture metrics break embedded packaging into manifest build,
-base photo materialization, XMP injection, and XMP readback verification. The
-content binding and App Attest assertion now belong to the async pending
-processor, not the shutter-time capture-write job. These timings are diagnostics
-only; they are not written into the saved photo file.
-
-## Pending Capture Queue
-
-The pending store is app-private storage for current TAP depth photo captures
-that have not yet completed signing and Photos export. The user-facing TAP Library merges these
-internal records with the current TAPCamDepth Photos album at display time.
-Pending, signing, and exporting records show status badges. Once export
-succeeds, the item is shown from Photos; if the user deletes the Photos asset,
-the next library refresh naturally removes it from the visible list.
-
-If a pending record's staged photo file is temporarily unavailable during
-analysis,
-the analysis screen shows a calm "temporarily not available" message and asks
-the Library to refresh. It does not surface low-level file-system messages such
-as "No such file" to the user.
-
-Startup and foreground recovery reconcile partially completed work:
-
-- `signing` records are eligible for signing again because the app may have
-  been killed while a worker was in flight.
-- Signing validates that the queue record `captureID` still matches the staged
-  photo file's embedded TAP manifest `payload.id` before App Attest is called.
-- `exporting` records are matched by final signed-export validation before
-  another Photos export is attempted.
-- `exported` records have staged large files cleaned up again if a previous
-  cleanup was interrupted.
-- Live Photo records may also carry `pairedVideoFilename: paired-video.mov`.
-  That file is signed as part of the Live Photo v1 binding and is removed with the staged
-  unsigned/signed photo files after export.
-
-## Future Work Ownership
-
-Future product and structural work is tracked by the canonical Project Board;
-this packaging document does not maintain a second backlog:
-
-- [TAP-0018](../../../Docs/ProjectBoard.md#tap-0018--design-true-camera-source-switching)
-  owns true camera-source selection, depth pairing, and capability recomputation.
-- [TAP-0019](../../../Docs/ProjectBoard.md#tap-0019--design-rawproraw-output-contracts)
-  owns RAW/ProRAW profiles, resources, manifests, signing, export, and readers.
-- [TAP-0020](../../../Docs/ProjectBoard.md#tap-0020--design-24-mp-deferred-photo-delivery)
-  owns the deferred 24 MP delivery and provenance contract.
-- [TAP-0022](../../../Docs/ProjectBoard.md#tap-0022--external-media-import-and-in-app-verify)
-  owns the product decision for external non-TAP media import and a true in-app
-  Verify flow.
-- [TAP-0029](../../../Docs/ProjectBoard.md#tap-0029--isolate-debug-fixtures-and-split-oversized-test-files)
-  owns moving Debug-only diagnostic fixture generation toward a support target.
-
-Those Tasks must define and approve any required abstractions, such as format
-profiles, semantic manifests, container adapters, resource roles, or UTType
-bundles. Until then, the current format boundaries remain unchanged: Live Photo
-contains one reviewed photo-depth file plus one Apple paired MOV resource, and
-TAP Video retains its separate MP4/KLV manifest, provenance, pending-export,
-and readback-validation contract. TAP Video must not be folded into the
-still-photo resource plan. Production capture and playback do not depend on
-Debug-only fixture generation.
-
-## Verification
-
-To verify a signed TAP depth photo:
-
-1. Read the original photo resource and require the selected HEIC or JPG
-   container type.
-2. Parse XMP `tapdepth:Manifest` and verify the expected `payload.id`.
-3. Require `manifest.proofs` to be empty.
-4. Locate exactly one fixed TAP proof slot and read its proof envelope.
-5. Base64url-decode `proof.value` and parse the canonical proof JSON.
-6. Recompute the content binding: SHA-256 over file bytes excluding the proof
-   slot, plus SHA-256 over canonical `manifest.payload` JSON.
-7. Compare the recomputed digest package with `proof.value.contentDigest`.
-8. Encode that digest package canonically and verify that its SHA-256 matches
-   `signingBinding.bodySHA256`.
-9. Submit `keyId`, `assertionObject`, and `signingBinding` to
-   `/tapcam/capture-signatures/verify`, or perform the equivalent App Attest
-   assertion verification locally with the registered public key.
-10. Treat the capture proof as valid only if the content binding check and App
-   Attest signature check both pass.
-
-To verify a TAP Live Photo, route by `live-photo-manifest:v1` and
-`live-photo-content-binding:v1`, then perform the still-photo checks above plus the
-`signedResources.pairedLivePhotoVideo` MOV hash check before backend App Attest
-verification. The browser/server split and required browser tools are specified
-in [Docs/LivePhotoBrowserVerification.md](../../../Docs/LivePhotoBrowserVerification.md).
-Verification should report that Live Photo depth is bound to the original still
-photo only. A valid paired MOV hash proves the MOV bytes match the signed
-resource; it does not prove per-frame video depth.
-
-Local verification reports use failure-first severity:
-
-- `Verified`: required local and backend checks passed.
-- `Warnings`: required checks passed, but Photos has presentation resources
-  such as `.fullSizePairedVideo`, `.adjustmentBasePairedVideo`, or
-  `.adjustmentData`.
-- `Failed`: any required local or backend check failed.
-
-Warnings do not downgrade a valid original-resource signature into failure.
-They mean the app verified the original `.photo` and optional `.pairedVideo`,
-while the visible Photos presentation or selected Live Photo key photo may have
-extra adjustment state.
-
-Depth analysis after verification may still parse Apple auxiliary depth and
-convert it to metric Float32 for geometry tools. That interpretation path is a
-consumer of an already-bound artifact, not an input to the base signature. A
-future strict verifier can add a deterministic, format-native depth graph parser
-or a separate metric conversion specification without changing the hard rule
-that platform conversion output is not the primary signature input.
+Future format/profile work is tracked only in
+[Docs/ProjectBoard.md](../../../Docs/ProjectBoard.md). This file does not keep a
+parallel backlog or define speculative resource shapes.

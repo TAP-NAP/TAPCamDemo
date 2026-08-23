@@ -16,6 +16,12 @@ configuration, Settings presentation, and client-side privacy rules. The
 separate backend contract remains active because it owns a cross-project HTTP
 and server-trust boundary.
 
+The capture artifact's shared signing-binding, proof-envelope, proof-slot, and
+content-binding wire conventions are owned by the documentation-only
+[TAPArtifactContracts](https://github.com/TAP-NAP/TAPArtifactContracts)
+repository. This guide continues to own TAPCamDemo client lifecycle, storage,
+runtime selection, privacy, and Settings behavior.
+
 ## Code Boundaries
 
 | Boundary | Code |
@@ -140,36 +146,18 @@ the local credential through `prepareIfNeeded`.
 
 ## Capture Proof Flow
 
-```mermaid
-flowchart TD
-    Unsigned["unsigned HEIC/JPG"] --> Reader["Read TAP manifest, proof slot, and auxiliary depth presence"]
-    Reader --> Digest["CaptureContentDigest"]
-    Digest --> Signer["AppAttestCaptureAssertionSigner"]
-    Signer --> Proof["CaptureAssertionProof"]
-    Proof --> Inject["Write fixed proof slot"]
-    Inject --> Signed["signed HEIC/JPG"]
-    Signed --> Validate["Validate signed export bytes"]
+Capture signing reuses the registered `photo_keyid` credential. The pending
+queue calls `AppAttestCaptureAssertionSigner` and
+`TAPCaptureProvenanceWriter`; those producer types implement the ordered
+construction, App Attest input, proof-envelope, slot-write, and final local
+reconstruction rules in the shared
+[binding/proof contract](https://github.com/TAP-NAP/TAPArtifactContracts/blob/63f96b31de193c3ad456ffa500cc0db03fb97142/bindings/capture-binding-and-proof-v1.md).
 
-    click Reader "../../TAPCamDemo/DepthAnalysis/DepthAnalysisReader.swift"
-    click Digest "../../TAPCamDemo/CameraCapture/Output/CaptureContentDigest.swift"
-    click Signer "../../TAPCamDemo/CameraCapture/Output/AppAttestCaptureAssertionSigner.swift"
-    click Inject "../../TAPCamDemo/CameraCapture/Output/CaptureContentDigest.swift"
-    click Validate "../../TAPCamDemo/CameraCapture/Output/TAPCaptureProvenanceWriter.swift"
-```
-
-Capture signing reuses the registered `photo_keyid` credential. It builds a
-capture `signingBinding` over a C2PA-aligned content binding and writes an App
-Attest assertion into the TAP proof slot.
-It does not use `generateAssertion(credentialName:request:)` because capture
-signing is not an online protected API request and does not use an assertion
-challenge.
-
-Before Photos export, `TAPCaptureProvenanceWriter.validateSignedExportPhoto`
-re-reads the signed file and validates the proof envelope, proof digest binding,
-manifest id, selected HEIC/JPG source type, and auxiliary depth presence. The
-content binding hashes the exact file bytes that are leaving the private queue
-except for the fixed proof slot, so validation does not depend on CoreGraphics,
-AVDepthData conversion output, browser canvas pixels, or libheif decode output.
+This client guide owns one local distinction: capture signing asks
+`DCAppAttestService` to sign the capture binding directly. It does not use the
+request-oriented `generateAssertion(credentialName:request:)` path and does not
+request a server assertion challenge. The final pre-Photos check is local
+self-consistency, not registered-public-key verification.
 
 ## Client Trust And Storage Boundary
 

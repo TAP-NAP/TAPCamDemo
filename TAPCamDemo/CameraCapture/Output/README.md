@@ -1,5 +1,11 @@
 # CameraCapture Output
 
+Shared Still/Live/Video manifest, binding/proof, and container conventions are
+owned by the documentation-only
+[TAPArtifactContracts](https://github.com/TAP-NAP/TAPArtifactContracts)
+repository. This module keeps the Swift producer implementation and local
+orchestration; its types must implement, not redefine, that shared contract.
+
 `CameraCapture/Output` converts a successful photo-depth capture into the TAP
 depth photo contract. It builds the logical package, constructs the TAP
 manifest, embeds that manifest into an Apple HEIC or JPG photo-depth file, and
@@ -52,17 +58,18 @@ depth frame payload at a time; no stage may read an entire MP4 into `Data`.
 ## TAP Video Signing Boundary
 
 A finalized, ingested pending MP4 is the app-owned source artifact. The signing
-path checks its capture/package identity, hashes the exact bytes outside the
-fixed proof slot plus the canonical manifest payload, writes the App Attest
-proof, then immediately recomputes that binding and checks the proof's
-`contentDigest` and `signingBinding`.
+path validates capture/package identity, implements the ordered procedure in the
+[shared binding/proof contract](https://github.com/TAP-NAP/TAPArtifactContracts/blob/63f96b31de193c3ad456ffa500cc0db03fb97142/bindings/capture-binding-and-proof-v1.md),
+then immediately repeats its local reconstruction and relationship checks.
 
 Normal Photos export and original-resource readback repeat this byte-binding
 authentication with `validatesDepthTrack: false`. They do not reinterpret
 track health as signature validity. `TAPVideoDepthTrackValidator` remains
 available only when a caller explicitly requests semantic validation; for
 already-signed untrusted input, proof authentication always runs before that
-AVFoundation scan.
+AVFoundation scan. Here, authentication means the local byte/binding
+relationship gate; cryptographic App Attest verification remains an external
+verifier/backend responsibility.
 
 Pending-state classification follows the same boundary. Manifest/proof failures
 while the video is still `.unsigned` remain retryable. Once the record is
@@ -105,15 +112,12 @@ flowchart LR
     Validator --> Photos["PhotoLibraryWriter.saveDepthPhoto\nor saveDepthLivePhoto"]
 ```
 
-The shutter-time packager emits `proofs: []`. The pending queue later asks
-`TAPCaptureProvenanceWriter` to read the unsigned TAP depth photo file, validate
-that the queue record `captureID` matches `manifest.payload.id`, ensure the
-fixed proof slot exists, recompute the C2PA-aligned content binding over the
-photo bytes excluding that slot, create the App Attest capture proof, write the
-proof envelope into the slot, and return the signed TAP depth photo file for
-export.
-Slot reservation only creates a slot when none exists. Duplicate or malformed
-proof slots fail closed instead of being repaired by appending another slot.
+The shutter-time packager emits an unsigned shared-contract artifact. The
+pending queue asks `TAPCaptureProvenanceWriter` to validate queue/manifest
+identity, sign the exact staged resources, fill only the existing fixed slot,
+and return a locally revalidated artifact. Slot reservation creates a slot only
+when none exists; duplicate or malformed slots fail closed instead of being
+repaired.
 
 The shutter-time packager does not create a proof. It keeps `proofs: []` and
 returns a fixed public `unsigned` reason while the app-private pending worker
@@ -124,10 +128,9 @@ bytes into signature status.
 Immediately before export, the same provenance boundary re-reads the final
 signed bytes with `validateSignedExportPhoto`. This is not a user-visible
 feature. It is a fail-closed guard that checks the actual HEIC or JPG container
-type, manifest schema and `payload.id`, Release output facts through
-`CaptureOutputManifestPolicy`, no proof bodies in the manifest, exactly one
-fixed proof slot, proof value/digest/signing binding, and Apple auxiliary
-depth/disparity presence before
+type, manifest/output identity through `CaptureOutputManifestPolicy`, the
+shared local binding relationships, and Apple auxiliary depth/disparity
+presence before
 `PhotoLibraryWriter.saveDepthPhoto` consumes Photos access granted by the
 explicit first-run setup action; it never owns a permission prompt. The writer
 accepts `ValidatedTAPDepthPhoto`, not arbitrary `Data`, so call sites must pass
@@ -139,12 +142,9 @@ provenance writer is the only production file that can mint that trusted wrapper
 Live Photo capture adds one optional MOV resource without changing the still
 photo path. If `AVCapturePhotoOutput` delivers the movie complement,
 `CapturePackage` and `PackagedCaptureArtifact` carry it to the Pending Capture
-Queue. The
-manifest switches from `still-photo-manifest:v1` to `live-photo-manifest:v1` and records
-`payload.livePhoto`; signing switches from `still-photo-content-binding:v1` to
-`live-photo-content-binding:v1` and adds `signedResources` for the primary photo, manifest
-payload, and paired MOV. If the movie complement fails, the package has no MOV
-and the current still-photo v1 families are used.
+Queue and the writer selects the shared Live Photo family. If the movie
+complement fails, the package has no MOV and the writer selects the shared
+Still Photo family.
 
 ## Output Profile Contract
 
@@ -262,9 +262,8 @@ the asset but the Photos round-trip original lost `tapdepth:Manifest`.
   container/codec pair.
 - If AVFoundation returns a photo without `AVCapturePhoto.depthData` on an
   otherwise depth-capable capture path, the foreground capture is still saved.
-  The TAP manifest records `depthAvailability: unavailable` and the App Attest
-  content binding records `depthResource.presence: unavailable`; it must not be
-  presented as depth verified.
+  The manifest/binding use the shared No Depth representation; the item must not
+  be presented as depth verified.
 - `CapturePhotoQualityPolicy` names quality intent before Runtime maps it to
   `AVCapturePhotoOutput.QualityPrioritization`. It is still internal policy,
   not a visible quality setting. The current Release policy preserves the

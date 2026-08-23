@@ -87,10 +87,13 @@ cover tests, UI tests, Debug fixtures, benchmarks, or resolved packages.
   owns test doubles for the capture assertion boundary. These doubles do not
   prove App Attest hardware or backend acceptance.
 - [`TAPVideoManifestV1GoldenVectors.json`](../Docs/Fixtures/TAPVideoManifestV1GoldenVectors.json)
-  is the interoperability vector owned by
-  [`TAPVideoFormatContract.md`](../Docs/TAPVideoFormatContract.md). Do not
-  regenerate it to fit an incompatible writer; a change requires a version and
-  compatibility review.
+  is a repository-local composite fixture because
+  `TAPVideoManifestTests` loads that exact path. Its `depthFrame` member mirrors
+  the exact KLV/zstd v1 vector owned by
+  [`TAPArtifactContracts`](https://github.com/TAP-NAP/TAPArtifactContracts/blob/63f96b31de193c3ad456ffa500cc0db03fb97142/examples/vectors/tap-video-klv-zstd1-v1-golden-vector.json).
+  Its separate manifest object is local decoder input, not current manifest
+  authority; the shared manifest contract and example are authoritative. Do not
+  regenerate the shared byte vector to fit an incompatible reader.
 - TAP Video playback fixtures are generated at runtime by
   [`TAPVideoPlaybackFixtureHarnessTests.swift`](TAPVideoPlaybackFixtureHarnessTests.swift).
   They must not create a second checked-in binary-fixture authority.

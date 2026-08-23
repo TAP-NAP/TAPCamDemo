@@ -79,6 +79,15 @@ structurally different still-photo, Live Photo, TAP Video, content-binding,
 registration, proof, or attestation objects interchangeable. Their specialized
 contracts own the exact identifiers and fail-closed routing rules.
 
+The documentation-only
+[TAPArtifactContracts](https://github.com/TAP-NAP/TAPArtifactContracts)
+repository owns the shared wire-level field, serialization, binding, proof,
+container, and transport conventions consumed by TAPCam and external
+verifiers. This Product Contract continues to own which format families are
+current product capabilities, their claim boundaries, and their non-goals.
+Repository-local documents own runtime and operational behavior and must not
+silently redefine the shared artifact contract.
+
 Superseded development-format identifiers are unsupported and must not remain
 as compatibility readers in TAPCam or TAPCamVerifier. Pre-release local app
 data is also disposable: a developer moving between incompatible builds clears
@@ -512,9 +521,11 @@ external media whose origin and credential state are not already owned by the
 current capture pipeline. External import and Verify are future work and need a
 separate product contract.
 
-The browser Live Photo verification specification is an important
-cross-repository delivery contract. It does not claim that the external browser
-verifier is implemented inside TAPCamDemo.
+The browser Live Photo verification flow remains an important cross-repository
+delivery boundary. Its shared artifact bytes and fields are defined by
+`TAPArtifactContracts`; TAPCamDemo retains its app-side behavior and handoff
+responsibility. Neither document claims that the external browser verifier is
+implemented inside TAPCamDemo.
 
 Fine-grained credential cooldown, retry windows, and stage-specific pause are
 future technical optimization. A public-release persistence policy must be an

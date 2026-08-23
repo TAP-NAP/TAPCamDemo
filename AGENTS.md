@@ -167,7 +167,7 @@ short reason.
 | Visual hierarchy, layout, icons, copy placement, interaction, responsive behavior, or simulated UI states | HTML/Web prototype and its repository manifest/revision record |
 | The design-to-code workflow or prototype authority itself changes | `Docs/UIPrototypeContract.md` |
 | Module ownership, lifecycle, architecture, integration seam, or operational behavior changes | Relevant module `README.md` |
-| Public interface, media/file format, security boundary, or cross-project obligation changes | Relevant specialized contract, such as `Docs/TAPVideoFormatContract.md`, `Docs/AppAttest/`, or `Docs/LivePhotoBrowserVerification.md` |
+| Public interface, media/file format, security boundary, or cross-project obligation changes | Relevant specialized contract, such as `Docs/TAPVideoFormatContract.md`, `Docs/AppAttest/`, or the repository-recorded `TAPArtifactContracts` authority |
 | Testable acceptance procedure, build/device run, evidence, or human verdict changes | Matching `Docs/Acceptance/TAP-xxxx-*.md` and its linked DeviceAcceptance Task |
 | Repository-wide Agent workflow changes | Root `AGENTS.md` and the governance Task revision |
 | A canonical source replaces old prose | Migrate unique obligations, update inbound links, then delete the obsolete document; Git remains the archive |

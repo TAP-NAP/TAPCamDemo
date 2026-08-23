@@ -3,7 +3,7 @@
 - Status: `Draft — blocked until the owner freezes the matrix and run budget`
 - Related Delivery: `TAP-0056`
 - Contract: [ProductContract §3.2 and §5.2](../ProductContract.md),
-  [Live Photo Browser Verification Contract](../LivePhotoBrowserVerification.md)
+  [shared Live Photo manifest, binding, container, and transport contracts](https://github.com/TAP-NAP/TAPArtifactContracts)
 - Build/Commit: `OWNER-LIVE: freeze before execution`
 - Device/iOS Matrix: `OWNER-LIVE: approve before execution`
 - Human Confirmation: `Pending`

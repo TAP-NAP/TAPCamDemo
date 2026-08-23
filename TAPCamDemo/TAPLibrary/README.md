@@ -14,6 +14,11 @@ and cleanup so real-device App Attest and Photos work do not overlap. Product
 scope and terminology come from
 [ProductContract.md](../../Docs/ProductContract.md).
 
+Shared manifest, binding/proof, container, signing/verification, and `.tapnap`
+wire rules come from
+[TAPArtifactContracts](https://github.com/TAP-NAP/TAPArtifactContracts); this
+module owns only their pending-storage and operation lifecycle.
+
 TAP Video proof filling never mutates the durable generation that Viewer or
 Share may currently snapshot. The store creates one independent same-bundle
 working generation on demand, signing mutates only that file, and the store
@@ -208,13 +213,12 @@ without App Attest hardware, network, or Photos side effects.
   succeeds.
 - `paired-video.mov` is present only for Live Photo captures whose Apple movie
   complement was delivered. It is copied into the pending bundle before commit,
-  signed as `live-photo-content-binding:v1`, and removed with the staged photo files after
-  export.
+  signed through the shared Live Photo route, and removed with the staged photo
+  files after export.
 - The signed photo file is exported only after `validateSignedExportPhoto`
-  re-reads the final bytes and verifies the source container, manifest
-  schema/id, proof envelope, proof digest binding, and Apple auxiliary
-  depth/disparity. The validator returns `ValidatedTAPDepthPhoto`, which is the
-  type accepted by the Photos writer.
+  re-reads the final bytes and passes the shared local-binding relationships
+  plus actual output/depth checks. The validator returns
+  `ValidatedTAPDepthPhoto`, which is the type accepted by the Photos writer.
 - Live Photo export uses `validateSignedExportLivePhoto` and
   `PhotoLibraryWriter.saveDepthLivePhoto`; still-photo export continues to use
   `validateSignedExportPhoto` and `saveDepthPhoto`.
@@ -226,13 +230,13 @@ without App Attest hardware, network, or Photos side effects.
 - `assetLocalIdentifier` is kept after export so saved TAP photos remain
   discoverable even when Photos access is limited.
 - Exported large files are cleaned up; records and thumbnails remain.
-- Share exports the original
-  `.photo` resource as a single HEIC/JPG. Complete Live Photo captures export
-  a ZIP containing `primary-photo.heic` or `primary-photo.jpg`,
-  `paired-video.mov`, and an unsigned minimal `tapcam-export.json` sidecar.
-  If a Live Photo manifest is present but Photos no longer exposes the original
-  `.pairedVideo`, the export path may provide only the primary photo and must
-  warn that Live Photo verification remains incomplete.
+- Share exports the original `.photo` as ordinary HEIC/JPG or produces the
+  contract-defined `.tapnap` transport for a complete Still/Live verification
+  package. If Photos no longer exposes a Live Photo's original `.pairedVideo`,
+  the export path may provide only the primary photo and must warn that Live
+  Photo verification remains incomplete. Package layout and unsigned routing
+  metadata live in the shared
+  [transport contract](https://github.com/TAP-NAP/TAPArtifactContracts/blob/63f96b31de193c3ad456ffa500cc0db03fb97142/transport/tapnap-v1.md).
 - Precise capture location is kept only while the record is pending, signing,
   or exporting so Photos can receive the location at save time. `markExported`
   clears the persisted queue copy after Photos has accepted the asset.

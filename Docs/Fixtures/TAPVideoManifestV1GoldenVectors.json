@@ -1,12 +1,17 @@
 {
   "format": "tap-video-golden-vectors:v1",
+  "ownership": {
+    "sharedExactVector": "TAPArtifactContracts/examples/vectors/tap-video-klv-zstd1-v1-golden-vector.json",
+    "sharedExactMember": "depthFrame",
+    "manifestRole": "Local Swift decoder fixture only; not the current normative manifest example."
+  },
   "generator": {
     "zstd": "1.5.7",
     "zstdLevel": 1,
     "contentChecksum": false
   },
   "depthFrame": {
-    "description": "Opaque packed Float16 bit-pattern bytes; decoders must preserve every bit.",
+    "description": "Opaque packed Float16 bit-pattern bytes; decoders must preserve every bit. The V2 text inside the payload is test data, not a protocol family or version.",
     "frameIndex": 17,
     "pts": {
       "value": 12345,

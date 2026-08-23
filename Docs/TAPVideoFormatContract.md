@@ -1,371 +1,178 @@
-# TAP Video Format Contract
+# TAP Video Operational Contract
 
-Status: current interface and provenance contract
-Owner: TAP Video format and cross-implementation compatibility
-Last updated: 2026-08-12
+Status: current TAPCamDemo operational contract
+Owner: finalization, Pending Capture Queue, Photos export/readback, playback,
+and evidence
+Last updated: 2026-08-23
 
-This document defines the current TAP Video artifact, timed-depth payload,
-manifest, proof, pending/export, readback, and playback boundaries. Product
-scope comes from [ProductContract.md](ProductContract.md), especially §3.3 and
-§7. Task and evidence status comes from [ProjectBoard.md](ProjectBoard.md).
+## Authority Boundary
 
-This is not an implementation plan. Old vertical-slice phases, branch-specific
-failures, refactor scorecards, and experiments do not define this contract.
-Changing a versioned field or byte layout requires a new Task, schema version,
-reader compatibility decision, and golden vector; it must not silently mutate
-version 2.
+The documentation-only
+[TAPArtifactContracts](https://github.com/TAP-NAP/TAPArtifactContracts)
+repository is the sole shared authority for TAP Video v1 manifest fields,
+canonical JSON, MP4 UUID boxes, proof-slot layout, KLV records/codecs/bounds,
+content binding, signing, verification, and hash participation. Start with its
+[TAP Video manifest](https://github.com/TAP-NAP/TAPArtifactContracts/blob/63f96b31de193c3ad456ffa500cc0db03fb97142/manifests/tap-video-v1.md),
+[container/KLV contract](https://github.com/TAP-NAP/TAPArtifactContracts/blob/63f96b31de193c3ad456ffa500cc0db03fb97142/containers/tap-video-container-v1.md), and
+[binding/proof contract](https://github.com/TAP-NAP/TAPArtifactContracts/blob/63f96b31de193c3ad456ffa500cc0db03fb97142/bindings/capture-binding-and-proof-v1.md).
 
-## 1. Canonical Artifact
+This document owns only how TAPCamDemo implements that artifact through its
+local lifecycle. Product scope comes from [ProductContract.md](ProductContract.md),
+especially §3.3 and §7. Task and evidence status comes from
+[ProjectBoard.md](ProjectBoard.md). A shared identifier, field, byte layout,
+hash rule, or reader rule repeated in Git history is not a second authority.
 
-One capture produces one original MP4 resource:
+## Finalization And Publication
 
-| Part | Current contract |
-| --- | --- |
-| Container | One `video/mp4` file. |
-| RGB | Exactly one standard video track. The finalized file's actual codec, dimensions, timing, transform, and track ID are bound in the manifest. The Runtime fallback is H.264; readers must use the recorded facts rather than assume a codec. |
-| Audio | Zero or one standard audio track. When written, Runtime uses AAC. The manifest distinguishes `captured`, `notCaptured`, and `unavailable`; it must not invent a silent track. |
-| Depth | Zero or one TAP-private timed metadata track. It exists only when real depth samples were stored. |
-| Manifest | Exactly one TAP manifest top-level BMFF `uuid` box with user type `TAPCAMVIDEOMANF1`. Its payload is bounded to 1 MiB. |
-| Proof | Exactly one fixed TAP proof-slot top-level BMFF `uuid` box with user type `TAPCAMPROOFSLOT1`. |
+```text
+AVAssetWriter workspace
+  -> finish standard RGB/audio and optional TAP depth track
+  -> read finalized track facts
+  -> build the shared-contract manifest
+  -> append manifest box and one empty proof slot
+  -> validate file/manifest agreement
+  -> atomically publish into the Pending Capture Queue
+```
 
-The Release artifact has no durable depth-preview movie, JSON sidecar, ZIP
-wrapper, or debug derivative. A poster is a local TAP Library derivative and is
-not part of the signed MP4.
+TAPCamDemo keeps these operational obligations:
 
-The current capture UI stops at 180 seconds by default. That duration is a
-Runtime policy, not a decoder rule or a versioned MP4-format limit. A shorter
-valid segment may record a truthful stop reason such as user stop, duration
-limit, thermal pressure, system pressure, lifecycle interruption, storage
-failure, or capture failure.
-
-## 2. Finalization And Track Truth
-
-`AVAssetWriter` first finalizes the standard tracks. The app then reads the
-finished asset's actual track facts, constructs the manifest, appends the
-manifest box, appends one empty proof slot, and publishes the file into the
-Pending Capture Queue workspace. Appending the private boxes must not rewrite
-the existing media tables or offsets.
-
-The manifest records postflight facts rather than requested assumptions:
-
-- container duration, timescale, and track count;
-- RGB track ID, codec, dimensions, timing, frame rate/count, and transform;
-- audio status and actual track facts when captured;
-- depth track facts, format, delivered/stored/drop counters, calibration,
-  synchronization, and bounded gap ranges;
-- selected camera plan, capture/package identities, stop reason, and software
-  facts.
-
-For an artifact with stored depth, semantic validation requires exactly one
-RGB track, exactly one TAP metadata track, and zero or one audio track. For a
-zero-depth artifact, the canonical composition is one RGB track plus optional
-audio and no TAP metadata track. The manifest and file must agree in both
-cases.
+- one capture publishes one original MP4; it has no durable preview movie,
+  JSON sidecar, ZIP wrapper, or debug derivative;
+- postflight values come from the finalized asset rather than requested
+  settings;
+- appending private boxes does not rewrite existing media tables or offsets;
+- stored-depth output has one RGB track, one TAP metadata track, and zero or
+  one audio track; zero-depth output has one RGB track, optional audio, and no
+  TAP metadata track;
+- container/manifest consistency, calibration accounting, KLV samples, and
+  timeline/gap checks are bounded and stream payloads rather than loading the
+  complete MP4 into `Data`; and
+- the current 180-second UI stop is Runtime policy, not a decoder or format
+  limit.
 
 Runtime ownership is documented in
-[CameraCapture/Runtime](../TAPCamDemo/CameraCapture/Runtime/README.md); schema,
-proof, and validator ownership is documented in
+[CameraCapture/Runtime](../TAPCamDemo/CameraCapture/Runtime/README.md). Swift
+schema, writer, and validator ownership is documented in
 [CameraCapture/Output](../TAPCamDemo/CameraCapture/Output/README.md).
 
-## 3. TAP Timed Depth Track
-
-When depth samples exist, the metadata item identifier is:
-
-```text
-mdta/com.tapnap.depth.klv
-```
-
-Each timed item contains one independently decodable TAP KLV frame. TAP reuses
-the compact, time-indexed KLV pattern associated with GPMF, but this is a
-TAP-private namespace and schema; it does not adopt GoPro field meanings or
-claim that the track is a standard depth-video track.
-
-### 3.1 KLV frame version 1
-
-Every record is:
-
-```text
-fourCC[4] | payloadLengthUInt32BE[4] | payload | zero padding to 4 bytes
-```
-
-Current frame version 1 emits these records:
-
-| Key | Meaning |
-| --- | --- |
-| `TVER` | KLV frame schema version, currently `1`. |
-| `FRAM` | Stored depth-frame index. |
-| `PTS ` | Capture-relative presentation value and timescale. |
-| `COMP` | `raw`, `lzfse`, or `zstd1`. |
-| `ULEN` | Uncompressed packed-frame byte count. |
-| `CALI` | Optional index into the manifest calibration table. |
-| `DPTH` | Opaque compressed or raw packed depth bytes. |
-
-Readers may skip unknown keys, but must reject duplicate keys, truncated
-records, unsupported `TVER`, non-zero alignment padding, oversized payloads,
-and a decoded byte count that differs from `ULEN`. Integer control fields are
-big-endian. The packed depth samples use the byte order declared by the
-manifest, currently little-endian.
-
-### 3.2 Packed depth and compression
-
-- Pack only `width * bytesPerSample` logical bytes per row; capture-buffer
-  alignment and extended padding are not signed as pixel content.
-- Current accepted stored formats are Float16 or Float32 depth/disparity:
-  `hdep`, `fdep`, `hdis`, and `fdis`.
-- Preserve the captured depth/disparity kind and bit patterns. Do not quantize,
-  synthesize, interpolate, or duplicate samples to match the RGB cadence.
-- Each frame is compressed independently. The writer prefers Zstandard level 1
-  and stores the raw frame whenever compression fails or is not smaller.
-- Version-1 readers accept `raw`, `lzfse`, and `zstd1`. The current writer's
-  declared policy is `per-frame:zstd1|raw`; LZFSE remains a readable codec, not
-  a claim that every current file uses it.
-- One uncompressed frame is bounded to 32 MiB. A KLV frame has a bounded record
-  count and encoded-size limit.
-
-The invariant stored layout lives once in `depthCoverage.format`. Per-sample
-KLV records carry timing, codec, byte count, optional calibration index, and
-payload. Real missing intervals are represented as signed gap ranges with a
-reason; they are not filled with fabricated depth.
-
-## 4. Manifest Version 1
-
-The current identifiers are:
-
-```text
-schema.id    = urn:tapnap:tapcam:video-manifest:v1
-schema.version = 1
-mediaType    = application/vnd.tapnap.video-manifest+json;version=1
-```
-
-The writer encodes canonical JSON with sorted keys and without escaped slashes.
-The top-level `proofs` array remains empty: the App Attest proof body belongs
-only in the separate proof slot. The canonical metadata hash covers the
-manifest `payload` without `proofs`; the raw manifest box is independently
-covered by the MP4 asset hash.
-
-The payload owns these groups:
-
-- capture and package identity plus capture time;
-- selected camera plan;
-- container, RGB, and audio facts;
-- depth coverage, format, counters, and gaps;
-- spatial registration and calibration coverage;
-- RGB/depth timestamp relationship;
-- stop reason and recorded duration; and
-- schema-writer software facts.
-
-Depth gaps are bounded to 1,024 records. The calibration table is bounded to 16
-entries, and its indexed/missing/overflow counters must account for every
-stored depth sample.
-
-### 4.1 Registration
-
-The current reproducible registration descriptor is:
-
-```text
-urn:tapnap:tapcam:video-depth-registration:avdepthdata-yuv-warp:v1
-```
-
-Only `registered` plus a complete, validated descriptor enables registered 2D
-playback. It binds RGB/depth reference dimensions, RGB clean aperture,
-connection transform and mirroring, stabilization mode, calibration, and the
-depth-pixel-center to aligned-RGB affine mapping. `unavailable` carries no
-descriptor. `approximate` is not an accepted substitute and must never enable
-the 2D overlay.
-
-## 5. Zero-Depth Is A Canonical TAP Video
+## Zero-Depth Operation
 
 A successfully finalized RGB/audio MP4 remains a TAP Video when no valid depth
-sample arrived. Its canonical depth facts are:
+sample arrived. TAPCamDemo must retain, sign, export, read back, and play it,
+while presenting depth as unavailable. It must not create a fake metadata track,
+duplicate samples, or turn missing depth alone into an integrity failure.
 
-```text
-depthCoverage.trackID = null
-depthCoverage.trackCodec = null
-depthCoverage.sampleCount = 0
-depthCoverage.format = null
-synchronization.rgbToDepthMapping = no-depth-samples
-```
+The shared manifest contract owns the exact zero-depth fields. Remaining paths
+that still persist zero depth as terminal are the P0 conformance gap
+[TAP-0011](ProjectBoard.md#tap-0011--make-zero-depth-tap-video-non-blocking),
+not an alternate artifact definition.
 
-The manifest may record the full affected interval as a truthful
-`silentCadence` gap. The content binding records `depthResource.presence` as
-`no-samples` and binds that fact through the manifest. The app must retain,
-sign, export, read back, and play the RGB/audio artifact, while showing a
-non-blocking depth-unavailable indication. It must not create a fake metadata
-track or claim 2D/3D readiness.
+## Signing And Local Integrity Gates
 
-Missing depth alone is not a writer, integrity, or terminal queue failure. The
-remaining source paths that still persist zero depth as terminal are the P0
-conformance gap [TAP-0011](ProjectBoard.md#tap-0011--make-zero-depth-tap-video-non-blocking),
-not an alternate format rule.
+A finalized, ingested pending MP4 is the app-owned source artifact. The queue:
 
-## 6. Proof Slot And Content Binding
+1. validates queue and manifest capture/package identity;
+2. freezes the unsigned artifact into an independent same-bundle working
+   generation;
+3. reconstructs and persists the pre-sign shared content binding;
+4. asks the capture signer to generate the App Attest proof and fills only the
+   fixed slot in the working generation;
+5. reopens that generation and repeats the shared local reconstruction and
+   relationship checks; and
+6. atomically publishes the complete inode over the durable path only after the
+   check passes.
 
-The proof-slot box payload is exactly 60 KiB. Version 1 uses a 32-byte header:
+The temporary generation is discarded on failure or cancellation. It is not a
+Share package or persistent cache, and it must never be a hard-linked mutable
+view of the durable file.
 
-```text
-0...19   ASCII TAPCAM-PROOF-SLOT-V1
-20...23  reserved zero bytes
-24...27  UInt32BE version = 1
-28...31  UInt32BE proof-envelope length
-32...    proof-envelope JSON followed by zero padding
-```
+This local gate proves byte, manifest, content-digest, signing-binding, and
+proof-envelope consistency. It does not possess the registered App Attest
+public key and therefore does not perform the backend cryptographic assertion
+verification. The browser/backend split and exact signature verification order
+are defined in the shared binding/proof contract.
 
-Readers require exactly one correctly sized slot, a valid header and version,
-a non-empty bounded envelope, and all remaining padding bytes equal to zero.
-Duplicate, missing, malformed, overflowing, or non-zero-padded slots fail
-closed.
+Depth-track health is a separate optional semantic gate. For an already signed
+untrusted file, local binding reconstruction precedes any requested bounded
+AVFoundation scan. Normal signing, Photos export, and original-resource
+readback use the local binding gate without making depth presence or health a
+condition of authenticity.
 
-The video content binding is
-`urn:tapnap:tapcam:video-content-binding:v1`:
+## Pending Queue, Photos Export, And Readback
 
-```text
-assetHash = SHA-256(MP4 bytes in file order, excluding exactly the complete
-                    fixed proof-slot uuid-box byte range)
-metadataHash = SHA-256(canonical manifest payload JSON)
-```
-
-The manifest box, media tables, RGB, audio, KLV samples, timing, calibration,
-and every other MP4 byte remain inside `assetHash`. The binding also records
-capture/manifest identity, capture time, the excluded proof-slot descriptor,
-and the depth-resource presence rule.
-
-Signing then uses
-`urn:tapnap:tapcam:app-attest-capture-signing:v1`: SHA-256 of the canonical
-video-content-binding v1
-binding becomes `bodySHA256`; SHA-256 of the canonical signing binding becomes
-the App Attest `clientDataHash`. The resulting
-`appAttestAssertion` / `TAPCam.AppAttestCaptureSignature.v1` proof envelope is
-written into the independent signing generation's fixed proof slot. Only those
-proof-slot bytes may change after the pre-sign binding is persisted; the
-completed generation is published over the durable path only after local
-validation succeeds.
-
-Proof authentication and depth-track health are deliberately separate:
-
-1. Recompute and authenticate the proof and v1 byte binding first.
-2. Run the AVFoundation track/KLV/timeline semantic scan only when a caller
-   explicitly requests it.
-
-Normal signing, Photos export, and original-resource readback use the first
-gate without making depth presence or health a condition of authenticity. A
-semantic scan of untrusted input must never run before proof authentication.
-Neither gate proves the physical scene, event, person, time, non-AI origin, or
-the correctness of depth as a statement about reality.
-
-## 7. Pending, Photos Export, And Readback
-
-The app-private Pending Capture Queue owns the durable workflow:
+The app-private workflow is:
 
 ```text
 Pending/<captureID>/
   bundle.json
   artifact.mp4
-  thumbnail.jpg   # optional poster derivative
+  thumbnail.jpg   # optional local derivative
 ```
 
-Recording starts in a hidden workspace, then commits the finalized MP4 and
-record atomically. Signing freezes that unsigned generation into an independent
-same-bundle working file, fills and validates the proof there, then atomically
-publishes the complete signed inode over `artifact.mp4` inside the Pending
-Capture Store actor. This prevents Viewer/Share snapshots from observing a
-partially rewritten proof slot while App Attest work is in flight. The working
-generation is on-demand, discarded after publish/failure/cancellation, and is
-not a Share package or persistent cache. Video APIs use file URLs, filesystem
-clone/copy semantics, streaming box inspection, bounded hashing, and bounded
-depth work; production must not materialize the complete MP4 as `Data` or use a
-hard-linked mutable signing file.
+- Recording uses a hidden workspace and commits the finalized file plus record
+  atomically.
+- Video APIs pass file URLs and use clone/copy plus streaming inspection; they
+  do not materialize the whole MP4 as `Data`.
+- The pre-sign binding detects mutation outside the proof slot before signing.
+- Photos export persists pre-commit and commit-ambiguous state so retry does not
+  create a duplicate asset after an interrupted save.
+- The app exports one video resource named from the package identity, streams
+  the Photos original into a temporary file, and repeats identity plus local
+  binding validation before marking the queue record exported.
+- A filename or Photos playback success is only an index hint, never integrity
+  evidence.
 
-Before signing, `captureID` and `packageID` must match the manifest. The queue
-persists the pre-sign binding so a later byte change outside the proof slot is
-an external-mutation failure. After local proof authentication it records the
-artifact as signed.
+Queue state, retry, storage, and cleanup ownership lives in
+[TAPLibrary/README.md](../TAPCamDemo/TAPLibrary/README.md).
 
-Photos export follows a crash-recoverable boundary:
+## Playback And Derivatives
 
-1. Persist pre-commit intent.
-2. Authenticate the exact local file and pass its URL to Photos as one video
-   resource named `tap-<lowercase-package-uuid>.mp4`.
-3. Persist commit-ambiguous/committed state before assuming another create is
-   safe.
-4. Stream the Photos original resource into a temporary file and run the same
-   proof and v1 byte-binding gate.
-5. Only after successful readback mark the record exported and remove the
-   app-private large MP4. Keep the small record/poster needed by TAP Library.
+TAP Library opens a pending file or a managed temporary copy of the Photos
+original without loading the whole MP4 into memory.
 
-Recovery uses the package-specific filename only as an index hint. A candidate
-is accepted only after identity and byte-binding validation; retry must not
-create a duplicate Photos asset after an ambiguous commit.
+- `RAW` plays standard RGB/audio independently of depth.
+- `2D` requires a complete, validated registered descriptor and matching depth
+  track/format; placement uses `AVPlayerLayer.videoRect`.
+- Decode stays bounded around the playhead. Seek, discontinuity, item change,
+  cancellation, and memory reset clear retained depth so unrelated frames are
+  not reused.
+- Playback is foreground/local only; external playback, Picture in Picture, and
+  background playback remain explicit non-goals.
+- TAP Video 3D remains future work.
 
-Queue ownership and its coarse retry state are documented in
-[TAPLibrary/README.md](../TAPCamDemo/TAPLibrary/README.md). Photos playback or
-successful decoding alone is never authenticity evidence.
+Playback is downstream consumption, not a new cryptographic Verify action.
+Photos edits, transcodes, and social uploads may remain playable but are not the
+original authenticated byte view. Share Video may make an on-demand
+byte-for-byte temporary copy; TAP Video `.tapnap` transport remains Coming Soon.
 
-## 8. Playback And Derivatives
+The playback implementation boundary is documented in
+[PLAYBACK.md](../TAPCamDemo/DepthAnalysis/Playback/PLAYBACK.md).
 
-TAP Library opens a pending file locally or obtains the current Photos original
-as a managed temporary file. It does not load the complete MP4 into memory.
+## Fixtures And Evidence
 
-- `RAW` plays the standard RGB/audio tracks and is available independently of
-  depth.
-- `2D` is available only when the manifest provides a complete registered
-  descriptor and a matching depth track/format. The overlay is placed against
-  `AVPlayerLayer.videoRect`, not the whole viewport.
-- A transient gap during continuous playback may hold the last depth frame to
-  avoid flashing. First-frame absence, seek/discontinuity, item change,
-  cancellation, or memory reset clears it so unrelated depth is not reused.
-- Depth decode is bounded around the playhead: currently 24 MiB retained and at
-  most two concurrent decodes.
-- Playback is local and foreground-only. External playback/AirPlay is disabled;
-  Picture in Picture and background playback are explicit non-goals.
-- TAP Video 3D remains future work. Playback must not reinterpret current KLV
-  frames as an implemented 3D product.
+The exact shared KLV/zstd v1 vector lives at
+[`TAPArtifactContracts/examples/vectors/tap-video-klv-zstd1-v1-golden-vector.json`](https://github.com/TAP-NAP/TAPArtifactContracts/blob/63f96b31de193c3ad456ffa500cc0db03fb97142/examples/vectors/tap-video-klv-zstd1-v1-golden-vector.json).
+[`Docs/Fixtures/TAPVideoManifestV1GoldenVectors.json`](Fixtures/TAPVideoManifestV1GoldenVectors.json)
+remains local because `TAPVideoManifestTests` reads it by path. Only its
+`depthFrame` member mirrors the shared exact vector; its separate manifest
+object is a local decoder fixture and does not override the current shared
+manifest contract/example.
 
-The playback module boundary is documented in
-[PLAYBACK.md](../TAPCamDemo/DepthAnalysis/Playback/PLAYBACK.md). Playback is not
-a new Verify action for a TAPCam-owned capture; it consumes the capture's
-persisted credential state.
+Changing shared vector bytes requires version/compatibility review, not
+regeneration to fit an incompatible implementation. Runtime-generated playback
+fixtures remain local executable test inputs and are not a second checked-in
+binary authority.
 
-The signed object is the original MP4 byte view defined above. A Photos edit,
-transcode, social upload, or other derivative may remain playable but is not an
-authenticated TAP Video unless it independently preserves and passes the same
-binding. Share Video may make an on-demand byte-for-byte temporary copy of the
-original. A TAP Video `.tapnap` transport is not part of this format and remains
-Coming Soon.
+Current evidence gaps remain tracked by their canonical Tasks:
 
-## 9. Compatibility And Evidence
-
-Ordinary MP4 players are expected to play the standard RGB/audio tracks and
-ignore the private metadata and top-level `uuid` boxes. TAP readers use the
-versioned private contract. Unknown KLV keys are skippable; unsupported schema
-versions and malformed bounded structures fail closed.
-
-The repository interoperability fixture is
-[TAPVideoManifestV1GoldenVectors.json](Fixtures/TAPVideoManifestV1GoldenVectors.json).
-It fixes a manifest-v1 JSON example, KLV-v1 frame, Float16 bit-pattern payload,
-and Zstandard 1.5.7 level-1 vector. Readers must reproduce the decoded bytes and
-semantic values. Changing the vector requires a version/compatibility review,
-not regeneration to fit an incompatible writer.
-
-Because the app is pre-release, superseded development schema identifiers are
-not compatibility inputs. A reader rejects them as unsupported; developers
-regenerate fixtures and artifacts with the current v1 writer.
-
-Current proof and resource design must preserve a migration path toward C2PA
-compatibility, but TAPCam does not claim C2PA certification or complete C2PA
-interoperability.
-
-The following are evidence or conformance gaps, not alternate contracts:
-
-- `TAP-0011`: remove remaining terminal zero-depth behavior across Runtime,
-  queue, semantic validation, and presentation.
-- `TAP-0045`: attended device evidence for codec throughput and drops,
-  duration-to-RSS behavior, thermal limits, registration landmarks, zero-depth,
-  iCloud-only originals, and broader device/format coverage.
+- `TAP-0011`: complete zero-depth non-blocking conformance.
+- `TAP-0045`: attended device codec, memory, thermal, registration, zero-depth,
+  iCloud, and device/format coverage.
 - `TAP-0046`: production App Attest entitlement/backend/assertion and final
   signed-export evidence.
-- Cross-platform non-Swift parsing and proof verification must be demonstrated
-  against the golden vector and real original resources; the Swift fixture
-  alone is not that evidence.
 
 Physical-device execution requires the written procedure and owner confirmation
-defined by [Acceptance/README.md](Acceptance/README.md).
+defined by [Acceptance/README.md](Acceptance/README.md). No field, identifier,
+box, KLV rule, or signing rule may change through this operational document; a
+format change needs a separately approved Task and shared-contract versioning
+decision first.

@@ -24,10 +24,10 @@ Product Contract.
 
 | Responsibility | Entry |
 | --- | --- |
+| Shared Still/Live/Video manifest, binding/proof, container, and `.tapnap` wire conventions | [TAPArtifactContracts](https://github.com/TAP-NAP/TAPArtifactContracts) |
 | App Attest client/backend boundary | [AppAttest/README.md](AppAttest/README.md) |
 | App Attest backend interface | [AppAttest/BackendContract.md](AppAttest/BackendContract.md) |
-| Live Photo cross-project browser verification contract | [LivePhotoBrowserVerification.md](LivePhotoBrowserVerification.md) |
-| TAP Video MP4/KLV/manifest/proof/content-binding contract | [TAPVideoFormatContract.md](TAPVideoFormatContract.md) |
+| TAPCamDemo TAP Video finalization, pending/export, readback, playback, and evidence boundary | [TAPVideoFormatContract.md](TAPVideoFormatContract.md) |
 | Installation/activation vocabulary, startup routing, t0…tn milestones, and heavy-work ownership | [StartupLifecycleContract.md](StartupLifecycleContract.md) |
 | First-install, empty-cache, large-Library, first-Share, and system-presentation responsiveness standard | [ColdPathResponsiveness.md](ColdPathResponsiveness.md) |
 | Camera output profile and packaging contract | [../TAPCamDemo/CameraCapture/Output/README.md](../TAPCamDemo/CameraCapture/Output/README.md) |

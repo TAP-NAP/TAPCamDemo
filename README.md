@@ -153,33 +153,21 @@ Start with [TAPCamDemo/DepthAnalysis/README.md](TAPCamDemo/DepthAnalysis/README.
 Its active code map separates Viewer, Share, video playback, privacy, and
 device-acceptance responsibilities.
 
-## HEIC Contract
+## Artifact Contract Boundary
 
-```mermaid
-flowchart LR
-    HEIC["TAP HEIC"] --> RGB["Primary image\nvisible RGB"]
-    HEIC --> Aux["Apple auxiliary depth/disparity"]
-    HEIC --> XMP["XMP tapdepth:Manifest"]
-    XMP --> Payload["payload\ncapture facts"]
-    XMP --> Proofs["proofs\nApp Attest capture proof"]
-```
+The documentation-only
+[TAPArtifactContracts](https://github.com/TAP-NAP/TAPArtifactContracts)
+repository is the source of truth for Still/Live/Video manifests, exact
+container locations, proof slots, signing, verification, and hash
+participation. In particular, photo `manifest.proofs` stays empty; the App
+Attest proof envelope is stored in the separate fixed proof slot.
+This adoption was reviewed against shared revision
+[`63f96b31de193c3ad456ffa500cc0db03fb97142`](https://github.com/TAP-NAP/TAPArtifactContracts/commit/63f96b31de193c3ad456ffa500cc0db03fb97142).
 
-| HEIC location | Contents | Authority |
-| --- | --- | --- |
-| Primary image item | Visible RGB image from `AVCapturePhoto.fileDataRepresentation(with:)` | Authoritative RGB image |
-| Auxiliary data | Apple depth/disparity attachment | Authoritative depth map |
-| EXIF/GPS/TIFF | Compatibility metadata and short pointer | Compatibility mirror |
-| XMP `tapdepth:Manifest` | TAP JSON manifest at `tapdepth:Manifest` | Authoritative TAP metadata |
-
-`payload` is encoded independently from `proofs`, so App Attest proof records
-do not affect the payload bytes being signed. Current readers should prefer
-`payload.rgbSource`, `payload.depthSource`, `payload.pairing`, `payload.zoom`,
-`payload.crop`, `payload.resolvedSession`, and `payload.alignment`.
-
-Before a signed TAP HEIC is saved to Photos, the queue re-reads the final file
-bytes and validates the HEIC source type, manifest id, App Attest proof shape,
-proof digest binding, and Apple auxiliary depth/disparity. This keeps queue
-status or filenames from acting as trust signals by themselves.
+Before a signed TAP HEIC/JPG is saved to Photos, the queue re-reads the final
+file bytes and passes the shared local binding relationships plus the selected
+output/depth checks. This keeps queue status or filenames from acting as trust
+signals by themselves.
 
 DepthAnalysis input validation is a local reader safety boundary, not the final
 export trust gate. App Attest proof validation and signed Photos export
@@ -227,10 +215,11 @@ cleanup does not collapse or renumber them.
 | [Docs/ProductContract.md](Docs/ProductContract.md) | Canonical current capability, state-machine, non-goal, future, experimental, and evidence boundaries. |
 | [Docs/ProjectBoard.md](Docs/ProjectBoard.md) | Markdown task database and Kanban views. |
 | [Docs/UIPrototypeContract.md](Docs/UIPrototypeContract.md) | HTML/Web prototype to SwiftUI and acceptance workflow. |
+| [TAPArtifactContracts](https://github.com/TAP-NAP/TAPArtifactContracts) | Documentation-only shared artifact manifest, binding/proof, container, and transport conventions. |
 | [Docs/AppAttest/README.md](Docs/AppAttest/README.md) | App Attest client/backend boundary and capture proof notes. |
 | [TAPCamDemo/CameraCapture/Documentation/ARCHITECTURE.md](TAPCamDemo/CameraCapture/Documentation/ARCHITECTURE.md) | Camera module dependency direction. |
 | [TAPCamDemo/CameraCapture/Documentation/PIPELINE.md](TAPCamDemo/CameraCapture/Documentation/PIPELINE.md) | Single executable capture path. |
-| [TAPCamDemo/CameraCapture/Documentation/PACKAGING.md](TAPCamDemo/CameraCapture/Documentation/PACKAGING.md) | Embedded HEIC packaging and manifest details. |
+| [TAPCamDemo/CameraCapture/Documentation/PACKAGING.md](TAPCamDemo/CameraCapture/Documentation/PACKAGING.md) | Producer, Pending Capture Queue, Photos export, and local-integrity orchestration. |
 | [TAPCamDemo/DepthAnalysis/Documentation/PlanesTechnicalDesign.md](TAPCamDemo/DepthAnalysis/Documentation/PlanesTechnicalDesign.md) | Plane-filter geometry design. |
 
 ## Release Data Policy

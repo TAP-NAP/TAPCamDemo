@@ -131,9 +131,16 @@ binding.
 
 ## TAPCam Capture Signature Verification
 
-TAPCam photo capture signing is not sent automatically after capture. The proof
-is stored in the fixed TAP proof slot inside the HEIC/JPG file so a later
-verifier can submit the signature materials to the server:
+The shared `signingBinding`, proof-envelope, and artifact content-binding wire
+shapes are defined by the documentation-only
+[TAPArtifactContracts](https://github.com/TAP-NAP/TAPArtifactContracts)
+repository. This section owns the backend endpoint, trust, replay, and response
+semantics that consume those shapes.
+
+TAPCam capture signing is not sent automatically after capture. The proof is
+stored in the family-specific fixed slot defined by the shared photo/video
+container contracts so a later verifier can submit the signature materials to
+the server:
 
 `POST /tapcam/capture-signatures/verify`
 
@@ -165,18 +172,11 @@ Valid response:
 Invalid semantic verification returns HTTP 200 with `status: "invalid"` and a
 machine-readable `reason`. This endpoint verifies that a registered active
 `keyId` signed the submitted `signingBinding`; it does not upload or re-hash
-the original HEIC/JPG file, RGB image, depth data, or `contentDigest`.
+the original media, depth, manifest, or `contentDigest`.
 
-Before calling this endpoint, the verifier must rebuild the TAP content binding
-locally from the original file bytes by excluding the fixed proof slot and
-hashing canonical `manifest.payload` JSON. This mirrors C2PA-style hard binding:
-the backend verifies the App Attest signature over the binding, while the
-client or browser-side verifier proves that the binding still matches the file
-it received.
-
-The verifier must treat the file, embedded `keyId`, assertion object, and
-`signingBinding` as untrusted inputs. It must reject a mismatch between the
-locally rebuilt content binding and the submitted binding before treating a
-backend `valid` response as a verdict about the received file. The backend
-endpoint verifies registered-key signature semantics; it does not replace the
-verifier's local file-binding check.
+The shared binding/proof contract owns the caller's required local
+reconstruction order, the exact `clientDataHash`, and the minimum cryptographic
+App Attest gate. This backend contract adds endpoint deployment, credential
+trust, counter persistence, replay, HTTP response, and audit semantics. A
+backend `valid` response never replaces the caller's already-passing local
+artifact-binding scope.
