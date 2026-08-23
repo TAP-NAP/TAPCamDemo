@@ -5747,9 +5747,9 @@ Every active Task uses these stable fields:
     commit `50d83e9b5916f0fa4621b24b5c5c5702c59ee7de`; local `HEAD`, tracking
     `origin/main`, and remote `main` match and the worktree is clean. Demo local
     commits `b83c323` and `f7f8ec1` respectively remove covered repeated wire
-    prose from nine retained documents plus this Task record and make the
-    remaining seven stable active-document references clickable. The complete
-    Demo scan covers `51` tracked Markdown files, `564` inline relative links,
+    prose from nine retained documents plus this Task record and make stable
+    active-document references clickable across seven files. The complete
+    Demo scan covers `51` tracked Markdown files, `565` inline relative links,
     and `87` Mermaid click targets with zero missing target; remaining unlinked
     `.json` names outside the append-only Board are runtime filenames or generic
     patterns, not document references. TAPCamVerifier's isolated patch—nine
