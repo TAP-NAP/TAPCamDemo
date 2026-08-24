@@ -1,7 +1,7 @@
 # TAPCam Project Board
 
 - Schema: `1`
-- Next Task ID: `TAP-0098`
+- Next Task ID: `TAP-0099`
 - Canonical Product Contract: [ProductContract.md](ProductContract.md)
 - UI Prototype Contract: [UIPrototypeContract.md](UIPrototypeContract.md)
 - Board Steward Session: `019ff4ea-acba-7051-bd0f-3d489f1caadc`
@@ -69,7 +69,7 @@ from each record's `Status` field.
 
 - `TAP-0083` Eliminate cold-path UI starvation and codify responsiveness guardrails
 - `TAP-0087` Define startup lifecycle, heavy-work budgets, and an instrumented prototype
-- `TAP-0097` Commit the prototype extraction in both local repositories
+- `TAP-0098` Publish TAPCamDemo and create the private TAPCamPrototype remote
 
 ### Done
 
@@ -108,6 +108,7 @@ from each record's `Status` field.
 - `TAP-0094` Establish the documentation-only TAPArtifactContracts repository
 - `TAP-0095` Deduplicate migrated artifact-contract prose across source repositories
 - `TAP-0096` Extract the HTML/Web prototype into TAPCamPrototype
+- `TAP-0097` Commit the prototype extraction in both local repositories
 
 ### Deprecated
 
@@ -6222,8 +6223,8 @@ Every active Task uses these stable fields:
   device verdict, or downstream lifecycle change is inferred.
 - Related: completed foundation `TAP-0006`; active prototype/state owner
   `TAP-0087`; visual parity/manifest consumer `TAP-0048`; local-commit
-  successor `TAP-0097`; governance and retention foundations `TAP-0001`,
-  `TAP-0003`
+  successor `TAP-0097`; private-publication successor `TAP-0098`; governance
+  and retention foundations `TAP-0001`, `TAP-0003`
 - Created: `2026-08-24`
 - Updated: `2026-08-24`
 - Revision History:
@@ -6267,10 +6268,15 @@ Every active Task uses these stable fields:
     assigned to successor TAP-0097 rather than reopening or rewriting
     TAP-0096. TAP-0096 remains Done, and its original unborn-HEAD/no-commit/no-
     remote/no-push completion fact remains valid append-only history.
+  - `2026-08-24` The owner later directed direct publication and creation of a
+    Private TAPCamPrototype repository. Assigned that new remote/publication
+    outcome to successor TAP-0098 rather than reopening TAP-0096. TAP-0096's
+    original no-remote/no-push completion fact remains accurate history of its
+    own closure boundary.
 
 ### TAP-0097 — Commit the prototype extraction in both local repositories
 
-- Status: `Doing`
+- Status: `Done`
 - Kind: `Technical`
 - Priority: `P0`
 - Domain: `UI Prototype / Repository Boundary / Git Evidence`
@@ -6285,14 +6291,14 @@ Every active Task uses these stable fields:
 - Assignee: `Codex development session`
 - Dev Session: `01a02fc3-5ea1-7bd2-8a2d-5f47e0afe3a2`
 - Branch/Worktree:
-  - Target `/Users/harold/TAPCamPrototype`: local branch `main`, unborn HEAD,
-    no remote, with exactly `66` untracked paths: root `README.md`, root
-    `AGENTS.md`, and the `64` verified artifacts under nested `Prototype/`.
-  - Source `/Users/harold/TAPCamDemo`: shared `main` at
-    `3932b254bd5e254f2a801fcc8586ebf0677cd2bc`, synchronized `0/0` with
-    `origin/main`, with exactly the TAP-0096 extraction path set unstaged and
-    uncommitted: `64` tracked `Prototype/` deletions plus `8` current authority,
-    navigation, acceptance, evidence, Agent, and Board document edits.
+  - Target `/Users/harold/TAPCamPrototype`: clean local `main` at its sole/root
+    commit `cb934da9b9e0a03578463ececa643507fd84fdbe`, with no remote.
+  - Source `/Users/harold/TAPCamDemo`: local `main` at
+    `b6c8048e69eef67910a0076b35defc7447ab933b`, whose sole parent is extraction
+    baseline `3932b254bd5e254f2a801fcc8586ebf0677cd2bc`. The development handoff
+    proved a clean worktree and `origin/main...HEAD = 0/1`; this later Board-
+    Steward closure deliberately leaves only `Docs/ProjectBoard.md` modified,
+    unstaged, and uncommitted.
 - Owner Decision: After accepting TAP-0096's no-commit completion state, the
   product owner explicitly directed, “提交相关修改.” In the context of the exact
   verified handoff above, this approves the two bounded local commits defined
@@ -6389,9 +6395,99 @@ Every active Task uses these stable fields:
   rewrite occurred; and the development handoff records both full hashes plus
   exact no-push/no-remote evidence for Board-Steward verification. Only then may
   the Board Steward decide Doing -> Done.
+- Completion State: The two approved local commits exist in the required order
+  and satisfy every recorded path, content, validation, and publication
+  boundary. Target `cb934da9b9e0a03578463ececa643507fd84fdbe` is the one/root
+  commit with exactly `66` additions and no remote. Source
+  `b6c8048e69eef67910a0076b35defc7447ab933b` is exactly one commit after
+  `3932b254bd5e254f2a801fcc8586ebf0677cd2bc`, with `64` Prototype deletions
+  and the approved `8` document modifications. The target commit predates the
+  source commit by `2m15s`; both development worktrees were clean before this
+  Board closure. Actual remote readback still reports `origin/main` at
+  `3932b254bd5e254f2a801fcc8586ebf0677cd2bc`; neither commit was pushed.
+- Development Handoff (`2026-08-24`):
+  - Task ID: `TAP-0097`
+  - Dev Session: `01a02fc3-5ea1-7bd2-8a2d-5f47e0afe3a2`
+  - Branch/Worktree: Target `/Users/harold/TAPCamPrototype` local `main` at
+    `cb934da9b9e0a03578463ececa643507fd84fdbe`; source
+    `/Users/harold/TAPCamDemo` local `main` at
+    `b6c8048e69eef67910a0076b35defc7447ab933b`, based directly on
+    `3932b254bd5e254f2a801fcc8586ebf0677cd2bc`.
+  - Build/Commit: Target root commit
+    `cb934da9b9e0a03578463ececa643507fd84fdbe` with subject
+    `TAP-0097: establish prototype repository`; source commit
+    `b6c8048e69eef67910a0076b35defc7447ab933b` with subject
+    `TAP-0097: extract prototype repository`. Reflog/commit timestamps are
+    `08:29:25+08:00` then `08:31:40+08:00`; target has one total commit and
+    source has one commit after the baseline, so no third commit exists.
+  - Contract Sections Read: Demo root `AGENTS.md` in full;
+    `ProductContract §1`/`§1.2`; Board operating rules §2.1–§2.6 and complete
+    TAP-0096/TAP-0097 records; target `AGENTS.md`, root `README.md`, and current
+    prototype/tests.
+  - Approved Scope: Freeze only the already-validated TAP-0096 working trees as
+    two ordered local commits: target `66` paths, then source `64` Prototype
+    deletions plus the `8` named documents. No content expansion, remote, push,
+    tag, amend, rebase, reset, history rewrite, or third commit.
+  - Implemented Scope: Target commit contains exactly `66 A`: root `README.md`,
+    root `AGENTS.md`, and `64` nested `Prototype/` artifacts. Source commit
+    contains exactly `72` paths: the same `64` `Prototype/` paths as deletions
+    plus modifications to `AGENTS.md`, `README.md`, `Docs/README.md`,
+    `Docs/ProductContract.md`, `Docs/UIPrototypeContract.md`,
+    `Docs/Acceptance/TAP-0048-web-swiftui-parity.md`,
+    `Docs/TAP-0092CleanupEvidence.md`, and `Docs/ProjectBoard.md`.
+  - Prototype Path/Revision/Approval: `N/A` for new visual review. Current
+    entries and manifest remain under `TAPCamPrototype/Prototype/`; all `64`
+    tree entries are identical to `3932b254:Prototype`. Revision
+    `TAP-0008-r2-TAP-0009-r1-TAP-0081-r3-candidate`, all approval/evidence
+    states, and TAP-0087 `ownerReviewRequired` are unchanged.
+  - Tests And Builds Run: Development preflight reported exact cached path sets
+    and passing cached diff checks. Board-Steward and independent read-only
+    audits verified both committed name/status sets, subjects, parents, commit
+    counts, timestamps, modes, and blobs; `git show --check` passed for both
+    commits. Node passed `58/58`; JavaScript/MJS syntax passed `7/7`; JSON
+    passed `4/4`; target-versus-baseline Git tree comparison passed `64/64`.
+  - Evidence And Acceptance: Target was clean with no remote; source was clean
+    and `origin/main...HEAD = 0/1` before this closure. A live read-only remote-
+    main readback returned the unchanged baseline
+    `3932b254bd5e254f2a801fcc8586ebf0677cd2bc`; no tag points to either new
+    commit. No UI, product, native, revision, approval, or acceptance behavior
+    changed, so device acceptance and new prototype review are `N/A`.
+  - Files Updated:
+    - Project Board: Allocation/Doing state is contained in source commit
+      `b6c8048`; this later Board-Steward-only handoff/history/Done closure is
+      intentionally uncommitted under the no-third-commit boundary.
+    - Product Contract: No TAP-0097 content change; the existing TAP-0096
+      authority update is contained in `b6c8048`.
+    - UI Prototype/Manifest: Byte-identical artifacts are contained in target
+      `cb934da`; no content, revision, or approval change.
+    - UI Prototype Contract: No TAP-0097 content change; the existing relocation
+      update is contained in `b6c8048`.
+    - Module README: Target root/Prototype reader guidance is contained in
+      `cb934da`; no new content revision.
+    - Specialized Contract: `N/A`; no interface, format, security,
+      TAPArtifactContracts, or wire obligation changed.
+    - Acceptance Record: No new evidence or verdict; the existing TAP-0048 path
+      update is contained in `b6c8048` and TAP-0048 remains Todo/Pending.
+    - AGENTS.md: Existing Demo/target extraction authority files are contained
+      in the two approved commits; no new behavioral rule.
+  - Obsolete Files Removed: The `64` duplicate Demo `Prototype/` paths already
+    validated by TAP-0096 are now recorded as deletions in `b6c8048`; no unique
+    artifact was removed.
+  - Remaining Gaps/Risks: No technical or completion blocker. Target
+    intentionally has no remote; source is intentionally unpushed and one
+    commit ahead of `origin/main`. This Board closure is the sole later
+    unstaged/uncommitted source change and is not a third commit.
+  - Follow-up Task IDs: None proposed.
+  - Proposed Status: `Done`
+- Closure Gate: `Passed`. The Board Steward reconciled the complete handoff
+  with three independent read-only audits and reran the commit, tree, test,
+  syntax, JSON, patch, worktree, tag, and actual remote-readback checks. Every
+  Done When condition is satisfied; the development Session is resolved and
+  TAP-0097 moves Doing -> Done. This closure creates no commit or publication
+  and changes no TAP-0096, TAP-0087, or TAP-0048 lifecycle/evidence state.
 - Related: successor to completed relocation `TAP-0096`; completed prototype
   foundation `TAP-0006`; active prototype/state owner `TAP-0087`; visual
-  parity/manifest consumer `TAP-0048`
+  parity/manifest consumer `TAP-0048`; private-publication successor `TAP-0098`
 - Created: `2026-08-24`
 - Updated: `2026-08-24`
 - Revision History:
@@ -6411,6 +6507,229 @@ Every active Task uses these stable fields:
     stages, commits, and pushes nothing; TAP-0087 remains Doing/
     `ownerReviewRequired`, TAP-0048 remains Todo/Pending, and TAP-0096 remains
     Done.
+  - `2026-08-24` Board Steward accepted the complete development handoff after
+    three independent read-only audits and direct reruns. Target root commit
+    `cb934da9b9e0a03578463ececa643507fd84fdbe` contains exactly `66 A` and its
+    `64` Prototype entries match `3932b254:Prototype` path/blob/mode; source
+    `b6c8048e69eef67910a0076b35defc7447ab933b` directly follows that baseline
+    and contains exactly `64 D + 8 M`. The target commit precedes the source by
+    `2m15s`; Node `58/58`, syntax `7/7`, JSON `4/4`, both patch checks, clean
+    development worktrees, no target remote, no tags, one source commit ahead,
+    and actual remote `main@3932b254` all passed. Resolved the Session and moved
+    TAP-0097 Doing -> Done. This Board-only closure is intentionally the sole
+    later unstaged/uncommitted Demo change; no third commit, push, UI/product/
+    native/revision/approval change, TAP-0096 reopen, or TAP-0087/TAP-0048
+    status change is inferred.
+  - `2026-08-24` The owner subsequently authorized publishing the completed
+    local commits and creating the Private TAPCamPrototype remote. Assigned the
+    new publication result to successor TAP-0098. TAP-0097 remains Done, and
+    its exact no-remote/no-push/no-third-commit closure remains preserved as the
+    historical state before this later authorization.
+
+### TAP-0098 — Publish TAPCamDemo and create the private TAPCamPrototype remote
+
+- Status: `Doing`
+- Kind: `Technical`
+- Priority: `P0`
+- Domain: `Repository Publication / GitHub Governance / UI Prototype`
+- Labels: `github-publication`, `private-repository`, `cross-repository`,
+  `fast-forward-push`, `board-only-commit`, `remote-creation`, `upstream`,
+  `no-force`, `live-readback`
+- Contract: `ProductContract §1`, `§1.2`, and `§9`; root `AGENTS.md §2.2`,
+  `§2.3`, `§5`, and `§6`; completed predecessors `TAP-0096` and `TAP-0097`;
+  `UIPrototypeContract` ownership and sibling-checkout workflow remain unchanged
+- Match Keys: `直接 push, 创建远程仓库, TAPCamPrototype remote, publish
+  TAPCamDemo, TAP-NAP/TAPCamPrototype, private repository, add origin, push
+  main, 发布原型仓库, GitHub 仓库`
+- Assignee: `Codex development session`
+- Dev Session: `01a02fc3-5ea1-7bd2-8a2d-5f47e0afe3a2`
+- Branch/Worktree:
+  - Source `/Users/harold/TAPCamDemo`: local `main` at
+    `b6c8048e69eef67910a0076b35defc7447ab933b`, one commit ahead of
+    `origin/main@3932b254bd5e254f2a801fcc8586ebf0677cd2bc`. Only
+    `Docs/ProjectBoard.md` is modified and unstaged; the index is empty. The
+    current Board delta contains the TAP-0097 post-commit closure plus this
+    TAP-0098 allocation/Doing record.
+  - Target `/Users/harold/TAPCamPrototype`: clean local `main` at sole/root
+    commit `cb934da9b9e0a03578463ececa643507fd84fdbe`, with no remote and no
+    upstream.
+- Owner Decision: The product owner explicitly directed, “直接 push，并且
+  TAPCamPrototype 直接创建一个远程仓库吧.” This approves the exact Private
+  TAP-NAP publication transaction below and is sufficient for Inbox -> Todo ->
+  Doing. It does not authorize Public visibility, a personal namespace, force
+  operations, extra content, or repository settings beyond the required
+  Private repository and `origin/main` tracking.
+- Starting Facts / Todo Gate:
+  - All-status find-before-create found no Task owning the combined publication
+    of current TAPCamDemo `main` and creation/publication of the independent
+    TAPCamPrototype remote. TAP-0094 is a different repository's Private-
+    publication precedent. TAP-0096/TAP-0097 remain validly Done and are
+    predecessors, not reopen candidates.
+  - Live GitHub readback identifies active HTTPS account `HaroldGin931` as a
+    TAP-NAP organization member with repository-creation authority. Existing
+    [TAP-NAP/TAPCamDemo](https://github.com/TAP-NAP/TAPCamDemo) is `PRIVATE`,
+    default branch `main`, viewer permission `ADMIN`, and remote main remains
+    `3932b254bd5e254f2a801fcc8586ebf0677cd2bc`.
+  - Live exact lookup reports `TAP-NAP/TAPCamPrototype` absent, and the complete
+    visible TAP-NAP repository-name inventory contains no case-insensitive
+    conflict. The creation check is time-sensitive and must be repeated
+    immediately before mutation.
+  - Current non-Board Product/UI/Agent/Acceptance/README statements remain
+    accurate. The sibling checkout remains the local execution entry; creating
+    a Private remote changes no product behavior, UI, prototype revision,
+    design-to-code workflow, acceptance state, or document responsibility.
+- Approved Publication Transaction / Order:
+  1. Re-sample both worktrees, indexes, heads/upstreams/remotes, Demo remote
+     `main`, GitHub authentication/organization authority, target name
+     availability, and repository visibility immediately before mutation.
+     Stop on any unapproved drift.
+  2. In TAPCamDemo, stage only `Docs/ProjectBoard.md` and create the first of
+     exactly two TAP-0098 Demo commits, directly after `b6c8048`, with subject
+     `docs: start TAP-0098 prototype publication`. It contains the TAP-0097
+     post-commit closure and TAP-0098 allocation/Doing record; no other path is
+     allowed.
+  3. Push only local `main` to the existing TAPCamDemo `origin/main` by ordinary
+     fast-forward. Do not use `--all`, `--tags`, or force. Live-read the remote
+     SHA and verify the existing repository remains `PRIVATE`, default `main`,
+     with no unapproved setting or branch change. Do not create the target
+     repository unless this gate passes.
+  4. Reconfirm no exact or case-insensitive TAPCamPrototype repository exists,
+     then create exactly
+     [TAP-NAP/TAPCamPrototype](https://github.com/TAP-NAP/TAPCamPrototype) as an
+     empty `PRIVATE` repository. Do not initialize a README, license,
+     `.gitignore`, branch, commit, Actions workflow, or other remote content.
+  5. Add target `origin` exactly as
+     `https://github.com/TAP-NAP/TAPCamPrototype.git`; push only the existing
+     local `main@cb934da9b9e0a03578463ececa643507fd84fdbe` to remote `main` by
+     an ordinary non-force branch-creation push and set local `main` to track
+     `origin/main`. Because the empty remote has no `main` ref yet, this is not
+     described as a fast-forward. Create no target commit, tag, second branch,
+     release, or PR.
+  6. Live-read and return target `nameWithOwner`, URL, `PRIVATE` visibility,
+     default branch `main`, viewer permission `ADMIN`, remote-main SHA
+     `cb934da9b9e0a03578463ececa643507fd84fdbe`, branch/tag/release inventory,
+     local origin/upstream, and clean/up-to-date status. Return the first Demo
+     publication SHA/URL/readback and complete structured handoff to the Board
+     Steward.
+  7. After the Board Steward verifies every gate above, the steward prepares
+     the final TAP-0098 handoff, Closure Gate, and Doing -> Done transition in
+     `Docs/ProjectBoard.md`. The development session creates the second and
+     last TAP-0098 Demo commit, containing only that Board delta, with subject
+     `docs: close TAP-0098 prototype publication`, pushes only `main` by
+     ordinary fast-forward, and live-reads the final Demo remote SHA. No third
+     TAP-0098 Demo commit is authorized.
+- Final Closure Serialization: The second-and-last Demo commit cannot embed its
+  own SHA without changing that SHA. The Board closure must therefore record
+  both repository URLs, the target SHA, the first Demo publication SHA, and
+  define the final Demo SHA as “the commit containing this TAP-0098 closure.”
+  Its exact value must be returned by the post-push live readback and final
+  development handoff, not self-embedded or added by a prohibited third commit.
+  The Doing -> Done transition is a conditional publication transaction: it is
+  effective only after that exact closure commit is fast-forwarded and the
+  remote readback matches local HEAD.
+- Publication Boundary: Authorization is limited to one new `PRIVATE`
+  organization repository at `TAP-NAP/TAPCamPrototype`, its one HTTPS `origin`,
+  the existing target commit on remote `main`, two explicit ordinary fast-
+  forward pushes of TAPCamDemo `main`, one explicit ordinary non-force creation
+  push of the target `main`, and exactly two new TAP-0098 Demo commits that each
+  modify only `Docs/ProjectBoard.md`. Do not
+  create Public or Internal visibility, use a personal namespace, force push,
+  push all refs or tags, amend, rebase, reset, rewrite history, create a tag,
+  release, PR, extra branch, Actions workflow, secret, environment, deployment,
+  webhook, branch protection/ruleset, team/collaborator setting, issue/wiki/
+  project setting, remote-initialized file, or any other repository content or
+  setting.
+- Out of Scope:
+  - Any product, UI, prototype, fixture, manifest revision/approval/evidence,
+    Swift/native/runtime, interface/format/security, acceptance, or source-
+    content change outside the Board records required by this Task.
+  - Editing Product Contract, UI Prototype/Manifest, UI Prototype Contract,
+    module README, specialized contracts, Acceptance records, `AGENTS.md`, or
+    either repository's README solely to add the remote URL. Existing sibling
+    paths and authority statements remain current.
+  - Publishing TAPArtifactContracts, TAPCamVerifier, another repository/ref, or
+    any commit/branch not explicitly named above.
+- Failure / Recovery:
+  - If the preflight finds target-name drift, any target remote/upstream,
+    unexpected source path/index/HEAD/upstream/remote drift, changed visibility,
+    or lost authorization, stop before mutation and report the exact state.
+  - If the first Demo commit or push/readback fails, do not create the target
+    repository. Preserve any valid local commit/ahead state; do not amend,
+    rebase, reset, force, or broaden the path set.
+  - If the target repository is created but remote configuration, push, or
+    readback fails, preserve and report the exact partial local/remote state.
+    Do not delete, recreate, rename, transfer, change namespace/visibility,
+    initialize content, replace an unexpected remote, or force push.
+  - If the final Demo closure commit or fast-forward push/readback fails,
+    preserve the local closure commit and report the exact ahead/remote state;
+    do not force, amend, rebase, or reset. The transition is not effective and
+    TAP-0098 remains Doing. If the local commit already contains provisional
+    Done text, the Board Steward must restore the canonical working copy to
+    Doing as an uncommitted recovery correction while preserving that commit;
+    no third TAP-0098 commit is created.
+- Prototype Path/Revision/Approval: `N/A` for visual review. Current local
+  entries remain `/Users/harold/TAPCamPrototype/Prototype/index.html` and
+  `/Users/harold/TAPCamPrototype/Prototype/startup-lifecycle.html`; manifest
+  revision `TAP-0008-r2-TAP-0009-r1-TAP-0081-r3-candidate`, all existing
+  approval/evidence states, and TAP-0087 `ownerReviewRequired` remain unchanged.
+- Validation Gate:
+  - Each Demo commit must have the expected parent, exact subject, and only
+    `Docs/ProjectBoard.md`; `git diff --cached --check` must pass before commit
+    and committed patch checks must pass after it.
+  - Each Demo push must be a non-force, explicit `main:main` fast-forward. The
+    target's absent `main` must be created by one non-force, explicit
+    `main:main` push. Live remote readback, not only local remote-tracking state,
+    must match the expected local SHA before advancing.
+  - The target remote must contain exactly local `main@cb934da`, with the same
+    commit/tree, no initialization commit, only the approved `main` branch, and
+    no tags/releases. Local `origin` and upstream must resolve to the exact
+    TAP-NAP URL/ref; local/remote SHA and clean/up-to-date status must match.
+  - Final validation must show TAPCamDemo local/remote `main` at the closure
+    commit with zero ahead/behind and a clean worktree; TAPCamPrototype local/
+    remote `main` at `cb934da` with zero ahead/behind and a clean worktree; both
+    repositories `PRIVATE`; and no unapproved remote content, ref, visibility,
+    setting, or publication side effect.
+- Documentation Impact: This Task changes only `Docs/ProjectBoard.md` through
+  the two approved Demo commits. Product Contract, UI Prototype/Manifest, UI
+  Prototype Contract, module README, specialized contracts, Acceptance
+  records, and `AGENTS.md` are `N/A` because repository publication changes no
+  existing product, visual, workflow, interface, acceptance, ownership, or
+  sibling local-path responsibility.
+- Done When: TAPCamDemo remote `main` contains the existing
+  `b6c8048e69eef67910a0076b35defc7447ab933b`, the first Board-only TAP-0098
+  publication commit, and the second-and-last Board-only closure commit;
+  TAPCamPrototype exists only at the approved TAP-NAP URL as a `PRIVATE`
+  repository whose remote `main` is exactly
+  `cb934da9b9e0a03578463ececa643507fd84fdbe`; target `origin`/upstream are exact;
+  both remote live readbacks match local HEAD; both worktrees are clean and
+  zero ahead/behind; the final Demo SHA is returned as the exact closure-
+  containing commit under the self-reference rule; and no extra remote content,
+  commit, ref, visibility, setting, force operation, publication side effect,
+  product/UI/native change, or third TAP-0098 Demo commit occurred.
+- Related: completed local extraction `TAP-0096`; completed local commits
+  `TAP-0097`; Private publication precedent `TAP-0094`; active prototype/state
+  owner `TAP-0087`; visual parity/manifest consumer `TAP-0048`
+- Created: `2026-08-24`
+- Updated: `2026-08-24`
+- Revision History:
+  - `2026-08-24` Board Steward completed an all-status find-before-create
+    search. TAP-0094 is a different repository's historical Private-publication
+    precedent; TAP-0096/TAP-0097 remain completed local extraction/commit facts;
+    TAP-0006/TAP-0087/TAP-0048 do not own GitHub publication. No Task owns the
+    combined Demo push plus TAPCamPrototype Private-remote result, so allocated
+    successor TAP-0098 in Inbox and advanced Next Task ID to TAP-0099.
+  - `2026-08-24` The owner's direct push/private-repository instruction approved
+    the exact namespace, Private visibility, ordered fast-forward transaction,
+    two Board-only Demo commits, target no-new-commit boundary, live readbacks,
+    and failure recovery recorded above. Recorded Inbox -> Todo. Explicitly
+    resolved the final-Demo-SHA self-reference by external final readback rather
+    than a prohibited third commit.
+  - `2026-08-24` Bound development Session
+    `01a02fc3-5ea1-7bd2-8a2d-5f47e0afe3a2` to current Demo/Prototype local
+    `main` working trees and recorded Todo -> Doing. This Board-only transition
+    performs no stage, commit, remote creation/configuration, push, visibility/
+    setting change, or publication. TAP-0096/TAP-0097 stay Done, TAP-0087 stays
+    Doing/`ownerReviewRequired`, and TAP-0048 stays Todo/Pending.
 
 ## 5. Inbox Decision Registry
 
@@ -6475,6 +6794,7 @@ not replace the Product Contract, and linked device evidence may remain open.
 | `TAP-0060` | 3D | Eligible static-photo native SceneKit point projection | `TAP-0048` | Before board bootstrap; recorded 2026-08-12 | Historical Simulator projection/interaction evidence does not expand the point-projection claim; visual/device parity remains `TAP-0048` |
 | `TAP-0061` | Share | App-owned format selection and per-choice on-demand temporary payload lifecycle | `TAP-0047` | Before board bootstrap; recorded 2026-08-12 | Old direct-share design superseded |
 | `TAP-0062` | Verification | Cross-project Live Photo browser verification contract documented | External project owns implementation evidence | Before board bootstrap; recorded 2026-08-12 | Contract completion does not claim browser delivery in this repo |
+| `TAP-0097` | Repository Boundary / Git Evidence | TAP-0096 extraction frozen as two exact, ordered local commits with no publication or content change | Target `cb934da9b9e0a03578463ececa643507fd84fdbe`; source `b6c8048e69eef67910a0076b35defc7447ab933b` | 2026-08-24 | Completion projection only; the detailed TAP-0097 record remains canonical. Board Steward verified `66 A`, `64 D + 8 M`, `64/64` tree equality, `58/58`, `7/7`, `4/4`, clean development handoff, actual remote still at `3932b254`, and no third commit/push. |
 
 ## 8. Deprecated Task And Design Registry
 
@@ -7545,3 +7865,35 @@ not replace the Product Contract, and linked device evidence may remain open.
   extra path, product/UI/native change, prototype approval change, or downstream
   lifecycle change. This Board-only transition itself stages, commits, and
   pushes nothing; TAP-0097 remains Doing pending the development handoff.
+- `2026-08-24` Board Steward closed TAP-0097 after the complete development
+  handoff, three independent read-only audits, and direct verification. Target
+  `cb934da9b9e0a03578463ececa643507fd84fdbe` is the sole/root commit with
+  exactly `66 A`; source `b6c8048e69eef67910a0076b35defc7447ab933b`
+  directly follows `3932b254bd5e254f2a801fcc8586ebf0677cd2bc` with exactly
+  `64 D + 8 M`, and the target precedes the source by `2m15s`. All `64`
+  Prototype paths/blobs/modes match the baseline; Node `58/58`, syntax `7/7`,
+  JSON `4/4`, patch checks, commit/worktree/tag checks, and actual remote
+  readback passed. The target has no remote; remote Demo `main` remains at the
+  baseline; neither commit was pushed. Moved TAP-0097 Doing -> Done and
+  resolved its development Session. This Board-only closure remains the sole
+  later unstaged/uncommitted Demo change under the no-third-commit boundary;
+  TAP-0096 remains Done, TAP-0087 remains Doing/`ownerReviewRequired`, TAP-0048
+  remains Todo/Pending, and Next Task ID remains TAP-0098.
+- `2026-08-24` Board Steward completed an all-status duplicate search for the
+  owner's instruction to push TAPCamDemo and create a remote TAPCamPrototype
+  repository. TAP-0096/TAP-0097 remain Done because their no-remote/no-push
+  facts accurately describe their own earlier closure boundaries; TAP-0094 is
+  only a different repository's Private-publication precedent. Allocated
+  successor TAP-0098, advanced Next Task ID to TAP-0099, recorded Inbox -> Todo
+  -> Doing, and bound development Session
+  `01a02fc3-5ea1-7bd2-8a2d-5f47e0afe3a2`. Live preflight confirmed active
+  HTTPS GitHub auth, TAP-NAP repository-creation authority, existing Private
+  Demo `main@3932b254`, local Demo `main@b6c8048` ahead one with only Board
+  unstaged, clean target `main@cb934da` with no remote, and no exact or case-
+  insensitive target-name conflict. Authorized only two Board-only Demo
+  commits/explicit non-force `main` pushes plus creation of empty Private
+  `TAP-NAP/TAPCamPrototype`, its HTTPS origin, and publication of existing
+  `cb934da` as tracked `main`. The final Demo SHA is returned by live readback
+  rather than self-embedded in its own second-and-last closure commit. No stage,
+  commit, remote mutation, push, visibility/setting change, product/UI/native
+  change, or downstream lifecycle change occurs in this Board-only transition.
