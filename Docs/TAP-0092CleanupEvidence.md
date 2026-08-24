@@ -115,7 +115,10 @@ The four serialized failures are not deletion regressions:
 
 - Deleted production/test symbols: zero Swift references.
 - Deleted active-document paths: zero non-ledger references.
-- [`Prototype/manifest.json`](../Prototype/manifest.json): valid JSON.
+- [Pre-extraction `Prototype/manifest.json` at cleanup commit `334ba24`](https://github.com/TAP-NAP/TAPCamDemo/blob/334ba2497eeab8fa97fbdb8cc7a267e0efd7fb3c/Prototype/manifest.json):
+  valid JSON and retained as the historical cleanup snapshot. Its relocated
+  successor is owned by the sibling TAPCamPrototype checkout and is
+  byte-identical to the [pre-extraction manifest at `3932b25`](https://github.com/TAP-NAP/TAPCamDemo/blob/3932b254bd5e254f2a801fcc8586ebf0677cd2bc/Prototype/manifest.json).
 - `git diff --check`: passed.
 - Local Markdown targets: zero missing.
 - Brittle Markdown line anchors: zero.

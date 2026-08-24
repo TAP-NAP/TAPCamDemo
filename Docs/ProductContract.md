@@ -2,7 +2,7 @@
 
 - Status: canonical product constraint document
 - Owner: product owner
-- Last updated: 2026-08-15
+- Last updated: 2026-08-24
 
 This document is the single current product contract for TAPCamDemo. It defines
 what the product currently does, what it deliberately does not do, which work is
@@ -35,7 +35,10 @@ The document roles are:
 1. This document defines current product behavior and scope.
 2. [ProjectBoard.md](ProjectBoard.md) tracks work states and history.
 3. [UIPrototypeContract.md](UIPrototypeContract.md) defines the visual-prototype
-   to SwiftUI workflow and the authority of an approved Web prototype.
+   to SwiftUI workflow and the authority of an approved Web prototype. The
+   independent `TAPCamPrototype` repository owns the static implementation,
+   manifest, fixtures, QA, tests, and prototype evidence; this repository keeps
+   product, Task, native, and acceptance authority.
 4. `Docs/Acceptance/` stores evidence and executable acceptance procedures.
 5. Module READMEs explain implementation ownership.
 6. AITrace, dated acceptance reports, branch audits, old implementation plans,
@@ -104,7 +107,9 @@ internally; this input boundary does not remove bounded archive parsing.
 Prototype revision identifiers remain unchanged until a separate owner decision.
 Historical or redundant Prototype prose and assertions may be removed when no
 current fixture, approved visual truth, behavior, or acceptance obligation is
-lost.
+lost. `TAP-0096` relocates the complete static artifact tree without creating a
+new revision or changing any approval/evidence state. Pre-extraction commits and
+paths remain recoverable in TAPCamDemo history.
 
 ## 2. First-Install Setup
 
@@ -588,6 +593,11 @@ TAPCam uses two complementary current constraints:
 1. This document owns functionality and state machines.
 2. The approved HTML/Web prototype owns visible component hierarchy, icon
    identity, relative position, spacing, sizing, and simulated interaction.
+
+The current static artifacts live in the independent `TAPCamPrototype`
+repository at `Prototype/`. From the TAPCamDemo repository root, the standard
+sibling checkout manifest is `../TAPCamPrototype/Prototype/manifest.json`.
+TAPCamDemo does not retain a duplicate prototype implementation.
 
 The Web prototype cannot redefine permissions, AVFoundation capability, camera
 readiness, or other runtime facts. SwiftUI implementation must satisfy both

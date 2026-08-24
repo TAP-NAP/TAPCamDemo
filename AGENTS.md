@@ -16,8 +16,10 @@ changing files, read in this order:
 3. [Docs/ProjectBoard.md](Docs/ProjectBoard.md) operating rules, then search the complete registry
    across Inbox, Todo, Doing, Done, and Deprecated. Read the complete matching
    Task record and every directly related or blocking Task.
-4. [Docs/UIPrototypeContract.md](Docs/UIPrototypeContract.md) in full for any user-visible UI, navigation,
-   interaction, copy, icon, layout, or presented-state change.
+4. [Docs/UIPrototypeContract.md](Docs/UIPrototypeContract.md) in full, plus the
+   sibling `../TAPCamPrototype/AGENTS.md` and
+   `../TAPCamPrototype/Prototype/README.md`, for any user-visible UI,
+   navigation, interaction, copy, icon, layout, or presented-state change.
 5. The relevant module README and any specialized interface, format, security,
    cross-project, or acceptance contract linked by the Task.
 6. The current implementation and tests needed to determine what the product
@@ -114,7 +116,8 @@ gestures, controls, or presented states must use the prototype-first workflow in
 [Docs/UIPrototypeContract.md](Docs/UIPrototypeContract.md):
 
 1. Record the affected product states and UI scope in the Task.
-2. Create or revise the repository-owned HTML/Web prototype.
+2. Create or revise the independently repository-owned HTML/Web prototype in
+   the sibling `../TAPCamPrototype/Prototype/` checkout.
 3. Record the prototype path, Task ID, revision, covered fixtures/states, and
    deliberate native/system-owned differences.
 4. Present the prototype for product-owner review.
@@ -125,7 +128,13 @@ gestures, controls, or presented states must use the prototype-first workflow in
 
 Sketch or another tool may replace the Web prototype only when the owner chooses
 it for that Task; the accepted result must still be synchronized into the
-repository-owned prototype record so there is one active visual truth.
+TAPCamPrototype-owned prototype record so there is one active visual truth.
+
+TAPCamDemo owns product behavior, Task lifecycle, native implementation, and
+acceptance. TAPCamPrototype owns the static prototype implementation, manifest,
+fixtures, QA, tests, and prototype evidence. Historical `Prototype/...` paths
+and commits remain valid TAPCamDemo Git-history facts; current prototype work
+uses the sibling checkout and must not restore a duplicate implementation here.
 
 Do not fake system permission dialogs or other system-owned UI. Prototype the
 app-owned state before and after the system transition and document the

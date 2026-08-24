@@ -22,7 +22,7 @@ not dormant implementations in the current capture path.
 | --- | --- | --- |
 | Canonical product constraints | [Docs/ProductContract.md](Docs/ProductContract.md) | Current capability, state-machine, non-goal, future, experiment, and claim authority |
 | Project task database | [Docs/ProjectBoard.md](Docs/ProjectBoard.md) | Stable `TAP-xxxx` records and Inbox/Todo/Doing/Done/Deprecated views |
-| UI prototype workflow | [Docs/UIPrototypeContract.md](Docs/UIPrototypeContract.md) and [Prototype](Prototype/README.md) | Incremental HTML/Web visual contract → SwiftUI → Simulator/device acceptance |
+| UI prototype workflow | [Docs/UIPrototypeContract.md](Docs/UIPrototypeContract.md); static artifacts in sibling `../TAPCamPrototype/Prototype/README.md` | Independent HTML/Web visual contract → SwiftUI → Simulator/device acceptance |
 | App startup and App Attest runtime | [TAPCamDemo/App/README.md](TAPCamDemo/App/README.md) | [TAPCamDemoApp.swift](TAPCamDemo/App/TAPCamDemoApp.swift) |
 | SingleCam capture pipeline | [TAPCamDemo/CameraCapture/README.md](TAPCamDemo/CameraCapture/README.md) | [CameraView.swift](TAPCamDemo/CameraCapture/UI/CameraView.swift), [CameraViewModel.swift](TAPCamDemo/CameraCapture/UI/CameraViewModel.swift) |
 | Pending TAP Library queue | [TAPCamDemo/TAPLibrary/README.md](TAPCamDemo/TAPLibrary/README.md) | [TAPPendingCaptureStore.swift](TAPCamDemo/TAPLibrary/TAPPendingCaptureStore.swift), [TAPPendingCaptureProcessor.swift](TAPCamDemo/TAPLibrary/TAPPendingCaptureProcessor.swift) |

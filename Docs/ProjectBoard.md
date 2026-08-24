@@ -1,7 +1,7 @@
 # TAPCam Project Board
 
 - Schema: `1`
-- Next Task ID: `TAP-0096`
+- Next Task ID: `TAP-0098`
 - Canonical Product Contract: [ProductContract.md](ProductContract.md)
 - UI Prototype Contract: [UIPrototypeContract.md](UIPrototypeContract.md)
 - Board Steward Session: `019ff4ea-acba-7051-bd0f-3d489f1caadc`
@@ -69,6 +69,7 @@ from each record's `Status` field.
 
 - `TAP-0083` Eliminate cold-path UI starvation and codify responsiveness guardrails
 - `TAP-0087` Define startup lifecycle, heavy-work budgets, and an instrumented prototype
+- `TAP-0097` Commit the prototype extraction in both local repositories
 
 ### Done
 
@@ -106,6 +107,7 @@ from each record's `Status` field.
 - `TAP-0093` Freeze pre-release v1 schemas and remove developer compatibility layers
 - `TAP-0094` Establish the documentation-only TAPArtifactContracts repository
 - `TAP-0095` Deduplicate migrated artifact-contract prose across source repositories
+- `TAP-0096` Extract the HTML/Web prototype into TAPCamPrototype
 
 ### Deprecated
 
@@ -474,9 +476,10 @@ Every active Task uses these stable fields:
   records lightweight, statically served vertical-slice growth; `README.md`,
   `Docs/README.md`, and `Prototype/README.md` expose the review entry point and
   evidence boundary.
-- Related: `TAP-0048`, `TAP-0007`, `TAP-0081`
+- Related: `TAP-0048`, `TAP-0007`, `TAP-0081`; repository extraction
+  follow-up `TAP-0096`
 - Created: `2026-08-12`
-- Updated: `2026-08-13`
+- Updated: `2026-08-24`
 - Revision History:
   - `2026-08-12` HTML/Web was chosen as the default future visual-spec workflow;
     no prototype implementation was started in this governance task.
@@ -548,6 +551,11 @@ Every active Task uses these stable fields:
     every later prototype slice remain independently scoped by their own Tasks;
     extending the shared foundation through those Tasks does not reopen
     TAP-0006.
+  - `2026-08-24` Linked owner-approved extraction follow-up TAP-0096 without
+    reopening this completed foundation. This record's `Prototype/...` paths,
+    revisions, approvals, and evidence remain append-only historical facts.
+    TAP-0096 owns the later physical relocation into the independent local
+    TAPCamPrototype repository while preserving those identities and outcomes.
 
 ### TAP-0007 — Decide App Store media work after the HTML-first transition
 
@@ -4074,10 +4082,11 @@ Every active Task uses these stable fields:
      registry must distinguish the explicit, required first-install App Attest
      bootstrap from post-setup deferred credential health/recovery and Pending
      Capture Queue work; only the former may block Continue inside Setup.
-  5. Create an independent repository-owned static Prototype entry at
-     `Prototype/startup-lifecycle.html`, driven by
-     `Prototype/startup-model.mjs` as the single reducer/model and
-     `Prototype/startup-prototype.mjs` as the page controller. Preserve
+  5. Create an independent repository-owned static Prototype entry in the
+     sibling TAPCamPrototype checkout at
+     `/Users/harold/TAPCamPrototype/Prototype/startup-lifecycle.html`, driven by
+     `startup-model.mjs` as the single reducer/model and
+     `startup-prototype.mjs` as the page controller. Preserve sibling
      `Prototype/index.html` as the historical entry containing the independently
      approved TAP-0008/TAP-0009/TAP-0081 slices; those prior slice approvals
      remain intact but neither approve nor define the TAP-0087 composition.
@@ -4131,7 +4140,8 @@ Every active Task uses these stable fields:
     product UI.
   - Treating Launch Screen as an initialization or progress surface.
   - Claiming device performance or native parity from the Web prototype.
-- Prototype Path/Revision/Approval: Independent entry
+- Prototype Path/Revision/Approval: Current independent repository
+  `/Users/harold/TAPCamPrototype`; entry
   `Prototype/startup-lifecycle.html`; single reducer/model
   `Prototype/startup-model.mjs`; page controller
   `Prototype/startup-prototype.mjs`; manifest `Prototype/manifest.json`. The
@@ -4149,6 +4159,14 @@ Every active Task uses these stable fields:
   owner approval of `TAP-0087-r1-candidate` and the synchronized contract
   revision remains pending. The mismatch-specific `fix0809` decision below is
   partial review only and does not satisfy this whole-composition approval gate.
+- Repository Relocation: Completed TAP-0096 is the accepted placement owner.
+  The active static artifacts now live in sibling local repository
+  `/Users/harold/TAPCamPrototype` at the literal nested paths
+  `Prototype/startup-lifecycle.html`, `Prototype/startup-model.mjs`,
+  `Prototype/startup-prototype.mjs`, `Prototype/index.html`, and
+  `Prototype/manifest.json`; TAPCamDemo retains no duplicate implementation.
+  Pre-extraction paths, commits, approvals, and evidence remain append-only
+  TAPCamDemo history and do not define a second current prototype.
 - Current Responsibility-Split Owner Decision: TAP-0008 and TAP-0009 have
   completed their non-Network native lifecycle placement and are Done as
   delivery Tasks. Their implemented but unverified lifecycle/workload records
@@ -4284,8 +4302,9 @@ Every active Task uses these stable fields:
     family with trigger, owner/queue, blocking, state, recovery, and output;
     deferred Viewfinder-control and Viewer-analysis nodes link to TAP-0088 and
     TAP-0089 without claiming implementation.
-  - The independent `Prototype/startup-lifecycle.html` entry, driven by
-    `Prototype/startup-model.mjs` and `Prototype/startup-prototype.mjs`,
+  - The independent TAPCamPrototype `Prototype/startup-lifecycle.html` entry,
+    driven by sibling `Prototype/startup-model.mjs` and
+    `Prototype/startup-prototype.mjs`,
     deterministically demonstrates Launch Screen -> scenario-dependent setup/
     permission/initialization -> Viewfinder -> Library -> Photo Viewer, plus
     return-to-Library and linked inspector highlighting, with Network/App
@@ -4295,8 +4314,8 @@ Every active Task uses these stable fields:
     a Permission Check route. Camera/Photos revocation uses Required Permission
     Check, while post-setup network failure does not block Viewfinder or local
     capture. Exact TAP-0008-r2 and TAP-0009-r1-candidate phone visuals remain
-    inputs; `Prototype/index.html` remains their historical entry rather than
-    the TAP-0087 implementation surface.
+    inputs; sibling `Prototype/index.html` remains their historical entry rather
+    than the TAP-0087 implementation surface.
   - Viewfinder controls remain visual-only mocks, and the Photo Viewer capsule
     introduces no functional 2D/3D analysis workflow in this Task.
   - Static prototype tests, accessibility/interaction checks, and visual design
@@ -4316,9 +4335,9 @@ Every active Task uses these stable fields:
   `TAP-0045`, `TAP-0047`, `TAP-0048`; credential
   optimization `TAP-0015`; historical onboarding foundations `TAP-0050`,
   `TAP-0051`; first-install retry re-scope `TAP-0010`; thumbnail policy
-  `TAP-0027`
+  `TAP-0027`; completed repository relocation `TAP-0096`
 - Created: `2026-08-14`
-- Updated: `2026-08-15`
+- Updated: `2026-08-24`
 - Revision History:
   - `2026-08-14` Allocated after the development session completed a full
     Inbox/Todo/Doing/Done/Deprecated search. TAP-0006 is the completed static
@@ -4494,6 +4513,22 @@ Every active Task uses these stable fields:
     proof. TAP-0087 remains Doing and the complete composition remains
     `ownerReviewRequired`; no TAP-0090 regression, native parity, device
     acceptance, commit, or owner approval is inferred.
+  - `2026-08-24` Linked owner-approved repository extraction TAP-0096 and
+    recorded its exact future path boundary without claiming that migration has
+    happened. TAP-0087's current TAPCamDemo `Prototype/...` paths stay active
+    until the TAP-0096 handoff proves the nested
+    `TAPCamPrototype/Prototype/...` copy, validation, and source removal. Its
+    candidate revision, `ownerReviewRequired` state, approved input slices,
+    archived evidence, Doing status, and exact-owner-approval gate are
+    unchanged.
+  - `2026-08-24` Board Steward accepted TAP-0096's validated relocation and
+    switched only this Task's current path projection to the independent
+    `/Users/harold/TAPCamPrototype/Prototype/...` artifacts. All `64` migrated
+    blobs are byte-identical to `main@3932b254:Prototype`; the Demo duplicate is
+    removed, while every earlier Demo path/commit remains historical evidence.
+    This placement change does not revise or approve `TAP-0087-r1-candidate`,
+    close its exact owner-review gate, satisfy TAP-0090/TAP-0048/device evidence,
+    or change TAP-0087 from Doing/`ownerReviewRequired`.
 
 ### TAP-0088 — Prototype functional Viewfinder-control workload interactions
 
@@ -5959,6 +5994,424 @@ Every active Task uses these stable fields:
     Board Steward accepted the final handoff and moved TAP-0095 Doing -> Done;
     Demo and Verifier remain deliberately unpushed.
 
+### TAP-0096 — Extract the HTML/Web prototype into TAPCamPrototype
+
+- Status: `Done`
+- Kind: `Technical`
+- Priority: `P0`
+- Domain: `UI Prototype / Repository Boundary`
+- Labels: `prototype-extraction`, `cross-repository`, `static-web`, `manifest`,
+  `path-migration`, `local-git`, `ponytail`, `no-submodule`, `no-remote`
+- Contract: `ProductContract §1`, `§1.2`, and `§9`;
+  `UIPrototypeContract`; root `AGENTS.md §3`, `§5`, and `§7`
+- Match Keys: `TAPCamPrototype, extract Prototype, standalone prototype repo,
+  separate prototype repository, move Prototype folder, prototype relocation,
+  prototype manifest, local git init, nested Prototype, 抽出 prototype, 原型独立仓库`
+- Assignee: `Codex development session`
+- Dev Session: `01a02fc3-5ea1-7bd2-8a2d-5f47e0afe3a2`
+- Branch/Worktree: TAPCamDemo shared `main` at extraction baseline/HEAD
+  `3932b254bd5e254f2a801fcc8586ebf0677cd2bc`, synchronized `0/0` with
+  `origin/main`, with the validated extraction and this Board closure
+  uncommitted. Target `/Users/harold/TAPCamPrototype` is a local `main`
+  repository with unborn HEAD, `64` relocated artifacts plus root `README.md`
+  and `AGENTS.md` untracked, and no commit or remote.
+- Owner Decision: The product owner explicitly directed, “我现在新建了一个文件夹
+  `/Users/harold/TAPCamPrototype` 请把 prototype 抽出来 作为独立的仓库
+  `@Ponytail`.” This exact target plus the no-feature-change migration boundary
+  is sufficient approval to move Inbox -> Todo and start; no additional product
+  or visual decision is required.
+- Starting Facts: TAPCamDemo is clean and synchronized with `origin/main` at
+  `3932b254bd5e254f2a801fcc8586ebf0677cd2bc`. Its tracked `Prototype/`
+  artifact set contains exactly `64` regular files totaling `14,383,550` bytes.
+  It has no symlink, submodule, Git LFS object, package manager, CDN dependency,
+  or generated dependency. Baseline prototype tests pass `58/58`. The target
+  directory is empty and is not a Git repository.
+- Canonical Layout / History Boundary:
+  - `/Users/harold/TAPCamPrototype` is a plain local Git repository on branch
+    `main` with unborn HEAD; this Task creates no commit, remote, tag, or push.
+  - Preserve the source directory literally as
+    `/Users/harold/TAPCamPrototype/Prototype/...`; do not flatten its contents
+    into the repository root. This is the minimal one-to-one path mapping and
+    preserves current commands, manifest identities, internal links, and
+    evidence paths unless a specifically inventoried repository-relative
+    reference must change.
+  - Retain all pre-extraction Git history in TAPCamDemo. Do not use
+    `git subtree`, filter/rewrite commit history, create a temporary source
+    branch, or attempt to reproduce old commits in TAPCamPrototype. Git history
+    is the archive; the new local repository begins as an uncommitted working
+    tree under the owner's explicit no-commit boundary.
+- Approved Scope:
+  1. Copy the complete tracked TAPCamDemo `Prototype/` artifact set to the
+     target repository's nested `Prototype/` path using an explicit one-to-one
+     source/target inventory. Do not remove source files until target inventory,
+     hash, static-run, and link checks pass.
+  2. Preserve every visible state, fixture, revision identifier, manifest
+     record, approval/evidence status, binary asset, deliberate system/native
+     difference, product claim boundary, and acceptance boundary. Relocation
+     must not create or approve a prototype revision.
+  3. Keep all binary, visual, fixture, and evidence files byte-identical. Keep
+     every other migrated file SHA-256-identical unless it appears in a small,
+     explicit text-file allowlist whose only changes are required
+     repository-relative run/test/data-source paths or reader guidance. The
+     handoff records the path map, allowlist, and before/after checksums; no
+     permanent generated migration ledger is required.
+  4. Add only the smallest reader-first target-repository guidance needed to
+     identify `Prototype/README.md`, `Prototype/manifest.json`, entry pages,
+     test commands, static-serving command, and the TAPCamDemo Product/UI
+     contract authority. A minimal root `README.md` and `AGENTS.md` are allowed;
+     they must point to current owners rather than duplicate product or visual
+     contracts.
+  5. Adapt only repository-relative commands and paths needed to run tests,
+     parse data, serve the static pages, and read the cross-repository
+     authorities from the new sibling checkout. Retain plain HTML/CSS/
+     JavaScript/MJS and existing standard-library tooling.
+  6. Update TAPCamDemo's active prototype authority and navigation after the
+     target passes validation: root `AGENTS.md`, `Docs/ProductContract.md`,
+     `Docs/UIPrototypeContract.md`, root `README.md`, `Docs/README.md`, and any
+     other current run/link references whose responsibility or path changes.
+     Update `Docs/Acceptance/TAP-0048-web-swiftui-parity.md` to consume the new
+     manifest and prototype checkout. Preserve append-only historical
+     `Prototype/...` facts rather than rewriting old evidence.
+  7. Return a structured handoff so the Board Steward can switch TAP-0087's
+     current path projection to
+     `/Users/harold/TAPCamPrototype/Prototype/...`, synchronize TAP-0048's
+     current procedure relationship, and append histories. The development
+     session does not edit `Docs/ProjectBoard.md`.
+  8. After the validated target is complete, remove the duplicate prototype
+     implementation from TAPCamDemo. TAPCamDemo continues to own product,
+     workflow, native implementation, and acceptance contracts; TAPCamPrototype
+     owns the static prototype implementation, manifest, fixtures, QA, tests,
+     and evidence.
+- Out of Scope:
+  - Any visible UI, copy, geometry, icon, navigation, interaction, fixture,
+    state-machine, product behavior, claim, revision, approval, or evidence
+    status change; any new prototype slice.
+  - Swift, SwiftUI, native runtime, camera, Library, Viewer, Share, App Attest,
+    or other product implementation changes.
+  - A package manager, framework, bundler, generated dependency, backend,
+    hosting, CDN, synchronization runtime, or new build stack.
+  - Changes to TAPArtifactContracts or its independent shared wire-contract
+    authority.
+  - A Git submodule, subtree extraction, LFS migration, history rewrite,
+    remote/GitHub repository, commit, tag, or push.
+  - Physical-device acceptance. This relocation does not alter visual or native
+    behavior, and existing prototype approval and device-evidence gates remain
+    independently owned.
+- Failure / Recovery: Copy first and validate before source removal. If the
+  mapped file set, protected hashes, `58/58` behavior, static serving, active
+  links, or authority boundaries differ, leave or restore TAPCamDemo's source
+  `Prototype/` tree and report the exact gap. Any required visual, product,
+  revision, dependency-stack, remote, commit, or history-rewrite change stops
+  this Task and returns to the owner rather than broadening scope.
+- Prototype Path/Revision/Approval: Current entries are
+  `/Users/harold/TAPCamPrototype/Prototype/index.html` and
+  `/Users/harold/TAPCamPrototype/Prototype/startup-lifecycle.html`; current
+  manifest is `/Users/harold/TAPCamPrototype/Prototype/manifest.json`.
+  Revision `TAP-0008-r2-TAP-0009-r1-TAP-0081-r3-candidate`, every recorded
+  slice approval/evidence state, and TAP-0087's
+  `TAP-0087-r1-candidate`/`ownerReviewRequired` state are unchanged. The Demo
+  duplicate is removed; pre-extraction `Prototype/...` paths remain historical
+  Git/Board evidence. Prototype-first visual review is `N/A` because no visible,
+  behavioral, fixture, or prototype-content change occurred.
+- Validation Gate:
+  - Record exact source and target inventories and prove all `64` tracked source
+    artifacts have exactly one target mapping under nested `Prototype/`.
+  - Compare SHA-256 values for every protected file; report every allowlisted
+    text delta and prove all binary, visual, fixture, and evidence files are
+    byte-identical.
+  - Run the complete Node prototype suite in TAPCamPrototype and retain the
+    `58/58` pass; run syntax checks for all applicable JavaScript/MJS files and
+    parse every JSON file.
+  - Serve TAPCamPrototype locally with the existing static workflow and fetch
+    all documented entry pages plus their required manifest, scripts, styles,
+    data, and representative assets successfully.
+  - Scan the target for broken active paths/data sources and TAPCamDemo for
+    broken current links, stale active `Prototype/...` ownership, and duplicate
+    prototype implementation files. Historical Board/evidence strings are not
+    false positives and remain append-only.
+  - Verify the target is a local Git repository on branch `main` with no remote,
+    submodule, LFS use, package manager, commit, or push; run `git diff --check`
+    in TAPCamDemo and the applicable target text checks.
+- Done When: `/Users/harold/TAPCamPrototype` is an independently runnable local
+  Git repository with the complete static artifact set at nested `Prototype/`;
+  its protected assets and behavior match the source; the minimal reader entry
+  points and cross-repository authority boundaries are explicit; all inventory,
+  hash, Node, syntax, JSON, static-serving, and broken-path gates pass;
+  TAPCamDemo no longer owns duplicate prototype implementation files and all
+  active Product/UI workflow, index, TAP-0087, and TAP-0048 references are
+  synchronized without rewriting old history; no visual state, revision,
+  approval/evidence status, native behavior, dependency stack, remote, commit,
+  or push changed. The development handoff includes the complete documentation-
+  impact matrix from root `AGENTS.md`; the Board Steward then verifies this Done
+  When, switches current-path projections, appends history, and decides final
+  status.
+- Completion State: TAPCamPrototype owns the independently runnable static
+  artifact tree at nested `Prototype/`; TAPCamDemo owns product, Task, native,
+  workflow, and acceptance authority and no longer contains a duplicate
+  `Prototype/` directory. Target root `README.md` and `AGENTS.md` are the only
+  new non-artifact files. The target remains intentionally uncommitted and
+  without a remote under the owner-approved boundary; this is not a failed gate.
+- Development Handoff (`2026-08-24`):
+  - Task ID: `TAP-0096`
+  - Dev Session: `01a02fc3-5ea1-7bd2-8a2d-5f47e0afe3a2`
+  - Branch/Worktree: TAPCamDemo shared `main` at
+    `3932b254bd5e254f2a801fcc8586ebf0677cd2bc`; target
+    `/Users/harold/TAPCamPrototype` on local `main` with unborn HEAD and no
+    remote.
+  - Build/Commit: `N/A`; the approved scope forbids a commit, remote, tag, push,
+    submodule, subtree, or history rewrite, and none exists.
+  - Contract Sections Read: root `AGENTS.md` in full; `ProductContract` in full,
+    including §1/§1.2/§9; Board rules and TAP-0006/TAP-0087/TAP-0048/TAP-0096;
+    `UIPrototypeContract` in full; Prototype README, manifest, implementation,
+    fixtures, and tests.
+  - Approved/Implemented Scope: Relocated the complete tracked 64-file tree
+    literally from TAPCamDemo `Prototype/` to
+    `/Users/harold/TAPCamPrototype/Prototype/` without changing any artifact;
+    added only target root `README.md` and `AGENTS.md`; initialized plain local
+    `main`; synchronized current Demo authority/navigation/acceptance paths; and
+    removed the validated source duplicate. No product, UI, native, dependency,
+    format/security, history, remote, commit, or acceptance behavior changed.
+  - Prototype Path/Revision/Approval: Current target entries and manifest are
+    the paths recorded above. All 64 artifacts are byte-identical to
+    `3932b254:Prototype`; manifest revision
+    `TAP-0008-r2-TAP-0009-r1-TAP-0081-r3-candidate`, all recorded slice
+    approvals/evidence, and TAP-0087 `ownerReviewRequired` remain unchanged.
+    New visual review is `N/A`.
+  - Tests And Builds Run: Exact pre-removal inventory was `64` files and
+    `14,383,550` bytes with zero missing/extra paths or byte mismatches;
+    post-removal comparison against `3932b254:Prototype` passed `64/64` Git
+    blobs and executable modes with aggregate path/content ledger SHA-256
+    `28faa81812c10add4cfc9b4bf04ce6ce996cdae8fc16779805945adf91eeba99`.
+    Node passed `58/58`; JavaScript/MJS syntax passed `7/7`; JSON passed `4/4`;
+    all `53` static local references resolved; both entries and representative
+    manifest/scripts/styles/states/license/SVG/PNG resources returned HTTP 200.
+    Demo `git diff --check`, target root text checks, active-link/path scans,
+    and source-removal/target-boundary checks passed.
+  - Evidence And Acceptance: Two independent final audits plus the Board
+    Steward's rerun found no technical or documentation blocker. There is no
+    visual/native change, so physical-device acceptance and a new prototype
+    approval are `N/A`; TAP-0048 remains the separate Pending parity Task.
+  - Files Updated:
+    - Project Board: this Board-Steward-only path/status/history closure.
+    - Product Contract: current static owner/path and unchanged revision state.
+    - UI Prototype/Manifest: 64 byte-identical artifacts relocated; target root
+      `README.md` and `AGENTS.md` added.
+    - UI Prototype Contract: independent-repository ownership, layout, history,
+      and cross-repository workflow.
+    - Module README: target root entrypoint plus unchanged
+      `Prototype/README.md`.
+    - Specialized Contract: `N/A`; no public interface, media format, security,
+      TAPArtifactContracts, or wire obligation changed.
+    - Acceptance Record: TAP-0048 now consumes the sibling manifest while its
+      evidence status remains Pending.
+    - AGENTS.md: Demo and target entry rules synchronized.
+    - Other navigation/evidence: Demo root `README.md`, `Docs/README.md`, and
+      `Docs/TAP-0092CleanupEvidence.md` synchronized.
+  - Obsolete Files Removed: The duplicate TAPCamDemo `Prototype/` tree, exactly
+    `64` paths; no unique artifact was lost, and Demo Git history remains the
+    archive.
+  - Remaining Gaps/Risks: No technical blocker. The target has no stable remote
+    URL and remains an uncommitted local working tree by approved scope, so
+    current docs use the exact sibling checkout and immutable Demo history URLs.
+  - Follow-up Task IDs: None proposed. Existing TAP-0087 and TAP-0048 retain
+    their independent approval/evidence work.
+  - Proposed Status: `Done`
+- Closure Gate: `Passed`. The Board Steward verified every Done When condition,
+  accepted the complete handoff, resolved the development Session, and moved
+  TAP-0096 Doing -> Done. No new Task, commit, remote, push, visual approval,
+  device verdict, or downstream lifecycle change is inferred.
+- Related: completed foundation `TAP-0006`; active prototype/state owner
+  `TAP-0087`; visual parity/manifest consumer `TAP-0048`; local-commit
+  successor `TAP-0097`; governance and retention foundations `TAP-0001`,
+  `TAP-0003`
+- Created: `2026-08-24`
+- Updated: `2026-08-24`
+- Revision History:
+  - `2026-08-24` Board Steward completed a find-before-create search across
+    Inbox, Todo, Doing, Done, and Deprecated. TAP-0006 remains a completed
+    foundation; TAP-0087 owns current lifecycle prototype content and candidate
+    approval; TAP-0048 consumes the manifest for parity. None owns extraction
+    of the complete artifact set into a separate Git repository, so TAP-0096 is
+    a scoped follow-up rather than a duplicate or reopening. Allocated TAP-0096
+    in Inbox and advanced Next Task ID to TAP-0097.
+  - `2026-08-24` The owner's exact folder-and-extraction direction approved the
+    conservative no-feature-change scope. Recorded Inbox -> Todo, froze visual/
+    revision/approval preservation plus no remote/commit/push/submodule/history-
+    rewrite boundaries, and selected the literal nested
+    `TAPCamPrototype/Prototype/...` layout after dependency/history audits found
+    that flattening or subtree extraction adds path churn or rewrites commit
+    identity. Old history remains in TAPCamDemo.
+  - `2026-08-24` Bound development Session
+    `01a02fc3-5ea1-7bd2-8a2d-5f47e0afe3a2` on clean Demo baseline
+    `main@3932b254`, moved Todo -> Doing, and recorded the copy-verify-remove
+    recovery order. This Board-only transition performs no file migration,
+    target initialization, source deletion, validation, prototype revision or
+    approval change, device acceptance, commit, or push. TAP-0006 stays Done,
+    TAP-0087 stays Doing/`ownerReviewRequired`, and TAP-0048 stays Todo/Pending.
+  - `2026-08-24` Board Steward accepted the completed implementation handoff and
+    two independent read-only audits. The target nested `Prototype/` contains
+    exactly `64` files/`14,383,550` bytes and matches
+    `3932b254:Prototype` path-for-path, blob-for-blob, SHA-for-SHA, and mode-for-
+    mode; the Demo duplicate is removed. Node `58/58`, syntax `7/7`, JSON `4/4`,
+    `53` local-reference checks, representative HTTP resources, diff checks,
+    and local-Git boundary checks passed. Current Product/UI/Agent/index/
+    acceptance/evidence documents now name the sibling owner and preserve old
+    Demo paths as history. The target remains local `main` with unborn HEAD and
+    no remote under the explicit no-commit/no-push scope. All Done When and
+    tracking obligations are satisfied; resolved the Session and moved
+    TAP-0096 Doing -> Done. TAP-0006 remains Done, TAP-0087 remains Doing/
+    `ownerReviewRequired`, TAP-0048 remains Todo/Pending, and Next Task ID
+    remains TAP-0097.
+  - `2026-08-24` After TAP-0096 closed under its explicit no-commit boundary,
+    the owner separately directed “提交相关修改.” The new local-commit outcome is
+    assigned to successor TAP-0097 rather than reopening or rewriting
+    TAP-0096. TAP-0096 remains Done, and its original unborn-HEAD/no-commit/no-
+    remote/no-push completion fact remains valid append-only history.
+
+### TAP-0097 — Commit the prototype extraction in both local repositories
+
+- Status: `Doing`
+- Kind: `Technical`
+- Priority: `P0`
+- Domain: `UI Prototype / Repository Boundary / Git Evidence`
+- Labels: `prototype-extraction`, `cross-repository`, `local-commit`,
+  `commit-hygiene`, `exact-path-set`, `no-push`, `no-remote`, `provenance`
+- Contract: `ProductContract §1`, `§1.2`, and `§9`;
+  `UIPrototypeContract`; root `AGENTS.md §2.2`, `§2.3`, and `§5`; completed
+  predecessor `TAP-0096`
+- Match Keys: `commit prototype extraction, TAPCamPrototype initial commit,
+  TAPCamDemo extraction commit, two local commits, exact staged paths, no push,
+  提交相关修改, 原型迁移提交`
+- Assignee: `Codex development session`
+- Dev Session: `01a02fc3-5ea1-7bd2-8a2d-5f47e0afe3a2`
+- Branch/Worktree:
+  - Target `/Users/harold/TAPCamPrototype`: local branch `main`, unborn HEAD,
+    no remote, with exactly `66` untracked paths: root `README.md`, root
+    `AGENTS.md`, and the `64` verified artifacts under nested `Prototype/`.
+  - Source `/Users/harold/TAPCamDemo`: shared `main` at
+    `3932b254bd5e254f2a801fcc8586ebf0677cd2bc`, synchronized `0/0` with
+    `origin/main`, with exactly the TAP-0096 extraction path set unstaged and
+    uncommitted: `64` tracked `Prototype/` deletions plus `8` current authority,
+    navigation, acceptance, evidence, Agent, and Board document edits.
+- Owner Decision: After accepting TAP-0096's no-commit completion state, the
+  product owner explicitly directed, “提交相关修改.” In the context of the exact
+  verified handoff above, this approves the two bounded local commits defined
+  here and is sufficient to move Inbox -> Todo -> Doing. It does not authorize
+  a remote, push, tag, history rewrite, extra path, or broader product change.
+- Starting Facts: TAP-0096 is Done and its relocation Done When remains true.
+  TAPCamPrototype still has an unborn HEAD and empty index; TAPCamDemo remains
+  at the extraction baseline and has an empty index. The target's `64`
+  `Prototype/` artifacts already match `3932b254:Prototype` path-for-path and
+  blob-for-blob; Node tests pass `58/58`, JavaScript/MJS syntax checks pass
+  `7/7`, and JSON parsing passes `4/4`. This Task records the later local Git
+  commits only; it does not redo or reinterpret the relocation.
+- Approved Scope / Commit Order:
+  1. First, in `/Users/harold/TAPCamPrototype`, stage and create one initial
+     local commit containing only root `README.md`, root `AGENTS.md`, and the
+     `64` already-verified paths under `Prototype/` (`66` paths total). Use
+     commit message `TAP-0097: establish prototype repository`.
+  2. Only after the target commit and its post-commit checks pass, in
+     `/Users/harold/TAPCamDemo`, stage and create one local commit containing
+     only the `64` tracked deletions under `Prototype/` and these exact `8`
+     modified paths: `AGENTS.md`, `README.md`, `Docs/README.md`,
+     `Docs/ProductContract.md`, `Docs/UIPrototypeContract.md`,
+     `Docs/Acceptance/TAP-0048-web-swiftui-parity.md`,
+     `Docs/TAP-0092CleanupEvidence.md`, and `Docs/ProjectBoard.md`. Use commit
+     message `TAP-0097: extract prototype repository`.
+  3. Preserve every migrated byte, file mode, visible state, fixture, manifest
+     revision, approval/evidence state, product/native behavior, and current
+     TAP-0087/TAP-0048 lifecycle state. No implementation or documentation
+     content may be revised merely to make either commit.
+  4. Return the complete development handoff with both full commit hashes,
+     exact committed path sets, validation results, worktree status, and the
+     explicit no-remote/no-push state for Board-Steward closure review.
+- Commit / Publication Boundary: Authorization is limited to the two local
+  commits above, in the stated order and on the existing local `main` branches.
+  Do not create or configure a remote, push, tag, amend, rebase, reset, rewrite
+  history, create a submodule/subtree, touch TAPArtifactContracts, or include
+  any unlisted or concurrent path. TAPCamDemo being one local commit ahead of
+  `origin/main` after completion is expected evidence, not authorization to
+  publish it.
+- Out of Scope:
+  - Any visible UI, copy, geometry, icon, navigation, interaction, fixture,
+    state-machine, manifest-revision, prototype-approval, product, or native
+    behavior change.
+  - Any new prototype slice, package/dependency, Swift/SwiftUI/runtime change,
+    acceptance execution, or change to TAP-0087/TAP-0048 status or evidence.
+  - Any third commit, unrelated cleanup, remote/GitHub creation, push, tag,
+    amend, rebase, reset, history rewrite, submodule, subtree, or
+    TAPArtifactContracts change.
+- Failure / Recovery: Before each commit, compare the complete staged path set
+  with its allowlist and stop on any missing, extra, content, mode, or validation
+  mismatch. Complete both repositories' preflight checks before either commit,
+  then create the target commit first; do not start the source commit until the
+  target commit is complete and verified. If the target step fails, leave the
+  source uncommitted and report the exact state. If the target commit succeeds
+  but the source preflight or commit fails, preserve the valid target commit,
+  do not amend/rebase/reset either repository, report the partial state, and
+  leave TAP-0097 Doing for a bounded recovery decision.
+- Prototype Path/Revision/Approval: `N/A` for new visual review. The current
+  entries remain `/Users/harold/TAPCamPrototype/Prototype/index.html` and
+  `/Users/harold/TAPCamPrototype/Prototype/startup-lifecycle.html`; the manifest
+  remains `/Users/harold/TAPCamPrototype/Prototype/manifest.json`. Revision
+  `TAP-0008-r2-TAP-0009-r1-TAP-0081-r3-candidate`, all recorded approvals and
+  evidence, and TAP-0087 `ownerReviewRequired` remain unchanged.
+- Validation Gate:
+  - Before each commit, prove the staged name/status set exactly equals its
+    approved allowlist and run `git diff --cached --check`.
+  - Before the target commit, prove all `64` staged `Prototype/` paths and modes
+    still match `3932b254:Prototype`; rerun Node `58/58`, syntax `7/7`, and JSON
+    `4/4` from TAPCamPrototype.
+  - Before the source commit, prove the staged set is exactly `64` deletions
+    under `Prototype/` plus the `8` named modified documents, with no unrelated
+    staged or unstaged path.
+  - After each commit, inspect the committed tree and name/status set rather
+    than relying only on the pre-commit index. At the end, verify both worktrees
+    are clean, the target remains local `main` with one root commit and no
+    remote, and TAPCamDemo remains local `main` exactly one commit ahead of
+    unchanged `origin/main` with no push.
+- Documentation Impact: Allocation changes only `Docs/ProjectBoard.md`. The
+  development step commits the existing TAP-0096 documentation edits without
+  revising their content. Product Contract, UI Prototype/Manifest, UI Prototype
+  Contract, module README, specialized contracts, acceptance records, and
+  `AGENTS.md` require no new content update for the act of committing; the
+  closure history in this Board must record both hashes and publication state.
+  That later Board-Steward-only closure edit occurs after the development
+  session proves both repositories clean; it is not a third commit and must be
+  reported separately from the two committed path sets.
+- Done When: The target and source each contain exactly one new local commit in
+  the approved order and with the approved message/path set; both worktrees are
+  proven clean in the development handoff before the later Board-only closure
+  edit; the target's `64` artifacts still match
+  `3932b254:Prototype` path-for-path, blob-for-blob, and mode-for-mode; cached
+  diff checks, Node `58/58`, syntax `7/7`, and JSON `4/4` pass; no visual,
+  revision, approval, product, native, dependency, remote, push, tag, or history
+  rewrite occurred; and the development handoff records both full hashes plus
+  exact no-push/no-remote evidence for Board-Steward verification. Only then may
+  the Board Steward decide Doing -> Done.
+- Related: successor to completed relocation `TAP-0096`; completed prototype
+  foundation `TAP-0006`; active prototype/state owner `TAP-0087`; visual
+  parity/manifest consumer `TAP-0048`
+- Created: `2026-08-24`
+- Updated: `2026-08-24`
+- Revision History:
+  - `2026-08-24` Board Steward completed an all-status find-before-create
+    search. TAP-0096 is the completed no-commit relocation predecessor and its
+    Done When remains true; TAP-0094/TAP-0095 own unrelated artifact-contract
+    repository outcomes; TAP-0006/TAP-0087/TAP-0048 do not own these local Git
+    commits. Allocated TAP-0097 in Inbox and advanced Next Task ID to TAP-0098.
+  - `2026-08-24` The owner's later direction “提交相关修改” approved exactly one
+    local target initial commit followed by one local source extraction commit,
+    using the recorded path allowlists, messages, validation gates, and no-
+    publication boundary. Recorded Inbox -> Todo without changing TAP-0096's
+    Done state or historical no-commit completion fact.
+  - `2026-08-24` Bound development Session
+    `01a02fc3-5ea1-7bd2-8a2d-5f47e0afe3a2` to the existing target/source local
+    `main` working trees and recorded Todo -> Doing. This Board-only transition
+    stages, commits, and pushes nothing; TAP-0087 remains Doing/
+    `ownerReviewRequired`, TAP-0048 remains Todo/Pending, and TAP-0096 remains
+    Done.
+
 ## 5. Inbox Decision Registry
 
 The following records deliberately remain compact until the owner decides
@@ -5997,7 +6450,7 @@ owner before execution.
 | `TAP-0045` | Todo | P0 | `TAP-0011`, `TAP-0057`, `TAP-0083` | Device codec/drop/RSS/thermal/registration, iCloud-only, broad formats, zero-depth path, and cold complete-original progress that remains responsive under bounded/coalesced UI publication | [Procedure](Acceptance/TAP-0045-tap-video-device.md) must add TAP-0083 cold/progress evidence before that path is executed | Unassigned | Pending | Existing video draft remains; 2026-08-13 added cold progress/backpressure evidence without changing status |
 | `TAP-0046` | Todo | P1 | `TAP-0056`, `TAP-0057`; initial App Attest `TAP-0010`; post-setup credential/Pending `TAP-0015` | Entitlement, production backend, assertion and final signed-export gate | [Procedure](Acceptance/TAP-0046-app-attest-production.md) | Unassigned | Pending | Migrated from App Attest evidence gaps; executable draft added 2026-08-12. On 2026-08-15 linked the stable initial and post-setup implementation owners without changing this evidence Task's status. |
 | `TAP-0047` | Todo | P1 | `TAP-0058`, `TAP-0059`, `TAP-0083` | Limited access, Photos system delete, pending confirm, adjacency, empty close, plus first cold large-Library entry with no repeated semantic snapshot churn or UI starvation | [Procedure](Acceptance/TAP-0047-library-permission-delete.md) must add a fresh/cleared-cache large-catalog run and structured milestone evidence | Unassigned | Pending | Existing Library draft remains; 2026-08-13 added cold large-catalog responsiveness evidence without changing status |
-| `TAP-0048` | Todo | P0 | `TAP-0006`, completed delivery `TAP-0008`, `TAP-0009`; reviewer prototype `TAP-0087` | Approved Web states versus SwiftUI geometry, icons, layout, navigation and state presentation, including Required Permission Check and Resource Initialization | [Procedure](Acceptance/TAP-0048-web-swiftui-parity.md) | Unassigned | Pending | Created for HTML-first workflow; executable draft added 2026-08-12. On 2026-08-15 delivery/evidence separation made TAP-0048 the stable owner of exact native visual parity after TAP-0008/TAP-0009 delivery closure; no parity run or verdict is inferred. |
+| `TAP-0048` | Todo | P0 | `TAP-0006`, completed delivery `TAP-0008`, `TAP-0009`; reviewer prototype `TAP-0087`; completed repository extraction `TAP-0096` | Approved Web states versus SwiftUI geometry, icons, layout, navigation and state presentation, including Required Permission Check and Resource Initialization | [Procedure](Acceptance/TAP-0048-web-swiftui-parity.md) consumes the sibling `TAPCamPrototype/Prototype/index.html` and `manifest.json` | Unassigned | Pending | Created for HTML-first workflow; executable draft added 2026-08-12. On 2026-08-15 delivery/evidence separation made TAP-0048 the stable owner of exact native visual parity after TAP-0008/TAP-0009 delivery closure; no parity run or verdict is inferred. On 2026-08-24 linked TAP-0096 as the path/manifest relocation owner. Until its validated handoff is accepted, the existing Demo-local procedure paths remain actual; afterward the procedure consumes nested `TAPCamPrototype/Prototype/...`. No parity evidence, verdict, revision, approval, or status change is inferred. Later on 2026-08-24 the Board Steward accepted TAP-0096's byte-identical relocation and synchronized the current procedure consumer to the sibling entry/manifest. The complete Simulator matrix and OWNER-LIVE verdict remain unexecuted, so TAP-0048 remains Todo/Pending. |
 | `TAP-0049` | Todo | P0 | `TAP-0013` | Locked launch/first-frame/soak/capture/suspend/exit/relaunch | [Blocked Procedure](Acceptance/TAP-0049-locked-camera-lifecycle.md) | Unassigned | Pending | Executable draft added 2026-08-12; cannot run until lifecycle-correct experiment is ready |
 | `TAP-0082` | Done | P0 | `TAP-0081` | System-native direct-file-URL handoff for ordinary media and `.tapnap`; ownerApproved r3 native flow uses the same-slot 2px app-payload track with no percentage/Cancel/400 ms hold/ready overlay, closes the popover at payload readiness, and then yields to the iOS-owned sheet. | [Procedure and evidence record](Acceptance/TAP-0082-share-handoff.md) plus this Board's explicit evidence-exception audit; old `bf20b52` evidence remains history only. | `/root` delivery/evidence reconciliation; product-owner attended retest and closure decision | Accepted 2026-08-14: prior ordinary-image/`.tapnap` x Save to Files/AirDrop matrix Pass with openable artifacts; exact r3 Web ownerApproved and native candidate compiled; latest log proves one complete `.tapnap` lifecycle. | Owner directed closure after reviewing the evidence limits. Focused r3 XCTest was compiled, not run. The latest log proves only `.tapnap` L70 intermediate cleanup -> L72 payload ready -> L73 handoff -> L74 controller under 50 ms -> L75–85 system probes -> L86 sheet appeared -> L93 dismissed -> L94 controller released -> L95 artifact cleanup. Direct image relies on the earlier accepted four-path matrix; stale-A/B and cleanup independent of controller release are not claimed. TAP-0008/0009/0083/0040/0041 remain open and independent. The containing closure commit supplies the final hash. |
 
@@ -7051,3 +7504,44 @@ not replace the Product Contract, and linked device evidence may remain open.
   and diff gates. Board Steward recorded the final structured handoff and moved
   TAP-0095 Doing -> Done; no Demo/Verifier push or runtime/wire/SDK/codegen/
   embedding/visibility change is claimed.
+- `2026-08-24` Board Steward allocated TAP-0096 after an all-status duplicate
+  search and the owner's explicit instruction to extract the prototype into
+  `/Users/harold/TAPCamPrototype` using Ponytail's minimal boundary. Recorded
+  Inbox -> Todo -> Doing, bound development Session
+  `01a02fc3-5ea1-7bd2-8a2d-5f47e0afe3a2` on clean
+  `main@3932b254`, advanced Next Task ID to TAP-0097, and froze the literal
+  nested `TAPCamPrototype/Prototype/...` layout. The new repository uses plain
+  local `main`; old Git history remains in TAPCamDemo, with no subtree/history
+  rewrite, remote, commit, push, submodule, package stack, visual/product
+  change, or approval-state change authorized. Linked TAP-0006, TAP-0087, and
+  TAP-0048 while keeping them Done, Doing/`ownerReviewRequired`, and Todo/
+  Pending respectively. This Board-only transition does not claim that files
+  were copied, validated, removed, or that the target was initialized.
+- `2026-08-24` Board Steward accepted TAP-0096's complete implementation
+  handoff and independently verified the extraction against
+  `main@3932b254:Prototype`. The sibling target contains the exact 64-file,
+  14,383,550-byte tree with zero path/blob/SHA/mode mismatch; the Demo duplicate
+  is removed; Node `58/58`, syntax `7/7`, JSON `4/4`, static-reference/HTTP,
+  diff, active-link, and repository-boundary checks passed. Target root
+  `README.md` and `AGENTS.md` are the only additions outside the byte-identical
+  tree. Current Agent/Product/UI/index/TAP-0048/TAP-0092 records now name the
+  sibling owner, while old Demo paths remain immutable history. The target is
+  intentionally local `main` with unborn HEAD and no remote/commit/push under
+  approved scope. Moved TAP-0096 Doing -> Done and switched TAP-0087/TAP-0048
+  current path projections only. TAP-0087 remains Doing/
+  `ownerReviewRequired`; TAP-0048 remains Todo/Pending; TAP-0006 remains Done;
+  Next Task ID remains TAP-0097. No product/UI/native behavior, prototype
+  revision/approval, device verdict, new Task, commit, remote, or push is
+  inferred.
+- `2026-08-24` Board Steward completed an all-status duplicate search for the
+  owner's post-TAP-0096 direction “提交相关修改.” Because TAP-0096 remains validly
+  Done under its original no-commit boundary and no active, Done, or Deprecated
+  Task owns the two new local-commit outcomes, allocated successor TAP-0097,
+  advanced Next Task ID to TAP-0098, recorded Inbox -> Todo -> Doing, and bound
+  development Session `01a02fc3-5ea1-7bd2-8a2d-5f47e0afe3a2`. Authorized only
+  the exact `66`-path TAPCamPrototype initial commit followed by the exact
+  `64`-deletion/`8`-document TAPCamDemo extraction commit, with full pre/post
+  validation and no remote, push, tag, amend, rebase, reset, history rewrite,
+  extra path, product/UI/native change, prototype approval change, or downstream
+  lifecycle change. This Board-only transition itself stages, commits, and
+  pushes nothing; TAP-0097 remains Doing pending the development handoff.

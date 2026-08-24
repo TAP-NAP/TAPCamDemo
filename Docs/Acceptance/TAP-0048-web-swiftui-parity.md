@@ -1,11 +1,15 @@
 # TAP-0048 — Approved Web Prototype To SwiftUI Parity
 
 - Status: `Evidence in progress — frozen Web/native revisions and device acceptance exist; complete Simulator parity matrix remains pending`
-- Related Delivery: `TAP-0081`; prototype foundation `TAP-0006`
+- Related Delivery: `TAP-0081`; prototype foundation `TAP-0006`; repository
+  relocation `TAP-0096`
 - Product Contract: `ProductContract §5.2–5.3, §6, §9`; `UIPrototypeContract §1–5`
 - Prototype Task: `TAP-0081`
-- Prototype Path/Revision: `Prototype/index.html`; `TAP-0081-r1` geometry and
-  owner-approved `TAP-0081-r3-candidate` behavior; closure commit `f2bf8d2`
+- Prototype Repository Task: `TAP-0096`
+- Prototype Repository/Path/Revision: sibling `TAPCamPrototype` repository at
+  `Prototype/index.html`; `TAP-0081-r1` geometry and owner-approved
+  `TAP-0081-r3-candidate` behavior; pre-extraction closure commit `f2bf8d2` in
+  TAPCamDemo
 - Prototype Owner Approval: `ownerApproved` for r1 on `2026-08-12` and r3 on
   `2026-08-14`
 - Build/Commit: `f2bf8d2` (`Close TAP-0081 and TAP-0082 Share lifecycle`)
@@ -41,7 +45,11 @@ presented. The Web prototype deliberately stops at that native system boundary.
 
 - **Met:** the Project Board names `TAP-0081` as the implementation Task and
   `TAP-0006` as its prototype-foundation dependency.
-- **Met:** [`Prototype/manifest.json`](../../Prototype/manifest.json) at closure commit `f2bf8d2` preserves the
+- **Met:** the current sibling manifest at
+  `../../../TAPCamPrototype/Prototype/manifest.json` is byte-identical to the
+  [pre-extraction TAPCamDemo manifest at `3932b25`](https://github.com/TAP-NAP/TAPCamDemo/blob/3932b254bd5e254f2a801fcc8586ebf0677cd2bc/Prototype/manifest.json)
+  and preserves the TAP-0081 revision data recorded by the historical
+  [closure manifest at `f2bf8d2`](https://github.com/TAP-NAP/TAPCamDemo/blob/f2bf8d2dc5f10df3eee7f468ebc22b9e33fca22a/Prototype/manifest.json), including the
   `TAP-0081-r1` geometry baseline and freezes owner-approved
   `TAP-0081-r3-candidate` behavior across Photo/Live Photo/TAP Video fixtures,
   three credential states, selection, immediate same-slot progress,
@@ -93,7 +101,9 @@ background-prewarmed, or retained as a persistent cache.
 
 ## Reset / Install Procedure
 
-1. Confirm [`Prototype/manifest.json`](../../Prototype/manifest.json) names the owner-reviewed revision. The
+1. Confirm the sibling
+   `../../../TAPCamPrototype/Prototype/manifest.json` names the owner-reviewed
+   revision. The
    previously approved `TAP-0081-r1` remains the geometry baseline; exact
    `TAP-0081-r3-candidate`, including local-integrity states, refined toolbar
    geometry, immediate same-slot progress, no visible Cancel, and immediate

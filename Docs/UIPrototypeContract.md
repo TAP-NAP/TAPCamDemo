@@ -1,7 +1,7 @@
 # TAPCam UI Prototype Contract
 
 - Status: canonical UI design-to-implementation workflow
-- Last updated: 2026-08-15
+- Last updated: 2026-08-24
 
 ## 1. Two Complementary Sources Of Truth
 
@@ -10,13 +10,22 @@ TAPCam UI work has two current constraints:
 1. [ProductContract.md](ProductContract.md) defines functionality, state
    machines, triggers, errors, recovery, capability degradation, future scope,
    and explicit non-goals.
-2. A repository-owned HTML/Web prototype defines visible component hierarchy,
-   component appearance, stable icon identity, relative position, spacing,
-   sizing, responsive layout, and approved simulated interaction.
+2. The independently repository-owned HTML/Web prototype in `TAPCamPrototype`
+   defines visible component hierarchy, component appearance, stable icon
+   identity, relative position, spacing, sizing, responsive layout, and
+   approved simulated interaction.
 
 Neither replaces the other. The prototype cannot invent a product state, and a
 functional requirement cannot silently override an approved layout. A conflict
 returns to the associated Task for a product decision.
+
+TAPCamDemo owns the Product Contract, Project Board, native implementation,
+workflow, and acceptance records. TAPCamPrototype owns the static prototype
+implementation, manifest, fixtures, assets, QA, tests, and prototype evidence.
+The standard local layout places the repositories side by side. From the
+TAPCamDemo repository root, the prototype is at
+`../TAPCamPrototype/Prototype/`; no duplicate implementation lives inside
+TAPCamDemo.
 
 ## 2. Default Workflow
 
@@ -93,7 +102,7 @@ Task rather than creating a duplicate. Each UI Task records:
 
 - related Product Contract section;
 - affected state-machine states;
-- prototype path and approved prototype revision;
+- prototype repository/path and approved prototype revision;
 - components and icon identities in scope;
 - out-of-scope states;
 - SwiftUI implementation owner;
@@ -445,22 +454,26 @@ Task demonstrates that the current foundation cannot express its states.
 The intended durable shape is:
 
 ```text
-Prototype/
-  README.md                # run instructions and evidence boundary
-  index.html               # statically served interaction entry
-  prototype.css            # shared visual tokens and layout
-  prototype.js             # deterministic state transitions
-  states/                  # deterministic state fixtures
-  assets/                  # reviewed prototype-only assets
-  manifest.*               # prototype revision and Task/contract mapping
+TAPCamPrototype/
+  AGENTS.md                 # cross-repository Agent boundary
+  README.md                 # repository entry point and ownership map
+  Prototype/
+    README.md               # run instructions and evidence boundary
+    index.html              # statically served interaction entry
+    prototype.css           # shared visual tokens and layout
+    prototype.js            # deterministic state transitions
+    states/                 # deterministic state fixtures
+    assets/                 # reviewed prototype-only assets
+    manifest.*              # prototype revision and Task/contract mapping
 ```
 
 The prototype does not exist merely to produce screenshots. It is an
 interactive, versioned visual contract that the product owner can inspect before
-SwiftUI implementation. Repository history and Task revision history record
-incremental milestones; the Kanban schema does not need a separate `Partial`
-status to acknowledge a completed slice while the broader foundation Task
-continues.
+SwiftUI implementation. Pre-extraction milestones remain in TAPCamDemo Git
+history; milestones after `TAP-0096` belong to TAPCamPrototype history. Task
+revision history remains in the TAPCamDemo Project Board. The Kanban schema does
+not need a separate `Partial` status to acknowledge a completed slice while the
+broader foundation Task continues.
 
 ## 9. App Store And Localization Boundary
 
