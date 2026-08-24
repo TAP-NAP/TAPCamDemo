@@ -69,7 +69,6 @@ from each record's `Status` field.
 
 - `TAP-0083` Eliminate cold-path UI starvation and codify responsiveness guardrails
 - `TAP-0087` Define startup lifecycle, heavy-work budgets, and an instrumented prototype
-- `TAP-0098` Publish TAPCamDemo and create the private TAPCamPrototype remote
 
 ### Done
 
@@ -109,6 +108,7 @@ from each record's `Status` field.
 - `TAP-0095` Deduplicate migrated artifact-contract prose across source repositories
 - `TAP-0096` Extract the HTML/Web prototype into TAPCamPrototype
 - `TAP-0097` Commit the prototype extraction in both local repositories
+- `TAP-0098` Publish TAPCamDemo and create the private TAPCamPrototype remote
 
 ### Deprecated
 
@@ -6528,7 +6528,7 @@ Every active Task uses these stable fields:
 
 ### TAP-0098 — Publish TAPCamDemo and create the private TAPCamPrototype remote
 
-- Status: `Doing`
+- Status: `Done`
 - Kind: `Technical`
 - Priority: `P0`
 - Domain: `Repository Publication / GitHub Governance / UI Prototype`
@@ -6544,15 +6544,17 @@ Every active Task uses these stable fields:
 - Assignee: `Codex development session`
 - Dev Session: `01a02fc3-5ea1-7bd2-8a2d-5f47e0afe3a2`
 - Branch/Worktree:
-  - Source `/Users/harold/TAPCamDemo`: local `main` at
-    `b6c8048e69eef67910a0076b35defc7447ab933b`, one commit ahead of
-    `origin/main@3932b254bd5e254f2a801fcc8586ebf0677cd2bc`. Only
-    `Docs/ProjectBoard.md` is modified and unstaged; the index is empty. The
-    current Board delta contains the TAP-0097 post-commit closure plus this
-    TAP-0098 allocation/Doing record.
+  - Source `/Users/harold/TAPCamDemo`: the first Board publication commit
+    `cd19f747a0349849cd0d7ed30622cb821aa99e53` is local and live on
+    `origin/main`, directly follows
+    `b6c8048e69eef67910a0076b35defc7447ab933b`, and changes only
+    `Docs/ProjectBoard.md`. Before this closure delta the worktree was clean and
+    local `main` was `0/0` with `origin/main`; this Board file is now the sole
+    path prepared for the second-and-last closure commit.
   - Target `/Users/harold/TAPCamPrototype`: clean local `main` at sole/root
-    commit `cb934da9b9e0a03578463ececa643507fd84fdbe`, with no remote and no
-    upstream.
+    commit `cb934da9b9e0a03578463ececa643507fd84fdbe`, tracking the exact
+    `origin/main` at `https://github.com/TAP-NAP/TAPCamPrototype.git` with
+    `0/0` ahead/behind.
 - Owner Decision: The product owner explicitly directed, “直接 push，并且
   TAPCamPrototype 直接创建一个远程仓库吧.” This approves the exact Private
   TAP-NAP publication transaction below and is sufficient for Inbox -> Todo ->
@@ -6706,6 +6708,104 @@ Every active Task uses these stable fields:
   containing commit under the self-reference rule; and no extra remote content,
   commit, ref, visibility, setting, force operation, publication side effect,
   product/UI/native change, or third TAP-0098 Demo commit occurred.
+- Completion State: The first Demo Board-only publication commit
+  `cd19f747a0349849cd0d7ed30622cb821aa99e53` is live at
+  [TAP-NAP/TAPCamDemo](https://github.com/TAP-NAP/TAPCamDemo), which remains
+  `PRIVATE` with default branch `main` and viewer permission `ADMIN`. The new
+  [TAP-NAP/TAPCamPrototype](https://github.com/TAP-NAP/TAPCamPrototype) remote
+  is `PRIVATE`, default `main`, viewer permission `ADMIN`, and contains exactly
+  the existing sole/root commit
+  `cb934da9b9e0a03578463ececa643507fd84fdbe` on its only branch `main`, with
+  zero tags and zero releases; its repository README path is `README.md`. Its
+  exact HTTPS origin and `origin/main` upstream are configured, and both
+  repositories were clean and `0/0` before this Board closure delta. The
+  remaining serialization is this exact Board delta's second-and-last Demo
+  commit and its live readback; the prepared Done projection becomes canonical
+  only under the Closure Gate below.
+- Development Handoff (`2026-08-24`):
+  - Task ID: `TAP-0098`
+  - Dev Session: `01a02fc3-5ea1-7bd2-8a2d-5f47e0afe3a2`
+  - Branch/Worktree: Demo `/Users/harold/TAPCamDemo` local `main`; Prototype
+    `/Users/harold/TAPCamPrototype` local `main` tracking `origin/main`.
+  - Build/Commit/Publication: Existing source content commit
+    `b6c8048e69eef67910a0076b35defc7447ab933b`; first Demo Board publication
+    commit `cd19f747a0349849cd0d7ed30622cb821aa99e53` with exact subject
+    `docs: start TAP-0098 prototype publication`, parent `b6c8048`, and sole
+    changed path `Docs/ProjectBoard.md`; its ordinary explicit `main:main`
+    fast-forward advanced Demo remote main from `3932b254` to `cd19f747`.
+    Target sole/root commit
+    `cb934da9b9e0a03578463ececa643507fd84fdbe`. The final Demo publication is
+    the commit with parent `cd19f747`, exact subject
+    `docs: close TAP-0098 prototype publication`, and this closure delta as its
+    only changed path. Its SHA is intentionally not self-embedded and must be
+    returned by post-push live readback.
+  - Contract Sections Read: Demo root `AGENTS.md` in full; Product Contract §1
+    and §1.2; Board operating rules and complete TAP-0096/TAP-0097/TAP-0098
+    records; target root `AGENTS.md` and `README.md`; current local and live
+    publication state.
+  - Approved/Implemented Scope: Executed only the ordered TAP-0098 transaction:
+    published the first Board-only Demo commit by ordinary explicit
+    `main:main` fast-forward; created exactly the empty Private organization
+    repository `TAP-NAP/TAPCamPrototype`; added its exact HTTPS origin; and
+    published existing local `main@cb934da` by one ordinary non-force first-
+    branch push with upstream. No other content, ref, visibility, setting, or
+    repository was changed.
+  - Prototype Path/Revision/Approval: `N/A`; no artifact, fixture, visible
+    behavior, manifest revision, approval, or evidence state changed.
+  - Tests And Builds Run: Pre-publication object-store checks passed. The target
+    commit/tree remains the previously verified `64/64` Prototype artifact set;
+    Node passed `58/58`, syntax `7/7`, and JSON `4/4`. Staged/committed patch
+    checks passed for the already-published first Demo commit and target
+    publication. For this closure delta, the working-tree diff check passed;
+    cached and committed patch checks remain conditions of the conditional
+    Closure Gate. Independent and Board-Steward local/live readbacks confirmed
+    Demo `cd19f747` parent/subject/single-path integrity and target `cb934da`
+    root/tree identity, exact local/remote SHAs, origins/upstreams, clean `0/0`
+    states, repository visibility/default branch/permission, and target branch/
+    tag/release/commit inventories.
+  - Evidence And Acceptance: GitHub publication evidence only. Demo is
+    `PRIVATE`, default `main`, viewer permission `ADMIN`, with live remote main
+    `cd19f747`; Prototype is `PRIVATE`, default `main`, viewer permission
+    `ADMIN`, with live remote main `cb934da`, only branch `main`, one total/root
+    commit, zero tags, zero releases, and repository README path `README.md`.
+    No product/UI/native/device or prototype-parity acceptance is claimed.
+  - Files Updated:
+    - Project Board: first allocation/Doing publication commit is live; this
+      Board-Steward-only delta prepares the conditional final status, handoff,
+      Closure Gate, registries, and append-only histories.
+    - Product Contract: `N/A`; publication changes no product behavior,
+      capability, terminology, claim, or repository responsibility.
+    - UI Prototype/Manifest: `N/A`; bytes, fixtures, revision, approval, and
+      evidence states are unchanged.
+    - UI Prototype Contract: `N/A`; sibling-checkout authority and workflow are
+      unchanged.
+    - Module README: `N/A`; no module ownership or operational behavior changed.
+    - Specialized Contract: `N/A`; no public interface, media format, security,
+      TAPArtifactContracts, or cross-project wire obligation changed.
+    - Acceptance Record: `N/A`; no acceptance procedure, evidence, or verdict
+      changed.
+    - AGENTS.md: `N/A`; no repository-wide Agent workflow changed.
+  - Obsolete Files Removed: `N/A`; no content file was removed.
+  - Remaining Gaps/Risks: Only conditional closure serialization remains. The
+    second-and-last Demo Board-only commit must be fast-forwarded and live-read
+    successfully. If that fails, TAP-0098 remains canonically Doing and the
+    recovery rules above apply without a third commit or history rewrite.
+  - Follow-up Task IDs: None proposed.
+  - Proposed Status: `Done`, conditionally effective only after the final
+    closure-containing commit is live-read as `origin/main == local HEAD`.
+- Closure Gate: `Conditionally Passed`. The Board Steward independently
+  verified every pre-serialization Done When condition and accepted the complete
+  handoff. The final Demo closure commit is defined as the commit whose parent
+  is `cd19f747a0349849cd0d7ed30622cb821aa99e53`, whose subject is
+  `docs: close TAP-0098 prototype publication`, and whose only changed path is
+  `Docs/ProjectBoard.md` containing this exact TAP-0098 Done/Completion State/
+  Development Handoff/Closure Gate/Revision History/registry delta. Its SHA is
+  intentionally not self-embedded. The Doing -> Done transition becomes
+  effective only after that commit is ordinarily fast-forwarded to Demo
+  `origin/main`, live readback proves remote `main == local HEAD`, and the Demo
+  worktree is clean and `0/0`. If commit, push, or readback fails, this
+  transition is not effective and TAP-0098 remains Doing under the recorded
+  recovery procedure.
 - Related: completed local extraction `TAP-0096`; completed local commits
   `TAP-0097`; Private publication precedent `TAP-0094`; active prototype/state
   owner `TAP-0087`; visual parity/manifest consumer `TAP-0048`
@@ -6730,6 +6830,18 @@ Every active Task uses these stable fields:
     performs no stage, commit, remote creation/configuration, push, visibility/
     setting change, or publication. TAP-0096/TAP-0097 stay Done, TAP-0087 stays
     Doing/`ownerReviewRequired`, and TAP-0048 stays Todo/Pending.
+  - `2026-08-24` Board Steward reconciled the complete publication handoff and
+    three independent read-only audits. First Demo commit `cd19f747` is live,
+    Private Demo remains default `main`/ADMIN, and Private
+    `TAP-NAP/TAPCamPrototype` contains exactly tracked `main@cb934da` as its
+    sole/root commit with one branch, zero tags, and zero releases. Local/live
+    SHAs, origins/upstreams, and pre-closure clean `0/0` states matched. Prepared
+    the second-and-last Board-only commit and conditionally recorded Doing ->
+    Done. The transition is effective only after ordinary fast-forward push and
+    live readback of the closure-containing commit; its exact SHA is returned
+    externally rather than self-embedded. TAP-0096/TAP-0097 remain Done,
+    TAP-0087 remains Doing/`ownerReviewRequired`, TAP-0048 remains Todo/Pending,
+    and Next Task ID remains TAP-0099.
 
 ## 5. Inbox Decision Registry
 
@@ -6795,6 +6907,7 @@ not replace the Product Contract, and linked device evidence may remain open.
 | `TAP-0061` | Share | App-owned format selection and per-choice on-demand temporary payload lifecycle | `TAP-0047` | Before board bootstrap; recorded 2026-08-12 | Old direct-share design superseded |
 | `TAP-0062` | Verification | Cross-project Live Photo browser verification contract documented | External project owns implementation evidence | Before board bootstrap; recorded 2026-08-12 | Contract completion does not claim browser delivery in this repo |
 | `TAP-0097` | Repository Boundary / Git Evidence | TAP-0096 extraction frozen as two exact, ordered local commits with no publication or content change | Target `cb934da9b9e0a03578463ececa643507fd84fdbe`; source `b6c8048e69eef67910a0076b35defc7447ab933b` | 2026-08-24 | Completion projection only; the detailed TAP-0097 record remains canonical. Board Steward verified `66 A`, `64 D + 8 M`, `64/64` tree equality, `58/58`, `7/7`, `4/4`, clean development handoff, actual remote still at `3932b254`, and no third commit/push. |
+| `TAP-0098` | Repository Publication / GitHub Governance | Existing Demo extraction history published and the independently committed prototype published as a new Private TAP-NAP repository without content or setting expansion | Target `TAP-NAP/TAPCamPrototype@cb934da9b9e0a03578463ececa643507fd84fdbe`; first Demo publication `cd19f747a0349849cd0d7ed30622cb821aa99e53`; final Demo evidence is the commit containing the canonical TAP-0098 closure | 2026-08-24, conditionally effective on final push/readback | Completion projection only; the detailed TAP-0098 record remains canonical. Private/default-main/ADMIN readbacks, exact SHAs and tracking, one target branch/root commit, zero tags/releases, and clean `0/0` pre-closure states passed. Doing -> Done becomes effective only when the second-and-last Board-only closure commit is fast-forwarded and live-read; its exact SHA is intentionally returned externally. |
 
 ## 8. Deprecated Task And Design Registry
 
@@ -7897,3 +8010,20 @@ not replace the Product Contract, and linked device evidence may remain open.
   rather than self-embedded in its own second-and-last closure commit. No stage,
   commit, remote mutation, push, visibility/setting change, product/UI/native
   change, or downstream lifecycle change occurs in this Board-only transition.
+- `2026-08-24` Board Steward verified TAP-0098's complete publication handoff
+  through direct local inspection, live GitHub API readback, and three
+  independent read-only audits. Demo's first Board-only commit `cd19f747`
+  directly follows `b6c8048`, changes only `Docs/ProjectBoard.md`, and is live
+  on the existing Private default `main`. The newly created Private
+  `TAP-NAP/TAPCamPrototype` has default `main`, viewer permission `ADMIN`, exact
+  local/remote/upstream SHA `cb934da`, one branch and one root commit, zero tags
+  and releases, and no remote-initialization content. Both repositories were
+  clean and `0/0` before closure preparation. Added the complete handoff,
+  conditional Closure Gate, Done projection, Completed Registry entry, and
+  append-only Task history. Doing -> Done is effective only when the second-
+  and-last Board-only commit containing this exact closure is ordinarily fast-
+  forwarded and live readback proves Demo `origin/main == local HEAD`; its SHA
+  is intentionally returned externally, and no third commit is authorized.
+  TAP-0096/TAP-0097 remain Done, TAP-0087 remains Doing/
+  `ownerReviewRequired`, TAP-0048 remains Todo/Pending, and Next Task ID remains
+  TAP-0099.
