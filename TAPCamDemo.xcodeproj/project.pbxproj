@@ -41,36 +41,9 @@
 		F2A0A0102FA0000000000010 /* Exceptions for "TAPCamDemo" folder in "TAPCamDemo" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				App/README.md,
-				CameraCapture/Documentation/APPLE_DEPTH_LIMITATIONS.md,
-				CameraCapture/Documentation/CAPTURE_SOURCES.md,
-				CameraCapture/Documentation/CROP.md,
-				CameraCapture/Documentation/DEBUGGING.md,
-				CameraCapture/Documentation/PIPELINE.md,
-				CameraCapture/Documentation/RGB_DEPTH_PAIRING.md,
-				CameraCapture/Documentation/ZOOM.md,
-				CameraCapture/Output/README.md,
-				CameraCapture/Planning/README.md,
-				CameraCapture/README.md,
-				CameraCapture/Runtime/README.md,
-				CameraCapture/Support/README.md,
-				CameraCapture/UI/README.md,
-				DepthAnalysis/AnalysisTools/README.md,
 				DepthAnalysis/Documentation/PlanesTechnicalDesign.md,
-				DepthAnalysis/Playback/PLAYBACK.md,
-				DepthAnalysis/README.md,
-				MediaLibrary/MEDIA_LIBRARY.md,
-				README.md,
-				TAPLibrary/README.md,
 			);
 			target = F2F5FDEE2F9B320F00F5071A /* TAPCamDemo */;
-		};
-		F2A0A0112FA0000000000011 /* Exceptions for "TAPCamDemoTests" folder in "TAPCamDemoTests" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				README.md,
-			);
-			target = F2F5FDFB2F9B321100F5071A /* TAPCamDemoTests */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -90,9 +63,6 @@
 		};
 		F2F5FDFF2F9B321100F5071A /* TAPCamDemoTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				F2A0A0112FA0000000000011 /* Exceptions for "TAPCamDemoTests" folder in "TAPCamDemoTests" target */,
-			);
 			path = TAPCamDemoTests;
 			sourceTree = "<group>";
 		};

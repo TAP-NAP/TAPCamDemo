@@ -2,7 +2,7 @@
 
 Status: active cross-project server interface
 
-TAPCamDemo client contract: [README.md](README.md)
+TAPCamDemo client contract: [ProductContract §6](../ProductContract.md#6-credential-and-verification-ux)
 
 Source links:
 

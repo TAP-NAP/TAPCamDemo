@@ -2,7 +2,7 @@
 
 - Status: canonical product constraint document
 - Owner: product owner
-- Last updated: 2026-08-24
+- Last updated: 2026-09-04
 
 This document is the single current product contract for TAPCamDemo. It defines
 what the product currently does, what it deliberately does not do, which work is
@@ -35,15 +35,17 @@ The document roles are:
 1. This document defines current product behavior and scope.
 2. The sibling [TAPCamKanban ProjectBoard.md](../../TAPCamKanban/ProjectBoard.md)
    tracks work states and compact history.
-3. [UIPrototypeContract.md](UIPrototypeContract.md) defines the visual-prototype
-   to SwiftUI workflow and the authority of an approved Web prototype. The
-   independent `TAPCamPrototype` repository owns the static implementation,
-   manifest, fixtures, QA, tests, and prototype evidence; this repository keeps
-   product, native, and acceptance authority, while TAPCamKanban owns Task
-   lifecycle and status.
+3. The independent `TAPCamPrototype` repository owns approved visual intent,
+   static implementation, manifest, fixtures, QA, tests, and prototype evidence;
+   §9 and root `AGENTS.md` own the prototype-to-SwiftUI workflow.
 4. `Docs/Acceptance/` stores evidence and executable acceptance procedures.
-5. Module READMEs explain implementation ownership.
-6. AITrace, dated acceptance reports, branch audits, old implementation plans,
+5. Root [README.md](../README.md) is the sole implementation map and validation
+   entry. Implementation and tests enforce, but cannot redefine, this contract.
+6. [PlanesTechnicalDesign.md](../TAPCamDemo/DepthAnalysis/Documentation/PlanesTechnicalDesign.md)
+   owns only the reusable photo-local geometry explanation.
+7. [App Attest BackendContract.md](AppAttest/BackendContract.md) owns the
+   cross-project HTTP, server-trust, counter, and replay boundary.
+8. AITrace, dated acceptance reports, branch audits, old implementation plans,
    POCs, and experiment logs are historical records. Once their still-relevant
    facts, acceptance procedures, and cross-project obligations have been
    migrated, they do not need to remain in the current documentation tree. Git
@@ -81,7 +83,7 @@ The current App marketing/build version remains `0.2 (2)`. Before the first
 public release, every distinct current public-format and security-schema family
 starts at its own unambiguous `v1`; a shared numeric version does not make
 structurally different still-photo, Live Photo, TAP Video, content-binding,
-registration, proof, or attestation objects interchangeable. Their specialized
+registration, proof, or attestation objects interchangeable. The named shared
 contracts own the exact identifiers and fail-closed routing rules.
 
 The documentation-only
@@ -89,8 +91,8 @@ The documentation-only
 owns the shared wire-level conventions consumed by TAPCam and external
 verifiers. This Product Contract continues to own which format families are
 current product capabilities, their claim boundaries, and their non-goals.
-Repository-local documents own runtime and operational behavior and must not
-silently redefine the shared artifact contract.
+The local operational rules below implement that authority and must not silently
+redefine the shared artifact contract.
 
 Superseded development-format identifiers are unsupported and must not remain
 as compatibility readers in TAPCam or TAPCamVerifier. Pre-release local app
@@ -247,25 +249,99 @@ readiness groups have both succeeded.
 
 ### 2.6 Startup route, installation, and timing vocabulary
 
-[StartupLifecycleContract.md](StartupLifecycleContract.md) defines the
-canonical distinction among Fresh Installation, In-place App Update,
-Development Replacement Install, Delete-and-Reinstall,
-Offload-and-Reinstall, Same-Device Backup Restore, Cross-Device Migration
-Restore, Foreground Process Launch, Foreground Resume, and Cold/Warm Resource
-Paths. Those labels describe a
-scenario; route selection reads a structured local Setup receipt, current
-required-permission status, and the initialization marker. The Setup receipt
-is locally bound to the App Attest credential created by the required Network
-row. A restored receipt whose local credential binding is missing is invalid
-and returns to Setup recovery without automatically replaying already-granted
-Camera/Photos prompts.
+Installation labels describe evidence context, never the route itself:
 
-After first-install setup, Required Permission Check is triggered only by an
-unusable Camera or Photos status. Network unavailability does not enter that
-page and does not block ordinary camera entry or capture. The same lifecycle
-contract owns the `t0…tn` milestones, allowed work intervals, execution-owner
-registry, and Debug-versus-Release measurement method used by TAP-0008,
-TAP-0009, and TAP-0083.
+- **Fresh Installation** has no restored app container. **Delete-and-Reinstall**
+  deliberately creates that condition; **Development Replacement Install** is
+  only an install method and may retain state.
+- **In-place App Update** and **Offload-and-Reinstall** normally retain app data;
+  the latter preserves documents while replacing the binary.
+- **Same-Device Backup Restore** may retain valid setup, while **Cross-Device
+  Migration Restore** invalidates device-bound initialization and may require
+  App Attest credential recovery. **Local State Inconsistency** treats only the
+  invalid fact as absent.
+- **Foreground Process Launch** creates a process; **Foreground Resume**
+  reactivates an existing scene. A **Cold Resource Path** has no usable relevant
+  cache, while a **Warm Resource Path** does. Warmth never changes route truth.
+
+Bare `reinstall`, `cold start`, or `first launch` is insufficient in a Task,
+test, log, or acceptance conclusion; name the installation, activation, and
+resource conditions separately.
+
+The deterministic route reads four facts:
+
+- `S` is the structured Setup receipt for the current installation generation,
+  locally bound to the App Attest credential created by the explicit Network
+  row. It is not a bare Boolean or proof of current network health.
+- `P` is the passive required-permission snapshot: Camera must be authorized;
+  Photos may be authorized or limited. Location, Microphone, and network do not
+  affect `P`.
+- `I` is the atomic initialization completion for the current bundle/build,
+  schema, and installation/device generation. It is not permission evidence or
+  a purgeable cache.
+- `R` is a safe app-owned resume target used only across permission recovery;
+  the current startup target is Viewfinder.
+
+Route priority is fixed:
+
+```text
+missing or invalid S -> First-Install Setup
+valid S + unusable P -> Required Permission Check
+valid S/P + missing or stale I -> Resource Initialization
+valid current S/P/I -> Viewfinder
+```
+
+A restored `S` without its bound credential is invalid and returns to Setup
+credential recovery without replaying already-granted Camera/Photos prompts.
+After setup, network unavailability never enters Required Permission Check and
+does not block ordinary camera entry or local capture.
+
+### 2.7 Startup milestones and cold-path execution
+
+One ordered milestone vocabulary is used for implementation and evidence:
+
+- `t0` activation requested;
+- `t1` first app-owned frame committed;
+- `t2` initial route surface stably committed;
+- `t3` first real camera preview presented;
+- `t4` shutter, primary controls, required haptics, and any required first
+  Library metadata snapshot are ready; `I` is committed in this transition;
+- `t5` startup-critical interaction is protected and deferred work may release;
+- `tn` the selected test journey reaches its terminal state.
+
+Before `t1`, only fixed-cost bootstrap, bounded local `S/I` reads, passive
+Camera/Photos status reads, and construction of the lightweight first surface
+are allowed. Camera enumeration/session construction, PhotoKit observer or
+catalog activation, pending scans, media decode/hash/ZIP, network/App Attest,
+and analysis are prohibited. Between `t1` and `t2`, pure route reduction and
+bounded state publication remain the only work; route-owned camera/catalog work
+starts only after its surface is committed. Post-setup App Attest, Pending
+Capture recovery, posters, off-screen thumbnails, Share preparation, and eager
+analysis wait until `t5` or an explicit later user action.
+
+Cold-path work obeys these execution rules:
+
+- `async` does not prove work is off the MainActor. Work scaling with item count,
+  bytes, devices, formats, network, or analysis complexity needs an explicit
+  non-MainActor isolation boundary. A normal synchronous MainActor slice should
+  stay below 8 ms; scalable work may not rely on that allowance.
+- An accepted action publishes its loading/preparing state, yields so the frame
+  can commit, then starts scalable work. Progress is monotonic, latest-value
+  coalesced to at most 20 UI updates per second, and checked against cancellation
+  plus exact request identity immediately before publication.
+- Equivalent collection snapshots do not advance public revisions. SwiftUI
+  `body` never decodes media bytes; decoded images come from bounded caches.
+- Popovers, sheets, and system controllers handle success, cancellation, both
+  SwiftUI and UIKit dismissal, presenter loss, construction/presentation failure,
+  and stale callbacks. Temporary files stay alive only for the exact attempt and
+  are cleaned idempotently after its system consumer releases them.
+- Diagnostics are low-cardinality milestones. Public logs and UI never expose
+  capture/Photos IDs, file URLs or paths, proof/assertion bodies, credential/key
+  IDs, backend response text, or per-chunk events.
+
+No numeric launch SLO is claimed until an optimized, debugger-detached physical
+iPhone baseline records the same route and reset conditions. Debug or Simulator
+measurements are diagnostic only, and a warm rerun cannot close a cold-path gap.
 
 ## 3. Camera And Capture
 
@@ -294,6 +370,26 @@ are future work. Source switching, if approved, must recompute depth and manual
 control capabilities from the active Apple camera path; it must not be described
 as ordinary preview zoom.
 
+The executable capture path has these fail-closed boundaries:
+
+- Planning is pure decision logic. A Standard choice resolves one Apple-paired
+  RGB/depth device or virtual-device constituent, compatible active formats, and
+  a depth-safe raw `videoZoomFactor`; unsupported pairings never become capture.
+- `CaptureSessionController` is the sole `AVCaptureSession` mutator. Runtime
+  executes the supplied plan on its serial session queue, validates stale device
+  and capability signatures before control writes, and never reinterprets a
+  semantic FOV label as raw zoom.
+- Output selection resolves one reviewed profile against the live photo output
+  before graph configuration. Settings, packager, manifest, and validation use
+  that same resolved container, codec, dimensions, quality, and depth state;
+  unavailable combinations fail instead of silently falling back.
+- The UI requests plans and presents public-safe values; it does not construct
+  capture plans, mutate AVFoundation, receive proof/key material, or expose raw
+  device, capture, Photos, path, URL, or error values.
+- Preview crop is provenance metadata only. Release never destructively crops
+  the final image or depth map, and Debug overrides use the same SingleCam path
+  rather than an independent depth pipeline.
+
 ### 3.2 Still Photo and Live Photo
 
 - Still Photo supports the reviewed HEIC and JPG TAP depth-photo contracts.
@@ -305,6 +401,10 @@ as ordinary preview zoom.
   per-frame MOV depth.
 - A per-frame Live Photo video-depth product is an explicit non-goal for the
   current Live Photo contract and would require a separately designed format.
+- The shutter path uses the most recent cached optional location and never waits
+  for a new Core Location prompt. It stages one unsigned artifact in the Pending
+  Capture Queue and returns; App Attest signing and Photos export are serialized
+  later and never extend foreground capture completion.
 
 ### 3.3 TAP Video
 
@@ -324,6 +424,23 @@ No-depth TAP Video follows the same non-blocking principle as still photos:
 - show a non-blocking depth-unavailable warning;
 - do not turn missing depth alone into a terminal capture failure.
 
+TAP Video finalization is one ordered local transaction: finish media, inspect
+the finalized tracks, construct the shared-contract metadata/container, validate
+the artifact against those observed facts, then atomically publish it into the
+Pending Capture Queue. One capture publishes one original MP4 with no durable
+preview movie, JSON sidecar, ZIP, or Debug derivative. Requested settings never
+substitute for finalized track facts; container finalization must not rewrite
+existing media tables or offsets. Parsing, hashing, consistency, calibration,
+depth, timeline, and gap checks remain bounded and streaming rather than loading
+the complete MP4 into `Data`. The current 180-second UI stop is recording policy,
+not a format or decoder limit.
+
+Pending signing uses the exact finalized bytes. Before signing, local binding
+reconstruction must pass; after proof insertion and again after Photos original
+readback, identity and local binding are revalidated. Photos playback success or
+a filename is only an index hint. Missing depth is not an integrity failure, and
+depth health remains an optional semantic gate after local binding succeeds.
+
 TAP Video 3D is future work. AirPlay, Picture in Picture, and background playback
 are outside the product scope and must not remain on the Todo list.
 
@@ -337,6 +454,22 @@ are outside the product scope and must not remain on the Todo list.
 - TAPCam currently has no C2PA certification or authority to claim completed
   C2PA compliance. New resource, manifest, and signing designs must avoid
   blocking future C2PA compatibility.
+
+Shared manifest, canonical JSON, container, proof-slot, content-binding, KLV,
+and signing bytes come only from the pinned TAPArtifactContracts revision. The
+producer encodes that contract but never creates a local variant. Photo and Live
+Photo packaging preserves the primary pixels and Apple auxiliary depth without
+a decode/re-encode pass. The shutter-time artifact contains a proof-free manifest
+and the fixed empty proof slot; later signing binds the exact canonical payload
+and media resources, fills only that slot, and never hashes a re-encoded manifest.
+
+Every signed Still, Live Photo, or TAP Video path has a final-byte gate before
+Photos save. It reopens the exact outgoing bytes and fails closed on container,
+schema/canonical form, manifest identity, source/profile facts, resource set,
+proof-slot cardinality, digest/content binding, or declared-versus-actual depth
+mismatch. A Live Photo validates its paired MOV as part of the same resource set.
+No queue status, filename, earlier validation, or successful signing call may
+bypass this gate, and Photos writers accept no unsigned artifact.
 
 ## 4. Locked Camera
 
@@ -379,6 +512,48 @@ Use these terms consistently:
 Never use `TAP Library` to mean the private queue. Never expose `Pending Capture
 Queue` as the name of the user-facing gallery.
 
+#### 5.1.1 Pending Capture Queue lifecycle
+
+The queue serializes signing, Photos export/readback, retry, and cleanup. Its
+durable states are `pending`, `waitingNetwork`, `signing`, `signed`, `exporting`,
+`exported`, `failedRetryable`, and `failedTerminal`. One worker runs at a time;
+within one run it visits a capture ID at most once and prioritizes
+`signed/exporting`, then `pending/signing`, then retryable/network-waiting work.
+There is no hidden fine-grained stage scheduler, `nextAttemptAt`, cooldown, or
+manual Release signing Retry until the separately approved optimization exists.
+
+Protected-data unavailability stops the worker before any private queue read or
+mutation and preserves the current record rather than inventing a failure.
+Records, bundle paths, and fixed artifact names are validated fail closed before
+filesystem access. TAP Video proof filling uses an independent same-bundle
+working generation and atomically publishes the completed inode; failure or
+cancellation discards that generation without mutating a file Viewer or Share
+may hold. Export pre-commit and commit-ambiguous state survives interruption so
+retry cannot create a duplicate Photos asset. Final bytes are revalidated before
+save and original-resource readback before marking the record exported.
+
+Exported large files and precise pending location are removed when no longer
+needed; the minimal record, thumbnail, and Photos identifier may remain for
+Library identity. Durable route context stores protected fixed-length tokens,
+not raw capture or Photos identifiers, and can resolve only against the current
+visible item set. It never triggers media reads, signing, export, retry, Photos
+fetch, or automatic analysis navigation.
+
+#### 5.1.2 PhotoKit request and catalog boundary
+
+PhotoKit request-ID installation and continuation installation each occur at
+most once; cancellation, success, and failure compete for one terminal result.
+Cancellation before installation cancels a later request immediately, and stale
+or degraded callbacks cannot complete a newer request. Resource-to-memory,
+resource-to-file, display-image, and Live Photo adapters keep their distinct
+callback semantics while sharing the same exact lifecycle rules.
+
+The Library store is observer-inert when constructed. It activates PhotoKit
+observation only after usable Photos access is established and deactivation
+cancels queued/in-flight refreshes. Resource Initialization consumes only the
+first usable identity/order snapshot; an empty catalog succeeds and never waits
+for iCloud originals, thumbnails, posters, hashes, ZIP, or media decode.
+
 ### 5.2 Current Viewer
 
 The current design is the Photos-style mixed-media Viewer:
@@ -400,6 +575,16 @@ Static-photo 3D means a native point projection for an eligible photo with
 usable depth and calibration. It does not mean mesh, scan, reconstruction,
 digital twin, or a world-space model. A possible SceneKit-to-Metal replacement
 is a technical option activated by evidence, not a promised product feature.
+
+TAP Video opens a pending file or a leased temporary copy of the Photos original
+without loading the whole MP4. RAW RGB/audio playback is independent of depth;
+2D requires a complete registered spatial descriptor and matching depth track.
+Decode is bounded around the playhead, and seek, discontinuity, item change,
+cancellation, backgrounding, or memory reset clears retained depth so stale
+frames cannot cross contexts. Playback is local and foreground-only with
+external playback disabled. Viewer Share validates and leases the exact same
+original bytes; it does not re-fetch them, call backend Verify, pre-generate a
+package, or persist a Share cache.
 
 ### 5.3 Share
 
@@ -496,6 +681,47 @@ contracts are implemented.
 
 ## 6. Credential And Verification UX
 
+TAPCam uses the fixed private credential lookup name `photo_keyid`. The name is
+not an Apple claim, user identity, or trust decision and must remain stable;
+future account/install/tenant naming requires opaque or hashed identifiers, never
+raw PII. Apple retains the private key; Keychain stores only the key handle and
+credential metadata.
+
+`prepare` creates and attests a new key and persists its mapping only after
+backend acceptance; `prepareIfNeeded` may reuse a ready mapping; `reset` removes
+only that name's local metadata and health token, not the Apple private key or
+backend record. An unsupported device or failed preparation never authorizes a
+silent trust fallback. The runtime accepts only the configured HTTPS base URL
+without an endpoint path; localhost, bare IP, cleartext HTTP, and `/healthz`-style
+endpoint URLs fail configuration. Debug uses App Attest development metadata and
+Release/TestFlight uses production; runtime metadata, entitlement, and build
+configuration must agree. `AppAttestKit` remains pinned until its revision is
+deliberately reviewed and advanced.
+
+The explicit first-install Network row owns initial App Attest challenge,
+registration, and backend verification. Post-setup credential preparation is a
+different, guarded task released only after `t5`; it cannot gate Setup, Required
+Permission Check, Resource Initialization, first frame, preview, interaction, or
+ordinary local capture. Its local health token is bound to bundle ID,
+version/build, backend URL, App Attest environment, and credential name; changing
+one invalidates the token and requires preparation again.
+
+Capture signing is offline file proofing: the app constructs the shared canonical
+capture `signingBinding` and asks `DCAppAttestService` to sign that hash directly.
+It does not use the protected-request `generateAssertion` route and has no server
+assertion challenge. The final local export check proves byte self-consistency,
+not Apple attestation trust, registered-key authenticity, freshness, or replay
+protection. The cross-project server trust and HTTP requirements remain in
+[App Attest BackendContract.md](AppAttest/BackendContract.md).
+
+Release Settings presents `Photo Integrity` as one `Protection Readiness` row
+with `Not Ready`, `Preparing`, `Ready`, or `Preparation Failed`, plus Prepare or
+Retry where applicable. It exposes no App Attest terminology, backend URL,
+credential/key ID, raw error, or proof. Public diagnostics use fixed error
+domain/code and scalar outcomes; URLs, paths, identifiers, proof/assertion bodies,
+backend responses, and localized error text stay private. Debug-only controls do
+not expand Release behavior.
+
 For a capture made by TAPCam whose attestation/signing process has completed,
 TAPCam has already performed the App Attest signing operation. The app
 therefore:
@@ -533,8 +759,8 @@ TAPCamDemo.
 Fine-grained credential cooldown, retry windows, and stage-specific pause are
 future technical optimization. A public-release persistence policy must be an
 explicit later decision; pre-release development records are not migrated.
-Current product documentation must describe the current coarse Pending Capture
-Queue behavior separately.
+The current coarse Pending Capture Queue behavior remains the distinct §5.1.1
+lifecycle and must not be mistaken for that future design.
 
 ## 7. Claim Boundaries
 
@@ -584,9 +810,9 @@ capability performs first-install, empty-cache, first-open, large-catalog,
 iCloud, or first system-presentation work. The attended procedure must include
 a newly installed app or an explicitly cleared container/cache. A successful
 warm re-entry is useful comparison evidence, but it cannot substitute for the
-cold run or close a cold-path acceptance condition. Scalable work must publish
-visible acknowledgement before it begins and follow the repository standard
-in [ColdPathResponsiveness.md](ColdPathResponsiveness.md).
+cold run or close a cold-path acceptance condition. Scalable work must follow
+§2.7, including visible acknowledgement before it begins, bounded publication,
+exact request ownership, cleanup, and public-safe evidence.
 
 ## 9. UI Design Source Of Truth
 
@@ -603,8 +829,39 @@ TAPCamDemo does not retain a duplicate prototype implementation.
 
 The Web prototype cannot redefine permissions, AVFoundation capability, camera
 readiness, or other runtime facts. SwiftUI implementation must satisfy both
-sources, followed by Simulator and physical-device acceptance. The complete
-workflow is defined in [UIPrototypeContract.md](UIPrototypeContract.md).
+sources, followed by Simulator and physical-device acceptance. Prototype proof
+is limited to visible hierarchy, relative geometry, icon identity, responsive
+layout for approved iPhone viewports, and simulated interaction. It cannot prove
+native lifecycle, real permissions/camera/depth/signing/Photos behavior,
+accessibility, performance, or physical-device acceptance.
+
+Every visible change first records one approved Task, affected Product Contract
+states, prototype path/revision, in-scope components/icons, uncovered states,
+and Simulator/device acceptance. The workflow is fixed:
+
+```text
+Product Contract + approved Task
+    -> sibling HTML/Web prototype revision
+    -> explicit product-owner visual approval
+    -> SwiftUI implementation
+    -> Simulator comparison
+    -> attended device acceptance when required
+```
+
+HTML/Web is the default visual specification; if the owner chooses another tool,
+its accepted result is synchronized into the Web prototype so there is still one
+active visual truth. Do not fake system permission dialogs or system-owned
+controllers: prototype only the app-owned before/after states and label the
+boundary. An urgent runtime or safety fix may precede prototype work only when it
+does not intentionally change UI or the owner explicitly approves the exception;
+any visible divergence must be synchronized before closure.
+
+If native platform behavior conflicts with the prototype, return to the Task for
+a decision rather than silently changing the product state machine or imitating
+a system control. Prototype approval never closes implementation, parity, or
+device evidence. The Viewfinder remains English; other app surfaces inherit the
+selected app locale unless a separately approved product/copy Task changes that
+boundary.
 
 Prototype coverage grows by Task-scoped vertical slices rather than requiring a
 complete Web copy of TAPCam before native work. Each slice reads the applicable

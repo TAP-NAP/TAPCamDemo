@@ -4,7 +4,7 @@
 - Related Delivery: startup `TAP-0008`, `TAP-0009`, and reviewer candidate
   `TAP-0087`; Share `TAP-0081`; prototype foundation `TAP-0006`; repository
   relocation `TAP-0096`
-- Product Contract: `ProductContract §5.2–5.3, §6, §9`; `UIPrototypeContract §1–5`
+- Product Contract: `ProductContract §5.2–5.3, §6, §9`
 - Prototype Tasks: `TAP-0008`, `TAP-0009`, `TAP-0081`, `TAP-0087`
 - Prototype Repository Task: `TAP-0096`
 - Prototype Repository/Path/Revision: sibling `TAPCamPrototype` repository;
@@ -17,9 +17,9 @@
 - Share Build/Commit: `f2bf8d2` (`Close TAP-0081 and TAP-0082 Share lifecycle`);
   startup native candidate must be frozen when the remaining matrix is run
 - Device/iOS: `TAP-0082 accepted on iPhone 15 Pro / iOS 26.6`
-- Superseding Decision:
-  [TAP-0082 Share handoff](TAP-0082-share-handoff.md) removes the old visible
-  Cancel, 50 ms delayed reveal, and 400 ms minimum hold requirements
+- Superseding Decision: closed Task `TAP-0082` and its Git-retained acceptance
+  record remove the old visible Cancel, 50 ms delayed reveal, and 400 ms minimum
+  hold requirements
 - Simulator Matrix: `Pending owner confirmation for the frozen candidate build`
 - Date: `2026-09-04` (procedure synchronized; matrix not executed)
 - Operator: `Codex development session /root; prototype approved, parity audit pending`

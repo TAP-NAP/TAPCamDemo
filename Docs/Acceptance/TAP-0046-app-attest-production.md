@@ -3,7 +3,6 @@
 - Status: `Draft — blocked until production scope, matrix, and budget are approved`
 - Related Delivery: `TAP-0054`, `TAP-0056`, `TAP-0057`
 - Contract: [ProductContract §3.4, §6, §7, and §8](../ProductContract.md),
-  [App Attest client contract](../AppAttest/README.md),
   [App Attest backend contract](../AppAttest/BackendContract.md), and the shared
   [binding/proof contract](https://github.com/TAP-NAP/TAPArtifactContracts/blob/ca3b223e0717242ce1016b34dc34f04ef2417936/bindings/capture-binding-and-proof-v1.md)
 - Build/Commit: `OWNER-LIVE: freeze Release/TestFlight build before execution`

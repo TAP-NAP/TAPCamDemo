@@ -2,7 +2,7 @@
 
 - Status: `Draft — bounded fix0809 device path accepted; full matrix open`
 - Related Delivery: `TAP-0009`, `TAP-0010`, `TAP-0015`, `TAP-0090`
-- Contract: `ProductContract §2.4–2.6`; `StartupLifecycleContract`
+- Contract: `ProductContract §2.4–2.7`
 - Build/Commit: `fix0809 candidate; this commit`
 - Device/iOS: `Owner-attended physical device; exact identifiers not recorded in this evidence`
 - Human Confirmation: `Accepted 2026-08-15 for the bounded fix0809 non-Network executed path; full procedure pending`
@@ -45,8 +45,8 @@ This observation covers only the executed path. It does not cover the second
 interruption round, readiness fault injection, Camera/Photos revocation and
 recovery, In-place App Update, restore/migration, exact marker-file inspection,
 or instrumented physical timing. Canonical credential-bound `S`, Network, and
-the App Attest/Pending children of `W11/W12` remain outside the accepted
-candidate scope under `TAP-0010`/`TAP-0015`.
+post-`t5` App Attest health plus Pending Capture recovery remain outside the
+accepted candidate scope under `TAP-0010`/`TAP-0015`.
 
 ## Preconditions
 
