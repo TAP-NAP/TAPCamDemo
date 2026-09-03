@@ -7,7 +7,7 @@ import Foundation
 @preconcurrency import Photos
 import UIKit
 
-actor PhotoKitLibraryMediaFetcher: LibraryMediaFetching, DepthAlbumPhotoCataloging {
+actor PhotoKitLibraryMediaFetcher: LibraryMediaFetching {
     func depthAlbumPhotoCatalogSnapshot(
         exportedAssetLocalIdentifiers: Set<String>
     ) async throws -> DepthAlbumPhotoCatalogSnapshot {

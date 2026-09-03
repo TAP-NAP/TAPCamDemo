@@ -130,9 +130,13 @@ struct TAPVideoManifestTests {
         )
 
         try TAPVideoManifestBox.appendManifest(manifest, toFileAt: fileURL)
-        let decoded = try TAPVideoManifestBox.decodedManifest(fromFileAt: fileURL)
+        let document = try TAPVideoManifestBox.decodedManifestDocument(fromFileAt: fileURL)
+        let standalonePayloadData = try TAPVideoManifestEncoder.payloadDataExcludingProofs(
+            manifest.payload
+        )
 
-        #expect(decoded == manifest)
+        #expect(document.manifest == manifest)
+        #expect(document.rawPayloadData == standalonePayloadData)
         #expect(throws: TAPDepthCaptureError.self) {
             try TAPVideoManifestBox.appendManifest(manifest, toFileAt: fileURL)
         }

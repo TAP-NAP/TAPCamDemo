@@ -18,15 +18,6 @@ nonisolated struct PackagedLivePhotoMovie: Sendable {
     let capturesAudio: Bool
 }
 
-/// Physical packaging strategies known to the architecture.
-///
-/// The current demo only writes a single embedded photo-depth file. Sidecars and
-/// debug bundles were intentionally removed from runtime code because they are
-/// not part of the accepted SingleCam product flow.
-nonisolated enum PackagingStrategy: String, Codable, Sendable {
-    case embeddedPhoto
-}
-
 /// Whether a packaged capture contains an App Attest proof.
 nonisolated enum CaptureSignatureStatus: Equatable, Sendable {
     case pending(reason: String)
@@ -41,7 +32,6 @@ nonisolated enum CaptureSignatureStatus: Equatable, Sendable {
 /// are not persisted into the photo artifact.
 nonisolated struct PackagedCaptureArtifact: Sendable {
     let packageID: UUID
-    let strategy: PackagingStrategy
     let photoData: Data
     let fileContainer: CapturePhotoFileContainer
     let photoQualityLevel: CapturePhotoQualityLevel
@@ -53,13 +43,4 @@ nonisolated struct PackagedCaptureArtifact: Sendable {
     let packagingMetrics: CapturePackagingMetrics
     let capturedAt: Date
     let location: CLLocation?
-}
-
-/// Converts a logical `CapturePackage` into a physical artifact.
-protocol CapturePackager: Sendable {
-    var strategy: PackagingStrategy { get }
-    func package(
-        _ capturePackage: CapturePackage,
-        assertionSigner: (any CaptureAssertionSigning)?
-    ) async throws -> PackagedCaptureArtifact
 }

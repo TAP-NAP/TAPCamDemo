@@ -21,11 +21,11 @@ not dormant implementations in the current capture path.
 | Area | README | Primary code |
 | --- | --- | --- |
 | Canonical product constraints | [Docs/ProductContract.md](Docs/ProductContract.md) | Current capability, state-machine, non-goal, future, experiment, and claim authority |
-| Project task database | [Docs/ProjectBoard.md](Docs/ProjectBoard.md) | Stable `TAP-xxxx` records and Inbox/Todo/Doing/Done/Deprecated views |
+| Project task database | [TAPCamKanban ProjectBoard.md](../TAPCamKanban/ProjectBoard.md) | Stable `TAP-xxxx` records and Inbox/Todo/Doing/Done/Deprecated views |
 | UI prototype workflow | [Docs/UIPrototypeContract.md](Docs/UIPrototypeContract.md); static artifacts in sibling `../TAPCamPrototype/Prototype/README.md` | Independent HTML/Web visual contract → SwiftUI → Simulator/device acceptance |
 | App startup and App Attest runtime | [TAPCamDemo/App/README.md](TAPCamDemo/App/README.md) | [TAPCamDemoApp.swift](TAPCamDemo/App/TAPCamDemoApp.swift) |
 | SingleCam capture pipeline | [TAPCamDemo/CameraCapture/README.md](TAPCamDemo/CameraCapture/README.md) | [CameraView.swift](TAPCamDemo/CameraCapture/UI/CameraView.swift), [CameraViewModel.swift](TAPCamDemo/CameraCapture/UI/CameraViewModel.swift) |
-| Pending TAP Library queue | [TAPCamDemo/TAPLibrary/README.md](TAPCamDemo/TAPLibrary/README.md) | [TAPPendingCaptureStore.swift](TAPCamDemo/TAPLibrary/TAPPendingCaptureStore.swift), [TAPPendingCaptureProcessor.swift](TAPCamDemo/TAPLibrary/TAPPendingCaptureProcessor.swift) |
+| Pending Capture Queue | [TAPCamDemo/TAPLibrary/README.md](TAPCamDemo/TAPLibrary/README.md) | [TAPPendingCaptureStore.swift](TAPCamDemo/TAPLibrary/TAPPendingCaptureStore.swift), [TAPPendingCaptureProcessor.swift](TAPCamDemo/TAPLibrary/TAPPendingCaptureProcessor.swift) |
 | Saved photo depth analysis and TAP Video playback | [TAPCamDemo/DepthAnalysis/README.md](TAPCamDemo/DepthAnalysis/README.md) | [DepthAnalysisView.swift](TAPCamDemo/DepthAnalysis/DepthAnalysisView.swift), [TAPVideoDepthPlaybackView.swift](TAPCamDemo/DepthAnalysis/TAPVideoDepthPlaybackView.swift) |
 | App Attest contract docs | [Docs/AppAttest/README.md](Docs/AppAttest/README.md) | [AppAttestRuntime.swift](TAPCamDemo/App/AppAttestRuntime.swift), [AppAttestCaptureAssertionSigner.swift](TAPCamDemo/CameraCapture/Output/AppAttestCaptureAssertionSigner.swift) |
 | Zstandard compression dependency | [facebook/zstd](https://github.com/facebook/zstd) | Exact SwiftPM version `1.5.7`; app adapter lives in [TAPDepthFrameCodec.swift](TAPCamDemo/CameraCapture/Output/TAPDepthFrameCodec.swift) |
@@ -57,7 +57,7 @@ flowchart TD
 Current product scope comes only from
 [Docs/ProductContract.md](Docs/ProductContract.md). Current and historical work
 is tracked by stable Task ID in
-[Docs/ProjectBoard.md](Docs/ProjectBoard.md). Before proposing a feature, search
+[TAPCamKanban ProjectBoard.md](../TAPCamKanban/ProjectBoard.md). Before proposing a feature, search
 the complete Board across Inbox, Todo, Doing, Done, and Deprecated; revise a
 matching Task instead of creating a duplicate.
 
@@ -206,13 +206,11 @@ and the shared
 | --- | --- |
 | [Docs/README.md](Docs/README.md) | Cross-module documentation index. |
 | [Docs/ProductContract.md](Docs/ProductContract.md) | Canonical current capability, state-machine, non-goal, future, experimental, and evidence boundaries. |
-| [Docs/ProjectBoard.md](Docs/ProjectBoard.md) | Markdown task database and Kanban views. |
+| [TAPCamKanban ProjectBoard.md](../TAPCamKanban/ProjectBoard.md) | Markdown task database and Kanban views. |
 | [Docs/UIPrototypeContract.md](Docs/UIPrototypeContract.md) | HTML/Web prototype to SwiftUI and acceptance workflow. |
 | [TAPArtifactContracts](https://github.com/TAP-NAP/TAPArtifactContracts/blob/ca3b223e0717242ce1016b34dc34f04ef2417936/CONTRACTS.md) | Documentation-only shared artifact conventions. |
 | [Docs/AppAttest/README.md](Docs/AppAttest/README.md) | App Attest client/backend boundary and capture proof notes. |
-| [TAPCamDemo/CameraCapture/Documentation/ARCHITECTURE.md](TAPCamDemo/CameraCapture/Documentation/ARCHITECTURE.md) | Camera module dependency direction. |
 | [TAPCamDemo/CameraCapture/Documentation/PIPELINE.md](TAPCamDemo/CameraCapture/Documentation/PIPELINE.md) | Single executable capture path. |
-| [TAPCamDemo/CameraCapture/Documentation/PACKAGING.md](TAPCamDemo/CameraCapture/Documentation/PACKAGING.md) | Producer, Pending Capture Queue, Photos export, and local-integrity orchestration. |
 | [TAPCamDemo/DepthAnalysis/Documentation/PlanesTechnicalDesign.md](TAPCamDemo/DepthAnalysis/Documentation/PlanesTechnicalDesign.md) | Plane-filter geometry design. |
 
 ## Release Data Policy
@@ -222,6 +220,6 @@ by current product scope. It must not write sidecar JSON, debug bundles, raw
 bundles, independent depth files, independent metadata files, metrics files, or
 intermediate capture artifacts.
 
-If a requested still-photo RGB/depth pair cannot be embedded as a valid Apple
-photo-depth HEIC, capture is rejected instead of silently generating another
-file.
+If a requested still-photo RGB/depth pair cannot be embedded in its selected
+HEIC or JPG photo-depth container, capture is rejected instead of silently
+generating another file.

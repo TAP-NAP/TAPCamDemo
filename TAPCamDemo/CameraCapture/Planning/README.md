@@ -111,7 +111,7 @@ A/A --adjust ISO--> M/A --adjust S--> M/M
 Physical-device behavior and device-matrix coverage remain evidence work, not
 new feature work. `TAP-0042` owns professional-control acceptance and
 `TAP-0043` owns Standard FOV/depth plus PRO no-crop acceptance in
-[ProjectBoard.md](../../../Docs/ProjectBoard.md).
+[TAPCamKanban ProjectBoard.md](../../../../TAPCamKanban/ProjectBoard.md).
 
 ## Key Invariants
 

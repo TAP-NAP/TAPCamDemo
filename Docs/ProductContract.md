@@ -33,12 +33,14 @@ Every product statement must be classified as exactly one of these:
 The document roles are:
 
 1. This document defines current product behavior and scope.
-2. [ProjectBoard.md](ProjectBoard.md) tracks work states and history.
+2. The sibling [TAPCamKanban ProjectBoard.md](../../TAPCamKanban/ProjectBoard.md)
+   tracks work states and compact history.
 3. [UIPrototypeContract.md](UIPrototypeContract.md) defines the visual-prototype
    to SwiftUI workflow and the authority of an approved Web prototype. The
    independent `TAPCamPrototype` repository owns the static implementation,
    manifest, fixtures, QA, tests, and prototype evidence; this repository keeps
-   product, Task, native, and acceptance authority.
+   product, native, and acceptance authority, while TAPCamKanban owns Task
+   lifecycle and status.
 4. `Docs/Acceptance/` stores evidence and executable acceptance procedures.
 5. Module READMEs explain implementation ownership.
 6. AITrace, dated acceptance reports, branch audits, old implementation plans,
@@ -434,7 +436,7 @@ The canonical Share flow is:
    not construct that controller while the app-owned popover is still visible:
    UIKit and LaunchServices begin inspecting the URL during initialization, so
    construction belongs to the actual system-sheet presentation boundary. The
-   the exact attempt's SwiftUI item binding and `onDismiss` fallback feed one
+   exact attempt's SwiftUI item binding and `onDismiss` fallback feed one
    exact-ID, idempotent app-owned end transition; there is no timed
    appearance/dismantle watchdog or destination-completion callback. When that
    sheet ends, schedule attempt-scoped source cleanup away from the main thread.

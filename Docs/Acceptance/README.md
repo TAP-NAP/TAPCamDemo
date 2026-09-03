@@ -1,7 +1,7 @@
 # Acceptance Reports
 
 This folder stores executable evidence records linked from
-[`DeviceAcceptance` Tasks](../ProjectBoard.md). Evidence does not define product
+[`DeviceAcceptance` Tasks](../../../TAPCamKanban/ProjectBoard.md). Evidence does not define product
 scope; the canonical scope remains [ProductContract.md](../ProductContract.md).
 
 Reports distinguish:
@@ -38,10 +38,12 @@ the proposed scope and procedure. A report is not complete unless it contains:
 
 ## Required Evidence
 
-- Logs:
-- Screenshots/recording:
-- Output artifacts:
-- Result bundles:
+- Public-safe structured logs / JSON / JSONL (or `N/A`):
+- Automated assertion reports (or `N/A`):
+- Procedure-approved image/video (or `N/A`):
+- Output artifacts (or `N/A`):
+- Result bundles (or `N/A`):
+- Owner-live textual verdict:
 
 ## Verdict Conditions
 
@@ -59,7 +61,7 @@ as attended device acceptance. When acceptance fails, keep the report and Task
 history, link a Fix Task, and rerun through a new dated result rather than
 overwriting the failure.
 
-## Current Draft Procedures
+## Current Procedures
 
 - [TAP-0040 — First-Install Explicit Operations](TAP-0040-first-install-operations.md)
 - [TAP-0041 — First Camera-Interactive Readiness](TAP-0041-camera-readiness.md)
@@ -72,5 +74,8 @@ overwriting the failure.
 - [TAP-0048 — Approved Web Prototype To SwiftUI Parity](TAP-0048-web-swiftui-parity.md)
 - [TAP-0049 — Lifecycle-Correct Locked Camera Experiment](TAP-0049-locked-camera-lifecycle.md)
 
-These are unexecuted drafts. Their build, device/iOS matrix, controlled reset,
-budgets, and owner-live checkpoints must be confirmed before a run.
+Each procedure's own `Status` and `Human Confirmation` fields are the active
+truth. Some remain unexecuted or blocked, TAP-0041 records a bounded accepted
+slice with its full matrix open, and TAP-0048 records evidence in progress.
+Before any new run, confirm that procedure's build, device/iOS matrix,
+controlled reset, evidence retention, budgets, and owner-live checkpoints.

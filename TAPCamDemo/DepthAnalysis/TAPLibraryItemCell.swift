@@ -152,26 +152,16 @@ struct TAPLibraryItemCell: View {
         }
 
         do {
-            var phase = try await thumbnailPhase(cacheKey: cacheKey)
-            guard !Task.isCancelled, thumbnailTaskID == cacheKey else {
+            let phase = try await thumbnailPhase(cacheKey: cacheKey)
+            guard let renderablePhase = await renderableThumbnailPhase(
+                phase,
+                cacheKey: cacheKey
+            ),
+            !Task.isCancelled,
+            thumbnailTaskID == cacheKey else {
                 return
             }
-            if let poster = phase.previewOrReadyValue {
-                if let decodedThumbnail = await DepthAlbumThumbnailDecoder.shared
-                    .decodedThumbnail(for: poster) {
-                    guard !Task.isCancelled,
-                          thumbnailTaskID == cacheKey,
-                          decodedThumbnail.poster.cacheKey == cacheKey else {
-                        return
-                    }
-                } else if phase.requiresRenderablePoster {
-                    phase = .failed(nil, reason: .decode, retryable: false)
-                }
-            }
-            guard !Task.isCancelled, thumbnailTaskID == cacheKey else {
-                return
-            }
-            fetchPhase = phase
+            fetchPhase = renderablePhase
         } catch is CancellationError {
             return
         } catch {
@@ -180,6 +170,30 @@ struct TAPLibraryItemCell: View {
             }
             fetchPhase = .failed(nil, reason: .decode, retryable: false)
         }
+    }
+
+    private func renderableThumbnailPhase(
+        _ phase: MediaFetchPhase<MediaPoster, MediaPoster>,
+        cacheKey: String
+    ) async -> MediaFetchPhase<MediaPoster, MediaPoster>? {
+        guard !Task.isCancelled, thumbnailTaskID == cacheKey else {
+            return nil
+        }
+        guard let poster = phase.previewOrReadyValue else {
+            return phase
+        }
+        guard let decodedThumbnail = await DepthAlbumThumbnailDecoder.shared
+            .decodedThumbnail(for: poster) else {
+            return phase.requiresRenderablePoster
+                ? .failed(nil, reason: .decode, retryable: false)
+                : phase
+        }
+        guard !Task.isCancelled,
+              thumbnailTaskID == cacheKey,
+              decodedThumbnail.poster.cacheKey == cacheKey else {
+            return nil
+        }
+        return phase
     }
 
     private func thumbnailPhase(

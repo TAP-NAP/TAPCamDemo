@@ -43,11 +43,9 @@
 			membershipExceptions = (
 				App/README.md,
 				CameraCapture/Documentation/APPLE_DEPTH_LIMITATIONS.md,
-				CameraCapture/Documentation/ARCHITECTURE.md,
 				CameraCapture/Documentation/CAPTURE_SOURCES.md,
 				CameraCapture/Documentation/CROP.md,
 				CameraCapture/Documentation/DEBUGGING.md,
-				CameraCapture/Documentation/PACKAGING.md,
 				CameraCapture/Documentation/PIPELINE.md,
 				CameraCapture/Documentation/RGB_DEPTH_PAIRING.md,
 				CameraCapture/Documentation/ZOOM.md,

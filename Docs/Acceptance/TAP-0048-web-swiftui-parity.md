@@ -1,32 +1,36 @@
 # TAP-0048 — Approved Web Prototype To SwiftUI Parity
 
-- Status: `Evidence in progress — frozen Web/native revisions and device acceptance exist; complete Simulator parity matrix remains pending`
-- Related Delivery: `TAP-0081`; prototype foundation `TAP-0006`; repository
+- Status: `Evidence in progress — startup prototype approved; complete Simulator parity matrix remains pending`
+- Related Delivery: startup `TAP-0008`, `TAP-0009`, and reviewer candidate
+  `TAP-0087`; Share `TAP-0081`; prototype foundation `TAP-0006`; repository
   relocation `TAP-0096`
 - Product Contract: `ProductContract §5.2–5.3, §6, §9`; `UIPrototypeContract §1–5`
-- Prototype Task: `TAP-0081`
+- Prototype Tasks: `TAP-0008`, `TAP-0009`, `TAP-0081`, `TAP-0087`
 - Prototype Repository Task: `TAP-0096`
-- Prototype Repository/Path/Revision: sibling `TAPCamPrototype` repository at
-  `Prototype/index.html`; `TAP-0081-r1` geometry and owner-approved
-  `TAP-0081-r3-candidate` behavior; pre-extraction closure commit `f2bf8d2` in
-  TAPCamDemo
-- Prototype Owner Approval: `ownerApproved` for r1 on `2026-08-12` and r3 on
-  `2026-08-14`
-- Build/Commit: `f2bf8d2` (`Close TAP-0081 and TAP-0082 Share lifecycle`)
+- Prototype Repository/Path/Revision: sibling `TAPCamPrototype` repository;
+  `Prototype/startup-lifecycle.html` is current `TAP-0087-r1-candidate` v19 and
+  `Prototype/index.html` retains the independently approved TAP-0008-r2,
+  TAP-0009-r1, and TAP-0081-r3 slices
+- Prototype Owner Approval: TAP-0008-r2, TAP-0009-r1, TAP-0081-r1,
+  TAP-0081-r3, and the complete `TAP-0087-r1-candidate` v19 composition are
+  `ownerApproved`; TAP-0087 approval was recorded on 2026-09-04
+- Share Build/Commit: `f2bf8d2` (`Close TAP-0081 and TAP-0082 Share lifecycle`);
+  startup native candidate must be frozen when the remaining matrix is run
 - Device/iOS: `TAP-0082 accepted on iPhone 15 Pro / iOS 26.6`
 - Superseding Decision:
   [TAP-0082 Share handoff](TAP-0082-share-handoff.md) removes the old visible
   Cancel, 50 ms delayed reveal, and 400 ms minimum hold requirements
 - Simulator Matrix: `Pending owner confirmation for the frozen candidate build`
-- Date: `2026-08-12`
-- Operator: `Codex development session /root; owner audit pending`
+- Date: `2026-09-04` (procedure synchronized; matrix not executed)
+- Operator: `Codex development session /root; prototype approved, parity audit pending`
 - Human Confirmation: `Pending`
 
-This record instantiates the generic Web-to-SwiftUI comparison for the first
-approved vertical slice: TAP Share revision `TAP-0081-r1`. It compares that
-versioned HTML/Web visual contract with the frozen TAP-0081 SwiftUI delivery.
-The owner has accepted the physical-device Share flow under TAP-0082, while the
-full TAP-0048 Simulator state/viewport comparison remains deliberately open.
+This record instantiates the Web-to-SwiftUI comparison for all prototype
+surfaces currently assigned to TAP-0048: First-Install Setup, Required
+Permission Check, Resource Initialization, and TAP Share. The owner has
+accepted the physical-device Share flow under TAP-0082 and the complete
+TAP-0087 v19 Web composition, while the full TAP-0048 Simulator state/viewport
+comparison remains deliberately open.
 A Web fixture can prove visual intent and simulated
 state coverage only. It is never evidence that Camera, Photos, permissions,
 depth, capture, signing, export, haptics, accessibility, performance, system
@@ -43,12 +47,15 @@ presented. The Web prototype deliberately stops at that native system boundary.
 
 ## Preconditions
 
-- **Met:** the Project Board names `TAP-0081` as the implementation Task and
-  `TAP-0006` as its prototype-foundation dependency.
+- **Met:** the Project Board names `TAP-0008`, `TAP-0009`, `TAP-0081`, and
+  `TAP-0087` as the relevant implementation/prototype Tasks and `TAP-0006` as
+  the prototype-foundation dependency.
 - **Met:** the current sibling manifest at
-  `../../../TAPCamPrototype/Prototype/manifest.json` is byte-identical to the
-  [pre-extraction TAPCamDemo manifest at `3932b25`](https://github.com/TAP-NAP/TAPCamDemo/blob/3932b254bd5e254f2a801fcc8586ebf0677cd2bc/Prototype/manifest.json)
-  and preserves the TAP-0081 revision data recorded by the historical
+  `../../../TAPCamPrototype/Prototype/manifest.json` records extraction
+  provenance plus distinct current and historical axes. Its
+  `acceptanceConsumers.TAP-0048` record names all three startup surfaces and
+  their exact approval status. It also preserves the TAP-0081 revision data
+  recorded by the historical
   [closure manifest at `f2bf8d2`](https://github.com/TAP-NAP/TAPCamDemo/blob/f2bf8d2dc5f10df3eee7f468ebc22b9e33fca22a/Prototype/manifest.json), including the
   `TAP-0081-r1` geometry baseline and freezes owner-approved
   `TAP-0081-r3-candidate` behavior across Photo/Live Photo/TAP Video fixtures,
@@ -61,6 +68,9 @@ presented. The Web prototype deliberately stops at that native system boundary.
   Sketch file, or Agent-selected Web state is not the baseline.
 - **Met:** the r3 native delivery is frozen at `f2bf8d2`; focused behavior/build and
   TAP-0082 physical-device acceptance are recorded by their owning Tasks.
+- **Met — OWNER-LIVE:** on 2026-09-04 the product owner approved exact
+  `TAP-0087-r1-candidate` v19, including Required Permission Check, and asked
+  that TAP-0048 remain for a later parity pass.
 - **Pending:** map every approved state to the complete owner-confirmed
   Simulator/viewport matrix and capture its side-by-side parity evidence.
 - **Pending — OWNER-LIVE:** approve the Simulator/viewport/state matrix. This
@@ -81,6 +91,9 @@ verdict.
 
 | Approved responsibility | SwiftUI candidate | Evidence state |
 | --- | --- | --- |
+| First-Install Setup hierarchy, row-owned actions, required/optional presentation, and iOS-owned permission boundary | `WelcomeStartupSetupView`, `StartupRequirementRow`, and `StartupGateCoordinator` | `TAP-0008-r2 independently approved; current native parity cells pending` |
+| Required Permission Check with Camera/Photos-only recovery | `RequiredPermissionCheckView` and `StartupGateCoordinator` | `TAP-0087-r1-candidate` v19 owner-approved; native parity cells pending |
+| Resource Initialization stable overlay and Camera-plus-Library readiness handoff | `CameraInitialReadinessOverlayView`, `CameraView`, and `StartupInitializationStore` | `TAP-0009-r1 independently approved; current native parity cells pending` |
 | Stable Share toolbar leaf shared by Photo, Live Photo, and TAP Video | `DepthViewerShareControl` mounted from the shared Viewer chrome | `Implemented in f2bf8d2; complete parity cell pending` |
 | App-owned anchored selection/immediate same-slot preparation/failure surface | `DepthAnalysisSharePopover` using native popover adaptation and stable in-place state layers | `Implemented in f2bf8d2; complete parity cell pending` |
 | Frozen media subject, credential state, immediate monotonic preparation, attempt-scoped discard/cleanup, Retry, stale-callback rejection, and payload lease | `DepthAnalysisShareCoordinator` | `Focused tests recorded by TAP-0081/TAP-0082; complete parity cell pending` |
@@ -102,9 +115,10 @@ background-prewarmed, or retained as a persistent cache.
 ## Reset / Install Procedure
 
 1. Confirm the sibling
-   `../../../TAPCamPrototype/Prototype/manifest.json` names the owner-reviewed
-   revision. The
-   previously approved `TAP-0081-r1` remains the geometry baseline; exact
+   `../../../TAPCamPrototype/Prototype/manifest.json` names the current
+   `TAP-0087-r1-candidate` v19 workbench, the three TAP-0048 startup surfaces,
+   and each surface's approval status. The previously approved `TAP-0081-r1`
+   remains the Share geometry baseline; exact
    `TAP-0081-r3-candidate`, including local-integrity states, refined toolbar
    geometry, immediate same-slot progress, no visible Cancel, and immediate
    payload-ready handoff, was owner-approved on 2026-08-14.
@@ -125,6 +139,10 @@ background-prewarmed, or retained as a persistent cache.
 
 | Step | Action | Expected result | Observed result | Evidence |
 | --- | --- | --- | --- | --- |
+| S1 | Freeze the exact current and historical prototype axes from `manifest.json`. | TAP-0008-r2 Setup and TAP-0009-r1 Resource Initialization retain their independent approvals; the complete `TAP-0087-r1-candidate` v19 composition, including Required Permission Check, is owner-approved. | `Pending` | `Pending` |
+| S2 | Compare First-Install Setup across every owner-approved Simulator viewport and required status fixture. | SwiftUI preserves the approved row hierarchy, exact icon identities, row-owned explicit actions, required/optional distinction, and app/system boundary without treating historical `/healthz` wording as current authority. | `Pending` | `Pending` |
+| S3 | Compare Required Permission Check across Camera/Photos authorized, denied, restricted, Settings-return, and recovery states. | Only Camera and Photos appear; row state and recovery match the current candidate, and no Network, timeout, skip, or invented app-owned system dialog appears. | `Pending` | `Pending` |
+| S4 | Compare Resource Initialization across preparing, Camera-first, catalog-first, and ready handoff states. | The stable surface remains visible until real Camera and first usable Library-catalog readiness both succeed; no failure, Retry, timeout, degraded entry, or unrelated warm-up UI appears. | `Pending` | `Pending` |
 | 1 | Verify the frozen prototype manifest against TAP-0081 and Product Contract §5.3/§6. | Every reviewed state has one revision, media kind, credential state, viewport, and contract mapping; no deprecated modal Share sheet or direct-share path is included. | `Pending` | `Pending` |
 | 2 | Capture the approved geometry from `TAP-0081-r1` and the approved original-readiness/local-integrity and preparation states from `TAP-0081-r3-candidate`. | The references preserve the stable Viewer hierarchy while adding Share-disabled iCloud loading, the text-free local-check skeleton, Failed direct-media warning, and immediate same-slot progress with no visible Cancel. Both exact revisions are recorded as owner-approved. | `Pending` | `Pending` |
 | 3 | Open Share from Photo, Live Photo, and TAP Video in the SwiftUI candidate. | The same native Share control and anchored popover appear for all three media kinds without remounting the pager, media surface, video player, toolbar, or chrome. | `Pending` | `Pending` |
@@ -144,16 +162,19 @@ background-prewarmed, or retained as a persistent cache.
   progress, attempt-scoped stale/discard cleanup when exercised, and
   fixture-versus-runtime provenance for every compared SwiftUI state. No
   user-visible cancellation state is required or inferred.
-- Screenshots/recording: frozen Web references and matching Simulator captures
-  organized by Task/revision/state/viewport. Physical-device captures and
-  attended interaction recordings are evidence for `TAP-0082`, not this run.
-- Output artifacts: prototype manifest and approval record, SwiftUI mapping
-  sheet, completed parity matrix, and documented exception dispositions.
+- Screenshots/recording: `N/A` by default. Review Web and Simulator side by
+  side live; retain images or recordings only if the owner first approves that
+  exact evidence form in this procedure. TAP-0082 retains its own evidence
+  policy separately.
+- Output artifacts: prototype manifest and approval record, structured
+  DOM/native geometry and state assertions, completed textual/JSON parity
+  matrix, and documented exception dispositions.
 - Result bundles: frozen prototype and code commits, Simulator UI test bundles
   where used, build/Simulator/iOS identifiers, and a link to the completed
   `TAP-0082` device-acceptance record.
-- **OWNER-LIVE:** explicit acceptance of the prototype revision, every native
-  variance, and the final SwiftUI implementation pair.
+- **OWNER-LIVE:** prototype revision approval is recorded; explicit acceptance
+  of every native variance and the final SwiftUI implementation pair remains
+  required.
 
 ## Verdict Conditions
 

@@ -80,7 +80,7 @@ nonisolated struct CaptureSourceContext: @unchecked Sendable {
 /// Result of a SingleCam photo-depth capture.
 ///
 /// `AVCapturePhoto` is retained only long enough for the packaging layer to
-/// create the embedded HEIC artifact and TAP manifest. The RGB image and depth
+/// create the selected HEIC/JPG artifact and TAP manifest. The RGB image and depth
 /// map remain Apple's paired output from one `AVCapturePhotoOutput` request.
 nonisolated struct SingleCamPhotoCaptureResult: @unchecked Sendable {
     let photo: AVCapturePhoto

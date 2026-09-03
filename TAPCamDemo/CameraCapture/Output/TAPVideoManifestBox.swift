@@ -32,8 +32,12 @@ nonisolated enum TAPVideoManifestBox {
     }
 
     static func decodedManifest(fromFileAt fileURL: URL) throws -> TAPVideoManifest {
+        try decodedManifestDocument(fromFileAt: fileURL).manifest
+    }
+
+    static func decodedManifestDocument(fromFileAt fileURL: URL) throws -> TAPVideoManifestDocument {
         let manifestData = try manifestData(fromFileAt: fileURL)
-        return try JSONDecoder().decode(TAPVideoManifest.self, from: manifestData)
+        return try TAPVideoManifestEncoder.decodedDocument(from: manifestData)
     }
 
     static func manifestData(fromFileAt fileURL: URL) throws -> Data {

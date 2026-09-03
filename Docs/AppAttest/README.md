@@ -152,8 +152,8 @@ queue calls `AppAttestCaptureAssertionSigner` and
 construction, App Attest input, proof-envelope, and slot-write rules in the shared
 [binding/proof contract](https://github.com/TAP-NAP/TAPArtifactContracts/blob/ca3b223e0717242ce1016b34dc34f04ef2417936/bindings/capture-binding-and-proof-v1.md).
 Their final gate checks this app's canonical artifacts by decoding and
-re-encoding the payload; exact raw-member-byte consumer reconstruction remains
-a local conformance gap recorded by [`TAP-0095`](../ProjectBoard.md#tap-0095--deduplicate-migrated-artifact-contract-prose-across-source-repositories).
+checking the embedded manifest's canonical form, then hashing the exact raw
+`payload` member bytes. Re-encoding is never used as that hash input.
 
 This client guide owns one local distinction: capture signing asks
 `DCAppAttestService` to sign the capture binding directly. It does not use the

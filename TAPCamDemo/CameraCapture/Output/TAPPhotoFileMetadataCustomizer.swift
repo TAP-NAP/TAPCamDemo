@@ -45,7 +45,7 @@ nonisolated final class TAPPhotoFileMetadataCustomizer: NSObject, AVCapturePhoto
     func replacementDepthData(for photo: AVCapturePhoto) -> AVDepthData? {
         // Returning `photo.depthData` makes the preservation of the auxiliary
         // depth attachment explicit. If this method returned nil, the flattened
-        // HEIC would become a normal RGB-only photo and the TAP manifest would
+        // file would become a normal RGB-only photo and the TAP manifest would
         // falsely describe depth data that no longer exists.
         photo.depthData
     }

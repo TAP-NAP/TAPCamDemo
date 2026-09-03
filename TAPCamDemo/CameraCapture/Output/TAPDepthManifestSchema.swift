@@ -26,17 +26,17 @@ nonisolated enum CaptureDepthAvailability: String, Codable, Equatable, Sendable 
     }
 }
 
-/// Versioned metadata contract embedded into every TAP depth HEIC.
+/// Versioned metadata contract embedded into every TAP depth HEIC/JPG photo.
 ///
-/// The HEIC file itself remains standards-friendly:
-/// - the visible photo is the primary HEIC image item,
-/// - Apple depth/disparity data stays in the HEIC auxiliary data attachment,
+/// The photo file itself remains standards-friendly:
+/// - the visible image stays in the selected HEIC/JPG container,
+/// - Apple depth/disparity data stays in its auxiliary data attachment,
 /// - normal EXIF/GPS/TIFF fields mirror common metadata for generic tools,
-/// - this manifest is the only authoritative location for TAP-specific fields.
+/// - XMP `tapdepth:Manifest` is the authoritative TAP-specific location.
 ///
-/// Proof data belongs in `proofs`. The business payload is intentionally
-/// isolated under `payload` so verification code can canonicalize exactly that
-/// subtree without chasing duplicate metadata in EXIF, GPS, or Photos.
+/// V1 always writes `proofs: []`; proof data lives only in the fixed proof slot.
+/// The business payload stays under `payload` so verification can hash its exact
+/// embedded bytes without chasing duplicate metadata in EXIF, GPS, or Photos.
 nonisolated struct TAPDepthManifest: Codable, Equatable {
     static let schemaIdentifier = "urn:tapnap:tapcam:still-photo-manifest:v1"
     static let mediaType = "application/vnd.tapnap.still-photo-manifest+json;version=1"
@@ -47,6 +47,8 @@ nonisolated struct TAPDepthManifest: Codable, Equatable {
     static let xmpNamespaceURI = "urn:tapnap:tapcam:depth:1.0"
     static let xmpPrefix = "tapdepth"
     static let xmpManifestPath = "tapdepth:Manifest"
+    /// Legacy-named discovery hint required verbatim in both HEIC and JPG.
+    /// It is not the manifest, a format identifier, a hash, or proof evidence.
     static let exifUserCommentPointer = "TAPDepthHEIC/1; metadata=xmp:tapdepth:Manifest"
 
     let schema: Schema
@@ -302,10 +304,10 @@ extension TAPDepthManifest {
                 depthDataDeliveryEnabled: try container.decode(Bool.self, forKey: .depthDataDeliveryEnabled),
                 embedsDepthDataInPhoto: try container.decode(Bool.self, forKey: .embedsDepthDataInPhoto),
                 depthDataFiltered: try container.decode(Bool.self, forKey: .depthDataFiltered),
-                depthAvailability: try container.decodeIfPresent(
+                depthAvailability: try container.decode(
                     CaptureDepthAvailability.self,
                     forKey: .depthAvailability
-                ) ?? .available,
+                ),
                 photoQualityPrioritization: try container.decode(String.self, forKey: .photoQualityPrioritization)
             )
         }
@@ -508,10 +510,10 @@ extension TAPDepthManifest {
         nonisolated init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             self.init(
-                availability: try container.decodeIfPresent(
+                availability: try container.decode(
                     CaptureDepthAvailability.self,
                     forKey: .availability
-                ) ?? .available,
+                ),
                 auxiliaryDataKind: try container.decode(String.self, forKey: .auxiliaryDataKind),
                 depthDataType: try container.decode(String.self, forKey: .depthDataType),
                 metricUnit: try container.decode(String.self, forKey: .metricUnit),

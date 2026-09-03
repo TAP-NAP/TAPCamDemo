@@ -41,7 +41,7 @@ final class LibraryMediaStore: NSObject, PHPhotoLibraryChangeObserver {
 
     init(
         itemProvider: DepthAlbumItemProvider? = nil,
-        photoCatalog: (any DepthAlbumPhotoCataloging)? = nil,
+        photoCatalog: PhotoKitLibraryMediaFetcher? = nil,
         notificationCenter: NotificationCenter = .default,
         observesChanges: Bool = false,
         registerPhotoLibraryChangeObserver: @escaping (any PHPhotoLibraryChangeObserver) -> Void = {

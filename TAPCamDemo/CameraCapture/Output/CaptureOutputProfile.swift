@@ -414,7 +414,7 @@ nonisolated struct CaptureOutputProfile: Equatable, Sendable {
 
     /// Validates the only executable Release output path in this app today.
     ///
-    /// Runtime, package construction, and the embedded HEIC packager all call
+    /// Runtime, package construction, and the embedded-photo packager all call
     /// this same method so future format or quality work cannot accidentally
     /// bypass the current photo-depth contract at one boundary.
     func validateForEmbeddedPhotoDepthCapture() throws {

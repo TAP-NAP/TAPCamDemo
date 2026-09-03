@@ -86,6 +86,11 @@ cover tests, UI tests, Debug fixtures, benchmarks, or resolved packages.
 - [`TAPCaptureAssertionTestDoubles.swift`](TAPCaptureAssertionTestDoubles.swift)
   owns test doubles for the capture assertion boundary. These doubles do not
   prove App Attest hardware or backend acceptance.
+- [`TAPCaptureManifestEncodingTests.swift`](TAPCaptureManifestEncodingTests.swift)
+  keeps one literal hermetic fallback for the shared
+  [canonical-JSON vector](https://github.com/TAP-NAP/TAPArtifactContracts/blob/ca3b223e0717242ce1016b34dc34f04ef2417936/examples/vectors/tap-capture-canonical-json-v1.json)
+  and compares the producer bytes directly with that shared vector whenever the
+  sibling contract checkout is available.
 - [`TAPVideoManifestV1GoldenVectors.json`](../Docs/Fixtures/TAPVideoManifestV1GoldenVectors.json)
   is a repository-local composite fixture because
   [`TAPVideoManifestTests.swift`](TAPVideoManifestTests.swift) loads that exact

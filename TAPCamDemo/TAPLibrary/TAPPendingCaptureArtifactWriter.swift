@@ -5,7 +5,18 @@
 
 import Foundation
 
-nonisolated struct TAPPendingCaptureArtifactWriter: CaptureArtifactWriter {
+/// Result of staging one packaged capture in the Pending Capture Queue.
+nonisolated struct CaptureWriteResult: Equatable, Sendable {
+    let artifactID: UUID
+    let publicDestinationSummary: String
+    let assetLocalIdentifier: String?
+    let pendingCaptureID: String?
+    let signatureStatus: CaptureSignatureStatus
+    let depthAvailability: CaptureDepthAvailability
+    let captureScoreSummary: CaptureScoreSummary
+}
+
+nonisolated struct TAPPendingCaptureArtifactWriter: Sendable {
     let store: TAPPendingCaptureStore
 
     init(store: TAPPendingCaptureStore = .shared) {

@@ -58,9 +58,3 @@ nonisolated struct DepthAlbumPhotoCatalogSnapshot: Equatable, Sendable {
 
     static let empty = DepthAlbumPhotoCatalogSnapshot(albumAssets: [])
 }
-
-nonisolated protocol DepthAlbumPhotoCataloging: Sendable {
-    func depthAlbumPhotoCatalogSnapshot(
-        exportedAssetLocalIdentifiers: Set<String>
-    ) async throws -> DepthAlbumPhotoCatalogSnapshot
-}

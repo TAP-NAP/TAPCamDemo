@@ -1,8 +1,8 @@
 # CameraCapture Runtime
 
 `CameraCapture/Runtime` owns the executable SingleCam path. It configures one
-`AVCaptureSession + AVCapturePhotoOutput`, prewarms photo settings, captures
-one photo-depth result, and runs the async capture pipeline.
+`AVCaptureSession + AVCapturePhotoOutput`, creates settings for each shutter
+request, captures one photo-depth result, and runs the async capture pipeline.
 
 [ProductContract.md](../../../Docs/ProductContract.md) owns product capability;
 this README owns Runtime's executable session, device-write, and recording
@@ -23,8 +23,9 @@ the raw profile policy once into `ResolvedCaptureOutputProfile`, validates that
 resolved request against a `CapturePhotoOutputCapabilitySnapshot` from the
 current `AVCapturePhotoOutput` while configuring or reusing the graph, stores it
 in `SessionConfigurationResult`, then consumes that single validated request
-when it prewarms settings, creates the per-shot `AVCapturePhotoSettings`, and
-hands output facts to packaging and manifest code.
+when it creates the per-shot `AVCapturePhotoSettings` and hands output facts to
+packaging and manifest code. Runtime clears prepared-photo settings when the
+graph changes and does not retain a prewarmed settings array.
 
 Runtime also owns
 [`CameraControlService`](CameraControlService.swift), the internal device-control
@@ -131,7 +132,7 @@ sequenceDiagram
 
     VM->>Session: configure(CaptureSourcePlan)
     Session->>Session: Reuse or rebuild SingleCam graph
-    Session->>Session: Prewarm AVCapturePhotoOutput
+    Session->>Session: Validate output capabilities
     VM->>Queue: enqueue capture job
     Queue->>Pipeline: run(job, context)
     Pipeline->>Provider: capturePhotoDepth()
@@ -147,8 +148,9 @@ sequenceDiagram
 - FOV-only changes should reuse the current graph when device, format, output
   file container, resolved still-photo dimensions, depth state, and requested
   plan are already compatible.
-- Prewarm and capture use the same configured `ResolvedCaptureOutputProfile` so
-  prepared resources match the real output request.
+- Each capture-time settings request uses the configured
+  `ResolvedCaptureOutputProfile`; no prepared-photo settings survive graph
+  changes.
 - File-type availability, per-file-type codec support, active-format still-photo
   dimensions, depth-delivery support, configured depth-delivery state,
   configured `AVCapturePhotoOutput.maxPhotoDimensions`, and already-configured

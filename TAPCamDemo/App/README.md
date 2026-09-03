@@ -8,7 +8,7 @@ bytes, or run the pending queue.
 [ProductContract.md](../../Docs/ProductContract.md) owns the product behavior.
 This README owns only the App module's implementation responsibilities; task
 status and known alignment work remain in
-[ProjectBoard.md](../../Docs/ProjectBoard.md).
+[TAPCamKanban ProjectBoard.md](../../../TAPCamKanban/ProjectBoard.md).
 
 ## Code Map
 
@@ -245,6 +245,6 @@ The app target also sets `APP_ATTEST_ENVIRONMENT` to `development` for Debug and
 
 - [ProductContract.md](../../Docs/ProductContract.md)
 - [StartupLifecycleContract.md](../../Docs/StartupLifecycleContract.md)
-- [ProjectBoard.md](../../Docs/ProjectBoard.md)
+- [TAPCamKanban ProjectBoard.md](../../../TAPCamKanban/ProjectBoard.md)
 - [Docs/AppAttest/README.md](../../Docs/AppAttest/README.md)
 - [TAPCamDemoTests/README.md](../../TAPCamDemoTests/README.md)

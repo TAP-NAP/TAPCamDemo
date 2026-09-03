@@ -1,9 +1,9 @@
 # TAPCam Startup Lifecycle And Workload Contract
 
-- Status: `TAP-0087-r1-candidate`; exact owner approval pending
+- Status: `TAP-0087-r1-candidate` v19 owner-approved; native evidence remains separate
 - Owner: product owner
 - Task: `TAP-0087`
-- Last updated: 2026-08-15
+- Last updated: 2026-09-04
 - Applies to: iPhone process launch, scene activation, startup routing, TAP
   Library entry, Photo Viewer entry, and startup-adjacent heavy work
 
@@ -70,21 +70,10 @@ procedure means Delete-and-Reinstall or Offload-and-Reinstall.
 `video poster` means a derived TAP Video thumbnail. It is unrelated to the iOS
 Launch Screen and must never be called a launch poster.
 
-The TAP-0087 reviewer keeps these surfaces in one combined UI page directory
-and shows only the operations applicable to the selected surface. It does not
-split the directory into parallel approved-slice and lifecycle entries.
-**Settings** may appear only as a disabled `Pending — no approved slice`
-catalog entry until a separately approved app-owned Settings visual exists.
-Permission recovery's system Settings boundary does not authorize a fabricated
-Settings preview or action model.
-
-The Viewfinder prototype maps the current SwiftUI hierarchy and relative
-geometry rather than inventing a simplified camera mock: two-row top chrome,
-Dynamic Island clearance, rounded inset preview, FOV chips, flexible middle
-space, professional-toolbar slot, capture row, and mode strip remain separate
-layout owners. Only TAP Library entry is functional in this candidate. The
-remaining visible controls are deferred to `TAP-0088`; that deferral is not
-represented by a prototype-only badge inside the phone surface.
+The reviewer catalog, Settings placeholder, Viewfinder geometry, and desktop
+composition are visual constraints owned by
+[UIPrototypeContract.md](UIPrototypeContract.md) §4.1. This document owns what
+the named surfaces mean and how the reducer reaches them.
 
 ## 2. Route Facts And Priority
 
@@ -354,20 +343,13 @@ The workload inspector must display this distinction.
 ## 5. State Machines And Events
 
 The reviewer prototype and later native instrumentation use the same conceptual
-machine names. The table below is a semantic registry; it is not the approved
-visualization form. The workbench must render the selected machine as a real
-directed node-edge flow diagram with any recorded branch condition, current
-node, and active transition. An absent condition is shown as unrecorded rather
-than invented. A grid of buttons, pills, or state cards alone is insufficient
-because it hides time and causality.
-
-For `TAP-0087-r1-candidate`, the graph source is limited to node-edge
-transitions recorded in the actual reducer journal, and the view is labeled
-**Executed reducer path**. `machineRegistry.nodes` enumerates known node names
-only; array adjacency is not evidence of a legal edge, branch, or next node and
-must never be guessed as one. Rendering a full normative state graph later
-requires an explicit transition registry with legal from/to edges and
-conditions.
+machine names. The table below is a semantic registry, not a transition graph:
+`machineRegistry.nodes` enumerates known nodes, and array adjacency is never
+evidence of a legal edge, branch, or next node. The current candidate may use
+only transitions recorded in the reducer journal. A future normative graph
+requires an explicit registry of legal edges and conditions. Visual graph form
+and labeling are owned by [UIPrototypeContract.md](UIPrototypeContract.md)
+§4.1.
 
 | Machine | Required states |
 | --- | --- |
@@ -491,39 +473,27 @@ presentation. The controller loads these JSON records and derives every count;
 it does not hardcode a second list. Lifecycle truth IDs remain explicitly and
 disjointly owned by either the **08/09 生命周期** lane or Workload.
 
-Every canonical reducer workload effect remains present. When a record is
-implemented at the target position, the exact existing target effect selected
-by event type, workload ID, resulting status, and one-based occurrence receives
-the yellow-background/red-border pending-regression decoration and its linked
-follow-up Task. It retains its normal focus action and canonical `Eligible`,
-`Running`, or `Ready` state. It does not create an **实际 · 不一致** annotation, a
-blue duplicate, or a dashed line, and the decoration does not imply that
-`TAP-0090`, `TAP-0083`, or attended acceptance has passed.
+Every canonical reducer workload effect remains present. An
+`implemented-at-target` record binds to the exact existing target effect chosen
+by event type, workload ID, resulting status, and one-based occurrence, and
+links its follow-up Task. It retains its canonical `Eligible`, `Running`, or
+`Ready` state and does not imply that regression, timing, or attended acceptance
+passed. A `task-owned-not-migrated` record retains its source-grounded actual
+anchor and the existing target effect when one exists; it may not create a
+substitute target, milestone, event, workload transition, marker effect, or
+phone mutation. Their distinct visual encodings are owned by
+[UIPrototypeContract.md](UIPrototypeContract.md) §4.1.
 
-When behavior is still owned but not migrated, its manifest-selected
-`actualVisibleAfter` projection may show one red actual annotation in the
-selected `scenarioGroupID`. The card states the source trigger, coarse actual
-anchor, target phase, and owning `TAP-0010` or `TAP-0015` Task. Its exact
-existing prototype effect remains blue and exactly one dashed line connects
-the two when that effect exists. If the target effect is not yet in the
-journal, the red actual card says **既有 trace effect 尚未出现** but creates no
-blue substitute, future milestone column, reducer event, workload transition,
-marker effect, or phone-state change.
-
-Target lifecycle-anchor reachability is rendered separately from an effect's
-canonical status, so `Eligible` or `Running` cannot be misread as completion.
+Target-anchor reachability remains distinct from an effect's canonical status.
 Historical current-main anchors and `actualVisibleAfter` are reviewer
 source-order or predicate-visibility projections, not native timestamps,
 elapsed durations, or device-performance measurements.
 
-### 5.2 Reviewer workbench, playback, and desktop composition
+### 5.2 Reviewer playback semantics
 
-The workbench binds three regions to the same selected surface and trace:
-
-- a left UI catalog plus contextual operations;
-- a center `393 x 852` iPhone visual-truth canvas; and
-- a right business/lifecycle/workload/state inspector containing the node-edge
-  flow graph and timing-axis event projection.
+The workbench layout and three-region visual binding are owned by
+[UIPrototypeContract.md](UIPrototypeContract.md) §4.1. All regions consume the
+same selected surface and reducer trace.
 
 Workload navigation obeys the same binding. A playback-history match rewinds or
 advances the review cursor to the complete existing snapshot for the workload's
@@ -534,35 +504,17 @@ legal reducer events from its declared initial facts and stops at the registered
 moment. Either path updates all three regions atomically; neither is a right-
 inspector-only focus effect or permission to fabricate Ready.
 
-The center canvas is the geometry authority only after the exact candidate is
-owner-approved. If a native page exists without a prototype slice, the first
-slice must reproduce its visible hierarchy and relative geometry one-to-one
-before later SwiftUI changes consume it as a constraint. The iOS Launch Screen
-remains a system-owned reference, and Settings remains a non-interactive
-pending catalog entry until an approved slice exists.
-
 The prototype's **Previous logical event** control is reviewer-only playback.
 It restores the prior complete reducer snapshot and its selected trace focus;
 it is not a canonical event, is not appended to the event log, and cannot start,
 cancel, retry, or complete any workload. Pressing Next afterward reduces
 forward from the restored snapshot through the same canonical event path.
 
-Previous, Next, and Reset form one global review-playback row. None appears a
-second time in a selected UI surface's contextual operations. This is a
-presentation and ownership rule; it does not turn review playback into product
-events or change the reducer semantics of Previous/Next/Reset.
-
-That playback row precedes the Launch scenario controls in the left rail.
 Contextual operations are also reducer-guarded: a phone control is listed only
 when its corresponding event can legally reduce from the current snapshot.
 For example, after a Setup Camera action enters `waitingSystem`, the Setup
 operation list is empty; the recorded system return changes state before legal
 row actions become visible again.
-
-At the supported desktop review viewport, all three workbench regions remain
-visible in one browser window without page-level scrolling. Individual
-information regions may scroll internally. This layout is analysis tooling,
-not a product surface or an iPad, Mac, or native runtime-dashboard requirement.
 
 ## 6. Debug And Performance Measurement
 
@@ -609,7 +561,7 @@ Pending work that remains open.
 | Candidate area | Current `fix0809` behavior | Remaining boundary |
 | --- | --- | --- |
 | Setup facts | Defines and validates canonical credential-bound `SetupReceipt`; the mounted frozen Network path writes only current pre-release `SetupCompletionRecord` v1 | Initial Network/App Attest remains in `TAP-0010`, so production Continue cannot yet write canonical `S`; the non-canonical completion record is never presented as credential evidence, and older development keys are not migrated |
-| Required permissions | Root priority is Setup → Camera/Photos Required Permission Check → Initialization → Viewfinder; `.limited`, `.denied`, and `.restricted` remain distinct; requests and Settings recovery are row-owned | Exact Required Permission Check visual parity remains pending owner review |
+| Required permissions | Root priority is Setup → Camera/Photos Required Permission Check → Initialization → Viewfinder; `.limited`, `.denied`, and `.restricted` remain distinct; requests and Settings recovery are row-owned | The Web composition is owner-approved; exact SwiftUI parity remains pending under `TAP-0048` |
 | Library observation | Store construction is observer-inert; eligible explicit/post-Setup Photos boundaries activate observation idempotently; stopping cancels queued refresh work | Device timing and large/cold Library evidence remain open |
 | Camera construction | The selected route installs a shell state and defers `CameraView` mounting until a later main-actor turn; default `CameraViewModel` creation remains lazy across later parent updates | The implementation is presented at its target position, but `Task.yield()` is not a rendered-frame acknowledgement; `TAP-0083` still owns measured shell/first-frame placement proof |
 | Initialization fact | Independent atomic Application Support marker binds bundle, version, build, initialization schema, installation generation, and a ThisDeviceOnly device generation; marker preparation/fsync runs off MainActor, Application Support absence fails closed, and malformed device-generation data repairs to a new local generation | Canonical Setup restore validity still depends on future verified credential binding |

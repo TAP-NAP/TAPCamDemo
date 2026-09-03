@@ -182,15 +182,11 @@ extension CameraViewModel {
                 captureID: captureID
             )
             videoRecordingTemporaryDirectoryURL = workspace.bundleURL
-            let request = TAPVideoRecordingRequest(
+            let request = Self.videoRecordingRequest(
                 captureID: captureID,
                 capturedAt: capturedAt,
                 outputURL: workspace.artifactURL,
-                maximumDuration: TAPVideoRecordingRequest.defaultMaximumDuration,
-                videoRotationAngle: Self.videoRotationAngleForHorizonLevelCapture(
-                    device: activeSessionConfiguration.device
-                ),
-                isVideoMirrored: activeSessionConfiguration.device.position == .front,
+                configuration: activeSessionConfiguration,
                 recordsAudio: recordsAudio
             )
             _ = try await sessionController.startVideoRecording(
@@ -315,6 +311,26 @@ extension CameraViewModel {
             )
             #endif
         }
+    }
+
+    private static func videoRecordingRequest(
+        captureID: String,
+        capturedAt: Date,
+        outputURL: URL,
+        configuration: SessionConfigurationResult,
+        recordsAudio: Bool
+    ) -> TAPVideoRecordingRequest {
+        TAPVideoRecordingRequest(
+            captureID: captureID,
+            capturedAt: capturedAt,
+            outputURL: outputURL,
+            maximumDuration: TAPVideoRecordingRequest.defaultMaximumDuration,
+            videoRotationAngle: videoRotationAngleForHorizonLevelCapture(
+                device: configuration.device
+            ),
+            isVideoMirrored: configuration.device.position == .front,
+            recordsAudio: recordsAudio
+        )
     }
 
     private func installVideoRecordingLimitTask(

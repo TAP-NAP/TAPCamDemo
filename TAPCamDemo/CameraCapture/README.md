@@ -5,10 +5,11 @@ capture, and TAP Video recording. Release UI chooses semantic field-of-view
 options; Planning resolves them into concrete AVFoundation-compatible sources;
 Runtime captures either one Apple photo-depth result or a bounded RGB/audio/
 depth-metadata movie; Output builds the unsigned TAP artifact and stages it in
-TAP Library.
+the app-private Pending Capture Queue.
 
-The module does not run separate RGB/depth sessions, does not write sidecars,
-and does not export to Photos directly.
+The module does not run separate RGB/depth sessions or write sidecars. Its
+foreground path never exports directly to Photos; the Pending Capture Queue
+later invokes the validated Photos writer.
 
 ## Code Map
 
@@ -53,8 +54,8 @@ as an in-memory restore anchor while the camera view is alive.
 camera surface. It turns SwiftUI scene, route, and pending-capture signing
 credential events into explicit actions such as restore route, refresh recent
 preview, and retry pending captures. It does not create the capture pipeline,
-write Photos assets, sign photo files, or bypass TAP Library's protected-data
-checks.
+write Photos assets, sign photo files, or bypass the Pending Capture Queue's
+protected-data checks.
 
 `CameraPreviewStageView` is the local SwiftUI composition boundary for the live
 preview. It owns preview sizing, render-only `AVCaptureSession` handoff, crop
@@ -124,8 +125,9 @@ sequenceDiagram
     Writer-->>Pipeline: pending capture ID
 ```
 
-The same `AVCapturePhotoOutput` settings factory is used for prewarm and
-capture. The session controller is the only type that mutates
+The configured `ResolvedCaptureOutputProfile` is reused when capture-time
+`AVCapturePhotoSettings` are created. Runtime deliberately retains no prepared
+photo settings across camera-graph changes. The session controller is the only type that mutates
 `AVCaptureSession`; FOV-only changes reuse the current graph when the selected
 device, format, output, depth state, and plan are compatible.
 
@@ -177,14 +179,14 @@ The format and quality boundary crosses layers in this order:
    `ResolvedCaptureOutputProfile`, configures `AVCapturePhotoOutput` from that
    resolved request, and stores it in `SessionConfigurationResult`.
 5. `SingleCamPhotoSettingsFactory` receives the configured
-   `ResolvedCaptureOutputProfile` for both prewarm and per-shot
-   `AVCapturePhotoSettings`.
+   `ResolvedCaptureOutputProfile` when it creates per-shot
+   `AVCapturePhotoSettings`; Runtime keeps no prewarmed photo-settings array.
 6. `CapturePackageBuilder`, `EmbeddedPhotoPackager`, and
    `TAPDepthManifestBuilder` read the same resolved output facts instead of
    reinterpreting the raw profile during packaging.
-7. Output builds an unsigned embedded HEIC or JPG TAP depth photo file; TAP
-   Library later signs, validates, and exports it. Output does not export to
-   Photos directly.
+7. Output builds an unsigned embedded HEIC or JPG TAP depth photo file; the
+   Pending Capture Queue later signs, validates, and exports it. Output does not
+   export to Photos directly.
 
 This is still not a broad image-quality feature. The visible photo format choice is
 limited to the two reviewed TAP depth photo profiles. Live Photo is a narrow
@@ -238,12 +240,10 @@ Start with [UI/CameraViewModel+Debug.swift](UI/CameraViewModel+Debug.swift).
 
 | Document | Read it for |
 | --- | --- |
-| [Documentation/ARCHITECTURE.md](Documentation/ARCHITECTURE.md) | Dependency direction and module boundaries. |
 | [Documentation/PIPELINE.md](Documentation/PIPELINE.md) | The one executable `AVCaptureSession + AVCapturePhotoOutput` path. |
 | [Documentation/APPLE_DEPTH_LIMITATIONS.md](Documentation/APPLE_DEPTH_LIMITATIONS.md) | Apple depth-device, format, calibration, and FOV constraints. |
 | [Documentation/RGB_DEPTH_PAIRING.md](Documentation/RGB_DEPTH_PAIRING.md) | Why Release only exposes Apple-paired photo-depth choices. |
 | [Documentation/ZOOM.md](Documentation/ZOOM.md) | Raw `videoZoomFactor`, semantic FOV labels, and depth-safe zoom ranges. |
 | [Documentation/CROP.md](Documentation/CROP.md) | Preview crop metadata versus destructive final crop. |
 | [Documentation/CAPTURE_SOURCES.md](Documentation/CAPTURE_SOURCES.md) | Why this app has one photo-depth provider path. |
-| [Documentation/PACKAGING.md](Documentation/PACKAGING.md) | Embedded TAP depth photo packaging, pending storage, signing, and export. |
 | [Documentation/DEBUGGING.md](Documentation/DEBUGGING.md) | Debug panels, metrics, and queue state. |

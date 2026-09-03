@@ -576,36 +576,12 @@ actor TAPPendingCaptureStore {
         guard record.artifactKind == .photoDepth else {
             throw TAPDepthCaptureError.pendingCaptureDataMissing
         }
-
-        let sourcePhotoURL: URL
-        let selectedSignedPhoto: Bool
-        if requiresSignedPhoto {
-            guard let signedFilename = record.signedPhotoFilename,
-                  let signedURL = try storage.photoURLIfPresent(
-                    filename: signedFilename,
-                    captureID: captureID
-                  ) else {
-                throw TAPDepthCaptureError.pendingCaptureDataMissing
-            }
-            sourcePhotoURL = signedURL
-            selectedSignedPhoto = true
-        } else if let signedFilename = record.signedPhotoFilename,
-                  let signedURL = try storage.photoURLIfPresent(
-                    filename: signedFilename,
-                    captureID: captureID
-                  ) {
-            sourcePhotoURL = signedURL
-            selectedSignedPhoto = true
-        } else if let unsignedFilename = record.unsignedPhotoFilename,
-                  let unsignedURL = try storage.photoURLIfPresent(
-                    filename: unsignedFilename,
-                    captureID: captureID
-                  ) {
-            sourcePhotoURL = unsignedURL
-            selectedSignedPhoto = false
-        } else {
-            throw TAPDepthCaptureError.pendingCaptureDataMissing
-        }
+        let source = try photoShareSource(
+            record: record,
+            captureID: captureID,
+            requiresSignedPhoto: requiresSignedPhoto,
+            includesPairedVideo: includesPairedVideo
+        )
 
         let photoURL = destinationDirectoryURL.appendingPathComponent(
             "source-photo.\(record.photoFileContainer.tapnapFileExtension)"
@@ -614,20 +590,6 @@ actor TAPPendingCaptureStore {
             ? destinationDirectoryURL.appendingPathComponent("source-paired-video.mov")
             : nil
 
-        let sourcePairedVideoURL: URL?
-        if includesPairedVideo, let filename = record.pairedVideoFilename {
-            do {
-                sourcePairedVideoURL = try storage.pairedVideoURL(
-                    filename: filename,
-                    captureID: captureID
-                )
-            } catch TAPDepthCaptureError.pendingCaptureDataMissing {
-                sourcePairedVideoURL = nil
-            }
-        } else {
-            sourcePairedVideoURL = nil
-        }
-
         do {
             try Task.checkCancellation()
             try FileManager.default.createDirectory(
@@ -635,15 +597,15 @@ actor TAPPendingCaptureStore {
                 withIntermediateDirectories: true
             )
 
-            let photoByteCount = try checkedShareResourceByteCount(at: sourcePhotoURL)
-            let pairedVideoByteCount = try sourcePairedVideoURL.map {
+            let photoByteCount = try checkedShareResourceByteCount(at: source.photoURL)
+            let pairedVideoByteCount = try source.pairedVideoURL.map {
                 try checkedShareResourceByteCount(at: $0)
             } ?? 0
             let totalByteCount = max(photoByteCount + pairedVideoByteCount, 1)
             progressHandler(0)
 
             try createStableShareResourceSnapshot(
-                from: sourcePhotoURL,
+                from: source.photoURL,
                 to: photoURL,
                 byteCount: photoByteCount,
                 role: .photo,
@@ -656,7 +618,8 @@ actor TAPPendingCaptureStore {
             )
 
             let copiedPairedVideoURL: URL?
-            if let sourcePairedVideoURL, let destinationPairedVideoURL {
+            if let sourcePairedVideoURL = source.pairedVideoURL,
+               let destinationPairedVideoURL {
                 try createStableShareResourceSnapshot(
                     from: sourcePairedVideoURL,
                     to: destinationPairedVideoURL,
@@ -686,12 +649,64 @@ actor TAPPendingCaptureStore {
                 photoURL: photoURL,
                 pairedVideoURL: copiedPairedVideoURL,
                 fileContainer: record.photoFileContainer,
-                selectedSignedPhoto: selectedSignedPhoto
+                selectedSignedPhoto: source.selectedSignedPhoto
             )
         } catch {
             try? FileManager.default.removeItem(at: destinationDirectoryURL)
             throw error
         }
+    }
+
+    private func photoShareSource(
+        record: TAPPendingCaptureRecord,
+        captureID: String,
+        requiresSignedPhoto: Bool,
+        includesPairedVideo: Bool
+    ) throws -> (photoURL: URL, selectedSignedPhoto: Bool, pairedVideoURL: URL?) {
+        let photoURL: URL
+        let selectedSignedPhoto: Bool
+        if requiresSignedPhoto {
+            guard let signedFilename = record.signedPhotoFilename,
+                  let signedURL = try storage.photoURLIfPresent(
+                    filename: signedFilename,
+                    captureID: captureID
+                  ) else {
+                throw TAPDepthCaptureError.pendingCaptureDataMissing
+            }
+            photoURL = signedURL
+            selectedSignedPhoto = true
+        } else if let signedFilename = record.signedPhotoFilename,
+                  let signedURL = try storage.photoURLIfPresent(
+                    filename: signedFilename,
+                    captureID: captureID
+                  ) {
+            photoURL = signedURL
+            selectedSignedPhoto = true
+        } else if let unsignedFilename = record.unsignedPhotoFilename,
+                  let unsignedURL = try storage.photoURLIfPresent(
+                    filename: unsignedFilename,
+                    captureID: captureID
+                  ) {
+            photoURL = unsignedURL
+            selectedSignedPhoto = false
+        } else {
+            throw TAPDepthCaptureError.pendingCaptureDataMissing
+        }
+
+        let pairedVideoURL: URL?
+        if includesPairedVideo, let filename = record.pairedVideoFilename {
+            do {
+                pairedVideoURL = try storage.pairedVideoURL(
+                    filename: filename,
+                    captureID: captureID
+                )
+            } catch TAPDepthCaptureError.pendingCaptureDataMissing {
+                pairedVideoURL = nil
+            }
+        } else {
+            pairedVideoURL = nil
+        }
+        return (photoURL, selectedSignedPhoto, pairedVideoURL)
     }
 
     /// Creates an independent, byte-for-byte video snapshot while the store

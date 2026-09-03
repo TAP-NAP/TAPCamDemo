@@ -619,18 +619,32 @@ nonisolated enum TAPVideoManifestEncoder {
     }
 
     static func manifestData(_ manifest: TAPVideoManifest) throws -> Data {
-        try encoder.encode(manifest)
+        try JSONEncoder.tapCaptureCanonical.encode(manifest)
     }
 
     static func payloadDataExcludingProofs(_ payload: TAPVideoManifest.Payload) throws -> Data {
-        try encoder.encode(payload)
+        try JSONEncoder.tapCaptureCanonical.encode(payload)
     }
 
-    private static let encoder: JSONEncoder = {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-        return encoder
-    }()
+    static func decodedDocument(from manifestData: Data) throws -> TAPVideoManifestDocument {
+        let manifest = try JSONDecoder().decode(TAPVideoManifest.self, from: manifestData)
+        let canonicalManifestData = try self.manifestData(manifest)
+        let canonicalPayloadData = try payloadDataExcludingProofs(manifest.payload)
+        let rawPayloadData = try TAPCanonicalManifestPayload.rawPayloadData(
+            in: manifestData,
+            canonicalManifestData: canonicalManifestData,
+            canonicalPayloadData: canonicalPayloadData
+        )
+        return TAPVideoManifestDocument(
+            manifest: manifest,
+            rawPayloadData: rawPayloadData
+        )
+    }
+}
+
+nonisolated struct TAPVideoManifestDocument {
+    let manifest: TAPVideoManifest
+    let rawPayloadData: Data
 }
 
 extension TAPVideoManifest.Software {

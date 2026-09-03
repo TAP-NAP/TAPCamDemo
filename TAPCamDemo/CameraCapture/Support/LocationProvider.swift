@@ -13,8 +13,8 @@ import Foundation
 /// Location is optional by design and deliberately stays out of the shutter's
 /// critical path. The camera uses a recent cached value if one exists, then
 /// refreshes the cache in the background for future captures. The manifest
-/// records `location: null` when no recent value is available, and the HEIC
-/// still contains all camera/depth data needed by downstream tooling.
+/// records `location: null` when no recent value is available, and the selected
+/// HEIC/JPG file still contains the camera/depth data needed downstream.
 @MainActor
 final class LocationProvider: NSObject, CLLocationManagerDelegate {
     private let manager = CLLocationManager()

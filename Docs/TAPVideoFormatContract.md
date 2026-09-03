@@ -19,7 +19,7 @@ content binding, signing, verification, and hash participation. Start with its
 This document owns only how TAPCamDemo implements that artifact through its
 local lifecycle. Product scope comes from [ProductContract.md](ProductContract.md),
 especially §3.3 and §7. Task and evidence status comes from
-[ProjectBoard.md](ProjectBoard.md). A shared identifier, field, byte layout,
+[TAPCamKanban ProjectBoard.md](../../TAPCamKanban/ProjectBoard.md). A shared identifier, field, byte layout,
 hash rule, or reader rule repeated in Git history is not a second authority.
 
 ## Finalization And Publication
@@ -61,7 +61,7 @@ duplicate samples, or turn missing depth alone into an integrity failure.
 
 The shared manifest contract owns the exact zero-depth fields. Remaining paths
 that still persist zero depth as terminal are the P0 conformance gap
-[TAP-0011](ProjectBoard.md#tap-0011--make-zero-depth-tap-video-non-blocking),
+[TAP-0011](../../TAPCamKanban/ProjectBoard.md#tap-0011--make-zero-depth-tap-video-non-blocking),
 not an alternate artifact definition.
 
 ## Signing And Local Integrity Gates

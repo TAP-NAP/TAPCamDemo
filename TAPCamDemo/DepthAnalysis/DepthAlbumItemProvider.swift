@@ -43,7 +43,7 @@ struct DepthAlbumItemProvider {
         exportedRecordsLoader: @escaping ExportedRecordsLoader = {
             try TAPPendingCaptureStore.shared.exportedRecords()
         },
-        photoCatalog: any DepthAlbumPhotoCataloging = PhotoKitLibraryMediaFetcher(),
+        photoCatalog: PhotoKitLibraryMediaFetcher = PhotoKitLibraryMediaFetcher(),
         exportedRecordRemover: @escaping ExportedRecordRemover = { captureID in
             try TAPPendingCaptureStore.shared.removeRecord(captureID: captureID)
         },

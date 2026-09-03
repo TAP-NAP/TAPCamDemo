@@ -13,7 +13,7 @@ changing files, read in this order:
 2. [Docs/ProductContract.md](Docs/ProductContract.md) §1 plus every section relevant to the request.
    Read the whole contract when the change is cross-cutting or changes product
    scope, state machines, claims, non-goals, or terminology.
-3. [Docs/ProjectBoard.md](Docs/ProjectBoard.md) operating rules, then search the complete registry
+3. [TAPCamKanban ProjectBoard.md](../TAPCamKanban/ProjectBoard.md) operating rules, then search the complete registry
    across Inbox, Todo, Doing, Done, and Deprecated. Read the complete matching
    Task record and every directly related or blocking Task.
 4. [Docs/UIPrototypeContract.md](Docs/UIPrototypeContract.md) in full, plus the
@@ -106,8 +106,8 @@ scope before using the new decision as implementation authority.
   evidence, documentation impact, and proposed status in its handoff.
 - Development sessions do not maintain competing boards or silently broaden
   their Task.
-- During multi-Agent work, only the designated Board Steward edits
-  [Docs/ProjectBoard.md](Docs/ProjectBoard.md); other Agents return structured updates by Task ID.
+- During multi-Agent work, only the designated Board Steward edits the sibling
+  [TAPCamKanban ProjectBoard.md](../TAPCamKanban/ProjectBoard.md); other Agents return structured updates by Task ID.
 
 ## 3. UI Prototype Gate
 
@@ -130,9 +130,10 @@ Sketch or another tool may replace the Web prototype only when the owner chooses
 it for that Task; the accepted result must still be synchronized into the
 TAPCamPrototype-owned prototype record so there is one active visual truth.
 
-TAPCamDemo owns product behavior, Task lifecycle, native implementation, and
-acceptance. TAPCamPrototype owns the static prototype implementation, manifest,
-fixtures, QA, tests, and prototype evidence. Historical `Prototype/...` paths
+TAPCamDemo owns product behavior, native implementation, and acceptance.
+TAPCamKanban owns Task lifecycle and status. TAPCamPrototype owns the static
+prototype implementation, manifest, fixtures, QA, tests, and prototype evidence.
+Historical `Prototype/...` paths
 and commits remain valid TAPCamDemo Git-history facts; current prototype work
 uses the sibling checkout and must not restore a duplicate implementation here.
 
@@ -171,7 +172,7 @@ short reason.
 
 | Change made or decision reached | Required tracking file |
 | --- | --- |
-| Task scope, status, assignee, session, dependency, decision, completion, revision, or handoff | [Docs/ProjectBoard.md](Docs/ProjectBoard.md) through the Board Steward |
+| Task scope, status, assignee, session, dependency, decision, completion, revision, or handoff | sibling [TAPCamKanban ProjectBoard.md](../TAPCamKanban/ProjectBoard.md) through the Board Steward |
 | Product behavior, state machine, terminology, capability, future scope, explicit non-goal, experiment status, or claim boundary | [Docs/ProductContract.md](Docs/ProductContract.md) |
 | Visual hierarchy, layout, icons, copy placement, interaction, responsive behavior, or simulated UI states | HTML/Web prototype and its repository manifest/revision record |
 | The design-to-code workflow or prototype authority itself changes | [Docs/UIPrototypeContract.md](Docs/UIPrototypeContract.md) |

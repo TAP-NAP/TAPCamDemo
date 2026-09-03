@@ -41,21 +41,21 @@ actor CaptureJobQueue {
 }
 
 /// Coordinates SingleCam capture, logical package build, physical packaging,
-/// Photos writing, and diagnostics.
+/// Pending Capture Queue staging, and diagnostics.
 ///
 /// The pipeline owns orchestration only. It does not mutate AVFoundation session
 /// configuration; the active `SessionConfigurationResult` must already exist
 /// before a job reaches this type.
 nonisolated final class CapturePipeline: @unchecked Sendable {
     private let photoDepthProvider: any SingleCamPhotoCaptureProvider
-    private let packager: any CapturePackager
-    private let writer: any CaptureArtifactWriter
+    private let packager: EmbeddedPhotoPackager
+    private let writer: TAPPendingCaptureArtifactWriter
     private let metricsStore: MetricsStore
 
     init(
         photoDepthProvider: any SingleCamPhotoCaptureProvider,
-        packager: any CapturePackager = EmbeddedPhotoPackager(),
-        writer: any CaptureArtifactWriter = PhotoLibraryCaptureArtifactWriter(),
+        packager: EmbeddedPhotoPackager = EmbeddedPhotoPackager(),
+        writer: TAPPendingCaptureArtifactWriter = TAPPendingCaptureArtifactWriter(),
         metricsStore: MetricsStore
     ) {
         self.photoDepthProvider = photoDepthProvider
@@ -67,13 +67,13 @@ nonisolated final class CapturePipeline: @unchecked Sendable {
     /// Runs the asynchronous capture-package-write job after the shutter tap.
     ///
     /// The preview remains live while this pipeline captures, builds the logical
-    /// package, embeds the HEIC manifest, writes to Photos, and records metrics.
+    /// package, embeds the manifest into the selected HEIC/JPG container, stages
+    /// it in the Pending Capture Queue, and records metrics.
     ///
     /// - Tag: RunSingleCamCapturePipeline
     func runSingleCamJob(
         job: CaptureJob,
         context: CaptureSourceContext,
-        assertionSigner: (any CaptureAssertionSigning)?,
         pendingJobCount: Int,
         queueWaitDuration: TimeInterval?
     ) async -> Result<CaptureWriteResult, Error> {
@@ -101,10 +101,7 @@ nonisolated final class CapturePipeline: @unchecked Sendable {
             packageBuildDuration = Date().timeIntervalSince(packageBuildStart)
 
             let packagingStart = Date()
-            let artifact = try await packager.package(
-                capturePackage,
-                assertionSigner: assertionSigner
-            )
+            let artifact = try packager.package(capturePackage)
             packagingDuration = Date().timeIntervalSince(packagingStart)
             packagingMetrics = artifact.packagingMetrics
 

@@ -8,8 +8,8 @@ import Foundation
 /// Reviewable list of output profiles the app is willing to execute.
 ///
 /// This is intentionally not a settings screen or feature flag. It is the
-/// catalog future format/quality UI must go through before it can request a
-/// different JPEG, RAW, video, or HEIC-depth path.
+/// catalog future format/quality UI must go through before it can request an
+/// additional still-image, RAW, or video output path.
 nonisolated struct CaptureOutputProfileCatalog: Equatable, Sendable {
     static let releaseDefaultProfile = CaptureOutputProfile.releasePhotoDepthHEIC
     static let release = CaptureOutputProfileCatalog(

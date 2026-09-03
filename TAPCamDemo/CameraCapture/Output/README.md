@@ -13,18 +13,18 @@ with `JSONEncoder` `.sortedKeys` and `.withoutEscapingSlashes`. This is a local
 implementation mapping, not a claim of RFC 8785 or complete floating-point and
 Unicode edge-vector coverage.
 
-The current final gates decode and re-encode `manifest.payload` with that same
-mapping. This proves self-consistency for this app's canonical output, but it
-does not yet implement the shared consumer rule that hashes the exact embedded
-raw member bytes. The local conformance gap is recorded by
-[`TAP-0095`](../../../Docs/ProjectBoard.md#tap-0095--deduplicate-migrated-artifact-contract-prose-across-source-repositories).
+The photo and video final gates require the complete embedded manifest to match
+that canonical mapping, then slice and hash the exact embedded `payload` bytes.
+Re-encoding is only the fail-closed canonicality check; it is not the hash input.
 
 `CameraCapture/Output` converts a successful photo-depth capture into the TAP
 depth photo contract. It builds the logical package, constructs the TAP
 manifest, embeds that manifest into an Apple HEIC or JPG photo-depth file, and
 hands the unsigned artifact to the Pending Capture Queue for signing and export.
 
-Output does not talk to Photos directly and does not own retry behavior.
+Foreground packaging does not talk to Photos directly. The Pending Capture
+Queue owns retry behavior and invokes this directory's `PhotoLibraryWriter`
+only after signing and final validation.
 
 ## Code Map
 
@@ -37,7 +37,7 @@ Output does not talk to Photos directly and does not own retry behavior.
 | Output format/quality policy | [CaptureOutputProfile.swift](CaptureOutputProfile.swift) |
 | Manifest output-facts policy | [CaptureOutputManifestPolicy.swift](CaptureOutputManifestPolicy.swift) |
 | Logical capture result | [CapturePackage.swift](CapturePackage.swift) |
-| Packager protocol and artifact model | [CapturePackager.swift](CapturePackager.swift) |
+| Packaged artifact model | [CapturePackager.swift](CapturePackager.swift) |
 | Embedded photo-depth packaging | [EmbeddedPhotoPackager.swift](EmbeddedPhotoPackager.swift) |
 | TAP provenance write and export-validation boundary | [TAPCaptureProvenanceWriter.swift](TAPCaptureProvenanceWriter.swift) |
 | TAP manifest schema | [TAPDepthManifestSchema.swift](TAPDepthManifestSchema.swift) |
@@ -75,7 +75,7 @@ path validates capture/package identity and implements the producer-signing
 portion of the ordered procedure in the
 [shared binding/proof contract](https://github.com/TAP-NAP/TAPArtifactContracts/blob/ca3b223e0717242ce1016b34dc34f04ef2417936/bindings/capture-binding-and-proof-v1.md),
 then immediately repeats its own-artifact reconstruction and relationship
-checks subject to the raw-member-byte limitation above.
+checks from the final embedded raw payload bytes.
 
 Normal Photos export and original-resource readback repeat this byte-binding
 authentication with `validatesDepthTrack: false`. They do not reinterpret
@@ -190,7 +190,7 @@ Read the output contract in this order:
    and
    [AVFoundationSingleCamPhotoProvider.swift](../Runtime/AVFoundationSingleCamPhotoProvider.swift)
    consume one `ResolvedCaptureOutputProfile`: Runtime resolves the raw policy
-   once, then both prewarm and per-shot `AVCapturePhotoSettings` use that value.
+   once, then each per-shot `AVCapturePhotoSettings` request uses that value.
 8. [CapturePackage.swift](CapturePackage.swift) checks the resolved output
    against the capture plan and actual `AVCapturePhoto.depthData`.
 9. [TAPDepthManifestBuilder.swift](TAPDepthManifestBuilder.swift) records the
@@ -208,7 +208,7 @@ Read the output contract in this order:
    [TAPCaptureAssertionSignerTests.swift](../../../TAPCamDemoTests/TAPCaptureAssertionSignerTests.swift)
    covers App Attest assertion shape,
    [TAPCaptureProvenanceWriterSigningTests.swift](../../../TAPCamDemoTests/TAPCaptureProvenanceWriterSigningTests.swift)
-   covers unsigned fallback and pending-signing identity, and
+   covers the fixed unsigned shutter status and pending-signing identity, and
    [TAPSignedExportValidatorTests.swift](../../../TAPCamDemoTests/TAPSignedExportValidatorTests.swift)
    covers the final signed-export validation before Photos.
 
@@ -291,11 +291,10 @@ the asset but the Photos round-trip original lost `tapdepth:Manifest`.
 - TAP photo metadata injection must preserve the primary image and Apple
   auxiliary depth attachments without a pixel decode/re-encode step.
 - Capture signing is offline file proofing, not a normal protected API request.
-- Packagers and Pending Capture Queue workers should use `TAPCaptureProvenanceWriter`
-  instead of directly constructing proof-bearing manifests.
-- `manifestByApplyingCaptureAssertion` is the non-throwing shutter-time path;
-  `signedPhotoData` is the throwing pending-signing path and requires the
-  expected queue `captureID`.
+- The shutter-time packager writes a proof-free manifest and reserves the fixed
+  proof slot through `TAPCaptureProvenanceWriter.writeManifest`.
+- `signedPhotoData` is the throwing pending-signing path and requires the
+  expected queue `captureID`; no shutter-time assertion facade exists.
 - `validateSignedExportPhoto` is the final export gate for signed TAP photo
   artifacts. Queue status and filenames are scheduling hints; the signed bytes
   themselves must pass container, manifest schema/id, Release output facts,

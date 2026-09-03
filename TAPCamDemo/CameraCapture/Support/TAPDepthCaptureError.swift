@@ -44,7 +44,6 @@ enum TAPDepthCaptureError: LocalizedError {
     case pendingCaptureProofMissing
     case pendingCaptureProofInvalid(String)
     case pendingCaptureProofExternalMutation
-    case releasePackagingStrategyRejected
     case captureBackpressureLimitReached
     case incompatibleRGBDepthPairing
     case multicamRequired
@@ -125,8 +124,6 @@ enum TAPDepthCaptureError: LocalizedError {
             "The pending TAP capture App Attest proof is not valid: \(reason)"
         case .pendingCaptureProofExternalMutation:
             "The pending TAP video changed outside its fixed proof slot after signing began."
-        case .releasePackagingStrategyRejected:
-            "Release builds only support embedded single-photo artifacts."
         case .captureBackpressureLimitReached:
             "Too many capture jobs are already pending."
         case .incompatibleRGBDepthPairing:

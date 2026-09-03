@@ -19,7 +19,7 @@ import simd
 /// manifest. The README mirrors this mapping so third-party tools can parse the
 /// file without depending on this app's runtime state.
 nonisolated enum TAPDepthManifestBuilder {
-    /// Builds the TAP manifest embedded into the final HEIC.
+    /// Builds the TAP manifest embedded into the final HEIC/JPG photo.
     ///
     /// This maps planning/runtime facts and Apple `AVCapturePhoto` metadata into
     /// the published v1 schema without changing schema keys or raw values.

@@ -15,8 +15,7 @@ import OSLog
 /// `AVCapturePhoto.fileDataRepresentation(with:)`, then injects TAP's XMP
 /// manifest without creating sidecars. This is the only packaging strategy used
 /// by the app in Release.
-nonisolated struct EmbeddedPhotoPackager: CapturePackager {
-    let strategy: PackagingStrategy = .embeddedPhoto
+nonisolated struct EmbeddedPhotoPackager: Sendable {
     private let provenanceWriter: TAPCaptureProvenanceWriter
 
     init(provenanceWriter: TAPCaptureProvenanceWriter = TAPCaptureProvenanceWriter()) {
@@ -29,10 +28,7 @@ nonisolated struct EmbeddedPhotoPackager: CapturePackager {
     /// injected into XMP without emitting sidecar files.
     ///
     /// - Tag: PackageEmbeddedDepthPhoto
-    func package(
-        _ capturePackage: CapturePackage,
-        assertionSigner: (any CaptureAssertionSigning)?
-    ) async throws -> PackagedCaptureArtifact {
+    func package(_ capturePackage: CapturePackage) throws -> PackagedCaptureArtifact {
         try capturePackage.resolvedOutput.validateForEmbeddedPhotoDepthPackaging()
         let fileContainer = capturePackage.resolvedOutput.fileContainer
         let livePhotoMovie = capturePackage.livePhotoMovie.map {
@@ -68,19 +64,7 @@ nonisolated struct EmbeddedPhotoPackager: CapturePackager {
         TAPDiagnostics.cameraCapture.info("base photo materialized profile=\(capturePackage.resolvedOutput.profileID, privacy: .public) container=\(fileContainer.rawValue, privacy: .public) selectedDimensions=\(capturePackage.resolvedOutput.maxPhotoDimensions?.debugDescription ?? "none", privacy: .public) bytes=\(basePhotoData.count, privacy: .public)")
         #endif
 
-        let signingResult = await provenanceWriter.manifestByApplyingCaptureAssertion(
-            to: unsignedManifest,
-            baseHEICData: basePhotoData,
-            fileContainer: fileContainer,
-            depthData: capturePackage.photo.depthData,
-            assertionSigner: assertionSigner
-        )
-        packagingMetrics.rgbDigestDuration = signingResult.metrics.rgbDigestDuration
-        packagingMetrics.depthDigestDuration = signingResult.metrics.depthDigestDuration
-        packagingMetrics.metadataDigestDuration = signingResult.metrics.metadataDigestDuration
-        packagingMetrics.appAttestDuration = signingResult.metrics.appAttestDuration
-
-        let writeResult = try provenanceWriter.writeManifest(signingResult.manifest, into: basePhotoData)
+        let writeResult = try provenanceWriter.writeManifest(unsignedManifest, into: basePhotoData)
         packagingMetrics.xmpInjectDuration = writeResult.xmpInjectDuration
         packagingMetrics.xmpVerifyDuration = writeResult.xmpVerifyDuration
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
@@ -89,19 +73,18 @@ nonisolated struct EmbeddedPhotoPackager: CapturePackager {
 
         return PackagedCaptureArtifact(
             packageID: capturePackage.job.id,
-            strategy: strategy,
             photoData: writeResult.data,
             fileContainer: fileContainer,
             photoQualityLevel: capturePackage.resolvedOutput.photoQualityPolicy.requested,
-            manifest: signingResult.manifest,
+            manifest: unsignedManifest,
             livePhotoMovie: livePhotoMovie,
-            signatureStatus: signingResult.status,
+            signatureStatus: TAPCaptureProvenanceWriter.unsignedCaptureStatus,
             depthAvailability: capturePackage.depthAvailability,
             captureScoreSummary: CaptureScoreSummary.make(
                 depthAvailability: capturePackage.depthAvailability,
                 fileContainer: fileContainer,
                 photoQualityLevel: capturePackage.resolvedOutput.photoQualityPolicy.requested,
-                signatureStatus: signingResult.status
+                signatureStatus: TAPCaptureProvenanceWriter.unsignedCaptureStatus
             ),
             packagingMetrics: packagingMetrics,
             capturedAt: capturePackage.sourceContext.capturedAt,

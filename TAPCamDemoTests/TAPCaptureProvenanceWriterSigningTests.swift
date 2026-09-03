@@ -8,35 +8,13 @@ import Testing
 @testable import TAPCamDemo
 
 struct TAPCaptureProvenanceWriterSigningTests {
-    @Test func unsignedCaptureManifestKeepsProofsEmptyWhenSignerIsMissing() async throws {
-        let manifest = TAPDepthManifest(payload: TAPCamDemoTestFixtures.samplePayload(location: nil))
-        let result = await TAPCaptureProvenanceWriter().manifestByApplyingCaptureAssertion(
-            to: manifest,
-            baseHEICData: Data(),
-            depthData: nil,
-            assertionSigner: nil
-        )
+    @Test func unsignedCaptureStatusUsesFixedPublicReason() throws {
+        guard case .unsigned(let reason) = TAPCaptureProvenanceWriter.unsignedCaptureStatus else {
+            Issue.record("Expected shutter-time packaging to remain unsigned.")
+            return
+        }
 
-        #expect(result.manifest.proofs.isEmpty)
-        #expect(result.status == .unsigned(reason: "App Attest proof unavailable during capture."))
-    }
-
-    @Test func unsignedCaptureManifestUsesFixedReasonWhenProofCannotBeCreated() async throws {
-        let manifest = TAPDepthManifest(payload: TAPCamDemoTestFixtures.samplePayload(location: nil))
-        let signer = CountingCaptureAssertionSigner()
-        let result = await TAPCaptureProvenanceWriter().manifestByApplyingCaptureAssertion(
-            to: manifest,
-            baseHEICData: Data("not-heic".utf8),
-            depthData: nil,
-            assertionSigner: signer
-        )
-        let reason = try #require(result.unsignedReason)
-
-        #expect(result.manifest.proofs.isEmpty)
         #expect(reason == "App Attest proof unavailable during capture.")
-        #expect(!reason.contains("AVDepthData"))
-        #expect(!reason.localizedCaseInsensitiveContains("localizedDescription"))
-        #expect(await signer.signCallCount() == 0)
     }
 
     @Test func pendingSigningRejectsManifestIDMismatchBeforeSignerCall() async throws {

@@ -121,11 +121,15 @@ nonisolated enum TAPDepthPhotoFileReader {
     }
 
     static func decodedManifest(from photoData: Data) throws -> TAPDepthManifest {
+        try decodedManifestDocument(from: photoData).manifest
+    }
+
+    static func decodedManifestDocument(from photoData: Data) throws -> TAPDepthManifestDocument {
         let json = try manifestJSON(from: photoData)
         guard let data = json.data(using: .utf8) else {
             throw TAPDepthCaptureError.invalidUTF8Manifest
         }
-        return try JSONDecoder().decode(TAPDepthManifest.self, from: data)
+        return try TAPDepthManifestEncoder.decodedDocument(from: data)
     }
 
     static func containerTypeIdentifier(from photoData: Data) throws -> String {

@@ -137,18 +137,3 @@ enum TAPCaptureProvenanceTestFixtures {
         )
     }
 }
-
-private extension CaptureSignatureStatus {
-    var unsignedReason: String? {
-        if case .unsigned(let reason) = self {
-            return reason
-        }
-        return nil
-    }
-}
-
-extension TAPCaptureProvenanceManifestResult {
-    var unsignedReason: String? {
-        status.unsignedReason
-    }
-}

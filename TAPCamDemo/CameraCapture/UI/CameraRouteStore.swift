@@ -44,12 +44,12 @@ final class CameraRouteStore: ObservableObject {
     @Published private(set) var destination: Destination = .camera
     @Published private(set) var albumState = AlbumState()
 
-    private let contextStore: any CameraRouteContextPersisting
+    private let contextStore: CameraRouteFileContextStore
     private var selectedItemAnchor: CameraRouteAlbumAnchor?
     private var scrollAnchorItem: CameraRouteAlbumAnchor?
     private var persistedContext: CameraRouteContext
 
-    init(contextStore: any CameraRouteContextPersisting = CameraRouteFileContextStore()) {
+    init(contextStore: CameraRouteFileContextStore = CameraRouteFileContextStore()) {
         self.contextStore = contextStore
         self.persistedContext = contextStore.loadContext()
     }

@@ -20,6 +20,7 @@ struct TAPCamDemoTests {
         #expect(manifest.schema.xmpNamespaceURI == "urn:tapnap:tapcam:depth:1.0")
         #expect(manifest.schema.xmpPrefix == "tapdepth")
         #expect(manifest.schema.xmpManifestPath == "tapdepth:Manifest")
+        #expect(TAPDepthManifest.exifUserCommentPointer == "TAPDepthHEIC/1; metadata=xmp:tapdepth:Manifest")
     }
 
     @Test func manifestJSONDocumentsSingleCamSelectionAndNullableLocation() throws {
@@ -164,10 +165,6 @@ struct TAPCamDemoTests {
 
             #expect(abs((plan.zoom?.rawVideoZoomFactor ?? 0) - option.zoom.rawVideoZoomFactor) < 0.001)
         }
-    }
-
-    @Test func runtimePackagingStrategyIsEmbeddedPhotoOnly() throws {
-        #expect(PackagingStrategy.embeddedPhoto.rawValue == "embeddedPhoto")
     }
 
     @Test func depthSelectionModeKeepsPublishedManifestRawValues() throws {

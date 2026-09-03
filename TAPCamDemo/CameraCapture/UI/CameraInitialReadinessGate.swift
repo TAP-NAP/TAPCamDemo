@@ -7,19 +7,12 @@
 import SwiftUI
 import UIKit
 
-@MainActor
-protocol CameraViewfinderFrameAwaiting: AnyObject {
-    /// Returns only after a frame containing the newly published Viewfinder
-    /// state has had an opportunity to reach the display server.
-    func waitForCommittedViewfinderFrame() async
-}
-
 /// A two-tick display-link barrier for the `t4 -> t5` boundary. The first tick
 /// lets SwiftUI/Core Animation present the state change that removed Resource
 /// Initialization; the second tick observes that committed frame before local
 /// deferred work is released.
 @MainActor
-final class CameraViewfinderFrameBarrier: CameraViewfinderFrameAwaiting {
+final class CameraViewfinderFrameBarrier {
     nonisolated init() {}
 
     func waitForCommittedViewfinderFrame() async {

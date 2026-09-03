@@ -89,10 +89,6 @@ extension CameraViewModel {
                 let result = await pipeline.runSingleCamJob(
                     job: job,
                     context: context,
-                    // Foreground capture stages an unsigned photo file first. App
-                    // Attest signing/export retry starts only after the pending
-                    // artifact has been written.
-                    assertionSigner: nil,
                     pendingJobCount: pendingCount,
                     queueWaitDuration: queueWaitDuration
                 )

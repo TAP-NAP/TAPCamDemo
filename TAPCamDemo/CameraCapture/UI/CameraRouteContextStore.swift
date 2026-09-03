@@ -88,12 +88,6 @@ nonisolated struct CameraRouteContext: Codable, Equatable, Sendable {
     }
 }
 
-nonisolated protocol CameraRouteContextPersisting {
-    func loadContext() -> CameraRouteContext
-    func saveContext(_ context: CameraRouteContext)
-    func token(for rawValue: String) -> String
-}
-
 /// File-backed persistence for best-effort TAP Library scroll restoration.
 ///
 /// The default location is Application Support, and writes reuse the same file
@@ -101,7 +95,7 @@ nonisolated protocol CameraRouteContextPersisting {
 /// only HMAC tokens plus a short freshness window; route destination, raw item
 /// identifiers, photo paths, manifest data, and proof material are intentionally
 /// excluded.
-nonisolated struct CameraRouteFileContextStore: CameraRouteContextPersisting {
+nonisolated struct CameraRouteFileContextStore {
     private let contextURL: URL
     private let secretURL: URL
     private let fileManager: FileManager

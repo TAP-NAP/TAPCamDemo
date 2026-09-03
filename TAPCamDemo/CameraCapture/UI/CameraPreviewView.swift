@@ -16,7 +16,7 @@ import SwiftUI
 /// session configuration, photo output, or metadata decisions. Keeping that
 /// boundary clear makes the data pipeline easier to audit: session mutation
 /// lives in `CaptureSessionController`, packaging in `EmbeddedPhotoPackager`,
-/// and persistence in `PhotoLibraryCaptureArtifactWriter`.
+/// and persistence in `TAPPendingCaptureArtifactWriter`.
 ///
 /// The view also reports the normalized metadata rectangle for the currently
 /// visible preview bounds. This records "what the user saw" for downstream

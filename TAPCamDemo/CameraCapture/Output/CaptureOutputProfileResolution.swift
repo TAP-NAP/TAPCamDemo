@@ -11,7 +11,7 @@ import Foundation
 ///
 /// Runtime should consume this value rather than repeatedly reading profile
 /// fields. That keeps format, quality, depth, and dimensions checks identical
-/// across session configuration, prewarming, capture, packaging, and export.
+/// across session configuration, capture-time settings, packaging, and export.
 nonisolated struct ResolvedCaptureOutputProfile: Equatable, Sendable {
     let profileID: String
     let container: CaptureOutputContainer

@@ -44,7 +44,7 @@ struct CameraView: View {
     private let startsAutomatically: Bool
     private let initialReadinessGate: CameraInitialReadinessGate
     private let onViewfinderInteractive: () -> Void
-    private let viewfinderFrameBarrier: any CameraViewfinderFrameAwaiting
+    private let viewfinderFrameBarrier = CameraViewfinderFrameBarrier()
     @StateObject private var lifecycleCoordinator: CaptureLifecycleCoordinator
     @StateObject private var viewModel: CameraViewModel
     @StateObject private var routeStore: CameraRouteStore
@@ -137,8 +137,6 @@ struct CameraView: View {
         intentHandoffStore: TAPCamIntentHandoffStore = TAPCamIntentHandoffStore(),
         initialReadinessGate: CameraInitialReadinessGate = .disabled,
         onViewfinderInteractive: @escaping () -> Void = {},
-        viewfinderFrameBarrier: any CameraViewfinderFrameAwaiting =
-            CameraViewfinderFrameBarrier(),
         startsAutomatically: Bool = true
     ) {
         let initialGlobalEVBias = CameraEVPreferences.resolvedLaunchBias()
@@ -148,7 +146,6 @@ struct CameraView: View {
         self.startsAutomatically = startsAutomatically
         self.initialReadinessGate = initialReadinessGate
         self.onViewfinderInteractive = onViewfinderInteractive
-        self.viewfinderFrameBarrier = viewfinderFrameBarrier
         self.intentHandoffStore = intentHandoffStore
         _lifecycleCoordinator = StateObject(wrappedValue: lifecycleCoordinator)
         _hapticFeedbackController = StateObject(wrappedValue: hapticFeedbackController)

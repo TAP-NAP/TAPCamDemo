@@ -494,7 +494,6 @@ enum TAPCamDemoTestFixtures {
     ) -> PackagedCaptureArtifact {
         PackagedCaptureArtifact(
             packageID: UUID(uuidString: "00000000-0000-0000-0000-000000000123")!,
-            strategy: .embeddedPhoto,
             photoData: photoData,
             fileContainer: fileContainer,
             photoQualityLevel: photoQualityLevel,

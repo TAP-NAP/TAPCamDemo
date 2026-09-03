@@ -54,7 +54,7 @@ time scheduler of its own.
 Future credential/assertion/export stage separation, `nextAttemptAt`, bounded
 retry windows, cooldown, and pause state are one
 technical optimization tracked only by
-[`TAP-0015`](../../Docs/ProjectBoard.md#tap-0015--implement-post-setup-app-attestpending-guards-and-retry-optimization).
+[`TAP-0015`](../../../TAPCamKanban/ProjectBoard.md#tap-0015--implement-post-setup-app-attestpending-guards-and-retry-optimization).
 Those unimplemented details are not part of this current module contract and
 must not be copied into another active design document.
 

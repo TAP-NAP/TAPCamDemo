@@ -94,6 +94,7 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
         basePhotoData: Data,
         fileContainer: CapturePhotoFileContainer,
         depthData: AVDepthData?,
+        rawManifestPayloadData: Data? = nil,
         pairedVideoURL: URL? = nil
     ) throws -> CaptureContentBinding {
         try makeWithMetrics(
@@ -101,12 +102,14 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
             basePhotoData: basePhotoData,
             fileContainer: fileContainer,
             depthData: depthData,
+            rawManifestPayloadData: rawManifestPayloadData,
             pairedVideoURL: pairedVideoURL
         ).digest
     }
 
     static func makeVideo(
         manifest: TAPVideoManifest,
+        rawManifestPayloadData: Data? = nil,
         mp4FileURL: URL
     ) throws -> CaptureContentBinding {
         try Task<Never, Never>.checkCancellation()
@@ -128,7 +131,8 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
             value: fileHash.value
         )
         try Task<Never, Never>.checkCancellation()
-        let payloadData = try TAPVideoManifestEncoder.payloadDataExcludingProofs(manifest.payload)
+        let payloadData = try rawManifestPayloadData
+            ?? TAPVideoManifestEncoder.payloadDataExcludingProofs(manifest.payload)
         let metadataHash = MetadataHash(videoPayloadData: payloadData)
 
         return CaptureContentBinding(
@@ -175,6 +179,7 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
         basePhotoData: Data,
         fileContainer: CapturePhotoFileContainer,
         depthData: AVDepthData?,
+        rawManifestPayloadData: Data? = nil,
         pairedVideoURL: URL? = nil
     ) throws -> CaptureContentDigestBuildResult {
         try Task<Never, Never>.checkCancellation()
@@ -192,11 +197,14 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
                 "manifest and paired video do not identify one supported photo family"
             )
         }
+        let payloadData = try rawManifestPayloadData
+            ?? TAPDepthManifestEncoder.payloadDataExcludingProofs(manifest.payload)
         return try makePhotoWithMetrics(
             manifest: manifest,
             basePhotoData: basePhotoData,
             fileContainer: fileContainer,
             depthData: depthData,
+            manifestPayloadData: payloadData,
             isLivePhoto: isLivePhoto,
             pairedVideoURL: pairedVideoURL
         )
@@ -209,7 +217,8 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
         manifest: TAPDepthManifest,
         basePhotoData: Data,
         fileContainer: CapturePhotoFileContainer,
-        depthData: AVDepthData?
+        depthData: AVDepthData?,
+        rawManifestPayloadData: Data? = nil
     ) throws -> LivePhotoPrimaryComponents {
         guard manifest.schema == TAPDepthManifest.Schema.livePhoto,
               manifest.payload.livePhoto != nil else {
@@ -217,11 +226,14 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
                 "manifest does not identify a Live Photo"
             )
         }
+        let payloadData = try rawManifestPayloadData
+            ?? TAPDepthManifestEncoder.payloadDataExcludingProofs(manifest.payload)
         let components = try makePhotoComponents(
             manifest: manifest,
             basePhotoData: basePhotoData,
             fileContainer: fileContainer,
             depthData: depthData,
+            manifestPayloadData: payloadData,
             isLivePhoto: true,
             pairedVideoURL: nil
         )
@@ -240,6 +252,7 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
         basePhotoData: Data,
         fileContainer: CapturePhotoFileContainer,
         depthData: AVDepthData?,
+        manifestPayloadData: Data,
         isLivePhoto: Bool,
         pairedVideoURL: URL?
     ) throws -> CaptureContentDigestBuildResult {
@@ -248,6 +261,7 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
             basePhotoData: basePhotoData,
             fileContainer: fileContainer,
             depthData: depthData,
+            manifestPayloadData: manifestPayloadData,
             isLivePhoto: isLivePhoto,
             pairedVideoURL: pairedVideoURL
         )
@@ -274,6 +288,7 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
         basePhotoData: Data,
         fileContainer: CapturePhotoFileContainer,
         depthData: AVDepthData?,
+        manifestPayloadData: Data,
         isLivePhoto: Bool,
         pairedVideoURL: URL?
     ) throws -> (
@@ -305,9 +320,8 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
         metrics.depthDigestDuration = Date().timeIntervalSince(depthStart)
 
         let metadataStart = Date()
-        let payloadData = try TAPDepthManifestEncoder.payloadDataExcludingProofs(manifest.payload)
         let metadataHash = MetadataHash(
-            payloadData: payloadData,
+            payloadData: manifestPayloadData,
             mediaType: isLivePhoto
                 ? TAPDepthManifest.livePhotoPayloadMediaType
                 : TAPDepthManifest.payloadMediaType
@@ -321,7 +335,7 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
                 fileContainer: fileContainer,
                 assetHash: assetHash,
                 metadataHash: metadataHash,
-                payloadByteCount: payloadData.count
+                payloadByteCount: manifestPayloadData.count
             )
         } else {
             livePhotoSignedResources = nil

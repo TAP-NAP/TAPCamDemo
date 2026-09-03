@@ -9,7 +9,7 @@ working on one Task.
 | Role | Document |
 | --- | --- |
 | Current capabilities, state machines, non-goals, future/experimental scope, and claim boundaries | [ProductContract.md](ProductContract.md) |
-| Markdown task database and Inbox/Todo/Doing/Done/Deprecated views | [ProjectBoard.md](ProjectBoard.md) |
+| Markdown task database and Inbox/Todo/Doing/Done/Deprecated views | sibling [TAPCamKanban ProjectBoard.md](../../TAPCamKanban/ProjectBoard.md) |
 | HTML/Web prototype authority and Prototype → SwiftUI → acceptance workflow | [UIPrototypeContract.md](UIPrototypeContract.md); static artifacts in sibling `../../TAPCamPrototype/Prototype/README.md` |
 
 Every Agent must follow the repository rules in [../AGENTS.md](../AGENTS.md):

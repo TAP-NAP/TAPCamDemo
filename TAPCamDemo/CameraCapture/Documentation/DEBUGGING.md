@@ -6,7 +6,7 @@ Debug UI adds overlays that are not compiled into Release:
 - performance panel with recent capture job metrics;
 - active capture status and failure reason.
 
-The panel prioritizes timing: queue wait, capture, package build, embedded HEIC
+The panel prioritizes timing: queue wait, capture, package build, embedded photo
 packaging, pending-store write, and total duration. Queue wait no longer
 includes waiting for Core Location; the shutter uses cached location metadata
 and refreshes location in the background.
@@ -15,8 +15,9 @@ When foreground packaging succeeds, Debug expands the `embed` row into the
 submetrics recorded by the shutter-time packager:
 
 - `manifestBuild`: TAP manifest construction from capture facts.
-- `baseHEIC`: `AVCapturePhoto.fileDataRepresentation(with:)`.
-- `xmpInject`: ImageIO HEIC copy path with TAP XMP metadata merged.
+- `baseHEIC`: legacy metric key for the selected HEIC/JPG
+  `AVCapturePhoto.fileDataRepresentation(with:)` result.
+- `xmpInject`: ImageIO HEIC/JPG copy path with TAP XMP metadata merged.
 - `xmpVerify`: readback check that the TAP XMP manifest survived insertion.
 
 Digest and App Attest work now happens later in the async pending processor, so
