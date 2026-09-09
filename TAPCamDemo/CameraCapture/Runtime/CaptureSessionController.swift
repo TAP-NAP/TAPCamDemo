@@ -576,7 +576,6 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                             )
                             throw TAPDepthCaptureError.unableToAddDepthOutput
                         }
-                        preparedVideoRecordingGraph = nil
                         let recorder = try TAPVideoRecorder(
                             request: request,
                             sessionConfiguration: configuration,
@@ -589,6 +588,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                                 self?.emitVideoRecordingFailure(failure)
                             }
                         )
+                        preparedVideoRecordingGraph = nil
 
                         let dataOutputSynchronizer: AVCaptureDataOutputSynchronizer?
                         if preparedGraph.recordsDepth,
