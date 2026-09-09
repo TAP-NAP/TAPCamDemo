@@ -295,22 +295,6 @@ nonisolated struct StartupInitializationStore: @unchecked Sendable {
         return validate(completion)
     }
 
-    /// Commits one encoded value after the caller has established both
-    /// readiness groups. No partial fields are published before this call.
-    @discardableResult
-    func commitCurrent(
-        now: Date = Date(),
-        preparationFault: (InitializationCompletion) throws -> Void = { _ in }
-    ) -> InitializationCompletion? {
-        guard let prepared = prepareCurrent(
-            now: now,
-            preparationFault: preparationFault
-        ), prepared.commit() else {
-            return nil
-        }
-        return prepared.completion
-    }
-
     /// Performs Keychain access, encoding, protected-file creation, and fsync,
     /// but deliberately stops before the atomic rename commit point.
     func prepareCurrent(

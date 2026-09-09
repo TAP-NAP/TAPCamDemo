@@ -15,18 +15,20 @@ struct StartupInitializationPolicyTests {
 
         #expect(fixture.store.load() == .missing)
 
-        let completion = try #require(
-            fixture.store.commitCurrent(now: Date(timeIntervalSince1970: 42))
+        let prepared = try #require(
+            fixture.store.prepareCurrent(now: Date(timeIntervalSince1970: 42))
         )
-        #expect(fixture.store.load() == .current(completion))
-        #expect(completion.runtimeIdentity == fixture.identity)
-        #expect(completion.deviceGenerationID == fixture.deviceGenerationID)
+        try #require(prepared.commit())
+        #expect(fixture.store.load() == .current(prepared.completion))
+        #expect(prepared.completion.runtimeIdentity == fixture.identity)
+        #expect(prepared.completion.deviceGenerationID == fixture.deviceGenerationID)
     }
 
     @Test func everyRuntimeAndGenerationMismatchRequiresInitialization() throws {
         let fixture = try InitializationStoreFixture()
         defer { fixture.cleanup() }
-        _ = try #require(fixture.store.commitCurrent())
+        let prepared = try #require(fixture.store.prepareCurrent())
+        try #require(prepared.commit())
 
         let changedVersion = fixture.store(
             identity: fixture.identity.replacing(shortVersion: "2.0")
@@ -94,7 +96,9 @@ struct StartupInitializationPolicyTests {
     @Test func unsupportedStorageSchemaAndUnavailableLocalFactsFailClosed() throws {
         let fixture = try InitializationStoreFixture()
         defer { fixture.cleanup() }
-        let completion = try #require(fixture.store.commitCurrent())
+        let prepared = try #require(fixture.store.prepareCurrent())
+        try #require(prepared.commit())
+        let completion = prepared.completion
 
         let unsupported = InitializationCompletion(
             storageSchemaVersion: completion.storageSchemaVersion + 1,
@@ -130,21 +134,22 @@ struct StartupInitializationPolicyTests {
             unavailableDevice.load()
                 == .invalid(.deviceGenerationUnavailable)
         )
-        #expect(unavailableDevice.commitCurrent() == nil)
+        #expect(unavailableDevice.prepareCurrent() == nil)
     }
 
     @Test func preCommitFailureLeavesPreviousCanonicalMarkerUntouched() throws {
         let fixture = try InitializationStoreFixture()
         defer { fixture.cleanup() }
         let previous = try #require(
-            fixture.store.commitCurrent(now: Date(timeIntervalSince1970: 1))
+            fixture.store.prepareCurrent(now: Date(timeIntervalSince1970: 1))
         )
+        try #require(previous.commit())
         let previousData = try Data(contentsOf: fixture.markerURL)
 
         let updatedStore = fixture.store(
             identity: fixture.identity.replacing(buildVersion: "2")
         )
-        let failed = updatedStore.commitCurrent(
+        let failed = updatedStore.prepareCurrent(
             now: Date(timeIntervalSince1970: 2)
         ) { _ in
             throw InitializationTestError.injected
@@ -152,20 +157,21 @@ struct StartupInitializationPolicyTests {
 
         #expect(failed == nil)
         #expect(try Data(contentsOf: fixture.markerURL) == previousData)
-        #expect(fixture.store.load() == .current(previous))
+        #expect(fixture.store.load() == .current(previous.completion))
         #expect(updatedStore.load() == .invalid(.buildVersionMismatch))
 
         let updated = try #require(
-            updatedStore.commitCurrent(now: Date(timeIntervalSince1970: 3))
+            updatedStore.prepareCurrent(now: Date(timeIntervalSince1970: 3))
         )
-        #expect(updatedStore.load() == .current(updated))
+        try #require(updated.commit())
+        #expect(updatedStore.load() == .current(updated.completion))
     }
 
     @Test func preCommitFailureWithoutMarkerLeavesNoCanonicalOrTemporaryFile() throws {
         let fixture = try InitializationStoreFixture()
         defer { fixture.cleanup() }
 
-        let failed = fixture.store.commitCurrent { _ in
+        let failed = fixture.store.prepareCurrent { _ in
             throw InitializationTestError.injected
         }
 
@@ -207,7 +213,7 @@ struct StartupInitializationPolicyTests {
         )
 
         #expect(unavailable.load() == .invalid(.storageUnavailable))
-        #expect(unavailable.commitCurrent() == nil)
+        #expect(unavailable.prepareCurrent() == nil)
     }
 
     @Test func corruptKeychainDeviceGenerationRepairsInPlace() throws {
