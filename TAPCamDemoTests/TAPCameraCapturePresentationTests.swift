@@ -297,9 +297,6 @@ struct TAPCameraCapturePresentationTests {
         let settingsSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/App/Settings/DepthAnalyzerSettingsView.swift"
         )
-        let controllerSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/CameraCapture/Runtime/CaptureSessionController.swift"
-        )
         let preferencesSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/CameraCapture/UI/CameraUXPreferences.swift"
         )
@@ -320,13 +317,78 @@ struct TAPCameraCapturePresentationTests {
         #expect(cameraSource.contains("await viewModel.teardownPreparedVideoModeIfNeeded()"))
         #expect(cameraSource.contains("await viewModel.prepareVideoModeIfNeeded()"))
 
-        #expect(controllerSource.contains("TAPVideoGraphOutputRouter"))
-        #expect(controllerSource.contains("? manualFocusPreviewStream.videoOutput"))
-        #expect(controllerSource.contains("preparedGraph.outputRouter.activate(recorder)"))
-        #expect(!controllerSource.contains("preparedGraph.dataOutputSynchronizer.setDelegate"))
         #expect(videoViewModelSource.contains("guard await prepareVideoModeIfNeeded()"))
         #expect(videoViewModelSource.contains("handleVideoRecordingWriterFailure"))
         #expect(videoViewModelSource.contains("cancelVideoRecordingAfterWriterFailure"))
+    }
+
+    @Test func videoRecordingDelegateCleanupPreservesSharedManualFocusOutput() {
+        let manualFocusStream = CameraManualFocusPreviewStream()
+        let videoOutput = AVCaptureVideoDataOutput()
+        let audioOutput = AVCaptureAudioDataOutput()
+        let depthOutput = AVCaptureDepthDataOutput()
+        let delegate = TAPVideoRecorderOutputDelegate(router: TAPVideoRecorderCallbackRouter())
+        let callbackQueue = DispatchQueue(label: "tapcam.tests.recording-output-cleanup")
+        videoOutput.setSampleBufferDelegate(delegate, queue: callbackQueue)
+        audioOutput.setSampleBufferDelegate(delegate, queue: callbackQueue)
+        depthOutput.setDelegate(delegate, callbackQueue: callbackQueue)
+
+        #expect(videoOutput.sampleBufferDelegate === delegate)
+        #expect(audioOutput.sampleBufferDelegate === delegate)
+        #expect(depthOutput.delegate === delegate)
+        #expect(videoOutput.sampleBufferCallbackQueue === callbackQueue)
+        #expect(audioOutput.sampleBufferCallbackQueue === callbackQueue)
+        #expect(depthOutput.delegateCallbackQueue === callbackQueue)
+
+        CaptureSessionController.clearVideoRecordingOutputDelegates([
+            videoOutput, audioOutput, depthOutput
+        ])
+
+        #expect(videoOutput.sampleBufferDelegate == nil)
+        #expect(audioOutput.sampleBufferDelegate == nil)
+        #expect(depthOutput.delegate == nil)
+        #expect(videoOutput.sampleBufferCallbackQueue == nil)
+        #expect(audioOutput.sampleBufferCallbackQueue == nil)
+        #expect(depthOutput.delegateCallbackQueue == nil)
+        #expect(manualFocusStream.videoOutput.sampleBufferDelegate === manualFocusStream)
+        #expect(manualFocusStream.videoOutput.sampleBufferCallbackQueue === manualFocusStream.sharedVideoCallbackQueue)
+    }
+
+    @Test func videoRecordingOutputRemovalPreservesBaseSessionAndIsRepeatable() throws {
+        let session = AVCaptureSession()
+        let manualFocusStream = CameraManualFocusPreviewStream()
+        let photoOutput = AVCapturePhotoOutput()
+        let audioOutput = AVCaptureAudioDataOutput()
+        do {
+            session.beginConfiguration()
+            defer { session.commitConfiguration() }
+            try #require(session.canAddOutput(manualFocusStream.videoOutput))
+            session.addOutputWithNoConnections(manualFocusStream.videoOutput)
+            try #require(session.canAddOutput(photoOutput))
+            session.addOutputWithNoConnections(photoOutput)
+            try #require(session.canAddOutput(audioOutput))
+            session.addOutputWithNoConnections(audioOutput)
+        }
+        #expect(session.outputs.count == 3)
+
+        for _ in 0..<2 {
+            session.beginConfiguration()
+            CaptureSessionController.removeVideoRecordingOutputs(
+                [audioOutput],
+                audioInputAddedByRecording: nil,
+                from: session
+            )
+            session.commitConfiguration()
+
+            #expect(session.outputs.count == 2)
+            #expect(session.outputs.contains(manualFocusStream.videoOutput))
+            #expect(session.outputs.contains(photoOutput))
+            #expect(session.inputs.isEmpty)
+            #expect(session.connections.isEmpty)
+            #expect(!session.isRunning)
+            #expect(manualFocusStream.videoOutput.sampleBufferDelegate === manualFocusStream)
+            #expect(manualFocusStream.videoOutput.sampleBufferCallbackQueue === manualFocusStream.sharedVideoCallbackQueue)
+        }
     }
 
     @Test func resourceInitializationRequiresCameraInteractionAndUsableCatalog() {

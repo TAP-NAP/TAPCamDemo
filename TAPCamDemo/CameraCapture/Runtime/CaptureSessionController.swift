@@ -504,22 +504,19 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                         #endif
                         continuation.resume()
                     } catch {
-                        for output in addedOutputs {
-                            session.removeOutput(output)
-                        }
-                        if let addedAudioInput {
-                            session.removeInput(addedAudioInput)
-                        }
-                        if didApplyVideoDepthDataFormat {
-                            try? CameraControlService.applyActiveDepthDataFormat(
-                                previousActiveDepthDataFormat,
-                                to: configuration.device
-                            )
-                        }
-                        if usesSharedManualFocusVideoOutput {
-                            Self.restoreManualFocusPreviewConnection(videoOutput)
-                            manualFocusPreviewStream.setSharedOutputRotationAngle(nil)
-                        }
+                        Self.clearVideoRecordingOutputDelegates(addedOutputs)
+                        Self.removeVideoRecordingOutputs(
+                            addedOutputs,
+                            audioInputAddedByRecording: addedAudioInput,
+                            from: session
+                        )
+                        restoreVideoRecordingConfiguration(
+                            device: configuration.device,
+                            previousActiveDepthDataFormat: previousActiveDepthDataFormat,
+                            didApplyVideoDepthDataFormat: didApplyVideoDepthDataFormat,
+                            sharedManualFocusVideoOutput: usesSharedManualFocusVideoOutput ? videoOutput : nil,
+                            reason: "warmup-rollback"
+                        )
                         session.commitConfiguration()
                         throw error
                     }
@@ -732,18 +729,19 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                         #endif
                         continuation.resume(returning: recorder)
                     } catch {
-                        for output in addedOutputs {
-                            session.removeOutput(output)
-                        }
-                        if let addedAudioInput {
-                            session.removeInput(addedAudioInput)
-                        }
-                        if didApplyVideoDepthDataFormat {
-                            try? CameraControlService.applyActiveDepthDataFormat(
-                                previousActiveDepthDataFormat,
-                                to: configuration.device
-                            )
-                        }
+                        Self.clearVideoRecordingOutputDelegates(addedOutputs)
+                        Self.removeVideoRecordingOutputs(
+                            addedOutputs,
+                            audioInputAddedByRecording: addedAudioInput,
+                            from: session
+                        )
+                        restoreVideoRecordingConfiguration(
+                            device: configuration.device,
+                            previousActiveDepthDataFormat: previousActiveDepthDataFormat,
+                            didApplyVideoDepthDataFormat: didApplyVideoDepthDataFormat,
+                            sharedManualFocusVideoOutput: nil,
+                            reason: "start-rollback"
+                        )
                         session.commitConfiguration()
                         throw error
                     }
@@ -776,46 +774,21 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                 activeVideoRecordingGraph = nil
                 graph.outputRouter?.deactivateRecorder()
                 graph.dataOutputSynchronizer.setDelegate(nil, queue: nil)
-
-                for output in graph.outputs {
-                    if let videoOutput = output as? AVCaptureVideoDataOutput {
-                        videoOutput.setSampleBufferDelegate(nil, queue: nil)
-                    }
-                    if let audioOutput = output as? AVCaptureAudioDataOutput {
-                        audioOutput.setSampleBufferDelegate(nil, queue: nil)
-                    }
-                    if let depthOutput = output as? AVCaptureDepthDataOutput {
-                        depthOutput.setDelegate(nil, callbackQueue: nil)
-                    }
-                }
+                Self.clearVideoRecordingOutputDelegates(graph.outputs)
 
                 session.beginConfiguration()
-                for output in graph.outputs where session.outputs.contains(output) {
-                    session.removeOutput(output)
-                }
-                if let audioInput = graph.audioInputAddedByRecording,
-                   session.inputs.contains(audioInput) {
-                    session.removeInput(audioInput)
-                }
-                if graph.didApplyVideoDepthDataFormat {
-                    do {
-                        try CameraControlService.applyActiveDepthDataFormat(
-                            graph.previousActiveDepthDataFormat,
-                            to: graph.device
-                        )
-                        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-                        TAPDiagnostics.cameraCapture.info("video depth format restored previous=\(Self.depthFormatDescription(graph.previousActiveDepthDataFormat), privacy: .public)")
-                        #endif
-                    } catch {
-                        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-                        TAPDiagnostics.cameraCapture.error("video depth format restore failed error=\(TAPDiagnostics.describe(error), privacy: .public)")
-                        #endif
-                    }
-                }
-                if let sharedManualFocusVideoOutput = graph.sharedManualFocusVideoOutput {
-                    Self.restoreManualFocusPreviewConnection(sharedManualFocusVideoOutput)
-                    manualFocusPreviewStream.setSharedOutputRotationAngle(nil)
-                }
+                Self.removeVideoRecordingOutputs(
+                    graph.outputs,
+                    audioInputAddedByRecording: graph.audioInputAddedByRecording,
+                    from: session
+                )
+                restoreVideoRecordingConfiguration(
+                    device: graph.device,
+                    previousActiveDepthDataFormat: graph.previousActiveDepthDataFormat,
+                    didApplyVideoDepthDataFormat: graph.didApplyVideoDepthDataFormat,
+                    sharedManualFocusVideoOutput: graph.sharedManualFocusVideoOutput,
+                    reason: "stop"
+                )
                 session.commitConfiguration()
                 #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
                 TAPDiagnostics.cameraCapture.info("video recording graph stopped")
@@ -1471,6 +1444,58 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         }
     }
 
+    /// The caller supplies only recording-owned outputs, excluding the shared
+    /// manual-focus video output whose delegate belongs to its preview stream.
+    static func clearVideoRecordingOutputDelegates(_ outputs: [AVCaptureOutput]) {
+        for output in outputs {
+            (output as? AVCaptureVideoDataOutput)?.setSampleBufferDelegate(nil, queue: nil)
+            (output as? AVCaptureAudioDataOutput)?.setSampleBufferDelegate(nil, queue: nil)
+            (output as? AVCaptureDepthDataOutput)?.setDelegate(nil, callbackQueue: nil)
+        }
+    }
+
+    static func removeVideoRecordingOutputs(
+        _ outputs: [AVCaptureOutput],
+        audioInputAddedByRecording: AVCaptureDeviceInput?,
+        from session: AVCaptureSession
+    ) {
+        for output in outputs where session.outputs.contains(output) {
+            session.removeOutput(output)
+        }
+        if let audioInputAddedByRecording,
+           session.inputs.contains(audioInputAddedByRecording) {
+            session.removeInput(audioInputAddedByRecording)
+        }
+    }
+
+    private func restoreVideoRecordingConfiguration(
+        device: AVCaptureDevice,
+        previousActiveDepthDataFormat: AVCaptureDevice.Format?,
+        didApplyVideoDepthDataFormat: Bool,
+        sharedManualFocusVideoOutput: AVCaptureVideoDataOutput?,
+        reason: String
+    ) {
+        if didApplyVideoDepthDataFormat {
+            do {
+                try CameraControlService.applyActiveDepthDataFormat(
+                    previousActiveDepthDataFormat,
+                    to: device
+                )
+                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                TAPDiagnostics.cameraCapture.info("video depth format restored reason=\(reason, privacy: .public) previous=\(Self.depthFormatDescription(previousActiveDepthDataFormat), privacy: .public)")
+                #endif
+            } catch {
+                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                TAPDiagnostics.cameraCapture.error("video depth format restore failed reason=\(reason, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
+                #endif
+            }
+        }
+        if let sharedManualFocusVideoOutput {
+            Self.restoreManualFocusPreviewConnection(sharedManualFocusVideoOutput)
+            manualFocusPreviewStream.setSharedOutputRotationAngle(nil)
+        }
+    }
+
     private func discardPreparedVideoRecordingGraphLocked(
         session: AVCaptureSession,
         reason: String
@@ -1481,39 +1506,21 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         preparedVideoRecordingGraph = nil
         graph.outputRouter.deactivateRecorder()
         graph.dataOutputSynchronizer.setDelegate(nil, queue: nil)
-        if !graph.usesSharedManualFocusVideoOutput {
-            graph.videoOutput.setSampleBufferDelegate(nil, queue: nil)
-        }
-        graph.audioOutput?.setSampleBufferDelegate(nil, queue: nil)
-        graph.depthOutput.setDelegate(nil, callbackQueue: nil)
+        Self.clearVideoRecordingOutputDelegates(graph.outputs)
 
         session.beginConfiguration()
-        for output in graph.outputs where session.outputs.contains(output) {
-            session.removeOutput(output)
-        }
-        if let audioInput = graph.audioInputAddedByRecording,
-           session.inputs.contains(audioInput) {
-            session.removeInput(audioInput)
-        }
-        if graph.didApplyVideoDepthDataFormat {
-            do {
-                try CameraControlService.applyActiveDepthDataFormat(
-                    graph.previousActiveDepthDataFormat,
-                    to: graph.device
-                )
-                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-                TAPDiagnostics.cameraCapture.info("video warmup depth format restored reason=\(reason, privacy: .public) previous=\(Self.depthFormatDescription(graph.previousActiveDepthDataFormat), privacy: .public)")
-                #endif
-            } catch {
-                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-                TAPDiagnostics.cameraCapture.error("video warmup depth format restore failed reason=\(reason, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
-                #endif
-            }
-        }
-        if graph.usesSharedManualFocusVideoOutput {
-            Self.restoreManualFocusPreviewConnection(graph.videoOutput)
-            manualFocusPreviewStream.setSharedOutputRotationAngle(nil)
-        }
+        Self.removeVideoRecordingOutputs(
+            graph.outputs,
+            audioInputAddedByRecording: graph.audioInputAddedByRecording,
+            from: session
+        )
+        restoreVideoRecordingConfiguration(
+            device: graph.device,
+            previousActiveDepthDataFormat: graph.previousActiveDepthDataFormat,
+            didApplyVideoDepthDataFormat: graph.didApplyVideoDepthDataFormat,
+            sharedManualFocusVideoOutput: graph.usesSharedManualFocusVideoOutput ? graph.videoOutput : nil,
+            reason: reason
+        )
         session.commitConfiguration()
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.cameraCapture.info("video recording graph warmup discarded reason=\(reason, privacy: .public)")
