@@ -228,13 +228,6 @@ nonisolated struct MediaFetchRequestKey: Equatable, Hashable, Sendable {
     let purpose: MediaFetchPurpose
 }
 
-nonisolated struct IdentifiedMediaFetchState<Preview: Sendable, Value: Sendable>: Sendable {
-    let request: MediaFetchRequestKey
-    var phase: MediaFetchPhase<Preview, Value>
-}
-
-extension IdentifiedMediaFetchState: Equatable where Preview: Equatable, Value: Equatable {}
-
 /// Identity-bearing camera presentation. A previous poster may remain visible
 /// while a newer one is resolving, but an empty or failed result never silently
 /// reuses the old item's image.
@@ -255,19 +248,6 @@ nonisolated enum RecentLibraryPresentation: Equatable, Sendable {
         preview: MediaPoster?,
         retryable: Bool
     )
-
-    var itemID: LibraryMediaID? {
-        switch self {
-        case .unresolved, .empty:
-            nil
-        case .resolving(let itemID, _):
-            itemID
-        case .loading(let itemID, _, _, _),
-             .ready(let itemID, _, _),
-             .failed(let itemID, _, _, _):
-            itemID
-        }
-    }
 
     var kind: LibraryMediaKind? {
         switch self {

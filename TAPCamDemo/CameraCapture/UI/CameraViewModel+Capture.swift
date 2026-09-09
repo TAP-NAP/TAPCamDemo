@@ -184,12 +184,6 @@ extension CameraViewModel {
         #endif
     }
 
-    @discardableResult
-    func loadRecentPendingCapturePreview(captureID: String) async -> Bool {
-        await loadRecentTAPLibraryPreviewIfAvailable()
-        return recentLibraryPresentation.itemID == .tapCapture(captureID)
-    }
-
     func loadRecentLibraryCoverFromCanonicalSnapshot() async {
         recentLibraryFetchGeneration &+= 1
         let generation = recentLibraryFetchGeneration
@@ -365,7 +359,6 @@ extension CameraViewModel {
         guard isCurrentRecentLibraryRequest(request) else {
             return
         }
-        recentLibraryFetchState = IdentifiedMediaFetchState(request: request, phase: phase)
         switch phase {
         case .idle, .resolving:
             if recentLibraryPresentation.poster == nil {
@@ -408,7 +401,6 @@ extension CameraViewModel {
 
     private func clearRecentLibraryPresentation() {
         recentLibraryFetchGeneration &+= 1
-        recentLibraryFetchState = nil
         recentLibraryPresentation = .empty
     }
 
@@ -424,13 +416,6 @@ extension CameraViewModel {
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.pendingCapture.info("viewModel retryPendingCaptures finish")
         #endif
-    }
-
-    /// Updates the camera chrome's recent-photo entry point after a successful
-    /// write. The full analysis flow still lives in `DepthAnalysisView`; the camera
-    /// screen only owns the small thumbnail affordance and the sheet presentation.
-    func loadRecentDepthAssetPreview(assetID: String) {
-        scheduleRecentTAPLibraryPreviewRefresh(afterNanoseconds: 0)
     }
 }
 

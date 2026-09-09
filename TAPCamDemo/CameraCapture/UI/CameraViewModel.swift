@@ -36,7 +36,6 @@ final class CameraViewModel: ObservableObject {
     @Published var nativePreviewAspectRatio = 3.0 / 4.0
     @Published var previewCropRectNormalized = CropRectNormalized.fullFrame
     @Published var recentLibraryPresentation: RecentLibraryPresentation = .unresolved
-    @Published var recentLibraryFetchState: IdentifiedMediaFetchState<MediaPoster, MediaPoster>?
     @Published var latestCaptureDepthHint: CameraCaptureDepthHint?
     @Published var focusRuntimeEvent: CameraFocusRuntimeEvent?
     @Published var exposureRuntimeEvent: CameraExposureRuntimeEvent?
@@ -113,17 +112,6 @@ final class CameraViewModel: ObservableObject {
 
     var recentThumbnail: UIImage? {
         recentLibraryPresentation.poster?.image
-    }
-
-    var recentLibraryStatusText: String? {
-        switch recentLibraryPresentation {
-        case .unresolved, .empty, .ready, .failed:
-            nil
-        case .resolving(_, let kind):
-            LibraryMediaCopy.preparing(kind)
-        case .loading(_, _, _, let progress):
-            LibraryMediaCopy.loadingFromICloud(progress: progress)
-        }
     }
 
     var isShutterSoundSuppressionSupported: Bool {
