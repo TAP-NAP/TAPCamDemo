@@ -19,4 +19,3 @@ excluded:
   - TAPCamDemoTests
   - TAPCamDemoUITests
   - TAPCamDemo/DepthAnalysis/DiagnosticsSupport
-  - TAPCamDemo/Support/TAPDepthCodecBenchmark.swift

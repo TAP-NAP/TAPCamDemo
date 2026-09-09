@@ -67,7 +67,6 @@ struct TAPLibraryNativePagingView: UIViewRepresentable {
     let onCurrentEntryChanged: (TAPLibraryViewerPagingEntry) -> Void
     let onPagingInteractionChanged: (Bool) -> Void
     let shouldBeginPaging: (CGPoint, CGSize) -> Bool
-    let onEdgeBack: () -> Void
 
     init(
         entries: [TAPLibraryViewerPagingEntry],
@@ -77,8 +76,7 @@ struct TAPLibraryNativePagingView: UIViewRepresentable {
         pageBuilder: @escaping (TAPLibraryViewerPagingEntry, Bool, CGSize) -> AnyView,
         onCurrentEntryChanged: @escaping (TAPLibraryViewerPagingEntry) -> Void,
         onPagingInteractionChanged: @escaping (Bool) -> Void = { _ in },
-        shouldBeginPaging: @escaping (CGPoint, CGSize) -> Bool = { _, _ in true },
-        onEdgeBack: @escaping () -> Void
+        shouldBeginPaging: @escaping (CGPoint, CGSize) -> Bool = { _, _ in true }
     ) {
         self.entries = entries
         self.currentItemID = currentItemID
@@ -88,7 +86,6 @@ struct TAPLibraryNativePagingView: UIViewRepresentable {
         self.onCurrentEntryChanged = onCurrentEntryChanged
         self.onPagingInteractionChanged = onPagingInteractionChanged
         self.shouldBeginPaging = shouldBeginPaging
-        self.onEdgeBack = onEdgeBack
     }
 
     func makeCoordinator() -> Coordinator {
@@ -96,20 +93,7 @@ struct TAPLibraryNativePagingView: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> UIScrollView {
-        let scrollView = TAPLibraryPagingScrollView()
-        scrollView.backgroundColor = .black
-        scrollView.isPagingEnabled = true
-        scrollView.bounces = true
-        scrollView.alwaysBounceHorizontal = true
-        scrollView.alwaysBounceVertical = false
-        scrollView.showsHorizontalScrollIndicator = false
-        scrollView.showsVerticalScrollIndicator = false
-        scrollView.decelerationRate = .fast
-        scrollView.contentInsetAdjustmentBehavior = .never
-        scrollView.delegate = context.coordinator
-        context.coordinator.installHosts(in: scrollView)
-        context.coordinator.installEdgeBackGesture(in: scrollView)
-        return scrollView
+        context.coordinator.makeScrollView()
     }
 
     func updateUIView(_ scrollView: UIScrollView, context: Context) {
@@ -119,10 +103,11 @@ struct TAPLibraryNativePagingView: UIViewRepresentable {
     static func dismantleUIView(_ scrollView: UIScrollView, coordinator: Coordinator) {
         coordinator.cancelInteractionForTeardown()
         (scrollView as? TAPLibraryPagingScrollView)?.shouldBeginPaging = nil
+        (scrollView as? TAPLibraryPagingScrollView)?.onViewportSizeChanged = nil
         scrollView.delegate = nil
     }
 
-    final class Coordinator: NSObject, UIScrollViewDelegate, UIGestureRecognizerDelegate {
+    final class Coordinator: NSObject, UIScrollViewDelegate {
         private var parent: TAPLibraryNativePagingView?
         private var hosts: [UIHostingController<AnyView>] = []
         private var hostConfigurations: [HostConfiguration?] = []
@@ -134,8 +119,6 @@ struct TAPLibraryNativePagingView: UIViewRepresentable {
         private var interactionEntries: [TAPLibraryViewerPagingEntry]?
         private var interactionCurrentItemID: String?
         private var interactionContentRevision: UInt64?
-        private var edgeBackAction: (() -> Void)?
-        private var gestureArbitration = TAPLibraryViewerGestureArbitrationState()
 
         func installHosts(in scrollView: UIScrollView) {
             guard hosts.isEmpty else {
@@ -143,6 +126,8 @@ struct TAPLibraryNativePagingView: UIViewRepresentable {
             }
             hosts = (0..<3).map { _ in
                 let host = UIHostingController(rootView: AnyView(Color.black))
+                // Media fills the viewport; the outer viewer lays out its chrome.
+                host.safeAreaRegions = []
                 host.view.backgroundColor = .black
                 host.view.isOpaque = true
                 scrollView.addSubview(host.view)
@@ -151,20 +136,26 @@ struct TAPLibraryNativePagingView: UIViewRepresentable {
             hostConfigurations = Array(repeating: nil, count: hosts.count)
         }
 
-        func installEdgeBackGesture(in scrollView: UIScrollView) {
-            let gesture = UIScreenEdgePanGestureRecognizer(
-                target: self,
-                action: #selector(handleEdgeBack(_:))
-            )
-            gesture.edges = .left
-            gesture.delegate = self
-            scrollView.addGestureRecognizer(gesture)
-            scrollView.panGestureRecognizer.require(toFail: gesture)
+        func makeScrollView() -> UIScrollView {
+            let scrollView = TAPLibraryPagingScrollView()
+            scrollView.backgroundColor = .black
+            scrollView.isPagingEnabled = true
+            scrollView.alwaysBounceHorizontal = true
+            scrollView.showsHorizontalScrollIndicator = false
+            scrollView.showsVerticalScrollIndicator = false
+            scrollView.decelerationRate = .fast
+            scrollView.contentInsetAdjustmentBehavior = .never
+            scrollView.delegate = self
+            scrollView.onViewportSizeChanged = { [weak self] scrollView in
+                guard let self, let parent = self.parent else { return }
+                self.update(parent: parent, scrollView: scrollView)
+            }
+            installHosts(in: scrollView)
+            return scrollView
         }
 
         func update(parent: TAPLibraryNativePagingView, scrollView: UIScrollView) {
             self.parent = parent
-            edgeBackAction = parent.onEdgeBack
             (scrollView as? TAPLibraryPagingScrollView)?.shouldBeginPaging = {
                 location, viewportSize in
                 let pageSize = TAPLibraryViewerPagingPolicy.pageContentSize(
@@ -282,11 +273,6 @@ struct TAPLibraryNativePagingView: UIViewRepresentable {
             interactionEntries = parent?.entries
             interactionCurrentItemID = parent?.currentItemID
             interactionContentRevision = parent?.pageContentRevision
-            let edgeBackIsActive = scrollView.gestureRecognizers?.contains { gesture in
-                gesture is UIScreenEdgePanGestureRecognizer
-                    && (gesture.state == .began || gesture.state == .changed)
-            } == true
-            gestureArbitration.beginPaging(edgeBackIsActive: edgeBackIsActive)
             committedTargetID = nil
             beginInteractionIfNeeded()
         }
@@ -319,11 +305,6 @@ struct TAPLibraryNativePagingView: UIViewRepresentable {
                 if !isAwaitingAnimatedReset {
                     finishInteractionIfNeeded(scrollView: scrollView)
                 }
-            }
-
-            if gestureArbitration.finishPaging() {
-                configure(scrollView: scrollView, parent: parent, forceResetOffset: true)
-                return
             }
 
             let settledEntries = interactionEntries ?? parent.entries
@@ -412,7 +393,6 @@ struct TAPLibraryNativePagingView: UIViewRepresentable {
             interactionCurrentItemID = nil
             interactionContentRevision = nil
             parent = nil
-            edgeBackAction = nil
         }
 
         private struct HostConfiguration: Equatable {
@@ -422,45 +402,27 @@ struct TAPLibraryNativePagingView: UIViewRepresentable {
             let contentRevision: UInt64
         }
 
-        @objc private func handleEdgeBack(_ gesture: UIScreenEdgePanGestureRecognizer) {
-            if gesture.state == .began || gesture.state == .changed {
-                gestureArbitration.claimEdgeBack()
-            }
-            guard gesture.state == .ended else {
-                if gesture.state == .cancelled || gesture.state == .failed {
-                    finishInteractionIfNeeded(
-                        scrollView: gesture.view as? UIScrollView
-                    )
-                }
-                return
-            }
-            let translation = gesture.translation(in: gesture.view)
-            let velocity = gesture.velocity(in: gesture.view)
-            let predicted = CGSize(
-                width: translation.x + velocity.x * 0.12,
-                height: translation.y + velocity.y * 0.12
-            )
-            guard AnalysisEdgeBackPolicy.shouldReturn(
-                startX: 0,
-                translation: CGSize(width: translation.x, height: translation.y),
-                predictedTranslation: predicted
-            ) else {
-                return
-            }
-            edgeBackAction?()
-        }
-
-        func gestureRecognizer(
-            _ gestureRecognizer: UIGestureRecognizer,
-            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
-        ) -> Bool {
-            gestureRecognizer is UIScreenEdgePanGestureRecognizer
-        }
     }
 }
 
 private final class TAPLibraryPagingScrollView: UIScrollView {
     var shouldBeginPaging: ((CGPoint, CGSize) -> Bool)?
+    var onViewportSizeChanged: ((UIScrollView) -> Void)?
+    private var laidOutSize: CGSize = .zero
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard bounds.width > 0, bounds.height > 0, bounds.size != laidOutSize else { return }
+        laidOutSize = bounds.size
+        onViewportSizeChanged?(self)
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if let back = enclosingNavigationController?.interactivePopGestureRecognizer {
+            panGestureRecognizer.require(toFail: back)
+        }
+    }
 
     override func gestureRecognizerShouldBegin(
         _ gestureRecognizer: UIGestureRecognizer
@@ -567,14 +529,26 @@ struct TAPLibraryAdjacentMediaPreview: View {
                 generation: 0,
                 purpose: .videoOriginal
             )
-            guard let data = await TAPVideoPlaybackResourceLoader.adjacentPreviewData(
+            return await TAPVideoPlaybackResourceLoader.adjacentPreviewImage(
                 source: route.source,
                 originalRequestKey: requestKey,
                 mediaFetcher: mediaFetcher
-            ) else {
-                return nil
-            }
-            return UIImage(data: data)
+            )
         }
+    }
+}
+
+@MainActor
+extension UIView {
+    var enclosingNavigationController: UINavigationController? {
+        var responder: UIResponder? = self
+        while let current = responder {
+            if let controller = current as? UIViewController,
+               let navigation = controller.navigationController {
+                return navigation
+            }
+            responder = current.next
+        }
+        return nil
     }
 }

@@ -28,6 +28,9 @@ final class TAPVideoPlayerSurfaceUIView: UIView {
         backgroundColor = .black
         clipsToBounds = true
         isUserInteractionEnabled = false
+        isAccessibilityElement = true
+        accessibilityLabel = String(localized: "VIDEO")
+        accessibilityIdentifier = "tap.video.playback.surface"
         playerLayer.videoGravity = .resizeAspect
         playerLayer.backgroundColor = UIColor.black.cgColor
         overlaySurfaceView.isHidden = true

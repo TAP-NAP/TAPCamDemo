@@ -8,6 +8,8 @@ import Foundation
 import UIKit
 
 actor PhotoKitLibraryMediaFetcher: LibraryMediaFetching {
+    private nonisolated static let posterImageManager = PHCachingImageManager()
+
     func depthAlbumPhotoCatalogSnapshot(
         exportedAssetLocalIdentifiers: Set<String>
     ) async throws -> DepthAlbumPhotoCatalogSnapshot {
@@ -70,7 +72,7 @@ actor PhotoKitLibraryMediaFetcher: LibraryMediaFetching {
         for request: LibraryMediaPosterRequest,
         allowsNetworkAccess: Bool,
         progress: @escaping @Sendable (Double?) -> Void = { _ in }
-    ) async throws -> MediaFetchPhase<Data, Data> {
+    ) async throws -> MediaFetchPhase<MediaPoster, MediaPoster> {
         try Task.checkCancellation()
         let asset = try Self.asset(localIdentifier: request.assetLocalIdentifier)
         return try await posterPhase(
@@ -87,7 +89,7 @@ actor PhotoKitLibraryMediaFetcher: LibraryMediaFetching {
         pixelLength: Int,
         allowsNetworkAccess: Bool,
         progress: @escaping @Sendable (Double?) -> Void = { _ in }
-    ) async throws -> MediaFetchPhase<Data, Data> {
+    ) async throws -> MediaFetchPhase<MediaPoster, MediaPoster> {
         try Task.checkCancellation()
         let asset = try Self.asset(localIdentifier: request.assetLocalIdentifier)
         let cacheKey = DepthAlbumThumbnailCacheKey.make(
@@ -265,36 +267,24 @@ actor PhotoKitLibraryMediaFetcher: LibraryMediaFetching {
         }
     }
 
-    /// Keeps `PHAsset` actor-confined. Only JPEG bytes cross this service
-    /// boundary; disk-cache actors never receive a Photos framework object.
+    /// PhotoKit owns Photos thumbnail preparation and caching. Keep PHAsset
+    /// confined to this actor and publish its immutable image without a JPEG
+    /// encode, app-owned disk write, or second decode.
     private func posterPhase(
         for asset: PHAsset,
         cacheKey: String,
         pixelLength: Int,
         allowsNetworkAccess: Bool,
         progress: @escaping @Sendable (Double?) -> Void
-    ) async throws -> MediaFetchPhase<Data, Data> {
-        if let cachedData = await DepthAlbumThumbnailDiskCache.shared.data(for: cacheKey) {
-            return .ready(cachedData)
-        }
+    ) async throws -> MediaFetchPhase<MediaPoster, MediaPoster> {
         do {
-            let result = try await requestPoster(
+            return try await requestPoster(
                 for: asset,
+                cacheKey: cacheKey,
                 pixelLength: max(pixelLength, 1),
                 allowsNetworkAccess: allowsNetworkAccess,
                 progress: progress
             )
-            if let finalData = result.finalData {
-                await DepthAlbumThumbnailDiskCache.shared.store(finalData, for: cacheKey)
-                return .ready(finalData)
-            }
-            if result.isCloudOnly {
-                return .cloudOnly(result.previewData)
-            }
-            if let previewData = result.previewData {
-                return .localPreview(previewData)
-            }
-            return .failed(nil, reason: .decode, retryable: false)
         } catch is CancellationError {
             throw CancellationError()
         } catch {
@@ -305,18 +295,21 @@ actor PhotoKitLibraryMediaFetcher: LibraryMediaFetching {
 
     private func requestPoster(
         for asset: PHAsset,
+        cacheKey: String,
         pixelLength: Int,
         allowsNetworkAccess: Bool,
         progress: @escaping @Sendable (Double?) -> Void
-    ) async throws -> DepthAlbumPhotoKitPosterResult {
-        let manager = PHImageManager.default()
+    ) async throws -> MediaFetchPhase<MediaPoster, MediaPoster> {
+        let manager = Self.posterImageManager
         let bridge = DepthAlbumPhotoKitImageRequestBridge(
-            manager: manager,
-            pixelLength: pixelLength
-        )
+            cacheKey: cacheKey,
+            acceptsDegradedResult: !allowsNetworkAccess
+        ) {
+            manager.cancelImageRequest($0)
+        }
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
-                bridge.install(continuation: continuation)
+                guard bridge.install(continuation: continuation) else { return }
                 guard !Task.isCancelled else {
                     bridge.cancel()
                     return

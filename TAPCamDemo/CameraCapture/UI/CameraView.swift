@@ -194,6 +194,7 @@ struct CameraView: View {
     private var cameraRootView: some View {
         NavigationStack {
             cameraSurface
+                .navigationTitle("Camera")
                 .environment(\.locale, AppLanguage.english.locale)
                 .toolbar(.hidden, for: .navigationBar)
                 .navigationDestination(isPresented: depthAlbumPresentedBinding) {

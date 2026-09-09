@@ -12,6 +12,7 @@ struct TAPLibraryItemCell: View {
     let thumbnailPixelLength: Int
     let mediaFetcher: any LibraryMediaFetching
     @State private var fetchPhase: MediaFetchPhase<MediaPoster, MediaPoster> = .idle(nil)
+    @State private var loadGeneration: UInt64 = 0
 
     var body: some View {
         GeometryReader { geometry in
@@ -40,6 +41,10 @@ struct TAPLibraryItemCell: View {
         .clipped()
         .task(id: thumbnailTaskID) {
             await loadThumbnail()
+        }
+        .onDisappear {
+            loadGeneration &+= 1
+            fetchPhase = .idle(nil)
         }
         .accessibilityLabel(item.accessibilityLabel)
         .accessibilityValue(isCloudOnly ? LibraryMediaCopy.storedInICloud : "")
@@ -138,11 +143,21 @@ struct TAPLibraryItemCell: View {
     }
 
     private func loadThumbnail() async {
+        let generation = loadGeneration
         let cacheKey = item.thumbnailCacheKey(pixelLength: thumbnailPixelLength)
         guard !Task.isCancelled, thumbnailTaskID == cacheKey else {
             return
         }
-        fetchPhase = .resolving(nil)
+        let preview = fetchPhase.previewOrReadyValue.flatMap {
+            $0.cacheKey == cacheKey ? $0 : nil
+        }
+        if preview != nil {
+            switch fetchPhase {
+            case .ready, .localPreview: return
+            default: break
+            }
+        }
+        fetchPhase = .resolving(preview)
         if let cachedPoster = DepthAlbumThumbnailMemoryCache.shared.poster(for: cacheKey) {
             guard !Task.isCancelled, thumbnailTaskID == cacheKey else {
                 return
@@ -153,148 +168,66 @@ struct TAPLibraryItemCell: View {
 
         do {
             let phase = try await thumbnailPhase(cacheKey: cacheKey)
-            guard let renderablePhase = await renderableThumbnailPhase(
-                phase,
-                cacheKey: cacheKey
-            ),
-            !Task.isCancelled,
-            thumbnailTaskID == cacheKey else {
-                return
-            }
-            fetchPhase = renderablePhase
+            guard !Task.isCancelled, loadGeneration == generation,
+                  thumbnailTaskID == cacheKey else { return }
+            fetchPhase = phase
         } catch is CancellationError {
             return
         } catch {
-            guard !Task.isCancelled, thumbnailTaskID == cacheKey else {
+            guard !Task.isCancelled, loadGeneration == generation,
+                  thumbnailTaskID == cacheKey else {
                 return
             }
             fetchPhase = .failed(nil, reason: .decode, retryable: false)
         }
     }
 
-    private func renderableThumbnailPhase(
-        _ phase: MediaFetchPhase<MediaPoster, MediaPoster>,
-        cacheKey: String
-    ) async -> MediaFetchPhase<MediaPoster, MediaPoster>? {
-        guard !Task.isCancelled, thumbnailTaskID == cacheKey else {
-            return nil
-        }
-        guard let poster = phase.previewOrReadyValue else {
-            return phase
-        }
-        guard let decodedThumbnail = await DepthAlbumThumbnailDecoder.shared
-            .decodedThumbnail(for: poster) else {
-            return phase.requiresRenderablePoster
-                ? .failed(nil, reason: .decode, retryable: false)
-                : phase
-        }
-        guard !Task.isCancelled,
-              thumbnailTaskID == cacheKey,
-              decodedThumbnail.poster.cacheKey == cacheKey else {
-            return nil
-        }
-        return phase
-    }
-
     private func thumbnailPhase(
         cacheKey: String
     ) async throws -> MediaFetchPhase<MediaPoster, MediaPoster> {
         switch item.source {
+        case .pending(let record), .ownedPhoto(let record, _):
+            if let data = try? await TAPPendingCaptureStore.shared.thumbnailData(
+                captureID: record.captureID
+            ) {
+                return await decodedPosterPhase(data: data, cacheKey: cacheKey)
+            }
         case .photos:
-            guard let request = LibraryMediaPosterRequest(
-                summary: item.summary,
-                pixelLength: thumbnailPixelLength
-            ) else {
-                return .failed(nil, reason: .assetRemoved, retryable: false)
-            }
-            let phase = try await mediaFetcher.posterPhase(
-                for: request,
-                allowsNetworkAccess: false,
-                progress: { _ in }
-            )
-            return posterPhase(from: phase, cacheKey: cacheKey)
-        case .ownedPhoto(let record, _):
-            if let data = try? await TAPPendingCaptureStore.shared.thumbnailData(captureID: record.captureID) {
-                return .ready(MediaPoster(cacheKey: cacheKey, jpegData: data))
-            }
-            guard let request = LibraryMediaPosterRequest(
-                summary: item.summary,
-                pixelLength: thumbnailPixelLength
-            ) else {
-                return .failed(nil, reason: .assetRemoved, retryable: false)
-            }
-            let phase = try await mediaFetcher.posterPhase(
-                for: request,
-                allowsNetworkAccess: false,
-                progress: { _ in }
-            )
-            return posterPhase(from: phase, cacheKey: cacheKey)
-        case .pending(let record):
-            if let data = try? await TAPPendingCaptureStore.shared.thumbnailData(captureID: record.captureID) {
-                return .ready(MediaPoster(cacheKey: cacheKey, jpegData: data))
-            }
+            break
+        }
+        if case .pending(let record) = item.source {
             guard item.isVideo,
                   let videoURL = try? await TAPPendingCaptureStore.shared.bestAvailableVideoURL(
                     captureID: record.captureID
                   ),
                   let data = await DepthAlbumThumbnailLoader.shared.videoData(
-                    for: videoURL,
-                    cacheKey: cacheKey,
-                    pixelLength: thumbnailPixelLength
+                    for: videoURL, cacheKey: cacheKey, pixelLength: thumbnailPixelLength
                   ) else {
                 return .failed(nil, reason: .decode, retryable: false)
             }
-            return .ready(MediaPoster(cacheKey: cacheKey, jpegData: data))
+            return await decodedPosterPhase(data: data, cacheKey: cacheKey)
         }
+        guard let request = LibraryMediaPosterRequest(
+            summary: item.summary, pixelLength: thumbnailPixelLength
+        ) else {
+            return .failed(nil, reason: .assetRemoved, retryable: false)
+        }
+        return try await mediaFetcher.posterPhase(
+            for: request, allowsNetworkAccess: false, progress: { _ in }
+        )
     }
 
-    private func posterPhase(
-        from phase: MediaFetchPhase<Data, Data>,
-        cacheKey: String
-    ) -> MediaFetchPhase<MediaPoster, MediaPoster> {
-        switch phase {
-        case .idle(let preview):
-            return .idle(preview.map { MediaPoster(cacheKey: cacheKey, jpegData: $0) })
-        case .resolving(let preview):
-            return .resolving(preview.map { MediaPoster(cacheKey: cacheKey, jpegData: $0) })
-        case .localPreview(let preview):
-            return .localPreview(MediaPoster(cacheKey: cacheKey, jpegData: preview))
-        case .cloudOnly(let preview):
-            return .cloudOnly(preview.map { MediaPoster(cacheKey: cacheKey, jpegData: $0) })
-        case .downloadingFromICloud(let preview, let progress):
-            return .downloadingFromICloud(
-                preview.map { MediaPoster(cacheKey: cacheKey, jpegData: $0) },
-                progress: progress
-            )
-        case .ready(let value):
-            return .ready(MediaPoster(cacheKey: cacheKey, jpegData: value))
-        case .failed(let preview, let reason, let retryable):
-            return .failed(
-                preview.map { MediaPoster(cacheKey: cacheKey, jpegData: $0) },
-                reason: reason,
-                retryable: retryable
-            )
+    private func decodedPosterPhase(data: Data, cacheKey: String) async -> MediaFetchPhase<MediaPoster, MediaPoster> {
+        guard let poster = await DepthAlbumThumbnailDecoder.shared.decodedThumbnail(
+            data: data, cacheKey: cacheKey
+        ) else {
+            return .failed(nil, reason: .decode, retryable: false)
         }
-    }
-
-    private var displayedPoster: MediaPoster? {
-        switch fetchPhase {
-        case .idle(let preview),
-             .resolving(let preview),
-             .cloudOnly(let preview),
-             .downloadingFromICloud(let preview, _),
-             .failed(let preview, _, _):
-            return preview
-        case .localPreview(let preview), .ready(let preview):
-            return preview
-        }
+        return .ready(poster)
     }
 
     private var displayedPosterImage: UIImage? {
-        guard let poster = displayedPoster else {
-            return nil
-        }
-        return DepthAlbumThumbnailMemoryCache.shared.image(for: poster.cacheKey)
+        fetchPhase.previewOrReadyValue?.image
     }
 
     private var isCloudOnly: Bool {
@@ -316,16 +249,5 @@ struct TAPLibraryItemCell: View {
             return true
         }
         return false
-    }
-}
-
-private extension MediaFetchPhase where Preview == MediaPoster, Value == MediaPoster {
-    var requiresRenderablePoster: Bool {
-        switch self {
-        case .localPreview, .ready:
-            true
-        case .idle, .resolving, .cloudOnly, .downloadingFromICloud, .failed:
-            false
-        }
     }
 }

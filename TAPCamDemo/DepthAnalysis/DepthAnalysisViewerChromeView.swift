@@ -21,9 +21,7 @@ struct DepthAnalysisViewerChromeView: View {
     @Binding var heatmapOpacity: Double
     let shareSubject: DepthAnalysisShareSubject?
     @ObservedObject var originalResourceOwner: TAPPhotoOriginalResourceOwner
-    let topSafeArea: CGFloat
     let bottomSafeArea: CGFloat
-    let onBackTapped: () -> Void
     let onToolTapped: (AnalysisViewerTool) -> Void
     let onDeleteTapped: () -> Void
 
@@ -44,10 +42,8 @@ struct DepthAnalysisViewerChromeView: View {
             ),
             shareAccessibilityLabel: "Share photo",
             deleteAccessibilityLabel: "Delete photo",
-            topSafeArea: topSafeArea,
             bottomSafeArea: bottomSafeArea,
             bottomAccessory: EmptyView(),
-            onBackTapped: onBackTapped,
             onModeTapped: { itemID in
                 guard let tool = AnalysisViewerTool(rawValue: itemID) else {
                     return
@@ -68,37 +64,13 @@ struct DepthViewerChromeView<BottomAccessory: View>: View {
     let shareResourceAccess: DepthAnalysisShareResourceAccess?
     let shareAccessibilityLabel: String
     let deleteAccessibilityLabel: String
-    let topSafeArea: CGFloat
     let bottomSafeArea: CGFloat
     let bottomAccessory: BottomAccessory
-    let onBackTapped: () -> Void
     let onModeTapped: (String) -> Void
     let onDeleteTapped: () -> Void
 
     var body: some View {
         VStack(spacing: 10) {
-            HStack {
-                Button(action: onBackTapped) {
-                    Image(systemName: "chevron.left")
-                        .font(.headline.weight(.semibold))
-                        .dynamicTypeSize(.large)
-                        .frame(width: 42, height: 42)
-                        .background(.thinMaterial, in: Circle())
-                        .overlay {
-                            Circle()
-                                .stroke(.white.opacity(0.18), lineWidth: 1)
-                        }
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Back to TAP Library")
-                .accessibilityIdentifier("tap.viewer.back")
-                .help("Back to TAP Library")
-
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 14)
-            .padding(.top, ViewerChromeMetrics.backButtonTopPadding(topSafeArea: topSafeArea))
-
             Spacer(minLength: 0)
 
             bottomAccessory
@@ -132,19 +104,6 @@ struct DepthViewerChromeView<BottomAccessory: View>: View {
         .animation(.snappy(duration: 0.18), value: selectedModeID)
         .animation(.snappy(duration: 0.18), value: showsOpacityControl)
         .accessibilityElement(children: .contain)
-    }
-}
-
-private enum ViewerChromeMetrics {
-    static let backButtonSize: CGFloat = 42
-    static let inlineNavigationBarHeight: CGFloat = 44
-    static let fallbackBackButtonTopPadding: CGFloat = 58
-
-    static func backButtonTopPadding(topSafeArea: CGFloat) -> CGFloat {
-        guard topSafeArea > 0 else {
-            return fallbackBackButtonTopPadding
-        }
-        return topSafeArea + (inlineNavigationBarHeight - backButtonSize) * 0.5
     }
 }
 
@@ -267,22 +226,9 @@ struct ViewerToolbarIconButton: View {
             Text(LocalizedStringKey(accessibilityLabel))
         )
         .accessibilityIdentifier(accessibilityIdentifier)
-        .modifier(OptionalAccessibilityValue(value: accessibilityValue))
+        .accessibilityValue(accessibilityValue ?? "")
         .help(Text(LocalizedStringKey(accessibilityLabel)))
         .shadow(color: .black.opacity(0.16), radius: 12, y: 4)
-    }
-}
-
-private struct OptionalAccessibilityValue: ViewModifier {
-    let value: String?
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if let value {
-            content.accessibilityValue(value)
-        } else {
-            content
-        }
     }
 }
 

@@ -73,12 +73,15 @@ struct TAPVideoDepthPlaybackView: View {
                 videoSource: sessionSource,
                 itemID: currentItemID
             ),
-            onBackTapped: { dismiss() },
             onModeTapped: handleModeTapped,
             onDeleteTapped: deleteCurrentVideo,
             onCurrentPagingEntryChanged: moveToPagingEntry
         )
-        .toolbar(.hidden, for: .navigationBar)
+        .toolbar(.visible, for: .navigationBar)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbarRole(.editor)
+        .navigationTitle("")
         .ignoresSafeArea(.container, edges: .all)
         .alert(item: $pendingDeleteRequest) { request in
             Alert(
@@ -231,6 +234,8 @@ struct TAPVideoDepthPlaybackView: View {
                     session.stopPlayback()
                     dismiss()
                 }
+            } catch is CancellationError {
+                return
             } catch {
                 #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
                 TAPDiagnostics.photoLibrary.error("video delete failed error=\(TAPDiagnostics.describe(error), privacy: .public)")

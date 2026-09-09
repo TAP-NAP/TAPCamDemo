@@ -51,14 +51,15 @@ user intent
 
 | Area | Owns | Start with |
 | --- | --- | --- |
-| `TAPCamDemo/App` | app root, setup/permission route, initialization gate, App Attest runtime, diagnostics | `TAPCamDemoApp.swift`, `StartupGateView.swift`, `AppAttestRuntime.swift` |
+| `TAPCamDemo/App` | app root, setup/permission route, data-use preferences, initialization gate, App Attest runtime | `TAPCamDemoApp.swift`, `StartupGateView.swift`, `AppAttestRuntime.swift` |
 | `CameraCapture/Planning` | pure capability, pairing, output-intent, FOV/zoom, and manual-control plans | `CapturePlan.swift`, `CapabilityMatrix.swift` |
-| `CameraCapture/Runtime` | the only `AVCaptureSession` mutation, capture requests, device writes, TAP Video recording | `CaptureSessionController.swift`, `CapturePipeline.swift`, `TAPVideoRecorder.swift` |
+| `CameraCapture/Runtime` | the only `AVCaptureSession` mutation, capture requests, device writes, TAP Video recording, cached capture location | `CaptureSessionController.swift`, `CapturePipeline.swift`, `TAPVideoRecorder.swift`, `LocationProvider.swift` |
 | `CameraCapture/Output` | reviewed output profiles, packaging, shared-contract encoders/writers, final signed-export gates | `CaptureOutputProfile.swift`, `EmbeddedPhotoPackager.swift`, `TAPCaptureProvenanceWriter.swift` |
 | `CameraCapture/UI` | Viewfinder presentation and user intent; no capture-plan or proof ownership | `CameraView.swift`, `CameraViewModel.swift` |
 | `TAPLibrary` | private pending storage, one serialized signing/export worker, retry, readback, cleanup | `TAPPendingCaptureStore.swift`, `TAPPendingCaptureProcessor.swift` |
 | `MediaLibrary` | exactly-once PhotoKit callback/request bridging and identity/order catalog publication | `LibraryMediaFetching.swift`, `PhotoKitRequestLifecycle.swift`, `LibraryMediaStore.swift` |
 | `DepthAnalysis` | user-facing TAP Library, Viewer, local Share preparation, photo geometry, bounded TAP Video playback | `DepthAnalysisView.swift`, `TAPVideoDepthPlaybackView.swift` |
+| `Diagnostics` | capture timing and bounded video performance traces | `CaptureJobMetrics.swift`, `TAPVideoPerformanceTrace.swift` |
 
 ## Build and validation
 

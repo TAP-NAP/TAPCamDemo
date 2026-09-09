@@ -5,7 +5,6 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
     private static let bundleIdentifier = "TAP-NAP.TAPCamDemo"
     private static let openIdentifier = "tap.video.fixture.open"
     private static let failedIdentifier = "tap.video.fixture.failed"
-    private static let backIdentifier = "tap.viewer.back"
     private static let rawIdentifier = "tap.viewer.mode.raw"
     private static let twoDIdentifier = "tap.viewer.mode.2d"
     private static let threeDIdentifier = "tap.viewer.mode.3d"
@@ -80,7 +79,7 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
         )
 
         let stableChrome = [
-            app.buttons[Self.backIdentifier],
+            app.navigationBars.buttons.firstMatch,
             share,
             app.buttons["tap.viewer.delete"],
             app.buttons[Self.rawIdentifier],
@@ -126,6 +125,43 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
             value(of: app.buttons[Self.rawIdentifier], containsAny: Self.selectedValueTokens),
             "Opening Share changed the selected Viewer mode."
         )
+    }
+
+    func testVideoSystemShareCanBeCancelledAndOpenedAgain() throws {
+        let app = launchFixture(scenario: "rotation-0")
+        try openFixture(in: app)
+        let share = app.buttons[Self.shareIdentifier]
+        let shareVideo = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Share Video")).firstMatch
+
+        func keepShareEvidence(_ name: String) {
+            keepScreenshot(of: app, named: name)
+            let hierarchy = XCTAttachment(string: app.debugDescription)
+            hierarchy.name = "\(name)-hierarchy"
+            hierarchy.lifetime = .keepAlways
+            add(hierarchy)
+        }
+
+        for attempt in 1...2 {
+            XCTAssertTrue(share.isEnabled && share.isHittable,
+                          "Cancelling system Share must leave the Viewer Share button usable.")
+            share.tap()
+            XCTAssertTrue(app.popovers.firstMatch.waitForExistence(timeout: 3))
+            XCTAssertTrue(shareVideo.waitForExistence(timeout: 5))
+            XCTAssertTrue(shareVideo.isEnabled && shareVideo.isHittable)
+            shareVideo.tap()
+
+            let activity = app.otherElements["ActivityListView"]
+            let appeared = activity.waitForExistence(timeout: 10)
+            keepShareEvidence("video-system-share-\(attempt)")
+            XCTAssertTrue(appeared, "Share Video must present the native system activity list.")
+            app.buttons["header.closeButton"].tap()
+            let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: activity)
+            XCTAssertEqual(XCTWaiter.wait(for: [dismissed], timeout: 5), .completed)
+            XCTAssertTrue(value(of: app.buttons[Self.rawIdentifier], containsAny: Self.selectedValueTokens),
+                          "Cancelling system Share must retain the current Viewer mode.")
+        }
+        XCTAssertTrue(share.isEnabled && share.isHittable)
+        keepShareEvidence("video-system-share-cancelled")
     }
 
     func testVideoThreeDShowsComingSoonWithoutChangingModeOrPlayback() throws {
@@ -189,8 +225,159 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
         )
     }
 
+    func testPagingFromPhotoToVideoKeepsTheScreenCenter() throws {
+        let app = launchFixture(scenario: "rotation-0", gallery: true)
+        app.buttons["tap.gallery.item.photos:fixture-0"].tap()
+        let photo = app.images["tap.viewer.photo"].firstMatch
+        XCTAssertTrue(photo.waitForExistence(timeout: 5))
+        XCTAssertEqual(photo.frame.midY, app.frame.midY, accuracy: 1)
+        keepScreenshot(of: app, named: "mixed-paging-photo")
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5))
+        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.5))
+        start.press(forDuration: 0.05, thenDragTo: end)
+        XCTAssertTrue(app.buttons[Self.playPauseIdentifier].waitForExistence(timeout: 5))
+        let video = element("tap.video.playback.surface", in: app)
+        XCTAssertTrue(video.waitForExistence(timeout: 5))
+        XCTAssertEqual(video.frame.midY, app.frame.midY, accuracy: 1,
+                       "Switching media renderers must retain the full-screen center.")
+        keepScreenshot(of: app, named: "mixed-paging-video")
+        end.press(forDuration: 0.05, thenDragTo: start)
+        XCTAssertTrue(photo.waitForExistence(timeout: 5))
+        XCTAssertEqual(photo.frame.midY, app.frame.midY, accuracy: 1)
+    }
+
+    func testPhotoModesKeepMediaBoundsAndRestoreRawInteraction() throws {
+        let app = launchFixture(scenario: "rotation-0", gallery: true)
+        app.buttons["tap.gallery.item.photos:fixture-0"].tap()
+        let photo = app.images["tap.viewer.photo"].firstMatch
+        XCTAssertTrue(photo.waitForExistence(timeout: 5))
+        let originalFrame = photo.frame
+        XCTAssertGreaterThan(originalFrame.width, app.frame.width * 0.9)
+        keepScreenshot(of: app, named: "photo-modes-raw-before")
+
+        func assertMediaBounds(_ media: XCUIElement) {
+            XCTAssertTrue(media.waitForExistence(timeout: 5))
+            XCTAssertEqual(media.frame.midX, originalFrame.midX, accuracy: 1)
+            XCTAssertEqual(media.frame.midY, originalFrame.midY, accuracy: 1)
+            XCTAssertEqual(media.frame.width, originalFrame.width, accuracy: 1)
+            XCTAssertEqual(media.frame.height, originalFrame.height, accuracy: 1)
+        }
+
+        let twoD = app.buttons[Self.twoDIdentifier]
+        XCTAssertTrue(twoD.isHittable)
+        twoD.tap()
+        XCTAssertTrue(waitForValue(twoD, containingAny: Self.selectedValueTokens, timeout: 3))
+        XCTAssertFalse(value(of: app.buttons[Self.rawIdentifier], containsAny: Self.selectedValueTokens))
+        let divider = app.otherElements.matching(NSPredicate(
+            format: "label == %@ AND value ENDSWITH %@", "2D analysis", " percent"
+        )).element
+        assertMediaBounds(divider)
+        // These retained images support manual border review; bounds alone do not prove appearance.
+        keepScreenshot(of: app, named: "photo-modes-2d")
+        divider.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .press(forDuration: 0.05, thenDragTo: divider.coordinate(withNormalizedOffset: CGVector(dx: 0.75, dy: 0.5)))
+        XCTAssertTrue(waitForValue(divider, containingAny: (70...80).map { "\($0) percent" }, timeout: 3),
+                      "Dragging across the media must move the actual 2D comparison divider.")
+
+        let threeD = app.buttons[Self.threeDIdentifier]
+        XCTAssertTrue(threeD.isHittable)
+        threeD.tap()
+        XCTAssertTrue(waitForValue(threeD, containingAny: Self.selectedValueTokens, timeout: 3))
+        XCTAssertFalse(value(of: twoD, containsAny: Self.selectedValueTokens))
+        let projection = app.otherElements.matching(NSPredicate(format: "label == %@", "3D projection")).element
+        assertMediaBounds(projection)
+        XCTAssertFalse(divider.exists, "3D must replace the 2D interaction surface.")
+        keepScreenshot(of: app, named: "photo-modes-3d")
+
+        let raw = app.buttons[Self.rawIdentifier]
+        XCTAssertTrue(raw.isHittable)
+        raw.tap()
+        XCTAssertTrue(waitForValue(raw, containingAny: Self.selectedValueTokens, timeout: 3))
+        XCTAssertFalse(value(of: threeD, containsAny: Self.selectedValueTokens))
+        assertMediaBounds(photo)
+        XCTAssertFalse(projection.exists)
+        keepScreenshot(of: app, named: "photo-modes-raw-after")
+        photo.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).doubleTap()
+        XCTAssertGreaterThan(photo.frame.width, originalFrame.width * 1.5,
+                             "Returning to RAW must restore actual photo zoom interaction.")
+    }
+
+    func testGallerySystemBackPreservesScrollPositionForTheOpenedPhoto() throws {
+        let app = launchFixture(scenario: "rotation-0", gallery: true)
+        let cell = try scrolledGalleryCell(in: app, nearBottom: false)
+        let identifier = cell.identifier
+        let originalY = cell.frame.minY
+        cell.tap()
+        XCTAssertTrue(app.navigationBars.buttons.firstMatch.waitForExistence(timeout: 5))
+
+        let photo = app.images["tap.viewer.photo"].firstMatch
+        let originalWidth = photo.frame.width
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35)).doubleTap()
+        XCTAssertGreaterThan(photo.frame.width, originalWidth * 1.5,
+                             "Double-tap must actually zoom the photo before testing edge-back.")
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.005, dy: 0.5))
+            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.12, dy: 0.5)),
+                   withVelocity: .slow, thenHoldForDuration: 0.3)
+        XCTAssertTrue(photo.exists, "A cancelled back gesture must retain the Viewer.")
+        returnToGalleryWithSystemGesture(in: app)
+
+        let returnedCell = app.buttons[identifier]
+        XCTAssertTrue(returnedCell.isHittable, "Returning lost the opened photo's visible grid position.")
+        XCTAssertEqual(returnedCell.frame.minY, originalY, accuracy: 2,
+                       "Returning to the same photo must preserve the grid's native scroll offset.")
+    }
+
+    func testGalleryPagingThenSystemBackRevealsTheCurrentPhoto() throws {
+        let app = launchFixture(scenario: "rotation-0", gallery: true)
+        let cell = try scrolledGalleryCell(in: app, nearBottom: true)
+        let startIndex = try XCTUnwrap(Int(cell.identifier.split(separator: "-").last ?? ""))
+        let targetID = "tap.gallery.item.photos:fixture-\(startIndex + 12)"
+        XCTAssertFalse(app.buttons[targetID].isHittable, "The target must start outside the grid viewport.")
+        cell.tap()
+        XCTAssertTrue(app.navigationBars.buttons.firstMatch.waitForExistence(timeout: 5))
+
+        let selection = app.staticTexts["tap.gallery.selection"]
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.52))
+        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.52))
+        for step in 1...12 {
+            start.press(forDuration: 0.05, thenDragTo: end)
+            XCTAssertTrue(waitForElement(selection, label: "photos:fixture-\(startIndex + step)", timeout: 3),
+                          "One physical swipe must commit exactly the next photo.")
+        }
+        end.press(forDuration: 0.05, thenDragTo: start)
+        XCTAssertTrue(waitForElement(selection, label: "photos:fixture-\(startIndex + 11)", timeout: 3),
+                      "A previous-photo swipe away from the edge must stay in the Viewer.")
+        start.press(forDuration: 0.05, thenDragTo: end)
+        XCTAssertTrue(waitForElement(selection, label: "photos:fixture-\(startIndex + 12)", timeout: 3))
+
+        returnToGalleryWithSystemGesture(in: app)
+
+        XCTAssertTrue(app.buttons[targetID].isHittable,
+                      "Returning after paging must reveal the current photo, not the originally opened photo.")
+    }
+
+    private func scrolledGalleryCell(in app: XCUIApplication, nearBottom: Bool) throws -> XCUIElement {
+        let grid = app.scrollViews.firstMatch
+        XCTAssertTrue(grid.waitForExistence(timeout: 5))
+        grid.swipeUp(velocity: .slow)
+        let cells = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "tap.gallery.item."))
+            .allElementsBoundByIndex.filter {
+                $0.isHittable && $0.frame.minY > 120 && $0.frame.maxY < app.frame.maxY - 50
+            }
+        let index = nearBottom ? cells.count - 1 : cells.count / 2
+        return try XCTUnwrap(cells.indices.contains(index) ? cells[index] : nil)
+    }
+
+    private func returnToGalleryWithSystemGesture(in app: XCUIApplication) {
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.005, dy: 0.5))
+            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5)))
+        XCTAssertTrue(app.navigationBars["TAP Library"].waitForExistence(timeout: 5),
+                      "The system edge gesture did not pop the Viewer back to the grid.")
+    }
+
     private func launchFixture(
         scenario: String,
+        gallery: Bool = false,
         language: String = "en",
         appLanguage: String? = nil,
         autoPlay: Bool = false,
@@ -204,6 +391,9 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
         }
         app.launchEnvironment["TAPCAM_UI_TEST_VIDEO_FIXTURE"] = "1"
         app.launchEnvironment["TAPCAM_UI_TEST_VIDEO_FIXTURE_SCENARIO"] = scenario
+        if gallery {
+            app.launchEnvironment["TAPCAM_UI_TEST_GALLERY_FIXTURE"] = "1"
+        }
         if autoPlay {
             app.launchEnvironment["TAPCAM_UI_TEST_VIDEO_FIXTURE_AUTOPLAY"] = "1"
         }
@@ -229,6 +419,10 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
         ]
         app.launch()
 
+        if gallery {
+            XCTAssertTrue(app.buttons["tap.gallery.item.photos:fixture-0"].waitForExistence(timeout: 8))
+            return app
+        }
         let open = app.buttons[Self.openIdentifier]
         let failure = element(Self.failedIdentifier, in: app)
         let deadline = Date().addingTimeInterval(scenario == "performance-playback-15s" ? 60 : 35)
@@ -307,7 +501,7 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
     }
 
     private func dismissFixture(in app: XCUIApplication) throws {
-        let back = app.buttons[Self.backIdentifier]
+        let back = app.navigationBars.buttons.firstMatch
         XCTAssertTrue(back.waitForExistence(timeout: 5), "Back control is missing.")
         back.tap()
         XCTAssertTrue(app.buttons[Self.openIdentifier].waitForExistence(timeout: 8))
@@ -317,7 +511,7 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
         in app: XCUIApplication,
         selectedModeIdentifier: String? = nil
     ) {
-        let back = app.buttons[Self.backIdentifier]
+        let back = app.navigationBars.buttons.firstMatch
         let share = app.buttons["tap.viewer.share"]
         let delete = app.buttons["tap.viewer.delete"]
         XCTAssertTrue(back.exists && back.isHittable)

@@ -6,6 +6,8 @@
 import AVFoundation
 import Foundation
 import Testing
+import SwiftUI
+import UIKit
 @testable import TAPCamDemo
 
 struct TAPLibraryViewerPagingTests {
@@ -274,6 +276,101 @@ struct TAPLibraryViewerPagingTests {
             state: .failed("fixture"),
             isPlayerFrameReady: false
         ))
+    }
+
+    @Test @MainActor func nativePagerLaysOutPagesWhenItsViewportChanges() {
+        let entries = ["photo", "video"].map { id in
+            TAPLibraryViewerPagingEntry(
+                id: id,
+                destination: .analysis(.init(itemID: id, source: .photosAsset(id)))
+            )
+        }
+        let pager = TAPLibraryNativePagingView(
+            entries: entries,
+            currentItemID: "video",
+            pageBuilder: { _, _, size in
+                AnyView(Color.black.frame(width: size.width, height: size.height))
+            },
+            onCurrentEntryChanged: { _ in }
+        )
+        let coordinator = pager.makeCoordinator()
+        let scrollView = coordinator.makeScrollView()
+        coordinator.update(parent: pager, scrollView: scrollView)
+
+        // SwiftUI can supply the viewport after updateUIView, including when
+        // a photo route is replaced by a video route in the same destination.
+        for size in [CGSize(width: 400, height: 800), CGSize(width: 800, height: 400)] {
+            scrollView.frame = CGRect(origin: .zero, size: size)
+            scrollView.layoutIfNeeded()
+            #expect(scrollView.contentSize == CGSize(width: size.width * 2, height: size.height))
+            #expect(scrollView.contentOffset == CGPoint(x: size.width, y: 0))
+            #expect(scrollView.subviews[1].frame == CGRect(
+                x: size.width + 9, y: 0, width: size.width - 18, height: size.height
+            ))
+        }
+        coordinator.cancelInteractionForTeardown()
+    }
+
+    @Test @MainActor func nativePagerCommitsOnlyOnceAfterDeceleration() {
+        let entries = ["first", "current", "next"].map { id in
+            TAPLibraryViewerPagingEntry(
+                id: id,
+                destination: .analysis(.init(itemID: id, source: .photosAsset(id)))
+            )
+        }
+        var commits: [String] = []
+        var interaction: [Bool] = []
+        let pager = TAPLibraryNativePagingView(
+            entries: entries,
+            currentItemID: "current",
+            pageBuilder: { _, _, _ in AnyView(Color.black) },
+            onCurrentEntryChanged: { commits.append($0.id) },
+            onPagingInteractionChanged: { interaction.append($0) }
+        )
+        let coordinator = pager.makeCoordinator()
+        let scrollView = coordinator.makeScrollView()
+        scrollView.frame = CGRect(x: 0, y: 0, width: 400, height: 800)
+        coordinator.update(parent: pager, scrollView: scrollView)
+        coordinator.scrollViewWillBeginDragging(scrollView)
+        scrollView.contentOffset.x = 800
+        coordinator.scrollViewDidEndDragging(scrollView, willDecelerate: true)
+        #expect(commits.isEmpty)
+        coordinator.scrollViewDidEndDecelerating(scrollView)
+        coordinator.scrollViewDidEndDecelerating(scrollView)
+        #expect(commits == ["next"])
+        #expect(interaction == [true, false])
+        coordinator.cancelInteractionForTeardown()
+        coordinator.scrollViewDidEndDecelerating(scrollView)
+        #expect(commits == ["next"])
+    }
+
+    @Test @MainActor func nativePagerRejectsATargetRemovedDuringTheDrag() {
+        let entries = ["first", "current", "removed"].map { id in
+            TAPLibraryViewerPagingEntry(
+                id: id,
+                destination: .analysis(.init(itemID: id, source: .photosAsset(id)))
+            )
+        }
+        var commits: [String] = []
+        func pager(_ entries: [TAPLibraryViewerPagingEntry]) -> TAPLibraryNativePagingView {
+            TAPLibraryNativePagingView(
+                entries: entries,
+                currentItemID: "current",
+                pageBuilder: { _, _, _ in AnyView(Color.black) },
+                onCurrentEntryChanged: { commits.append($0.id) }
+            )
+        }
+        let initial = pager(entries)
+        let coordinator = initial.makeCoordinator()
+        let scrollView = coordinator.makeScrollView()
+        scrollView.frame = CGRect(x: 0, y: 0, width: 400, height: 800)
+        coordinator.update(parent: initial, scrollView: scrollView)
+        coordinator.scrollViewWillBeginDragging(scrollView)
+        coordinator.update(parent: pager(Array(entries.prefix(2))), scrollView: scrollView)
+        scrollView.contentOffset.x = 800
+        coordinator.scrollViewDidEndDragging(scrollView, willDecelerate: false)
+        #expect(commits.isEmpty)
+        coordinator.cancelInteractionForTeardown()
     }
 
     private static func mixedMediaItems() -> [TAPLibraryItem] {

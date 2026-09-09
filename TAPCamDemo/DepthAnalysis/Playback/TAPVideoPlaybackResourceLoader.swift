@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import UIKit
 
 /// Private route provenance for the exact video original retained by a Viewer
 /// session. `LibraryMediaID` keeps one TAP capture stable across export, while
@@ -218,41 +219,41 @@ enum TAPVideoPlaybackResourceLoader {
         }
     }
 
-    static func loadingPreviewData(
+    static func loadingPreviewImage(
         source: TAPVideoPlaybackSource,
         originalRequestKey: MediaFetchRequestKey,
         mediaFetcher: any LibraryMediaFetching
-    ) async -> Data? {
+    ) async -> UIImage? {
         switch source {
         case .pendingCapture(let captureID):
             if let data = try? await TAPPendingCaptureStore.shared
                 .thumbnailData(captureID: captureID) {
-                return data
+                return await DepthAlbumThumbnailDecoder.image(data: data)
             }
             guard let fileURL = try? await TAPPendingCaptureStore.shared
                 .bestAvailableVideoURL(captureID: captureID) else {
                 return nil
             }
-            return await videoPreviewData(fileURL: fileURL, source: source)
+            return await videoPreviewImage(fileURL: fileURL, source: source)
         case .ownedCapture(let captureID, let assetID):
             if let data = try? await TAPPendingCaptureStore.shared
                 .thumbnailData(captureID: captureID) {
-                return data
+                return await DepthAlbumThumbnailDecoder.image(data: data)
             }
-            return await photoPreviewData(
+            return await photoPreviewImage(
                 assetID: assetID,
                 originalRequestKey: originalRequestKey,
                 mediaFetcher: mediaFetcher
             )
         case .photosAsset(let assetID):
-            return await photoPreviewData(
+            return await photoPreviewImage(
                 assetID: assetID,
                 originalRequestKey: originalRequestKey,
                 mediaFetcher: mediaFetcher
             )
         #if DEBUG
         case .fixtureFile(let fileURL, _, _):
-            return await videoPreviewData(fileURL: fileURL, source: source)
+            return await videoPreviewImage(fileURL: fileURL, source: source)
         #endif
         }
     }
@@ -261,34 +262,35 @@ enum TAPVideoPlaybackResourceLoader {
     /// adjacent page. In particular, a pending video without a stored
     /// thumbnail must not start an AVAssetImageGenerator task that can outlive
     /// a quickly cancelled page drag.
-    static func adjacentPreviewData(
+    static func adjacentPreviewImage(
         source: TAPVideoPlaybackSource,
         originalRequestKey: MediaFetchRequestKey,
         mediaFetcher: any LibraryMediaFetching
-    ) async -> Data? {
+    ) async -> UIImage? {
         switch source {
         case .pendingCapture(let captureID):
-            return try? await TAPPendingCaptureStore.shared
-                .thumbnailData(captureID: captureID)
+            guard let data = try? await TAPPendingCaptureStore.shared
+                .thumbnailData(captureID: captureID) else { return nil }
+            return await DepthAlbumThumbnailDecoder.image(data: data)
         case .ownedCapture(let captureID, let assetID):
             if let data = try? await TAPPendingCaptureStore.shared
                 .thumbnailData(captureID: captureID) {
-                return data
+                return await DepthAlbumThumbnailDecoder.image(data: data)
             }
-            return await photoPreviewData(
+            return await photoPreviewImage(
                 assetID: assetID,
                 originalRequestKey: originalRequestKey,
                 mediaFetcher: mediaFetcher
             )
         case .photosAsset(let assetID):
-            return await photoPreviewData(
+            return await photoPreviewImage(
                 assetID: assetID,
                 originalRequestKey: originalRequestKey,
                 mediaFetcher: mediaFetcher
             )
         #if DEBUG
         case .fixtureFile(let fileURL, _, _):
-            return await videoPreviewData(fileURL: fileURL, source: source)
+            return await videoPreviewImage(fileURL: fileURL, source: source)
         #endif
         }
     }
@@ -370,11 +372,11 @@ enum TAPVideoPlaybackResourceLoader {
         )
     }
 
-    private static func videoPreviewData(
+    private static func videoPreviewImage(
         fileURL: URL,
         source: TAPVideoPlaybackSource
-    ) async -> Data? {
-        await DepthAlbumThumbnailLoader.shared.videoData(
+    ) async -> UIImage? {
+        guard let data = await DepthAlbumThumbnailLoader.shared.videoData(
             for: fileURL,
             cacheKey: DepthAlbumThumbnailCacheKey.make(
                 mediaID: source.libraryMediaID,
@@ -382,14 +384,15 @@ enum TAPVideoPlaybackResourceLoader {
                 pixelLength: loadingPreviewPixelLength
             ),
             pixelLength: loadingPreviewPixelLength
-        )
+        ) else { return nil }
+        return await DepthAlbumThumbnailDecoder.image(data: data)
     }
 
-    private static func photoPreviewData(
+    private static func photoPreviewImage(
         assetID: String,
         originalRequestKey: MediaFetchRequestKey,
         mediaFetcher: any LibraryMediaFetching
-    ) async -> Data? {
+    ) async -> UIImage? {
         let request = LibraryMediaAssetRequest(
             key: MediaFetchRequestKey(
                 itemID: originalRequestKey.itemID,
@@ -406,7 +409,7 @@ enum TAPVideoPlaybackResourceLoader {
                 progress: { _ in }
             )
             try Task.checkCancellation()
-            return phase.previewOrReadyValue
+            return phase.previewOrReadyValue?.image
         } catch {
             return nil
         }

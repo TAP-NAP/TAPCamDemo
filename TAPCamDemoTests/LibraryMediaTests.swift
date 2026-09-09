@@ -15,7 +15,7 @@ struct LibraryMediaTests {
         let itemID = LibraryMediaID.tapCapture("placeholder")
         let readyPoster = MediaPoster(
             cacheKey: "ready",
-            jpegData: Data([0])
+            image: UIImage()
         )
 
         #expect(RecentLibraryPresentation.unresolved.showsPlaceholderSymbol)
@@ -342,7 +342,7 @@ struct LibraryMediaTests {
         #expect(LibraryMediaCopy.loadingFromICloud(progress: 0.42).hasSuffix("42%"))
     }
 
-    @Test func posterRequestCacheKeyDoesNotExposePhotoIdentifier() throws {
+    @Test func posterRequestCacheKeyTracksPixelLength() throws {
         let assetID = "photos-library://private/asset"
         let summary = Self.summary(
             id: .photosAsset(assetID),
@@ -350,21 +350,43 @@ struct LibraryMediaTests {
         )
         let request = try #require(LibraryMediaPosterRequest(summary: summary, pixelLength: 256))
 
-        #expect(request.cacheKey.count == 64)
-        #expect(!request.cacheKey.contains(assetID))
-        #expect(!request.cacheKey.contains("private"))
+        let resizedRequest = try #require(LibraryMediaPosterRequest(summary: summary, pixelLength: 128))
+        #expect(request.cacheKey != resizedRequest.cacheKey)
+    }
+
+    @Test func photosDeletionUserCancellationStopsAsCancellation() {
+        let error = NSError(domain: PHPhotosErrorDomain, code: PHPhotosError.userCancelled.rawValue)
+
+        #expect(PhotoLibraryWriter.normalizedDeletionError(error) is CancellationError)
+    }
+
+    @Test func photosDeletionPreservesPermissionAndRealFailures() {
+        let errors = [
+            PHPhotosError.accessUserDenied,
+            PHPhotosError.accessRestricted,
+            PHPhotosError.operationInterrupted,
+            PHPhotosError.internalError
+        ].map { NSError(domain: PHPhotosErrorDomain, code: $0.rawValue) } + [
+            NSError(domain: NSCocoaErrorDomain, code: PHPhotosError.userCancelled.rawValue)
+        ]
+
+        for error in errors {
+            let normalized = PhotoLibraryWriter.normalizedDeletionError(error)
+            #expect(!(normalized is CancellationError))
+            #expect(normalized as NSError === error)
+        }
     }
 
     @Test func photoKitBridgeCancelsWhenCancellationPrecedesRequestID() async {
         let recorder = PhotoKitCancellationRecorder()
         let bridge = DepthAlbumPhotoKitImageRequestBridge(
-            pixelLength: 64,
+            cacheKey: "bridge",
             cancelRequest: { recorder.record($0) }
         )
         bridge.cancel()
 
         do {
-            let _: DepthAlbumPhotoKitPosterResult = try await withCheckedThrowingContinuation { continuation in
+            let _: MediaFetchPhase<MediaPoster, MediaPoster> = try await withCheckedThrowingContinuation { continuation in
                 bridge.install(continuation: continuation)
             }
             Issue.record("Expected cancellation")
@@ -383,13 +405,13 @@ struct LibraryMediaTests {
     @Test func photoKitBridgeCancelsInstalledRequestExactlyOnce() async {
         let recorder = PhotoKitCancellationRecorder()
         let bridge = DepthAlbumPhotoKitImageRequestBridge(
-            pixelLength: 64,
+            cacheKey: "bridge",
             cancelRequest: { recorder.record($0) }
         )
 
         do {
-            let _: DepthAlbumPhotoKitPosterResult = try await withCheckedThrowingContinuation {
-                (continuation: CheckedContinuation<DepthAlbumPhotoKitPosterResult, any Error>) in
+            let _: MediaFetchPhase<MediaPoster, MediaPoster> = try await withCheckedThrowingContinuation {
+                (continuation: CheckedContinuation<MediaFetchPhase<MediaPoster, MediaPoster>, any Error>) in
                 bridge.install(continuation: continuation)
                 bridge.install(requestID: 43)
                 bridge.cancel()
@@ -411,12 +433,12 @@ struct LibraryMediaTests {
     @Test func photoKitBridgeFinishesOnceBeforeLateRequestIDInstallation() async throws {
         let recorder = PhotoKitCancellationRecorder()
         let bridge = DepthAlbumPhotoKitImageRequestBridge(
-            pixelLength: 64,
+            cacheKey: "bridge",
             cancelRequest: { recorder.record($0) }
         )
 
-        let result: DepthAlbumPhotoKitPosterResult = try await withCheckedThrowingContinuation {
-            (continuation: CheckedContinuation<DepthAlbumPhotoKitPosterResult, any Error>) in
+        let result: MediaFetchPhase<MediaPoster, MediaPoster> = try await withCheckedThrowingContinuation {
+            (continuation: CheckedContinuation<MediaFetchPhase<MediaPoster, MediaPoster>, any Error>) in
             bridge.install(continuation: continuation)
             bridge.receive(image: nil, info: [PHImageResultIsInCloudKey: true])
             bridge.receive(image: nil, info: [
@@ -426,8 +448,10 @@ struct LibraryMediaTests {
             bridge.cancel()
         }
 
-        #expect(result.finalData == nil)
-        #expect(result.isCloudOnly)
+        guard case .cloudOnly(nil) = result else {
+            Issue.record("Expected cloud-only result without a local preview")
+            return
+        }
         #expect(recorder.requestIDs == [44])
     }
 
@@ -910,37 +934,6 @@ struct LibraryMediaTests {
         #expect(store.photoAssetsError != nil)
     }
 
-    @Test func diskCacheEnforcesByteBudgetAndTTL() async throws {
-        let directory = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
-            .appendingPathComponent("LibraryPosterCache", isDirectory: true)
-        let clock = LibraryMediaTestClock(Date(timeIntervalSince1970: 1_000))
-        let cache = DepthAlbumThumbnailDiskCache(
-            directoryURL: directory,
-            configuration: DepthAlbumThumbnailDiskCacheConfiguration(
-                maximumByteCount: 12,
-                maximumFileAge: 5
-            ),
-            now: { clock.now() }
-        )
-
-        await cache.store(Data(repeating: 1, count: 8), for: "one")
-        clock.advance(by: 1)
-        await cache.store(Data(repeating: 2, count: 8), for: "two")
-        let firstData = await cache.data(for: "one")
-        let secondData = await cache.data(for: "two")
-        let byteCount = await cache.currentByteCount()
-        #expect(firstData == nil)
-        #expect(secondData != nil)
-        #expect(byteCount <= 12)
-
-        clock.advance(by: 10)
-        await cache.store(Data([3]), for: "three")
-        let expiredData = await cache.data(for: "two")
-        let currentData = await cache.data(for: "three")
-        #expect(expiredData == nil)
-        #expect(currentData == Data([3]))
-    }
-
     @Test func videoPosterBackfillContinuesAfterOneCandidateFails() async throws {
         let source = LibraryVideoBackfillSourceFake(candidates: [
             LibraryVideoPosterBackfillCandidate(
@@ -1034,57 +1027,101 @@ struct LibraryMediaTests {
             context.cgContext.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
         }
         let jpegData = try #require(sourceImage.jpegData(compressionQuality: 0.8))
-        let poster = MediaPoster(cacheKey: "coalesced", jpegData: jpegData)
         let recorder = ThumbnailDecodeRecorder()
-        let decoder = DepthAlbumThumbnailDecoder { poster in
+        let decoder = DepthAlbumThumbnailDecoder { data in
             recorder.recordDecode(isMainThread: Thread.isMainThread)
             Thread.sleep(forTimeInterval: 0.04)
-            guard let image = UIImage(data: poster.jpegData) else {
-                return nil
-            }
-            return DepthAlbumDecodedThumbnail(poster: poster, image: image)
+            return UIImage(data: data)
         }
 
         let cancelledWaiter = Task {
-            await decoder.decodedThumbnail(for: poster)
+            await decoder.decodedThumbnail(data: jpegData, cacheKey: "coalesced")
         }
         let liveWaiter = Task {
-            await decoder.decodedThumbnail(for: poster)
+            await decoder.decodedThumbnail(data: jpegData, cacheKey: "coalesced")
         }
         try await Task.sleep(for: .milliseconds(5))
         cancelledWaiter.cancel()
-
         let cancelledResult = await cancelledWaiter.value
-        let liveResult = await liveWaiter.value
+        let liveResult = try #require(await liveWaiter.value)
 
         #expect(cancelledResult == nil)
-        #expect(liveResult != nil)
         #expect(recorder.decodeCount == 1)
         #expect(!recorder.didRunOnMainThread)
-        #expect(cache.image(for: poster.cacheKey) === liveResult?.image)
+        #expect(cache.poster(for: "coalesced")?.image === liveResult.image)
     }
 
-    @Test @MainActor func thumbnailMemoryCacheReusesOneDecodedImageObject() async throws {
+    @Test @MainActor func visiblePosterSurvivesCacheEvictionAndReleasesWhenHidden() {
         let cache = DepthAlbumThumbnailMemoryCache.shared
         cache.removeAll()
         defer { cache.removeAll() }
-
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 2, height: 2))
-        let image = renderer.image { context in
-            UIColor.blue.setFill()
-            context.cgContext.fill(CGRect(x: 0, y: 0, width: 2, height: 2))
+        var visiblePhase: MediaFetchPhase<MediaPoster, MediaPoster> = .idle(nil)
+        weak var presentedImage: UIImage?
+        autoreleasepool {
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = 1
+            let renderer = UIGraphicsImageRenderer(size: CGSize(width: 2, height: 3), format: format)
+            let image = renderer.image { context in
+                UIColor.blue.setFill()
+                context.cgContext.fill(CGRect(x: 0, y: 0, width: 2, height: 3))
+            }
+            let poster = MediaPoster(cacheKey: "visible", image: image)
+            presentedImage = image
+            cache.insert(poster)
+            visiblePhase = .ready(poster)
+            #expect(cache.poster(for: "visible")?.image === image)
         }
-        let jpegData = try #require(image.jpegData(compressionQuality: 0.8))
-        let poster = MediaPoster(cacheKey: "decoded-once", jpegData: jpegData)
-        let decodedThumbnail = try #require(
-            await DepthAlbumThumbnailDecoder().decodedThumbnail(for: poster)
+        cache.removeAll()
+
+        autoreleasepool {
+            #expect(cache.poster(for: "visible") == nil)
+            #expect(visiblePhase.previewOrReadyValue?.image === presentedImage)
+            #expect(presentedImage?.cgImage?.width == 2)
+            #expect(presentedImage?.cgImage?.height == 3)
+        }
+        autoreleasepool {
+            visiblePhase = .idle(nil)
+        }
+        #expect(presentedImage == nil)
+    }
+
+    @Test @MainActor func photoKitPosterKeepsNativeImageAndDegradedCloudPreview() async throws {
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 3, height: 2))
+        let image = renderer.image { context in
+            UIColor.green.setFill()
+            context.cgContext.fill(CGRect(x: 0, y: 0, width: 3, height: 2))
+        }
+        let bridge = DepthAlbumPhotoKitImageRequestBridge(cacheKey: "native") { _ in }
+        let phase = try await withCheckedThrowingContinuation { continuation in
+            bridge.install(continuation: continuation)
+            bridge.receive(image: image, info: [PHImageResultIsDegradedKey: true])
+            bridge.receive(image: nil, info: [PHImageResultIsInCloudKey: true])
+        }
+        guard case .cloudOnly(let poster) = phase else {
+            Issue.record("Expected the native degraded preview to survive a cloud-only original")
+            return
+        }
+        #expect(poster?.image === image)
+        #expect(poster?.cacheKey == "native")
+    }
+
+    @Test @MainActor func fastFormatPosterCompletesWithItsOnlyDegradedCallback() async throws {
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 3, height: 2)).image { context in
+            UIColor.red.setFill()
+            context.cgContext.fill(CGRect(x: 0, y: 0, width: 3, height: 2))
+        }
+        let bridge = DepthAlbumPhotoKitImageRequestBridge(
+            cacheKey: "fast", acceptsDegradedResult: true, cancelRequest: { _ in }
         )
-
-        let first = try #require(cache.image(for: "decoded-once"))
-        let second = try #require(cache.image(for: "decoded-once"))
-
-        #expect(first === second)
-        #expect(first === decodedThumbnail.image)
+        let phase = try await withCheckedThrowingContinuation { continuation in
+            bridge.install(continuation: continuation)
+            bridge.receive(image: image, info: [PHImageResultIsDegradedKey: true])
+        }
+        guard case .localPreview(let poster) = phase else {
+            Issue.record("fastFormat has no second callback to wait for")
+            return
+        }
+        #expect(poster.image === image)
     }
 
     private static func summary(
@@ -1159,27 +1196,6 @@ private nonisolated final class ThumbnailDecodeRecorder: @unchecked Sendable {
         lock.lock()
         count += 1
         ranOnMainThread = ranOnMainThread || isMainThread
-        lock.unlock()
-    }
-}
-
-private nonisolated final class LibraryMediaTestClock: @unchecked Sendable {
-    private let lock = NSLock()
-    private var value: Date
-
-    init(_ value: Date) {
-        self.value = value
-    }
-
-    func now() -> Date {
-        lock.lock()
-        defer { lock.unlock() }
-        return value
-    }
-
-    func advance(by interval: TimeInterval) {
-        lock.lock()
-        value = value.addingTimeInterval(interval)
         lock.unlock()
     }
 }

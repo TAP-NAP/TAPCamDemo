@@ -1,6 +1,9 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "" : {
+
+    },
     "%@" : {
       "localizations" : {
         "zh-Hans" : {
@@ -331,6 +334,7 @@
       }
     },
     "Back to TAP Library" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -628,6 +632,7 @@
       }
     },
     "Close the analyzer and return to the camera." : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -2320,6 +2325,7 @@
       }
     },
     "Preparing 2D playback" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -2659,6 +2665,7 @@
       }
     },
     "Return to camera" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -4014,7 +4021,6 @@
       }
     },
     "VIDEO" : {
-      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {

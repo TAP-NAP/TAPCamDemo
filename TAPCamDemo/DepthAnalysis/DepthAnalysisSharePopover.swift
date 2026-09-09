@@ -72,18 +72,17 @@ struct DepthAnalysisSharePopover: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             activeContent
+                .transaction { transaction in
+                    // Keep row updates stable without disabling native presentation.
+                    transaction.animation = nil
+                    transaction.disablesAnimations = true
+                }
         }
         .frame(width: 288)
         .background(.regularMaterial)
         .presentationCompactAdaptation(.popover)
         .presentationSizing(.fitted)
         .interactiveDismissDisabled(coordinator.isPreparing)
-        .transaction { transaction in
-            // The material presentation stays mounted while its local content
-            // changes. Never cross-fade through a blank Viewer frame.
-            transaction.animation = nil
-            transaction.disablesAnimations = true
-        }
         .background(
             SharePopoverDismissalObserver(
                 onAppearanceCompleted: onAppearanceCompleted,

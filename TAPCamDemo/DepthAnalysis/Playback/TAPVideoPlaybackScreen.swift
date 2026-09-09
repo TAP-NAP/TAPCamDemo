@@ -15,7 +15,6 @@ struct TAPVideoPlaybackScreen: View {
     @Binding var selectedTool: AnalysisViewerTool
     @Binding var depthOverlayOpacity: Double
     let shareSubject: DepthAnalysisShareSubject?
-    let onBackTapped: () -> Void
     let onModeTapped: (String) -> Void
     let onDeleteTapped: () -> Void
     let onCurrentPagingEntryChanged: (TAPLibraryViewerPagingEntry) -> Void
@@ -56,8 +55,7 @@ struct TAPVideoPlaybackScreen: View {
                         } else {
                             session.endInteractivePaging()
                         }
-                    },
-                    onEdgeBack: onBackTapped
+                    }
                 )
                 .frame(width: size.width, height: size.height)
                 .background(Color.black)
@@ -69,7 +67,6 @@ struct TAPVideoPlaybackScreen: View {
                     shareSubject: shareSubject,
                     topSafeArea: insets.top,
                     bottomSafeArea: insets.bottom,
-                    onBackTapped: onBackTapped,
                     onModeTapped: onModeTapped,
                     onDeleteTapped: onDeleteTapped
                 )
@@ -125,18 +122,6 @@ struct TAPVideoPlaybackContentSurface: View {
 
             primaryStatusOverlay
 
-            if selectedTool == .twoD, session.isPreparingTwoDPlayback {
-                ZStack {
-                    Color.black.opacity(0.62)
-                    ProgressView()
-                        .controlSize(.large)
-                        .tint(.white)
-                        .accessibilityLabel("Preparing 2D playback")
-                        .accessibilityIdentifier("tap.video.playback.2d.preparing")
-                }
-                .allowsHitTesting(false)
-                .zIndex(3)
-            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
@@ -252,7 +237,6 @@ private struct TAPVideoPlaybackSessionChrome: View {
     let shareSubject: DepthAnalysisShareSubject?
     let topSafeArea: CGFloat
     let bottomSafeArea: CGFloat
-    let onBackTapped: () -> Void
     let onModeTapped: (String) -> Void
     let onDeleteTapped: () -> Void
 
@@ -276,7 +260,6 @@ private struct TAPVideoPlaybackSessionChrome: View {
             ),
             topSafeArea: topSafeArea,
             bottomSafeArea: bottomSafeArea,
-            onBackTapped: onBackTapped,
             onModeTapped: onModeTapped,
             onDeleteTapped: onDeleteTapped
         )

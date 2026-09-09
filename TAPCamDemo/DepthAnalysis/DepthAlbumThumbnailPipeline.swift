@@ -4,26 +4,22 @@
 //
 
 @preconcurrency import AVFoundation
-import CryptoKit
 import Foundation
 import ImageIO
 import Photos
 import UIKit
 
-/// Owns TAP Library thumbnail derivation and caching.
-///
-/// `DepthAlbumPickerView` should read as album UI. Keep Photos thumbnail
-/// requests, JPEG normalization, and protected disk-cache writes here.
+/// In-memory revision keys for private thumbnails and PhotoKit presentation identity.
 nonisolated enum DepthAlbumThumbnailCacheKey {
     private static let version = "library-poster-v6"
 
     static func make(mediaID: LibraryMediaID, version mediaVersion: String, pixelLength: Int) -> String {
-        makeHash(from: [
+        [
             version,
             mediaID.storageValue,
             mediaVersion,
             "\(pixelLength)px"
-        ])
+        ].joined(separator: "|")
     }
 
     static func make(
@@ -33,14 +29,14 @@ nonisolated enum DepthAlbumThumbnailCacheKey {
         pixelHeight: Int,
         versionDate: Date
     ) -> String {
-        makeHash(from: [
+        [
             version,
             "photos",
             assetLocalIdentifier,
             "\(pixelLength)px",
             "\(pixelWidth)x\(pixelHeight)",
             String(versionDate.timeIntervalSince1970)
-        ])
+        ].joined(separator: "|")
     }
 
     static func makePending(
@@ -51,7 +47,7 @@ nonisolated enum DepthAlbumThumbnailCacheKey {
         videoFilename: String? = nil,
         updatedAt: Date? = nil
     ) -> String {
-        makeHash(from: [
+        [
             version,
             "pending",
             captureID,
@@ -60,20 +56,8 @@ nonisolated enum DepthAlbumThumbnailCacheKey {
             thumbnailFilename ?? "no-thumbnail",
             videoFilename ?? "no-video",
             String((updatedAt ?? capturedAt).timeIntervalSince1970)
-        ])
+        ].joined(separator: "|")
     }
-
-    private static func makeHash(from parts: [String]) -> String {
-        let source = parts.joined(separator: "|")
-        let digest = SHA256.hash(data: Data(source.utf8))
-        return digest.map { String(format: "%02x", $0) }.joined()
-    }
-}
-
-nonisolated struct DepthAlbumPhotoKitPosterResult: Sendable {
-    let previewData: Data?
-    let finalData: Data?
-    let isCloudOnly: Bool
 }
 
 actor DepthAlbumThumbnailLoader {
@@ -87,10 +71,6 @@ actor DepthAlbumThumbnailLoader {
         }
 
         let task = Task<Data?, Never>.detached(priority: .utility) {
-            if let cachedData = await DepthAlbumThumbnailDiskCache.shared.data(for: cacheKey) {
-                return cachedData
-            }
-
             let asset = AVURLAsset(url: fileURL)
             guard let image = await Self.image(from: asset, pixelLength: pixelLength),
                   let data = DepthAlbumThumbnailJPEGRenderer.aspectPreservingData(
@@ -100,7 +80,6 @@ actor DepthAlbumThumbnailLoader {
                 return nil
             }
 
-            await DepthAlbumThumbnailDiskCache.shared.store(data, for: cacheKey)
             return data
         }
 
@@ -151,26 +130,16 @@ actor DepthAlbumThumbnailLoader {
     }
 }
 
-/// A display-ready image paired with the encoded value that owns its cache
-/// identity. UIKit image objects are immutable for this use and may cross the
-/// decoder actor boundary after ImageIO has eagerly populated their pixels.
-nonisolated struct DepthAlbumDecodedThumbnail: @unchecked Sendable {
-    let poster: MediaPoster
-    let image: UIImage
-}
-
-/// Coalesces every decode for one revision-bearing cache key and performs the
-/// scalable ImageIO work in a detached task. Caller cancellation never cancels
-/// the shared decode needed by another visible cell, but a cancelled caller
-/// receives no result and therefore cannot publish stale UI state.
+/// Coalesces private Pending/video thumbnail decoding off the MainActor.
+/// Photos images arrive ready for presentation and do not pass through here.
 actor DepthAlbumThumbnailDecoder {
-    typealias Decode = @Sendable (MediaPoster) -> DepthAlbumDecodedThumbnail?
+    typealias Decode = @Sendable (Data) -> UIImage?
 
     static let shared = DepthAlbumThumbnailDecoder()
 
     private struct InFlight {
         let token: UInt64
-        let task: Task<DepthAlbumDecodedThumbnail?, Never>
+        let task: Task<UIImage?, Never>
     }
 
     private var inFlightByCacheKey: [String: InFlight] = [:]
@@ -181,81 +150,66 @@ actor DepthAlbumThumbnailDecoder {
         self.decode = decode
     }
 
-    func decodedThumbnail(for poster: MediaPoster) async -> DepthAlbumDecodedThumbnail? {
-        guard !Task.isCancelled else {
-            return nil
-        }
-
+    func decodedThumbnail(data: Data, cacheKey: String) async -> MediaPoster? {
+        guard !Task.isCancelled else { return nil }
         if let cached = await MainActor.run(body: {
-            DepthAlbumThumbnailMemoryCache.shared.decodedThumbnail(for: poster.cacheKey)
+            DepthAlbumThumbnailMemoryCache.shared.poster(for: cacheKey)
         }) {
-            guard !Task.isCancelled else {
-                return nil
-            }
-            return cached
+            return Task.isCancelled ? nil : cached
         }
 
         let inFlight: InFlight
-        if let existing = inFlightByCacheKey[poster.cacheKey] {
+        if let existing = inFlightByCacheKey[cacheKey] {
             inFlight = existing
         } else {
             nextToken &+= 1
-            let token = nextToken
             let decode = self.decode
-            let task = Task<DepthAlbumDecodedThumbnail?, Never>.detached(priority: .utility) {
-                guard !Task.isCancelled else {
-                    return nil
-                }
-                return decode(poster)
-            }
-            inFlight = InFlight(token: token, task: task)
-            inFlightByCacheKey[poster.cacheKey] = inFlight
+            inFlight = InFlight(
+                token: nextToken,
+                task: Task.detached(priority: .utility) { decode(data) }
+            )
+            inFlightByCacheKey[cacheKey] = inFlight
         }
 
-        let decoded = await inFlight.task.value
-        if let decoded {
-            await MainActor.run {
-                DepthAlbumThumbnailMemoryCache.shared.insert(decoded)
-            }
+        let image = await inFlight.task.value
+        let poster = image.map { MediaPoster(cacheKey: cacheKey, image: $0) }
+        if let poster {
+            await MainActor.run { DepthAlbumThumbnailMemoryCache.shared.insert(poster) }
         }
-        if inFlightByCacheKey[poster.cacheKey]?.token == inFlight.token {
-            inFlightByCacheKey[poster.cacheKey] = nil
+        if inFlightByCacheKey[cacheKey]?.token == inFlight.token {
+            inFlightByCacheKey[cacheKey] = nil
         }
-        guard !Task.isCancelled else {
-            return nil
-        }
-        return decoded
+        return Task.isCancelled ? nil : poster
     }
 
-    private nonisolated static func decodeForDisplay(
-        _ poster: MediaPoster
-    ) -> DepthAlbumDecodedThumbnail? {
-        guard let source = CGImageSourceCreateWithData(poster.jpegData as CFData, nil),
+    /// For short-lived viewer previews that do not need a second cache key.
+    nonisolated static func image(data: Data) async -> UIImage? {
+        let image = await Task.detached(priority: .utility) {
+            decodeForDisplay(data)
+        }.value
+        return Task.isCancelled ? nil : image
+    }
+
+    private nonisolated static func decodeForDisplay(_ data: Data) -> UIImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
               let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil)
                 as? [CFString: Any] else {
             return nil
         }
-
         let pixelWidth = properties[kCGImagePropertyPixelWidth] as? Int ?? 1
         let pixelHeight = properties[kCGImagePropertyPixelHeight] as? Int ?? 1
-        let maximumPixelLength = max(max(pixelWidth, pixelHeight), 1)
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
             kCGImageSourceShouldCacheImmediately: true,
-            kCGImageSourceThumbnailMaxPixelSize: maximumPixelLength
+            kCGImageSourceThumbnailMaxPixelSize: max(max(pixelWidth, pixelHeight), 1)
         ]
         guard let cgImage = CGImageSourceCreateThumbnailAtIndex(
-            source,
-            0,
-            options as CFDictionary
+            source, 0, options as CFDictionary
         ) else {
             return nil
         }
-        return DepthAlbumDecodedThumbnail(
-            poster: poster,
-            image: UIImage(cgImage: cgImage, scale: 1, orientation: .up)
-        )
+        return UIImage(cgImage: cgImage, scale: 1, orientation: .up)
     }
 }
 
@@ -263,27 +217,26 @@ actor DepthAlbumThumbnailDecoder {
 /// lifecycle owns continuation, request-ID, and terminal-delivery races while
 /// this bridge only interprets poster callbacks and retains a degraded preview.
 nonisolated final class DepthAlbumPhotoKitImageRequestBridge: @unchecked Sendable {
-    private let pixelLength: Int
-    private let lifecycle: PhotoKitRequestLifecycle<PHImageRequestID, DepthAlbumPhotoKitPosterResult>
+    private let cacheKey: String
+    private let acceptsDegradedResult: Bool
+    private let lifecycle: PhotoKitRequestLifecycle<PHImageRequestID, MediaFetchPhase<MediaPoster, MediaPoster>>
     /// Accessed only from closures serialized by `lifecycle`.
-    private var previewData: Data?
-
-    init(manager: PHImageManager, pixelLength: Int) {
-        self.pixelLength = max(pixelLength, 1)
-        self.lifecycle = PhotoKitRequestLifecycle { requestID in
-            manager.cancelImageRequest(requestID)
-        }
-    }
+    private var preview: MediaPoster?
 
     init(
-        pixelLength: Int,
+        cacheKey: String,
+        acceptsDegradedResult: Bool = false,
         cancelRequest: @escaping @Sendable (PHImageRequestID) -> Void
     ) {
-        self.pixelLength = max(pixelLength, 1)
-        self.lifecycle = PhotoKitRequestLifecycle(cancelRequest: cancelRequest)
+        self.cacheKey = cacheKey
+        self.acceptsDegradedResult = acceptsDegradedResult
+        lifecycle = PhotoKitRequestLifecycle(cancelRequest: cancelRequest)
     }
 
-    func install(continuation: CheckedContinuation<DepthAlbumPhotoKitPosterResult, Error>) {
+    @discardableResult
+    func install(
+        continuation: CheckedContinuation<MediaFetchPhase<MediaPoster, MediaPoster>, Error>
+    ) -> Bool {
         lifecycle.install(continuation: continuation)
     }
 
@@ -300,41 +253,25 @@ nonisolated final class DepthAlbumPhotoKitImageRequestBridge: @unchecked Sendabl
             lifecycle.finish(.failure(error))
             return
         }
-
+        let poster = image.map { MediaPoster(cacheKey: cacheKey, image: $0) }
         let isDegraded = info?[PHImageResultIsDegradedKey] as? Bool == true
         let isCloudOnly = info?[PHImageResultIsInCloudKey] as? Bool == true
-        let imageData = image.flatMap {
-            DepthAlbumThumbnailJPEGRenderer.aspectPreservingData(
-                from: $0,
-                maximumPixelLength: pixelLength
-            )
-        }
-
-        if isDegraded {
-            if let imageData {
-                lifecycle.process({
-                    previewData = imageData
-                }, mapError: { $0 })
+        if isDegraded, !acceptsDegradedResult {
+            if let poster {
+                lifecycle.process({ preview = poster }, mapError: { $0 })
             }
             return
         }
-
-        if let imageData {
+        if let poster {
+            // fastFormat has exactly one callback, even when degraded.
             lifecycle.finish {
-                DepthAlbumPhotoKitPosterResult(
-                    previewData: previewData,
-                    finalData: imageData,
-                    isCloudOnly: false
-                )
+                if isDegraded {
+                    return isCloudOnly ? .cloudOnly(poster) : .localPreview(poster)
+                }
+                return .ready(poster)
             }
         } else if isCloudOnly {
-            lifecycle.finish {
-                DepthAlbumPhotoKitPosterResult(
-                    previewData: previewData,
-                    finalData: nil,
-                    isCloudOnly: true
-                )
-            }
+            lifecycle.finish { .cloudOnly(preview) }
         } else {
             lifecycle.finish(.failure(MediaFetchFailure.decode))
         }
@@ -384,190 +321,24 @@ nonisolated enum DepthAlbumThumbnailJPEGRenderer {
 final class DepthAlbumThumbnailMemoryCache {
     static let shared = DepthAlbumThumbnailMemoryCache()
 
-    private final class Entry: NSObject {
-        let poster: MediaPoster
-        let image: UIImage
-
-        init(poster: MediaPoster, image: UIImage) {
-            self.poster = poster
-            self.image = image
-        }
-    }
-
-    private let cache = NSCache<NSString, Entry>()
+    private let cache = NSCache<NSString, UIImage>()
 
     private init() {
         cache.countLimit = 96
         cache.totalCostLimit = 32 * 1024 * 1024
     }
 
-    func image(for key: String) -> UIImage? {
-        cache.object(forKey: key as NSString)?.image
-    }
-
     func poster(for key: String) -> MediaPoster? {
-        cache.object(forKey: key as NSString)?.poster
+        cache.object(forKey: key as NSString).map { MediaPoster(cacheKey: key, image: $0) }
     }
 
-    func decodedThumbnail(for key: String) -> DepthAlbumDecodedThumbnail? {
-        guard let entry = cache.object(forKey: key as NSString) else {
-            return nil
-        }
-        return DepthAlbumDecodedThumbnail(poster: entry.poster, image: entry.image)
-    }
-
-    /// Accepts only a display-ready image. Decoding bytes is deliberately not
-    /// an operation this MainActor-owned publication cache can perform.
-    func insert(_ decodedThumbnail: DepthAlbumDecodedThumbnail) {
-        let poster = decodedThumbnail.poster
-        let image = decodedThumbnail.image
-        cache.setObject(
-            Entry(poster: poster, image: image),
-            forKey: poster.cacheKey as NSString,
-            cost: imageCost(image)
-        )
+    func insert(_ poster: MediaPoster) {
+        let image = poster.image
+        let cost = image.cgImage.map { $0.bytesPerRow * $0.height } ?? 0
+        cache.setObject(image, forKey: poster.cacheKey as NSString, cost: cost)
     }
 
     func removeAll() {
         cache.removeAllObjects()
-    }
-
-    private func imageCost(_ image: UIImage) -> Int {
-        guard let cgImage = image.cgImage else {
-            return 0
-        }
-        return cgImage.bytesPerRow * cgImage.height
-    }
-}
-
-nonisolated struct DepthAlbumThumbnailDiskCacheConfiguration: Equatable, Sendable {
-    let maximumByteCount: Int64
-    let maximumFileAge: TimeInterval
-
-    static let `default` = DepthAlbumThumbnailDiskCacheConfiguration(
-        maximumByteCount: 128 * 1024 * 1024,
-        maximumFileAge: 30 * 24 * 60 * 60
-    )
-}
-
-actor DepthAlbumThumbnailDiskCache {
-    static let shared = DepthAlbumThumbnailDiskCache()
-
-    private let directoryURL: URL
-    private let fileManager = FileManager.default
-    private let storagePolicy = TAPLocalArtifactStoragePolicy.privatePhotoArtifact
-    private let configuration: DepthAlbumThumbnailDiskCacheConfiguration
-    private let now: @Sendable () -> Date
-    private var didRunInitialMaintenance = false
-
-    init(
-        directoryURL: URL? = nil,
-        configuration: DepthAlbumThumbnailDiskCacheConfiguration = .default,
-        now: @escaping @Sendable () -> Date = Date.init
-    ) {
-        let rootURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
-            ?? FileManager.default.temporaryDirectory
-        self.directoryURL = directoryURL
-            ?? rootURL.appendingPathComponent("DepthAlbumThumbnails", isDirectory: true)
-        self.configuration = configuration
-        self.now = now
-    }
-
-    func data(for key: String) -> Data? {
-        ensureDirectoryExists()
-        runInitialMaintenanceIfNeeded()
-        let url = fileURL(for: key)
-        guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else {
-            return nil
-        }
-        try? fileManager.setAttributes([.modificationDate: now()], ofItemAtPath: url.path)
-        return data
-    }
-
-    func store(_ data: Data, for key: String) {
-        ensureDirectoryExists()
-        runInitialMaintenanceIfNeeded()
-        let url = fileURL(for: key)
-        try? storagePolicy.write(data, to: url, fileManager: fileManager)
-        try? fileManager.setAttributes([.modificationDate: now()], ofItemAtPath: url.path)
-        prune()
-    }
-
-    func removeAll() {
-        try? fileManager.removeItem(at: directoryURL)
-        didRunInitialMaintenance = false
-    }
-
-    func currentByteCount() -> Int64 {
-        cacheEntries().reduce(0) { $0 + $1.byteCount }
-    }
-
-    private func fileURL(for key: String) -> URL {
-        directoryURL.appendingPathComponent(key).appendingPathExtension("jpg")
-    }
-
-    private func ensureDirectoryExists() {
-        try? storagePolicy.createDirectoryIfNeeded(at: directoryURL, fileManager: fileManager)
-    }
-
-    private func runInitialMaintenanceIfNeeded() {
-        guard !didRunInitialMaintenance else {
-            return
-        }
-        didRunInitialMaintenance = true
-        prune()
-    }
-
-    private func prune() {
-        let expirationDate = now().addingTimeInterval(-configuration.maximumFileAge)
-        var entries = cacheEntries()
-        for entry in entries where entry.modifiedAt < expirationDate {
-            try? fileManager.removeItem(at: entry.url)
-        }
-
-        entries = cacheEntries().sorted { lhs, rhs in
-            lhs.modifiedAt < rhs.modifiedAt
-        }
-        var byteCount = entries.reduce(Int64(0)) { $0 + $1.byteCount }
-        for entry in entries where byteCount > configuration.maximumByteCount {
-            do {
-                try fileManager.removeItem(at: entry.url)
-                byteCount -= entry.byteCount
-            } catch {
-                continue
-            }
-        }
-    }
-
-    private func cacheEntries() -> [CacheEntry] {
-        let keys: Set<URLResourceKey> = [
-            .isRegularFileKey,
-            .fileSizeKey,
-            .contentModificationDateKey
-        ]
-        guard let urls = try? fileManager.contentsOfDirectory(
-            at: directoryURL,
-            includingPropertiesForKeys: Array(keys),
-            options: [.skipsHiddenFiles]
-        ) else {
-            return []
-        }
-        return urls.compactMap { url in
-            guard let values = try? url.resourceValues(forKeys: keys),
-                  values.isRegularFile == true else {
-                return nil
-            }
-            return CacheEntry(
-                url: url,
-                byteCount: Int64(values.fileSize ?? 0),
-                modifiedAt: values.contentModificationDate ?? .distantPast
-            )
-        }
-    }
-
-    private struct CacheEntry {
-        let url: URL
-        let byteCount: Int64
-        let modifiedAt: Date
     }
 }

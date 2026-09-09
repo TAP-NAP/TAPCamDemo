@@ -32,7 +32,6 @@ final class TAPVideoPlaybackSession {
     private(set) var loadingPreviewImage: UIImage?
     private(set) var player: AVPlayer?
     private(set) var registeredDepthAvailability: TAPVideoRegisteredDepthAvailability = .checking
-    private(set) var isPreparingTwoDPlayback = false
     private(set) var isTwoDPlaybackReady = false
     private(set) var depthGapNotice: String?
     private(set) var requestKey: MediaFetchRequestKey?
@@ -72,7 +71,6 @@ final class TAPVideoPlaybackSession {
             purpose: .videoOriginal
         )
         depthPipeline.onPresentationStateChange = { [weak self] state in
-            self?.isPreparingTwoDPlayback = state.isPreparing
             self?.isTwoDPlaybackReady = state.isReady
             self?.depthGapNotice = state.gapNotice
         }
@@ -318,15 +316,14 @@ final class TAPVideoPlaybackSession {
             fetchState.publishPreviewAvailability(true)
             return
         }
-        let data = await TAPVideoPlaybackResourceLoader.loadingPreviewData(
+        let image = await TAPVideoPlaybackResourceLoader.loadingPreviewImage(
             source: source,
             originalRequestKey: requestKey,
             mediaFetcher: mediaFetcher
         )
         guard !Task.isCancelled,
               activeRequestKey == requestKey,
-              let data,
-              let image = UIImage(data: data) else {
+              let image else {
             return
         }
         loadingPreviewImage = image

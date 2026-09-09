@@ -47,12 +47,14 @@ struct DepthAnalysisView: View {
         mixedMediaContext: DepthAlbumDeletionContext? = nil,
         onMixedMediaEntryChanged: ((DepthAlbumDeletionContext.Entry) -> Void)? = nil,
         onDeletionCompleted: ((String, DepthAlbumDeletionContext.Entry?) -> Void)? = nil,
-        mediaFetcher: any LibraryMediaFetching = PhotoKitLibraryMediaFetcher()
+        mediaFetcher: any LibraryMediaFetching = PhotoKitLibraryMediaFetcher(),
+        photoLoader: DepthAnalysisProgressivePhotoLoader? = nil
     ) {
         _carouselStore = StateObject(
             wrappedValue: DepthAnalysisCarouselStore(
                 source: source,
                 albumContext: albumContext,
+                loader: photoLoader,
                 mediaFetcher: mediaFetcher
             )
         )
@@ -65,7 +67,11 @@ struct DepthAnalysisView: View {
 
     var body: some View {
         analysisSurface()
-        .toolbar(.hidden, for: .navigationBar)
+        .toolbar(.visible, for: .navigationBar)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbarRole(.editor)
+        .navigationTitle("")
         .ignoresSafeArea(.container, edges: .all)
         .alert(item: $pendingDeleteRequest) { request in
             Alert(
@@ -137,10 +143,7 @@ struct DepthAnalysisView: View {
                     isPlaneGridAnimationEnabled: isPlaneGridAnimationEnabled,
                     mediaFetcher: mediaFetcher,
                     onCurrentEntryChanged: handleCurrentEntryChanged,
-                    onBoundaryMove: handleMixedMediaBoundaryMove,
-                    onEdgeBack: {
-                        dismiss()
-                    }
+                    onBoundaryMove: handleMixedMediaBoundaryMove
                 )
                 .frame(width: viewportSize.width, height: viewportSize.height)
                 .background(Color.black)
@@ -153,11 +156,7 @@ struct DepthAnalysisView: View {
                     ),
                     originalResourceOwner: carouselStore.currentSlot?.originalResourceOwner
                         ?? unavailableShareResourceOwner,
-                    topSafeArea: safeAreaInsets.top,
                     bottomSafeArea: safeAreaInsets.bottom,
-                    onBackTapped: {
-                        dismiss()
-                    },
                     onToolTapped: handleToolTapped,
                     onDeleteTapped: {
                         deleteCurrentItem(displayPixelLength: displayPixelLength)
@@ -232,6 +231,8 @@ struct DepthAnalysisView: View {
                 } else {
                     dismiss()
                 }
+            } catch is CancellationError {
+                return
             } catch {
                 #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
                 TAPDiagnostics.photoLibrary.error("analysis delete failed error=\(TAPDiagnostics.describe(error), privacy: .public)")
@@ -309,7 +310,6 @@ private struct AnalysisPhotoCarouselView: View {
     let mediaFetcher: any LibraryMediaFetching
     let onCurrentEntryChanged: (DepthAnalysisCarouselEntry) -> Void
     let onBoundaryMove: (Int) -> Void
-    let onEdgeBack: () -> Void
 
     var body: some View {
         AnalysisNativePagingView(
@@ -323,8 +323,7 @@ private struct AnalysisPhotoCarouselView: View {
             isPlaneGridAnimationEnabled: isPlaneGridAnimationEnabled,
             mediaFetcher: mediaFetcher,
             onCurrentEntryChanged: onCurrentEntryChanged,
-            onBoundaryMove: onBoundaryMove,
-            onEdgeBack: onEdgeBack
+            onBoundaryMove: onBoundaryMove
         )
         .background(Color.black)
         .accessibilityLabel("Photo carousel")
@@ -349,7 +348,6 @@ private struct AnalysisNativePagingView: View {
     let mediaFetcher: any LibraryMediaFetching
     let onCurrentEntryChanged: (DepthAnalysisCarouselEntry) -> Void
     let onBoundaryMove: (Int) -> Void
-    let onEdgeBack: () -> Void
     @State private var pagingInteractionState = AnalysisPagingInteractionState()
 
     var body: some View {
@@ -368,8 +366,7 @@ private struct AnalysisNativePagingView: View {
             onPagingInteractionChanged: { isInteracting in
                 pagingInteractionState.isInteracting = isInteracting
             },
-            shouldBeginPaging: shouldBeginPaging,
-            onEdgeBack: onEdgeBack
+            shouldBeginPaging: shouldBeginPaging
         )
     }
 
@@ -532,7 +529,6 @@ private struct AnalysisNativePageView: View {
     let highlightPalette: AnalysisHighlightPalette
     let isPlaneGridAnimationEnabled: Bool
     let mediaFetcher: any LibraryMediaFetching
-    @State private var isLivePhotoMuted = true
 
     var body: some View {
         ZStack {
@@ -573,14 +569,6 @@ private struct AnalysisNativePageView: View {
             }
         }
         .frame(width: viewportSize.width, height: viewportSize.height)
-        .onChange(of: slot.source.loadID) { _, _ in
-            isLivePhotoMuted = true
-        }
-        .onChange(of: isCurrent) { _, isCurrent in
-            if isCurrent {
-                isLivePhotoMuted = true
-            }
-        }
     }
 
     private var rawContent: some View {
@@ -589,11 +577,9 @@ private struct AnalysisNativePageView: View {
                 slot: slot,
                 source: slot.source,
                 image: rawImage,
-                imageIdentifier: rawImageIdentifier,
                 isCurrent: isCurrent,
                 isPagingInteracting: pagingInteractionState.isInteracting,
-                mediaFetcher: mediaFetcher,
-                isLivePhotoMuted: $isLivePhotoMuted
+                mediaFetcher: mediaFetcher
             )
             .frame(width: viewportSize.width, height: viewportSize.height)
 
@@ -621,19 +607,6 @@ private struct AnalysisNativePageView: View {
             )
         }
         return slot.thumbnailImage
-    }
-
-    private var rawImageIdentifier: String {
-        if let displayPhoto = slot.displayPhoto {
-            return "\(slot.id)-display-\(displayPhoto.requestedPixelLength)-\(Int(displayPhoto.pixelSize.width))x\(Int(displayPhoto.pixelSize.height))"
-        }
-        if let input = slot.input {
-            return "\(slot.id)-analysisInput-\(input.image.width)x\(input.image.height)-\(input.imageOrientation.rawValue)"
-        }
-        if slot.thumbnailImage != nil {
-            return "\(slot.id)-thumbnail"
-        }
-        return "\(slot.id)-empty"
     }
 
     private var displayedImageSize: CGSize? {
@@ -743,40 +716,20 @@ private enum DepthAnalysisLivePhotoSourceResolver {
     }
 }
 
-private struct AnalysisRawZoomScrollView: UIViewRepresentable {
+struct AnalysisRawZoomScrollView: UIViewRepresentable {
     let slot: AnalysisPhotoSlot
     let source: DepthAnalysisSource
     let image: UIImage?
-    let imageIdentifier: String
     let isCurrent: Bool
     let isPagingInteracting: Bool
     let mediaFetcher: any LibraryMediaFetching
-    @Binding var isLivePhotoMuted: Bool
 
     func makeCoordinator() -> Coordinator {
         Coordinator(slot: slot, mediaFetcher: mediaFetcher)
     }
 
     func makeUIView(context: Context) -> UIScrollView {
-        let scrollView = AnalysisRawZoomUIScrollView()
-        let coordinator = context.coordinator
-        scrollView.onLayout = { [weak coordinator] scrollView in
-            coordinator?.handleLayout(in: scrollView)
-        }
-        scrollView.backgroundColor = .black
-        scrollView.delegate = context.coordinator
-        scrollView.minimumZoomScale = 1
-        scrollView.maximumZoomScale = DepthAnalysisViewerInteractionPolicy.maximumPhotoScale
-        scrollView.bounces = true
-        scrollView.bouncesZoom = true
-        scrollView.showsHorizontalScrollIndicator = false
-        scrollView.showsVerticalScrollIndicator = false
-        scrollView.contentInsetAdjustmentBehavior = .never
-        scrollView.decelerationRate = .fast
-        context.coordinator.installImageView(in: scrollView)
-        context.coordinator.installDoubleTap(in: scrollView)
-        context.coordinator.installLivePhotoLongPress(in: scrollView)
-        return scrollView
+        context.coordinator.makeScrollView()
     }
 
     func updateUIView(_ scrollView: UIScrollView, context: Context) {
@@ -785,10 +738,8 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
             slot: slot,
             source: source,
             image: image,
-            imageIdentifier: imageIdentifier,
             isCurrent: isCurrent,
-            isPagingInteracting: isPagingInteracting,
-            isLivePhotoMuted: isLivePhotoMuted
+            isPagingInteracting: isPagingInteracting
         )
     }
 
@@ -801,14 +752,16 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
     }
 
     @MainActor
-    final class Coordinator: NSObject, UIScrollViewDelegate, UIGestureRecognizerDelegate {
+    final class Coordinator: NSObject, UIScrollViewDelegate, PHLivePhotoViewDelegate {
         private let mediaFetcher: any LibraryMediaFetching
         private weak var slot: AnalysisPhotoSlot?
         private let contentView = UIView()
         private let imageView = UIImageView()
         private let livePhotoView = PHLivePhotoView()
-        private var currentImageIdentifier: String?
+        private weak var scrollView: UIScrollView?
+        private var currentSourceID: String?
         private var lastBoundsSize: CGSize = .zero
+        private var isUpdatingLayout = false
         private var livePhotoRequestCancellation: LivePhotoRequestCancellation?
         private var livePhotoPreparationTask: Task<Void, Never>?
         private var scheduledLivePhotoRequestKey: String?
@@ -818,9 +771,7 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
         private var livePhotoReadyKey: String?
         private var livePhotoUnavailableKey: String?
         private var lastLivePhotoRequest: LivePhotoRequestContext?
-        private var isPressingForLivePhoto = false
-        private var isPagingInteracting = false
-        private var isLivePhotoMuted = true
+        private var allowsLivePhotoPlayback = false
 
         init(
             slot: AnalysisPhotoSlot,
@@ -831,7 +782,32 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
             super.init()
         }
 
+        func makeScrollView() -> UIScrollView {
+            let scrollView = AnalysisRawZoomUIScrollView()
+            self.scrollView = scrollView
+            scrollView.onLayout = { [weak self] scrollView in
+                self?.handleLayout(in: scrollView)
+            }
+            scrollView.backgroundColor = .black
+            scrollView.delegate = self
+            scrollView.minimumZoomScale = 1
+            scrollView.maximumZoomScale = DepthAnalysisViewerInteractionPolicy.maximumPhotoScale
+            scrollView.bounces = true
+            scrollView.bouncesZoom = true
+            scrollView.showsHorizontalScrollIndicator = false
+            scrollView.showsVerticalScrollIndicator = false
+            scrollView.contentInsetAdjustmentBehavior = .never
+            scrollView.decelerationRate = .fast
+            installImageView(in: scrollView)
+            installDoubleTap(in: scrollView)
+            // Photos owns press timing, visual feedback, and gesture arbitration.
+            scrollView.addGestureRecognizer(livePhotoView.playbackGestureRecognizer)
+            livePhotoView.playbackGestureRecognizer.isEnabled = false
+            return scrollView
+        }
+
         func installImageView(in scrollView: UIScrollView) {
+            imageView.accessibilityIdentifier = "tap.viewer.photo"
             contentView.backgroundColor = .black
             contentView.clipsToBounds = true
 
@@ -844,6 +820,8 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
             livePhotoView.clipsToBounds = true
             livePhotoView.isHidden = true
             livePhotoView.isUserInteractionEnabled = false
+            livePhotoView.isMuted = true
+            livePhotoView.delegate = self
 
             contentView.addSubview(imageView)
             contentView.addSubview(livePhotoView)
@@ -856,47 +834,30 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
             scrollView.addGestureRecognizer(gesture)
         }
 
-        func installLivePhotoLongPress(in scrollView: UIScrollView) {
-            let gesture = UILongPressGestureRecognizer(target: self, action: #selector(handleLivePhotoLongPress(_:)))
-            gesture.minimumPressDuration = 0.42
-            gesture.allowableMovement = 28
-            gesture.cancelsTouchesInView = false
-            gesture.delegate = self
-            scrollView.addGestureRecognizer(gesture)
-        }
-
         func update(
             scrollView: UIScrollView,
             slot: AnalysisPhotoSlot,
             source: DepthAnalysisSource,
             image: UIImage?,
-            imageIdentifier: String,
             isCurrent: Bool,
-            isPagingInteracting: Bool,
-            isLivePhotoMuted: Bool
+            isPagingInteracting: Bool
         ) {
-            if self.slot !== slot {
+            let sourceChanged = currentSourceID != source.loadID
+            if self.slot !== slot || sourceChanged {
                 clearLivePhoto()
                 self.slot = slot
             }
+            currentSourceID = source.loadID
             scrollView.isUserInteractionEnabled = isCurrent
-            self.isPagingInteracting = isPagingInteracting
-            if isPagingInteracting {
-                isPressingForLivePhoto = false
+            allowsLivePhotoPlayback = isCurrent && !isPagingInteracting
+            livePhotoView.playbackGestureRecognizer.isEnabled = allowsLivePhotoPlayback
+            if !allowsLivePhotoPlayback {
                 livePhotoView.stopPlayback()
             }
-            self.isLivePhotoMuted = isLivePhotoMuted
-            livePhotoView.isMuted = isLivePhotoMuted
-            let boundsSize = scrollView.bounds.size
-            let imageObjectChanged = imageView.image !== image
-            if currentImageIdentifier != imageIdentifier || imageObjectChanged {
-                currentImageIdentifier = imageIdentifier
+            if imageView.image !== image {
                 imageView.image = image
-                if boundsSize.width > 0, boundsSize.height > 0 {
-                    resetZoom(in: scrollView)
-                }
             }
-            syncLayoutIfNeeded(in: scrollView)
+            syncLayoutIfNeeded(in: scrollView, resetZoom: sourceChanged)
             syncLivePhoto(
                 in: scrollView,
                 source: source,
@@ -905,6 +866,8 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
         }
 
         func dismantle() {
+            allowsLivePhotoPlayback = false
+            livePhotoView.playbackGestureRecognizer.isEnabled = false
             clearLivePhoto()
             slot = nil
         }
@@ -922,50 +885,68 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
             syncPanAvailability(in: scrollView)
         }
 
-        func gestureRecognizer(
-            _ gestureRecognizer: UIGestureRecognizer,
-            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+        func livePhotoView(
+            _ livePhotoView: PHLivePhotoView,
+            canBeginPlaybackWith playbackStyle: PHLivePhotoViewPlaybackStyle
         ) -> Bool {
-            gestureRecognizer is UILongPressGestureRecognizer
+            allowsLivePhotoPlayback
+                && scrollView?.isDragging != true
+                && scrollView?.isDecelerating != true
+                && scrollView?.isZooming != true
         }
 
-        private func resetZoom(in scrollView: UIScrollView) {
-            let bounds = scrollView.bounds
-            guard bounds.width > 0, bounds.height > 0 else {
-                return
-            }
-            contentView.frame = bounds
-            syncMediaFrames()
-            scrollView.contentSize = bounds.size
-            scrollView.setZoomScale(1, animated: false)
-            centerContent(in: scrollView)
-            syncPanAvailability(in: scrollView)
-        }
-
-        private func syncLayoutIfNeeded(in scrollView: UIScrollView) {
+        private func syncLayoutIfNeeded(in scrollView: UIScrollView, resetZoom: Bool = false) {
             let boundsSize = scrollView.bounds.size
-            guard boundsSize.width > 0, boundsSize.height > 0 else {
+            guard !isUpdatingLayout, boundsSize.width > 0, boundsSize.height > 0 else {
+                return
+            }
+            let photo = imageView.image.map { AnalysisDisplayPhoto(image: $0) }
+            let mediaSize = DepthAnalysisViewerInteractionPolicy.aspectFitRect(
+                imageSize: photo?.pixelSize,
+                orientation: photo?.orientation ?? .up,
+                containerSize: boundsSize
+            ).size
+            guard resetZoom || boundsSize != lastBoundsSize || mediaSize != contentView.bounds.size else {
                 syncPanAvailability(in: scrollView)
                 return
             }
 
-            let needsFrameRepair = imageView.frame.width <= 0
-                || imageView.frame.height <= 0
-                || scrollView.contentSize.width <= 0
-                || scrollView.contentSize.height <= 0
-            guard boundsSize != lastBoundsSize || needsFrameRepair else {
-                syncPanAvailability(in: scrollView)
-                return
-            }
-
+            isUpdatingLayout = true
+            defer { isUpdatingLayout = false }
+            let oldViewport = lastBoundsSize == .zero ? boundsSize : lastBoundsSize
+            let oldCenter = contentView.convert(
+                CGPoint(
+                    x: scrollView.contentOffset.x + oldViewport.width * 0.5,
+                    y: scrollView.contentOffset.y + oldViewport.height * 0.5
+                ),
+                from: scrollView
+            )
+            let normalizedCenter = resetZoom || contentView.bounds.isEmpty
+                ? CGPoint(x: 0.5, y: 0.5)
+                : CGPoint(
+                    x: min(max(oldCenter.x / contentView.bounds.width, 0), 1),
+                    y: min(max(oldCenter.y / contentView.bounds.height, 0), 1)
+                )
+            let scale = resetZoom ? 1 : scrollView.zoomScale
             lastBoundsSize = boundsSize
-            if scrollView.zoomScale <= DepthAnalysisViewerInteractionPolicy.zoomedScaleThreshold || needsFrameRepair {
-                resetZoom(in: scrollView)
-            } else {
-                syncMediaFrames()
-                centerContent(in: scrollView)
-                syncPanAvailability(in: scrollView)
-            }
+            scrollView.setZoomScale(1, animated: false)
+            contentView.frame = CGRect(origin: .zero, size: mediaSize)
+            syncMediaFrames()
+            scrollView.contentSize = mediaSize
+            scrollView.setZoomScale(scale, animated: false)
+            centerContent(in: scrollView)
+            let center = contentView.convert(
+                CGPoint(x: normalizedCenter.x * mediaSize.width, y: normalizedCenter.y * mediaSize.height),
+                to: scrollView
+            )
+            let inset = scrollView.contentInset
+            scrollView.contentOffset = CGPoint(
+                x: min(max(center.x - boundsSize.width * 0.5, -inset.left),
+                       max(-inset.left, scrollView.contentSize.width - boundsSize.width + inset.right)),
+                y: min(max(center.y - boundsSize.height * 0.5, -inset.top),
+                       max(-inset.top, scrollView.contentSize.height - boundsSize.height + inset.bottom))
+            )
+            syncPanAvailability(in: scrollView)
         }
 
         private func centerContent(in scrollView: UIScrollView) {
@@ -973,11 +954,11 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
             guard bounds.width > 0, bounds.height > 0 else {
                 return
             }
-            var frame = contentView.frame
-            frame.origin.x = frame.width < bounds.width ? (bounds.width - frame.width) * 0.5 : 0
-            frame.origin.y = frame.height < bounds.height ? (bounds.height - frame.height) * 0.5 : 0
-            contentView.frame = frame
-            syncMediaFrames()
+            let horizontal = max((bounds.width - scrollView.contentSize.width) * 0.5, 0)
+            let vertical = max((bounds.height - scrollView.contentSize.height) * 0.5, 0)
+            scrollView.contentInset = UIEdgeInsets(
+                top: vertical, left: horizontal, bottom: vertical, right: horizontal
+            )
         }
 
         private func syncMediaFrames() {
@@ -1014,22 +995,6 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
                 height: zoomSize.height
             )
             scrollView.zoom(to: zoomRect, animated: true)
-        }
-
-        @objc private func handleLivePhotoLongPress(_ gesture: UILongPressGestureRecognizer) {
-            switch gesture.state {
-            case .began:
-                guard !isPagingInteracting else {
-                    return
-                }
-                isPressingForLivePhoto = true
-                startLivePhotoPlaybackIfAvailable()
-            case .ended, .cancelled, .failed:
-                isPressingForLivePhoto = false
-                livePhotoView.stopPlayback()
-            default:
-                break
-            }
         }
 
         private func syncLivePhoto(
@@ -1323,14 +1288,16 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
             }
 
             livePhotoView.livePhoto = livePhoto
-            livePhotoView.isMuted = isLivePhotoMuted
             livePhotoView.isHidden = false
             livePhotoReadyKey = key
             livePhotoUnavailableKey = nil
             syncMediaFrames()
 
-            if isPressingForLivePhoto {
-                startLivePhotoPlaybackIfAvailable()
+            // An iCloud result may arrive while the native press is still held.
+            let playbackGesture = livePhotoView.playbackGestureRecognizer
+            if allowsLivePhotoPlayback,
+               playbackGesture.state == .began || playbackGesture.state == .changed {
+                livePhotoView.startPlayback(with: .full)
             }
 
             guard !isDegraded else {
@@ -1349,15 +1316,6 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
                 width: max(scrollView.bounds.width * scale, 1),
                 height: max(scrollView.bounds.height * scale, 1)
             )
-        }
-
-        private func startLivePhotoPlaybackIfAvailable() {
-            guard livePhotoView.livePhoto != nil,
-                  !livePhotoView.isHidden else {
-                return
-            }
-            livePhotoView.isMuted = isLivePhotoMuted
-            livePhotoView.startPlayback(with: .full)
         }
 
         private func markLivePhotoUnavailable(
@@ -1384,7 +1342,6 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
         }
 
         private func clearLivePhoto() {
-            isPressingForLivePhoto = false
             livePhotoView.stopPlayback()
             scheduledLivePhotoRequestKey = nil
             cancelLivePhotoRequest(notifySlot: true, preserveCloudState: false)
@@ -1453,6 +1410,24 @@ private struct AnalysisRawZoomScrollView: UIViewRepresentable {
 private final class AnalysisRawZoomUIScrollView: UIScrollView {
     var onLayout: ((UIScrollView) -> Void)?
 
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        guard window != nil else { return }
+        if let back = enclosingNavigationController?.interactivePopGestureRecognizer {
+            panGestureRecognizer.require(toFail: back)
+        }
+        var ancestor = superview
+        while let view = ancestor {
+            if let pager = view as? UIScrollView {
+                // At 1x the inner pan is disabled; once zoomed, the image owns
+                // its drag before the surrounding asset pager can begin.
+                pager.panGestureRecognizer.require(toFail: panGestureRecognizer)
+                break
+            }
+            ancestor = view.superview
+        }
+    }
+
     override func layoutSubviews() {
         super.layoutSubviews()
         onLayout?(self)
@@ -1500,14 +1475,10 @@ private struct AnalysisToolPhotoStage: View {
         toolContent(size: containerRect.size)
             .frame(width: containerRect.width, height: containerRect.height)
             .contentShape(Rectangle())
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .clipped()
             .overlay(alignment: .top) {
                 analysisEdgeToast
                     .padding(.top, 10)
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(.white.opacity(0.16), lineWidth: 1)
             }
             .position(x: containerRect.midX, y: containerRect.midY)
             .accessibilityLabel(tool.accessibilityLabel)
@@ -1573,7 +1544,7 @@ private struct AnalysisToolPhotoStage: View {
                 hideGridToast()
             }
         } else {
-            AnalysisToolLoadingView(
+            AnalysisToolSlotLoadingView(
                 slot: slot,
                 title: "Preparing 2D analysis",
                 size: size
@@ -1614,7 +1585,7 @@ private struct AnalysisToolPhotoStage: View {
             )
             .frame(width: size.width, height: size.height)
         } else {
-            AnalysisToolLoadingView(
+            AnalysisToolSlotLoadingView(
                 slot: slot,
                 title: "Preparing 3D projection",
                 size: size
@@ -1682,24 +1653,6 @@ private struct AnalysisToolPhotoStage: View {
     }
 }
 
-private struct AnalysisToolLoadingView: View {
-    let slot: AnalysisPhotoSlot?
-    let title: String
-    let size: CGSize
-
-    var body: some View {
-        if let slot {
-            AnalysisToolSlotLoadingView(slot: slot, title: title, size: size)
-        } else {
-            ProgressView(title)
-                .tint(.white)
-                .frame(width: size.width, height: size.height)
-                .frame(maxWidth: .infinity)
-                .background(Color.black)
-        }
-    }
-}
-
 private struct AnalysisToolSlotLoadingView: View {
     @ObservedObject var slot: AnalysisPhotoSlot
     let title: String
@@ -1750,11 +1703,6 @@ private struct AnalysisToolSlotLoadingView: View {
         }
         .frame(width: size.width, height: size.height)
         .frame(maxWidth: .infinity)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(.white.opacity(0.16), lineWidth: 1)
-        }
     }
 }
 

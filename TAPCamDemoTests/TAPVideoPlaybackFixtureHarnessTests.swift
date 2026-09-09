@@ -6,11 +6,57 @@
 #if DEBUG
 import AVFoundation
 import Foundation
+import SwiftUI
 import Testing
+import UIKit
 @testable import TAPCamDemo
 
 @Suite("TAP video runtime fixture harness")
 struct TAPVideoPlaybackFixtureHarnessTests {
+    @Test @MainActor
+    func preparingDepthKeepsTheVisibleVideoPreview() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let artifact = try await TAPVideoPlaybackFixtureGenerator.generate(
+            scenario: .rotation0, outputDirectoryURL: directory
+        )
+        let preview = UIGraphicsImageRenderer(size: CGSize(width: 1, height: 1)).image { context in
+            UIColor.white.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 1, height: 1))
+        }
+        let session = TAPVideoPlaybackSession(
+            source: .fixtureFile(artifact.fileURL, automaticSeekScheduleSeconds: [], autoPlay: false),
+            registrationAdapter: TAPVideoFixtureIdentityRegistrationAdapter(),
+            mediaFetcher: PhotoKitLibraryMediaFetcher(),
+            initialLoadingPreviewImage: preview
+        )
+        await session.startPlaybackSession()
+        defer { session.stopPlayback() }
+        try #require(session.state == .ready && session.isRegisteredDepthAvailable)
+
+        func visibleBrightness(in mode: AnalysisViewerTool) throws -> Double {
+            let content = TAPVideoPlaybackContentSurface(
+                session: session, selectedTool: .constant(mode),
+                overlayOpacity: .constant(0.58), onRetry: {}
+            ).frame(width: 400, height: 400)
+            let bitmap = try #require(ImageRenderer(content: content).uiImage?.cgImage)
+            let data = try #require(bitmap.dataProvider?.data)
+            let bytes = try #require(CFDataGetBytePtr(data))
+            // Sample usable media away from centered progress and controls.
+            let pixel = 40 * bitmap.bytesPerRow + 40 * (bitmap.bitsPerPixel / 8)
+            return Double(Int(bytes[pixel]) + Int(bytes[pixel + 1]) + Int(bytes[pixel + 2])) / (3 * 255)
+        }
+
+        let rawBrightness = try visibleBrightness(in: .raw)
+        try #require(rawBrightness > 0.9)
+        session.prepareTwoDPlaybackGate()
+        try #require(!session.isTwoDPlaybackReady)
+        let preparingBrightness = try visibleBrightness(in: .twoD)
+        #expect(!session.isTwoDPlaybackReady)
+        #expect(preparingBrightness >= rawBrightness * 0.95,
+                "Preparing analysis must not darken already visible media.")
+    }
+
     @Test("small fixture is generated at runtime with manifest and no sidecar binary")
     func runtimeGeneratedArtifact() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
@@ -27,7 +73,7 @@ struct TAPVideoPlaybackFixtureHarnessTests {
         #expect(artifact.fileURL == directory.appendingPathComponent("artifact.mp4"))
         #expect(FileManager.default.fileExists(atPath: artifact.fileURL.path))
         #expect(artifact.manifest.schema.id == TAPVideoManifest.schemaIdentifier)
-        #expect(artifact.manifest.schema.version == 2)
+        #expect(artifact.manifest.schema.version == 1)
         #expect(artifact.manifest.proofs.isEmpty)
         #expect(artifact.manifest.payload.depthCoverage.sampleCount == 30)
         #expect(artifact.manifest.payload.spatialRegistration.status == .registered)

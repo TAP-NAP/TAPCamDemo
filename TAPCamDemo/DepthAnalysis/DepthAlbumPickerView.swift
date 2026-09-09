@@ -5,7 +5,6 @@
 //  Created by Codex on 2026/4/27.
 //
 
-import Combine
 import SwiftUI
 
 /// Browses pending TAP captures and the app-owned TAPCamDepth Photos album.
@@ -18,15 +17,14 @@ struct DepthAlbumPickerView: View {
     @StateObject private var viewModel: DepthAlbumPickerViewModel
     private let libraryStore: LibraryMediaStore
     private let mediaFetcher: any LibraryMediaFetching
+    private let photoLoader: DepthAnalysisProgressivePhotoLoader?
+    private let itemAccessibilityIdentifier: ((TAPLibraryItem) -> String)?
     @State private var albumScrollPosition = ScrollPosition(idType: String.self)
-    @StateObject private var itemViewportTracker = DepthAlbumItemViewportTracker()
-    @State private var pendingReturnScrollBookmark: DepthAlbumReturnScrollBookmark?
-    @State private var latestReturnScrollRowStride: CGFloat = 0
+    @State private var openedItemID: String?
     @State private var selectedDestination: DepthAlbumRouteAdapter.Destination?
     @State private var isViewerPresented = false
     @State private var locallyRemovedItemIDs: Set<String> = []
     @State private var visibleSnapshot: DepthAlbumVisibleSnapshot
-    @State private var returnScrollRestoreToken = UUID()
     @State private var analysisViewerGeneration = UUID()
     @State private var presentedItemRevision: DepthAlbumViewerItemRevision?
 
@@ -34,7 +32,6 @@ struct DepthAlbumPickerView: View {
     private static let gridSpacing: CGFloat = 3
     private static let gridPadding: CGFloat = 3
     private static let maximumThumbnailPixelLength = 320
-    private static let scrollViewportCoordinateSpaceName = "DepthAlbumPickerScrollViewport"
 
     private var columns: [GridItem] {
         Array(
@@ -50,10 +47,14 @@ struct DepthAlbumPickerView: View {
     init(
         routeStore: CameraRouteStore,
         libraryStore: LibraryMediaStore? = nil,
-        mediaFetcher: any LibraryMediaFetching = PhotoKitLibraryMediaFetcher()
+        mediaFetcher: any LibraryMediaFetching = PhotoKitLibraryMediaFetcher(),
+        photoLoader: DepthAnalysisProgressivePhotoLoader? = nil,
+        itemAccessibilityIdentifier: ((TAPLibraryItem) -> String)? = nil
     ) {
         self.routeStore = routeStore
         self.mediaFetcher = mediaFetcher
+        self.photoLoader = photoLoader
+        self.itemAccessibilityIdentifier = itemAccessibilityIdentifier
         let resolvedLibraryStore = libraryStore ?? LibraryMediaStore(observesChanges: false)
         self.libraryStore = resolvedLibraryStore
         _visibleSnapshot = State(
@@ -74,25 +75,12 @@ struct DepthAlbumPickerView: View {
                 thumbnailPixelLength: Self.thumbnailPixelLength(
                     containerWidth: containerWidth,
                     displayScale: displayScale
-                ),
-                returnScrollRowStride: Self.gridRowStride(containerWidth: containerWidth)
+                )
             )
         }
         .navigationTitle("TAP Library")
         .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(true)
-        .toolbar(isViewerPresented ? .hidden : .visible, for: .navigationBar)
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button {
-                    returnToCameraWithoutAnimation()
-                } label: {
-                    Label("Camera", systemImage: "chevron.left")
-                }
-                .accessibilityLabel("Return to camera")
-                .help("Close the analyzer and return to the camera.")
-            }
-        }
+        .toolbar(.visible, for: .navigationBar)
         .task(id: routeStore.isDepthAlbumPresented) {
             guard routeStore.isDepthAlbumPresented else {
                 return
@@ -112,11 +100,10 @@ struct DepthAlbumPickerView: View {
             previousRevisions, _ in
             reconcilePresentedDestination(previousRevisions: previousRevisions)
         }
-        .modifier(DepthAlbumEdgeBackModifier(onReturn: returnToCameraWithoutAnimation))
     }
 
     @ViewBuilder
-    private func albumContent(thumbnailPixelLength: Int, returnScrollRowStride: CGFloat) -> some View {
+    private func albumContent(thumbnailPixelLength: Int) -> some View {
         ScrollView {
             if viewModel.shouldShowLoading {
                 ProgressView()
@@ -138,7 +125,7 @@ struct DepthAlbumPickerView: View {
                 LazyVGrid(columns: columns, spacing: Self.gridSpacing) {
                     ForEach(visibleItems) { item in
                         Button {
-                            openAlbumItem(item, returnScrollRowStride: returnScrollRowStride)
+                            openAlbumItem(item)
                         } label: {
                             TAPLibraryItemCell(
                                 item: item,
@@ -147,35 +134,18 @@ struct DepthAlbumPickerView: View {
                             )
                         }
                         .buttonStyle(.plain)
+                        .accessibilityIdentifier(itemAccessibilityIdentifier?(item) ?? "tap.library.item")
                         .id(item.id)
-                        .onGeometryChange(for: CGFloat.self) { geometry in
-                            geometry.frame(in: .named(Self.scrollViewportCoordinateSpaceName)).minY
-                        } action: { _, newViewportY in
-                            itemViewportTracker.record(newViewportY, for: item.id)
-                        }
                         .onAppear {
                             routeStore.recordVisibleDepthAlbumItem(item.routeAnchor)
                         }
                     }
                 }
+                .scrollTargetLayout()
                 .padding(Self.gridPadding)
             }
         }
         .scrollPosition($albumScrollPosition)
-        .coordinateSpace(name: Self.scrollViewportCoordinateSpaceName)
-        .onChange(of: visibleSnapshot.itemIDs) { _, _ in
-            pruneTrackedItemViewportPositions()
-            restorePendingReturnScrollPosition(
-                rowStride: returnScrollRowStride,
-                clearAfterDelay: false
-            )
-        }
-        .onAppear {
-            restorePendingReturnScrollPosition(
-                rowStride: returnScrollRowStride,
-                clearAfterDelay: false
-            )
-        }
     }
 
     private func albumErrorDescription(_ message: String) -> Text {
@@ -187,15 +157,6 @@ struct DepthAlbumPickerView: View {
         default:
             // Unknown future loader diagnostics are values, not localization keys.
             Text(verbatim: message)
-        }
-    }
-
-    private func returnToCameraWithoutAnimation() {
-        var transaction = Transaction()
-        transaction.animation = nil
-        transaction.disablesAnimations = true
-        withTransaction(transaction) {
-            routeStore.returnToCamera()
         }
     }
 
@@ -225,7 +186,8 @@ struct DepthAlbumPickerView: View {
                         nextEntry: nextEntry
                     )
                 },
-                mediaFetcher: mediaFetcher
+                mediaFetcher: mediaFetcher,
+                photoLoader: photoLoader
             )
             // Ordinary photo-to-photo moves stay inside the retained carousel.
             // A mixed-media handoff to a photo that the old immutable carousel
@@ -268,12 +230,6 @@ struct DepthAlbumPickerView: View {
         selectedDestination = .analysis(DepthAlbumRouteAdapter.analysisRoute(for: entry))
         recordPresentedRevision(itemID: entry.id)
         routeStore.openDepthAlbumItem(entry.routeAnchor)
-        pendingReturnScrollBookmark = DepthAlbumReturnScrollBookmark(
-            itemID: entry.id,
-            routeAnchor: entry.routeAnchor,
-            itemViewportY: itemViewportTracker.viewportY(for: entry.id) ?? 0
-        )
-        returnScrollRestoreToken = UUID()
     }
 
     private func updatePresentedMixedMediaRoute(
@@ -286,24 +242,12 @@ struct DepthAlbumPickerView: View {
         selectedDestination = entry.destination
         recordPresentedRevision(itemID: entry.id)
         routeStore.openDepthAlbumItem(entry.routeAnchor)
-        pendingReturnScrollBookmark = DepthAlbumReturnScrollBookmark(
-            itemID: entry.id,
-            routeAnchor: entry.routeAnchor,
-            itemViewportY: itemViewportTracker.viewportY(for: entry.id) ?? 0
-        )
-        returnScrollRestoreToken = UUID()
     }
 
     private func updatePresentedVideoRoute(_ entry: TAPVideoAlbumContext.Entry) {
         selectedDestination = .video(DepthAlbumRouteAdapter.videoRoute(for: entry))
         recordPresentedRevision(itemID: entry.id)
         routeStore.openDepthAlbumItem(entry.routeAnchor)
-        pendingReturnScrollBookmark = DepthAlbumReturnScrollBookmark(
-            itemID: entry.id,
-            routeAnchor: entry.routeAnchor,
-            itemViewportY: itemViewportTracker.viewportY(for: entry.id) ?? 0
-        )
-        returnScrollRestoreToken = UUID()
     }
 
     private func reconcilePresentedDestination(
@@ -358,12 +302,6 @@ struct DepthAlbumPickerView: View {
         self.selectedDestination = replacementDestination
         presentedItemRevision = DepthAlbumViewerItemRevision(item: replacement)
         routeStore.openDepthAlbumItem(replacement.routeAnchor)
-        pendingReturnScrollBookmark = DepthAlbumReturnScrollBookmark(
-            itemID: replacement.id,
-            routeAnchor: replacement.routeAnchor,
-            itemViewportY: itemViewportTracker.viewportY(for: replacement.id) ?? 0
-        )
-        returnScrollRestoreToken = UUID()
     }
 
     private func recordPresentedRevision(itemID: String) {
@@ -371,14 +309,8 @@ struct DepthAlbumPickerView: View {
             .map(DepthAlbumViewerItemRevision.init(item:))
     }
 
-    private func openAlbumItem(_ item: TAPLibraryItem, returnScrollRowStride: CGFloat) {
-        latestReturnScrollRowStride = returnScrollRowStride
-        pendingReturnScrollBookmark = DepthAlbumReturnScrollBookmark(
-            itemID: item.id,
-            routeAnchor: item.routeAnchor,
-            itemViewportY: itemViewportTracker.viewportY(for: item.id) ?? 0
-        )
-        returnScrollRestoreToken = UUID()
+    private func openAlbumItem(_ item: TAPLibraryItem) {
+        openedItemID = item.id
         routeStore.openDepthAlbumItem(item.routeAnchor)
         selectedDestination = DepthAlbumRouteAdapter.destination(for: item)
         presentedItemRevision = DepthAlbumViewerItemRevision(item: item)
@@ -402,67 +334,16 @@ struct DepthAlbumPickerView: View {
             return
         }
 
+        // The native scroll position survives a visit to the Viewer. When the
+        // current item changed there, return with that item visible.
+        if let itemID = selectedDestination?.itemID,
+           itemID != openedItemID,
+           visibleSnapshot.itemIDs.contains(itemID) {
+            albumScrollPosition.scrollTo(id: itemID, anchor: .center)
+        }
         selectedDestination = nil
         presentedItemRevision = nil
-        scheduleReturnScrollRestore(clearAfterDelay: true)
-    }
-
-    private func restorePendingReturnScrollPosition(rowStride: CGFloat, clearAfterDelay: Bool) {
-        guard pendingReturnScrollBookmark != nil,
-              !isViewerPresented else {
-            return
-        }
-
-        scheduleReturnScrollRestore(
-            rowStride: rowStride,
-            clearAfterDelay: clearAfterDelay
-        )
-    }
-
-    private func scheduleReturnScrollRestore(clearAfterDelay: Bool) {
-        scheduleReturnScrollRestore(
-            rowStride: latestReturnScrollRowStride,
-            clearAfterDelay: clearAfterDelay
-        )
-    }
-
-    private func scheduleReturnScrollRestore(rowStride: CGFloat, clearAfterDelay: Bool) {
-        guard let bookmark = pendingReturnScrollBookmark else {
-            return
-        }
-
-        let token = returnScrollRestoreToken
-        Task { @MainActor in
-            await Task.yield()
-            guard pendingReturnScrollBookmark == bookmark,
-                  returnScrollRestoreToken == token,
-                  !isViewerPresented,
-                  let offsetY = Self.returnScrollOffsetY(
-                    bookmark: bookmark,
-                    items: visibleItems,
-                    rowStride: rowStride
-                  ) else {
-                return
-            }
-
-            albumScrollPosition.scrollTo(y: offsetY)
-
-            guard clearAfterDelay else {
-                return
-            }
-
-            try? await Task.sleep(nanoseconds: 300_000_000)
-            guard pendingReturnScrollBookmark == bookmark,
-                  returnScrollRestoreToken == token,
-                  !isViewerPresented else {
-                return
-            }
-            pendingReturnScrollBookmark = nil
-        }
-    }
-
-    private func pruneTrackedItemViewportPositions() {
-        itemViewportTracker.retainOnly(Set(visibleSnapshot.itemIDs))
+        openedItemID = nil
     }
 
     private func refreshVisibleSnapshot() {
@@ -470,68 +351,6 @@ struct DepthAlbumPickerView: View {
             items: libraryStore.items,
             excluding: locallyRemovedItemIDs
         )
-    }
-
-    static func returnScrollOffsetY(
-        bookmark: DepthAlbumReturnScrollBookmark,
-        items: [TAPLibraryItem],
-        rowStride: CGFloat
-    ) -> CGFloat? {
-        guard let itemIndex = returnScrollBookmarkItemIndex(bookmark: bookmark, items: items) else {
-            return nil
-        }
-
-        return returnScrollOffsetY(
-            itemIndex: itemIndex,
-            itemViewportY: bookmark.itemViewportY,
-            rowStride: rowStride
-        )
-    }
-
-    static func returnScrollBookmarkItemIndex(
-        bookmark: DepthAlbumReturnScrollBookmark,
-        items: [TAPLibraryItem]
-    ) -> Int? {
-        if let exactIndex = items.firstIndex(where: { $0.id == bookmark.itemID }) {
-            return exactIndex
-        }
-
-        return items.firstIndex { item in
-            routeAnchorsMatch(item.routeAnchor, bookmark.routeAnchor)
-        }
-    }
-
-    static func returnScrollOffsetY(itemIndex: Int, itemViewportY: CGFloat, rowStride: CGFloat) -> CGFloat {
-        let rowIndex = max(0, itemIndex) / columnCount
-        let itemContentY = gridPadding + (CGFloat(rowIndex) * max(rowStride, 0))
-        return max(0, itemContentY - itemViewportY)
-    }
-
-    private static func routeAnchorsMatch(
-        _ currentAnchor: CameraRouteAlbumAnchor,
-        _ bookmarkedAnchor: CameraRouteAlbumAnchor
-    ) -> Bool {
-        if currentAnchor.itemID == bookmarkedAnchor.itemID {
-            return true
-        }
-
-        if let currentCaptureID = currentAnchor.captureID,
-           let bookmarkedCaptureID = bookmarkedAnchor.captureID,
-           currentCaptureID == bookmarkedCaptureID {
-            return true
-        }
-
-        if let currentAssetID = currentAnchor.assetLocalIdentifier,
-           let bookmarkedAssetID = bookmarkedAnchor.assetLocalIdentifier,
-           currentAssetID == bookmarkedAssetID {
-            return true
-        }
-
-        return false
-    }
-
-    private static func gridRowStride(containerWidth: CGFloat) -> CGFloat {
-        gridCellPointLength(containerWidth: containerWidth) + gridSpacing
     }
 
     private static func gridCellPointLength(containerWidth: CGFloat) -> CGFloat {
@@ -563,26 +382,6 @@ private struct DepthAlbumVisibleSnapshot {
         self.items = visibleItems
         self.itemIDs = visibleItems.map(\.id)
         self.revisions = visibleItems.map(DepthAlbumViewerItemRevision.init(item:))
-    }
-}
-
-/// Keeps exact per-item return positions without making every geometry update
-/// an observed mutation of the whole grid. SwiftUI owns this object's lifetime,
-/// but it deliberately emits no `objectWillChange` events while scrolling.
-@MainActor
-final class DepthAlbumItemViewportTracker: ObservableObject {
-    private var viewportYByID: [String: CGFloat] = [:]
-
-    func record(_ viewportY: CGFloat, for itemID: String) {
-        viewportYByID[itemID] = viewportY
-    }
-
-    func viewportY(for itemID: String) -> CGFloat? {
-        viewportYByID[itemID]
-    }
-
-    func retainOnly(_ itemIDs: Set<String>) {
-        viewportYByID = viewportYByID.filter { itemIDs.contains($0.key) }
     }
 }
 

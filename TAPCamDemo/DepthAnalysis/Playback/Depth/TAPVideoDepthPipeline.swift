@@ -29,7 +29,6 @@ nonisolated struct TAPVideoDepthPipelineEvent {
 @MainActor
 final class TAPVideoDepthPipeline {
     struct PresentationState: Equatable {
-        let isPreparing: Bool
         let isReady: Bool
         let gapNotice: String?
     }
@@ -381,7 +380,6 @@ final class TAPVideoDepthPipeline {
 
     private func publishPresentationState() {
         onPresentationStateChange?(PresentationState(
-            isPreparing: isPreparing,
             isReady: isReady,
             gapNotice: gapNotice
         ))

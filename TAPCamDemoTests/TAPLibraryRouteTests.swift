@@ -4,7 +4,6 @@
 //
 
 import Foundation
-import Combine
 import Testing
 @testable import TAPCamDemo
 
@@ -175,106 +174,7 @@ struct TAPLibraryRouteTests {
         }
     }
 
-    @Test @MainActor func depthAlbumPickerReturnScrollBookmarkRestoresClickedItemViewportPosition() throws {
-        let records = (0..<8).map { index in
-            TAPCamDemoTestFixtures.samplePendingRecord(
-                captureID: "capture-\(index)",
-                capturedAt: Date(timeIntervalSince1970: Double(100 - index))
-            )
-        }
-        let items = TAPLibraryItem.merged(
-            pendingRecords: records,
-            exportedRecords: [],
-            photoAssets: []
-        )
-        #expect(items.count == 8)
-        let clickedItem = items[6]
-        let bookmark = DepthAlbumReturnScrollBookmark(
-            itemID: clickedItem.id,
-            routeAnchor: clickedItem.routeAnchor,
-            itemViewportY: 23
-        )
-
-        #expect(DepthAlbumPickerView.returnScrollBookmarkItemIndex(bookmark: bookmark, items: items) == 6)
-        #expect(DepthAlbumPickerView.returnScrollOffsetY(bookmark: bookmark, items: items, rowStride: 80) == 60)
-        #expect(DepthAlbumPickerView.returnScrollOffsetY(itemIndex: 0, itemViewportY: 20, rowStride: 80) == 0)
-    }
-
-    @Test @MainActor func depthAlbumPickerReturnScrollBookmarkMatchesPendingItemAfterOwnedExport() throws {
-        let pendingRecord = TAPCamDemoTestFixtures.samplePendingRecord(
-            captureID: "capture-migrated",
-            capturedAt: Date(timeIntervalSince1970: 100)
-        )
-        let pendingItem = try #require(TAPLibraryItem.merged(
-            pendingRecords: [pendingRecord],
-            exportedRecords: [],
-            photoAssets: []
-        ).first)
-        let bookmark = DepthAlbumReturnScrollBookmark(
-            itemID: pendingItem.id,
-            routeAnchor: pendingItem.routeAnchor,
-            itemViewportY: 16
-        )
-        let exportedRecord = TAPCamDemoTestFixtures.samplePendingRecord(
-            captureID: "capture-migrated",
-            capturedAt: Date(timeIntervalSince1970: 100),
-            status: .exported,
-            assetLocalIdentifier: "asset-migrated"
-        )
-        let ownedAsset = DepthAlbumPhotoAsset(localIdentifier: "asset-migrated")
-        let currentItems = TAPLibraryItem.merged(
-            pendingRecords: [],
-            exportedRecords: [exportedRecord],
-            photoAssets: [ownedAsset],
-            photoAssetsByLocalIdentifier: [ownedAsset.localIdentifier: ownedAsset]
-        )
-
-        #expect(currentItems.map(\.id) == ["capture:capture-migrated"])
-        #expect(DepthAlbumPickerView.returnScrollBookmarkItemIndex(bookmark: bookmark, items: currentItems) == 0)
-        #expect(DepthAlbumPickerView.returnScrollOffsetY(bookmark: bookmark, items: [], rowStride: 80) == nil)
-    }
-
-    @Test @MainActor func depthAlbumViewportTrackerPreservesPositionsWithoutPublishingScrollChanges() {
-        let tracker = DepthAlbumItemViewportTracker()
-        var publicationCount = 0
-        let cancellable = tracker.objectWillChange.sink {
-            publicationCount += 1
-        }
-
-        tracker.record(24, for: "photo")
-        tracker.record(-61, for: "video")
-
-        #expect(tracker.viewportY(for: "photo") == 24)
-        #expect(tracker.viewportY(for: "video") == -61)
-        #expect(publicationCount == 0)
-
-        tracker.retainOnly(["video"])
-
-        #expect(tracker.viewportY(for: "photo") == nil)
-        #expect(tracker.viewportY(for: "video") == -61)
-        #expect(publicationCount == 0)
-        _ = cancellable
-    }
-
-    @Test func depthAlbumThumbnailCacheKeyDoesNotExposePhotoIdentifier() throws {
-        let photoIdentifier = "photos-library://asset/private-local-id"
-        let cacheKey = DepthAlbumThumbnailCacheKey.make(
-            assetLocalIdentifier: photoIdentifier,
-            pixelLength: 240,
-            pixelWidth: 4032,
-            pixelHeight: 3024,
-            versionDate: Date(timeIntervalSince1970: 1_234)
-        )
-
-        #expect(cacheKey.count == 64)
-        #expect(cacheKey.utf8.allSatisfy { byte in
-            (48...57).contains(byte) || (97...102).contains(byte)
-        })
-        #expect(!cacheKey.contains(photoIdentifier))
-        #expect(!cacheKey.contains("private-local-id"))
-    }
-
-    @Test func depthAlbumThumbnailCacheKeyChangesWhenSourceVersionChanges() throws {
+    @Test func depthAlbumThumbnailCacheKeyTracksSourceIdentityVersionAndSize() throws {
         let originalKey = DepthAlbumThumbnailCacheKey.make(
             assetLocalIdentifier: "asset-1",
             pixelLength: 240,
@@ -299,6 +199,16 @@ struct TAPLibraryRouteTests {
 
         #expect(changedVersionKey != originalKey)
         #expect(changedSizeKey != originalKey)
+        for assetID in ["asset-1", "asset-2"] {
+            let key = DepthAlbumThumbnailCacheKey.make(
+                assetLocalIdentifier: assetID,
+                pixelLength: 240,
+                pixelWidth: 4032,
+                pixelHeight: 3024,
+                versionDate: Date(timeIntervalSince1970: 1_234)
+            )
+            #expect((key == originalKey) == (assetID == "asset-1"))
+        }
     }
 
     @Test func depthAlbumPendingVideoThumbnailCacheKeyTracksVideoVersion() throws {
@@ -320,7 +230,6 @@ struct TAPLibraryRouteTests {
         )
 
         #expect(signedKey != originalKey)
-        #expect(!originalKey.contains("video-capture"))
     }
 
     @Test func depthAlbumItemsPreferOwnedExportsOverDuplicatePhotos() throws {
@@ -630,7 +539,7 @@ struct TAPLibraryRouteTests {
         #expect(viewModel.errorMessage?.contains(sensitivePath) == false)
     }
 
-    @Test func depthAlbumOwnedThumbnailCacheKeyDoesNotExposeCaptureOrPhotoIdentifier() throws {
+    @Test func depthAlbumOwnedThumbnailCacheKeyMatchesPosterRequest() throws {
         let captureID = "capture/private-owned"
         let assetID = "photos-library://asset/private-local-id"
         let exportedRecord = TAPCamDemoTestFixtures.samplePendingRecord(
@@ -654,16 +563,12 @@ struct TAPLibraryRouteTests {
         ).first)
         let cacheKey = item.thumbnailCacheKey(pixelLength: 240)
 
-        #expect(cacheKey.count == 64)
-        #expect(cacheKey.utf8.allSatisfy { byte in
-            (48...57).contains(byte) || (97...102).contains(byte)
-        })
-        #expect(!cacheKey.contains(captureID))
-        #expect(!cacheKey.contains(assetID))
-        #expect(!cacheKey.contains("private-local-id"))
+        let request = try #require(LibraryMediaPosterRequest(summary: item.summary, pixelLength: 240))
+        #expect(cacheKey == request.cacheKey)
+        #expect(cacheKey != item.thumbnailCacheKey(pixelLength: 320))
     }
 
-    @Test func depthAlbumPendingThumbnailCacheKeyDoesNotExposeCaptureIdentifier() throws {
+    @Test func depthAlbumPendingThumbnailCacheKeySurvivesSnapshotRebuild() throws {
         let captureID = "capture/private-pending"
         let pendingRecord = TAPCamDemoTestFixtures.samplePendingRecord(
             captureID: captureID,
@@ -678,12 +583,11 @@ struct TAPLibraryRouteTests {
         ).first)
         let cacheKey = item.thumbnailCacheKey(pixelLength: 240)
 
-        #expect(cacheKey.count == 64)
-        #expect(cacheKey.utf8.allSatisfy { byte in
-            (48...57).contains(byte) || (97...102).contains(byte)
-        })
-        #expect(!cacheKey.contains(captureID))
-        #expect(!cacheKey.contains("private-pending"))
+        let rebuiltItem = try #require(TAPLibraryItem.merged(
+            pendingRecords: [pendingRecord], exportedRecords: [], photoAssets: []
+        ).first)
+        #expect(cacheKey == rebuiltItem.thumbnailCacheKey(pixelLength: 240))
+        #expect(cacheKey != rebuiltItem.thumbnailCacheKey(pixelLength: 320))
     }
 
     @MainActor

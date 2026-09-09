@@ -1937,6 +1937,7 @@ struct TAPDepthAnalysisSharePresentationTests {
         #expect(firstRemovalRecorder.removalCount == 1)
 
         model.present(subject: subject, resource: resource)
+        model.popoverDidAppear()
         await model.refreshCertification()
         model.prepare(.image)
         for _ in 0..<100 where model.isPopoverPresented {

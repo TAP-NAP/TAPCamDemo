@@ -40,7 +40,6 @@ production_files=(
     "TAPCamDemo/DepthAnalysis/AnalysisPhotoSlot+DisplayFetch.swift"
     "TAPCamDemo/DepthAnalysis/AnalysisPhotoSlot+Selection.swift"
     "TAPCamDemo/DepthAnalysis/AnalysisPhotoSlot.swift"
-    "TAPCamDemo/DepthAnalysis/DepthAlbumPickerNavigationSupport.swift"
     "TAPCamDemo/DepthAnalysis/DepthAlbumPickerView.swift"
     "TAPCamDemo/DepthAnalysis/DepthAlbumPickerViewModel.swift"
     "TAPCamDemo/DepthAnalysis/DepthAlbumRouteAdapter.swift"
@@ -93,7 +92,7 @@ production_files=(
     "TAPCamDemo/TAPLibrary/TAPPendingVideoRecordTransitions.swift"
     "TAPCamDemo/TAPLibrary/TAPPendingVideoWorkspaceCoordinator.swift"
     "TAPCamDemo/TAPLibrary/TAPVideoPhotosReadbackValidator.swift"
-    "TAPCamDemo/Support/TAPVideoPerformanceTrace.swift"
+    "TAPCamDemo/Diagnostics/TAPVideoPerformanceTrace.swift"
 )
 
 missing_files=()

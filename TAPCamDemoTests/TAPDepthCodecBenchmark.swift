@@ -1,11 +1,12 @@
 //
 //  TAPDepthCodecBenchmark.swift
-//  TAPCamDemo
+//  TAPCamDemoTests
 //
 
 #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
 import Compression
 import Foundation
+@testable import TAPCamDemo
 
 nonisolated enum TAPDepthCodecBenchmarkCandidate: String, Codable, CaseIterable, Sendable {
     case zstd1

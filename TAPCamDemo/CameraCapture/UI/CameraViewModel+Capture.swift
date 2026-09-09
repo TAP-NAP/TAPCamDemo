@@ -212,18 +212,6 @@ extension CameraViewModel {
             publishRecentLibraryPhase(.ready(poster), request: request, kind: kind)
             return
         }
-        if let data = await DepthAlbumThumbnailDiskCache.shared.data(for: cacheKey),
-           !Task.isCancelled {
-            let poster = MediaPoster(cacheKey: cacheKey, jpegData: data)
-            guard let phase = await prepareRecentLibraryPhase(
-                .ready(poster),
-                request: request
-            ) else {
-                return
-            }
-            publishRecentLibraryPhase(phase, request: request, kind: kind)
-            return
-        }
 
         do {
             var phase = try await localRecentPosterPhase(
@@ -245,13 +233,9 @@ extension CameraViewModel {
                 summary: item.summary,
                 pixelLength: pixelLength
                ) {
-                guard let loadingPhase = await prepareRecentLibraryPhase(
-                    .downloadingFromICloud(preview, progress: nil),
-                    request: request
-                ) else {
-                    return
-                }
-                publishRecentLibraryPhase(loadingPhase, request: request, kind: kind)
+                publishRecentLibraryPhase(
+                    .downloadingFromICloud(preview, progress: nil), request: request, kind: kind
+                )
                 let progress: @Sendable (Double?) -> Void = { [weak self] value in
                     Task { @MainActor [weak self] in
                         guard let self,
@@ -270,8 +254,7 @@ extension CameraViewModel {
                     allowsNetworkAccess: true,
                     progress: progress
                 )
-                phase = recentPosterPhase(from: downloaded, cacheKey: cacheKey)
-                    .preservingFailurePreview(preview)
+                phase = downloaded.preservingFailurePreview(preview)
             } else if case .cloudOnly(let preview) = phase {
                 phase = .failed(preview, reason: .download, retryable: false)
             }
@@ -279,13 +262,7 @@ extension CameraViewModel {
             guard !Task.isCancelled, isCurrentRecentLibraryRequest(request) else {
                 return
             }
-            guard let preparedPhase = await prepareRecentLibraryPhase(
-                phase,
-                request: request
-            ) else {
-                return
-            }
-            publishRecentLibraryPhase(preparedPhase, request: request, kind: kind)
+            publishRecentLibraryPhase(phase, request: request, kind: kind)
         } catch is CancellationError {
             return
         } catch let failure as MediaFetchFailure {
@@ -317,7 +294,7 @@ extension CameraViewModel {
         switch item.source {
         case .pending(let record):
             if let data = try await pendingCaptureStore.thumbnailData(captureID: record.captureID) {
-                return .ready(MediaPoster(cacheKey: cacheKey, jpegData: data))
+                return await decodedRecentPosterPhase(data: data, cacheKey: cacheKey)
             }
             guard item.isVideo else {
                 return .failed(nil, reason: .decode, retryable: false)
@@ -328,10 +305,10 @@ extension CameraViewModel {
                 cacheKey: cacheKey,
                 pixelLength: pixelLength
             )
-            return .ready(MediaPoster(cacheKey: cacheKey, jpegData: data))
+            return await decodedRecentPosterPhase(data: data, cacheKey: cacheKey)
         case .ownedPhoto(let record, _):
             if let data = try await pendingCaptureStore.thumbnailData(captureID: record.captureID) {
-                return .ready(MediaPoster(cacheKey: cacheKey, jpegData: data))
+                return await decodedRecentPosterPhase(data: data, cacheKey: cacheKey)
             }
             if item.isVideo,
                let videoURL = try? await pendingCaptureStore.bestAvailableVideoURL(captureID: record.captureID),
@@ -340,7 +317,7 @@ extension CameraViewModel {
                 cacheKey: cacheKey,
                 pixelLength: pixelLength
                ) {
-                return .ready(MediaPoster(cacheKey: cacheKey, jpegData: data))
+                return await decodedRecentPosterPhase(data: data, cacheKey: cacheKey)
             }
             guard let request = LibraryMediaPosterRequest(
                 summary: item.summary,
@@ -348,12 +325,11 @@ extension CameraViewModel {
             ) else {
                 return .failed(nil, reason: .assetRemoved, retryable: false)
             }
-            let phase = try await libraryMediaFetcher.posterPhase(
+            return try await libraryMediaFetcher.posterPhase(
                 for: request,
                 allowsNetworkAccess: false,
                 progress: { _ in }
             )
-            return recentPosterPhase(from: phase, cacheKey: cacheKey)
         case .photos:
             guard let request = LibraryMediaPosterRequest(
                 summary: item.summary,
@@ -361,42 +337,24 @@ extension CameraViewModel {
             ) else {
                 return .failed(nil, reason: .assetRemoved, retryable: false)
             }
-            let phase = try await libraryMediaFetcher.posterPhase(
+            return try await libraryMediaFetcher.posterPhase(
                 for: request,
                 allowsNetworkAccess: false,
                 progress: { _ in }
             )
-            return recentPosterPhase(from: phase, cacheKey: cacheKey)
         }
     }
 
-    private func recentPosterPhase(
-        from phase: MediaFetchPhase<Data, Data>,
+    private func decodedRecentPosterPhase(
+        data: Data,
         cacheKey: String
-    ) -> MediaFetchPhase<MediaPoster, MediaPoster> {
-        switch phase {
-        case .idle(let preview):
-            return .idle(preview.map { MediaPoster(cacheKey: cacheKey, jpegData: $0) })
-        case .resolving(let preview):
-            return .resolving(preview.map { MediaPoster(cacheKey: cacheKey, jpegData: $0) })
-        case .localPreview(let preview):
-            return .localPreview(MediaPoster(cacheKey: cacheKey, jpegData: preview))
-        case .cloudOnly(let preview):
-            return .cloudOnly(preview.map { MediaPoster(cacheKey: cacheKey, jpegData: $0) })
-        case .downloadingFromICloud(let preview, let progress):
-            return .downloadingFromICloud(
-                preview.map { MediaPoster(cacheKey: cacheKey, jpegData: $0) },
-                progress: progress
-            )
-        case .ready(let value):
-            return .ready(MediaPoster(cacheKey: cacheKey, jpegData: value))
-        case .failed(let preview, let reason, let retryable):
-            return .failed(
-                preview.map { MediaPoster(cacheKey: cacheKey, jpegData: $0) },
-                reason: reason,
-                retryable: retryable
-            )
+    ) async -> MediaFetchPhase<MediaPoster, MediaPoster> {
+        guard let poster = await DepthAlbumThumbnailDecoder.shared.decodedThumbnail(
+            data: data, cacheKey: cacheKey
+        ) else {
+            return .failed(nil, reason: .decode, retryable: false)
         }
+        return .ready(poster)
     }
 
     private func publishRecentLibraryPhase(
@@ -414,15 +372,6 @@ extension CameraViewModel {
                 recentLibraryPresentation = .resolving(itemID: request.itemID, kind: kind)
             }
         case .localPreview(let poster), .ready(let poster):
-            guard DepthAlbumThumbnailMemoryCache.shared.image(for: poster.cacheKey) != nil else {
-                recentLibraryPresentation = .failed(
-                    itemID: request.itemID,
-                    kind: kind,
-                    preview: nil,
-                    retryable: false
-                )
-                return
-            }
             recentLibraryPresentation = .ready(
                 itemID: request.itemID,
                 kind: kind,
@@ -450,40 +399,6 @@ extension CameraViewModel {
                 retryable: retryable
             )
         }
-    }
-
-    /// Resolves poster bytes before publishing any presentation that exposes
-    /// them. The decode actor coalesces the camera cover and Library grid when
-    /// both ask for the same revision. The decoder publishes only into the
-    /// revision-keyed memory cache; request identity is checked again before
-    /// that cached object becomes visible UI state.
-    private func prepareRecentLibraryPhase(
-        _ phase: MediaFetchPhase<MediaPoster, MediaPoster>,
-        request: MediaFetchRequestKey
-    ) async -> MediaFetchPhase<MediaPoster, MediaPoster>? {
-        guard !Task.isCancelled, isCurrentRecentLibraryRequest(request) else {
-            return nil
-        }
-        guard let poster = phase.previewOrReadyValue else {
-            return phase
-        }
-        if DepthAlbumThumbnailMemoryCache.shared.image(for: poster.cacheKey) != nil {
-            return phase
-        }
-
-        guard let decodedThumbnail = await DepthAlbumThumbnailDecoder.shared
-            .decodedThumbnail(for: poster) else {
-            guard !Task.isCancelled, isCurrentRecentLibraryRequest(request) else {
-                return nil
-            }
-            return phase.removingUndecodablePoster()
-        }
-        guard !Task.isCancelled,
-              isCurrentRecentLibraryRequest(request),
-              decodedThumbnail.poster.cacheKey == poster.cacheKey else {
-            return nil
-        }
-        return phase
     }
 
     private func isCurrentRecentLibraryRequest(_ request: MediaFetchRequestKey) -> Bool {
@@ -528,25 +443,6 @@ private extension CaptureSignatureStatus {
             "Capture saved"
         case .unsigned:
             "Capture saved unsigned"
-        }
-    }
-}
-
-private extension MediaFetchPhase where Preview == MediaPoster, Value == MediaPoster {
-    func removingUndecodablePoster() -> Self {
-        switch self {
-        case .idle:
-            .idle(nil)
-        case .resolving:
-            .resolving(nil)
-        case .localPreview, .ready:
-            .failed(nil, reason: .decode, retryable: false)
-        case .cloudOnly:
-            .cloudOnly(nil)
-        case .downloadingFromICloud(_, let progress):
-            .downloadingFromICloud(nil, progress: progress)
-        case .failed(_, let reason, let retryable):
-            .failed(nil, reason: reason, retryable: retryable)
         }
     }
 }

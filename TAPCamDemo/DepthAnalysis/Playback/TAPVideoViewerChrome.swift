@@ -98,7 +98,6 @@ struct TAPVideoViewerChrome: View {
     let shareResourceAccess: DepthAnalysisShareResourceAccess?
     let topSafeArea: CGFloat
     let bottomSafeArea: CGFloat
-    let onBackTapped: () -> Void
     let onModeTapped: (String) -> Void
     let onDeleteTapped: () -> Void
     @State private var comingSoonToastTrigger: UUID?
@@ -120,7 +119,6 @@ struct TAPVideoViewerChrome: View {
             shareResourceAccess: shareResourceAccess,
             shareAccessibilityLabel: "Share video",
             deleteAccessibilityLabel: "Delete video",
-            topSafeArea: topSafeArea,
             bottomSafeArea: bottomSafeArea,
             // This accessory type never changes, so the root chrome identity
             // remains stable while its local player content becomes ready.
@@ -128,7 +126,6 @@ struct TAPVideoViewerChrome: View {
                 player: player,
                 intentState: playbackIntentState
             ),
-            onBackTapped: onBackTapped,
             onModeTapped: handleModeTapped,
             onDeleteTapped: onDeleteTapped
         )

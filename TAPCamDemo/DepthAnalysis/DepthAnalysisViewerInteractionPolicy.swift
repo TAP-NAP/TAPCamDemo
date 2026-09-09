@@ -8,31 +8,6 @@
 import CoreGraphics
 import ImageIO
 
-nonisolated enum AnalysisEdgeBackPolicy {
-    static let edgeActivationWidth: CGFloat = 24
-    static let translationThreshold: CGFloat = 70
-    static let predictedTranslationThreshold: CGFloat = 110
-    static let dominanceRatio: CGFloat = 1.15
-
-    static func shouldReturn(
-        startX: CGFloat,
-        translation: CGSize,
-        predictedTranslation: CGSize
-    ) -> Bool {
-        guard startX <= edgeActivationWidth else {
-            return false
-        }
-        guard translation.width > 0 || predictedTranslation.width > 0 else {
-            return false
-        }
-        guard abs(translation.width) > abs(translation.height) * dominanceRatio else {
-            return false
-        }
-        return translation.width > translationThreshold
-            || predictedTranslation.width > predictedTranslationThreshold
-    }
-}
-
 nonisolated enum DepthAnalysisViewerInteractionPolicy {
     static let zoomedScaleThreshold: CGFloat = 1.05
     static let maximumPhotoScale: CGFloat = 5
@@ -86,23 +61,6 @@ nonisolated enum DepthAnalysisViewerInteractionPolicy {
             orientation: orientation,
             containerSize: viewportSize
         )
-    }
-}
-
-/// Directional flick interpretation retained for non-pager surfaces and tests.
-/// The visual photo/video carousel itself is owned by the native pager below.
-nonisolated enum TAPLibraryViewerSwipePolicy {
-    static let predictedTranslationThreshold: CGFloat = 80
-
-    static func offset(
-        translation: CGSize,
-        predictedTranslation: CGSize
-    ) -> Int? {
-        guard abs(predictedTranslation.width) > abs(predictedTranslation.height),
-              abs(predictedTranslation.width) > predictedTranslationThreshold else {
-            return nil
-        }
-        return predictedTranslation.width < 0 ? 1 : -1
     }
 }
 
@@ -167,30 +125,5 @@ nonisolated enum TAPLibraryViewerPagingPolicy {
             x: viewportLocation.x - spacing * 0.5,
             y: viewportLocation.y
         )
-    }
-}
-
-/// Keeps edge-back ownership stable across UIKit callback ordering. Sampling
-/// a recognizer's instantaneous state from `scrollViewWillEndDragging` is not
-/// sufficient because the edge recognizer may already have reached `.ended`.
-nonisolated struct TAPLibraryViewerGestureArbitrationState {
-    private(set) var edgeBackClaimed = false
-
-    mutating func beginPaging(edgeBackIsActive: Bool) {
-        if !edgeBackIsActive {
-            edgeBackClaimed = false
-        }
-    }
-
-    mutating func claimEdgeBack() {
-        edgeBackClaimed = true
-    }
-
-    /// Returns whether this paging completion belongs to the edge-back
-    /// gesture, then resets ownership for the next independent swipe.
-    mutating func finishPaging() -> Bool {
-        let claimed = edgeBackClaimed
-        edgeBackClaimed = false
-        return claimed
     }
 }

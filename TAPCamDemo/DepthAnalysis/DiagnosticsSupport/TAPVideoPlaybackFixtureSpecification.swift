@@ -239,11 +239,13 @@ nonisolated struct TAPVideoPlaybackFixtureLaunchConfiguration: Equatable, Sendab
     static let seekScheduleEnvironmentKey = "TAPCAM_UI_TEST_VIDEO_FIXTURE_SEEK_SCHEDULE"
     static let accessibilityDynamicTypeEnvironmentKey =
         "TAPCAM_UI_TEST_VIDEO_FIXTURE_ACCESSIBILITY_DYNAMIC_TYPE"
+    static let galleryEnvironmentKey = "TAPCAM_UI_TEST_GALLERY_FIXTURE"
 
     let scenario: TAPVideoPlaybackFixtureScenario
     let autoPlay: Bool
     let seekScheduleSeconds: [Double]?
     let usesAccessibilityDynamicType: Bool
+    let showsGallery: Bool
 
     static var current: Self? {
         parse(
@@ -261,6 +263,7 @@ nonisolated struct TAPVideoPlaybackFixtureLaunchConfiguration: Equatable, Sendab
         let autoPlay = environment[autoPlayEnvironmentKey] == "1"
         let usesAccessibilityDynamicType =
             environment[accessibilityDynamicTypeEnvironmentKey] == "1"
+        let showsGallery = environment[galleryEnvironmentKey] == "1"
         let seekScheduleSeconds: [Double]?
         if let rawSchedule = environment[seekScheduleEnvironmentKey] {
             guard let parsedSchedule = parseSeekSchedule(rawSchedule) else {
@@ -271,6 +274,7 @@ nonisolated struct TAPVideoPlaybackFixtureLaunchConfiguration: Equatable, Sendab
             seekScheduleSeconds = nil
         }
         let isEnabled = arguments.contains(enableArgument)
+            || showsGallery
             || environment[enableEnvironmentKey] == "1"
             || argumentValue != nil
             || environmentValue != nil
@@ -283,7 +287,8 @@ nonisolated struct TAPVideoPlaybackFixtureLaunchConfiguration: Equatable, Sendab
                 scenario: .rotation0,
                 autoPlay: autoPlay,
                 seekScheduleSeconds: seekScheduleSeconds,
-                usesAccessibilityDynamicType: usesAccessibilityDynamicType
+                usesAccessibilityDynamicType: usesAccessibilityDynamicType,
+                showsGallery: showsGallery
             )
         }
         guard let scenario = TAPVideoPlaybackFixtureScenario(rawValue: rawScenario) else {
@@ -293,7 +298,8 @@ nonisolated struct TAPVideoPlaybackFixtureLaunchConfiguration: Equatable, Sendab
             scenario: scenario,
             autoPlay: autoPlay,
             seekScheduleSeconds: seekScheduleSeconds,
-            usesAccessibilityDynamicType: usesAccessibilityDynamicType
+            usesAccessibilityDynamicType: usesAccessibilityDynamicType,
+            showsGallery: showsGallery
         )
     }
 

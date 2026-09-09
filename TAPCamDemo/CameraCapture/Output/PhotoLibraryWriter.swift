@@ -530,9 +530,23 @@ nonisolated enum PhotoLibraryWriter {
             return
         }
 
-        try await PHPhotoLibrary.shared().performChanges {
-            PHAssetChangeRequest.deleteAssets([asset] as NSArray)
+        do {
+            try await PHPhotoLibrary.shared().performChanges {
+                PHAssetChangeRequest.deleteAssets([asset] as NSArray)
+            }
+        } catch {
+            throw normalizedDeletionError(error)
         }
+    }
+
+    /// Cancelling Photos' confirmation must still stop downstream local cleanup.
+    static func normalizedDeletionError(_ error: Error) -> Error {
+        let photosError = error as NSError
+        if photosError.domain == PHPhotosErrorDomain,
+           photosError.code == PHPhotosError.userCancelled.rawValue {
+            return CancellationError()
+        }
+        return error
     }
 
     private static func latestDepthAssetIfAuthorized() -> PHAsset? {

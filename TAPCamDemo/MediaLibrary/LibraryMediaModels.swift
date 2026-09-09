@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import UIKit
 
 /// Stable, private identity shared by every TAP Library surface.
 ///
@@ -62,13 +63,15 @@ nonisolated struct LibraryMediaSnapshot: Equatable, Sendable {
     }
 }
 
-/// A Sendable encoded poster value. Presentation code must route these bytes
-/// through `DepthAlbumThumbnailDecoder`; keeping UIKit conversion out of this
-/// value prevents an innocent computed-property read from decoding on the
-/// MainActor or inside a SwiftUI body.
+/// A ready-to-display image retained by its visible consumer. Cache eviction
+/// may drop reusable copies, but cannot erase a poster already on screen.
 nonisolated struct MediaPoster: Equatable, Sendable {
     let cacheKey: String
-    let jpegData: Data
+    let image: UIImage
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.cacheKey == rhs.cacheKey && lhs.image === rhs.image
+    }
 }
 
 nonisolated enum MediaFetchFailure: Error, Equatable, Sendable {

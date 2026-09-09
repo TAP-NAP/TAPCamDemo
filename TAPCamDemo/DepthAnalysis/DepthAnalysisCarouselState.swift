@@ -198,10 +198,10 @@ nonisolated struct DepthAnalysisDisplayPhotoLoader {
                 allowsNetworkAccess: false,
                 progress: { _ in }
             ),
-            let data = phase.previewOrReadyValue else {
+            let poster = phase.previewOrReadyValue else {
                 return nil
             }
-            return UIImage(data: data)
+            return poster.image
         case .pendingCapture(let captureID):
             // Adjacent carousel items are preview-only. Never decode a 48 MP
             // pending original merely because its derivative is missing.
@@ -210,7 +210,7 @@ nonisolated struct DepthAnalysisDisplayPhotoLoader {
             ) else {
                 return nil
             }
-            return UIImage(data: data)
+            return await DepthAlbumThumbnailDecoder.image(data: data)
         }
     }
 

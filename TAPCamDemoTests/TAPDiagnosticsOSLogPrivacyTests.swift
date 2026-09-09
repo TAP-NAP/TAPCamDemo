@@ -19,7 +19,6 @@ struct TAPDiagnosticsOSLogPrivacyTests {
     private static let reviewedPublicLabels = Set([
         "album",
         "activityActive",
-        "appeared",
         "assetIDPresent",
         "attempt",
         "attemptCount",
@@ -107,7 +106,6 @@ struct TAPDiagnosticsOSLogPrivacyTests {
         "photosRoute",
         "previousStatus",
         "processedCount",
-        "progressVisible",
         "profile",
         "projectionM11",
         "projectionM22",
@@ -125,7 +123,6 @@ struct TAPDiagnosticsOSLogPrivacyTests {
         "receivedBytes",
         "retryCount",
         "resourceReady",
-        "resourceCount",
         "rootPitch",
         "rootRoll",
         "rootScaleX",
@@ -420,7 +417,6 @@ struct TAPDiagnosticsOSLogPrivacyTests {
             "TAPCamDemo/MediaLibrary/LibraryMediaStore.swift",
             "TAPCamDemo/TAPLibrary/AppAttestPendingCaptureSigner.swift",
             "TAPCamDemo/TAPLibrary/PhotoLibraryPendingCaptureExporter.swift",
-            "TAPCamDemo/TAPLibrary/TAPPendingCaptureMaintenance.swift",
             "TAPCamDemo/TAPLibrary/TAPPendingCaptureProcessor.swift",
             "TAPCamDemo/TAPLibrary/TAPPendingCaptureStore.swift"
         ]
