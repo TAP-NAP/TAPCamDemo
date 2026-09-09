@@ -7,13 +7,8 @@ import Foundation
 
 /// Result of staging one packaged capture in the Pending Capture Queue.
 nonisolated struct CaptureWriteResult: Equatable, Sendable {
-    let artifactID: UUID
-    let publicDestinationSummary: String
-    let assetLocalIdentifier: String?
-    let pendingCaptureID: String?
     let signatureStatus: CaptureSignatureStatus
     let depthAvailability: CaptureDepthAvailability
-    let captureScoreSummary: CaptureScoreSummary
 }
 
 nonisolated struct TAPPendingCaptureArtifactWriter: Sendable {
@@ -30,15 +25,10 @@ nonisolated struct TAPPendingCaptureArtifactWriter: Sendable {
     ///
     /// - Tag: WritePackagedArtifactToPendingStore
     func write(_ artifact: PackagedCaptureArtifact) async throws -> CaptureWriteResult {
-        let record = try await store.ingest(artifact)
+        _ = try await store.ingest(artifact)
         return CaptureWriteResult(
-            artifactID: artifact.packageID,
-            publicDestinationSummary: "Pending TAP capture",
-            assetLocalIdentifier: nil,
-            pendingCaptureID: record.captureID,
             signatureStatus: .pending(reason: "Queued for App Attest signing."),
-            depthAvailability: artifact.depthAvailability,
-            captureScoreSummary: artifact.captureScoreSummary
+            depthAvailability: artifact.depthAvailability
         )
     }
 }

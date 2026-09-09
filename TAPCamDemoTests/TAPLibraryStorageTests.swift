@@ -636,13 +636,14 @@ struct TAPLibraryStorageTests {
         let artifact = TAPCamDemoTestFixtures.samplePendingArtifact(photoData: Data("unsigned".utf8))
 
         let result = try await writer.write(artifact)
+        let record = try await store.readRecord(captureID: artifact.manifest.payload.id)
 
-        #expect(result.assetLocalIdentifier == nil)
-        #expect(result.pendingCaptureID == "sample-capture")
-        #expect(result.publicDestinationSummary == "Pending TAP capture")
-        #expect(!result.publicDestinationSummary.contains("sample-capture"))
+        #expect(record.captureID == "sample-capture")
+        #expect(record.status == .pending)
+        #expect(record.assetLocalIdentifier == nil)
+        #expect(record.captureScoreSummary == artifact.captureScoreSummary)
         #expect(result.signatureStatus == .pending(reason: "Queued for App Attest signing."))
-        #expect(result.captureScoreSummary == artifact.captureScoreSummary)
+        #expect(result.depthAvailability == artifact.depthAvailability)
         #expect(try await store.unsignedPhotoData(captureID: "sample-capture") == Data("unsigned".utf8))
     }
 

@@ -100,17 +100,14 @@ extension CameraViewModel {
                     switch result {
                     case .success(let writeResult):
                         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-                        TAPDiagnostics.pendingCapture.info("capture pipeline success jobID=\(job.id.uuidString, privacy: .public) pendingCaptureIDPresent=\(writeResult.pendingCaptureID != nil, privacy: .public) assetIDPresent=\(writeResult.assetLocalIdentifier != nil, privacy: .public) remainingJobs=\(remaining, privacy: .public)")
+                        TAPDiagnostics.pendingCapture.info("capture pipeline success jobID=\(job.id.uuidString, privacy: .public) remainingJobs=\(remaining, privacy: .public)")
                         #endif
                         self.statusMessage = writeResult.signatureStatus.captureStatusMessage
                         if let hint = writeResult.depthAvailability.viewfinderHint {
                             self.latestCaptureDepthHint = CameraCaptureDepthHint(message: hint)
                         }
-                        if writeResult.pendingCaptureID != nil || writeResult.assetLocalIdentifier != nil {
-                            self.scheduleRecentTAPLibraryPreviewRefresh(afterNanoseconds: 0)
-                        }
-                        if writeResult.pendingCaptureID != nil,
-                           let pendingCaptureWorkerClient {
+                        self.scheduleRecentTAPLibraryPreviewRefresh(afterNanoseconds: 0)
+                        if let pendingCaptureWorkerClient {
                             Task {
                                 await self.retryPendingCaptures(pendingCaptureWorkerClient: pendingCaptureWorkerClient)
                             }
