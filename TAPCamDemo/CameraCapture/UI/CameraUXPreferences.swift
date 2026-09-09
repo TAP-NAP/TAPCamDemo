@@ -47,7 +47,7 @@ nonisolated enum CameraViewfinderHighlightPreference: String, CaseIterable, Iden
         case .yellow:
             "Yellow"
         case .titian:
-            "Titian"
+            "Akane"
         }
     }
 

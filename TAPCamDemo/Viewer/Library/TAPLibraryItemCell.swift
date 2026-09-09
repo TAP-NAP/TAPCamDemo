@@ -251,3 +251,51 @@ struct TAPLibraryItemCell: View {
         return false
     }
 }
+
+nonisolated extension TAPLibraryItem {
+    var pendingBadge: String? {
+        guard case .pending(let record) = source else {
+            return nil
+        }
+
+        switch record.status {
+        case .pending:
+            return "PENDING"
+        case .waitingNetwork:
+            return "WAIT"
+        case .signing:
+            return "SIGN"
+        case .signed:
+            return "SIGNED"
+        case .exporting:
+            return "SAVE"
+        case .failedRetryable:
+            return "RETRY"
+        case .failedTerminal:
+            return "FAILED"
+        case .exported:
+            return nil
+        }
+    }
+
+    var accessibilityLabel: String {
+        switch source {
+        case .photos, .ownedPhoto:
+            if isVideo {
+                return "Open saved TAP video"
+            }
+            if isLivePhoto {
+                return "Open saved Live Photo"
+            }
+            return "Open saved depth photo"
+        case .pending(let record):
+            if isVideo {
+                return "Open pending TAP video, \(record.status.rawValue)"
+            }
+            if isLivePhoto {
+                return "Open pending Live Photo, \(record.status.rawValue)"
+            }
+            return "Open pending depth photo, \(record.status.rawValue)"
+        }
+    }
+}

@@ -204,7 +204,7 @@ struct TAPCameraCapturePresentationTests {
             relativePath: "TAPCamDemo/CameraCapture/UI/CameraView.swift"
         )
         let settingsSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalyzerSettingsView.swift"
+            relativePath: "TAPCamDemo/App/Settings/DepthAnalyzerSettingsView.swift"
         )
         let controllerSource = try TAPCamDemoTestSourceInspection.source(
             relativePath: "TAPCamDemo/CameraCapture/Runtime/CaptureSessionController.swift"
@@ -631,7 +631,7 @@ struct TAPCameraCapturePresentationTests {
         #expect(CameraViewfinderHighlightPreference.defaultValue == .yellow)
         #expect(CameraViewfinderHighlightPreference.resolved(rawValue: "titian") == .titian)
         #expect(CameraViewfinderHighlightPreference.resolved(rawValue: "unexpected") == .yellow)
-        #expect(CameraViewfinderHighlightPreference.titian.title == "Titian")
+        #expect(CameraViewfinderHighlightPreference.titian.title == "Akane")
     }
 
     @Test func cameraCaptureModeOptionEnablesPhotoAndVideo() throws {

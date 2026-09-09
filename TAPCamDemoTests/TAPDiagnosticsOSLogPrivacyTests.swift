@@ -306,10 +306,10 @@ struct TAPDiagnosticsOSLogPrivacyTests {
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
     func coldPathMilestonesOmitMediaIdentifiersAndFilePaths() throws {
         let providerSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/DepthAnalysis/DepthAlbumItemProvider.swift"
+            relativePath: "TAPCamDemo/MediaLibrary/DepthAlbumItemProvider.swift"
         )
         let playbackSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/DepthAnalysis/Playback/TAPVideoPlaybackSession.swift"
+            relativePath: "TAPCamDemo/Viewer/Playback/TAPVideoPlaybackSession.swift"
         )
 
         #expect(!providerSource.contains("latestPending="))
@@ -403,22 +403,22 @@ struct TAPDiagnosticsOSLogPrivacyTests {
             "TAPCamDemo/CameraCapture/UI/CameraViewModel+VideoCapture.swift",
             "TAPCamDemo/CameraCapture/UI/CaptureLifecycleCoordinator.swift",
             "TAPCamDemo/DepthAnalysis/AnalysisTools/DepthPointCloudPreview.swift",
-            "TAPCamDemo/DepthAnalysis/DepthAlbumItemProvider.swift",
-            "TAPCamDemo/DepthAnalysis/DepthAlbumPickerViewModel.swift",
-            "TAPCamDemo/DepthAnalysis/DepthAnalysisShareCoordinator.swift",
-            "TAPCamDemo/DepthAnalysis/DepthAnalysisView.swift",
-            "TAPCamDemo/DepthAnalysis/Playback/Depth/TAPVideoDepthMetadataOutput.swift",
-            "TAPCamDemo/DepthAnalysis/Playback/Depth/TAPVideoDepthPipeline.swift",
-            "TAPCamDemo/DepthAnalysis/Playback/TAPVideoPlaybackSession.swift",
-            "TAPCamDemo/DepthAnalysis/TAPNAPShareArtifactBuilder.swift",
-            "TAPCamDemo/DepthAnalysis/TAPVideoDepthPlaybackView.swift",
-            "TAPCamDemo/DepthAnalysis/VerificationExportActivityView.swift",
+            "TAPCamDemo/DepthAnalysis/Video/TAPVideoDepthMetadataOutput.swift",
+            "TAPCamDemo/DepthAnalysis/Video/TAPVideoDepthPipeline.swift",
+            "TAPCamDemo/MediaLibrary/DepthAlbumItemProvider.swift",
             "TAPCamDemo/MediaLibrary/LibraryMediaFetching.swift",
             "TAPCamDemo/MediaLibrary/LibraryMediaStore.swift",
             "TAPCamDemo/TAPLibrary/AppAttestPendingCaptureSigner.swift",
             "TAPCamDemo/TAPLibrary/PhotoLibraryPendingCaptureExporter.swift",
             "TAPCamDemo/TAPLibrary/TAPPendingCaptureProcessor.swift",
-            "TAPCamDemo/TAPLibrary/TAPPendingCaptureStore.swift"
+            "TAPCamDemo/TAPLibrary/TAPPendingCaptureStore.swift",
+            "TAPCamDemo/Viewer/Library/DepthAlbumPickerViewModel.swift",
+            "TAPCamDemo/Viewer/Photo/DepthAnalysisView.swift",
+            "TAPCamDemo/Viewer/Playback/TAPVideoDepthPlaybackView.swift",
+            "TAPCamDemo/Viewer/Playback/TAPVideoPlaybackSession.swift",
+            "TAPCamDemo/Viewer/Share/DepthAnalysisShareCoordinator.swift",
+            "TAPCamDemo/Viewer/Share/TAPNAPShareArtifactBuilder.swift",
+            "TAPCamDemo/Viewer/Share/VerificationExportActivityView.swift"
         ]
     }
 

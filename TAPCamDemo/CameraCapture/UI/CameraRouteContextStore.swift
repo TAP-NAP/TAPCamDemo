@@ -7,55 +7,6 @@ import CryptoKit
 import Foundation
 import Security
 
-/// In-memory identity for one visible TAP Library item.
-///
-/// Raw item, capture, and Photos identifiers are used only while resolving the
-/// current album list. The durable context stores HMAC tokens derived from these
-/// values, never the identifiers themselves.
-nonisolated struct CameraRouteAlbumAnchor: Equatable, Sendable {
-    private static let maximumIdentifierUTF8Length = 2_048
-
-    let itemID: String
-    let captureID: String?
-    let assetLocalIdentifier: String?
-
-    init?(
-        itemID: String,
-        captureID: String? = nil,
-        assetLocalIdentifier: String? = nil
-    ) {
-        guard let normalizedItemID = Self.normalizedIdentifier(itemID) else {
-            return nil
-        }
-        self.itemID = normalizedItemID
-        self.captureID = Self.normalizedIdentifier(captureID)
-        self.assetLocalIdentifier = Self.normalizedIdentifier(assetLocalIdentifier)
-    }
-
-    var tokenInputs: [String] {
-        var inputs = ["item:\(itemID)"]
-        if let captureID {
-            inputs.append("capture:\(captureID)")
-        }
-        if let assetLocalIdentifier {
-            inputs.append("asset:\(assetLocalIdentifier)")
-        }
-        return inputs
-    }
-
-    static func normalizedIdentifier(_ id: String?) -> String? {
-        guard let id else {
-            return nil
-        }
-        let trimmedID = id.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedID.isEmpty,
-              trimmedID.utf8.count <= maximumIdentifierUTF8Length else {
-            return nil
-        }
-        return trimmedID
-    }
-}
-
 nonisolated struct CameraRouteContext: Codable, Equatable, Sendable {
     static let currentSchemaVersion = 1
     static let defaultTimeToLive: TimeInterval = 24 * 60 * 60

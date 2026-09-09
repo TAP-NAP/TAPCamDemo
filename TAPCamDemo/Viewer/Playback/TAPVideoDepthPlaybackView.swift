@@ -81,7 +81,7 @@ struct TAPVideoDepthPlaybackView: View {
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbarRole(.editor)
-        .navigationTitle("")
+        .navigationTitle(Text(verbatim: ""))
         .ignoresSafeArea(.container, edges: .all)
         .alert(item: $pendingDeleteRequest) { request in
             Alert(

@@ -1,9 +1,6 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-    "" : {
-
-    },
     "%@" : {
       "localizations" : {
         "zh-Hans" : {
@@ -189,6 +186,17 @@
         }
       }
     },
+    "Akane" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Akane"
+          }
+        }
+      }
+    },
     "Allow" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -298,7 +306,14 @@
       }
     },
     "Authorized or Limited Access is required to save and browse." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存和浏览需要照片图库的完全访问权限或有限访问权限。"
+          }
+        }
+      }
     },
     "Auto" : {
       "extractionState" : "stale",
@@ -356,7 +371,14 @@
       }
     },
     "Building media catalog" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在建立媒体目录"
+          }
+        }
+      }
     },
     "Camera" : {
       "localizations" : {
@@ -380,7 +402,14 @@
       }
     },
     "Camera access is required for capture and the viewfinder." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拍摄和显示取景画面需要相机权限。"
+          }
+        }
+      }
     },
     "Camera access is required to capture depth photos." : {
       "extractionState" : "manual",
@@ -394,10 +423,24 @@
       }
     },
     "Camera access is restricted by system policy." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "相机访问受系统限制。"
+          }
+        }
+      }
     },
     "Camera access was denied. You can change it in Settings." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "相机访问已被拒绝。你可以在“设置”中更改权限。"
+          }
+        }
+      }
     },
     "Camera Behavior" : {
       "extractionState" : "stale",
@@ -466,7 +509,14 @@
       }
     },
     "Camera Resources" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "相机资源"
+          }
+        }
+      }
     },
     "Camera service did not respond." : {
       "extractionState" : "manual",
@@ -746,9 +796,6 @@
           }
         }
       }
-    },
-    "Credential recovery remains unavailable while the existing Network implementation is preserved. A reachability check is not accepted as credential proof." : {
-
     },
     "Cycle flash mode." : {
       "localizations" : {
@@ -1049,10 +1096,24 @@
       }
     },
     "First media catalog is ready" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "首个媒体目录已建立"
+          }
+        }
+      }
     },
     "First preview and camera controls are ready" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "首个预览画面与相机控制已就绪"
+          }
+        }
+      }
     },
     "Flash %@" : {
       "localizations" : {
@@ -1681,10 +1742,24 @@
       }
     },
     "Location access is restricted by system policy." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "定位访问受系统限制。"
+          }
+        }
+      }
     },
     "Location access was denied. You can change it in Settings." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "定位访问已被拒绝。你可以在“设置”中更改权限。"
+          }
+        }
+      }
     },
     "Location Data" : {
       "extractionState" : "manual",
@@ -1774,10 +1849,24 @@
       }
     },
     "Microphone access is restricted by system policy." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "麦克风访问受系统限制。"
+          }
+        }
+      }
     },
     "Microphone access was denied. You can change it in Settings." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "麦克风访问已被拒绝。你可以在“设置”中更改权限。"
+          }
+        }
+      }
     },
     "Near %@" : {
       "extractionState" : "manual",
@@ -1822,7 +1911,14 @@
       }
     },
     "Network, Location, and Microphone do not participate in this check." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本次仅检查相机和照片图库权限，不检查网络、定位或麦克风。"
+          }
+        }
+      }
     },
     "No camera with depth-capable formats is available on this device." : {
       "extractionState" : "manual",
@@ -2110,10 +2206,24 @@
       }
     },
     "Photo Library access is restricted by system policy." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照片图库访问受系统限制。"
+          }
+        }
+      }
     },
     "Photo Library access was denied. You can change it in Settings." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照片图库访问已被拒绝。你可以在“设置”中更改权限。"
+          }
+        }
+      }
     },
     "Photo mode" : {
       "extractionState" : "stale",
@@ -2256,7 +2366,14 @@
       }
     },
     "Please wait…" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请等待…"
+          }
+        }
+      }
     },
     "Point colors map near-to-far depth in the same direction as the depth legend." : {
       "extractionState" : "manual",
@@ -2380,7 +2497,14 @@
       }
     },
     "Preparing first preview and controls" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在准备首个预览画面与相机控制"
+          }
+        }
+      }
     },
     "Preparing registered depth" : {
       "extractionState" : "stale",
@@ -2546,7 +2670,14 @@
       }
     },
     "Required Permission Check" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "必要权限检查"
+          }
+        }
+      }
     },
     "requiresMultiCam" : {
       "extractionState" : "manual",
@@ -2603,10 +2734,24 @@
       }
     },
     "Resource Initialization" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "资源初始化"
+          }
+        }
+      }
     },
     "Restore Camera or Photo Library access to return to the viewfinder." : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请恢复相机或照片图库权限，以返回取景界面。"
+          }
+        }
+      }
     },
     "Restoring Pro mode…" : {
       "extractionState" : "manual",
@@ -2642,7 +2787,14 @@
       }
     },
     "Restricted by system policy" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "受系统限制"
+          }
+        }
+      }
     },
     "Retry" : {
       "localizations" : {
@@ -2856,7 +3008,24 @@
       }
     },
     "Setup Recovery" : {
-
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "恢复设置"
+          }
+        }
+      }
+    },
+    "Setup recovery is unavailable in this version. Setup cannot continue." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此版本暂不支持恢复设置，无法继续完成设置。"
+          }
+        }
+      }
     },
     "Share" : {
       "extractionState" : "stale",
@@ -3609,6 +3778,16 @@
         }
       }
     },
+    "TAPCam could not restore your previous setup. Permissions you already granted are kept." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TAPCam 无法恢复此前的设置。已授予的权限会保留。"
+          }
+        }
+      }
+    },
     "TAPCam Destination" : {
       "localizations" : {
         "zh-Hans" : {
@@ -3683,9 +3862,6 @@
         }
       }
     },
-    "This installation's setup receipt is missing valid local credential evidence. Existing permissions are shown without being requested automatically." : {
-
-    },
     "This photo is still being processed in the TAPCam queue. Its credential will appear when processing finishes." : {
       "localizations" : {
         "zh-Hans" : {
@@ -3713,17 +3889,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此视频尚未完成导出到“照片”。删除操作会移除本地 TAP 副本，且无法撤销。"
-          }
-        }
-      }
-    },
-    "Titian" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "提香红"
           }
         }
       }

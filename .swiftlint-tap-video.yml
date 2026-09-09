@@ -18,4 +18,4 @@ excluded:
   - Packages/CZstd/Vendor
   - TAPCamDemoTests
   - TAPCamDemoUITests
-  - TAPCamDemo/DepthAnalysis/DiagnosticsSupport
+  - TAPCamDemo/Viewer/Fixtures

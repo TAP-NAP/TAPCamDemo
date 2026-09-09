@@ -119,7 +119,7 @@ struct WelcomeStartupSetupView: View {
             Text(
                 mode == .initial
                     ? "First launch needs required setup checks before camera setup can continue."
-                    : "This installation's setup receipt is missing valid local credential evidence. Existing permissions are shown without being requested automatically."
+                    : "TAPCam could not restore your previous setup. Permissions you already granted are kept."
             )
                 .font(.callout)
                 .foregroundStyle(.white.opacity(0.72))
@@ -130,7 +130,7 @@ struct WelcomeStartupSetupView: View {
     @ViewBuilder
     private var footer: some View {
         if mode == .credentialRecovery {
-            Text("Credential recovery remains unavailable while the existing Network implementation is preserved. A reachability check is not accepted as credential proof.")
+            Text("Setup recovery is unavailable in this version. Setup cannot continue.")
                 .font(.footnote)
                 .foregroundStyle(.yellow)
                 .fixedSize(horizontal: false, vertical: true)

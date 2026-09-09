@@ -15,14 +15,14 @@ struct TAPVideoReleaseSourceGuardTests {
         "TAPCamDemo/CameraCapture/Output/TAPDepthKLV.swift",
         "TAPCamDemo/CameraCapture/Output/TAPVideoDepthTrackValidator.swift",
         "TAPCamDemo/CameraCapture/Output/TAPVideoManifestBox.swift",
-        "TAPCamDemo/DepthAnalysis/TAPVideoDepthPlaybackView.swift",
-        "TAPCamDemo/DepthAnalysis/Playback/TAPVideoPlaybackResourceLoader.swift",
-        "TAPCamDemo/DepthAnalysis/Playback/TAPVideoPlaybackSession.swift",
-        "TAPCamDemo/DepthAnalysis/Playback/Depth/TAPDepthFrameDecoder.swift",
-        "TAPCamDemo/DepthAnalysis/Playback/Depth/TAPVideoDepthMetadataOutput.swift",
-        "TAPCamDemo/DepthAnalysis/Playback/Depth/TAPVideoDepthMetadataReader.swift",
-        "TAPCamDemo/DepthAnalysis/Playback/Depth/TAPVideoDepthPipeline.swift",
-        "TAPCamDemo/DepthAnalysis/Playback/Depth/TAPVideoDepthRegistration.swift",
+        "TAPCamDemo/Viewer/Playback/TAPVideoDepthPlaybackView.swift",
+        "TAPCamDemo/Viewer/Playback/TAPVideoPlaybackResourceLoader.swift",
+        "TAPCamDemo/Viewer/Playback/TAPVideoPlaybackSession.swift",
+        "TAPCamDemo/DepthAnalysis/Video/TAPDepthFrameDecoder.swift",
+        "TAPCamDemo/DepthAnalysis/Video/TAPVideoDepthMetadataOutput.swift",
+        "TAPCamDemo/DepthAnalysis/Video/TAPVideoDepthMetadataReader.swift",
+        "TAPCamDemo/DepthAnalysis/Video/TAPVideoDepthPipeline.swift",
+        "TAPCamDemo/DepthAnalysis/Video/TAPVideoDepthRegistration.swift",
         "TAPCamDemo/TAPLibrary/TAPVideoPhotosReadbackValidator.swift"
     ]
 

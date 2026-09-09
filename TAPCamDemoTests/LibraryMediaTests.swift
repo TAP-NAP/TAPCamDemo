@@ -166,7 +166,7 @@ struct LibraryMediaTests {
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
     func photoKitCatalogKeepsFrameworkObjectsBehindInjectedActorBoundary() throws {
         let providerSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/DepthAnalysis/DepthAlbumItemProvider.swift"
+            relativePath: "TAPCamDemo/MediaLibrary/DepthAlbumItemProvider.swift"
         )
 
         #expect(!providerSource.contains("import Photos"))
@@ -176,7 +176,7 @@ struct LibraryMediaTests {
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
     func providerKeepsScalableLibraryMergeBehindExplicitIsolationBoundary() throws {
         let providerSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/DepthAnalysis/DepthAlbumItemProvider.swift"
+            relativePath: "TAPCamDemo/MediaLibrary/DepthAlbumItemProvider.swift"
         )
 
         #expect(providerSource.contains("let reconciled = await Task.detached(priority: .userInitiated)"))

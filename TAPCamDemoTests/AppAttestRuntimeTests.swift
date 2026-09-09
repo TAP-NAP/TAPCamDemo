@@ -149,10 +149,10 @@ struct AppAttestRuntimeTests {
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
     func releasePhotoIntegritySectionHidesAppAttestImplementationDetails() throws {
         let sectionSource = try Self.source(
-            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalyzerAppAttestSection.swift"
+            relativePath: "TAPCamDemo/App/Settings/DepthAnalyzerAppAttestSection.swift"
         )
         let settingsSource = try Self.source(
-            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalyzerSettingsView.swift"
+            relativePath: "TAPCamDemo/App/Settings/DepthAnalyzerSettingsView.swift"
         )
 
         #expect(sectionSource.contains(#"Section("Photo Integrity")"#))
@@ -190,7 +190,7 @@ struct AppAttestRuntimeTests {
     }
 
     @Test func settingsViewUsesBackendPublicSummary() throws {
-        let source = try Self.source(relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalyzerSettingsView.swift")
+        let source = try Self.source(relativePath: "TAPCamDemo/App/Settings/DepthAnalyzerSettingsView.swift")
 
         #expect(source.contains("runtime.backendPublicSummary"))
         #expect(!source.contains("runtime.backendDescription"))

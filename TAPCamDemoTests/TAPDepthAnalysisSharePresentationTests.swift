@@ -167,13 +167,13 @@ struct TAPDepthAnalysisSharePresentationTests {
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
     func shareLocalIntegrityGateHasNoBackendVerificationDependency() throws {
         let shareIntegritySource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/DepthAnalysis/DepthAnalysisShareOriginalResource.swift"
+            relativePath: "TAPCamDemo/Viewer/Share/DepthAnalysisShareOriginalResource.swift"
         )
         let photoIntegritySource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/DepthAnalysis/TAPPhotoOriginalResource.swift"
+            relativePath: "TAPCamDemo/Viewer/Photo/TAPPhotoOriginalResource.swift"
         )
         let videoIntegritySource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/DepthAnalysis/Playback/TAPVideoPlaybackResourceLoader.swift"
+            relativePath: "TAPCamDemo/Viewer/Playback/TAPVideoPlaybackResourceLoader.swift"
         )
         let sources = [shareIntegritySource, photoIntegritySource, videoIntegritySource]
 

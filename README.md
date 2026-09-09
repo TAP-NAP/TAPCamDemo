@@ -28,9 +28,10 @@ flowchart LR
     App["App\nsetup + route + App Attest"] --> Camera["CameraCapture\nplan + SingleCam + package"]
     Camera --> Queue["TAPLibrary\nprivate pending queue"]
     Queue --> Photos["Photos\nvalidated export"]
-    Photos --> Media["MediaLibrary\nPhotoKit request bridge"]
-    Queue --> Viewer["DepthAnalysis\nTAP Library + Viewer"]
-    Media --> Viewer
+    Photos --> Media["MediaLibrary\nPhotoKit + media catalog"]
+    Queue --> Media
+    Media --> Viewer["Viewer\nLibrary + photo/video browsing"]
+    Viewer --> Analysis["DepthAnalysis\ndepth maps + planes + 3D"]
 ```
 
 The capture transaction is:
@@ -44,22 +45,28 @@ user intent
   -> TAPLibrary atomic pending ingest
   -> serialized App Attest proof + final-byte validation
   -> Photos save + original-resource readback validation
-  -> DepthAnalysis TAP Library / Viewer
+  -> Viewer library / photo and video browsing
+  -> DepthAnalysis tools for selected depth data
 ```
 
 ## Implementation ownership
 
 | Area | Owns | Start with |
 | --- | --- | --- |
-| `TAPCamDemo/App` | app root, setup/permission route, data-use preferences, initialization gate, App Attest runtime | `TAPCamDemoApp.swift`, `StartupGateView.swift`, `AppAttestRuntime.swift` |
+| `TAPCamDemo/App` | app root, setup/permission route, data-use preferences, settings, initialization gate, App Attest runtime | `TAPCamDemoApp.swift`, `StartupGateView.swift`, `Settings/DepthAnalyzerSettingsView.swift`, `AppAttestRuntime.swift` |
 | `CameraCapture/Planning` | pure capability, pairing, output-intent, FOV/zoom, and manual-control plans | `CapturePlan.swift`, `CapabilityMatrix.swift` |
 | `CameraCapture/Runtime` | the only `AVCaptureSession` mutation, capture requests, device writes, TAP Video recording, cached capture location | `CaptureSessionController.swift`, `CapturePipeline.swift`, `TAPVideoRecorder.swift`, `LocationProvider.swift` |
 | `CameraCapture/Output` | reviewed output profiles, packaging, shared-contract encoders/writers, final signed-export gates | `CaptureOutputProfile.swift`, `EmbeddedPhotoPackager.swift`, `TAPCaptureProvenanceWriter.swift` |
 | `CameraCapture/UI` | Viewfinder presentation and user intent; no capture-plan or proof ownership | `CameraView.swift`, `CameraViewModel.swift` |
 | `TAPLibrary` | private pending storage, one serialized signing/export worker, retry, readback, cleanup | `TAPPendingCaptureStore.swift`, `TAPPendingCaptureProcessor.swift` |
-| `MediaLibrary` | exactly-once PhotoKit callback/request bridging and identity/order catalog publication | `LibraryMediaFetching.swift`, `PhotoKitRequestLifecycle.swift`, `LibraryMediaStore.swift` |
-| `DepthAnalysis` | user-facing TAP Library, Viewer, local Share preparation, photo geometry, bounded TAP Video playback | `DepthAnalysisView.swift`, `TAPVideoDepthPlaybackView.swift` |
+| `MediaLibrary` | PhotoKit access and cancellation, catalog reconciliation/publication, thumbnails, resource identity | `LibraryMediaStore.swift`, `DepthAlbumItemProvider.swift`, `PhotoKitLibraryMediaFetcher.swift` |
+| `Viewer` | library grid, paging/zoom, photo and video playback, Share/Delete, browsing state | `Library/DepthAlbumPickerView.swift`, `Photo/DepthAnalysisView.swift`, `Playback/TAPVideoDepthPlaybackView.swift` |
+| `DepthAnalysis` | depth decoding/validation, heatmaps, planes, point clouds, registered video depth | `DepthAnalysisReader.swift`, `DepthAnalysisStageView.swift`, `Video/TAPVideoDepthPipeline.swift` |
 | `Diagnostics` | capture timing and bounded video performance traces | `CaptureJobMetrics.swift`, `TAPVideoPerformanceTrace.swift` |
+
+Viewer composes MediaLibrary resources and DepthAnalysis tools. The data and
+depth layers do not own navigation, sharing, or deletion controls. Synthetic
+viewer fixtures live in `Viewer/Fixtures` and compile only in Debug builds.
 
 ## Build and validation
 
