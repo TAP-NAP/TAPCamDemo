@@ -2,7 +2,7 @@ only_rules:
   - cyclomatic_complexity
   - function_body_length
 
-# VideoBranchRefactorAudit merge thresholds. The script supplies the explicit
+# TAP Video complexity and function-length limits. The script supplies the explicit
 # production-file allowlist and promotes these warnings to failures.
 cyclomatic_complexity:
   warning: 10

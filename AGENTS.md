@@ -1,37 +1,27 @@
 # TAPCam Native App Rules
 
-Read this file, the local README, and only the relevant sections of the
-[product contract](../TAPArtifactContracts/ProductContract.md). Inspect the
-current call path and tests before editing. Do not read other repositories'
-agent guides or the complete backlog as routine preparation.
+Start with README and the affected source/tests. Read the relevant
+[product requirements](https://github.com/TAP-NAP/TAPArtifactContracts/blob/main/ProductContract.md) for behavior changes and the
+pinned artifact contract for wire-format changes. Building and testing use the
+commands in README.
 
-## Scope and decisions
+- Work from the requested scope, current source, and relevant tests. Clarify
+  unresolved behavior without reopening established decisions.
+- Write documentation for a new reader: purpose, concepts, usage, and limits.
+  Keep private planning records, internal identifiers, and execution diaries out
+  of source and documentation. Keep exact technical revisions where needed.
+- Prefer existing seams and deletion of redundant material. Add no dependencies,
+  generated infrastructure, or extra documentation without a current need.
+- Keep changes and validation proportional; report actual checks and limits.
+  Do not commit or push unless the current conversation authorizes it.
 
-- The user's explicit request authorizes a bounded fix or cleanup. Routine work
-  needs no Task ID, Board Steward, status ceremony, or separate handoff document.
-- Read the optional [work notes](../TAPArtifactContracts/ProjectBoard.md) only
-  when the request names an item or its unresolved scope is needed. Do not
-  resurface expired plans or unrelated known gaps on every run.
-- Established product decisions remain settled. In particular, absent depth
-  does not block retaining, signing, or exporting valid still photos or TAP
-  Video. Keep artifact integrity checks; do not reopen the policy question.
-- Clarify only an actually unresolved behavior or scope. Implement the current
-  request without expanding into unrelated backlog items.
-
-## Authority and validation
-
-- TAPArtifactContracts owns product requirements, artifact contracts, design
-  rationale, and acceptance procedures. Code and tests establish actual behavior.
-  Keep implementation navigation and local build commands in this README.
-- For an intentional visible design change, follow ProductContract §9: review
-  the affected Web prototype and obtain approval of the concrete visual result
-  before SwiftUI implementation. A new Task is not a prerequisite.
-- Follow ProductContract §2.7 for startup/cold paths. Run focused checks and the
-  relevant build/tests; report executed counts and validation limits.
-- Device work uses only the relevant section of
-  [Acceptance.md](../TAPArtifactContracts/Acceptance.md). Preserve actual human
-  acceptance and reset/production permissions; coding work does not require a
-  device run merely to update a document.
-- Keep docs in their owning location; do not recreate module contracts, per-task
-  Markdown files, duplicate task lists, or dated audit reports. Existing commit
-  history preserves replaced prose. Do not commit or push unless requested.
+- Valid still photos and TAP Video without depth are retained, signed, and
+  exported. Preserve artifact integrity checks; depth assessment is a consumer
+  responsibility.
+- Use the interactive prototype for visible design changes and preserve agreed
+  states, interaction, and system-owned presentation boundaries.
+- Startup and cold paths follow ProductContract §2.7. A warm run is not evidence
+  for a cold path; scalable work requires explicit isolation and bounded updates.
+- Real-device acceptance uses the relevant capability procedure and records
+  actual observations. Code changes do not imply permission to reset a device,
+  delete personal media, or perform production operations.

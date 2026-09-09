@@ -52,9 +52,9 @@ nonisolated struct StartupGateStatusSnapshot: Equatable, Sendable {
 
 /// Credential evidence required by a canonical Setup receipt.
 ///
-/// No current `/healthz` result can construct this evidence. TAP-0008 keeps
-/// that Network implementation frozen, so production does not write a
-/// canonical receipt in this delivery.
+/// A `/healthz` reachability result cannot construct credential evidence.
+/// The current Network flow records reachability; it does not produce the
+/// verified binding required for a canonical receipt.
 nonisolated struct SetupCredentialBinding: Codable, Equatable, Sendable {
     let credentialName: String
     let keyIDFingerprint: String
@@ -67,8 +67,8 @@ nonisolated struct SetupCredentialBinding: Codable, Equatable, Sendable {
 
 /// A locally verified credential binding supplied by the App Attest storage
 /// boundary. Merely decoding the same strings from UserDefaults does not create
-/// one of these values. The current frozen Network implementation supplies no
-/// production instance, so a canonical receipt cannot silently self-validate.
+/// one of these values. A reachability-only Network result cannot supply a
+/// verified binding or allow a canonical receipt to self-validate.
 nonisolated struct VerifiedStartupCredentialBinding: Equatable, Sendable {
     let value: SetupCredentialBinding
 }
@@ -80,7 +80,7 @@ nonisolated enum OptionalSetupChoice: String, Codable, Equatable, Sendable {
 }
 
 /// Canonical `S` shape. Version/build intentionally do not live here; they
-/// belong to TAP-0009's initialization marker.
+/// belong to the separate resource-initialization marker.
 nonisolated struct SetupReceipt: Codable, Equatable, Sendable {
     static let currentSchemaVersion = 1
 
@@ -93,8 +93,8 @@ nonisolated struct SetupReceipt: Codable, Equatable, Sendable {
     let completedAt: Date
 }
 
-/// Explicitly non-canonical completion record used while Network/App Attest is
-/// frozen. It does not claim that `/healthz` supplied a credential binding.
+/// Non-canonical completion record for the reachability-only setup flow.
+/// It does not claim that `/healthz` supplied a credential binding.
 nonisolated struct SetupCompletionRecord: Codable, Equatable, Sendable {
     static let currentSchemaVersion = 1
 
