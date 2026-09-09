@@ -84,7 +84,6 @@ production_files=(
     "TAPCamDemo/TAPLibrary/PhotoLibraryPendingCaptureExporter.swift"
     "TAPCamDemo/TAPLibrary/TAPLibraryNotifications.swift"
     "TAPCamDemo/TAPLibrary/TAPPendingCaptureArtifacts.swift"
-    "TAPCamDemo/TAPLibrary/TAPPendingCaptureMaintenance.swift"
     "TAPCamDemo/TAPLibrary/TAPPendingCaptureOperations.swift"
     "TAPCamDemo/TAPLibrary/TAPPendingCaptureProcessor.swift"
     "TAPCamDemo/TAPLibrary/TAPPendingCaptureStore.swift"

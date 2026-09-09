@@ -686,6 +686,47 @@ struct TAPLibraryStorageTests {
         #expect(try await store.visiblePendingRecords().isEmpty)
     }
 
+    @Test func batchCleanupRemovesOnlyExportedLargeFiles() async throws {
+        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+        let store = TAPPendingCaptureStore(rootURL: rootURL)
+        let pendingBytes = Data("pending-original".utf8)
+        let pendingRecord = try await store.ingest(TAPCamDemoTestFixtures.samplePendingArtifact(
+            photoData: pendingBytes,
+            captureID: "pending-cleanup"
+        ))
+
+        var exportedRecord = TAPCamDemoTestFixtures.samplePendingRecord(
+            captureID: "exported-cleanup",
+            capturedAt: Date(timeIntervalSince1970: 0),
+            signedPhotoFilename: "signed.heic",
+            thumbnailFilename: "thumbnail.jpg",
+            assetLocalIdentifier: "exported-asset"
+        )
+        exportedRecord.status = .exported
+        try TAPCamDemoTestFixtures.writePendingRecord(exportedRecord, rootURL: rootURL)
+        let bundleURL = rootURL.appendingPathComponent(exportedRecord.captureID)
+        let largeFileURLs = ["unsigned.heic", "signed.heic"].map {
+            bundleURL.appendingPathComponent($0)
+        }
+        for url in largeFileURLs {
+            try Data("exported-leftover".utf8).write(to: url)
+        }
+        let thumbnailBytes = Data("retained-thumbnail".utf8)
+        try thumbnailBytes.write(to: bundleURL.appendingPathComponent("thumbnail.jpg"))
+        let recordURL = bundleURL.appendingPathComponent("bundle.json")
+        let recordBytes = try Data(contentsOf: recordURL)
+
+        try await store.cleanupExportedLargeFiles()
+
+        #expect(try await store.unsignedPhotoData(captureID: pendingRecord.captureID) == pendingBytes)
+        for url in largeFileURLs {
+            #expect(!FileManager.default.fileExists(atPath: url.path))
+        }
+        #expect(try Data(contentsOf: recordURL) == recordBytes)
+        #expect(try await store.thumbnailData(captureID: exportedRecord.captureID) == thumbnailBytes)
+    }
+
     @Test func pendingCaptureStoreNormalizesFailureReasonAtWriteSink() async throws {
         let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
         let store = TAPPendingCaptureStore(rootURL: rootURL)

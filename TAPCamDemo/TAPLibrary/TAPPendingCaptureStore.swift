@@ -100,7 +100,6 @@ actor TAPPendingCaptureStore {
 
     private let storage: TAPPendingCaptureBundleStorage
     private var videoWorkspaces: TAPPendingVideoWorkspaceCoordinator
-    private let maintenance: TAPPendingCaptureMaintenance
     private let shareSnapshotLinker: @Sendable (URL, URL) throws -> Void
     private let videoSigningRecordPreparationFault: @Sendable (TAPPendingCaptureRecord) throws -> Void
     private var activeVideoSigningAttempts: [String: UUID] = [:]
@@ -119,7 +118,6 @@ actor TAPPendingCaptureStore {
         )
         self.storage = storage
         self.videoWorkspaces = TAPPendingVideoWorkspaceCoordinator(storage: storage)
-        self.maintenance = TAPPendingCaptureMaintenance(storage: storage)
         self.shareSnapshotLinker = shareSnapshotLinker
         self.videoSigningRecordPreparationFault = videoSigningRecordPreparationFault
     }
@@ -1142,7 +1140,9 @@ actor TAPPendingCaptureStore {
     }
 
     func cleanupExportedLargeFiles() throws {
-        try maintenance.cleanupExportedLargeFiles(records: allRecords())
+        for record in try allRecords() where record.status == .exported {
+            try storage.cleanupLargeFiles(for: record)
+        }
     }
 
     func removeRecord(captureID: String) throws {
