@@ -349,19 +349,6 @@ nonisolated struct DepthAnalysisProgressivePhotoLoader {
         )
     }
 
-    func input(
-        source: DepthAnalysisSource,
-        requestKey: MediaFetchRequestKey,
-        progressHandler: @escaping OriginalProgressHandler
-    ) async throws -> TAPDepthAnalysisInput {
-        try await loadedOriginal(
-            source: source,
-            requestKey: requestKey,
-            expectsPairedVideo: false,
-            progressHandler: progressHandler
-        ).analysisInput()
-    }
-
     @concurrent
     func loadedOriginal(
         source: DepthAnalysisSource,

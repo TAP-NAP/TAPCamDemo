@@ -10,7 +10,7 @@ import Foundation
 /// `DepthAnalysisView` only needs enough information to move to the previous or
 /// next library item and keep camera route context in sync. Loaded image bytes,
 /// Photos handles, and pending-capture stores still stay behind
-/// `DepthAnalysisInputLoader`.
+/// `DepthAnalysisProgressivePhotoLoader`.
 nonisolated struct DepthAnalysisAlbumContext: Equatable {
     nonisolated struct Entry: Identifiable, Equatable {
         let id: String
