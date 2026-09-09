@@ -169,36 +169,6 @@ enum AppAttestRuntimeFactory {
     static let configuredEnvironment: AppAttestEnvironment = .production
     #endif
 
-    #if DEBUG
-    static func make(
-        progressHandler: (@MainActor @Sendable (String) async -> Void)? = nil
-    ) throws -> AppAttestRuntime {
-        try make(baseURL: AppAttestBackendConfiguration.baseURL(), progressHandler: progressHandler)
-    }
-
-    static func make(
-        baseURL: URL,
-        progressHandler: (@MainActor @Sendable (String) async -> Void)? = nil
-    ) throws -> AppAttestRuntime {
-        let backend = try HTTPAppAttestBackend(baseURL: baseURL)
-        let defaultClient = DefaultAppAttestClient(
-            backend: backend,
-            credentialStore: KeychainAppAttestCredentialStore(),
-            deviceService: DCAppAttestDeviceService(),
-            environment: configuredEnvironment,
-            progressHandler: progressHandler
-        )
-        let client = LoggingAppAttestClient(wrapping: defaultClient)
-
-        return AppAttestRuntime(
-            client: client,
-            backendURL: baseURL,
-            environment: configuredEnvironment,
-            backendDescription: "HTTP Backend configured",
-            backendPublicSummary: AppAttestBackendPresentation.configuredHTTPBackendSummary
-        )
-    }
-    #else
     static func make() throws -> AppAttestRuntime {
         try make(baseURL: AppAttestBackendConfiguration.baseURL())
     }
@@ -221,7 +191,6 @@ enum AppAttestRuntimeFactory {
             backendPublicSummary: AppAttestBackendPresentation.configuredHTTPBackendSummary
         )
     }
-    #endif
 
     static func fallbackRuntime(error: Error) -> AppAttestRuntime {
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
