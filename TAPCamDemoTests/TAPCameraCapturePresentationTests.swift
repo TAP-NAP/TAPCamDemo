@@ -4,12 +4,101 @@
 //
 
 import AVFoundation
+import Combine
 import Foundation
 import SwiftUI
 import Testing
+import UIKit
 @testable import TAPCamDemo
 
 struct TAPCameraCapturePresentationTests {
+    @Test @MainActor func cameraChromeOrientationMapsNotificationsAndRetainsStableAngle() async throws {
+        let fixture = CameraChromeOrientationTestFixture()
+        fixture.orientation = .landscapeLeft
+        let controller = fixture.makeController()
+        var publishedDegrees: [Double] = []
+        let subscription = controller.$angle.sink { publishedDegrees.append($0.degrees) }
+        defer {
+            subscription.cancel()
+            controller.stop()
+        }
+
+        #expect(controller.angle == .zero)
+        controller.start()
+        #expect(controller.angle == .degrees(90))
+
+        let rotations: [(UIDeviceOrientation, Double)] = [
+            (.landscapeRight, -90),
+            (.portraitUpsideDown, 180),
+            (.portrait, 0),
+            (.landscapeLeft, 90)
+        ]
+        for (orientation, degrees) in rotations {
+            try await fixture.postOrientation(orientation)
+            #expect(controller.angle == .degrees(degrees))
+        }
+        #expect(publishedDegrees == [0, 90, -90, 180, 0, 90])
+
+        for orientation in [UIDeviceOrientation.unknown, .faceUp, .faceDown, .landscapeLeft] {
+            try await fixture.postOrientation(orientation)
+            #expect(controller.angle == .degrees(90))
+        }
+        #expect(publishedDegrees == [0, 90, -90, 180, 0, 90])
+    }
+
+    @Test @MainActor func cameraChromeOrientationBalancesRepeatedStartAndStop() async throws {
+        let fixture = CameraChromeOrientationTestFixture()
+        let controller = fixture.makeController()
+        defer { controller.stop() }
+
+        controller.stop()
+        #expect(fixture.events.isEmpty)
+        try await fixture.postOrientation(.landscapeLeft)
+        #expect(fixture.orientationReadCount == 0)
+
+        controller.start()
+        controller.start()
+        #expect(fixture.events == ["startChromeOrientation"])
+        #expect(fixture.orientationReadCount == 1)
+        #expect(controller.angle == .degrees(90))
+
+        try await fixture.postOrientation(.landscapeRight)
+        #expect(fixture.orientationReadCount == 2)
+        #expect(controller.angle == .degrees(-90))
+
+        controller.stop()
+        controller.stop()
+        #expect(fixture.events == ["startChromeOrientation", "stopChromeOrientation"])
+        try await fixture.postOrientation(.portraitUpsideDown)
+        #expect(fixture.orientationReadCount == 2)
+        #expect(controller.angle == .degrees(-90))
+
+        controller.start()
+        #expect(fixture.orientationReadCount == 3)
+        #expect(controller.angle == .degrees(180))
+        controller.stop()
+        #expect(fixture.events == [
+            "startChromeOrientation", "stopChromeOrientation",
+            "startChromeOrientation", "stopChromeOrientation"
+        ])
+    }
+
+    @Test @MainActor func cameraChromeOrientationDiscardsNotificationsQueuedBeforeStop() async throws {
+        let fixture = CameraChromeOrientationTestFixture()
+        fixture.orientation = .landscapeLeft
+        let controller = fixture.makeController()
+        controller.start()
+
+        fixture.orientation = .landscapeRight
+        fixture.notificationCenter.post(name: UIDevice.orientationDidChangeNotification, object: nil)
+        controller.stop()
+        try await Task.sleep(for: .milliseconds(200))
+
+        #expect(fixture.orientationReadCount == 1)
+        #expect(controller.angle == .degrees(90))
+        #expect(fixture.events == ["startChromeOrientation", "stopChromeOrientation"])
+    }
+
     @Test func settingsSessionReconfigurationPolicyCoalescesCaptureChanges() {
         var policy = CameraSettingsSessionReconfigurationPolicy()
 
@@ -1276,4 +1365,31 @@ struct TAPCameraCapturePresentationTests {
         }
     }
     #endif
+}
+
+@MainActor
+private final class CameraChromeOrientationTestFixture {
+    let notificationCenter = NotificationCenter()
+    var orientation: UIDeviceOrientation = .portrait
+    var orientationReadCount = 0
+    var events: [String] = []
+
+    func makeController() -> CameraChromeOrientationController {
+        CameraChromeOrientationController(
+            notificationCenter: notificationCenter,
+            readOrientation: {
+                self.orientationReadCount += 1
+                return self.orientation
+            },
+            setOrientationNotificationsEnabled: { isEnabled in
+                self.events.append(isEnabled ? "startChromeOrientation" : "stopChromeOrientation")
+            }
+        )
+    }
+
+    func postOrientation(_ orientation: UIDeviceOrientation) async throws {
+        self.orientation = orientation
+        notificationCenter.post(name: UIDevice.orientationDidChangeNotification, object: nil)
+        try await Task.sleep(for: .milliseconds(200))
+    }
 }

@@ -18,81 +18,59 @@ import UIKit
 /// screen structure remains stable.
 @MainActor
 final class CameraChromeOrientationController: ObservableObject {
-    @Published private(set) var orientation: CameraChromeOrientation = .portrait
+    @Published private(set) var angle: Angle = .zero
 
+    private let notificationCenter: NotificationCenter
+    private let readOrientation: @MainActor () -> UIDeviceOrientation
+    private let setOrientationNotificationsEnabled: @MainActor (Bool) -> Void
     private var notificationToken: NSObjectProtocol?
-    private var lastStableOrientation: UIDeviceOrientation = .portrait
 
-    var angle: Angle {
-        orientation.angle
+    init(
+        notificationCenter: NotificationCenter = .default,
+        readOrientation: @escaping @MainActor () -> UIDeviceOrientation = { UIDevice.current.orientation },
+        setOrientationNotificationsEnabled: @escaping @MainActor (Bool) -> Void = { isEnabled in
+            if isEnabled {
+                UIDevice.current.beginGeneratingDeviceOrientationNotifications()
+            } else {
+                UIDevice.current.endGeneratingDeviceOrientationNotifications()
+            }
+        }
+    ) {
+        self.notificationCenter = notificationCenter
+        self.readOrientation = readOrientation
+        self.setOrientationNotificationsEnabled = setOrientationNotificationsEnabled
     }
 
     func start() {
-        UIDevice.current.beginGeneratingDeviceOrientationNotifications()
-        update(from: UIDevice.current.orientation)
+        guard notificationToken == nil else { return }
+        setOrientationNotificationsEnabled(true)
+        update(from: readOrientation())
 
-        notificationToken = NotificationCenter.default.addObserver(
+        notificationToken = notificationCenter.addObserver(
             forName: UIDevice.orientationDidChangeNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            guard let self else { return }
-            Task { @MainActor in
-                self.update(from: UIDevice.current.orientation)
+            Task { @MainActor [weak self] in
+                guard let self, self.notificationToken != nil else { return }
+                self.update(from: self.readOrientation())
             }
         }
     }
 
     func stop() {
-        if let notificationToken {
-            NotificationCenter.default.removeObserver(notificationToken)
-            self.notificationToken = nil
-        }
-        UIDevice.current.endGeneratingDeviceOrientationNotifications()
+        guard let notificationToken else { return }
+        notificationCenter.removeObserver(notificationToken)
+        self.notificationToken = nil
+        setOrientationNotificationsEnabled(false)
     }
 
     private func update(from orientation: UIDeviceOrientation) {
-        guard orientation.isCameraChromeStable else {
-            updateAngle(for: lastStableOrientation)
-            return
-        }
-
-        lastStableOrientation = orientation
-        updateAngle(for: orientation)
-    }
-
-    private func updateAngle(for orientation: UIDeviceOrientation) {
-        let newOrientation = orientation.cameraChromeOrientation
-        guard newOrientation != self.orientation else { return }
+        guard let newAngle = orientation.cameraChromeAngle,
+              newAngle != angle else { return }
 
         withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
-            self.orientation = newOrientation
-        }
-    }
-}
-
-/// Orientation-aware rotation rules for user-facing chrome.
-///
-/// The SwiftUI window remains portrait, while selected user-facing controls
-/// rotate their contents for readability. Debug instrumentation intentionally
-/// does not use these values; debug panels stay fixed in portrait preview
-/// coordinates so their positions remain stable while inspecting the pipeline.
-enum CameraChromeOrientation: Equatable {
-    case portrait
-    case landscapeLeft
-    case landscapeRight
-    case portraitUpsideDown
-
-    var angle: Angle {
-        switch self {
-        case .portrait:
-            return .degrees(0)
-        case .landscapeLeft:
-            return .degrees(90)
-        case .landscapeRight:
-            return .degrees(-90)
-        case .portraitUpsideDown:
-            return .degrees(180)
+            angle = newAngle
         }
     }
 }
@@ -130,18 +108,7 @@ struct CenterAnchoredChromeRotation<Content: View>: View {
 }
 
 private extension UIDeviceOrientation {
-    var isCameraChromeStable: Bool {
-        switch self {
-        case .portrait, .portraitUpsideDown, .landscapeLeft, .landscapeRight:
-            return true
-        case .unknown, .faceUp, .faceDown:
-            return false
-        @unknown default:
-            return false
-        }
-    }
-
-    var cameraChromeOrientation: CameraChromeOrientation {
+    var cameraChromeAngle: Angle? {
         /*
          The interface remains portrait. The mapping below rotates controls into
          the user's physical reading direction without asking UIKit to rotate the
@@ -150,17 +117,17 @@ private extension UIDeviceOrientation {
          */
         switch self {
         case .portrait:
-            return .portrait
+            return .degrees(0)
         case .landscapeLeft:
-            return .landscapeLeft
+            return .degrees(90)
         case .landscapeRight:
-            return .landscapeRight
+            return .degrees(-90)
         case .portraitUpsideDown:
-            return .portraitUpsideDown
+            return .degrees(180)
         case .unknown, .faceUp, .faceDown:
-            return .portrait
+            return nil
         @unknown default:
-            return .portrait
+            return nil
         }
     }
 }
