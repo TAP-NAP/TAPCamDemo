@@ -305,8 +305,6 @@ nonisolated enum PhotoLibraryWriter {
                 try await writeResourceCancellable(
                     resource,
                     to: videoURL,
-                    assetLocalIdentifier: asset.localIdentifier,
-                    label: "originalShareVideo",
                     progressHandler: progressHandler
                 )
                 try Task.checkCancellation()
@@ -366,8 +364,6 @@ nonisolated enum PhotoLibraryWriter {
             try await writeResourceCancellable(
                 photoResource,
                 to: photoURL,
-                assetLocalIdentifier: asset.localIdentifier,
-                label: "originalSharePhoto",
                 progressHandler: { value in
                     mappedShareProgress(
                         value,
@@ -383,8 +379,6 @@ nonisolated enum PhotoLibraryWriter {
                 try await writeResourceCancellable(
                     pairedVideoResource,
                     to: pairedVideoURL,
-                    assetLocalIdentifier: asset.localIdentifier,
-                    label: "originalSharePairedVideo",
                     progressHandler: { value in
                         mappedShareProgress(
                             value,
@@ -566,16 +560,14 @@ nonisolated enum PhotoLibraryWriter {
     private static func writeResourceCancellable(
         _ resource: PHAssetResource,
         to fileURL: URL,
-        assetLocalIdentifier: String,
-        label: String,
         progressHandler: @escaping ResourceProgressHandler
     ) async throws {
         try Data().write(to: fileURL, options: .atomic)
-        let request = try PhotoResourceFileRequest(
-            fileURL: fileURL,
-            assetLocalIdentifier: assetLocalIdentifier,
-            label: label,
-            progressHandler: progressHandler
+        let request = PhotoKitResourceRequestBridge(
+            sink: try PhotoKitResourceFileSink(fileURL: fileURL),
+            allowsNetworkAccess: true,
+            progress: progressHandler,
+            mapError: { $0 }
         )
         try await withTaskCancellationHandler {
             try await request.start(resource: resource)
@@ -836,149 +828,6 @@ nonisolated final class PhotoLibraryRequestIDCancellationBridge<RequestID: Senda
             finishedBeforeInstall = true
         }
         lock.unlock()
-    }
-}
-
-nonisolated private final class PhotoResourceFileRequest: @unchecked Sendable {
-    private let lock = NSLock()
-    private let manager = PHAssetResourceManager.default()
-    private let requestIDBridge = PhotoLibraryRequestIDCancellationBridge<PHAssetResourceDataRequestID>(
-        cancelRequest: { requestID in
-            PHAssetResourceManager.default().cancelDataRequest(requestID)
-        }
-    )
-    private let fileURL: URL
-    private let assetLocalIdentifier: String
-    private let label: String
-    private let progressHandler: PhotoLibraryWriter.ResourceProgressHandler
-    private let requestStartedAt = ProcessInfo.processInfo.systemUptime
-    private var fileHandle: FileHandle?
-    private var continuation: CheckedContinuation<Void, any Error>?
-    private var cancellationRequested = false
-    private var finished = false
-    private var receivedByteCount = Int64(0)
-
-    init(
-        fileURL: URL,
-        assetLocalIdentifier: String,
-        label: String,
-        progressHandler: @escaping PhotoLibraryWriter.ResourceProgressHandler
-    ) throws {
-        self.fileURL = fileURL
-        self.assetLocalIdentifier = assetLocalIdentifier
-        self.label = label
-        self.progressHandler = progressHandler
-        self.fileHandle = try FileHandle(forWritingTo: fileURL)
-    }
-
-    func start(resource: PHAssetResource) async throws {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
-            lock.lock()
-            guard !finished else {
-                lock.unlock()
-                continuation.resume(throwing: CancellationError())
-                return
-            }
-            self.continuation = continuation
-            let shouldCancelBeforeStart = cancellationRequested
-            lock.unlock()
-
-            guard !shouldCancelBeforeStart else {
-                finish(throwing: CancellationError())
-                return
-            }
-
-            let options = PHAssetResourceRequestOptions()
-            options.isNetworkAccessAllowed = true
-            options.progressHandler = { [weak self] progress in
-                self?.progressHandler(progress.isFinite ? progress : nil)
-            }
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.photoLibrary.info(
-                "\(self.label, privacy: .public) request started assetID=\(self.assetLocalIdentifier, privacy: .private) networkAccess=true"
-            )
-            #endif
-            let requestID = manager.requestData(
-                for: resource,
-                options: options,
-                dataReceivedHandler: { [weak self] data in
-                    self?.receive(data)
-                },
-                completionHandler: { [weak self] error in
-                    self?.finish(throwing: error)
-                }
-            )
-            install(requestID: requestID)
-        }
-    }
-
-    func cancel() {
-        lock.lock()
-        cancellationRequested = true
-        lock.unlock()
-        requestIDBridge.requestCancellation()
-        finish(throwing: CancellationError())
-    }
-
-    private func install(requestID: PHAssetResourceDataRequestID) {
-        requestIDBridge.install(requestID: requestID)
-    }
-
-    private func receive(_ data: Data) {
-        var writeError: (any Error)?
-        lock.lock()
-        if !finished, !cancellationRequested {
-            do {
-                try fileHandle?.write(contentsOf: data)
-                receivedByteCount += Int64(data.count)
-            } catch {
-                writeError = error
-            }
-        }
-        lock.unlock()
-        if let writeError {
-            requestIDBridge.requestCancellation()
-            finish(throwing: writeError)
-        }
-    }
-
-    private func finish(throwing error: (any Error)?) {
-        requestIDBridge.markFinished()
-        lock.lock()
-        guard !finished else {
-            lock.unlock()
-            return
-        }
-        finished = true
-        let continuation = self.continuation
-        self.continuation = nil
-        let fileHandle = self.fileHandle
-        self.fileHandle = nil
-        let receivedByteCount = self.receivedByteCount
-        lock.unlock()
-
-        try? fileHandle?.close()
-        let durationMilliseconds = max(
-            0,
-            (ProcessInfo.processInfo.systemUptime - requestStartedAt) * 1_000
-        )
-        if let error {
-            try? FileManager.default.removeItem(at: fileURL)
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.photoLibrary.error(
-                "\(self.label, privacy: .public) request failed assetID=\(self.assetLocalIdentifier, privacy: .private) durationMs=\(durationMilliseconds, privacy: .public) receivedBytes=\(receivedByteCount, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)"
-            )
-            #endif
-            continuation?.resume(throwing: error)
-        } else {
-            progressHandler(1)
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.photoLibrary.info(
-                "\(self.label, privacy: .public) request success assetID=\(self.assetLocalIdentifier, privacy: .private) durationMs=\(durationMilliseconds, privacy: .public) receivedBytes=\(receivedByteCount, privacy: .public)"
-            )
-            #endif
-            continuation?.resume(returning: ())
-        }
     }
 }
 

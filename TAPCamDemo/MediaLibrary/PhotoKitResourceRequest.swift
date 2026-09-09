@@ -84,6 +84,7 @@ nonisolated final class PhotoKitResourceRequestBridge<Sink: PhotoKitResourceSink
     private let manager: PHAssetResourceManager
     private let allowsNetworkAccess: Bool
     private let progress: @Sendable (Double?) -> Void
+    private let mapError: @Sendable (any Error) -> any Error
     private let sink: Sink
     private let lifecycle: PhotoKitRequestLifecycle<PHAssetResourceDataRequestID, Sink.Output>
 
@@ -92,12 +93,14 @@ nonisolated final class PhotoKitResourceRequestBridge<Sink: PhotoKitResourceSink
         manager: PHAssetResourceManager = .default(),
         allowsNetworkAccess: Bool,
         progress: @escaping @Sendable (Double?) -> Void,
+        mapError: @escaping @Sendable (any Error) -> any Error = PhotoKitMediaFetchFailure.resourceError,
         cancelRequest: (@Sendable (PHAssetResourceDataRequestID) -> Void)? = nil
     ) {
         self.sink = sink
         self.manager = manager
         self.allowsNetworkAccess = allowsNetworkAccess
         self.progress = progress
+        self.mapError = mapError
         self.lifecycle = PhotoKitRequestLifecycle(
             cancelRequest: cancelRequest ?? { requestID in
                 manager.cancelDataRequest(requestID)
@@ -159,7 +162,7 @@ nonisolated final class PhotoKitResourceRequestBridge<Sink: PhotoKitResourceSink
             {
                 try sink.receive(chunk)
             },
-            mapError: PhotoKitMediaFetchFailure.resourceError
+            mapError: mapError
         )
     }
 
@@ -169,7 +172,7 @@ nonisolated final class PhotoKitResourceRequestBridge<Sink: PhotoKitResourceSink
 
     private func finish(error: (any Error)?) {
         if let error {
-            lifecycle.finish(.failure(PhotoKitMediaFetchFailure.resourceError(error)))
+            lifecycle.finish(.failure(mapError(error)))
         } else {
             lifecycle.finish {
                 sink.finish()

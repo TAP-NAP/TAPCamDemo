@@ -646,6 +646,84 @@ struct LibraryMediaTests {
         #expect(!FileManager.default.fileExists(atPath: fileURL.path))
     }
 
+    @Test(arguments: [false, true])
+    func resourceFileRequestPreservesOriginalFailure(failsWhileWriting: Bool) async throws {
+        let directoryURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directoryURL) }
+        let fileURL = directoryURL.appendingPathComponent("resource.bin")
+        try Data().write(to: fileURL, options: .atomic)
+        let expectedError = NSError(
+            domain: failsWhileWriting ? NSCocoaErrorDomain : PHPhotosErrorDomain,
+            code: failsWhileWriting
+                ? CocoaError.Code.fileWriteOutOfSpace.rawValue
+                : PHPhotosError.networkAccessRequired.rawValue,
+            userInfo: [NSLocalizedDescriptionKey: "Original resource failure"]
+        )
+        let sink = try PhotoKitResourceFileSink(
+            fileURL: fileURL,
+            writeChunk: { fileHandle, chunk in
+                if failsWhileWriting {
+                    throw expectedError
+                }
+                try fileHandle.write(contentsOf: chunk)
+            }
+        )
+        let cancellations = PhotoKitCancellationRecorder()
+        let bridge = PhotoKitResourceRequestBridge(
+            sink: sink,
+            allowsNetworkAccess: true,
+            progress: { _ in },
+            mapError: { $0 },
+            cancelRequest: { cancellations.record($0) }
+        )
+
+        do {
+            try await bridge.startRequest { receive, completion in
+                receive(Data([1]))
+                completion(failsWhileWriting ? nil : expectedError)
+                return 57
+            }
+            Issue.record("Expected the original resource error")
+        } catch {
+            #expect((error as NSError) === expectedError)
+        }
+
+        #expect(cancellations.requestIDs == [57])
+        #expect(!FileManager.default.fileExists(atPath: fileURL.path))
+    }
+
+    @Test func resourceFileCancellationBeforeStartDeletesFileWithoutRegistering() async throws {
+        let directoryURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directoryURL) }
+        let fileURL = directoryURL.appendingPathComponent("resource.bin")
+        try Data().write(to: fileURL, options: .atomic)
+        let cancellations = PhotoKitCancellationRecorder()
+        let bridge = PhotoKitResourceRequestBridge(
+            sink: try PhotoKitResourceFileSink(fileURL: fileURL),
+            allowsNetworkAccess: true,
+            progress: { _ in },
+            mapError: { $0 },
+            cancelRequest: { cancellations.record($0) }
+        )
+
+        bridge.cancel()
+        do {
+            try await bridge.startRequest { _, completion in
+                Issue.record("Cancelled request must not register with Photos")
+                completion(nil)
+                return 58
+            }
+            Issue.record("Expected cancellation")
+        } catch is CancellationError {
+            // A cancelled file request must not start a Photos download.
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
+
+        #expect(cancellations.requestIDs.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: fileURL.path))
+    }
+
     @Test func resourceLocalProbePreservesNetworkAccessRequired() {
         let error = NSError(
             domain: PHPhotosErrorDomain,
