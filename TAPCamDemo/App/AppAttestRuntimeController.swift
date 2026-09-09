@@ -24,14 +24,6 @@ final class AppAttestRuntimeController: ObservableObject {
         credentialStatusText == AppAttestCredentialPresentation.readyStatusText && credentialKeyIdText != nil
     }
 
-    var canResetAndPrepareCredential: Bool {
-        !isPhotoCredentialReady && !isWorking
-    }
-
-    var credentialPreparationActionTitle: String {
-        credentialStatusText == AppAttestCredentialPresentation.notPreparedStatusText ? "Prepare" : "Retry"
-    }
-
     var credentialKeyIDPresentation: AppAttestCredentialKeyIDPresentation? {
         credentialKeyIdText.map(AppAttestCredentialKeyIDPresentation.init(keyID:))
     }

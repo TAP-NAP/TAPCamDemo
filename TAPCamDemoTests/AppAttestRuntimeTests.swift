@@ -238,7 +238,6 @@ struct AppAttestRuntimeTests {
             userDefaults: userDefaults
         )
 
-        #expect(controller.canResetAndPrepareCredential)
         #expect(controller.canPreparePhotoIntegrity)
         #expect(controller.photoIntegrityReadiness == .notReady)
 
@@ -254,7 +253,6 @@ struct AppAttestRuntimeTests {
         #expect(controller.credentialKeyIDPresentation?.displayText != "prepared-key-id")
         #expect(controller.photoIntegrityReadiness == .ready)
         #expect(!controller.isPreparingCredential)
-        #expect(!controller.canResetAndPrepareCredential)
         #expect(!controller.canPreparePhotoIntegrity)
     }
 
@@ -385,7 +383,6 @@ struct AppAttestRuntimeTests {
             "reset:\(AppAttestRuntimeDefaults.photoCredentialName)"
         ])
         #expect(controller.credentialStatusText == "Prepare credential failed. See diagnostics for details.")
-        #expect(controller.canResetAndPrepareCredential)
         #expect(controller.photoIntegrityReadiness == .preparationFailed)
         #expect(controller.canPreparePhotoIntegrity)
     }
@@ -412,7 +409,7 @@ struct AppAttestRuntimeTests {
         #expect(!controller.credentialStatusText.contains("secret localized"))
         #expect(!controller.credentialStatusText.contains("private/photo.heic"))
         #expect(!controller.credentialStatusText.contains("tapnap.net"))
-        #expect(controller.canResetAndPrepareCredential)
+        #expect(controller.canPreparePhotoIntegrity)
         #expect(controller.photoIntegrityReadiness == .preparationFailed)
     }
 
@@ -438,7 +435,7 @@ struct AppAttestRuntimeTests {
         #expect(controller.credentialStatusText == "Reset and prepare credential failed. See diagnostics for details.")
         #expect(!controller.isPreparingCredential)
         #expect(!controller.isWorking)
-        #expect(controller.canResetAndPrepareCredential)
+        #expect(controller.canPreparePhotoIntegrity)
         #expect(controller.photoIntegrityReadiness == .preparationFailed)
     }
 
