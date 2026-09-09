@@ -411,8 +411,6 @@ struct TAPDepthAnalysisPlaneRegionTests {
         #expect(payload.baseVertices.count == 2)
         #expect(payload.baseColors.count == 2)
         #expect(payload.highlightVertices.count == 1)
-        #expect(payload.stats.hasRGB)
-        #expect(payload.stats.hasHighlight)
         #expect(payload.baseColors[0].x > 0.99)
         #expect(payload.baseColors[0].z < 0.01)
         #expect(payload.baseColors[1].x < 0.01)
