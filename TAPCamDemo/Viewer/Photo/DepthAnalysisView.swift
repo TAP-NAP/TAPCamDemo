@@ -548,6 +548,7 @@ private struct AnalysisNativePageView: View {
 
             AnalysisLivePhotoBadgeOverlay(
                 source: slot.source,
+                knownIsLivePhoto: slot.entry.albumEntry?.expectsPairedVideo,
                 isCurrent: isCurrent,
                 viewportSize: viewportSize,
                 displayedImageSize: displayedImageSize,
@@ -628,12 +629,17 @@ private final class AnalysisPagingInteractionState {
 
 private struct AnalysisLivePhotoBadgeOverlay: View {
     let source: DepthAnalysisSource
+    let knownIsLivePhoto: Bool?
     let isCurrent: Bool
     let viewportSize: CGSize
     let displayedImageSize: CGSize?
     let displayedImageOrientation: CGImagePropertyOrientation
     let mediaFetcher: any LibraryMediaFetching
-    @State private var isLivePhoto = false
+    @State private var resolvedIsLivePhoto = false
+
+    private var isLivePhoto: Bool {
+        isCurrent && (knownIsLivePhoto ?? resolvedIsLivePhoto)
+    }
 
     var body: some View {
         ZStack {
@@ -646,7 +652,7 @@ private struct AnalysisLivePhotoBadgeOverlay: View {
         .frame(width: viewportSize.width, height: viewportSize.height)
         .allowsHitTesting(false)
         .accessibilityHidden(!isLivePhoto)
-        .task(id: "\(source.loadID)|\(isCurrent)") {
+        .task(id: isCurrent && knownIsLivePhoto == nil ? source.loadID : nil) {
             await refresh()
         }
     }
@@ -671,10 +677,7 @@ private struct AnalysisLivePhotoBadgeOverlay: View {
     }
 
     private func refresh() async {
-        guard isCurrent else {
-            isLivePhoto = false
-            return
-        }
+        guard isCurrent, knownIsLivePhoto == nil else { return }
 
         let resolvedIsLivePhoto = await DepthAnalysisLivePhotoSourceResolver.isLivePhoto(
             source: source,
@@ -683,7 +686,7 @@ private struct AnalysisLivePhotoBadgeOverlay: View {
         guard !Task.isCancelled else {
             return
         }
-        isLivePhoto = resolvedIsLivePhoto
+        self.resolvedIsLivePhoto = resolvedIsLivePhoto
     }
 }
 
