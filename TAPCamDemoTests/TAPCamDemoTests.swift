@@ -237,7 +237,7 @@ struct TAPCamDemoTests {
         ) == bottomLeft)
     }
 
-    @Test func heatmapVisualizationPublishesRangeLegendAndDistinctColors() throws {
+    @Test func heatmapVisualizationPublishesRangeAndDistinctColors() throws {
         let depthMap = TAPMetricDepthMap(
             width: 3,
             height: 1,
@@ -248,9 +248,6 @@ struct TAPCamDemoTests {
         let heatmap = try TAPDepthHeatmapRenderer.heatmap(for: depthMap)
         #expect(abs(heatmap.rangeMeters.lowerBound - 1.0) < 0.0001)
         #expect(abs(heatmap.rangeMeters.upperBound - 3.0) < 0.0001)
-        #expect(heatmap.legendStops.count == 5)
-        #expect(heatmap.legendStops.first?.label.contains("Near") == true)
-        #expect(heatmap.legendStops.last?.label.contains("Far") == true)
 
         let near = TAPDepthHeatmapRenderer.viridisColor(normalized: 0)
         let middle = TAPDepthHeatmapRenderer.viridisColor(normalized: 0.5)
@@ -262,59 +259,6 @@ struct TAPCamDemoTests {
         let pixels = TAPDepthHeatmapRenderer.heatmapPixels(for: depthMap, rangeMeters: heatmap.rangeMeters)
         #expect(pixels[3] == 0)
         #expect(pixels[7] == 255)
-    }
-
-    @Test func regionHeatmapUsesSelectedSamplesForRangeAndMasksOutsideRegion() throws {
-        let depthMap = TAPMetricDepthMap(
-            width: 4,
-            height: 1,
-            samples: [1.0, 2.0, 8.0, 9.0],
-            calibration: nil
-        )
-
-        let globalHeatmap = try TAPDepthHeatmapRenderer.heatmap(for: depthMap)
-        let regionHeatmap = try TAPDepthHeatmapRenderer.heatmap(
-            for: depthMap,
-            region: CGRect(x: 2, y: 0, width: 2, height: 1)
-        )
-        let regionPixels = TAPDepthHeatmapRenderer.heatmapPixels(
-            for: depthMap,
-            rangeMeters: regionHeatmap.rangeMeters,
-            visibleRegion: CGRect(x: 2, y: 0, width: 2, height: 1)
-        )
-
-        #expect(globalHeatmap.rangeScope == .global)
-        #expect(regionHeatmap.rangeScope == .region)
-        #expect(abs(globalHeatmap.rangeMeters.lowerBound - 1.0) < 0.0001)
-        #expect(abs(globalHeatmap.rangeMeters.upperBound - 9.0) < 0.0001)
-        #expect(abs(regionHeatmap.rangeMeters.lowerBound - 8.0) < 0.0001)
-        #expect(abs(regionHeatmap.rangeMeters.upperBound - 9.0) < 0.0001)
-        #expect(regionHeatmap.legendStops.count == 5)
-        #expect(regionPixels[3] == 0)
-        #expect(regionPixels[7] == 0)
-        #expect(regionPixels[11] == 255)
-        #expect(regionPixels[15] == 255)
-    }
-
-    @Test func regionHeatmapRejectsInvalidOnlySelection() throws {
-        let depthMap = TAPMetricDepthMap(
-            width: 3,
-            height: 1,
-            samples: [0, .nan, 2.0],
-            calibration: nil
-        )
-
-        do {
-            _ = try TAPDepthHeatmapRenderer.heatmap(
-                for: depthMap,
-                region: CGRect(x: 0, y: 0, width: 2, height: 1)
-            )
-            #expect(Bool(false), "Expected invalid-only region to throw.")
-        } catch TAPDepthAnalysisError.noValidDepthSamples {
-            #expect(Bool(true))
-        } catch {
-            #expect(Bool(false), "Unexpected error: \(error)")
-        }
     }
 
     @Test func maskOverlayUsesTransparencyAndBoundaryColorInsteadOfPureWhite() throws {

@@ -12,7 +12,6 @@ import Foundation
 /// descriptions. Views and view models should use this type before showing an
 /// error string.
 nonisolated enum DepthAnalysisErrorPresentation {
-    static let regionHeatmapErrorMessage = "Not enough valid depth samples in this region."
     static let planeInvalidSeedMessage = "No valid depth at this point."
     static let planeCalibrationMissingMessage = "Camera calibration missing."
     static let planeNotEnoughSamplesMessage = "Not enough nearby depth samples."

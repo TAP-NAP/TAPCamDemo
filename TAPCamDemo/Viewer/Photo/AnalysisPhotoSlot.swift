@@ -58,7 +58,6 @@ struct AnalysisPhotoAnalysisState {
 @MainActor
 struct AnalysisPhotoSelectionState {
     let planeRequestCoordinator: DepthAnalysisPlaneRegionRequestCoordinator
-    var regionSelection = DepthAnalysisRegionSelectionState()
     var planeSelection = DepthAnalysisPlaneSelectionState()
     var wantsPlaneGeometryPrewarm = false
     var hasRequestedPlaneGeometryPrewarm = false
@@ -107,11 +106,6 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
     var errorMessage: String? { analysisState.errorMessage }
     var errorTitle: String { analysisState.errorTitle }
     var errorSystemImage: String { analysisState.errorSystemImage }
-
-    var regionSelection: DepthAnalysisRegionSelectionState {
-        get { selectionState.regionSelection }
-        set { selectionState.regionSelection = newValue }
-    }
 
     var planeSelection: DepthAnalysisPlaneSelectionState {
         get { selectionState.planeSelection }
@@ -337,7 +331,6 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
         analysisState.errorMessage = nil
         selectionState.wantsPlaneGeometryPrewarm = false
         selectionState.hasRequestedPlaneGeometryPrewarm = false
-        selectionState.regionSelection.clear()
         selectionState.planeSelection.cancelDetection()
     }
 }

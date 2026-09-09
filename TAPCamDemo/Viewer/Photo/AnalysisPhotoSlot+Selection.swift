@@ -10,7 +10,6 @@ import Foundation
 extension AnalysisPhotoSlot {
     func clearSelection() {
         selectionState.planeRequestCoordinator.cancelRegionRequest()
-        selectionState.regionSelection.clear()
         selectionState.planeSelection.clear()
     }
 

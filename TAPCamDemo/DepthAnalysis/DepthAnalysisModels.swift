@@ -49,16 +49,9 @@ nonisolated struct TAPDepthLegendStop: Equatable, Identifiable {
     }
 }
 
-nonisolated enum TAPDepthHeatmapRangeScope: Equatable {
-    case global
-    case region
-}
-
 nonisolated struct TAPDepthHeatmapVisualization {
     let image: CGImage
     let rangeMeters: ClosedRange<Float>
-    let legendStops: [TAPDepthLegendStop]
-    let rangeScope: TAPDepthHeatmapRangeScope
 }
 
 nonisolated struct TAPDepthMaskVisualization {
@@ -217,12 +210,6 @@ enum TAPPlaneGrowthError: LocalizedError, Equatable {
             "No stable plane region found from this point."
         }
     }
-}
-
-nonisolated enum AnalysisInteractionState: Equatable {
-    case idle
-    case drawingSelection
-    case regionSelected
 }
 
 enum TAPDepthAnalysisError: LocalizedError {

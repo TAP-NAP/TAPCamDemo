@@ -142,7 +142,6 @@ extension AnalysisPhotoSlot {
         analysisState.phase = .ready
         setOriginalMediaFetchPhase(.ready(true))
         clearLoadError()
-        selectionState.regionSelection.clear()
         selectionState.planeSelection.cancelDetection()
         selectionState.planeRequestCoordinator.resetForNewInput()
         selectionState.hasRequestedPlaneGeometryPrewarm = false
