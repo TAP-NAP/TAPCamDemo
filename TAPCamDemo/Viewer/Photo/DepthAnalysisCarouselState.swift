@@ -162,6 +162,7 @@ nonisolated struct DepthAnalysisDisplayPhotoLoader {
         await thumbnailLoader(source, pixelLength)
     }
 
+    @concurrent
     func displayPhoto(
         source: DepthAnalysisSource,
         pixelLength: Int,
@@ -248,7 +249,7 @@ nonisolated struct DepthAnalysisDisplayPhotoLoader {
                 }
                 return AnalysisDisplayPhoto(image: image, requestedPixelLength: pixelLength)
             } catch {
-                NotificationCenter.default.post(name: .tapLibraryDidChange, object: nil)
+                TAPLibraryChangeNotifier.post()
                 throw DepthAnalysisInputLoaderError.pendingCaptureTemporarilyUnavailable
             }
         }
@@ -361,6 +362,7 @@ nonisolated struct DepthAnalysisProgressivePhotoLoader {
         ).analysisInput()
     }
 
+    @concurrent
     func loadedOriginal(
         source: DepthAnalysisSource,
         requestKey: MediaFetchRequestKey,

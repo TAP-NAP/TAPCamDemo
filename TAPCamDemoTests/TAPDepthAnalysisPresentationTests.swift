@@ -342,6 +342,51 @@ struct TAPDepthAnalysisPresentationTests {
         #expect(currentSlot.input != nil)
     }
 
+    @Test @MainActor func originalPhotoLoaderRunsOffMainActorAcrossProgressCallback() async throws {
+        let depthMap = TAPMetricDepthMap(
+            width: 2,
+            height: 2,
+            samples: [1, 1, 1, 1],
+            calibration: TAPCamDemoTestFixtures.sampleCalibration
+        )
+        let input = try TAPCamDemoTestFixtures.analysisInput(depthMap: depthMap)
+        let loader = originalLoaderCheckingExecutionBoundary(input: input)
+
+        let original = try await loader.loadedOriginal(
+            source: .photosAsset("original-execution-boundary"),
+            requestKey: MediaFetchRequestKey(
+                itemID: .photosAsset("original-execution-boundary"),
+                generation: 0,
+                purpose: .photoOriginal
+            ),
+            expectsPairedVideo: false,
+            progressHandler: { progress in
+                #expect(Thread.isMainThread)
+                #expect(progress == 0.5)
+            }
+        )
+
+        #expect(try original.analysisInput().depthMap.width == 2)
+    }
+
+    @Test @MainActor func displayPhotoLoaderRunsOffMainActor() async throws {
+        let image = try singlePixelUIImage()
+        let loader = displayLoaderCheckingExecutionBoundary(image: image)
+
+        let displayPhoto = try await loader.displayPhoto(
+            source: .photosAsset("display-execution-boundary"),
+            pixelLength: 80,
+            requestKey: MediaFetchRequestKey(
+                itemID: .photosAsset("display-execution-boundary"),
+                generation: 0,
+                purpose: .photoDisplay
+            ),
+            progressHandler: { _ in }
+        )
+
+        #expect(displayPhoto.image.size == image.size)
+    }
+
     @Test @MainActor func analysisPhotoSlotPublishesThumbnailProgressAndDecodedInput() async throws {
         let depthMap = TAPMetricDepthMap(
             width: 2,
@@ -707,6 +752,30 @@ private func singlePixelUIImage() throws -> UIImage {
         height: 1
     )
     return UIImage(cgImage: image)
+}
+
+private nonisolated func originalLoaderCheckingExecutionBoundary(
+    input: TAPDepthAnalysisInput
+) -> DepthAnalysisProgressivePhotoLoader {
+    DepthAnalysisProgressivePhotoLoader(inputLoader: { _, progress in
+        #expect(!isRunningOnMainThread())
+        await progress(0.5)
+        #expect(!isRunningOnMainThread())
+        return input
+    })
+}
+
+private nonisolated func displayLoaderCheckingExecutionBoundary(
+    image: UIImage
+) -> DepthAnalysisDisplayPhotoLoader {
+    DepthAnalysisDisplayPhotoLoader(displayLoader: { _, _ in
+        #expect(!isRunningOnMainThread())
+        return AnalysisDisplayPhoto(image: image)
+    })
+}
+
+private nonisolated func isRunningOnMainThread() -> Bool {
+    Thread.isMainThread
 }
 
 @MainActor
