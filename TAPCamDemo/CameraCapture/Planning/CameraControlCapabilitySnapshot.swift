@@ -153,9 +153,6 @@ nonisolated struct CameraControlCapabilitySnapshot: Equatable, Sendable {
     }
 
     private static func minimumFocusDistanceMillimeters(_ device: AVCaptureDevice) -> Int? {
-        guard #available(iOS 15.0, *) else {
-            return nil
-        }
         let distance = device.minimumFocusDistance
         return distance >= 0 ? distance : nil
     }

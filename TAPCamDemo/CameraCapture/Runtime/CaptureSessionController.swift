@@ -1452,10 +1452,8 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     private static func makeVideoRecordingVideoOutput() -> AVCaptureVideoDataOutput {
         let videoOutput = AVCaptureVideoDataOutput()
         videoOutput.alwaysDiscardsLateVideoFrames = true
-        if #available(iOS 13.0, *) {
-            videoOutput.automaticallyConfiguresOutputBufferDimensions = false
-            videoOutput.deliversPreviewSizedOutputBuffers = true
-        }
+        videoOutput.automaticallyConfiguresOutputBufferDimensions = false
+        videoOutput.deliversPreviewSizedOutputBuffers = true
         videoOutput.videoSettings = [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
         ]
@@ -1606,10 +1604,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     }
 
     private static func previewSizedDescription(_ output: AVCaptureVideoDataOutput) -> String {
-        if #available(iOS 13.0, *) {
-            return output.deliversPreviewSizedOutputBuffers ? "yes" : "no"
-        }
-        return "unavailable"
+        output.deliversPreviewSizedOutputBuffers ? "yes" : "no"
     }
 
     private static func formatsHaveSamePhotoDepthPreviewSignature(
