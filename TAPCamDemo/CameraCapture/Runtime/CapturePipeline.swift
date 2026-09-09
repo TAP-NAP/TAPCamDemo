@@ -74,7 +74,6 @@ nonisolated final class CapturePipeline: @unchecked Sendable {
     func runSingleCamJob(
         job: CaptureJob,
         context: CaptureSourceContext,
-        pendingJobCount: Int,
         queueWaitDuration: TimeInterval?
     ) async -> Result<CaptureWriteResult, Error> {
         let totalStart = Date()
@@ -111,7 +110,6 @@ nonisolated final class CapturePipeline: @unchecked Sendable {
 
             await metricsStore.record(metrics(
                 id: job.id,
-                context: context,
                 captureDuration: captureDuration,
                 packageBuildDuration: packageBuildDuration,
                 packagingDuration: packagingDuration,
@@ -119,7 +117,6 @@ nonisolated final class CapturePipeline: @unchecked Sendable {
                 writeDuration: writeDuration,
                 totalDuration: Date().timeIntervalSince(totalStart),
                 queueWaitDuration: queueWaitDuration,
-                pendingJobCount: pendingJobCount,
                 status: .succeeded,
                 failureReason: nil
             ))
@@ -128,7 +125,6 @@ nonisolated final class CapturePipeline: @unchecked Sendable {
         } catch {
             await metricsStore.record(metrics(
                 id: job.id,
-                context: context,
                 captureDuration: captureDuration,
                 packageBuildDuration: packageBuildDuration,
                 packagingDuration: packagingDuration,
@@ -136,7 +132,6 @@ nonisolated final class CapturePipeline: @unchecked Sendable {
                 writeDuration: writeDuration,
                 totalDuration: Date().timeIntervalSince(totalStart),
                 queueWaitDuration: queueWaitDuration,
-                pendingJobCount: pendingJobCount,
                 status: .failed,
                 failureReason: CameraCaptureStatusPresentation.failureReason(for: error)
             ))
@@ -147,7 +142,6 @@ nonisolated final class CapturePipeline: @unchecked Sendable {
 
     private func metrics(
         id: UUID,
-        context: CaptureSourceContext,
         captureDuration: TimeInterval?,
         packageBuildDuration: TimeInterval?,
         packagingDuration: TimeInterval?,
@@ -155,11 +149,9 @@ nonisolated final class CapturePipeline: @unchecked Sendable {
         writeDuration: TimeInterval?,
         totalDuration: TimeInterval,
         queueWaitDuration: TimeInterval?,
-        pendingJobCount: Int,
         status: CaptureJobStatus,
         failureReason: String?
     ) -> CaptureJobMetrics {
-        let plan = context.sessionConfiguration.capturePlan
         return CaptureJobMetrics(
             id: id,
             captureDuration: captureDuration,
@@ -169,15 +161,8 @@ nonisolated final class CapturePipeline: @unchecked Sendable {
             writeDuration: writeDuration,
             totalDuration: totalDuration,
             queueWaitDuration: queueWaitDuration,
-            pendingJobCount: pendingJobCount,
             status: status,
-            failureReason: failureReason,
-            pairingMode: plan.pairingMode.rawValue,
-            selectedRGBSource: plan.rgbSource.displayName,
-            selectedDepthSource: plan.depthSource?.displayName,
-            currentZoomFactor: plan.zoom?.rawVideoZoomFactor,
-            cropMode: plan.cropPolicy.mode,
-            cropRectNormalized: plan.cropPolicy.cropRectNormalized
+            failureReason: failureReason
         )
     }
 }

@@ -77,10 +77,6 @@ struct PerformancePanelView: View {
         VStack(alignment: .leading, spacing: 2) {
             metricRow("manifestBuild", metrics.manifestBuildDuration, isSubmetric: true)
             metricRow("baseHEIC", metrics.baseHEICDuration, isSubmetric: true)
-            metricRow("rgbDigest", metrics.rgbDigestDuration, isSubmetric: true)
-            metricRow("depthDigest", metrics.depthDigestDuration, isSubmetric: true)
-            metricRow("metadataDigest", metrics.metadataDigestDuration, isSubmetric: true)
-            metricRow("appAttest", metrics.appAttestDuration, isSubmetric: true)
             metricRow("xmpInject", metrics.xmpInjectDuration, isSubmetric: true)
             metricRow("xmpVerify", metrics.xmpVerifyDuration, isSubmetric: true)
         }

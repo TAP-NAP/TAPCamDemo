@@ -154,7 +154,6 @@ struct TAPCameraStatusPresentationTests {
         let result = await pipeline.runSingleCamJob(
             job: CaptureJob(id: UUID(uuidString: "00000000-0000-0000-0000-000000000999")!),
             context: context,
-            pendingJobCount: 1,
             queueWaitDuration: 0.01
         )
 

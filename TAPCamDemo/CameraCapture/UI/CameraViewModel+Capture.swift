@@ -89,7 +89,6 @@ extension CameraViewModel {
                 let result = await pipeline.runSingleCamJob(
                     job: job,
                     context: context,
-                    pendingJobCount: pendingCount,
                     queueWaitDuration: queueWaitDuration
                 )
                 let remaining = await jobQueue.finishJob()
