@@ -385,79 +385,17 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                     let previousActiveDepthDataFormat = configuration.device.activeDepthDataFormat
                     var didApplyVideoDepthDataFormat = false
                     do {
-                        if !usesSharedManualFocusVideoOutput {
-                            guard session.canAddOutput(videoOutput) else {
-                                throw TAPDepthCaptureError.unableToAddVideoOutput
-                            }
-                            session.addOutput(videoOutput)
-                            addedOutputs.append(videoOutput)
-                        }
-
-                        if let connection = videoOutput.connection(with: .video) {
-                            connection.preferredVideoStabilizationMode = .off
-                            if connection.isVideoMirroringSupported {
-                                connection.automaticallyAdjustsVideoMirroring = false
-                                connection.isVideoMirrored = isVideoMirrored
-                            }
-                            if let videoRotationAngle,
-                               connection.isVideoRotationAngleSupported(videoRotationAngle) {
-                                connection.videoRotationAngle = videoRotationAngle
-                            }
-                            if usesSharedManualFocusVideoOutput {
-                                manualFocusPreviewStream.setSharedOutputRotationAngle(
-                                    connection.videoRotationAngle
-                                )
-                            }
-                        }
-
-                        var actualRecordsAudio = false
-                        if let audioOutput {
-                            if !Self.hasLivePhotoAudioInput(session),
-                               let audioInput = try? Self.makeLivePhotoAudioInput(),
-                               session.canAddInput(audioInput) {
-                                session.addInput(audioInput)
-                                addedAudioInput = audioInput
-                            }
-                            if session.canAddOutput(audioOutput) {
-                                session.addOutput(audioOutput)
-                                addedOutputs.append(audioOutput)
-                                actualRecordsAudio = true
-                            }
-                        }
-
-                        var recordsDepth = false
-                        if configuration.depthDeliverySupported,
-                           !Self.activeFormatRejectsDepthDataOutput(configuration.device.activeFormat),
-                           session.canAddOutput(depthOutput) {
-                            if let depthFormat = Self.videoRecordingDepthFormat(for: configuration) {
-                                try CameraControlService.applyActiveDepthDataFormat(
-                                    depthFormat,
-                                    to: configuration.device
-                                )
-                                didApplyVideoDepthDataFormat = true
-                                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-                                TAPDiagnostics.cameraCapture.info("video warmup depth format configured format=\(Self.depthFormatDescription(depthFormat), privacy: .public) previous=\(Self.depthFormatDescription(previousActiveDepthDataFormat), privacy: .public)")
-                                #endif
-                            } else {
-                                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-                                TAPDiagnostics.cameraCapture.info("video warmup depth format not configured reason=no-compatible-active-depth-format")
-                                #endif
-                            }
-                            session.addOutput(depthOutput)
-                            addedOutputs.append(depthOutput)
-                            guard Self.configureCanonicalVideoDepthConnection(depthOutput) else {
-                                throw TAPDepthCaptureError.unableToAddDepthOutput
-                            }
-                            recordsDepth = true
-                        } else if configuration.depthDeliverySupported {
-                            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-                            TAPDiagnostics.cameraCapture.info("video warmup depth output not added unsupportedByActiveFormat=\(Self.activeFormatRejectsDepthDataOutput(configuration.device.activeFormat), privacy: .public) canAddOutput=\(session.canAddOutput(depthOutput), privacy: .public)")
-                            #endif
-                        }
-
-                        guard recordsDepth else {
-                            throw TAPDepthCaptureError.unableToAddDepthOutput
-                        }
+                        let actualRecordsAudio = try installVideoRecordingOutputs(
+                            videoOutput: videoOutput,
+                            audioOutput: audioOutput,
+                            depthOutput: depthOutput,
+                            configuration: configuration,
+                            videoRotationAngle: videoRotationAngle,
+                            isVideoMirrored: isVideoMirrored,
+                            addedOutputs: &addedOutputs,
+                            addedAudioInput: &addedAudioInput,
+                            didApplyVideoDepthDataFormat: &didApplyVideoDepthDataFormat
+                        )
 
                         let outputRouter = TAPVideoGraphOutputRouter(
                             videoOutput: videoOutput,
@@ -484,7 +422,6 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                         preparedVideoRecordingGraph = PreparedVideoRecordingGraph(
                             outputs: addedOutputs,
                             videoOutput: videoOutput,
-                            audioOutput: actualRecordsAudio ? audioOutput : nil,
                             depthOutput: depthOutput,
                             audioInputAddedByRecording: addedAudioInput,
                             device: configuration.device,
@@ -500,7 +437,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                             usesSharedManualFocusVideoOutput: usesSharedManualFocusVideoOutput
                         )
                         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-                        TAPDiagnostics.cameraCapture.info("video recording graph warmup complete recordsAudio=\(actualRecordsAudio, privacy: .public) recordsDepth=\(recordsDepth, privacy: .public) previewSizedVideo=\(Self.previewSizedDescription(videoOutput), privacy: .public)")
+                        TAPDiagnostics.cameraCapture.info("video recording graph warmup complete recordsAudio=\(actualRecordsAudio, privacy: .public) recordsDepth=true previewSizedVideo=\(Self.previewSizedDescription(videoOutput), privacy: .public)")
                         #endif
                         continuation.resume()
                     } catch {
@@ -578,10 +515,6 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                             videoOutput: preparedGraph.videoOutput,
                             depthOutput: preparedGraph.depthOutput
                         )
-                        preparedGraph.audioOutput?.setSampleBufferDelegate(
-                            preparedGraph.outputRouter,
-                            queue: preparedGraph.outputRouter.callbackQueue
-                        )
                         preparedGraph.outputRouter.activate(recorder)
 
                         activeVideoRecordingGraph = ActiveVideoRecordingGraph(
@@ -626,72 +559,17 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                     let previousActiveDepthDataFormat = configuration.device.activeDepthDataFormat
                     var didApplyVideoDepthDataFormat = false
                     do {
-                        guard session.canAddOutput(videoOutput) else {
-                            throw TAPDepthCaptureError.unableToAddVideoOutput
-                        }
-                        session.addOutput(videoOutput)
-                        addedOutputs.append(videoOutput)
-
-                        if let connection = videoOutput.connection(with: .video) {
-                            connection.preferredVideoStabilizationMode = .off
-                            if connection.isVideoMirroringSupported {
-                                connection.automaticallyAdjustsVideoMirroring = false
-                                connection.isVideoMirrored = request.isVideoMirrored
-                            }
-                            if let videoRotationAngle = request.videoRotationAngle,
-                               connection.isVideoRotationAngleSupported(videoRotationAngle) {
-                                connection.videoRotationAngle = videoRotationAngle
-                            }
-                        }
-
-                        var recordsAudio = false
-                        if let audioOutput {
-                            if !Self.hasLivePhotoAudioInput(session),
-                               let audioInput = try? Self.makeLivePhotoAudioInput(),
-                               session.canAddInput(audioInput) {
-                                session.addInput(audioInput)
-                                addedAudioInput = audioInput
-                            }
-                            if session.canAddOutput(audioOutput) {
-                                session.addOutput(audioOutput)
-                                addedOutputs.append(audioOutput)
-                                recordsAudio = true
-                            }
-                        }
-
-                        var recordsDepth = false
-                        if configuration.depthDeliverySupported,
-                           !Self.activeFormatRejectsDepthDataOutput(configuration.device.activeFormat),
-                           session.canAddOutput(depthOutput) {
-                            if let depthFormat = Self.videoRecordingDepthFormat(for: configuration) {
-                                try CameraControlService.applyActiveDepthDataFormat(
-                                    depthFormat,
-                                    to: configuration.device
-                                )
-                                didApplyVideoDepthDataFormat = true
-                                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-                                TAPDiagnostics.cameraCapture.info("video depth format configured captureID=\(request.captureID, privacy: .private) format=\(Self.depthFormatDescription(depthFormat), privacy: .public) previous=\(Self.depthFormatDescription(previousActiveDepthDataFormat), privacy: .public)")
-                                #endif
-                            } else {
-                                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-                                TAPDiagnostics.cameraCapture.info("video depth format not configured captureID=\(request.captureID, privacy: .private) reason=no-compatible-active-depth-format")
-                                #endif
-                            }
-                            session.addOutput(depthOutput)
-                            addedOutputs.append(depthOutput)
-                            guard Self.configureCanonicalVideoDepthConnection(depthOutput) else {
-                                throw TAPDepthCaptureError.unableToAddDepthOutput
-                            }
-                            recordsDepth = true
-                        } else if configuration.depthDeliverySupported {
-                            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-                            TAPDiagnostics.cameraCapture.info("video depth output not added captureID=\(request.captureID, privacy: .private) unsupportedByActiveFormat=\(Self.activeFormatRejectsDepthDataOutput(configuration.device.activeFormat), privacy: .public) canAddOutput=\(session.canAddOutput(depthOutput), privacy: .public)")
-                            #endif
-                        }
-
-                        guard recordsDepth else {
-                            throw TAPDepthCaptureError.unableToAddDepthOutput
-                        }
+                        let actualRecordsAudio = try installVideoRecordingOutputs(
+                            videoOutput: videoOutput,
+                            audioOutput: audioOutput,
+                            depthOutput: depthOutput,
+                            configuration: configuration,
+                            videoRotationAngle: request.videoRotationAngle,
+                            isVideoMirrored: request.isVideoMirrored,
+                            addedOutputs: &addedOutputs,
+                            addedAudioInput: &addedAudioInput,
+                            didApplyVideoDepthDataFormat: &didApplyVideoDepthDataFormat
+                        )
 
                         let videoSettings = videoOutput.recommendedVideoSettingsForAssetWriter(writingTo: .mp4)
                             ?? Self.fallbackVideoSettings(for: configuration.device)
@@ -699,8 +577,8 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                             request: request,
                             sessionConfiguration: configuration,
                             videoSettings: videoSettings,
-                            recordsAudio: recordsAudio,
-                            recordsDepth: recordsDepth,
+                            recordsAudio: actualRecordsAudio,
+                            recordsDepth: true,
                             location: location,
                             writerFailureHandler: { [weak self] failure in
                                 self?.emitVideoRecordingFailure(failure)
@@ -725,7 +603,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                         )
                         session.commitConfiguration()
                         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-                        TAPDiagnostics.cameraCapture.info("video recording graph started captureID=\(request.captureID, privacy: .private) recordsAudio=\(recordsAudio, privacy: .public) recordsDepth=\(recordsDepth, privacy: .public) synchronizedDepth=true previewSizedVideo=\(Self.previewSizedDescription(videoOutput), privacy: .public)")
+                        TAPDiagnostics.cameraCapture.info("video recording graph started captureID=\(request.captureID, privacy: .private) recordsAudio=\(actualRecordsAudio, privacy: .public) recordsDepth=true synchronizedDepth=true previewSizedVideo=\(Self.previewSizedDescription(videoOutput), privacy: .public)")
                         #endif
                         continuation.resume(returning: recorder)
                     } catch {
@@ -1409,6 +1287,82 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         return depthOutput
     }
 
+    /// Installs RGB and depth outputs and returns whether optional audio was
+    /// added. Each mutation updates the caller's rollback ledger immediately.
+    private func installVideoRecordingOutputs(
+        videoOutput: AVCaptureVideoDataOutput,
+        audioOutput: AVCaptureAudioDataOutput?,
+        depthOutput: AVCaptureDepthDataOutput,
+        configuration: SessionConfigurationResult,
+        videoRotationAngle: CGFloat?,
+        isVideoMirrored: Bool,
+        addedOutputs: inout [AVCaptureOutput],
+        addedAudioInput: inout AVCaptureDeviceInput?,
+        didApplyVideoDepthDataFormat: inout Bool
+    ) throws -> Bool {
+        let usesSharedManualFocusVideoOutput = videoOutput === manualFocusPreviewStream.videoOutput
+        if !usesSharedManualFocusVideoOutput {
+            guard session.canAddOutput(videoOutput) else {
+                throw TAPDepthCaptureError.unableToAddVideoOutput
+            }
+            session.addOutput(videoOutput)
+            addedOutputs.append(videoOutput)
+        }
+
+        if let connection = videoOutput.connection(with: .video) {
+            connection.preferredVideoStabilizationMode = .off
+            if connection.isVideoMirroringSupported {
+                connection.automaticallyAdjustsVideoMirroring = false
+                connection.isVideoMirrored = isVideoMirrored
+            }
+            if let videoRotationAngle,
+               connection.isVideoRotationAngleSupported(videoRotationAngle) {
+                connection.videoRotationAngle = videoRotationAngle
+            }
+            if usesSharedManualFocusVideoOutput {
+                manualFocusPreviewStream.setSharedOutputRotationAngle(connection.videoRotationAngle)
+            }
+        }
+
+        var actualRecordsAudio = false
+        if let audioOutput {
+            if !Self.hasLivePhotoAudioInput(session),
+               let audioInput = try? Self.makeLivePhotoAudioInput(),
+               session.canAddInput(audioInput) {
+                session.addInput(audioInput)
+                addedAudioInput = audioInput
+            }
+            if session.canAddOutput(audioOutput) {
+                session.addOutput(audioOutput)
+                addedOutputs.append(audioOutput)
+                actualRecordsAudio = true
+            }
+        }
+
+        guard configuration.depthDeliverySupported,
+              !Self.activeFormatRejectsDepthDataOutput(configuration.device.activeFormat),
+              session.canAddOutput(depthOutput) else {
+            throw TAPDepthCaptureError.unableToAddDepthOutput
+        }
+        if let depthFormat = Self.videoRecordingDepthFormat(for: configuration) {
+            try CameraControlService.applyActiveDepthDataFormat(depthFormat, to: configuration.device)
+            didApplyVideoDepthDataFormat = true
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.cameraCapture.info("video depth format configured format=\(Self.depthFormatDescription(depthFormat), privacy: .public)")
+            #endif
+        } else {
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.cameraCapture.info("video depth format not configured reason=no-compatible-active-depth-format")
+            #endif
+        }
+        session.addOutput(depthOutput)
+        addedOutputs.append(depthOutput)
+        guard Self.configureCanonicalVideoDepthConnection(depthOutput) else {
+            throw TAPDepthCaptureError.unableToAddDepthOutput
+        }
+        return actualRecordsAudio
+    }
+
     /// Registration descriptors use an unrotated, unmirrored depth grid and
     /// carry the RGB connection transform separately. Pin the depth connection
     /// instead of relying on device-specific AVFoundation defaults.
@@ -1895,7 +1849,6 @@ private struct ActiveVideoRecordingGraph {
 private nonisolated struct PreparedVideoRecordingGraph {
     let outputs: [AVCaptureOutput]
     let videoOutput: AVCaptureVideoDataOutput
-    let audioOutput: AVCaptureAudioDataOutput?
     let depthOutput: AVCaptureDepthDataOutput
     let audioInputAddedByRecording: AVCaptureDeviceInput?
     let device: AVCaptureDevice
