@@ -38,18 +38,21 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
         return cachedLocation
     }
 
-    /// Starts a one-shot Core Location refresh without awaiting the result.
-    /// Existing callers can request permission on a user gesture, but the current
-    /// capture uses only the cache that was already available at shutter time.
-    func warmLocationCache(shouldRequestAuthorization: Bool = false) {
-        requestLocationForCurrentAuthorizationStatus(shouldRequestAuthorization: shouldRequestAuthorization)
+    /// Refreshes an already-authorized location without awaiting the result.
+    /// The current capture uses only the cache available at shutter time.
+    func warmLocationCache() {
+        guard manager.authorizationStatus == .authorizedAlways
+            || manager.authorizationStatus == .authorizedWhenInUse else {
+            return
+        }
+        manager.requestLocation()
     }
 
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         Task { @MainActor [weak self] in
             guard let self else { return }
 
-            requestLocationForCurrentAuthorizationStatus(shouldRequestAuthorization: false)
+            warmLocationCache()
         }
     }
 
@@ -62,18 +65,4 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
 
     nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {}
 
-    private func requestLocationForCurrentAuthorizationStatus(shouldRequestAuthorization: Bool) {
-        switch manager.authorizationStatus {
-        case .authorizedAlways, .authorizedWhenInUse:
-            manager.requestLocation()
-        case .notDetermined:
-            if shouldRequestAuthorization {
-                manager.requestWhenInUseAuthorization()
-            }
-        case .denied, .restricted:
-            break
-        @unknown default:
-            break
-        }
-    }
 }
