@@ -119,7 +119,7 @@ nonisolated enum TAPDepthMapReader {
         )
         try TAPDepthAnalysisInputValidation.validateMinimumValidDepthSample(samples)
 
-        let fallbackCalibration = metricDepthData.cameraCalibrationData.map(cameraCalibration)
+        let fallbackCalibration = metricDepthData.cameraCalibrationData.map(TAPDepthManifest.CameraCalibration.init)
         let calibration = TAPDepthAnalysisInputValidation.preferredCameraCalibration(
             manifestCalibration: manifest?.payload.depth.cameraCalibration,
             fallbackCalibration: fallbackCalibration,
@@ -132,31 +132,6 @@ nonisolated enum TAPDepthMapReader {
             height: height,
             samples: samples,
             calibration: calibration
-        )
-    }
-
-    private static func cameraCalibration(_ calibration: AVCameraCalibrationData) -> TAPDepthManifest.CameraCalibration {
-        let intrinsic = calibration.intrinsicMatrix
-        let extrinsic = calibration.extrinsicMatrix
-        return TAPDepthManifest.CameraCalibration(
-            intrinsicMatrixReferenceWidth: calibration.intrinsicMatrixReferenceDimensions.width,
-            intrinsicMatrixReferenceHeight: calibration.intrinsicMatrixReferenceDimensions.height,
-            pixelSizeMillimeters: calibration.pixelSize,
-            lensDistortionLookupTablePresent: calibration.lensDistortionLookupTable != nil,
-            inverseLensDistortionLookupTablePresent: calibration.inverseLensDistortionLookupTable != nil,
-            lensDistortionCenterX: calibration.lensDistortionCenter.x,
-            lensDistortionCenterY: calibration.lensDistortionCenter.y,
-            intrinsicMatrix: [
-                intrinsic.columns.0.x, intrinsic.columns.0.y, intrinsic.columns.0.z,
-                intrinsic.columns.1.x, intrinsic.columns.1.y, intrinsic.columns.1.z,
-                intrinsic.columns.2.x, intrinsic.columns.2.y, intrinsic.columns.2.z
-            ],
-            extrinsicMatrix: [
-                extrinsic.columns.0.x, extrinsic.columns.0.y, extrinsic.columns.0.z,
-                extrinsic.columns.1.x, extrinsic.columns.1.y, extrinsic.columns.1.z,
-                extrinsic.columns.2.x, extrinsic.columns.2.y, extrinsic.columns.2.z,
-                extrinsic.columns.3.x, extrinsic.columns.3.y, extrinsic.columns.3.z
-            ]
         )
     }
 

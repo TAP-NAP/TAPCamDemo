@@ -302,7 +302,7 @@ nonisolated enum TAPDepthManifestBuilder {
             quality: depthData.depthDataQuality.tapDescription,
             isFiltered: depthData.isDepthDataFiltered,
             source: source,
-            cameraCalibration: depthData.cameraCalibrationData.map(makeCalibration)
+            cameraCalibration: depthData.cameraCalibrationData.map(TAPDepthManifest.CameraCalibration.init)
         )
     }
 
@@ -313,32 +313,6 @@ nonisolated enum TAPDepthManifestBuilder {
         case .unavailable:
             TAPDepthManifest.Alignment(depthToImage: "unavailable")
         }
-    }
-
-    private static func makeCalibration(_ calibration: AVCameraCalibrationData) -> TAPDepthManifest.CameraCalibration {
-        let intrinsic = calibration.intrinsicMatrix
-        let extrinsic = calibration.extrinsicMatrix
-
-        return TAPDepthManifest.CameraCalibration(
-            intrinsicMatrixReferenceWidth: calibration.intrinsicMatrixReferenceDimensions.width,
-            intrinsicMatrixReferenceHeight: calibration.intrinsicMatrixReferenceDimensions.height,
-            pixelSizeMillimeters: calibration.pixelSize,
-            lensDistortionLookupTablePresent: calibration.lensDistortionLookupTable != nil,
-            inverseLensDistortionLookupTablePresent: calibration.inverseLensDistortionLookupTable != nil,
-            lensDistortionCenterX: calibration.lensDistortionCenter.x,
-            lensDistortionCenterY: calibration.lensDistortionCenter.y,
-            intrinsicMatrix: [
-                intrinsic.columns.0.x, intrinsic.columns.0.y, intrinsic.columns.0.z,
-                intrinsic.columns.1.x, intrinsic.columns.1.y, intrinsic.columns.1.z,
-                intrinsic.columns.2.x, intrinsic.columns.2.y, intrinsic.columns.2.z
-            ],
-            extrinsicMatrix: [
-                extrinsic.columns.0.x, extrinsic.columns.0.y, extrinsic.columns.0.z,
-                extrinsic.columns.1.x, extrinsic.columns.1.y, extrinsic.columns.1.z,
-                extrinsic.columns.2.x, extrinsic.columns.2.y, extrinsic.columns.2.z,
-                extrinsic.columns.3.x, extrinsic.columns.3.y, extrinsic.columns.3.z
-            ]
-        )
     }
 
     private static func makeLocation(_ location: CLLocation) -> TAPDepthManifest.Location {
