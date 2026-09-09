@@ -5,37 +5,28 @@
 
 import Foundation
 
-/// Local byte-integrity validators shared by Viewer resource resolution and
-/// on-demand TAPNAP preparation. Passing one of these checks does not perform
-/// backend App Attest assertion verification.
+/// Local byte-integrity checks for the current Viewer original when Share opens.
+/// Transport builders consume the result; they do not repeat these checks.
+/// These checks do not perform backend App Attest assertion verification.
 nonisolated struct TAPSignedPhotoResourceValidator: Sendable {
-    typealias StillPhotoValidator = @Sendable (Data, String, CaptureOutputProfile) throws -> ValidatedTAPDepthPhoto
-    typealias LivePhotoValidator = @Sendable (Data, URL, String, CaptureOutputProfile) throws -> ValidatedTAPLivePhoto
-    typealias LivePhotoPrimaryValidator = @Sendable (Data, String, CaptureOutputProfile) throws -> ValidatedTAPDepthPhoto
+    typealias StillPhotoValidator = @Sendable (TAPPhotoValidationInput, String, CaptureOutputProfile) throws -> ValidatedTAPDepthPhoto
+    typealias LivePhotoValidator = @Sendable (TAPPhotoValidationInput, URL, String, CaptureOutputProfile) throws -> ValidatedTAPLivePhoto
 
     let validateStillPhoto: StillPhotoValidator
     let validateLivePhoto: LivePhotoValidator
-    let validateLivePhotoPrimaryPhoto: LivePhotoPrimaryValidator
 
     static let production = TAPSignedPhotoResourceValidator(
-        validateStillPhoto: { photoData, captureID, profile in
+        validateStillPhoto: { input, captureID, profile in
             try TAPCaptureProvenanceWriter().validateSignedExportPhoto(
-                photoData,
+                input,
                 expectedCaptureID: captureID,
                 expectedProfile: profile
             )
         },
-        validateLivePhoto: { photoData, pairedVideoURL, captureID, profile in
+        validateLivePhoto: { input, pairedVideoURL, captureID, profile in
             try TAPCaptureProvenanceWriter().validateSignedExportLivePhoto(
-                photoData,
+                input,
                 pairedVideoURL: pairedVideoURL,
-                expectedCaptureID: captureID,
-                expectedProfile: profile
-            )
-        },
-        validateLivePhotoPrimaryPhoto: { photoData, captureID, profile in
-            try TAPCaptureProvenanceWriter().validateSignedExportLivePhotoPrimaryPhoto(
-                photoData,
                 expectedCaptureID: captureID,
                 expectedProfile: profile
             )

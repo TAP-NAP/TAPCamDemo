@@ -5,6 +5,23 @@
 
 import Foundation
 
+/// Metadata from one current file read, retained only for this validation.
+nonisolated struct TAPVideoValidationInput: Sendable {
+    let fileURL: URL
+    let layout: TAPVideoContainerLayout
+    let manifestDocument: TAPVideoManifestDocument
+
+    init(fileURL: URL) throws {
+        try Task<Never, Never>.checkCancellation()
+        self.fileURL = fileURL
+        layout = try TAPVideoContainerLayout.read(from: fileURL)
+        manifestDocument = try TAPVideoManifestBox.decodedManifestDocument(
+            fromFileAt: fileURL,
+            layout: layout
+        )
+    }
+}
+
 /// TAP-private top-level BMFF `uuid` box that stores the video manifest JSON.
 ///
 /// The manifest box is part of the signed MP4 byte stream. Only the separate
@@ -35,13 +52,21 @@ nonisolated enum TAPVideoManifestBox {
         try decodedManifestDocument(fromFileAt: fileURL).manifest
     }
 
-    static func decodedManifestDocument(fromFileAt fileURL: URL) throws -> TAPVideoManifestDocument {
-        let manifestData = try manifestData(fromFileAt: fileURL)
+    static func decodedManifestDocument(
+        fromFileAt fileURL: URL,
+        layout: TAPVideoContainerLayout? = nil
+    ) throws -> TAPVideoManifestDocument {
+        let manifestData = try manifestData(fromFileAt: fileURL, layout: layout)
         return try TAPVideoManifestEncoder.decodedDocument(from: manifestData)
     }
 
-    static func manifestData(fromFileAt fileURL: URL) throws -> Data {
-        let matches = try TAPVideoContainerLayout.read(from: fileURL).topLevelBoxes
+    /// A supplied layout must come from this unchanged file in the current operation.
+    static func manifestData(
+        fromFileAt fileURL: URL,
+        layout: TAPVideoContainerLayout? = nil
+    ) throws -> Data {
+        let layout = try layout ?? TAPVideoContainerLayout.read(from: fileURL)
+        let matches = layout.topLevelBoxes
             .filter { $0.type == "uuid" && $0.userType == uuid }
         guard !matches.isEmpty else {
             throw TAPDepthCaptureError.xmpManifestMissing

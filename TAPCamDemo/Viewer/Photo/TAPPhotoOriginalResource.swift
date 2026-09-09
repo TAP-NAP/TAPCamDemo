@@ -409,24 +409,22 @@ nonisolated struct TAPPhotoLocalIntegrityValidator: Sendable {
             options: [.mappedIfSafe]
         )
         try Task<Never, Never>.checkCancellation()
-        let fileContainer = try TAPDepthPhotoFileReader.fileContainer(from: photoData)
-        let manifest = try TAPDepthPhotoFileReader.decodedManifest(from: photoData)
+        let input = try TAPPhotoValidationInput(data: photoData)
+        let fileContainer = input.fileContainer
+        let manifest = input.manifestDocument.manifest
         try Task<Never, Never>.checkCancellation()
         if let expectedCaptureID,
            manifest.payload.id != expectedCaptureID {
             throw TAPPhotoLocalIntegrityError.expectedCaptureIDMismatch
         }
-        let expectedProfile = Self.expectedProfile(
-            fileContainer: fileContainer,
-            manifest: manifest
-        )
+        let expectedProfile = input.inferredProfile
 
         if manifest.schema == TAPDepthManifest.Schema.livePhoto {
             guard let pairedVideoURL = resource.pairedVideoURL else {
                 throw TAPPhotoLocalIntegrityError.livePhotoPairedVideoMissing
             }
             _ = try localValidator.validateLivePhoto(
-                photoData,
+                input,
                 pairedVideoURL,
                 manifest.payload.id,
                 expectedProfile
@@ -446,7 +444,7 @@ nonisolated struct TAPPhotoLocalIntegrityValidator: Sendable {
             throw TAPPhotoLocalIntegrityError.mediaKindMismatch
         }
         _ = try localValidator.validateStillPhoto(
-            photoData,
+            input,
             manifest.payload.id,
             expectedProfile
         )
@@ -455,19 +453,6 @@ nonisolated struct TAPPhotoLocalIntegrityValidator: Sendable {
             captureID: manifest.payload.id,
             mediaKind: .photo,
             fileContainer: fileContainer
-        )
-    }
-
-    private static func expectedProfile(
-        fileContainer: CapturePhotoFileContainer,
-        manifest: TAPDepthManifest
-    ) -> CaptureOutputProfile {
-        let qualityLevel = CapturePhotoQualityLevel(
-            rawValue: manifest.payload.capture.photoQualityPrioritization
-        ) ?? .quality
-        return CaptureOutputProfile.releasePhotoDepthProfile(
-            fileContainer: fileContainer,
-            photoQualityLevel: qualityLevel
         )
     }
 }

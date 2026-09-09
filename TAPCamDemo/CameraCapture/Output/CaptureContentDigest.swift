@@ -107,16 +107,18 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
         ).digest
     }
 
+    /// Reuse only a slot located in this unchanged file during the current operation.
     static func makeVideo(
         manifest: TAPVideoManifest,
         rawManifestPayloadData: Data? = nil,
-        mp4FileURL: URL
+        mp4FileURL: URL,
+        validatedSlot: TAPProofSlot.FileLocation? = nil
     ) throws -> CaptureContentBinding {
         try Task<Never, Never>.checkCancellation()
         guard manifest.schema == TAPVideoManifest.Schema() else {
             throw TAPDepthCaptureError.invalidTAPManifest("unexpected video schema metadata")
         }
-        let slot = try TAPProofSlot.locateBMFF(inFileAt: mp4FileURL)
+        let slot = try validatedSlot ?? TAPProofSlot.locateBMFF(inFileAt: mp4FileURL)
         let fileHash = try TAPBMFFStreamingFile.sha256AndByteCountBase64URL(
             of: mp4FileURL,
             excluding: slot.containerRange
@@ -720,6 +722,16 @@ nonisolated enum TAPProofSlot {
         let kind: Kind
         let containerRange: TAPFileByteRange
         let payloadRange: TAPFileByteRange
+
+        fileprivate init(
+            kind: Kind,
+            containerRange: TAPFileByteRange,
+            payloadRange: TAPFileByteRange
+        ) {
+            self.kind = kind
+            self.containerRange = containerRange
+            self.payloadRange = payloadRange
+        }
     }
 
     static func ensuringEmptySlot(
@@ -801,8 +813,12 @@ nonisolated enum TAPProofSlot {
         return try envelopeData(fromPayload: payload)
     }
 
-    static func proofEnvelopeData(fromBMFFFileAt fileURL: URL) throws -> Data {
-        let slot = try locateBMFF(inFileAt: fileURL)
+    /// Reuse only a slot located in this unchanged file during the current operation.
+    static func proofEnvelopeData(
+        fromBMFFFileAt fileURL: URL,
+        validatedSlot: FileLocation? = nil
+    ) throws -> Data {
+        let slot = try validatedSlot ?? locateBMFF(inFileAt: fileURL)
         let payload = try TAPBMFFStreamingFile.read(
             slot.payloadRange,
             from: fileURL,
@@ -823,8 +839,13 @@ nonisolated enum TAPProofSlot {
         }
     }
 
-    static func locateBMFF(inFileAt fileURL: URL) throws -> FileLocation {
-        let matches = try TAPVideoContainerLayout.read(from: fileURL).topLevelBoxes
+    /// A supplied layout must come from this unchanged file in the current operation.
+    static func locateBMFF(
+        inFileAt fileURL: URL,
+        layout: TAPVideoContainerLayout? = nil
+    ) throws -> FileLocation {
+        let layout = try layout ?? TAPVideoContainerLayout.read(from: fileURL)
+        let matches = layout.topLevelBoxes
             .filter { $0.type == "uuid" && $0.userType == bmffUUID }
         guard !matches.isEmpty else {
             throw TAPDepthCaptureError.pendingCaptureProofMissing

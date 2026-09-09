@@ -907,6 +907,47 @@ struct TAPVideoStreamingTests {
         }
     }
 
+    @Test func parsedVideoMetadataDoesNotCacheSuccessfulIntegrityValidation() async throws {
+        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+        let store = TAPPendingCaptureStore(rootURL: rootURL)
+        let record = try await TAPCamDemoTestFixtures.ingestPendingTAPVideo(
+            store: store,
+            captureID: "mutated-parsed-video",
+            hasDepth: false
+        )
+        let videoURL = try await store.videoArtifactURL(captureID: record.captureID)
+        let writer = TAPCaptureProvenanceWriter()
+        _ = try await writer.signedVideoFile(
+            at: videoURL,
+            expectedCaptureID: record.captureID,
+            expectedPackageID: record.packageID,
+            assertionSigner: SuccessfulVideoCaptureAssertionSigner()
+        )
+        let input = try TAPVideoValidationInput(fileURL: videoURL)
+        _ = try await writer.validateSignedExportVideoFile(
+            input,
+            expectedCaptureID: record.captureID,
+            expectedPackageID: record.packageID
+        )
+
+        let fileHandle = try FileHandle(forUpdating: videoURL)
+        try fileHandle.seek(toOffset: 11)
+        try fileHandle.write(contentsOf: Data([0x33]))
+        try fileHandle.close()
+
+        do {
+            _ = try await writer.validateSignedExportVideoFile(
+                input,
+                expectedCaptureID: record.captureID,
+                expectedPackageID: record.packageID
+            )
+            Issue.record("Expected reused metadata to reject mutated video bytes.")
+        } catch TAPDepthCaptureError.pendingCaptureProofInvalid(let reason) {
+            #expect(reason.contains("proof digest"))
+        }
+    }
+
     @Test func depthGapAccumulatorMergesAdjacentEventsAndStaysBounded() throws {
         var adjacent = TAPDepthGapAccumulator()
         adjacent.record(

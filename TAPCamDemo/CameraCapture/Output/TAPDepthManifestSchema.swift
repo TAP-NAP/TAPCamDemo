@@ -570,11 +570,14 @@ extension TAPDepthManifest {
         let build: String
     }
 
-    nonisolated struct Proof: Codable, Equatable {
-        let type: String
-        let algorithm: String
-        let keyID: String?
-        let createdAt: String?
-        let value: String?
-    }
+    typealias Proof = TAPCaptureProof
+}
+
+/// The proof envelope has the same fields for still photos, Live Photos, and video.
+nonisolated struct TAPCaptureProof: Codable, Equatable, Sendable {
+    let type: String
+    let algorithm: String
+    let keyID: String?
+    let createdAt: String?
+    let value: String?
 }

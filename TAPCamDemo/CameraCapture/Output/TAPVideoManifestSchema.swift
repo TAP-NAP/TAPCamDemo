@@ -42,13 +42,7 @@ extension TAPVideoManifest {
         }
     }
 
-    nonisolated struct Proof: Codable, Equatable, Sendable {
-        let type: String
-        let algorithm: String
-        let keyID: String?
-        let createdAt: String?
-        let value: String?
-    }
+    typealias Proof = TAPCaptureProof
 
     nonisolated struct Payload: Codable, Equatable, Sendable {
         let id: String

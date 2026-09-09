@@ -246,7 +246,8 @@ struct TAPPhotoOriginalResourceTests {
 
         let result = try TAPPhotoLocalIntegrityValidator(
             localValidator: TAPSignedPhotoResourceValidator(
-                validateStillPhoto: { data, captureID, profile in
+                validateStillPhoto: { input, captureID, profile in
+                    let data = input.data
                     #expect(data == photoData)
                     #expect(captureID == "self-described-still")
                     #expect(profile.fileContainer == .heic)
@@ -257,9 +258,6 @@ struct TAPPhotoOriginalResourceTests {
                     )
                 },
                 validateLivePhoto: { _, _, _, _ in
-                    throw TestError.unexpectedRoute
-                },
-                validateLivePhotoPrimaryPhoto: { _, _, _ in
                     throw TestError.unexpectedRoute
                 }
             )
@@ -316,7 +314,8 @@ struct TAPPhotoOriginalResourceTests {
                 validateStillPhoto: { _, _, _ in
                     throw TestError.unexpectedRoute
                 },
-                validateLivePhoto: { data, receivedMovieURL, captureID, profile in
+                validateLivePhoto: { input, receivedMovieURL, captureID, profile in
+                    let data = input.data
                     #expect(data == photoData)
                     #expect(receivedMovieURL == movieURL)
                     #expect(captureID == "self-described-live")
@@ -329,9 +328,6 @@ struct TAPPhotoOriginalResourceTests {
                         ),
                         pairedVideoURL: receivedMovieURL
                     )
-                },
-                validateLivePhotoPrimaryPhoto: { _, _, _ in
-                    throw TestError.unexpectedRoute
                 }
             )
         ).validate(lease)

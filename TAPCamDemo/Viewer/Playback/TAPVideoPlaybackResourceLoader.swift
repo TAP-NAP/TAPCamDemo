@@ -122,9 +122,8 @@ nonisolated struct TAPVideoLocalIntegrityValidator: Sendable {
         expectedPackageID: UUID? = nil
     ) async throws -> TAPVideoLocalIntegrityResult {
         try Task<Never, Never>.checkCancellation()
-        let manifest = try TAPVideoManifestBox.decodedManifest(
-            fromFileAt: resource.fileURL
-        )
+        let input = try TAPVideoValidationInput(fileURL: resource.fileURL)
+        let manifest = input.manifestDocument.manifest
         try Task<Never, Never>.checkCancellation()
         guard !manifest.payload.id.isEmpty,
               let embeddedPackageID = UUID(uuidString: manifest.payload.packageID) else {
@@ -140,7 +139,7 @@ nonisolated struct TAPVideoLocalIntegrityValidator: Sendable {
         }
 
         _ = try await provenanceWriter.validateSignedExportVideoFile(
-            at: resource.fileURL,
+            input,
             expectedCaptureID: expectedCaptureID ?? manifest.payload.id,
             expectedPackageID: expectedPackageID ?? embeddedPackageID,
             validatesDepthTrack: false

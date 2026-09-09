@@ -229,48 +229,21 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
         expectedCaptureID: String,
         expectedProfile: CaptureOutputProfile
     ) throws -> ValidatedTAPDepthPhoto {
-        try Task<Never, Never>.checkCancellation()
-        try TAPDepthPhotoFileReader.validateContainer(
-            signedPhotoData,
-            expected: expectedProfile.fileContainer
+        try validateSignedExportPhoto(
+            TAPPhotoValidationInput(data: signedPhotoData, expectedContainer: expectedProfile.fileContainer),
+            expectedCaptureID: expectedCaptureID,
+            expectedProfile: expectedProfile
         )
-        let manifestDocument = try TAPDepthPhotoFileReader.decodedManifestDocument(
-            from: signedPhotoData
-        )
-        let manifest = manifestDocument.manifest
-        try validateStillPhotoManifestSchema(manifest)
-        try validateManifestID(manifest.payload.id, expectedCaptureID: expectedCaptureID)
-        try CaptureOutputManifestPolicy(profile: expectedProfile).validate(manifest.payload.capture)
-        try validateManifestCarriesNoProofBody(manifest)
+    }
 
-        let proof = try decodedCaptureProof(
-            from: signedPhotoData,
-            fileContainer: expectedProfile.fileContainer
-        )
-        let proofValue = try decodedCaptureProofValue(proof, expectedCaptureID: expectedCaptureID)
-        try Task<Never, Never>.checkCancellation()
-
-        let depthData = try TAPDepthPhotoFileReader.depthData(from: signedPhotoData)
-        try validateDepthReadback(depthData, manifest: manifest)
-
-        let recomputedDigest = try CaptureContentDigest.make(
-            manifest: manifest,
-            basePhotoData: signedPhotoData,
-            fileContainer: expectedProfile.fileContainer,
-            depthData: depthData,
-            rawManifestPayloadData: manifestDocument.rawPayloadData
-        )
-        try Task<Never, Never>.checkCancellation()
-        try validateCaptureProof(
-            proof,
-            proofValue: proofValue,
-            recomputedDigest: recomputedDigest
-        )
-
-        return ValidatedTAPDepthPhoto(
-            data: signedPhotoData,
-            manifest: manifest,
-            fileContainer: expectedProfile.fileContainer
+    func validateSignedExportPhoto(
+        _ input: TAPPhotoValidationInput,
+        expectedCaptureID: String,
+        expectedProfile: CaptureOutputProfile
+    ) throws -> ValidatedTAPDepthPhoto {
+        try validateSignedPhoto(
+            input, expectedCaptureID: expectedCaptureID,
+            expectedProfile: expectedProfile, pairedVideoURL: nil
         )
     }
 
@@ -281,54 +254,82 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
         expectedCaptureID: String,
         expectedProfile: CaptureOutputProfile
     ) throws -> ValidatedTAPLivePhoto {
-        try Task<Never, Never>.checkCancellation()
-        try TAPDepthPhotoFileReader.validateContainer(
-            signedPhotoData,
-            expected: expectedProfile.fileContainer
+        try validateSignedExportLivePhoto(
+            TAPPhotoValidationInput(data: signedPhotoData, expectedContainer: expectedProfile.fileContainer),
+            pairedVideoURL: pairedVideoURL,
+            expectedCaptureID: expectedCaptureID,
+            expectedProfile: expectedProfile
         )
-        let manifestDocument = try TAPDepthPhotoFileReader.decodedManifestDocument(
-            from: signedPhotoData
-        )
-        let manifest = manifestDocument.manifest
-        try validateLivePhotoManifestSchema(manifest)
-        try validateManifestID(manifest.payload.id, expectedCaptureID: expectedCaptureID)
-        try CaptureOutputManifestPolicy(profile: expectedProfile).validate(manifest.payload.capture)
-        try validateManifestCarriesNoProofBody(manifest)
-        try validateManifestLivePhotoPayload(manifest)
+    }
 
-        let proof = try decodedCaptureProof(
-            from: signedPhotoData,
-            fileContainer: expectedProfile.fileContainer
-        )
-        let proofValue = try decodedCaptureProofValue(proof, expectedCaptureID: expectedCaptureID)
-        try Task<Never, Never>.checkCancellation()
-
-        let depthData = try TAPDepthPhotoFileReader.depthData(from: signedPhotoData)
-        try validateDepthReadback(depthData, manifest: manifest)
-
-        let recomputedDigest = try CaptureContentDigest.make(
-            manifest: manifest,
-            basePhotoData: signedPhotoData,
-            fileContainer: expectedProfile.fileContainer,
-            depthData: depthData,
-            rawManifestPayloadData: manifestDocument.rawPayloadData,
-            pairedVideoURL: pairedVideoURL
-        )
-        try Task<Never, Never>.checkCancellation()
-        try validateCaptureProof(
-            proof,
-            proofValue: proofValue,
-            recomputedDigest: recomputedDigest
-        )
-
-        return ValidatedTAPLivePhoto(
-            photo: ValidatedTAPDepthPhoto(
-                data: signedPhotoData,
-                manifest: manifest,
-                fileContainer: expectedProfile.fileContainer
+    func validateSignedExportLivePhoto(
+        _ input: TAPPhotoValidationInput,
+        pairedVideoURL: URL,
+        expectedCaptureID: String,
+        expectedProfile: CaptureOutputProfile
+    ) throws -> ValidatedTAPLivePhoto {
+        ValidatedTAPLivePhoto(
+            photo: try validateSignedPhoto(
+                input, expectedCaptureID: expectedCaptureID,
+                expectedProfile: expectedProfile, pairedVideoURL: pairedVideoURL
             ),
             pairedVideoURL: pairedVideoURL
         )
+    }
+
+    private func validateSignedPhoto(
+        _ input: TAPPhotoValidationInput,
+        expectedCaptureID: String,
+        expectedProfile: CaptureOutputProfile,
+        pairedVideoURL: URL?
+    ) throws -> ValidatedTAPDepthPhoto {
+        try Task<Never, Never>.checkCancellation()
+        let manifest = input.manifestDocument.manifest
+        try validatePhotoHeader(
+            input, expectedCaptureID: expectedCaptureID,
+            expectedProfile: expectedProfile, isLivePhoto: pairedVideoURL != nil
+        )
+        let proof = try decodedCaptureProof(from: input.data, fileContainer: input.fileContainer)
+        let proofValue = try decodedCaptureProofValue(proof, expectedCaptureID: expectedCaptureID)
+        try Task<Never, Never>.checkCancellation()
+        let depthData = try TAPDepthPhotoFileReader.depthData(from: input.data)
+        try validateDepthReadback(depthData, manifest: manifest)
+        let recomputedDigest = try CaptureContentDigest.make(
+            manifest: manifest,
+            basePhotoData: input.data,
+            fileContainer: input.fileContainer,
+            depthData: depthData,
+            rawManifestPayloadData: input.manifestDocument.rawPayloadData,
+            pairedVideoURL: pairedVideoURL
+        )
+        try Task<Never, Never>.checkCancellation()
+        try validateCaptureProof(proof, proofValue: proofValue, recomputedDigest: recomputedDigest)
+        return ValidatedTAPDepthPhoto(
+            data: input.data, manifest: manifest, fileContainer: input.fileContainer
+        )
+    }
+
+    private func validatePhotoHeader(
+        _ input: TAPPhotoValidationInput,
+        expectedCaptureID: String,
+        expectedProfile: CaptureOutputProfile,
+        isLivePhoto: Bool
+    ) throws {
+        guard input.fileContainer == expectedProfile.fileContainer else {
+            throw TAPDepthCaptureError.invalidHEICContainerType(input.fileContainer.uniformTypeIdentifier)
+        }
+        let manifest = input.manifestDocument.manifest
+        if isLivePhoto {
+            try validateLivePhotoManifestSchema(manifest)
+        } else {
+            try validateStillPhotoManifestSchema(manifest)
+        }
+        try validateManifestID(manifest.payload.id, expectedCaptureID: expectedCaptureID)
+        try CaptureOutputManifestPolicy(profile: expectedProfile).validate(manifest.payload.capture)
+        try validateManifestCarriesNoProofBody(manifest)
+        if isLivePhoto {
+            try validateManifestLivePhotoPayload(manifest)
+        }
     }
 
     /// Partial gate for exporting the primary photo from an incomplete saved
@@ -341,19 +342,15 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
         expectedProfile: CaptureOutputProfile
     ) throws -> ValidatedTAPDepthPhoto {
         try Task<Never, Never>.checkCancellation()
-        try TAPDepthPhotoFileReader.validateContainer(
-            signedPhotoData,
-            expected: expectedProfile.fileContainer
+        let input = try TAPPhotoValidationInput(
+            data: signedPhotoData, expectedContainer: expectedProfile.fileContainer
         )
-        let manifestDocument = try TAPDepthPhotoFileReader.decodedManifestDocument(
-            from: signedPhotoData
-        )
+        let manifestDocument = input.manifestDocument
         let manifest = manifestDocument.manifest
-        try validateLivePhotoManifestSchema(manifest)
-        try validateManifestID(manifest.payload.id, expectedCaptureID: expectedCaptureID)
-        try CaptureOutputManifestPolicy(profile: expectedProfile).validate(manifest.payload.capture)
-        try validateManifestCarriesNoProofBody(manifest)
-        try validateManifestLivePhotoPayload(manifest)
+        try validatePhotoHeader(
+            input, expectedCaptureID: expectedCaptureID,
+            expectedProfile: expectedProfile, isLivePhoto: true
+        )
 
         let proof = try decodedCaptureProof(
             from: signedPhotoData,
@@ -398,6 +395,20 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
         expectedPackageID: UUID,
         validatesDepthTrack: Bool = false
     ) async throws -> ValidatedTAPVideoFile {
+        try await validateSignedExportVideoFile(
+            TAPVideoValidationInput(fileURL: videoFileURL),
+            expectedCaptureID: expectedCaptureID,
+            expectedPackageID: expectedPackageID,
+            validatesDepthTrack: validatesDepthTrack
+        )
+    }
+
+    func validateSignedExportVideoFile(
+        _ readInput: @autoclosure () throws -> TAPVideoValidationInput,
+        expectedCaptureID: String,
+        expectedPackageID: UUID,
+        validatesDepthTrack: Bool = false
+    ) async throws -> ValidatedTAPVideoFile {
         try Task<Never, Never>.checkCancellation()
         let validationPurpose = validatesDepthTrack
             ? "signed-export-full"
@@ -418,9 +429,9 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
                 stage: validationSucceeded ? "local-validation-finished" : "local-validation-failed"
             )
         }
-        let manifestDocument = try TAPVideoManifestBox.decodedManifestDocument(
-            fromFileAt: videoFileURL
-        )
+        let input = try readInput()
+        let videoFileURL = input.fileURL
+        let manifestDocument = input.manifestDocument
         let manifest = manifestDocument.manifest
         try Task<Never, Never>.checkCancellation()
         try validateManifestID(manifest.payload.id, expectedCaptureID: expectedCaptureID)
@@ -430,8 +441,9 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
             validatesDepthTrack: validatesDepthTrack,
             authenticate: {
                 try Task<Never, Never>.checkCancellation()
-                let proof = try decodedVideoCaptureProof(fromFileAt: videoFileURL)
-                let proofValue = try decodedVideoCaptureProofValue(
+                let slot = try TAPProofSlot.locateBMFF(inFileAt: videoFileURL, layout: input.layout)
+                let proof = try decodedVideoCaptureProof(fromFileAt: videoFileURL, validatedSlot: slot)
+                let proofValue = try decodedCaptureProofValue(
                     proof,
                     expectedCaptureID: expectedCaptureID
                 )
@@ -439,10 +451,11 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
                     manifest: manifest,
                     rawManifestPayloadData: manifestDocument.rawPayloadData,
                     videoFileURL: videoFileURL,
-                    purpose: "proof-validation"
+                    purpose: "proof-validation",
+                    validatedSlot: slot
                 )
                 try Task<Never, Never>.checkCancellation()
-                try validateVideoCaptureProof(
+                try validateCaptureProof(
                     proof,
                     proofValue: proofValue,
                     recomputedDigest: recomputedDigest
@@ -645,7 +658,7 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
     }
 
     private func decodedCaptureProofValue(
-        _ proof: TAPDepthManifest.Proof,
+        _ proof: TAPCaptureProof,
         expectedCaptureID: String
     ) throws -> CaptureAssertionProofValue {
         guard proof.type == "appAttestAssertion" else {
@@ -677,46 +690,17 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
     }
 
     private func decodedVideoCaptureProof(
-        fromFileAt videoFileURL: URL
-    ) throws -> TAPVideoManifest.Proof {
-        let proofData = try TAPProofSlot.proofEnvelopeData(fromBMFFFileAt: videoFileURL)
+        fromFileAt videoFileURL: URL,
+        validatedSlot: TAPProofSlot.FileLocation
+    ) throws -> TAPCaptureProof {
+        let proofData = try TAPProofSlot.proofEnvelopeData(
+            fromBMFFFileAt: videoFileURL, validatedSlot: validatedSlot
+        )
         return try JSONDecoder().decode(TAPVideoManifest.Proof.self, from: proofData)
     }
 
-    private func decodedVideoCaptureProofValue(
-        _ proof: TAPVideoManifest.Proof,
-        expectedCaptureID: String
-    ) throws -> CaptureAssertionProofValue {
-        guard proof.type == "appAttestAssertion" else {
-            throw TAPDepthCaptureError.pendingCaptureProofInvalid("unexpected proof type")
-        }
-        guard proof.algorithm == "TAPCam.AppAttestCaptureSignature.v1" else {
-            throw TAPDepthCaptureError.pendingCaptureProofInvalid("unexpected proof algorithm")
-        }
-        guard let keyID = proof.keyID, !keyID.isEmpty else {
-            throw TAPDepthCaptureError.pendingCaptureProofInvalid("missing key id")
-        }
-        guard let encodedValue = proof.value, !encodedValue.isEmpty else {
-            throw TAPDepthCaptureError.pendingCaptureProofInvalid("missing proof value")
-        }
-
-        let proofValueData = try AppAttestBase64URL.decode(encodedValue, field: "proof.value")
-        let proofValue = try JSONDecoder().decode(CaptureAssertionProofValue.self, from: proofValueData)
-        guard proofValue.keyId == keyID else {
-            throw TAPDepthCaptureError.pendingCaptureProofInvalid("proof key id mismatch")
-        }
-        guard !proofValue.assertionObject.isEmpty else {
-            throw TAPDepthCaptureError.pendingCaptureProofInvalid("missing assertion object")
-        }
-        guard proofValue.contentDigest.captureID == expectedCaptureID,
-              proofValue.signingBinding.captureID == expectedCaptureID else {
-            throw TAPDepthCaptureError.pendingCaptureProofInvalid("proof capture id mismatch")
-        }
-        return proofValue
-    }
-
     private func validateCaptureProof(
-        _ proof: TAPDepthManifest.Proof,
+        _ proof: TAPCaptureProof,
         proofValue: CaptureAssertionProofValue,
         recomputedDigest: CaptureContentDigest
     ) throws {
@@ -729,23 +713,6 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
         let expectedSigningBinding = try CaptureSigningBinding(contentDigest: recomputedDigest)
         guard proofValue.signingBinding == expectedSigningBinding else {
             throw TAPDepthCaptureError.pendingCaptureProofInvalid("proof signing binding does not match exported bytes")
-        }
-    }
-
-    private func validateVideoCaptureProof(
-        _ proof: TAPVideoManifest.Proof,
-        proofValue: CaptureAssertionProofValue,
-        recomputedDigest: CaptureContentDigest
-    ) throws {
-        guard proof.createdAt == recomputedDigest.capturedAt else {
-            throw TAPDepthCaptureError.pendingCaptureProofInvalid("proof timestamp does not match capture digest")
-        }
-        guard proofValue.contentDigest == recomputedDigest else {
-            throw TAPDepthCaptureError.pendingCaptureProofInvalid("proof digest does not match exported video bytes")
-        }
-        let expectedSigningBinding = try CaptureSigningBinding(contentDigest: recomputedDigest)
-        guard proofValue.signingBinding == expectedSigningBinding else {
-            throw TAPDepthCaptureError.pendingCaptureProofInvalid("proof signing binding does not match exported video bytes")
         }
     }
 
@@ -831,14 +798,16 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
         manifest: TAPVideoManifest,
         rawManifestPayloadData: Data,
         videoFileURL: URL,
-        purpose: String
+        purpose: String,
+        validatedSlot: TAPProofSlot.FileLocation? = nil
     ) throws -> CaptureContentDigest {
         let trace = TAPVideoPerformanceTrace.beginContentHash(purpose: purpose)
         do {
             let digest = try CaptureContentDigest.makeVideo(
                 manifest: manifest,
                 rawManifestPayloadData: rawManifestPayloadData,
-                mp4FileURL: videoFileURL
+                mp4FileURL: videoFileURL,
+                validatedSlot: validatedSlot
             )
             TAPVideoPerformanceTrace.endContentHash(
                 trace,

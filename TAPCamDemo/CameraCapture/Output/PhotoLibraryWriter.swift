@@ -585,11 +585,11 @@ nonisolated enum PhotoLibraryWriter {
             for index in 0..<result.count {
                 let asset = result.object(at: index)
                 guard let data = try? await originalPhotoData(for: asset),
-                      let expectedProfile = expectedProfile(for: data),
+                      let input = try? TAPPhotoValidationInput(data: data),
                       (try? provenanceWriter.validateSignedExportPhoto(
-                        data,
+                        input,
                         expectedCaptureID: captureID,
-                        expectedProfile: expectedProfile
+                        expectedProfile: input.inferredProfile
                       )) != nil else {
                     continue
                 }
@@ -638,20 +638,6 @@ nonisolated enum PhotoLibraryWriter {
                 }
                 .map(\.localIdentifier)
         }.value
-    }
-
-    private static func expectedProfile(for signedPhotoData: Data) -> CaptureOutputProfile? {
-        guard let fileContainer = try? TAPDepthPhotoFileReader.fileContainer(from: signedPhotoData),
-              let manifest = try? TAPDepthPhotoFileReader.decodedManifest(from: signedPhotoData) else {
-            return nil
-        }
-        let qualityLevel = CapturePhotoQualityLevel(
-            rawValue: manifest.payload.capture.photoQualityPrioritization
-        ) ?? .quality
-        return CaptureOutputProfile.releasePhotoDepthProfile(
-            fileContainer: fileContainer,
-            photoQualityLevel: qualityLevel
-        )
     }
 
     private static func resourceData(

@@ -103,6 +103,34 @@ nonisolated struct TAPDepthPhotoFileWriteResult: Sendable {
     let xmpVerifyDuration: TimeInterval
 }
 
+/// Parsed metadata bound to the exact photo bytes for one validation operation.
+/// This is input to validation, not a cached integrity verdict.
+nonisolated struct TAPPhotoValidationInput: Sendable {
+    let data: Data
+    let fileContainer: CapturePhotoFileContainer
+    let manifestDocument: TAPDepthManifestDocument
+
+    init(data: Data, expectedContainer: CapturePhotoFileContainer? = nil) throws {
+        try Task<Never, Never>.checkCancellation()
+        let container = try TAPDepthPhotoFileReader.fileContainer(from: data)
+        if let expectedContainer, container != expectedContainer {
+            throw TAPDepthCaptureError.invalidHEICContainerType(container.uniformTypeIdentifier)
+        }
+        self.data = data
+        fileContainer = container
+        manifestDocument = try TAPDepthPhotoFileReader.decodedManifestDocument(from: data)
+    }
+
+    var inferredProfile: CaptureOutputProfile {
+        CaptureOutputProfile.releasePhotoDepthProfile(
+            fileContainer: fileContainer,
+            photoQualityLevel: CapturePhotoQualityLevel(
+                rawValue: manifestDocument.manifest.payload.capture.photoQualityPrioritization
+            ) ?? .quality
+        )
+    }
+}
+
 /// Minimal readback API for app-side verification and analysis.
 ///
 /// When the file lives in Photos, callers should first use
