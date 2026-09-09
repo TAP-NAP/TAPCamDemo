@@ -9,70 +9,6 @@ import CoreGraphics
 import simd
 
 extension TAPPlaneEstimator {
-    nonisolated static func detectPlanes(
-        depthMap: TAPMetricDepthMap,
-        residualThresholdMeters: Float = 0.035,
-        minimumConfidence: Double = 0.35
-    ) -> [TAPDetectedPlane] {
-        guard TAPDepthAnalysisInputValidation.isValidDepthMapLayout(depthMap) else {
-            return []
-        }
-
-        let columns = depthMap.width >= 96 ? 4 : 3
-        let rows = depthMap.height >= 96 ? 4 : 3
-        var candidates: [TAPDetectedPlane] = []
-
-        for row in 0..<rows {
-            for column in 0..<columns {
-                let region = tileRegion(
-                    row: row,
-                    column: column,
-                    rows: rows,
-                    columns: columns,
-                    width: depthMap.width,
-                    height: depthMap.height
-                )
-                let stats = TAPDepthGeometryProjector.stats(for: depthMap, in: region)
-                guard stats.validSampleCount >= 24, stats.validRatio >= 0.18,
-                      let estimate = estimatePlane(
-                        depthMap: depthMap,
-                        region: region,
-                        residualThresholdMeters: residualThresholdMeters
-                      ) else {
-                    continue
-                }
-
-                let confidence = planeConfidence(
-                    estimate: estimate,
-                    stats: stats,
-                    residualThresholdMeters: residualThresholdMeters
-                )
-                guard confidence >= minimumConfidence else {
-                    continue
-                }
-
-                candidates.append(
-                    TAPDetectedPlane(
-                        id: "plane-\(row)-\(column)",
-                        estimate: estimate,
-                        confidence: confidence,
-                        sampleCount: stats.validSampleCount
-                    )
-                )
-            }
-        }
-
-        return candidates
-            .sorted { lhs, rhs in
-                if lhs.confidence == rhs.confidence {
-                    return lhs.sampleCount > rhs.sampleCount
-                }
-                return lhs.confidence > rhs.confidence
-            }
-            .prefix(12)
-            .map { $0 }
-    }
-
     nonisolated static func pixelRuns(
         from accepted: [Bool],
         width: Int,
@@ -425,37 +361,5 @@ extension TAPPlaneEstimator {
         }
 
         return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
-    }
-
-    nonisolated static func tileRegion(
-        row: Int,
-        column: Int,
-        rows: Int,
-        columns: Int,
-        width: Int,
-        height: Int
-    ) -> CGRect {
-        let tileWidth = CGFloat(width) / CGFloat(columns)
-        let tileHeight = CGFloat(height) / CGFloat(rows)
-        let rect = CGRect(
-            x: CGFloat(column) * tileWidth,
-            y: CGFloat(row) * tileHeight,
-            width: tileWidth,
-            height: tileHeight
-        )
-        return rect.insetBy(dx: -tileWidth * 0.08, dy: -tileHeight * 0.08)
-    }
-
-    nonisolated static func planeConfidence(
-        estimate: TAPPlaneEstimate,
-        stats: TAPDepthRegionStats,
-        residualThresholdMeters: Float
-    ) -> Double {
-        let residualLimit = max(Double(residualThresholdMeters) * 1.5, 0.001)
-        let residualScore = 1 - min(Double(estimate.averageResidualMeters) / residualLimit, 1)
-        let inlierScore = min(max(estimate.inlierRatio, 0), 1)
-        let validScore = min(max(stats.validRatio, 0), 1)
-        let confidence = inlierScore * 0.58 + residualScore * 0.30 + validScore * 0.12
-        return min(max(confidence, 0), 1)
     }
 }

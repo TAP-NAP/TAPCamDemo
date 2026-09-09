@@ -24,15 +24,19 @@ struct TAPDepthAnalysisInputTests {
             from: mismatchedDepthMap,
             in: CGRect(x: 0, y: 0, width: 4, height: 4)
         ).isEmpty)
-        #expect(TAPDepthGeometryProjector.stats(
-            for: mismatchedDepthMap,
-            in: CGRect(x: 0, y: 0, width: 4, height: 4)
-        ).totalSampleCount == 0)
-        #expect(TAPPlaneEstimator.estimatePlane(
-            depthMap: mismatchedDepthMap,
-            region: CGRect(x: 0, y: 0, width: 4, height: 4)
-        ) == nil)
-        #expect(TAPPlaneEstimator.detectPlanes(depthMap: mismatchedDepthMap).isEmpty)
+
+        do {
+            _ = try TAPPlaneEstimator.growPlaneRegion(
+                depthMap: mismatchedDepthMap,
+                seed: CGPoint(x: 1, y: 1),
+                strictness: 0.68
+            )
+            Issue.record("Expected plane growth to reject mismatched depth-map samples.")
+        } catch TAPDepthAnalysisError.invalidDepthMap {
+            #expect(Bool(true))
+        } catch {
+            Issue.record("Unexpected plane-growth error: \(error)")
+        }
 
         do {
             _ = try TAPDepthAnalysisInputValidation.validatedDepthPixelCount(for: mismatchedDepthMap)

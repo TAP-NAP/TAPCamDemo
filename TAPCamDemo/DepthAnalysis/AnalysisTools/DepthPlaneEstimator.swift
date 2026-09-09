@@ -13,11 +13,9 @@ import simd
 /// capture mode and are intentionally outside this module.
 ///
 /// Planes mode principle:
-/// Rectangular region analysis samples a selected image region into camera-space
-/// points, then fits an approximate plane. Plane Filter uses the seed-grown path:
-/// a tapped depth pixel validates an optional prewarmed geometry cache, fits a
+/// A tapped depth pixel validates an optional prewarmed geometry cache, fits a
 /// seed-local weighted plane, grows a connected mask with point-to-plane
-/// residuals, refits, and grows one more pass. Both paths describe approximate
+/// residuals, refits, and grows one more pass. The result describes approximate
 /// coplanarity: normal, centroid, average residual, inlier ratio, depth range,
 /// and image-space bounds.
 ///
@@ -40,8 +38,8 @@ import simd
 ///   robust threshold helpers.
 /// - `DepthPlaneEstimator+RegionGrowth.swift` contains seed fitting, BFS
 ///   growth, pixel acceptance, and cancellation checks.
-/// - `DepthPlaneEstimator+RegionOutput.swift` contains tile detection and the
-///   final region runs, contours, grid cells, confidence, and bounds.
+/// - `DepthPlaneEstimator+RegionOutput.swift` contains the final region runs,
+///   contours, grid cells, confidence, and bounds.
 ///
 /// Reference docs:
 /// - https://developer.apple.com/documentation/accelerate/simd
@@ -141,19 +139,6 @@ nonisolated enum TAPPlaneEstimator {
             }
             return normal / length
         }
-    }
-
-    static func estimatePlane(
-        depthMap: TAPMetricDepthMap,
-        region: CGRect,
-        residualThresholdMeters: Float = 0.035
-    ) -> TAPPlaneEstimate? {
-        guard TAPDepthAnalysisInputValidation.isValidDepthMapLayout(depthMap) else {
-            return nil
-        }
-
-        let samples = TAPDepthGeometryProjector.sampledPoints(from: depthMap, in: region)
-        return estimatePlane(from: samples, residualThresholdMeters: residualThresholdMeters)
     }
 
     /// Grows the Plane Filter region from a tapped seed.
@@ -319,19 +304,5 @@ nonisolated enum TAPPlaneEstimator {
                 imageBounds: bounds
             )
         )
-    }
-
-    static func filteredPlanes(
-        _ planes: [TAPDetectedPlane],
-        minimumConfidence: Double
-    ) -> [TAPDetectedPlane] {
-        planes
-            .filter { $0.confidence >= minimumConfidence }
-            .sorted { lhs, rhs in
-                if lhs.confidence == rhs.confidence {
-                    return lhs.sampleCount > rhs.sampleCount
-                }
-                return lhs.confidence > rhs.confidence
-            }
     }
 }

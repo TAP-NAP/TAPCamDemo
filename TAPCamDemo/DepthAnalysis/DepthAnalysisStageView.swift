@@ -42,7 +42,6 @@ struct DepthAnalysisStageView: View {
             onComparisonPositionChanged: onComparisonPositionChanged,
             orientation: imageOrientation,
             depthSize: CGSize(width: depthMap.width, height: depthMap.height),
-            planeOverlays: [],
             planeRegion: planeRegion,
             partialPlaneGridCells: partialPlaneGridCells,
             planeGridProgress: planeGridProgress,

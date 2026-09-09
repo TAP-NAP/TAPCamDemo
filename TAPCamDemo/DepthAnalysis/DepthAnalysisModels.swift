@@ -69,15 +69,6 @@ nonisolated struct TAPMetricDepthMap: Equatable {
     }
 }
 
-nonisolated struct TAPDepthRegionStats: Equatable {
-    let validSampleCount: Int
-    let totalSampleCount: Int
-    let minimumDepthMeters: Float?
-    let maximumDepthMeters: Float?
-    let medianDepthMeters: Float?
-    let validRatio: Double
-}
-
 nonisolated struct TAPPoint3D: Equatable {
     let x: Float
     let y: Float
@@ -91,17 +82,6 @@ nonisolated struct TAPPlaneEstimate: Equatable {
     let inlierRatio: Double
     let depthRangeMeters: ClosedRange<Float>
     let imageBounds: CGRect
-}
-
-nonisolated struct TAPDetectedPlane: Equatable, Identifiable {
-    let id: String
-    let estimate: TAPPlaneEstimate
-    let confidence: Double
-    let sampleCount: Int
-
-    var imageBounds: CGRect {
-        estimate.imageBounds
-    }
 }
 
 nonisolated struct TAPPlanePixelRun: Equatable, Identifiable {

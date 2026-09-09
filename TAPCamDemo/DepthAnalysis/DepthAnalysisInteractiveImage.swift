@@ -22,7 +22,6 @@ struct InteractiveDepthImage: View {
     let onComparisonPositionChanged: (Double) -> Void
     let orientation: CGImagePropertyOrientation
     let depthSize: CGSize
-    let planeOverlays: [TAPDetectedPlane]
     let planeRegion: TAPPlaneRegion?
     let partialPlaneGridCells: [TAPPlaneGridCell]
     let planeGridProgress: Double?
@@ -57,15 +56,6 @@ struct InteractiveDepthImage: View {
 
                 if let overlayImage {
                     overlayImageView(overlayImage, imageFrame: imageFrame)
-                }
-
-                ForEach(planeOverlays) { plane in
-                    let rect = viewRect(for: plane.imageBounds, imageFrame: imageFrame)
-                    if rect.width > 8, rect.height > 8 {
-                        PlaneOverlayMarker(plane: plane)
-                            .frame(width: rect.width, height: rect.height)
-                            .position(x: rect.midX, y: rect.midY)
-                    }
                 }
 
                 if let planeRegion {
@@ -472,39 +462,5 @@ private struct ComparisonDivider: View {
         }
         hasTriggeredDragFeedback = true
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-    }
-}
-
-private struct PlaneOverlayMarker: View {
-    let plane: TAPDetectedPlane
-
-    var body: some View {
-        ZStack(alignment: .topLeading) {
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .stroke(markerColor, lineWidth: 2)
-                .background(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(markerColor.opacity(0.13))
-                )
-
-            Text("\(Int((plane.confidence * 100).rounded()))%")
-                .font(.caption2.monospacedDigit().weight(.bold))
-                .foregroundStyle(.black)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .background(markerColor, in: Capsule())
-                .padding(5)
-        }
-        .accessibilityLabel("Detected plane \(Int((plane.confidence * 100).rounded())) percent confidence")
-    }
-
-    private var markerColor: Color {
-        if plane.confidence >= 0.82 {
-            return Color(red: 0.70, green: 0.95, blue: 0.30)
-        }
-        if plane.confidence >= 0.68 {
-            return Color(red: 0.98, green: 0.78, blue: 0.22)
-        }
-        return Color(red: 1.0, green: 0.48, blue: 0.28)
     }
 }

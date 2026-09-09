@@ -191,44 +191,6 @@ nonisolated enum TAPDepthGeometryProjector {
         return result
     }
 
-    static func stats(for depthMap: TAPMetricDepthMap, in region: CGRect) -> TAPDepthRegionStats {
-        guard TAPDepthAnalysisInputValidation.isValidDepthMapLayout(depthMap),
-              TAPDepthAnalysisInputValidation.isFiniteRegion(region) else {
-            return TAPDepthRegionStats(
-                validSampleCount: 0,
-                totalSampleCount: 0,
-                minimumDepthMeters: nil,
-                maximumDepthMeters: nil,
-                medianDepthMeters: nil,
-                validRatio: 0
-            )
-        }
-
-        let bounds = pixelBounds(region, width: depthMap.width, height: depthMap.height)
-        var values: [Float] = []
-        values.reserveCapacity(max(bounds.width * bounds.height, 0))
-
-        for y in bounds.minY..<bounds.maxY {
-            for x in bounds.minX..<bounds.maxX {
-                if let value = depthMap.sample(x: x, y: y) {
-                    values.append(value)
-                }
-            }
-        }
-
-        values.sort()
-        let total = max(bounds.width * bounds.height, 0)
-        let median = values.isEmpty ? nil : values[values.count / 2]
-        return TAPDepthRegionStats(
-            validSampleCount: values.count,
-            totalSampleCount: total,
-            minimumDepthMeters: values.first,
-            maximumDepthMeters: values.last,
-            medianDepthMeters: median,
-            validRatio: total == 0 ? 0 : Double(values.count) / Double(total)
-        )
-    }
-
     private static func pixelBounds(_ region: CGRect, width: Int, height: Int) -> (minX: Int, minY: Int, maxX: Int, maxY: Int, width: Int, height: Int) {
         guard width >= 0, height >= 0, TAPDepthAnalysisInputValidation.isFiniteRegion(region) else {
             return (0, 0, 0, 0, 0, 0)

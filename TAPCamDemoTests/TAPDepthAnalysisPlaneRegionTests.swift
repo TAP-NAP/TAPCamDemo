@@ -566,37 +566,18 @@ struct TAPDepthAnalysisPlaneRegionTests {
             )
         )
 
-        let plane = try #require(TAPPlaneEstimator.estimatePlane(depthMap: depthMap, region: CGRect(x: 0, y: 0, width: 16, height: 16)))
+        let samples = TAPDepthGeometryProjector.sampledPoints(
+            from: depthMap,
+            in: CGRect(x: 0, y: 0, width: 16, height: 16)
+        )
+        let plane = try #require(TAPPlaneEstimator.estimatePlane(
+            from: samples,
+            residualThresholdMeters: 0.035
+        ))
 
         #expect(plane.averageResidualMeters < 0.001)
         #expect(plane.inlierRatio > 0.95)
         #expect(abs(abs(plane.normal.z) - 1) < 0.001)
-    }
-
-    @Test func planeDetectorFindsAndFiltersHighConfidenceFlatRegions() throws {
-        let depthMap = TAPMetricDepthMap(
-            width: 16,
-            height: 16,
-            samples: Array(repeating: 1.5, count: 256),
-            calibration: TAPDepthManifest.CameraCalibration(
-                intrinsicMatrixReferenceWidth: 16,
-                intrinsicMatrixReferenceHeight: 16,
-                pixelSizeMillimeters: 0.001,
-                lensDistortionLookupTablePresent: false,
-                inverseLensDistortionLookupTablePresent: false,
-                lensDistortionCenterX: 8,
-                lensDistortionCenterY: 8,
-                intrinsicMatrix: [120, 0, 0, 0, 120, 0, 8, 8, 1],
-                extrinsicMatrix: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0]
-            )
-        )
-
-        let planes = TAPPlaneEstimator.detectPlanes(depthMap: depthMap)
-
-        #expect(!planes.isEmpty)
-        #expect(planes.first?.confidence ?? 0 > 0.95)
-        #expect(TAPPlaneEstimator.filteredPlanes(planes, minimumConfidence: 0.95).count == planes.count)
-        #expect(TAPPlaneEstimator.filteredPlanes(planes, minimumConfidence: 1.01).isEmpty)
     }
 
     @Test func seedPlaneGrowthFindsLargeTiltedPlaneRegion() throws {
