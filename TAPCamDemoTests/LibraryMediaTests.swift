@@ -724,6 +724,74 @@ struct LibraryMediaTests {
         #expect(!FileManager.default.fileExists(atPath: fileURL.path))
     }
 
+    @Test func resourceCallbackSinkForwardsChunksBeforeCompletionAndRejectsLateChunks() async throws {
+        let chunks = [Data([1, 2]), Data([3, 4, 5])]
+        let callbacks = PhotoKitTerminalRecorder()
+        let bridge = PhotoKitResourceRequestBridge(
+            sink: PhotoKitResourceCallbackSink { chunk in
+                let index = callbacks.count
+                #expect(chunks.indices.contains(index))
+                if chunks.indices.contains(index) {
+                    #expect(chunk == chunks[index])
+                }
+                callbacks.record()
+            },
+            allowsNetworkAccess: true,
+            progress: { _ in },
+            mapError: { $0 },
+            cancelRequest: { _ in }
+        )
+
+        try await bridge.startRequest { receive, completion in
+            for (index, chunk) in chunks.enumerated() {
+                receive(chunk)
+                #expect(callbacks.count == index + 1)
+            }
+            completion(nil)
+            receive(Data([6]))
+            return 59
+        }
+
+        #expect(callbacks.count == chunks.count)
+    }
+
+    @Test func resourceCallbackFailurePreservesErrorRejectsLaterCallbacksAndCancelsOnce() async {
+        let expectedError = NSError(
+            domain: NSCocoaErrorDomain,
+            code: CocoaError.Code.fileWriteOutOfSpace.rawValue
+        )
+        let callbacks = PhotoKitTerminalRecorder()
+        let cancellations = PhotoKitCancellationRecorder()
+        let bridge = PhotoKitResourceRequestBridge(
+            sink: PhotoKitResourceCallbackSink { _ in
+                callbacks.record()
+                throw expectedError
+            },
+            allowsNetworkAccess: true,
+            progress: { _ in },
+            mapError: { $0 },
+            cancelRequest: { cancellations.record($0) }
+        )
+
+        do {
+            try await bridge.startRequest { receive, completion in
+                receive(Data([1]))
+                receive(Data([2]))
+                completion(nil)
+                completion(PhotoKitSinkWriteFailure())
+                return 60
+            }
+            Issue.record("Expected the original consumer error")
+        } catch {
+            #expect((error as NSError) === expectedError)
+        }
+        bridge.cancel()
+        bridge.cancel()
+
+        #expect(callbacks.count == 1)
+        #expect(cancellations.requestIDs == [60])
+    }
+
     @Test func resourceLocalProbePreservesNetworkAccessRequired() {
         let error = NSError(
             domain: PHPhotosErrorDomain,

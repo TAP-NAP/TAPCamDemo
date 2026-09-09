@@ -291,44 +291,6 @@ struct TAPLibraryProcessingTests {
         #expect(TAPPendingCaptureRetryClassifier.status(for: localizedOnlyError) == .failedRetryable)
     }
 
-    @Test func photoLibraryRequestIDBridgeCancelsOnceWhenCancellationPrecedesInstall() {
-        let recorder = PhotoLibraryRequestCancellationRecorder()
-        let bridge = PhotoLibraryRequestIDCancellationBridge<Int>(
-            cancelRequest: { recorder.record($0) }
-        )
-
-        bridge.requestCancellation()
-        bridge.requestCancellation()
-        bridge.install(requestID: 41)
-        bridge.install(requestID: 99)
-        bridge.requestCancellation()
-
-        #expect(recorder.requestIDs == [41])
-    }
-
-    @Test func photoLibraryRequestIDBridgeCancelsOnceWhenFinishPrecedesInstall() {
-        let recorder = PhotoLibraryRequestCancellationRecorder()
-        let bridge = PhotoLibraryRequestIDCancellationBridge<Int>(
-            cancelRequest: { recorder.record($0) }
-        )
-
-        bridge.markFinished()
-        bridge.markFinished()
-        bridge.install(requestID: 52)
-        bridge.install(requestID: 73)
-        bridge.requestCancellation()
-
-        #expect(recorder.requestIDs == [52])
-
-        let installFirstRecorder = PhotoLibraryRequestCancellationRecorder()
-        let installFirstBridge = PhotoLibraryRequestIDCancellationBridge<Int>(
-            cancelRequest: { installFirstRecorder.record($0) }
-        )
-        installFirstBridge.install(requestID: 84)
-        installFirstBridge.markFinished()
-        #expect(installFirstRecorder.requestIDs.isEmpty)
-    }
-
     @Test func pendingCaptureFailureReasonPresentationOmitsRawIdentifiersAndPaths() throws {
         let reasons = [
             TAPPendingCaptureFailureReasonPresentation.persistedFailureReason(
@@ -1036,23 +998,6 @@ private actor RecordingVideoExportActions {
                 debugDescription: "signed video manifest JSON is corrupt"
             ))
         }
-    }
-}
-
-nonisolated private final class PhotoLibraryRequestCancellationRecorder: @unchecked Sendable {
-    private let lock = NSLock()
-    private var recordedRequestIDs: [Int] = []
-
-    var requestIDs: [Int] {
-        lock.lock()
-        defer { lock.unlock() }
-        return recordedRequestIDs
-    }
-
-    func record(_ requestID: Int) {
-        lock.lock()
-        recordedRequestIDs.append(requestID)
-        lock.unlock()
     }
 }
 

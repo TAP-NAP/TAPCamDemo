@@ -32,6 +32,22 @@ nonisolated final class PhotoKitResourceDataSink: PhotoKitResourceSink, @uncheck
     }
 }
 
+nonisolated final class PhotoKitResourceCallbackSink: PhotoKitResourceSink {
+    private let dataReceivedHandler: @Sendable (Data) throws -> Void
+
+    init(_ dataReceivedHandler: @escaping @Sendable (Data) throws -> Void) {
+        self.dataReceivedHandler = dataReceivedHandler
+    }
+
+    func receive(_ chunk: Data) throws {
+        try dataReceivedHandler(chunk)
+    }
+
+    func finish() {}
+
+    func discard() {}
+}
+
 nonisolated final class PhotoKitResourceFileSink: PhotoKitResourceSink, @unchecked Sendable {
     typealias WriteChunk = @Sendable (FileHandle, Data) throws -> Void
 
@@ -71,8 +87,8 @@ nonisolated final class PhotoKitResourceFileSink: PhotoKitResourceSink, @uncheck
     }
 }
 
-/// One PhotoKit resource adapter serves both in-memory and file-backed paths;
-/// only the sink strategy differs.
+/// One PhotoKit resource adapter serves data, file, and callback consumers;
+/// only the sink differs.
 nonisolated final class PhotoKitResourceRequestBridge<Sink: PhotoKitResourceSink>: @unchecked Sendable {
     typealias DataReceiver = @Sendable (Data) -> Void
     typealias Completion = @Sendable ((any Error)?) -> Void
