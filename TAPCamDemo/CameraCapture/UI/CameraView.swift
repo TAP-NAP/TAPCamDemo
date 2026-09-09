@@ -1478,23 +1478,6 @@ struct CameraView: View {
         }
     }
 
-    private func restoreAutoExposureFromMeter() {
-        guard let capability = viewModel.activeControlCapabilities else {
-            return
-        }
-        exposureControlState = CameraExposureControlState(
-            capability: capability,
-            generation: viewModel.configurationGeneration,
-            evBias: globalEVBias
-        )
-        activeAdjustmentControl = nil
-        exposureApplyTask?.cancel()
-        showViewfinderHint("Auto exposure restored")
-        Task {
-            await viewModel.restoreAutoExposure(globalExposureBias: globalEVBias)
-        }
-    }
-
     private func restoreAutoFocusFromStrip() {
         guard focusMode == .manual else {
             return

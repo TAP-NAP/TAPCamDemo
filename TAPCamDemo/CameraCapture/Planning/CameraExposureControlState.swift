@@ -217,10 +217,6 @@ nonisolated struct CameraExposureControlState: Equatable, Sendable {
         displayState()
     }
 
-    var currentDebugState: CameraExposureControlDebugState {
-        debugState(discardedReason: nil)
-    }
-
     func beginInteraction(_ interaction: CameraExposureControlInteraction) -> CameraExposureControlResult {
         var state = self
         state.activeInteraction = interaction
@@ -238,10 +234,6 @@ nonisolated struct CameraExposureControlState: Equatable, Sendable {
             shouldReadback: true,
             readbackReason: .userInteractionEnded
         )
-    }
-
-    func establishMeterBaseline(from sample: CameraExposureMeterSample) -> CameraExposureControlResult {
-        applyMeterSample(sample)
     }
 
     func receiveMeterSample(_ sample: CameraExposureMeterSample) -> CameraExposureControlResult {

@@ -741,37 +741,6 @@ final class CameraViewModel: ObservableObject {
         await applyEffectiveAutoExposureBiasToActiveConfiguration(requestedGlobalAutoExposureBias)
     }
 
-    func applyCustomExposure(
-        iso: Double,
-        shutterDurationSeconds: Double
-    ) async {
-        guard let activeSessionConfiguration else {
-            return
-        }
-
-        let capability = activeSessionConfiguration.controlCapabilities
-        guard capability.exposure.hasManualRange else {
-            statusMessage = "Manual exposure unavailable"
-            return
-        }
-
-        let intent = CameraManualControlIntent(
-            targetDeviceID: capability.deviceID,
-            exposure: .custom(
-                iso: Self.clamped(iso, in: capability.exposure.isoRange),
-                shutterDurationSeconds: Self.clamped(
-                    shutterDurationSeconds,
-                    in: capability.exposure.shutterDurationRangeSeconds
-                )
-            ),
-            focus: nil,
-            whiteBalance: nil,
-            aperture: nil,
-            zoomFactor: nil
-        )
-        await applyCameraControlIntent(intent, against: capability, to: activeSessionConfiguration.device)
-    }
-
     /// Accepts slider values at UI cadence while allowing only one hardware
     /// focus operation in flight. During that operation, intermediate values
     /// collapse into one latest value, so the lens keeps moving without an

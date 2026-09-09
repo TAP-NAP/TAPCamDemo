@@ -12,7 +12,7 @@ struct TAPCameraExposureControlStateTests {
         let capability = Self.capability()
         let baseline = Self.sample(capability: capability, iso: 100, shutter: 0.01, generation: 0)
         let baselineResult = CameraExposureControlState(capability: capability)
-            .establishMeterBaseline(from: baseline)
+            .receiveMeterSample(baseline)
 
         let result = baselineResult.nextState.setISO(200)
 
@@ -28,7 +28,7 @@ struct TAPCameraExposureControlStateTests {
         let capability = Self.capability()
         let baseline = Self.sample(capability: capability, iso: 100, shutter: 0.01, generation: 0)
         let baselineResult = CameraExposureControlState(capability: capability)
-            .establishMeterBaseline(from: baseline)
+            .receiveMeterSample(baseline)
 
         let result = baselineResult.nextState.setShutterDuration(0.02)
 
@@ -44,7 +44,7 @@ struct TAPCameraExposureControlStateTests {
         let capability = Self.capability()
         let baseline = Self.sample(capability: capability, iso: 100, shutter: 0.01, generation: 0)
         let isoPriority = CameraExposureControlState(capability: capability)
-            .establishMeterBaseline(from: baseline)
+            .receiveMeterSample(baseline)
             .nextState
             .setISO(200)
             .nextState
@@ -61,7 +61,7 @@ struct TAPCameraExposureControlStateTests {
         let capability = Self.capability()
         let baseline = Self.sample(capability: capability, iso: 100, shutter: 0.01, generation: 0)
         let manual = CameraExposureControlState(capability: capability)
-            .establishMeterBaseline(from: baseline)
+            .receiveMeterSample(baseline)
             .nextState
             .setISO(200)
             .nextState
@@ -82,7 +82,7 @@ struct TAPCameraExposureControlStateTests {
         let capability = Self.capability()
         let baseline = Self.sample(capability: capability, iso: 100, shutter: 0.01, generation: 0)
         let dragging = CameraExposureControlState(capability: capability)
-            .establishMeterBaseline(from: baseline)
+            .receiveMeterSample(baseline)
             .nextState
             .setISO(200)
             .nextState
@@ -188,7 +188,7 @@ struct TAPCameraExposureControlStateTests {
             generation: 0
         )
         let result = CameraExposureControlState(capability: capability)
-            .establishMeterBaseline(from: baseline)
+            .receiveMeterSample(baseline)
             .nextState
             .setISO(200)
 
