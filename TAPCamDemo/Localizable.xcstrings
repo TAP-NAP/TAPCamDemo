@@ -703,16 +703,6 @@
         }
       }
     },
-    "Cloud loupe" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "点云放大镜"
-          }
-        }
-      }
-    },
     "Cloud view projects valid depth pixels through camera intrinsics into a lightweight camera-coordinate point preview. It is a point cloud, not cloud storage, cloud compute, or a semantic word cloud." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1705,16 +1695,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在载入 TAP 图库…"
-          }
-        }
-      }
-    },
-    "Local cloud" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "本地点云"
           }
         }
       }
@@ -2951,26 +2931,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "所选平面区域置信度为百分之 %lld"
-          }
-        }
-      }
-    },
-    "Selected point cloud loupe" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "所选点云放大镜"
-          }
-        }
-      }
-    },
-    "Selected point cloud preview" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "所选点云预览"
           }
         }
       }
