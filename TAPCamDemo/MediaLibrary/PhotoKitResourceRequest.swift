@@ -10,7 +10,7 @@ nonisolated protocol PhotoKitResourceSink: AnyObject, Sendable {
     associatedtype Output: Sendable
 
     func receive(_ chunk: Data) throws
-    func finish() -> Output
+    func finish() throws -> Output
     func discard()
 }
 
@@ -32,37 +32,25 @@ nonisolated final class PhotoKitResourceDataSink: PhotoKitResourceSink, @uncheck
     }
 }
 
-nonisolated final class PhotoKitResourceCallbackSink: PhotoKitResourceSink {
-    private let dataReceivedHandler: @Sendable (Data) throws -> Void
-
-    init(_ dataReceivedHandler: @escaping @Sendable (Data) throws -> Void) {
-        self.dataReceivedHandler = dataReceivedHandler
-    }
-
-    func receive(_ chunk: Data) throws {
-        try dataReceivedHandler(chunk)
-    }
-
-    func finish() {}
-
-    func discard() {}
-}
-
 nonisolated final class PhotoKitResourceFileSink: PhotoKitResourceSink, @unchecked Sendable {
     typealias WriteChunk = @Sendable (FileHandle, Data) throws -> Void
+    typealias FinishFile = @Sendable (FileHandle) throws -> Void
 
     private let fileURL: URL
     private let writeChunk: WriteChunk
+    private let finishFile: FinishFile
     private var fileHandle: FileHandle?
 
     init(
         fileURL: URL,
         writeChunk: @escaping WriteChunk = { fileHandle, chunk in
             try fileHandle.write(contentsOf: chunk)
-        }
+        },
+        finishFile: FinishFile? = nil
     ) throws {
         self.fileURL = fileURL
         self.writeChunk = writeChunk
+        self.finishFile = finishFile ?? { try? $0.close() }
         self.fileHandle = try FileHandle(forWritingTo: fileURL)
     }
 
@@ -73,10 +61,12 @@ nonisolated final class PhotoKitResourceFileSink: PhotoKitResourceSink, @uncheck
         try writeChunk(fileHandle, chunk)
     }
 
-    func finish() {
-        let fileHandle = self.fileHandle
+    func finish() throws {
+        guard let fileHandle else {
+            return
+        }
+        try finishFile(fileHandle)
         self.fileHandle = nil
-        try? fileHandle?.close()
     }
 
     func discard() {
@@ -87,7 +77,7 @@ nonisolated final class PhotoKitResourceFileSink: PhotoKitResourceSink, @uncheck
     }
 }
 
-/// One PhotoKit resource adapter serves data, file, and callback consumers;
+/// One PhotoKit resource adapter serves data and file consumers;
 /// only the sink differs.
 nonisolated final class PhotoKitResourceRequestBridge<Sink: PhotoKitResourceSink>: @unchecked Sendable {
     typealias DataReceiver = @Sendable (Data) -> Void
@@ -190,8 +180,8 @@ nonisolated final class PhotoKitResourceRequestBridge<Sink: PhotoKitResourceSink
         if let error {
             lifecycle.finish(.failure(mapError(error)))
         } else {
-            lifecycle.finish {
-                sink.finish()
+            lifecycle.finish(mapError: mapError) {
+                try sink.finish()
             }
         }
     }

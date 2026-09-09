@@ -612,14 +612,21 @@ struct LibraryMediaTests {
         #expect(try Data(contentsOf: fileURL) == expected)
     }
 
-    @Test func resourceFileWriteFailureCancelsAndFinishesExactlyOnce() async throws {
+    @Test(arguments: [false, true])
+    func resourceFileFailureCancelsAndFinishesExactlyOnce(failsDuringFinalization: Bool) async throws {
         let directoryURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directoryURL) }
         let fileURL = directoryURL.appendingPathComponent("resource.bin")
         #expect(FileManager.default.createFile(atPath: fileURL.path, contents: nil))
         let sink = try PhotoKitResourceFileSink(
             fileURL: fileURL,
-            writeChunk: { _, _ in throw PhotoKitSinkWriteFailure() }
+            writeChunk: { fileHandle, chunk in
+                if !failsDuringFinalization {
+                    throw PhotoKitSinkWriteFailure()
+                }
+                try fileHandle.write(contentsOf: chunk)
+            },
+            finishFile: { _ in throw PhotoKitSinkWriteFailure() }
         )
         let cancellations = PhotoKitCancellationRecorder()
         let bridge = PhotoKitResourceRequestBridge(
@@ -632,11 +639,12 @@ struct LibraryMediaTests {
         do {
             let _: Void = try await bridge.startRequest { receive, completion in
                 receive(Data([1]))
+                completion(nil)
                 completion(PhotoKitSinkWriteFailure())
                 completion(nil)
                 return 54
             }
-            Issue.record("Expected write failure")
+            Issue.record("Expected file failure")
         } catch {
             #expect(error as? MediaFetchFailure == .download)
         }
@@ -724,51 +732,75 @@ struct LibraryMediaTests {
         #expect(!FileManager.default.fileExists(atPath: fileURL.path))
     }
 
-    @Test func resourceCallbackSinkForwardsChunksBeforeCompletionAndRejectsLateChunks() async throws {
+    @Test func resourceFileFinalizesWrittenBytesBeforeCompletionAndRejectsLateChunks() async throws {
+        let directoryURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directoryURL) }
+        let fileURL = directoryURL.appendingPathComponent("resource.bin")
+        try Data().write(to: fileURL, options: .atomic)
         let chunks = [Data([1, 2]), Data([3, 4, 5])]
-        let callbacks = PhotoKitTerminalRecorder()
+        let expected = Data([1, 2, 3, 4, 5])
+        let finalizations = PhotoKitTerminalRecorder()
         let bridge = PhotoKitResourceRequestBridge(
-            sink: PhotoKitResourceCallbackSink { chunk in
-                let index = callbacks.count
-                #expect(chunks.indices.contains(index))
-                if chunks.indices.contains(index) {
-                    #expect(chunk == chunks[index])
+            sink: try PhotoKitResourceFileSink(
+                fileURL: fileURL,
+                finishFile: { fileHandle in
+                    #expect(try Data(contentsOf: fileURL) == expected)
+                    try fileHandle.synchronize()
+                    try fileHandle.close()
+                    finalizations.record()
                 }
-                callbacks.record()
-            },
+            ),
             allowsNetworkAccess: true,
-            progress: { _ in },
+            progress: { value in
+                #expect(value == 1)
+                #expect(finalizations.count == 1)
+            },
             mapError: { $0 },
             cancelRequest: { _ in }
         )
 
         try await bridge.startRequest { receive, completion in
-            for (index, chunk) in chunks.enumerated() {
+            for chunk in chunks {
                 receive(chunk)
-                #expect(callbacks.count == index + 1)
             }
             completion(nil)
             receive(Data([6]))
             return 59
         }
 
-        #expect(callbacks.count == chunks.count)
+        #expect(finalizations.count == 1)
+        #expect(try Data(contentsOf: fileURL) == expected)
     }
 
-    @Test func resourceCallbackFailurePreservesErrorRejectsLaterCallbacksAndCancelsOnce() async {
-        let expectedError = NSError(
-            domain: NSCocoaErrorDomain,
-            code: CocoaError.Code.fileWriteOutOfSpace.rawValue
-        )
-        let callbacks = PhotoKitTerminalRecorder()
+    @Test func resourceFileFinalizationFailurePreservesErrorClosesAndDeletesFile() async throws {
+        let directoryURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directoryURL) }
+        let fileURL = directoryURL.appendingPathComponent("resource.bin")
+        try Data().write(to: fileURL, options: .atomic)
+        let writes = PhotoKitTerminalRecorder()
+        let finalizations = PhotoKitTerminalRecorder()
+        let successes = PhotoKitTerminalRecorder()
         let cancellations = PhotoKitCancellationRecorder()
         let bridge = PhotoKitResourceRequestBridge(
-            sink: PhotoKitResourceCallbackSink { _ in
-                callbacks.record()
-                throw expectedError
-            },
+            sink: try PhotoKitResourceFileSink(
+                fileURL: fileURL,
+                writeChunk: { fileHandle, chunk in
+                    writes.record()
+                    try fileHandle.write(contentsOf: chunk)
+                },
+                finishFile: { fileHandle in
+                    finalizations.record()
+                    // Retain the native handle in the error so the test can
+                    // verify that failure cleanup closed it before resuming.
+                    throw NSError(
+                        domain: NSCocoaErrorDomain,
+                        code: CocoaError.Code.fileWriteOutOfSpace.rawValue,
+                        userInfo: ["fileHandle": fileHandle]
+                    )
+                }
+            ),
             allowsNetworkAccess: true,
-            progress: { _ in },
+            progress: { _ in successes.record() },
             mapError: { $0 },
             cancelRequest: { cancellations.record($0) }
         )
@@ -776,20 +808,33 @@ struct LibraryMediaTests {
         do {
             try await bridge.startRequest { receive, completion in
                 receive(Data([1]))
+                completion(nil)
                 receive(Data([2]))
                 completion(nil)
                 completion(PhotoKitSinkWriteFailure())
                 return 60
             }
-            Issue.record("Expected the original consumer error")
+            Issue.record("Expected the original finalization error")
         } catch {
-            #expect((error as NSError) === expectedError)
+            let fileError = error as NSError
+            #expect(fileError.domain == NSCocoaErrorDomain)
+            #expect(fileError.code == CocoaError.Code.fileWriteOutOfSpace.rawValue)
+            let fileHandle = try #require(fileError.userInfo["fileHandle"] as? FileHandle)
+            do {
+                try fileHandle.write(contentsOf: Data([3]))
+                Issue.record("Failure cleanup must close the file handle before resuming")
+            } catch {
+                // The failed sink has already closed this handle.
+            }
         }
         bridge.cancel()
         bridge.cancel()
 
-        #expect(callbacks.count == 1)
+        #expect(writes.count == 1)
+        #expect(finalizations.count == 1)
+        #expect(successes.count == 0)
         #expect(cancellations.requestIDs == [60])
+        #expect(!FileManager.default.fileExists(atPath: fileURL.path))
     }
 
     @Test func resourceLocalProbePreservesNetworkAccessRequired() {

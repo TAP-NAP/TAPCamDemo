@@ -184,13 +184,12 @@ nonisolated enum PhotoLibraryWriter {
         }
     }
 
-    /// Streams the original Photos video resource through a cancellable
-    /// request. This is the readback seam used by the video byte-binding
-    /// validator so Photos does not need to be copied into a whole-file Data.
-    static func readOriginalVideoResource(
+    /// Streams the original Photos video into a file, synchronizing and closing
+    /// it before the readback validator checks its proof and byte binding.
+    static func writeOriginalVideoResource(
         localIdentifier: String,
-        progressHandler: @escaping ResourceProgressHandler = { _ in },
-        dataReceivedHandler: @escaping @Sendable (Data) throws -> Void
+        to fileURL: URL,
+        progressHandler: @escaping ResourceProgressHandler = { _ in }
     ) async throws {
         try requireReadWriteAccess()
         guard let asset = asset(localIdentifier: localIdentifier) else {
@@ -200,17 +199,15 @@ nonisolated enum PhotoLibraryWriter {
             .first(where: { $0.type == .video }) else {
             throw TAPDepthCaptureError.assetCreationFailed
         }
-        let request = PhotoKitResourceRequestBridge(
-            sink: PhotoKitResourceCallbackSink(dataReceivedHandler),
-            allowsNetworkAccess: true,
-            progress: progressHandler,
-            mapError: { $0 }
+        try await writeResourceCancellable(
+            resource,
+            to: fileURL,
+            finishFile: { fileHandle in
+                try fileHandle.synchronize()
+                try fileHandle.close()
+            },
+            progressHandler: progressHandler
         )
-        try await withTaskCancellationHandler {
-            try await request.start(resource: resource)
-        } onCancel: {
-            request.cancel()
-        }
     }
 
     /// Reads original photo bytes by resolving the asset inside a detached task.
@@ -560,11 +557,12 @@ nonisolated enum PhotoLibraryWriter {
     private static func writeResourceCancellable(
         _ resource: PHAssetResource,
         to fileURL: URL,
+        finishFile: PhotoKitResourceFileSink.FinishFile? = nil,
         progressHandler: @escaping ResourceProgressHandler
     ) async throws {
         try Data().write(to: fileURL, options: .atomic)
         let request = PhotoKitResourceRequestBridge(
-            sink: try PhotoKitResourceFileSink(fileURL: fileURL),
+            sink: try PhotoKitResourceFileSink(fileURL: fileURL, finishFile: finishFile),
             allowsNetworkAccess: true,
             progress: progressHandler,
             mapError: { $0 }

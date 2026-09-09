@@ -97,14 +97,17 @@ nonisolated final class PhotoKitRequestLifecycle<RequestID: Sendable, Output: Se
         complete(with: result, cancellingInstalledRequest: false)
     }
 
-    /// Produces a final sink value while callback admission is locked, so a
-    /// final resource chunk cannot race past successful completion.
-    func finish(producing output: () -> Output) {
+    /// Produces the final sink result while callback admission is locked, so
+    /// final chunks and finalization failures cannot race past completion.
+    func finish(
+        mapError: (any Error) -> any Error = { $0 },
+        producing output: () throws -> Output
+    ) {
         let delivery: Delivery?
         lock.lock()
         if terminalResult == nil {
             delivery = makeDeliveryLocked(
-                result: .success(output()),
+                result: Result { try output() }.mapError(mapError),
                 cancellingInstalledRequest: false
             )
         } else {

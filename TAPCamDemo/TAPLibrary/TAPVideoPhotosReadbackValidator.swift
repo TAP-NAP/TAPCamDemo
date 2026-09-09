@@ -5,7 +5,7 @@
 
 import Foundation
 
-/// Streams the original Photos resource to a disk-backed accumulator, then
+/// Streams the original Photos resource to a temporary file, then
 /// runs the same URL-only proof and byte-binding gate used before export.
 nonisolated enum TAPVideoPhotosReadbackValidator {
     static func validate(
@@ -22,20 +22,10 @@ nonisolated enum TAPVideoPhotosReadbackValidator {
         }
 
         let fileURL = directoryURL.appendingPathComponent("artifact.mp4")
-        FileManager.default.createFile(atPath: fileURL.path, contents: nil)
-        let accumulator = try TAPVideoReadbackFileAccumulator(fileURL: fileURL)
-        do {
-            try await PhotoLibraryWriter.readOriginalVideoResource(
-                localIdentifier: assetLocalIdentifier,
-                dataReceivedHandler: { chunk in
-                    try accumulator.append(chunk)
-                }
-            )
-            try accumulator.finish()
-        } catch {
-            accumulator.cancel()
-            throw error
-        }
+        try await PhotoLibraryWriter.writeOriginalVideoResource(
+            localIdentifier: assetLocalIdentifier,
+            to: fileURL
+        )
 
         return try await provenanceWriter.validateSignedExportVideoFile(
             .init(fileURL: fileURL),
@@ -43,58 +33,5 @@ nonisolated enum TAPVideoPhotosReadbackValidator {
             expectedPackageID: packageID,
             validatesDepthTrack: false
         ).manifest
-    }
-}
-
-nonisolated private final class TAPVideoReadbackFileAccumulator: @unchecked Sendable {
-    private let lock = NSLock()
-    private var fileHandle: FileHandle?
-    private var terminalError: Error?
-
-    init(fileURL: URL) throws {
-        fileHandle = try FileHandle(forWritingTo: fileURL)
-    }
-
-    func append(_ data: Data) throws {
-        lock.lock()
-        defer { lock.unlock() }
-        if let terminalError {
-            throw terminalError
-        }
-        guard let fileHandle else {
-            throw TAPDepthCaptureError.pendingCaptureDataMissing
-        }
-        do {
-            try fileHandle.write(contentsOf: data)
-        } catch {
-            terminalError = error
-            throw error
-        }
-    }
-
-    func finish() throws {
-        lock.lock()
-        defer { lock.unlock() }
-        if let terminalError {
-            throw terminalError
-        }
-        guard let fileHandle else {
-            throw TAPDepthCaptureError.pendingCaptureDataMissing
-        }
-        do {
-            try fileHandle.synchronize()
-            try fileHandle.close()
-            self.fileHandle = nil
-        } catch {
-            terminalError = error
-            throw error
-        }
-    }
-
-    func cancel() {
-        lock.lock()
-        defer { lock.unlock() }
-        try? fileHandle?.close()
-        fileHandle = nil
     }
 }
