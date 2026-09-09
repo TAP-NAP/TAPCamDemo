@@ -143,7 +143,16 @@ struct PhotoLibraryPendingCaptureExporter: TAPPendingCaptureExporting {
         if record.shouldAttemptExistingAssetRecoveryBeforeExport {
             switch record.artifactKind {
             case .photoDepth:
-                if let existingAssetID = try? await actions.existingAssetIdentifier(record.captureID) {
+                let existingAssetID: String?
+                do {
+                    existingAssetID = try await actions.existingAssetIdentifier(record.captureID)
+                } catch let error as CancellationError {
+                    throw error
+                } catch {
+                    existingAssetID = nil
+                }
+                try Task.checkCancellation()
+                if let existingAssetID {
                     _ = try await store.markExported(
                         captureID: record.captureID,
                         assetLocalIdentifier: existingAssetID
@@ -169,6 +178,7 @@ struct PhotoLibraryPendingCaptureExporter: TAPPendingCaptureExporting {
             TAPDiagnostics.pendingCapture.info("export signed photo data loaded captureID=\(record.captureID, privacy: .private) bytes=\(signedData.count, privacy: .public)")
             #endif
             let pairedVideoURL = try await store.pairedVideoURL(captureID: record.captureID)
+            try Task.checkCancellation()
             let assetID = try await actions.saveValidatedSignedPhoto(signedData, record, pairedVideoURL)
             _ = try await store.markExported(captureID: record.captureID, assetLocalIdentifier: assetID)
 

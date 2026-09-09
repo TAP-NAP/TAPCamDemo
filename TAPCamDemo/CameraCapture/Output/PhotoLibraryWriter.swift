@@ -156,36 +156,34 @@ nonisolated enum PhotoLibraryWriter {
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.photoLibrary.info("originalPhotoData request start assetID=\(asset.localIdentifier, privacy: .private)")
         #endif
-        return try await withCheckedThrowingContinuation { continuation in
-            var result = Data()
-            let options = PHAssetResourceRequestOptions()
-            options.isNetworkAccessAllowed = true
-
-            PHAssetResourceManager.default().requestData(
-                for: resource,
-                options: options,
-                dataReceivedHandler: { chunk in
-                    result.append(chunk)
-                },
-                completionHandler: { error in
-                    if let error {
-                        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-                        TAPDiagnostics.photoLibrary.error("originalPhotoData request failed assetID=\(asset.localIdentifier, privacy: .private) error=\(TAPDiagnostics.describe(error), privacy: .public)")
-                        #endif
-                        continuation.resume(throwing: error)
-                    } else {
-                        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-                        TAPDiagnostics.photoLibrary.info("originalPhotoData request success assetID=\(asset.localIdentifier, privacy: .private) bytes=\(result.count, privacy: .public)")
-                        #endif
-                        continuation.resume(returning: result)
-                    }
-                }
-            )
+        let request = PhotoKitResourceRequestBridge(
+            sink: PhotoKitResourceDataSink(),
+            allowsNetworkAccess: true,
+            progress: { _ in },
+            mapError: { $0 }
+        )
+        do {
+            let result = try await withTaskCancellationHandler {
+                try await request.start(resource: resource)
+            } onCancel: {
+                request.cancel()
+            }
+            try Task.checkCancellation()
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.photoLibrary.info("originalPhotoData request success assetID=\(asset.localIdentifier, privacy: .private) bytes=\(result.count, privacy: .public)")
+            #endif
+            return result
+        } catch {
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.photoLibrary.error("originalPhotoData request failed assetID=\(asset.localIdentifier, privacy: .private) error=\(TAPDiagnostics.describe(error), privacy: .public)")
+            #endif
+            throw error
         }
     }
 
     /// Streams the original Photos video into a file, synchronizing and closing
     /// it before the readback validator checks its proof and byte binding.
+    @concurrent
     static func writeOriginalVideoResource(
         localIdentifier: String,
         to fileURL: URL,
@@ -210,7 +208,7 @@ nonisolated enum PhotoLibraryWriter {
         )
     }
 
-    /// Reads original photo bytes by resolving the asset inside a detached task.
+    /// Reads original photo bytes with Photos metadata lookup off the main actor.
     ///
     /// `PHAssetResource.assetResources(for:)` can force Photos to fetch
     /// original-metadata properties. Running that lookup on the main actor
@@ -220,15 +218,14 @@ nonisolated enum PhotoLibraryWriter {
     /// expose a `PHFetchOptions` property-set prefetch knob for this private
     /// property set, so the practical fix is to keep original-resource
     /// resolution off the main queue and hand the UI only the final bytes.
+    @concurrent
     static func originalPhotoData(localIdentifier: String) async throws -> Data {
+        try Task.checkCancellation()
         try requireReadWriteAccess()
-        return try await Task.detached(priority: .userInitiated) {
-            guard let asset = asset(localIdentifier: localIdentifier) else {
-                throw TAPDepthCaptureError.assetNotFound
-            }
-
-            return try await originalPhotoData(for: asset)
-        }.value
+        guard let asset = asset(localIdentifier: localIdentifier) else {
+            throw TAPDepthCaptureError.assetNotFound
+        }
+        return try await originalPhotoData(for: asset)
     }
 
     /// Streams the selected asset's original `.photo` and optional
@@ -482,41 +479,49 @@ nonisolated enum PhotoLibraryWriter {
         return error
     }
 
+    @concurrent
     static func depthAssetIdentifier(captureID: String) async throws -> String? {
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.photoLibrary.info("depthAssetIdentifier lookup start captureID=\(captureID, privacy: .private)")
         #endif
+        try Task.checkCancellation()
         try requireReadWriteAccess()
-        return await Task.detached(priority: .userInitiated) {
-            guard let album = fetchAlbum() else {
-                return nil
-            }
+        guard let album = fetchAlbum() else {
+            return nil
+        }
 
-            let options = PHFetchOptions()
-            options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-            let result = PHAsset.fetchAssets(in: album, options: options)
-            let provenanceWriter = TAPCaptureProvenanceWriter()
-            for index in 0..<result.count {
-                let asset = result.object(at: index)
-                guard let data = try? await originalPhotoData(for: asset),
-                      let input = try? TAPPhotoValidationInput(data: data),
-                      (try? provenanceWriter.validateSignedExportPhoto(
-                        input,
-                        expectedCaptureID: captureID,
-                        expectedProfile: input.inferredProfile
-                      )) != nil else {
-                    continue
-                }
-                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-                TAPDiagnostics.photoLibrary.info("depthAssetIdentifier found captureID=\(captureID, privacy: .private) assetID=\(asset.localIdentifier, privacy: .private)")
-                #endif
-                return asset.localIdentifier
+        let options = PHFetchOptions()
+        options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        let result = PHAsset.fetchAssets(in: album, options: options)
+        let provenanceWriter = TAPCaptureProvenanceWriter()
+        for index in 0..<result.count {
+            try Task.checkCancellation()
+            let asset = result.object(at: index)
+            do {
+                let data = try await originalPhotoData(for: asset)
+                try Task.checkCancellation()
+                let input = try TAPPhotoValidationInput(data: data)
+                _ = try provenanceWriter.validateSignedExportPhoto(
+                    input,
+                    expectedCaptureID: captureID,
+                    expectedProfile: input.inferredProfile
+                )
+                try Task.checkCancellation()
+            } catch let error as CancellationError {
+                throw error
+            } catch {
+                continue
             }
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.photoLibrary.info("depthAssetIdentifier not found captureID=\(captureID, privacy: .private) scannedCount=\(result.count, privacy: .public)")
+            TAPDiagnostics.photoLibrary.info("depthAssetIdentifier found captureID=\(captureID, privacy: .private) assetID=\(asset.localIdentifier, privacy: .private)")
             #endif
-            return nil
-        }.value
+            return asset.localIdentifier
+        }
+        try Task.checkCancellation()
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.photoLibrary.info("depthAssetIdentifier not found captureID=\(captureID, privacy: .private) scannedCount=\(result.count, privacy: .public)")
+        #endif
+        return nil
     }
 
     /// Returns deterministic, oldest-first recovery candidates. The resource

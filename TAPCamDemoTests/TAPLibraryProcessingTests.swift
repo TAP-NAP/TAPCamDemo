@@ -215,6 +215,129 @@ struct TAPLibraryProcessingTests {
         #expect(exportedRecord.assetLocalIdentifier == "existing-asset")
     }
 
+    @Test(arguments: [true, false])
+    func photoRecoveryCancellationDoesNotSaveOrChangeRecord(lookupThrowsCancellation: Bool) async throws {
+        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+        let store = TAPPendingCaptureStore(rootURL: rootURL)
+        let record = try await store.ingest(TAPCamDemoTestFixtures.samplePendingArtifact(
+            photoData: Data("unsigned".utf8),
+            captureID: "cancelled-photo-recovery"
+        ))
+        _ = try await store.storeSignedPhoto(Data("signed".utf8), captureID: record.captureID)
+        let exportingRecord = try await store.updateStatus(captureID: record.captureID, status: .exporting)
+        let recorder = PendingCaptureStageRecorder()
+        let exporter = PhotoLibraryPendingCaptureExporter(actions: .init(
+            existingAssetIdentifier: { _ in
+                await recorder.record("lookup")
+                if lookupThrowsCancellation {
+                    throw CancellationError()
+                }
+                withUnsafeCurrentTask { $0?.cancel() }
+                return nil
+            },
+            saveValidatedSignedPhoto: { _, _ in
+                await recorder.record("save")
+                return "unexpected-asset"
+            }
+        ))
+
+        let exportTask = Task {
+            try await exporter.export(exportingRecord, store: store)
+        }
+        do {
+            try await exportTask.value
+            Issue.record("Expected recovery cancellation")
+        } catch is CancellationError {
+            // A cancelled lookup must not become a new Photos export.
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
+
+        #expect(await recorder.recordedStages() == ["lookup"])
+        #expect(try await store.readRecord(captureID: record.captureID) == exportingRecord)
+    }
+
+    @Test(arguments: [false, true])
+    func photoRecoveryOrdinaryLookupErrorStillPersistsSuccessfulSave(cancelAfterSave: Bool) async throws {
+        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+        let store = TAPPendingCaptureStore(rootURL: rootURL)
+        let record = try await store.ingest(TAPCamDemoTestFixtures.samplePendingArtifact(
+            photoData: Data("unsigned".utf8),
+            captureID: "photo-recovery-lookup-error"
+        ))
+        _ = try await store.storeSignedPhoto(Data("signed".utf8), captureID: record.captureID)
+        let exportingRecord = try await store.updateStatus(captureID: record.captureID, status: .exporting)
+        let recorder = PendingCaptureStageRecorder()
+        let exporter = PhotoLibraryPendingCaptureExporter(actions: .init(
+            existingAssetIdentifier: { _ in
+                await recorder.record("lookup")
+                throw URLError(.networkConnectionLost)
+            },
+            saveValidatedSignedPhoto: { _, _ in
+                await recorder.record("save")
+                if cancelAfterSave {
+                    withUnsafeCurrentTask { $0?.cancel() }
+                }
+                return "recovered-by-save"
+            }
+        ))
+
+        let exportTask = Task {
+            try await exporter.export(exportingRecord, store: store)
+        }
+        try await exportTask.value
+
+        #expect(await recorder.recordedStages() == ["lookup", "save"])
+        let exportedRecord = try await store.readRecord(captureID: record.captureID)
+        #expect(exportedRecord.status == .exported)
+        #expect(exportedRecord.assetLocalIdentifier == "recovered-by-save")
+    }
+
+    @Test(arguments: [true, false])
+    func reconciliationCancellationStopsBeforeNextRecordAndCleanup(lookupThrowsCancellation: Bool) async throws {
+        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+        let store = TAPPendingCaptureStore(rootURL: rootURL)
+        for captureID in ["reconcile-first", "reconcile-second"] {
+            _ = try await store.ingest(TAPCamDemoTestFixtures.samplePendingArtifact(
+                photoData: Data("unsigned".utf8),
+                captureID: captureID
+            ))
+            _ = try await store.storeSignedPhoto(Data("signed".utf8), captureID: captureID)
+            _ = try await store.updateStatus(captureID: captureID, status: .exporting)
+        }
+        let originalRecords = try await store.allRecords()
+        let recorder = PendingCaptureStageRecorder()
+        let reconcileTask = Task {
+            try await TAPPendingCaptureProcessor().reconcile(
+                store: store,
+                cleanup: StageRecordingPendingCaptureCleanup(recorder: recorder),
+                existingPhotoAssetIdentifier: { _ in
+                    await recorder.record("lookup")
+                    if lookupThrowsCancellation {
+                        throw CancellationError()
+                    }
+                    withUnsafeCurrentTask { $0?.cancel() }
+                    return nil
+                }
+            )
+        }
+
+        do {
+            try await reconcileTask.value
+            Issue.record("Expected reconciliation cancellation")
+        } catch is CancellationError {
+            // Cancellation stops both further Photos lookup and local cleanup.
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
+
+        #expect(await recorder.recordedStages() == ["lookup"])
+        #expect(try await store.allRecords() == originalRecords)
+    }
+
     @Test func pendingCaptureRetryClassifierMapsTypedNetworkErrorsToWaitingNetwork() throws {
         let networkErrors: [URLError.Code] = [
             .notConnectedToInternet,

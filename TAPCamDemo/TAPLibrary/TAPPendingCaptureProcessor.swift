@@ -146,11 +146,14 @@ actor TAPPendingCaptureProcessor {
 
     func reconcile(
         store: TAPPendingCaptureStore = .shared,
-        cleanup: any TAPPendingCaptureCleaning = TAPPendingCaptureLargeFileCleanup()
+        cleanup: any TAPPendingCaptureCleaning = TAPPendingCaptureLargeFileCleanup(),
+        existingPhotoAssetIdentifier: @Sendable (String) async throws -> String? = PhotoLibraryWriter.depthAssetIdentifier
     ) async throws {
+        try Task.checkCancellation()
         try await store.removeStaleVideoCaptureWorkspaces()
         let records = try await store.allRecords()
         for record in records {
+            try Task.checkCancellation()
             switch record.status {
             case .exported, .failedTerminal:
                 continue
@@ -158,10 +161,19 @@ actor TAPPendingCaptureProcessor {
                 // Photo recovery has a dedicated signed-photo lookup. TAP
                 // video recovery must stay in the exporter so deterministic
                 // filename candidates receive full manifest/proof readback.
-                if record.artifactKind == .photoDepth,
-                   let assetID = try? await PhotoLibraryWriter.depthAssetIdentifier(
-                    captureID: record.captureID
-                   ) {
+                guard record.artifactKind == .photoDepth else {
+                    continue
+                }
+                let assetID: String?
+                do {
+                    assetID = try await existingPhotoAssetIdentifier(record.captureID)
+                } catch let error as CancellationError {
+                    throw error
+                } catch {
+                    assetID = nil
+                }
+                try Task.checkCancellation()
+                if let assetID {
                     _ = try await store.markExported(
                         captureID: record.captureID,
                         assetLocalIdentifier: assetID
@@ -171,6 +183,7 @@ actor TAPPendingCaptureProcessor {
                 continue
             }
         }
+        try Task.checkCancellation()
         try await cleanup.cleanup(store: store)
     }
 
