@@ -29,7 +29,6 @@ struct InteractiveDepthImage: View {
     let planeSeedPoint: CGPoint?
     let highlightPalette: AnalysisHighlightPalette
     let isPlaneGridAnimationEnabled: Bool
-    let isPointSelectionEnabled: Bool
     let onSelectionCleared: () -> Void
     let onPointSelected: (CGPoint) -> Void
 
@@ -140,8 +139,7 @@ struct InteractiveDepthImage: View {
             .simultaneousGesture(
                 SpatialTapGesture(count: 1)
                     .onEnded { value in
-                        guard isPointSelectionEnabled,
-                              Date().timeIntervalSince(lastClearDate) > 0.25,
+                        guard Date().timeIntervalSince(lastClearDate) > 0.25,
                               !isNearComparisonDivider(value.location, imageFrame: imageFrame),
                               let depthPoint = depthPoint(for: value.location, imageFrame: imageFrame) else {
                             return

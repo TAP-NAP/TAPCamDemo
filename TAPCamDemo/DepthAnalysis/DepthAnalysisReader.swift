@@ -26,7 +26,6 @@ import ImageIO
 ///
 /// Functions enabled by this reader:
 /// - Depth: colorized depth heatmap for visual inspection.
-/// - Mask: valid/invalid depth coverage map.
 /// - Planes: region statistics and plane fitting from metric depth samples.
 /// - Cloud: camera-coordinate point preview using calibration intrinsics.
 ///
@@ -68,7 +67,6 @@ nonisolated enum TAPDepthMapReader {
 
         let metricDepth = try metricDepthMap(from: depthData, manifest: manifest)
         let heatmap = try TAPDepthHeatmapRenderer.heatmap(for: metricDepth)
-        let validMask = try TAPDepthMaskRenderer.validMask(for: metricDepth)
 
         return TAPDepthAnalysisInput(
             manifest: manifest,
@@ -77,8 +75,7 @@ nonisolated enum TAPDepthMapReader {
             depthMap: metricDepth,
             depthAccuracy: manifest.payload.depth.accuracy,
             depthQuality: manifest.payload.depth.quality,
-            heatmap: heatmap,
-            validMask: validMask
+            heatmap: heatmap
         )
     }
 

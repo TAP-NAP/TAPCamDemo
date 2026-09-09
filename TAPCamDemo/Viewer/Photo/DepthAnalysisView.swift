@@ -1496,12 +1496,10 @@ private struct AnalysisToolPhotoStage: View {
     private func twoDContent(size: CGSize) -> some View {
         if let input = slot.input {
             DepthAnalysisStageView(
-                viewMode: .planes,
                 image: input.image,
                 imageOrientation: input.imageOrientation,
                 depthMap: input.depthMap,
                 heatmapImage: input.heatmap.image,
-                validMaskImage: input.validMask.image,
                 heatmapOpacity: heatmapOpacity,
                 comparisonPosition: comparisonPosition,
                 onComparisonPositionChanged: { newValue in

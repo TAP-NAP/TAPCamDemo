@@ -261,38 +261,6 @@ struct TAPCamDemoTests {
         #expect(pixels[7] == 255)
     }
 
-    @Test func maskOverlayUsesTransparencyAndBoundaryColorInsteadOfPureWhite() throws {
-        let fullValid = TAPMetricDepthMap(
-            width: 3,
-            height: 3,
-            samples: Array(repeating: 1.0, count: 9),
-            calibration: nil
-        )
-
-        let pixels = TAPDepthMaskRenderer.overlayPixels(for: fullValid)
-        let centerOffset = (1 + 1 * fullValid.width) * 4
-        let cornerOffset = 0
-        #expect(pixels[centerOffset + 3] == TAPDepthMaskRenderer.validFillColor.alpha)
-        #expect(pixels[cornerOffset + 3] == TAPDepthMaskRenderer.boundaryColor.alpha)
-        #expect(Array(pixels[centerOffset..<(centerOffset + 3)]) != [255, 255, 255])
-
-        let mixed = TAPMetricDepthMap(
-            width: 1,
-            height: 2,
-            samples: [1.0, 0],
-            calibration: nil
-        )
-        let mixedPixels = TAPDepthMaskRenderer.overlayPixels(for: mixed)
-        #expect(mixedPixels[3] == TAPDepthMaskRenderer.boundaryColor.alpha)
-        #expect(mixedPixels[7] == 0)
-
-        let mask = try TAPDepthMaskRenderer.validMask(for: mixed)
-        #expect(mask.validSampleCount == 1)
-        #expect(mask.totalSampleCount == 2)
-        #expect(mask.validRatio == 0.5)
-        #expect(mask.legendStops.map(\.label) == ["Valid depth", "Valid/invalid edge"])
-    }
-
     @Test func appAppearanceIsLockedToDarkMode() throws {
         #expect(Bundle.main.object(forInfoDictionaryKey: "UIUserInterfaceStyle") as? String == "Dark")
     }

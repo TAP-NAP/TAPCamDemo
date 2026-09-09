@@ -25,7 +25,6 @@ nonisolated struct TAPDepthAnalysisInput {
     let depthAccuracy: String
     let depthQuality: String
     let heatmap: TAPDepthHeatmapVisualization
-    let validMask: TAPDepthMaskVisualization
 }
 
 nonisolated struct TAPRGBAColor: Equatable {
@@ -39,27 +38,9 @@ nonisolated struct TAPRGBAColor: Equatable {
     }
 }
 
-nonisolated struct TAPDepthLegendStop: Equatable, Identifiable {
-    let position: Double
-    let label: String
-    let color: TAPRGBAColor
-
-    var id: String {
-        "\(position)-\(label)"
-    }
-}
-
 nonisolated struct TAPDepthHeatmapVisualization {
     let image: CGImage
     let rangeMeters: ClosedRange<Float>
-}
-
-nonisolated struct TAPDepthMaskVisualization {
-    let image: CGImage
-    let validSampleCount: Int
-    let totalSampleCount: Int
-    let validRatio: Double
-    let legendStops: [TAPDepthLegendStop]
 }
 
 /// A row-major metric depth map. Invalid, zero, infinite, or NaN samples are

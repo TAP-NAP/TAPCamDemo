@@ -343,8 +343,7 @@ enum TAPCamDemoTestFixtures {
             depthMap: depthMap,
             depthAccuracy: "unknown",
             depthQuality: "unknown",
-            heatmap: try TAPDepthHeatmapRenderer.heatmap(for: depthMap),
-            validMask: try TAPDepthMaskRenderer.validMask(for: depthMap)
+            heatmap: try TAPDepthHeatmapRenderer.heatmap(for: depthMap)
         )
     }
 
