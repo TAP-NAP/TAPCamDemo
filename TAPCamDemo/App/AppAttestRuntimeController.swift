@@ -70,18 +70,17 @@ final class AppAttestRuntimeController: ObservableObject {
             if shouldRegisterFreshCredential {
                 try await self.resetLocalCredentialMetadata()
                 try await self.prepareAndValidateCredential(
-                    markAutoPrepared: true,
                     healthCheckToken: currentHealthCheckToken
                 )
             } else {
-                try await self.prepareCredentialIfNeeded(markAutoPrepared: false)
+                try await self.loadOrPrepareCredential()
             }
         }
     }
 
     func prepareCredentialIfNeeded() async {
         _ = await performCredentialOperation("Prepare credential", showsPreparationProgress: true) {
-            try await self.prepareCredentialIfNeeded(markAutoPrepared: false)
+            try await self.loadOrPrepareCredential()
         }
     }
 
@@ -106,7 +105,6 @@ final class AppAttestRuntimeController: ObservableObject {
         _ = await performCredentialOperation("Reset and prepare credential", showsPreparationProgress: true) {
             try await self.resetLocalCredentialMetadata()
             try await self.prepareAndValidateCredential(
-                markAutoPrepared: true,
                 healthCheckToken: currentHealthCheckToken
             )
         }
@@ -119,38 +117,32 @@ final class AppAttestRuntimeController: ObservableObject {
     }
 
     @discardableResult
-    private func prepareCredential(markAutoPrepared: Bool) async throws -> AppAttestCredential {
+    private func prepareCredential() async throws -> AppAttestCredential {
         let credential = try await runtime.client.prepare(credentialName: AppAttestRuntimeDefaults.photoCredentialName)
-        if markAutoPrepared {
-            self.userDefaults.set(true, forKey: Self.didAutoPreparePhotoCredentialKey)
-        }
+        self.userDefaults.set(true, forKey: Self.didAutoPreparePhotoCredentialKey)
         self.credentialStatusText = AppAttestCredentialPresentation.readyStatusText
         self.credentialKeyIdText = credential.keyId
         return credential
     }
 
     @discardableResult
-    private func prepareCredentialIfNeeded(markAutoPrepared: Bool) async throws -> AppAttestCredential {
+    private func loadOrPrepareCredential() async throws -> AppAttestCredential {
         let credential = try await runtime.client.prepareIfNeeded(credentialName: AppAttestRuntimeDefaults.photoCredentialName)
-        if markAutoPrepared {
-            self.userDefaults.set(true, forKey: Self.didAutoPreparePhotoCredentialKey)
-        }
         self.credentialStatusText = AppAttestCredentialPresentation.readyStatusText
         self.credentialKeyIdText = credential.keyId
         return credential
     }
 
     private func prepareAndValidateCredential(
-        markAutoPrepared: Bool,
         healthCheckToken: String
     ) async throws {
-        _ = try await prepareCredential(markAutoPrepared: markAutoPrepared)
+        _ = try await prepareCredential()
 
         do {
             try await validateCredentialCanGenerateAssertion()
         } catch where Self.isInvalidSystemAppAttestKey(error) {
             try await resetLocalCredentialMetadata()
-            _ = try await prepareCredential(markAutoPrepared: markAutoPrepared)
+            _ = try await prepareCredential()
             try await validateCredentialCanGenerateAssertion()
         }
         self.userDefaults.set(healthCheckToken, forKey: Self.credentialHealthCheckTokenKey)
