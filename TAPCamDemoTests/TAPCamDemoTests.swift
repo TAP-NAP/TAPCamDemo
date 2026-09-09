@@ -119,15 +119,6 @@ struct TAPCamDemoTests {
         #expect(FocalLengthLabelResolver.usesWideBaselineForVirtualFOV(deviceTypeRawValue: AVCaptureDevice.DeviceType.builtInDualCamera.rawValue))
         #expect(FocalLengthLabelResolver.usesWideBaselineForVirtualFOV(deviceTypeRawValue: AVCaptureDevice.DeviceType.builtInLiDARDepthCamera.rawValue))
         #expect(!FocalLengthLabelResolver.usesWideBaselineForVirtualFOV(deviceTypeRawValue: AVCaptureDevice.DeviceType.builtInWideAngleCamera.rawValue))
-        #expect(FocalLengthLabelResolver.equivalentMillimeters(baseMillimeters: 24, zoomFactor: 1) == 24)
-        #expect(FocalLengthLabelResolver.equivalentMillimeters(baseMillimeters: 24, zoomFactor: 2) == 48)
-        #expect(FocalLengthLabelResolver.isSemanticFOVSlot(equivalentMillimeters: 13, zoomFactor: 0.5))
-        #expect(FocalLengthLabelResolver.isSemanticFOVSlot(equivalentMillimeters: 13, zoomFactor: 1))
-        #expect(FocalLengthLabelResolver.isSemanticFOVSlot(equivalentMillimeters: 24, zoomFactor: 1))
-        #expect(FocalLengthLabelResolver.isSemanticFOVSlot(equivalentMillimeters: 48, zoomFactor: 2))
-        #expect(FocalLengthLabelResolver.isSemanticFOVSlot(equivalentMillimeters: 77, zoomFactor: 3))
-        #expect(!FocalLengthLabelResolver.isSemanticFOVSlot(equivalentMillimeters: 26, zoomFactor: 2))
-        #expect(!FocalLengthLabelResolver.isSemanticFOVSlot(equivalentMillimeters: 154, zoomFactor: 2))
     }
 
     @Test func discovered48mmFOVOptionUsesResolvedRawVideoZoomWhenAvailable() throws {
