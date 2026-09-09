@@ -455,6 +455,72 @@ struct TAPDepthAnalysisPresentationTests {
         #expect(slot.mediaFetchPhase == .ready(true))
     }
 
+    @Test @MainActor func completedAnalysisIdentityFollowsRetainedInputAndReload() async throws {
+        let input = try TAPCamDemoTestFixtures.analysisInput(depthMap: TAPMetricDepthMap(
+            width: 2,
+            height: 2,
+            samples: [1, 1, 1, 1],
+            calibration: TAPCamDemoTestFixtures.sampleCalibration
+        ))
+        let slot = AnalysisPhotoSlot(entry: DepthAnalysisCarouselEntry(source: .photosAsset("input-identity")))
+        let loader = DepthAnalysisProgressivePhotoLoader(inputLoader: { _, _ in input })
+        #expect(slot.analysisState.completedInputRequestKey == nil)
+        slot.ensureInputLoading(loader: loader, priority: .userInitiated, prewarmPlaneGeometry: false)
+        let firstRequest = try #require(slot.analysisState.activeOriginalRequestKey)
+        await (try #require(slot.analysisState.inputTask)).value
+        #expect(slot.input != nil)
+        #expect(slot.analysisState.completedInputRequestKey == firstRequest)
+        #expect(slot.analysisState.activeOriginalRequestKey == nil)
+
+        slot.cancelCurrentMediaFetch()
+        #expect(slot.input != nil)
+        #expect(slot.analysisState.completedInputRequestKey == firstRequest)
+        slot.prepareForAdjacentPreview()
+        #expect(slot.input == nil)
+        #expect(slot.analysisState.completedInputRequestKey == nil)
+
+        let calibration = try #require(input.depthMap.calibration)
+        let changedCalibration = TAPDepthManifest.CameraCalibration(
+            intrinsicMatrixReferenceWidth: calibration.intrinsicMatrixReferenceWidth,
+            intrinsicMatrixReferenceHeight: calibration.intrinsicMatrixReferenceHeight,
+            pixelSizeMillimeters: calibration.pixelSizeMillimeters,
+            lensDistortionLookupTablePresent: calibration.lensDistortionLookupTablePresent,
+            inverseLensDistortionLookupTablePresent: calibration.inverseLensDistortionLookupTablePresent,
+            lensDistortionCenterX: calibration.lensDistortionCenterX,
+            lensDistortionCenterY: calibration.lensDistortionCenterY,
+            intrinsicMatrix: [200, 0, 0, 0, 100, 0, 4, 4, 1],
+            extrinsicMatrix: calibration.extrinsicMatrix
+        )
+        let replacement = TAPDepthAnalysisInput(
+            manifest: input.manifest,
+            image: input.image,
+            imageOrientation: input.imageOrientation,
+            depthMap: TAPMetricDepthMap(
+                width: input.depthMap.width,
+                height: input.depthMap.height,
+                samples: input.depthMap.samples,
+                calibration: changedCalibration
+            ),
+            depthAccuracy: input.depthAccuracy,
+            depthQuality: input.depthQuality,
+            heatmap: input.heatmap
+        )
+        slot.ensureInputLoading(
+            loader: DepthAnalysisProgressivePhotoLoader(inputLoader: { _, _ in replacement }),
+            priority: .userInitiated,
+            prewarmPlaneGeometry: false
+        )
+        let secondRequest = try #require(slot.analysisState.activeOriginalRequestKey)
+        await (try #require(slot.analysisState.inputTask)).value
+        #expect(secondRequest != firstRequest)
+        #expect(slot.analysisState.completedInputRequestKey == secondRequest)
+        #expect(slot.input?.depthMap.calibration == changedCalibration)
+        #expect(slot.input?.depthMap.samples == input.depthMap.samples)
+        slot.prepareForEviction()
+        #expect(slot.input == nil)
+        #expect(slot.analysisState.completedInputRequestKey == nil)
+    }
+
     @Test @MainActor func originalICloudProgressNeverRegressesOrReturnsToIndeterminate() async throws {
         let image = try singlePixelUIImage()
         let depthMap = TAPMetricDepthMap(

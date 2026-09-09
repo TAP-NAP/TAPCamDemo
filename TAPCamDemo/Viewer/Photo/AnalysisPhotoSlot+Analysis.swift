@@ -120,6 +120,7 @@ extension AnalysisPhotoSlot {
             input = try loadedOriginal.analysisInput()
         } catch {
             analysisState.input = nil
+            analysisState.completedInputRequestKey = nil
             let presentation = DepthAnalysisErrorPresentation.analysisLoadError(for: error)
             analysisState.errorTitle = presentation.title
             analysisState.errorSystemImage = presentation.systemImage
@@ -139,6 +140,7 @@ extension AnalysisPhotoSlot {
         }
 
         analysisState.input = input
+        analysisState.completedInputRequestKey = requestKey
         analysisState.phase = .ready
         setOriginalMediaFetchPhase(.ready(true))
         clearLoadError()

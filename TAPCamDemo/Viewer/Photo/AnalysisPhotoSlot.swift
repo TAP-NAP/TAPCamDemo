@@ -43,6 +43,7 @@ struct AnalysisPhotoDisplayFetchState {
 struct AnalysisPhotoAnalysisState {
     var phase: AnalysisPhotoAnalysisPhase = .idle
     var input: TAPDepthAnalysisInput?
+    var completedInputRequestKey: MediaFetchRequestKey?
     var inputTask: Task<Void, Never>?
 
     var originalFetchGeneration: UInt64 = 0
@@ -274,6 +275,7 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
         pendingSignedOriginalRefreshID = refreshID
         originalResourceOwner.clear()
         analysisState.input = nil
+        analysisState.completedInputRequestKey = nil
         analysisState.phase = .idle
         ensureInputLoading(
             loader: lastLoader,
@@ -286,6 +288,7 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
         cancelLivePhotoFetch(preserveCloudState: false, invokesCancellationAction: true)
         cancelOriginalTasks(preserveCloudState: true)
         analysisState.input = nil
+        analysisState.completedInputRequestKey = nil
         originalResourceOwner.clear()
         analysisState.phase = .idle
         selectionState.planeRequestCoordinator.cancelRegionRequest()
@@ -315,6 +318,7 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
         displayFetchState.thumbnailImage = nil
         displayFetchState.displayPhoto = nil
         analysisState.input = nil
+        analysisState.completedInputRequestKey = nil
         originalResourceOwner.clear()
         displayFetchState.phase = .idle
         analysisState.phase = .idle

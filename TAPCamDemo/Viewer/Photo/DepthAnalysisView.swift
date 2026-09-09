@@ -1573,6 +1573,8 @@ private struct AnalysisToolPhotoStage: View {
                 highlightColor: highlightPalette.uiColor,
                 enablesMotionParallax: true
             )
+            .id(ObjectIdentifier(slot))
+            .id(slot.analysisState.completedInputRequestKey)
             .frame(width: size.width, height: size.height)
         } else {
             AnalysisToolSlotLoadingView(

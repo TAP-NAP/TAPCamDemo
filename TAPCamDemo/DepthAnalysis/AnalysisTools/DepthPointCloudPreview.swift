@@ -519,7 +519,7 @@ nonisolated struct TAPRGBPixelSampler {
     }
 }
 
-fileprivate struct TAPDepthProjectionPayloadBuildRequest: @unchecked Sendable {
+nonisolated struct TAPDepthProjectionPayloadBuildRequest: @unchecked Sendable {
     let image: CGImage?
     let depthMap: TAPMetricDepthMap
     let orientation: CGImagePropertyOrientation
@@ -556,7 +556,14 @@ nonisolated enum TAPDepthProjectionScenePayloadBuilder {
         )
     }
 
-    fileprivate static func makePayloadData(
+    @concurrent
+    static func makePayloadDataAsync(
+        request: TAPDepthProjectionPayloadBuildRequest
+    ) async -> TAPDepthProjectionScenePayloadData? {
+        makePayloadData(request: request)
+    }
+
+    static func makePayloadData(
         request: TAPDepthProjectionPayloadBuildRequest
     ) -> TAPDepthProjectionScenePayloadData? {
         guard !Task.isCancelled else {
@@ -664,7 +671,7 @@ nonisolated enum TAPDepthProjectionScenePayloadBuilder {
     }
 }
 
-private struct DepthProjectionSceneView: UIViewRepresentable {
+struct DepthProjectionSceneView: UIViewRepresentable {
     let image: CGImage?
     let depthMap: TAPMetricDepthMap
     let orientation: CGImagePropertyOrientation
@@ -749,6 +756,10 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
         )
     }
 
+    static func dismantleUIView(_ view: ProjectionSCNView, coordinator: Coordinator) {
+        coordinator.dismantle()
+    }
+
     final class ProjectionSCNView: SCNView {
         var onLayout: ((CGSize) -> Void)?
         var gesturesForAncestorFailure: [UIGestureRecognizer] = [] {
@@ -791,13 +802,21 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
         }
     }
 
+    @MainActor
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
-        private var currentSignature: String?
-        private var pendingPayloadSignature: String?
-        private var payloadBuildTask: Task<TAPDepthProjectionScenePayloadData?, Never>?
+        private struct HighlightSelection: Equatable {
+            let pixelRuns: [TAPPlanePixelRun]
+            let color: SIMD4<Float>
+        }
+
+        private var currentHighlightSelection: HighlightSelection?
+        private var reduceMotion = false
+        private(set) var payloadBuildTask: Task<Void, Never>?
+        private let payloadBuilder: @Sendable (TAPDepthProjectionPayloadBuildRequest) async -> TAPDepthProjectionScenePayloadData?
         private let motionManager = CMMotionManager()
         private weak var interactionRootNode: SCNNode?
         private weak var projectionRootNode: SCNNode?
+        private weak var highlightNode: SCNNode?
         private weak var cameraNode: SCNNode?
         private var currentCameraModel: TAPDepthProjectionCameraModel?
         private var currentTargetDepth: Float = 0.25
@@ -809,9 +828,22 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
         private var motionParallaxBaseline: MotionParallaxAttitude?
         private var shouldRecenterMotionParallax = true
 
+        init(
+            payloadBuilder: @escaping @Sendable (TAPDepthProjectionPayloadBuildRequest) async -> TAPDepthProjectionScenePayloadData? = TAPDepthProjectionScenePayloadBuilder.makePayloadDataAsync
+        ) {
+            self.payloadBuilder = payloadBuilder
+            super.init()
+        }
+
         deinit {
             payloadBuildTask?.cancel()
             motionManager.stopDeviceMotionUpdates()
+        }
+
+        fileprivate func dismantle() {
+            payloadBuildTask?.cancel()
+            payloadBuildTask = nil
+            syncMotionParallax(enabled: false)
         }
 
         func registerProjectionGesture(_ gesture: UIGestureRecognizer) {
@@ -929,24 +961,24 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
             enablesMotionParallax: Bool,
             reduceMotion: Bool
         ) {
-            let signature = Self.signature(
-                depthMap: depthMap,
-                image: image,
-                orientation: orientation,
-                selectedPlaneRegion: selectedPlaneRegion,
-                highlightColor: highlightColor
+            if self.reduceMotion != reduceMotion {
+                self.reduceMotion = reduceMotion
+                updateHighlightAnimation()
+            }
+            // The owning photo slot recreates this view only for a new input.
+            let selection = HighlightSelection(
+                pixelRuns: selectedPlaneRegion?.pixelRuns ?? [],
+                color: TAPDepthProjectionScenePayloadBuilder.rgbaColor(highlightColor)
             )
-            if currentSignature != signature {
-                currentSignature = signature
+            if currentHighlightSelection != selection {
+                currentHighlightSelection = selection
                 configureSceneAsync(
                     view: view,
-                    signature: signature,
                     image: image,
                     depthMap: depthMap,
                     orientation: orientation,
                     selectedPlaneRegion: selectedPlaneRegion,
-                    highlightColor: highlightColor,
-                    reduceMotion: reduceMotion
+                    highlightColor: highlightColor
                 )
             }
             syncMotionParallax(enabled: enablesMotionParallax)
@@ -974,13 +1006,11 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
 
         private func configureSceneAsync(
             view: SCNView,
-            signature: String,
             image: CGImage?,
             depthMap: TAPMetricDepthMap,
             orientation: CGImagePropertyOrientation,
             selectedPlaneRegion: TAPPlaneRegion?,
-            highlightColor: UIColor,
-            reduceMotion: Bool
+            highlightColor: UIColor
         ) {
             let request = TAPDepthProjectionPayloadBuildRequest(
                 image: image,
@@ -989,26 +1019,18 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
                 selectedPlaneRegion: selectedPlaneRegion,
                 highlightColor: highlightColor
             )
-            pendingPayloadSignature = signature
             payloadBuildTask?.cancel()
-            let buildTask = Task.detached(priority: .userInitiated) {
-                TAPDepthProjectionScenePayloadBuilder.makePayloadData(request: request)
-            }
-            payloadBuildTask = buildTask
-
-            Task { @MainActor [weak self, weak view] in
-                let payloadData = await buildTask.value
-                guard let self,
-                      let view,
-                      self.pendingPayloadSignature == signature else {
+            payloadBuildTask = Task(priority: .userInitiated) { @MainActor [weak self, weak view, payloadBuilder] in
+                let payloadData = await payloadBuilder(request)
+                guard !Task.isCancelled,
+                      let self,
+                      let view else {
                     return
                 }
-                self.pendingPayloadSignature = nil
                 self.payloadBuildTask = nil
                 self.configureScene(
                     view: view,
-                    payloadData: payloadData,
-                    reduceMotion: reduceMotion
+                    payloadData: payloadData
                 )
             }
         }
@@ -1016,12 +1038,21 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
         @MainActor
         private func configureScene(
             view: SCNView,
-            payloadData: TAPDepthProjectionScenePayloadData?,
-            reduceMotion: Bool
+            payloadData: TAPDepthProjectionScenePayloadData?
         ) {
+            guard let payloadData else {
+                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                TAPDiagnostics.depthAnalysis.warning("projection payload missing label=payloadMissing")
+                #endif
+                return
+            }
+            if interactionRootNode != nil {
+                updateHighlight(payloadData: payloadData)
+                return
+            }
             let scene = SCNScene()
-            currentCameraModel = payloadData?.cameraModel
-            let targetDepth = payloadData?.targetDepth ?? 0.25
+            currentCameraModel = payloadData.cameraModel
+            let targetDepth = payloadData.targetDepth
             currentTargetDepth = targetDepth
 
             let interactionNode = SCNNode()
@@ -1042,14 +1073,7 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
                 targetDepth: targetDepth
             )
             motionNode.addChildNode(geometryRootNode)
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            if payloadData == nil {
-                TAPDiagnostics.depthAnalysis.warning("projection payload missing label=payloadMissing")
-            }
-            #endif
-
-            if let payloadData,
-               let geometry = Self.makePointGeometry(
+            if let geometry = Self.makePointGeometry(
                 vertices: payloadData.baseVertices,
                 colors: payloadData.baseColors,
                 pointSize: payloadData.pointSize
@@ -1058,29 +1082,11 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
                 node.name = "DepthProjectionModel"
                 geometryRootNode.addChildNode(node)
             }
-            if let payloadData,
-               let highlightGeometry = Self.makeHighlightGeometry(
-                vertices: payloadData.highlightVertices,
-                pointSize: payloadData.pointSize * 1.85,
-                color: payloadData.highlightColor
-               ) {
-                let node = SCNNode(geometry: highlightGeometry)
-                node.name = "SelectedPlaneProjection"
-                if reduceMotion {
-                    node.opacity = 0.88
-                } else {
-                    node.opacity = 0.55
-                    node.runAction(
-                        .repeatForever(
-                            .sequence([
-                                .fadeOpacity(to: 1.0, duration: 0.72),
-                                .fadeOpacity(to: 0.42, duration: 0.72)
-                            ])
-                        )
-                    )
-                }
-                geometryRootNode.addChildNode(node)
-            }
+            let highlightNode = SCNNode()
+            highlightNode.name = "SelectedPlaneProjection"
+            geometryRootNode.addChildNode(highlightNode)
+            self.highlightNode = highlightNode
+            updateHighlight(payloadData: payloadData)
 
             let cameraNode = SCNNode()
             let camera = SCNCamera()
@@ -1102,13 +1108,43 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
             scene.rootNode.addChildNode(ambientNode)
             view.scene = scene
             view.pointOfView = cameraNode
-            if payloadData != nil {
-                syncProjection(viewportSize: view.bounds.size)
-            }
+            syncProjection(viewportSize: view.bounds.size)
 
             // TODO: keep this renderer boundary replaceable with Metal when
             // point count, splat quality, mesh rendering, or performance needs
             // outgrow SceneKit.
+        }
+
+        private func updateHighlight(payloadData: TAPDepthProjectionScenePayloadData) {
+            highlightNode?.geometry = Self.makeHighlightGeometry(
+                vertices: payloadData.highlightVertices,
+                pointSize: payloadData.pointSize * 1.85,
+                color: payloadData.highlightColor
+            )
+            updateHighlightAnimation()
+        }
+
+        private func updateHighlightAnimation() {
+            guard let highlightNode else {
+                return
+            }
+            highlightNode.removeAllActions()
+            guard highlightNode.geometry != nil else {
+                return
+            }
+            if reduceMotion {
+                highlightNode.opacity = 0.88
+            } else {
+                highlightNode.opacity = 0.55
+                highlightNode.runAction(
+                    .repeatForever(
+                        .sequence([
+                            .fadeOpacity(to: 1.0, duration: 0.72),
+                            .fadeOpacity(to: 0.42, duration: 0.72)
+                        ])
+                    )
+                )
+            }
         }
 
         private func resetInteractionTransform(animated: Bool) {
@@ -1375,27 +1411,6 @@ private struct DepthProjectionSceneView: UIViewRepresentable {
             material.isDoubleSided = true
             geometry.materials = [material]
             return geometry
-        }
-
-        private static func signature(
-            depthMap: TAPMetricDepthMap,
-            image: CGImage?,
-            orientation: CGImagePropertyOrientation,
-            selectedPlaneRegion: TAPPlaneRegion?,
-            highlightColor: UIColor
-        ) -> String {
-            let count = depthMap.samples.count
-            let sampleIndices = [0, count / 2, max(count - 1, 0)].filter { depthMap.samples.indices.contains($0) }
-            let sampleSignature = sampleIndices
-                .map { String(format: "%.4f", depthMap.samples[$0]) }
-                .joined(separator: ":")
-            let planeSignature = selectedPlaneRegion.map { region in
-                "\(region.seedPixel.x):\(region.seedPixel.y):\(region.sampleCount):\(region.pixelRuns.count)"
-            } ?? "no-plane"
-            let imageSignature = image.map { "\($0.width)x\($0.height)" } ?? "no-rgb"
-            let color = TAPDepthProjectionScenePayloadBuilder.rgbaColor(highlightColor)
-            let colorSignature = String(format: "%.3f:%.3f:%.3f:%.3f", color.x, color.y, color.z, color.w)
-            return "\(depthMap.width)x\(depthMap.height)-\(count)-\(imageSignature)-\(orientation.rawValue)-\(sampleSignature)-\(planeSignature)-\(colorSignature)"
         }
 
         private static func data<T>(from values: [T]) -> Data {

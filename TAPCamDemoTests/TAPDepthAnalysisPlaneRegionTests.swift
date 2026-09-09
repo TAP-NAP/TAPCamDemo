@@ -11,6 +11,7 @@ import ImageIO
 import SceneKit
 import simd
 import Testing
+import UIKit
 @testable import TAPCamDemo
 
 struct TAPDepthAnalysisPlaneRegionTests {
@@ -446,6 +447,140 @@ struct TAPDepthAnalysisPlaneRegionTests {
         let indexes = TAPPlaneRegionHighlightMask.depthIndexSet(for: region, depthMap: depthMap)
 
         #expect(indexes == Set([6, 7, 10, 11]))
+    }
+
+    @Test @MainActor func projectionSelectionPreservesSceneAndUserTransform() async throws {
+        let view = DepthProjectionSceneView.ProjectionSCNView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        let coordinator = DepthProjectionSceneView.Coordinator()
+        let region = Self.samplePlaneRegion()
+        let color = UIColor(red: 0.2501, green: 0.5, blue: 0.75, alpha: 1)
+        Self.updateProjection(coordinator, view: view, region: region, color: color)
+        await (try #require(coordinator.payloadBuildTask)).value
+
+        let scene = try #require(view.scene)
+        let camera = try #require(view.pointOfView)
+        let cameraObject = try #require(camera.camera)
+        let interaction = try #require(scene.rootNode.childNode(withName: "DepthProjectionInteractionRoot", recursively: true))
+        let motion = try #require(scene.rootNode.childNode(withName: "DepthProjectionMotionRoot", recursively: true))
+        let geometryRoot = try #require(scene.rootNode.childNode(withName: "DepthProjectionGeometryRoot", recursively: true))
+        let base = try #require(scene.rootNode.childNode(withName: "DepthProjectionModel", recursively: true))
+        let baseGeometry = try #require(base.geometry)
+        let highlight = try #require(scene.rootNode.childNode(withName: "SelectedPlaneProjection", recursively: true))
+        let originalVertex = try Self.firstVertex(of: highlight)
+        interaction.position = SCNVector3(0.1, 0.2, -2)
+        interaction.eulerAngles = SCNVector3(0.2, 0.3, 0.4)
+        interaction.scale = SCNVector3(1.5, 1.5, 1.5)
+        let transform = interaction.transform
+
+        // All former signature fields are equal; only the actual pixels move.
+        let movedRegion = Self.samplePlaneRegion(pixelRuns: [TAPPlanePixelRun(y: 3, xStart: 4, xEndExclusive: 6)])
+        Self.updateProjection(coordinator, view: view, region: movedRegion, color: color)
+        await (try #require(coordinator.payloadBuildTask)).value
+        #expect(try Self.firstVertex(of: highlight).x > originalVertex.x)
+
+        // These colors used to collide after rounding to three decimal places.
+        let changedColor = UIColor(red: 0.2502, green: 0.5, blue: 0.75, alpha: 1)
+        Self.updateProjection(coordinator, view: view, region: movedRegion, color: changedColor)
+        await (try #require(coordinator.payloadBuildTask)).value
+        let materialColor = try #require(highlight.geometry?.firstMaterial?.diffuse.contents as? UIColor)
+        var red: CGFloat = 0
+        materialColor.getRed(&red, green: nil, blue: nil, alpha: nil)
+        #expect(abs(red - 0.2502) < 0.00001)
+
+        Self.updateProjection(coordinator, view: view, region: nil, color: changedColor)
+        await (try #require(coordinator.payloadBuildTask)).value
+        #expect(highlight.geometry == nil)
+        #expect(!highlight.hasActions)
+        #expect(view.scene === scene)
+        #expect(view.pointOfView === camera)
+        #expect(camera.camera === cameraObject)
+        #expect(base.geometry === baseGeometry)
+        for node in [interaction, motion, geometryRoot, base, highlight] {
+            #expect(scene.rootNode.childNode(withName: try #require(node.name), recursively: true) === node)
+        }
+        #expect(SCNMatrix4EqualToMatrix4(interaction.transform, transform))
+    }
+
+    @Test @MainActor func cancelledProjectionBuildsCannotPublishOrClearReplacement() async throws {
+        let view = DepthProjectionSceneView.ProjectionSCNView(frame: .zero)
+        let gate = ProjectionPayloadGate()
+        let coordinator = DepthProjectionSceneView.Coordinator(payloadBuilder: { await gate.build($0) })
+        let regionA = Self.samplePlaneRegion()
+        let regionB = Self.samplePlaneRegion(pixelRuns: [TAPPlanePixelRun(y: 3, xStart: 4, xEndExclusive: 6)])
+
+        Self.updateProjection(coordinator, view: view, region: regionA)
+        let firstA = try #require(coordinator.payloadBuildTask)
+        await gate.waitForBuild(1)
+        Self.updateProjection(coordinator, view: view, region: regionB)
+        let taskB = try #require(coordinator.payloadBuildTask)
+        await gate.waitForBuild(2)
+        Self.updateProjection(coordinator, view: view, region: regionA)
+        let latestA = try #require(coordinator.payloadBuildTask)
+        await gate.waitForBuild(3)
+
+        // The builders deliberately finish even after their tasks are cancelled.
+        try await gate.finish(1)
+        await firstA.value
+        #expect(view.scene == nil)
+        #expect(coordinator.payloadBuildTask?.isCancelled == false)
+        try await gate.finish(2)
+        await taskB.value
+        #expect(view.scene == nil)
+        #expect(coordinator.payloadBuildTask?.isCancelled == false)
+        try await gate.finish(3)
+        await latestA.value
+        let scene = try #require(view.scene)
+        let highlight = try #require(scene.rootNode.childNode(withName: "SelectedPlaneProjection", recursively: true))
+        let vertex = try Self.firstVertex(of: highlight)
+        #expect(coordinator.payloadBuildTask == nil)
+
+        Self.updateProjection(coordinator, view: view, region: regionB)
+        let dismantledTask = try #require(coordinator.payloadBuildTask)
+        await gate.waitForBuild(4)
+        DepthProjectionSceneView.dismantleUIView(view, coordinator: coordinator)
+        #expect(dismantledTask.isCancelled)
+        #expect(coordinator.payloadBuildTask == nil)
+        try await gate.finish(4)
+        await dismantledTask.value
+        #expect(view.scene === scene)
+        #expect(try Self.firstVertex(of: highlight) == vertex)
+    }
+
+    @Test @MainActor func projectionUsesLatestReduceMotionAndRetainsSceneOnMissingPayload() async throws {
+        let view = DepthProjectionSceneView.ProjectionSCNView(frame: .zero)
+        let gate = ProjectionPayloadGate()
+        let coordinator = DepthProjectionSceneView.Coordinator(payloadBuilder: { await gate.build($0) })
+        let region = Self.samplePlaneRegion()
+        Self.updateProjection(coordinator, view: view, region: region)
+        let task = try #require(coordinator.payloadBuildTask)
+        await gate.waitForBuild(1)
+        Self.updateProjection(coordinator, view: view, region: region, reduceMotion: true)
+        #expect(!task.isCancelled)
+        try await gate.finish(1)
+        await task.value
+
+        let scene = try #require(view.scene)
+        let highlight = try #require(scene.rootNode.childNode(withName: "SelectedPlaneProjection", recursively: true))
+        let geometry = try #require(highlight.geometry)
+        #expect(highlight.opacity == 0.88)
+        #expect(!highlight.hasActions)
+        Self.updateProjection(coordinator, view: view, region: region, reduceMotion: false)
+        #expect(coordinator.payloadBuildTask == nil)
+        #expect(highlight.geometry === geometry)
+        #expect(highlight.hasActions)
+        Self.updateProjection(coordinator, view: view, region: region, reduceMotion: true)
+        #expect(coordinator.payloadBuildTask == nil)
+        #expect(highlight.opacity == 0.88)
+        #expect(!highlight.hasActions)
+
+        Self.updateProjection(coordinator, view: view, region: region, color: .red, reduceMotion: true)
+        let missingTask = try #require(coordinator.payloadBuildTask)
+        await gate.waitForBuild(2)
+        try await gate.finish(2, missingPayload: true)
+        await missingTask.value
+        #expect(view.scene === scene)
+        #expect(highlight.geometry === geometry)
+        #expect(highlight.opacity == 0.88)
     }
 
     @Test func planeHighlightMaskStaysInNativeDepthSpaceWhenDisplayRotates() throws {
@@ -912,11 +1047,14 @@ struct TAPDepthAnalysisPlaneRegionTests {
         )
     }
 
-    private static func samplePlaneRegion(seedPixel: CGPoint = CGPoint(x: 3, y: 3)) -> TAPPlaneRegion {
+    private static func samplePlaneRegion(
+        seedPixel: CGPoint = CGPoint(x: 3, y: 3),
+        pixelRuns: [TAPPlanePixelRun] = [TAPPlanePixelRun(y: 3, xStart: 3, xEndExclusive: 5)]
+    ) -> TAPPlaneRegion {
         TAPPlaneRegion(
             seedPixel: seedPixel,
             estimate: Self.samplePlaneEstimate(),
-            pixelRuns: [TAPPlanePixelRun(y: 3, xStart: 3, xEndExclusive: 5)],
+            pixelRuns: pixelRuns,
             gridCells: [
                 TAPPlaneGridCell(
                     row: 0,
@@ -935,6 +1073,36 @@ struct TAPDepthAnalysisPlaneRegionTests {
             sampleCount: 2,
             areaSquareMeters: 0.01
         )
+    }
+
+    @MainActor
+    private static func updateProjection(
+        _ coordinator: DepthProjectionSceneView.Coordinator,
+        view: SCNView,
+        region: TAPPlaneRegion?,
+        color: UIColor = .systemYellow,
+        reduceMotion: Bool = false
+    ) {
+        coordinator.update(
+            view: view,
+            image: nil,
+            depthMap: TAPMetricDepthMap(width: 8, height: 8, samples: Array(repeating: 2, count: 64), calibration: sampleCalibration),
+            orientation: .up,
+            selectedPlaneRegion: region,
+            highlightColor: color,
+            enablesMotionParallax: false,
+            reduceMotion: reduceMotion
+        )
+    }
+
+    @MainActor
+    private static func firstVertex(of node: SCNNode) throws -> SIMD3<Float> {
+        let source = try #require(node.geometry?.sources(for: .vertex).first)
+        return source.data.withUnsafeBytes { bytes in
+            SIMD3<Float>((0..<3).map {
+                bytes.loadUnaligned(fromByteOffset: source.dataOffset + $0 * source.bytesPerComponent, as: Float.self)
+            })
+        }
     }
 
     @MainActor
@@ -1116,6 +1284,35 @@ struct TAPDepthAnalysisPlaneRegionTests {
             intrinsicMatrix: [100, 0, 0, 0, 100, 0, 4, 4, 1],
             extrinsicMatrix: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0]
         )
+    }
+}
+
+private actor ProjectionPayloadGate {
+    private var count = 0
+    private var waiter: (count: Int, continuation: CheckedContinuation<Void, Never>)?
+    private var builds: [Int: (payload: TAPDepthProjectionScenePayloadData?, continuation: CheckedContinuation<TAPDepthProjectionScenePayloadData?, Never>)] = [:]
+
+    func build(_ request: TAPDepthProjectionPayloadBuildRequest) async -> TAPDepthProjectionScenePayloadData? {
+        let payload = TAPDepthProjectionScenePayloadBuilder.makePayloadData(request: request)
+        count += 1
+        return await withCheckedContinuation { continuation in
+            builds[count] = (payload, continuation)
+            if let waiter, count >= waiter.count {
+                self.waiter = nil
+                waiter.continuation.resume()
+            }
+        }
+    }
+
+    func waitForBuild(_ expectedCount: Int) async {
+        guard count < expectedCount else { return }
+        await withCheckedContinuation { waiter = (expectedCount, $0) }
+    }
+
+    func finish(_ call: Int, missingPayload: Bool = false) throws {
+        let pendingBuild = builds.removeValue(forKey: call)
+        let build = try #require(pendingBuild)
+        build.continuation.resume(returning: missingPayload ? nil : build.payload)
     }
 }
 
