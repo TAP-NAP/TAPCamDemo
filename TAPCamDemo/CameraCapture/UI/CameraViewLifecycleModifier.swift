@@ -21,7 +21,6 @@ struct CameraViewLifecycleModifier: ViewModifier {
     @AppStorage(CameraIdleTimerPreferences.keepScreenAwakeKey)
     private var keepScreenAwake = CameraIdleTimerPreferences.defaultKeepScreenAwake
 
-    private let startsAutomatically: Bool
     private let lifecycleCoordinator: CaptureLifecycleCoordinator
     private let isSettingsPresented: Bool
     private let resumesVideoModeAfterLibrary: Bool
@@ -29,7 +28,6 @@ struct CameraViewLifecycleModifier: ViewModifier {
         @MainActor (CaptureLifecycleCoordinator.LibraryReturnResult) -> Void
 
     init(
-        startsAutomatically: Bool,
         lifecycleCoordinator: CaptureLifecycleCoordinator,
         viewModel: CameraViewModel,
         routeStore: CameraRouteStore,
@@ -40,7 +38,6 @@ struct CameraViewLifecycleModifier: ViewModifier {
         onLibraryReturnCompleted: @escaping
             @MainActor (CaptureLifecycleCoordinator.LibraryReturnResult) -> Void
     ) {
-        self.startsAutomatically = startsAutomatically
         self.lifecycleCoordinator = lifecycleCoordinator
         self.viewModel = viewModel
         self.routeStore = routeStore
@@ -54,12 +51,8 @@ struct CameraViewLifecycleModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .task {
-                await lifecycleCoordinator.startCameraIfNeeded(
-                    startsAutomatically: startsAutomatically,
-                    viewModel: viewModel
-                )
+                await viewModel.start()
                 await lifecycleCoordinator.warmPendingCaptureSigningCredentialAndRetryIfNeeded(
-                    startsAutomatically: startsAutomatically,
                     viewModel: viewModel,
                     appAttestController: appAttestController
                 )
@@ -90,8 +83,8 @@ struct CameraViewLifecycleModifier: ViewModifier {
 
     private func viewDidDisappear() {
         lifecycleCoordinator.viewDidDisappear(
-            viewModel: viewModel,
-            chromeOrientation: chromeOrientation
+            chromeOrientation: chromeOrientation,
+            stopCamera: viewModel.stop
         )
         CameraIdleTimerController.setCameraScreenIdleTimerDisabled(false)
     }
@@ -155,7 +148,6 @@ struct CameraViewLifecycleModifier: ViewModifier {
 
 extension View {
     func cameraScreenLifecycle(
-        startsAutomatically: Bool,
         lifecycleCoordinator: CaptureLifecycleCoordinator,
         viewModel: CameraViewModel,
         routeStore: CameraRouteStore,
@@ -167,7 +159,6 @@ extension View {
             @MainActor (CaptureLifecycleCoordinator.LibraryReturnResult) -> Void
     ) -> some View {
         modifier(CameraViewLifecycleModifier(
-            startsAutomatically: startsAutomatically,
             lifecycleCoordinator: lifecycleCoordinator,
             viewModel: viewModel,
             routeStore: routeStore,

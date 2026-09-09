@@ -20,16 +20,11 @@ final class CaptureLifecycleCoordinator: ObservableObject {
     nonisolated static let startupPendingRetryDelayNanoseconds: UInt64 = 1_500_000_000
 
     nonisolated enum LifecycleAction: Equatable {
-        case startCamera
-        case warmPendingCaptureSigningCredential
         case retryPendingCaptures
         case resumeAfterAnalysis
         case prepareVideoMode
         case restoreCameraRoute
         case loadRecentTAPLibraryPreview
-        case startChromeOrientation
-        case stopChromeOrientation
-        case stopCamera
     }
 
     private var didLeaveActiveScene = false
@@ -44,86 +39,40 @@ final class CaptureLifecycleCoordinator: ObservableObject {
     }
 
     @MainActor
-    func startCameraIfNeeded(
-        startsAutomatically: Bool,
-        viewModel: CameraViewModel
-    ) async {
-        for action in Self.initialCameraActions(startsAutomatically: startsAutomatically) {
-            switch action {
-            case .startCamera:
-                await viewModel.start()
-            default:
-                break
-            }
-        }
-    }
-
-    @MainActor
     func warmPendingCaptureSigningCredentialAndRetryIfNeeded(
-        startsAutomatically: Bool,
         viewModel: CameraViewModel,
         appAttestController: AppAttestRuntimeController
     ) async {
-        for action in Self.launchCredentialActions(startsAutomatically: startsAutomatically) {
-            switch action {
-            case .warmPendingCaptureSigningCredential:
-                if startsAutomatically {
-                    try? await Task.sleep(nanoseconds: Self.startupCredentialWarmupDelayNanoseconds)
-                    guard !Task.isCancelled else {
-                        return
-                    }
-                }
-                guard !viewModel.isBusyForNonCaptureStartupWork else {
-                    #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-                    TAPDiagnostics.pendingCapture.info("credential warmup skipped cameraBusy=true configuring=\(viewModel.isConfiguringSession, privacy: .public) recording=\(viewModel.isVideoRecording, privacy: .public) paused=\(viewModel.isPausedForAnalysis, privacy: .public)")
-                    #endif
-                    return
-                }
-                await appAttestController.warmPendingCaptureSigningCredential()
-            case .retryPendingCaptures:
-                await retryPendingCaptures(
-                    viewModel: viewModel,
-                    appAttestController: appAttestController
-                )
-            default:
-                break
-            }
+        try? await Task.sleep(nanoseconds: Self.startupCredentialWarmupDelayNanoseconds)
+        guard !Task.isCancelled else { return }
+        guard !viewModel.isBusyForNonCaptureStartupWork else {
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.pendingCapture.info("credential warmup skipped cameraBusy=true configuring=\(viewModel.isConfiguringSession, privacy: .public) recording=\(viewModel.isVideoRecording, privacy: .public) paused=\(viewModel.isPausedForAnalysis, privacy: .public)")
+            #endif
+            return
         }
+        await appAttestController.warmPendingCaptureSigningCredential()
 
-        if startsAutomatically {
-            try? await Task.sleep(nanoseconds: Self.startupPendingRetryDelayNanoseconds)
-            guard !Task.isCancelled else {
-                return
-            }
-            await retryPendingCaptures(
-                viewModel: viewModel,
-                appAttestController: appAttestController
-            )
-        }
+        try? await Task.sleep(nanoseconds: Self.startupPendingRetryDelayNanoseconds)
+        guard !Task.isCancelled else { return }
+        await retryPendingCaptures(
+            viewModel: viewModel,
+            appAttestController: appAttestController
+        )
     }
 
     @MainActor
     func viewDidAppear(chromeOrientation: CameraChromeOrientationController) {
-        for action in Self.viewDidAppearActions() where action == .startChromeOrientation {
-            chromeOrientation.start()
-        }
+        chromeOrientation.start()
     }
 
     @MainActor
     func viewDidDisappear(
-        viewModel: CameraViewModel,
-        chromeOrientation: CameraChromeOrientationController
+        chromeOrientation: CameraChromeOrientationController,
+        stopCamera: () -> Void
     ) {
-        for action in Self.viewDidDisappearActions() {
-            switch action {
-            case .stopChromeOrientation:
-                chromeOrientation.stop()
-            case .stopCamera:
-                viewModel.stop()
-            default:
-                break
-            }
-        }
+        chromeOrientation.stop()
+        stopCamera()
     }
 
     @MainActor
@@ -249,28 +198,6 @@ final class CaptureLifecycleCoordinator: ObservableObject {
         await viewModel.retryPendingCaptures(
             pendingCaptureWorkerClient: appAttestController.runtime.client
         )
-    }
-
-    nonisolated static func initialCameraActions(
-        startsAutomatically: Bool
-    ) -> [LifecycleAction] {
-        startsAutomatically ? [.startCamera] : []
-    }
-
-    nonisolated static func launchCredentialActions(
-        startsAutomatically: Bool
-    ) -> [LifecycleAction] {
-        startsAutomatically
-            ? [.warmPendingCaptureSigningCredential]
-            : [.retryPendingCaptures]
-    }
-
-    nonisolated static func viewDidAppearActions() -> [LifecycleAction] {
-        [.startChromeOrientation]
-    }
-
-    nonisolated static func viewDidDisappearActions() -> [LifecycleAction] {
-        [.stopChromeOrientation, .stopCamera]
     }
 
     nonisolated static func depthAlbumPresentationActions(

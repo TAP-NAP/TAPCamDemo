@@ -119,23 +119,25 @@ struct TAPCameraCapturePresentationTests {
         #expect(outsideSettingsChangeReconfigures)
     }
 
+    @Test @MainActor func captureLifecycleStartsObservationAndStopsItBeforeCamera() {
+        let fixture = CameraChromeOrientationTestFixture()
+        fixture.orientation = .landscapeLeft
+        let controller = fixture.makeController()
+        let coordinator = CaptureLifecycleCoordinator()
+        defer { controller.stop() }
+
+        coordinator.viewDidAppear(chromeOrientation: controller)
+        #expect(controller.angle == .degrees(90))
+        #expect(fixture.orientationReadCount == 1)
+        coordinator.viewDidDisappear(chromeOrientation: controller) {
+            fixture.events.append("stopCamera")
+        }
+        #expect(fixture.events == [
+            "startChromeOrientation", "stopChromeOrientation", "stopCamera"
+        ])
+    }
+
     @Test func captureLifecycleCoordinatorKeepsPendingSigningWarmupAndRetryPoliciesExplicit() {
-        #expect(CaptureLifecycleCoordinator.initialCameraActions(startsAutomatically: true) == [.startCamera])
-        #expect(CaptureLifecycleCoordinator.initialCameraActions(startsAutomatically: false) == [])
-
-        #expect(CaptureLifecycleCoordinator.launchCredentialActions(startsAutomatically: true) == [
-            .warmPendingCaptureSigningCredential
-        ])
-        #expect(CaptureLifecycleCoordinator.launchCredentialActions(startsAutomatically: false) == [
-            .retryPendingCaptures
-        ])
-
-        #expect(CaptureLifecycleCoordinator.viewDidAppearActions() == [.startChromeOrientation])
-        #expect(CaptureLifecycleCoordinator.viewDidDisappearActions() == [
-            .stopChromeOrientation,
-            .stopCamera
-        ])
-
         #expect(CaptureLifecycleCoordinator.depthAlbumPresentationActions(isPresented: false) == [
             .resumeAfterAnalysis,
             .retryPendingCaptures

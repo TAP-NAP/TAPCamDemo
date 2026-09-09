@@ -41,7 +41,6 @@ struct CameraView: View {
 
     @Environment(\.scenePhase) private var scenePhase
     private let libraryStore: LibraryMediaStore
-    private let startsAutomatically: Bool
     private let initialReadinessGate: CameraInitialReadinessGate
     private let onViewfinderInteractive: () -> Void
     private let viewfinderFrameBarrier = CameraViewfinderFrameBarrier()
@@ -136,14 +135,12 @@ struct CameraView: View {
         hapticFeedbackController: CameraHapticFeedbackController = CameraHapticFeedbackController(),
         intentHandoffStore: TAPCamIntentHandoffStore = TAPCamIntentHandoffStore(),
         initialReadinessGate: CameraInitialReadinessGate = .disabled,
-        onViewfinderInteractive: @escaping () -> Void = {},
-        startsAutomatically: Bool = true
+        onViewfinderInteractive: @escaping () -> Void = {}
     ) {
         let initialGlobalEVBias = CameraEVPreferences.resolvedLaunchBias()
         let initialFlashMode = CameraFlashControlMode.resolvedStartupMode()
         let initialLivePhotoEnabled = CameraLivePhotoPreferences.resolvedStartupIsEnabled()
         let initialPhotographerModeEnabled = CameraPhotographerModePreferences.resolvedStartupIsEnabled()
-        self.startsAutomatically = startsAutomatically
         self.initialReadinessGate = initialReadinessGate
         self.onViewfinderInteractive = onViewfinderInteractive
         self.intentHandoffStore = intentHandoffStore
@@ -216,7 +213,6 @@ struct CameraView: View {
             )
         }
         .cameraScreenLifecycle(
-            startsAutomatically: startsAutomatically,
             lifecycleCoordinator: lifecycleCoordinator,
             viewModel: viewModel,
             routeStore: routeStore,
