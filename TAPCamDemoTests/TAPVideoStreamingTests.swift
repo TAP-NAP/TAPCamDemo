@@ -483,7 +483,7 @@ struct TAPVideoStreamingTests {
             assertionSigner: signer
         )
         let validated = try await writer.validateSignedExportVideoFile(
-            at: videoURL,
+            .init(fileURL: videoURL),
             expectedCaptureID: record.captureID,
             expectedPackageID: record.packageID
         )
@@ -494,7 +494,7 @@ struct TAPVideoStreamingTests {
 
         await #expect(throws: Error.self) {
             _ = try await writer.validateSignedExportVideoFile(
-                at: videoURL,
+                .init(fileURL: videoURL),
                 expectedCaptureID: record.captureID,
                 expectedPackageID: record.packageID,
                 validatesDepthTrack: true
@@ -704,7 +704,7 @@ struct TAPVideoStreamingTests {
         }
 
         _ = try await TAPCaptureProvenanceWriter().validateSignedExportVideoFile(
-            at: durableURL,
+            .init(fileURL: durableURL),
             expectedCaptureID: record.captureID,
             expectedPackageID: record.packageID
         )
@@ -714,7 +714,7 @@ struct TAPVideoStreamingTests {
         )
         #expect(afterSnapshot.selectedSignedVideo)
         _ = try await TAPCaptureProvenanceWriter().validateSignedExportVideoFile(
-            at: afterSnapshot.videoURL,
+            .init(fileURL: afterSnapshot.videoURL),
             expectedCaptureID: record.captureID,
             expectedPackageID: record.packageID
         )
@@ -765,7 +765,7 @@ struct TAPVideoStreamingTests {
         ).sign(retryRecord, store: store)
         #expect(signedRecord.status == .signed)
         _ = try await TAPCaptureProvenanceWriter().validateSignedExportVideoFile(
-            at: durableURL,
+            .init(fileURL: durableURL),
             expectedCaptureID: record.captureID,
             expectedPackageID: record.packageID
         )
@@ -799,7 +799,7 @@ struct TAPVideoStreamingTests {
         #expect(staleRecord.videoArtifactState == .unsigned)
         #expect(staleRecord.preSignContentBinding != nil)
         _ = try await writer.validateSignedExportVideoFile(
-            at: durableURL,
+            .init(fileURL: durableURL),
             expectedCaptureID: record.captureID,
             expectedPackageID: record.packageID
         )
@@ -811,7 +811,7 @@ struct TAPVideoStreamingTests {
         #expect(recoveredRecord.status == .signed)
         #expect(recoveredRecord.videoArtifactState == .signed)
         _ = try await writer.validateSignedExportVideoFile(
-            at: durableURL,
+            .init(fileURL: durableURL),
             expectedCaptureID: record.captureID,
             expectedPackageID: record.packageID
         )
@@ -833,7 +833,7 @@ struct TAPVideoStreamingTests {
         let exporter = PhotoLibraryPendingCaptureExporter(videoActions: .init(
             validateLocalFile: { fileURL, record in
                 try await writer.validateSignedExportVideoFile(
-                    at: fileURL,
+                    .init(fileURL: fileURL),
                     expectedCaptureID: record.captureID,
                     expectedPackageID: record.packageID
                 )
@@ -849,7 +849,7 @@ struct TAPVideoStreamingTests {
             candidateIdentifiers: { _ in [] },
             validateReadback: { _, record in
                 let validated = try await writer.validateSignedExportVideoFile(
-                    at: copiedOriginalURL,
+                    .init(fileURL: copiedOriginalURL),
                     expectedCaptureID: record.captureID,
                     expectedPackageID: record.packageID
                 )
@@ -900,7 +900,7 @@ struct TAPVideoStreamingTests {
 
         await #expect(throws: TAPDepthCaptureError.self) {
             _ = try await writer.validateSignedExportVideoFile(
-                at: videoURL,
+                .init(fileURL: videoURL),
                 expectedCaptureID: record.captureID,
                 expectedPackageID: record.packageID
             )

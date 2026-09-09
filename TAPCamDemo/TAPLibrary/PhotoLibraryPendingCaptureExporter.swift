@@ -37,9 +37,12 @@ nonisolated struct PhotoLibraryPendingCaptureExportActions: Sendable {
                 try await PhotoLibraryWriter.depthAssetIdentifier(captureID: captureID)
             },
             saveValidatedSignedPhoto: { signedData, record, pairedVideoURL in
+                let input = try TAPPhotoValidationInput(
+                    data: signedData, expectedContainer: record.outputProfile.fileContainer
+                )
                 if let pairedVideoURL {
                     let validatedLivePhoto = try provenanceWriter.validateSignedExportLivePhoto(
-                        signedData,
+                        input,
                         pairedVideoURL: pairedVideoURL,
                         expectedCaptureID: record.captureID,
                         expectedProfile: record.outputProfile
@@ -51,7 +54,7 @@ nonisolated struct PhotoLibraryPendingCaptureExportActions: Sendable {
                     )
                 } else {
                     let validatedPhoto = try provenanceWriter.validateSignedExportPhoto(
-                        signedData,
+                        input,
                         expectedCaptureID: record.captureID,
                         expectedProfile: record.outputProfile
                     )
@@ -81,7 +84,7 @@ nonisolated struct PhotoLibraryPendingVideoExportActions: Sendable {
         Self(
             validateLocalFile: { fileURL, record in
                 try await TAPCaptureProvenanceWriter().validateSignedExportVideoFile(
-                    at: fileURL,
+                    .init(fileURL: fileURL),
                     expectedCaptureID: record.captureID,
                     expectedPackageID: record.packageID,
                     validatesDepthTrack: false

@@ -18,7 +18,7 @@ struct TAPSignedExportValidatorTests {
 
         do {
             _ = try TAPCaptureProvenanceWriter().validateSignedExportPhoto(
-                signedData,
+                .init(data: signedData, expectedContainer: .heic),
                 expectedCaptureID: "sample-capture",
                 expectedProfile: .releasePhotoDepthHEIC
             )
@@ -33,7 +33,7 @@ struct TAPSignedExportValidatorTests {
     @Test func validatedTAPDepthPhotoRejectsRawContainerBeforePhotosWriterCanBeCalled() throws {
         do {
             _ = try TAPCaptureProvenanceWriter().validateSignedExportPhoto(
-                TAPCamDemoTestFixtures.sampleThumbnailSourceData(),
+                .init(data: TAPCamDemoTestFixtures.sampleThumbnailSourceData(), expectedContainer: .heic),
                 expectedCaptureID: "sample-capture",
                 expectedProfile: .releasePhotoDepthHEIC
             )
@@ -79,7 +79,7 @@ struct TAPSignedExportValidatorTests {
 
         do {
             _ = try TAPCaptureProvenanceWriter().validateSignedExportPhoto(
-                signedHEICData,
+                .init(data: signedHEICData, expectedContainer: .heic),
                 expectedCaptureID: "sample-capture",
                 expectedProfile: .releasePhotoDepthHEIC
             )
@@ -111,7 +111,7 @@ struct TAPSignedExportValidatorTests {
 
         do {
             _ = try TAPCaptureProvenanceWriter().validateSignedExportPhoto(
-                signedHEICData,
+                .init(data: signedHEICData, expectedContainer: .heic),
                 expectedCaptureID: "sample-capture",
                 expectedProfile: .releasePhotoDepthHEIC
             )
@@ -151,7 +151,7 @@ struct TAPSignedExportValidatorTests {
 
             do {
                 _ = try TAPCaptureProvenanceWriter().validateSignedExportPhoto(
-                    signedHEICData,
+                    .init(data: signedHEICData, expectedContainer: .heic),
                     expectedCaptureID: "sample-capture",
                     expectedProfile: .releasePhotoDepthHEIC
                 )
@@ -173,7 +173,7 @@ struct TAPSignedExportValidatorTests {
 
         do {
             _ = try TAPCaptureProvenanceWriter().validateSignedExportPhoto(
-                signedHEICData,
+                .init(data: signedHEICData, expectedContainer: .heic),
                 expectedCaptureID: "record-capture",
                 expectedProfile: .releasePhotoDepthHEIC
             )
@@ -222,7 +222,7 @@ struct TAPSignedExportValidatorTests {
 
             do {
                 _ = try TAPCaptureProvenanceWriter().validateSignedExportPhoto(
-                    signedHEICData,
+                    .init(data: signedHEICData, expectedContainer: .heic),
                     expectedCaptureID: "sample-capture",
                     expectedProfile: .releasePhotoDepthHEIC
                 )
@@ -243,7 +243,7 @@ struct TAPSignedExportValidatorTests {
 
         do {
             _ = try TAPCaptureProvenanceWriter().validateSignedExportPhoto(
-                signedHEICData,
+                .init(data: signedHEICData, expectedContainer: .heic),
                 expectedCaptureID: "sample-capture",
                 expectedProfile: .releasePhotoDepthHEIC
             )
@@ -275,7 +275,7 @@ struct TAPSignedExportValidatorTests {
             assertionSigner: signer
         )
         let validated = try writer.validateSignedExportPhoto(
-            signedPhoto.data,
+            .init(data: signedPhoto.data, expectedContainer: .heic),
             expectedCaptureID: "sample-capture",
             expectedProfile: .releasePhotoDepthHEIC
         )
@@ -356,7 +356,7 @@ struct TAPSignedExportValidatorTests {
             assertionSigner: signer
         )
         let validated = try writer.validateSignedExportPhoto(
-            signedPhoto.data,
+            .init(data: signedPhoto.data, expectedContainer: .jpeg),
             expectedCaptureID: "sample-capture",
             expectedProfile: .releasePhotoDepthJPEG
         )

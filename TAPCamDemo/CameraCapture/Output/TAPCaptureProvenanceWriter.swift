@@ -116,20 +116,12 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
             into: unsignedPhotoDataWithSlot,
             fileContainer: fileContainer
         )
-        if let pairedVideoURL {
-            _ = try validateSignedExportLivePhoto(
-                signedPhotoData,
-                pairedVideoURL: pairedVideoURL,
-                expectedCaptureID: expectedCaptureID,
-                expectedProfile: expectedProfile
-            )
-        } else {
-            _ = try validateSignedExportPhoto(
-                signedPhotoData,
-                expectedCaptureID: expectedCaptureID,
-                expectedProfile: expectedProfile
-            )
-        }
+        _ = try validateSignedExportPhoto(
+            .init(data: signedPhotoData, expectedContainer: expectedProfile.fileContainer),
+            expectedCaptureID: expectedCaptureID,
+            expectedProfile: expectedProfile,
+            pairedVideoURL: pairedVideoURL
+        )
 
         return TAPCaptureProvenanceSignedPhotoResult(
             data: signedPhotoData,
@@ -204,7 +196,7 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
             throw error
         }
         _ = try await validateSignedExportVideoFile(
-            at: videoFileURL,
+            .init(fileURL: videoFileURL),
             expectedCaptureID: expectedCaptureID,
             expectedPackageID: expectedPackageID,
             validatesDepthTrack: false
@@ -225,63 +217,10 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
     /// input. It prevents stale or corrupted signed files from reaching Photos
     /// merely because a pending record says a signed filename exists.
     func validateSignedExportPhoto(
-        _ signedPhotoData: Data,
-        expectedCaptureID: String,
-        expectedProfile: CaptureOutputProfile
-    ) throws -> ValidatedTAPDepthPhoto {
-        try validateSignedExportPhoto(
-            TAPPhotoValidationInput(data: signedPhotoData, expectedContainer: expectedProfile.fileContainer),
-            expectedCaptureID: expectedCaptureID,
-            expectedProfile: expectedProfile
-        )
-    }
-
-    func validateSignedExportPhoto(
-        _ input: TAPPhotoValidationInput,
-        expectedCaptureID: String,
-        expectedProfile: CaptureOutputProfile
-    ) throws -> ValidatedTAPDepthPhoto {
-        try validateSignedPhoto(
-            input, expectedCaptureID: expectedCaptureID,
-            expectedProfile: expectedProfile, pairedVideoURL: nil
-        )
-    }
-
-    /// Final fail-closed gate for a signed TAP Live Photo export.
-    func validateSignedExportLivePhoto(
-        _ signedPhotoData: Data,
-        pairedVideoURL: URL,
-        expectedCaptureID: String,
-        expectedProfile: CaptureOutputProfile
-    ) throws -> ValidatedTAPLivePhoto {
-        try validateSignedExportLivePhoto(
-            TAPPhotoValidationInput(data: signedPhotoData, expectedContainer: expectedProfile.fileContainer),
-            pairedVideoURL: pairedVideoURL,
-            expectedCaptureID: expectedCaptureID,
-            expectedProfile: expectedProfile
-        )
-    }
-
-    func validateSignedExportLivePhoto(
-        _ input: TAPPhotoValidationInput,
-        pairedVideoURL: URL,
-        expectedCaptureID: String,
-        expectedProfile: CaptureOutputProfile
-    ) throws -> ValidatedTAPLivePhoto {
-        ValidatedTAPLivePhoto(
-            photo: try validateSignedPhoto(
-                input, expectedCaptureID: expectedCaptureID,
-                expectedProfile: expectedProfile, pairedVideoURL: pairedVideoURL
-            ),
-            pairedVideoURL: pairedVideoURL
-        )
-    }
-
-    private func validateSignedPhoto(
         _ input: TAPPhotoValidationInput,
         expectedCaptureID: String,
         expectedProfile: CaptureOutputProfile,
-        pairedVideoURL: URL?
+        pairedVideoURL: URL? = nil
     ) throws -> ValidatedTAPDepthPhoto {
         try Task<Never, Never>.checkCancellation()
         let manifest = input.manifestDocument.manifest
@@ -306,6 +245,22 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
         try validateCaptureProof(proof, proofValue: proofValue, recomputedDigest: recomputedDigest)
         return ValidatedTAPDepthPhoto(
             data: input.data, manifest: manifest, fileContainer: input.fileContainer
+        )
+    }
+
+    /// Final fail-closed gate for a signed TAP Live Photo export.
+    func validateSignedExportLivePhoto(
+        _ input: TAPPhotoValidationInput,
+        pairedVideoURL: URL,
+        expectedCaptureID: String,
+        expectedProfile: CaptureOutputProfile
+    ) throws -> ValidatedTAPLivePhoto {
+        ValidatedTAPLivePhoto(
+            photo: try validateSignedExportPhoto(
+                input, expectedCaptureID: expectedCaptureID,
+                expectedProfile: expectedProfile, pairedVideoURL: pairedVideoURL
+            ),
+            pairedVideoURL: pairedVideoURL
         )
     }
 
@@ -389,20 +344,6 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
     /// will be exported to Photos. Timed-track semantic validation is an
     /// explicitly requested health check; it is not part of signing or export
     /// authenticity.
-    func validateSignedExportVideoFile(
-        at videoFileURL: URL,
-        expectedCaptureID: String,
-        expectedPackageID: UUID,
-        validatesDepthTrack: Bool = false
-    ) async throws -> ValidatedTAPVideoFile {
-        try await validateSignedExportVideoFile(
-            TAPVideoValidationInput(fileURL: videoFileURL),
-            expectedCaptureID: expectedCaptureID,
-            expectedPackageID: expectedPackageID,
-            validatesDepthTrack: validatesDepthTrack
-        )
-    }
-
     func validateSignedExportVideoFile(
         _ readInput: @autoclosure () throws -> TAPVideoValidationInput,
         expectedCaptureID: String,
