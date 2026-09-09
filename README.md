@@ -6,15 +6,15 @@ source, depth source, active format, and depth-safe raw zoom; stages one reviewe
 artifact in the private Pending Capture Queue; then signs, validates, exports,
 and reads it back without blocking foreground capture.
 
-## Read first
+## Documentation
 
-[AGENTS.md](AGENTS.md) defines this repository's working rules. Main documents
-live in [TAPArtifactContracts](../TAPArtifactContracts/README.md): start with the
-relevant [product requirement](../TAPArtifactContracts/ProductContract.md),
-[App Attest boundary](../TAPArtifactContracts/BackendContract.md), or
-[Planes design](../TAPArtifactContracts/PlanesTechnicalDesign.md).
-The [prototype manifest](../TAPCamPrototype/Prototype/manifest.json) retains
-approved visual revisions and fixtures. Read it when changing visible UI.
+[TAPCam documentation](https://github.com/TAP-NAP/TAPArtifactContracts/blob/main/README.md) covers the
+[product requirements](https://github.com/TAP-NAP/TAPArtifactContracts/blob/main/ProductContract.md),
+[App Attest backend interface](https://github.com/TAP-NAP/TAPArtifactContracts/blob/main/BackendContract.md), and
+[Planes geometry design](https://github.com/TAP-NAP/TAPArtifactContracts/blob/main/PlanesTechnicalDesign.md).
+The [interactive prototype](https://github.com/TAP-NAP/TAPCamPrototype/blob/main/README.md) illustrates screens
+and user flows; its [manifest](https://github.com/TAP-NAP/TAPCamPrototype/blob/main/Prototype/manifest.json)
+records visual revisions and fixtures.
 
 Shared Still/Live/Video manifest, container, binding, proof, KLV, transport, and
 verification conventions come only from the pinned
@@ -113,5 +113,5 @@ xcodebuild test \
 A Simulator pass proves only the exercised deterministic or UI boundary. It
 does not prove physical Camera/Photos/depth, App Attest hardware/backend,
 iCloud, haptics, thermal behavior, native performance, or attended acceptance.
-Use the relevant [acceptance section](../TAPArtifactContracts/Acceptance.md) and
+Use the relevant [acceptance section](https://github.com/TAP-NAP/TAPArtifactContracts/blob/main/Acceptance.md) and
 record declared, executed, passed, failed, and skipped counts.
