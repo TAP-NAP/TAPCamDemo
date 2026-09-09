@@ -10,10 +10,6 @@ nonisolated enum TAPVideoViewerChromeLayout {
     static func noticeTopPadding(topSafeArea: CGFloat) -> CGFloat {
         max(topSafeArea + 66, 116)
     }
-
-    static func noticeContentMaxWidth(availableWidth: CGFloat) -> CGFloat {
-        max(0, availableWidth - 76)
-    }
 }
 
 nonisolated enum TAPVideoViewerModePolicy {

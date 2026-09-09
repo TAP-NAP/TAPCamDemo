@@ -25,29 +25,6 @@ nonisolated enum DepthViewerToolbarMetrics {
     }
 }
 
-/// Bottom controls for the Photos-style analysis browser.
-///
-/// The controls own no loaded image or depth data. They only expose the
-/// centered raw/2D/3D tool switcher; global actions live in the viewer toolbar.
-struct DepthAnalysisControlsView: View {
-    let selectedTool: AnalysisViewerTool
-    let onToolTapped: (AnalysisViewerTool) -> Void
-
-    var body: some View {
-        DepthViewerModeCapsule(
-            selectedItemID: selectedTool.rawValue,
-            items: AnalysisViewerTool.allCases.map(\.modeItem),
-            onItemTapped: { itemID in
-                guard let tool = AnalysisViewerTool(rawValue: itemID) else {
-                    return
-                }
-                onToolTapped(tool)
-            }
-        )
-        .animation(.snappy(duration: 0.18), value: selectedTool)
-    }
-}
-
 nonisolated struct DepthViewerModeItem: Identifiable, Equatable {
     let id: String
     let systemImage: String

@@ -284,19 +284,6 @@ struct DepthAnalysisSharePopover: View {
             .frame(height: 48)
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("tap.share.status")
-        } else {
-            HStack(spacing: 9) {
-                Circle()
-                    .fill(.tertiary)
-                    .frame(width: 19, height: 19)
-                Capsule()
-                    .fill(.tertiary)
-                    .frame(width: 72, height: 14)
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 16)
-            .frame(height: 48)
-            .accessibilityHidden(true)
         }
     }
 

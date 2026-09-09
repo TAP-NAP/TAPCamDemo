@@ -69,14 +69,7 @@ struct DepthAnalysisStageView: View {
         case .pointCloud:
             PointCloudPreview(
                 depthMap: depthMap,
-                orientation: imageOrientation,
-                selection: .constant(nil),
-                interactionState: .idle,
-                allowsSelection: false,
-                onSelectionBegan: { _ in },
-                onSelectionChanged: { _ in },
-                onSelectionEnded: { _ in },
-                onSelectionCleared: onSelectionCleared
+                orientation: imageOrientation
             )
             .background(Color.black)
         }

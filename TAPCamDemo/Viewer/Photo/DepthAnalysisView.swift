@@ -1574,14 +1574,7 @@ private struct AnalysisToolPhotoStage: View {
                 orientation: input.imageOrientation,
                 selectedPlaneRegion: slot.planeSelection.selectedRegion,
                 highlightColor: highlightPalette.uiColor,
-                selection: .constant(nil),
-                interactionState: .idle,
-                allowsSelection: false,
-                enablesMotionParallax: true,
-                onSelectionBegan: { _ in },
-                onSelectionChanged: { _ in },
-                onSelectionEnded: { _ in },
-                onSelectionCleared: { }
+                enablesMotionParallax: true
             )
             .frame(width: size.width, height: size.height)
         } else {
