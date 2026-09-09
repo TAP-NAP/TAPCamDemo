@@ -387,7 +387,7 @@ struct TAPLibraryStorageTests {
         try await store.discardVideoSigningArtifact(retryArtifact)
     }
 
-    @Test func zeroDepthVideoPersistsAsTerminalRecordInsteadOfBeingDiscarded() async throws {
+    @Test func zeroDepthVideoEntersPendingSigningQueue() async throws {
         let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
         let store = TAPPendingCaptureStore(rootURL: rootURL)
         let captureID = "zero-depth-video"
@@ -406,17 +406,53 @@ struct TAPLibraryStorageTests {
                 packageID: packageID,
                 capturedAt: Date(timeIntervalSince1970: 1_779_897_600),
                 videoURL: workspace.artifactURL
-            ),
-            terminalFailureCode: .missingDepthData
+            )
         )
 
-        #expect(record.status == .failedTerminal)
-        #expect(record.failureCode == .missingDepthData)
+        #expect(record.status == .pending)
+        #expect(record.failureCode == nil)
+        #expect(record.failureReason == nil)
         #expect(record.videoArtifactState == .unsigned)
         #expect(FileManager.default.fileExists(
             atPath: try await store.videoArtifactURL(captureID: captureID).path
         ))
-        #expect(!(try await store.processingCandidates()).contains { $0.captureID == captureID })
+        #expect((try await store.processingCandidates()).contains { $0.captureID == captureID })
+    }
+
+    @Test(arguments: [0, -1])
+    func videoIngestRejectsInvalidDepthCoverage(sampleCount: Int) async throws {
+        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+        let store = TAPPendingCaptureStore(rootURL: rootURL)
+        let captureID = "inconsistent-depth-video"
+        let packageID = UUID()
+        let workspace = try await store.beginVideoCaptureWorkspace(captureID: captureID)
+        let manifest = Self.pendingVideoManifest(captureID: captureID, packageID: packageID)
+        var object = try #require(JSONSerialization.jsonObject(
+            with: TAPVideoManifestEncoder.manifestData(manifest)
+        ) as? [String: Any])
+        var payload = try #require(object["payload"] as? [String: Any])
+        var coverage = try #require(payload["depthCoverage"] as? [String: Any])
+        coverage["sampleCount"] = sampleCount
+        payload["depthCoverage"] = coverage
+        object["payload"] = payload
+        let invalidManifest = try JSONDecoder().decode(
+            TAPVideoManifest.self,
+            from: JSONSerialization.data(withJSONObject: object)
+        )
+        try Data([0, 0, 0, 12] + Array("ftypmp42".utf8)).write(to: workspace.artifactURL)
+        try TAPVideoManifestBox.appendManifest(invalidManifest, toFileAt: workspace.artifactURL)
+        _ = try TAPProofSlot.ensureEmptyBMFFSlot(inFileAt: workspace.artifactURL)
+
+        await #expect(throws: TAPDepthCaptureError.self) {
+            _ = try await store.ingestVideo(TAPPendingVideoCaptureArtifact(
+                captureID: captureID,
+                packageID: packageID,
+                capturedAt: Date(),
+                videoURL: workspace.artifactURL
+            ))
+        }
+        #expect(try await store.processingCandidates().isEmpty)
     }
 
     @Test func pendingCaptureStoreRemovesOnlyUnownedInterruptedVideoWorkspaces() async throws {
@@ -1298,7 +1334,7 @@ struct TAPLibraryStorageTests {
             spatialRegistration: .unavailable,
             synchronization: .init(
                 timing: "capture-output-presentation-timestamps",
-                rgbToDepthMapping: "independent-timed-metadata",
+                rgbToDepthMapping: hasDepth ? "independent-timed-metadata" : "no-depth-samples",
                 maxObservedDeltaSeconds: nil
             ),
             stop: .init(reason: .userStop, recordedDurationSeconds: 1),

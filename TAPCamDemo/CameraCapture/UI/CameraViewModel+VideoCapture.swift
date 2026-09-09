@@ -238,17 +238,16 @@ extension CameraViewModel {
             let artifact = try await sessionController.stopVideoRecording(reason: reason)
             let hasRecordedDepth = artifact.manifest.payload.depthCoverage.sampleCount > 0
             let record = try await pendingCaptureStore.ingestVideo(
-                artifact.pendingArtifact,
-                terminalFailureCode: hasRecordedDepth ? nil : .missingDepthData
+                artifact.pendingArtifact
             )
             statusMessage = hasRecordedDepth
                 ? "TAP video queued for signing · depth samples \(artifact.manifest.payload.depthCoverage.sampleCount)"
-                : "TAP video stopped · no depth samples were recorded"
+                : "TAP video queued for signing · Depth unavailable"
             activeVideoRecordingCaptureID = nil
             videoRecordingTemporaryDirectoryURL = nil
             await persistVideoPosterIfPossible(for: record)
             scheduleRecentTAPLibraryPreviewRefresh(afterNanoseconds: 0)
-            if hasRecordedDepth, let pendingCaptureWorkerClient {
+            if let pendingCaptureWorkerClient {
                 await retryPendingCaptures(pendingCaptureWorkerClient: pendingCaptureWorkerClient)
             }
             if reason == .userStop {

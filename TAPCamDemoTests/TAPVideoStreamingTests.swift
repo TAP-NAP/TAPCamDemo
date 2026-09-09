@@ -817,13 +817,71 @@ struct TAPVideoStreamingTests {
         )
     }
 
-    @Test func signedVideoValidationRejectsAnyMutationOutsideProofSlot() async throws {
+    @Test func zeroDepthVideoSignsExportsAndValidatesCopiedOriginal() async throws {
+        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+        let store = TAPPendingCaptureStore(rootURL: rootURL.appendingPathComponent("pending"))
+        let record = try await TAPCamDemoTestFixtures.ingestPendingTAPVideo(
+            store: store,
+            captureID: "zero-depth-export",
+            hasDepth: false
+        )
+        #expect(record.status == .pending)
+        let copiedOriginalURL = rootURL.appendingPathComponent("photos-original.mp4")
+        let assertionSigner = SuccessfulVideoCaptureAssertionSigner()
+        let writer = TAPCaptureProvenanceWriter()
+        let exporter = PhotoLibraryPendingCaptureExporter(videoActions: .init(
+            validateLocalFile: { fileURL, record in
+                try await writer.validateSignedExportVideoFile(
+                    at: fileURL,
+                    expectedCaptureID: record.captureID,
+                    expectedPackageID: record.packageID
+                )
+            },
+            saveVideoFile: { fileURL, record, _, commitWillBegin in
+                #expect(record.videoArtifactState == .signed)
+                try await commitWillBegin()
+                try FileManager.default.copyItem(at: fileURL, to: copiedOriginalURL)
+                return "zero-depth-photos-asset"
+            }
+        ))
+        let readback = PhotoLibraryPendingCaptureReadback(actions: .init(
+            candidateIdentifiers: { _ in [] },
+            validateReadback: { _, record in
+                let validated = try await writer.validateSignedExportVideoFile(
+                    at: copiedOriginalURL,
+                    expectedCaptureID: record.captureID,
+                    expectedPackageID: record.packageID
+                )
+                #expect(validated.manifest.payload.depthCoverage == .none)
+            }
+        ))
+
+        await TAPPendingCaptureProcessor().processPendingCaptures(
+            store: store,
+            signer: AppAttestPendingCaptureSigner(signer: assertionSigner),
+            exporter: exporter,
+            readback: readback,
+            protectedDataIsAvailable: { true }
+        )
+
+        let exported = try await store.readRecord(captureID: record.captureID)
+        #expect(exported.status == .exported)
+        #expect(exported.failureCode == nil)
+        #expect(exported.assetLocalIdentifier == "zero-depth-photos-asset")
+        #expect(await assertionSigner.lastDigest()?.depthResource.presence == "no-samples")
+        #expect(FileManager.default.fileExists(atPath: copiedOriginalURL.path))
+    }
+
+    @Test(arguments: [true, false])
+    func signedVideoValidationRejectsAnyMutationOutsideProofSlot(hasDepth: Bool) async throws {
         let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: rootURL) }
         let store = TAPPendingCaptureStore(rootURL: rootURL)
         let record = try await TAPCamDemoTestFixtures.ingestPendingTAPVideo(
             store: store,
-            captureID: "mutated-signed-video"
+            captureID: "mutated-signed-video",
+            hasDepth: hasDepth
         )
         let videoURL = try await store.videoArtifactURL(captureID: record.captureID)
         let writer = TAPCaptureProvenanceWriter()

@@ -8,17 +8,13 @@ and reads it back without blocking foreground capture.
 
 ## Read first
 
-1. [AGENTS.md](AGENTS.md) defines the repository workflow and retention rules.
-2. [ProductContract.md](Docs/ProductContract.md) is the single current product,
-   lifecycle, operational, security, privacy, and UI-workflow authority.
-3. The sibling [Project Board](../TAPCamKanban/ProjectBoard.md) owns Task state.
-4. The sibling [prototype repository](../TAPCamPrototype/README.md) and
-   `Prototype/manifest.json` own approved visual intent and prototype evidence.
-5. `Docs/Acceptance/TAP-0040` through `TAP-0049` retain the open executable
-   device/visual procedures. [BackendContract.md](Docs/AppAttest/BackendContract.md)
-   owns the App Attest server boundary, and
-   [PlanesTechnicalDesign.md](TAPCamDemo/DepthAnalysis/Documentation/PlanesTechnicalDesign.md)
-   explains the one retained geometry algorithm.
+[AGENTS.md](AGENTS.md) defines this repository's working rules. Main documents
+live in [TAPArtifactContracts](../TAPArtifactContracts/README.md): start with the
+relevant [product requirement](../TAPArtifactContracts/ProductContract.md),
+[App Attest boundary](../TAPArtifactContracts/BackendContract.md), or
+[Planes design](../TAPArtifactContracts/PlanesTechnicalDesign.md).
+The [prototype manifest](../TAPCamPrototype/Prototype/manifest.json) retains
+approved visual revisions and fixtures. Read it when changing visible UI.
 
 Shared Still/Live/Video manifest, container, binding, proof, KLV, transport, and
 verification conventions come only from the pinned
@@ -56,7 +52,7 @@ user intent
 | Area | Owns | Start with |
 | --- | --- | --- |
 | `TAPCamDemo/App` | app root, setup/permission route, initialization gate, App Attest runtime, diagnostics | `TAPCamDemoApp.swift`, `StartupGateView.swift`, `AppAttestRuntime.swift` |
-| `CameraCapture/Planning` | pure capability, pairing, output-intent, FOV/zoom, and manual-control plans | `CaptureSourcePlan.swift`, `CapabilityMatrix.swift` |
+| `CameraCapture/Planning` | pure capability, pairing, output-intent, FOV/zoom, and manual-control plans | `CapturePlan.swift`, `CapabilityMatrix.swift` |
 | `CameraCapture/Runtime` | the only `AVCaptureSession` mutation, capture requests, device writes, TAP Video recording | `CaptureSessionController.swift`, `CapturePipeline.swift`, `TAPVideoRecorder.swift` |
 | `CameraCapture/Output` | reviewed output profiles, packaging, shared-contract encoders/writers, final signed-export gates | `CaptureOutputProfile.swift`, `EmbeddedPhotoPackager.swift`, `TAPCaptureProvenanceWriter.swift` |
 | `CameraCapture/UI` | Viewfinder presentation and user intent; no capture-plan or proof ownership | `CameraView.swift`, `CameraViewModel.swift` |
@@ -117,5 +113,5 @@ xcodebuild test \
 A Simulator pass proves only the exercised deterministic or UI boundary. It
 does not prove physical Camera/Photos/depth, App Attest hardware/backend,
 iCloud, haptics, thermal behavior, native performance, or attended acceptance.
-Use the matching retained `Docs/Acceptance/TAP-xxxx-*.md` procedure and record
-declared, executed, passed, failed, and skipped counts.
+Use the relevant [acceptance section](../TAPArtifactContracts/Acceptance.md) and
+record declared, executed, passed, failed, and skipped counts.

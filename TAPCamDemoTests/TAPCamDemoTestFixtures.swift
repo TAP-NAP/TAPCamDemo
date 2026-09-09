@@ -21,7 +21,8 @@ enum TAPCamDemoTestFixtures {
     static func ingestPendingTAPVideo(
         store: TAPPendingCaptureStore,
         captureID: String,
-        packageID: UUID = UUID(uuidString: "00000000-0000-0000-0000-000000000779")!
+        packageID: UUID = UUID(uuidString: "00000000-0000-0000-0000-000000000779")!,
+        hasDepth: Bool = true
     ) async throws -> TAPPendingCaptureRecord {
         let workspace = try await store.beginVideoCaptureWorkspace(captureID: captureID)
         var baseMP4 = Data([0, 0, 0, 12])
@@ -48,7 +49,7 @@ enum TAPCamDemoTestFixtures {
                 mediaType: "video/mp4",
                 durationSeconds: 1,
                 timeScale: 600,
-                trackCount: 2
+                trackCount: hasDepth ? 2 : 1
             ),
             rgbTrack: .init(
                 trackID: 1,
@@ -70,7 +71,7 @@ enum TAPCamDemoTestFixtures {
                 sampleRate: nil,
                 channelCount: nil
             ),
-            depthCoverage: .init(
+            depthCoverage: hasDepth ? .init(
                 trackID: 3,
                 trackCodec: "mebx",
                 trackDurationSeconds: 1,
@@ -86,11 +87,11 @@ enum TAPCamDemoTestFixtures {
                     bytesPerSample: 2,
                     uncompressedFrameByteCount: 98_304
                 )
-            ),
+            ) : .none,
             spatialRegistration: .unavailable,
             synchronization: .init(
                 timing: "capture-relative-presentation-timestamps",
-                rgbToDepthMapping: "independent-timed-metadata",
+                rgbToDepthMapping: hasDepth ? "independent-timed-metadata" : "no-depth-samples",
                 maxObservedDeltaSeconds: 0,
                 nominalDepthIntervalSeconds: 1.0 / 30.0
             ),

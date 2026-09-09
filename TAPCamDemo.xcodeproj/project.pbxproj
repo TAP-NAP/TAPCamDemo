@@ -37,16 +37,6 @@
 		F2F5FDFC2F9B321100F5071A /* TAPCamDemoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TAPCamDemoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		F2A0A0102FA0000000000010 /* Exceptions for "TAPCamDemo" folder in "TAPCamDemo" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				DepthAnalysis/Documentation/PlanesTechnicalDesign.md,
-			);
-			target = F2F5FDEE2F9B320F00F5071A /* TAPCamDemo */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
-
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		F2B001022FA8000000000102 /* TAPCamDemoUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
@@ -55,9 +45,6 @@
 		};
 		F2F5FDF12F9B320F00F5071A /* TAPCamDemo */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				F2A0A0102FA0000000000010 /* Exceptions for "TAPCamDemo" folder in "TAPCamDemo" target */,
-			);
 			path = TAPCamDemo;
 			sourceTree = "<group>";
 		};

@@ -200,8 +200,7 @@ actor TAPPendingCaptureStore {
     }
 
     func ingestVideo(
-        _ artifact: TAPPendingVideoCaptureArtifact,
-        terminalFailureCode: TAPPendingCaptureFailureCode? = nil
+        _ artifact: TAPPendingVideoCaptureArtifact
     ) throws -> TAPPendingCaptureRecord {
         try storage.ensureRootDirectoryExists()
 
@@ -209,8 +208,7 @@ actor TAPPendingCaptureStore {
         let workspaceURL = try videoWorkspaces.workspaceURL(captureID: captureID)
         _ = try TAPPendingVideoIngestValidator.validate(
             artifact: artifact,
-            expectedWorkspaceURL: workspaceURL,
-            terminalFailureCode: terminalFailureCode
+            expectedWorkspaceURL: workspaceURL
         )
         let finalURL = try storage.bundleURL(captureID: captureID)
         if storage.bundleExists(at: finalURL),
@@ -231,7 +229,7 @@ actor TAPPendingCaptureStore {
             capturedAt: artifact.capturedAt,
             createdAt: now,
             updatedAt: now,
-            status: terminalFailureCode == nil ? .pending : .failedTerminal,
+            status: .pending,
             artifactKind: .tapVideo,
             captureScoreSummary: artifact.captureScoreSummary,
             unsignedPhotoFilename: nil,
@@ -242,15 +240,11 @@ actor TAPPendingCaptureStore {
             exportResourceFilename: PhotoLibraryWriter.tapVideoResourceFilename(
                 packageID: artifact.packageID
             ),
-            failureCode: terminalFailureCode,
+            failureCode: nil,
             pairedVideoFilename: nil,
             thumbnailFilename: nil,
             assetLocalIdentifier: nil,
-            failureReason: terminalFailureCode == nil
-                ? nil
-                : TAPPendingCaptureFailureReasonPresentation.persistedFailureReason(
-                    for: .terminalFailure
-                ),
+            failureReason: nil,
             retryCount: 0,
             location: artifact.location
         )

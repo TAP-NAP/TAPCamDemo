@@ -8,8 +8,7 @@ import Foundation
 nonisolated enum TAPPendingVideoIngestValidator {
     static func validate(
         artifact: TAPPendingVideoCaptureArtifact,
-        expectedWorkspaceURL: URL,
-        terminalFailureCode: TAPPendingCaptureFailureCode?
+        expectedWorkspaceURL: URL
     ) throws -> TAPVideoManifest {
         let expectedArtifactURL = expectedWorkspaceURL.appendingPathComponent(
             TAPPendingCaptureBundlePathPolicy.videoArtifactFilename
@@ -31,18 +30,23 @@ nonisolated enum TAPPendingVideoIngestValidator {
             )
         }
         let coverage = manifest.payload.depthCoverage
-        let hasRecordedDepth = coverage.sampleCount > 0
-            && coverage.trackID != nil
-            && coverage.format != nil
-        if hasRecordedDepth {
-            guard terminalFailureCode == nil else {
+        if coverage.sampleCount == 0 {
+            guard coverage.trackID == nil,
+                  coverage.trackCodec == nil,
+                  coverage.trackDurationSeconds == nil,
+                  coverage.trackTimeScale == nil,
+                  coverage.format == nil else {
                 throw TAPDepthCaptureError.invalidTAPManifest(
-                    "video with recorded depth cannot enter a terminal ingest state"
+                    "zero-depth video must not declare a stored depth track"
                 )
             }
         } else {
-            guard terminalFailureCode == .missingDepthData else {
-                throw TAPDepthCaptureError.missingDepthData
+            guard coverage.sampleCount > 0,
+                  coverage.trackID != nil,
+                  coverage.format != nil else {
+                throw TAPDepthCaptureError.invalidTAPManifest(
+                    "stored depth samples require a depth track and format"
+                )
             }
         }
         return manifest
