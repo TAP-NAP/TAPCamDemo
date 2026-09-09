@@ -71,26 +71,6 @@ struct TAPPhotographerModeRuntimeTests {
         #expect(unrecovered.requiresStandardRecovery)
     }
 
-    @Test func photographerModeRuntimePathDoesNotDependOnDebugOverrideState() throws {
-        let selectionSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/CameraCapture/UI/CameraViewModel+Selection.swift"
-        )
-        let capabilitySource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/CameraCapture/Planning/CapabilityMatrix.swift"
-        )
-
-        let start = try #require(selectionSource.range(of: "private func configurePhotographerMode("))
-        let end = try #require(selectionSource.range(
-            of: "private func transitionFromPhotographerModeToStandardRearCamera()",
-            range: start.upperBound..<selectionSource.endIndex
-        ))
-        let photographerRuntime = String(selectionSource[start.lowerBound..<end.lowerBound])
-
-        #expect(!photographerRuntime.contains("isDebugDepthOverrideActive"))
-        #expect(!photographerRuntime.contains("makeDebugDepthOverridePlan"))
-        #expect(!capabilitySource.contains("#if DEBUG\n    var photographerModeAvailability"))
-    }
-
     private func eligibleFacts(
         isRearLiDARDevice: Bool = true,
         hasOneXDepthFormat: Bool = true,

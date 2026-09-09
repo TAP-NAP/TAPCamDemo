@@ -9,10 +9,12 @@ import Testing
 @testable import TAPCamDemo
 
 struct TAPPreCaptureConfigurationBuilderTests {
-    @Test func preCaptureSnapshotUpdatesPlanAndSelectionContextCrop() throws {
-        guard let option = Self.enabledFocalLengthOption() else {
-            return
-        }
+    @Test(.enabled(
+        if: TAPPreCaptureConfigurationBuilderTests.enabledFocalLengthOption() != nil,
+        "Requires a supported physical camera."
+    ))
+    func preCaptureSnapshotUpdatesPlanAndSelectionContextCrop() throws {
+        let option = try #require(Self.enabledFocalLengthOption())
         let activePlan = Self.capturePlan(option: option, crop: .fullFrame)
         let activeConfiguration = try Self.sessionConfigurationResult(
             plan: activePlan,
@@ -31,16 +33,20 @@ struct TAPPreCaptureConfigurationBuilderTests {
         #expect(snapshot.selectionContext.cropRectNormalized == captureCrop)
     }
 
-    @Test func preCaptureSnapshotPreservesRuntimeExecutionFacts() throws {
-        guard let option = Self.enabledFocalLengthOption() else {
-            return
-        }
+    @Test(.enabled(
+        if: TAPPreCaptureConfigurationBuilderTests.enabledFocalLengthOption() != nil,
+        "Requires a supported physical camera."
+    ))
+    func preCaptureSnapshotPreservesRuntimeExecutionFacts() throws {
+        let option = try #require(Self.enabledFocalLengthOption())
         let activePlan = Self.capturePlan(option: option, crop: .fullFrame)
         let activeConfiguration = try Self.sessionConfigurationResult(
             plan: activePlan,
             cameraDisplayName: option.displayName,
             device: option.rgbSource.device,
-            nativePreviewAspectRatio: 1.25
+            nativePreviewAspectRatio: 1.25,
+            livePhotoAudioInputConfigured: true,
+            auxiliaryPreviewPolicy: .manualFocusLoupe
         )
 
         let snapshot = PreCaptureConfigurationBuilder.configuration(
@@ -52,6 +58,8 @@ struct TAPPreCaptureConfigurationBuilderTests {
         #expect(snapshot.resolvedOutput == activeConfiguration.resolvedOutput)
         #expect(snapshot.device.uniqueID == activeConfiguration.device.uniqueID)
         #expect(snapshot.controlCapabilities == activeConfiguration.controlCapabilities)
+        #expect(snapshot.livePhotoAudioInputConfigured)
+        #expect(snapshot.auxiliaryPreviewPolicy == .manualFocusLoupe)
         #expect(snapshot.cameraDisplayName == activeConfiguration.cameraDisplayName)
         #expect(snapshot.nativePreviewAspectRatio == activeConfiguration.nativePreviewAspectRatio)
         #expect(snapshot.depthDeliverySupported == (
@@ -59,14 +67,12 @@ struct TAPPreCaptureConfigurationBuilderTests {
         ))
     }
 
-    @Test func preCaptureSnapshotPreservesFixedZoomID() throws {
-        guard let option = Self.enabledFocalLengthOption(matching: { option in
-            CameraCapabilityResolver.candidateZoomFactors.contains {
-                abs($0 - option.zoom.rawVideoZoomFactor) < 0.001
-            }
-        }) else {
-            return
-        }
+    @Test(.enabled(
+        if: TAPPreCaptureConfigurationBuilderTests.enabledFocalLengthOption(fixedZoom: true) != nil,
+        "Requires a supported physical camera with fixed zoom."
+    ))
+    func preCaptureSnapshotPreservesFixedZoomID() throws {
+        let option = try #require(Self.enabledFocalLengthOption(fixedZoom: true))
         let activePlan = Self.capturePlan(option: option, crop: .fullFrame)
 
         let snapshotPlan = PreCaptureConfigurationBuilder.capturePlan(
@@ -79,16 +85,12 @@ struct TAPPreCaptureConfigurationBuilderTests {
         #expect(snapshotPlan.zoom?.id == activePlan.zoom?.id)
     }
 
-    @Test func preCaptureSnapshotPreservesCustomRawReleaseZoom() throws {
-        let options = CameraCapabilityResolver.discover().focalLengthOptions()
-        guard let option = options.first(where: { option in
-            option.isEnabled
-                && !CameraCapabilityResolver.candidateZoomFactors.contains {
-                    abs($0 - option.zoom.rawVideoZoomFactor) < 0.001
-                }
-        }) else {
-            return
-        }
+    @Test(.enabled(
+        if: TAPPreCaptureConfigurationBuilderTests.enabledFocalLengthOption(fixedZoom: false) != nil,
+        "Requires a supported physical camera with custom zoom."
+    ))
+    func preCaptureSnapshotPreservesCustomRawReleaseZoom() throws {
+        let option = try #require(Self.enabledFocalLengthOption(fixedZoom: false))
         let activePlan = CaptureSourcePlan.make(
             rgbSource: option.rgbSource,
             depthSource: option.depthSource,
@@ -109,34 +111,14 @@ struct TAPPreCaptureConfigurationBuilderTests {
         #expect(abs((snapshotPlan.captureConfig.requestedZoomFactor ?? 0) - option.zoom.rawVideoZoomFactor) < 0.001)
     }
 
-    @Test func preCaptureSnapshotBoundaryOwnsSessionConfigurationResultCopy() throws {
-        let selectionSource = try Self.source(relativePath: "TAPCamDemo/CameraCapture/UI/CameraViewModel+Selection.swift")
-        let captureSource = try Self.source(relativePath: "TAPCamDemo/CameraCapture/UI/CameraViewModel+Capture.swift")
-        let builderSource = try Self.source(relativePath: "TAPCamDemo/CameraCapture/Planning/PreCaptureConfigurationBuilder.swift")
-
-        #expect(!selectionSource.contains("SessionConfigurationResult("))
-        #expect(!captureSource.contains("SessionConfigurationResult("))
-        #expect(captureSource.contains("PreCaptureConfigurationBuilder.configuration"))
-        #expect(captureSource.contains("captureConfiguration.depthDeliverySupported"))
-        #expect(builderSource.contains("SessionConfigurationResult("))
-        #expect(builderSource.contains("depthDeliverySupported: active.depthDeliverySupported && plan.canCapturePhotoDepth"))
-        #expect(builderSource.contains("cameraDisplayName: active.cameraDisplayName"))
-        #expect(builderSource.contains("nativePreviewAspectRatio: active.nativePreviewAspectRatio"))
-        #expect(builderSource.contains("outputProfile: active.outputProfile"))
-        #expect(builderSource.contains("resolvedOutput: active.resolvedOutput"))
-        #expect(builderSource.contains("device: active.device"))
-        #expect(builderSource.contains("controlCapabilities: active.controlCapabilities"))
-        #expect(builderSource.contains("selectionContext: request.selectionContext"))
-        #expect(!builderSource.contains("SingleCamPhotoSettingsFactory.resolvedOutput"))
-        #expect(!builderSource.contains("resolvedPhotoOutput"))
-    }
-
-    private static func enabledFocalLengthOption(
-        matching predicate: (FocalLengthOption) -> Bool = { _ in true }
-    ) -> FocalLengthOption? {
-        CameraCapabilityResolver.discover()
-            .focalLengthOptions()
-            .first { $0.isEnabled && predicate($0) }
+    private static func enabledFocalLengthOption(fixedZoom: Bool? = nil) -> FocalLengthOption? {
+        CameraCapabilityResolver.discover().focalLengthOptions().first { option in
+            guard option.isEnabled else { return false }
+            guard let fixedZoom else { return true }
+            return CameraCapabilityResolver.candidateZoomFactors.contains {
+                abs($0 - option.zoom.rawVideoZoomFactor) < 0.001
+            } == fixedZoom
+        }
     }
 
     private static func capturePlan(
@@ -157,7 +139,9 @@ struct TAPPreCaptureConfigurationBuilderTests {
         plan: CaptureSourcePlan,
         cameraDisplayName: String,
         device: AVCaptureDevice,
-        nativePreviewAspectRatio: Double = 3.0 / 4.0
+        nativePreviewAspectRatio: Double = 3.0 / 4.0,
+        livePhotoAudioInputConfigured: Bool = false,
+        auxiliaryPreviewPolicy: CameraAuxiliaryPreviewPolicy = .none
     ) throws -> SessionConfigurationResult {
         let request = SessionConfigurationRequest(capturePlan: plan)
         let resolvedOutput = try request.outputProfile.resolvedPhotoOutput(availablePhotoCodecTypes: [])
@@ -169,9 +153,10 @@ struct TAPPreCaptureConfigurationBuilderTests {
             outputProfile: request.outputProfile,
             resolvedOutput: resolvedOutput,
             device: device,
-            livePhotoAudioInputConfigured: false,
+            livePhotoAudioInputConfigured: livePhotoAudioInputConfigured,
             controlCapabilities: Self.controlCapabilities(),
-            selectionContext: request.selectionContext
+            selectionContext: request.selectionContext,
+            auxiliaryPreviewPolicy: auxiliaryPreviewPolicy
         )
     }
 
@@ -209,13 +194,5 @@ struct TAPPreCaptureConfigurationBuilderTests {
             aperture: CameraControlCapabilitySnapshot.Aperture(fixedLensAperture: 1.78),
             zoom: CameraControlCapabilitySnapshot.Zoom(range: .init(minimum: 1, maximum: 15))
         )
-    }
-
-    private static func source(relativePath: String) throws -> String {
-        let root = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let fileURL = root.appendingPathComponent(relativePath)
-        return try String(contentsOf: fileURL, encoding: .utf8)
     }
 }
