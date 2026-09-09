@@ -56,7 +56,7 @@ extension CameraViewModel {
 
         if targetPosition == .front, photographerModeState.isActive {
             suspendedRearModeIntent = .photographer
-            await transitionFromPhotographerModeToFrontCamera()
+            await transitionFromPhotographerMode(to: .front)
             return
         }
 
@@ -184,7 +184,7 @@ extension CameraViewModel {
                 suspendedRearModeIntent = .standard
                 return
             }
-            await transitionFromPhotographerModeToStandardRearCamera()
+            await transitionFromPhotographerMode(to: .back)
         }
     }
 
@@ -268,10 +268,10 @@ extension CameraViewModel {
         }
     }
 
-    private func transitionFromPhotographerModeToStandardRearCamera() async {
+    private func transitionFromPhotographerMode(to position: AVCaptureDevice.Position) async {
         guard let target = standardTargetSelection(
-            position: .back,
-            preferred: standardRearSelectionBeforePhotographerMode
+            position: position,
+            preferred: position == .back ? standardRearSelectionBeforePhotographerMode : nil
         ) else {
             statusMessage = CameraCaptureStatusPresentation.message(
                 for: TAPDepthCaptureError.noDepthCameraAvailable,
@@ -303,65 +303,10 @@ extension CameraViewModel {
                 return
             }
             photographerModeState = .standard
-            suspendedRearModeIntent = .standard
-            standardRearSelectionBeforePhotographerMode = nil
-        } catch {
-            guard generation == configurationGeneration else {
-                return
+            if position == .back {
+                suspendedRearModeIntent = .standard
+                standardRearSelectionBeforePhotographerMode = nil
             }
-            let recoveredMode = await recoverPhotographerModeTransition(
-                .previous(previous),
-                generation: generation
-            )
-            guard generation == configurationGeneration else {
-                return
-            }
-            photographerModeState = .failed(
-                recoveredMode: recoveredMode,
-                reason: .configurationFailed
-            )
-            suspendedRearModeIntent = recoveredMode == .photographer
-                ? .photographer
-                : .standard
-            if recoveredMode == .unconfigured {
-                hasPendingSelectionReconfiguration = true
-            }
-            statusMessage = PhotographerModeUnavailableReason.configurationFailed.message
-        }
-    }
-
-    private func transitionFromPhotographerModeToFrontCamera() async {
-        guard let target = standardTargetSelection(position: .front, preferred: nil) else {
-            statusMessage = CameraCaptureStatusPresentation.message(
-                for: TAPDepthCaptureError.noDepthCameraAvailable,
-                context: .configuration
-            )
-            return
-        }
-
-        let previous = runtimeSelectionSnapshot()
-        cancelManualFocusRuntime()
-        configurationGeneration += 1
-        let generation = configurationGeneration
-        photographerModeState = .deactivating
-        isConfiguringSession = true
-        isDepthCaptureReady = false
-        armCameraPathConfigurationWatchdog(generation: generation)
-        defer {
-            finishSelectionConfiguration(generation: generation)
-        }
-
-        do {
-            let result = try await configureStandardTarget(target)
-            guard generation == configurationGeneration, !isPausedForAnalysis else {
-                return
-            }
-            applyStandardConfiguration(result, target: target)
-            await applyRequestedGlobalAutoExposureBiasToActiveConfiguration()
-            guard generation == configurationGeneration, !isPausedForAnalysis else {
-                return
-            }
-            photographerModeState = .standard
         } catch {
             guard generation == configurationGeneration else {
                 return
