@@ -33,7 +33,6 @@ struct DepthAnalysisView: View {
     @State private var heatmapOpacity = 0.58
     @State private var twoDComparisonPosition = 0.5
     @State private var selectedTool = AnalysisViewerTool.raw
-    @State private var pendingDeleteRequest: DepthAnalysisPendingDeleteRequest?
     @State private var deleteAlert: DepthAnalysisDeleteAlert?
     @AppStorage(CameraViewfinderHighlightPreference.storageKey)
     private var viewfinderHighlightRawValue = CameraViewfinderHighlightPreference.defaultValue.rawValue
@@ -73,26 +72,28 @@ struct DepthAnalysisView: View {
         .toolbarRole(.editor)
         .navigationTitle(Text(verbatim: ""))
         .ignoresSafeArea(.container, edges: .all)
-        .alert(item: $pendingDeleteRequest) { request in
-            Alert(
-                title: Text("Delete unsaved photo?"),
-                message: Text("This capture has not finished exporting to Photos. Deleting it removes the local TAP copy and cannot be undone."),
-                primaryButton: .destructive(Text("Delete")) {
-                    performDelete(
-                        source: request.source,
-                        displayPixelLength: request.displayPixelLength,
-                        prewarmCurrentPlaneGeometry: request.prewarmCurrentPlaneGeometry
-                    )
-                },
-                secondaryButton: .cancel()
-            )
-        }
         .alert(item: $deleteAlert) { alert in
-            Alert(
-                title: Text(alert.title),
-                message: Text(alert.message),
-                dismissButton: .default(Text("OK"))
-            )
+            switch alert {
+            case let .confirmPending(source, displayPixelLength, prewarmCurrentPlaneGeometry):
+                Alert(
+                    title: Text("Delete unsaved photo?"),
+                    message: Text("This capture has not finished exporting to Photos. Deleting it removes the local TAP copy and cannot be undone."),
+                    primaryButton: .destructive(Text("Delete")) {
+                        performDelete(
+                            source: source,
+                            displayPixelLength: displayPixelLength,
+                            prewarmCurrentPlaneGeometry: prewarmCurrentPlaneGeometry
+                        )
+                    },
+                    secondaryButton: .cancel()
+                )
+            case .failure:
+                Alert(
+                    title: Text("Unable to delete photo"),
+                    message: Text("Try again from TAP Library."),
+                    dismissButton: .default(Text("OK"))
+                )
+            }
         }
         .onDisappear {
             carouselStore.cancelViewerRequests()
@@ -184,7 +185,7 @@ struct DepthAnalysisView: View {
 
         let prewarmCurrentPlaneGeometry = selectedTool == .threeD
         if case .pendingCapture = source {
-            pendingDeleteRequest = DepthAnalysisPendingDeleteRequest(
+            deleteAlert = .confirmPending(
                 source: source,
                 displayPixelLength: displayPixelLength,
                 prewarmCurrentPlaneGeometry: prewarmCurrentPlaneGeometry
@@ -237,10 +238,7 @@ struct DepthAnalysisView: View {
                 #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
                 TAPDiagnostics.photoLibrary.error("analysis delete failed error=\(TAPDiagnostics.describe(error), privacy: .public)")
                 #endif
-                deleteAlert = DepthAnalysisDeleteAlert(
-                    title: "Unable to delete photo",
-                    message: "Try again from TAP Library."
-                )
+                deleteAlert = .failure
             }
         }
     }
@@ -270,17 +268,15 @@ struct DepthAnalysisView: View {
     }
 }
 
-private struct DepthAnalysisPendingDeleteRequest: Identifiable {
-    let id = UUID()
-    let source: DepthAnalysisSource
-    let displayPixelLength: Int
-    let prewarmCurrentPlaneGeometry: Bool
-}
+private enum DepthAnalysisDeleteAlert: Hashable, Identifiable {
+    case confirmPending(
+        source: DepthAnalysisSource,
+        displayPixelLength: Int,
+        prewarmCurrentPlaneGeometry: Bool
+    )
+    case failure
 
-private struct DepthAnalysisDeleteAlert: Identifiable {
-    let id = UUID()
-    let title: String
-    let message: String
+    var id: Self { self }
 }
 
 private enum DepthAnalysisDeletionService {

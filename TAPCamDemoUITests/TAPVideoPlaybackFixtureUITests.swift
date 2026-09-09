@@ -26,6 +26,34 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
         continueAfterFailure = false
     }
 
+    func testPendingPhotoDeleteConfirmationCanBeCancelledAndOpenedAgain() {
+        assertPendingDeleteConfirmationCanBeCancelled(kind: "photo")
+    }
+
+    func testPendingVideoDeleteConfirmationCanBeCancelledAndOpenedAgain() {
+        assertPendingDeleteConfirmationCanBeCancelled(kind: "video")
+    }
+
+    private func assertPendingDeleteConfirmationCanBeCancelled(kind: String) {
+        let app = launchFixture(scenario: "rotation-0", pendingDeleteKind: kind)
+        let delete = app.buttons["tap.viewer.delete"]
+        for attempt in 1...2 {
+            XCTAssertTrue(delete.isEnabled && delete.isHittable)
+            delete.tap()
+            let alert = app.alerts["Delete unsaved \(kind)?"]
+            XCTAssertTrue(alert.waitForExistence(timeout: 3))
+            XCTAssertTrue(alert.buttons["Delete"].exists)
+            keepScreenshot(of: app, named: "pending-\(kind)-delete-confirmation-\(attempt)")
+            // Test only presentation and cancellation; never request deletion.
+            alert.buttons["Cancel"].tap()
+            let dismissed = XCTNSPredicateExpectation(
+                predicate: NSPredicate(format: "exists == false"), object: alert
+            )
+            XCTAssertEqual(XCTWaiter.wait(for: [dismissed], timeout: 3), .completed)
+            XCTAssertTrue(delete.exists && delete.isEnabled && delete.isHittable)
+        }
+    }
+
     func testVideoTwoDModeUsesPhysicalHitAndPublishesSelectedState() throws {
         let app = launchFixture(scenario: "performance-playback-15s")
         try openFixture(in: app)
@@ -383,7 +411,8 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
         autoPlay: Bool = false,
         seekScheduleSeconds: [Double]? = nil,
         accessibilityDynamicType: Bool = false,
-        playerReadinessDelayMilliseconds: Int? = nil
+        playerReadinessDelayMilliseconds: Int? = nil,
+        pendingDeleteKind: String? = nil
     ) -> XCUIApplication {
         let app = XCUIApplication(bundleIdentifier: Self.bundleIdentifier)
         if ProcessInfo.processInfo.environment["TAPCAM_PR7_ENABLE_ACTIVITY_LOGGING"] == "1" {
@@ -391,6 +420,9 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
         }
         app.launchEnvironment["TAPCAM_UI_TEST_VIDEO_FIXTURE"] = "1"
         app.launchEnvironment["TAPCAM_UI_TEST_VIDEO_FIXTURE_SCENARIO"] = scenario
+        if let pendingDeleteKind {
+            app.launchEnvironment["TAPCAM_UI_TEST_PENDING_DELETE"] = pendingDeleteKind
+        }
         if gallery {
             app.launchEnvironment["TAPCAM_UI_TEST_GALLERY_FIXTURE"] = "1"
         }
@@ -419,6 +451,10 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
         ]
         app.launch()
 
+        if pendingDeleteKind != nil {
+            XCTAssertTrue(app.buttons["tap.viewer.delete"].waitForExistence(timeout: 8))
+            return app
+        }
         if gallery {
             XCTAssertTrue(app.buttons["tap.gallery.item.photos:fixture-0"].waitForExistence(timeout: 8))
             return app

@@ -22,7 +22,6 @@ struct TAPVideoDepthPlaybackView: View {
     @State private var session: TAPVideoPlaybackSession
     @State private var selectedTool = AnalysisViewerTool.raw
     @State private var depthOverlayOpacity = 0.58
-    @State private var pendingDeleteRequest: TAPVideoPendingDeleteRequest?
     @State private var deleteAlert: TAPVideoDeleteAlert?
     @State private var removedVideoEntryIDs: Set<String> = []
     @State private var sessionGeneration: UInt64 = 0
@@ -83,22 +82,24 @@ struct TAPVideoDepthPlaybackView: View {
         .toolbarRole(.editor)
         .navigationTitle(Text(verbatim: ""))
         .ignoresSafeArea(.container, edges: .all)
-        .alert(item: $pendingDeleteRequest) { request in
-            Alert(
-                title: Text("Delete unsaved video?"),
-                message: Text("This video has not finished exporting to Photos. Deleting it removes the local TAP copy and cannot be undone."),
-                primaryButton: .destructive(Text("Delete")) {
-                    performDelete(source: request.source)
-                },
-                secondaryButton: .cancel()
-            )
-        }
         .alert(item: $deleteAlert) { alert in
-            Alert(
-                title: Text(alert.title),
-                message: Text(alert.message),
-                dismissButton: .default(Text("OK"))
-            )
+            switch alert {
+            case .confirmPending(let source):
+                Alert(
+                    title: Text("Delete unsaved video?"),
+                    message: Text("This video has not finished exporting to Photos. Deleting it removes the local TAP copy and cannot be undone."),
+                    primaryButton: .destructive(Text("Delete")) {
+                        performDelete(source: source)
+                    },
+                    secondaryButton: .cancel()
+                )
+            case .failure:
+                Alert(
+                    title: Text("Unable to delete video"),
+                    message: Text("Try again from TAP Library."),
+                    dismissButton: .default(Text("OK"))
+                )
+            }
         }
         .task(id: playbackTaskIdentity) {
             let activeSession = session
@@ -191,7 +192,7 @@ struct TAPVideoDepthPlaybackView: View {
 
     private func deleteCurrentVideo() {
         if sessionSource.requiresUnsavedDeleteConfirmation {
-            pendingDeleteRequest = TAPVideoPendingDeleteRequest(source: sessionSource)
+            deleteAlert = .confirmPending(sessionSource)
         } else {
             performDelete(source: sessionSource)
         }
@@ -240,10 +241,7 @@ struct TAPVideoDepthPlaybackView: View {
                 #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
                 TAPDiagnostics.photoLibrary.error("video delete failed error=\(TAPDiagnostics.describe(error), privacy: .public)")
                 #endif
-                deleteAlert = TAPVideoDeleteAlert(
-                    title: "Unable to delete video",
-                    message: "Try again from TAP Library."
-                )
+                deleteAlert = .failure
             }
         }
     }
@@ -366,15 +364,11 @@ struct TAPVideoDepthPlaybackView: View {
     }
 }
 
-private struct TAPVideoPendingDeleteRequest: Identifiable {
-    let id = UUID()
-    let source: TAPVideoPlaybackSource
-}
+private enum TAPVideoDeleteAlert: Hashable, Identifiable {
+    case confirmPending(TAPVideoPlaybackSource)
+    case failure
 
-private struct TAPVideoDeleteAlert: Identifiable {
-    let id = UUID()
-    let title: String
-    let message: String
+    var id: Self { self }
 }
 
 private struct TAPVideoPlaybackTaskIdentity: Hashable {

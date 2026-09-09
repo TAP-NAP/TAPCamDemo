@@ -11,6 +11,9 @@ import UIKit
 @MainActor
 struct TAPVideoPlaybackFixtureHarnessView: View {
     let configuration: TAPVideoPlaybackFixtureLaunchConfiguration
+    private let pendingDeleteKind = ProcessInfo.processInfo.environment[
+        "TAPCAM_UI_TEST_PENDING_DELETE"
+    ]
 
     @State private var phase = Phase.generating
     @State private var presentedArtifact: TAPVideoPlaybackFixtureArtifact?
@@ -18,7 +21,15 @@ struct TAPVideoPlaybackFixtureHarnessView: View {
 
     var body: some View {
         Group {
-            if configuration.showsGallery {
+            if pendingDeleteKind == "photo" {
+                NavigationStack {
+                    DepthAnalysisView(source: .pendingCapture("ui-test-missing-photo"))
+                }
+            } else if pendingDeleteKind == "video" {
+                NavigationStack {
+                    TAPVideoDepthPlaybackView(source: .pendingCapture("ui-test-missing-video"))
+                }
+            } else if configuration.showsGallery {
                 TAPGalleryFixtureView()
             } else {
                 NavigationStack {
@@ -85,7 +96,10 @@ struct TAPVideoPlaybackFixtureHarnessView: View {
             configuration.usesAccessibilityDynamicType ? .accessibility3 : .large
         )
         .task(id: configuration.scenario) {
-            guard !configuration.showsGallery else { return }
+            // Missing originals exercise production pending confirmation without
+            // creating a capture record, accessing Photos, or running a worker.
+            guard !configuration.showsGallery,
+                  pendingDeleteKind != "photo", pendingDeleteKind != "video" else { return }
             phase = .generating
             do {
                 phase = .ready(
