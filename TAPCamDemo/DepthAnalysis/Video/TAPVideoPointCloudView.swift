@@ -31,7 +31,12 @@ struct TAPVideoPointCloudView: UIViewRepresentable {
         context.coordinator.store = store
         return view
     }
-    func updateUIView(_ uiView: TAPVideoPointCloudSceneView, context: Context) {}
+    func updateUIView(_ uiView: TAPVideoPointCloudSceneView, context: Context) {
+        guard context.coordinator.store !== store else { return }
+        context.coordinator.store?.detach(uiView)
+        context.coordinator.store = store
+        store.attach(uiView)
+    }
     func makeCoordinator() -> Coordinator { Coordinator() }
     static func dismantleUIView(_ uiView: TAPVideoPointCloudSceneView, coordinator: Coordinator) {
         coordinator.store?.detach(uiView)
