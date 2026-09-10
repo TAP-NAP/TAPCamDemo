@@ -177,14 +177,15 @@ extension CameraViewModel {
             statusMessage = "TAP video recording is already running."
             return
         }
-        guard let activeSessionConfiguration else {
+        guard !isPreparingVideoMode else { return }
+        guard let configuration = activeSessionConfiguration else {
             statusMessage = CameraCaptureStatusPresentation.message(
                 for: TAPDepthCaptureError.depthDeliveryUnsupported,
                 context: .capture
             )
             return
         }
-        guard activeSessionConfiguration.depthDeliverySupported else {
+        guard configuration.depthDeliverySupported else {
             statusMessage = CameraCaptureStatusPresentation.message(
                 for: TAPDepthCaptureError.depthDeliveryUnsupported,
                 context: .capture
@@ -200,30 +201,23 @@ extension CameraViewModel {
         }
         let generation = configurationGeneration
         let depthFilteringEnabled = DepthAnalyzerPreferences.appleDepthFilteringEnabled()
-        let didPrepare = await prepareVideoModeIfNeeded(depthFilteringEnabled: depthFilteringEnabled)
-        guard generation == configurationGeneration, !isPausedForAnalysis else {
-            return
-        }
-        guard didPrepare else {
-            statusMessage = "Video mode unavailable"
-            return
-        }
+        videoPreparationState = .preparing
+        statusMessage = "Preparing TAP video..."
 
-        await startPreparedVideoRecording(
-            configuration: activeSessionConfiguration,
+        await prepareAndStartVideoRecording(
+            configuration: configuration,
             depthFilteringEnabled: depthFilteringEnabled,
             generation: generation,
             pendingCaptureWorkerClient: pendingCaptureWorkerClient
         )
     }
 
-    private func startPreparedVideoRecording(
+    private func prepareAndStartVideoRecording(
         configuration: SessionConfigurationResult,
         depthFilteringEnabled: Bool,
         generation: Int,
         pendingCaptureWorkerClient: (any AppAttestClient)?
     ) async {
-        videoPreparationState = .preparing
         let captureID = UUID().uuidString
         let capturedAt = Date()
         let recordsAudio = CameraCaptureDataUsePreferences.usesMicrophoneData()
@@ -248,6 +242,17 @@ extension CameraViewModel {
                 recordsAudio: recordsAudio,
                 depthFilteringEnabled: depthFilteringEnabled
             )
+            try await sessionController.prepareVideoRecording(
+                configuration: configuration,
+                recordsAudio: request.recordsAudio,
+                videoRotationAngle: request.videoRotationAngle,
+                isVideoMirrored: request.isVideoMirrored,
+                depthFilteringEnabled: request.depthFilteringEnabled
+            )
+            guard generation == configurationGeneration, !isPausedForAnalysis else {
+                try? await pendingCaptureStore.abortVideoCaptureWorkspace(captureID: captureID)
+                return
+            }
             let recorder = try await sessionController.startVideoRecording(
                 request: request,
                 configuration: configuration,

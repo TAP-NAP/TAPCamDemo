@@ -25,7 +25,7 @@ struct CameraViewLifecycleModifier: ViewModifier {
     private let isSettingsPresented: Bool
     private let resumesVideoModeAfterLibrary: Bool
     private let onLibraryReturnCompleted:
-        @MainActor (CaptureLifecycleCoordinator.LibraryReturnResult) -> Void
+        @MainActor @Sendable (CaptureLifecycleCoordinator.LibraryReturnResult) -> Void
 
     init(
         lifecycleCoordinator: CaptureLifecycleCoordinator,
@@ -36,7 +36,7 @@ struct CameraViewLifecycleModifier: ViewModifier {
         isSettingsPresented: Bool,
         resumesVideoModeAfterLibrary: Bool,
         onLibraryReturnCompleted: @escaping
-            @MainActor (CaptureLifecycleCoordinator.LibraryReturnResult) -> Void
+            @MainActor @Sendable (CaptureLifecycleCoordinator.LibraryReturnResult) -> Void
     ) {
         self.lifecycleCoordinator = lifecycleCoordinator
         self.viewModel = viewModel
@@ -91,26 +91,32 @@ struct CameraViewLifecycleModifier: ViewModifier {
 
     private func depthAlbumPresentationDidChange(_ isPresented: Bool) {
         updateIdleTimerForCurrentPresentation()
-        Task {
-            let result = await lifecycleCoordinator.depthAlbumPresentationDidChange(
-                isPresented: isPresented,
-                preparesVideoMode: resumesVideoModeAfterLibrary,
-                resumeAfterAnalysis: viewModel.resumeAfterAnalysis,
-                prepareVideoMode: { await viewModel.prepareVideoModeIfNeeded() },
-                isCameraReady: { viewModel.activeSessionConfiguration != nil },
-                retryPendingCaptures: { [weak lifecycleCoordinator, viewModel, appAttestController] in
-                    await lifecycleCoordinator?.retryPendingCaptures(
-                        viewModel: viewModel,
-                        appAttestController: appAttestController
-                    )
-                }
-            )
-            onLibraryReturnCompleted(result)
-        }
+        lifecycleCoordinator.depthAlbumPresentationDidChange(
+            isPresented: isPresented,
+            preparesVideoMode: resumesVideoModeAfterLibrary,
+            canResumeCamera: { scenePhase == .active && !routeStore.isDepthAlbumPresented },
+            resumeAfterAnalysis: viewModel.resumeAfterAnalysis,
+            prepareVideoMode: { await viewModel.prepareVideoModeIfNeeded() },
+            isCameraReady: { viewModel.activeSessionConfiguration != nil },
+            retryPendingCaptures: { [weak lifecycleCoordinator, viewModel, appAttestController] in
+                await lifecycleCoordinator?.retryPendingCaptures(
+                    viewModel: viewModel,
+                    appAttestController: appAttestController
+                )
+            },
+            completion: { result in
+                onLibraryReturnCompleted(result)
+            }
+        )
     }
 
     private func scenePhaseDidChange(_ phase: ScenePhase) {
         updateIdleTimerForCurrentPresentation()
+        if phase != .active {
+            lifecycleCoordinator.cancelCaptureModeChange()
+        } else if !routeStore.isDepthAlbumPresented, viewModel.isPausedForAnalysis {
+            depthAlbumPresentationDidChange(false)
+        }
         let shouldReturnToCameraOnForeground = lifecycleCoordinator.foregroundRouteRestorePolicy(
             for: phase,
             returnsToCameraOnForeground: CameraRoutePreferences.returnToCameraOnForeground()
@@ -169,7 +175,7 @@ extension View {
         isSettingsPresented: Bool,
         resumesVideoModeAfterLibrary: Bool,
         onLibraryReturnCompleted: @escaping
-            @MainActor (CaptureLifecycleCoordinator.LibraryReturnResult) -> Void
+            @MainActor @Sendable (CaptureLifecycleCoordinator.LibraryReturnResult) -> Void
     ) -> some View {
         modifier(CameraViewLifecycleModifier(
             lifecycleCoordinator: lifecycleCoordinator,

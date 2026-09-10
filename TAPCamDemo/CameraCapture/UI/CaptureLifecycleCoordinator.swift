@@ -21,8 +21,11 @@ final class CaptureLifecycleCoordinator: ObservableObject {
 
     private var didLeaveActiveScene = false
     @MainActor @Published private var captureModeChangeTask: Task<Void, Never>?
+    @MainActor @Published private var libraryReturnTask: (id: UUID, task: Task<Void, Never>)?
 
-    @MainActor var isChangingCaptureMode: Bool { captureModeChangeTask != nil }
+    @MainActor var isChangingCaptureMode: Bool {
+        captureModeChangeTask != nil || libraryReturnTask != nil
+    }
 
     nonisolated init() {}
 
@@ -35,7 +38,7 @@ final class CaptureLifecycleCoordinator: ObservableObject {
         restorePhotoMode: @escaping @MainActor () async -> Void,
         completion: @escaping @MainActor (Bool) -> Void
     ) -> Task<Void, Never>? {
-        guard captureModeChangeTask == nil else { return nil }
+        guard !isChangingCaptureMode else { return nil }
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
             defer { captureModeChangeTask = nil }
@@ -61,10 +64,10 @@ final class CaptureLifecycleCoordinator: ObservableObject {
     func cancelCaptureModeChange() {
         // Keep the gate until any already-started session-queue operation returns.
         captureModeChangeTask?.cancel()
+        libraryReturnTask?.task.cancel()
     }
 
     nonisolated enum LibraryReturnResult: Equatable, Sendable {
-        case notApplicable
         case cameraReady
         case videoReady
         case failed
@@ -103,33 +106,60 @@ final class CaptureLifecycleCoordinator: ObservableObject {
         chromeOrientation: CameraChromeOrientationController,
         stopCamera: () -> Void
     ) {
+        cancelCaptureModeChange()
         chromeOrientation.stop()
         stopCamera()
     }
 
-    @MainActor
+    @MainActor @discardableResult
     func depthAlbumPresentationDidChange(
         isPresented: Bool,
         preparesVideoMode: Bool,
-        resumeAfterAnalysis: () async -> Void,
-        prepareVideoMode: () async -> Bool,
-        isCameraReady: () -> Bool,
-        retryPendingCaptures: @escaping @MainActor () async -> Void
-    ) async -> LibraryReturnResult {
-        guard !isPresented else { return .notApplicable }
-        await resumeAfterAnalysis()
-        let result: LibraryReturnResult
-        if preparesVideoMode {
-            result = await prepareVideoMode() ? .videoReady : .failed
-        } else {
-            result = isCameraReady() ? .cameraReady : .failed
+        canResumeCamera: @escaping @MainActor () -> Bool,
+        resumeAfterAnalysis: @escaping @MainActor () async -> Void,
+        prepareVideoMode: @escaping @MainActor () async -> Bool,
+        isCameraReady: @escaping @MainActor () -> Bool,
+        retryPendingCaptures: @escaping @MainActor () async -> Void,
+        completion: @escaping @MainActor (LibraryReturnResult) -> Void
+    ) -> Task<Void, Never>? {
+        let previousModeTask = captureModeChangeTask
+        let previousReturnTask = libraryReturnTask?.task
+        cancelCaptureModeChange()
+        guard !isPresented else { return nil }
+
+        let id = UUID()
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer {
+                if libraryReturnTask?.id == id {
+                    libraryReturnTask = nil
+                }
+            }
+            // Cancellation retires publication, but already-started graph work
+            // must finish before the next return or mode change can begin.
+            await previousModeTask?.value
+            await previousReturnTask?.value
+            guard !Task.isCancelled, canResumeCamera() else { return }
+            await resumeAfterAnalysis()
+            guard !Task.isCancelled, canResumeCamera() else { return }
+
+            let result: LibraryReturnResult
+            if preparesVideoMode {
+                let ready = await prepareVideoMode()
+                guard !Task.isCancelled, canResumeCamera() else { return }
+                result = ready ? .videoReady : .failed
+            } else {
+                result = isCameraReady() ? .cameraReady : .failed
+            }
+            completion(result)
+            // Recovery must not hold the viewfinder transition on network work.
+            Task { @MainActor [weak self] in
+                guard self != nil else { return }
+                await retryPendingCaptures()
+            }
         }
-        // Recovery must not hold the viewfinder transition on network work.
-        Task { @MainActor [weak self] in
-            guard self != nil else { return }
-            await retryPendingCaptures()
-        }
-        return result
+        libraryReturnTask = (id, task)
+        return task
     }
 
     @MainActor

@@ -348,24 +348,28 @@ struct TAPCameraCapturePresentationTests {
     }
 
     @Test(.timeLimit(.minutes(1))) @MainActor
-    func libraryReturnWaitsForCameraButNotPendingRecovery() async {
+    func libraryReturnWaitsForCameraButNotPendingRecovery() async throws {
         let coordinator = CaptureLifecycleCoordinator()
-        let hiddenResult = await coordinator.depthAlbumPresentationDidChange(
+        let hiddenTask = coordinator.depthAlbumPresentationDidChange(
             isPresented: true, preparesVideoMode: false,
+            canResumeCamera: { false },
             resumeAfterAnalysis: { Issue.record("Opening the library must not resume the camera") },
             prepareVideoMode: { Issue.record("Opening the library must not prepare video"); return false },
             isCameraReady: { false },
-            retryPendingCaptures: { Issue.record("Opening the library must not retry pending captures") }
+            retryPendingCaptures: { Issue.record("Opening the library must not retry pending captures") },
+            completion: { _ in Issue.record("Opening the library must not publish a return") }
         )
-        #expect(hiddenResult == .notApplicable)
+        #expect(hiddenTask == nil)
 
         for video in [false, true] {
             for ready in [false, true] {
                 var events: [String] = []
+                var result: CaptureLifecycleCoordinator.LibraryReturnResult?
                 let (started, startedContinuation) = AsyncStream<Void>.makeStream()
                 let (release, releaseContinuation) = AsyncStream<Void>.makeStream()
-                let result = await coordinator.depthAlbumPresentationDidChange(
+                let requestedTask = coordinator.depthAlbumPresentationDidChange(
                     isPresented: false, preparesVideoMode: video,
+                    canResumeCamera: { true },
                     resumeAfterAnalysis: { events.append("resume") },
                     prepareVideoMode: { events.append("video"); return ready },
                     isCameraReady: { ready },
@@ -373,8 +377,11 @@ struct TAPCameraCapturePresentationTests {
                         startedContinuation.yield(())
                         startedContinuation.finish()
                         for await _ in release {}
-                    }
+                    },
+                    completion: { result = $0 }
                 )
+                let task = try #require(requestedTask)
+                await task.value
                 #expect(events == (video ? ["resume", "video"] : ["resume"]))
                 #expect(result == (ready ? (video ? .videoReady : .cameraReady) : .failed))
                 // Reaching this point proves recovery did not hold the return.
@@ -384,6 +391,111 @@ struct TAPCameraCapturePresentationTests {
                 withExtendedLifetime(coordinator) {}
             }
         }
+    }
+
+    @Test(.timeLimit(.minutes(1))) @MainActor
+    func cancelledOrHiddenLibraryReturnCannotPrepareOrPublishLateFailure() async throws {
+        for suspendVideo in [false, true] {
+            for cancelTask in [false, true] {
+                let coordinator = CaptureLifecycleCoordinator()
+                let presentation = CameraLibraryReturnTestFixture()
+                var events: [String] = []
+                let (started, startedContinuation) = AsyncStream<Void>.makeStream()
+                var release: CheckedContinuation<Void, Never>?
+                let suspend: @MainActor () async -> Void = {
+                    await withCheckedContinuation { continuation in
+                        release = continuation
+                        startedContinuation.yield(())
+                        startedContinuation.finish()
+                    }
+                }
+                let requestedTask = coordinator.depthAlbumPresentationDidChange(
+                    isPresented: false, preparesVideoMode: true,
+                    canResumeCamera: { presentation.canResumeCamera },
+                    resumeAfterAnalysis: {
+                        events.append("resume")
+                        if !suspendVideo { await suspend() }
+                    },
+                    prepareVideoMode: {
+                        events.append("video")
+                        if suspendVideo { await suspend() }
+                        return false
+                    },
+                    isCameraReady: { false },
+                    retryPendingCaptures: { Issue.record("A retired return cannot retry") },
+                    completion: { _ in Issue.record("A retired return cannot publish failure") }
+                )
+                let task = try #require(requestedTask)
+                var iterator = started.makeAsyncIterator()
+                #expect(await iterator.next() != nil)
+                if cancelTask {
+                    coordinator.cancelCaptureModeChange()
+                } else {
+                    presentation.canResumeCamera = false
+                }
+                #expect(coordinator.isChangingCaptureMode)
+                #expect(coordinator.changeCaptureMode(to: .video,
+                    prepareVideoMode: { Issue.record("Overlapping mode preparation"); return true },
+                    restorePhotoMode: {}, completion: { _ in }) == nil)
+                try #require(release).resume()
+                await task.value
+                #expect(events == (suspendVideo ? ["resume", "video"] : ["resume"]))
+                #expect(!coordinator.isChangingCaptureMode)
+            }
+        }
+    }
+
+    @Test(.timeLimit(.minutes(1)), arguments: [false, true]) @MainActor
+    func libraryReturnWaitsForRetiredPreparationAndOwnsCompletion(startsAsModeChange: Bool) async throws {
+        let coordinator = CaptureLifecycleCoordinator()
+        var events: [String] = []
+        let (started, startedContinuation) = AsyncStream<Void>.makeStream()
+        var release: CheckedContinuation<Void, Never>?
+        let prepare: @MainActor () async -> Bool = {
+            await withCheckedContinuation { continuation in
+                release = continuation
+                startedContinuation.yield(())
+                startedContinuation.finish()
+            }
+            events.append("retired-video-finished")
+            return false
+        }
+        let firstRequest: Task<Void, Never>?
+        if startsAsModeChange {
+            firstRequest = coordinator.changeCaptureMode(to: .video,
+                prepareVideoMode: prepare, restorePhotoMode: {},
+                completion: { _ in Issue.record("The replaced mode change cannot publish failure") })
+        } else {
+            firstRequest = coordinator.depthAlbumPresentationDidChange(
+                isPresented: false, preparesVideoMode: true,
+                canResumeCamera: { true }, resumeAfterAnalysis: {},
+                prepareVideoMode: prepare,
+                isCameraReady: { false }, retryPendingCaptures: {},
+                completion: { _ in Issue.record("The replaced return cannot publish failure") }
+            )
+        }
+        let first = try #require(firstRequest)
+        var iterator = started.makeAsyncIterator()
+        #expect(await iterator.next() != nil)
+        let replacementRequest = coordinator.depthAlbumPresentationDidChange(
+            isPresented: false, preparesVideoMode: true,
+            canResumeCamera: { true },
+            resumeAfterAnalysis: { events.append("current-resume") },
+            prepareVideoMode: { events.append("current-video"); return true },
+            isCameraReady: { true }, retryPendingCaptures: {},
+            completion: {
+                #expect($0 == .videoReady)
+                #expect(coordinator.isChangingCaptureMode)
+                events.append("current-completion")
+            }
+        )
+        let replacement = try #require(replacementRequest)
+        #expect(coordinator.isChangingCaptureMode)
+        try #require(release).resume()
+        await first.value
+        await replacement.value
+        #expect(events == ["retired-video-finished", "current-resume", "current-video", "current-completion"])
+        #expect(!coordinator.isChangingCaptureMode)
     }
 
     @Test func shutterHapticsPreferenceDefaultsToEnabled() throws {
@@ -1614,6 +1726,11 @@ struct TAPCameraCapturePresentationTests {
         }
     }
     #endif
+}
+
+@MainActor
+private final class CameraLibraryReturnTestFixture {
+    var canResumeCamera = true
 }
 
 @MainActor

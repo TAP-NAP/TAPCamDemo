@@ -312,6 +312,7 @@ struct CameraView: View {
             }
         }
         .onChange(of: scenePhase) { _, phase in
+            viewModel.sessionController.setSceneActive(phase == .active)
             if phase != .active {
                 lifecycleCoordinator.cancelCaptureModeChange()
                 cameraPathPreviewWatchdogTask?.cancel()
@@ -505,6 +506,7 @@ struct CameraView: View {
     }
 
     private func cameraViewDidAppear() {
+        viewModel.sessionController.setSceneActive(scenePhase == .active)
         hapticFeedbackController.setEnabled(isShutterHapticsEnabled)
         hapticFeedbackController.cameraAudioInputDidChange(isActive: isCameraAudioInputActive)
         hapticFeedbackController.prepareForCameraInteraction()
@@ -784,7 +786,9 @@ struct CameraView: View {
     }
 
     private var shutterIsEnabled: Bool {
-        guard !isCameraPathTransitioning,
+        guard scenePhase == .active,
+              isPreviewLayerPreviewing || viewModel.isVideoRecording,
+              !isCameraPathTransitioning,
               !lifecycleCoordinator.isChangingCaptureMode,
               manualFocusAssistToken == nil else {
             return false
@@ -2004,8 +2008,6 @@ struct CameraView: View {
         _ result: CaptureLifecycleCoordinator.LibraryReturnResult
     ) {
         switch result {
-        case .notApplicable:
-            return
         case .cameraReady:
             completeCameraPathRuntimeTransition()
         case .videoReady:

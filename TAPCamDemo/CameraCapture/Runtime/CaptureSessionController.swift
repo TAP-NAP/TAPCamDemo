@@ -45,6 +45,10 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     let manualFocusPreviewStream = CameraManualFocusPreviewStream()
 
     private let sessionQueue = DispatchQueue(label: "tapcam.camera-capture.singlecam.session")
+    // Session-queue-owned intent survives a system interruption. Explicit
+    // pause/stop clears it so interruption recovery cannot reopen the camera.
+    private var shouldRunSession = false
+    private var isSceneActive = true
     private var focusRuntimeEventHandler: (@Sendable (CaptureSessionFocusRuntimeEvent) -> Void)?
     private var exposureRuntimeEventHandler: (@Sendable (CaptureSessionExposureRuntimeEvent) -> Void)?
     private var subjectAreaChangeObserver: NSObjectProtocol?
@@ -160,10 +164,13 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             forName: AVCaptureSession.interruptionEndedNotification,
             object: session,
             queue: nil
-        ) { _ in
+        ) { [weak self] _ in
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.cameraCapture.info("capture session interruption ended")
             #endif
+            self?.sessionQueue.async { [weak self] in
+                self?.startSessionIfNeeded()
+            }
         }
 
         sessionDidStopRunningObserver = NotificationCenter.default.addObserver(
@@ -228,15 +235,8 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                     #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
                     TAPDiagnostics.cameraCapture.info("capture session graph configured traceID=\(traceID, privacy: .public) running=\(session.isRunning, privacy: .public)")
                     #endif
-                    if !session.isRunning {
-                        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-                        TAPDiagnostics.cameraCapture.info("capture session startRunning begin traceID=\(traceID, privacy: .public)")
-                        #endif
-                        session.startRunning()
-                        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-                        TAPDiagnostics.cameraCapture.info("capture session startRunning end traceID=\(traceID, privacy: .public) running=\(session.isRunning, privacy: .public)")
-                        #endif
-                    }
+                    shouldRunSession = true
+                    startSessionIfNeeded()
 
                     #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
                     TAPDiagnostics.cameraCapture.info("capture session configure completed traceID=\(traceID, privacy: .public)")
@@ -310,16 +310,35 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         }
     }
 
+    func setSceneActive(_ isActive: Bool) {
+        sessionQueue.async { [self] in
+            isSceneActive = isActive
+            startSessionIfNeeded()
+        }
+    }
+
+    private func startSessionIfNeeded() {
+        guard shouldRunSession, isSceneActive,
+              !session.isInterrupted, !session.isRunning else { return }
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.cameraCapture.info("capture session startRunning begin")
+        #endif
+        session.startRunning()
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        TAPDiagnostics.cameraCapture.info("capture session startRunning end running=\(self.session.isRunning, privacy: .public)")
+        #endif
+    }
+
     func stop() {
         sessionQueue.async { [self, session, photoOutput, manualFocusPreviewStream] in
+            shouldRunSession = false
             manualFocusPreviewStream.deactivate()
-            guard session.isRunning else { return }
             discardPreparedVideoRecordingGraphLocked(
                 session: session,
                 reason: "stop"
             )
             photoOutput.setPreparedPhotoSettingsArray([], completionHandler: nil)
-            session.stopRunning()
+            if session.isRunning { session.stopRunning() }
         }
     }
 
