@@ -107,13 +107,6 @@ struct DepthAnalyzerSettingsView: View {
                 interfaceSettingsSection
                 dataAndPermissionsSection
 
-                DepthAnalyzerAppAttestSection(
-                    readiness: appAttestController.photoIntegrityReadiness,
-                    canPrepare: appAttestController.canPreparePhotoIntegrity
-                ) {
-                    await appAttestController.resetAndPrepareCredential()
-                }
-
                 #if DEBUG
                 debugCameraControlsSection
                 debugAppAttestSections
@@ -124,6 +117,16 @@ struct DepthAnalyzerSettingsView: View {
                         AcknowledgementsView()
                     }
                 }
+            }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                ReferenceImageStatusView(
+                    readiness: appAttestController.photoIntegrityReadiness,
+                    canPrepare: appAttestController.canPreparePhotoIntegrity
+                ) {
+                    await appAttestController.resetAndPrepareCredential()
+                }
+                .padding(.horizontal, 32)
+                .background(Color(uiColor: .systemGroupedBackground))
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)

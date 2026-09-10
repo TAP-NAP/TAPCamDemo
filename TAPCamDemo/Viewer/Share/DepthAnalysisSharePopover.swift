@@ -147,7 +147,6 @@ struct DepthAnalysisSharePopover: View {
 
             integritySkeletonRow(titleWidth: 118, subtitleWidth: 158)
             integritySkeletonRow(titleWidth: 118, subtitleWidth: 82)
-            integritySkeletonRow(titleWidth: 82, subtitleWidth: nil)
             integritySkeletonRow(
                 titleWidth: 118,
                 subtitleWidth: nil,
@@ -249,13 +248,6 @@ struct DepthAnalysisSharePopover: View {
                     )
                 }
 
-                unavailableOptionRow(
-                    titleKey: "share.option.sticker.title",
-                    subtitleKey: "share.option.sticker.subtitle",
-                    systemImage: "face.smiling",
-                    badgeKey: "share.badge.comingSoon",
-                    identifier: "tap.share.sticker"
-                )
                 unavailableOptionRow(
                     titleKey: "share.option.link.title",
                     subtitleKey: "share.option.link.subtitle",

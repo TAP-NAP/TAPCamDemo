@@ -1215,6 +1215,7 @@
       }
     },
     "Generating credential" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -2086,6 +2087,16 @@
         }
       }
     },
+    "Online Verifier" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在线验证器"
+          }
+        }
+      }
+    },
     "Open ${destination}" : {
       "localizations" : {
         "zh-Hans" : {
@@ -2238,17 +2249,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "照片轮播"
-          }
-        }
-      }
-    },
-    "Photo Integrity" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "照片保真"
           }
         }
       }
@@ -2619,17 +2619,6 @@
         }
       }
     },
-    "Protection Readiness" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "保护准备状态"
-          }
-        }
-      }
-    },
     "Quality" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2703,6 +2692,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "配准深度不可用"
+          }
+        }
+      }
+    },
+    "Reference Image status" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "参考影像状态"
           }
         }
       }
@@ -3337,40 +3336,6 @@
         }
       }
     },
-    "share.option.sticker.subtitle" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "This feature is not available yet."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此功能暂不可用。"
-          }
-        }
-      }
-    },
-    "share.option.sticker.title" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "3D Sticker"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "3D 表情包"
-          }
-        }
-      }
-    },
     "share.option.video.subtitle" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3868,6 +3833,7 @@
       }
     },
     "This photo is still being processed in the TAPCam queue. Its credential will appear when processing finishes." : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {

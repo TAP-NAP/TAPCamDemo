@@ -146,24 +146,6 @@ struct AppAttestRuntimeTests {
         #expect(presentation.displayText == "Prepared key (5 chars)")
     }
 
-    @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
-    func releasePhotoIntegritySectionHidesAppAttestImplementationDetails() throws {
-        let sectionSource = try Self.source(
-            relativePath: "TAPCamDemo/App/Settings/DepthAnalyzerAppAttestSection.swift"
-        )
-        let settingsSource = try Self.source(
-            relativePath: "TAPCamDemo/App/Settings/DepthAnalyzerSettingsView.swift"
-        )
-
-        #expect(sectionSource.contains(#"Section("Photo Integrity")"#))
-        #expect(sectionSource.contains(#"Text("Protection Readiness")"#))
-        #expect(!sectionSource.contains(#"Section("App Attest")"#))
-        #expect(!sectionSource.contains("AppAttestKeyID"))
-        #expect(!sectionSource.contains("showsHelp"))
-        #expect(settingsSource.contains(#"Section("App Attest Backend")"#))
-        #expect(settingsSource.contains("credentialKeyIDPresentation"))
-    }
-
     #if DEBUG
     @Test func debugRuntimeUsesDevelopmentEnvironment() throws {
         let runtime = try AppAttestRuntimeFactory.make(
