@@ -491,12 +491,9 @@ struct TAPVideoManifestTests {
     }
 
     @Test func verifierGoldenVectorCarriesPerTrackTimingAndMetadataCodec() throws {
-        let rootURL = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let data = try Data(contentsOf: rootURL.appendingPathComponent(
-            "Docs/Fixtures/TAPVideoManifestV1GoldenVectors.json"
-        ))
+        let url = try #require(Bundle(for: TAPVideoExtensionFixtureBundle.self)
+            .url(forResource: "TAPVideoManifestV1GoldenVectors", withExtension: "json"))
+        let data = try Data(contentsOf: url)
         let root = try #require(
             try JSONSerialization.jsonObject(with: data) as? [String: Any]
         )

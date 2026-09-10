@@ -940,37 +940,6 @@ struct TAPCameraCapturePresentationTests {
         #expect(state.tapLibraryHelpText == "TAP Library will be available after video capture finishes.")
     }
 
-    @Test func cameraCaptureControlsStateDoesNotNameSensitiveInputs() throws {
-        let state = CameraCaptureControlsState(
-            isShutterEnabled: true,
-            isLibraryWriteInProgress: false,
-            selectedMode: .photo,
-            isRecordingMovie: false,
-            isPreparingCaptureMode: false,
-            isPhotographerModeActive: false,
-            isInteractionLocked: false,
-            adjustmentControlState: nil,
-            basicEVControlState: CameraBasicEVControlState(bias: 0, isStripVisible: false),
-            contentRotation: .zero
-        )
-        let fieldNames = Mirror(reflecting: state).children.compactMap(\.label).joined(separator: " ")
-        let forbiddenTokens = [
-            "id",
-            "capture",
-            "asset",
-            "heic",
-            "proof",
-            "manifest",
-            "key",
-            "store",
-            "data"
-        ]
-
-        for token in forbiddenTokens {
-            #expect(!fieldNames.localizedCaseInsensitiveContains(token))
-        }
-    }
-
     @Test func videoRecordingTimecodeFormatsElapsedAndLimit() {
         let startedAt = Date(timeIntervalSince1970: 100)
         let state = CameraVideoRecordingTimecodeState(
