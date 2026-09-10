@@ -46,14 +46,14 @@ struct TAPVideoManifestTests {
         }
     }
 
-    @MainActor @Test func videoDebugPreferencesDefaultOffAndRecordingFreezesFiltering() throws {
+    @MainActor @Test func videoPreferencesUseShippingDefaultsAndDebugOverrides() throws {
         let suite = "TAPVideoPreferencesTests-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         #expect(!DepthAnalyzerPreferences.appleDepthFilteringEnabled(defaults: defaults))
-        #expect(!DepthAnalyzerPreferences.playbackSmoothingEnabled(defaults: defaults))
+        #expect(DepthAnalyzerPreferences.playbackSmoothingEnabled(defaults: defaults))
         defaults.set(true, forKey: DepthAnalyzerPreferences.appleDepthFilteringEnabledKey)
-        defaults.set(true, forKey: DepthAnalyzerPreferences.playbackSmoothingEnabledKey)
+        defaults.set(false, forKey: DepthAnalyzerPreferences.playbackSmoothingEnabledKey)
         let request = TAPVideoRecordingRequest(
             outputURL: URL(fileURLWithPath: "/tmp/preferences-test.mp4"),
             videoRotationAngle: 0, isVideoMirrored: false, recordsAudio: false,
@@ -62,10 +62,10 @@ struct TAPVideoManifestTests {
         defaults.set(false, forKey: DepthAnalyzerPreferences.appleDepthFilteringEnabledKey)
         #if DEBUG
         #expect(request.depthFilteringEnabled)
-        #expect(DepthAnalyzerPreferences.playbackSmoothingEnabled(defaults: defaults))
+        #expect(!DepthAnalyzerPreferences.playbackSmoothingEnabled(defaults: defaults))
         #else
         #expect(!request.depthFilteringEnabled)
-        #expect(!DepthAnalyzerPreferences.playbackSmoothingEnabled(defaults: defaults))
+        #expect(DepthAnalyzerPreferences.playbackSmoothingEnabled(defaults: defaults))
         #endif
     }
 

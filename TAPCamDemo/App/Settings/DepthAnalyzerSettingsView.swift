@@ -16,7 +16,7 @@ enum DepthAnalyzerPreferences {
     static let appleDepthFilteringEnabledKey = "TAPVideoAppleDepthFilteringEnabled"
     static let defaultAppleDepthFilteringEnabled = false
     static let playbackSmoothingEnabledKey = "TAPVideoPlaybackSmoothingEnabled"
-    static let defaultPlaybackSmoothingEnabled = false
+    static let defaultPlaybackSmoothingEnabled = true
 
     static func appleDepthFilteringEnabled(defaults: UserDefaults = .standard) -> Bool {
         #if DEBUG
@@ -28,9 +28,9 @@ enum DepthAnalyzerPreferences {
 
     static func playbackSmoothingEnabled(defaults: UserDefaults = .standard) -> Bool {
         #if DEBUG
-        defaults.bool(forKey: playbackSmoothingEnabledKey)
+        defaults.object(forKey: playbackSmoothingEnabledKey) as? Bool ?? defaultPlaybackSmoothingEnabled
         #else
-        false
+        defaultPlaybackSmoothingEnabled
         #endif
     }
 
