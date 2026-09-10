@@ -305,9 +305,6 @@ struct CameraView: View {
         .onChange(of: usesMicrophoneData) { _, _ in
             captureSessionPreferenceDidChange()
         }
-        .onChange(of: isCameraAudioInputActive) { _, isActive in
-            hapticFeedbackController.cameraAudioInputDidChange(isActive: isActive)
-        }
         .onChange(of: routeStore.isDepthAlbumPresented) { _, isPresented in
             if isPresented {
                 persistRememberedViewfinderControlStateIfNeeded()
@@ -510,7 +507,6 @@ struct CameraView: View {
     private func cameraViewDidAppear() {
         viewModel.sessionController.setSceneActive(scenePhase == .active)
         hapticFeedbackController.setEnabled(isShutterHapticsEnabled)
-        hapticFeedbackController.cameraAudioInputDidChange(isActive: isCameraAudioInputActive)
         hapticFeedbackController.prepareForCameraInteraction()
         applyPendingIntentHandoff()
         scheduleResourceInitializationDiagnosticIfNeeded()
@@ -1964,10 +1960,6 @@ struct CameraView: View {
             && usesMicrophoneData
             && AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
             && viewModel.activeSessionConfiguration?.livePhotoAudioInputConfigured == true
-    }
-
-    private var isCameraAudioInputActive: Bool {
-        viewModel.activeSessionConfiguration?.livePhotoAudioInputConfigured == true
     }
 
     private var runtimeShowsDepthAvailabilityHints: Bool {

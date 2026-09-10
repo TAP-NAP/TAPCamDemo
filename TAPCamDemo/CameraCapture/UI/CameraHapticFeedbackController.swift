@@ -23,17 +23,20 @@ final class CameraHapticFeedbackController: ObservableObject {
     private let selectionGenerator = UISelectionFeedbackGenerator()
     private let integerImpactGenerator = UIImpactFeedbackGenerator(style: .medium)
     private let zeroImpactGenerator = UIImpactFeedbackGenerator(style: .heavy)
+    private let areHapticsAllowedDuringAudioInput: () -> Bool
     private let enableHapticsDuringAudioInput: () throws -> Void
-    private var isCameraAudioInputActive = false
-    private var hasEnabledHapticsDuringAudioInput = false
     private var didReportAudioInputAllowanceFailure = false
 
     init(
+        areHapticsAllowedDuringAudioInput: @escaping () -> Bool = {
+            AVAudioSession.sharedInstance().allowHapticsAndSystemSoundsDuringRecording
+        },
         enableHapticsDuringAudioInput: @escaping () throws -> Void = {
             try AVAudioSession.sharedInstance()
                 .setAllowHapticsAndSystemSoundsDuringRecording(true)
         }
     ) {
+        self.areHapticsAllowedDuringAudioInput = areHapticsAllowedDuringAudioInput
         self.enableHapticsDuringAudioInput = enableHapticsDuringAudioInput
     }
 
@@ -47,25 +50,10 @@ final class CameraHapticFeedbackController: ObservableObject {
         }
     }
 
-    func cameraAudioInputDidChange(isActive: Bool) {
-        guard isCameraAudioInputActive != isActive else {
-            return
-        }
-        isCameraAudioInputActive = isActive
-        hasEnabledHapticsDuringAudioInput = false
-        didReportAudioInputAllowanceFailure = false
-        if isActive, isEnabled {
-            enableRecordingHapticsIfPossible()
-        }
-    }
-
     func prepareForCameraInteraction() {
         if isEnabled {
-            if isCameraAudioInputActive {
-                enableRecordingHapticsIfPossible()
-            }
-            shutterImpactGenerator.prepare()
             prepareAdjustmentFeedback()
+            shutterImpactGenerator.prepare()
         }
         hasPreparedCameraInteraction = true
     }
@@ -74,6 +62,7 @@ final class CameraHapticFeedbackController: ObservableObject {
         guard isEnabled else {
             return
         }
+        enableRecordingHapticsIfPossible()
         selectionGenerator.prepare()
         integerImpactGenerator.prepare()
         zeroImpactGenerator.prepare()
@@ -107,13 +96,15 @@ final class CameraHapticFeedbackController: ObservableObject {
     }
 
     private func enableRecordingHapticsIfPossible() {
-        guard isCameraAudioInputActive,
-              !hasEnabledHapticsDuringAudioInput else {
+        // Audio input can also come from TAP Video, and the shared audio session
+        // can change while the photo configuration stays the same.
+        guard !areHapticsAllowedDuringAudioInput() else {
+            didReportAudioInputAllowanceFailure = false
             return
         }
         do {
             try enableHapticsDuringAudioInput()
-            hasEnabledHapticsDuringAudioInput = true
+            didReportAudioInputAllowanceFailure = false
         } catch {
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             if !didReportAudioInputAllowanceFailure {

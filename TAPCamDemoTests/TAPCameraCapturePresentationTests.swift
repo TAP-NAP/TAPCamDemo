@@ -569,26 +569,90 @@ struct TAPCameraCapturePresentationTests {
     }
 
     @Test @MainActor func sharedCameraHapticsEnableAudioInputAllowanceOnlyWhenEnabled() {
+        var allowsHapticsDuringAudioInput = false
         var audioInputAllowanceAttempts = 0
-        let controller = CameraHapticFeedbackController {
+        let controller = CameraHapticFeedbackController(
+            areHapticsAllowedDuringAudioInput: { allowsHapticsDuringAudioInput }
+        ) {
             audioInputAllowanceAttempts += 1
+            allowsHapticsDuringAudioInput = true
         }
 
         controller.setEnabled(false)
         controller.prepareForCameraInteraction()
+        controller.prepareAdjustmentFeedback()
+        controller.adjustmentChanged(style: .selection)
+        controller.shutterAccepted()
         #expect(controller.hasPreparedCameraInteraction)
         #expect(!controller.isEnabled)
         #expect(audioInputAllowanceAttempts == 0)
 
         controller.setEnabled(true)
         #expect(controller.isEnabled)
-        #expect(audioInputAllowanceAttempts == 0)
-
-        controller.cameraAudioInputDidChange(isActive: true)
         #expect(audioInputAllowanceAttempts == 1)
 
         controller.prepareForCameraInteraction()
+        controller.prepareAdjustmentFeedback()
+        controller.adjustmentChanged(style: .selection)
+        controller.shutterAccepted()
         #expect(audioInputAllowanceAttempts == 1)
+    }
+
+    @Test @MainActor func cameraHapticsRestoreRevokedAudioInputAllowanceBeforeFeedback() {
+        var allowsHapticsDuringAudioInput = true
+        var audioInputAllowanceAttempts = 0
+        let controller = CameraHapticFeedbackController(
+            areHapticsAllowedDuringAudioInput: { allowsHapticsDuringAudioInput }
+        ) {
+            audioInputAllowanceAttempts += 1
+            allowsHapticsDuringAudioInput = true
+        }
+
+        controller.prepareForCameraInteraction()
+        #expect(audioInputAllowanceAttempts == 0)
+
+        for style in [CameraAdjustmentHapticStyle.selection, .integerTick, .zeroTick] {
+            allowsHapticsDuringAudioInput = false
+            controller.adjustmentChanged(style: style)
+            #expect(allowsHapticsDuringAudioInput)
+        }
+        #expect(audioInputAllowanceAttempts == 3)
+
+        allowsHapticsDuringAudioInput = false
+        controller.shutterAccepted()
+        #expect(allowsHapticsDuringAudioInput)
+        #expect(audioInputAllowanceAttempts == 4)
+
+        allowsHapticsDuringAudioInput = false
+        controller.prepareAdjustmentFeedback()
+        #expect(allowsHapticsDuringAudioInput)
+        #expect(audioInputAllowanceAttempts == 5)
+    }
+
+    @Test @MainActor func cameraHapticsRetryAudioInputAllowanceAfterFailure() {
+        enum AllowanceError: Error { case unavailable }
+        var allowsHapticsDuringAudioInput = false
+        var audioInputAllowanceAttempts = 0
+        let controller = CameraHapticFeedbackController(
+            areHapticsAllowedDuringAudioInput: { allowsHapticsDuringAudioInput }
+        ) {
+            audioInputAllowanceAttempts += 1
+            if audioInputAllowanceAttempts == 1 {
+                throw AllowanceError.unavailable
+            }
+            allowsHapticsDuringAudioInput = true
+        }
+
+        controller.prepareAdjustmentFeedback()
+        #expect(!allowsHapticsDuringAudioInput)
+        #expect(audioInputAllowanceAttempts == 1)
+
+        controller.adjustmentChanged(style: .selection)
+        #expect(allowsHapticsDuringAudioInput)
+        #expect(audioInputAllowanceAttempts == 2)
+
+        controller.adjustmentChanged(style: .integerTick)
+        #expect(audioInputAllowanceAttempts == 2)
     }
 
     @Test func shutterSoundPreferenceDefaultsToEnabled() throws {
