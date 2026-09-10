@@ -296,7 +296,7 @@ private struct PlaneRegionOverlay: View {
     }
 
     private func resetDisplayedProgress() {
-        if reduceMotion {
+        if isFinal || reduceMotion {
             displayedProgress = progress
         } else {
             displayedProgress = 0
@@ -306,17 +306,19 @@ private struct PlaneRegionOverlay: View {
 
     private func animateDisplayedProgress(to value: Double) {
         let clamped = min(max(value, 0), 1)
-        if reduceMotion {
+        if isFinal || reduceMotion {
             displayedProgress = clamped
         } else {
-            withAnimation(.easeOut(duration: isFinal ? 0.58 : 0.18)) {
+            withAnimation(.easeOut(duration: 0.18)) {
                 displayedProgress = clamped
             }
         }
     }
 
     private func cellVisibility(_ cell: TAPPlaneGridCell) -> Double {
-        guard !reduceMotion else {
+        // The completed result owns the full grid, independently of a new
+        // overlay's animation state or whether its appearance callback ran.
+        guard !isFinal, !reduceMotion else {
             return 1
         }
         let normalizedDistance = cellDistanceFromSeed(cell)

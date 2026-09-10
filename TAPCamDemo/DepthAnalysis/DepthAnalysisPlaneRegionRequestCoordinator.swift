@@ -116,7 +116,6 @@ final class DepthAnalysisPlaneRegionRequestCoordinator {
         eventHandler(.started(generationID: generationID))
         regionTask = Task.detached(priority: .userInitiated) { [weak self] in
             var progressBuffer: [TAPPlaneGridProgress] = []
-            let partialPublishIntervalNanoseconds: UInt64 = 150_000_000
             do {
                 if debounceNanoseconds > 0 {
                     try await Task.sleep(nanoseconds: debounceNanoseconds)
@@ -131,19 +130,15 @@ final class DepthAnalysisPlaneRegionRequestCoordinator {
                         progressBuffer.append(progress)
                     }
                 )
-                try Task.checkCancellation()
-                for (index, progress) in progressBuffer.enumerated() {
+                for progress in progressBuffer {
+                    try Task.checkCancellation()
                     await self?.publishPartialRegionRequest(
                         requestID,
                         generationID: generationID,
                         progress: progress
                     )
-                    guard index < progressBuffer.count - 1 else {
-                        continue
-                    }
-                    try await Task.sleep(nanoseconds: partialPublishIntervalNanoseconds)
-                    try Task.checkCancellation()
                 }
+                try Task.checkCancellation()
                 await self?.finishRegionRequest(
                     requestID,
                     generationID: generationID,

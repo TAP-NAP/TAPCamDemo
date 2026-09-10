@@ -10,6 +10,7 @@ import Foundation
 import ImageIO
 import SceneKit
 import simd
+import SwiftUI
 import Testing
 import UIKit
 @testable import TAPCamDemo
@@ -805,6 +806,93 @@ struct TAPDepthAnalysisPlaneRegionTests {
 
         #expect(builderWasCalled == false)
         #expect(detection.geometryCache?.matches(depthMap: depthMap) == true)
+    }
+
+    @Test @MainActor func completedPlaneRegionRendersItsInteriorGridWithoutWaitingForAnimation() throws {
+        let cells = (0..<2).flatMap { row in
+            (0..<2).map { column in
+                TAPPlaneGridCell(
+                    row: row, column: column,
+                    imageBounds: CGRect(x: CGFloat(column * 20), y: CGFloat(row * 20), width: 20, height: 20),
+                    coverage: 1, averageResidualMeters: 0, confidence: 1, sampleCount: 400
+                )
+            }
+        }
+        let region = TAPPlaneRegion(
+            seedPixel: .zero, estimate: Self.samplePlaneEstimate(), pixelRuns: [], gridCells: cells,
+            contourPoints: [.zero, CGPoint(x: 39, y: 39)],
+            imageBounds: CGRect(x: 0, y: 0, width: 40, height: 40),
+            confidence: 1, flatnessScore: 1, sampleCount: 1_600, areaSquareMeters: 1
+        )
+        let image = try TAPDepthRGBAImageRenderer.image(pixels: [0, 0, 0, 255], width: 1, height: 1)
+        let content = InteractiveDepthImage(
+            image: image, overlayImage: nil, overlayOpacity: 0, comparisonPosition: nil,
+            onComparisonPositionChanged: { _ in }, orientation: .up, depthSize: CGSize(width: 40, height: 40),
+            planeRegion: region, partialPlaneGridCells: [], planeGridProgress: 1, planeSeedPoint: nil,
+            highlightPalette: .fallback, onSelectionCleared: {}, onPointSelected: { _ in }
+        )
+        .frame(width: 320, height: 320)
+        // Rendering without mounting the view leaves its local reveal state at
+        // the initial value. A completed result must still draw every cell.
+        let renderer = ImageRenderer(content: content)
+        renderer.scale = 1
+        let bitmap = try #require(renderer.uiImage?.cgImage)
+        try #require(bitmap.width == 320 && bitmap.height == 320)
+        var rgba = [UInt8](repeating: 0, count: 320 * 320 * 4)
+        let converted = rgba.withUnsafeMutableBytes { storage -> Bool in
+            guard let context = CGContext(
+                data: storage.baseAddress, width: 320, height: 320,
+                bitsPerComponent: 8, bytesPerRow: 320 * 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGBitmapInfo.byteOrder32Big.rawValue | CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else { return false }
+            context.draw(bitmap, in: CGRect(x: 0, y: 0, width: 320, height: 320))
+            return true
+        }
+        try #require(converted)
+        func brightness(x: Int, y: Int) -> Double {
+            let offset = (y * 320 + x) * 4
+            return Double(Int(rgba[offset]) + Int(rgba[offset + 1]) + Int(rgba[offset + 2])) / (3 * 255)
+        }
+        for x in [80, 240] {
+            for y in [80, 240] {
+                #expect(brightness(x: x, y: y) > 0.08, "Completed cells must retain their interior fill.")
+            }
+        }
+        let internalEdge = (158...162).map { brightness(x: $0, y: 240) }.max() ?? 0
+        #expect(internalEdge > brightness(x: 240, y: 240) + 0.1,
+                "The internal grid line must remain visible, not only the plane contour.")
+    }
+
+    @Test @MainActor func completedPlaneDetectionDoesNotWaitForBufferedProgressPlayback() async throws {
+        let detector = DepthAnalysisPlaneRegionDetector(
+            geometryCacheBuilder: { _, _ in nil },
+            planeRegionGrower: { _, seed, _, _, _, progressHandler in
+                let region = Self.samplePlaneRegion(seedPixel: seed)
+                for batch in 1...12 {
+                    progressHandler(TAPPlaneGridProgress(
+                        seedPixel: seed, gridCells: region.gridCells, progress: Double(batch) / 12
+                    ))
+                }
+                return region
+            }
+        )
+        let coordinator = DepthAnalysisPlaneRegionRequestCoordinator(detector: detector)
+        var events: [DepthAnalysisPlaneRegionRequestEvent] = []
+        coordinator.requestRegion(
+            depthMap: Self.syntheticPlaneDepthMap(width: 16, height: 16),
+            seed: CGPoint(x: 4, y: 4), strictness: 0.68, generationID: 1,
+            eventHandler: { events.append($0) }
+        )
+        // The former per-batch presentation delay adds 1.65 seconds even though
+        // this detector has already returned its complete result. The helper's
+        // 500 ms deadline detects that artificial wait, not a native performance budget.
+        try await Self.waitForCondition {
+            Self.succeededPlaneRegions(in: events).count == 1
+        }
+        let progress = Self.partialPlaneGridProgress(in: events)
+        #expect(progress.map(\.progress) == (1...12).map { Double($0) / 12 })
+        #expect(Self.succeededPlaneRegions(in: events).first?.gridCells == progress.last?.gridCells)
     }
 
     @Test @MainActor func depthAnalysisPlaneRegionRequestCoordinatorKeepsGeometryCacheAcrossRegionCancel() async throws {
