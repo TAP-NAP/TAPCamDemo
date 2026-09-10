@@ -966,10 +966,6 @@ struct CameraView: View {
     }
 
     private func selectCaptureMode(_ mode: CameraCaptureModeOption) {
-        guard mode.isAvailableInStageOne else {
-            showViewfinderHint("Coming soon")
-            return
-        }
         guard !isCameraPathTransitioning else {
             return
         }

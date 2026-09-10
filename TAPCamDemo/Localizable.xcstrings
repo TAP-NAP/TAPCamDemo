@@ -2217,17 +2217,6 @@
         }
       }
     },
-    "Photo mode coming soon" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "照片模式即将推出"
-          }
-        }
-      }
-    },
     "Photo Quality" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -4138,17 +4127,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "视频模式"
-          }
-        }
-      }
-    },
-    "Video mode coming soon" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "视频模式即将推出"
           }
         }
       }

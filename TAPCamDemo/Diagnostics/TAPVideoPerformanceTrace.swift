@@ -317,10 +317,6 @@ nonisolated enum TAPVideoPerformanceTrace {
         )
     }
 
-    static func emitPlaybackGapCleared() {
-        playback.emitEvent("TAPVideoDepthGapCleared")
-    }
-
     private struct ProcessMemorySnapshot {
         let residentBytes: UInt64
         let physicalFootprintBytes: UInt64

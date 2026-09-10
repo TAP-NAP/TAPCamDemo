@@ -42,31 +42,10 @@ nonisolated enum TAPVideoDepthDisplayOrientation {
         }
     }
 
-    static func displaySize(width: Int32, height: Int32, transform: String?) -> CGSize? {
-        guard width > 0,
-              height > 0 else {
-            return nil
-        }
-        let rotation = rotationDegrees(from: transform)
-        let isSideways = rotation == 90 || rotation == 270
-        return isSideways
-            ? CGSize(width: CGFloat(height), height: CGFloat(width))
-            : CGSize(width: CGFloat(width), height: CGFloat(height))
-    }
-
     private static func normalizedDegrees(_ degrees: Double) -> Int {
         let rounded = Int(degrees.rounded())
         return ((rounded % 360) + 360) % 360
     }
 
-    private static func rotationDegrees(from transform: String?) -> Int {
-        guard let transform else {
-            return 0
-        }
-        return transform.split(separator: ";")
-            .map(String.init)
-            .first { $0.hasPrefix("rotation:") }
-            .flatMap { Double($0.dropFirst("rotation:".count)) }
-            .map { normalizedDegrees($0) } ?? 0
-    }
+
 }

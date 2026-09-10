@@ -426,20 +426,4 @@ nonisolated struct CaptureOutputProfile: Equatable, Sendable {
         }
     }
 
-    func validateDepthConfiguration(
-        depthDataDeliveryEnabled: Bool,
-        embedsDepthDataInPhoto: Bool
-    ) throws {
-        guard !requiresDepthData || depthDataDeliveryEnabled else {
-            throw TAPDepthCaptureError.invalidCaptureOutputProfile(
-                "profile \(id) requires depth data but the capture plan disables depth delivery."
-            )
-        }
-        guard !requiresDepthData || embedsDepthDataInPhoto else {
-            throw TAPDepthCaptureError.invalidCaptureOutputProfile(
-                "profile \(id) requires embedded depth but the capture plan disables photo depth embedding."
-            )
-        }
-    }
-
 }

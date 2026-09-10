@@ -187,17 +187,9 @@ struct CameraCaptureControlsView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(state.isInteractionLocked)
-                .accessibilityLabel(modeAccessibilityLabel(mode))
+                .accessibilityLabel(Text(LocalizedStringKey(mode.accessibilityLabel)))
                 .accessibilityIdentifier("camera.mode.\(mode.rawValue)")
             }
-        }
-    }
-
-    private func modeAccessibilityLabel(_ mode: CameraCaptureModeOption) -> Text {
-        if mode.isAvailableInStageOne {
-            Text(LocalizedStringKey(mode.accessibilityLabel))
-        } else {
-            Text(LocalizedStringKey(mode.comingSoonAccessibilityLabel))
         }
     }
 
@@ -218,7 +210,7 @@ struct CameraCaptureControlsView: View {
         if mode == state.selectedMode {
             return .white
         }
-        return mode.isAvailableInStageOne ? .white.opacity(0.78) : .white.opacity(0.34)
+        return .white.opacity(0.78)
     }
 
     private var shutterControl: some View {

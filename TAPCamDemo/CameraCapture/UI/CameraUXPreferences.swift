@@ -519,17 +519,6 @@ nonisolated enum CameraFlashControlMode: String, CaseIterable, Equatable, Identi
         }
     }
 
-    var settingsTitle: String {
-        switch self {
-        case .auto:
-            "Auto"
-        case .on:
-            "Always On"
-        case .off:
-            "Off"
-        }
-    }
-
     var systemImage: String {
         switch self {
         case .auto:
@@ -554,11 +543,6 @@ nonisolated enum CameraFlashControlMode: String, CaseIterable, Equatable, Identi
 
     static func resolved(rawValue: String) -> CameraFlashControlMode {
         CameraFlashControlMode(rawValue: rawValue) ?? defaultValue
-    }
-
-    static func resolvedDefault(in userDefaults: UserDefaults = .standard) -> CameraFlashControlMode {
-        let rawValue = userDefaults.string(forKey: defaultModeKey) ?? defaultValue.rawValue
-        return resolved(rawValue: rawValue)
     }
 
     static func resolvedStartupMode(
@@ -625,16 +609,5 @@ nonisolated enum CameraCaptureModeOption: String, CaseIterable, Identifiable, Se
         }
     }
 
-    var comingSoonAccessibilityLabel: String {
-        switch self {
-        case .photo:
-            "Photo mode coming soon"
-        case .video:
-            "Video mode coming soon"
-        }
-    }
 
-    var isAvailableInStageOne: Bool {
-        true
-    }
 }

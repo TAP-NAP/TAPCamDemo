@@ -42,7 +42,6 @@ nonisolated enum TAPDepthKLV {
         nonisolated static let dimensions = FourCC(rawValue: "DIM ")
         nonisolated static let rowStride = FourCC(rawValue: "RSTR")
         nonisolated static let compression = FourCC(rawValue: "COMP")
-        nonisolated static let calibrationReference = FourCC(rawValue: "CALR")
         nonisolated static let calibrationIndex = FourCC(rawValue: "CALI")
         nonisolated static let uncompressedLength = FourCC(rawValue: "ULEN")
         nonisolated static let depthPayload = FourCC(rawValue: "DPTH")

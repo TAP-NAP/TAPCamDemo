@@ -190,10 +190,6 @@ nonisolated enum TAPDepthPhotoFileReader {
         }
     }
 
-    static func validateHEICContainer(_ photoData: Data) throws {
-        try validateContainer(photoData, expected: .heic)
-    }
-
     static func depthAuxiliaryInfo(from photoData: Data) -> [AnyHashable: Any]? {
         auxiliaryInfo(from: photoData, type: kCGImageAuxiliaryDataTypeDepth)
     }

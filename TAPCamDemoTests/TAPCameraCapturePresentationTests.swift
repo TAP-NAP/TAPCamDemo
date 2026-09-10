@@ -788,8 +788,6 @@ struct TAPCameraCapturePresentationTests {
     }
 
     @Test func cameraCaptureModeOptionEnablesPhotoAndVideo() throws {
-        #expect(CameraCaptureModeOption.photo.isAvailableInStageOne)
-        #expect(CameraCaptureModeOption.video.isAvailableInStageOne)
         #expect(CameraCaptureModeOption.allCases.map(\.title) == ["PHOTO", "VIDEO"])
         #expect(
             CameraCaptureModeOption.allCases.map(\.accessibilityLabel)

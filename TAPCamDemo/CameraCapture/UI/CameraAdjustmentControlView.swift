@@ -321,14 +321,6 @@ nonisolated struct CameraAdjustmentControlDraft: Equatable, Sendable {
 nonisolated struct CameraAdjustmentControlDraftMemory: Equatable, Sendable {
     private var draftsByControlKey: [String: CameraAdjustmentControlDraft] = [:]
 
-    var storedDraftCount: Int {
-        draftsByControlKey.count
-    }
-
-    func storedDraft(for controlKey: String) -> CameraAdjustmentControlDraft? {
-        draftsByControlKey[controlKey]
-    }
-
     mutating func draft(
         for controlKey: String?,
         state: CameraAdjustmentControlState,
