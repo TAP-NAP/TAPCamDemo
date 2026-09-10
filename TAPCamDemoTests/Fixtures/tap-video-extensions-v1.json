@@ -1,0 +1,74 @@
+{
+  "format": "urn:tapnap:contracts:tap-video-extensions-vector:v1",
+  "scope": "Exact synthetic JSON payload bytes for optional CALD and TAPCAMTELEMETRY1 extensions, without KLV or BMFF wrappers. These are parser oracles, not complete signed artifacts.",
+  "context": {
+    "durationSeconds": 1,
+    "timeScale": 600,
+    "deliveredDepthSampleCount": 1
+  },
+  "cases": [
+    {
+      "id": "cald-valid",
+      "extension": "cald",
+      "expectedDecision": "accept",
+      "reason": "Canonical payload bytes conform to the extension under the declared context.",
+      "utf8Base64": "eyJjYWxpYnJhdGlvbiI6eyJleHRyaW5zaWNNYXRyaXgiOlsxLDAsMCwwLDEsMCwwLDAsMSwwLDAsMF0sImludHJpbnNpY01hdHJpeCI6WzEsMCwwLDAsMSwwLDAsMCwxXSwiaW50cmluc2ljTWF0cml4UmVmZXJlbmNlRGltZW5zaW9ucyI6eyJoZWlnaHQiOjIsIndpZHRoIjoyfSwibGVuc0Rpc3RvcnRpb25DZW50ZXIiOnsieCI6MSwieSI6MX0sImxlbnNEaXN0b3J0aW9uTG9va3VwVGFibGUiOiJBQUFBQUE9PSIsInBpeGVsU2l6ZU1pbGxpbWV0ZXJzIjowLjAwMX0sInNjaGVtYVZlcnNpb24iOjF9",
+      "utf8ByteCount": 282,
+      "utf8SHA256": "b21061f9ce47d207b7430f1b2297b3a7788b22693ac77e30f20d98a7b47ae4c4"
+    },
+    {
+      "id": "cald-unknown-member",
+      "extension": "cald",
+      "expectedDecision": "reject",
+      "reason": "The unknown root member __proto__ must not disappear during parsing.",
+      "utf8Base64": "eyJfX3Byb3RvX18iOm51bGwsImNhbGlicmF0aW9uIjp7ImV4dHJpbnNpY01hdHJpeCI6WzEsMCwwLDAsMSwwLDAsMCwxLDAsMCwwXSwiaW50cmluc2ljTWF0cml4IjpbMSwwLDAsMCwxLDAsMCwwLDFdLCJpbnRyaW5zaWNNYXRyaXhSZWZlcmVuY2VEaW1lbnNpb25zIjp7ImhlaWdodCI6Miwid2lkdGgiOjJ9LCJsZW5zRGlzdG9ydGlvbkNlbnRlciI6eyJ4IjoxLCJ5IjoxfSwibGVuc0Rpc3RvcnRpb25Mb29rdXBUYWJsZSI6IkFBQUFBQT09IiwicGl4ZWxTaXplTWlsbGltZXRlcnMiOjAuMDAxfSwic2NoZW1hVmVyc2lvbiI6MX0=",
+      "utf8ByteCount": 299,
+      "utf8SHA256": "89f9225bbc0824f1e26320e93872ab3b65de63538363f68fbfa1e3f25c3208c0"
+    },
+    {
+      "id": "cald-utf8-bom",
+      "extension": "cald",
+      "expectedDecision": "reject",
+      "reason": "A UTF-8 byte-order mark precedes otherwise valid canonical JSON.",
+      "utf8Base64": "77u/eyJjYWxpYnJhdGlvbiI6eyJleHRyaW5zaWNNYXRyaXgiOlsxLDAsMCwwLDEsMCwwLDAsMSwwLDAsMF0sImludHJpbnNpY01hdHJpeCI6WzEsMCwwLDAsMSwwLDAsMCwxXSwiaW50cmluc2ljTWF0cml4UmVmZXJlbmNlRGltZW5zaW9ucyI6eyJoZWlnaHQiOjIsIndpZHRoIjoyfSwibGVuc0Rpc3RvcnRpb25DZW50ZXIiOnsieCI6MSwieSI6MX0sImxlbnNEaXN0b3J0aW9uTG9va3VwVGFibGUiOiJBQUFBQUE9PSIsInBpeGVsU2l6ZU1pbGxpbWV0ZXJzIjowLjAwMX0sInNjaGVtYVZlcnNpb24iOjF9",
+      "utf8ByteCount": 285,
+      "utf8SHA256": "60067447e5bb9e16223218d1c21b0daaa8a9ad9bfab9e4b36abccf40054152a3"
+    },
+    {
+      "id": "cald-nonzero-base64-pad-bits",
+      "extension": "cald",
+      "expectedDecision": "reject",
+      "reason": "The lookup-table string decodes to the same four zero bytes as AAAAAA== but has nonzero unused pad bits.",
+      "utf8Base64": "eyJjYWxpYnJhdGlvbiI6eyJleHRyaW5zaWNNYXRyaXgiOlsxLDAsMCwwLDEsMCwwLDAsMSwwLDAsMF0sImludHJpbnNpY01hdHJpeCI6WzEsMCwwLDAsMSwwLDAsMCwxXSwiaW50cmluc2ljTWF0cml4UmVmZXJlbmNlRGltZW5zaW9ucyI6eyJoZWlnaHQiOjIsIndpZHRoIjoyfSwibGVuc0Rpc3RvcnRpb25DZW50ZXIiOnsieCI6MSwieSI6MX0sImxlbnNEaXN0b3J0aW9uTG9va3VwVGFibGUiOiJBQUFBQUI9PSIsInBpeGVsU2l6ZU1pbGxpbWV0ZXJzIjowLjAwMX0sInNjaGVtYVZlcnNpb24iOjF9",
+      "utf8ByteCount": 282,
+      "utf8SHA256": "c56209a4fa9a069841652996ea777b8982ecb0be06069283f39c9ad849cbf2e7"
+    },
+    {
+      "id": "telemetry-valid",
+      "extension": "telemetry",
+      "expectedDecision": "accept",
+      "reason": "Canonical payload bytes conform to the extension under the declared context.",
+      "utf8Base64": "eyJmaWx0ZXJpbmciOnsiZmlsdGVyZWRTYW1wbGVDb3VudCI6MCwicmVxdWVzdGVkRW5hYmxlZCI6ZmFsc2UsInVuZmlsdGVyZWRTYW1wbGVDb3VudCI6MX0sIm1vdGlvbiI6eyJkZXZpY2VDb29yZGluYXRlU3lzdGVtIjoiY29yZS1tb3Rpb24tZGV2aWNlLXJpZ2h0LWhhbmRlZCIsImRyb3BwZWRTYW1wbGVDb3VudCI6MCwiZXJyb3JDb3VudCI6MCwibW90aW9uVG9DYXB0dXJlT2Zmc2V0U2Vjb25kcyI6LTEwMCwicmVmZXJlbmNlRnJhbWUiOiJ4QXJiaXRyYXJ5WlZlcnRpY2FsIiwic2FtcGxlSW50ZXJ2YWxTZWNvbmRzIjowLjAzMTI1LCJzYW1wbGVzIjpbeyJncmF2aXR5IjpbMCwwLC0xXSwicHRzU2Vjb25kcyI6MC41LCJxdWF0ZXJuaW9uIjpbMCwwLDAsMV0sInJvdGF0aW9uUmF0ZSI6WzAsMCwwXSwidXNlckFjY2VsZXJhdGlvbiI6WzAsMCwwXX1dLCJzdGF0dXMiOiJhdmFpbGFibGUiLCJ0aW1lQmFzZSI6ImNhcHR1cmUtcmVsYXRpdmUtc2Vjb25kcyJ9LCJzY2hlbWEiOnsiaWQiOiJ1cm46dGFwbmFwOnRhcGNhbTp2aWRlby1jYXB0dXJlLXRlbGVtZXRyeTp2MSIsIm1lZGlhVHlwZSI6ImFwcGxpY2F0aW9uL3ZuZC50YXBuYXAudmlkZW8tY2FwdHVyZS10ZWxlbWV0cnkranNvbjt2ZXJzaW9uPTEiLCJ2ZXJzaW9uIjoxfX0=",
+      "utf8ByteCount": 638,
+      "utf8SHA256": "66127a68cc8b0e8cda8239239b76dfeebd42f48160630d7b0f191c1b1f6b4901"
+    },
+    {
+      "id": "telemetry-unknown-member",
+      "extension": "telemetry",
+      "expectedDecision": "reject",
+      "reason": "The unknown root member __proto__ must not disappear during parsing.",
+      "utf8Base64": "eyJfX3Byb3RvX18iOm51bGwsImZpbHRlcmluZyI6eyJmaWx0ZXJlZFNhbXBsZUNvdW50IjowLCJyZXF1ZXN0ZWRFbmFibGVkIjpmYWxzZSwidW5maWx0ZXJlZFNhbXBsZUNvdW50IjoxfSwibW90aW9uIjp7ImRldmljZUNvb3JkaW5hdGVTeXN0ZW0iOiJjb3JlLW1vdGlvbi1kZXZpY2UtcmlnaHQtaGFuZGVkIiwiZHJvcHBlZFNhbXBsZUNvdW50IjowLCJlcnJvckNvdW50IjowLCJtb3Rpb25Ub0NhcHR1cmVPZmZzZXRTZWNvbmRzIjotMTAwLCJyZWZlcmVuY2VGcmFtZSI6InhBcmJpdHJhcnlaVmVydGljYWwiLCJzYW1wbGVJbnRlcnZhbFNlY29uZHMiOjAuMDMxMjUsInNhbXBsZXMiOlt7ImdyYXZpdHkiOlswLDAsLTFdLCJwdHNTZWNvbmRzIjowLjUsInF1YXRlcm5pb24iOlswLDAsMCwxXSwicm90YXRpb25SYXRlIjpbMCwwLDBdLCJ1c2VyQWNjZWxlcmF0aW9uIjpbMCwwLDBdfV0sInN0YXR1cyI6ImF2YWlsYWJsZSIsInRpbWVCYXNlIjoiY2FwdHVyZS1yZWxhdGl2ZS1zZWNvbmRzIn0sInNjaGVtYSI6eyJpZCI6InVybjp0YXBuYXA6dGFwY2FtOnZpZGVvLWNhcHR1cmUtdGVsZW1ldHJ5OnYxIiwibWVkaWFUeXBlIjoiYXBwbGljYXRpb24vdm5kLnRhcG5hcC52aWRlby1jYXB0dXJlLXRlbGVtZXRyeStqc29uO3ZlcnNpb249MSIsInZlcnNpb24iOjF9fQ==",
+      "utf8ByteCount": 655,
+      "utf8SHA256": "67a6c3c01c9953b95cca9fa172ba516053ea143c40804a05df296fece7440a7f"
+    },
+    {
+      "id": "telemetry-utf8-bom",
+      "extension": "telemetry",
+      "expectedDecision": "reject",
+      "reason": "A UTF-8 byte-order mark precedes otherwise valid canonical JSON.",
+      "utf8Base64": "77u/eyJmaWx0ZXJpbmciOnsiZmlsdGVyZWRTYW1wbGVDb3VudCI6MCwicmVxdWVzdGVkRW5hYmxlZCI6ZmFsc2UsInVuZmlsdGVyZWRTYW1wbGVDb3VudCI6MX0sIm1vdGlvbiI6eyJkZXZpY2VDb29yZGluYXRlU3lzdGVtIjoiY29yZS1tb3Rpb24tZGV2aWNlLXJpZ2h0LWhhbmRlZCIsImRyb3BwZWRTYW1wbGVDb3VudCI6MCwiZXJyb3JDb3VudCI6MCwibW90aW9uVG9DYXB0dXJlT2Zmc2V0U2Vjb25kcyI6LTEwMCwicmVmZXJlbmNlRnJhbWUiOiJ4QXJiaXRyYXJ5WlZlcnRpY2FsIiwic2FtcGxlSW50ZXJ2YWxTZWNvbmRzIjowLjAzMTI1LCJzYW1wbGVzIjpbeyJncmF2aXR5IjpbMCwwLC0xXSwicHRzU2Vjb25kcyI6MC41LCJxdWF0ZXJuaW9uIjpbMCwwLDAsMV0sInJvdGF0aW9uUmF0ZSI6WzAsMCwwXSwidXNlckFjY2VsZXJhdGlvbiI6WzAsMCwwXX1dLCJzdGF0dXMiOiJhdmFpbGFibGUiLCJ0aW1lQmFzZSI6ImNhcHR1cmUtcmVsYXRpdmUtc2Vjb25kcyJ9LCJzY2hlbWEiOnsiaWQiOiJ1cm46dGFwbmFwOnRhcGNhbTp2aWRlby1jYXB0dXJlLXRlbGVtZXRyeTp2MSIsIm1lZGlhVHlwZSI6ImFwcGxpY2F0aW9uL3ZuZC50YXBuYXAudmlkZW8tY2FwdHVyZS10ZWxlbWV0cnkranNvbjt2ZXJzaW9uPTEiLCJ2ZXJzaW9uIjoxfX0=",
+      "utf8ByteCount": 641,
+      "utf8SHA256": "b3a84dfee0fa9c211cad378143714e1d0c4d6789fcc3c342c3e7870db388b52a"
+    }
+  ]
+}

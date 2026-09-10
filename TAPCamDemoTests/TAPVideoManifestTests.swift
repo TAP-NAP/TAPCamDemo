@@ -3,12 +3,56 @@
 //  TAPCamDemoTests
 //
 
+import CryptoKit
 import Foundation
 import ImageIO
 import Testing
 @testable import TAPCamDemo
 
 struct TAPVideoManifestTests {
+    @Test func adoptedExtensionsMatchSharedExactByteVectors() throws {
+        let url = try #require(Bundle(for: TAPVideoExtensionFixtureBundle.self)
+            .url(forResource: "tap-video-extensions-v1", withExtension: "json"))
+        let corpus = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        let context = try #require(corpus["context"] as? [String: Any])
+        let vectors = try #require(corpus["cases"] as? [[String: Any]])
+        var payload = try #require(JSONSerialization.jsonObject(
+            with: JSONEncoder.tapCaptureCanonical.encode(Self.samplePayload(depthCoverage: .none))) as? [String: Any])
+        for key in ["container", "rgbTrack"] {
+            var track = try #require(payload[key] as? [String: Any])
+            track["durationSeconds"] = context["durationSeconds"]
+            track["timeScale"] = context["timeScale"]
+            payload[key] = track
+        }
+        var coverage = try #require(payload["depthCoverage"] as? [String: Any])
+        coverage["deliveredSampleCount"] = context["deliveredDepthSampleCount"]
+        payload["depthCoverage"] = coverage
+        let manifest = TAPVideoManifest(payload: try JSONDecoder().decode(TAPVideoManifest.Payload.self,
+            from: JSONSerialization.data(withJSONObject: payload)))
+        for vector in vectors {
+            let id = try #require(vector["id"] as? String)
+            let base64 = try #require(vector["utf8Base64"] as? String)
+            let data = try #require(Data(base64Encoded: base64))
+            #expect(data.count == vector["utf8ByteCount"] as? Int)
+            #expect(SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() == vector["utf8SHA256"] as? String)
+            func decode() throws {
+                if vector["extension"] as? String == "cald" {
+                    _ = try TAPDepthInlineCalibration.decode(data)
+                } else {
+                    let file = try Self.makeTemporaryFile(data: Self.bmffBox(
+                        type: "uuid", payload: TAPVideoCaptureTelemetryBox.uuid + data))
+                    defer { try? FileManager.default.removeItem(at: file) }
+                    _ = try #require(try TAPVideoCaptureTelemetryBox.read(from: file, manifest: manifest))
+                }
+            }
+            if vector["expectedDecision"] as? String == "accept" {
+                try decode()
+            } else {
+                #expect(throws: (any Error).self, "Must reject \(id)") { try decode() }
+            }
+        }
+    }
+
     @Test func captureTelemetryPreservesLegacyAndRejectsInvalidProvenance() throws {
         let manifest = TAPVideoManifest(payload: Self.samplePayload(depthCoverage: .none))
         let fileURL = try Self.makeTemporaryFile(data: Self.bmffBox(type: "ftyp", payload: Data("isomtap ".utf8)))
@@ -593,3 +637,5 @@ private extension Data {
         ])
     }
 }
+
+private final class TAPVideoExtensionFixtureBundle: NSObject {}

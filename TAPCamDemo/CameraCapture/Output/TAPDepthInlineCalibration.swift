@@ -42,8 +42,8 @@ nonisolated enum TAPDepthInlineCalibration {
         for key in ["lensDistortionLookupTable", "inverseLensDistortionLookupTable"] {
             if let value = calibration[key], !(value is NSNull) {
                 guard let text = value as? String,
-                      text.range(of: #"\A(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?\z"#,
-                                 options: .regularExpression) != nil else { throw invalid("invalid CALD base64") }
+                      let decoded = Data(base64Encoded: text),
+                      decoded.base64EncodedString() == text else { throw invalid("invalid CALD base64") }
             }
         }
         // Preserve optional nulls and accept every finite JSON number spelling.

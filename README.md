@@ -18,14 +18,12 @@ records visual revisions and fixtures.
 
 Shared Still/Live/Video manifest, container, binding, proof, KLV, transport, and
 verification conventions come only from the pinned
-[TAPArtifactContracts index](https://github.com/TAP-NAP/TAPArtifactContracts/blob/ca3b223e0717242ce1016b34dc34f04ef2417936/CONTRACTS.md).
+[TAPArtifactContracts index](https://github.com/TAP-NAP/TAPArtifactContracts/blob/970f5102ac2176c76c0e133c7b99e6ce287a55c0/CONTRACTS.md).
 This repository implements those contracts; it does not restate their bytes.
 
-The app additionally implements the optional
-`TAPCAMTELEMETRY1` capture-telemetry candidate in the sibling
-`TAPArtifactContracts/containers/tap-video-capture-telemetry-v1.md`. It records
-filtering observations and bounded device motion under the existing content
-binding. This candidate is not yet part of the reviewed contract pin above.
+The adopted optional `CALD` and `TAPCAMTELEMETRY1` extensions preserve per-frame
+calibration, filtering observations and bounded device motion under the existing
+content binding. Their v1 format identifiers remain unchanged.
 
 ## Runtime path
 
@@ -129,3 +127,9 @@ does not prove physical Camera/Photos/depth, App Attest hardware/backend,
 iCloud, haptics, thermal behavior, native performance, or attended acceptance.
 Use the relevant [acceptance section](https://github.com/TAP-NAP/TAPArtifactContracts/blob/main/Acceptance.md) and
 record declared, executed, passed, failed, and skipped counts.
+
+The shared extension parser vectors are mirrored in
+`TAPCamDemoTests/Fixtures/tap-video-extensions-v1.json` and loaded from the test
+bundle by `TAPVideoManifestTests`. Compare that file byte-for-byte with
+[`examples/vectors/tap-video-extensions-v1.json`](https://github.com/TAP-NAP/TAPArtifactContracts/blob/970f5102ac2176c76c0e133c7b99e6ce287a55c0/examples/vectors/tap-video-extensions-v1.json)
+when updating the contract pin; do not regenerate expected bytes from the parser.
