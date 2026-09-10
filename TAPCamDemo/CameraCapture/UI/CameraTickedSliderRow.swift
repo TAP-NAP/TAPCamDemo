@@ -16,10 +16,7 @@ struct CameraTickedSliderRow: View {
     let highlightColor: Color
     let contentRotation: Angle
     let riskRanges: [ClosedRange<Double>]
-    let tickValueStep: Double?
     let isEVIntegerHapticsEnabled: Bool
-    let majorTickIndices: Set<Int>
-    let showsGeometricCenterTick: Bool
     let onRestoreAuto: () -> Void
     let onEditingBegan: () -> Void
     let onEditingEnded: () -> Void
@@ -206,16 +203,13 @@ struct CameraTickedSliderRow: View {
 
     private var tickMarks: some View {
         GeometryReader { proxy in
-            let descriptors = tickDescriptors
             ZStack(alignment: .leading) {
-                ForEach(Array(descriptors.enumerated()), id: \.offset) { index, descriptor in
-                    CameraTickedSliderTickMark(
-                        visualState: visualState(for: descriptor),
-                        highlightColor: highlightColor,
-                        isEnabled: isEnabled
-                    )
+                ForEach(0..<Metrics.tickCount, id: \.self) { index in
+                    Capsule()
+                        .fill(.white.opacity(isEnabled ? 0.34 : 0.17))
+                        .frame(width: 1, height: 8)
                         .position(
-                            x: tickX(for: index, count: descriptors.count, width: proxy.size.width),
+                            x: CGFloat(index) / CGFloat(Metrics.tickCount - 1) * proxy.size.width,
                             y: proxy.size.height / 2
                         )
                 }
@@ -242,13 +236,12 @@ struct CameraTickedSliderRow: View {
     }
 
     private var activeTick: some View {
-        CameraTickedSliderTickMark(
-            visualState: .active,
-            highlightColor: highlightColor,
-            isEnabled: isEnabled
-        )
-        .accessibilityHidden(true)
-        .accessibilityIdentifier("camera.tickedAdjustmentStrip.activeTick")
+        Capsule()
+            .fill(isEnabled ? highlightColor : .white.opacity(0.36))
+            .frame(width: 3, height: 24)
+            .shadow(color: .black.opacity(isEnabled ? 0.34 : 0), radius: 2)
+            .accessibilityHidden(true)
+            .accessibilityIdentifier("camera.tickedAdjustmentStrip.activeTick")
     }
 
     private func resolvedTrackWidth(for containerWidth: CGFloat) -> CGFloat {
@@ -392,83 +385,6 @@ struct CameraTickedSliderRow: View {
         return min(max(stepped, lowerBound), upperBound)
     }
 
-    private var tickDescriptors: [TickDescriptor] {
-        let values = tickValues()
-        let midpointIndex = values.count / 2
-
-        return values.enumerated().map { index, value in
-            let isZero = isEVIntegerHapticsEnabled && isZeroValue(value)
-            let isInteger = isEVIntegerHapticsEnabled && isIntegerValue(value)
-            let isScaleMajor = majorTickIndices.contains(index)
-            let isGeometricCenter = showsGeometricCenterTick && index == midpointIndex
-            return TickDescriptor(
-                isCenter: isZero || isGeometricCenter,
-                isMajor: isZero
-                    || isInteger
-                    || isScaleMajor
-                    || isGeometricCenter
-            )
-        }
-    }
-
-    private func tickValues() -> [Double] {
-        let lowerBound = range.lowerBound
-        let upperBound = range.upperBound
-        guard upperBound > lowerBound else {
-            return [lowerBound]
-        }
-
-        if let tickValueStep = resolvedTickValueStep {
-            let count = max(Int(((upperBound - lowerBound) / tickValueStep).rounded()), 1)
-            return (0...count).map { index in
-                index == count
-                    ? upperBound
-                    : min(lowerBound + Double(index) * tickValueStep, upperBound)
-            }
-        }
-
-        let count = Metrics.defaultTickCount - 1
-        return (0...count).map { index in
-            lowerBound + Double(index) / Double(count) * (upperBound - lowerBound)
-        }
-    }
-
-    private var resolvedTickValueStep: Double? {
-        guard
-            let tickValueStep,
-            tickValueStep.isFinite,
-            tickValueStep > 0,
-            range.upperBound > range.lowerBound
-        else {
-            return nil
-        }
-
-        let count = Int(((range.upperBound - range.lowerBound) / tickValueStep).rounded())
-        guard count > 0, count <= Metrics.maximumTickCount else {
-            return nil
-        }
-        return tickValueStep
-    }
-
-    private func visualState(
-        for descriptor: TickDescriptor
-    ) -> CameraTickedSliderTickVisualState {
-        if descriptor.isCenter {
-            return .center
-        }
-        if descriptor.isMajor {
-            return .major
-        }
-        return .minor
-    }
-
-    private func tickX(for index: Int, count: Int, width: CGFloat) -> CGFloat {
-        guard count > 1 else {
-            return width / 2
-        }
-        return CGFloat(index) / CGFloat(count - 1) * width
-    }
-
     private func isZeroValue(_ value: Double) -> Bool {
         abs(value) <= hapticValueTolerance
     }
@@ -499,19 +415,13 @@ struct CameraTickedSliderRow: View {
         static let valueWidth: CGFloat = 78
         static let labelGap: CGFloat = 8
         static let horizontalInset: CGFloat = 12
-        static let defaultTickCount = 17
-        static let maximumTickCount = 61
+        static let tickCount = 17
         static let minimumTrackWidth: CGFloat = 128
         static let maximumTrackWidth: CGFloat = 208
         static let labelReserveWidth: CGFloat = titleWidth
             + valueWidth
             + labelGap * 2
             + horizontalInset * 2
-    }
-
-    private struct TickDescriptor: Equatable {
-        let isCenter: Bool
-        let isMajor: Bool
     }
 }
 
@@ -521,99 +431,5 @@ private struct CameraAutomationRestoreButtonStyle: ButtonStyle {
             .scaleEffect(configuration.isPressed ? 0.96 : 1)
             .opacity(configuration.isPressed ? 0.78 : 1)
             .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
-    }
-}
-
-private struct CameraTickedSliderTickMark: View {
-    let visualState: CameraTickedSliderTickVisualState
-    let highlightColor: Color
-    let isEnabled: Bool
-
-    var body: some View {
-        Capsule(style: .continuous)
-            .fill(fillColor)
-            .frame(width: visualState.width, height: visualState.height)
-            .shadow(
-                color: visualState == .active
-                    ? .black.opacity(isEnabled ? 0.34 : 0)
-                    : .clear,
-                radius: visualState == .active ? 2 : 0
-            )
-    }
-
-    private var fillColor: Color {
-        if visualState.usesHighlightColor {
-            return isEnabled
-                ? highlightColor
-                : .white.opacity(visualState.disabledOpacity)
-        }
-        return .white.opacity(
-            isEnabled
-                ? visualState.enabledOpacity
-                : visualState.disabledOpacity
-        )
-    }
-}
-
-enum CameraTickedSliderTickVisualState: CaseIterable, Equatable {
-    case minor
-    case major
-    case center
-    case active
-
-    var usesHighlightColor: Bool {
-        self == .active
-    }
-
-    var width: CGFloat {
-        switch self {
-        case .minor:
-            1
-        case .major:
-            1.5
-        case .center:
-            2
-        case .active:
-            3
-        }
-    }
-
-    var height: CGFloat {
-        switch self {
-        case .minor:
-            8
-        case .major:
-            13
-        case .center:
-            18
-        case .active:
-            24
-        }
-    }
-
-    var enabledOpacity: Double {
-        switch self {
-        case .minor:
-            0.20
-        case .major:
-            0.34
-        case .center:
-            0.52
-        case .active:
-            1
-        }
-    }
-
-    var disabledOpacity: Double {
-        switch self {
-        case .minor:
-            0.10
-        case .major:
-            0.17
-        case .center:
-            0.26
-        case .active:
-            0.36
-        }
     }
 }

@@ -495,10 +495,7 @@ struct CameraTickedAdjustmentStrip: View {
             highlightColor: highlightColor,
             contentRotation: contentRotation,
             riskRanges: [],
-            tickValueStep: CameraEVPreferences.adjustmentStep,
             isEVIntegerHapticsEnabled: true,
-            majorTickIndices: [],
-            showsGeometricCenterTick: false,
             onRestoreAuto: {},
             onEditingBegan: { onBeginAdjustment(.ev) },
             onEditingEnded: { onEndAdjustment(.ev) }
@@ -521,10 +518,7 @@ struct CameraTickedAdjustmentStrip: View {
             highlightColor: highlightColor,
             contentRotation: contentRotation,
             riskRanges: scale.positionRanges(for: state.exposure.isoRiskRanges),
-            tickValueStep: 1,
             isEVIntegerHapticsEnabled: false,
-            majorTickIndices: scale.majorTickIndices,
-            showsGeometricCenterTick: false,
             onRestoreAuto: { onRestoreAutomaticMode(.iso) },
             onEditingBegan: { onBeginAdjustment(.iso) },
             onEditingEnded: { onEndAdjustment(.iso) }
@@ -547,10 +541,7 @@ struct CameraTickedAdjustmentStrip: View {
             highlightColor: highlightColor,
             contentRotation: contentRotation,
             riskRanges: shutterRiskRangesForSlider,
-            tickValueStep: 1,
             isEVIntegerHapticsEnabled: false,
-            majorTickIndices: scale.majorTickIndices,
-            showsGeometricCenterTick: false,
             onRestoreAuto: { onRestoreAutomaticMode(.shutter) },
             onEditingBegan: { onBeginAdjustment(.shutter) },
             onEditingEnded: { onEndAdjustment(.shutter) }
@@ -578,10 +569,7 @@ struct CameraTickedAdjustmentStrip: View {
             highlightColor: highlightColor,
             contentRotation: contentRotation,
             riskRanges: [],
-            tickValueStep: nil,
             isEVIntegerHapticsEnabled: false,
-            majorTickIndices: [],
-            showsGeometricCenterTick: true,
             onRestoreAuto: { onRestoreAutomaticMode(.focus) },
             onEditingBegan: { onBeginAdjustment(.focus) },
             onEditingEnded: { onEndAdjustment(.focus) }

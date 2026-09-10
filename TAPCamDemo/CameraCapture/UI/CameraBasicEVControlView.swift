@@ -101,10 +101,7 @@ struct CameraBasicEVAdjustmentStrip: View {
             highlightColor: highlightColor,
             contentRotation: contentRotation,
             riskRanges: [],
-            tickValueStep: CameraEVPreferences.adjustmentStep,
             isEVIntegerHapticsEnabled: true,
-            majorTickIndices: [],
-            showsGeometricCenterTick: false,
             onRestoreAuto: {},
             onEditingBegan: {},
             onEditingEnded: {}

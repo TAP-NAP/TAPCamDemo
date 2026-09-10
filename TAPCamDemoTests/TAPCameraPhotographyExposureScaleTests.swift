@@ -14,9 +14,6 @@ struct TAPCameraPhotographyExposureScaleTests {
             64, 80, 100, 125, 160, 200, 250,
             320, 400, 500, 640, 800, 1_000, 1_250,
         ])
-        #expect(scale.stops.filter(\.isMajor).map(\.value) == [
-            100, 200, 400, 800,
-        ])
         #expect(scale.snappedValue(for: 118) == 125)
         #expect(scale.label(for: 118) == "125")
         #expect(scale.isAdjustable)
@@ -34,7 +31,6 @@ struct TAPCameraPhotographyExposureScaleTests {
 
         let position = scale.position(for: 1.0 / 60.0)
         #expect(abs(scale.value(at: position) - 1.0 / 60.0) < 0.000_001)
-        #expect(scale.majorTickIndices.contains(Int(position)))
     }
 
     @Test func narrowUnsupportedRangeDoesNotInventAnAdjustableControl() {

@@ -15,7 +15,6 @@ nonisolated struct CameraPhotographyExposureScale: Equatable, Sendable {
     nonisolated struct Stop: Equatable, Sendable {
         let value: Double
         let label: String
-        let isMajor: Bool
     }
 
     let supportedRange: ClosedRange<Double>
@@ -36,13 +35,6 @@ nonisolated struct CameraPhotographyExposureScale: Equatable, Sendable {
             return nil
         }
         return firstValue...lastValue
-    }
-
-    var majorTickIndices: Set<Int> {
-        guard isAdjustable else {
-            return []
-        }
-        return Set(stops.indices.filter { stops[$0].isMajor })
     }
 
     func position(for value: Double) -> Double {
@@ -114,8 +106,7 @@ nonisolated struct CameraPhotographyExposureScale: Equatable, Sendable {
             from: canonicalISOValues.map {
                 Stop(
                     value: $0,
-                    label: String(Int($0.rounded())),
-                    isMajor: isFullStop($0, relativeTo: 100)
+                    label: String(Int($0.rounded()))
                 )
             },
             supportedRange: supportedRange
@@ -126,15 +117,13 @@ nonisolated struct CameraPhotographyExposureScale: Equatable, Sendable {
         let reciprocalStops = canonicalShutterDenominators.map { denominator in
             Stop(
                 value: 1 / denominator,
-                label: "1/\(formattedNumber(denominator))",
-                isMajor: isFullStop(1 / denominator, relativeTo: 1)
+                label: "1/\(formattedNumber(denominator))"
             )
         }
         let slowShutterStops = canonicalSlowShutterDurations.map { duration in
             Stop(
                 value: duration,
-                label: "\(formattedNumber(duration))\"",
-                isMajor: isFullStop(duration, relativeTo: 1)
+                label: "\(formattedNumber(duration))\""
             )
         }
         return makeScale(
@@ -184,8 +173,7 @@ nonisolated struct CameraPhotographyExposureScale: Equatable, Sendable {
             .map { stop in
                 Stop(
                     value: min(max(stop.value, lower), upper),
-                    label: stop.label,
-                    isMajor: stop.isMajor
+                    label: stop.label
                 )
             }
             .sorted { $0.value < $1.value }
@@ -212,14 +200,6 @@ nonisolated struct CameraPhotographyExposureScale: Equatable, Sendable {
             return abs(lhs - rhs)
         }
         return abs(log2(lhs / rhs))
-    }
-
-    private static func isFullStop(_ value: Double, relativeTo reference: Double) -> Bool {
-        guard value > 0, reference > 0 else {
-            return false
-        }
-        let stopOffset = log2(value / reference)
-        return abs(stopOffset - stopOffset.rounded()) <= 0.12
     }
 
     private static func formattedNumber(_ value: Double) -> String {
