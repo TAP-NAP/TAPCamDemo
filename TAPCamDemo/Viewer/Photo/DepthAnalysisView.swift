@@ -205,23 +205,21 @@ struct TAPLibraryViewer: View {
     }
 
     private func page(_ entry: TAPLibraryViewerPagingEntry, _ isCurrent: Bool, _ size: CGSize, safeAreaInsets: EdgeInsets) -> AnyView {
-        let loadingBottomInset = DepthViewerToolbarMetrics.toolbarBottomPadding(bottomSafeArea: safeAreaInsets.bottom)
-            + DepthViewerToolbarMetrics.controlHeight + (entry.isVideo ? 60 : 0)
         if let photo = store.photoEntry(entry) {
             let slot = store.slot(for: photo)
             return AnyView(AnalysisNativePageView(
                 slot: slot, tool: store.selectedTool, viewportSize: size,
                 isCurrent: isCurrent, pagingInteractionState: pagingInteractionState,
-                heatmapOpacity: $heatmapOpacity, loadingBottomInset: loadingBottomInset,
+                heatmapOpacity: $heatmapOpacity,
                 topSafeArea: safeAreaInsets.top, highlightPalette: highlightPalette, mediaFetcher: mediaFetcher
             ).id(ObjectIdentifier(slot)))
         }
         if isCurrent, let session = store.videoSession(for: entry) {
-            return AnyView(TAPVideoCurrentPlayback(session: session, selectedTool: store.selectedTool, overlayOpacity: heatmapOpacity, loadingBottomInset: loadingBottomInset)
+            return AnyView(TAPVideoCurrentPlayback(session: session, selectedTool: store.selectedTool, overlayOpacity: heatmapOpacity)
                 .frame(width: size.width, height: size.height))
         }
         return AnyView(TAPLibraryAdjacentMediaPreview(entry: entry, viewportSize: size,
-            mediaFetcher: mediaFetcher, loadingBottomInset: loadingBottomInset))
+            mediaFetcher: mediaFetcher))
     }
 
     private func shouldBeginPaging(at location: CGPoint, viewportSize: CGSize) -> Bool {
@@ -274,11 +272,10 @@ private struct TAPVideoCurrentPlayback: View {
     let session: TAPVideoPlaybackSession
     let selectedTool: AnalysisViewerTool
     let overlayOpacity: Double
-    let loadingBottomInset: CGFloat
 
     var body: some View {
         TAPVideoPlaybackContentSurface(session: session, selectedTool: .constant(effectiveTool),
-            overlayOpacity: .constant(overlayOpacity), onRetry: session.retryCurrentFetch, loadingBottomInset: loadingBottomInset)
+            overlayOpacity: .constant(overlayOpacity), onRetry: session.retryCurrentFetch)
             .task(id: PlaybackTaskIdentity(session: ObjectIdentifier(session), request: session.requestKey)) {
                 await session.startPlaybackSession()
             }
@@ -327,7 +324,6 @@ private struct AnalysisNativePageView: View {
     let isCurrent: Bool
     let pagingInteractionState: AnalysisPagingInteractionState
     @Binding var heatmapOpacity: Double
-    let loadingBottomInset: CGFloat
     let topSafeArea: CGFloat
     let highlightPalette: AnalysisHighlightPalette
     let mediaFetcher: any LibraryMediaFetching
@@ -384,7 +380,8 @@ private struct AnalysisNativePageView: View {
                 kind: .photo,
                 state: isCurrent ? fetchOverlayState : .hidden,
                 onRetry: slot.retryLastMediaFetch,
-                loadingBottomInset: loadingBottomInset
+                imageSize: displayedImageSize,
+                imageOrientation: displayedImageOrientation
             )
             .zIndex(4)
         }

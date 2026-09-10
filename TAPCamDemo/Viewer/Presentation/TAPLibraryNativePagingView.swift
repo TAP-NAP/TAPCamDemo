@@ -485,7 +485,6 @@ struct TAPLibraryAdjacentMediaPreview: View {
     let entry: TAPLibraryViewerPagingEntry
     let viewportSize: CGSize
     let mediaFetcher: any LibraryMediaFetching
-    let loadingBottomInset: CGFloat
 
     @State private var image: UIImage?
     @State private var imageItemID: String
@@ -494,13 +493,11 @@ struct TAPLibraryAdjacentMediaPreview: View {
     init(
         entry: TAPLibraryViewerPagingEntry,
         viewportSize: CGSize,
-        mediaFetcher: any LibraryMediaFetching,
-        loadingBottomInset: CGFloat = 0
+        mediaFetcher: any LibraryMediaFetching
     ) {
         self.entry = entry
         self.viewportSize = viewportSize
         self.mediaFetcher = mediaFetcher
-        self.loadingBottomInset = loadingBottomInset
         _image = State(
             initialValue: TAPLibraryPagingPreviewCache.shared.image(
                 for: entry.id, version: entry.mediaVersion
@@ -525,7 +522,7 @@ struct TAPLibraryAdjacentMediaPreview: View {
                 kind: entry.isVideo ? .tapVideo : .photo,
                 state: imageItemID != entry.id || (image == nil && !didFinishLoading) ? .loading : .hidden,
                 onRetry: {},
-                loadingBottomInset: loadingBottomInset
+                imageSize: imageItemID == entry.id ? image?.size : nil
             )
         }
         .frame(width: viewportSize.width, height: viewportSize.height)

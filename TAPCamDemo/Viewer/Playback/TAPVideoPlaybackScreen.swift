@@ -11,7 +11,6 @@ struct TAPVideoPlaybackContentSurface: View {
     @Binding var selectedTool: AnalysisViewerTool
     @Binding var overlayOpacity: Double
     let onRetry: () -> Void
-    var loadingBottomInset: CGFloat = 0
 
     @State private var readyPlayerID: ObjectIdentifier?
 
@@ -85,7 +84,7 @@ struct TAPVideoPlaybackContentSurface: View {
                 kind: .tapVideo,
                 state: fetchOverlayState,
                 onRetry: onRetry,
-                loadingBottomInset: loadingBottomInset
+                imageSize: displayedImageSize
             )
             if case .failed(let message) = session.state,
                fetchOverlayState == .hidden {
@@ -98,6 +97,15 @@ struct TAPVideoPlaybackContentSurface: View {
                 .padding()
             }
         }
+    }
+
+    private var displayedImageSize: CGSize? {
+        if !showsLoadingPreview,
+           let size = session.player?.currentItem?.presentationSize,
+           size.width > 0, size.height > 0 {
+            return size
+        }
+        return session.loadingPreviewImage?.size
     }
 
     private var fetchOverlayState: LibraryMediaFetchOverlayState {

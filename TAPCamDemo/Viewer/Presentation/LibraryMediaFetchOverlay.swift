@@ -3,6 +3,7 @@
 //  TAPCamDemo
 //
 
+import ImageIO
 import SwiftUI
 import UIKit
 
@@ -33,19 +34,25 @@ struct LibraryMediaViewerFetchOverlay: View {
     let kind: LibraryMediaKind
     let state: LibraryMediaFetchOverlayState
     let onRetry: () -> Void
-    var loadingBottomInset: CGFloat = 0
+    var imageSize: CGSize? = nil
+    var imageOrientation: CGImagePropertyOrientation = .up
 
     @Environment(\.openURL) private var openURL
 
     var body: some View {
-        ZStack {
-            LibraryMediaLoadingRing(isLoading: state == .loading)
-                .accessibilityLabel(Text(LibraryMediaCopy.preparing(kind)))
-                .padding(.trailing, 20)
-                .padding(.bottom, loadingBottomInset + 16)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+        GeometryReader { geometry in
+            let imageRect = DepthAnalysisViewerInteractionPolicy.aspectFitRect(
+                imageSize: imageSize, orientation: imageOrientation, containerSize: geometry.size
+            )
+            let inset = DepthAnalysisLivePhotoBadge.Size.viewer.edgeInset
+            ZStack {
+                LibraryMediaLoadingRing(isLoading: state == .loading)
+                    .accessibilityLabel(Text(LibraryMediaCopy.preparing(kind)))
+                    .position(x: imageRect.maxX - inset, y: imageRect.maxY - inset)
 
-            recoveryContent
+                recoveryContent
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
         }
     }
 
