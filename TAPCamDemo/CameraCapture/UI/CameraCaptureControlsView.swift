@@ -109,7 +109,7 @@ struct CameraCaptureControlsView: View {
         .frame(height: Metrics.professionalToolbarSlotHeight)
         .allowsHitTesting(state.isPhotographerModeActive && !state.isInteractionLocked)
         .accessibilityHidden(!state.isPhotographerModeActive || state.isInteractionLocked)
-        .animation(.easeInOut(duration: 0.2), value: state.isPhotographerModeActive)
+        .animation(.easeInOut(duration: CameraViewfinderTransitionPresentation.duration), value: state.isPhotographerModeActive)
     }
 
     private var bottomControls: some View {

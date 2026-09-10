@@ -39,10 +39,11 @@ struct CameraPreviewStageState {
 struct CameraPreviewStageView: View {
     let session: AVCaptureSession
     let manualFocusPreviewStream: CameraManualFocusPreviewStream
+    let previewController: CameraPreviewController
     let state: CameraPreviewStageState
     let highlightColor: Color
     let onPreviewCropChange: (CropRectNormalized) -> Void
-    let onPreviewingChanged: (Bool) -> Void
+    let onPreviewingChanged: (Bool, Int) -> Void
     let onSelectFocalLengthOption: (CameraFocalLengthDisplayOption) -> Void
     let onTapFocusPoint: (CameraPreviewFocusPoint) -> Void
     let onManualFocusTapAssist: (CameraPreviewFocusPoint) -> Void
@@ -67,7 +68,6 @@ struct CameraPreviewStageView: View {
     @State private var pendingLongPressStartPoint: CameraPreviewFocusPoint?
     @State private var longPressLockTask: Task<Void, Never>?
     @State private var shouldSuppressNextTapFocus = false
-    @State private var previewPointConverter = CameraPreviewPointConverter()
 
     var body: some View {
         GeometryReader { proxy in
@@ -75,7 +75,7 @@ struct CameraPreviewStageView: View {
 
             CameraPreviewView(
                 session: session,
-                pointConverter: previewPointConverter,
+                controller: previewController,
                 isCameraPathTransitioning: state.isCameraPathTransitioning,
                 previewReadinessGeneration: state.previewReadinessGeneration,
                 onCropRectChanged: { rect in
@@ -386,7 +386,7 @@ struct CameraPreviewStageView: View {
             x: CGFloat(displayPoint.x) * previewSize.width,
             y: CGFloat(displayPoint.y) * previewSize.height
         )
-        guard let converted = previewPointConverter.captureDevicePoint(
+        guard let converted = previewController.captureDevicePoint(
             fromLayerPoint: layerPoint
         ) else {
             return nil
@@ -617,10 +617,11 @@ struct CameraPreviewStageView: View {
                     select: onSelectFocalLengthOption
                 )
                 .frame(maxWidth: .infinity, alignment: .center)
-                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                .transition(.opacity)
             }
         }
         .frame(maxWidth: .infinity, minHeight: 70, alignment: .bottom)
+        .animation(.easeInOut(duration: CameraViewfinderTransitionPresentation.duration), value: state.shouldShowFocalLengthSelector)
     }
 
     private struct FocusIndicatorView: View {

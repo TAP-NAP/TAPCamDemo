@@ -23,22 +23,22 @@ import SwiftUI
 /// readers without destructively cropping the image or depth map.
 struct CameraPreviewView: UIViewRepresentable {
     let session: AVCaptureSession
-    let pointConverter: CameraPreviewPointConverter?
+    let controller: CameraPreviewController?
     let isCameraPathTransitioning: Bool
     let previewReadinessGeneration: Int
     let onCropRectChanged: (CGRect) -> Void
-    let onPreviewingChanged: (Bool) -> Void
+    let onPreviewingChanged: (Bool, Int) -> Void
 
     init(
         session: AVCaptureSession,
-        pointConverter: CameraPreviewPointConverter? = nil,
+        controller: CameraPreviewController? = nil,
         isCameraPathTransitioning: Bool = false,
         previewReadinessGeneration: Int = 0,
         onCropRectChanged: @escaping (CGRect) -> Void,
-        onPreviewingChanged: @escaping (Bool) -> Void = { _ in }
+        onPreviewingChanged: @escaping (Bool, Int) -> Void = { _, _ in }
     ) {
         self.session = session
-        self.pointConverter = pointConverter
+        self.controller = controller
         self.isCameraPathTransitioning = isCameraPathTransitioning
         self.previewReadinessGeneration = previewReadinessGeneration
         self.onCropRectChanged = onCropRectChanged
@@ -58,12 +58,8 @@ struct CameraPreviewView: UIViewRepresentable {
         view.videoPreviewLayer.videoGravity = .resizeAspectFill
         view.isCropPublicationPaused = isCameraPathTransitioning
         view.cropRectPublisher = context.coordinator
-        pointConverter?.attach(to: view)
-        context.coordinator.attach(to: view.videoPreviewLayer)
-        context.coordinator.reportCurrentPreviewingState(
-            of: view.videoPreviewLayer,
-            generation: previewReadinessGeneration
-        )
+        controller?.attach(to: view)
+        context.coordinator.attach(to: view.videoPreviewLayer, generation: previewReadinessGeneration)
         return view
     }
 
@@ -75,12 +71,8 @@ struct CameraPreviewView: UIViewRepresentable {
         }
         uiView.isCropPublicationPaused = isCameraPathTransitioning
         uiView.cropRectPublisher = context.coordinator
-        pointConverter?.attach(to: uiView)
-        context.coordinator.attach(to: uiView.videoPreviewLayer)
-        context.coordinator.reportCurrentPreviewingState(
-            of: uiView.videoPreviewLayer,
-            generation: previewReadinessGeneration
-        )
+        controller?.attach(to: uiView)
+        context.coordinator.attach(to: uiView.videoPreviewLayer, generation: previewReadinessGeneration)
         uiView.publishCurrentCropRect()
     }
 
@@ -96,54 +88,38 @@ struct CameraPreviewView: UIViewRepresentable {
     /// renderer.
     final class Coordinator {
         var onCropRectChanged: (CGRect) -> Void
-        var onPreviewingChanged: (Bool) -> Void
+        var onPreviewingChanged: (Bool, Int) -> Void
 
         private var lastPublishedRect: CGRect?
         private var pendingRect: CGRect?
         private var isPublishScheduled = false
         private weak var observedPreviewLayer: AVCaptureVideoPreviewLayer?
         private var previewingObservation: NSKeyValueObservation?
-        private var lastCurrentReportGeneration: Int?
+        private var observedGeneration: Int?
 
         init(
             onCropRectChanged: @escaping (CGRect) -> Void,
-            onPreviewingChanged: @escaping (Bool) -> Void
+            onPreviewingChanged: @escaping (Bool, Int) -> Void
         ) {
             self.onCropRectChanged = onCropRectChanged
             self.onPreviewingChanged = onPreviewingChanged
         }
 
-        func attach(to previewLayer: AVCaptureVideoPreviewLayer) {
-            guard observedPreviewLayer !== previewLayer else {
+        func attach(to previewLayer: AVCaptureVideoPreviewLayer, generation: Int) {
+            guard observedPreviewLayer !== previewLayer || observedGeneration != generation else {
                 return
             }
             previewingObservation?.invalidate()
             observedPreviewLayer = previewLayer
+            observedGeneration = generation
             previewingObservation = previewLayer.observe(\.isPreviewing, options: [.initial, .new]) { [weak self] _, change in
                 guard let isPreviewing = change.newValue else {
                     return
                 }
                 Task { @MainActor [weak self] in
-                    self?.onPreviewingChanged(isPreviewing)
+                    guard self?.observedGeneration == generation else { return }
+                    self?.onPreviewingChanged(isPreviewing, generation)
                 }
-            }
-        }
-
-        /// Re-publishes the current value after SwiftUI applies a stable runtime
-        /// state. This confirms the post-configuration preview without relying
-        /// on a false-to-true KVO edge, which AVFoundation is not required to
-        /// emit when it keeps the preview layer running across an input swap.
-        func reportCurrentPreviewingState(
-            of previewLayer: AVCaptureVideoPreviewLayer,
-            generation: Int
-        ) {
-            guard lastCurrentReportGeneration != generation else {
-                return
-            }
-            lastCurrentReportGeneration = generation
-            let isPreviewing = previewLayer.isPreviewing
-            Task { @MainActor [weak self] in
-                self?.onPreviewingChanged(isPreviewing)
             }
         }
 
@@ -179,15 +155,23 @@ struct CameraPreviewView: UIViewRepresentable {
     }
 }
 
-/// Converts viewfinder touches with the preview layer that actually renders
-/// them. `AVCaptureDevice` points of interest use the unrotated sensor space,
+/// Controls preview presentation and converts touches using its actual layer.
+/// `AVCaptureDevice` points of interest use the unrotated sensor space,
 /// so a display-space normalization or crop interpolation is not sufficient.
 @MainActor
-final class CameraPreviewPointConverter {
+final class CameraPreviewController {
     private weak var previewView: PreviewView?
 
     fileprivate func attach(to previewView: PreviewView) {
         self.previewView = previewView
+    }
+
+    func retainCurrentAppearance() {
+        previewView?.retainCurrentAppearance()
+    }
+
+    func releaseRetainedAppearance() {
+        previewView?.releaseRetainedAppearance()
     }
 
     func captureDevicePoint(fromLayerPoint point: CGPoint) -> CGPoint? {
@@ -210,6 +194,7 @@ final class CameraPreviewPointConverter {
 final class PreviewView: UIView {
     weak var cropRectPublisher: CameraPreviewView.Coordinator?
     var isCropPublicationPaused = false
+    private var transitionSnapshot: UIView?
 
     override class var layerClass: AnyClass {
         AVCaptureVideoPreviewLayer.self
@@ -217,6 +202,33 @@ final class PreviewView: UIView {
 
     var videoPreviewLayer: AVCaptureVideoPreviewLayer {
         layer as! AVCaptureVideoPreviewLayer
+    }
+
+    // Capture the already-rendered view synchronously, before the session input
+    // changes. This is one native snapshot per transition, not a frame pipeline.
+    func retainCurrentAppearance() {
+        transitionSnapshot?.removeFromSuperview()
+        transitionSnapshot = nil
+        guard window != nil, videoPreviewLayer.isPreviewing,
+              let snapshot = snapshotView(afterScreenUpdates: false) else { return }
+        snapshot.frame = bounds
+        snapshot.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        snapshot.isUserInteractionEnabled = false
+        snapshot.accessibilityElementsHidden = true
+        addSubview(snapshot)
+        transitionSnapshot = snapshot
+    }
+
+    func releaseRetainedAppearance() {
+        guard let snapshot = transitionSnapshot else { return }
+        UIView.animate(withDuration: CameraViewfinderTransitionPresentation.duration, delay: 0, options: [.curveEaseInOut]) {
+            snapshot.alpha = 0
+        } completion: { [weak self] _ in
+            snapshot.removeFromSuperview()
+            if self?.transitionSnapshot === snapshot {
+                self?.transitionSnapshot = nil
+            }
+        }
     }
 
     override func layoutSubviews() {

@@ -3,11 +3,30 @@
 //  TAPCamDemoTests
 //
 
+import AVFoundation
 import Foundation
 import Testing
 @testable import TAPCamDemo
 
 struct TAPCameraProModeChromeTests {
+    @Test(.timeLimit(.minutes(1))) @MainActor
+    func previewConfirmationDiscardsCallbacksFromThePreviousConfiguration() async {
+        let (reports, continuation) = AsyncStream<Int>.makeStream()
+        defer { continuation.finish() }
+        let previewLayer = AVCaptureVideoPreviewLayer()
+        let coordinator = CameraPreviewView.Coordinator(
+            onCropRectChanged: { _ in },
+            onPreviewingChanged: { _, generation in continuation.yield(generation) }
+        )
+        coordinator.attach(to: previewLayer, generation: 0)
+        // Both notifications are queued before the main actor can deliver them.
+        coordinator.attach(to: previewLayer, generation: 1)
+        var iterator = reports.makeAsyncIterator()
+        #expect(await iterator.next() == 1)
+        coordinator.attach(to: previewLayer, generation: 2)
+        #expect(await iterator.next() == 2)
+    }
+
     @Test func proModeChromeStateSeparatesAvailabilityTransitionAndActivePresentation() {
         #expect(!CameraProModeChromeState.unavailable.isVisible)
         #expect(!CameraProModeChromeState.unavailable.isInteractive)

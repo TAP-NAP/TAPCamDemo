@@ -85,11 +85,10 @@ struct CameraView: View {
     @State private var viewfinderHint: String?
     @State private var cameraPathTransitionPresentation = CameraViewfinderTransitionPresentation.hidden
     @State private var cameraPathTransitionToken: UUID?
-    @State private var cameraPathTransitionStartedAt = Date.distantPast
     @State private var cameraPathTransitionRuntimeCompleted = false
+    @State private var previewController = CameraPreviewController()
     @State private var isPreviewLayerPreviewing = false
     @State private var previewReadinessGeneration = 0
-    @State private var cameraPathTransitionReleaseTask: Task<Void, Never>?
     @State private var cameraPathPreviewWatchdogTask: Task<Void, Never>?
     @State private var pendingPhotographerModePreference: Bool?
     @State private var settingsSessionReconfigurationPolicy =
@@ -347,6 +346,7 @@ struct CameraView: View {
                 prepareSelectedVideoModeIfNeeded()
                 if let token = cameraPathTransitionToken {
                     beginCameraPathPreviewWatchdog(token: token)
+                    releaseCameraPathTransitionIfPreviewResumed()
                 }
             }
         }
@@ -738,7 +738,8 @@ struct CameraView: View {
             onToggleLivePhoto: toggleLivePhoto,
             onToggleProMode: togglePhotographerMode
         )
-        .disabled(isCameraPathTransitioning || viewModel.isConfiguringSession)
+        .allowsHitTesting(!isCameraPathTransitioning && !viewModel.isConfiguringSession)
+        .accessibilityHidden(isCameraPathTransitioning || viewModel.isConfiguringSession)
     }
 
     @ViewBuilder
@@ -752,7 +753,9 @@ struct CameraView: View {
                 isPreparingCaptureMode: viewModel.isPreparingVideoMode
                     || viewModel.videoPreparationState == .needsPreparation
                     || lifecycleCoordinator.isChangingCaptureMode,
-                isPhotographerModeActive: viewModel.isPhotographerModeActive,
+                isPhotographerModeActive: viewModel.isPhotographerModeActive
+                    && (cameraPathTransitionPresentation == .hidden
+                        || cameraPathTransitionPresentation == .switchingCaptureMode),
                 isInteractionLocked: isCameraPathTransitioning,
                 adjustmentControlState: adjustmentControlState,
                 basicEVControlState: basicEVControlState,
@@ -826,6 +829,7 @@ struct CameraView: View {
         CameraPreviewStageView(
             session: viewModel.session,
             manualFocusPreviewStream: viewModel.manualFocusPreviewStream,
+            previewController: previewController,
             state: previewStageState,
             highlightColor: viewfinderHighlightColor,
             onPreviewCropChange: viewModel.updatePreviewCropRect,
@@ -862,6 +866,7 @@ struct CameraView: View {
         CameraPreviewStageView(
             session: viewModel.session,
             manualFocusPreviewStream: viewModel.manualFocusPreviewStream,
+            previewController: previewController,
             state: previewStageState,
             highlightColor: viewfinderHighlightColor,
             onPreviewCropChange: viewModel.updatePreviewCropRect,
@@ -1013,13 +1018,23 @@ struct CameraView: View {
             restorePhotoMode: { await viewModel.teardownPreparedVideoModeIfNeeded() },
             completion: { didPrepare in
                 guard generation == viewModel.configurationGeneration,
+                      scenePhase == .active,
                       !viewModel.isPausedForAnalysis else { return }
                 if !didPrepare {
                     selectedMode = .photo
                     showViewfinderHint("Video mode unavailable")
                 }
+            },
+            settled: {
+                guard cameraPathTransitionPresentation == .switchingCaptureMode else { return }
+                if scenePhase == .active && !viewModel.isPausedForAnalysis {
+                    completeCameraPathRuntimeTransition()
+                } else {
+                    cancelCameraPathTransitionPresentation()
+                }
             }
         ) != nil else { return }
+        beginCameraPathTransition(.switchingCaptureMode)
         selectedMode = mode
     }
 
@@ -1039,7 +1054,9 @@ struct CameraView: View {
     }
 
     private func togglePhotographerMode() {
-        guard !viewModel.isVideoRecording,
+        guard !isCameraPathTransitioning,
+              !lifecycleCoordinator.isChangingCaptureMode,
+              !viewModel.isVideoRecording,
               !viewModel.isPreparingVideoMode else {
             return
         }
@@ -2020,6 +2037,7 @@ struct CameraView: View {
 
     private func switchCameraPosition() {
         guard !isCameraPathTransitioning,
+              !lifecycleCoordinator.isChangingCaptureMode,
               !viewModel.isVideoRecording,
               !viewModel.isPreparingVideoMode else {
             return
@@ -2029,11 +2047,9 @@ struct CameraView: View {
         let involvesPhotographerMode = isPhotographerModePreferredForRearCamera
         resetModeSpecificControlsForCameraPathChange()
 
-        if involvesPhotographerMode {
-            beginCameraPathTransition(isSwitchingFromRear
-                ? .switchingToFrontCamera
-                : .restoringProMode)
-        }
+        beginCameraPathTransition(isSwitchingFromRear
+            ? .switchingToFrontCamera
+            : (involvesPhotographerMode ? .restoringProMode : .switchingToRearCamera))
 
         Task { @MainActor in
             if selectedMode == .video {
@@ -2050,9 +2066,7 @@ struct CameraView: View {
                     showViewfinderHint("Video mode unavailable")
                 }
             }
-            if involvesPhotographerMode {
-                completeCameraPathRuntimeTransition()
-            }
+            completeCameraPathRuntimeTransition()
         }
     }
 
@@ -2086,13 +2100,11 @@ struct CameraView: View {
     private func beginCameraPathTransition(
         _ presentation: CameraViewfinderTransitionPresentation
     ) {
-        cameraPathTransitionReleaseTask?.cancel()
-        cameraPathTransitionReleaseTask = nil
         cameraPathPreviewWatchdogTask?.cancel()
         cameraPathPreviewWatchdogTask = nil
         pendingPhotographerModePreference = nil
+        previewController.retainCurrentAppearance()
         cameraPathTransitionToken = UUID()
-        cameraPathTransitionStartedAt = Date()
         cameraPathTransitionRuntimeCompleted = false
         cameraPathTransitionPresentation = presentation
     }
@@ -2146,7 +2158,8 @@ struct CameraView: View {
         }
     }
 
-    private func previewLayerPreviewingDidChange(_ isPreviewing: Bool) {
+    private func previewLayerPreviewingDidChange(_ isPreviewing: Bool, generation: Int) {
+        guard generation == previewReadinessGeneration else { return }
         isPreviewLayerPreviewing = isPreviewing
         evaluateStartupReadiness()
         guard cameraPathTransitionToken != nil else {
@@ -2156,28 +2169,15 @@ struct CameraView: View {
     }
 
     private func releaseCameraPathTransitionIfPreviewResumed() {
-        guard let token = cameraPathTransitionToken,
+        guard scenePhase == .active,
+              cameraPathTransitionToken != nil,
               cameraPathTransitionRuntimeCompleted,
               isPreviewLayerPreviewing,
               !viewModel.photographerModeState.isTransitioning else {
             return
         }
 
-        cameraPathTransitionReleaseTask?.cancel()
-        let elapsed = Date().timeIntervalSince(cameraPathTransitionStartedAt)
-        let remaining = max(0, 0.18 - elapsed)
-        cameraPathTransitionReleaseTask = Task { @MainActor in
-            if remaining > 0 {
-                try? await Task.sleep(for: .seconds(remaining))
-            }
-            guard !Task.isCancelled,
-                  cameraPathTransitionToken == token,
-                  cameraPathTransitionRuntimeCompleted,
-                  isPreviewLayerPreviewing else {
-                return
-            }
-            releaseCameraPathTransitionPresentation()
-        }
+        releaseCameraPathTransitionPresentation()
     }
 
     private func releaseCameraPathTransitionPresentation() {
@@ -2192,17 +2192,17 @@ struct CameraView: View {
             }
         }
         cancelCameraPathTransitionPresentation()
+        prepareSelectedVideoModeIfNeeded()
     }
 
     private func cancelCameraPathTransitionPresentation() {
-        cameraPathTransitionReleaseTask?.cancel()
-        cameraPathTransitionReleaseTask = nil
         cameraPathPreviewWatchdogTask?.cancel()
         cameraPathPreviewWatchdogTask = nil
         cameraPathTransitionToken = nil
         cameraPathTransitionRuntimeCompleted = false
         pendingPhotographerModePreference = nil
         cameraPathTransitionPresentation = .hidden
+        previewController.releaseRetainedAppearance()
     }
 
     private func performShutterHaptic() {

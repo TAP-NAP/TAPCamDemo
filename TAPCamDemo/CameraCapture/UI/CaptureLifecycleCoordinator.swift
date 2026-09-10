@@ -36,12 +36,18 @@ final class CaptureLifecycleCoordinator: ObservableObject {
         to mode: CameraCaptureModeOption,
         prepareVideoMode: @escaping @MainActor () async -> Bool,
         restorePhotoMode: @escaping @MainActor () async -> Void,
-        completion: @escaping @MainActor (Bool) -> Void
+        completion: @escaping @MainActor (Bool) -> Void,
+        settled: @escaping @MainActor () -> Void = {}
     ) -> Task<Void, Never>? {
         guard !isChangingCaptureMode else { return nil }
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
-            defer { captureModeChangeTask = nil }
+            defer {
+                captureModeChangeTask = nil
+                // Presentation cleanup must also run after cancellation, even
+                // when SwiftUI coalesces the busy/idle updates into one frame.
+                settled()
+            }
             let ready: Bool
             switch mode {
             case .photo:

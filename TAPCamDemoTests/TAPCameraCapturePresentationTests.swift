@@ -53,6 +53,7 @@ struct TAPCameraCapturePresentationTests {
         let (started, startedContinuation) = AsyncStream<Void>.makeStream()
         var release: CheckedContinuation<Void, Never>?
         var completed = false
+        var settled = false
         let requestedTask = coordinator.changeCaptureMode(to: .video,
             prepareVideoMode: {
                 await withCheckedContinuation { continuation in
@@ -61,15 +62,19 @@ struct TAPCameraCapturePresentationTests {
                     startedContinuation.finish()
                 }
                 return true
-            }, restorePhotoMode: {}, completion: { _ in completed = true })
+            }, restorePhotoMode: {}, completion: { _ in completed = true },
+            settled: {
+                #expect(!coordinator.isChangingCaptureMode)
+                settled = true
+            })
         let task = try #require(requestedTask)
         var iterator = started.makeAsyncIterator()
         #expect(await iterator.next() != nil)
         coordinator.cancelCaptureModeChange()
-        #expect(coordinator.isChangingCaptureMode && !completed)
+        #expect(coordinator.isChangingCaptureMode && !completed && !settled)
         try #require(release).resume()
         await task.value
-        #expect(!coordinator.isChangingCaptureMode && !completed)
+        #expect(!coordinator.isChangingCaptureMode && !completed && settled)
         let requestedRetry = coordinator.changeCaptureMode(to: .video,
             prepareVideoMode: { true }, restorePhotoMode: {}, completion: { completed = $0 })
         let retry = try #require(requestedRetry)
