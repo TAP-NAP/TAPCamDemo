@@ -218,6 +218,7 @@ struct TAPCameraCapturePresentationTests {
                 var iterator = started.makeAsyncIterator()
                 #expect(await iterator.next() != nil)
                 releaseContinuation.finish()
+                withExtendedLifetime(coordinator) {}
             }
         }
     }

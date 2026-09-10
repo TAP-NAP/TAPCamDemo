@@ -522,11 +522,10 @@ struct TAPLibraryRouteTests {
         var photosFail = false
         var includesPendingItem = false
         let store = LibraryMediaStore(itemProvider: DepthAlbumItemProvider(
-            pendingRecordsLoader: {
+            recordsLoader: {
                 if storeFails { throw DepthAlbumItemProviderTestError.photosUnavailable }
                 return includesPendingItem ? [pendingRecord] : []
             },
-            exportedRecordsLoader: { [] },
             photoCatalogLoader: { _ in
                 if photosFail { throw DepthAlbumItemProviderTestError.photosUnavailable }
                 return .empty
