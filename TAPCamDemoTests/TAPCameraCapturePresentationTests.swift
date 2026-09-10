@@ -232,7 +232,7 @@ struct TAPCameraCapturePresentationTests {
                         adjustmentControlState: nil,
                         basicEVControlState: CameraBasicEVControlState(bias: 0, isStripVisible: false),
                         contentRotation: .zero)
-                    #expect(state.shutterDiameter == (recording ? 34 : (mode == .video ? 58 : 62)))
+                    #expect(state.shutterDiameter == (recording ? 34 : 62))
                     #expect(state.shutterColor == (mode == .video || recording ? Color.red : Color.white))
                     #expect(state.canOpenTAPLibrary == !recording)
                 }

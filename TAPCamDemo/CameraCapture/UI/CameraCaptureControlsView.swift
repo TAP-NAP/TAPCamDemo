@@ -25,11 +25,13 @@ struct CameraCaptureControlsState {
     let contentRotation: Angle
 
     var shutterDiameter: CGFloat {
-        isRecordingMovie ? 34 : (selectedMode == .video ? 58 : 62)
+        isRecordingMovie ? 34 : 62
     }
 
     var shutterColor: Color {
-        if !isShutterEnabled && !isPreparingCaptureMode && !isRecordingMovie { return .gray }
+        if !isShutterEnabled && !isPreparingCaptureMode && !isInteractionLocked && !isRecordingMovie {
+            return .gray
+        }
         return selectedMode == .video || isRecordingMovie ? .red : .white
     }
 
@@ -94,17 +96,20 @@ struct CameraCaptureControlsView: View {
             modeSelectorSlot
         }
         .padding(.bottom, 4)
-        .disabled(state.isInteractionLocked)
     }
 
     private var professionalToolbarSlot: some View {
-        lowerToolbar
-            .frame(maxWidth: .infinity)
-            .frame(height: Metrics.professionalToolbarSlotHeight)
-            .opacity(state.isPhotographerModeActive ? 1 : 0)
-            .allowsHitTesting(state.isPhotographerModeActive)
-            .accessibilityHidden(!state.isPhotographerModeActive)
-            .animation(.easeInOut(duration: 0.2), value: state.isPhotographerModeActive)
+        ZStack {
+            if state.isPhotographerModeActive {
+                lowerToolbar
+                    .transition(.opacity)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: Metrics.professionalToolbarSlotHeight)
+        .allowsHitTesting(state.isPhotographerModeActive && !state.isInteractionLocked)
+        .accessibilityHidden(!state.isPhotographerModeActive || state.isInteractionLocked)
+        .animation(.easeInOut(duration: 0.2), value: state.isPhotographerModeActive)
     }
 
     private var bottomControls: some View {
@@ -136,7 +141,8 @@ struct CameraCaptureControlsView: View {
             }
             .accessibilityLabel("Switch front and back camera")
             .frame(width: 78, height: 78)
-            .disabled(state.isInteractionLocked)
+            .allowsHitTesting(!state.isInteractionLocked)
+            .accessibilityHidden(state.isInteractionLocked)
         }
         .buttonStyle(.plain)
         .foregroundStyle(.white)
@@ -177,6 +183,8 @@ struct CameraCaptureControlsView: View {
             }
         }
         .frame(height: 50)
+        .allowsHitTesting(!state.isInteractionLocked)
+        .accessibilityHidden(state.isInteractionLocked)
         .animation(.easeInOut(duration: 0.16), value: state.adjustmentControlState?.activeControl)
         .animation(.easeInOut(duration: 0.16), value: state.basicEVControlState.isStripVisible)
         .animation(.easeInOut(duration: 0.16), value: state.isPhotographerModeActive)
@@ -195,7 +203,7 @@ struct CameraCaptureControlsView: View {
                         .frame(minWidth: 48, minHeight: 26)
                 }
                 .buttonStyle(.plain)
-                .disabled(state.isInteractionLocked || state.isPreparingCaptureMode || state.isRecordingMovie)
+                .disabled(state.isPreparingCaptureMode || state.isRecordingMovie)
                 .accessibilityLabel(Text(LocalizedStringKey(mode.accessibilityLabel)))
                 .accessibilityIdentifier("camera.mode.\(mode.rawValue)")
             }
@@ -228,19 +236,18 @@ struct CameraCaptureControlsView: View {
                 .strokeBorder(.white, lineWidth: 4)
                 .frame(width: 78, height: 78)
 
-            if state.isRecordingMovie {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(state.shutterColor)
-                    .frame(width: state.shutterDiameter, height: state.shutterDiameter)
-            } else {
-                Circle()
-                    .fill(state.shutterColor)
-                    .frame(width: state.shutterDiameter, height: state.shutterDiameter)
-                    .animation(.easeInOut(duration: 0.2), value: state.selectedMode)
-            }
+            RoundedRectangle(
+                cornerRadius: state.isRecordingMovie ? 6 : state.shutterDiameter / 2,
+                style: .continuous
+            )
+            .fill(state.shutterColor)
+            .frame(width: state.shutterDiameter, height: state.shutterDiameter)
+            .scaleEffect(isShutterTouchActive && state.isShutterEnabled ? 0.96 : 1)
+            .animation(.easeOut(duration: 0.1), value: isShutterTouchActive)
+            .animation(.easeInOut(duration: 0.2), value: state.selectedMode)
+            .animation(.easeInOut(duration: 0.2), value: state.isRecordingMovie)
         }
         .frame(width: 78, height: 78)
-        .scaleEffect(isShutterTouchActive && state.isShutterEnabled ? 0.96 : 1)
         .contentShape(Circle())
         .gesture(
             DragGesture(minimumDistance: 0)
@@ -256,7 +263,8 @@ struct CameraCaptureControlsView: View {
                 }
         )
         .accessibilityElement()
-        .opacity(state.isInteractionLocked ? 0.55 : 1)
+        .allowsHitTesting(!state.isInteractionLocked)
+        .accessibilityHidden(state.isInteractionLocked)
         .accessibilityLabel(shutterAccessibilityLabel)
         .accessibilityIdentifier("camera.capture.shutter")
         .accessibilityAddTraits(.isButton)
