@@ -403,12 +403,12 @@ struct TAPLibraryRouteTests {
         #expect(snapshot.photoAssetsError != nil)
 
         let viewModel = DepthAlbumPickerViewModel(itemProvider: provider)
-        await viewModel.load()
+        await viewModel.loadForPresentation()
         #expect(viewModel.items.map(\.id) == ["capture:pending-offline"])
         #expect(viewModel.errorMessage == nil)
     }
 
-    @Test @MainActor func depthAlbumPickerLoadIfNeededReusesCachedSnapshot() async throws {
+    @Test @MainActor func depthAlbumPickerPresentationReusesNonemptySnapshot() async throws {
         let pendingRecord = TAPCamDemoTestFixtures.samplePendingRecord(
             captureID: "cached-pending",
             capturedAt: Date(timeIntervalSince1970: 100)
@@ -424,18 +424,14 @@ struct TAPLibraryRouteTests {
         )
         let viewModel = DepthAlbumPickerViewModel(itemProvider: provider)
 
-        await viewModel.loadIfNeeded()
-        await viewModel.loadIfNeeded()
+        await viewModel.loadForPresentation()
+        await viewModel.loadForPresentation()
 
         #expect(loadCount == 1)
         #expect(viewModel.items.map(\.id) == ["capture:cached-pending"])
-
-        await viewModel.load(showLoadingIndicator: false)
-
-        #expect(loadCount == 2)
     }
 
-    @Test @MainActor func depthAlbumPickerLoadIfNeededCachesEmptySnapshot() async throws {
+    @Test @MainActor func depthAlbumPickerPresentationRefreshesEmptySnapshot() async throws {
         var loadCount = 0
         let provider = DepthAlbumItemProvider(
             pendingRecordsLoader: {
@@ -447,10 +443,10 @@ struct TAPLibraryRouteTests {
         )
         let viewModel = DepthAlbumPickerViewModel(itemProvider: provider)
 
-        await viewModel.loadIfNeeded()
-        await viewModel.loadIfNeeded()
+        await viewModel.loadForPresentation()
+        await viewModel.loadForPresentation()
 
-        #expect(loadCount == 1)
+        #expect(loadCount == 2)
         #expect(viewModel.items.isEmpty)
         #expect(viewModel.errorMessage == nil)
     }
@@ -473,7 +469,7 @@ struct TAPLibraryRouteTests {
 
         #expect(viewModel.shouldShowLoading)
 
-        await viewModel.loadIfNeeded()
+        await viewModel.loadForPresentation()
 
         #expect(loadCount == 1)
         #expect(viewModel.items.isEmpty)
@@ -486,7 +482,7 @@ struct TAPLibraryRouteTests {
         #expect(!viewModel.shouldShowLoading)
     }
 
-    @Test @MainActor func depthAlbumPickerLoadIfNeededCachesFailedSnapshotAttempt() async throws {
+    @Test @MainActor func depthAlbumPickerPresentationRetriesFailedSnapshot() async throws {
         var loadCount = 0
         let provider = DepthAlbumItemProvider(
             pendingRecordsLoader: {
@@ -498,10 +494,10 @@ struct TAPLibraryRouteTests {
         )
         let viewModel = DepthAlbumPickerViewModel(itemProvider: provider)
 
-        await viewModel.loadIfNeeded()
-        await viewModel.loadIfNeeded()
+        await viewModel.loadForPresentation()
+        await viewModel.loadForPresentation()
 
-        #expect(loadCount == 1)
+        #expect(loadCount == 2)
         #expect(viewModel.items.isEmpty)
         #expect(viewModel.errorMessage == "Unable to load TAP Library. Check Photos access and try again.")
     }
@@ -516,11 +512,60 @@ struct TAPLibraryRouteTests {
         )
         let viewModel = DepthAlbumPickerViewModel(itemProvider: provider)
 
-        await viewModel.load()
+        await viewModel.loadForPresentation()
 
         #expect(viewModel.items.isEmpty)
         #expect(viewModel.errorMessage == "Unable to read the TAPCamDepth album. Check Photos access and try again.")
         #expect(viewModel.errorMessage?.contains("Photos unavailable for test") == false)
+    }
+
+    @Test @MainActor func depthAlbumPickerTracksSharedStoreFailureAndRecovery() async {
+        let pendingRecord = TAPCamDemoTestFixtures.samplePendingRecord(
+            captureID: "shared-store-recovery",
+            capturedAt: Date(timeIntervalSince1970: 100)
+        )
+        var storeFails = true
+        var photosFail = false
+        var includesPendingItem = false
+        let store = LibraryMediaStore(itemProvider: DepthAlbumItemProvider(
+            pendingRecordsLoader: {
+                if storeFails { throw DepthAlbumItemProviderTestError.photosUnavailable }
+                return includesPendingItem ? [pendingRecord] : []
+            },
+            exportedRecordsLoader: { [] },
+            photoCatalogLoader: { _ in
+                if photosFail { throw DepthAlbumItemProviderTestError.photosUnavailable }
+                return .empty
+            }
+        ))
+        let viewModel = DepthAlbumPickerViewModel(libraryStore: store)
+        await viewModel.loadForPresentation()
+        #expect(viewModel.errorMessage == "Unable to load TAP Library. Check Photos access and try again.")
+        #expect(!viewModel.shouldShowLoading)
+
+        // Subsequent refreshes belong to the shared store, without another
+        // picker load or presentation lifecycle event.
+        storeFails = false
+        photosFail = true
+        await store.refresh()
+        #expect(viewModel.errorMessage == "Unable to read the TAPCamDepth album. Check Photos access and try again.")
+
+        includesPendingItem = true
+        await store.refresh()
+        #expect(viewModel.errorMessage == nil)
+        #expect(viewModel.items.map(\.id) == ["capture:shared-store-recovery"])
+
+        storeFails = true
+        await store.refresh()
+        #expect(viewModel.errorMessage == "Unable to load TAP Library. Check Photos access and try again.")
+
+        storeFails = false
+        photosFail = false
+        includesPendingItem = false
+        await store.refresh()
+        #expect(viewModel.errorMessage == nil)
+        #expect(viewModel.items.isEmpty)
+        #expect(!viewModel.shouldShowLoading)
     }
 
     @Test @MainActor func depthAlbumPickerUsesFixedErrorWhenStoreLoadFails() async throws {
@@ -532,7 +577,7 @@ struct TAPLibraryRouteTests {
         )
         let viewModel = DepthAlbumPickerViewModel(itemProvider: provider)
 
-        await viewModel.load()
+        await viewModel.loadForPresentation()
 
         #expect(viewModel.items.isEmpty)
         #expect(viewModel.errorMessage == "Unable to load TAP Library. Check Photos access and try again.")

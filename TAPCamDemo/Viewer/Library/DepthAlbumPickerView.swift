@@ -108,7 +108,7 @@ struct DepthAlbumPickerView: View {
             if viewModel.shouldShowLoading {
                 ProgressView()
                     .accessibilityLabel(
-                        Text(LocalizedStringKey(viewModel.loadingPresentation.rawValue))
+                        Text("Loading TAP Library...")
                     )
                     .frame(maxWidth: .infinity, minHeight: 260)
             } else if let errorMessage = viewModel.errorMessage {
