@@ -321,7 +321,6 @@ struct TAPCameraCapturePresentationTests {
         #expect(cameraSource.contains("await viewModel.teardownPreparedVideoModeIfNeeded()"))
         #expect(cameraSource.contains("await viewModel.prepareVideoModeIfNeeded()"))
 
-        #expect(videoViewModelSource.contains("guard await prepareVideoModeIfNeeded()"))
         #expect(videoViewModelSource.contains("handleVideoRecordingWriterFailure"))
         #expect(videoViewModelSource.contains("cancelVideoRecordingAfterWriterFailure"))
     }
@@ -544,13 +543,14 @@ struct TAPCameraCapturePresentationTests {
         ))
     }
 
-    @Test func cameraCaptureControlsStateLocksLibraryWhileCaptureWrites() throws {
+    @Test(arguments: [false, true])
+    func cameraCaptureControlsStateLocksLibraryWhileCaptureWrites(isPreparingMovie: Bool) throws {
         let readyState = CameraCaptureControlsState(
-            isShutterEnabled: true,
+            isShutterEnabled: !isPreparingMovie,
             isLibraryWriteInProgress: false,
-            selectedMode: .photo,
+            selectedMode: isPreparingMovie ? .video : .photo,
             isRecordingMovie: false,
-            isPreparingMovie: false,
+            isPreparingMovie: isPreparingMovie,
             isPhotographerModeActive: false,
             isInteractionLocked: false,
             adjustmentControlState: nil,
@@ -565,9 +565,9 @@ struct TAPCameraCapturePresentationTests {
         let writingState = CameraCaptureControlsState(
             isShutterEnabled: true,
             isLibraryWriteInProgress: true,
-            selectedMode: .photo,
+            selectedMode: isPreparingMovie ? .video : .photo,
             isRecordingMovie: false,
-            isPreparingMovie: false,
+            isPreparingMovie: isPreparingMovie,
             isPhotographerModeActive: false,
             isInteractionLocked: false,
             adjustmentControlState: nil,
@@ -578,6 +578,26 @@ struct TAPCameraCapturePresentationTests {
         #expect(writingState.recentThumbnailOpacity == 0.42)
         #expect(writingState.tapLibraryAccessibilityLabel == "Finishing capture write")
         #expect(writingState.tapLibraryHelpText == "TAP Library will be available after the current capture finishes writing.")
+    }
+
+    @Test(arguments: [false, true])
+    func cameraCaptureControlsStateLocksLibraryWhileRecording(isPreparingMovie: Bool) {
+        let state = CameraCaptureControlsState(
+            isShutterEnabled: true,
+            isLibraryWriteInProgress: false,
+            selectedMode: .video,
+            isRecordingMovie: true,
+            isPreparingMovie: isPreparingMovie,
+            isPhotographerModeActive: false,
+            isInteractionLocked: false,
+            adjustmentControlState: nil,
+            basicEVControlState: CameraBasicEVControlState(bias: 0, isStripVisible: false),
+            contentRotation: .zero
+        )
+
+        #expect(!state.canOpenTAPLibrary)
+        #expect(state.tapLibraryAccessibilityLabel == "TAP Library unavailable during video capture")
+        #expect(state.tapLibraryHelpText == "TAP Library will be available after video capture finishes.")
     }
 
     @Test func cameraCaptureControlsStateDoesNotNameSensitiveInputs() throws {

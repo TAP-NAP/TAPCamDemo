@@ -979,7 +979,10 @@ struct CameraView: View {
             case .photo:
                 await viewModel.teardownPreparedVideoModeIfNeeded()
             case .video:
+                let generation = viewModel.configurationGeneration
                 let didPrepare = await viewModel.prepareVideoModeIfNeeded()
+                guard generation == viewModel.configurationGeneration,
+                      !viewModel.isPausedForAnalysis else { return }
                 if !didPrepare {
                     selectedMode = .photo
                     showViewfinderHint("Video mode unavailable")
@@ -1939,8 +1942,7 @@ struct CameraView: View {
 
     private func openTAPLibrary() {
         guard !viewModel.isCaptureWriteInProgress,
-              !viewModel.isVideoRecording,
-              !viewModel.isPreparingVideoMode else {
+              !viewModel.isVideoRecording else {
             return
         }
 

@@ -67,6 +67,7 @@ extension CameraViewModel {
             return false
         }
 
+        let generation = configurationGeneration
         isPreparingVideoMode = true
         statusMessage = "Preparing TAP video..."
         let recordsAudio = CameraCaptureDataUsePreferences.usesMicrophoneData()
@@ -84,6 +85,9 @@ extension CameraViewModel {
                 isVideoMirrored: isVideoMirrored,
                 depthFilteringEnabled: depthFilteringEnabled ?? DepthAnalyzerPreferences.appleDepthFilteringEnabled()
             )
+            guard generation == configurationGeneration, !isPausedForAnalysis else {
+                return false
+            }
             statusMessage = "TAP video ready."
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.cameraCapture.info("video mode warmup complete recordsAudio=\(recordsAudio, privacy: .public) depthDeliverySupported=\(activeSessionConfiguration.depthDeliverySupported, privacy: .public)")
@@ -91,6 +95,9 @@ extension CameraViewModel {
             isPreparingVideoMode = false
             return true
         } catch {
+            guard generation == configurationGeneration, !isPausedForAnalysis else {
+                return false
+            }
             statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .capture)
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.cameraCapture.error("video mode warmup failed error=\(TAPDiagnostics.describe(error), privacy: .public)")
@@ -165,12 +172,31 @@ extension CameraViewModel {
             )
             return
         }
+        let generation = configurationGeneration
         let depthFilteringEnabled = DepthAnalyzerPreferences.appleDepthFilteringEnabled()
-        guard await prepareVideoModeIfNeeded(depthFilteringEnabled: depthFilteringEnabled) else {
+        let didPrepare = await prepareVideoModeIfNeeded(depthFilteringEnabled: depthFilteringEnabled)
+        guard generation == configurationGeneration, !isPausedForAnalysis else {
+            return
+        }
+        guard didPrepare else {
             statusMessage = "Video mode unavailable"
             return
         }
 
+        await startPreparedVideoRecording(
+            configuration: activeSessionConfiguration,
+            depthFilteringEnabled: depthFilteringEnabled,
+            generation: generation,
+            pendingCaptureWorkerClient: pendingCaptureWorkerClient
+        )
+    }
+
+    private func startPreparedVideoRecording(
+        configuration: SessionConfigurationResult,
+        depthFilteringEnabled: Bool,
+        generation: Int,
+        pendingCaptureWorkerClient: (any AppAttestClient)?
+    ) async {
         let captureID = UUID().uuidString
         let capturedAt = Date()
         let recordsAudio = CameraCaptureDataUsePreferences.usesMicrophoneData()
@@ -183,21 +209,30 @@ extension CameraViewModel {
             let workspace = try await pendingCaptureStore.beginVideoCaptureWorkspace(
                 captureID: captureID
             )
-            videoRecordingTemporaryDirectoryURL = workspace.bundleURL
+            guard generation == configurationGeneration, !isPausedForAnalysis else {
+                try? await pendingCaptureStore.abortVideoCaptureWorkspace(captureID: captureID)
+                return
+            }
             let request = Self.videoRecordingRequest(
                 captureID: captureID,
                 capturedAt: capturedAt,
                 outputURL: workspace.artifactURL,
-                configuration: activeSessionConfiguration,
+                configuration: configuration,
                 recordsAudio: recordsAudio,
                 depthFilteringEnabled: depthFilteringEnabled
             )
-            _ = try await sessionController.startVideoRecording(
+            let recorder = try await sessionController.startVideoRecording(
                 request: request,
-                configuration: activeSessionConfiguration,
+                configuration: configuration,
                 location: location
             )
+            guard generation == configurationGeneration, !isPausedForAnalysis else {
+                await sessionController.cancelVideoRecording(recorder)
+                try? await pendingCaptureStore.abortVideoCaptureWorkspace(captureID: captureID)
+                return
+            }
 
+            videoRecordingTemporaryDirectoryURL = workspace.bundleURL
             activeVideoRecordingCaptureID = captureID
             isVideoRecording = true
             videoRecordingStartedAt = Date()
@@ -205,14 +240,17 @@ extension CameraViewModel {
             installVideoRecordingLimitTask(pendingCaptureWorkerClient: pendingCaptureWorkerClient)
             installVideoThermalObserver(pendingCaptureWorkerClient: pendingCaptureWorkerClient)
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.cameraCapture.info("video recording requested captureID=\(captureID, privacy: .private) recordsAudio=\(recordsAudio, privacy: .public) depthDeliverySupported=\(activeSessionConfiguration.depthDeliverySupported, privacy: .public)")
+            TAPDiagnostics.cameraCapture.info("video recording requested captureID=\(captureID, privacy: .private) recordsAudio=\(recordsAudio, privacy: .public) depthDeliverySupported=\(configuration.depthDeliverySupported, privacy: .public)")
             #endif
         } catch {
+            try? await pendingCaptureStore.abortVideoCaptureWorkspace(captureID: captureID)
+            guard generation == configurationGeneration, !isPausedForAnalysis else {
+                return
+            }
             isVideoRecording = false
             videoRecordingStartedAt = nil
             activeVideoRecordingCaptureID = nil
             videoRecordingTemporaryDirectoryURL = nil
-            try? await pendingCaptureStore.abortVideoCaptureWorkspace(captureID: captureID)
             statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .capture)
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.cameraCapture.error("video recording start failed captureID=\(captureID, privacy: .private) error=\(TAPDiagnostics.describe(error), privacy: .public)")

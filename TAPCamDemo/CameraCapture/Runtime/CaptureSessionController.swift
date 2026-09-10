@@ -666,10 +666,18 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         await recorder.cancelAfterWriterFailure()
     }
 
-    private func detachActiveVideoRecording() async throws -> TAPVideoRecorder {
+    func cancelVideoRecording(_ recorder: TAPVideoRecorder) async {
+        _ = try? await detachActiveVideoRecording(expectedRecorder: recorder)
+        await recorder.cancelAfterWriterFailure()
+    }
+
+    private func detachActiveVideoRecording(
+        expectedRecorder: TAPVideoRecorder? = nil
+    ) async throws -> TAPVideoRecorder {
         try await withCheckedThrowingContinuation { continuation in
             sessionQueue.async { [self, session] in
-                guard let graph = activeVideoRecordingGraph else {
+                guard let graph = activeVideoRecordingGraph,
+                      expectedRecorder == nil || graph.recorder === expectedRecorder else {
                     continuation.resume(throwing: TAPDepthCaptureError.videoRecordingNotActive)
                     return
                 }
