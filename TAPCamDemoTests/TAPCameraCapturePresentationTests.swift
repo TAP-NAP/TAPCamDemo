@@ -156,6 +156,71 @@ struct TAPCameraCapturePresentationTests {
         #expect(viewModel.videoPreparationState == .idle, "A retired configuration cannot publish readiness")
     }
 
+    @Test(.timeLimit(.minutes(1))) @MainActor
+    func savedVideoAllowsPreparationBeforeThePendingWorkerFinishes() async throws {
+        let directory = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fixtureStore = TAPPendingCaptureStore(rootURL: directory.appendingPathComponent("fixture"))
+        let captureID = UUID().uuidString
+        let fixture = try await TAPCamDemoTestFixtures.ingestPendingTAPVideo(
+            store: fixtureStore, captureID: captureID, hasDepth: false)
+        let fixtureURL = try await fixtureStore.videoArtifactURL(captureID: captureID)
+        let manifest = try TAPVideoManifestBox.decodedManifest(fromFileAt: fixtureURL)
+        let store = TAPPendingCaptureStore(rootURL: directory.appendingPathComponent("pending"))
+        let workspace = try await store.beginVideoCaptureWorkspace(captureID: captureID)
+        try FileManager.default.copyItem(at: fixtureURL, to: workspace.artifactURL)
+        let artifact = TAPVideoRecordingArtifact(captureID: captureID, packageID: fixture.packageID,
+            capturedAt: fixture.capturedAt, videoURL: workspace.artifactURL, manifest: manifest, location: nil)
+        var states: [CameraVideoPreparationState] = []
+        let viewModel = CameraViewModel(capabilityMatrix: CapabilityMatrix(rgbSources: [], depthCandidates: []),
+            pendingCaptureStore: store, libraryStore: LibraryMediaStore(),
+            videoPosterGenerator: CameraStoppedVideoPosterGenerator {
+                #expect(states.last == .needsPreparation, "Local ingest releases preparation before poster work")
+                return Data("poster".utf8)
+            })
+        let subscription = viewModel.$videoPreparationState.sink { states.append($0) }
+        defer { subscription.cancel() }
+        viewModel.isVideoRecording = true
+        viewModel.activeVideoRecordingCaptureID = captureID
+        viewModel.videoRecordingTemporaryDirectoryURL = workspace.bundleURL
+
+        let (started, startedContinuation) = AsyncStream<Void>.makeStream()
+        var releaseWorker: CheckedContinuation<Void, Never>?
+        defer { releaseWorker?.resume() }
+        var stopReturned = false
+        let stop = Task { @MainActor in
+            await viewModel.stopVideoRecording(reason: .userStop, finishRecording: { artifact },
+                processPendingCaptures: {
+                    let record = try? await store.readRecord(captureID: captureID)
+                    #expect(record?.status == .pending)
+                    #expect(record?.thumbnailFilename != nil, "Poster persistence precedes worker cleanup")
+                    await withCheckedContinuation { continuation in
+                        releaseWorker = continuation
+                        startedContinuation.yield(())
+                        startedContinuation.finish()
+                    }
+                })
+            stopReturned = true
+        }
+        var iterator = started.makeAsyncIterator()
+        #expect(await iterator.next() != nil)
+        #expect(!stopReturned)
+        #expect(!viewModel.isVideoRecording)
+        #expect(viewModel.activeVideoRecordingCaptureID == nil)
+        #expect(viewModel.videoRecordingTemporaryDirectoryURL == nil)
+        #expect(viewModel.videoPreparationState == .needsPreparation)
+        #expect(await viewModel.prepareVideoMode {})
+        #expect(viewModel.videoPreparationState == .ready)
+
+        let continuation = try #require(releaseWorker)
+        releaseWorker = nil
+        continuation.resume()
+        await stop.value
+        #expect(stopReturned)
+        #expect(viewModel.videoPreparationState == .ready, "The previous worker cannot reset new readiness")
+        #expect(states.filter { $0 == .needsPreparation }.count == 1)
+    }
+
     @Test func shutterKeepsTargetModeAppearanceWhilePreparingAndPreservesRecordingSquare() {
         for mode in CameraCaptureModeOption.allCases {
             for preparing in [false, true] {
@@ -605,7 +670,7 @@ struct TAPCameraCapturePresentationTests {
         let videoOutput = AVCaptureVideoDataOutput()
         let audioOutput = AVCaptureAudioDataOutput()
         let depthOutput = AVCaptureDepthDataOutput()
-        let delegate = TAPVideoRecorderOutputDelegate(router: TAPVideoRecorderCallbackRouter())
+        let delegate = CameraVideoOutputCleanupDelegate()
         let callbackQueue = DispatchQueue(label: "tapcam.tests.recording-output-cleanup")
         videoOutput.setSampleBufferDelegate(delegate, queue: callbackQueue)
         audioOutput.setSampleBufferDelegate(delegate, queue: callbackQueue)
@@ -1726,6 +1791,18 @@ struct TAPCameraCapturePresentationTests {
         }
     }
     #endif
+}
+
+private nonisolated final class CameraVideoOutputCleanupDelegate: NSObject,
+    AVCaptureVideoDataOutputSampleBufferDelegate, AVCaptureAudioDataOutputSampleBufferDelegate,
+    AVCaptureDepthDataOutputDelegate {}
+
+private nonisolated struct CameraStoppedVideoPosterGenerator: LibraryVideoPosterGenerating {
+    let generate: @MainActor @Sendable () -> Data
+
+    func posterData(for videoURL: URL, cacheKey: String, pixelLength: Int) async throws -> Data {
+        await generate()
+    }
 }
 
 @MainActor

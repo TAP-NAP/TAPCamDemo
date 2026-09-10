@@ -72,11 +72,11 @@ nonisolated struct TAPVideoWriterFailure: Equatable, Sendable {
 }
 
 nonisolated final class TAPVideoRecorder: NSObject, @unchecked Sendable {
-    let callbackQueue: DispatchQueue
-    let outputDelegate: TAPVideoRecorderOutputDelegate
+    private let callbackQueue: DispatchQueue
 
     private let request: TAPVideoRecordingRequest
     private let sessionConfiguration: SessionConfigurationResult
+    private let nominalDepthIntervalSeconds: Double?
     private let location: TAPPendingCaptureLocation?
     private let writerSession: TAPVideoWriterSession
     private let motionRecorder = TAPVideoMotionRecorder()
@@ -98,18 +98,18 @@ nonisolated final class TAPVideoRecorder: NSObject, @unchecked Sendable {
         recordsAudio: Bool,
         recordsDepth: Bool,
         location: TAPPendingCaptureLocation?,
-        callbackQueue: DispatchQueue? = nil,
+        callbackQueue: DispatchQueue,
         writerFailureHandler: @escaping @Sendable (TAPVideoWriterFailure) -> Void
     ) throws {
-        let callbackRouter = TAPVideoRecorderCallbackRouter()
         self.request = request
         self.filtering = .init(requestedEnabled: request.depthFilteringEnabled)
         self.sessionConfiguration = sessionConfiguration
+        let frameRate = sessionConfiguration.device.activeDepthDataFormat?
+            .videoSupportedFrameRateRanges.map(\.maxFrameRate).max()
+        nominalDepthIntervalSeconds = frameRate.flatMap { $0 > 0 ? 1 / $0 : nil }
         self.location = location
         self.writerFailureHandler = writerFailureHandler
         self.callbackQueue = callbackQueue
-            ?? DispatchQueue(label: "tapcam.camera-capture.video-recorder.\(request.captureID)")
-        self.outputDelegate = TAPVideoRecorderOutputDelegate(router: callbackRouter)
         self.diagnostics = TAPVideoRecorderDiagnostics(captureID: request.captureID)
         self.writerSession = try TAPVideoWriterSession(
             request: request,
@@ -119,7 +119,6 @@ nonisolated final class TAPVideoRecorder: NSObject, @unchecked Sendable {
         )
 
         super.init()
-        callbackRouter.bind(to: self)
         TAPVideoPerformanceTrace.emitCaptureStart(
             recordsAudio: writerSession.recordsAudio,
             recordsDepth: writerSession.recordsDepth
@@ -228,31 +227,27 @@ nonisolated final class TAPVideoRecorder: NSObject, @unchecked Sendable {
         }
 
         let finalizeTrace = TAPVideoPerformanceTrace.beginRecordingFinalize()
-        Task { [weak self] in
-            guard let self else { return }
+        // The router has drained and detached this recorder, and the writer
+        // is finished. File finalization must not occupy the live RGB/depth
+        // callback queue, which also feeds the PRO focus preview.
+        Task.detached(priority: .utility) { [self] in
             do {
                 let fileFacts = try await TAPMediaTrackFactsReader.read(
-                    from: self.writerSession.writerURL
+                    from: writerSession.writerURL
                 )
-                self.callbackQueue.async {
-                    self.finalizeCompletedWriter(
-                        continuation: continuation,
-                        fileFacts: fileFacts,
-                        trace: finalizeTrace
-                    )
-                }
+                finalizeCompletedWriter(
+                    continuation: continuation,
+                    fileFacts: fileFacts,
+                    trace: finalizeTrace
+                )
             } catch {
-                self.callbackQueue.async {
-                    TAPVideoPerformanceTrace.endRecordingFinalize(
-                        finalizeTrace,
-                        depthSampleCount: self.metrics.depthSampleCount,
-                        droppedDepthSampleCount: self.metrics.depthOutputDropCount
-                            + self.metrics.depthMetadataDropCount
-                            + self.metrics.depthEncodingDropCount
-                    )
-                    self.cleanupWriterFile()
-                    continuation.resume(throwing: error)
-                }
+                TAPVideoPerformanceTrace.endRecordingFinalize(
+                    finalizeTrace,
+                    depthSampleCount: metrics.depthSampleCount,
+                    droppedDepthSampleCount: metrics.droppedDepthSampleCount
+                )
+                cleanupWriterFile()
+                continuation.resume(throwing: error)
             }
         }
     }
@@ -608,16 +603,6 @@ nonisolated final class TAPVideoRecorder: NSObject, @unchecked Sendable {
 
     private var depthCadenceGapThresholdSeconds: Double {
         max(2 * (nominalDepthIntervalSeconds ?? 0), 0.1)
-    }
-
-    private var nominalDepthIntervalSeconds: Double? {
-        guard let frameRate = sessionConfiguration.device.activeDepthDataFormat?
-            .videoSupportedFrameRateRanges
-            .map(\.maxFrameRate)
-            .max(), frameRate > 0 else {
-            return nil
-        }
-        return 1 / frameRate
     }
 
 }

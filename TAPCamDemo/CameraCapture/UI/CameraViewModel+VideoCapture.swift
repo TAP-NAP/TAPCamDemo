@@ -296,6 +296,22 @@ extension CameraViewModel {
         reason: TAPVideoManifest.StopReason,
         pendingCaptureWorkerClient: (any AppAttestClient)?
     ) async {
+        await stopVideoRecording(
+            reason: reason,
+            finishRecording: { try await sessionController.stopVideoRecording(reason: reason) },
+            processPendingCaptures: {
+                if let pendingCaptureWorkerClient {
+                    await retryPendingCaptures(pendingCaptureWorkerClient: pendingCaptureWorkerClient)
+                }
+            }
+        )
+    }
+
+    func stopVideoRecording(
+        reason: TAPVideoManifest.StopReason,
+        finishRecording: () async throws -> TAPVideoRecordingArtifact,
+        processPendingCaptures: () async -> Void
+    ) async {
         guard isVideoRecording else {
             return
         }
@@ -311,22 +327,19 @@ extension CameraViewModel {
         TAPDiagnostics.cameraCapture.info("video recording stop requested captureID=\(captureID ?? "none", privacy: .private) reason=\(reason.rawValue, privacy: .public)")
         #endif
 
+        var ingestedRecord: TAPPendingCaptureRecord?
         do {
-            let artifact = try await sessionController.stopVideoRecording(reason: reason)
+            let artifact = try await finishRecording()
             let hasRecordedDepth = artifact.manifest.payload.depthCoverage.sampleCount > 0
             let record = try await pendingCaptureStore.ingestVideo(
                 artifact.pendingArtifact
             )
+            ingestedRecord = record
             statusMessage = hasRecordedDepth
                 ? "TAP video queued for signing · depth samples \(artifact.manifest.payload.depthCoverage.sampleCount)"
                 : "TAP video queued for signing · Depth unavailable"
             activeVideoRecordingCaptureID = nil
             videoRecordingTemporaryDirectoryURL = nil
-            await persistVideoPosterIfPossible(for: record)
-            scheduleRecentTAPLibraryPreviewRefresh(afterNanoseconds: 0)
-            if let pendingCaptureWorkerClient {
-                await retryPendingCaptures(pendingCaptureWorkerClient: pendingCaptureWorkerClient)
-            }
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.pendingCapture.info("video pending ingest complete captureID=\(record.captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public) depthSamples=\(artifact.manifest.payload.depthCoverage.sampleCount, privacy: .public)")
             #endif
@@ -341,8 +354,13 @@ extension CameraViewModel {
             TAPDiagnostics.cameraCapture.error("video recording stop failed captureID=\(captureID ?? "none", privacy: .private) error=\(TAPDiagnostics.describe(error), privacy: .public)")
             #endif
         }
-        guard generation == configurationGeneration, !isPausedForAnalysis else { return }
-        videoPreparationState = .needsPreparation
+        if generation == configurationGeneration, !isPausedForAnalysis {
+            videoPreparationState = .needsPreparation
+        }
+        guard let record = ingestedRecord else { return }
+        await persistVideoPosterIfPossible(for: record)
+        scheduleRecentTAPLibraryPreviewRefresh(afterNanoseconds: 0)
+        await processPendingCaptures()
     }
 
     /// Poster generation is derivative-only and deliberately completes before

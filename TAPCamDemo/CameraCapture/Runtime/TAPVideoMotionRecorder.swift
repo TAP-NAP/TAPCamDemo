@@ -26,7 +26,7 @@ nonisolated final class TAPVideoMotionRecorder: @unchecked Sendable {
     private var droppedSampleCount = 0
     private var errorCount = 0
 
-    deinit { manager.stopDeviceMotionUpdates() }
+    deinit { stop() }
 
     func start(captureClock: CMClock?) {
         lock.lock()
@@ -50,7 +50,11 @@ nonisolated final class TAPVideoMotionRecorder: @unchecked Sendable {
 
     func stop(recordingError: Bool = false) {
         lock.lock()
-        if recordingError && isActive { errorCount += 1 }
+        guard isActive else {
+            lock.unlock()
+            return
+        }
+        if recordingError { errorCount += 1 }
         isActive = false
         lock.unlock()
         manager.stopDeviceMotionUpdates()

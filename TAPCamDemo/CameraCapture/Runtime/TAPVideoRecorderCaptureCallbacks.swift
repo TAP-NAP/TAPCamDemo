@@ -136,35 +136,6 @@ nonisolated extension TAPVideoRecorder {
         appendSynchronizedDepth(in: synchronizedDataCollection)
     }
 
-    func handleDepthData(
-        _ output: AVCaptureDepthDataOutput,
-        depthData: AVDepthData,
-        timestamp: CMTime,
-        connection: AVCaptureConnection
-    ) {
-        _ = output
-        _ = connection
-        appendDepthSample(depthData, timestamp: timestamp)
-    }
-
-    func handleDroppedDepthData(
-        _ output: AVCaptureDepthDataOutput,
-        depthData: AVDepthData,
-        timestamp: CMTime,
-        connection: AVCaptureConnection,
-        reason: AVCaptureOutput.DataDroppedReason
-    ) {
-        _ = output
-        _ = depthData
-        _ = connection
-        metrics.depthOutputDropCount += 1
-        recordDepthGap(reason: .outputDrop, at: timestamp)
-        diagnostics.logDepthDropIfNeeded(
-            reason: reason,
-            dropCount: metrics.depthOutputDropCount
-        )
-    }
-
     private func observeSynchronizedPair(
         in collection: AVCaptureSynchronizedDataCollection
     ) {
@@ -222,91 +193,5 @@ nonisolated extension TAPVideoRecorder {
         } else {
             appendDepthSample(depthData.depthData, timestamp: depthData.timestamp)
         }
-    }
-}
-
-nonisolated final class TAPVideoRecorderCallbackRouter: @unchecked Sendable {
-    fileprivate weak var recorder: TAPVideoRecorder?
-
-    func bind(to recorder: TAPVideoRecorder) {
-        self.recorder = recorder
-    }
-}
-
-nonisolated final class TAPVideoRecorderOutputDelegate: NSObject,
-    AVCaptureVideoDataOutputSampleBufferDelegate,
-    AVCaptureAudioDataOutputSampleBufferDelegate,
-    AVCaptureDataOutputSynchronizerDelegate,
-    AVCaptureDepthDataOutputDelegate,
-    @unchecked Sendable {
-    private let router: TAPVideoRecorderCallbackRouter
-
-    init(router: TAPVideoRecorderCallbackRouter) {
-        self.router = router
-        super.init()
-    }
-
-    func captureOutput(
-        _ output: AVCaptureOutput,
-        didDrop sampleBuffer: CMSampleBuffer,
-        from connection: AVCaptureConnection
-    ) {
-        router.recorder?.handleDroppedSampleBuffer(
-            output,
-            sampleBuffer: sampleBuffer,
-            connection: connection
-        )
-    }
-
-    func captureOutput(
-        _ output: AVCaptureOutput,
-        didOutput sampleBuffer: CMSampleBuffer,
-        from connection: AVCaptureConnection
-    ) {
-        router.recorder?.handleOutputSampleBuffer(
-            output,
-            sampleBuffer: sampleBuffer,
-            connection: connection
-        )
-    }
-
-    func dataOutputSynchronizer(
-        _ synchronizer: AVCaptureDataOutputSynchronizer,
-        didOutput synchronizedDataCollection: AVCaptureSynchronizedDataCollection
-    ) {
-        router.recorder?.handleSynchronizedDataCollection(
-            synchronizer,
-            synchronizedDataCollection: synchronizedDataCollection
-        )
-    }
-
-    func depthDataOutput(
-        _ output: AVCaptureDepthDataOutput,
-        didOutput depthData: AVDepthData,
-        timestamp: CMTime,
-        connection: AVCaptureConnection
-    ) {
-        router.recorder?.handleDepthData(
-            output,
-            depthData: depthData,
-            timestamp: timestamp,
-            connection: connection
-        )
-    }
-
-    func depthDataOutput(
-        _ output: AVCaptureDepthDataOutput,
-        didDrop depthData: AVDepthData,
-        timestamp: CMTime,
-        connection: AVCaptureConnection,
-        reason: AVCaptureOutput.DataDroppedReason
-    ) {
-        router.recorder?.handleDroppedDepthData(
-            output,
-            depthData: depthData,
-            timestamp: timestamp,
-            connection: connection,
-            reason: reason
-        )
     }
 }
