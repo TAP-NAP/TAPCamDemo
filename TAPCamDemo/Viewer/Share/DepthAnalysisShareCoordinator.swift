@@ -319,6 +319,7 @@ class DepthAnalysisShareCoordinator: ObservableObject {
         originalResource = readyResource
         record = nil
         certificationState = nil
+        hasDeferredCertificationRefresh = false
         resourcePreparationFailed = false
         preparationState = .idle
         popoverHasAppeared = false
@@ -382,8 +383,17 @@ class DepthAnalysisShareCoordinator: ObservableObject {
         guard let subject,
               subject.usesPendingCaptureResource,
               let captureID = subject.captureID,
-              change?.captureID == captureID,
-              certificationState == .retryPending else {
+              change?.captureID == captureID else {
+            return
+        }
+        // The original copy can still be waiting while the final signing
+        // notification arrives. Finish that copy, then reread the queue record;
+        // cancelling it here would start duplicate resource work.
+        if certificationRefreshID != nil {
+            hasDeferredCertificationRefresh = true
+            return
+        }
+        guard certificationState == .retryPending else {
             return
         }
         guard !isPreparing else {
@@ -610,6 +620,14 @@ class DepthAnalysisShareCoordinator: ObservableObject {
         presentationID: UUID,
         refreshID: UUID
     ) async {
+        defer {
+            if self.presentationID == presentationID,
+               certificationRefreshID == refreshID {
+                certificationRefreshID = nil
+                refreshTask = nil
+                runDeferredCertificationRefreshIfNeeded()
+            }
+        }
         guard let subject else {
             return
         }
@@ -629,16 +647,7 @@ class DepthAnalysisShareCoordinator: ObservableObject {
             return
         }
 
-        // A lookup can already be in flight when the user chooses a format.
-        // Freeze certification for that attempt so a late notification cannot
-        // replace its preparation state or consume its pending handoff artifact.
-        if isPreparing {
-            hasDeferredCertificationRefresh = true
-            return
-        }
-        guard pendingHandoffPresentation == nil else {
-            return
-        }
+        guard canApplyCertificationRefresh() else { return }
 
         var resourceResolutionFailed = false
         var resourceIdentityFailed = false
@@ -679,6 +688,9 @@ class DepthAnalysisShareCoordinator: ObservableObject {
         guard !Task.isCancelled,
               self.presentationID == presentationID,
               certificationRefreshID == refreshID else { return }
+        // Keep an acquired signed lease for a deferred retry, but do not change
+        // the verdict of a share selected while resource acquisition awaited.
+        guard canApplyCertificationRefresh() else { return }
 
         let refreshedState: DepthAnalysisShareCertificationState
         if recordResolutionFailed || resourceResolutionFailed || resourceIdentityFailed {
@@ -697,6 +709,7 @@ class DepthAnalysisShareCoordinator: ObservableObject {
               certificationRefreshID == refreshID else {
             return
         }
+        guard canApplyCertificationRefresh() else { return }
         if let previousState = certificationState,
            previousState != refreshedState {
             cancelPreparation()
@@ -705,7 +718,16 @@ class DepthAnalysisShareCoordinator: ObservableObject {
         record = resolvedRecord
         resourcePreparationFailed = resourceResolutionFailed
         certificationState = refreshedState
-        certificationRefreshID = nil
+    }
+
+    private func canApplyCertificationRefresh() -> Bool {
+        // Any await can overlap an already selected export or its handoff.
+        // The selected request owns its original lease and certification.
+        if isPreparing {
+            hasDeferredCertificationRefresh = true
+            return false
+        }
+        return isPopoverPresented && pendingHandoffPresentation == nil && !hasActiveActivityPresentation
     }
 
     private func resolvedCertificationState(

@@ -275,6 +275,142 @@ struct TAPDepthAnalysisSharePresentationTests {
     }
 
     @MainActor
+    @Test func signingNotificationDuringOriginalResolutionIsDeferredUntilTheCopyFinishes() async throws {
+        let captureID = "signing-during-original-copy"
+        let pending = TAPCamDemoTestFixtures.samplePendingRecord(
+            captureID: captureID, capturedAt: .now, status: .signing, signedPhotoFilename: nil
+        )
+        let signed = TAPCamDemoTestFixtures.samplePendingRecord(
+            captureID: captureID, capturedAt: .now, status: .signed, signedPhotoFilename: "signed.heic"
+        )
+        let records = ShareRecordBox(pending)
+        let originalGate = ShareOriginalResolutionGate()
+        let signedGate = ShareOriginalResolutionGate()
+        let unsignedResource = try Self.makePhotoResource(origin: .pendingCapture(captureID: captureID, selectedSignedPhoto: false))
+        let signedResource = try Self.makePhotoResource(origin: .pendingCapture(captureID: captureID, selectedSignedPhoto: true))
+        guard case .photo(let signedLease) = signedResource else { return }
+        let signedBytes = Data("new-signed-original-snapshot".utf8)
+        try signedBytes.write(to: signedLease.photoURL)
+        let validations = ShareLocalIntegrityInvocationRecorder()
+        var requests: [Bool] = []
+        let model = DepthAnalysisShareCoordinator(
+            recordResolver: .init(captureLoader: { _ in await records.current() }, assetLoader: { _ in nil }),
+            localIntegrityValidator: ShareLocalIntegrityValidatorStub { resource, captureID, packageID in
+                #expect(resource.selectedSignedOriginal == true)
+                guard case .photo(let lease) = resource else {
+                    throw ShareLocalIntegrityStubError.unexpectedValidation
+                }
+                #expect(try Data(contentsOf: lease.photoURL) == signedBytes)
+                await validations.record(resource: resource, expectedCaptureID: captureID, expectedPackageID: packageID)
+            }
+        )
+        model.present(subject: Self.pendingPhotoSubject(captureID: captureID), resourceAccess: .init(
+            isReady: false, acquire: { nil }, acquirePrepared: { requiresSigned in
+                requests.append(requiresSigned)
+                if requiresSigned { return await signedGate.resolve() }
+                return await originalGate.resolve()
+            }
+        ))
+        model.popoverDidAppear()
+        await originalGate.waitUntilRequested()
+        #expect(model.certificationState == nil)
+        await records.replace(with: signed)
+        // Coalesce the final notification and related queue updates while the
+        // already-started unsigned copy remains suspended.
+        for _ in 0..<3 {
+            model.scheduleCertificationRefresh(for: .init(captureID: captureID))
+        }
+        for _ in 0..<20 { await Task.yield() }
+        #expect(requests == [false])
+        #expect(await validations.count() == 0)
+        await originalGate.release(unsignedResource)
+        for _ in 0..<100 where requests.count < 2 { await Task.yield() }
+        #expect(requests == [false, true])
+        #expect(await originalGate.requestCount() == 1)
+        #expect(await signedGate.requestCount() == 1)
+        #expect(model.certificationState != .localIntegrityPassed)
+        #expect(await validations.count() == 0)
+        await signedGate.release(signedResource)
+        for _ in 0..<100 where model.certificationState != .localIntegrityPassed { await Task.yield() }
+        #expect(model.subject?.captureID == captureID)
+        #expect(model.certificationState == .localIntegrityPassed)
+        #expect(!model.resourcePreparationFailed)
+        #expect(await validations.count() == 1)
+        #expect(requests == [false, true])
+    }
+
+    @MainActor
+    @Test(arguments: [false, true])
+    func originalShareSurvivesLateSignedResourceOrIntegrityResult(waitForValidation: Bool) async throws {
+        let captureID = "share-overlaps-signed-refresh"
+        let records = ShareRecordBox(TAPCamDemoTestFixtures.samplePendingRecord(
+            captureID: captureID, capturedAt: .now, status: .signing, signedPhotoFilename: nil
+        ))
+        let signed = TAPCamDemoTestFixtures.samplePendingRecord(
+            captureID: captureID, capturedAt: .now, status: .signed, signedPhotoFilename: "signed.heic"
+        )
+        let unsignedResource = try Self.makePhotoResource(origin: .pendingCapture(captureID: captureID, selectedSignedPhoto: false))
+        let signedResource = try Self.makePhotoResource(origin: .pendingCapture(captureID: captureID, selectedSignedPhoto: true))
+        let signedGate = ShareOriginalResolutionGate()
+        let validationGate = ShareLocalIntegrityStaleResultGate()
+        let artifactGate = ShareArtifactReturnGate()
+        let directoryURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        let fileURL = directoryURL.appendingPathComponent("selected-original.heic")
+        try Data("selected-original".utf8).write(to: fileURL)
+        let artifact = TAPNAPShareArtifact(id: UUID(), kind: .image, fileURL: fileURL, temporaryDirectoryURL: directoryURL, warnings: [])
+        let model = DepthAnalysisShareCoordinator(
+            recordResolver: .init(captureLoader: { _ in await records.current() }, assetLoader: { _ in nil }),
+            artifactPreparer: ShareArtifactPreparerStub(
+                packageOperation: { _ in throw TestError.unexpectedPackagePreparation },
+                imageOperation: { _, requiresSignedPhoto in
+                    #expect(!requiresSignedPhoto)
+                    await artifactGate.signalArtifactReadyAndWaitForRelease()
+                    return artifact
+                }
+            ),
+            localIntegrityValidator: ShareLocalIntegrityValidatorStub { resource, captureID, packageID in
+                try await validationGate.validate(resource: resource, expectedCaptureID: captureID, expectedPackageID: packageID)
+            }
+        )
+        model.present(subject: Self.pendingPhotoSubject(captureID: captureID), resourceAccess: .init(
+            isReady: true, acquire: { unsignedResource }, acquirePrepared: { requiresSigned in
+                #expect(requiresSigned)
+                return await signedGate.resolve()
+            }
+        ))
+        model.popoverDidAppear()
+        for _ in 0..<100 where model.certificationState == nil { await Task.yield() }
+        #expect(model.certificationState == .retryPending)
+        await records.replace(with: signed)
+        model.scheduleCertificationRefresh(for: .init(captureID: captureID))
+        await signedGate.waitUntilRequested()
+        if waitForValidation {
+            await signedGate.release(signedResource)
+            await validationGate.waitUntilFirstValidationStarts()
+        }
+        model.prepare(.image)
+        await artifactGate.waitUntilArtifactIsReady()
+        if !waitForValidation {
+            await signedGate.release(signedResource)
+            for _ in 0..<30 { await Task.yield() }
+            #expect(await validationGate.invocationCount() == 0)
+            #expect(model.isPreparing)
+            #expect(model.certificationState == .retryPending)
+        }
+        await artifactGate.releaseArtifact()
+        for _ in 0..<100 where model.isPopoverPresented { await Task.yield() }
+        model.popoverDidDisappear()
+        #expect(model.activityPayload?.id == artifact.id)
+        await validationGate.releaseFirstValidationAsMismatch()
+        for _ in 0..<30 { await Task.yield() }
+        #expect(model.activityPayload?.id == artifact.id)
+        #expect(model.certificationState == .retryPending)
+        #expect(FileManager.default.fileExists(atPath: fileURL.path))
+        model.activityPresentationDidEnd(expectedArtifactID: artifact.id)
+        try await Self.waitUntilDirectoryIsRemoved(directoryURL)
+    }
+
+    @MainActor
     @Test func shareResourceAccessCannotAcquireUntilCompleteOriginalIsReady() async throws {
         let unavailable = DepthAnalysisShareResourceAccess(
             isReady: false,
@@ -1342,7 +1478,7 @@ struct TAPDepthAnalysisSharePresentationTests {
         await recordBox.replace(with: signedRecord)
         await model.refreshCertification()
 
-        #expect(model.certificationState == .failed)
+        #expect(model.certificationState == .retryPending)
         #expect(await validationRecorder.count() == 0)
         #expect(model.activityPayload != nil)
         #expect(FileManager.default.fileExists(atPath: artifactURL.path))
