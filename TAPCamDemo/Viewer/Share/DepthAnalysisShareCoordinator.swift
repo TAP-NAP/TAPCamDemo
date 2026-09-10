@@ -109,6 +109,7 @@ nonisolated struct DepthAnalysisShareArtifactPreparer: DepthAnalysisShareArtifac
 @MainActor
 class DepthAnalysisShareCoordinator: ObservableObject {
     @Published private(set) var certificationState: DepthAnalysisShareCertificationState?
+    @Published private(set) var resourcePreparationFailed = false
     @Published private(set) var preparationState: DepthAnalysisSharePreparationState = .idle
     @Published private(set) var isPopoverPresented = false
     @Published private(set) var activityPresentation: TAPShareActivityPresentation?
@@ -122,6 +123,7 @@ class DepthAnalysisShareCoordinator: ObservableObject {
 
     private(set) var subject: DepthAnalysisShareSubject?
     private var originalResource: DepthAnalysisShareOriginalResource?
+    private var resourceAccess: DepthAnalysisShareResourceAccess?
     private var record: TAPPendingCaptureRecord?
     private var presentationID: UUID?
     private var preparationID: UUID?
@@ -174,11 +176,11 @@ class DepthAnalysisShareCoordinator: ObservableObject {
     }
 
     var isImageAvailable: Bool {
-        subject?.mediaKind == .photo && certificationState != nil
+        subject?.mediaKind == .photo && originalResource != nil && certificationState != nil
     }
 
     var isVideoAvailable: Bool {
-        subject?.mediaKind == .video && certificationState != nil
+        subject?.mediaKind == .video && originalResource != nil && certificationState != nil
     }
 
     var canPreparePackage: Bool {
@@ -259,12 +261,12 @@ class DepthAnalysisShareCoordinator: ObservableObject {
 
     func togglePresentation(
         for subject: DepthAnalysisShareSubject,
-        resource: DepthAnalysisShareOriginalResource
+        resourceAccess: DepthAnalysisShareResourceAccess
     ) {
         if isPopoverPresented {
             setPopoverPresented(false)
         } else {
-            present(subject: subject, resource: resource)
+            present(subject: subject, resourceAccess: resourceAccess)
         }
     }
 
@@ -272,25 +274,33 @@ class DepthAnalysisShareCoordinator: ObservableObject {
         subject: DepthAnalysisShareSubject,
         resource: DepthAnalysisShareOriginalResource
     ) {
-        guard !hasActiveActivityPresentation,
-              !subject.hasIdentityConflict,
-              subject.mediaKind == resource.mediaKind,
-              resource.matches(subject: subject) else {
-            return
-        }
+        guard resource.matches(subject: subject) else { return }
+        present(
+            subject: subject,
+            resourceAccess: DepthAnalysisShareResourceAccess(isReady: true, acquire: { resource })
+        )
+    }
+
+    func present(
+        subject: DepthAnalysisShareSubject,
+        resourceAccess: DepthAnalysisShareResourceAccess
+    ) {
+        guard !hasActiveActivityPresentation, !subject.hasIdentityConflict else { return }
+        let readyResource = resourceAccess.acquire()
+        guard readyResource.map({ $0.matches(subject: subject) }) ?? true else { return }
         cancelPreparation(runsDeferredRefresh: false)
         discardPendingHandoff()
         refreshTask?.cancel()
         refreshTask = nil
 
-        let currentPresentationID = UUID()
-        let currentRefreshID = UUID()
-        presentationID = currentPresentationID
-        certificationRefreshID = currentRefreshID
+        presentationID = UUID()
+        certificationRefreshID = UUID()
         self.subject = subject
-        originalResource = resource
+        self.resourceAccess = resourceAccess
+        originalResource = readyResource
         record = nil
         certificationState = nil
+        resourcePreparationFailed = false
         preparationState = .idle
         popoverHasAppeared = false
         isPopoverPresented = true
@@ -505,6 +515,20 @@ class DepthAnalysisShareCoordinator: ObservableObject {
         }
     }
 
+    func retryOriginalResource() {
+        guard resourcePreparationFailed, isPopoverPresented, !isPreparing,
+              let presentationID else { return }
+        resourcePreparationFailed = false
+        certificationState = nil
+        originalResource = nil
+        let refreshID = UUID()
+        certificationRefreshID = refreshID
+        refreshTask?.cancel()
+        refreshTask = Task { [weak self] in
+            await self?.refreshCertification(presentationID: presentationID, refreshID: refreshID)
+        }
+    }
+
     func cancelFailure() {
         guard case .failed = preparationState else {
             return
@@ -599,8 +623,48 @@ class DepthAnalysisShareCoordinator: ObservableObject {
             return
         }
 
+        var resourceResolutionFailed = false
+        var resourceIdentityFailed = false
+        if !recordResolutionFailed {
+            let requiresSignedOriginal = subject.usesPendingCaptureResource
+                && (subject.mediaKind == .photo
+                    ? resolvedRecord?.signedPhotoFilename != nil
+                    : resolvedRecord?.videoArtifactState == .signed)
+            let needsSignedRefresh = requiresSignedOriginal
+                && originalResource?.selectedSignedOriginal != true
+            if originalResource == nil || needsSignedRefresh {
+                do {
+                    guard let resourceAccess else {
+                        throw TAPNAPShareArtifactError.shareResourceUnavailable
+                    }
+                    let resource = try await resourceAccess.acquirePrepared(
+                        requiresSignedOriginal: requiresSignedOriginal
+                    )
+                    try Task.checkCancellation()
+                    guard self.presentationID == presentationID,
+                          certificationRefreshID == refreshID else { return }
+                    guard resource.matches(subject: subject) else {
+                        throw DepthAnalysisShareRecordResolutionError.identityConflict
+                    }
+                    guard !requiresSignedOriginal || resource.selectedSignedOriginal == true else {
+                        throw TAPNAPShareArtifactError.shareResourceUnavailable
+                    }
+                    originalResource = resource
+                } catch is CancellationError {
+                    return
+                } catch DepthAnalysisShareRecordResolutionError.identityConflict {
+                    resourceIdentityFailed = true
+                } catch {
+                    resourceResolutionFailed = true
+                }
+            }
+        }
+        guard !Task.isCancelled,
+              self.presentationID == presentationID,
+              certificationRefreshID == refreshID else { return }
+
         let refreshedState: DepthAnalysisShareCertificationState
-        if recordResolutionFailed {
+        if recordResolutionFailed || resourceResolutionFailed || resourceIdentityFailed {
             // A missing queue record is normalized to nil by the resolver.
             // Every remaining error is corruption, ambiguity, or an identity
             // conflict and must fail closed without touching media validation.
@@ -622,6 +686,7 @@ class DepthAnalysisShareCoordinator: ObservableObject {
             discardPendingHandoff()
         }
         record = resolvedRecord
+        resourcePreparationFailed = resourceResolutionFailed
         certificationState = refreshedState
         certificationRefreshID = nil
     }
@@ -865,8 +930,10 @@ class DepthAnalysisShareCoordinator: ObservableObject {
         certificationRefreshID = nil
         subject = nil
         originalResource = nil
+        resourceAccess = nil
         record = nil
         certificationState = nil
+        resourcePreparationFailed = false
         preparationState = .idle
         isPopoverPresented = false
         popoverHasAppeared = false

@@ -118,27 +118,51 @@ nonisolated enum DepthAnalysisShareOriginalResource: @unchecked Sendable {
     }
 }
 
-/// Lightweight bridge from a Viewer-owned resource owner to the stable Share
-/// toolbar leaf. `isReady` controls affordance availability; `acquire` freezes
-/// the exact bytes only after the user taps Share.
+/// A capability for the source displayed when Share is tapped. The asynchronous
+/// closure captures that source's owner, never a later current pager item, and
+/// joins its existing original-resource request.
 @MainActor
 struct DepthAnalysisShareResourceAccess {
     let isReady: Bool
     private let acquireHandler: @MainActor () -> DepthAnalysisShareOriginalResource?
+    private let preparedHandler: (@MainActor (Bool) async throws -> DepthAnalysisShareOriginalResource)?
 
     init(
         isReady: Bool,
-        acquire: @escaping @MainActor () -> DepthAnalysisShareOriginalResource?
+        acquire: @escaping @MainActor () -> DepthAnalysisShareOriginalResource?,
+        acquirePrepared: (@MainActor (Bool) async throws -> DepthAnalysisShareOriginalResource)? = nil
     ) {
         self.isReady = isReady
         acquireHandler = acquire
+        preparedHandler = acquirePrepared
     }
 
     func acquire() -> DepthAnalysisShareOriginalResource? {
-        guard isReady else {
-            return nil
-        }
+        guard isReady else { return nil }
         return acquireHandler()
+    }
+
+    func acquirePrepared(requiresSignedOriginal: Bool) async throws -> DepthAnalysisShareOriginalResource {
+        if let preparedHandler {
+            return try await preparedHandler(requiresSignedOriginal)
+        }
+        guard let resource = acquire(),
+              !requiresSignedOriginal || resource.selectedSignedOriginal == true else {
+            throw TAPNAPShareArtifactError.shareResourceUnavailable
+        }
+        return resource
+    }
+}
+
+nonisolated extension DepthAnalysisShareOriginalResource {
+    var selectedSignedOriginal: Bool? {
+        switch self {
+        case .photo(let lease):
+            if case .pendingCapture(_, let signed) = lease.origin { return signed }
+            return nil
+        case .video(let lease):
+            return lease.selectedSignedVideo
+        }
     }
 }
 

@@ -125,6 +125,156 @@ struct TAPDepthAnalysisSharePresentationTests {
     }
 
     @MainActor
+    @Test func sharePresentsBeforeOriginalResolutionAndValidatesOnlyResolvedBytes() async throws {
+        let gate = ShareOriginalResolutionGate()
+        let calls = ShareLocalIntegrityInvocationRecorder()
+        let subject = DepthAnalysisShareSubject(
+            id: "cloud-photo", mediaID: .photosAsset("cloud-photo"),
+            captureID: nil, assetID: "cloud-photo"
+        )
+        let model = DepthAnalysisShareCoordinator(
+            recordResolver: .init(captureLoader: { _ in throw TestError.unexpectedCaptureLookup }, assetLoader: { _ in nil }),
+            localIntegrityValidator: ShareLocalIntegrityValidatorStub { resource, captureID, packageID in
+                await calls.record(resource: resource, expectedCaptureID: captureID, expectedPackageID: packageID)
+            }
+        )
+        model.present(subject: subject, resourceAccess: .init(
+            isReady: false, acquire: { nil }, acquirePrepared: { _ in await gate.resolve() }
+        ))
+        #expect(model.isPopoverPresented)
+        #expect(model.certificationState == nil)
+        #expect(!model.isImageAvailable)
+        #expect(await gate.requestCount() == 0)
+        model.popoverDidAppear()
+        await gate.waitUntilRequested()
+        #expect(model.certificationState == nil)
+        #expect(await calls.count() == 0)
+        await gate.release(try Self.makePhotoResource(origin: .photosAsset(assetID: "cloud-photo")))
+        for _ in 0..<100 where model.certificationState == nil { await Task.yield() }
+        #expect(model.certificationState == .localIntegrityPassed)
+        #expect(model.isImageAvailable)
+        #expect(await calls.count() == 1)
+    }
+
+    @MainActor
+    @Test func originalLoadFailureRetriesTheSameSubjectWithoutClaimingIntegrityFailure() async throws {
+        let subject = DepthAnalysisShareSubject(id: "retry-original", mediaID: .photosAsset("retry-original"), captureID: nil, assetID: "retry-original")
+        let resource = try Self.makePhotoResource(origin: .photosAsset(assetID: "retry-original"))
+        let calls = ShareLocalIntegrityInvocationRecorder()
+        var attempts = 0
+        let model = DepthAnalysisShareCoordinator(
+            recordResolver: .init(captureLoader: { _ in throw TestError.unexpectedCaptureLookup }, assetLoader: { _ in nil }),
+            localIntegrityValidator: ShareLocalIntegrityValidatorStub { resource, captureID, packageID in
+                await calls.record(resource: resource, expectedCaptureID: captureID, expectedPackageID: packageID)
+            }
+        )
+        model.present(subject: subject, resourceAccess: .init(
+            isReady: false, acquire: { nil }, acquirePrepared: { _ in
+                attempts += 1
+                if attempts == 1 { throw TAPNAPShareArtifactError.shareResourceUnavailable }
+                return resource
+            }
+        ))
+        model.popoverDidAppear()
+        for _ in 0..<100 where model.certificationState == nil { await Task.yield() }
+        #expect(model.resourcePreparationFailed)
+        #expect(model.certificationState == .failed)
+        #expect(await calls.count() == 0)
+        model.retryOriginalResource()
+        #expect(model.certificationState == nil)
+        for _ in 0..<100 where model.certificationState == nil { await Task.yield() }
+        #expect(model.subject == subject)
+        #expect(attempts == 2)
+        #expect(model.certificationState == .localIntegrityPassed)
+        #expect(!model.resourcePreparationFailed)
+        #expect(await calls.count() == 1)
+    }
+
+    @MainActor
+    @Test func staleOriginalResolutionCannotReplaceNewShareSubject() async throws {
+        let gate = ShareOriginalResolutionGate()
+        let model = DepthAnalysisShareCoordinator(
+            recordResolver: .init(captureLoader: { _ in throw TestError.unexpectedCaptureLookup }, assetLoader: { _ in nil }),
+            localIntegrityValidator: ShareLocalIntegrityValidatorStub.succeeding
+        )
+        let first = DepthAnalysisShareSubject(id: "first", mediaID: .photosAsset("first"), captureID: nil, assetID: "first")
+        let second = DepthAnalysisShareSubject(id: "second", mediaID: .photosAsset("second"), captureID: nil, assetID: "second")
+        model.present(subject: first, resourceAccess: .init(
+            isReady: false, acquire: { nil }, acquirePrepared: { _ in await gate.resolve() }
+        ))
+        model.popoverDidAppear()
+        await gate.waitUntilRequested()
+        model.present(subject: second, resource: try Self.makePhotoResource(origin: .photosAsset(assetID: "second")))
+        model.popoverDidAppear()
+        for _ in 0..<100 where model.certificationState == nil { await Task.yield() }
+        await gate.release(try Self.makePhotoResource(origin: .photosAsset(assetID: "first")))
+        for _ in 0..<30 { await Task.yield() }
+        #expect(model.subject == second)
+        #expect(model.certificationState == .localIntegrityPassed)
+    }
+
+    @MainActor
+    @Test func resolvedOriginalFromAnotherSourceFailsBeforeIntegrityCheck() async throws {
+        let calls = ShareLocalIntegrityInvocationRecorder()
+        let wrong = try Self.makePhotoResource(origin: .photosAsset(assetID: "other"))
+        let model = DepthAnalysisShareCoordinator(
+            recordResolver: .init(captureLoader: { _ in throw TestError.unexpectedCaptureLookup }, assetLoader: { _ in nil }),
+            localIntegrityValidator: ShareLocalIntegrityValidatorStub { resource, captureID, packageID in
+                await calls.record(resource: resource, expectedCaptureID: captureID, expectedPackageID: packageID)
+            }
+        )
+        model.present(
+            subject: .init(id: "selected", mediaID: .photosAsset("selected"), captureID: nil, assetID: "selected"),
+            resourceAccess: .init(isReady: false, acquire: { nil }, acquirePrepared: { _ in wrong })
+        )
+        model.popoverDidAppear()
+        for _ in 0..<100 where model.certificationState == nil { await Task.yield() }
+        #expect(model.certificationState == .failed)
+        #expect(!model.resourcePreparationFailed)
+        #expect(!model.isImageAvailable)
+        #expect(await calls.count() == 0)
+    }
+
+    @MainActor
+    @Test func pendingSignatureTransitionAcquiresNewSameSourceBytesBeforeVerification() async throws {
+        let captureID = "refresh-signed-source"
+        let pending = TAPCamDemoTestFixtures.samplePendingRecord(
+            captureID: captureID, capturedAt: .now, status: .waitingNetwork, signedPhotoFilename: nil
+        )
+        let signed = TAPCamDemoTestFixtures.samplePendingRecord(
+            captureID: captureID, capturedAt: .now, status: .signed, signedPhotoFilename: "signed.heic"
+        )
+        let records = ShareRecordBox(pending)
+        let unsignedResource = try Self.makePhotoResource(origin: .pendingCapture(captureID: captureID, selectedSignedPhoto: false))
+        let signedResource = try Self.makePhotoResource(origin: .pendingCapture(captureID: captureID, selectedSignedPhoto: true))
+        let calls = ShareLocalIntegrityInvocationRecorder()
+        var requestedSigned = false
+        let model = DepthAnalysisShareCoordinator(
+            recordResolver: .init(captureLoader: { _ in await records.current() }, assetLoader: { _ in nil }),
+            localIntegrityValidator: ShareLocalIntegrityValidatorStub { resource, captureID, packageID in
+                #expect(resource.selectedSignedOriginal == true)
+                await calls.record(resource: resource, expectedCaptureID: captureID, expectedPackageID: packageID)
+            }
+        )
+        model.present(subject: Self.pendingPhotoSubject(captureID: captureID), resourceAccess: .init(
+            isReady: true, acquire: { unsignedResource }, acquirePrepared: { requiresSigned in
+                requestedSigned = requiresSigned
+                return signedResource
+            }
+        ))
+        model.popoverDidAppear()
+        for _ in 0..<100 where model.certificationState == nil { await Task.yield() }
+        #expect(model.certificationState == .retryPending)
+        #expect(await calls.count() == 0)
+        await records.replace(with: signed)
+        model.scheduleCertificationRefresh(for: .init(captureID: captureID))
+        for _ in 0..<100 where model.certificationState != .localIntegrityPassed { await Task.yield() }
+        #expect(requestedSigned)
+        #expect(model.certificationState == .localIntegrityPassed)
+        #expect(await calls.count() == 1)
+    }
+
+    @MainActor
     @Test func shareResourceAccessCannotAcquireUntilCompleteOriginalIsReady() async throws {
         let unavailable = DepthAnalysisShareResourceAccess(
             isReady: false,
@@ -2467,5 +2617,30 @@ private nonisolated struct RegressingProgressShareArtifactPreparerStub:
         progress: @escaping TAPNAPShareArtifactBuilder.ProgressHandler
     ) async throws -> TAPNAPShareArtifact {
         throw CancellationError()
+    }
+}
+
+private actor ShareOriginalResolutionGate {
+    private var requests = 0
+    private var continuation: CheckedContinuation<DepthAnalysisShareOriginalResource, Never>?
+    private var requestWaiters: [CheckedContinuation<Void, Never>] = []
+
+    func resolve() async -> DepthAnalysisShareOriginalResource {
+        requests += 1
+        requestWaiters.forEach { $0.resume() }
+        requestWaiters.removeAll()
+        return await withCheckedContinuation { continuation = $0 }
+    }
+
+    func waitUntilRequested() async {
+        if requests > 0 { return }
+        await withCheckedContinuation { requestWaiters.append($0) }
+    }
+
+    func requestCount() -> Int { requests }
+
+    func release(_ resource: DepthAnalysisShareOriginalResource) {
+        continuation?.resume(returning: resource)
+        continuation = nil
     }
 }

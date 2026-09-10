@@ -26,7 +26,7 @@ struct DepthViewerShareControl: View {
             accessibilityIdentifier: "tap.viewer.share",
             foregroundStyle: .primary,
             isEnabled: subject != nil
-                && resourceAccess?.isReady == true
+                && resourceAccess != nil
                 && subject?.hasIdentityConflict == false
                 && !coordinator.hasActiveActivityPresentation,
             accessibilityValue: accessibilityValue,
@@ -97,15 +97,14 @@ struct DepthViewerShareControl: View {
             mediaKind: subject?.mediaKind,
             resourceReady: resourceAccess?.isReady == true
         )
-        let resource = resourceAccess?.acquire()
         guard let subject,
-              let resource else {
+              let resourceAccess else {
             return
         }
         if interactionHapticsEnabled {
             feedback.opened()
         }
-        coordinator.togglePresentation(for: subject, resource: resource)
+        coordinator.togglePresentation(for: subject, resourceAccess: resourceAccess)
     }
 
     private func selectionFeedback() {
