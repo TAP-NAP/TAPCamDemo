@@ -108,45 +108,6 @@ actor PhotoKitLibraryMediaFetcher: LibraryMediaFetching {
         )
     }
 
-    func photoOriginalData(
-        for request: LibraryMediaAssetRequest,
-        progress: @escaping @Sendable (Double?) -> Void = { _ in }
-    ) async throws -> Data {
-        try Task.checkCancellation()
-        let asset = try Self.asset(localIdentifier: request.assetLocalIdentifier)
-        guard let resource = PHAssetResource.assetResources(for: asset).first(where: { resource in
-            resource.type == .photo || resource.type == .fullSizePhoto
-        }) else {
-            throw MediaFetchFailure.assetRemoved
-        }
-
-        let localBridge = PhotoKitResourceRequestBridge(
-            sink: PhotoKitResourceDataSink(),
-            allowsNetworkAccess: false,
-            progress: { _ in }
-        )
-        do {
-            return try await withTaskCancellationHandler {
-                try await localBridge.start(resource: resource)
-            } onCancel: {
-                localBridge.cancel()
-            }
-        } catch is PhotoKitNetworkAccessRequired {
-            try Task.checkCancellation()
-            progress(nil)
-            let networkBridge = PhotoKitResourceRequestBridge(
-                sink: PhotoKitResourceDataSink(),
-                allowsNetworkAccess: true,
-                progress: progress
-            )
-            return try await withTaskCancellationHandler {
-                try await networkBridge.start(resource: resource)
-            } onCancel: {
-                networkBridge.cancel()
-            }
-        }
-    }
-
     func photoDisplayData(
         for request: LibraryMediaAssetRequest,
         pixelLength: Int,

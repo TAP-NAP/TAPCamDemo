@@ -195,8 +195,6 @@ nonisolated private struct TAPGalleryFixtureMediaFetcher: LibraryMediaFetching {
         await Self.image(request.assetLocalIdentifier, width: 960).jpegData(compressionQuality: 0.9) ?? Data()
     }
 
-    func photoOriginalData(for request: LibraryMediaAssetRequest,
-                           progress: @escaping @Sendable (Double?) -> Void) async throws -> Data { throw MediaFetchFailure.decode }
     func videoOriginalFile(for request: LibraryMediaAssetRequest,
                            progress: @escaping @Sendable (Double?) -> Void) async throws -> LibraryManagedTemporaryFile {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
