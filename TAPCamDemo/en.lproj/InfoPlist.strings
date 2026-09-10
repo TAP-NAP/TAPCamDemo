@@ -2,5 +2,6 @@
 "NSCameraUsageDescription" = "TAPCam captures photos and videos with depth data from the camera.";
 "NSLocationWhenInUseUsageDescription" = "TAPCam can attach capture location to TAP photo and video metadata.";
 "NSMicrophoneUsageDescription" = "TAPCam can record audio for Live Photos and TAP Videos when audio recording is enabled.";
+"NSMotionUsageDescription" = "TAPCam records device motion alongside TAP Video to describe camera movement during capture.";
 "NSPhotoLibraryAddUsageDescription" = "TAPCam saves depth photos and TAP Videos into the TAPCamDepth photo album.";
 "NSPhotoLibraryUsageDescription" = "TAPCam creates and reuses the TAPCamDepth photo album for depth photos and TAP Videos.";

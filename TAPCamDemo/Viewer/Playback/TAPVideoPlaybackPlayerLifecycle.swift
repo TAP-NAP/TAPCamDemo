@@ -11,6 +11,7 @@ final class TAPVideoPlaybackPlayerLifecycle {
     private let player: AVPlayer
     private let source: TAPVideoPlaybackSource
     private let depthPipeline: TAPVideoDepthPipeline
+    private let pointCloudPlayback: TAPVideoPointCloudPlayback?
     private let canRestartDepthPresentation: () -> Bool
 
     private var timeJumpObserver: NSObjectProtocol?
@@ -27,11 +28,13 @@ final class TAPVideoPlaybackPlayerLifecycle {
         player: AVPlayer,
         source: TAPVideoPlaybackSource,
         depthPipeline: TAPVideoDepthPipeline,
+        pointCloudPlayback: TAPVideoPointCloudPlayback? = nil,
         canRestartDepthPresentation: @escaping () -> Bool
     ) {
         self.player = player
         self.source = source
         self.depthPipeline = depthPipeline
+        self.pointCloudPlayback = pointCloudPlayback
         self.canRestartDepthPresentation = canRestartDepthPresentation
     }
 
@@ -51,7 +54,7 @@ final class TAPVideoPlaybackPlayerLifecycle {
     }
 
     func prerollIfReady() {
-        guard !isInvalidated, player.status == .readyToPlay else {
+        guard !isInvalidated, player.status == .readyToPlay, player.rate == 0 else {
             return
         }
         player.preroll(atRate: 1) { _ in }
@@ -121,6 +124,7 @@ final class TAPVideoPlaybackPlayerLifecycle {
                     .flatMap { $0.isFinite ? max(0, $0) : nil }
                     ?? currentTimeSeconds
                 currentTimeSeconds = seconds
+                pointCloudPlayback?.reset(at: seconds)
                 depthPipeline.handleDiscontinuity(
                     playbackTimeSeconds: seconds,
                     canRestartPresentation: canRestartDepthPresentation()
@@ -141,6 +145,7 @@ final class TAPVideoPlaybackPlayerLifecycle {
                 }
                 let seconds = max(0, rawSeconds)
                 if abs(seconds - currentTimeSeconds) > 1 {
+                    pointCloudPlayback?.reset(at: seconds)
                     depthPipeline.handleDiscontinuity(
                         playbackTimeSeconds: seconds,
                         canRestartPresentation: canRestartDepthPresentation()
@@ -148,6 +153,7 @@ final class TAPVideoPlaybackPlayerLifecycle {
                 }
                 currentTimeSeconds = seconds
                 depthPipeline.updatePlaybackTime(seconds)
+                pointCloudPlayback?.update(at: seconds)
             }
         }
     }

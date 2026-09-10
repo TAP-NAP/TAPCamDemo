@@ -19,7 +19,7 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
         "Selected, Ready",
         "已选中，已就绪"
     ]
-    private static let comingSoonValueTokens = ["Coming soon", "即将推出"]
+    private static let unavailableThreeDValueTokens = ["3D depth unavailable"]
     private static let pauseLabelTokens = ["Pause video", "暂停视频"]
 
     override func setUpWithError() throws {
@@ -192,49 +192,24 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
         keepShareEvidence("video-system-share-cancelled")
     }
 
-    func testVideoThreeDShowsComingSoonWithoutChangingModeOrPlayback() throws {
-        let app = launchFixture(
-            scenario: "performance-playback-15s",
-            autoPlay: true
-        )
+    func testVideoThreeDFailsClosedWithoutMetricCalibration() throws {
+        let app = launchFixture(scenario: "performance-playback-15s", autoPlay: true)
         try openFixture(in: app)
-
-        let raw = app.buttons[Self.rawIdentifier]
         let threeD = app.buttons[Self.threeDIdentifier]
-        let playPause = app.buttons[Self.playPauseIdentifier]
-        XCTAssertTrue(threeD.isEnabled && threeD.isHittable)
-        XCTAssertTrue(
-            waitForElement(
-                playPause,
-                labelContainingAny: Self.pauseLabelTokens,
-                timeout: 3
-            ),
-            "The fixture did not begin playback before the 3D interaction."
-        )
+        XCTAssertTrue(threeD.exists)
+        XCTAssertFalse(threeD.isEnabled)
+        XCTAssertTrue(value(of: app.buttons[Self.rawIdentifier], containsAny: Self.selectedValueTokens))
+    }
 
+    func testVideoThreeDPlaysRGB() throws {
+        let app = launchFixture(scenario: "point-cloud-rgb")
+        try openFixture(in: app)
+        let threeD = app.buttons[Self.threeDIdentifier]
+        XCTAssertTrue(threeD.isEnabled)
         threeD.tap()
-        let toast = element(Self.edgeToastIdentifier, in: app)
-        XCTAssertTrue(toast.waitForExistence(timeout: 2))
-        XCTAssertTrue(Self.comingSoonValueTokens.contains(toast.label))
-        XCTAssertTrue(value(of: raw, containsAny: Self.selectedValueTokens))
-        XCTAssertFalse(value(of: threeD, containsAny: Self.selectedValueTokens))
-        XCTAssertTrue(Self.pauseLabelTokens.contains(playPause.label))
-        keepScreenshot(of: app, named: "video_3d_coming-soon_toolbar_en_L")
-
-        Thread.sleep(forTimeInterval: 1.2)
-        threeD.tap()
-        Thread.sleep(forTimeInterval: 1.0)
-        XCTAssertTrue(
-            toast.exists,
-            "A repeated 3D tap must refresh the current toast dismissal token."
-        )
-        XCTAssertEqual(
-            app.staticTexts.matching(identifier: Self.edgeToastIdentifier).count,
-            1,
-            "Repeated 3D taps must replace one toast instead of stacking copies."
-        )
-        XCTAssertTrue(value(of: raw, containsAny: Self.selectedValueTokens))
-        XCTAssertTrue(Self.pauseLabelTokens.contains(playPause.label))
+        let cloud = app.otherElements["tap.video.point-cloud"]
+        XCTAssertTrue(waitForValue(cloud, containingAny: ["RGB points"], timeout: 8))
+        keepScreenshot(of: app, named: "video-3d-rgb-paused")
     }
 
     func testCustomTransportCanSeek() throws {
@@ -531,7 +506,7 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
         XCTAssertTrue(
             value(
                 of: app.buttons[Self.threeDIdentifier],
-                containsAny: ["即将推出"]
+                containsAny: Self.unavailableThreeDValueTokens
             )
         )
     }
@@ -568,13 +543,9 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
             ),
             "The expected viewer mode did not publish its selected state."
         )
-        XCTAssertTrue(
-            threeD.isEnabled && threeD.isHittable,
-            "Video 3D must remain visible and physically tappable."
-        )
-        XCTAssertTrue(
-            value(of: threeD, containsAny: Self.comingSoonValueTokens)
-        )
+        if !threeD.isEnabled {
+            XCTAssertTrue(value(of: threeD, containsAny: Self.unavailableThreeDValueTokens))
+        }
         XCTAssertTrue(app.buttons[Self.playPauseIdentifier].exists)
         XCTAssertTrue(app.sliders[Self.scrubberIdentifier].exists)
     }

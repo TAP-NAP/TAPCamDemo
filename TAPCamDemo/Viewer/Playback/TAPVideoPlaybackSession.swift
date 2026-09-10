@@ -31,8 +31,11 @@ final class TAPVideoPlaybackSession {
     private(set) var state: TAPVideoPlaybackLoadState = .idle
     private(set) var loadingPreviewImage: UIImage?
     private(set) var player: AVPlayer?
+    private(set) var transportModel: TAPVideoPlaybackTransportModel?
     private(set) var registeredDepthAvailability: TAPVideoRegisteredDepthAvailability = .checking
     private(set) var isTwoDPlaybackReady = false
+    private(set) var isThreeDPlaybackReady = false
+    private(set) var isThreeDDepthAvailable = false
     private(set) var depthGapNotice: String?
     private(set) var requestKey: MediaFetchRequestKey?
     private(set) var isOriginalResourceReady = false
@@ -46,6 +49,7 @@ final class TAPVideoPlaybackSession {
     @ObservationIgnored private let source: TAPVideoPlaybackSource
     @ObservationIgnored private let registrationAdapter: any TAPVideoDepthRegistrationAdapting
     @ObservationIgnored private let mediaFetcher: any LibraryMediaFetching
+    @ObservationIgnored private let pointCloudPlayback = TAPVideoPointCloudPlayback()
     @ObservationIgnored private let depthPipeline: TAPVideoDepthPipeline
     @ObservationIgnored private var activeRequestKey: MediaFetchRequestKey?
     @ObservationIgnored private var resource: TAPVideoPlaybackResolvedResource?
@@ -70,6 +74,9 @@ final class TAPVideoPlaybackSession {
             generation: requestGeneration,
             purpose: .videoOriginal
         )
+        pointCloudPlayback.onStateChange = { [weak self] ready in
+            self?.isThreeDPlaybackReady = ready
+        }
         depthPipeline.onPresentationStateChange = { [weak self] state in
             self?.isTwoDPlaybackReady = state.isReady
             self?.depthGapNotice = state.gapNotice
@@ -87,6 +94,8 @@ final class TAPVideoPlaybackSession {
     var hasActiveMediaFetch: Bool {
         state == .loading
     }
+
+    var pointCloudStore: TAPVideoPointCloudStore { pointCloudPlayback.store }
 
     var overlayStore: TAPVideoDepthOverlayStore {
         depthPipeline.overlayStore
@@ -109,7 +118,8 @@ final class TAPVideoPlaybackSession {
         let lifecycle = TAPVideoPlaybackPlayerLifecycle(
             player: player,
             source: source,
-            depthPipeline: depthPipeline
+            depthPipeline: depthPipeline,
+            pointCloudPlayback: pointCloudPlayback
         ) { [weak self] in
             self?.state == .ready && self?.isRegisteredDepthAvailable == true
         }
@@ -146,7 +156,7 @@ final class TAPVideoPlaybackSession {
         }
         shouldResumeAfterInteractivePaging = playbackIntentState
             .beginPagingSuspension(currentStatus: player.timeControlStatus)
-        player.currentItem?.cancelPendingSeeks()
+        transportModel?.cancelPendingSeek()
         player.cancelPendingPrerolls()
         player.pause()
     }
@@ -165,9 +175,10 @@ final class TAPVideoPlaybackSession {
     }
 
     func handleDidEnterBackground() {
+        pointCloudPlayback.suspend()
         shouldResumeAfterInteractivePaging = false
         playbackIntentState.reset()
-        player?.pause()
+        transportModel?.pauseForBackground()
         guard hasActiveMediaFetch else {
             return
         }
@@ -176,6 +187,7 @@ final class TAPVideoPlaybackSession {
     }
 
     func resumeCanceledFetchAfterBackground() {
+        pointCloudPlayback.resume(at: currentPlaybackTimeSeconds)
         guard shouldResumeFetchAfterBackground, requestKey == nil else {
             return
         }
@@ -252,6 +264,7 @@ final class TAPVideoPlaybackSession {
     }
 
     func handleMemoryWarning() {
+        pointCloudPlayback.reset(at: currentPlaybackTimeSeconds)
         depthPipeline.handleMemoryWarning(
             playbackTimeSeconds: playerLifecycle?.currentTimeSeconds ?? 0,
             canRestartPresentation: state == .ready && isRegisteredDepthAvailable
@@ -274,6 +287,7 @@ final class TAPVideoPlaybackSession {
     }
 
     func prepareTwoDPlaybackGate() {
+        pointCloudPlayback.cancel()
         guard state == .ready,
               isRegisteredDepthAvailable,
               let item = player?.currentItem else {
@@ -293,6 +307,23 @@ final class TAPVideoPlaybackSession {
 
     func cancelTwoDPlaybackGate() {
         depthPipeline.cancelPresentation()
+    }
+
+    var currentPlaybackTimeSeconds: Double {
+        let time = player.map { CMTimeGetSeconds($0.currentTime()) } ?? 0
+        return time.isFinite ? max(0, time) : 0
+    }
+
+    func prepareThreeDPlaybackGate(smoothingEnabled: Bool) {
+        depthPipeline.cancelPresentation()
+        guard state == .ready, isThreeDDepthAvailable, let item = player?.currentItem else { return }
+        pointCloudPlayback.begin(on: item, time: currentPlaybackTimeSeconds, smoothingEnabled: smoothingEnabled)
+    }
+
+    func cancelThreeDPlaybackGate() { pointCloudPlayback.cancel() }
+
+    func setThreeDPlaybackSmoothingEnabled(_ enabled: Bool) {
+        pointCloudPlayback.setSmoothing(enabled, at: currentPlaybackTimeSeconds)
     }
 
     private func cancelCurrentFetch() {
@@ -439,6 +470,7 @@ final class TAPVideoPlaybackSession {
         resource = loadedResource
         isOriginalResourceReady = true
         player = loadedPlayer
+        transportModel = TAPVideoPlaybackTransportModel(player: loadedPlayer, intentState: playbackIntentState)
         state = .ready
         fetchState.finish()
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
@@ -538,6 +570,8 @@ final class TAPVideoPlaybackSession {
         presentation: TAPVideoPlaybackPresentation,
         fileURL: URL
     ) {
+        pointCloudPlayback.configure(fileURL: fileURL, presentation: presentation)
+        isThreeDDepthAvailable = pointCloudPlayback.isAvailable
         guard let descriptor = presentation.registrationDescriptor,
               descriptor.supportsRegisteredOverlay,
               let depthFormat = presentation.depthFormat else {
@@ -566,6 +600,10 @@ final class TAPVideoPlaybackSession {
     }
 
     private func releasePlayerResources() {
+        transportModel?.invalidate()
+        transportModel = nil
+        pointCloudPlayback.cancel()
+        isThreeDDepthAvailable = false
         playerLifecycle?.invalidate()
         playerLifecycle = nil
         depthPipeline.cancelPresentation()

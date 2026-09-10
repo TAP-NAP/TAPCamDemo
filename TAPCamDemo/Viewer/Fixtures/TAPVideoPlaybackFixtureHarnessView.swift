@@ -254,8 +254,8 @@ nonisolated private struct TAPVideoPlaybackFixtureRegistrationAdapter:
         for manifest: TAPVideoManifest
     ) -> TAPVideoDepthRegistrationDescriptor? {
         readinessDelayGate.waitUntilReadyOrCancelled()
-        return TAPVideoFixtureIdentityRegistrationAdapter()
-            .registrationDescriptor(for: manifest)
+        return TAPVideoManifestDepthRegistrationAdapter().registrationDescriptor(for: manifest)
+            ?? TAPVideoFixtureIdentityRegistrationAdapter().registrationDescriptor(for: manifest)
     }
 }
 

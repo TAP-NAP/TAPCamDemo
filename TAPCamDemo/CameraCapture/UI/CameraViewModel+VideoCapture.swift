@@ -52,7 +52,7 @@ extension CameraViewModel {
     }
 
     @discardableResult
-    func prepareVideoModeIfNeeded() async -> Bool {
+    func prepareVideoModeIfNeeded(depthFilteringEnabled: Bool? = nil) async -> Bool {
         guard !isPausedForAnalysis,
               !isVideoRecording,
               !isPreparingVideoMode,
@@ -81,7 +81,8 @@ extension CameraViewModel {
                 configuration: activeSessionConfiguration,
                 recordsAudio: recordsAudio,
                 videoRotationAngle: videoRotationAngle,
-                isVideoMirrored: isVideoMirrored
+                isVideoMirrored: isVideoMirrored,
+                depthFilteringEnabled: depthFilteringEnabled ?? DepthAnalyzerPreferences.appleDepthFilteringEnabled()
             )
             statusMessage = "TAP video ready."
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
@@ -164,7 +165,8 @@ extension CameraViewModel {
             )
             return
         }
-        guard await prepareVideoModeIfNeeded() else {
+        let depthFilteringEnabled = DepthAnalyzerPreferences.appleDepthFilteringEnabled()
+        guard await prepareVideoModeIfNeeded(depthFilteringEnabled: depthFilteringEnabled) else {
             statusMessage = "Video mode unavailable"
             return
         }
@@ -187,7 +189,8 @@ extension CameraViewModel {
                 capturedAt: capturedAt,
                 outputURL: workspace.artifactURL,
                 configuration: activeSessionConfiguration,
-                recordsAudio: recordsAudio
+                recordsAudio: recordsAudio,
+                depthFilteringEnabled: depthFilteringEnabled
             )
             _ = try await sessionController.startVideoRecording(
                 request: request,
@@ -317,7 +320,8 @@ extension CameraViewModel {
         capturedAt: Date,
         outputURL: URL,
         configuration: SessionConfigurationResult,
-        recordsAudio: Bool
+        recordsAudio: Bool,
+        depthFilteringEnabled: Bool
     ) -> TAPVideoRecordingRequest {
         TAPVideoRecordingRequest(
             captureID: captureID,
@@ -328,7 +332,8 @@ extension CameraViewModel {
                 device: configuration.device
             ),
             isVideoMirrored: configuration.device.position == .front,
-            recordsAudio: recordsAudio
+            recordsAudio: recordsAudio,
+            depthFilteringEnabled: depthFilteringEnabled
         )
     }
 

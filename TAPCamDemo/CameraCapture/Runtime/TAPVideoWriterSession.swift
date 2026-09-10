@@ -180,8 +180,10 @@ nonisolated final class TAPVideoWriterSession: @unchecked Sendable {
 
     func publish(
         manifest: TAPVideoManifest,
+        telemetry: TAPVideoCaptureTelemetry,
         to outputURL: URL
     ) throws -> UInt64 {
+        try TAPVideoCaptureTelemetryBox.append(telemetry, manifest: manifest, to: writerURL)
         try TAPVideoManifestBox.appendManifest(manifest, toFileAt: writerURL)
         TAPVideoPerformanceTrace.emitManifestAppended(
             byteCount: try TAPBMFFStreamingFile.byteCount(of: writerURL)

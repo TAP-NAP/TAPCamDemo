@@ -20,6 +20,7 @@ nonisolated struct TAPVideoRecordingRequest: Sendable {
     let videoRotationAngle: CGFloat?
     let isVideoMirrored: Bool
     let recordsAudio: Bool
+    let depthFilteringEnabled: Bool
 
     init(
         captureID: String = UUID().uuidString,
@@ -29,7 +30,8 @@ nonisolated struct TAPVideoRecordingRequest: Sendable {
         maximumDuration: TimeInterval = Self.defaultMaximumDuration,
         videoRotationAngle: CGFloat?,
         isVideoMirrored: Bool,
-        recordsAudio: Bool
+        recordsAudio: Bool,
+        depthFilteringEnabled: Bool = false
     ) {
         self.captureID = captureID
         self.packageID = packageID
@@ -39,6 +41,7 @@ nonisolated struct TAPVideoRecordingRequest: Sendable {
         self.videoRotationAngle = videoRotationAngle
         self.isVideoMirrored = isVideoMirrored
         self.recordsAudio = recordsAudio
+        self.depthFilteringEnabled = depthFilteringEnabled
     }
 }
 
@@ -76,6 +79,8 @@ nonisolated final class TAPVideoRecorder: NSObject, @unchecked Sendable {
     private let sessionConfiguration: SessionConfigurationResult
     private let location: TAPPendingCaptureLocation?
     private let writerSession: TAPVideoWriterSession
+    private let motionRecorder = TAPVideoMotionRecorder()
+    private var filtering: TAPVideoCaptureTelemetry.Filtering
     private let writerFailureHandler: @Sendable (TAPVideoWriterFailure) -> Void
     weak var synchronizedVideoOutput: AVCaptureVideoDataOutput?
     weak var synchronizedDepthOutput: AVCaptureDepthDataOutput?
@@ -98,6 +103,7 @@ nonisolated final class TAPVideoRecorder: NSObject, @unchecked Sendable {
     ) throws {
         let callbackRouter = TAPVideoRecorderCallbackRouter()
         self.request = request
+        self.filtering = .init(requestedEnabled: request.depthFilteringEnabled)
         self.sessionConfiguration = sessionConfiguration
         self.location = location
         self.writerFailureHandler = writerFailureHandler
@@ -140,8 +146,17 @@ nonisolated final class TAPVideoRecorder: NSObject, @unchecked Sendable {
         }
     }
 
+    func startMotionRecording(captureClock: CMClock?) {
+        motionRecorder.start(captureClock: captureClock)
+    }
+
+    func stopMotionRecording(recordingError: Bool = false) {
+        motionRecorder.stop(recordingError: recordingError)
+    }
+
     func finish(reason: TAPVideoManifest.StopReason) async throws -> TAPVideoRecordingArtifact {
-        try await withCheckedThrowingContinuation { continuation in
+        motionRecorder.stop()
+        return try await withCheckedThrowingContinuation { continuation in
             callbackQueue.async {
                 self.finishOnCallbackQueue(reason: reason, continuation: continuation)
             }
@@ -149,6 +164,7 @@ nonisolated final class TAPVideoRecorder: NSObject, @unchecked Sendable {
     }
 
     func cancelAfterWriterFailure() async {
+        motionRecorder.stop()
         await withCheckedContinuation { continuation in
             callbackQueue.async {
                 self.isFinishing = true
@@ -261,8 +277,19 @@ nonisolated final class TAPVideoRecorder: NSObject, @unchecked Sendable {
                 metrics: metrics,
                 nominalDepthIntervalSeconds: nominalDepthIntervalSeconds
             )
+            let telemetry = TAPVideoCaptureTelemetry(
+                filtering: filtering,
+                motion: motionRecorder.snapshot(
+                    firstVideoTime: metrics.firstVideoTime,
+                    durationSeconds: manifest.payload.container.durationSeconds
+                )
+            )
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.cameraCapture.info("video motion status=\(telemetry.motion.status.rawValue, privacy: .public) samples=\(telemetry.motion.samples.count, privacy: .public) drops=\(telemetry.motion.droppedSampleCount, privacy: .public) errors=\(telemetry.motion.errorCount, privacy: .public)")
+            #endif
             let byteCount = try writerSession.publish(
                 manifest: manifest,
+                telemetry: telemetry,
                 to: request.outputURL
             )
             resumeFinishedRecording(
@@ -371,6 +398,11 @@ nonisolated final class TAPVideoRecorder: NSObject, @unchecked Sendable {
             return
         }
         metrics.depthDeliveredSampleCount += 1
+        if depthData.isDepthDataFiltered {
+            filtering.filteredSampleCount += 1
+        } else {
+            filtering.unfilteredSampleCount += 1
+        }
 
         guard let metadataAdaptor = depthMetadataAdaptor(at: timestamp) else {
             reportWriterFailureIfNeeded()
@@ -396,6 +428,7 @@ nonisolated final class TAPVideoRecorder: NSObject, @unchecked Sendable {
         }
         didReportWriterFailure = true
         isFinishing = true
+        motionRecorder.stop()
         let error = writerSession.error as NSError?
         writerFailureHandler(TAPVideoWriterFailure(
             captureID: request.captureID,
@@ -519,7 +552,12 @@ nonisolated final class TAPVideoRecorder: NSObject, @unchecked Sendable {
         guard interval > depthCadenceGapThresholdSeconds else {
             return
         }
-        recordDepthGap(reason: .silentCadence, start: start, end: end)
+        // The two delivered depth samples bound the missing interval; neither is missing.
+        recordDepthGap(
+            reason: .silentCadence,
+            start: CMTimeAdd(start, TAPVideoCaptureTimeline.tick),
+            end: CMTimeSubtract(end, TAPVideoCaptureTimeline.tick)
+        )
     }
 
     private func recordLeadingDepthInterval(from start: CMTime, to end: CMTime) {
@@ -530,7 +568,7 @@ nonisolated final class TAPVideoRecorder: NSObject, @unchecked Sendable {
         recordDepthGap(
             reason: .silentCadence,
             start: start,
-            end: end,
+            end: CMTimeSubtract(end, TAPVideoCaptureTimeline.tick),
             nearestStartRGBFrame: metrics.videoFrameCount > 0 ? 0 : nil,
             nearestEndRGBFrame: metrics.videoFrameCount > 0 ? metrics.videoFrameCount - 1 : nil
         )
@@ -563,7 +601,6 @@ nonisolated final class TAPVideoRecorder: NSObject, @unchecked Sendable {
             reason: reason,
             start: start,
             end: end,
-            cadenceThresholdSeconds: depthCadenceGapThresholdSeconds,
             nearestStartRGBFrame: nearestStartRGBFrame,
             nearestEndRGBFrame: nearestEndRGBFrame
         )

@@ -82,7 +82,8 @@ nonisolated enum TAPVideoDepthMetadataEncoder {
             compressionCodec: encodedFrame.codec,
             uncompressedByteCount: encodedFrame.uncompressedByteCount,
             calibrationIndex: calibrationIndex,
-            payload: encodedFrame.payload
+            payload: encodedFrame.payload,
+            inlineCalibration: calibrationIndex == nil ? TAPDepthInlineCalibration.bounded(calibration) : nil
         )
         .encodedData()
         guard adaptor.append(metadataGroup(data: encoded, timestamp: timestamp)) else {

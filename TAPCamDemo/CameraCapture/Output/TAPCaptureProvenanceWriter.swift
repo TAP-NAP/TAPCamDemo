@@ -148,6 +148,7 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
             fromFileAt: videoFileURL
         )
         let manifest = manifestDocument.manifest
+        _ = try TAPVideoCaptureTelemetryBox.read(from: videoFileURL, manifest: manifest)
         try validateManifestID(manifest.payload.id, expectedCaptureID: expectedCaptureID)
         try validateVideoPackageID(manifest.payload.packageID, expectedPackageID: expectedPackageID)
         try validateVideoManifestCarriesNoProofBody(manifest)
@@ -400,6 +401,9 @@ nonisolated struct TAPCaptureProvenanceWriter: Sendable {
                     proof,
                     proofValue: proofValue,
                     recomputedDigest: recomputedDigest
+                )
+                _ = try TAPVideoCaptureTelemetryBox.read(
+                    from: videoFileURL, manifest: manifest, layout: input.layout
                 )
             },
             validateActualTracks: {

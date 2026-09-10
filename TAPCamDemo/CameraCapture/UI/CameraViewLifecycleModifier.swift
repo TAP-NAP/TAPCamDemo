@@ -96,7 +96,7 @@ struct CameraViewLifecycleModifier: ViewModifier {
                 isPresented: isPresented,
                 preparesVideoMode: resumesVideoModeAfterLibrary,
                 resumeAfterAnalysis: viewModel.resumeAfterAnalysis,
-                prepareVideoMode: viewModel.prepareVideoModeIfNeeded,
+                prepareVideoMode: { await viewModel.prepareVideoModeIfNeeded() },
                 isCameraReady: { viewModel.activeSessionConfiguration != nil },
                 retryPendingCaptures: { [weak lifecycleCoordinator, viewModel, appAttestController] in
                     await lifecycleCoordinator?.retryPendingCaptures(

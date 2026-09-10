@@ -83,7 +83,7 @@ enum TAPVideoPlaybackAudioSession {
 @MainActor
 @Observable
 final class TAPVideoPlaybackTransportModel {
-    private(set) var hasActivePlaybackIntent = false
+    var hasActivePlaybackIntent: Bool { intentState.intendsPlayback }
     private(set) var elapsedSeconds: Double = 0
     private(set) var confirmedElapsedSeconds: Double = 0
     private(set) var durationSeconds: Double = 0
@@ -94,7 +94,6 @@ final class TAPVideoPlaybackTransportModel {
     @ObservationIgnored private var timeControlStatusObservation: NSKeyValueObservation?
     @ObservationIgnored private var durationObservation: NSKeyValueObservation?
     @ObservationIgnored private var playbackEndObserver: NSObjectProtocol?
-    @ObservationIgnored private var backgroundObserver: NSObjectProtocol?
     @ObservationIgnored private var seekTask: Task<Void, Never>?
     @ObservationIgnored private var seekGeneration: UInt64 = 0
     @ObservationIgnored private var isScrubbing = false
@@ -105,16 +104,15 @@ final class TAPVideoPlaybackTransportModel {
     init(player: AVPlayer, intentState: TAPVideoPlaybackIntentState) {
         self.player = player
         self.intentState = intentState
-        let initialIntent = TAPVideoPlaybackTransportPolicy
-            .hasActivePlaybackIntent(status: player.timeControlStatus)
-        hasActivePlaybackIntent = initialIntent
-        intentState.setUserIntent(initialIntent)
+        intentState.updateFromPlayerStatus(player.timeControlStatus)
         installObservers()
     }
 
     deinit {
-        seekTask?.cancel()
-        player.currentItem?.cancelPendingSeeks()
+        if let seekTask {
+            seekTask.cancel()
+            player.currentItem?.cancelPendingSeeks()
+        }
         if let periodicTimeObserver {
             player.removeTimeObserver(periodicTimeObserver)
         }
@@ -122,9 +120,6 @@ final class TAPVideoPlaybackTransportModel {
         durationObservation?.invalidate()
         if let playbackEndObserver {
             NotificationCenter.default.removeObserver(playbackEndObserver)
-        }
-        if let backgroundObserver {
-            NotificationCenter.default.removeObserver(backgroundObserver)
         }
         if ownsPlaybackAudioSession {
             try? AVAudioSession.sharedInstance().setActive(
@@ -153,6 +148,7 @@ final class TAPVideoPlaybackTransportModel {
         cancelPendingSeek()
         setPlaybackIntent(true)
         activatePlaybackAudioSessionIfNeeded()
+        player.cancelPendingPrerolls()
         player.play()
     }
 
@@ -203,7 +199,6 @@ final class TAPVideoPlaybackTransportModel {
             elapsedSeconds = confirmedElapsedSeconds
             return
         }
-        seekGeneration &+= 1
         let generation = seekGeneration
         let player = player
         seekTask = Task { @MainActor [weak self] in
@@ -223,17 +218,19 @@ final class TAPVideoPlaybackTransportModel {
                   !isScrubbing,
                   player.currentItem === expectedItem else {
                 elapsedSeconds = confirmedElapsedSeconds
+                synchronizePlaybackIntent(from: player.timeControlStatus)
                 return
             }
             updateConfirmedElapsedTime(player.currentTime())
             if resumeAfterSeek {
                 activatePlaybackAudioSessionIfNeeded()
+                player.cancelPendingPrerolls()
                 player.play()
             }
         }
     }
 
-    private func cancelPendingSeek() {
+    func cancelPendingSeek() {
         seekGeneration &+= 1
         seekTask?.cancel()
         seekTask = nil
@@ -266,7 +263,7 @@ final class TAPVideoPlaybackTransportModel {
                 queue: .main
             ) { [weak self] _ in
                 Task { @MainActor [weak self] in
-                    guard let self else {
+                    guard let self, !isInvalidated else {
                         return
                     }
                     cancelPendingSeek()
@@ -281,19 +278,10 @@ final class TAPVideoPlaybackTransportModel {
             queue: .main
         ) { [weak self] time in
             Task { @MainActor [weak self] in
-                guard let self, !isScrubbing else {
+                guard let self, !isInvalidated, !isScrubbing else {
                     return
                 }
                 updateConfirmedElapsedTime(time)
-            }
-        }
-        backgroundObserver = NotificationCenter.default.addObserver(
-            forName: UIApplication.didEnterBackgroundNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.pauseForBackground()
             }
         }
     }
@@ -323,18 +311,16 @@ final class TAPVideoPlaybackTransportModel {
     }
 
     private func setPlaybackIntent(_ intendsPlayback: Bool) {
-        hasActivePlaybackIntent = intendsPlayback
         intentState.setUserIntent(intendsPlayback)
     }
 
     private func synchronizePlaybackIntent(
         from status: AVPlayer.TimeControlStatus
     ) {
-        guard !isScrubbing, seekTask == nil else {
+        guard !isInvalidated, !isScrubbing, seekTask == nil else {
             return
         }
         intentState.updateFromPlayerStatus(status)
-        hasActivePlaybackIntent = intentState.intendsPlayback
     }
 
     private func tearDown() {
@@ -351,17 +337,13 @@ final class TAPVideoPlaybackTransportModel {
             NotificationCenter.default.removeObserver(playbackEndObserver)
             self.playbackEndObserver = nil
         }
-        if let backgroundObserver {
-            NotificationCenter.default.removeObserver(backgroundObserver)
-            self.backgroundObserver = nil
-        }
         if ownsPlaybackAudioSession {
             TAPVideoPlaybackAudioSession.deactivate()
             ownsPlaybackAudioSession = false
         }
     }
 
-    private func pauseForBackground() {
+    func pauseForBackground() {
         guard !isInvalidated else {
             return
         }

@@ -9,6 +9,99 @@ import Testing
 @testable import TAPCamDemo
 
 struct TAPVideoManifestTests {
+    @Test func captureTelemetryPreservesLegacyAndRejectsInvalidProvenance() throws {
+        let manifest = TAPVideoManifest(payload: Self.samplePayload(depthCoverage: .none))
+        let fileURL = try Self.makeTemporaryFile(data: Self.bmffBox(type: "ftyp", payload: Data("isomtap ".utf8)))
+        #expect(try TAPVideoCaptureTelemetryBox.read(from: fileURL, manifest: manifest) == nil)
+        let telemetry = TAPVideoCaptureTelemetry(
+            filtering: .init(requestedEnabled: true),
+            motion: .init(status: .unavailable)
+        )
+        try TAPVideoCaptureTelemetryBox.append(telemetry, manifest: manifest, to: fileURL)
+        #expect(try TAPVideoCaptureTelemetryBox.read(from: fileURL, manifest: manifest) == telemetry)
+        let encoded = try JSONEncoder.tapCaptureCanonical.encode(telemetry)
+        #expect(String(decoding: encoded, as: UTF8.self).contains("\"motionToCaptureOffsetSeconds\":null"))
+        #expect(throws: TAPDepthCaptureError.self) {
+            try TAPVideoCaptureTelemetryBox.append(telemetry, manifest: manifest, to: fileURL)
+        }
+        #expect(throws: TAPDepthCaptureError.self) {
+            try TAPVideoCaptureTelemetry(
+                filtering: .init(requestedEnabled: true, filteredSampleCount: 1),
+                motion: .init(status: .unavailable)
+            ).validate(manifest: manifest)
+        }
+        var observedMotion = TAPVideoCaptureTelemetry.Motion(
+            status: .available,
+            motionToCaptureOffsetSeconds: -100,
+            samples: [.init(ptsSeconds: 0.1, quaternion: [0, 0, 0, 1], rotationRate: [0, 0, 0], gravity: [0, -1, 0], userAcceleration: [0, 0, 0])]
+        )
+        try TAPVideoCaptureTelemetry(filtering: .init(requestedEnabled: false), motion: observedMotion).validate(manifest: manifest)
+        observedMotion.samples.append(observedMotion.samples[0])
+        #expect(throws: TAPDepthCaptureError.self) {
+            try TAPVideoCaptureTelemetry(filtering: .init(requestedEnabled: false), motion: observedMotion).validate(manifest: manifest)
+        }
+        observedMotion.samples = []
+        #expect(throws: TAPDepthCaptureError.self) {
+            try TAPVideoCaptureTelemetry(filtering: .init(requestedEnabled: false), motion: observedMotion).validate(manifest: manifest)
+        }
+    }
+
+    @MainActor @Test func videoDebugPreferencesDefaultOffAndRecordingFreezesFiltering() throws {
+        let suite = "TAPVideoPreferencesTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        #expect(!DepthAnalyzerPreferences.appleDepthFilteringEnabled(defaults: defaults))
+        #expect(!DepthAnalyzerPreferences.playbackSmoothingEnabled(defaults: defaults))
+        defaults.set(true, forKey: DepthAnalyzerPreferences.appleDepthFilteringEnabledKey)
+        defaults.set(true, forKey: DepthAnalyzerPreferences.playbackSmoothingEnabledKey)
+        let request = TAPVideoRecordingRequest(
+            outputURL: URL(fileURLWithPath: "/tmp/preferences-test.mp4"),
+            videoRotationAngle: 0, isVideoMirrored: false, recordsAudio: false,
+            depthFilteringEnabled: DepthAnalyzerPreferences.appleDepthFilteringEnabled(defaults: defaults)
+        )
+        defaults.set(false, forKey: DepthAnalyzerPreferences.appleDepthFilteringEnabledKey)
+        #if DEBUG
+        #expect(request.depthFilteringEnabled)
+        #expect(DepthAnalyzerPreferences.playbackSmoothingEnabled(defaults: defaults))
+        #else
+        #expect(!request.depthFilteringEnabled)
+        #expect(!DepthAnalyzerPreferences.playbackSmoothingEnabled(defaults: defaults))
+        #endif
+    }
+
+    @Test func captureTelemetryAcceptsNumberSpellingsButRejectsNoncanonicalStructure() throws {
+        let manifest = TAPVideoManifest(payload: Self.samplePayload(depthCoverage: .none))
+        let telemetry = TAPVideoCaptureTelemetry(
+            filtering: .init(requestedEnabled: false),
+            motion: .init(
+                status: .available,
+                motionToCaptureOffsetSeconds: -100,
+                samples: [.init(ptsSeconds: 0.1, quaternion: [0, 0, 0, 1], rotationRate: [0, 0, 0], gravity: [0, -1, 0], userAcceleration: [0, 0, 0])]
+            )
+        )
+        let data = try JSONEncoder.tapCaptureCanonical.encode(telemetry)
+        let canonical = String(decoding: data, as: UTF8.self)
+        func read(_ json: String) throws -> TAPVideoCaptureTelemetry? {
+            let url = try Self.makeTemporaryFile(data: Self.bmffBox(
+                type: "uuid", payload: TAPVideoCaptureTelemetryBox.uuid + Data(json.utf8)
+            ))
+            return try TAPVideoCaptureTelemetryBox.read(from: url, manifest: manifest)
+        }
+        let equivalentNumbers = canonical
+            .replacingOccurrences(of: "\"ptsSeconds\":0.1", with: "\"ptsSeconds\":1e-1")
+            .replacingOccurrences(of: "\"gravity\":[0,-1,0]", with: "\"gravity\":[0.0,-1.0,0e0]")
+        #expect(equivalentNumbers != canonical)
+        #expect(try read(equivalentNumbers) == telemetry)
+        for malformed in [
+            " " + canonical,
+            canonical.replacingOccurrences(of: "\"filteredSampleCount\":0", with: "\"filteredSampleCount\":0.0"),
+            canonical.replacingOccurrences(of: "\"requestedEnabled\":false", with: "\"requestedEnabled\":false,\"requestedEnabled\":false"),
+            "{\"alien\":0," + canonical.dropFirst()
+        ] {
+            #expect(throws: (any Error).self) { try read(malformed) }
+        }
+    }
+
     @Test func calibrationCoverageRejectsOverflowWithoutTrapping() {
         let coverage = TAPVideoManifest.CalibrationCoverage(
             indexedSampleCount: .max,
@@ -111,6 +204,91 @@ struct TAPVideoManifestTests {
         #expect(throws: TAPDepthCaptureError.self) {
             try TAPDepthKLV.decode(encoded)
         }
+    }
+
+    @Test func depthFramesPreserveChangingCalibrationAfterTheSixteenEntryTableFills() throws {
+        var table = TAPVideoCalibrationTable()
+        for index in 0..<32 {
+            let calibration = Self.inlineCalibration(index: index)
+            let reference = table.index(for: calibration)
+            let frame = TAPDepthKLVFrame(
+                frameIndex: UInt32(index), timestampValue: Int64(index * 20), timestampTimescale: 600,
+                compressionCodec: .raw, uncompressedByteCount: 4, calibrationIndex: reference,
+                payload: Data([0, 0, 128, 63]),
+                inlineCalibration: reference == nil ? TAPDepthInlineCalibration.bounded(calibration) : nil
+            )
+            let encoded = try frame.encodedData()
+            let decoded = try TAPDepthKLVFrame.decode(encoded)
+            let recovered = decoded.inlineCalibration ?? decoded.calibrationIndex.map { table.entries[Int($0)] }
+            #expect(recovered == calibration)
+            #expect(try decoded.decodedPackedBytes() == frame.payload)
+            #expect((decoded.inlineCalibration != nil) == (index >= 16))
+        }
+        #expect(table.entries.count == 16)
+        #expect(table.didOverflow)
+    }
+
+    @Test func inlineCalibrationAcceptsOptionalNullAndNumberSpellings() throws {
+        let calibration = Self.inlineCalibration(index: 0)
+        let data = try TAPDepthInlineCalibration.encodedData(calibration)
+        let json = String(decoding: data, as: UTF8.self)
+        #expect(try TAPDepthInlineCalibration.decode(data) == calibration)
+        let equivalent = json.replacingOccurrences(of: "\"width\":1920", with: "\"width\":1.92e3")
+        #expect(equivalent != json)
+        #expect(try TAPDepthInlineCalibration.decode(Data(equivalent.utf8)) == calibration)
+
+        let withoutTables = Self.inlineCalibration(index: 0, lookupTable: nil)
+        let omitted = String(decoding: try TAPDepthInlineCalibration.encodedData(withoutTables), as: UTF8.self)
+        let explicitNull = omitted
+            .replacingOccurrences(of: "\"lensDistortionCenter\":", with: "\"inverseLensDistortionLookupTable\":null,\"lensDistortionCenter\":")
+            .replacingOccurrences(of: "\"pixelSizeMillimeters\":", with: "\"lensDistortionLookupTable\":null,\"pixelSizeMillimeters\":")
+        #expect(try TAPDepthInlineCalibration.decode(Data(explicitNull.utf8)) == withoutTables)
+    }
+
+    @Test func inlineCalibrationRejectsInvalidStructureAndPreservesDepthWhenTooLarge() throws {
+        let calibration = Self.inlineCalibration(index: 0)
+        let json = String(decoding: try TAPDepthInlineCalibration.encodedData(calibration), as: UTF8.self)
+        for invalid in [
+            " " + json,
+            json.replacingOccurrences(of: "\"schemaVersion\":1", with: "\"schemaVersion\":1.0"),
+            json.replacingOccurrences(of: "\"schemaVersion\":1", with: "\"schemaVersion\":1,\"schemaVersion\":1"),
+            json.replacingOccurrences(of: "\"calibration\":{", with: "\"calibration\":{\"alien\":0,"),
+            json.replacingOccurrences(of: "\"width\":1920", with: "\"width\":1e999"),
+            json.replacingOccurrences(of: "\"intrinsicMatrix\":[", with: "\"intrinsicMatrix\":[1,"),
+            json.replacingOccurrences(of: "\"lensDistortionLookupTable\":\"", with: "\"lensDistortionLookupTable\":\"!")
+        ] {
+            #expect(throws: (any Error).self) { try TAPDepthInlineCalibration.decode(Data(invalid.utf8)) }
+        }
+        let oversized = Self.inlineCalibration(index: 0, lookupTable: Data(repeating: 0, count: 3_072))
+        #expect(TAPDepthInlineCalibration.bounded(oversized) == nil)
+        #expect(throws: TAPDepthCaptureError.self) { try TAPDepthInlineCalibration.encodedData(oversized) }
+        let frame = TAPDepthKLVFrame(
+            frameIndex: 17, timestampValue: 340, timestampTimescale: 600,
+            compressionCodec: .raw, uncompressedByteCount: 4, calibrationIndex: nil,
+            payload: Data([0, 0, 128, 63]), inlineCalibration: TAPDepthInlineCalibration.bounded(oversized)
+        )
+        #expect(try TAPDepthKLVFrame.decode(frame.encodedData()).decodedPackedBytes() == frame.payload)
+    }
+
+    @Test func depthKLVRejectsDuplicateOrConflictingInlineCalibration() throws {
+        let calibration = Self.inlineCalibration(index: 0)
+        let indexed = TAPDepthKLVFrame(
+            frameIndex: 0, timestampValue: 0, timestampTimescale: 600,
+            compressionCodec: .raw, uncompressedByteCount: 4, calibrationIndex: 0,
+            payload: Data([0, 0, 128, 63])
+        )
+        var conflicting = indexed
+        conflicting.inlineCalibration = calibration
+        #expect(throws: TAPDepthCaptureError.self) { try conflicting.encodedData() }
+        let inlineRecord = TAPDepthKLV.Record(key: .inlineCalibration, payload: try TAPDepthInlineCalibration.encodedData(calibration))
+        let records = try TAPDepthKLV.decode(indexed.encodedData())
+        #expect(throws: TAPDepthCaptureError.self) { try TAPDepthKLVFrame.decode(TAPDepthKLV.encode(records + [inlineRecord])) }
+        let withoutIndex = records.filter { $0.key != .calibrationIndex }
+        #expect(throws: TAPDepthCaptureError.self) {
+            try TAPDepthKLVFrame.decode(TAPDepthKLV.encode(withoutIndex + [inlineRecord, inlineRecord]))
+        }
+        let unknown = TAPDepthKLV.Record(key: .init(rawValue: "NEXT"), payload: Data([1]))
+        #expect(try TAPDepthKLVFrame.decode(TAPDepthKLV.encode(withoutIndex + [inlineRecord, unknown])).inlineCalibration == calibration)
     }
 
     @Test func videoDepthDisplayOrientationMapsRecordedTransform() throws {
@@ -308,6 +486,18 @@ struct TAPVideoManifestTests {
         let frame = try TAPDepthKLVFrame.decode(klvData)
         let calibrationIndex = try #require(frame.calibrationIndex)
         #expect(Int(calibrationIndex) < decodedManifest.payload.spatialRegistration.calibrationTable.count)
+    }
+
+    private static func inlineCalibration(index: Int, lookupTable: Data? = Data([0, 0, 0, 0])) -> TAPVideoManifest.CameraCalibration {
+        .init(
+            intrinsicMatrix: [1_000 + Float(index), 0, 0, 0, 1_000, 0, 960, 540, 1],
+            intrinsicMatrixReferenceDimensions: .init(width: 1920, height: 1080),
+            extrinsicMatrix: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+            pixelSizeMillimeters: 0.001,
+            lensDistortionCenter: .init(x: 960, y: 540),
+            lensDistortionLookupTable: lookupTable,
+            inverseLensDistortionLookupTable: lookupTable
+        )
     }
 
     private static func samplePayload(

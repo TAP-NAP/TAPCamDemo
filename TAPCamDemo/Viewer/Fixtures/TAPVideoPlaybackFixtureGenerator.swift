@@ -452,7 +452,9 @@ nonisolated enum TAPVideoPlaybackFixtureGenerator {
         )
         let registration = TAPVideoManifest.SpatialRegistration(
             status: .registered,
-            mapping: TAPVideoFixtureIdentityRegistrationAdapter.mappingIdentifier,
+            mapping: specification.scenario == .pointCloud
+                ? TAPVideoManifest.RegistrationDescriptor.schemaID
+                : TAPVideoFixtureIdentityRegistrationAdapter.mappingIdentifier,
             rgbReferenceDimensions: .init(
                 width: Double(aperture.width),
                 height: Double(aperture.height)
@@ -489,15 +491,23 @@ nonisolated enum TAPVideoPlaybackFixtureGenerator {
                     x: Double(aperture.width) / 2,
                     y: Double(aperture.height) / 2
                 ),
-                lensDistortionLookupTable: nil,
-                inverseLensDistortionLookupTable: nil
+                lensDistortionLookupTable: specification.scenario == .pointCloud ? Data(count: 8) : nil,
+                inverseLensDistortionLookupTable: specification.scenario == .pointCloud ? Data(count: 8) : nil
             ),
             calibrationCoverage: .init(
                 indexedSampleCount: depthFrameCount,
                 missingCalibrationSampleCount: 0,
                 overflowUnindexedSampleCount: 0,
                 tableOverflowed: false
-            )
+            ),
+            descriptor: specification.scenario == .pointCloud ? .init(
+                alignedRGBCodedDimensions: .init(width: Double(aperture.width), height: Double(aperture.height)),
+                encodedRGBCodedDimensions: .init(width: Double(aperture.width), height: Double(aperture.height)),
+                depthDimensions: .init(width: Double(aperture.width), height: Double(aperture.height)),
+                depthToAlignedRGBPixelCenterAffine: [1, 0, 0, 0, 1, 0],
+                connectionTransform: "rotation:0;not-mirrored",
+                rgbCleanAperture: .init(x: 0, y: 0, width: Double(aperture.width), height: Double(aperture.height))
+            ) : nil
         )
         return TAPVideoManifest(
             payload: TAPVideoManifest.Payload(

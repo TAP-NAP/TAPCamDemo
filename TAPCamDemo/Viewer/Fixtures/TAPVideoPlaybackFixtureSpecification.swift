@@ -8,6 +8,7 @@ import CoreGraphics
 import Foundation
 
 nonisolated enum TAPVideoPlaybackFixtureScenario: String, CaseIterable, Identifiable, Sendable {
+    case pointCloud = "point-cloud-rgb"
     case rotation0 = "rotation-0"
     case rotation90 = "rotation-90"
     case rotation180 = "rotation-180"
@@ -25,6 +26,8 @@ nonisolated enum TAPVideoPlaybackFixtureScenario: String, CaseIterable, Identifi
 
     var specification: TAPVideoPlaybackFixtureSpecification {
         switch self {
+        case .pointCloud:
+            .standard(scenario: self, rotationDegrees: 0)
         case .rotation0:
             .standard(scenario: self, rotationDegrees: 0)
         case .rotation90:
