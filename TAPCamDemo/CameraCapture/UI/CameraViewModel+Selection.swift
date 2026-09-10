@@ -447,7 +447,6 @@ extension CameraViewModel {
             let result = try await sessionController.configure(request)
 
             guard generation == configurationGeneration, !isPausedForAnalysis else {
-                sessionController.stop()
                 return
             }
 

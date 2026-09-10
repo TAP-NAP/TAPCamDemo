@@ -190,7 +190,6 @@ extension CameraViewModel {
             let result = try await sessionController.configure(SessionConfigurationRequest(capturePlan: plan))
 
             guard generation == configurationGeneration, !isPausedForAnalysis else {
-                sessionController.stop()
                 return
             }
 

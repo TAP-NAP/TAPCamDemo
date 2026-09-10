@@ -314,6 +314,8 @@ struct CameraView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase != .active {
                 lifecycleCoordinator.cancelCaptureModeChange()
+                cameraPathPreviewWatchdogTask?.cancel()
+                cameraPathPreviewWatchdogTask = nil
                 resourceInitializationMarkerCommitTask?.cancel()
                 resourceInitializationMarkerCommitTask = nil
                 viewfinderInteractivePublicationTask?.cancel()
@@ -343,6 +345,9 @@ struct CameraView: View {
                 hapticFeedbackController.prepareForCameraInteraction()
                 evaluateStartupReadiness()
                 prepareSelectedVideoModeIfNeeded()
+                if let token = cameraPathTransitionToken {
+                    beginCameraPathPreviewWatchdog(token: token)
+                }
             }
         }
         .onChange(of: viewModel.videoPreparationState) { _, state in
@@ -2117,13 +2122,24 @@ struct CameraView: View {
 
     private func beginCameraPathPreviewWatchdog(token: UUID) {
         cameraPathPreviewWatchdogTask?.cancel()
+        cameraPathPreviewWatchdogTask = nil
+        // System interruptions suspend preview. Give the current transition a
+        // fresh preview deadline only once the scene is active again.
+        guard scenePhase == .active,
+              cameraPathTransitionToken == token,
+              cameraPathTransitionRuntimeCompleted,
+              !isPreviewLayerPreviewing else {
+            return
+        }
         cameraPathPreviewWatchdogTask = Task { @MainActor in
             do {
                 try await Task.sleep(for: .seconds(3))
             } catch {
                 return
             }
-            guard cameraPathTransitionToken == token,
+            guard !Task.isCancelled,
+                  scenePhase == .active,
+                  cameraPathTransitionToken == token,
                   cameraPathTransitionRuntimeCompleted,
                   !isPreviewLayerPreviewing,
                   !viewModel.photographerModeState.isTransitioning else {
