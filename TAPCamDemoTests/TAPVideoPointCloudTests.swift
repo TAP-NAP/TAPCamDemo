@@ -2,11 +2,82 @@ import AVFoundation
 import CoreGraphics
 import CoreImage
 import CoreVideo
+import ImageIO
 import Testing
 import UIKit
 @testable import TAPCamDemo
 
 struct TAPVideoPointCloudTests {
+    @Test func photoAndVideoPayloadsPreservePixelMappingsAndAllDisplayOrientations() throws {
+        let matrix: [Float] = [4, 0, 0, 0, 8, 0, 0.75, 1.25, 1]
+        let extrinsic: [Float] = [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0]
+        let photoCalibration = TAPDepthManifest.CameraCalibration(
+            intrinsicMatrixReferenceWidth: 4, intrinsicMatrixReferenceHeight: 6,
+            pixelSizeMillimeters: 0.001, lensDistortionLookupTablePresent: false,
+            inverseLensDistortionLookupTablePresent: false, lensDistortionCenterX: 0.75,
+            lensDistortionCenterY: 1.25, intrinsicMatrix: matrix, extrinsicMatrix: extrinsic)
+        let videoCalibration = try #require(TAPVideoPointCloudCalibration(.init(
+            intrinsicMatrix: matrix, intrinsicMatrixReferenceDimensions: .init(width: 4, height: 6),
+            extrinsicMatrix: extrinsic, pixelSizeMillimeters: 0.001,
+            lensDistortionCenter: .init(x: 0.75, y: 1.25), lensDistortionLookupTable: nil,
+            inverseLensDistortionLookupTable: floatBytes([0, 0]))))
+        let image = try TAPDepthRGBAImageRenderer.image(pixels: Array(repeating: 255, count: 4 * 6 * 4), width: 4, height: 6)
+        // Expected scene XY for the first pixel at Z = 2, using off-center intrinsics.
+        // EXIF mirror names are paired with video rotation followed by a horizontal mirror.
+        let orientations: [(exif: CGImagePropertyOrientation, rotation: Int, mirrored: Bool,
+                            photoXY: SIMD2<Float>, scaledVideoXY: SIMD2<Float>)] = [
+            (.up, 0, false, [-0.375, 0.3125], [-0.125, 0.1875]),
+            (.upMirrored, 0, true, [0.375, 0.3125], [0.125, 0.1875]),
+            (.right, 90, false, [0.3125, 0.375], [0.1875, 0.125]),
+            (.leftMirrored, 90, true, [-0.3125, 0.375], [-0.1875, 0.125]),
+            (.down, 180, false, [0.375, -0.3125], [0.125, -0.1875]),
+            (.downMirrored, 180, true, [-0.375, -0.3125], [-0.125, -0.1875]),
+            (.left, 270, false, [-0.3125, -0.375], [-0.1875, -0.125]),
+            (.rightMirrored, 270, true, [0.3125, -0.375], [0.1875, -0.125])
+        ]
+        for scale in [1, 2] {
+            let width = 4 / scale
+            let height = 6 / scale
+            let depths = Array<Float>(repeating: 2, count: width * height)
+            let depthMap = TAPMetricDepthMap(width: width, height: height, samples: depths, calibration: photoCalibration)
+            let packed = floatBytes(depths)
+            let frame = TAPDecodedDepthVideoFrame(frameIndex: 0, presentationTimeSeconds: 0,
+                width: width, height: height, pixelFormat: "fdep", image: UIImage(),
+                retainedByteCount: packed.count, packedDepth: packed, calibrationIndex: 0)
+            for orientation in orientations {
+                let rotated = orientation.rotation == 90 || orientation.rotation == 270
+                let encodedWidth = rotated ? 6 : 4
+                let encodedHeight = rotated ? 4 : 6
+                let scaleValue = Double(scale)
+                let offset = (scaleValue - 1) / 2
+                let projection = TAPVideoRegistrationProjection(depthWidth: width, depthHeight: height,
+                    alignedRGBWidth: 4, alignedRGBHeight: 6, encodedRGBWidth: encodedWidth, encodedRGBHeight: encodedHeight,
+                    depthToAlignedRGBPixelCenterAffine: [scaleValue, 0, offset, 0, scaleValue, offset],
+                    connectionRotationDegrees: orientation.rotation, isEncodedHorizontallyMirrored: orientation.mirrored,
+                    rgbCleanAperture: .init(x: 0, y: 0, width: Double(encodedWidth), height: Double(encodedHeight)))
+                let descriptor = TAPVideoDepthRegistrationDescriptor(schemaID: "test",
+                    rgbPresentationWidth: encodedWidth, rgbPresentationHeight: encodedHeight,
+                    mapping: .avDepthDataWarpedToSynchronizedRGB, projection: projection)
+                let videoImage = try TAPDepthRGBAImageRenderer.image(pixels: Array(repeating: 255, count: 4 * 6 * 4),
+                    width: encodedWidth, height: encodedHeight)
+                let photo = try #require(TAPDepthProjectionScenePayloadBuilder.makePayloadData(image: image,
+                    depthMap: depthMap, orientation: orientation.exif, selectedPlaneRegion: nil))
+                let video = try #require(try TAPVideoPointCloudProjection.make(frame: frame, history: [],
+                    calibration: videoCalibration, descriptor: descriptor, image: videoImage))
+                #expect(photo.cameraModel == video.cameraModel)
+                #expect(photo.baseVertices.count == width * height && video.vertices.count == width * height)
+                #expect(photo.baseVertices[0] == SIMD3(orientation.photoXY.x, orientation.photoXY.y, -2))
+                let videoXY = scale == 1 ? orientation.photoXY : orientation.scaledVideoXY
+                #expect(video.vertices[0] == SIMD3(videoXY.x, videoXY.y, -2))
+                if scale == 1 {
+                    #expect(photo.baseVertices == video.vertices)
+                }
+                // At scale 2, photo pixel (0,0) maps to image (0,0), while video
+                // pixel centers map to reference (0.5,0.5); these rays stay distinct.
+            }
+        }
+    }
+
     @Test func metricDecodePreservesCALIAndUsesReciprocalDisparity() throws {
         let packed = floatBytes([0.5, 0, .nan, 2])
         let klv = TAPDepthKLVFrame(frameIndex: 7, timestampValue: 600, timestampTimescale: 600,

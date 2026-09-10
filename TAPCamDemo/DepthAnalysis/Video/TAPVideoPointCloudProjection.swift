@@ -133,16 +133,18 @@ nonisolated struct TAPVideoPointCloudCalibration {
     func vertex(x: Int, y: Int, width: Int, height: Int, depth: Float, rotation: Int, mirrored: Bool) -> SIMD3<Float> {
         let point = rectifiedPoint(x: Double(x), y: Double(y), width: width, height: height)
         let matrix = value.intrinsicMatrix
-        let cameraX = (Float(point.x) - matrix[6]) / matrix[0] * depth
-        let cameraY = (Float(point.y) - matrix[7]) / matrix[4] * depth
+        let cameraPoint = TAPDepthProjectionCameraContract.cameraPoint(
+            atRectilinearPixel: point, depthMeters: depth,
+            intrinsics: (matrix[0], matrix[4], matrix[6], matrix[7])
+        )
         let oriented: SIMD2<Float>
         switch rotation {
-        case 90: oriented = SIMD2(-cameraY, cameraX)
-        case 180: oriented = SIMD2(-cameraX, -cameraY)
-        case 270: oriented = SIMD2(cameraY, -cameraX)
-        default: oriented = SIMD2(cameraX, cameraY)
+        case 90: oriented = SIMD2(-cameraPoint.y, cameraPoint.x)
+        case 180: oriented = SIMD2(-cameraPoint.x, -cameraPoint.y)
+        case 270: oriented = SIMD2(cameraPoint.y, -cameraPoint.x)
+        default: oriented = SIMD2(cameraPoint.x, cameraPoint.y)
         }
-        return SIMD3(mirrored ? -oriented.x : oriented.x, -oriented.y, -depth)
+        return SIMD3(mirrored ? -oriented.x : oriented.x, -oriented.y, -cameraPoint.z)
     }
 }
 

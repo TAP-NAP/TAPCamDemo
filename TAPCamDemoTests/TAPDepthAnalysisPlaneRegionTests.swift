@@ -156,22 +156,50 @@ struct TAPDepthAnalysisPlaneRegionTests {
     }
 
     @Test func depthProjectionSampleFilterRejectsFarDepthSentinels() {
-        let samples: [(point: TAPPoint3D, imagePoint: CGPoint)] = [
-            (TAPPoint3D(x: 0, y: 0, z: 1.0), CGPoint(x: 0, y: 0)),
-            (TAPPoint3D(x: 0, y: 0, z: 1.2), CGPoint(x: 1, y: 0)),
-            (TAPPoint3D(x: 0, y: 0, z: 1.4), CGPoint(x: 2, y: 0)),
-            (TAPPoint3D(x: 0, y: 0, z: 9_999.0), CGPoint(x: 3, y: 0)),
-            (TAPPoint3D(x: 0, y: 0, z: .nan), CGPoint(x: 4, y: 0))
-        ]
-
-        let renderable = TAPDepthProjectionSampleFilter.renderableSamples(from: samples)
-        let targetDepth = TAPDepthProjectionSampleFilter.targetDepth(
-            from: samples.map(\.point.z)
+        let depths: [Float] = [1, 1.2, 1.4, 9_999, .nan]
+        let renderable = TAPDepthProjectionSampleFilter.sampledDepths(
+            from: TAPMetricDepthMap(width: 5, height: 1, samples: depths, calibration: Self.sampleCalibration)
         )
+        let targetDepth = TAPDepthProjectionSampleFilter.targetDepth(from: depths)
 
-        #expect(renderable.map(\.point.z) == [1.0, 1.2, 1.4])
+        #expect(renderable.map(\.depthMeters) == [1.0, 1.2, 1.4])
         #expect(abs(targetDepth - 1.2) < 0.0001)
         #expect(TAPDepthProjectionSampleFilter.isRenderableDepth(100) == false)
+    }
+
+    @Test func photoPayloadKeepsTheGeometrySamplingGridAndAdmission() throws {
+        let values: [Float] = [2, .nan, .infinity, 0, -1, 100, 9_999, 0.000_000_1, 99.99]
+        // Cross the 12,000-point grid's step-1/step-2 boundary, including an odd edge.
+        for width in [218, 219] {
+            let height = 220
+            let depthMap = TAPMetricDepthMap(width: width, height: height,
+                samples: (0..<(width * height)).map { values[$0 % values.count] },
+                calibration: Self.calibration(width: width, height: height,
+                    intrinsicMatrix: [140, 0, 0, 0, 160, 0, 50.25, 80.75, 1]))
+            let oldSamples = TAPDepthGeometryProjector.sampledPoints(from: depthMap,
+                in: CGRect(x: 0, y: 0, width: width, height: height), maxCount: 12_000)
+                .filter { $0.point.z < 100 }
+            let samples = TAPDepthProjectionSampleFilter.sampledDepths(from: depthMap)
+            #expect(samples.map(\.imagePoint) == oldSamples.map(\.imagePoint))
+            #expect(samples.map(\.depthMeters) == oldSamples.map(\.point.z))
+            let frame = try #require(TAPDepthDisplayProjectionFrame(depthMap: depthMap,
+                imageWidth: width, imageHeight: height, orientation: .rightMirrored))
+            let payload = try #require(TAPDepthProjectionScenePayloadBuilder.makePayloadData(
+                image: nil, depthMap: depthMap, orientation: .rightMirrored, selectedPlaneRegion: nil))
+            #expect(payload.baseVertices == oldSamples.map {
+                frame.sceneVertex(forDepthPoint: $0.imagePoint, depthMeters: $0.point.z)
+            })
+            #expect(payload.baseColors.count == oldSamples.count)
+            #expect(payload.targetDepth == TAPDepthProjectionSampleFilter.targetDepth(from: oldSamples.map(\.point.z)))
+        }
+        let invalidMaps = [
+            TAPMetricDepthMap(width: 2, height: 2, samples: [1], calibration: Self.sampleCalibration),
+            TAPMetricDepthMap(width: 1, height: 1, samples: [1], calibration: nil)
+        ]
+        for depthMap in invalidMaps {
+            #expect(TAPDepthProjectionScenePayloadBuilder.makePayloadData(
+                image: nil, depthMap: depthMap, orientation: .up, selectedPlaneRegion: nil) == nil)
+        }
     }
 
     @Test func rgbSamplerProjectsDepthPixelsBackToPrimaryImageColors() throws {

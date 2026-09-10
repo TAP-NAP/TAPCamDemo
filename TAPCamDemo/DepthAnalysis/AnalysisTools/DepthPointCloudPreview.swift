@@ -208,10 +208,11 @@ nonisolated struct TAPDepthDisplayProjectionFrame: Equatable {
         depthMeters: Float
     ) -> TAPPoint3D {
         let displayPoint = displayImagePoint(forDepthPoint: depthPoint)
-        let z = max(depthMeters, 0.000_001)
-        let x = (Float(displayPoint.x) - cameraModel.cx) / cameraModel.fx * z
-        let y = (Float(displayPoint.y) - cameraModel.cy) / cameraModel.fy * z
-        return TAPPoint3D(x: x, y: y, z: z)
+        return TAPDepthProjectionCameraContract.cameraPoint(
+            atRectilinearPixel: displayPoint,
+            depthMeters: max(depthMeters, 0.000_001),
+            intrinsics: (cameraModel.fx, cameraModel.fy, cameraModel.cx, cameraModel.cy)
+        )
     }
 
     func rawImagePoint(forDepthPoint depthPoint: CGPoint) -> CGPoint {
@@ -282,6 +283,20 @@ nonisolated struct TAPDepthDisplayProjectionFrame: Equatable {
 }
 
 nonisolated enum TAPDepthProjectionCameraContract {
+    /// Intrinsics use the rectilinear pixel's coordinate system; callers own
+    /// pixel mapping, distortion, orientation, and metric optical-axis Z policy.
+    static func cameraPoint(
+        atRectilinearPixel pixel: CGPoint,
+        depthMeters: Float,
+        intrinsics: (fx: Float, fy: Float, cx: Float, cy: Float)
+    ) -> TAPPoint3D {
+        TAPPoint3D(
+            x: (Float(pixel.x) - intrinsics.cx) / intrinsics.fx * depthMeters,
+            y: (Float(pixel.y) - intrinsics.cy) / intrinsics.fy * depthMeters,
+            z: depthMeters
+        )
+    }
+
     static func fittedIntrinsics(
         cameraModel: TAPDepthProjectionCameraModel,
         viewportSize: CGSize
@@ -444,10 +459,23 @@ nonisolated enum TAPDepthProjectionSampleFilter {
         depth.isFinite && depth > 0 && depth < maximumRenderableDepthMeters
     }
 
-    static func renderableSamples(
-        from samples: [(point: TAPPoint3D, imagePoint: CGPoint)]
-    ) -> [(point: TAPPoint3D, imagePoint: CGPoint)] {
-        samples.filter { isRenderableDepth($0.point.z) }
+    /// Keep the photo preview's full-frame sampling grid without projecting
+    /// raw-camera XY that the display-oriented projection would discard.
+    static func sampledDepths(
+        from depthMap: TAPMetricDepthMap
+    ) -> [(depthMeters: Float, imagePoint: CGPoint)] {
+        guard TAPDepthAnalysisInputValidation.isValidDepthMapLayout(depthMap) else { return [] }
+        let step = max(Int(sqrt(Double(depthMap.samples.count) / 12_000)), 1)
+        var result: [(Float, CGPoint)] = []
+        for y in stride(from: 0, to: depthMap.height, by: step) {
+            for x in stride(from: 0, to: depthMap.width, by: step) {
+                let depth = depthMap.samples[depthMap.index(x: x, y: y)]
+                if isRenderableDepth(depth) {
+                    result.append((depth, CGPoint(x: x, y: y)))
+                }
+            }
+        }
+        return result
     }
 
     static func targetDepth(from depths: [Float]) -> Float {
@@ -575,23 +603,16 @@ nonisolated enum TAPDepthProjectionScenePayloadBuilder {
         let orientation = request.orientation
         let selectedPlaneRegion = request.selectedPlaneRegion
         let highlightColor = rgbaColor(request.highlightColor)
-        let fullRegion = CGRect(x: 0, y: 0, width: depthMap.width, height: depthMap.height)
-        let samples = TAPDepthGeometryProjector.sampledPoints(
-            from: depthMap,
-            in: fullRegion,
-            maxCount: 12_000
-        )
-        let renderableSamples = TAPDepthProjectionSampleFilter.renderableSamples(from: samples)
-        guard !renderableSamples.isEmpty else {
-            return nil
-        }
-        let projectionFrame = TAPDepthDisplayProjectionFrame(
+        guard let projectionFrame = TAPDepthDisplayProjectionFrame(
             depthMap: depthMap,
             imageWidth: image?.width ?? depthMap.width,
             imageHeight: image?.height ?? depthMap.height,
             orientation: orientation
-        )
-        guard let projectionFrame else {
+        ) else {
+            return nil
+        }
+        let renderableSamples = TAPDepthProjectionSampleFilter.sampledDepths(from: depthMap)
+        guard !renderableSamples.isEmpty else {
             return nil
         }
 
@@ -613,14 +634,14 @@ nonisolated enum TAPDepthProjectionScenePayloadBuilder {
 
             let vertex = projectionFrame.sceneVertex(
                 forDepthPoint: sample.imagePoint,
-                depthMeters: sample.point.z
+                depthMeters: sample.depthMeters
             )
             baseVertices.append(vertex)
             baseColors.append(
                 rgbSampler?.color(
                     atDepthPoint: sample.imagePoint,
                     projectionFrame: projectionFrame
-                ) ?? fallbackColor(sample: sample)
+                ) ?? fallbackColor(depthMeters: sample.depthMeters)
             )
 
             let x = min(max(Int(sample.imagePoint.x.rounded(.down)), 0), max(depthMap.width - 1, 0))
@@ -630,7 +651,7 @@ nonisolated enum TAPDepthProjectionScenePayloadBuilder {
             }
         }
         let targetDepth = TAPDepthProjectionSampleFilter.targetDepth(
-            from: renderableSamples.map(\.point.z)
+            from: renderableSamples.map(\.depthMeters)
         )
         let basePointSize = pointSize(depthMap: depthMap, sampleCount: baseVertices.count)
         return TAPDepthProjectionScenePayloadData(
@@ -644,8 +665,8 @@ nonisolated enum TAPDepthProjectionScenePayloadBuilder {
         )
     }
 
-    private static func fallbackColor(sample: (point: TAPPoint3D, imagePoint: CGPoint)) -> SIMD4<Float> {
-        let normalizedZ = min(max(sample.point.z / 5.0, 0), 1)
+    private static func fallbackColor(depthMeters: Float) -> SIMD4<Float> {
+        let normalizedZ = min(max(depthMeters / 5.0, 0), 1)
         let color = TAPDepthHeatmapRenderer.viridisColor(normalized: normalizedZ)
         return SIMD4<Float>(
             Float(color.red) / 255.0,
