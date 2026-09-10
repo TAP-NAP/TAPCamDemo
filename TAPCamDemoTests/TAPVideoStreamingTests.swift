@@ -948,19 +948,21 @@ struct TAPVideoStreamingTests {
         }
     }
 
-    @Test func depthGapAccumulatorMergesAdjacentEventsAndStaysBounded() throws {
+    @Test func depthGapAccumulatorMergesOverlapsWithoutBridgingValidSamplesAndStaysBounded() throws {
         var adjacent = TAPDepthGapAccumulator()
         adjacent.record(
-            Self.gap(reason: .outputDrop, startValue: 0, endValue: 0),
-            mergeToleranceSeconds: 0.1
+            Self.gap(reason: .outputDrop, startValue: 0, endValue: 30)
         )
         adjacent.record(
-            Self.gap(reason: .outputDrop, startValue: 30, endValue: 30),
-            mergeToleranceSeconds: 0.1
+            Self.gap(reason: .outputDrop, startValue: 30, endValue: 30)
         )
         #expect(adjacent.gaps.count == 1)
         #expect(adjacent.gaps.first?.startPTS.value == 0)
         #expect(adjacent.gaps.first?.endPTS.value == 30)
+        adjacent.record(Self.gap(reason: .outputDrop, startValue: 60, endValue: 60))
+        #expect(adjacent.gaps.count == 2)
+        #expect(adjacent.gaps.first?.endPTS.value == 30)
+        #expect(adjacent.gaps.last?.startPTS.value == 60)
 
         var bounded = TAPDepthGapAccumulator()
         for index in 0..<(TAPDepthGapAccumulator.maximumGapCount + 8) {
@@ -972,8 +974,7 @@ struct TAPVideoStreamingTests {
                     reason: reason,
                     startValue: Int64(index * 600),
                     endValue: Int64(index * 600 + 1)
-                ),
-                mergeToleranceSeconds: 0
+                )
             )
         }
         #expect(bounded.gaps.count == TAPDepthGapAccumulator.maximumGapCount)

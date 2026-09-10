@@ -108,6 +108,14 @@ struct TAPVideoPlaybackContentSurface: View {
                 .clipped()
             }
 
+            if selectedTool == .threeD {
+                TAPVideoPointCloudView(store: session.pointCloudStore)
+                    .background(Color.black)
+                if !session.isThreeDPlaybackReady {
+                    ProgressView().tint(.white).accessibilityLabel("Preparing 3D")
+                }
+            }
+
             // Keep the poster above the warming AVPlayerLayer. AVPlayer creation
             // is not a first-frame guarantee; uncovering it earlier produces a
             // visible black flash when the loading indicator disappears.
@@ -242,11 +250,12 @@ private struct TAPVideoPlaybackSessionChrome: View {
 
     var body: some View {
         TAPVideoViewerChrome(
-            player: session.player,
-            playbackIntentState: session.playbackIntentState,
+            transportModel: session.transportModel,
             selectedTool: selectedTool,
             availability: session.registeredDepthAvailability,
             isTwoDPlaybackReady: session.isTwoDPlaybackReady,
+            isThreeDDepthAvailable: session.isThreeDDepthAvailable,
+            isThreeDPlaybackReady: session.isThreeDPlaybackReady,
             overlayOpacity: $overlayOpacity,
             shareSubject: shareSubject,
             shareResourceAccess: DepthAnalysisShareResourceAccess(

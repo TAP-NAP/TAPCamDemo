@@ -36,12 +36,19 @@ struct TAPDepthAnalysisPresentationTests {
             "2D analysis",
             "3D projection"
         ])
-        #expect(availableItems.map(\.isEnabled) == [true, true, true])
+        #expect(availableItems.map(\.isEnabled) == [true, true, false])
         #expect(availableItems.map(\.accessibilityValue) == [
             "Selected",
             "Available",
-            "Coming soon"
+            "3D depth unavailable"
         ])
+
+        let readyThreeDItems = TAPVideoViewerModePolicy.items(
+            availability: .available(registeredDescriptor), selectedTool: .threeD,
+            isTwoDPlaybackReady: false, isThreeDDepthAvailable: true, isThreeDPlaybackReady: true
+        )
+        #expect(readyThreeDItems[2].isEnabled)
+        #expect(readyThreeDItems[2].accessibilityValue == "Selected, Ready")
 
         let readyTwoDItems = TAPVideoViewerModePolicy.items(
             availability: .available(registeredDescriptor),
@@ -55,7 +62,7 @@ struct TAPDepthAnalysisPresentationTests {
             selectedTool: .raw,
             isTwoDPlaybackReady: false
         )
-        #expect(unavailableItems.map(\.isEnabled) == [true, false, true])
+        #expect(unavailableItems.map(\.isEnabled) == [true, false, false])
         #expect(unavailableItems[1].accessibilityValue == "Registered depth unavailable")
 
         let incompleteDescriptor = TAPVideoDepthRegistrationDescriptor(
@@ -69,7 +76,7 @@ struct TAPDepthAnalysisPresentationTests {
             selectedTool: .raw,
             isTwoDPlaybackReady: false
         )
-        #expect(incompleteItems.map(\.isEnabled) == [true, false, true])
+        #expect(incompleteItems.map(\.isEnabled) == [true, false, false])
     }
 
     @Test func videoTransportTreatsBufferingAsActivePlaybackIntent() {

@@ -13,13 +13,10 @@ nonisolated struct TAPDepthGapAccumulator: Sendable {
 
     private(set) var gaps: [TAPVideoManifest.DepthGap] = []
 
-    mutating func record(
-        _ gap: TAPVideoManifest.DepthGap,
-        mergeToleranceSeconds: Double
-    ) {
+    mutating func record(_ gap: TAPVideoManifest.DepthGap) {
         if let last = gaps.last,
            last.reason == gap.reason,
-           Self.canMerge(last, with: gap, toleranceSeconds: mergeToleranceSeconds) {
+           Self.canMerge(last, with: gap) {
             gaps[gaps.count - 1] = Self.merged(last, gap, reason: last.reason)
             return
         }
@@ -33,19 +30,14 @@ nonisolated struct TAPDepthGapAccumulator: Sendable {
 
     private static func canMerge(
         _ lhs: TAPVideoManifest.DepthGap,
-        with rhs: TAPVideoManifest.DepthGap,
-        toleranceSeconds: Double
+        with rhs: TAPVideoManifest.DepthGap
     ) -> Bool {
         guard lhs.endPTS.timescale > 0, rhs.startPTS.timescale > 0 else {
             return false
         }
         let lhsEnd = CMTime(value: lhs.endPTS.value, timescale: lhs.endPTS.timescale)
         let rhsStart = CMTime(value: rhs.startPTS.value, timescale: rhs.startPTS.timescale)
-        let tolerance = CMTime(
-            seconds: max(0, toleranceSeconds),
-            preferredTimescale: max(max(lhs.endPTS.timescale, rhs.startPTS.timescale), 600)
-        )
-        return CMTimeCompare(rhsStart, CMTimeAdd(lhsEnd, tolerance)) <= 0
+        return CMTimeCompare(rhsStart, lhsEnd) <= 0
     }
 
     private static func merged(
@@ -83,6 +75,7 @@ nonisolated struct TAPDepthGapAccumulator: Sendable {
 /// TAP manifest and embedded in each KLV frame.
 nonisolated enum TAPVideoCaptureTimeline {
     static let timescale: CMTimeScale = 600
+    static let tick = CMTime(value: 1, timescale: timescale)
 
     static func relativeMediaTime(
         _ timestamp: CMTime,
@@ -253,7 +246,6 @@ nonisolated struct TAPVideoRecordingMetrics {
         reason: TAPVideoManifest.DepthGapReason,
         start: CMTime,
         end: CMTime,
-        cadenceThresholdSeconds: Double,
         nearestStartRGBFrame: Int? = nil,
         nearestEndRGBFrame: Int? = nil
     ) {
@@ -271,10 +263,7 @@ nonisolated struct TAPVideoRecordingMetrics {
         ) else {
             return
         }
-        depthGapAccumulator.record(
-            gap,
-            mergeToleranceSeconds: cadenceThresholdSeconds
-        )
+        depthGapAccumulator.record(gap)
     }
 
     func finalizedDepthGaps(
@@ -298,7 +287,7 @@ nonisolated struct TAPVideoRecordingMetrics {
         guard trailingInterval > cadenceThresholdSeconds,
               let trailingGap = TAPVideoCaptureTimeline.depthGap(
                 reason: .silentCadence,
-                start: lastDepthTime,
+                start: CMTimeAdd(lastDepthTime, TAPVideoCaptureTimeline.tick),
                 end: videoEndTime,
                 relativeTo: firstVideoTime,
                 nearestStartRGBFrame: videoFrameCount > 0 ? videoFrameCount - 1 : nil,
@@ -307,10 +296,7 @@ nonisolated struct TAPVideoRecordingMetrics {
             return depthGapAccumulator.gaps
         }
         var accumulator = depthGapAccumulator
-        accumulator.record(
-            trailingGap,
-            mergeToleranceSeconds: cadenceThresholdSeconds
-        )
+        accumulator.record(trailingGap)
         return accumulator.gaps
     }
 }

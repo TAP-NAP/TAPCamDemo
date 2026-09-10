@@ -3,20 +3,15 @@
 //  TAPCamDemo
 //
 
-import AVFoundation
 import SwiftUI
 
 struct TAPVideoPlaybackTransportAccessory: View {
-    let player: AVPlayer?
-    let intentState: TAPVideoPlaybackIntentState
+    let model: TAPVideoPlaybackTransportModel?
 
     @ViewBuilder
     var body: some View {
-        if let player {
-            TAPVideoPlaybackTransportView(
-                player: player,
-                intentState: intentState
-            )
+        if let model {
+            TAPVideoPlaybackTransportView(model: model)
         } else {
             EmptyView()
         }
@@ -24,14 +19,7 @@ struct TAPVideoPlaybackTransportAccessory: View {
 }
 
 struct TAPVideoPlaybackTransportView: View {
-    @State private var model: TAPVideoPlaybackTransportModel
-
-    init(player: AVPlayer, intentState: TAPVideoPlaybackIntentState) {
-        _model = State(initialValue: TAPVideoPlaybackTransportModel(
-            player: player,
-            intentState: intentState
-        ))
-    }
+    let model: TAPVideoPlaybackTransportModel
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
@@ -48,7 +36,6 @@ struct TAPVideoPlaybackTransportView: View {
         .shadow(color: .black.opacity(0.16), radius: 12, y: 4)
         .padding(.horizontal, 16)
         .accessibilityElement(children: .contain)
-        .onDisappear(perform: model.invalidate)
     }
 
     private func transportRow(showsTimeLabels: Bool) -> some View {

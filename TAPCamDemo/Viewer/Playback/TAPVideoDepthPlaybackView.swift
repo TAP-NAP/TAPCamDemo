@@ -107,9 +107,7 @@ struct TAPVideoDepthPlaybackView: View {
             guard !Task.isCancelled else {
                 return
             }
-            if selectedTool == .twoD {
-                activeSession.prepareTwoDPlaybackGate()
-            }
+            prepareSelectedTool(on: activeSession)
         }
         .onChange(of: source) { _, updatedSource in
             replacePlaybackSessionIfNeeded(
@@ -117,12 +115,8 @@ struct TAPVideoDepthPlaybackView: View {
                 itemID: currentItemID
             )
         }
-        .onChange(of: selectedTool) { _, tool in
-            if tool == .twoD {
-                session.prepareTwoDPlaybackGate()
-            } else {
-                session.cancelTwoDPlaybackGate()
-            }
+        .onChange(of: selectedTool) { _, _ in
+            prepareSelectedTool(on: session)
         }
         .onDisappear(perform: session.stopPlayback)
         .onReceive(
@@ -182,12 +176,29 @@ struct TAPVideoDepthPlaybackView: View {
     }
 
     private func handleModeTapped(_ itemID: String) {
-        guard let tool = AnalysisViewerTool(rawValue: itemID),
-              tool != .threeD,
-              tool == .raw || session.isRegisteredDepthAvailable else {
-            return
+        guard let tool = AnalysisViewerTool(rawValue: itemID) else { return }
+        switch tool {
+        case .raw: break
+        case .twoD:
+            guard session.isRegisteredDepthAvailable else { return }
+        case .threeD:
+            guard session.isThreeDDepthAvailable else { return }
         }
         selectedTool = tool
+    }
+
+    private func prepareSelectedTool(on activeSession: TAPVideoPlaybackSession) {
+        switch selectedTool {
+        case .raw:
+            activeSession.cancelTwoDPlaybackGate()
+            activeSession.cancelThreeDPlaybackGate()
+        case .twoD:
+            activeSession.prepareTwoDPlaybackGate()
+        case .threeD:
+            activeSession.prepareThreeDPlaybackGate(
+                smoothingEnabled: DepthAnalyzerPreferences.playbackSmoothingEnabled()
+            )
+        }
     }
 
     private func deleteCurrentVideo() {

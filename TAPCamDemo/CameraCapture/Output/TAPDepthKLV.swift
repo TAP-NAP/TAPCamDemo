@@ -44,6 +44,7 @@ nonisolated enum TAPDepthKLV {
         nonisolated static let compression = FourCC(rawValue: "COMP")
         nonisolated static let calibrationReference = FourCC(rawValue: "CALR")
         nonisolated static let calibrationIndex = FourCC(rawValue: "CALI")
+        nonisolated static let inlineCalibration = FourCC(rawValue: "CALD")
         nonisolated static let uncompressedLength = FourCC(rawValue: "ULEN")
         nonisolated static let depthPayload = FourCC(rawValue: "DPTH")
     }
@@ -122,10 +123,14 @@ nonisolated struct TAPDepthKLVFrame: Equatable, Sendable {
     let uncompressedByteCount: Int
     let calibrationIndex: UInt32?
     let payload: Data
+    var inlineCalibration: TAPVideoManifest.CameraCalibration? = nil
 
     func encodedData() throws -> Data {
         guard uncompressedByteCount >= 0, uncompressedByteCount <= Int(UInt32.max) else {
             throw TAPDepthCaptureError.invalidTAPManifest("depth frame byte count is out of range")
+        }
+        guard calibrationIndex == nil || inlineCalibration == nil else {
+            throw TAPDepthCaptureError.invalidTAPManifest("CALI and CALD are mutually exclusive")
         }
 
         var schemaData = Data()
@@ -148,6 +153,12 @@ nonisolated struct TAPDepthKLVFrame: Equatable, Sendable {
             var calibrationData = Data()
             calibrationData.appendUInt32BE(calibrationIndex)
             records.append(TAPDepthKLV.Record(key: .calibrationIndex, payload: calibrationData))
+        }
+        if let inlineCalibration {
+            records.append(TAPDepthKLV.Record(
+                key: .inlineCalibration,
+                payload: try TAPDepthInlineCalibration.encodedData(inlineCalibration)
+            ))
         }
         records.append(TAPDepthKLV.Record(key: .depthPayload, payload: payload))
         return TAPDepthKLV.encode(records)
@@ -186,14 +197,10 @@ nonisolated struct TAPDepthKLVFrame: Equatable, Sendable {
             throw TAPDepthCaptureError.invalidTAPManifest("missing TAP depth frame payload")
         }
 
-        let calibrationIndex: UInt32?
-        if let calibrationData = payloadByKey[.calibrationIndex] {
-            guard calibrationData.count == 4 else {
-                throw TAPDepthCaptureError.invalidTAPManifest("invalid TAP depth calibration index")
-            }
-            calibrationIndex = calibrationData.uint32BE(at: 0)
-        } else {
-            calibrationIndex = nil
+        let calibrationIndex = try calibrationReference(payloadByKey[.calibrationIndex])
+        let inlineCalibration = try payloadByKey[.inlineCalibration].map(TAPDepthInlineCalibration.decode)
+        guard calibrationIndex == nil || inlineCalibration == nil else {
+            throw TAPDepthCaptureError.invalidTAPManifest("CALI and CALD are mutually exclusive")
         }
 
         return TAPDepthKLVFrame(
@@ -203,8 +210,17 @@ nonisolated struct TAPDepthKLVFrame: Equatable, Sendable {
             compressionCodec: compressionCodec,
             uncompressedByteCount: Int(lengthData.uint32BE(at: 0)),
             calibrationIndex: calibrationIndex,
-            payload: payload
+            payload: payload,
+            inlineCalibration: inlineCalibration
         )
+    }
+
+    private static func calibrationReference(_ data: Data?) throws -> UInt32? {
+        guard let data else { return nil }
+        guard data.count == 4 else {
+            throw TAPDepthCaptureError.invalidTAPManifest("invalid TAP depth calibration index")
+        }
+        return data.uint32BE(at: 0)
     }
 
     func decodedPackedBytes() throws -> Data {

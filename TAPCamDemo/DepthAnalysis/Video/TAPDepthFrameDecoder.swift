@@ -15,6 +15,9 @@ nonisolated struct TAPDecodedDepthVideoFrame {
     let pixelFormat: String
     let image: UIImage
     let retainedByteCount: Int
+    var packedDepth: Data = Data()
+    var calibrationIndex: UInt32? = nil
+    var inlineCalibration: TAPVideoManifest.CameraCalibration? = nil
 
     func cacheMatches(_ other: TAPDecodedDepthVideoFrame) -> Bool {
         frameIndex == other.frameIndex
@@ -28,6 +31,7 @@ nonisolated enum TAPDepthFrameDecoder {
         presentationTimeSeconds: Double,
         depthFormat: TAPVideoManifest.DepthFormat,
         displayOrientation: CGImagePropertyOrientation,
+        rendersHeatmap: Bool = true,
         shouldContinue: @escaping @Sendable () -> Bool = { true }
     ) throws -> TAPDecodedDepthVideoFrame {
         guard shouldContinue() else {
@@ -69,16 +73,28 @@ nonisolated enum TAPDepthFrameDecoder {
             )
         }
 
-        let rendered = try TAPDepthFrameRenderer.render(
-            payload: depthPayload,
-            pixelFormat: pixelFormat,
-            width: width,
-            height: height,
-            rowStride: rowStride,
-            displayOrientation: displayOrientation,
-            shouldContinue: shouldContinue
-        )
-        decodedOutputByteCount = rendered.retainedByteCount
+        let image: UIImage
+        let imageByteCount: Int
+        if rendersHeatmap {
+            let rendered = try TAPDepthFrameRenderer.render(
+                payload: depthPayload, pixelFormat: pixelFormat, width: width,
+                height: height, rowStride: rowStride, displayOrientation: displayOrientation,
+                shouldContinue: shouldContinue
+            )
+            image = rendered.image
+            imageByteCount = rendered.retainedByteCount
+        } else {
+            image = UIImage()
+            imageByteCount = 0
+        }
+        let calibration = encodedFrame.inlineCalibration
+        let calibrationByteCount: Int = calibration.map {
+            let matrixBytes = ($0.intrinsicMatrix.count + $0.extrinsicMatrix.count) * MemoryLayout<Float>.stride
+            let lookupBytes = ($0.lensDistortionLookupTable?.count ?? 0)
+                + ($0.inverseLensDistortionLookupTable?.count ?? 0)
+            return MemoryLayout<TAPVideoManifest.CameraCalibration>.stride + matrixBytes + lookupBytes
+        } ?? 0
+        decodedOutputByteCount = imageByteCount + depthPayload.count + calibrationByteCount
         didDecode = true
         return TAPDecodedDepthVideoFrame(
             frameIndex: Int(encodedFrame.frameIndex),
@@ -86,8 +102,11 @@ nonisolated enum TAPDepthFrameDecoder {
             width: width,
             height: height,
             pixelFormat: pixelFormat,
-            image: rendered.image,
-            retainedByteCount: rendered.retainedByteCount
+            image: image,
+            retainedByteCount: decodedOutputByteCount,
+            packedDepth: depthPayload,
+            calibrationIndex: encodedFrame.calibrationIndex,
+            inlineCalibration: calibration
         )
     }
 
@@ -129,7 +148,7 @@ nonisolated enum TAPDepthFrameDecoder {
               depthFormat.bytesPerSample == expectedBytesPerSample,
               rowStride == expectedRowStride,
               expectedFrameByteCount == depthFormat.uncompressedFrameByteCount,
-              renderedByteCount <= TAPVideoDepthPlaybackBudget.maximumRetainedFrameBytes,
+              renderedByteCount <= TAPVideoDepthPlaybackBudget.maximumRetainedFrameBytes - expectedFrameByteCount,
               depthFormat.byteOrder == "little-endian",
               encodedFrame.uncompressedByteCount == depthFormat.uncompressedFrameByteCount else {
             throw TAPDepthCaptureError.invalidTAPManifest(

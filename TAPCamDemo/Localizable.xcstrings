@@ -1,6 +1,17 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "%.3f seconds, %d RGB points" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%.3f 秒，%d 个 RGB 着色点"
+          }
+        }
+      }
+    },
     "%@" : {
       "localizations" : {
         "zh-Hans" : {
@@ -130,6 +141,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "2D 叠加层不透明度"
+          }
+        }
+      }
+    },
+    "3D depth unavailable" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3D 深度不可用"
+          }
+        }
+      }
+    },
+    "3D Playback Smoothing" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3D 回放平滑"
           }
         }
       }
@@ -290,6 +323,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "App 语言"
+          }
+        }
+      }
+    },
+    "Apple Depth Filtering" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple 深度滤波"
+          }
+        }
+      }
+    },
+    "Applies to the next TAP Video recording." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从下一段 TAP Video 录制开始生效。"
           }
         }
       }
@@ -670,6 +725,17 @@
         }
       }
     },
+    "Changes only the 3D display, never the recording." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仅影响 3D 显示，不会更改录制内容。"
+          }
+        }
+      }
+    },
     "Checks that TAPCam can reach the service before first camera setup." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -715,6 +781,7 @@
       }
     },
     "Coming soon" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -1922,6 +1989,17 @@
         }
       }
     },
+    "No current 3D frame" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前没有 3D 帧"
+          }
+        }
+      }
+    },
     "No depth photos yet" : {
       "localizations" : {
         "zh-Hans" : {
@@ -2429,6 +2507,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在准备 2D 播放"
+          }
+        }
+      }
+    },
+    "Preparing 3D" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在准备 3D"
           }
         }
       }

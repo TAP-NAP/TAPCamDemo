@@ -140,6 +140,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.cameraCapture.error("capture session runtime error domain=\(failure.domain, privacy: .public) code=\(failure.code, privacy: .public) mediaServicesReset=\(failure.isMediaServicesReset, privacy: .public)")
             #endif
+            stopInterruptedMotionRecording()
             emitRuntimeFailure(failure)
         }
 
@@ -147,7 +148,8 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             forName: AVCaptureSession.wasInterruptedNotification,
             object: session,
             queue: nil
-        ) { notification in
+        ) { [weak self] notification in
+            self?.stopInterruptedMotionRecording()
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             let reason = (notification.userInfo?[AVCaptureSessionInterruptionReasonKey] as? NSNumber)?.intValue ?? -1
             TAPDiagnostics.cameraCapture.error("capture session interrupted reason=\(reason, privacy: .public)")
@@ -168,10 +170,17 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             forName: AVCaptureSession.didStopRunningNotification,
             object: session,
             queue: nil
-        ) { _ in
+        ) { [weak self] _ in
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.cameraCapture.info("capture session did stop running")
             #endif
+            self?.stopInterruptedMotionRecording()
+        }
+    }
+
+    private func stopInterruptedMotionRecording() {
+        sessionQueue.async { [weak self] in
+            self?.activeVideoRecordingGraph?.recorder.stopMotionRecording(recordingError: true)
         }
     }
 
@@ -350,7 +359,8 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         configuration: SessionConfigurationResult,
         recordsAudio: Bool,
         videoRotationAngle: CGFloat?,
-        isVideoMirrored: Bool
+        isVideoMirrored: Bool,
+        depthFilteringEnabled: Bool = false
     ) async throws {
         try await withCheckedThrowingContinuation { continuation in
             sessionQueue.async { [self, session] in
@@ -365,7 +375,8 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                         configuration: configuration,
                         recordsAudio: recordsAudio,
                         videoRotationAngle: videoRotationAngle,
-                        isVideoMirrored: isVideoMirrored
+                        isVideoMirrored: isVideoMirrored,
+                        depthFilteringEnabled: depthFilteringEnabled
                        ) {
                         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
                         TAPDiagnostics.cameraCapture.info("video recording graph warmup reused recordsAudio=\(recordsAudio, privacy: .public) recordsDepth=true")
@@ -386,7 +397,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                         ? manualFocusPreviewStream.videoOutput
                         : Self.makeVideoRecordingVideoOutput()
                     let audioOutput = recordsAudio ? AVCaptureAudioDataOutput() : nil
-                    let depthOutput = Self.makeVideoRecordingDepthOutput()
+                    let depthOutput = Self.makeVideoRecordingDepthOutput(filteringEnabled: depthFilteringEnabled)
 
                     session.beginConfiguration()
                     var addedOutputs: [AVCaptureOutput] = []
@@ -438,6 +449,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                             requestedRecordsAudio: recordsAudio,
                             videoRotationAngle: videoRotationAngle,
                             isVideoMirrored: isVideoMirrored,
+                            depthFilteringEnabled: depthFilteringEnabled,
                             videoSettings: videoSettings,
                             previousActiveDepthDataFormat: previousActiveDepthDataFormat,
                             didApplyVideoDepthDataFormat: didApplyVideoDepthDataFormat,
@@ -504,7 +516,8 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                         configuration: configuration,
                         recordsAudio: request.recordsAudio,
                         videoRotationAngle: request.videoRotationAngle,
-                        isVideoMirrored: request.isVideoMirrored
+                        isVideoMirrored: request.isVideoMirrored,
+                        depthFilteringEnabled: request.depthFilteringEnabled
                        ) {
                         let recorder = try TAPVideoRecorder(
                             request: request,
@@ -524,6 +537,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                             videoOutput: preparedGraph.videoOutput,
                             depthOutput: preparedGraph.depthOutput
                         )
+                        recorder.startMotionRecording(captureClock: session.synchronizationClock)
                         preparedGraph.outputRouter.activate(recorder)
 
                         activeVideoRecordingGraph = ActiveVideoRecordingGraph(
@@ -560,7 +574,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                     let videoOutput = Self.makeVideoRecordingVideoOutput()
 
                     let audioOutput = request.recordsAudio ? AVCaptureAudioDataOutput() : nil
-                    let depthOutput = Self.makeVideoRecordingDepthOutput()
+                    let depthOutput = Self.makeVideoRecordingDepthOutput(filteringEnabled: request.depthFilteringEnabled)
 
                     session.beginConfiguration()
                     var addedOutputs: [AVCaptureOutput] = []
@@ -614,6 +628,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
                         TAPDiagnostics.cameraCapture.info("video recording graph started captureID=\(request.captureID, privacy: .private) recordsAudio=\(actualRecordsAudio, privacy: .public) recordsDepth=true synchronizedDepth=true previewSizedVideo=\(Self.previewSizedDescription(videoOutput), privacy: .public)")
                         #endif
+                        recorder.startMotionRecording(captureClock: session.synchronizationClock)
                         continuation.resume(returning: recorder)
                     } catch {
                         Self.clearVideoRecordingOutputDelegates(addedOutputs)
@@ -658,6 +673,9 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                     continuation.resume(throwing: TAPDepthCaptureError.videoRecordingNotActive)
                     return
                 }
+                // Stop clock conversions before removing inputs can replace
+                // the session's synchronization clock.
+                graph.recorder.stopMotionRecording()
                 activeVideoRecordingGraph = nil
                 graph.outputRouter?.deactivateRecorder()
                 graph.dataOutputSynchronizer.setDelegate(nil, queue: nil)
@@ -1289,9 +1307,9 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         return videoOutput
     }
 
-    private static func makeVideoRecordingDepthOutput() -> AVCaptureDepthDataOutput {
+    private static func makeVideoRecordingDepthOutput(filteringEnabled: Bool) -> AVCaptureDepthDataOutput {
         let depthOutput = AVCaptureDepthDataOutput()
-        depthOutput.isFilteringEnabled = false
+        depthOutput.isFilteringEnabled = filteringEnabled
         depthOutput.alwaysDiscardsLateDepthData = true
         return depthOutput
     }
@@ -1865,6 +1883,7 @@ private nonisolated struct PreparedVideoRecordingGraph {
     let requestedRecordsAudio: Bool
     let videoRotationAngle: CGFloat?
     let isVideoMirrored: Bool
+    let depthFilteringEnabled: Bool
     let videoSettings: [String: Any]
     let previousActiveDepthDataFormat: AVCaptureDevice.Format?
     let didApplyVideoDepthDataFormat: Bool
@@ -1876,11 +1895,13 @@ private nonisolated struct PreparedVideoRecordingGraph {
         configuration: SessionConfigurationResult,
         recordsAudio: Bool,
         videoRotationAngle: CGFloat?,
-        isVideoMirrored: Bool
+        isVideoMirrored: Bool,
+        depthFilteringEnabled: Bool
     ) -> Bool {
         device.uniqueID == configuration.device.uniqueID
             && requestedRecordsAudio == recordsAudio
             && self.isVideoMirrored == isVideoMirrored
+            && self.depthFilteringEnabled == depthFilteringEnabled
             && Self.sameRotation(self.videoRotationAngle, videoRotationAngle)
     }
 

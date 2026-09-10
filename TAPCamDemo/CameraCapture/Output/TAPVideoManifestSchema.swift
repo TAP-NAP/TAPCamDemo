@@ -548,8 +548,8 @@ extension TAPVideoManifest {
         case silentCadence
         /// A conservative range used only after the bounded gap table reaches
         /// its hard limit. The range may include valid samples between several
-        /// otherwise independent gaps, so readers must fail closed and clear
-        /// the overlay for the complete interval.
+        /// otherwise independent gaps, so readers treat current depth as
+        /// unavailable throughout. A display may hold a prior valid frame.
         case boundedAggregation
     }
 

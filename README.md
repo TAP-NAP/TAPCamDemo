@@ -21,6 +21,12 @@ verification conventions come only from the pinned
 [TAPArtifactContracts index](https://github.com/TAP-NAP/TAPArtifactContracts/blob/ca3b223e0717242ce1016b34dc34f04ef2417936/CONTRACTS.md).
 This repository implements those contracts; it does not restate their bytes.
 
+The app additionally implements the optional
+`TAPCAMTELEMETRY1` capture-telemetry candidate in the sibling
+`TAPArtifactContracts/containers/tap-video-capture-telemetry-v1.md`. It records
+filtering observations and bounded device motion under the existing content
+binding. This candidate is not yet part of the reviewed contract pin above.
+
 ## Runtime path
 
 ```mermaid
