@@ -84,13 +84,12 @@ struct TAPDepthAnalysisPresentationTests {
         #expect(TAPVideoViewerModePolicy.effectiveTool(.threeD, availability: .available(registeredDescriptor), isThreeDDepthAvailable: true) == .threeD)
     }
 
-    @Test @MainActor func mixedViewerKeepsModeAndComparisonAcrossSettledResourceTypes() {
+    @Test @MainActor func mixedViewerKeepsModeAcrossSettledResourceTypes() {
         let a = TAPLibraryViewerPagingEntry(id: "a", destination: .analysis(DepthAlbumAnalysisRoute(itemID: "a", source: .photosAsset("a"))))
         let b = TAPLibraryViewerPagingEntry(id: "b", destination: .video(TAPVideoPlaybackRoute(itemID: "b", source: .photosAsset("b"))))
         let c = TAPLibraryViewerPagingEntry(id: "c", destination: .video(TAPVideoPlaybackRoute(itemID: "c", source: .photosAsset("c"))))
         let store = TAPLibraryViewerStore(entries: [a, b, c], currentItemID: a.id, loader: .noop)
         store.selectedTool = .threeD
-        store.comparisonPosition = 0.23
         store.select(b, pixelLength: 80, prewarmCurrentPlaneGeometry: false)
         #expect(store.currentPagingEntry == b)
         #expect(store.currentVideoSession?.transportModel == nil)
@@ -98,12 +97,10 @@ struct TAPDepthAnalysisPresentationTests {
         #expect(store.currentPagingEntry == c)
         #expect(store.currentVideoSession?.transportModel == nil)
         #expect(store.selectedTool == .threeD)
-        #expect(store.comparisonPosition == 0.23)
         store.select(b, pixelLength: 80, prewarmCurrentPlaneGeometry: false)
         #expect(store.currentVideoSession?.requestKey != nil)
         store.select(a, pixelLength: 80, prewarmCurrentPlaneGeometry: false)
         #expect(store.selectedTool == .threeD)
-        #expect(store.comparisonPosition == 0.23)
         store.cancelViewerRequests()
     }
 
@@ -508,6 +505,91 @@ struct TAPDepthAnalysisPresentationTests {
         #expect(slot.mediaFetchPhase == .ready(true))
     }
 
+    @Test @MainActor func originalRGBPublishesBeforeDepthAndRejectsLatePhotosRendition() async throws {
+        let preview = try singlePixelUIImage()
+        let input = try TAPCamDemoTestFixtures.analysisInput(depthMap: TAPMetricDepthMap(
+            width: 2, height: 2, samples: [1, 1, 1, 1],
+            calibration: TAPCamDemoTestFixtures.sampleCalibration))
+        let displayGate = OriginalRGBTestGate()
+        let depthGate = OriginalRGBTestGate()
+        let loader = DepthAnalysisProgressivePhotoLoader(
+            thumbnailLoader: { _, _ in preview },
+            displayLoader: { _, _ in
+                await displayGate.wait()
+                return AnalysisDisplayPhoto(image: preview, requestedPixelLength: 80)
+            },
+            inputLoader: { _, _ in
+                await depthGate.wait()
+                return input
+            })
+        let slot = AnalysisPhotoSlot(entry: DepthAnalysisCarouselEntry(source: .photosAsset("early-rgb")))
+        defer {
+            slot.prepareForEviction()
+            Task { await displayGate.release(); await depthGate.release() }
+        }
+        slot.ensureLoading(loader: loader, pixelLength: 80, priority: .userInitiated)
+        await displayGate.waitForEntry()
+        await depthGate.waitForEntry()
+        let oldDisplayTask = try #require(slot.displayFetchState.displayTask)
+        let depthTask = try #require(slot.analysisState.inputTask)
+        let requestKey = try #require(slot.analysisState.activeOriginalRequestKey)
+        let original = try originalRGBLease(id: "early-rgb")
+
+        slot.publishOriginalResource(original, requestKey: requestKey)
+        try await waitForCondition { slot.displayPhoto?.pixelSize == CGSize(width: 80, height: 40) }
+        #expect(slot.input == nil)
+        #expect(slot.analysisPhase.isLoading)
+        #expect(slot.originalResourceOwner.isReady)
+        #expect(slot.displayPhoto?.orientation == .up)
+        #expect(slot.displayPhase == .displayReady)
+
+        // The earlier Photos request deliberately ignores cancellation and
+        // returns a smaller rendition after local RGB has already committed.
+        await displayGate.release()
+        await oldDisplayTask.value
+        #expect(slot.displayPhoto?.pixelSize == CGSize(width: 80, height: 40))
+        await depthGate.release()
+        await depthTask.value
+        slot.prepareForEviction()
+    }
+
+    @Test @MainActor func cancelledOriginalRGBDoesNotCommitAfterSourceReplacement() async throws {
+        let oldSlot = AnalysisPhotoSlot(entry: DepthAnalysisCarouselEntry(source: .photosAsset("old-rgb")))
+        oldSlot.displayFetchState.lastLoader = .noop
+        oldSlot.displayFetchState.lastPixelLength = 80
+        let oldKey = oldSlot.newOriginalRequestKey()
+        let oldOriginal = try originalRGBLease(id: "old-rgb")
+        oldSlot.publishOriginalResource(oldOriginal, requestKey: oldKey)
+        let oldDisplayTask = try #require(oldSlot.displayFetchState.displayTask)
+        oldSlot.prepareForEviction()
+
+        let replacement = AnalysisPhotoSlot(entry: DepthAnalysisCarouselEntry(source: .photosAsset("new-rgb")))
+        replacement.displayFetchState.lastLoader = .noop
+        replacement.displayFetchState.lastPixelLength = 120
+        let newKey = replacement.newOriginalRequestKey()
+        replacement.publishOriginalResource(try originalRGBLease(id: "new-rgb"), requestKey: newKey)
+        await oldDisplayTask.value
+        oldSlot.publishOriginalResource(oldOriginal, requestKey: oldKey)
+        try await waitForCondition { replacement.displayPhoto?.pixelSize == CGSize(width: 120, height: 60) }
+        #expect(oldSlot.displayPhoto == nil)
+        #expect(!oldSlot.originalResourceOwner.isReady)
+        #expect(replacement.originalResourceOwner.acquireLease()?.mediaID == .photosAsset("new-rgb"))
+        replacement.prepareForEviction()
+    }
+
+    @Test @MainActor func originalRGBDoesNotRequireDepthMetadata() async throws {
+        let original = try originalRGBLease(id: "rgb-without-depth")
+        let display = try await original.displayPhoto(pixelLength: 96)
+        #expect(display.pixelSize == CGSize(width: 96, height: 48))
+        let loaded = try await DepthAnalysisProgressivePhotoLoader().loadedOriginal(
+            source: .photosAsset("rgb-without-depth"),
+            requestKey: MediaFetchRequestKey(itemID: original.mediaID, generation: 1, purpose: .photoOriginal),
+            expectsPairedVideo: false, retainedResourceLease: original, progressHandler: { _ in })
+        #expect(throws: (any Error).self) { try loaded.analysisInput() }
+        #expect(loaded.resourceLease?.photoURL == original.photoURL)
+        #expect(FileManager.default.fileExists(atPath: original.photoURL.path))
+    }
+
     @Test @MainActor func completedAnalysisIdentityFollowsRetainedInputAndReload() async throws {
         let input = try TAPCamDemoTestFixtures.analysisInput(depthMap: TAPMetricDepthMap(
             width: 2,
@@ -665,8 +747,10 @@ struct TAPDepthAnalysisPresentationTests {
 
         slot.markLivePhotoFetchResolving(requestKey: requestKey)
         #expect(slot.mediaFetchPhase == .resolving(true))
+        #expect(slot.resolvedMediaFetchPhase(includeLivePhoto: false) == .ready(true))
         slot.applyLivePhotoICloudProgress(0.42, requestKey: requestKey)
         #expect(slot.mediaFetchPhase == .downloadingFromICloud(true, progress: 0.42))
+        #expect(slot.resolvedMediaFetchPhase(includeLivePhoto: false) == .ready(true))
 
         slot.completeLivePhotoFetch(requestKey: requestKey)
         #expect(slot.mediaFetchPhase == .ready(true))
@@ -849,6 +933,48 @@ struct TAPDepthAnalysisPresentationTests {
         ) == DepthAnalysisPlaneSelectionState.defaultStrictness)
     }
 
+}
+
+@MainActor
+private func originalRGBLease(id: String) throws -> TAPPhotoOriginalResourceLease {
+    let format = UIGraphicsImageRendererFormat()
+    format.scale = 1
+    let image = UIGraphicsImageRenderer(size: CGSize(width: 320, height: 160), format: format).image { context in
+        UIColor.red.setFill()
+        context.fill(CGRect(x: 0, y: 0, width: 320, height: 160))
+    }
+    let directory = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+    let url = directory.appendingPathComponent("original.jpg")
+    try #require(image.jpegData(compressionQuality: 1)).write(to: url)
+    return try TAPPhotoOriginalResourceLease(mediaID: .photosAsset(id), origin: .photosAsset(assetID: id),
+        photoURL: url, pairedVideoURL: nil, photoFileExtension: "jpg", photoMediaType: "public.jpeg",
+        fileContainerHint: .jpeg, expectsPairedVideo: false, ownedTemporaryDirectoryURL: directory)
+}
+
+private actor OriginalRGBTestGate {
+    private var entered = false
+    private var released = false
+    private var entryWaiter: CheckedContinuation<Void, Never>?
+    private var releaseWaiter: CheckedContinuation<Void, Never>?
+
+    func wait() async {
+        entered = true
+        entryWaiter?.resume()
+        entryWaiter = nil
+        guard !released else { return }
+        await withCheckedContinuation { releaseWaiter = $0 }
+    }
+
+    func waitForEntry() async {
+        guard !entered else { return }
+        await withCheckedContinuation { entryWaiter = $0 }
+    }
+
+    func release() {
+        released = true
+        releaseWaiter?.resume()
+        releaseWaiter = nil
+    }
 }
 
 private func viewerPagingEntry(_ entry: DepthAnalysisAlbumContext.Entry) -> TAPLibraryViewerPagingEntry {

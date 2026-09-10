@@ -62,7 +62,9 @@ struct TAPLibraryViewer: View {
                     entries: store.windowPagingEntries,
                     currentItemID: store.currentItemID,
                     pageContentRevision: pageContentRevision,
-                    pageBuilder: page,
+                    pageBuilder: { entry, isCurrent, size in
+                        page(entry, isCurrent, size, safeAreaInsets: geometry.safeAreaInsets)
+                    },
                     onCurrentEntryChanged: { entry in
                         store.select(entry, pixelLength: pixelLength, prewarmCurrentPlaneGeometry: store.selectedTool == .threeD)
                         onCurrentEntryChanged(entry)
@@ -77,19 +79,8 @@ struct TAPLibraryViewer: View {
                 .background(Color.black)
 
                 if isDepthUnavailable {
-                    VStack {
-                        Text("Depth unavailable; showing RAW")
-                            .font(.footnote.weight(.medium))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 8)
-                            .background(.black.opacity(0.58), in: Capsule())
-                            .accessibilityIdentifier("tap.viewer.depthUnavailable")
-                        Spacer()
-                    }
-                    .padding(.top, geometry.safeAreaInsets.top + 52)
-                    .allowsHitTesting(false)
-                    .zIndex(4)
+                    DepthViewerUnavailableNotice(topSafeArea: geometry.safeAreaInsets.top)
+                        .zIndex(4)
                 }
 
                 DepthViewerChromeView(
@@ -213,30 +204,37 @@ struct TAPLibraryViewer: View {
         return AnalysisViewerTool.allCases.map(\.modeItem)
     }
 
-    private func page(_ entry: TAPLibraryViewerPagingEntry, _ isCurrent: Bool, _ size: CGSize) -> AnyView {
+    private func page(_ entry: TAPLibraryViewerPagingEntry, _ isCurrent: Bool, _ size: CGSize, safeAreaInsets: EdgeInsets) -> AnyView {
+        let loadingBottomInset = DepthViewerToolbarMetrics.toolbarBottomPadding(bottomSafeArea: safeAreaInsets.bottom)
+            + DepthViewerToolbarMetrics.controlHeight + (entry.isVideo ? 60 : 0)
         if let photo = store.photoEntry(entry) {
+            let slot = store.slot(for: photo)
             return AnyView(AnalysisNativePageView(
-                slot: store.slot(for: photo), tool: store.selectedTool, viewportSize: size,
+                slot: slot, tool: store.selectedTool, viewportSize: size,
                 isCurrent: isCurrent, pagingInteractionState: pagingInteractionState,
-                heatmapOpacity: $heatmapOpacity, comparisonPosition: $store.comparisonPosition,
-                highlightPalette: highlightPalette, mediaFetcher: mediaFetcher
-            ))
+                heatmapOpacity: $heatmapOpacity, loadingBottomInset: loadingBottomInset,
+                topSafeArea: safeAreaInsets.top, highlightPalette: highlightPalette, mediaFetcher: mediaFetcher
+            ).id(ObjectIdentifier(slot)))
         }
         if isCurrent, let session = store.videoSession(for: entry) {
-            return AnyView(TAPVideoCurrentPlayback(session: session, selectedTool: store.selectedTool, overlayOpacity: heatmapOpacity)
+            return AnyView(TAPVideoCurrentPlayback(session: session, selectedTool: store.selectedTool, overlayOpacity: heatmapOpacity, loadingBottomInset: loadingBottomInset)
                 .frame(width: size.width, height: size.height))
         }
-        return AnyView(TAPLibraryAdjacentMediaPreview(entry: entry, viewportSize: size, mediaFetcher: mediaFetcher))
+        return AnyView(TAPLibraryAdjacentMediaPreview(entry: entry, viewportSize: size,
+            mediaFetcher: mediaFetcher, loadingBottomInset: loadingBottomInset))
     }
 
     private func shouldBeginPaging(at location: CGPoint, viewportSize: CGSize) -> Bool {
-        guard store.selectedTool != .raw, let slot = store.currentSlot else { return true }
-        let imageSize = slot.input.map { CGSize(width: $0.image.width, height: $0.image.height) }
-            ?? slot.displayPhoto?.pixelSize ?? slot.thumbnailImage?.size
-        let rect = DepthAnalysisViewerInteractionPolicy.centeredToolContainerRect(
-            imageSize: imageSize, orientation: slot.input?.imageOrientation ?? slot.displayPhoto?.orientation ?? .up,
-            viewportSize: viewportSize)
-        return !rect.contains(location)
+        // Photo projections arbitrate with the ancestor pan recognizer directly.
+        guard store.selectedTool == .threeD,
+              let session = store.currentVideoSession,
+              session.isThreeDPlaybackReady,
+              TAPVideoViewerModePolicy.effectiveTool(.threeD,
+                  availability: session.registeredDepthAvailability,
+                  isThreeDDepthAvailable: session.isThreeDDepthAvailable) == .threeD else { return true }
+        return !DepthAnalysisViewerInteractionPolicy.pointCloudGestureRect(
+            in: CGRect(origin: .zero, size: viewportSize)
+        ).contains(location)
     }
 
     private func requestDelete(pixelLength: Int) {
@@ -276,10 +274,11 @@ private struct TAPVideoCurrentPlayback: View {
     let session: TAPVideoPlaybackSession
     let selectedTool: AnalysisViewerTool
     let overlayOpacity: Double
+    let loadingBottomInset: CGFloat
 
     var body: some View {
         TAPVideoPlaybackContentSurface(session: session, selectedTool: .constant(effectiveTool),
-            overlayOpacity: .constant(overlayOpacity), onRetry: session.retryCurrentFetch)
+            overlayOpacity: .constant(overlayOpacity), onRetry: session.retryCurrentFetch, loadingBottomInset: loadingBottomInset)
             .task(id: PlaybackTaskIdentity(session: ObjectIdentifier(session), request: session.requestKey)) {
                 await session.startPlaybackSession()
             }
@@ -328,28 +327,47 @@ private struct AnalysisNativePageView: View {
     let isCurrent: Bool
     let pagingInteractionState: AnalysisPagingInteractionState
     @Binding var heatmapOpacity: Double
-    @Binding var comparisonPosition: Double
+    let loadingBottomInset: CGFloat
+    let topSafeArea: CGFloat
     let highlightPalette: AnalysisHighlightPalette
-
     let mediaFetcher: any LibraryMediaFetching
+    @State private var projectionResult: (requestKey: MediaFetchRequestKey, state: DepthProjectionDisplayState)?
 
     var body: some View {
         ZStack {
             Color.black
+            rawContent
+                .clipShape(Path(effectiveTool == .raw
+                    ? CGRect(origin: .zero, size: viewportSize)
+                    : DepthAnalysisViewerInteractionPolicy.centeredToolContainerRect(
+                        imageSize: displayedImageSize, orientation: displayedImageOrientation,
+                        viewportSize: viewportSize)))
+                .allowsHitTesting(!isCurrent || effectiveTool == .raw)
+                .accessibilityHidden(isCurrent && effectiveTool != .raw)
+                .transaction { $0.animation = nil }
 
-            switch isCurrent ? effectiveTool : .raw {
-            case .raw:
-                rawContent
-            case .twoD, .threeD:
+            if let inputRequest = slot.analysisState.completedInputRequestKey {
                 AnalysisToolPhotoStage(
                     slot: slot,
-                    tool: tool,
+                    tool: isCurrent ? effectiveTool : .raw,
                     viewportSize: viewportSize,
                     isCurrent: isCurrent,
                     heatmapOpacity: $heatmapOpacity,
-                    comparisonPosition: $comparisonPosition,
-                    highlightPalette: highlightPalette
+                    highlightPalette: highlightPalette,
+                    isProjectionReady: projectionState == .ready,
+                    onProjectionStateChanged: { state in
+                        guard slot.analysisState.completedInputRequestKey == inputRequest else { return }
+                        projectionResult = (inputRequest, state)
+                    }
                 )
+                .id(inputRequest)
+                .allowsHitTesting(isCurrent && effectiveTool != .raw)
+                .accessibilityHidden(!isCurrent || effectiveTool == .raw)
+                .transaction { $0.animation = nil }
+            }
+
+            if isCurrent && tool == .threeD && projectionState == .unavailable {
+                DepthViewerUnavailableNotice(topSafeArea: topSafeArea)
             }
 
             AnalysisLivePhotoBadgeOverlay(
@@ -362,22 +380,40 @@ private struct AnalysisNativePageView: View {
                 mediaFetcher: mediaFetcher
             )
 
-            if isCurrent {
-                LibraryMediaViewerFetchOverlay(
-                    kind: .photo,
-                    state: LibraryMediaFetchOverlayState(slot.mediaFetchPhase),
-                    onRetry: slot.retryLastMediaFetch
-                )
-                .zIndex(4)
-            }
+            LibraryMediaViewerFetchOverlay(
+                kind: .photo,
+                state: isCurrent ? fetchOverlayState : .hidden,
+                onRetry: slot.retryLastMediaFetch,
+                loadingBottomInset: loadingBottomInset
+            )
+            .zIndex(4)
         }
         .frame(width: viewportSize.width, height: viewportSize.height)
     }
 
+    private var fetchOverlayState: LibraryMediaFetchOverlayState {
+        let resourceState = LibraryMediaFetchOverlayState(
+            slot.resolvedMediaFetchPhase(includeLivePhoto: effectiveTool == .raw)
+        )
+        guard resourceState == .hidden, effectiveTool != .raw else { return resourceState }
+        if slot.input == nil { return .loading }
+        if effectiveTool == .threeD && projectionState != .ready {
+            return .loading
+        }
+        return .hidden
+    }
+
+    private var projectionState: DepthProjectionDisplayState {
+        guard let projectionResult,
+              projectionResult.requestKey == slot.analysisState.completedInputRequestKey else { return .preparing }
+        return projectionResult.state
+    }
+
     private var effectiveTool: AnalysisViewerTool {
+        if tool == .threeD && projectionState == .unavailable { return .raw }
         // A complete original with a terminal depth decoding result cannot
         // supply this tool. Preserve the user's choice for the next resource.
-        slot.analysisPhase == .failed && slot.originalResourceOwner.isReady ? .raw : tool
+        return slot.analysisPhase == .failed && slot.originalResourceOwner.isReady ? .raw : tool
     }
 
     private var rawContent: some View {
@@ -388,7 +424,8 @@ private struct AnalysisNativePageView: View {
                 image: rawImage,
                 isCurrent: isCurrent,
                 isPagingInteracting: pagingInteractionState.isInteracting,
-                mediaFetcher: mediaFetcher
+                mediaFetcher: mediaFetcher,
+                isInteractionEnabled: effectiveTool == .raw
             )
             .frame(width: viewportSize.width, height: viewportSize.height)
 
@@ -430,6 +467,25 @@ private struct AnalysisNativePageView: View {
 
     private var displayedImageOrientation: CGImagePropertyOrientation {
         slot.input?.imageOrientation ?? slot.displayPhoto?.orientation ?? .up
+    }
+}
+
+private struct DepthViewerUnavailableNotice: View {
+    let topSafeArea: CGFloat
+
+    var body: some View {
+        VStack {
+            Text("Depth unavailable; showing RAW")
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(.black.opacity(0.58), in: Capsule())
+                .accessibilityIdentifier("tap.viewer.depthUnavailable")
+            Spacer()
+        }
+        .padding(.top, topSafeArea + 52)
+        .allowsHitTesting(false)
     }
 }
 
@@ -534,6 +590,7 @@ struct AnalysisRawZoomScrollView: UIViewRepresentable {
     let isCurrent: Bool
     let isPagingInteracting: Bool
     let mediaFetcher: any LibraryMediaFetching
+    var isInteractionEnabled: Bool = true
 
     func makeCoordinator() -> Coordinator {
         Coordinator(slot: slot, mediaFetcher: mediaFetcher)
@@ -550,7 +607,8 @@ struct AnalysisRawZoomScrollView: UIViewRepresentable {
             source: source,
             image: image,
             isCurrent: isCurrent,
-            isPagingInteracting: isPagingInteracting
+            isPagingInteracting: isPagingInteracting,
+            isInteractionEnabled: isInteractionEnabled
         )
     }
 
@@ -651,7 +709,8 @@ struct AnalysisRawZoomScrollView: UIViewRepresentable {
             source: DepthAnalysisSource,
             image: UIImage?,
             isCurrent: Bool,
-            isPagingInteracting: Bool
+            isPagingInteracting: Bool,
+            isInteractionEnabled: Bool = true
         ) {
             let sourceChanged = currentSourceID != source.loadID
             if self.slot !== slot || sourceChanged {
@@ -659,8 +718,8 @@ struct AnalysisRawZoomScrollView: UIViewRepresentable {
                 self.slot = slot
             }
             currentSourceID = source.loadID
-            scrollView.isUserInteractionEnabled = isCurrent
-            allowsLivePhotoPlayback = isCurrent && !isPagingInteracting
+            scrollView.isUserInteractionEnabled = isCurrent && isInteractionEnabled
+            allowsLivePhotoPlayback = isCurrent && isInteractionEnabled && !isPagingInteracting
             livePhotoView.playbackGestureRecognizer.isEnabled = allowsLivePhotoPlayback
             if !allowsLivePhotoPlayback {
                 livePhotoView.stopPlayback()
@@ -669,11 +728,16 @@ struct AnalysisRawZoomScrollView: UIViewRepresentable {
                 imageView.image = image
             }
             syncLayoutIfNeeded(in: scrollView, resetZoom: sourceChanged)
-            syncLivePhoto(
-                in: scrollView,
-                source: source,
-                isCurrent: isCurrent
-            )
+            // A mode change pauses playback while retaining this page's prepared
+            // or in-flight Live Photo. A page that has never shown RAW does not
+            // start a hidden request; leaving the page still releases it.
+            if !isCurrent || isInteractionEnabled {
+                syncLivePhoto(
+                    in: scrollView,
+                    source: source,
+                    isCurrent: isCurrent
+                )
+            }
         }
 
         func dismantle() {
@@ -1268,8 +1332,10 @@ private struct AnalysisToolPhotoStage: View {
     let viewportSize: CGSize
     let isCurrent: Bool
     @Binding var heatmapOpacity: Double
-    @Binding var comparisonPosition: Double
     let highlightPalette: AnalysisHighlightPalette
+    let isProjectionReady: Bool
+    let onProjectionStateChanged: (DepthProjectionDisplayState) -> Void
+    @State private var hasOpenedProjection = false
 
     @AppStorage(DepthAnalyzerPreferences.planeGrowthStrictnessKey)
     private var planeGrowthStrictness = DepthAnalyzerPreferences.defaultPlaneGrowthStrictness
@@ -1295,15 +1361,20 @@ private struct AnalysisToolPhotoStage: View {
             .accessibilityLabel(tool.accessibilityLabel)
     }
 
-    @ViewBuilder
     private func toolContent(size: CGSize) -> some View {
-        switch tool {
-        case .raw:
-            EmptyView()
-        case .twoD:
-            twoDContent(size: size)
-        case .threeD:
-            threeDContent(size: size)
+        ZStack {
+            if tool == .twoD {
+                twoDContent(size: size)
+            }
+            if hasOpenedProjection || tool == .threeD {
+                threeDContent(size: size)
+                    .opacity(tool == .threeD && isProjectionReady ? 1 : 0)
+                    .allowsHitTesting(tool == .threeD && isProjectionReady)
+                    .accessibilityHidden(tool != .threeD || !isProjectionReady)
+            }
+        }
+        .onChange(of: tool, initial: true) { _, tool in
+            if tool == .threeD { hasOpenedProjection = true }
         }
     }
 
@@ -1316,10 +1387,6 @@ private struct AnalysisToolPhotoStage: View {
                 depthMap: input.depthMap,
                 heatmapImage: input.heatmap.image,
                 heatmapOpacity: heatmapOpacity,
-                comparisonPosition: comparisonPosition,
-                onComparisonPositionChanged: { newValue in
-                    comparisonPosition = newValue
-                },
                 planeRegion: slot.planeSelection.selectedRegion,
                 partialPlaneGridCells: slot.planeSelection.partialGridCells,
                 planeGridProgress: slot.planeSelection.gridProgress,
@@ -1352,11 +1419,6 @@ private struct AnalysisToolPhotoStage: View {
             .onChange(of: slot.planeSelection.generationID) { _, _ in
                 hideGridToast()
             }
-        } else {
-            AnalysisToolSlotLoadingView(
-                slot: slot,
-                size: size
-            )
         }
     }
 
@@ -1382,16 +1444,10 @@ private struct AnalysisToolPhotoStage: View {
                 orientation: input.imageOrientation,
                 selectedPlaneRegion: slot.planeSelection.selectedRegion,
                 highlightColor: highlightPalette.uiColor,
-                enablesMotionParallax: true
+                enablesMotionParallax: isCurrent && tool == .threeD,
+                onDisplayStateChanged: onProjectionStateChanged
             )
-            .id(ObjectIdentifier(slot))
-            .id(slot.analysisState.completedInputRequestKey)
             .frame(width: size.width, height: size.height)
-        } else {
-            AnalysisToolSlotLoadingView(
-                slot: slot,
-                size: size
-            )
         }
     }
 
@@ -1452,48 +1508,6 @@ private struct AnalysisToolPhotoStage: View {
         withAnimation(.easeInOut(duration: 0.18)) {
             gridToastMessage = nil
         }
-    }
-}
-
-private struct AnalysisToolSlotLoadingView: View {
-    @ObservedObject var slot: AnalysisPhotoSlot
-    let size: CGSize
-
-    var body: some View {
-        ZStack {
-            Color.black
-
-            if let input = slot.input {
-                Image(decorative: input.image, scale: 1, orientation: input.imageOrientation.swiftUIImageOrientation)
-                    .resizable()
-                    .scaledToFit()
-            } else if let displayPhoto = slot.displayPhoto {
-                Image(uiImage: displayPhoto.image)
-                    .resizable()
-                    .scaledToFit()
-            } else if let thumbnailImage = slot.thumbnailImage {
-                Image(uiImage: thumbnailImage)
-                    .resizable()
-                    .scaledToFit()
-            }
-
-            if let errorMessage = slot.errorMessage {
-                VStack(spacing: 10) {
-                    Image(systemName: slot.errorSystemImage)
-                        .font(.title2.weight(.semibold))
-                    Text(errorMessage)
-                        .font(.caption)
-                        .multilineTextAlignment(.center)
-                        .foregroundStyle(.white.opacity(0.78))
-                }
-                .padding(18)
-                .background(.black.opacity(0.48), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            } else if slot.originalResourceOwner.isReady || !slot.isOriginalLoading {
-                LibraryMediaViewerFetchOverlay(kind: .photo, state: .loading, onRetry: slot.retryLastMediaFetch)
-            }
-        }
-        .frame(width: size.width, height: size.height)
-        .frame(maxWidth: .infinity)
     }
 }
 

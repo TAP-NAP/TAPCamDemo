@@ -14,6 +14,15 @@ nonisolated enum DepthAnalysisViewerInteractionPolicy {
     static let doubleTapScale: CGFloat = 2.5
     static let nativePageSpacing: CGFloat = 18
 
+    /// Only the gesture's starting location is restricted. UIKit continues an
+    /// accepted gesture normally when fingers move beyond this inset.
+    static func pointCloudGestureRect(in bounds: CGRect) -> CGRect {
+        bounds.insetBy(
+            dx: min(24, max(bounds.width, 0) / 4),
+            dy: min(24, max(bounds.height, 0) / 4)
+        )
+    }
+
     static func aspectFitRect(
         imageSize: CGSize?,
         orientation: CGImagePropertyOrientation,

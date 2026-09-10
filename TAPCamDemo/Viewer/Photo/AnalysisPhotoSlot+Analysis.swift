@@ -85,7 +85,7 @@ extension AnalysisPhotoSlot {
         originalResourceOwner.failWaitingConsumers(CancellationError())
     }
 
-    private func publishOriginalResource(
+    func publishOriginalResource(
         _ resourceLease: TAPPhotoOriginalResourceLease,
         requestKey: MediaFetchRequestKey
     ) {
@@ -93,6 +93,14 @@ extension AnalysisPhotoSlot {
             return
         }
         originalResourceOwner.install(resourceLease)
+        if retainsViewerData, isCurrentResource, let loader = displayFetchState.lastLoader {
+            ensureDisplayPhotoLoading(
+                loader: loader,
+                pixelLength: displayFetchState.lastPixelLength,
+                priority: displayFetchState.lastPriority,
+                originalResource: resourceLease
+            )
+        }
         if case .pendingCapture(_, let selectedSignedPhoto) = resourceLease.origin,
            selectedSignedPhoto {
             pendingSignedOriginalRefreshID = nil

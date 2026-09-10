@@ -8,9 +8,6 @@
 import Foundation
 import ImageIO
 import SwiftUI
-import UIKit
-
-private let comparisonDividerCoordinateSpaceName = "InteractiveDepthImageComparisonSpace"
 
 /// Renders the analysis image and translates display-space gestures back into
 /// native depth-map coordinates.
@@ -18,8 +15,6 @@ struct InteractiveDepthImage: View {
     let image: CGImage
     let overlayImage: CGImage?
     let overlayOpacity: Double
-    let comparisonPosition: Double?
-    let onComparisonPositionChanged: (Double) -> Void
     let orientation: CGImagePropertyOrientation
     let depthSize: CGSize
     let planeRegion: TAPPlaneRegion?
@@ -55,7 +50,12 @@ struct InteractiveDepthImage: View {
                     .position(x: imageFrame.midX, y: imageFrame.midY)
 
                 if let overlayImage {
-                    overlayImageView(overlayImage, imageFrame: imageFrame)
+                    Image(decorative: overlayImage, scale: 1, orientation: orientation.swiftUIImageOrientation)
+                        .resizable()
+                        .interpolation(.none)
+                        .frame(width: imageFrame.width, height: imageFrame.height)
+                        .position(x: imageFrame.midX, y: imageFrame.midY)
+                        .opacity(overlayOpacity)
                 }
 
                 if let planeRegion {
@@ -104,20 +104,7 @@ struct InteractiveDepthImage: View {
                     PlaneSeedMarker(highlightPalette: highlightPalette)
                         .position(x: seedRect.midX, y: seedRect.midY)
                 }
-
-                if comparisonDividerX(in: imageFrame) != nil {
-                    ComparisonDivider(
-                        imageFrame: imageFrame,
-                        position: comparisonPosition ?? 0.5,
-                        onPositionChanged: { position in
-                            onComparisonPositionChanged(position)
-                        }
-                    )
-                    .frame(width: imageFrame.width, height: imageFrame.height)
-                    .position(x: imageFrame.midX, y: imageFrame.midY)
-                }
             }
-            .coordinateSpace(name: comparisonDividerCoordinateSpaceName)
             .contentShape(Rectangle())
             .simultaneousGesture(
                 TapGesture(count: 2)
@@ -130,7 +117,6 @@ struct InteractiveDepthImage: View {
                 SpatialTapGesture(count: 1)
                     .onEnded { value in
                         guard Date().timeIntervalSince(lastClearDate) > 0.25,
-                              !isNearComparisonDivider(value.location, imageFrame: imageFrame),
                               let depthPoint = depthPoint(for: value.location, imageFrame: imageFrame) else {
                             return
                         }
@@ -138,43 +124,6 @@ struct InteractiveDepthImage: View {
                     }
             )
         }
-    }
-
-    @ViewBuilder
-    private func overlayImageView(_ overlayImage: CGImage, imageFrame: CGRect) -> some View {
-        let overlay = Image(decorative: overlayImage, scale: 1, orientation: orientation.swiftUIImageOrientation)
-            .resizable()
-            .interpolation(.none)
-            .frame(width: imageFrame.width, height: imageFrame.height)
-            .position(x: imageFrame.midX, y: imageFrame.midY)
-            .opacity(overlayOpacity)
-
-        if let comparisonPosition {
-            let clamped = min(max(comparisonPosition, 0), 1)
-            overlay
-                .mask(alignment: .topLeading) {
-                    Rectangle()
-                        .frame(width: imageFrame.width * (1 - clamped), height: imageFrame.height)
-                        .offset(x: imageFrame.width * clamped)
-                }
-        } else {
-            overlay
-        }
-    }
-
-    private func comparisonDividerX(in imageFrame: CGRect) -> CGFloat? {
-        guard let comparisonPosition, imageFrame.width > 0 else {
-            return nil
-        }
-        let clamped = min(max(comparisonPosition, 0), 1)
-        return imageFrame.minX + imageFrame.width * clamped
-    }
-
-    private func isNearComparisonDivider(_ location: CGPoint, imageFrame: CGRect) -> Bool {
-        guard let dividerX = comparisonDividerX(in: imageFrame), imageFrame.contains(location) else {
-            return false
-        }
-        return abs(location.x - dividerX) <= 18
     }
 
     private func fittedRect(imageSize: CGSize, containerSize: CGSize) -> CGRect {
@@ -391,78 +340,5 @@ private struct PlaneSeedMarker: View {
         }
         .shadow(color: .black.opacity(0.32), radius: 4, y: 2)
         .accessibilityLabel("Plane seed point")
-    }
-}
-
-private struct ComparisonDivider: View {
-    let imageFrame: CGRect
-    let position: Double
-    let onPositionChanged: (Double) -> Void
-    @State private var dragOffsetFromDividerX: CGFloat?
-    @State private var hasTriggeredDragFeedback = false
-
-    var body: some View {
-        let dividerX = imageFrame.width * CGFloat(min(max(position, 0), 1))
-
-        ZStack(alignment: .topLeading) {
-            Rectangle()
-                .fill(.clear)
-                .frame(width: imageFrame.width, height: imageFrame.height)
-                .allowsHitTesting(false)
-
-            Rectangle()
-                .fill(Color.white.opacity(0.001))
-                .frame(width: 36, height: imageFrame.height)
-                .position(x: dividerX, y: imageFrame.height / 2)
-                .contentShape(Rectangle())
-                .highPriorityGesture(comparisonDragGesture)
-                .accessibilityHidden(true)
-
-            Rectangle()
-                .fill(Color.white.opacity(0.88))
-                .frame(width: 1.5, height: imageFrame.height)
-                .position(x: dividerX, y: imageFrame.height / 2)
-                .shadow(color: .black.opacity(0.55), radius: 2)
-                .allowsHitTesting(false)
-        }
-        .frame(width: imageFrame.width, height: imageFrame.height)
-        .accessibilityLabel("2D comparison divider")
-        .accessibilityValue("\(Int((position * 100).rounded())) percent")
-        .accessibilityAdjustableAction { direction in
-            switch direction {
-            case .increment:
-                onPositionChanged(min(position + 0.05, 1))
-            case .decrement:
-                onPositionChanged(max(position - 0.05, 0))
-            @unknown default:
-                break
-            }
-        }
-    }
-
-    private var comparisonDragGesture: some Gesture {
-        DragGesture(minimumDistance: 0, coordinateSpace: .named(comparisonDividerCoordinateSpaceName))
-            .onChanged { value in
-                let currentDividerX = imageFrame.minX + imageFrame.width * CGFloat(position)
-                if dragOffsetFromDividerX == nil {
-                    dragOffsetFromDividerX = value.location.x - currentDividerX
-                }
-                triggerDragFeedbackIfNeeded()
-                let adjustedLocationX = value.location.x - (dragOffsetFromDividerX ?? 0)
-                let nextPosition = Double((adjustedLocationX - imageFrame.minX) / max(imageFrame.width, 1))
-                onPositionChanged(min(max(nextPosition, 0), 1))
-            }
-            .onEnded { _ in
-                dragOffsetFromDividerX = nil
-                hasTriggeredDragFeedback = false
-            }
-    }
-
-    private func triggerDragFeedbackIfNeeded() {
-        guard !hasTriggeredDragFeedback else {
-            return
-        }
-        hasTriggeredDragFeedback = true
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 }

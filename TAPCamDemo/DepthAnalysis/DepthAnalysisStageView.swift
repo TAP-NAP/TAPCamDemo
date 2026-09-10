@@ -22,8 +22,6 @@ struct DepthAnalysisStageView: View {
     let depthMap: TAPMetricDepthMap
     let heatmapImage: CGImage
     let heatmapOpacity: Double
-    let comparisonPosition: Double?
-    let onComparisonPositionChanged: (Double) -> Void
     let planeRegion: TAPPlaneRegion?
     let partialPlaneGridCells: [TAPPlaneGridCell]
     let planeGridProgress: Double?
@@ -38,8 +36,6 @@ struct DepthAnalysisStageView: View {
             image: image,
             overlayImage: heatmapImage,
             overlayOpacity: heatmapOpacity,
-            comparisonPosition: comparisonPosition,
-            onComparisonPositionChanged: onComparisonPositionChanged,
             orientation: imageOrientation,
             depthSize: CGSize(width: depthMap.width, height: depthMap.height),
             planeRegion: planeRegion,

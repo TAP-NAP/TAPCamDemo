@@ -26,27 +26,33 @@ nonisolated enum LibraryMediaFetchOverlayState: Equatable, Sendable {
     }
 }
 
-/// Local preparation and cloud downloads use the same stable native spinner.
+/// Local preparation and cloud downloads share a quiet corner indicator.
 /// The resource owner retains progress and cancellation; only terminal states
 /// expose recovery actions in the Viewer.
 struct LibraryMediaViewerFetchOverlay: View {
     let kind: LibraryMediaKind
     let state: LibraryMediaFetchOverlayState
     let onRetry: () -> Void
+    var loadingBottomInset: CGFloat = 0
 
     @Environment(\.openURL) private var openURL
 
     var body: some View {
-        switch state {
-        case .loading:
-            ProgressView()
-                .controlSize(.large)
-                .tint(.white)
-                .frame(width: 64, height: 64)
-                .background(.black.opacity(0.44), in: Circle())
+        ZStack {
+            LibraryMediaLoadingRing(isLoading: state == .loading)
                 .accessibilityLabel(Text(LibraryMediaCopy.preparing(kind)))
-                .allowsHitTesting(false)
-        case .hidden:
+                .padding(.trailing, 20)
+                .padding(.bottom, loadingBottomInset + 16)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+
+            recoveryContent
+        }
+    }
+
+    @ViewBuilder
+    private var recoveryContent: some View {
+        switch state {
+        case .hidden, .loading:
             EmptyView()
         case .cloudOnly, .failed:
             VStack(spacing: 10) {
@@ -111,5 +117,37 @@ struct LibraryMediaViewerFetchOverlay: View {
         case .decode:
             "exclamationmark.triangle"
         }
+    }
+}
+
+/// Animation state belongs to this small indicator, never to the image or pager.
+struct LibraryMediaLoadingRing: View {
+    let isLoading: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var animating = false
+
+    var body: some View {
+        ZStack {
+            Circle().stroke(.gray.opacity(0.5), lineWidth: 2)
+            Circle()
+                .trim(from: 0, to: 0.28)
+                .stroke(.white, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                .rotationEffect(.degrees(animating && !reduceMotion ? 360 : 0))
+                .animation(
+                    animating && !reduceMotion
+                        ? .linear(duration: 0.9).repeatForever(autoreverses: false)
+                        : nil,
+                    value: animating && !reduceMotion
+                )
+        }
+        .frame(width: 18, height: 18)
+        .padding(4)
+        .background(.black.opacity(0.32), in: Circle())
+        .opacity(animating ? 1 : 0)
+        .animation(.easeInOut(duration: 0.18), value: animating)
+        .transaction { $0.disablesAnimations = false }
+        .onChange(of: isLoading, initial: true) { _, loading in animating = loading }
+        .allowsHitTesting(false)
+        .accessibilityHidden(!isLoading)
     }
 }

@@ -5,6 +5,8 @@
 
 import Combine
 import Foundation
+import ImageIO
+import UIKit
 
 /// Identifies how the exact file-backed Viewer original was obtained.
 ///
@@ -77,6 +79,28 @@ nonisolated final class TAPPhotoOriginalResourceLease: @unchecked Sendable {
 
     func retaining() -> TAPPhotoOriginalResourceLease {
         TAPPhotoOriginalResourceLease(storage: storage)
+    }
+
+    /// Decode only the visible RGB rendition from the already-retained file.
+    /// Depth metadata and heatmap preparation cannot delay this display path.
+    @concurrent
+    func displayPhoto(pixelLength: Int) async throws -> AnalysisDisplayPhoto {
+        try Task.checkCancellation()
+        let sourceOptions: [CFString: Any] = [kCGImageSourceShouldCache: false]
+        guard let source = CGImageSourceCreateWithURL(photoURL as CFURL, sourceOptions as CFDictionary) else {
+            throw MediaFetchFailure.decode
+        }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: max(pixelLength, 1)
+        ]
+        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+            throw MediaFetchFailure.decode
+        }
+        try Task.checkCancellation()
+        return AnalysisDisplayPhoto(image: UIImage(cgImage: image), requestedPixelLength: pixelLength)
     }
 }
 

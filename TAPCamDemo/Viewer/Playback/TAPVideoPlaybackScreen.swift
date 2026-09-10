@@ -11,6 +11,7 @@ struct TAPVideoPlaybackContentSurface: View {
     @Binding var selectedTool: AnalysisViewerTool
     @Binding var overlayOpacity: Double
     let onRetry: () -> Void
+    var loadingBottomInset: CGFloat = 0
 
     @State private var readyPlayerID: ObjectIdentifier?
 
@@ -35,11 +36,6 @@ struct TAPVideoPlaybackContentSurface: View {
                 .clipped()
             }
 
-            if selectedTool == .threeD {
-                TAPVideoPointCloudView(store: session.pointCloudStore)
-                    .background(Color.black)
-            }
-
             // Keep the poster above the warming AVPlayerLayer. AVPlayer creation
             // is not a first-frame guarantee; uncovering it earlier produces a
             // visible black flash when the loading indicator disappears.
@@ -51,6 +47,20 @@ struct TAPVideoPlaybackContentSurface: View {
                     transaction.animation = nil
                     transaction.disablesAnimations = true
                 }
+
+            if selectedTool == .threeD {
+                // Mount while projection prepares, but keep RGB/poster visible
+                // until this session has a point-cloud frame. Gaps retain that
+                // frame and its readiness instead of exposing the fallback again.
+                TAPVideoPointCloudView(store: session.pointCloudStore)
+                    .opacity(showsPointCloud ? 1 : 0)
+                    .allowsHitTesting(showsPointCloud)
+                    .accessibilityHidden(!showsPointCloud)
+                    .transaction { transaction in
+                        transaction.animation = nil
+                        transaction.disablesAnimations = true
+                    }
+            }
 
             primaryStatusOverlay
         }
@@ -69,17 +79,16 @@ struct TAPVideoPlaybackContentSurface: View {
         }
     }
 
-    @ViewBuilder
     private var primaryStatusOverlay: some View {
-        switch session.state {
-        case .idle, .loading:
+        ZStack {
             LibraryMediaViewerFetchOverlay(
                 kind: .tapVideo,
-                state: LibraryMediaFetchOverlayState(session.mediaFetchPhase),
-                onRetry: onRetry
+                state: fetchOverlayState,
+                onRetry: onRetry,
+                loadingBottomInset: loadingBottomInset
             )
-        case .failed(let message):
-            if LibraryMediaFetchOverlayState(session.mediaFetchPhase) == .hidden {
+            if case .failed(let message) = session.state,
+               fetchOverlayState == .hidden {
                 ContentUnavailableView(
                     "Unable to play video",
                     systemImage: "video.slash",
@@ -87,23 +96,24 @@ struct TAPVideoPlaybackContentSurface: View {
                 )
                 .foregroundStyle(.white)
                 .padding()
-            } else {
-                LibraryMediaViewerFetchOverlay(
-                    kind: .tapVideo,
-                    state: LibraryMediaFetchOverlayState(session.mediaFetchPhase),
-                    onRetry: onRetry
-                )
             }
-        case .ready:
-            let isPreparingDepth = selectedTool == .twoD
-                ? session.isRegisteredDepthAvailable && !session.isTwoDPlaybackReady
-                : selectedTool == .threeD && !session.isThreeDPlaybackReady
-            LibraryMediaViewerFetchOverlay(
-                kind: .tapVideo,
-                state: (!isPlayerFrameReady && !session.isReusingOriginal) || isPreparingDepth ? .loading : .hidden,
-                onRetry: onRetry
-            )
         }
+    }
+
+    private var fetchOverlayState: LibraryMediaFetchOverlayState {
+        guard session.state == .ready else {
+            return LibraryMediaFetchOverlayState(session.mediaFetchPhase)
+        }
+        let isPreparingDepth = selectedTool == .twoD
+            ? session.isRegisteredDepthAvailable && !session.isTwoDPlaybackReady
+            : selectedTool == .threeD && !session.isThreeDPlaybackReady
+        let isPreparingPlayerFrame = !isPlayerFrameReady
+            && !session.isReusingOriginal && !showsPointCloud
+        return isPreparingPlayerFrame || isPreparingDepth ? .loading : .hidden
+    }
+
+    private var showsPointCloud: Bool {
+        selectedTool == .threeD && session.isThreeDPlaybackReady
     }
 
     private var showsLoadingPreview: Bool {

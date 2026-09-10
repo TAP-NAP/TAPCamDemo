@@ -14,6 +14,12 @@ import simd
 import SwiftUI
 import UIKit
 
+nonisolated enum DepthProjectionDisplayState: Equatable, Sendable {
+    case preparing
+    case ready
+    case unavailable
+}
+
 /// Lightweight SwiftUI preview for camera-coordinate depth points.
 ///
 /// The point cloud preview depends on the same projection math as plane
@@ -26,6 +32,7 @@ struct PointCloudPreview: View {
     var selectedPlaneRegion: TAPPlaneRegion?
     var highlightColor: UIColor = .systemYellow
     var enablesMotionParallax = false
+    var onDisplayStateChanged: (DepthProjectionDisplayState) -> Void = { _ in }
 
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
 
@@ -36,10 +43,10 @@ struct PointCloudPreview: View {
             orientation: orientation,
             selectedPlaneRegion: selectedPlaneRegion,
             highlightColor: highlightColor,
-            enablesMotionParallax: enablesMotionParallax && !accessibilityReduceMotion
+            enablesMotionParallax: enablesMotionParallax && !accessibilityReduceMotion,
+            onDisplayStateChanged: onDisplayStateChanged
         )
         .accessibilityLabel("3D projection model")
-        .background(Color.black)
     }
 }
 
@@ -699,6 +706,7 @@ struct DepthProjectionSceneView: UIViewRepresentable {
     let selectedPlaneRegion: TAPPlaneRegion?
     let highlightColor: UIColor
     let enablesMotionParallax: Bool
+    var onDisplayStateChanged: (DepthProjectionDisplayState) -> Void = { _ in }
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
 
     func makeCoordinator() -> Coordinator {
@@ -707,7 +715,8 @@ struct DepthProjectionSceneView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> ProjectionSCNView {
         let view = ProjectionSCNView(frame: .zero)
-        view.backgroundColor = .black
+        view.backgroundColor = .clear
+        view.isOpaque = false
         view.autoenablesDefaultLighting = false
         view.antialiasingMode = .multisampling4X
         view.allowsCameraControl = TAPDepthProjectionInteractionPolicy.usesSceneKitDefaultCameraControl
@@ -765,6 +774,7 @@ struct DepthProjectionSceneView: UIViewRepresentable {
     }
 
     func updateUIView(_ view: ProjectionSCNView, context: Context) {
+        context.coordinator.onDisplayStateChanged = onDisplayStateChanged
         context.coordinator.update(
             view: view,
             image: image,
@@ -832,8 +842,11 @@ struct DepthProjectionSceneView: UIViewRepresentable {
 
         private var currentHighlightSelection: HighlightSelection?
         private var reduceMotion = false
+        var onDisplayStateChanged: (DepthProjectionDisplayState) -> Void = { _ in }
+        private var displayState = DepthProjectionDisplayState.preparing
         private(set) var payloadBuildTask: Task<Void, Never>?
         private let payloadBuilder: @Sendable (TAPDepthProjectionPayloadBuildRequest) async -> TAPDepthProjectionScenePayloadData?
+        private let scenePreparer: @MainActor (SCNView, SCNScene) async -> Bool
         private let motionManager = CMMotionManager()
         private weak var interactionRootNode: SCNNode?
         private weak var projectionRootNode: SCNNode?
@@ -850,9 +863,11 @@ struct DepthProjectionSceneView: UIViewRepresentable {
         private var shouldRecenterMotionParallax = true
 
         init(
-            payloadBuilder: @escaping @Sendable (TAPDepthProjectionPayloadBuildRequest) async -> TAPDepthProjectionScenePayloadData? = TAPDepthProjectionScenePayloadBuilder.makePayloadDataAsync
+            payloadBuilder: @escaping @Sendable (TAPDepthProjectionPayloadBuildRequest) async -> TAPDepthProjectionScenePayloadData? = TAPDepthProjectionScenePayloadBuilder.makePayloadDataAsync,
+            scenePreparer: @escaping @MainActor (SCNView, SCNScene) async -> Bool = Coordinator.prepareScene
         ) {
             self.payloadBuilder = payloadBuilder
+            self.scenePreparer = scenePreparer
             super.init()
         }
 
@@ -865,6 +880,20 @@ struct DepthProjectionSceneView: UIViewRepresentable {
             payloadBuildTask?.cancel()
             payloadBuildTask = nil
             syncMotionParallax(enabled: false)
+        }
+
+        private func setDisplayState(_ state: DepthProjectionDisplayState) {
+            guard displayState != state else { return }
+            displayState = state
+            onDisplayStateChanged(state)
+        }
+
+        private static func prepareScene(view: SCNView, scene: SCNScene) async -> Bool {
+            // Preparing the installed scene also works while SwiftUI keeps the
+            // view transparent behind its RGB image, before its first display.
+            await withCheckedContinuation { continuation in
+                view.prepare([scene]) { continuation.resume(returning: $0) }
+            }
         }
 
         func registerProjectionGesture(_ gesture: UIGestureRecognizer) {
@@ -966,6 +995,23 @@ struct DepthProjectionSceneView: UIViewRepresentable {
 
         func gestureRecognizer(
             _ gestureRecognizer: UIGestureRecognizer,
+            shouldReceive touch: UITouch
+        ) -> Bool {
+            guard let view = gestureRecognizer.view else { return false }
+            return DepthAnalysisViewerInteractionPolicy.pointCloudGestureRect(in: view.bounds)
+                .contains(touch.location(in: view))
+        }
+
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRequireFailureOf otherGestureRecognizer: UIGestureRecognizer
+        ) -> Bool {
+            otherGestureRecognizer === gestureRecognizer.view?
+                .enclosingNavigationController?.interactivePopGestureRecognizer
+        }
+
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
             shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
         ) -> Bool {
             projectionGestures.contains(gestureRecognizer)
@@ -1041,18 +1087,33 @@ struct DepthProjectionSceneView: UIViewRepresentable {
                 highlightColor: highlightColor
             )
             payloadBuildTask?.cancel()
-            payloadBuildTask = Task(priority: .userInitiated) { @MainActor [weak self, weak view, payloadBuilder] in
+            payloadBuildTask = Task(priority: .userInitiated) { @MainActor [weak self, weak view, payloadBuilder, scenePreparer] in
+                guard !Task.isCancelled else { return }
+                if let self, self.displayState != .ready {
+                    self.setDisplayState(.preparing)
+                }
                 let payloadData = await payloadBuilder(request)
                 guard !Task.isCancelled,
                       let self,
                       let view else {
                     return
                 }
-                self.payloadBuildTask = nil
-                self.configureScene(
+                guard let scene = self.configureScene(
                     view: view,
                     payloadData: payloadData
-                )
+                ) else {
+                    if self.displayState != .ready {
+                        self.setDisplayState(.unavailable)
+                    }
+                    self.payloadBuildTask = nil
+                    return
+                }
+                if self.displayState != .ready {
+                    let prepared = await scenePreparer(view, scene)
+                    guard !Task.isCancelled, view.scene === scene else { return }
+                    self.setDisplayState(prepared ? .ready : .unavailable)
+                }
+                self.payloadBuildTask = nil
             }
         }
 
@@ -1060,18 +1121,21 @@ struct DepthProjectionSceneView: UIViewRepresentable {
         private func configureScene(
             view: SCNView,
             payloadData: TAPDepthProjectionScenePayloadData?
-        ) {
+        ) -> SCNScene? {
             guard let payloadData else {
                 #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
                 TAPDiagnostics.depthAnalysis.warning("projection payload missing label=payloadMissing")
                 #endif
-                return
+                return nil
             }
             if interactionRootNode != nil {
                 updateHighlight(payloadData: payloadData)
-                return
+                return view.scene
             }
             let scene = SCNScene()
+            // RGB remains visible until SceneKit draws the point cloud and its
+            // background together, including the first frame after preparation.
+            scene.background.contents = UIColor.black
             currentCameraModel = payloadData.cameraModel
             let targetDepth = payloadData.targetDepth
             currentTargetDepth = targetDepth
@@ -1134,6 +1198,7 @@ struct DepthProjectionSceneView: UIViewRepresentable {
             // TODO: keep this renderer boundary replaceable with Metal when
             // point count, splat quality, mesh rendering, or performance needs
             // outgrow SceneKit.
+            return scene
         }
 
         private func updateHighlight(payloadData: TAPDepthProjectionScenePayloadData) {

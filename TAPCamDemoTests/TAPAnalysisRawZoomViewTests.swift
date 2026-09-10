@@ -68,7 +68,7 @@ struct TAPAnalysisRawZoomViewTests {
         #expect(abs(fixture.scrollView.contentOffset.y + 174) < 0.01)
     }
 
-    @Test func nativeLivePhotoGestureBelongsToTheScrollViewAndStopsAtPageBoundaries() throws {
+    @Test func nativeLivePhotoGestureBelongsToTheScrollViewAndStopsWhenRAWIsHiddenOrThePageLeaves() throws {
         let fixture = Fixture()
         defer { fixture.coordinator.dismantle() }
         let photo = image(width: 400, height: 300)
@@ -90,9 +90,79 @@ struct TAPAnalysisRawZoomViewTests {
         #expect(gesture.isEnabled)
         #expect(fixture.coordinator.livePhotoView(liveView, canBeginPlaybackWith: .full))
 
+        fixture.show(photo, isInteractionEnabled: false)
+        #expect(!fixture.scrollView.isUserInteractionEnabled)
+        #expect(!gesture.isEnabled)
+        #expect(!fixture.coordinator.livePhotoView(liveView, canBeginPlaybackWith: .full))
+
+        fixture.show(photo)
+        #expect(fixture.scrollView.isUserInteractionEnabled)
+        #expect(gesture.isEnabled)
+
         fixture.show(photo, isCurrent: false)
         #expect(!gesture.isEnabled)
         #expect(!fixture.coordinator.livePhotoView(liveView, canBeginPlaybackWith: .full))
+    }
+
+    @Test func hiddenRAWWaitsForItsFirstVisitAndModeChangesKeepTheLivePhotoRequest() async throws {
+        let probe = RawLivePhotoFetchProbe()
+        let fixture = Fixture(mediaFetcher: WaitingRawLivePhotoFetcher(probe: probe))
+        defer { fixture.coordinator.dismantle() }
+        let photo = image(width: 400, height: 300)
+
+        fixture.show(photo, isInteractionEnabled: false)
+        try await Task.sleep(for: .milliseconds(40))
+        #expect(probe.requestedAssetIDs.isEmpty)
+
+        // Hide before the deferred request starts, then revisit RAW repeatedly
+        // while Photos is still preparing the same resource.
+        fixture.show(photo)
+        fixture.show(photo, isInteractionEnabled: false)
+        try await waitUntil { probe.requestedAssetIDs.count == 1 }
+        for allowsInteraction in [true, false, true, false, true] {
+            fixture.show(photo, isInteractionEnabled: allowsInteraction)
+            await Task.yield()
+        }
+        try await Task.sleep(for: .milliseconds(40))
+        #expect(probe.requestedAssetIDs == ["zoom-fixture"])
+        #expect(probe.cancelledAssetIDs.isEmpty)
+
+        fixture.show(photo, isCurrent: false)
+        try await waitUntil { probe.cancelledAssetIDs == ["zoom-fixture"] }
+        fixture.show(photo, isInteractionEnabled: false)
+        try await Task.sleep(for: .milliseconds(40))
+        #expect(probe.requestedAssetIDs == ["zoom-fixture"])
+    }
+
+    @Test(arguments: [false, true])
+    func replacingTheSlotReleasesHiddenLivePhotoAndWaitsForRAW(sameSource: Bool) async throws {
+        let probe = RawLivePhotoFetchProbe()
+        let fixture = Fixture(mediaFetcher: WaitingRawLivePhotoFetcher(probe: probe))
+        defer { fixture.coordinator.dismantle() }
+        let photo = image(width: 400, height: 300)
+        fixture.show(photo)
+        try await waitUntil { probe.requestedAssetIDs.count == 1 }
+        fixture.show(photo, isInteractionEnabled: false)
+
+        let replacementID = sameSource ? "zoom-fixture" : "replacement"
+        let replacement = AnalysisPhotoSlot(
+            entry: DepthAnalysisCarouselEntry(source: .photosAsset(replacementID))
+        )
+        fixture.show(photo, slot: replacement, isInteractionEnabled: false)
+        try await waitUntil { probe.cancelledAssetIDs == ["zoom-fixture"] }
+        #expect(probe.requestedAssetIDs == ["zoom-fixture"])
+
+        fixture.show(photo, slot: replacement)
+        try await waitUntil { probe.requestedAssetIDs.count == 2 }
+        #expect(probe.requestedAssetIDs == ["zoom-fixture", replacementID])
+    }
+
+    private func waitUntil(_ condition: () -> Bool) async throws {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while !condition(), ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        try #require(condition(), "Live Photo request did not reach the expected lifecycle state")
     }
 
     private func image(width: CGFloat, height: CGFloat) -> UIImage {
@@ -113,22 +183,23 @@ struct TAPAnalysisRawZoomViewTests {
         let coordinator: AnalysisRawZoomScrollView.Coordinator
         let scrollView: UIScrollView
 
-        init() {
+        init(mediaFetcher: any LibraryMediaFetching = PhotoKitLibraryMediaFetcher()) {
             coordinator = AnalysisRawZoomScrollView.Coordinator(
                 slot: slot,
-                mediaFetcher: PhotoKitLibraryMediaFetcher()
+                mediaFetcher: mediaFetcher
             )
             scrollView = coordinator.makeScrollView()
             scrollView.frame = CGRect(x: 0, y: 0, width: 372, height: 844)
         }
 
-        // Tests stay synchronous and dismantle before yielding, so the deferred
-        // Live Photo request never reaches PhotoKit or the user's photo library.
+        // Synchronous layout tests dismantle before the deferred PhotoKit request;
+        // asynchronous lifecycle tests inject their own resource fetcher.
         func show(
             _ image: UIImage,
             slot replacement: AnalysisPhotoSlot? = nil,
             isCurrent: Bool = true,
-            isPaging: Bool = false
+            isPaging: Bool = false,
+            isInteractionEnabled: Bool = true
         ) {
             let currentSlot = replacement ?? slot
             coordinator.update(
@@ -137,8 +208,41 @@ struct TAPAnalysisRawZoomViewTests {
                 source: currentSlot.source,
                 image: image,
                 isCurrent: isCurrent,
-                isPagingInteracting: isPaging
+                isPagingInteracting: isPaging,
+                isInteractionEnabled: isInteractionEnabled
             )
         }
+    }
+}
+
+@MainActor
+private final class RawLivePhotoFetchProbe {
+    var requestedAssetIDs: [String] = []
+    var cancelledAssetIDs: [String] = []
+}
+
+nonisolated private struct WaitingRawLivePhotoFetcher: LibraryMediaFetching {
+    let probe: RawLivePhotoFetchProbe
+
+    func mediaKind(for request: LibraryMediaAssetRequest) async throws -> LibraryMediaKind { .livePhoto }
+    func posterPhase(for request: LibraryMediaPosterRequest, allowsNetworkAccess: Bool,
+                     progress: @escaping @Sendable (Double?) -> Void) async throws -> MediaFetchPhase<MediaPoster, MediaPoster> { .idle(nil) }
+    func previewPhase(for request: LibraryMediaAssetRequest, pixelLength: Int, allowsNetworkAccess: Bool,
+                      progress: @escaping @Sendable (Double?) -> Void) async throws -> MediaFetchPhase<MediaPoster, MediaPoster> { .idle(nil) }
+    func photoDisplayImage(for request: LibraryMediaAssetRequest, pixelLength: Int,
+                           progress: @escaping @Sendable (Double?) -> Void) async throws -> UIImage { throw MediaFetchFailure.decode }
+    func videoOriginalFile(for request: LibraryMediaAssetRequest,
+                          progress: @escaping @Sendable (Double?) -> Void) async throws -> LibraryManagedTemporaryFile { throw MediaFetchFailure.decode }
+
+    func livePhoto(for request: LibraryMediaAssetRequest, targetSize: CGSize,
+                   progress: @escaping @Sendable (Double?) -> Void) async throws -> LibraryLivePhoto {
+        await MainActor.run { probe.requestedAssetIDs.append(request.assetLocalIdentifier) }
+        do {
+            try await Task.sleep(for: .seconds(30))
+        } catch {
+            await MainActor.run { probe.cancelledAssetIDs.append(request.assetLocalIdentifier) }
+            throw error
+        }
+        throw MediaFetchFailure.download
     }
 }

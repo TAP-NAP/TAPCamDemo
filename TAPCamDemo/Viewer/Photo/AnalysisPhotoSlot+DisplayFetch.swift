@@ -148,23 +148,26 @@ extension AnalysisPhotoSlot {
     func ensureDisplayPhotoLoading(
         loader: DepthAnalysisProgressivePhotoLoader,
         pixelLength: Int,
-        priority: TaskPriority
+        priority: TaskPriority,
+        originalResource: TAPPhotoOriginalResourceLease? = nil
     ) {
-        if displayFetchState.displayPhoto != nil || displayFetchState.displayTask != nil {
-            if let displayPhoto = displayFetchState.displayPhoto,
-               displayPhoto.requestedPixelLength >= Int(Double(pixelLength) * 0.9) {
-                return
-            }
-            if let taskPixelLength = displayFetchState.displayTaskPixelLength,
-               taskPixelLength >= Int(Double(pixelLength) * 0.9) {
-                return
-            }
-            displayFetchState.displayTask?.cancel()
-            displayFetchState.displayTask = nil
-            displayFetchState.displayTaskPixelLength = nil
+        if let displayPhoto = displayFetchState.displayPhoto,
+           displayPhoto.requestedPixelLength >= Int(Double(pixelLength) * 0.9) {
+            return
         }
+        if originalResource == nil,
+           let taskPixelLength = displayFetchState.displayTaskPixelLength,
+           taskPixelLength >= Int(Double(pixelLength) * 0.9) {
+            return
+        }
+        // A local original supersedes an in-flight Photos rendition. The new
+        // display generation rejects that request's late progress and result.
+        displayFetchState.displayTask?.cancel()
+        displayFetchState.displayTask = nil
+        displayFetchState.displayTaskPixelLength = nil
 
         let source = entry.source
+        let resourceLease = originalResource ?? originalResourceOwner.acquireLease()
         let requestKey = newDisplayRequestKey()
         displayFetchState.phase = .displayLoading
         setDisplayMediaFetchPhase(.resolving(hasDisplayImage))
@@ -172,12 +175,17 @@ extension AnalysisPhotoSlot {
         displayFetchState.displayTaskPixelLength = pixelLength
         displayFetchState.displayTask = Task(priority: priority) { [weak self] in
             do {
-                let loadedDisplayPhoto = try await loader.displayPhoto(
-                    source: source,
-                    pixelLength: pixelLength,
-                    requestKey: requestKey
-                ) { [weak self] progress in
-                    self?.applyDisplayICloudProgress(progress, requestKey: requestKey)
+                let loadedDisplayPhoto: AnalysisDisplayPhoto
+                if let resourceLease {
+                    loadedDisplayPhoto = try await resourceLease.displayPhoto(pixelLength: pixelLength)
+                } else {
+                    loadedDisplayPhoto = try await loader.displayPhoto(
+                        source: source,
+                        pixelLength: pixelLength,
+                        requestKey: requestKey
+                    ) { [weak self] progress in
+                        self?.applyDisplayICloudProgress(progress, requestKey: requestKey)
+                    }
                 }
                 guard !Task.isCancelled else {
                     return
@@ -315,12 +323,12 @@ extension AnalysisPhotoSlot {
         displayFetchState.mediaFetchPhase = phase
     }
 
-    func resolvedMediaFetchPhase() -> MediaFetchPhase<Bool, Bool> {
+    func resolvedMediaFetchPhase(includeLivePhoto: Bool = true) -> MediaFetchPhase<Bool, Bool> {
         let originalPhase = phaseWithCurrentPreview(analysisState.mediaFetchPhase)
         let displayPhase = phaseWithCurrentPreview(displayFetchState.mediaFetchPhase)
-        let livePhotoPhase = phaseWithCurrentPreview(
-            displayFetchState.livePhotoMediaFetchPhase
-        )
+        let livePhotoPhase = includeLivePhoto
+            ? phaseWithCurrentPreview(displayFetchState.livePhotoMediaFetchPhase)
+            : .idle(hasDisplayImage)
 
         switch originalPhase {
         case .failed, .downloadingFromICloud, .cloudOnly:

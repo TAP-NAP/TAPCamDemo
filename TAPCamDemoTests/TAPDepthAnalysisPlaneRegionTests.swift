@@ -480,7 +480,7 @@ struct TAPDepthAnalysisPlaneRegionTests {
 
     @Test @MainActor func projectionSelectionPreservesSceneAndUserTransform() async throws {
         let view = DepthProjectionSceneView.ProjectionSCNView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
-        let coordinator = DepthProjectionSceneView.Coordinator()
+        let coordinator = DepthProjectionSceneView.Coordinator(scenePreparer: { _, _ in true })
         let region = Self.samplePlaneRegion()
         let color = UIColor(red: 0.2501, green: 0.5, blue: 0.75, alpha: 1)
         Self.updateProjection(coordinator, view: view, region: region, color: color)
@@ -533,7 +533,11 @@ struct TAPDepthAnalysisPlaneRegionTests {
     @Test @MainActor func cancelledProjectionBuildsCannotPublishOrClearReplacement() async throws {
         let view = DepthProjectionSceneView.ProjectionSCNView(frame: .zero)
         let gate = ProjectionPayloadGate()
-        let coordinator = DepthProjectionSceneView.Coordinator(payloadBuilder: { await gate.build($0) })
+        let coordinator = DepthProjectionSceneView.Coordinator(
+            payloadBuilder: { await gate.build($0) }, scenePreparer: { _, _ in true }
+        )
+        var displayStates: [DepthProjectionDisplayState] = []
+        coordinator.onDisplayStateChanged = { displayStates.append($0) }
         let regionA = Self.samplePlaneRegion()
         let regionB = Self.samplePlaneRegion(pixelRuns: [TAPPlanePixelRun(y: 3, xStart: 4, xEndExclusive: 6)])
 
@@ -551,10 +555,12 @@ struct TAPDepthAnalysisPlaneRegionTests {
         try await gate.finish(1)
         await firstA.value
         #expect(view.scene == nil)
+        #expect(displayStates.isEmpty)
         #expect(coordinator.payloadBuildTask?.isCancelled == false)
-        try await gate.finish(2)
+        try await gate.finish(2, missingPayload: true)
         await taskB.value
         #expect(view.scene == nil)
+        #expect(displayStates.isEmpty)
         #expect(coordinator.payloadBuildTask?.isCancelled == false)
         try await gate.finish(3)
         await latestA.value
@@ -562,6 +568,7 @@ struct TAPDepthAnalysisPlaneRegionTests {
         let highlight = try #require(scene.rootNode.childNode(withName: "SelectedPlaneProjection", recursively: true))
         let vertex = try Self.firstVertex(of: highlight)
         #expect(coordinator.payloadBuildTask == nil)
+        #expect(displayStates == [.ready])
 
         Self.updateProjection(coordinator, view: view, region: regionB)
         let dismantledTask = try #require(coordinator.payloadBuildTask)
@@ -573,12 +580,136 @@ struct TAPDepthAnalysisPlaneRegionTests {
         await dismantledTask.value
         #expect(view.scene === scene)
         #expect(try Self.firstVertex(of: highlight) == vertex)
+        #expect(displayStates == [.ready])
+    }
+
+    @Test @MainActor func projectionDisplayStateCompletesCurrentPreparationAndAllowsRecovery() async throws {
+        let view = DepthProjectionSceneView.ProjectionSCNView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        let gate = ProjectionScenePreparationGate()
+        let coordinator = DepthProjectionSceneView.Coordinator(scenePreparer: { _, _ in await gate.prepare() })
+        var displayStates: [DepthProjectionDisplayState] = []
+        coordinator.onDisplayStateChanged = { displayStates.append($0) }
+
+        Self.updateProjection(coordinator, view: view, region: nil)
+        let firstTask = try #require(coordinator.payloadBuildTask)
+        try await Self.waitForCondition { gate.count == 1 }
+        let scene = try #require(view.scene)
+        #expect(displayStates.isEmpty)
+
+        let region = Self.samplePlaneRegion()
+        Self.updateProjection(coordinator, view: view, region: region)
+        let replacement = try #require(coordinator.payloadBuildTask)
+        try await Self.waitForCondition { gate.count == 2 }
+        try gate.finish(0, success: true)
+        await firstTask.value
+        #expect(displayStates.isEmpty)
+        #expect(coordinator.payloadBuildTask?.isCancelled == false)
+        try gate.finish(1, success: false)
+        await replacement.value
+        #expect(displayStates == [.unavailable])
+        #expect(coordinator.payloadBuildTask == nil)
+
+        Self.updateProjection(coordinator, view: view, region: region, color: .red)
+        let readyTask = try #require(coordinator.payloadBuildTask)
+        try await Self.waitForCondition { gate.count == 3 }
+        #expect(displayStates == [.unavailable, .preparing])
+        try gate.finish(2, success: true)
+        await readyTask.value
+        #expect(displayStates == [.unavailable, .preparing, .ready])
+        #expect(view.scene === scene)
+
+        // Highlight changes keep the already prepared base scene visible.
+        Self.updateProjection(coordinator, view: view, region: nil, color: .red)
+        await (try #require(coordinator.payloadBuildTask)).value
+        #expect(gate.count == 3)
+        #expect(displayStates == [.unavailable, .preparing, .ready])
+        DepthProjectionSceneView.dismantleUIView(view, coordinator: coordinator)
+        #expect(displayStates == [.unavailable, .preparing, .ready])
+    }
+
+    @Test(arguments: [false, true]) @MainActor
+    func dismantledProjectionPreparationCannotPublishTerminalState(success: Bool) async throws {
+        let view = DepthProjectionSceneView.ProjectionSCNView(frame: .zero)
+        let gate = ProjectionScenePreparationGate()
+        let coordinator = DepthProjectionSceneView.Coordinator(scenePreparer: { _, _ in await gate.prepare() })
+        var displayStates: [DepthProjectionDisplayState] = []
+        coordinator.onDisplayStateChanged = { displayStates.append($0) }
+        Self.updateProjection(coordinator, view: view, region: nil)
+        let task = try #require(coordinator.payloadBuildTask)
+        try await Self.waitForCondition { gate.count == 1 }
+        DepthProjectionSceneView.dismantleUIView(view, coordinator: coordinator)
+        try gate.finish(0, success: success)
+        await task.value
+        #expect(displayStates.isEmpty)
+        #expect(coordinator.payloadBuildTask == nil)
+    }
+
+    @Test(arguments: [false, true]) @MainActor
+    func projectionUnavailableInputsCompleteWhileHeatmapRemainsUsable(missingCalibration: Bool) async throws {
+        let view = DepthProjectionSceneView.ProjectionSCNView(frame: .zero)
+        let coordinator = DepthProjectionSceneView.Coordinator(scenePreparer: { _, _ in
+            Issue.record("An unavailable projection must not prepare a SceneKit scene.")
+            return true
+        })
+        var displayStates: [DepthProjectionDisplayState] = []
+        coordinator.onDisplayStateChanged = { displayStates.append($0) }
+        let depthMap = TAPMetricDepthMap(
+            width: 8, height: 8,
+            samples: Array(repeating: missingCalibration ? 2 : 100, count: 64),
+            calibration: missingCalibration ? nil : Self.sampleCalibration
+        )
+        try TAPDepthAnalysisInputValidation.validateMinimumValidDepthSample(depthMap.samples)
+        let heatmap = try TAPDepthHeatmapRenderer.heatmap(for: depthMap)
+        #expect(heatmap.image.width == depthMap.width)
+
+        coordinator.update(
+            view: view, image: nil, depthMap: depthMap, orientation: .up,
+            selectedPlaneRegion: nil, highlightColor: .systemYellow,
+            enablesMotionParallax: false, reduceMotion: false
+        )
+        await (try #require(coordinator.payloadBuildTask)).value
+        #expect(view.scene == nil)
+        #expect(coordinator.payloadBuildTask == nil)
+        #expect(displayStates == [.unavailable])
+    }
+
+    @Test @MainActor func projectionGesturesStartInCenterAndContinueBeyondIt() async throws {
+        let controller = UIViewController()
+        let navigation = UINavigationController(rootViewController: controller)
+        navigation.loadViewIfNeeded()
+        let view = DepthProjectionSceneView.ProjectionSCNView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        controller.view.addSubview(view)
+        let coordinator = DepthProjectionSceneView.Coordinator(scenePreparer: { _, _ in true })
+        let gesture = ProjectionTestPan()
+        view.addGestureRecognizer(gesture)
+        coordinator.registerProjectionGesture(gesture)
+        Self.updateProjection(coordinator, view: view, region: nil)
+        await (try #require(coordinator.payloadBuildTask)).value
+        let interaction = try #require(view.scene?.rootNode.childNode(withName: "DepthProjectionInteractionRoot", recursively: true))
+
+        for location in [CGPoint(x: 12, y: 240), CGPoint(x: 308, y: 240), CGPoint(x: 160, y: 12), CGPoint(x: 160, y: 468)] {
+            #expect(!coordinator.gestureRecognizer(gesture, shouldReceive: ProjectionTestTouch(location)))
+        }
+        #expect(coordinator.gestureRecognizer(gesture, shouldReceive: ProjectionTestTouch(CGPoint(x: 160, y: 240))))
+        gesture.phase = .began
+        coordinator.handleOrbitPan(gesture)
+        gesture.phase = .changed
+        gesture.offset = CGPoint(x: 180, y: 0)
+        coordinator.handleOrbitPan(gesture)
+        #expect(abs(interaction.eulerAngles.y - Float(180.0 / 320.0) * .pi) < 0.0001)
+        let back = try #require(navigation.interactivePopGestureRecognizer)
+        #expect(coordinator.gestureRecognizer(gesture, shouldRequireFailureOf: back))
+        #expect(!coordinator.gestureRecognizer(gesture, shouldRequireFailureOf: UIPanGestureRecognizer()))
     }
 
     @Test @MainActor func projectionUsesLatestReduceMotionAndRetainsSceneOnMissingPayload() async throws {
         let view = DepthProjectionSceneView.ProjectionSCNView(frame: .zero)
         let gate = ProjectionPayloadGate()
-        let coordinator = DepthProjectionSceneView.Coordinator(payloadBuilder: { await gate.build($0) })
+        let coordinator = DepthProjectionSceneView.Coordinator(
+            payloadBuilder: { await gate.build($0) }, scenePreparer: { _, _ in true }
+        )
+        var displayStates: [DepthProjectionDisplayState] = []
+        coordinator.onDisplayStateChanged = { displayStates.append($0) }
         let region = Self.samplePlaneRegion()
         Self.updateProjection(coordinator, view: view, region: region)
         let task = try #require(coordinator.payloadBuildTask)
@@ -610,6 +741,7 @@ struct TAPDepthAnalysisPlaneRegionTests {
         #expect(view.scene === scene)
         #expect(highlight.geometry === geometry)
         #expect(highlight.opacity == 0.88)
+        #expect(displayStates == [.ready])
     }
 
     @Test func planeHighlightMaskStaysInNativeDepthSpaceWhenDisplayRotates() throws {
@@ -854,8 +986,8 @@ struct TAPDepthAnalysisPlaneRegionTests {
         )
         let image = try TAPDepthRGBAImageRenderer.image(pixels: [0, 0, 0, 255], width: 1, height: 1)
         let content = InteractiveDepthImage(
-            image: image, overlayImage: nil, overlayOpacity: 0, comparisonPosition: nil,
-            onComparisonPositionChanged: { _ in }, orientation: .up, depthSize: CGSize(width: 40, height: 40),
+            image: image, overlayImage: nil, overlayOpacity: 0,
+            orientation: .up, depthSize: CGSize(width: 40, height: 40),
             planeRegion: region, partialPlaneGridCells: [], planeGridProgress: 1, planeSeedPoint: nil,
             highlightPalette: .fallback, onSelectionCleared: {}, onPointSelected: { _ in }
         )
@@ -1401,6 +1533,43 @@ struct TAPDepthAnalysisPlaneRegionTests {
             extrinsicMatrix: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0]
         )
     }
+}
+
+@MainActor
+private final class ProjectionScenePreparationGate {
+    private var continuations: [CheckedContinuation<Bool, Never>?] = []
+    var count: Int { continuations.count }
+
+    func prepare() async -> Bool {
+        await withCheckedContinuation { continuations.append($0) }
+    }
+
+    func finish(_ index: Int, success: Bool) throws {
+        let continuation = try #require(continuations[index])
+        continuations[index] = nil
+        continuation.resume(returning: success)
+    }
+}
+
+@MainActor
+private final class ProjectionTestPan: UIPanGestureRecognizer {
+    var phase: UIGestureRecognizer.State = .possible
+    var offset = CGPoint.zero
+    override var state: UIGestureRecognizer.State {
+        get { phase }
+        set { phase = newValue }
+    }
+    override func translation(in view: UIView?) -> CGPoint { offset }
+}
+
+@MainActor
+private final class ProjectionTestTouch: UITouch {
+    let position: CGPoint
+    init(_ position: CGPoint) {
+        self.position = position
+        super.init()
+    }
+    override func location(in view: UIView?) -> CGPoint { position }
 }
 
 private actor ProjectionPayloadGate {

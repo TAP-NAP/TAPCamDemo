@@ -5,6 +5,65 @@ import UIKit
 @testable import TAPCamDemo
 
 struct TAPVideoPointCloudInteractionTests {
+    @Test @MainActor func sceneBackgroundFollowsThePointCloudGeometry() throws {
+        let view = TAPVideoPointCloudSceneView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        let scene = try #require(view.scene)
+        let interaction = try #require(scene.rootNode.childNode(withName: "TAPVideoPointCloudInteraction", recursively: false))
+        let cloud = try #require(interaction.childNodes.first)
+        let store = TAPVideoPointCloudStore()
+        store.attach(view)
+        #expect(view.backgroundColor == .clear && !view.isOpaque)
+        #expect(cloud.geometry == nil && scene.background.contents == nil)
+
+        let model = TAPDepthProjectionCameraModel(fx: 300, fy: 300, cx: 160, cy: 240, imageWidth: 320, imageHeight: 480)
+        store.present(.init(presentationTimeSeconds: 1, vertices: [SIMD3<Float>(0, 0, -2)],
+            colors: [SIMD4<Float>(1, 1, 1, 1)], cameraModel: model))
+        #expect(cloud.geometry != nil)
+        #expect(scene.background.contents as? UIColor == .black)
+        #expect(view.backgroundColor == .clear && !view.isOpaque)
+
+        store.clear()
+        #expect(cloud.geometry == nil && scene.background.contents == nil)
+        #expect(store.presentationTimeSeconds == nil)
+    }
+
+    @Test @MainActor func projectionGesturesReserveTheOuterEdgesAndRespectSystemBack() throws {
+        let view = TAPVideoPointCloudSceneView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        let gestures = (view.gestureRecognizers ?? []).filter { $0.delegate === view }
+        try #require(gestures.count == 5)
+        for size in [CGSize(width: 320, height: 480), CGSize(width: 640, height: 320)] {
+            view.bounds.size = size
+            let middle = CGPoint(x: size.width / 2, y: size.height / 2)
+            let edgeTouches = [
+                CGPoint(x: 23, y: middle.y), CGPoint(x: size.width - 23, y: middle.y),
+                CGPoint(x: middle.x, y: 23), CGPoint(x: middle.x, y: size.height - 23)
+            ]
+            for gesture in gestures {
+                #expect(view.gestureRecognizer(gesture, shouldReceive: VideoPointCloudTestTouch(middle)))
+                for point in edgeTouches {
+                    #expect(!view.gestureRecognizer(gesture, shouldReceive: VideoPointCloudTestTouch(point)))
+                }
+            }
+        }
+
+        let detail = UIViewController()
+        detail.view = view
+        let navigation = UINavigationController(rootViewController: UIViewController())
+        navigation.loadViewIfNeeded()
+        navigation.pushViewController(detail, animated: false)
+        let back = try #require(navigation.interactivePopGestureRecognizer)
+        let pager = UIScrollView()
+        for gesture in gestures {
+            #expect(view.gestureRecognizer(gesture, shouldRequireFailureOf: back))
+            #expect(!view.gestureRecognizer(gesture, shouldRequireFailureOf: pager.panGestureRecognizer))
+            #expect(!view.gestureRecognizer(gesture, shouldRecognizeSimultaneouslyWith: pager.panGestureRecognizer))
+        }
+        #expect(view.gestureRecognizer(gestures[0], shouldRecognizeSimultaneouslyWith: gestures[1]))
+        let unrelated = UIPanGestureRecognizer()
+        view.addGestureRecognizer(unrelated)
+        #expect(!view.gestureRecognizer(gestures[0], shouldRecognizeSimultaneouslyWith: unrelated))
+    }
+
     @Test @MainActor func retainedHostRebindsTheStoreAndDetachesItsCurrentOwner() async throws {
         let firstStore = TAPVideoPointCloudStore()
         let secondStore = TAPVideoPointCloudStore()
@@ -59,7 +118,9 @@ struct TAPVideoPointCloudInteractionTests {
         let initialTransform = interaction.transform
         let cameraTransform = camera.transform
         let pan = VideoPointCloudTestPan()
+        pan.position = CGPoint(x: 160, y: 240)
         view.addGestureRecognizer(pan)
+        #expect(view.gestureRecognizer(pan, shouldReceive: VideoPointCloudTestTouch(pan.position)))
         pan.phase = .began
         view.handleOrbitPan(pan)
         pan.phase = .changed
@@ -73,6 +134,11 @@ struct TAPVideoPointCloudInteractionTests {
         view.handleOrbitPan(pan)
         #expect(abs(interaction.eulerAngles.y - .pi / 10) < 0.000_001)
         #expect(interaction.scale.x == 1 && interaction.position.z == -2)
+        pan.offset = CGPoint(x: 352, y: 0)
+        pan.position = CGPoint(x: 512, y: 240)
+        view.handleOrbitPan(pan)
+        #expect(abs(interaction.eulerAngles.y - .pi * 1.1) < 0.000_001,
+                "A drag admitted in the center must continue after leaving the gesture region")
         let userTransform = interaction.transform
         view.present(nil)
         view.present(.init(presentationTimeSeconds: 1, vertices: [SIMD3<Float>(0, 0, -4)],
@@ -114,9 +180,21 @@ private struct VideoPointCloudTestHost: View {
 private final class VideoPointCloudTestPan: UIPanGestureRecognizer {
     var phase: UIGestureRecognizer.State = .possible
     var offset = CGPoint.zero
+    var position = CGPoint.zero
     override var state: UIGestureRecognizer.State {
         get { phase }
         set { phase = newValue }
     }
     override func translation(in view: UIView?) -> CGPoint { offset }
+    override func location(in view: UIView?) -> CGPoint { position }
+}
+
+@MainActor
+private final class VideoPointCloudTestTouch: UITouch {
+    let position: CGPoint
+    init(_ position: CGPoint) {
+        self.position = position
+        super.init()
+    }
+    override func location(in view: UIView?) -> CGPoint { position }
 }

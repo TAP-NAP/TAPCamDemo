@@ -485,6 +485,7 @@ struct TAPLibraryAdjacentMediaPreview: View {
     let entry: TAPLibraryViewerPagingEntry
     let viewportSize: CGSize
     let mediaFetcher: any LibraryMediaFetching
+    let loadingBottomInset: CGFloat
 
     @State private var image: UIImage?
     @State private var imageItemID: String
@@ -493,11 +494,13 @@ struct TAPLibraryAdjacentMediaPreview: View {
     init(
         entry: TAPLibraryViewerPagingEntry,
         viewportSize: CGSize,
-        mediaFetcher: any LibraryMediaFetching
+        mediaFetcher: any LibraryMediaFetching,
+        loadingBottomInset: CGFloat = 0
     ) {
         self.entry = entry
         self.viewportSize = viewportSize
         self.mediaFetcher = mediaFetcher
+        self.loadingBottomInset = loadingBottomInset
         _image = State(
             initialValue: TAPLibraryPagingPreviewCache.shared.image(
                 for: entry.id, version: entry.mediaVersion
@@ -513,14 +516,17 @@ struct TAPLibraryAdjacentMediaPreview: View {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFit()
-            } else if imageItemID != entry.id || !didFinishLoading {
-                ProgressView()
-                    .tint(.white.opacity(0.72))
-            } else {
+            } else if imageItemID == entry.id && didFinishLoading {
                 Image(systemName: previewPlaceholderSystemImage)
                     .font(.system(size: 34, weight: .regular))
                     .foregroundStyle(.white.opacity(0.42))
             }
+            LibraryMediaViewerFetchOverlay(
+                kind: entry.isVideo ? .tapVideo : .photo,
+                state: imageItemID != entry.id || (image == nil && !didFinishLoading) ? .loading : .hidden,
+                onRetry: {},
+                loadingBottomInset: loadingBottomInset
+            )
         }
         .frame(width: viewportSize.width, height: viewportSize.height)
         .clipped()

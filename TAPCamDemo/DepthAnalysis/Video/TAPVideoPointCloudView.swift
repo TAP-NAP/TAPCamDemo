@@ -60,7 +60,8 @@ final class TAPVideoPointCloudSceneView: SCNView, UIGestureRecognizerDelegate {
 
     override init(frame: CGRect, options: [String: Any]? = nil) {
         super.init(frame: frame, options: options)
-        backgroundColor = .black
+        backgroundColor = .clear
+        isOpaque = false
         scene = SCNScene()
         interaction.name = "TAPVideoPointCloudInteraction"
         interaction.addChildNode(cloud)
@@ -87,7 +88,11 @@ final class TAPVideoPointCloudSceneView: SCNView, UIGestureRecognizerDelegate {
 
     func present(_ payload: TAPVideoPointCloudPayload?) {
         guard let payload else {
+            SCNTransaction.begin()
+            SCNTransaction.animationDuration = 0
             cloud.geometry = nil
+            scene?.background.contents = nil
+            SCNTransaction.commit()
             accessibilityValue = String(localized: "No current 3D frame")
             return
         }
@@ -122,6 +127,9 @@ final class TAPVideoPointCloudSceneView: SCNView, UIGestureRecognizerDelegate {
         SCNTransaction.begin()
         SCNTransaction.animationDuration = 0
         cloud.geometry = geometry
+        // The black backdrop must arrive in the same rendered frame as the points,
+        // rather than covering RGB while SceneKit prepares its first drawable.
+        scene?.background.contents = UIColor.black
         SCNTransaction.commit()
         accessibilityValue = String(format: String(localized: "%.3f seconds, %d RGB points"), payload.presentationTimeSeconds, payload.vertices.count)
     }
@@ -209,8 +217,20 @@ final class TAPVideoPointCloudSceneView: SCNView, UIGestureRecognizerDelegate {
         interaction.scale = SCNVector3(1, 1, 1)
     }
 
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        // Gate the initial touch only; an admitted drag can continue beyond this rect.
+        DepthAnalysisViewerInteractionPolicy.pointCloudGestureRect(in: bounds)
+            .contains(touch.location(in: self))
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                           shouldRequireFailureOf otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        otherGestureRecognizer === enclosingNavigationController?.interactivePopGestureRecognizer
+    }
+
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
                            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
         gestureRecognizer.view === self && otherGestureRecognizer.view === self
+            && gestureRecognizer.delegate === self && otherGestureRecognizer.delegate === self
     }
 }

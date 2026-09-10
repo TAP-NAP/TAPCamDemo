@@ -444,7 +444,6 @@ final class TAPLibraryViewerStore: ObservableObject {
     @Published private(set) var currentItemID: String
     @Published private(set) var pagingEntries: [TAPLibraryViewerPagingEntry]
     @Published var selectedTool = AnalysisViewerTool.raw
-    @Published var comparisonPosition = 0.5
     @Published private(set) var contentGeneration: UInt64 = 0
 
     private let loader: DepthAnalysisProgressivePhotoLoader
