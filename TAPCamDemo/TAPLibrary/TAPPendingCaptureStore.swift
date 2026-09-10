@@ -1011,20 +1011,6 @@ actor TAPPendingCaptureStore {
         return record
     }
 
-    func markVideoSigned(captureID: String) throws -> TAPPendingCaptureRecord {
-        let source = try readRecord(captureID: captureID)
-        let record = try TAPPendingVideoRecordTransitions.markSigned(
-            source,
-            now: Date()
-        )
-        _ = try videoArtifactURL(captureID: captureID)
-        try persistTransition(from: source, to: record)
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.pendingCapture.info("store video signed state updated captureID=\(captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public)")
-        #endif
-        return record
-    }
-
     func persistVideoPreSignContentBinding(
         _ binding: CaptureContentBinding,
         captureID: String

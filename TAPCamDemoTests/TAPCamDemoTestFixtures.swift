@@ -109,6 +109,25 @@ enum TAPCamDemoTestFixtures {
         ))
     }
 
+    static let pendingVideoTestProof = Data("test-only-proof-envelope".utf8)
+
+    /// Exercises the real store publication boundary with an opaque test
+    /// proof. Queue tests inject validation; this is not a cryptographic proof.
+    static func publishPendingVideoWithTestProof(
+        store: TAPPendingCaptureStore,
+        captureID: String
+    ) async throws -> TAPPendingCaptureRecord {
+        _ = try await store.updateStatus(captureID: captureID, status: .signing)
+        let artifact = try await store.beginVideoSigningArtifact(captureID: captureID)
+        do {
+            try TAPProofSlot.writeProofEnvelope(pendingVideoTestProof, intoBMFFFileAt: artifact.fileURL)
+            return try await store.publishVideoSigningArtifact(artifact)
+        } catch {
+            try? await store.discardVideoSigningArtifact(artifact)
+            throw error
+        }
+    }
+
     static var sampleLocation: TAPDepthManifest.Location {
         TAPDepthManifest.Location(
             latitude: 31.2304,

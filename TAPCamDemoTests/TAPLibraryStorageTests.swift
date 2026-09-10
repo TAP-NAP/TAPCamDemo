@@ -205,9 +205,18 @@ struct TAPLibraryStorageTests {
         #expect(try await store.videoArtifactURL(captureID: record.captureID) == artifactURL)
 
         let byteCountBeforeSigning = try artifactURL.resourceValues(forKeys: [.fileSizeKey]).fileSize
-        let signedRecord = try await store.markVideoSigned(captureID: record.captureID)
+        let unsignedBytes = try Data(contentsOf: artifactURL)
+        let unsignedReader = try FileHandle(forReadingFrom: artifactURL)
+        defer { try? unsignedReader.close() }
+        let signedRecord = try await TAPCamDemoTestFixtures.publishPendingVideoWithTestProof(store: store, captureID: record.captureID)
 
         #expect(signedRecord.videoArtifactState == .signed)
+        #expect(try TAPProofSlot.proofEnvelopeData(fromBMFFFileAt: artifactURL)
+            == TAPCamDemoTestFixtures.pendingVideoTestProof)
+        #expect(try Data(contentsOf: artifactURL) != unsignedBytes)
+        // Existing readers keep the unsigned inode while the fixed path now
+        // resolves to the fully written published generation.
+        #expect(try unsignedReader.readToEnd() == unsignedBytes)
         #expect(signedRecord.processingRoute == .exportSigned)
         #expect(try artifactURL.resourceValues(forKeys: [.fileSizeKey]).fileSize == byteCountBeforeSigning)
         let recoveredRetry = try await store.updateStatus(

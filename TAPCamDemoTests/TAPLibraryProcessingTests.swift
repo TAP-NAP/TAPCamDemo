@@ -572,7 +572,7 @@ struct TAPLibraryProcessingTests {
             store: store,
             captureID: "video-readback-transport"
         )
-        _ = try await store.markVideoSigned(captureID: pending.captureID)
+        _ = try await TAPCamDemoTestFixtures.publishPendingVideoWithTestProof(store: store, captureID: pending.captureID)
         _ = try await store.markVideoPhotosExportIntent(captureID: pending.captureID)
         _ = try await store.markVideoPhotosCommitAmbiguous(captureID: pending.captureID)
         let committed = try await store.markVideoPhotosCommit(
@@ -608,7 +608,7 @@ struct TAPLibraryProcessingTests {
             store: store,
             captureID: "video-readback-integrity"
         )
-        _ = try await store.markVideoSigned(captureID: pending.captureID)
+        _ = try await TAPCamDemoTestFixtures.publishPendingVideoWithTestProof(store: store, captureID: pending.captureID)
         _ = try await store.markVideoPhotosExportIntent(captureID: pending.captureID)
         _ = try await store.markVideoPhotosCommitAmbiguous(captureID: pending.captureID)
         _ = try await store.markVideoPhotosCommit(
@@ -641,7 +641,7 @@ struct TAPLibraryProcessingTests {
             store: store,
             captureID: "video-empty-recovery"
         )
-        _ = try await store.markVideoSigned(captureID: pending.captureID)
+        _ = try await TAPCamDemoTestFixtures.publishPendingVideoWithTestProof(store: store, captureID: pending.captureID)
         _ = try await store.markVideoPhotosExportIntent(captureID: pending.captureID)
         _ = try await store.markVideoPhotosCommitAmbiguous(captureID: pending.captureID)
         let videoActions = RecordingVideoExportActions(
@@ -672,7 +672,7 @@ struct TAPLibraryProcessingTests {
             store: store,
             captureID: "video-duplicate-recovery"
         )
-        _ = try await store.markVideoSigned(captureID: pending.captureID)
+        _ = try await TAPCamDemoTestFixtures.publishPendingVideoWithTestProof(store: store, captureID: pending.captureID)
         _ = try await store.markVideoPhotosExportIntent(captureID: pending.captureID)
         _ = try await store.markVideoPhotosCommitAmbiguous(captureID: pending.captureID)
         let videoActions = RecordingVideoExportActions(
@@ -706,7 +706,7 @@ struct TAPLibraryProcessingTests {
             store: store,
             captureID: "video-pre-commit-crash"
         )
-        _ = try await store.markVideoSigned(captureID: pending.captureID)
+        _ = try await TAPCamDemoTestFixtures.publishPendingVideoWithTestProof(store: store, captureID: pending.captureID)
         let interruptedActions = RecordingVideoExportActions(
             candidates: ["must-not-recover-before-commit"],
             readbackResult: .success,
@@ -764,7 +764,7 @@ struct TAPLibraryProcessingTests {
             store: store,
             captureID: "video-post-commit-crash"
         )
-        _ = try await store.markVideoSigned(captureID: pending.captureID)
+        _ = try await TAPCamDemoTestFixtures.publishPendingVideoWithTestProof(store: store, captureID: pending.captureID)
         let interruptedActions = RecordingVideoExportActions(
             candidates: [],
             readbackResult: .success,
@@ -879,7 +879,7 @@ private struct MarkingPendingVideoSigner: TAPPendingCaptureSigning {
         _ record: TAPPendingCaptureRecord,
         store: TAPPendingCaptureStore
     ) async throws -> TAPPendingCaptureRecord {
-        try await store.markVideoSigned(captureID: record.captureID)
+        try await TAPCamDemoTestFixtures.publishPendingVideoWithTestProof(store: store, captureID: record.captureID)
     }
 }
 
