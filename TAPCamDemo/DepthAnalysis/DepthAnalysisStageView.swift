@@ -29,7 +29,7 @@ struct DepthAnalysisStageView: View {
     let planeGridProgress: Double?
     let planeSeedPoint: CGPoint?
     let highlightPalette: AnalysisHighlightPalette
-    let isPlaneGridAnimationEnabled: Bool
+
     let onSelectionCleared: () -> Void
     let onPlaneSeedSelected: (CGPoint) -> Void
 
@@ -47,7 +47,7 @@ struct DepthAnalysisStageView: View {
             planeGridProgress: planeGridProgress,
             planeSeedPoint: planeSeedPoint,
             highlightPalette: highlightPalette,
-            isPlaneGridAnimationEnabled: isPlaneGridAnimationEnabled,
+
             onSelectionCleared: onSelectionCleared,
             onPointSelected: onPlaneSeedSelected
         )

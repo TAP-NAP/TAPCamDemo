@@ -27,7 +27,7 @@ struct InteractiveDepthImage: View {
     let planeGridProgress: Double?
     let planeSeedPoint: CGPoint?
     let highlightPalette: AnalysisHighlightPalette
-    let isPlaneGridAnimationEnabled: Bool
+
     let onSelectionCleared: () -> Void
     let onPointSelected: (CGPoint) -> Void
 
@@ -70,7 +70,7 @@ struct InteractiveDepthImage: View {
                         orientation: orientation,
                         imageFrame: imageFrame,
                         highlightPalette: highlightPalette,
-                        reduceMotion: accessibilityReduceMotion || !isPlaneGridAnimationEnabled
+                        reduceMotion: accessibilityReduceMotion
                     )
 
                     #if DEBUG
@@ -92,7 +92,7 @@ struct InteractiveDepthImage: View {
                         orientation: orientation,
                         imageFrame: imageFrame,
                         highlightPalette: highlightPalette,
-                        reduceMotion: accessibilityReduceMotion || !isPlaneGridAnimationEnabled
+                        reduceMotion: accessibilityReduceMotion
                     )
                 }
 

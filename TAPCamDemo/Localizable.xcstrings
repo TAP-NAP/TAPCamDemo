@@ -155,6 +155,17 @@
         }
       }
     },
+    "Acknowledgements" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "致谢名单"
+          }
+        }
+      }
+    },
     "Adds capture location to photo metadata." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -226,17 +237,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "始终开启"
-          }
-        }
-      }
-    },
-    "Analysis Animation" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "分析动画"
           }
         }
       }

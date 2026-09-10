@@ -36,8 +36,6 @@ struct DepthAnalysisView: View {
     @State private var deleteAlert: DepthAnalysisDeleteAlert?
     @AppStorage(CameraViewfinderHighlightPreference.storageKey)
     private var viewfinderHighlightRawValue = CameraViewfinderHighlightPreference.defaultValue.rawValue
-    @AppStorage(DepthAnalyzerPreferences.planeGridAnimationEnabledKey)
-    private var isPlaneGridAnimationEnabled = DepthAnalyzerPreferences.defaultPlaneGridAnimationEnabled
 
     init(
         source: DepthAnalysisSource,
@@ -141,7 +139,7 @@ struct DepthAnalysisView: View {
                     heatmapOpacity: $heatmapOpacity,
                     comparisonPosition: $twoDComparisonPosition,
                     highlightPalette: highlightPalette,
-                    isPlaneGridAnimationEnabled: isPlaneGridAnimationEnabled,
+
                     mediaFetcher: mediaFetcher,
                     onCurrentEntryChanged: handleCurrentEntryChanged,
                     onBoundaryMove: handleMixedMediaBoundaryMove
@@ -302,7 +300,7 @@ private struct AnalysisPhotoCarouselView: View {
     @Binding var heatmapOpacity: Double
     @Binding var comparisonPosition: Double
     let highlightPalette: AnalysisHighlightPalette
-    let isPlaneGridAnimationEnabled: Bool
+
     let mediaFetcher: any LibraryMediaFetching
     let onCurrentEntryChanged: (DepthAnalysisCarouselEntry) -> Void
     let onBoundaryMove: (Int) -> Void
@@ -316,7 +314,7 @@ private struct AnalysisPhotoCarouselView: View {
             heatmapOpacity: $heatmapOpacity,
             comparisonPosition: $comparisonPosition,
             highlightPalette: highlightPalette,
-            isPlaneGridAnimationEnabled: isPlaneGridAnimationEnabled,
+
             mediaFetcher: mediaFetcher,
             onCurrentEntryChanged: onCurrentEntryChanged,
             onBoundaryMove: onBoundaryMove
@@ -340,7 +338,7 @@ private struct AnalysisNativePagingView: View {
     @Binding var heatmapOpacity: Double
     @Binding var comparisonPosition: Double
     let highlightPalette: AnalysisHighlightPalette
-    let isPlaneGridAnimationEnabled: Bool
+
     let mediaFetcher: any LibraryMediaFetching
     let onCurrentEntryChanged: (DepthAnalysisCarouselEntry) -> Void
     let onBoundaryMove: (Int) -> Void
@@ -409,7 +407,7 @@ private struct AnalysisNativePagingView: View {
                     heatmapOpacity: $heatmapOpacity,
                     comparisonPosition: $comparisonPosition,
                     highlightPalette: highlightPalette,
-                    isPlaneGridAnimationEnabled: isPlaneGridAnimationEnabled,
+
                     mediaFetcher: mediaFetcher
                 )
             )
@@ -481,7 +479,6 @@ private struct AnalysisNativePagingView: View {
         var hasher = Hasher()
         hasher.combine(selectedTool.rawValue)
         hasher.combine(highlightPalette.uiColor.hash)
-        hasher.combine(isPlaneGridAnimationEnabled)
         return UInt64(bitPattern: Int64(hasher.finalize()))
     }
 
@@ -523,7 +520,7 @@ private struct AnalysisNativePageView: View {
     @Binding var heatmapOpacity: Double
     @Binding var comparisonPosition: Double
     let highlightPalette: AnalysisHighlightPalette
-    let isPlaneGridAnimationEnabled: Bool
+
     let mediaFetcher: any LibraryMediaFetching
 
     var body: some View {
@@ -541,8 +538,7 @@ private struct AnalysisNativePageView: View {
                     isCurrent: isCurrent,
                     heatmapOpacity: $heatmapOpacity,
                     comparisonPosition: $comparisonPosition,
-                    highlightPalette: highlightPalette,
-                    isPlaneGridAnimationEnabled: isPlaneGridAnimationEnabled
+                    highlightPalette: highlightPalette
                 )
             }
 
@@ -1458,7 +1454,7 @@ private struct AnalysisToolPhotoStage: View {
     @Binding var heatmapOpacity: Double
     @Binding var comparisonPosition: Double
     let highlightPalette: AnalysisHighlightPalette
-    let isPlaneGridAnimationEnabled: Bool
+
     @AppStorage(DepthAnalyzerPreferences.planeGrowthStrictnessKey)
     private var planeGrowthStrictness = DepthAnalyzerPreferences.defaultPlaneGrowthStrictness
     @State private var gridToastMessage: String?
@@ -1513,7 +1509,7 @@ private struct AnalysisToolPhotoStage: View {
                 planeGridProgress: slot.planeSelection.gridProgress,
                 planeSeedPoint: slot.planeSelection.seedPoint,
                 highlightPalette: highlightPalette,
-                isPlaneGridAnimationEnabled: isPlaneGridAnimationEnabled,
+
                 onSelectionCleared: {
                     slot.clearSelection()
                 },

@@ -51,7 +51,7 @@ struct TAPLocalizationTests {
             "Interaction Haptics",
             "Silent Shutter",
             "Silent shutter is unavailable on this device or in this region.",
-            "Analysis Animation",
+            "Acknowledgements",
             "Location Data",
             "Use When Capturing",
             "Adds capture location to photo metadata.",

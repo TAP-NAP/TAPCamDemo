@@ -13,8 +13,6 @@ import SwiftUI
 import UIKit
 
 enum DepthAnalyzerPreferences {
-    static let planeGridAnimationEnabledKey = "DepthAnalyzerPlaneGridAnimationEnabled"
-    static let defaultPlaneGridAnimationEnabled = true
     static let planeGrowthStrictnessKey = "DepthAnalyzerPlaneGrowthStrictness"
     static let defaultPlaneGrowthStrictness = DepthAnalysisPlaneSelectionState.defaultStrictness
 }
@@ -29,8 +27,6 @@ struct DepthAnalyzerSettingsView: View {
     @ObservedObject private var appAttestController: AppAttestRuntimeController
     @AppStorage(AppLanguage.storageKey)
     private var appLanguageRawValue = AppLanguage.defaultValue.rawValue
-    @AppStorage(DepthAnalyzerPreferences.planeGridAnimationEnabledKey)
-    private var isPlaneGridAnimationEnabled = DepthAnalyzerPreferences.defaultPlaneGridAnimationEnabled
     @AppStorage(CameraFeedbackPreferences.shutterHapticsEnabledKey)
     private var shutterHapticsEnabled = CameraFeedbackPreferences.defaultShutterHapticsEnabled
     @AppStorage(CameraFeedbackPreferences.shutterSoundEnabledKey)
@@ -97,6 +93,12 @@ struct DepthAnalyzerSettingsView: View {
                 debugCameraControlsSection
                 debugAppAttestSections
                 #endif
+
+                Section {
+                    NavigationLink("Acknowledgements") {
+                        AcknowledgementsView()
+                    }
+                }
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
@@ -213,9 +215,6 @@ struct DepthAnalyzerSettingsView: View {
                 }
             }
 
-            Toggle(isOn: $isPlaneGridAnimationEnabled) {
-                Label("Analysis Animation", systemImage: "square.grid.3x3")
-            }
         }
     }
 
