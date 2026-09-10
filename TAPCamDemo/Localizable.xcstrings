@@ -4230,22 +4230,6 @@
         }
       }
     },
-    "video.depth.gap" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Depth data is unavailable at this moment."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "当前时刻没有可用的深度数据。"
-          }
-        }
-      }
-    },
     "Viewfinder" : {
       "extractionState" : "stale",
       "localizations" : {
