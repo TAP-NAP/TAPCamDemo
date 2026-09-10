@@ -333,6 +333,15 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                 }
             }
 
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            let captureConnection = photoOutput.connection(with: .video)
+            let captureDevice = (captureConnection?.inputPorts.first?.input as? AVCaptureDeviceInput)?.device
+            let activeFormat = captureDevice?.activeFormat
+            let supportedDimensions = activeFormat.map {
+                Self.dimensionsDescription($0.supportedMaxPhotoDimensions.map(CapturePhotoDimensions.init))
+            } ?? "none"
+            TAPDiagnostics.cameraCapture.notice("photo capture submit settingsID=\(settings.uniqueID, privacy: .public) deviceType=\(captureDevice?.deviceType.rawValue ?? "none", privacy: .public) position=\(captureDevice?.position.rawValue ?? -1, privacy: .public) format=\(Self.depthFormatDescription(activeFormat), privacy: .public) connectionActive=\(captureConnection?.isActive ?? false, privacy: .public) connectionEnabled=\(captureConnection?.isEnabled ?? false, privacy: .public) selectedDimensions=\(CapturePhotoDimensions(settings.maxPhotoDimensions).debugDescription, privacy: .public) configuredDimensions=\(CapturePhotoDimensions(photoOutput.maxPhotoDimensions).debugDescription, privacy: .public) supportedDimensions=\(supportedDimensions, privacy: .public) requestedQuality=\(settings.photoQualityPrioritization.rawValue, privacy: .public) maximumQuality=\(photoOutput.maxPhotoQualityPrioritization.rawValue, privacy: .public) flashMode=\(settings.flashMode.rawValue, privacy: .public) flashSupported=\(photoOutput.supportedFlashModes.contains(settings.flashMode), privacy: .public) livePhotoMovie=\(settings.livePhotoMovieFileURL != nil, privacy: .public) livePhotoEnabled=\(photoOutput.isLivePhotoCaptureEnabled, privacy: .public) livePhotoSuspended=\(photoOutput.isLivePhotoCaptureSuspended, privacy: .public) depthRequested=\(settings.isDepthDataDeliveryEnabled, privacy: .public) depthEnabled=\(photoOutput.isDepthDataDeliveryEnabled, privacy: .public)")
+            #endif
             photoOutput.capturePhoto(with: settings, delegate: delegate)
         }
     }

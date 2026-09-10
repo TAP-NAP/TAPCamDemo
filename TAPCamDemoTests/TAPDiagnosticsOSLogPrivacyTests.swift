@@ -232,7 +232,18 @@ struct TAPDiagnosticsOSLogPrivacyTests {
         "semanticChanged",
         "showLoading",
         "source",
-        "visiblePendingCount"
+        "visiblePendingCount",
+        "connectionActive",
+        "connectionEnabled",
+        "depthEnabled",
+        "depthRequested",
+        "flashSupported",
+        "livePhotoEnabled",
+        "livePhotoSuspended",
+        "maximumQuality",
+        "position",
+        "requestedQuality",
+        "settingsID"
     ])
 
     @Test func allTAPDiagnosticsLoggingFilesAreCoveredByHarness() throws {
