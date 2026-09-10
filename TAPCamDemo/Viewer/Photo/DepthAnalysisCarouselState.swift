@@ -228,17 +228,13 @@ nonisolated struct DepthAnalysisDisplayPhotoLoader {
                 key: requestKey,
                 assetLocalIdentifier: assetID
             )
-            let data = try await mediaFetcher.photoDisplayData(
+            let image = try await mediaFetcher.photoDisplayImage(
                 for: request,
                 pixelLength: pixelLength
             ) { progress in
                 Task { @MainActor in
                     progressHandler(progress)
                 }
-            }
-            guard let image = downsampledImage(data: data, pixelLength: pixelLength)
-                    ?? UIImage(data: data) else {
-                throw MediaFetchFailure.decode
             }
             return AnalysisDisplayPhoto(image: image, requestedPixelLength: pixelLength)
         case .pendingCapture(let captureID):

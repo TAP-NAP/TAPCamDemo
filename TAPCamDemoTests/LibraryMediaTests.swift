@@ -860,7 +860,6 @@ struct LibraryMediaTests {
         if let result = PhotoKitDisplayImageResultAdapter.result(
             image: image,
             info: [PHImageResultIsDegradedKey: true],
-            pixelLength: 8,
             allowsNetworkAccess: false
         ) {
             Issue.record("Degraded callback must not finish: \(result)")
@@ -869,7 +868,6 @@ struct LibraryMediaTests {
         let cloudProbe = PhotoKitDisplayImageResultAdapter.result(
             image: nil,
             info: [PHImageResultIsInCloudKey: true],
-            pixelLength: 8,
             allowsNetworkAccess: false
         )
         guard case .failure(let cloudError)? = cloudProbe else {
@@ -881,7 +879,6 @@ struct LibraryMediaTests {
         let networkResult = PhotoKitDisplayImageResultAdapter.result(
             image: nil,
             info: [PHImageResultIsInCloudKey: true],
-            pixelLength: 8,
             allowsNetworkAccess: true
         )
         guard case .failure(let networkError)? = networkResult else {
@@ -889,6 +886,62 @@ struct LibraryMediaTests {
             return
         }
         #expect(networkError as? MediaFetchFailure == .decode)
+    }
+
+    @Test @MainActor func displayImageAdapterPreservesNativeImageAndOrientation() throws {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let pixels = UIGraphicsImageRenderer(
+            size: CGSize(width: 8, height: 4),
+            format: format
+        ).image { _ in }
+        let image = UIImage(
+            cgImage: try #require(pixels.cgImage),
+            scale: 2,
+            orientation: .rightMirrored
+        )
+
+        let result = PhotoKitDisplayImageResultAdapter.result(
+            image: image,
+            info: nil,
+            allowsNetworkAccess: true
+        )
+        guard case .success(let displayImage)? = result else {
+            Issue.record("Expected a final native display image")
+            return
+        }
+        #expect(displayImage === image)
+        #expect(displayImage.imageOrientation == .rightMirrored)
+        #expect(displayImage.scale == 2)
+        #expect(displayImage.cgImage?.width == 8)
+        #expect(displayImage.cgImage?.height == 4)
+    }
+
+    @Test func displayImageAdapterPreservesCancellationAndResourceErrors() {
+        let cancelled = PhotoKitDisplayImageResultAdapter.result(
+            image: nil,
+            info: [PHImageCancelledKey: true],
+            allowsNetworkAccess: true
+        )
+        guard case .failure(let cancellationError)? = cancelled else {
+            Issue.record("Expected display image cancellation")
+            return
+        }
+        #expect(cancellationError is CancellationError)
+
+        let failed = PhotoKitDisplayImageResultAdapter.result(
+            image: nil,
+            info: [PHImageErrorKey: NSError(
+                domain: NSURLErrorDomain,
+                code: NSURLErrorNotConnectedToInternet
+            )],
+            allowsNetworkAccess: true
+        )
+        guard case .failure(let resourceError)? = failed else {
+            Issue.record("Expected display image resource failure")
+            return
+        }
+        #expect(resourceError as? MediaFetchFailure == .offline)
     }
 
     @Test func livePhotoAdapterKeepsItsOwnCallbackInterpretation() {

@@ -70,11 +70,11 @@ nonisolated protocol LibraryMediaFetching: Sendable {
         progress: @escaping @Sendable (Double?) -> Void
     ) async throws -> MediaFetchPhase<MediaPoster, MediaPoster>
 
-    func photoDisplayData(
+    func photoDisplayImage(
         for request: LibraryMediaAssetRequest,
         pixelLength: Int,
         progress: @escaping @Sendable (Double?) -> Void
-    ) async throws -> Data
+    ) async throws -> UIImage
 
     func videoOriginalFile(
         for request: LibraryMediaAssetRequest,

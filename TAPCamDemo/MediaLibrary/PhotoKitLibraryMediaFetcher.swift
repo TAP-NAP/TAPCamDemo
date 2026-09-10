@@ -108,11 +108,11 @@ actor PhotoKitLibraryMediaFetcher: LibraryMediaFetching {
         )
     }
 
-    func photoDisplayData(
+    func photoDisplayImage(
         for request: LibraryMediaAssetRequest,
         pixelLength: Int,
         progress: @escaping @Sendable (Double?) -> Void = { _ in }
-    ) async throws -> Data {
+    ) async throws -> UIImage {
         try Task.checkCancellation()
         let asset = try Self.asset(localIdentifier: request.assetLocalIdentifier)
         let targetLength = max(pixelLength, 1)

@@ -190,9 +190,9 @@ nonisolated private struct TAPGalleryFixtureMediaFetcher: LibraryMediaFetching {
         .ready(MediaPoster(cacheKey: request.assetLocalIdentifier, image: await Self.image(request.assetLocalIdentifier, width: 80)))
     }
 
-    func photoDisplayData(for request: LibraryMediaAssetRequest, pixelLength: Int,
-                          progress: @escaping @Sendable (Double?) -> Void) async throws -> Data {
-        await Self.image(request.assetLocalIdentifier, width: 960).jpegData(compressionQuality: 0.9) ?? Data()
+    func photoDisplayImage(for request: LibraryMediaAssetRequest, pixelLength: Int,
+                           progress: @escaping @Sendable (Double?) -> Void) async throws -> UIImage {
+        await Self.image(request.assetLocalIdentifier, width: CGFloat(max(pixelLength, 1)))
     }
 
     func videoOriginalFile(for request: LibraryMediaAssetRequest,

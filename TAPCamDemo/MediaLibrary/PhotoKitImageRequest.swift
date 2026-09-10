@@ -13,9 +13,8 @@ nonisolated enum PhotoKitDisplayImageResultAdapter {
     static func result(
         image: UIImage?,
         info: [AnyHashable: Any]?,
-        pixelLength: Int,
         allowsNetworkAccess: Bool
-    ) -> Result<Data, any Error>? {
+    ) -> Result<UIImage, any Error>? {
         if info?[PHImageCancelledKey] as? Bool == true {
             return .failure(CancellationError())
         }
@@ -30,14 +29,10 @@ nonisolated enum PhotoKitDisplayImageResultAdapter {
            image == nil {
             return .failure(PhotoKitNetworkAccessRequired())
         }
-        guard let image,
-              let data = DepthAlbumThumbnailJPEGRenderer.aspectPreservingData(
-                from: image,
-                maximumPixelLength: pixelLength
-              ) else {
+        guard let image else {
             return .failure(MediaFetchFailure.decode)
         }
-        return .success(data)
+        return .success(image)
     }
 }
 
@@ -47,7 +42,7 @@ nonisolated final class PhotoKitDisplayImageRequestBridge: @unchecked Sendable {
     private let manager: PHImageManager
     private let allowsNetworkAccess: Bool
     private let progress: @Sendable (Double?) -> Void
-    private let lifecycle: PhotoKitRequestLifecycle<PHImageRequestID, Data>
+    private let lifecycle: PhotoKitRequestLifecycle<PHImageRequestID, UIImage>
 
     init(
         manager: PHImageManager = .default(),
@@ -69,7 +64,7 @@ nonisolated final class PhotoKitDisplayImageRequestBridge: @unchecked Sendable {
         )
     }
 
-    func start(asset: PHAsset, pixelLength: Int) async throws -> Data {
+    func start(asset: PHAsset, pixelLength: Int) async throws -> UIImage {
         try await withCheckedThrowingContinuation { continuation in
             guard lifecycle.install(continuation: continuation) else {
                 return
@@ -97,8 +92,7 @@ nonisolated final class PhotoKitDisplayImageRequestBridge: @unchecked Sendable {
             ) { [weak self] image, info in
                 self?.receive(
                     image: image,
-                    info: info,
-                    pixelLength: targetLength
+                    info: info
                 )
             }
             lifecycle.install(requestID: requestID)
@@ -111,13 +105,11 @@ nonisolated final class PhotoKitDisplayImageRequestBridge: @unchecked Sendable {
 
     private func receive(
         image: UIImage?,
-        info: [AnyHashable: Any]?,
-        pixelLength: Int
+        info: [AnyHashable: Any]?
     ) {
         guard let result = PhotoKitDisplayImageResultAdapter.result(
             image: image,
             info: info,
-            pixelLength: pixelLength,
             allowsNetworkAccess: allowsNetworkAccess
         ) else {
             return
