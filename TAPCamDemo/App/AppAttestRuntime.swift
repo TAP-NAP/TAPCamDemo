@@ -4,7 +4,6 @@
 //
 
 import Foundation
-import AppAttestKit
 import OSLog
 
 nonisolated enum TAPDiagnostics {
@@ -174,14 +173,7 @@ enum AppAttestRuntimeFactory {
     }
 
     static func make(baseURL: URL) throws -> AppAttestRuntime {
-        let backend = try HTTPAppAttestBackend(baseURL: baseURL)
-        let defaultClient = DefaultAppAttestClient(
-            backend: backend,
-            credentialStore: KeychainAppAttestCredentialStore(),
-            deviceService: DCAppAttestDeviceService(),
-            environment: configuredEnvironment
-        )
-        let client = LoggingAppAttestClient(wrapping: defaultClient)
+        let client = try NativeAppAttestClient(baseURL: baseURL)
 
         return AppAttestRuntime(
             client: client,
@@ -208,118 +200,6 @@ enum AppAttestRuntimeDefaults {
     static let photoCredentialName = "photo_keyid"
 }
 
-private actor LoggingAppAttestClient: AppAttestClient {
-    private let wrapped: any AppAttestClient
-
-    init(wrapping wrapped: any AppAttestClient) {
-        self.wrapped = wrapped
-    }
-
-    func prepare(credentialName: String) async throws -> AppAttestCredential {
-        let operationID = UUID().uuidString
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.appAttest.info("prepare start operationID=\(operationID, privacy: .public) credentialName=\(credentialName, privacy: .private)")
-        #endif
-        do {
-            let credential = try await wrapped.prepare(credentialName: credentialName)
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.appAttest.info("prepare success operationID=\(operationID, privacy: .public) credentialName=\(credentialName, privacy: .private) keyID=\(Self.keyIDSummary(credential.keyId), privacy: .private)")
-            #endif
-            return credential
-        } catch {
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.appAttest.error("prepare failed operationID=\(operationID, privacy: .public) credentialName=\(credentialName, privacy: .private) error=\(TAPDiagnostics.describe(error), privacy: .public)")
-            #endif
-            throw error
-        }
-    }
-
-    func prepareIfNeeded(credentialName: String) async throws -> AppAttestCredential {
-        let operationID = UUID().uuidString
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.appAttest.info("prepareIfNeeded start operationID=\(operationID, privacy: .public) credentialName=\(credentialName, privacy: .private)")
-        #endif
-        do {
-            let credential = try await wrapped.prepareIfNeeded(credentialName: credentialName)
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.appAttest.info("prepareIfNeeded success operationID=\(operationID, privacy: .public) credentialName=\(credentialName, privacy: .private) keyID=\(Self.keyIDSummary(credential.keyId), privacy: .private)")
-            #endif
-            return credential
-        } catch {
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.appAttest.error("prepareIfNeeded failed operationID=\(operationID, privacy: .public) credentialName=\(credentialName, privacy: .private) error=\(TAPDiagnostics.describe(error), privacy: .public)")
-            #endif
-            throw error
-        }
-    }
-
-    func generateAssertion(
-        credentialName: String,
-        request: AppAttestProtectedRequest
-    ) async throws -> AppAttestAssertionEnvelope {
-        let operationID = UUID().uuidString
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.appAttest.info("generateAssertion start operationID=\(operationID, privacy: .public) credentialName=\(credentialName, privacy: .private) method=\(request.method, privacy: .public) path=\(request.path, privacy: .public)")
-        #endif
-        do {
-            let assertion = try await wrapped.generateAssertion(credentialName: credentialName, request: request)
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.appAttest.info("generateAssertion success operationID=\(operationID, privacy: .public) credentialName=\(credentialName, privacy: .private) path=\(request.path, privacy: .public)")
-            #endif
-            return assertion
-        } catch {
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.appAttest.error("generateAssertion failed operationID=\(operationID, privacy: .public) credentialName=\(credentialName, privacy: .private) path=\(request.path, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
-            #endif
-            throw error
-        }
-    }
-
-    func status(credentialName: String) async throws -> AppAttestCredentialStatus {
-        let operationID = UUID().uuidString
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.appAttest.info("status start operationID=\(operationID, privacy: .public) credentialName=\(credentialName, privacy: .private)")
-        #endif
-        do {
-            let status = try await wrapped.status(credentialName: credentialName)
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.appAttest.info("status success operationID=\(operationID, privacy: .public) credentialName=\(credentialName, privacy: .private) status=\(String(describing: status), privacy: .public)")
-            #endif
-            return status
-        } catch {
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.appAttest.error("status failed operationID=\(operationID, privacy: .public) credentialName=\(credentialName, privacy: .private) error=\(TAPDiagnostics.describe(error), privacy: .public)")
-            #endif
-            throw error
-        }
-    }
-
-    func reset(credentialName: String) async throws {
-        let operationID = UUID().uuidString
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.appAttest.info("reset start operationID=\(operationID, privacy: .public) credentialName=\(credentialName, privacy: .private)")
-        #endif
-        do {
-            try await wrapped.reset(credentialName: credentialName)
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.appAttest.info("reset success operationID=\(operationID, privacy: .public) credentialName=\(credentialName, privacy: .private)")
-            #endif
-        } catch {
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.appAttest.error("reset failed operationID=\(operationID, privacy: .public) credentialName=\(credentialName, privacy: .private) error=\(TAPDiagnostics.describe(error), privacy: .public)")
-            #endif
-            throw error
-        }
-    }
-
-    private nonisolated static func keyIDSummary(_ keyID: String) -> String {
-        guard keyID.count > 8 else {
-            return keyID
-        }
-        return "\(keyID.prefix(8))...len\(keyID.count)"
-    }
-}
-
 private actor UnavailableAppAttestClient: AppAttestClient {
     private let error: Error
 
@@ -335,14 +215,7 @@ private actor UnavailableAppAttestClient: AppAttestClient {
         throw error
     }
 
-    func generateAssertion(
-        credentialName: String,
-        request: AppAttestProtectedRequest
-    ) async throws -> AppAttestAssertionEnvelope {
-        throw error
-    }
-
-    func status(credentialName: String) async throws -> AppAttestCredentialStatus {
+    func validateCredential(credentialName: String) async throws {
         throw error
     }
 

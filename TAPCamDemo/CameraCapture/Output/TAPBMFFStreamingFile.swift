@@ -4,7 +4,6 @@
 //
 
 import CryptoKit
-import AppAttestKit
 import Darwin
 import Foundation
 

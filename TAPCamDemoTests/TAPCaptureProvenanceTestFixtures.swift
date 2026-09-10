@@ -3,7 +3,6 @@
 //  TAPCamDemoTests
 //
 
-import AppAttestKit
 import AVFoundation
 import Foundation
 import ImageIO

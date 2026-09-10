@@ -2,14 +2,6 @@
   "originHash" : "ca1a26299765d48ae1862d091859a5fc58aa8f5ef40f4e46824bd1bb98156111",
   "pins" : [
     {
-      "identity" : "appattestkit",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/TAP-NAP/AppAttestKit.git",
-      "state" : {
-        "revision" : "cca2e79c6fdb054503bab9899c98460e9e3d0b38"
-      }
-    },
-    {
       "identity" : "zipfoundation",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/weichsel/ZIPFoundation.git",

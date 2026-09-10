@@ -3,7 +3,6 @@
 //  TAPCamDemoTests
 //
 
-import AppAttestKit
 import Foundation
 @testable import TAPCamDemo
 
@@ -34,23 +33,11 @@ final class SucceedingAssertionAppAttestClient: AppAttestClient, @unchecked Send
         }
         return AppAttestCredential(
             credentialName: credentialName,
-            keyId: "test-key-id",
-            credentialId: nil,
-            status: .ready,
-            environment: .development,
-            createdAt: Date(timeIntervalSince1970: 0),
-            updatedAt: Date(timeIntervalSince1970: 0)
+            keyId: "test-key-id"
         )
     }
 
-    func generateAssertion(
-        credentialName: String,
-        request: AppAttestProtectedRequest
-    ) async throws -> AppAttestAssertionEnvelope {
-        throw CaptureAssertionTestError.unused
-    }
-
-    func status(credentialName: String) async throws -> AppAttestCredentialStatus {
+    func validateCredential(credentialName: String) async throws {
         throw CaptureAssertionTestError.unused
     }
 
@@ -78,14 +65,7 @@ final class FailingPrepareIfNeededAppAttestClient: AppAttestClient, @unchecked S
         throw CaptureAssertionTestError.unused
     }
 
-    func generateAssertion(
-        credentialName: String,
-        request: AppAttestProtectedRequest
-    ) async throws -> AppAttestAssertionEnvelope {
-        throw CaptureAssertionTestError.unused
-    }
-
-    func status(credentialName: String) async throws -> AppAttestCredentialStatus {
+    func validateCredential(credentialName: String) async throws {
         throw CaptureAssertionTestError.unused
     }
 

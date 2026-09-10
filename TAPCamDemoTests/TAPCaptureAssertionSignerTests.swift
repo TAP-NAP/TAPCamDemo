@@ -3,7 +3,6 @@
 //  TAPCamDemoTests
 //
 
-import AppAttestKit
 import CryptoKit
 import Foundation
 import Testing

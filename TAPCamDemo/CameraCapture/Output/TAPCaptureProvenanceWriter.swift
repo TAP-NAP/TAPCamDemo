@@ -4,7 +4,6 @@
 //
 
 @preconcurrency import AVFoundation
-import AppAttestKit
 import Foundation
 
 /// Makes the trust boundary explicit for an already-signed file: authenticate

@@ -7,8 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		F2A0A0032FA0000000000003 /* AppAttestKit in Frameworks */ = {isa = PBXBuildFile; productRef = F2A0A0022FA0000000000002 /* AppAttestKit */; };
-		F2A0A0052FA0000000000005 /* AppAttestKit in Frameworks */ = {isa = PBXBuildFile; productRef = F2A0A0042FA0000000000004 /* AppAttestKit */; };
 		F2A0B0032FB0000000000003 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = F2A0B0022FB0000000000002 /* ZIPFoundation */; };
 		F2A0B0052FB0000000000005 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = F2A0B0042FB0000000000004 /* ZIPFoundation */; };
 		F2C0C00330A0000000000003 /* libzstd in Frameworks */ = {isa = PBXBuildFile; productRef = F2C0C00230A0000000000002 /* libzstd */; };
@@ -67,7 +65,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				F2A0A0032FA0000000000003 /* AppAttestKit in Frameworks */,
 				F2A0B0032FB0000000000003 /* ZIPFoundation in Frameworks */,
 				F2C0C00330A0000000000003 /* libzstd in Frameworks */,
 			);
@@ -77,7 +74,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				F2A0A0052FA0000000000005 /* AppAttestKit in Frameworks */,
 				F2A0B0052FB0000000000005 /* ZIPFoundation in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -148,7 +144,6 @@
 			);
 			name = TAPCamDemo;
 			packageProductDependencies = (
-				F2A0A0022FA0000000000002 /* AppAttestKit */,
 				F2A0B0022FB0000000000002 /* ZIPFoundation */,
 				F2C0C00230A0000000000002 /* libzstd */,
 			);
@@ -174,7 +169,6 @@
 			);
 			name = TAPCamDemoTests;
 			packageProductDependencies = (
-				F2A0A0042FA0000000000004 /* AppAttestKit */,
 				F2A0B0042FB0000000000004 /* ZIPFoundation */,
 			);
 			productName = TAPCamDemoTests;
@@ -215,7 +209,6 @@
 			mainGroup = F2F5FDE62F9B320F00F5071A;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				F2A0A0012FA0000000000001 /* XCRemoteSwiftPackageReference "AppAttestKit" */,
 				F2A0B0012FB0000000000001 /* XCRemoteSwiftPackageReference "ZIPFoundation" */,
 				F2C0C00130A0000000000001 /* XCRemoteSwiftPackageReference "zstd" */,
 			);
@@ -610,14 +603,6 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		F2A0A0012FA0000000000001 /* XCRemoteSwiftPackageReference "AppAttestKit" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/TAP-NAP/AppAttestKit.git";
-			requirement = {
-				kind = revision;
-				revision = cca2e79c6fdb054503bab9899c98460e9e3d0b38;
-			};
-		};
 		F2A0B0012FB0000000000001 /* XCRemoteSwiftPackageReference "ZIPFoundation" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/weichsel/ZIPFoundation.git";
@@ -637,16 +622,6 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		F2A0A0022FA0000000000002 /* AppAttestKit */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = F2A0A0012FA0000000000001 /* XCRemoteSwiftPackageReference "AppAttestKit" */;
-			productName = AppAttestKit;
-		};
-		F2A0A0042FA0000000000004 /* AppAttestKit */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = F2A0A0012FA0000000000001 /* XCRemoteSwiftPackageReference "AppAttestKit" */;
-			productName = AppAttestKit;
-		};
 		F2A0B0022FB0000000000002 /* ZIPFoundation */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = F2A0B0012FB0000000000001 /* XCRemoteSwiftPackageReference "ZIPFoundation" */;

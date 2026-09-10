@@ -3,7 +3,6 @@
 //  TAPCamDemo
 //
 
-import AppAttestKit
 import Foundation
 import OSLog
 

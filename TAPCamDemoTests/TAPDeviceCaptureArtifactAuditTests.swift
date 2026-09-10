@@ -6,7 +6,6 @@
 import Foundation
 import ImageIO
 import AVFoundation
-import AppAttestKit
 import Testing
 @testable import TAPCamDemo
 

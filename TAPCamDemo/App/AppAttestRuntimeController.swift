@@ -3,7 +3,6 @@
 //  TAPCamDemo
 //
 
-import AppAttestKit
 import Combine
 import Foundation
 import OSLog
@@ -149,15 +148,8 @@ final class AppAttestRuntimeController: ObservableObject {
     }
 
     private func validateCredentialCanGenerateAssertion() async throws {
-        let request = AppAttestProtectedRequest(
-            method: "POST",
-            path: "/tapcam/app-attest/credential-health",
-            body: Self.credentialHealthCheckBody,
-            nonce: Self.credentialHealthCheckNonce
-        )
-        _ = try await runtime.client.generateAssertion(
-            credentialName: AppAttestRuntimeDefaults.photoCredentialName,
-            request: request
+        try await runtime.client.validateCredential(
+            credentialName: AppAttestRuntimeDefaults.photoCredentialName
         )
     }
 
@@ -250,10 +242,4 @@ final class AppAttestRuntimeController: ObservableObject {
 
     private static let didAutoPreparePhotoCredentialKey = "TAPCamDemo.AppAttest.didAutoPreparePhotoCredential"
     private static let credentialHealthCheckTokenKey = "TAPCamDemo.AppAttest.credentialHealthCheckToken"
-    private static let credentialHealthCheckNonce = "tapcam-app-attest-credential-health"
-    private static let credentialHealthCheckBody = Data(
-        """
-        {"schemaID":"urn:tapnap:tapcam:app-attest-credential-health:v1"}
-        """.utf8
-    )
 }

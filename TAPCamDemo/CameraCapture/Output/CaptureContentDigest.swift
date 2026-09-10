@@ -4,7 +4,6 @@
 //
 
 @preconcurrency import AVFoundation
-import AppAttestKit
 import CryptoKit
 import Foundation
 

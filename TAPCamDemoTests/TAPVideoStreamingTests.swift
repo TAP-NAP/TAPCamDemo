@@ -3,7 +3,6 @@
 //  TAPCamDemoTests
 //
 
-import AppAttestKit
 import CoreMedia
 import CoreVideo
 import CryptoKit

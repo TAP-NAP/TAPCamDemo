@@ -3,7 +3,6 @@
 //  TAPCamDemoTests
 //
 
-import AppAttestKit
 import CryptoKit
 import Foundation
 import Testing
@@ -497,14 +496,7 @@ private actor ResetFailingAppAttestClient: AppAttestClient {
         throw AppAttestRuntimeTestError.unused
     }
 
-    func generateAssertion(
-        credentialName: String,
-        request: AppAttestProtectedRequest
-    ) async throws -> AppAttestAssertionEnvelope {
-        throw AppAttestRuntimeTestError.unused
-    }
-
-    func status(credentialName: String) async throws -> AppAttestCredentialStatus {
+    func validateCredential(credentialName: String) async throws {
         throw AppAttestRuntimeTestError.unused
     }
 
@@ -523,14 +515,7 @@ private actor HangingPrepareAppAttestClient: AppAttestClient {
         throw AppAttestRuntimeTestError.unused
     }
 
-    func generateAssertion(
-        credentialName: String,
-        request: AppAttestProtectedRequest
-    ) async throws -> AppAttestAssertionEnvelope {
-        throw AppAttestRuntimeTestError.unused
-    }
-
-    func status(credentialName: String) async throws -> AppAttestCredentialStatus {
+    func validateCredential(credentialName: String) async throws {
         throw AppAttestRuntimeTestError.unused
     }
 
@@ -553,14 +538,7 @@ private actor SensitivePrepareFailingAppAttestClient: AppAttestClient {
         throw AppAttestRuntimeTestError.unused
     }
 
-    func generateAssertion(
-        credentialName: String,
-        request: AppAttestProtectedRequest
-    ) async throws -> AppAttestAssertionEnvelope {
-        throw AppAttestRuntimeTestError.unused
-    }
-
-    func status(credentialName: String) async throws -> AppAttestCredentialStatus {
+    func validateCredential(credentialName: String) async throws {
         throw AppAttestRuntimeTestError.unused
     }
 
@@ -611,26 +589,13 @@ private actor RecordingAppAttestClient: AppAttestClient {
         return credential(credentialName: credentialName, keyID: prepareIfNeededKeyID)
     }
 
-    func generateAssertion(
-        credentialName: String,
-        request: AppAttestProtectedRequest
-    ) async throws -> AppAttestAssertionEnvelope {
-        operationLog.append("generateAssertion:\(credentialName):\(request.path)")
+    func validateCredential(credentialName: String) async throws {
+        operationLog.append("generateAssertion:\(credentialName):/tapcam/app-attest/credential-health")
 
         guard assertionMode == .healthy,
-              let currentKeyID else {
+              currentKeyID != nil else {
             throw AppAttestRuntimeTestError.unused
         }
-
-        return try makeTestAssertionEnvelope(
-            credentialName: credentialName,
-            keyId: currentKeyID,
-            request: request
-        )
-    }
-
-    func status(credentialName: String) async throws -> AppAttestCredentialStatus {
-        throw AppAttestRuntimeTestError.unused
     }
 
     func reset(credentialName: String) async throws {
@@ -641,43 +606,7 @@ private actor RecordingAppAttestClient: AppAttestClient {
     private func credential(credentialName: String, keyID: String) -> AppAttestCredential {
         AppAttestCredential(
             credentialName: credentialName,
-            keyId: keyID,
-            credentialId: nil,
-            status: .ready,
-            environment: .development,
-            createdAt: Date(timeIntervalSince1970: 0),
-            updatedAt: Date(timeIntervalSince1970: 0)
+            keyId: keyID
         )
     }
-}
-
-private func makeTestAssertionEnvelope(
-    credentialName: String,
-    keyId: String,
-    request: AppAttestProtectedRequest
-) throws -> AppAttestAssertionEnvelope {
-    let bodySHA256 = Data(SHA256.hash(data: request.body ?? Data())).appAttestBase64URL
-    let challengeSHA256 = Data(SHA256.hash(data: Data("test-challenge".utf8))).appAttestBase64URL
-    let bindingJSON = """
-    {
-      "bodySHA256": "\(bodySHA256)",
-      "challengeSHA256": "\(challengeSHA256)",
-      "method": "\(request.method.uppercased())",
-      "nonce": "\(request.nonce ?? "")",
-      "path": "\(request.path)",
-      "query": []
-    }
-    """
-    let requestBinding = try JSONDecoder().decode(
-        AppAttestRequestBinding.self,
-        from: Data(bindingJSON.utf8)
-    )
-
-    return AppAttestAssertionEnvelope(
-        credentialName: credentialName,
-        keyId: keyId,
-        challengeId: "test-challenge",
-        assertionObject: Data([0xA1, 0x03]),
-        requestBinding: requestBinding
-    )
 }

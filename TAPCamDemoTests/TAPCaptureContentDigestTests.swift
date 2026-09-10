@@ -4,7 +4,6 @@
 //
 
 import Foundation
-import AppAttestKit
 import CryptoKit
 import Testing
 @testable import TAPCamDemo
