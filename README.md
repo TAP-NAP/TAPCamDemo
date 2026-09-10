@@ -18,7 +18,7 @@ records visual revisions and fixtures.
 
 Shared Still/Live/Video manifest, container, binding, proof, KLV, transport, and
 verification conventions come only from the pinned
-[TAPArtifactContracts index](https://github.com/TAP-NAP/TAPArtifactContracts/blob/970f5102ac2176c76c0e133c7b99e6ce287a55c0/CONTRACTS.md).
+[TAPArtifactContracts index](https://github.com/TAP-NAP/TAPArtifactContracts/blob/77f774005332085fa0ddd324ac9261e67caae2c5/CONTRACTS.md).
 This repository implements those contracts; it does not restate their bytes.
 
 The adopted optional `CALD` and `TAPCAMTELEMETRY1` extensions preserve per-frame
@@ -131,5 +131,5 @@ record declared, executed, passed, failed, and skipped counts.
 The shared extension parser vectors are mirrored in
 `TAPCamDemoTests/Fixtures/tap-video-extensions-v1.json` and loaded from the test
 bundle by `TAPVideoManifestTests`. Compare that file byte-for-byte with
-[`examples/vectors/tap-video-extensions-v1.json`](https://github.com/TAP-NAP/TAPArtifactContracts/blob/970f5102ac2176c76c0e133c7b99e6ce287a55c0/examples/vectors/tap-video-extensions-v1.json)
+[`examples/vectors/tap-video-extensions-v1.json`](https://github.com/TAP-NAP/TAPArtifactContracts/blob/77f774005332085fa0ddd324ac9261e67caae2c5/examples/vectors/tap-video-extensions-v1.json)
 when updating the contract pin; do not regenerate expected bytes from the parser.

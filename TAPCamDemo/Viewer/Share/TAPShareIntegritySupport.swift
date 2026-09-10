@@ -37,6 +37,7 @@ nonisolated struct TAPSignedPhotoResourceValidator: Sendable {
 nonisolated enum TAPVerificationPackageKind: String, Sendable {
     case stillPhoto
     case livePhotoPackage
+    case tapVideo
 }
 
 nonisolated struct TAPVerificationExportSidecar: Codable, Equatable, Sendable {
@@ -66,6 +67,8 @@ nonisolated struct TAPVerificationExportSidecar: Codable, Equatable, Sendable {
         self.resources = resources
         self.warningLabels = warningLabels
         self.warnings = warnings
-        self.trustBoundary = "This sidecar is not signed. Verify primary photo and paired video bytes against the TAP signature embedded in the photo."
+        self.trustBoundary = packageKind == TAPVerificationPackageKind.tapVideo.rawValue
+            ? "This sidecar is not signed. Verify original video bytes against the TAP signature embedded in the video."
+            : "This sidecar is not signed. Verify primary photo and paired video bytes against the TAP signature embedded in the photo."
     }
 }

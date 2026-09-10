@@ -151,14 +151,18 @@ struct DepthAnalysisSharePopover: View {
         let isPreparing = coordinator.certificationState == nil || state == .retryPending
         return HStack(spacing: 9) {
             ZStack {
-                Image(systemName: state.systemImage)
-                    .opacity(isPreparing ? 0 : 1)
+                if let systemImage = state.systemImage {
+                    Image(systemName: systemImage)
+                        .opacity(isPreparing ? 0 : 1)
+                        .transition(.opacity)
+                }
                 ProgressView()
                     .controlSize(.small)
                     .opacity(isPreparing ? 1 : 0)
             }
             .frame(width: 19, height: 19)
-            Text(String(localized: state.localizationKey))
+            Text(String(localized: coordinator.resourcePreparationFailed
+                ? "share.status.originalPreparationFailed" : state.localizationKey))
                 .font(.subheadline)
                 .contentTransition(.opacity)
             Spacer(minLength: 0)
@@ -302,12 +306,12 @@ private extension DepthAnalysisShareCertificationState {
         }
     }
 
-    var systemImage: String {
+    var systemImage: String? {
         switch self {
         case .localIntegrityPassed:
             "checkmark.circle"
         case .retryPending:
-            "clock"
+            nil
         case .failed:
             "xmark.circle"
         }

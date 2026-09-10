@@ -710,6 +710,86 @@ struct TAPNAPShareArtifactBuilderTests {
         #expect(!FileManager.default.fileExists(atPath: outputDirectoryURL.path))
     }
 
+    @Test func videoPackageStreamsExactOriginalAndCurrentSidecarWithoutRefetching() async throws {
+        let bytes = Data((0..<(512 * 1024 * 3 + 137)).map { UInt8(truncatingIfNeeded: $0 &* 31 &+ 7) })
+        let sourceDirectory = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        let sourceURL = sourceDirectory.appendingPathComponent("viewer-original.mp4")
+        try bytes.write(to: sourceURL)
+        let owner = try TAPVideoOriginalResourceOwner(
+            mediaID: .photosAsset("package-video"), origin: .photosAsset(assetID: "package-video"), fileURL: sourceURL,
+            managedTemporaryFile: .init(fileURL: sourceURL, directoryURL: sourceDirectory)
+        )
+        let outputDirectory = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        let progress = TAPNAPShareProgressRecorder()
+        let builder = TAPNAPShareArtifactBuilder(
+            pendingSnapshotter: { _, _, _, _, _, _ in throw TAPNAPShareArtifactTestError.unexpectedResourceLoad },
+            photoLibraryResourceLoader: { _, _, _, _, _ in throw TAPNAPShareArtifactTestError.unexpectedResourceLoad },
+            temporaryDirectoryProvider: { outputDirectory }
+        )
+        let artifact = try await builder.prepareTapnapPackage(
+            request: TAPVideoShareResourceRequest(originalResourceLease: owner.acquireLease(), hasSignatureEvidence: true),
+            progress: progress.record
+        )
+        defer { artifact.removeTemporaryDirectory() }
+        #expect(artifact.kind == .tapnapPackage)
+        #expect(artifact.fileURL.lastPathComponent == "TAPNAP-Capture.tapnap")
+        let entries = Array(try Archive(url: artifact.fileURL, accessMode: .read))
+        #expect(entries.map(\.path).sorted() == ["original-video.mp4", "tapcam-export.json"])
+        #expect(entries.allSatisfy { !$0.isCompressed })
+        let extracted = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: extracted) }
+        try FileManager.default.unzipItem(at: artifact.fileURL, to: extracted)
+        #expect(try Data(contentsOf: extracted.appendingPathComponent("original-video.mp4")) == bytes)
+        #expect(try Data(contentsOf: sourceURL) == bytes)
+        let sidecarData = try Data(contentsOf: extracted.appendingPathComponent("tapcam-export.json"))
+        let sidecar = try JSONDecoder().decode(TAPVerificationExportSidecar.self, from: sidecarData)
+        #expect(sidecar.schemaID == "urn:tapnap:tapcam:verification-export:v1")
+        #expect(sidecar.version == 1)
+        #expect(sidecar.packageKind == "tapVideo")
+        #expect(sidecar.resources == [.init(role: "primaryVideo", filename: "original-video.mp4", mediaType: "public.mpeg-4")])
+        #expect(sidecar.warningLabels.isEmpty && sidecar.warnings.isEmpty)
+        #expect(sidecar.trustBoundary == "This sidecar is not signed. Verify original video bytes against the TAP signature embedded in the video.")
+        let json = try #require(JSONSerialization.jsonObject(with: sidecarData) as? [String: Any])
+        #expect(Set(json.keys) == Set(["schemaID", "version", "packageKind", "resources", "warningLabels", "warnings", "trustBoundary"]))
+        let values = progress.snapshot().compactMap { $0 }
+        #expect(values.first == 0 && values.last == 1)
+        #expect(zip(values, values.dropFirst()).allSatisfy { $0 <= $1 })
+        #expect(!FileManager.default.fileExists(atPath: outputDirectory.appendingPathComponent("resources").path))
+    }
+
+    @Test func videoPackageRequiresIntegrityEvidenceAndCleansFailureAndCancellation() async throws {
+        let root = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let sourceURL = root.appendingPathComponent("original.mp4")
+        try Data("original-video".utf8).write(to: sourceURL)
+        let owner = try TAPVideoOriginalResourceOwner(
+            mediaID: .photosAsset("failure-video"), origin: .photosAsset(assetID: "failure-video"), fileURL: sourceURL
+        )
+        let outputDirectory = root.appendingPathComponent("package")
+        let builder = TAPNAPShareArtifactBuilder(temporaryDirectoryProvider: { outputDirectory })
+        await #expect(throws: TAPNAPShareArtifactError.packageRequiresSignatureEvidence) {
+            _ = try await builder.prepareTapnapPackage(request: TAPVideoShareResourceRequest(
+                originalResourceLease: owner.acquireLease(), hasSignatureEvidence: false
+            ))
+        }
+        #expect(!FileManager.default.fileExists(atPath: outputDirectory.path))
+        let cancelled = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try await builder.prepareTapnapPackage(request: TAPVideoShareResourceRequest(
+                originalResourceLease: owner.acquireLease(), hasSignatureEvidence: true
+            ))
+        }
+        await #expect(throws: CancellationError.self) { _ = try await cancelled.value }
+        #expect(!FileManager.default.fileExists(atPath: outputDirectory.path))
+        try FileManager.default.removeItem(at: sourceURL)
+        await #expect(throws: Error.self) {
+            _ = try await builder.prepareTapnapPackage(request: TAPVideoShareResourceRequest(
+                originalResourceLease: owner.acquireLease(), hasSignatureEvidence: true
+            ))
+        }
+        #expect(!FileManager.default.fileExists(atPath: outputDirectory.path))
+    }
+
     @Test func videoBuilderPreservesOpaqueMultiBufferMP4BytesAndProgress() async throws {
         let snapshotBufferSize = 512 * 1_024
         let byteCount = snapshotBufferSize * 3 + 137

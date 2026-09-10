@@ -1528,6 +1528,41 @@ struct TAPDepthAnalysisSharePresentationTests {
     }
 
     @MainActor
+    @Test func verifiedVideoPackageUsesTheExistingSystemHandoffAndKeepsOriginalShareAvailable() async throws {
+        let directory = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        let sourceURL = directory.appendingPathComponent("original.mp4")
+        try Data("checked-video-original".utf8).write(to: sourceURL)
+        let owner = try TAPVideoOriginalResourceOwner(
+            mediaID: .photosAsset("package-handoff"), origin: .photosAsset(assetID: "package-handoff"),
+            fileURL: sourceURL, managedTemporaryFile: .init(fileURL: sourceURL, directoryURL: directory)
+        )
+        let model = DepthAnalysisShareCoordinator(
+            subject: .init(id: "package-handoff", mediaID: .photosAsset("package-handoff"), captureID: nil,
+                           assetID: "package-handoff", mediaKind: .video),
+            originalResource: .video(owner.acquireLease()),
+            recordResolver: .init(captureLoader: { _ in throw TestError.unexpectedCaptureLookup }, assetLoader: { _ in nil }),
+            localIntegrityValidator: ShareLocalIntegrityValidatorStub.succeeding
+        )
+        await model.refreshCertification()
+        #expect(model.canPreparePackage)
+        #expect(model.canPrepareVideo)
+        model.prepare(.tapnapPackage)
+        #expect(model.preparationProgress(for: .tapnapPackage) == 0)
+        for _ in 0..<200 where !model.hasActiveActivityPresentation {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        #expect(!model.isPopoverPresented)
+        #expect(model.hasActiveActivityPresentation)
+        #expect(model.activityPayload == nil)
+        model.popoverDidDisappear()
+        let artifact = try #require(model.activityPayload)
+        #expect(artifact.kind == .tapnapPackage)
+        #expect(artifact.fileURL.pathExtension == "tapnap")
+        #expect(model.isVideoAvailable)
+        model.activityPresentationDidEnd(expectedArtifactID: artifact.id)
+    }
+
+    @MainActor
     @Test func preparationDisablesRepeatSelectionWithoutDimmingAvailableRows() async throws {
         let record = TAPCamDemoTestFixtures.samplePendingRecord(
             captureID: "stable-row",

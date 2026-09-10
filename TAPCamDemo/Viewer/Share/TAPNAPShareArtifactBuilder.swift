@@ -297,7 +297,6 @@ nonisolated struct TAPNAPShareArtifactBuilder: Sendable {
     private static let archiveBufferSize = 512 * 1024
     static let archiveProgressOffsetForPresentation = 0.8
     private static let archiveProgressOffset = archiveProgressOffsetForPresentation
-    private static let archiveProgressWeight = 0.16
 
     private let pendingSnapshotter: PendingSnapshotter
     private let photoLibraryResourceLoader: PhotoLibraryResourceLoader
@@ -644,76 +643,120 @@ nonisolated struct TAPNAPShareArtifactBuilder: Sendable {
         outputDirectoryURL: URL,
         progress: @escaping ProgressHandler
     ) async throws -> TAPNAPShareArtifact {
-        let photoFilename = Self.primaryPhotoBasename
-            + "."
-            + resources.photoFileExtension
-        let sidecarDirectoryURL = outputDirectoryURL.appendingPathComponent(
-            "resources",
-            isDirectory: true
-        )
-        try FileManager.default.createDirectory(
-            at: sidecarDirectoryURL,
-            withIntermediateDirectories: true
-        )
-        let sidecarURL = sidecarDirectoryURL
-            .appendingPathComponent(Self.sidecarFilename)
-        let packageURL = outputDirectoryURL.appendingPathComponent(Self.packageFilename)
-        let partialPackageURL = outputDirectoryURL.appendingPathComponent(
-            ".\(Self.packageFilename).partial"
-        )
+        defer { withExtendedLifetime(resources.retainedOriginalResourceLease) {} }
+        let photoFilename = Self.primaryPhotoBasename + "." + resources.photoFileExtension
         let warningLabels = resources.presentationAdjustmentResourceLabels
-        let warnings = Self.warningMessages(from: warningLabels)
-        var sidecarResources = [
-            TAPVerificationExportSidecar.Resource(
-                role: "primaryPhoto",
-                filename: photoFilename,
-                mediaType: resources.photoMediaType
-            )
-        ]
+        var descriptors = [TAPVerificationExportSidecar.Resource(
+            role: "primaryPhoto", filename: photoFilename, mediaType: resources.photoMediaType
+        )]
+        var entries = [ArchiveSource(
+            path: photoFilename,
+            fileURL: resources.photoURL,
+            uncompressedSize: try Self.checkedResourceSize(resources.photoURL)
+        )]
         if expectsPairedVideo {
-            sidecarResources.append(TAPVerificationExportSidecar.Resource(
-                role: "pairedLivePhotoVideo",
-                filename: Self.pairedVideoFilename,
+            guard let pairedVideoURL = resources.pairedVideoURL else {
+                throw TAPNAPShareArtifactError.livePhotoPairedVideoMissing
+            }
+            descriptors.append(.init(
+                role: "pairedLivePhotoVideo", filename: Self.pairedVideoFilename,
                 mediaType: UTType.quickTimeMovie.identifier
+            ))
+            entries.append(.init(
+                path: Self.pairedVideoFilename,
+                fileURL: pairedVideoURL,
+                uncompressedSize: try Self.checkedResourceSize(pairedVideoURL)
             ))
         }
         let sidecar = TAPVerificationExportSidecar(
             packageKind: expectsPairedVideo
                 ? TAPVerificationPackageKind.livePhotoPackage.rawValue
                 : TAPVerificationPackageKind.stillPhoto.rawValue,
-            resources: sidecarResources,
+            resources: descriptors,
             warningLabels: warningLabels,
-            warnings: warnings
+            warnings: Self.warningMessages(from: warningLabels)
         )
-        try JSONEncoder.tapCaptureCanonical.encode(sidecar).write(
-            to: sidecarURL,
-            options: .atomic
+        return try await writePackage(
+            mediaEntries: entries,
+            sidecar: sidecar,
+            outputDirectoryURL: outputDirectoryURL,
+            archiveProgressOffset: Self.archiveProgressOffset,
+            progress: progress
         )
+    }
 
-        var entries = [
-            ArchiveSource(
-                path: photoFilename,
-                fileURL: resources.photoURL,
-                uncompressedSize: try Self.checkedResourceSize(resources.photoURL)
-            )
-        ]
-        if expectsPairedVideo {
-            guard let pairedVideoURL = resources.pairedVideoURL else {
-                throw TAPNAPShareArtifactError.livePhotoPairedVideoMissing
-            }
-            entries.append(ArchiveSource(
-                path: Self.pairedVideoFilename,
-                fileURL: pairedVideoURL,
-                uncompressedSize: try Self.checkedResourceSize(pairedVideoURL)
-            ))
+    /// Shares the same ZIP writer as Still/Live Photo. The caller has checked
+    /// this exact complete original; the lease is retained until streaming ends.
+    /// No second MP4 copy, transcoding, depth extraction, or proof copy is made.
+    @concurrent
+    func prepareTapnapPackage(
+        request: TAPVideoShareResourceRequest,
+        progress: @escaping ProgressHandler = { _ in }
+    ) async throws -> TAPNAPShareArtifact {
+        guard request.hasSignatureEvidence else {
+            throw TAPNAPShareArtifactError.packageRequiresSignatureEvidence
         }
+        guard let resourceLease = request.originalResourceLease else {
+            throw TAPNAPShareArtifactError.shareResourceUnavailable
+        }
+        defer { withExtendedLifetime(resourceLease) {} }
+        let outputDirectoryURL = try temporaryDirectoryProvider()
+        let coalescer = TAPShareProgressCoalescer(delivery: progress)
+        do {
+            try Task.checkCancellation()
+            coalescer.submit(0)
+            let filename = "original-video.mp4"
+            let sidecar = TAPVerificationExportSidecar(
+                packageKind: TAPVerificationPackageKind.tapVideo.rawValue,
+                resources: [.init(role: "primaryVideo", filename: filename, mediaType: UTType.mpeg4Movie.identifier)],
+                warningLabels: [],
+                warnings: []
+            )
+            let artifact = try await writePackage(
+                mediaEntries: [.init(
+                    path: filename, fileURL: resourceLease.fileURL,
+                    uncompressedSize: try Self.checkedResourceSize(resourceLease.fileURL)
+                )],
+                sidecar: sidecar,
+                outputDirectoryURL: outputDirectoryURL,
+                archiveProgressOffset: 0,
+                progress: { coalescer.submit($0) }
+            )
+            TAPShareTemporaryDirectoryCleanup.removeIfPresent(
+                at: outputDirectoryURL.appendingPathComponent("resources", isDirectory: true),
+                scope: "tapnapVideoResources"
+            )
+            coalescer.submit(1)
+            await coalescer.finish()
+            return artifact
+        } catch {
+            coalescer.cancel()
+            TAPShareTemporaryDirectoryCleanup.removeIfPresent(at: outputDirectoryURL, scope: "tapnapVideoFailure")
+            throw Self.publicError(from: error)
+        }
+    }
+
+    private func writePackage(
+        mediaEntries: [ArchiveSource],
+        sidecar: TAPVerificationExportSidecar,
+        outputDirectoryURL: URL,
+        archiveProgressOffset: Double,
+        progress: @escaping ProgressHandler
+    ) async throws -> TAPNAPShareArtifact {
+        let sidecarDirectoryURL = outputDirectoryURL.appendingPathComponent("resources", isDirectory: true)
+        try FileManager.default.createDirectory(at: sidecarDirectoryURL, withIntermediateDirectories: true)
+        let sidecarURL = sidecarDirectoryURL.appendingPathComponent(Self.sidecarFilename)
+        try JSONEncoder.tapCaptureCanonical.encode(sidecar).write(to: sidecarURL, options: .atomic)
+        let packageURL = outputDirectoryURL.appendingPathComponent(Self.packageFilename)
+        let partialPackageURL = outputDirectoryURL.appendingPathComponent(".\(Self.packageFilename).partial")
+        var entries = mediaEntries
         entries.append(ArchiveSource(
             path: Self.sidecarFilename,
             fileURL: sidecarURL,
             uncompressedSize: try Self.checkedResourceSize(sidecarURL)
         ))
 
-        progress(Self.archiveProgressOffset)
+        progress(archiveProgressOffset)
         let archiveByteCount = entries.reduce(Int64(0)) { $0 + $1.uncompressedSize }
         let archiveProgress = Progress(totalUnitCount: archiveByteCount)
         let archiveStartedAt = ProcessInfo.processInfo.systemUptime
@@ -731,8 +774,8 @@ nonisolated struct TAPNAPShareArtifactBuilder: Sendable {
                 progress: { archiveFraction in
                     Self.mapProgress(
                         archiveFraction,
-                        offset: Self.archiveProgressOffset,
-                        weight: Self.archiveProgressWeight,
+                        offset: archiveProgressOffset,
+                        weight: (0.96 - archiveProgressOffset),
                         handler: progress
                     )
                 }
@@ -741,7 +784,7 @@ nonisolated struct TAPNAPShareArtifactBuilder: Sendable {
         } onCancel: {
             archiveProgress.cancel()
         }
-        progress(Self.archiveProgressOffset + Self.archiveProgressWeight)
+        progress(0.96)
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.sharePackaging.info(
             "tapnap zip completed durationMs=\(Self.elapsedMilliseconds(since: archiveStartedAt), privacy: .public) outputBytes=\((try? Self.checkedResourceSize(partialPackageURL)) ?? 0, privacy: .public)"
@@ -764,7 +807,7 @@ nonisolated struct TAPNAPShareArtifactBuilder: Sendable {
             kind: .tapnapPackage,
             fileURL: packageURL,
             temporaryDirectoryURL: outputDirectoryURL,
-            warnings: warnings
+            warnings: sidecar.warnings
         )
     }
 

@@ -9,6 +9,7 @@ import CoreVideo
 import CryptoKit
 import Foundation
 import Testing
+import ZIPFoundation
 @testable import TAPCamDemo
 
 struct TAPVideoStreamingTests {
@@ -871,6 +872,26 @@ struct TAPVideoStreamingTests {
         #expect(exported.assetLocalIdentifier == "zero-depth-photos-asset")
         #expect(await assertionSigner.lastDigest()?.depthResource.presence == "no-samples")
         #expect(FileManager.default.fileExists(atPath: copiedOriginalURL.path))
+
+        let originalOwner = try TAPVideoOriginalResourceOwner(
+            mediaID: .photosAsset("zero-depth-photos-asset"),
+            origin: .photosAsset(assetID: "zero-depth-photos-asset"),
+            fileURL: copiedOriginalURL
+        )
+        _ = try await TAPVideoLocalIntegrityValidator().validate(originalOwner.acquireLease())
+        let package = try await TAPNAPShareArtifactBuilder().prepareTapnapPackage(
+            request: TAPVideoShareResourceRequest(originalResourceLease: originalOwner.acquireLease(), hasSignatureEvidence: true)
+        )
+        defer { package.removeTemporaryDirectory() }
+        let unpacked = rootURL.appendingPathComponent("unpacked")
+        try FileManager.default.unzipItem(at: package.fileURL, to: unpacked)
+        let packagedVideoURL = unpacked.appendingPathComponent("original-video.mp4")
+        #expect(try Data(contentsOf: packagedVideoURL) == Data(contentsOf: copiedOriginalURL))
+        let packaged = try await writer.validateSignedExportVideoFile(
+            .init(fileURL: packagedVideoURL), expectedCaptureID: record.captureID,
+            expectedPackageID: record.packageID
+        )
+        #expect(packaged.manifest.payload.depthCoverage == .none)
     }
 
     @Test(arguments: [true, false])

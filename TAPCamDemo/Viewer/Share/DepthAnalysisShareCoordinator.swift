@@ -37,6 +37,11 @@ nonisolated protocol DepthAnalysisShareArtifactPreparing: Sendable {
         progress: @escaping TAPNAPShareArtifactBuilder.ProgressHandler
     ) async throws -> TAPNAPShareArtifact
 
+    func prepareVideoPackage(
+        request: TAPVideoShareResourceRequest,
+        progress: @escaping TAPNAPShareArtifactBuilder.ProgressHandler
+    ) async throws -> TAPNAPShareArtifact
+
     func prepareImage(
         request: TAPNAPShareResourceRequest,
         requiresSignedPhoto: Bool,
@@ -51,6 +56,13 @@ nonisolated protocol DepthAnalysisShareArtifactPreparing: Sendable {
 }
 
 nonisolated extension DepthAnalysisShareArtifactPreparing {
+    func prepareVideoPackage(
+        request: TAPVideoShareResourceRequest,
+        progress: @escaping TAPNAPShareArtifactBuilder.ProgressHandler
+    ) async throws -> TAPNAPShareArtifact {
+        throw TAPNAPShareArtifactError.shareResourceUnavailable
+    }
+
     func prepareVideo(
         request: TAPVideoShareResourceRequest,
         requiresSignedVideo: Bool,
@@ -74,6 +86,13 @@ nonisolated struct DepthAnalysisShareArtifactPreparer: DepthAnalysisShareArtifac
 
     func preparePackage(
         request: TAPNAPShareResourceRequest,
+        progress: @escaping TAPNAPShareArtifactBuilder.ProgressHandler
+    ) async throws -> TAPNAPShareArtifact {
+        try await builder.prepareTapnapPackage(request: request, progress: progress)
+    }
+
+    func prepareVideoPackage(
+        request: TAPVideoShareResourceRequest,
         progress: @escaping TAPNAPShareArtifactBuilder.ProgressHandler
     ) async throws -> TAPNAPShareArtifact {
         try await builder.prepareTapnapPackage(request: request, progress: progress)
@@ -172,7 +191,7 @@ class DepthAnalysisShareCoordinator: ObservableObject {
     }
 
     var isPackageAvailable: Bool {
-        subject?.mediaKind == .photo && certificationState == .localIntegrityPassed
+        subject != nil && originalResource != nil && certificationState == .localIntegrityPassed
     }
 
     var isImageAvailable: Bool {
@@ -406,7 +425,12 @@ class DepthAnalysisShareCoordinator: ObservableObject {
 
         let photoRequest = resourceRequest(for: subject)
         let videoRequest = videoResourceRequest(for: subject)
-        guard option == .video ? videoRequest != nil : photoRequest != nil else {
+        let hasRequestedResource = switch option {
+        case .tapnapPackage: photoRequest != nil || videoRequest != nil
+        case .image: photoRequest != nil
+        case .video: videoRequest != nil
+        }
+        guard hasRequestedResource else {
             preparationState = .failed(option: option)
             return
         }
@@ -432,13 +456,13 @@ class DepthAnalysisShareCoordinator: ObservableObject {
                 )
                 switch option {
                 case .tapnapPackage:
-                    guard let photoRequest else {
+                    if let photoRequest {
+                        artifact = try await artifactPreparer.preparePackage(request: photoRequest, progress: progressHandler)
+                    } else if let videoRequest {
+                        artifact = try await artifactPreparer.prepareVideoPackage(request: videoRequest, progress: progressHandler)
+                    } else {
                         throw TAPNAPShareArtifactError.shareResourceUnavailable
                     }
-                    artifact = try await artifactPreparer.preparePackage(
-                        request: photoRequest,
-                        progress: progressHandler
-                    )
                 case .image:
                     guard let photoRequest else {
                         throw TAPNAPShareArtifactError.shareResourceUnavailable
@@ -527,13 +551,6 @@ class DepthAnalysisShareCoordinator: ObservableObject {
         refreshTask = Task { [weak self] in
             await self?.refreshCertification(presentationID: presentationID, refreshID: refreshID)
         }
-    }
-
-    func cancelFailure() {
-        guard case .failed = preparationState else {
-            return
-        }
-        preparationState = .idle
     }
 
     func retryFailedOption() {
