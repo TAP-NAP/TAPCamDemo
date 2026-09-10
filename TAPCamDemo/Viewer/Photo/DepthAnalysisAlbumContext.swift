@@ -7,7 +7,7 @@ import Foundation
 
 /// Lightweight ordered album context used by the analysis browser.
 ///
-/// `DepthAnalysisView` only needs enough information to move to the previous or
+/// `TAPLibraryViewer` only needs enough information to move to the previous or
 /// next library item and keep camera route context in sync. Loaded image bytes,
 /// Photos handles, and pending-capture stores still stay behind
 /// `DepthAnalysisProgressivePhotoLoader`.

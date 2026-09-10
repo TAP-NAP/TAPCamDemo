@@ -17,6 +17,8 @@ nonisolated struct DepthAnalysisCarouselEntry: Identifiable, Equatable {
     let mediaID: LibraryMediaID
     let source: DepthAnalysisSource
     let albumEntry: DepthAnalysisAlbumContext.Entry?
+    var expectsPairedVideo: Bool { albumEntry?.expectsPairedVideo ?? false }
+    var mediaVersion: LibraryMediaVersion? { albumEntry?.mediaVersion }
 
     init(source: DepthAnalysisSource) {
         self.id = Self.id(for: source)
@@ -42,7 +44,7 @@ nonisolated struct DepthAnalysisCarouselEntry: Identifiable, Equatable {
     }
 }
 
-nonisolated private extension DepthAnalysisSource {
+nonisolated extension DepthAnalysisSource {
     var libraryMediaID: LibraryMediaID {
         switch self {
         case .photosAsset(let assetID):
@@ -350,12 +352,16 @@ nonisolated struct DepthAnalysisProgressivePhotoLoader {
         source: DepthAnalysisSource,
         requestKey: MediaFetchRequestKey,
         expectsPairedVideo: Bool,
+        retainedResourceLease: TAPPhotoOriginalResourceLease? = nil,
         resourceReadyHandler: @escaping @Sendable @MainActor (
             TAPPhotoOriginalResourceLease
         ) -> Void = { _ in },
         progressHandler: @escaping OriginalProgressHandler
     ) async throws -> LoadedOriginal {
-        try await identifiedInputLoader(
+        if let retainedResourceLease {
+            return Self.analyzeOriginal(retainedResourceLease)
+        }
+        return try await identifiedInputLoader(
             source,
             requestKey,
             expectsPairedVideo,
@@ -385,6 +391,10 @@ nonisolated struct DepthAnalysisProgressivePhotoLoader {
             }
         }
         await resourceReadyHandler(resourceLease.retaining())
+        return analyzeOriginal(resourceLease)
+    }
+
+    private static func analyzeOriginal(_ resourceLease: TAPPhotoOriginalResourceLease) -> LoadedOriginal {
         let analysisResult = Result<TAPDepthAnalysisInput, any Error> {
             let data = try Data(
                 contentsOf: resourceLease.photoURL,
@@ -427,197 +437,177 @@ extension UIImage.Orientation {
 }
 
 
+/// Owns the committed mixed-media cursor and its bounded resource window.
+/// User presentation choices live here once for the whole detail visit.
 @MainActor
-final class DepthAnalysisCarouselStore: ObservableObject {
+final class TAPLibraryViewerStore: ObservableObject {
     @Published private(set) var currentItemID: String
-    @Published private var removedEntryIDs: Set<String> = []
+    @Published private(set) var pagingEntries: [TAPLibraryViewerPagingEntry]
+    @Published var selectedTool = AnalysisViewerTool.raw
+    @Published var comparisonPosition = 0.5
+    @Published private(set) var contentGeneration: UInt64 = 0
 
-    let entries: [DepthAnalysisCarouselEntry]
     private let loader: DepthAnalysisProgressivePhotoLoader
+    private let mediaFetcher: any LibraryMediaFetching
+    private let registrationAdapter: any TAPVideoDepthRegistrationAdapting
     private var slots: [String: AnalysisPhotoSlot] = [:]
+    private var slotObservations: [String: AnyCancellable] = [:]
+    private var videoSessions: [String: TAPVideoPlaybackSession] = [:]
     private var retainedSlotStates: [String: AnalysisPhotoSlotRetainedState] = [:]
 
     init(
-        source: DepthAnalysisSource,
-        albumContext: DepthAnalysisAlbumContext? = nil,
+        entries: [TAPLibraryViewerPagingEntry],
+        currentItemID: String,
         loader: DepthAnalysisProgressivePhotoLoader? = nil,
-        mediaFetcher: any LibraryMediaFetching = PhotoKitLibraryMediaFetcher()
+        mediaFetcher: any LibraryMediaFetching = PhotoKitLibraryMediaFetcher(),
+        registrationAdapter: any TAPVideoDepthRegistrationAdapting = TAPVideoManifestDepthRegistrationAdapter()
     ) {
-        if let albumContext, !albumContext.entries.isEmpty {
-            self.entries = albumContext.entries.map(DepthAnalysisCarouselEntry.init(albumEntry:))
-            self.currentItemID = albumContext.currentItemID
-        } else {
-            let entry = DepthAnalysisCarouselEntry(source: source)
-            self.entries = [entry]
-            self.currentItemID = entry.id
-        }
-        self.loader = loader ?? DepthAnalysisProgressivePhotoLoader(
-            mediaFetcher: mediaFetcher
-        )
+        pagingEntries = entries
+        self.currentItemID = currentItemID
+        self.mediaFetcher = mediaFetcher
+        self.registrationAdapter = registrationAdapter
+        self.loader = loader ?? DepthAnalysisProgressivePhotoLoader(mediaFetcher: mediaFetcher)
     }
 
-    private var activeEntries: [DepthAnalysisCarouselEntry] {
-        entries.filter { !removedEntryIDs.contains($0.id) }
+    var currentIndex: Int? { pagingEntries.firstIndex { $0.id == currentItemID } }
+    var currentPagingEntry: TAPLibraryViewerPagingEntry? {
+        pagingEntries.first { $0.id == currentItemID }
+    }
+    var currentEntry: DepthAnalysisCarouselEntry? { currentPagingEntry.flatMap(photoEntry) }
+    var currentSlot: AnalysisPhotoSlot? { currentEntry.map(slot(for:)) }
+    var currentVideoSession: TAPVideoPlaybackSession? {
+        guard let currentPagingEntry, case .video = currentPagingEntry.destination else { return nil }
+        return videoSession(for: currentPagingEntry)
+    }
+    var retainedSlotCount: Int { slots.count }
+
+    var windowPagingEntries: [TAPLibraryViewerPagingEntry] {
+        guard let currentIndex else { return [] }
+        return Array(pagingEntries[max(0, currentIndex - 1)...min(pagingEntries.count - 1, currentIndex + 1)])
     }
 
-    var currentIndex: Int? {
-        activeEntries.firstIndex { $0.id == currentItemID }
+    func photoEntry(_ entry: TAPLibraryViewerPagingEntry) -> DepthAnalysisCarouselEntry? {
+        guard case .analysis(let route) = entry.destination,
+              let anchor = entry.routeAnchor ?? CameraRouteAlbumAnchor(itemID: entry.id) else { return nil }
+        return DepthAnalysisCarouselEntry(albumEntry: DepthAnalysisAlbumContext.Entry(
+            id: entry.id, mediaID: entry.mediaID, source: route.source, routeAnchor: anchor,
+            expectsPairedVideo: entry.expectsPairedVideo, mediaVersion: entry.mediaVersion
+        ))
     }
 
-    var currentEntry: DepthAnalysisCarouselEntry? {
-        let entries = activeEntries
-        guard let currentIndex else {
-            return entries.first
-        }
-        return entries[currentIndex]
+    func select(_ target: TAPLibraryViewerPagingEntry, pixelLength: Int, prewarmCurrentPlaneGeometry: Bool) {
+        guard target.id != currentItemID, pagingEntries.contains(where: { $0.id == target.id }) else { return }
+        currentVideoSession?.suspendForAdjacent()
+        currentItemID = target.id
+        contentGeneration &+= 1
+        ensureVisibleWindowLoaded(pixelLength: pixelLength, prewarmCurrentPlaneGeometry: prewarmCurrentPlaneGeometry)
     }
 
-    var currentSlot: AnalysisPhotoSlot? {
-        guard let currentEntry else {
-            return nil
-        }
-        return slot(for: currentEntry)
+    @discardableResult
+    func removeCurrent(pixelLength: Int = 960) -> TAPLibraryViewerPagingEntry? {
+        guard let deletedIndex = currentIndex else { return nil }
+        let deletedID = currentItemID
+        discardResources(id: deletedID)
+        pagingEntries.remove(at: deletedIndex)
+        currentItemID = pagingEntries.isEmpty ? "" : pagingEntries[min(deletedIndex, pagingEntries.count - 1)].id
+        contentGeneration &+= 1
+        ensureVisibleWindowLoaded(pixelLength: pixelLength, prewarmCurrentPlaneGeometry: selectedTool == .threeD)
+        return currentPagingEntry
     }
 
-    var retainedSlotCount: Int {
-        slots.count
-    }
-
-    func entry(offset: Int) -> DepthAnalysisCarouselEntry? {
-        let entries = activeEntries
-        guard let currentIndex else {
-            return nil
-        }
-        let targetIndex = currentIndex + offset
-        guard entries.indices.contains(targetIndex) else {
-            return nil
-        }
-        return entries[targetIndex]
-    }
-
-    func windowEntries() -> [(offset: Int, entry: DepthAnalysisCarouselEntry)] {
-        [-1, 0, 1].compactMap { offset in
-            guard let entry = entry(offset: offset) else {
-                return nil
+    func reconcile(entries: [TAPLibraryViewerPagingEntry], selectedItemID: String, pixelLength: Int) {
+        guard entries != pagingEntries || selectedItemID != currentItemID else { return }
+        let previousIndex = currentIndex ?? 0
+        for old in pagingEntries {
+            let fresh = entries.first { $0.id == old.id }
+            if fresh?.destination != old.destination || fresh?.expectsPairedVideo != old.expectsPairedVideo
+                || fresh?.mediaVersion?.contentRevision != old.mediaVersion?.contentRevision {
+                discardResources(id: old.id)
+            } else if let fresh, fresh.mediaVersion?.posterRevision != old.mediaVersion?.posterRevision {
+                if let slot = slots[old.id], let refreshedPhoto = photoEntry(fresh) {
+                    slot.entry = refreshedPhoto
+                    slot.displayFetchState.thumbnailTask?.cancel()
+                    slot.displayFetchState.thumbnailTask = nil
+                    slot.ensureThumbnailLoading(loader: loader, pixelLength: pixelLength, refresh: true)
+                }
+                videoSessions[old.id]?.refreshLoadingPreview(
+                    cachedImage: TAPLibraryPagingPreviewCache.shared.image(for: fresh.id, version: fresh.mediaVersion))
             }
-            return (offset, entry)
         }
+        pagingEntries = entries
+        if entries.contains(where: { $0.id == selectedItemID }) {
+            if currentItemID != selectedItemID { currentVideoSession?.suspendForAdjacent() }
+            currentItemID = selectedItemID
+        } else if !entries.contains(where: { $0.id == currentItemID }) {
+            currentItemID = entries.isEmpty ? "" : entries[min(previousIndex, entries.count - 1)].id
+        }
+        contentGeneration &+= 1
+        ensureVisibleWindowLoaded(pixelLength: pixelLength, prewarmCurrentPlaneGeometry: selectedTool == .threeD)
     }
 
-    @discardableResult
-    func move(
-        offset: Int,
-        pixelLength: Int = 960,
-        prewarmCurrentPlaneGeometry: Bool = false
-    ) -> DepthAnalysisCarouselEntry? {
-        guard abs(offset) == 1,
-              let entry = entry(offset: offset) else {
-            return nil
-        }
-        currentItemID = entry.id
-        ensureVisibleWindowLoaded(
-            pixelLength: pixelLength,
-            prewarmCurrentPlaneGeometry: prewarmCurrentPlaneGeometry
-        )
-        return entry
-    }
-
-    @discardableResult
-    func advanceAfterDeletingCurrent(
-        pixelLength: Int = 960,
-        prewarmCurrentPlaneGeometry: Bool = false
-    ) -> DepthAnalysisCarouselEntry? {
-        let entries = activeEntries
-        let deletedIndex = entries.firstIndex { $0.id == currentItemID } ?? 0
-        guard entries.indices.contains(deletedIndex) else {
-            return nil
-        }
-
-        let deletedEntry = entries[deletedIndex]
-        removedEntryIDs.insert(deletedEntry.id)
-        discardSlot(id: deletedEntry.id)
-
-        let remainingEntries = entries.filter { $0.id != deletedEntry.id }
-        guard !remainingEntries.isEmpty else {
-            currentItemID = ""
-            pruneSlots(keeping: [])
-            return nil
-        }
-
-        let nextIndex = min(deletedIndex, remainingEntries.count - 1)
-        let nextEntry = remainingEntries[nextIndex]
-        currentItemID = nextEntry.id
-        ensureVisibleWindowLoaded(
-            pixelLength: pixelLength,
-            prewarmCurrentPlaneGeometry: prewarmCurrentPlaneGeometry
-        )
-        return nextEntry
-    }
-
-    func slot(for entry: DepthAnalysisCarouselEntry) -> AnalysisPhotoSlot {
-        if let existing = slots[entry.id] {
-            return existing
-        }
-        let retainedState = retainedSlotStates.removeValue(forKey: entry.id)
-        let slot = AnalysisPhotoSlot(entry: entry, retainedState: retainedState)
-        if let preview = TAPLibraryPagingPreviewCache.shared.image(
-            for: entry.id, version: entry.albumEntry?.mediaVersion
-        ) {
+    func slot(for requestedEntry: DepthAnalysisCarouselEntry) -> AnalysisPhotoSlot {
+        let entry = pagingEntries.first(where: { $0.id == requestedEntry.id }).flatMap(photoEntry) ?? requestedEntry
+        if let slot = slots[entry.id] { return slot }
+        let slot = AnalysisPhotoSlot(entry: entry, retainedState: retainedSlotStates.removeValue(forKey: entry.id))
+        if let preview = TAPLibraryPagingPreviewCache.shared.image(for: entry.id, version: entry.mediaVersion) {
             slot.seedThumbnailIfEmpty(preview)
         }
+        slot.displayFetchState.lastLoader = loader
         slots[entry.id] = slot
+        slotObservations[entry.id] = slot.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }
         return slot
     }
 
-    func ensureVisibleWindowLoaded(
-        pixelLength: Int = 960,
-        prewarmCurrentPlaneGeometry: Bool = false
-    ) {
-        let window = windowEntries()
-        let windowIDs = Set(window.map(\.entry.id))
-        for item in window {
-            let slot = slot(for: item.entry)
-            if item.offset == 0 {
-                // The current viewer item always resolves its original,
-                // independent of RAW/2D/3D presentation. `ensureLoading`
-                // starts the bounded display rendition first, then keeps that
-                // preview visible while the original resource is fetched.
-                slot.ensureLoading(
-                    loader: loader,
-                    pixelLength: pixelLength,
-                    priority: .userInitiated,
-                    prewarmPlaneGeometry: prewarmCurrentPlaneGeometry
-                )
-            } else {
-                slot.prepareForAdjacentPreview()
-                slot.ensureThumbnail(loader: loader, pixelLength: pixelLength)
+    func videoSession(for entry: TAPLibraryViewerPagingEntry) -> TAPVideoPlaybackSession? {
+        guard case .video(let route) = entry.destination else { return nil }
+        if let session = videoSessions[entry.id] { return session }
+        let session = TAPVideoPlaybackSession(
+            source: route.source, registrationAdapter: registrationAdapter, mediaFetcher: mediaFetcher,
+            initialLoadingPreviewImage: TAPLibraryPagingPreviewCache.shared.image(for: entry.id, version: entry.mediaVersion)
+        )
+        videoSessions[entry.id] = session
+        return session
+    }
+
+    func ensureVisibleWindowLoaded(pixelLength: Int = 960, prewarmCurrentPlaneGeometry: Bool = false) {
+        let window = windowPagingEntries
+        for pagingEntry in window {
+            if let entry = photoEntry(pagingEntry) {
+                let slot = slot(for: entry)
+                if entry.id == currentItemID {
+                    slot.ensureLoading(loader: loader, pixelLength: pixelLength, priority: .userInitiated,
+                                       prewarmPlaneGeometry: prewarmCurrentPlaneGeometry)
+                } else {
+                    slot.prepareForAdjacentPreview()
+                    slot.ensureThumbnail(loader: loader, pixelLength: pixelLength)
+                }
+            } else if pagingEntry.id == currentItemID {
+                videoSession(for: pagingEntry)?.prepareForCurrentSelection()
             }
         }
-        pruneSlots(keeping: windowIDs)
+        let kept = Set(window.map(\.id))
+        for id in Set(slots.keys).union(videoSessions.keys) where !kept.contains(id) {
+            if let slot = slots[id] { retainedSlotStates[id] = slot.retainedStateForEviction() }
+            discardResources(id: id, preserveSelection: true)
+        }
     }
 
     func cancelViewerRequests() {
-        for slot in slots.values {
-            slot.cancelCurrentMediaFetch()
-        }
+        slots.values.forEach { $0.prepareForEviction() }
+        videoSessions.values.forEach { $0.stopPlayback() }
     }
 
-    private func discardSlot(id: String) {
-        retainedSlotStates.removeValue(forKey: id)
-        guard let slot = slots.removeValue(forKey: id) else {
-            return
+    func handleMemoryWarning() {
+        for id in Set(slots.keys).union(videoSessions.keys) where id != currentItemID {
+            discardResources(id: id)
         }
-        slot.prepareForEviction()
+        currentVideoSession?.handleMemoryWarning()
     }
 
-    private func pruneSlots(keeping retainedIDs: Set<String>) {
-        let evictedIDs = slots.keys.filter { !retainedIDs.contains($0) }
-        for id in evictedIDs {
-            guard let slot = slots.removeValue(forKey: id) else {
-                continue
-            }
-            retainedSlotStates[id] = slot.retainedStateForEviction()
-            slot.prepareForEviction()
-        }
+    private func discardResources(id: String, preserveSelection: Bool = false) {
+        if !preserveSelection { retainedSlotStates.removeValue(forKey: id) }
+        slotObservations.removeValue(forKey: id)
+        slots.removeValue(forKey: id)?.prepareForEviction()
+        videoSessions.removeValue(forKey: id)?.stopPlayback()
     }
 }

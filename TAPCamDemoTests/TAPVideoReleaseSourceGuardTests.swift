@@ -15,7 +15,6 @@ struct TAPVideoReleaseSourceGuardTests {
         "TAPCamDemo/CameraCapture/Output/TAPDepthKLV.swift",
         "TAPCamDemo/CameraCapture/Output/TAPVideoDepthTrackValidator.swift",
         "TAPCamDemo/CameraCapture/Output/TAPVideoManifestBox.swift",
-        "TAPCamDemo/Viewer/Playback/TAPVideoDepthPlaybackView.swift",
         "TAPCamDemo/Viewer/Playback/TAPVideoPlaybackResourceLoader.swift",
         "TAPCamDemo/Viewer/Playback/TAPVideoPlaybackSession.swift",
         "TAPCamDemo/DepthAnalysis/Video/TAPDepthFrameDecoder.swift",

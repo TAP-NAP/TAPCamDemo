@@ -18,7 +18,8 @@ extension AnalysisPhotoSlot {
         if let input = analysisState.input {
             ensurePlaneGeometryPrewarmIfNeeded(for: input.depthMap)
         }
-        guard analysisState.input == nil, analysisState.inputTask == nil else {
+        guard !(analysisState.phase == .failed && originalResourceOwner.isReady),
+              analysisState.input == nil, analysisState.inputTask == nil else {
             return
         }
 
@@ -45,7 +46,8 @@ extension AnalysisPhotoSlot {
             let loadedInput = try await loader.loadedOriginal(
                 source: source,
                 requestKey: requestKey,
-                expectsPairedVideo: entry.albumEntry?.expectsPairedVideo ?? false,
+                expectsPairedVideo: entry.expectsPairedVideo,
+                retainedResourceLease: originalResourceOwner.acquireLease(),
                 resourceReadyHandler: { [weak self] resourceLease in
                     self?.publishOriginalResource(
                         resourceLease,
@@ -80,6 +82,7 @@ extension AnalysisPhotoSlot {
         analysisState.inputTask = nil
         analysisState.activeOriginalRequestKey = nil
         pendingSignedOriginalRefreshID = nil
+        originalResourceOwner.failWaitingConsumers(CancellationError())
     }
 
     private func publishOriginalResource(
@@ -115,6 +118,7 @@ extension AnalysisPhotoSlot {
         }
         pendingSignedOriginalRefreshID = nil
 
+        guard retainsViewerData else { return }
         let input: TAPDepthAnalysisInput
         do {
             input = try loadedOriginal.analysisInput()
@@ -160,6 +164,7 @@ extension AnalysisPhotoSlot {
         analysisState.inputTask = nil
         analysisState.activeOriginalRequestKey = nil
         originalResourceOwner.clear()
+        originalResourceOwner.failWaitingConsumers(error)
         pendingSignedOriginalRefreshID = nil
         applyLoadError(error)
     }
@@ -262,16 +267,12 @@ extension AnalysisPhotoSlot {
         analysisState.inputTask?.cancel()
         analysisState.inputTask = nil
 
-        if analysisState.input == nil {
-            originalResourceOwner.clear()
-        }
-
         if displayFetchState.displayPhoto == nil {
             displayFetchState.phase = displayFetchState.thumbnailImage == nil
                 ? .idle
                 : .thumbnailReady
         }
-        if analysisState.input == nil {
+        if analysisState.input == nil && !originalResourceOwner.isReady {
             analysisState.phase = .idle
         }
         if displayFetchState.displayPhoto != nil {
@@ -282,7 +283,9 @@ extension AnalysisPhotoSlot {
             setDisplayMediaFetchPhase(.idle(false))
         }
 
-        if preserveCloudState, wasCloudFetch {
+        if originalResourceOwner.isReady {
+            setOriginalMediaFetchPhase(.ready(true))
+        } else if preserveCloudState, wasCloudFetch {
             setOriginalMediaFetchPhase(.cloudOnly(hasDisplayImage))
         } else if hasDisplayImage {
             setOriginalMediaFetchPhase(.localPreview(true))

@@ -12,7 +12,7 @@ import UIKit
 
 @Suite(.serialized)
 struct TAPDepthAnalysisPresentationTests {
-    @Test func videoViewerModesKeepPhotoOrderAndFailClosedTwoDAvailability() throws {
+    @Test func videoViewerModesPreserveSelectionWhileResourcesPrepare() throws {
         let registeredDescriptor = TAPVideoDepthRegistrationDescriptor(
             schemaID: "test.registered-rgb-presentation",
             rgbPresentationWidth: 1,
@@ -36,7 +36,7 @@ struct TAPDepthAnalysisPresentationTests {
             "2D analysis",
             "3D projection"
         ])
-        #expect(availableItems.map(\.isEnabled) == [true, true, false])
+        #expect(availableItems.map(\.isEnabled) == [true, true, true])
         #expect(availableItems.map(\.accessibilityValue) == [
             "Selected",
             "Available",
@@ -62,7 +62,7 @@ struct TAPDepthAnalysisPresentationTests {
             selectedTool: .raw,
             isTwoDPlaybackReady: false
         )
-        #expect(unavailableItems.map(\.isEnabled) == [true, false, false])
+        #expect(unavailableItems.map(\.isEnabled) == [true, true, true])
         #expect(unavailableItems[1].accessibilityValue == "Registered depth unavailable")
 
         let incompleteDescriptor = TAPVideoDepthRegistrationDescriptor(
@@ -76,7 +76,35 @@ struct TAPDepthAnalysisPresentationTests {
             selectedTool: .raw,
             isTwoDPlaybackReady: false
         )
-        #expect(incompleteItems.map(\.isEnabled) == [true, false, false])
+        #expect(incompleteItems.map(\.isEnabled) == [true, true, true])
+        #expect(TAPVideoViewerModePolicy.effectiveTool(.twoD, availability: .checking, isThreeDDepthAvailable: false) == .twoD)
+        #expect(TAPVideoViewerModePolicy.effectiveTool(.threeD, availability: .checking, isThreeDDepthAvailable: false) == .threeD)
+        #expect(TAPVideoViewerModePolicy.effectiveTool(.twoD, availability: .available(incompleteDescriptor), isThreeDDepthAvailable: false) == .raw)
+        #expect(TAPVideoViewerModePolicy.effectiveTool(.threeD, availability: .unavailable, isThreeDDepthAvailable: false) == .raw)
+        #expect(TAPVideoViewerModePolicy.effectiveTool(.threeD, availability: .available(registeredDescriptor), isThreeDDepthAvailable: true) == .threeD)
+    }
+
+    @Test @MainActor func mixedViewerKeepsModeAndComparisonAcrossSettledResourceTypes() {
+        let a = TAPLibraryViewerPagingEntry(id: "a", destination: .analysis(DepthAlbumAnalysisRoute(itemID: "a", source: .photosAsset("a"))))
+        let b = TAPLibraryViewerPagingEntry(id: "b", destination: .video(TAPVideoPlaybackRoute(itemID: "b", source: .photosAsset("b"))))
+        let c = TAPLibraryViewerPagingEntry(id: "c", destination: .video(TAPVideoPlaybackRoute(itemID: "c", source: .photosAsset("c"))))
+        let store = TAPLibraryViewerStore(entries: [a, b, c], currentItemID: a.id, loader: .noop)
+        store.selectedTool = .threeD
+        store.comparisonPosition = 0.23
+        store.select(b, pixelLength: 80, prewarmCurrentPlaneGeometry: false)
+        #expect(store.currentPagingEntry == b)
+        #expect(store.currentVideoSession?.transportModel == nil)
+        store.select(c, pixelLength: 80, prewarmCurrentPlaneGeometry: false)
+        #expect(store.currentPagingEntry == c)
+        #expect(store.currentVideoSession?.transportModel == nil)
+        #expect(store.selectedTool == .threeD)
+        #expect(store.comparisonPosition == 0.23)
+        store.select(b, pixelLength: 80, prewarmCurrentPlaneGeometry: false)
+        #expect(store.currentVideoSession?.requestKey != nil)
+        store.select(a, pixelLength: 80, prewarmCurrentPlaneGeometry: false)
+        #expect(store.selectedTool == .threeD)
+        #expect(store.comparisonPosition == 0.23)
+        store.cancelViewerRequests()
     }
 
     @Test func videoTransportTreatsBufferingAsActivePlaybackIntent() {
@@ -151,21 +179,23 @@ struct TAPDepthAnalysisPresentationTests {
             currentItemID: second.id,
             entries: [first, second, third]
         )
-        let store = DepthAnalysisCarouselStore(
-            source: second.source,
-            albumContext: context,
+        let store = TAPLibraryViewerStore(
+            entries: context.entries.map(viewerPagingEntry),
+            currentItemID: context.currentItemID,
             loader: .noop
         )
 
         #expect(store.currentIndex == 1)
-        #expect(store.windowEntries().map(\.entry.id) == ["first", "second", "third"])
-        let cachedSecondSlot = store.slot(for: store.windowEntries()[1].entry)
+        #expect(store.windowPagingEntries.map(\.id) == ["first", "second", "third"])
+        let cachedSecondSlot = try #require(store.currentSlot)
 
-        let movedEntry = try #require(store.move(offset: 1))
+        let movedEntry = store.pagingEntries[try #require(store.currentIndex) + 1]
+        store.select(movedEntry, pixelLength: 80, prewarmCurrentPlaneGeometry: false)
+        #expect(store.currentPagingEntry == movedEntry)
 
         #expect(movedEntry.id == "third")
         #expect(store.currentIndex == 2)
-        #expect(store.windowEntries().map(\.entry.id) == ["second", "third"])
+        #expect(store.windowPagingEntries.map(\.id) == ["second", "third"])
         #expect(store.slot(for: DepthAnalysisCarouselEntry(albumEntry: second)) === cachedSecondSlot)
     }
 
@@ -176,16 +206,18 @@ struct TAPDepthAnalysisPresentationTests {
             currentItemID: first.id,
             entries: [first, second]
         )
-        let store = DepthAnalysisCarouselStore(
-            source: first.source,
-            albumContext: context,
+        let store = TAPLibraryViewerStore(
+            entries: context.entries.map(viewerPagingEntry),
+            currentItemID: context.currentItemID,
             loader: .noop
         )
 
-        let movedEntry = try #require(store.move(offset: 1))
+        let movedEntry = store.pagingEntries[try #require(store.currentIndex) + 1]
+        store.select(movedEntry, pixelLength: 80, prewarmCurrentPlaneGeometry: false)
+        #expect(store.currentPagingEntry == movedEntry)
 
-        #expect(movedEntry.albumEntry?.id == second.id)
-        #expect(movedEntry.albumEntry?.routeAnchor == second.routeAnchor)
+        #expect(movedEntry.id == second.id)
+        #expect(movedEntry.routeAnchor == second.routeAnchor)
         #expect(store.currentItemID == second.id)
     }
 
@@ -197,19 +229,19 @@ struct TAPDepthAnalysisPresentationTests {
             currentItemID: second.id,
             entries: [first, second, third]
         )
-        let store = DepthAnalysisCarouselStore(
-            source: second.source,
-            albumContext: context,
+        let store = TAPLibraryViewerStore(
+            entries: context.entries.map(viewerPagingEntry),
+            currentItemID: context.currentItemID,
             loader: .noop
         )
 
-        let nextEntry = try #require(store.advanceAfterDeletingCurrent())
+        let nextEntry = try #require(store.removeCurrent())
 
         #expect(nextEntry.id == third.id)
         #expect(store.currentEntry?.id == third.id)
-        #expect(store.windowEntries().map(\.entry.id) == ["first", "third"])
-        #expect(store.entry(offset: -1)?.id == first.id)
-        #expect(store.entry(offset: 1) == nil)
+        #expect(store.windowPagingEntries.map(\.id) == ["first", "third"])
+        #expect(store.windowPagingEntries.first?.id == first.id)
+        #expect(store.windowPagingEntries.last?.id == store.currentItemID)
     }
 
     @Test @MainActor func analysisCarouselStoreSelectsPreviousEntryAfterDeletingLast() throws {
@@ -220,19 +252,19 @@ struct TAPDepthAnalysisPresentationTests {
             currentItemID: third.id,
             entries: [first, second, third]
         )
-        let store = DepthAnalysisCarouselStore(
-            source: third.source,
-            albumContext: context,
+        let store = TAPLibraryViewerStore(
+            entries: context.entries.map(viewerPagingEntry),
+            currentItemID: context.currentItemID,
             loader: .noop
         )
 
-        let previousEntry = try #require(store.advanceAfterDeletingCurrent())
+        let previousEntry = try #require(store.removeCurrent())
 
         #expect(previousEntry.id == second.id)
         #expect(store.currentEntry?.id == second.id)
-        #expect(store.windowEntries().map(\.entry.id) == ["first", "second"])
-        #expect(store.entry(offset: -1)?.id == first.id)
-        #expect(store.entry(offset: 1) == nil)
+        #expect(store.windowPagingEntries.map(\.id) == ["first", "second"])
+        #expect(store.windowPagingEntries.first?.id == first.id)
+        #expect(store.windowPagingEntries.last?.id == store.currentItemID)
     }
 
     @Test @MainActor func analysisCarouselStoreReturnsNilAfterDeletingOnlyEntry() throws {
@@ -241,17 +273,17 @@ struct TAPDepthAnalysisPresentationTests {
             currentItemID: only.id,
             entries: [only]
         )
-        let store = DepthAnalysisCarouselStore(
-            source: only.source,
-            albumContext: context,
+        let store = TAPLibraryViewerStore(
+            entries: context.entries.map(viewerPagingEntry),
+            currentItemID: context.currentItemID,
             loader: .noop
         )
 
-        let nextEntry = store.advanceAfterDeletingCurrent()
+        let nextEntry = store.removeCurrent()
 
         #expect(nextEntry == nil)
         #expect(store.currentEntry == nil)
-        #expect(store.windowEntries().isEmpty)
+        #expect(store.windowPagingEntries.isEmpty)
     }
 
     @Test @MainActor func analysisCarouselStoreEvictsSlotsOutsideVisibleWindow() throws {
@@ -263,19 +295,21 @@ struct TAPDepthAnalysisPresentationTests {
             currentItemID: second.id,
             entries: [first, second, third, fourth]
         )
-        let store = DepthAnalysisCarouselStore(
-            source: second.source,
-            albumContext: context,
+        let store = TAPLibraryViewerStore(
+            entries: context.entries.map(viewerPagingEntry),
+            currentItemID: context.currentItemID,
             loader: .noop
         )
         let firstEntry = DepthAnalysisCarouselEntry(albumEntry: first)
         let cachedFirstSlot = store.slot(for: firstEntry)
         cachedFirstSlot.updatePlaneGrowthStrictness(0.9)
 
-        let movedEntry = try #require(store.move(offset: 1))
+        let movedEntry = store.pagingEntries[try #require(store.currentIndex) + 1]
+        store.select(movedEntry, pixelLength: 80, prewarmCurrentPlaneGeometry: false)
+        #expect(store.currentPagingEntry == movedEntry)
 
         #expect(movedEntry.id == third.id)
-        #expect(store.windowEntries().map(\.entry.id) == ["second", "third", "fourth"])
+        #expect(store.windowPagingEntries.map(\.id) == ["second", "third", "fourth"])
         #expect(store.retainedSlotCount == 3)
 
         let restoredFirstSlot = store.slot(for: firstEntry)
@@ -315,9 +349,9 @@ struct TAPDepthAnalysisPresentationTests {
             currentItemID: second.id,
             entries: [first, second, third, fourth]
         )
-        let store = DepthAnalysisCarouselStore(
-            source: second.source,
-            albumContext: context,
+        let store = TAPLibraryViewerStore(
+            entries: context.entries.map(viewerPagingEntry),
+            currentItemID: context.currentItemID,
             loader: loader
         )
 
@@ -329,7 +363,9 @@ struct TAPDepthAnalysisPresentationTests {
         #expect(snapshot.displays == ["photos:asset-second"])
         #expect(snapshot.inputs == ["photos:asset-second"])
 
-        let movedEntry = try #require(store.move(offset: 1))
+        let movedEntry = store.pagingEntries[try #require(store.currentIndex) + 1]
+        store.select(movedEntry, pixelLength: 80, prewarmCurrentPlaneGeometry: false)
+        #expect(store.currentPagingEntry == movedEntry)
         #expect(movedEntry.id == third.id)
         try await waitForLoaderEvents(events, thumbnailCount: 4, displayCount: 2, inputCount: 2)
 
@@ -345,8 +381,69 @@ struct TAPDepthAnalysisPresentationTests {
         let previousSlot = store.slot(for: DepthAnalysisCarouselEntry(albumEntry: second))
         let currentSlot = store.slot(for: DepthAnalysisCarouselEntry(albumEntry: third))
         try await waitForCondition { currentSlot.input != nil }
-        #expect(previousSlot.input == nil)
+        #expect(previousSlot.input != nil)
         #expect(currentSlot.input != nil)
+        store.select(viewerPagingEntry(second), pixelLength: 80, prewarmCurrentPlaneGeometry: false)
+        await Task.yield()
+        #expect((await events.snapshot()).inputs.count == 2)
+        #expect(store.currentSlot === previousSlot)
+    }
+
+    @Test @MainActor func evictedPhotoCancelsOriginalWhenItsLastShareWaiterCancels() async throws {
+        let slot = AnalysisPhotoSlot(entry: DepthAnalysisCarouselEntry(source: .photosAsset("waiting-share")))
+        slot.displayFetchState.lastLoader = DepthAnalysisProgressivePhotoLoader(inputLoader: { _, progress in
+            await progress(0.25)
+            try await Task.sleep(for: .seconds(30))
+            throw MediaFetchFailure.download
+        })
+        let share = Task { try await slot.acquireOriginalResourceLease() }
+        try await waitForCondition { slot.originalResourceOwner.hasWaitingConsumers && slot.analysisState.inputTask != nil }
+        let originalTask = try #require(slot.analysisState.inputTask)
+        slot.prepareForEviction()
+        #expect(slot.analysisState.inputTask != nil)
+        share.cancel()
+        await #expect(throws: CancellationError.self) { try await share.value }
+        #expect(!slot.originalResourceOwner.hasWaitingConsumers)
+        #expect(slot.analysisState.inputTask == nil)
+        #expect(originalTask.isCancelled)
+        await originalTask.value
+    }
+
+    @Test @MainActor func retainedOriginalTracksContentRevisionAndMemoryEviction() async throws {
+        func entry(_ id: String, content: String = "1", poster: String = "1") -> TAPLibraryViewerPagingEntry {
+            TAPLibraryViewerPagingEntry(id: id,
+                destination: .analysis(DepthAlbumAnalysisRoute(itemID: id, source: .photosAsset(id))),
+                mediaVersion: LibraryMediaVersion(contentRevision: content, posterRevision: poster))
+        }
+        let a = entry("a"), b = entry("b"), c = entry("c"), d = entry("d")
+        let store = TAPLibraryViewerStore(entries: [a, b, c, d], currentItemID: b.id, loader: .noop)
+        store.ensureVisibleWindowLoaded(pixelLength: 80)
+        let retained = try #require(store.currentSlot)
+        await retained.analysisState.inputTask?.value
+        let directory = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        let url = directory.appendingPathComponent("original.heic")
+        try Data("retained-original".utf8).write(to: url)
+        do {
+            let lease = try TAPPhotoOriginalResourceLease(mediaID: .photosAsset("b"), origin: .photosAsset(assetID: "b"),
+                photoURL: url, pairedVideoURL: nil, photoFileExtension: "heic", photoMediaType: "public.heic",
+                fileContainerHint: .heic, expectsPairedVideo: false, ownedTemporaryDirectoryURL: directory)
+            retained.originalResourceOwner.install(lease)
+        }
+        store.select(c, pixelLength: 80, prewarmCurrentPlaneGeometry: false)
+        #expect(try Data(contentsOf: try #require(retained.originalResourceOwner.acquireLease()).photoURL) == Data("retained-original".utf8))
+        store.select(b, pixelLength: 80, prewarmCurrentPlaneGeometry: false)
+        #expect(store.currentSlot === retained)
+        store.reconcile(entries: [a, entry("b", poster: "2"), c, d], selectedItemID: "b", pixelLength: 80)
+        #expect(store.currentSlot === retained)
+        #expect(retained.originalResourceOwner.isReady)
+        store.reconcile(entries: [a, entry("b", content: "2", poster: "2"), c, d], selectedItemID: "b", pixelLength: 80)
+        #expect(store.currentSlot !== retained)
+        #expect(!retained.originalResourceOwner.isReady)
+        #expect(!FileManager.default.fileExists(atPath: url.path))
+        store.select(c, pixelLength: 80, prewarmCurrentPlaneGeometry: false)
+        store.handleMemoryWarning()
+        #expect(store.retainedSlotCount == 1)
+        store.cancelViewerRequests()
     }
 
     @Test @MainActor func originalPhotoLoaderRunsOffMainActorAcrossProgressCallback() async throws {
@@ -483,6 +580,9 @@ struct TAPDepthAnalysisPresentationTests {
         #expect(slot.input != nil)
         #expect(slot.analysisState.completedInputRequestKey == firstRequest)
         slot.prepareForAdjacentPreview()
+        #expect(slot.input != nil)
+        #expect(slot.analysisState.completedInputRequestKey == firstRequest)
+        slot.prepareForEviction()
         #expect(slot.input == nil)
         #expect(slot.analysisState.completedInputRequestKey == nil)
 
@@ -512,10 +612,14 @@ struct TAPDepthAnalysisPresentationTests {
             depthQuality: input.depthQuality,
             heatmap: input.heatmap
         )
-        slot.ensureInputLoading(
-            loader: DepthAnalysisProgressivePhotoLoader(inputLoader: { _, _ in replacement }),
-            priority: .userInitiated,
-            prewarmPlaneGeometry: false
+        let replacementImage = UIImage(cgImage: replacement.image)
+        slot.ensureLoading(
+            loader: DepthAnalysisProgressivePhotoLoader(
+                thumbnailLoader: { _, _ in replacementImage },
+                displayLoader: { _, _ in AnalysisDisplayPhoto(image: replacementImage) },
+                inputLoader: { _, _ in replacement }
+            ),
+            pixelLength: 80, priority: .userInitiated, prewarmPlaneGeometry: false
         )
         let secondRequest = try #require(slot.analysisState.activeOriginalRequestKey)
         await (try #require(slot.analysisState.inputTask)).value
@@ -796,6 +900,13 @@ struct TAPDepthAnalysisPresentationTests {
         ) == DepthAnalysisPlaneSelectionState.defaultStrictness)
     }
 
+}
+
+private func viewerPagingEntry(_ entry: DepthAnalysisAlbumContext.Entry) -> TAPLibraryViewerPagingEntry {
+    TAPLibraryViewerPagingEntry(id: entry.id,
+        destination: .analysis(DepthAlbumAnalysisRoute(itemID: entry.id, source: entry.source)),
+        expectsPairedVideo: entry.expectsPairedVideo, mediaVersion: entry.mediaVersion,
+        mediaID: entry.mediaID, routeAnchor: entry.routeAnchor)
 }
 
 private func analysisAlbumEntry(

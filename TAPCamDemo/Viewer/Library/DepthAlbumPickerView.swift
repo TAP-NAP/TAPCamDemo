@@ -25,7 +25,6 @@ struct DepthAlbumPickerView: View {
     @State private var isViewerPresented = false
     @State private var locallyRemovedItemIDs: Set<String> = []
     @State private var visibleSnapshot: DepthAlbumVisibleSnapshot
-    @State private var analysisViewerGeneration = UUID()
     @State private var presentedItemRevision: DepthAlbumViewerItemRevision?
 
     private static let columnCount = 5
@@ -162,92 +161,27 @@ struct DepthAlbumPickerView: View {
 
     @ViewBuilder
     private func viewerDestination() -> some View {
-        switch selectedDestination {
-        case .analysis(let route):
-            DepthAnalysisView(
-                source: route.source,
-                albumContext: DepthAnalysisAlbumContext(
-                    currentItemID: route.itemID,
-                    items: visibleItems
-                ),
-                onCurrentAlbumEntryChanged: { entry in
-                    updatePresentedAnalysisRoute(entry)
-                },
-                mixedMediaContext: DepthAlbumDeletionContext(
-                    currentItemID: route.itemID,
-                    items: visibleItems
-                ),
-                onMixedMediaEntryChanged: { entry in
-                    updatePresentedMixedMediaRoute(entry)
-                },
-                onDeletionCompleted: { deletedItemID, nextEntry in
-                    handleViewerDeletionCompleted(
-                        deletedItemID: deletedItemID,
-                        nextEntry: nextEntry
-                    )
-                },
+        if let selectedDestination {
+            TAPLibraryViewer(
+                destination: selectedDestination,
+                entries: DepthAlbumDeletionContext(currentItemID: selectedDestination.itemID, items: visibleItems)
+                    .entries.map(TAPLibraryViewerPagingEntry.init),
                 mediaFetcher: mediaFetcher,
-                photoLoader: photoLoader
-            )
-            // Ordinary photo-to-photo moves stay inside the retained carousel.
-            // A mixed-media handoff to a photo that the old immutable carousel
-            // snapshot does not own must create a fresh store for that item.
-            .id(analysisViewerGeneration)
-        case .video(let route):
-            TAPVideoDepthPlaybackView(
-                source: route.source,
-                albumContext: TAPVideoAlbumContext(
-                    currentItemID: route.itemID,
-                    items: visibleItems
-                ),
-                onCurrentAlbumEntryChanged: { entry in
-                    updatePresentedVideoRoute(entry)
-                },
-                onMixedMediaEntryChanged: { entry in
-                    updatePresentedMixedMediaRoute(entry)
-                },
-                deletionContext: DepthAlbumDeletionContext(
-                    currentItemID: route.itemID,
-                    items: visibleItems
-                ),
+                photoLoader: photoLoader,
+                onCurrentEntryChanged: updatePresentedMixedMediaRoute,
                 onDeletionCompleted: { deletedItemID, nextEntry in
-                    handleViewerDeletionCompleted(
-                        deletedItemID: deletedItemID,
-                        nextEntry: nextEntry
-                    )
-                },
-                mediaFetcher: mediaFetcher
+                    handleViewerDeletionCompleted(deletedItemID: deletedItemID, nextEntry: nextEntry)
+                }
             )
-            // TAPVideoDepthPlaybackView migrates only its playback session when
-            // the current video or backing source changes. The viewer, pager,
-            // fixed chrome, and transport keep one identity for the whole visit.
-        case nil:
-            EmptyView()
         }
     }
 
-    private func updatePresentedAnalysisRoute(_ entry: DepthAnalysisAlbumContext.Entry) {
-        selectedDestination = .analysis(DepthAlbumRouteAdapter.analysisRoute(for: entry))
-        recordPresentedRevision(itemID: entry.id)
-        routeStore.openDepthAlbumItem(entry.routeAnchor)
-    }
-
-    private func updatePresentedMixedMediaRoute(
-        _ entry: DepthAlbumDeletionContext.Entry
-    ) {
-        if case .analysis = selectedDestination,
-           case .analysis = entry.destination {
-            analysisViewerGeneration = UUID()
-        }
+    private func updatePresentedMixedMediaRoute(_ entry: TAPLibraryViewerPagingEntry) {
         selectedDestination = entry.destination
         recordPresentedRevision(itemID: entry.id)
-        routeStore.openDepthAlbumItem(entry.routeAnchor)
-    }
-
-    private func updatePresentedVideoRoute(_ entry: TAPVideoAlbumContext.Entry) {
-        selectedDestination = .video(DepthAlbumRouteAdapter.videoRoute(for: entry))
-        recordPresentedRevision(itemID: entry.id)
-        routeStore.openDepthAlbumItem(entry.routeAnchor)
+        if let item = visibleItems.first(where: { $0.id == entry.id }) {
+            routeStore.openDepthAlbumItem(item.routeAnchor)
+        }
     }
 
     private func reconcilePresentedDestination(
@@ -271,9 +205,6 @@ struct DepthAlbumPickerView: View {
         guard updatedRevision != presentedItemRevision else {
             return
         }
-        if case .analysis = updatedDestination {
-            analysisViewerGeneration = UUID()
-        }
         if updatedDestination != selectedDestination {
             self.selectedDestination = updatedDestination
         }
@@ -295,10 +226,6 @@ struct DepthAlbumPickerView: View {
         }) ?? 0
         let replacement = visibleItems[min(removedIndex, visibleItems.count - 1)]
         let replacementDestination = DepthAlbumRouteAdapter.destination(for: replacement)
-        if case .analysis = selectedDestination,
-           case .analysis = replacementDestination {
-            analysisViewerGeneration = UUID()
-        }
         self.selectedDestination = replacementDestination
         presentedItemRevision = DepthAlbumViewerItemRevision(item: replacement)
         routeStore.openDepthAlbumItem(replacement.routeAnchor)
@@ -319,7 +246,7 @@ struct DepthAlbumPickerView: View {
 
     private func handleViewerDeletionCompleted(
         deletedItemID: String,
-        nextEntry: DepthAlbumDeletionContext.Entry?
+        nextEntry: TAPLibraryViewerPagingEntry?
     ) {
         locallyRemovedItemIDs.insert(deletedItemID)
         refreshVisibleSnapshot()
@@ -392,9 +319,11 @@ private struct DepthAlbumVisibleSnapshot {
 nonisolated private struct DepthAlbumViewerItemRevision: Equatable {
     let destination: DepthAlbumRouteAdapter.Destination
     let isLivePhoto: Bool
+    let contentRevision: String
 
     init(item: TAPLibraryItem) {
         destination = DepthAlbumRouteAdapter.destination(for: item)
         isLivePhoto = item.isLivePhoto
+        contentRevision = item.summary.version.contentRevision
     }
 }

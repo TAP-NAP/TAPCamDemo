@@ -38,6 +38,7 @@ final class TAPVideoPlaybackSession {
     private(set) var isThreeDDepthAvailable = false
     private(set) var requestKey: MediaFetchRequestKey?
     private(set) var isOriginalResourceReady = false
+    private(set) var isReusingOriginal = false
     private(set) var pendingSignedOriginalRefreshID: UUID?
     var isPendingSignedOriginalRefreshInFlight: Bool {
         pendingSignedOriginalRefreshID != nil
@@ -52,6 +53,15 @@ final class TAPVideoPlaybackSession {
     @ObservationIgnored private let depthPipeline: TAPVideoDepthPipeline
     @ObservationIgnored private var activeRequestKey: MediaFetchRequestKey?
     @ObservationIgnored private var resource: TAPVideoPlaybackResolvedResource?
+    @ObservationIgnored private var retainedPresentation: TAPVideoPlaybackPresentation?
+    @ObservationIgnored private var loadTask: Task<Void, Never>?
+    @ObservationIgnored private var loadTaskID: UUID?
+    @ObservationIgnored private var previewRefreshTask: Task<Void, Never>?
+    @ObservationIgnored private var previewGeneration: UInt64 = 0
+    @ObservationIgnored private var isCurrentSelection = true
+    @ObservationIgnored private var retainsViewerResources = true
+    @ObservationIgnored private var retainedPlaybackTimeSeconds: Double = 0
+    @ObservationIgnored private var originalWaiters: [UUID: (signed: Bool, continuation: CheckedContinuation<TAPVideoOriginalResourceLease, Error>)] = [:]
     @ObservationIgnored private var playerLifecycle: TAPVideoPlaybackPlayerLifecycle?
     @ObservationIgnored private var requestGeneration: UInt64 = 1
     @ObservationIgnored private var shouldResumeFetchAfterBackground = false
@@ -100,6 +110,19 @@ final class TAPVideoPlaybackSession {
     }
 
     func startPlaybackSession() async {
+        if let loadTask { await loadTask.value; return }
+        let id = UUID()
+        let task = Task<Void, Never> { @MainActor [weak self] in
+            guard let self else { return }
+            await runPlaybackSession()
+        }
+        loadTaskID = id
+        loadTask = task
+        await task.value
+        if loadTaskID == id { loadTask = nil; loadTaskID = nil }
+    }
+
+    private func runPlaybackSession() async {
         guard let requestKey else {
             return
         }
@@ -108,7 +131,7 @@ final class TAPVideoPlaybackSession {
         await loadIfNeeded(requestKey: requestKey)
         guard !Task.isCancelled,
               activeRequestKey == requestKey,
-              state == .ready,
+              state == .ready, isCurrentSelection,
               let player else {
             _ = await previewLoad
             return
@@ -126,7 +149,82 @@ final class TAPVideoPlaybackSession {
         _ = await previewLoad
     }
 
+    func prepareForCurrentSelection() {
+        isCurrentSelection = true
+        retainsViewerResources = true
+        if requestKey == nil || state == .idle { retryCurrentFetch() }
+    }
+
+    /// Keeps this item's completed original and metadata while releasing all
+    /// active playback work. A frozen Share request may finish the same load.
+    func suspendForAdjacent() {
+        isCurrentSelection = false
+        shouldResumeAfterInteractivePaging = false
+        playbackIntentState.reset()
+        if let player {
+            let seconds = CMTimeGetSeconds(player.currentTime())
+            if seconds.isFinite { retainedPlaybackTimeSeconds = max(0, seconds) }
+        }
+        releasePlayerResources()
+        if originalWaiters.isEmpty {
+            loadTask?.cancel()
+            loadTask = nil
+            loadTaskID = nil
+            activeRequestKey = nil
+            requestKey = nil
+            state = .idle
+            if isOriginalResourceReady { fetchState.finish() }
+            else { fetchState.cancel(hasPreview: hasLoadingPreview) }
+        }
+    }
+
+    func awaitOriginalResourceLease(requiresSignedOriginal: Bool = false) async throws -> TAPVideoOriginalResourceLease {
+        defer {
+            if !isCurrentSelection && originalWaiters.isEmpty {
+                suspendForAdjacent()
+                if !retainsViewerResources { releasePlaybackResources() }
+            }
+        }
+        if requiresSignedOriginal, case .pendingCapture(let captureID) = source {
+            guard let record = try? await TAPPendingCaptureStore.shared.readRecord(captureID: captureID),
+                  record.videoArtifactState == .signed else { throw TAPVideoOriginalResourceError.unavailableVideo }
+            await reloadPendingOriginalAfterLibraryChange(TAPLibraryPendingCaptureChange(captureID: captureID))
+        }
+        if let lease = try? acquireOriginalResourceLease(),
+           !requiresSignedOriginal || lease.selectedSignedVideo != false { return lease }
+        if requestKey == nil { retryCurrentFetch() }
+        if case .failed = state { retryCurrentFetch() }
+        let id = UUID()
+        return try await withTaskCancellationHandler {
+            try Task.checkCancellation()
+            Task { await self.startPlaybackSession() }
+            return try await withCheckedThrowingContinuation { continuation in
+                originalWaiters[id] = (requiresSignedOriginal, continuation)
+            }
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                self?.originalWaiters.removeValue(forKey: id)?.continuation.resume(throwing: CancellationError())
+            }
+        }
+    }
+
+    private func failOriginalWaiters(_ error: any Error) {
+        let pending = originalWaiters.values
+        originalWaiters.removeAll()
+        pending.forEach { $0.continuation.resume(throwing: error) }
+    }
+
     func stopPlayback() {
+        previewRefreshTask?.cancel()
+        previewRefreshTask = nil
+        previewGeneration &+= 1
+        retainsViewerResources = false
+        if !originalWaiters.isEmpty { suspendForAdjacent(); return }
+        isCurrentSelection = false
+        loadTask?.cancel()
+        loadTask = nil
+        loadTaskID = nil
+        retainedPlaybackTimeSeconds = 0
         shouldResumeFetchAfterBackground = false
         shouldResumeAfterInteractivePaging = false
         playbackIntentState.reset()
@@ -144,7 +242,7 @@ final class TAPVideoPlaybackSession {
 
     /// Freezes the committed video's frame while the Library pager is under
     /// the user's finger. A cancelled page turn can resume the prior playback
-    /// intent; a committed turn calls `stopPlayback()` first and therefore
+    /// intent; a committed turn calls `suspendForAdjacent()` first and therefore
     /// cannot resurrect the outgoing player.
     func beginInteractivePaging() {
         guard let player else {
@@ -194,6 +292,9 @@ final class TAPVideoPlaybackSession {
     }
 
     func retryCurrentFetch() {
+        loadTask?.cancel()
+        loadTask = nil
+        loadTaskID = nil
         shouldResumeFetchAfterBackground = false
         pendingSignedOriginalRefreshID = nil
         activeRequestKey = nil
@@ -248,6 +349,9 @@ final class TAPVideoPlaybackSession {
             return false
         }
         shouldResumeFetchAfterBackground = false
+        loadTask?.cancel()
+        loadTask = nil
+        loadTaskID = nil
         activeRequestKey = nil
         releasePlaybackResources()
         state = .idle
@@ -259,6 +363,19 @@ final class TAPVideoPlaybackSession {
             purpose: .videoOriginal
         )
         return true
+    }
+
+    func reloadPendingOriginalAfterLibraryChange(_ change: TAPLibraryPendingCaptureChange?) async {
+        guard case .pendingCapture(let captureID) = source, change?.captureID == captureID,
+              let refreshID = claimPendingSignedOriginalRefresh() else { return }
+        guard let record = try? await TAPPendingCaptureStore.shared.readRecord(captureID: captureID),
+              record.videoArtifactState == .signed else {
+            cancelPendingSignedOriginalRefreshClaim(refreshID)
+            return
+        }
+        if startClaimedPendingSignedOriginalRefresh(refreshID), !originalWaiters.isEmpty {
+            Task { await self.startPlaybackSession() }
+        }
     }
 
     func handleMemoryWarning() {
@@ -321,6 +438,10 @@ final class TAPVideoPlaybackSession {
     func cancelThreeDPlaybackGate() { pointCloudPlayback.cancel() }
 
     private func cancelCurrentFetch() {
+        loadTask?.cancel()
+        loadTask = nil
+        loadTaskID = nil
+        failOriginalWaiters(CancellationError())
         requestKey = nil
         activeRequestKey = nil
         if isOriginalResourceReady {
@@ -336,11 +457,32 @@ final class TAPVideoPlaybackSession {
         }
     }
 
+    func refreshLoadingPreview(cachedImage: UIImage? = nil) {
+        previewRefreshTask?.cancel()
+        previewGeneration &+= 1
+        if let cachedImage {
+            loadingPreviewImage = cachedImage
+            return
+        }
+        let generation = previewGeneration
+        let key = MediaFetchRequestKey(itemID: source.libraryMediaID, generation: generation, purpose: .gridPoster)
+        previewRefreshTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            let image = await TAPVideoPlaybackResourceLoader.loadingPreviewImage(
+                source: source, originalRequestKey: key, mediaFetcher: mediaFetcher)
+            guard !Task.isCancelled, previewGeneration == generation, let image else { return }
+            loadingPreviewImage = image
+            fetchState.publishPreviewAvailability(true)
+            previewRefreshTask = nil
+        }
+    }
+
     private func loadPreviewIfAvailable(requestKey: MediaFetchRequestKey) async {
         guard loadingPreviewImage == nil else {
             fetchState.publishPreviewAvailability(true)
             return
         }
+        let previewGeneration = previewGeneration
         let image = await TAPVideoPlaybackResourceLoader.loadingPreviewImage(
             source: source,
             originalRequestKey: requestKey,
@@ -348,6 +490,7 @@ final class TAPVideoPlaybackSession {
         )
         guard !Task.isCancelled,
               activeRequestKey == requestKey,
+              self.previewGeneration == previewGeneration,
               let image else {
             return
         }
@@ -366,8 +509,10 @@ final class TAPVideoPlaybackSession {
         defer {
             TAPVideoPerformanceTrace.endPlayerOpen(trace, succeeded: didOpenPlayer)
         }
+        isReusingOriginal = isOriginalResourceReady
         state = .loading
-        fetchState.begin(hasPreview: hasLoadingPreview)
+        if isReusingOriginal { fetchState.finish() }
+        else { fetchState.begin(hasPreview: hasLoadingPreview) }
 
         let loadedResource: TAPVideoPlaybackResolvedResource
         do {
@@ -385,6 +530,7 @@ final class TAPVideoPlaybackSession {
             return
         }
 
+        guard isCurrentSelection else { state = .idle; return }
         do {
             let loadedPlayer = try await preparePlayer(
                 for: loadedResource,
@@ -443,10 +589,13 @@ final class TAPVideoPlaybackSession {
         requestKey: MediaFetchRequestKey
     ) async throws -> AVPlayer {
         try ensureCurrent(requestKey)
-        let presentation = await TAPVideoDepthMetadataReader.presentation(
-            for: resource.fileURL,
-            registrationAdapter: registrationAdapter
-        )
+        let presentation: TAPVideoPlaybackPresentation
+        if let retainedPresentation { presentation = retainedPresentation }
+        else {
+            presentation = await TAPVideoDepthMetadataReader.presentation(for: resource.fileURL, registrationAdapter: registrationAdapter)
+            try ensureCurrent(requestKey)
+            retainedPresentation = presentation
+        }
         try ensureCurrent(requestKey)
         configureDepthPipeline(
             presentation: presentation,
@@ -454,6 +603,10 @@ final class TAPVideoPlaybackSession {
         )
         let player = AVPlayer(playerItem: AVPlayerItem(url: resource.fileURL))
         TAPVideoPlaybackBackgroundPolicy.enforceForegroundOnly(on: player)
+        if retainedPlaybackTimeSeconds > 0 {
+            _ = await player.seek(to: CMTime(seconds: retainedPlaybackTimeSeconds, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+            try ensureCurrent(requestKey)
+        }
         return player
     }
 
@@ -484,6 +637,10 @@ final class TAPVideoPlaybackSession {
         }
         resource = loadedResource
         isOriginalResourceReady = true
+        let lease = loadedResource.acquireLease()
+        for (id, waiter) in originalWaiters where !waiter.signed || lease.selectedSignedVideo != false {
+            originalWaiters.removeValue(forKey: id)?.continuation.resume(returning: lease)
+        }
         if loadedResource.acquireLease().selectedSignedVideo == true {
             pendingSignedOriginalRefreshID = nil
         }
@@ -495,6 +652,7 @@ final class TAPVideoPlaybackSession {
             return
         }
         releasePlaybackResources()
+        failOriginalWaiters(CancellationError())
         pendingSignedOriginalRefreshID = nil
         state = .idle
         fetchState.cancelLoadAfterTaskCancellation(hasPreview: hasLoadingPreview)
@@ -508,6 +666,7 @@ final class TAPVideoPlaybackSession {
             return
         }
         releasePlaybackResources()
+        failOriginalWaiters(error)
         pendingSignedOriginalRefreshID = nil
         state = .failed(
             DepthAnalysisErrorPresentation.albumLoadErrorMessage(for: error)
@@ -590,14 +749,17 @@ final class TAPVideoPlaybackSession {
     private func releasePlaybackResources() {
         releasePlayerResources()
         resource = nil
+        retainedPresentation = nil
+        registeredDepthAvailability = .checking
+        isThreeDDepthAvailable = false
         isOriginalResourceReady = false
+        isReusingOriginal = false
     }
 
     private func releasePlayerResources() {
         transportModel?.invalidate()
         transportModel = nil
         pointCloudPlayback.cancel()
-        isThreeDDepthAvailable = false
         playerLifecycle?.invalidate()
         playerLifecycle = nil
         depthPipeline.cancelPresentation()

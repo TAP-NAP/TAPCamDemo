@@ -324,7 +324,7 @@ enum TAPVideoPlaybackResourceLoader {
                 .snapshotVideoPlaybackResource(
                     captureID: captureID,
                     to: directoryURL,
-                    progressHandler: progress
+                    progressHandler: { _ in }
                 )
             let managedFile = LibraryManagedTemporaryFile(
                 fileURL: snapshot.videoURL,

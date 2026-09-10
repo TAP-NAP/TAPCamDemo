@@ -13,6 +13,9 @@ import SwiftUI
 import UIKit
 
 enum DepthAnalyzerPreferences {
+    static let depthOverlayOpacityKey = "DepthAnalyzerOverlayOpacity"
+    static let defaultDepthOverlayOpacity = 0.75
+
     static let appleDepthFilteringEnabledKey = "TAPVideoAppleDepthFilteringEnabled"
     static let defaultAppleDepthFilteringEnabled = false
     static let playbackSmoothingEnabledKey = "TAPVideoPlaybackSmoothingEnabled"
@@ -48,6 +51,8 @@ struct DepthAnalyzerSettingsView: View {
     @ObservedObject private var appAttestController: AppAttestRuntimeController
     @AppStorage(AppLanguage.storageKey)
     private var appLanguageRawValue = AppLanguage.defaultValue.rawValue
+    @AppStorage(DepthAnalyzerPreferences.depthOverlayOpacityKey)
+    private var depthOverlayOpacity = DepthAnalyzerPreferences.defaultDepthOverlayOpacity
     @AppStorage(CameraFeedbackPreferences.shutterHapticsEnabledKey)
     private var shutterHapticsEnabled = CameraFeedbackPreferences.defaultShutterHapticsEnabled
     @AppStorage(CameraFeedbackPreferences.shutterSoundEnabledKey)
@@ -225,6 +230,13 @@ struct DepthAnalyzerSettingsView: View {
 
     private var interfaceSettingsSection: some View {
         Section("Interface") {
+            VStack(alignment: .leading) {
+                Text("Depth Overlay Strength")
+                Slider(value: $depthOverlayOpacity, in: 0...1)
+                    .accessibilityLabel("Depth Overlay Strength")
+                    .accessibilityValue(Text("\(Int((depthOverlayOpacity * 100).rounded())) percent"))
+            }
+
             Picker("Grid", selection: $guideOverlayRawValue) {
                 ForEach(CameraGuideOverlayPreference.allCases) { guide in
                     Text(LocalizedStringKey(guide.title)).tag(guide.rawValue)

@@ -425,7 +425,6 @@ struct TAPDiagnosticsOSLogPrivacyTests {
             "TAPCamDemo/TAPLibrary/TAPPendingCaptureStore.swift",
             "TAPCamDemo/Viewer/Library/DepthAlbumPickerViewModel.swift",
             "TAPCamDemo/Viewer/Photo/DepthAnalysisView.swift",
-            "TAPCamDemo/Viewer/Playback/TAPVideoDepthPlaybackView.swift",
             "TAPCamDemo/Viewer/Playback/TAPVideoPlaybackSession.swift",
             "TAPCamDemo/Viewer/Share/DepthAnalysisShareCoordinator.swift",
             "TAPCamDemo/Viewer/Share/TAPNAPShareArtifactBuilder.swift",

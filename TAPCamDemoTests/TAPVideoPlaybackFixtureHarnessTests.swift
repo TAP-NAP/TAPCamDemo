@@ -37,7 +37,7 @@ struct TAPVideoPlaybackFixtureHarnessTests {
         func visibleBrightness(in mode: AnalysisViewerTool) throws -> Double {
             let content = TAPVideoPlaybackContentSurface(
                 session: session, selectedTool: .constant(mode),
-                overlayOpacity: .constant(0.58), onRetry: {}
+                overlayOpacity: .constant(DepthAnalyzerPreferences.defaultDepthOverlayOpacity), onRetry: {}
             ).frame(width: 400, height: 400)
             let bitmap = try #require(ImageRenderer(content: content).uiImage?.cgImage)
             let data = try #require(bitmap.dataProvider?.data)

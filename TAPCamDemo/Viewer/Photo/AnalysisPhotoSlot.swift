@@ -83,13 +83,15 @@ struct AnalysisPhotoSelectionState {
 /// independent storage and behavior while views continue to observe one slot.
 @MainActor
 final class AnalysisPhotoSlot: ObservableObject, Identifiable {
-    let entry: DepthAnalysisCarouselEntry
+    var entry: DepthAnalysisCarouselEntry
 
     @Published var displayFetchState = AnalysisPhotoDisplayFetchState()
     @Published var analysisState = AnalysisPhotoAnalysisState()
     @Published var selectionState: AnalysisPhotoSelectionState
     let originalResourceOwner = TAPPhotoOriginalResourceOwner()
     var pendingSignedOriginalRefreshID: UUID?
+    var retainsViewerData = true
+    var isCurrentResource = true
 
     var id: String { entry.id }
     var source: DepthAnalysisSource { entry.source }
@@ -191,6 +193,8 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
         pixelLength: Int,
         priority: TaskPriority
     ) {
+        retainsViewerData = true
+        isCurrentResource = true
         displayFetchState.lastLoader = loader
         displayFetchState.lastPixelLength = pixelLength
         displayFetchState.lastPriority = priority
@@ -201,6 +205,7 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
     }
 
     func cancelCurrentMediaFetch() {
+        originalResourceOwner.failWaitingConsumers(CancellationError())
         cancelLivePhotoFetch(preserveCloudState: true, invokesCancellationAction: true)
         cancelOriginalTasks(preserveCloudState: true)
     }
@@ -281,15 +286,34 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
     }
 
     func prepareForAdjacentPreview() {
+        isCurrentResource = false
         cancelLivePhotoFetch(preserveCloudState: false, invokesCancellationAction: true)
-        cancelOriginalTasks(preserveCloudState: true)
-        analysisState.input = nil
-        analysisState.completedInputRequestKey = nil
-        originalResourceOwner.clear()
-        analysisState.phase = .idle
+        // Completed originals and decoded input remain usable throughout the
+        // three-item window. Only unfinished viewer work is cancelled.
+        if !originalResourceOwner.hasWaitingConsumers {
+            cancelOriginalTasks(preserveCloudState: true)
+        }
         selectionState.planeRequestCoordinator.cancelRegionRequest()
-        selectionState.planeRequestCoordinator.resetForNewInput()
-        selectionState.hasRequestedPlaneGeometryPrewarm = false
+        selectionState.planeSelection.cancelDetection()
+    }
+
+    func acquireOriginalResourceLease(requiresSignedOriginal: Bool = false) async throws -> TAPPhotoOriginalResourceLease {
+        defer {
+            if !isCurrentResource && !originalResourceOwner.hasWaitingConsumers {
+                cancelOriginalTasks(preserveCloudState: true)
+                if !retainsViewerData { originalResourceOwner.clear() }
+            }
+        }
+        if requiresSignedOriginal, case .pendingCapture(let captureID) = source {
+            guard let record = try? await TAPPendingCaptureStore.shared.readRecord(captureID: captureID),
+                  record.signedPhotoFilename != nil else { throw TAPPhotoOriginalResourceError.resourceUnavailable }
+            await reloadPendingOriginalAfterLibraryChange(TAPLibraryPendingCaptureChange(captureID: captureID))
+        }
+        guard let loader = displayFetchState.lastLoader else { throw TAPPhotoOriginalResourceError.resourceUnavailable }
+        if !originalResourceOwner.isReady {
+            ensureInputLoading(loader: loader, priority: .userInitiated, prewarmPlaneGeometry: false)
+        }
+        return try await originalResourceOwner.acquireWhenReady(requiresSignedOriginal: requiresSignedOriginal)
     }
 
     func retainedStateForEviction() -> AnalysisPhotoSlotRetainedState {
@@ -299,6 +323,9 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
     }
 
     func prepareForEviction() {
+        retainsViewerData = false
+        isCurrentResource = false
+        let keepsOriginalRequest = originalResourceOwner.hasWaitingConsumers
         cancelLivePhotoFetch(preserveCloudState: false, invokesCancellationAction: true)
 
         displayFetchState.thumbnailTask?.cancel()
@@ -306,8 +333,10 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
         displayFetchState.displayTask?.cancel()
         displayFetchState.displayTask = nil
         displayFetchState.displayTaskPixelLength = nil
-        analysisState.inputTask?.cancel()
-        analysisState.inputTask = nil
+        if !keepsOriginalRequest {
+            analysisState.inputTask?.cancel()
+            analysisState.inputTask = nil
+        }
 
         selectionState.planeRequestCoordinator.cancelRegionRequest()
         selectionState.planeRequestCoordinator.resetForNewInput()
@@ -315,17 +344,19 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
         displayFetchState.displayPhoto = nil
         analysisState.input = nil
         analysisState.completedInputRequestKey = nil
-        originalResourceOwner.clear()
+        if !keepsOriginalRequest { originalResourceOwner.clear() }
         displayFetchState.phase = .idle
         analysisState.phase = .idle
 
         displayFetchState.activeDisplayRequestKey = nil
         displayFetchState.displayFetchGeneration &+= 1
         displayFetchState.mediaFetchPhase = .idle(false)
-        analysisState.activeOriginalRequestKey = nil
-        analysisState.originalFetchGeneration &+= 1
-        analysisState.mediaFetchPhase = .idle(false)
-        analysisState.lastOriginalProgress = nil
+        if !keepsOriginalRequest {
+            analysisState.activeOriginalRequestKey = nil
+            analysisState.originalFetchGeneration &+= 1
+            analysisState.mediaFetchPhase = .idle(false)
+            analysisState.lastOriginalProgress = nil
+        }
         displayFetchState.livePhotoMediaFetchPhase = .idle(false)
 
         analysisState.errorMessage = nil

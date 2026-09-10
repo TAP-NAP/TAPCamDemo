@@ -41,9 +41,9 @@ struct LibraryMediaViewerFetchOverlay: View {
     var body: some View {
         switch state {
         case .preparing:
-            LibraryMediaProgressBadge(kind: kind, progress: nil)
+            LibraryMediaProgressBadge(kind: kind, progress: nil, isDownloading: false)
         case .downloading(let progress):
-            LibraryMediaProgressBadge(kind: kind, progress: progress)
+            LibraryMediaProgressBadge(kind: kind, progress: progress, isDownloading: true)
         case .hidden:
             EmptyView()
         case .cloudOnly, .failed:
@@ -60,8 +60,23 @@ struct LibraryMediaViewerFetchOverlay: View {
 private struct LibraryMediaProgressBadge: View {
     let kind: LibraryMediaKind
     let progress: Double?
+    let isDownloading: Bool
 
     var body: some View {
+        VStack(spacing: 8) {
+            progressRing
+            Text(isDownloading ? LibraryMediaCopy.loadingFromICloud(progress: progress) : LibraryMediaCopy.preparing(kind))
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(.black.opacity(0.44), in: Capsule())
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    private var progressRing: some View {
         ZStack {
             Circle()
                 .stroke(.white.opacity(0.22), lineWidth: 4)
@@ -91,7 +106,8 @@ private struct LibraryMediaProgressBadge: View {
     }
 
     private var accessibilityLabel: String {
-        switch kind {
+        guard isDownloading else { return LibraryMediaCopy.preparing(kind) }
+        return switch kind {
         case .tapVideo:
             "Downloading video"
         case .photo, .livePhoto:

@@ -23,11 +23,11 @@ struct TAPVideoPlaybackFixtureHarnessView: View {
         Group {
             if pendingDeleteKind == "photo" {
                 NavigationStack {
-                    DepthAnalysisView(source: .pendingCapture("ui-test-missing-photo"))
+                    TAPLibraryViewer(destination: .analysis(DepthAlbumAnalysisRoute(itemID: "pending:ui-test-missing-photo", source: .pendingCapture("ui-test-missing-photo"))))
                 }
             } else if pendingDeleteKind == "video" {
                 NavigationStack {
-                    TAPVideoDepthPlaybackView(source: .pendingCapture("ui-test-missing-video"))
+                    TAPLibraryViewer(destination: .video(TAPVideoPlaybackRoute(itemID: "capture:ui-test-missing-video", source: .pendingCapture("ui-test-missing-video"))))
                 }
             } else if configuration.showsGallery {
                 TAPGalleryFixtureView()
@@ -72,14 +72,16 @@ struct TAPVideoPlaybackFixtureHarnessView: View {
                     .background(Color.black.ignoresSafeArea())
                     .navigationDestination(isPresented: isArtifactPresented) {
                         if let presentedArtifact {
-                            TAPVideoDepthPlaybackView(
-                                source: .fixtureFile(
+                            TAPLibraryViewer(
+                                destination: .video(TAPVideoPlaybackRoute(
+                                    itemID: "fixture",
+                                    source: .fixtureFile(
                                     presentedArtifact.fileURL,
                                     automaticSeekScheduleSeconds: configuration.seekScheduleSeconds
                                         ?? presentedArtifact.specification.automaticSeekSeconds.map { [$0] }
                                         ?? [],
                                     autoPlay: configuration.autoPlay
-                                ),
+                                ))),
                                 registrationAdapter: TAPVideoPlaybackFixtureRegistrationAdapter(
                                     readinessDelayGate: readinessDelayGate
                                 )

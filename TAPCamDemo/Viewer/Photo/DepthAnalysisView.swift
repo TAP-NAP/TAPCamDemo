@@ -14,56 +14,109 @@ import PhotosUI
 import SwiftUI
 import UIKit
 
-/// Independent browser/analysis surface for saved TAP Depth HEIC files.
-///
-/// The camera view links here through a thumbnail only. The default state is a
-/// Photos-like browser where the bottom capsule switches the centered primary
-/// surface between RAW, 2D, and 3D.
-struct DepthAnalysisView: View {
-    private let onCurrentAlbumEntryChanged: ((DepthAnalysisAlbumContext.Entry) -> Void)?
-    private let mixedMediaContext: DepthAlbumDeletionContext?
-    private let onMixedMediaEntryChanged: ((DepthAlbumDeletionContext.Entry) -> Void)?
-    private let onDeletionCompleted: ((String, DepthAlbumDeletionContext.Entry?) -> Void)?
-    private let mediaFetcher: any LibraryMediaFetching
+/// One detail visit owns one pager, toolbar and user-selected presentation.
+/// The photo slot and video session only own the selected resource's work.
+struct TAPLibraryViewer: View {
+    let destination: DepthAlbumRouteAdapter.Destination
+    let entries: [TAPLibraryViewerPagingEntry]
+    let mediaFetcher: any LibraryMediaFetching
+    let onCurrentEntryChanged: (TAPLibraryViewerPagingEntry) -> Void
+    let onDeletionCompleted: (String, TAPLibraryViewerPagingEntry?) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.displayScale) private var displayScale
-    @StateObject private var carouselStore: DepthAnalysisCarouselStore
-    @StateObject private var unavailableShareResourceOwner = TAPPhotoOriginalResourceOwner()
-    @State private var heatmapOpacity = 0.58
-    @State private var twoDComparisonPosition = 0.5
-    @State private var selectedTool = AnalysisViewerTool.raw
-    @State private var deleteAlert: DepthAnalysisDeleteAlert?
+    @StateObject private var store: TAPLibraryViewerStore
+    @State private var deleteAlert: ViewerDeleteAlert?
+    @State private var pagingInteractionState = AnalysisPagingInteractionState()
+    @AppStorage(DepthAnalyzerPreferences.depthOverlayOpacityKey)
+    private var heatmapOpacity = DepthAnalyzerPreferences.defaultDepthOverlayOpacity
     @AppStorage(CameraViewfinderHighlightPreference.storageKey)
     private var viewfinderHighlightRawValue = CameraViewfinderHighlightPreference.defaultValue.rawValue
 
     init(
-        source: DepthAnalysisSource,
-        albumContext: DepthAnalysisAlbumContext? = nil,
-        onCurrentAlbumEntryChanged: ((DepthAnalysisAlbumContext.Entry) -> Void)? = nil,
-        mixedMediaContext: DepthAlbumDeletionContext? = nil,
-        onMixedMediaEntryChanged: ((DepthAlbumDeletionContext.Entry) -> Void)? = nil,
-        onDeletionCompleted: ((String, DepthAlbumDeletionContext.Entry?) -> Void)? = nil,
+        destination: DepthAlbumRouteAdapter.Destination,
+        entries: [TAPLibraryViewerPagingEntry]? = nil,
         mediaFetcher: any LibraryMediaFetching = PhotoKitLibraryMediaFetcher(),
-        photoLoader: DepthAnalysisProgressivePhotoLoader? = nil
+        photoLoader: DepthAnalysisProgressivePhotoLoader? = nil,
+        registrationAdapter: any TAPVideoDepthRegistrationAdapting = TAPVideoManifestDepthRegistrationAdapter(),
+        onCurrentEntryChanged: @escaping (TAPLibraryViewerPagingEntry) -> Void = { _ in },
+        onDeletionCompleted: @escaping (String, TAPLibraryViewerPagingEntry?) -> Void = { _, _ in }
     ) {
-        _carouselStore = StateObject(
-            wrappedValue: DepthAnalysisCarouselStore(
-                source: source,
-                albumContext: albumContext,
-                loader: photoLoader,
-                mediaFetcher: mediaFetcher
-            )
-        )
-        self.onCurrentAlbumEntryChanged = onCurrentAlbumEntryChanged
-        self.mixedMediaContext = mixedMediaContext
-        self.onMixedMediaEntryChanged = onMixedMediaEntryChanged
-        self.onDeletionCompleted = onDeletionCompleted
+        self.destination = destination
+        let entries = entries ?? [TAPLibraryViewerPagingEntry(id: destination.itemID, destination: destination)]
+        self.entries = entries
         self.mediaFetcher = mediaFetcher
+        self.onCurrentEntryChanged = onCurrentEntryChanged
+        self.onDeletionCompleted = onDeletionCompleted
+        _store = StateObject(wrappedValue: TAPLibraryViewerStore(
+            entries: entries, currentItemID: destination.itemID, loader: photoLoader,
+            mediaFetcher: mediaFetcher, registrationAdapter: registrationAdapter
+        ))
     }
 
     var body: some View {
-        analysisSurface()
+        GeometryReader { geometry in
+            let pixelLength = min(max(Int(ceil(max(geometry.size.width, geometry.size.height) * max(displayScale, 1))), 960), 4096)
+            ZStack {
+                TAPLibraryNativePagingView(
+                    entries: store.windowPagingEntries,
+                    currentItemID: store.currentItemID,
+                    pageContentRevision: pageContentRevision,
+                    pageBuilder: page,
+                    onCurrentEntryChanged: { entry in
+                        store.select(entry, pixelLength: pixelLength, prewarmCurrentPlaneGeometry: store.selectedTool == .threeD)
+                        onCurrentEntryChanged(entry)
+                    },
+                    onPagingInteractionChanged: { isInteracting in
+                        pagingInteractionState.isInteracting = isInteracting
+                        if isInteracting { store.currentVideoSession?.beginInteractivePaging() }
+                        else { store.currentVideoSession?.endInteractivePaging() }
+                    },
+                    shouldBeginPaging: shouldBeginPaging
+                )
+                .background(Color.black)
+
+                if isDepthUnavailable {
+                    VStack {
+                        Text("Depth unavailable; showing RAW")
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(.black.opacity(0.58), in: Capsule())
+                            .accessibilityIdentifier("tap.viewer.depthUnavailable")
+                        Spacer()
+                    }
+                    .padding(.top, geometry.safeAreaInsets.top + 52)
+                    .allowsHitTesting(false)
+                    .zIndex(4)
+                }
+
+                DepthViewerChromeView(
+                    selectedModeID: store.selectedTool.rawValue,
+                    modeItems: modeItems,
+                    shareSubject: shareSubject,
+                    shareResourceAccess: shareResourceAccess,
+                    shareAccessibilityLabel: isVideo ? "Share video" : "Share photo",
+                    deleteAccessibilityLabel: isVideo ? "Delete video" : "Delete photo",
+                    bottomSafeArea: geometry.safeAreaInsets.bottom,
+                    bottomAccessory: TAPVideoPlaybackTransportAccessory(model: store.currentVideoSession?.transportModel, isVideo: isVideo),
+                    onModeTapped: { if let tool = AnalysisViewerTool(rawValue: $0) { store.selectedTool = tool } },
+                    onDeleteTapped: { requestDelete(pixelLength: pixelLength) }
+                )
+                .zIndex(5)
+            }
+            .task(id: "\(pixelLength)-\(store.selectedTool.rawValue)") {
+                store.ensureVisibleWindowLoaded(pixelLength: pixelLength, prewarmCurrentPlaneGeometry: store.selectedTool == .threeD)
+            }
+            .onChange(of: entries) { _, entries in
+                store.reconcile(entries: entries, selectedItemID: destination.itemID, pixelLength: pixelLength)
+            }
+            .onChange(of: destination) { _, destination in
+                store.reconcile(entries: entries, selectedItemID: destination.itemID, pixelLength: pixelLength)
+            }
+        }
+        .background(Color.black)
         .toolbar(.visible, for: .navigationBar)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
@@ -72,209 +125,187 @@ struct DepthAnalysisView: View {
         .ignoresSafeArea(.container, edges: .all)
         .alert(item: $deleteAlert) { alert in
             switch alert {
-            case let .confirmPending(source, displayPixelLength, prewarmCurrentPlaneGeometry):
-                Alert(
-                    title: Text("Delete unsaved photo?"),
-                    message: Text("This capture has not finished exporting to Photos. Deleting it removes the local TAP copy and cannot be undone."),
-                    primaryButton: .destructive(Text("Delete")) {
-                        performDelete(
-                            source: source,
-                            displayPixelLength: displayPixelLength,
-                            prewarmCurrentPlaneGeometry: prewarmCurrentPlaneGeometry
-                        )
-                    },
+            case .pending(let entry, let pixelLength):
+                let video = entry.isVideo
+                return Alert(
+                    title: Text(video ? "Delete unsaved video?" : "Delete unsaved photo?"),
+                    message: Text(video
+                        ? "This video has not finished exporting to Photos. Deleting it removes the local TAP copy and cannot be undone."
+                        : "This capture has not finished exporting to Photos. Deleting it removes the local TAP copy and cannot be undone."),
+                    primaryButton: .destructive(Text("Delete")) { delete(entry, pixelLength: pixelLength) },
                     secondaryButton: .cancel()
                 )
-            case .failure:
-                Alert(
-                    title: Text("Unable to delete photo"),
-                    message: Text("Try again from TAP Library."),
-                    dismissButton: .default(Text("OK"))
-                )
+            case .failed(let video):
+                return Alert(title: Text(video ? "Unable to delete video" : "Unable to delete photo"),
+                             message: Text("Try again from TAP Library."), dismissButton: .default(Text("OK")))
             }
         }
-        .onDisappear {
-            carouselStore.cancelViewerRequests()
+        .onDisappear { store.cancelViewerRequests() }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in store.handleMemoryWarning() }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
+            store.currentSlot?.cancelCurrentMediaFetch()
+            store.currentVideoSession?.handleDidEnterBackground()
         }
-        .onReceive(
-            NotificationCenter.default.publisher(
-                for: UIApplication.didEnterBackgroundNotification
-            )
-        ) { _ in
-            carouselStore.cancelViewerRequests()
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            store.currentSlot?.retryLastMediaFetch()
+            store.currentVideoSession?.resumeCanceledFetchAfterBackground()
         }
-        .onReceive(
-            NotificationCenter.default.publisher(
-                for: UIApplication.willEnterForegroundNotification
-            )
-        ) { _ in
-            carouselStore.currentSlot?.retryLastMediaFetch()
-        }
-        .onReceive(
-            NotificationCenter.default.publisher(for: .tapLibraryDidChange)
-        ) { notification in
+        .onReceive(NotificationCenter.default.publisher(for: .tapLibraryDidChange)) { notification in
             let change = notification.object as? TAPLibraryPendingCaptureChange
             Task { @MainActor in
-                await carouselStore.currentSlot?
-                    .reloadPendingOriginalAfterLibraryChange(change)
+                await store.currentSlot?.reloadPendingOriginalAfterLibraryChange(change)
+                await store.currentVideoSession?.reloadPendingOriginalAfterLibraryChange(change)
             }
         }
     }
 
-    private func analysisSurface() -> some View {
-        GeometryReader { geometry in
-            let viewportSize = geometry.size
-            let safeAreaInsets = geometry.safeAreaInsets
-            let displayPixelLength = Self.displayPixelLength(
-                viewportSize: viewportSize,
-                displayScale: displayScale
-            )
-
-            ZStack(alignment: .bottom) {
-                AnalysisPhotoCarouselView(
-                    store: carouselStore,
-                    mixedMediaContext: mixedMediaContext,
-                    selectedTool: selectedTool,
-                    displayPixelLength: displayPixelLength,
-                    heatmapOpacity: $heatmapOpacity,
-                    comparisonPosition: $twoDComparisonPosition,
-                    highlightPalette: highlightPalette,
-
-                    mediaFetcher: mediaFetcher,
-                    onCurrentEntryChanged: handleCurrentEntryChanged,
-                    onBoundaryMove: handleMixedMediaBoundaryMove
-                )
-                .frame(width: viewportSize.width, height: viewportSize.height)
-                .background(Color.black)
-
-                DepthAnalysisViewerChromeView(
-                    selectedTool: selectedTool,
-                    heatmapOpacity: $heatmapOpacity,
-                    shareSubject: carouselStore.currentEntry.map(
-                        DepthAnalysisShareSubject.init(entry:)
-                    ),
-                    originalResourceOwner: carouselStore.currentSlot?.originalResourceOwner
-                        ?? unavailableShareResourceOwner,
-                    bottomSafeArea: safeAreaInsets.bottom,
-                    onToolTapped: handleToolTapped,
-                    onDeleteTapped: {
-                        deleteCurrentItem(displayPixelLength: displayPixelLength)
-                    }
-                )
-                .zIndex(2)
-            }
-            .animation(.snappy(duration: 0.2), value: selectedTool)
+    private var isVideo: Bool { store.currentPagingEntry?.isVideo == true }
+    private var isDepthUnavailable: Bool {
+        guard store.selectedTool != .raw else { return false }
+        if let session = store.currentVideoSession {
+            return TAPVideoViewerModePolicy.effectiveTool(store.selectedTool,
+                availability: session.registeredDepthAvailability,
+                isThreeDDepthAvailable: session.isThreeDDepthAvailable) == .raw
         }
-        .background(Color.black)
+        return store.currentSlot?.analysisPhase == .failed && store.currentSlot?.originalResourceOwner.isReady == true
     }
-
-    private func handleToolTapped(_ tool: AnalysisViewerTool) {
-        selectedTool = tool
-    }
-
     private var highlightPalette: AnalysisHighlightPalette {
-        AnalysisHighlightPalette.resolved(viewfinderRawValue: viewfinderHighlightRawValue)
+        .resolved(viewfinderRawValue: viewfinderHighlightRawValue)
+    }
+    private var pageContentRevision: UInt64 {
+        var hasher = Hasher()
+        hasher.combine(store.contentGeneration)
+        hasher.combine(store.selectedTool)
+        hasher.combine(heatmapOpacity)
+        hasher.combine(highlightPalette.uiColor.hash)
+        return UInt64(bitPattern: Int64(hasher.finalize()))
+    }
+    private var shareSubject: DepthAnalysisShareSubject? {
+        guard let entry = store.currentPagingEntry else { return nil }
+        switch entry.destination {
+        case .analysis: return store.currentEntry.map(DepthAnalysisShareSubject.init(entry:))
+        case .video(let route): return DepthAnalysisShareSubject(videoSource: route.source, itemID: entry.id)
+        }
+    }
+    private var shareResourceAccess: DepthAnalysisShareResourceAccess? {
+        if let slot = store.currentSlot {
+            return DepthAnalysisShareResourceAccess(isReady: slot.originalResourceOwner.isReady, acquire: {
+                slot.originalResourceOwner.acquireLease().map(DepthAnalysisShareOriginalResource.photo)
+            }, acquirePrepared: { requiresSignedOriginal in
+                .photo(try await slot.acquireOriginalResourceLease(requiresSignedOriginal: requiresSignedOriginal))
+            })
+        }
+        if let session = store.currentVideoSession {
+            return DepthAnalysisShareResourceAccess(isReady: session.isOriginalResourceReady, acquire: {
+                (try? session.acquireOriginalResourceLease()).map(DepthAnalysisShareOriginalResource.video)
+            }, acquirePrepared: { requiresSignedOriginal in
+                .video(try await session.awaitOriginalResourceLease(requiresSignedOriginal: requiresSignedOriginal))
+            })
+        }
+        return nil
+    }
+    private var modeItems: [DepthViewerModeItem] {
+        if let session = store.currentVideoSession {
+            return TAPVideoViewerModePolicy.items(availability: session.registeredDepthAvailability,
+                selectedTool: store.selectedTool, isTwoDPlaybackReady: session.isTwoDPlaybackReady,
+                isThreeDDepthAvailable: session.isThreeDDepthAvailable, isThreeDPlaybackReady: session.isThreeDPlaybackReady)
+        }
+        return AnalysisViewerTool.allCases.map(\.modeItem)
     }
 
-    private func deleteCurrentItem(displayPixelLength: Int) {
-        guard let source = carouselStore.currentEntry?.source else {
-            return
+    private func page(_ entry: TAPLibraryViewerPagingEntry, _ isCurrent: Bool, _ size: CGSize) -> AnyView {
+        if let photo = store.photoEntry(entry) {
+            return AnyView(AnalysisNativePageView(
+                slot: store.slot(for: photo), tool: store.selectedTool, viewportSize: size,
+                isCurrent: isCurrent, pagingInteractionState: pagingInteractionState,
+                heatmapOpacity: $heatmapOpacity, comparisonPosition: $store.comparisonPosition,
+                highlightPalette: highlightPalette, mediaFetcher: mediaFetcher
+            ))
         }
-
-        let prewarmCurrentPlaneGeometry = selectedTool == .threeD
-        if case .pendingCapture = source {
-            deleteAlert = .confirmPending(
-                source: source,
-                displayPixelLength: displayPixelLength,
-                prewarmCurrentPlaneGeometry: prewarmCurrentPlaneGeometry
-            )
-            return
+        if isCurrent, let session = store.videoSession(for: entry) {
+            return AnyView(TAPVideoCurrentPlayback(session: session, selectedTool: store.selectedTool, overlayOpacity: heatmapOpacity)
+                .frame(width: size.width, height: size.height))
         }
-
-        performDelete(
-            source: source,
-            displayPixelLength: displayPixelLength,
-            prewarmCurrentPlaneGeometry: prewarmCurrentPlaneGeometry
-        )
+        return AnyView(TAPLibraryAdjacentMediaPreview(entry: entry, viewportSize: size, mediaFetcher: mediaFetcher))
     }
 
-    private func performDelete(
-        source: DepthAnalysisSource,
-        displayPixelLength: Int,
-        prewarmCurrentPlaneGeometry: Bool
-    ) {
-        let deletedItemID = carouselStore.currentEntry?.id
-            ?? source.loadID
+    private func shouldBeginPaging(at location: CGPoint, viewportSize: CGSize) -> Bool {
+        guard store.selectedTool != .raw, let slot = store.currentSlot else { return true }
+        let imageSize = slot.input.map { CGSize(width: $0.image.width, height: $0.image.height) }
+            ?? slot.displayPhoto?.pixelSize ?? slot.thumbnailImage?.size
+        let rect = DepthAnalysisViewerInteractionPolicy.centeredToolContainerRect(
+            imageSize: imageSize, orientation: slot.input?.imageOrientation ?? slot.displayPhoto?.orientation ?? .up,
+            viewportSize: viewportSize)
+        return !rect.contains(location)
+    }
+
+    private func requestDelete(pixelLength: Int) {
+        guard let entry = store.currentPagingEntry else { return }
+        switch entry.destination {
+        case .analysis(let route):
+            if case .pendingCapture = route.source { deleteAlert = .pending(entry, pixelLength); return }
+        case .video(let route):
+            if route.source.requiresUnsavedDeleteConfirmation { deleteAlert = .pending(entry, pixelLength); return }
+        }
+        delete(entry, pixelLength: pixelLength)
+    }
+
+    private func delete(_ entry: TAPLibraryViewerPagingEntry, pixelLength: Int) {
         Task { @MainActor in
             do {
-                try await DepthAnalysisDeletionService.delete(source: source)
-
-                let removedIDs = Set([deletedItemID])
-                let mixedNextEntry = mixedMediaContext?.entryAfterDeleting(
-                    deletedItemID,
-                    excluding: removedIDs
-                )
-                if case .video? = mixedNextEntry?.destination,
-                   let onDeletionCompleted {
-                    carouselStore.cancelViewerRequests()
-                    onDeletionCompleted(deletedItemID, mixedNextEntry)
-                    return
+                switch entry.destination {
+                case .analysis(let route): try await DepthAnalysisDeletionService.delete(source: route.source)
+                case .video(let route): try await TAPVideoDeletionService.delete(source: route.source)
                 }
-
-                onDeletionCompleted?(deletedItemID, nil)
-                if let nextEntry = carouselStore.advanceAfterDeletingCurrent(
-                    pixelLength: displayPixelLength,
-                    prewarmCurrentPlaneGeometry: prewarmCurrentPlaneGeometry
-                ) {
-                    handleCurrentEntryChanged(nextEntry)
-                } else {
-                    dismiss()
-                }
-            } catch is CancellationError {
-                return
-            } catch {
-                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-                TAPDiagnostics.photoLibrary.error("analysis delete failed error=\(TAPDiagnostics.describe(error), privacy: .public)")
-                #endif
-                deleteAlert = .failure
-            }
+                guard store.currentItemID == entry.id else { return }
+                let next = store.removeCurrent(pixelLength: pixelLength)
+                onDeletionCompleted(entry.id, next)
+                if let next { onCurrentEntryChanged(next) } else { dismiss() }
+            } catch is CancellationError {} catch { deleteAlert = .failed(entry.isVideo) }
         }
-    }
-
-    private func handleCurrentEntryChanged(_ entry: DepthAnalysisCarouselEntry) {
-        if let albumEntry = entry.albumEntry {
-            onCurrentAlbumEntryChanged?(albumEntry)
-        }
-    }
-
-    private func handleMixedMediaBoundaryMove(offset: Int) {
-        guard let currentItemID = carouselStore.currentEntry?.id,
-              let entry = mixedMediaContext?.adjacentEntry(
-                from: currentItemID,
-                offset: offset
-              ) else {
-            return
-        }
-        carouselStore.cancelViewerRequests()
-        onMixedMediaEntryChanged?(entry)
-    }
-
-    private static func displayPixelLength(viewportSize: CGSize, displayScale: CGFloat) -> Int {
-        let viewportMaxLength = max(viewportSize.width, viewportSize.height)
-        let scaledLength = Int(ceil(viewportMaxLength * max(displayScale, 1)))
-        return min(max(scaledLength, 960), 4096)
     }
 }
 
-private enum DepthAnalysisDeleteAlert: Hashable, Identifiable {
-    case confirmPending(
-        source: DepthAnalysisSource,
-        displayPixelLength: Int,
-        prewarmCurrentPlaneGeometry: Bool
-    )
-    case failure
-
+private enum ViewerDeleteAlert: Hashable, Identifiable {
+    case pending(TAPLibraryViewerPagingEntry, Int)
+    case failed(Bool)
     var id: Self { self }
+}
+
+private struct TAPVideoCurrentPlayback: View {
+    let session: TAPVideoPlaybackSession
+    let selectedTool: AnalysisViewerTool
+    let overlayOpacity: Double
+
+    var body: some View {
+        TAPVideoPlaybackContentSurface(session: session, selectedTool: .constant(effectiveTool),
+            overlayOpacity: .constant(overlayOpacity), onRetry: session.retryCurrentFetch)
+            .task(id: PlaybackTaskIdentity(session: ObjectIdentifier(session), request: session.requestKey)) {
+                await session.startPlaybackSession()
+            }
+            .onChange(of: session.state) { _, state in
+                if state == .ready { prepareTool() }
+            }
+            .onChange(of: selectedTool) { _, _ in prepareTool() }
+    }
+
+    private var effectiveTool: AnalysisViewerTool {
+        TAPVideoViewerModePolicy.effectiveTool(selectedTool,
+            availability: session.registeredDepthAvailability,
+            isThreeDDepthAvailable: session.isThreeDDepthAvailable)
+    }
+    private func prepareTool() {
+        switch selectedTool {
+        case .raw: session.cancelTwoDPlaybackGate(); session.cancelThreeDPlaybackGate()
+        case .twoD: session.prepareTwoDPlaybackGate()
+        case .threeD: session.prepareThreeDPlaybackGate(smoothingEnabled: DepthAnalyzerPreferences.playbackSmoothingEnabled())
+        }
+    }
+}
+
+private struct PlaybackTaskIdentity: Hashable {
+    let session: ObjectIdentifier
+    let request: MediaFetchRequestKey?
 }
 
 private enum DepthAnalysisDeletionService {
@@ -282,233 +313,11 @@ private enum DepthAnalysisDeletionService {
         switch source {
         case .photosAsset(let assetID):
             try await PhotoLibraryWriter.deleteAsset(localIdentifier: assetID)
-            try await TAPPendingCaptureStore.shared.removeExportedRecords(
-                assetLocalIdentifier: assetID
-            )
+            try await TAPPendingCaptureStore.shared.removeExportedRecords(assetLocalIdentifier: assetID)
             NotificationCenter.default.post(name: .tapLibraryDidChange, object: nil)
         case .pendingCapture(let captureID):
             try await TAPPendingCaptureStore.shared.removeRecord(captureID: captureID)
         }
-    }
-}
-
-private struct AnalysisPhotoCarouselView: View {
-    @ObservedObject var store: DepthAnalysisCarouselStore
-    let mixedMediaContext: DepthAlbumDeletionContext?
-    let selectedTool: AnalysisViewerTool
-    let displayPixelLength: Int
-    @Binding var heatmapOpacity: Double
-    @Binding var comparisonPosition: Double
-    let highlightPalette: AnalysisHighlightPalette
-
-    let mediaFetcher: any LibraryMediaFetching
-    let onCurrentEntryChanged: (DepthAnalysisCarouselEntry) -> Void
-    let onBoundaryMove: (Int) -> Void
-
-    var body: some View {
-        AnalysisNativePagingView(
-            store: store,
-            mixedMediaContext: mixedMediaContext,
-            selectedTool: selectedTool,
-            displayPixelLength: displayPixelLength,
-            heatmapOpacity: $heatmapOpacity,
-            comparisonPosition: $comparisonPosition,
-            highlightPalette: highlightPalette,
-
-            mediaFetcher: mediaFetcher,
-            onCurrentEntryChanged: onCurrentEntryChanged,
-            onBoundaryMove: onBoundaryMove
-        )
-        .background(Color.black)
-        .accessibilityLabel("Photo carousel")
-        .task(id: "\(selectedTool.rawValue)-\(displayPixelLength)") {
-            store.ensureVisibleWindowLoaded(
-                pixelLength: displayPixelLength,
-                prewarmCurrentPlaneGeometry: selectedTool == .threeD
-            )
-        }
-    }
-}
-
-private struct AnalysisNativePagingView: View {
-    @ObservedObject var store: DepthAnalysisCarouselStore
-    let mixedMediaContext: DepthAlbumDeletionContext?
-    let selectedTool: AnalysisViewerTool
-    let displayPixelLength: Int
-    @Binding var heatmapOpacity: Double
-    @Binding var comparisonPosition: Double
-    let highlightPalette: AnalysisHighlightPalette
-
-    let mediaFetcher: any LibraryMediaFetching
-    let onCurrentEntryChanged: (DepthAnalysisCarouselEntry) -> Void
-    let onBoundaryMove: (Int) -> Void
-    @State private var pagingInteractionState = AnalysisPagingInteractionState()
-
-    var body: some View {
-        TAPLibraryNativePagingView(
-            entries: pagingEntries,
-            currentItemID: currentItemID,
-            pageContentRevision: pageContentRevision,
-            pageBuilder: { entry, isCurrent, pageSize in
-                page(
-                    for: entry,
-                    isCurrent: isCurrent,
-                    pageSize: pageSize
-                )
-            },
-            onCurrentEntryChanged: handleSettledEntry,
-            onPagingInteractionChanged: { isInteracting in
-                pagingInteractionState.isInteracting = isInteracting
-            },
-            shouldBeginPaging: shouldBeginPaging
-        )
-    }
-
-    private var currentItemID: String {
-        store.currentEntry?.id
-            ?? mixedMediaContext?.currentItemID
-            ?? ""
-    }
-
-    private var pagingEntries: [TAPLibraryViewerPagingEntry] {
-        if let mixedMediaContext {
-            return mixedMediaContext.pagingEntries(from: currentItemID)
-                .map(TAPLibraryViewerPagingEntry.init)
-        }
-
-        return store.windowEntries().map { item in
-            TAPLibraryViewerPagingEntry(
-                id: item.entry.id,
-                destination: .analysis(
-                    DepthAlbumAnalysisRoute(
-                        itemID: item.entry.id,
-                        source: item.entry.source
-                    )
-                ),
-                expectsPairedVideo: item.entry.albumEntry?.expectsPairedVideo
-                    ?? false,
-                mediaVersion: item.entry.albumEntry?.mediaVersion
-            )
-        }
-    }
-
-    private func page(
-        for pagingEntry: TAPLibraryViewerPagingEntry,
-        isCurrent: Bool,
-        pageSize: CGSize
-    ) -> AnyView {
-        if let carouselEntry = localCarouselEntry(matching: pagingEntry) {
-            return AnyView(
-                AnalysisNativePageView(
-                    slot: store.slot(for: carouselEntry),
-                    tool: selectedTool,
-                    viewportSize: pageSize,
-                    isCurrent: isCurrent,
-                    pagingInteractionState: pagingInteractionState,
-                    heatmapOpacity: $heatmapOpacity,
-                    comparisonPosition: $comparisonPosition,
-                    highlightPalette: highlightPalette,
-
-                    mediaFetcher: mediaFetcher
-                )
-            )
-        }
-
-        return AnyView(
-            TAPLibraryAdjacentMediaPreview(
-                entry: pagingEntry,
-                viewportSize: pageSize,
-                mediaFetcher: mediaFetcher
-            )
-        )
-    }
-
-    private func handleSettledEntry(_ target: TAPLibraryViewerPagingEntry) {
-        let currentID = currentItemID
-        if localCarouselEntry(matching: target) != nil,
-           let localWindowItem = store.windowEntries().first(where: {
-               $0.entry.id == target.id
-           }),
-           localWindowItem.offset != 0,
-           let entry = store.move(
-               offset: localWindowItem.offset,
-               pixelLength: displayPixelLength,
-               prewarmCurrentPlaneGeometry: selectedTool == .threeD
-           ) {
-            onCurrentEntryChanged(entry)
-            return
-        }
-
-        guard let mixedEntries = mixedMediaContext?.pagingEntries(from: currentID),
-              let currentIndex = mixedEntries.firstIndex(where: { $0.id == currentID }),
-              let targetIndex = mixedEntries.firstIndex(where: { $0.id == target.id }),
-              abs(targetIndex - currentIndex) == 1 else {
-            return
-        }
-        onBoundaryMove(targetIndex - currentIndex)
-    }
-
-    private func localCarouselEntry(
-        matching pagingEntry: TAPLibraryViewerPagingEntry
-    ) -> DepthAnalysisCarouselEntry? {
-        guard case .analysis(let route) = pagingEntry.destination,
-              let localEntry = store.windowEntries().first(where: {
-                  $0.entry.id == pagingEntry.id
-              })?.entry,
-              localEntry.source == route.source,
-              (localEntry.albumEntry?.expectsPairedVideo ?? false)
-                == pagingEntry.expectsPairedVideo else {
-            return nil
-        }
-        return localEntry
-    }
-
-    private func shouldBeginPaging(
-        at location: CGPoint,
-        viewportSize: CGSize
-    ) -> Bool {
-        guard selectedTool != .raw,
-              let toolContainerRect = currentToolContainerRect(
-                  viewportSize: viewportSize
-              ) else {
-            return true
-        }
-        return !toolContainerRect.contains(location)
-    }
-
-    private var pageContentRevision: UInt64 {
-        var hasher = Hasher()
-        hasher.combine(selectedTool.rawValue)
-        hasher.combine(highlightPalette.uiColor.hash)
-        return UInt64(bitPattern: Int64(hasher.finalize()))
-    }
-
-    private func currentToolContainerRect(viewportSize: CGSize) -> CGRect? {
-        guard let slot = store.currentSlot else {
-            return nil
-        }
-        if let input = slot.input {
-            return DepthAnalysisViewerInteractionPolicy.centeredToolContainerRect(
-                imageSize: CGSize(width: input.image.width, height: input.image.height),
-                orientation: input.imageOrientation,
-                viewportSize: viewportSize
-            )
-        }
-        if let displayPhoto = slot.displayPhoto {
-            return DepthAnalysisViewerInteractionPolicy.centeredToolContainerRect(
-                imageSize: displayPhoto.pixelSize,
-                orientation: displayPhoto.orientation,
-                viewportSize: viewportSize
-            )
-        }
-        if let thumbnailImage = slot.thumbnailImage {
-            return DepthAnalysisViewerInteractionPolicy.centeredToolContainerRect(
-                imageSize: thumbnailImage.size,
-                orientation: .up,
-                viewportSize: viewportSize
-            )
-        }
-        return nil
     }
 }
 
@@ -528,7 +337,7 @@ private struct AnalysisNativePageView: View {
         ZStack {
             Color.black
 
-            switch tool {
+            switch isCurrent ? effectiveTool : .raw {
             case .raw:
                 rawContent
             case .twoD, .threeD:
@@ -563,6 +372,12 @@ private struct AnalysisNativePageView: View {
             }
         }
         .frame(width: viewportSize.width, height: viewportSize.height)
+    }
+
+    private var effectiveTool: AnalysisViewerTool {
+        // A complete original with a terminal depth decoding result cannot
+        // supply this tool. Preserve the user's choice for the next resource.
+        slot.analysisPhase == .failed && slot.originalResourceOwner.isReady ? .raw : tool
     }
 
     private var rawContent: some View {
@@ -1668,7 +1483,7 @@ private struct AnalysisToolSlotLoadingView: View {
                     .opacity(0.54)
             }
 
-            if !slot.isOriginalLoading || slot.errorMessage != nil {
+            if slot.originalResourceOwner.isReady || !slot.isOriginalLoading || slot.errorMessage != nil {
                 VStack(spacing: 10) {
                     if let errorMessage = slot.errorMessage {
                         Image(systemName: slot.errorSystemImage)

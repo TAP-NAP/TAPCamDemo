@@ -50,6 +50,7 @@ nonisolated struct DepthAlbumDeletionContext: Equatable {
         let routeAnchor: CameraRouteAlbumAnchor
         let expectsPairedVideo: Bool
         let mediaVersion: LibraryMediaVersion
+        let mediaID: LibraryMediaID
 
         init(item: TAPLibraryItem) {
             id = item.id
@@ -57,6 +58,7 @@ nonisolated struct DepthAlbumDeletionContext: Equatable {
             routeAnchor = item.routeAnchor
             expectsPairedVideo = item.isLivePhoto
             mediaVersion = item.summary.version
+            mediaID = item.summary.id
         }
     }
 

@@ -6,6 +6,17 @@
 import SwiftUI
 
 nonisolated enum TAPVideoViewerModePolicy {
+    static func effectiveTool(_ selectedTool: AnalysisViewerTool,
+                              availability: TAPVideoRegisteredDepthAvailability,
+                              isThreeDDepthAvailable: Bool) -> AnalysisViewerTool {
+        guard availability != .checking else { return selectedTool }
+        switch selectedTool {
+        case .twoD where !availability.isAvailable: return .raw
+        case .threeD where !isThreeDDepthAvailable: return .raw
+        default: return selectedTool
+        }
+    }
+
     static func items(
         availability: TAPVideoRegisteredDepthAvailability,
         selectedTool: AnalysisViewerTool,
@@ -14,19 +25,16 @@ nonisolated enum TAPVideoViewerModePolicy {
         isThreeDPlaybackReady: Bool = false
     ) -> [DepthViewerModeItem] {
         AnalysisViewerTool.allCases.map { tool in
-            let isEnabled: Bool
             let accessibilityValue: String?
             switch tool {
             case .raw:
-                isEnabled = true
                 accessibilityValue = selectedTool == .raw ? "Selected" : nil
             case .twoD:
-                isEnabled = availability.isAvailable
                 switch availability {
                 case .checking:
-                    accessibilityValue = "Preparing registered depth"
-                case .unavailable:
-                    accessibilityValue = "Registered depth unavailable"
+                    accessibilityValue = selectedTool == .twoD ? "Selected, Preparing" : "Preparing registered depth"
+                case .available where !availability.isAvailable, .unavailable:
+                    accessibilityValue = selectedTool == .twoD ? "Selected, depth unavailable; showing RAW" : "Registered depth unavailable"
                 case .available:
                     if selectedTool == .twoD {
                         accessibilityValue = isTwoDPlaybackReady
@@ -37,9 +45,10 @@ nonisolated enum TAPVideoViewerModePolicy {
                     }
                 }
             case .threeD:
-                isEnabled = isThreeDDepthAvailable
-                if !isThreeDDepthAvailable {
-                    accessibilityValue = "3D depth unavailable"
+                if availability == .checking {
+                    accessibilityValue = selectedTool == .threeD ? "Selected, Preparing" : "Preparing 3D"
+                } else if !isThreeDDepthAvailable {
+                    accessibilityValue = selectedTool == .threeD ? "Selected, depth unavailable; showing RAW" : "3D depth unavailable"
                 } else if selectedTool == .threeD {
                     accessibilityValue = isThreeDPlaybackReady
                         ? "Selected, Ready" : "Selected, Preparing"
@@ -52,7 +61,6 @@ nonisolated enum TAPVideoViewerModePolicy {
                 systemImage: tool.systemImage,
                 accessibilityLabel: accessibilityLabel(for: tool),
                 accessibilityIdentifier: accessibilityIdentifier(for: tool),
-                isEnabled: isEnabled,
                 accessibilityValue: accessibilityValue
             )
         }
@@ -82,50 +90,5 @@ nonisolated enum TAPVideoViewerModePolicy {
         case .threeD:
             "tap.viewer.mode.3d"
         }
-    }
-}
-
-struct TAPVideoViewerChrome: View {
-    let transportModel: TAPVideoPlaybackTransportModel?
-    let selectedTool: AnalysisViewerTool
-    let availability: TAPVideoRegisteredDepthAvailability
-    let isTwoDPlaybackReady: Bool
-    var isThreeDDepthAvailable = false
-    var isThreeDPlaybackReady = false
-    @Binding var overlayOpacity: Double
-    let shareSubject: DepthAnalysisShareSubject?
-    let shareResourceAccess: DepthAnalysisShareResourceAccess?
-    let bottomSafeArea: CGFloat
-    let onModeTapped: (String) -> Void
-    let onDeleteTapped: () -> Void
-
-    var body: some View {
-        let isPlayerReady = transportModel != nil
-        DepthViewerChromeView(
-            selectedModeID: selectedTool.rawValue,
-            modeItems: TAPVideoViewerModePolicy.items(
-                availability: availability,
-                selectedTool: selectedTool,
-                isTwoDPlaybackReady: isTwoDPlaybackReady,
-                isThreeDDepthAvailable: isThreeDDepthAvailable,
-                isThreeDPlaybackReady: isThreeDPlaybackReady
-            ),
-            overlayOpacity: $overlayOpacity,
-            showsOpacityControl: selectedTool == .twoD
-                && availability.isAvailable
-                && isPlayerReady,
-            shareSubject: shareSubject,
-            shareResourceAccess: shareResourceAccess,
-            shareAccessibilityLabel: "Share video",
-            deleteAccessibilityLabel: "Delete video",
-            bottomSafeArea: bottomSafeArea,
-            // This accessory type never changes, so the root chrome identity
-            // remains stable while its local player content becomes ready.
-            bottomAccessory: TAPVideoPlaybackTransportAccessory(
-                model: transportModel
-            ),
-            onModeTapped: onModeTapped,
-            onDeleteTapped: onDeleteTapped
-        )
     }
 }

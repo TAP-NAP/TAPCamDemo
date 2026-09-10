@@ -6,78 +6,6 @@
 @preconcurrency import AVFoundation
 import SwiftUI
 
-struct TAPVideoPlaybackScreen: View {
-    let session: TAPVideoPlaybackSession
-    let pagingEntries: [TAPLibraryViewerPagingEntry]
-    let currentItemID: String
-    let pageContentRevision: UInt64
-    let mediaFetcher: any LibraryMediaFetching
-    @Binding var selectedTool: AnalysisViewerTool
-    @Binding var depthOverlayOpacity: Double
-    let shareSubject: DepthAnalysisShareSubject?
-    let onModeTapped: (String) -> Void
-    let onDeleteTapped: () -> Void
-    let onCurrentPagingEntryChanged: (TAPLibraryViewerPagingEntry) -> Void
-
-    var body: some View {
-        GeometryReader { geometry in
-            let size = geometry.size
-            let insets = geometry.safeAreaInsets
-            ZStack {
-                TAPLibraryNativePagingView(
-                    entries: pagingEntries,
-                    currentItemID: currentItemID,
-                    pageContentRevision: pageContentRevision,
-                    pageBuilder: { entry, isCurrent, pageSize in
-                        if isCurrent {
-                            return AnyView(
-                                TAPVideoPlaybackContentSurface(
-                                    session: session,
-                                    selectedTool: $selectedTool,
-                                    overlayOpacity: $depthOverlayOpacity,
-                                    onRetry: session.retryCurrentFetch
-                                )
-                                .frame(width: pageSize.width, height: pageSize.height)
-                            )
-                        }
-                        return AnyView(
-                            TAPLibraryAdjacentMediaPreview(
-                                entry: entry,
-                                viewportSize: pageSize,
-                                mediaFetcher: mediaFetcher
-                            )
-                        )
-                    },
-                    onCurrentEntryChanged: onCurrentPagingEntryChanged,
-                    onPagingInteractionChanged: { isInteracting in
-                        if isInteracting {
-                            session.beginInteractivePaging()
-                        } else {
-                            session.endInteractivePaging()
-                        }
-                    }
-                )
-                .frame(width: size.width, height: size.height)
-                .background(Color.black)
-
-                TAPVideoPlaybackSessionChrome(
-                    session: session,
-                    selectedTool: selectedTool,
-                    overlayOpacity: $depthOverlayOpacity,
-                    shareSubject: shareSubject,
-                    bottomSafeArea: insets.bottom,
-                    onModeTapped: onModeTapped,
-                    onDeleteTapped: onDeleteTapped
-                )
-                .frame(width: size.width, height: size.height)
-                .zIndex(5)
-
-            }
-        }
-        .background(Color.black)
-    }
-}
-
 struct TAPVideoPlaybackContentSurface: View {
     let session: TAPVideoPlaybackSession
     @Binding var selectedTool: AnalysisViewerTool
@@ -129,6 +57,11 @@ struct TAPVideoPlaybackContentSurface: View {
 
             primaryStatusOverlay
 
+            if selectedTool == .twoD, session.state == .ready,
+               session.isRegisteredDepthAvailable, !session.isTwoDPlaybackReady {
+                ProgressView().tint(.white).accessibilityLabel("Preparing registered depth")
+            }
+
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
@@ -173,7 +106,7 @@ struct TAPVideoPlaybackContentSurface: View {
         case .ready:
             LibraryMediaViewerFetchOverlay(
                 kind: .tapVideo,
-                state: isPlayerFrameReady ? .hidden : .preparing,
+                state: isPlayerFrameReady || session.isReusingOriginal ? .hidden : .preparing,
                 onRetry: onRetry
             )
         }
@@ -232,42 +165,5 @@ nonisolated enum TAPVideoFirstFramePresentationPolicy {
         case .idle, .loading, .failed:
             true
         }
-    }
-}
-
-/// Keeps session observation below the screen root. Player readiness and depth
-/// availability must update only the chrome leaf, not rebuild the native pager.
-private struct TAPVideoPlaybackSessionChrome: View {
-    let session: TAPVideoPlaybackSession
-    let selectedTool: AnalysisViewerTool
-    @Binding var overlayOpacity: Double
-    let shareSubject: DepthAnalysisShareSubject?
-    let bottomSafeArea: CGFloat
-    let onModeTapped: (String) -> Void
-    let onDeleteTapped: () -> Void
-
-    var body: some View {
-        TAPVideoViewerChrome(
-            transportModel: session.transportModel,
-            selectedTool: selectedTool,
-            availability: session.registeredDepthAvailability,
-            isTwoDPlaybackReady: session.isTwoDPlaybackReady,
-            isThreeDDepthAvailable: session.isThreeDDepthAvailable,
-            isThreeDPlaybackReady: session.isThreeDPlaybackReady,
-            overlayOpacity: $overlayOpacity,
-            shareSubject: shareSubject,
-            shareResourceAccess: DepthAnalysisShareResourceAccess(
-                isReady: session.isOriginalResourceReady,
-                acquire: {
-                    guard let lease = try? session.acquireOriginalResourceLease() else {
-                        return nil
-                    }
-                    return .video(lease)
-                }
-            ),
-            bottomSafeArea: bottomSafeArea,
-            onModeTapped: onModeTapped,
-            onDeleteTapped: onDeleteTapped
-        )
     }
 }

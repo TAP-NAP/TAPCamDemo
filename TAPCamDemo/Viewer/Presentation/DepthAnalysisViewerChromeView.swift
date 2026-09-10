@@ -16,50 +16,9 @@ nonisolated enum ViewerToolbarActionIcon: String {
     }
 }
 
-struct DepthAnalysisViewerChromeView: View {
-    let selectedTool: AnalysisViewerTool
-    @Binding var heatmapOpacity: Double
-    let shareSubject: DepthAnalysisShareSubject?
-    @ObservedObject var originalResourceOwner: TAPPhotoOriginalResourceOwner
-    let bottomSafeArea: CGFloat
-    let onToolTapped: (AnalysisViewerTool) -> Void
-    let onDeleteTapped: () -> Void
-
-    var body: some View {
-        DepthViewerChromeView(
-            selectedModeID: selectedTool.rawValue,
-            modeItems: AnalysisViewerTool.allCases.map(\.modeItem),
-            overlayOpacity: $heatmapOpacity,
-            showsOpacityControl: selectedTool == .twoD,
-            shareSubject: shareSubject,
-            shareResourceAccess: DepthAnalysisShareResourceAccess(
-                isReady: originalResourceOwner.isReady,
-                acquire: {
-                    originalResourceOwner.acquireLease().map(
-                        DepthAnalysisShareOriginalResource.photo
-                    )
-                }
-            ),
-            shareAccessibilityLabel: "Share photo",
-            deleteAccessibilityLabel: "Delete photo",
-            bottomSafeArea: bottomSafeArea,
-            bottomAccessory: EmptyView(),
-            onModeTapped: { itemID in
-                guard let tool = AnalysisViewerTool(rawValue: itemID) else {
-                    return
-                }
-                onToolTapped(tool)
-            },
-            onDeleteTapped: onDeleteTapped
-        )
-    }
-}
-
 struct DepthViewerChromeView<BottomAccessory: View>: View {
     let selectedModeID: String
     let modeItems: [DepthViewerModeItem]
-    @Binding var overlayOpacity: Double
-    let showsOpacityControl: Bool
     let shareSubject: DepthAnalysisShareSubject?
     let shareResourceAccess: DepthAnalysisShareResourceAccess?
     let shareAccessibilityLabel: String
@@ -74,13 +33,6 @@ struct DepthViewerChromeView<BottomAccessory: View>: View {
             Spacer(minLength: 0)
 
             bottomAccessory
-
-            if showsOpacityControl {
-                AnalysisOpacityControl(opacity: $overlayOpacity)
-                    .frame(maxWidth: 340)
-                    .padding(.horizontal, 16)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
 
             DepthViewerToolbar(
                 selectedModeID: selectedModeID,
@@ -102,7 +54,6 @@ struct DepthViewerChromeView<BottomAccessory: View>: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .animation(.snappy(duration: 0.18), value: selectedModeID)
-        .animation(.snappy(duration: 0.18), value: showsOpacityControl)
         .accessibilityElement(children: .contain)
     }
 }
@@ -229,40 +180,5 @@ struct ViewerToolbarIconButton: View {
         .accessibilityValue(accessibilityValue ?? "")
         .help(Text(LocalizedStringKey(accessibilityLabel)))
         .shadow(color: .black.opacity(0.16), radius: 12, y: 4)
-    }
-}
-
-private struct AnalysisOpacityControl: View {
-    @Binding var opacity: Double
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "photo")
-                .font(.caption.weight(.semibold))
-                .dynamicTypeSize(.large)
-                .symbolRenderingMode(.hierarchical)
-
-            Slider(value: $opacity, in: 0...1)
-                .tint(.primary)
-
-            Image(systemName: "waveform.path.ecg.rectangle")
-                .font(.caption.monospacedDigit().weight(.semibold))
-                .dynamicTypeSize(.large)
-                .symbolRenderingMode(.hierarchical)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
-        .background(.thinMaterial, in: Capsule())
-        .overlay {
-            Capsule()
-                .stroke(.white.opacity(0.18), lineWidth: 1)
-        }
-        .shadow(color: .black.opacity(0.16), radius: 12, y: 4)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("2D overlay opacity")
-        .accessibilityIdentifier("tap.viewer.opacity")
-        .accessibilityValue(
-            Text("\(Int((opacity * 100).rounded())) percent")
-        )
     }
 }

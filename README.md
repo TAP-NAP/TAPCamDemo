@@ -64,7 +64,7 @@ user intent
 | `CameraCapture/UI` | Viewfinder presentation and user intent; no capture-plan or proof ownership | `CameraView.swift`, `CameraViewModel.swift` |
 | `TAPLibrary` | private pending storage, one serialized signing/export worker, retry, readback, cleanup | `TAPPendingCaptureStore.swift`, `TAPPendingCaptureProcessor.swift` |
 | `MediaLibrary` | PhotoKit access and cancellation, catalog reconciliation/publication, thumbnails, resource identity | `LibraryMediaStore.swift`, `DepthAlbumItemProvider.swift`, `PhotoKitLibraryMediaFetcher.swift` |
-| `Viewer` | library grid, paging/zoom, photo and video playback, Share/Delete, browsing state | `Library/DepthAlbumPickerView.swift`, `Photo/DepthAnalysisView.swift`, `Playback/TAPVideoDepthPlaybackView.swift` |
+| `Viewer` | library grid, paging/zoom, photo and video playback, Share/Delete, browsing state | `Library/DepthAlbumPickerView.swift`, `Photo/DepthAnalysisView.swift`, `Playback/TAPVideoPlaybackSession.swift` |
 | `DepthAnalysis` | depth decoding/validation, heatmaps, planes, point clouds, registered video depth | `DepthAnalysisReader.swift`, `DepthAnalysisStageView.swift`, `Video/TAPVideoDepthPipeline.swift` |
 | `Diagnostics` | capture timing and bounded video performance traces | `CaptureJobMetrics.swift`, `TAPVideoPerformanceTrace.swift` |
 

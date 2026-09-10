@@ -114,9 +114,10 @@ extension AnalysisPhotoSlot {
 
     func ensureThumbnailLoading(
         loader: DepthAnalysisProgressivePhotoLoader,
-        pixelLength: Int
+        pixelLength: Int,
+        refresh: Bool = false
     ) {
-        guard displayFetchState.thumbnailImage == nil,
+        guard refresh || displayFetchState.thumbnailImage == nil,
               displayFetchState.thumbnailTask == nil else {
             return
         }

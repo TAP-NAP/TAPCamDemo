@@ -80,6 +80,13 @@ nonisolated final class TAPPhotoOriginalResourceLease: @unchecked Sendable {
     }
 }
 
+private extension TAPPhotoOriginalResourceLease {
+    var isSignedPendingOriginal: Bool {
+        if case .pendingCapture(_, let signed) = origin { return signed }
+        return true
+    }
+}
+
 /// Stable, Viewer-owned reference to one current original resource set.
 ///
 /// A slot may clear or replace this owner during paging without invalidating a
@@ -90,10 +97,36 @@ final class TAPPhotoOriginalResourceOwner: ObservableObject {
     @Published private(set) var isReady = false
 
     private var retainedLease: TAPPhotoOriginalResourceLease?
+    private var waiters: [UUID: (signed: Bool, continuation: CheckedContinuation<TAPPhotoOriginalResourceLease, Error>)] = [:]
+    var hasWaitingConsumers: Bool { !waiters.isEmpty }
+
+    func acquireWhenReady(requiresSignedOriginal: Bool = false) async throws -> TAPPhotoOriginalResourceLease {
+        if let lease = acquireLease(), !requiresSignedOriginal || lease.isSignedPendingOriginal { return lease }
+        let id = UUID()
+        return try await withTaskCancellationHandler {
+            try Task.checkCancellation()
+            return try await withCheckedThrowingContinuation { continuation in
+                waiters[id] = (requiresSignedOriginal, continuation)
+            }
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                self?.waiters.removeValue(forKey: id)?.continuation.resume(throwing: CancellationError())
+            }
+        }
+    }
+
+    func failWaitingConsumers(_ error: any Error) {
+        let pending = waiters.values
+        waiters.removeAll()
+        pending.forEach { $0.continuation.resume(throwing: error) }
+    }
 
     func install(_ lease: TAPPhotoOriginalResourceLease) {
         retainedLease = lease.retaining()
         isReady = true
+        for (id, waiter) in waiters where !waiter.signed || lease.isSignedPendingOriginal {
+            waiters.removeValue(forKey: id)?.continuation.resume(returning: lease.retaining())
+        }
     }
 
     func acquireLease() -> TAPPhotoOriginalResourceLease? {
@@ -287,7 +320,6 @@ nonisolated struct TAPPhotoOriginalResourceLoader: Sendable {
                 at: outputDirectoryURL,
                 withIntermediateDirectories: true
             )
-            progress(0)
 
             let lease: TAPPhotoOriginalResourceLease
             switch request.source {
@@ -296,7 +328,11 @@ nonisolated struct TAPPhotoOriginalResourceLoader: Sendable {
                     assetID,
                     request.expectsPairedVideo,
                     outputDirectoryURL,
-                    progress
+                    { value in
+                        // The writer's final 1 is local completion. Earlier
+                        // events come from PhotoKit's network progress handler.
+                        if value != 1 { progress(value) }
+                    }
                 )
                 guard resources.temporaryDirectoryURL.standardizedFileURL
                     == outputDirectoryURL.standardizedFileURL else {
@@ -323,7 +359,7 @@ nonisolated struct TAPPhotoOriginalResourceLoader: Sendable {
                     captureID,
                     request.expectsPairedVideo,
                     outputDirectoryURL,
-                    progress
+                    { _ in }
                 )
                 lease = try TAPPhotoOriginalResourceLease(
                     mediaID: request.mediaID,
@@ -343,7 +379,6 @@ nonisolated struct TAPPhotoOriginalResourceLoader: Sendable {
 
             try Task.checkCancellation()
             try resourceProtector(outputDirectoryURL)
-            progress(1)
             return lease
         } catch {
             try? FileManager.default.removeItem(at: outputDirectoryURL)

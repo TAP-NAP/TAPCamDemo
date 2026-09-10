@@ -1,6 +1,74 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Depth unavailable; showing RAW" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Depth unavailable; showing RAW"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "深度不可用；显示 RAW"
+          }
+        }
+      }
+    },
+    "Selected, depth unavailable; showing RAW" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selected, depth unavailable; showing RAW"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已选中，深度不可用；显示 RAW"
+          }
+        }
+      }
+    },
+    "share.status.originalPreparationFailed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Original preparation failed"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "原件准备失败"
+          }
+        }
+      }
+    },
+    "share.status.preparing" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preparing"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "准备中"
+          }
+        }
+      }
+    },
     "%.3f seconds, %d RGB points" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -131,16 +199,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "2D 对比滑块"
-          }
-        }
-      }
-    },
-    "2D overlay opacity" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "2D 叠加层不透明度"
           }
         }
       }
@@ -956,6 +1014,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已拒绝"
+          }
+        }
+      }
+    },
+    "Depth Overlay Strength" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "深度叠加强度"
           }
         }
       }
@@ -3098,23 +3167,6 @@
         }
       }
     },
-    "share.badge.comingSoon" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Coming Soon"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "即将推出"
-          }
-        }
-      }
-    },
     "share.badge.recommended" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3166,23 +3218,6 @@
         }
       }
     },
-    "share.integrity.checking.accessibility" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Checking the file"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在检查文件"
-          }
-        }
-      }
-    },
     "share.option.image.subtitle" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3213,40 +3248,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "分享图片"
-          }
-        }
-      }
-    },
-    "share.option.link.subtitle" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "This feature is not available yet."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此功能暂不可用。"
-          }
-        }
-      }
-    },
-    "share.option.link.title" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Share Link"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "分享链接"
           }
         }
       }
@@ -3319,23 +3320,6 @@
         }
       }
     },
-    "share.option.package.videoComingSoon" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Use “Share Video”."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "视频请用“分享视频”"
-          }
-        }
-      }
-    },
     "share.option.video.subtitle" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3400,23 +3384,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "失败"
-          }
-        }
-      }
-    },
-    "share.status.retry" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Needs Retry"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "待重试"
           }
         }
       }
@@ -3875,7 +3842,15 @@
       }
     },
     "Try again from TAP Library." : {
-
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请从 TAP 图库重试。"
+          }
+        }
+      }
     },
     "Turn off Pro mode" : {
       "extractionState" : "stale",
@@ -3955,10 +3930,26 @@
       }
     },
     "Unable to delete photo" : {
-
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法删除照片"
+          }
+        }
+      }
     },
     "Unable to delete video" : {
-
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法删除视频"
+          }
+        }
+      }
     },
     "Unable to load album" : {
       "localizations" : {

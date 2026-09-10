@@ -75,7 +75,7 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
                 containsAny: Self.selectedValueTokens
             )
         )
-        XCTAssertTrue(opacityControl(in: app).waitForExistence(timeout: 3))
+        XCTAssertFalse(opacityControl(in: app).exists)
     }
 
     func testShareOpensAnchoredSelectorBeforePlayerReadinessAndKeepsChromeStable() throws {
@@ -97,13 +97,9 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
             share.isHittable,
             "Video Share must be physically tappable while AVPlayer is still preparing."
         )
-        // The transport is mounted only after AVPlayer exists. Its absence is
-        // the runtime proof that Share readiness is independent of player
-        // readiness rather than merely happening to work after a fast load.
-        XCTAssertFalse(
-            app.buttons[Self.playPauseIdentifier].exists,
-            "The fixture timing seam did not preserve the pre-player-readiness state."
-        )
+        XCTAssertTrue(app.buttons[Self.playPauseIdentifier].exists)
+        XCTAssertFalse(app.buttons[Self.playPauseIdentifier].isEnabled,
+                       "The video transport must remain visible while the new player prepares.")
 
         let stableChrome = [
             app.navigationBars.buttons.firstMatch,
@@ -191,13 +187,17 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
         keepShareEvidence("video-system-share-cancelled")
     }
 
-    func testVideoThreeDFailsClosedWithoutMetricCalibration() throws {
+    func testVideoThreeDKeepsSelectionAndShowsRawWithoutMetricCalibration() throws {
         let app = launchFixture(scenario: "performance-playback-15s", autoPlay: true)
         try openFixture(in: app)
         let threeD = app.buttons[Self.threeDIdentifier]
         XCTAssertTrue(threeD.exists)
-        XCTAssertFalse(threeD.isEnabled)
-        XCTAssertTrue(value(of: app.buttons[Self.rawIdentifier], containsAny: Self.selectedValueTokens))
+        XCTAssertTrue(threeD.isEnabled)
+        threeD.tap()
+        XCTAssertTrue(waitForValue(threeD, containingAny: ["showing RAW", "显示 RAW"], timeout: 8))
+        XCTAssertTrue(value(of: threeD, containsAny: Self.selectedValueTokens))
+        XCTAssertTrue(app.staticTexts["tap.viewer.depthUnavailable"].exists)
+        XCTAssertFalse(app.otherElements["tap.video.point-cloud"].exists)
     }
 
     func testVideoThreeDPlaysRGB() throws {
@@ -477,12 +477,7 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
         XCTAssertTrue(twoD.isEnabled, "Fixture registration did not enable 2D playback.")
         XCTAssertTrue(twoD.isHittable, "2D control is covered by the video player surface.")
         twoD.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-        let opacity = opacityControl(in: app)
-        guard opacity.waitForExistence(timeout: 3) else {
-            keepScreenshot(of: app, named: "diagnostic_2d-control-missing")
-            XCTFail("2D opacity control did not appear.")
-            return
-        }
+        XCTAssertFalse(opacityControl(in: app).exists)
         let deadline = Date().addingTimeInterval(10)
         while Date() < deadline {
             if value(of: twoD, containsAny: Self.selectedReadyValueTokens) {

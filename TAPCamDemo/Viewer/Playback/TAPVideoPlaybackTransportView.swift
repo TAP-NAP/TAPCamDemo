@@ -7,19 +7,21 @@ import SwiftUI
 
 struct TAPVideoPlaybackTransportAccessory: View {
     let model: TAPVideoPlaybackTransportModel?
+    var isVideo = true
 
-    @ViewBuilder
     var body: some View {
-        if let model {
-            TAPVideoPlaybackTransportView(model: model)
-        } else {
-            EmptyView()
+        VStack(spacing: 0) {
+            if isVideo {
+                TAPVideoPlaybackTransportView(model: model)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
         }
+        .animation(.easeInOut(duration: 0.2), value: isVideo)
     }
 }
 
 struct TAPVideoPlaybackTransportView: View {
-    let model: TAPVideoPlaybackTransportModel
+    let model: TAPVideoPlaybackTransportModel?
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
@@ -36,12 +38,14 @@ struct TAPVideoPlaybackTransportView: View {
         .shadow(color: .black.opacity(0.16), radius: 12, y: 4)
         .padding(.horizontal, 16)
         .accessibilityElement(children: .contain)
+        .disabled(model == nil)
+        .accessibilityValue(model == nil ? "Preparing video" : "")
     }
 
     private func transportRow(showsTimeLabels: Bool) -> some View {
         HStack(spacing: 10) {
-            Button(action: model.togglePlayback) {
-                Image(systemName: model.hasActivePlaybackIntent ? "pause.fill" : "play.fill")
+            Button(action: { model?.togglePlayback() }) {
+                Image(systemName: (model?.hasActivePlaybackIntent ?? false) ? "pause.fill" : "play.fill")
                     .font(.callout.weight(.semibold))
                     .frame(width: 32, height: 32)
                     .contentShape(Circle())
@@ -49,14 +53,14 @@ struct TAPVideoPlaybackTransportView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(
-                model.hasActivePlaybackIntent ? "Pause video" : "Play video"
+                (model?.hasActivePlaybackIntent ?? false) ? "Pause video" : "Play video"
             )
             .accessibilityIdentifier("tap.video.playback.transport.playPause")
 
             if showsTimeLabels {
                 timeLabel(
-                    model.elapsedSeconds,
-                    confirmedSeconds: model.confirmedElapsedSeconds,
+                    (model?.elapsedSeconds ?? 0),
+                    confirmedSeconds: (model?.confirmedElapsedSeconds ?? 0),
                     identifier: "tap.video.playback.transport.elapsed",
                     accessibilityLabel: "Elapsed time"
                 )
@@ -64,24 +68,24 @@ struct TAPVideoPlaybackTransportView: View {
 
             Slider(
                 value: Binding(
-                    get: { model.elapsedSeconds },
-                    set: model.previewSeek(to:)
+                    get: { (model?.elapsedSeconds ?? 0) },
+                    set: { model?.previewSeek(to: $0) }
                 ),
-                in: 0...max(model.durationSeconds, 0.01),
-                onEditingChanged: model.setScrubbing
+                in: 0...max((model?.durationSeconds ?? 0), 0.01),
+                onEditingChanged: { model?.setScrubbing($0) }
             )
             .tint(.primary)
             .accessibilityLabel("Video position")
             .accessibilityValue(
-                "\(Self.timecode(model.elapsedSeconds)) of "
-                    + Self.timecode(model.durationSeconds)
+                "\(Self.timecode((model?.elapsedSeconds ?? 0))) of "
+                    + Self.timecode((model?.durationSeconds ?? 0))
             )
             .accessibilityIdentifier("tap.video.playback.transport.scrubber")
 
             if showsTimeLabels {
                 timeLabel(
-                    model.durationSeconds,
-                    confirmedSeconds: model.durationSeconds,
+                    (model?.durationSeconds ?? 0),
+                    confirmedSeconds: (model?.durationSeconds ?? 0),
                     identifier: "tap.video.playback.transport.duration",
                     accessibilityLabel: "Video duration"
                 )

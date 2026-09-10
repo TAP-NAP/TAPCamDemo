@@ -51,17 +51,32 @@ nonisolated struct TAPLibraryViewerPagingEntry: Identifiable, Hashable {
     let destination: DepthAlbumRouteAdapter.Destination
     let expectsPairedVideo: Bool
     let mediaVersion: LibraryMediaVersion?
+    let mediaID: LibraryMediaID
+    let routeAnchor: CameraRouteAlbumAnchor?
+    var isVideo: Bool {
+        if case .video = destination { return true }
+        return false
+    }
 
     init(
         id: String,
         destination: DepthAlbumRouteAdapter.Destination,
         expectsPairedVideo: Bool = false,
-        mediaVersion: LibraryMediaVersion? = nil
+        mediaVersion: LibraryMediaVersion? = nil,
+        mediaID: LibraryMediaID? = nil,
+        routeAnchor: CameraRouteAlbumAnchor? = nil
     ) {
         self.id = id
         self.destination = destination
         self.expectsPairedVideo = expectsPairedVideo
         self.mediaVersion = mediaVersion
+        self.routeAnchor = routeAnchor
+        self.mediaID = mediaID ?? {
+            switch destination {
+            case .analysis(let route): route.source.libraryMediaID
+            case .video(let route): route.source.libraryMediaID
+            }
+        }()
     }
 
     init(_ entry: DepthAlbumDeletionContext.Entry) {
@@ -69,6 +84,8 @@ nonisolated struct TAPLibraryViewerPagingEntry: Identifiable, Hashable {
         destination = entry.destination
         expectsPairedVideo = entry.expectsPairedVideo
         mediaVersion = entry.mediaVersion
+        mediaID = entry.mediaID
+        routeAnchor = entry.routeAnchor
     }
 }
 

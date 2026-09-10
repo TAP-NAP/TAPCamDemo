@@ -31,7 +31,7 @@ nonisolated enum LibraryMediaID: Hashable, Sendable {
 /// Raw item, capture, and Photos identifiers are used only while resolving the
 /// current album list. The durable context stores HMAC tokens derived from these
 /// values, never the identifiers themselves.
-nonisolated struct CameraRouteAlbumAnchor: Equatable, Sendable {
+nonisolated struct CameraRouteAlbumAnchor: Hashable, Sendable {
     private static let maximumIdentifierUTF8Length = 2_048
 
     let itemID: String

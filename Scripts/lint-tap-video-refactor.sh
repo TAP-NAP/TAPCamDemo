@@ -76,7 +76,7 @@ production_files=(
     "TAPCamDemo/Viewer/Playback/TAPVideoPlayerSurfaceUIView.swift"
     "TAPCamDemo/Viewer/Playback/TAPVideoViewerChrome.swift"
     "TAPCamDemo/Viewer/Library/TAPLibraryItemCell.swift"
-    "TAPCamDemo/Viewer/Playback/TAPVideoDepthPlaybackView.swift"
+    "TAPCamDemo/Viewer/Photo/DepthAnalysisView.swift"
     "TAPCamDemo/MediaLibrary/LibraryMediaFetching.swift"
     "TAPCamDemo/Viewer/Presentation/LibraryMediaCopy.swift"
     "TAPCamDemo/MediaLibrary/LibraryVideoPosterService.swift"

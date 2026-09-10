@@ -42,6 +42,26 @@ struct TAPPhotoOriginalResourceTests {
         #expect(!FileManager.default.fileExists(atPath: directory.path))
     }
 
+    @Test @MainActor func waitingShareGetsTheOriginalAndCancellationOnlyRemovesItsOwnWaiter() async throws {
+        let owner = TAPPhotoOriginalResourceOwner()
+        let cancelled = Task { try await owner.acquireWhenReady() }
+        let completed = Task { try await owner.acquireWhenReady() }
+        await Task.yield()
+        cancelled.cancel()
+        await #expect(throws: CancellationError.self) { try await cancelled.value }
+        #expect(owner.hasWaitingConsumers)
+        let directory = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        let url = directory.appendingPathComponent("photo.heic")
+        try Data("ready-before-depth".utf8).write(to: url)
+        owner.install(try TAPPhotoOriginalResourceLease(mediaID: .photosAsset("a"), origin: .photosAsset(assetID: "a"),
+            photoURL: url, pairedVideoURL: nil, photoFileExtension: "heic", photoMediaType: "public.heic",
+            fileContainerHint: .heic, expectsPairedVideo: false, ownedTemporaryDirectoryURL: directory))
+        let lease = try await completed.value
+        #expect(!owner.hasWaitingConsumers)
+        owner.clear()
+        #expect(try Data(contentsOf: lease.photoURL) == Data("ready-before-depth".utf8))
+    }
+
     @Test func completeLivePhotoLeaseRequiresNonemptyPairedMovie() throws {
         let missingMovieDirectory = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
         let missingMoviePhotoURL = missingMovieDirectory.appendingPathComponent("photo.heic")
@@ -192,6 +212,8 @@ struct TAPPhotoOriginalResourceTests {
                 let movieURL = directory.appendingPathComponent("source-paired-video.mov")
                 try Data("signed-jpg".utf8).write(to: photoURL)
                 try Data("paired-movie".utf8).write(to: movieURL)
+                progress(0)
+                progress(0.5)
                 progress(1)
                 return TAPPendingCaptureShareResourceSnapshot(
                     photoURL: photoURL,
@@ -206,7 +228,9 @@ struct TAPPhotoOriginalResourceTests {
             mediaID: .tapCapture("pending-signed"),
             source: .pendingCapture("pending-signed"),
             expectsPairedVideo: true
-        ))
+        )) { _ in
+            Issue.record("A local pending snapshot must not publish iCloud download progress")
+        }
 
         #expect(
             lease?.origin
