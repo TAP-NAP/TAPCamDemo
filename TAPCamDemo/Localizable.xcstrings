@@ -125,16 +125,6 @@
         }
       }
     },
-    "2D comparison divider" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "2D 对比滑块"
-          }
-        }
-      }
-    },
     "3D depth unavailable" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1452,22 +1442,6 @@
         }
       }
     },
-    "library.action.cancel" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cancel"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "取消"
-          }
-        }
-      }
-    },
     "library.action.retry" : {
       "localizations" : {
         "en" : {
@@ -1656,22 +1630,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "项目已不可用"
-          }
-        }
-      }
-    },
-    "library.icloud.loading" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Loading from iCloud…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在从 iCloud 载入…"
           }
         }
       }
@@ -2585,6 +2543,7 @@
       }
     },
     "Preparing registered depth" : {
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
