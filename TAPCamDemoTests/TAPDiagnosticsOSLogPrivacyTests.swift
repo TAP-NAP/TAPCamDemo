@@ -397,9 +397,9 @@ struct TAPDiagnosticsOSLogPrivacyTests {
 
     private static func criticalLoggingSourceFiles() -> [String] {
         [
-            "TAPCamDemo/App/AppAttestRuntime.swift",
-            "TAPCamDemo/App/AppAttestRuntimeController.swift",
-            "TAPCamDemo/App/StartupBackendSecurityPreflight.swift",
+            "TAPCamDemo/App/Attestation/AppAttestRuntime.swift",
+            "TAPCamDemo/App/Attestation/AppAttestRuntimeController.swift",
+            "TAPCamDemo/App/Startup/StartupBackendSecurityPreflight.swift",
             "TAPCamDemo/CameraCapture/Output/AppAttestCaptureAssertionSigner.swift",
             "TAPCamDemo/CameraCapture/Output/EmbeddedPhotoPackager.swift",
             "TAPCamDemo/CameraCapture/Output/PhotoLibraryWriter.swift",
@@ -429,7 +429,7 @@ struct TAPDiagnosticsOSLogPrivacyTests {
             "TAPCamDemo/Viewer/Share/DepthAnalysisShareCoordinator.swift",
             "TAPCamDemo/Viewer/Share/TAPNAPShareArtifactBuilder.swift",
             "TAPCamDemo/Viewer/Share/VerificationExportActivityView.swift"
-        ]
+        ].sorted()
     }
 
     private static func discoveredLoggingSourceFiles() throws -> [String] {
@@ -666,7 +666,7 @@ struct TAPDiagnosticsOSLogPrivacyTests {
             let projectPath = directory.appendingPathComponent("TAPCamDemo.xcodeproj").path
             let testsPath = directory.appendingPathComponent("TAPCamDemoTests").path
             let diagnosticsPath = directory
-                .appendingPathComponent("TAPCamDemo/App/AppAttestRuntime.swift")
+                .appendingPathComponent("TAPCamDemo/Diagnostics/TAPDiagnostics.swift")
                 .path
             if fileManager.fileExists(atPath: projectPath),
                fileManager.fileExists(atPath: testsPath),

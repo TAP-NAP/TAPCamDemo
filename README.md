@@ -57,7 +57,11 @@ user intent
 
 | Area | Owns | Start with |
 | --- | --- | --- |
-| `TAPCamDemo/App` | app root, setup/permission route, data-use preferences, settings, initialization gate, App Attest runtime | `TAPCamDemoApp.swift`, `StartupGateView.swift`, `Settings/DepthAnalyzerSettingsView.swift`, `AppAttestRuntime.swift` |
+| `TAPCamDemo/App` | application entry and composition | `TAPCamDemoApp.swift` |
+| `App/Startup` | launch routing, setup, permission checks, and initialization gates | `StartupGateView.swift`, `StartupGateCoordinator.swift` |
+| `App/Attestation` | DeviceCheck credential registration, health checks, and local key handles | `AppAttestRuntimeController.swift`, `NativeAppAttestClient.swift` |
+| `App/Settings` | settings presentation, language, and data-use preferences | `DepthAnalyzerSettingsView.swift`, `AppLanguage.swift` |
+| `App/Intents` | system shortcuts and app-entry handoff | `TAPCamAppIntents.swift`, `TAPCamIntentHandoff.swift` |
 | `CameraCapture/Planning` | pure capability, pairing, output-intent, FOV/zoom, and manual-control plans | `CapturePlan.swift`, `CapabilityMatrix.swift` |
 | `CameraCapture/Runtime` | the only `AVCaptureSession` mutation, capture requests, device writes, TAP Video recording, cached capture location | `CaptureSessionController.swift`, `CapturePipeline.swift`, `TAPVideoRecorder.swift`, `LocationProvider.swift` |
 | `CameraCapture/Output` | reviewed output profiles, packaging, shared-contract encoders/writers, final signed-export gates | `CaptureOutputProfile.swift`, `EmbeddedPhotoPackager.swift`, `TAPCaptureProvenanceWriter.swift` |
@@ -66,7 +70,7 @@ user intent
 | `MediaLibrary` | PhotoKit access and cancellation, catalog reconciliation/publication, thumbnails, resource identity | `LibraryMediaStore.swift`, `DepthAlbumItemProvider.swift`, `PhotoKitLibraryMediaFetcher.swift` |
 | `Viewer` | library grid, paging/zoom, photo and video playback, Share/Delete, browsing state | `Library/DepthAlbumPickerView.swift`, `Photo/DepthAnalysisView.swift`, `Playback/TAPVideoPlaybackSession.swift` |
 | `DepthAnalysis` | depth decoding/validation, heatmaps, planes, point clouds, registered video depth | `DepthAnalysisReader.swift`, `DepthAnalysisStageView.swift`, `Video/TAPVideoDepthPipeline.swift` |
-| `Diagnostics` | capture timing and bounded video performance traces | `CaptureJobMetrics.swift`, `TAPVideoPerformanceTrace.swift` |
+| `Diagnostics` | shared logging, capture timing, and bounded video performance traces | `TAPDiagnostics.swift`, `CaptureJobMetrics.swift`, `TAPVideoPerformanceTrace.swift` |
 
 Viewer composes MediaLibrary resources and DepthAnalysis tools. The data and
 depth layers do not own navigation, sharing, or deletion controls. Synthetic

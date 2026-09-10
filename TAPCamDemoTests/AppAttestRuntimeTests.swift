@@ -467,7 +467,7 @@ struct AppAttestRuntimeTests {
             let projectPath = directory.appendingPathComponent("TAPCamDemo.xcodeproj").path
             let testsPath = directory.appendingPathComponent("TAPCamDemoTests").path
             let runtimePath = directory
-                .appendingPathComponent("TAPCamDemo/App/AppAttestRuntime.swift")
+                .appendingPathComponent("TAPCamDemo/App/Attestation/AppAttestRuntime.swift")
                 .path
             if fileManager.fileExists(atPath: projectPath),
                fileManager.fileExists(atPath: testsPath),
