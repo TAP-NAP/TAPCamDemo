@@ -260,7 +260,7 @@ struct DepthAnalysisSharePopover: View {
                     titleKey: "share.option.link.title",
                     subtitleKey: "share.option.link.subtitle",
                     systemImage: "link",
-                    badgeKey: "share.badge.membersComingSoon",
+                    badgeKey: "share.badge.comingSoon",
                     identifier: "tap.share.link",
                     drawsDivider: false
                 )

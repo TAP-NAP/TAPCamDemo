@@ -192,7 +192,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Akane"
+            "value" : "茜红"
           }
         }
       }
@@ -3038,40 +3038,6 @@
         }
       }
     },
-    "share.badge.members" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Members"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "会员"
-          }
-        }
-      }
-    },
-    "share.badge.membersComingSoon" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Members · Coming Soon"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "会员 · 即将推出"
-          }
-        }
-      }
-    },
     "share.badge.recommended" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4251,7 +4217,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "黄色"
+            "value" : "橙黄"
           }
         }
       }
