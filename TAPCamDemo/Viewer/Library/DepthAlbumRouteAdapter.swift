@@ -49,12 +49,14 @@ nonisolated struct DepthAlbumDeletionContext: Equatable {
         let destination: DepthAlbumRouteAdapter.Destination
         let routeAnchor: CameraRouteAlbumAnchor
         let expectsPairedVideo: Bool
+        let mediaVersion: LibraryMediaVersion
 
         init(item: TAPLibraryItem) {
             id = item.id
             destination = DepthAlbumRouteAdapter.destination(for: item)
             routeAnchor = item.routeAnchor
             expectsPairedVideo = item.isLivePhoto
+            mediaVersion = item.summary.version
         }
     }
 

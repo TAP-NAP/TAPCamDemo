@@ -53,7 +53,8 @@ struct TAPVideoDepthPlaybackView: View {
             registrationAdapter: registrationAdapter,
             mediaFetcher: mediaFetcher,
             initialLoadingPreviewImage: TAPLibraryPagingPreviewCache.shared.image(
-                for: currentItemID
+                for: currentItemID,
+                version: albumContext?.entries.first { $0.id == currentItemID }?.mediaVersion
             )
         ))
         _sessionSource = State(initialValue: source)
@@ -261,13 +262,17 @@ struct TAPVideoDepthPlaybackView: View {
     /// viewer, pager, chrome, and target poster remain on screen.
     private func replacePlaybackSessionIfNeeded(
         to updatedSource: TAPVideoPlaybackSource,
-        itemID: String
+        itemID: String,
+        mediaVersion: LibraryMediaVersion? = nil
     ) {
         guard sessionSource != updatedSource else {
             return
         }
         let isSameMedia = sessionSource.libraryMediaID == updatedSource.libraryMediaID
-        let targetPreview = TAPLibraryPagingPreviewCache.shared.image(for: itemID)
+        let targetPreview = TAPLibraryPagingPreviewCache.shared.image(
+            for: itemID,
+            version: mediaVersion ?? albumContext?.entries.first { $0.id == itemID }?.mediaVersion
+        )
         let handoffPreview = targetPreview
             ?? (isSameMedia ? session.loadingPreviewImage : nil)
         let replacement = TAPVideoPlaybackSession(
@@ -299,7 +304,8 @@ struct TAPVideoDepthPlaybackView: View {
         }
         replacePlaybackSessionIfNeeded(
             to: route.source,
-            itemID: target.id
+            itemID: target.id,
+            mediaVersion: target.mediaVersion
         )
     }
 
@@ -340,7 +346,8 @@ struct TAPVideoDepthPlaybackView: View {
         return visibleEntries[lowerBound...upperBound].map { entry in
             TAPLibraryViewerPagingEntry(
                 id: entry.id,
-                destination: .video(DepthAlbumRouteAdapter.videoRoute(for: entry))
+                destination: .video(DepthAlbumRouteAdapter.videoRoute(for: entry)),
+                mediaVersion: entry.mediaVersion
             )
         }
     }

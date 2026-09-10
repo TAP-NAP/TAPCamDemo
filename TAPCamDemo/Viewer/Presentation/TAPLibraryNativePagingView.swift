@@ -13,42 +13,62 @@ import UIKit
 final class TAPLibraryPagingPreviewCache {
     static let shared = TAPLibraryPagingPreviewCache()
 
-    private let storage = NSCache<NSString, UIImage>()
+    private let storage = NSCache<NSString, CachedPreview>()
+
+    private final class CachedPreview {
+        let version: LibraryMediaVersion
+        let image: UIImage
+
+        init(version: LibraryMediaVersion, image: UIImage) {
+            self.version = version
+            self.image = image
+        }
+    }
 
     private init() {
         storage.countLimit = 12
     }
 
-    func image(for itemID: String) -> UIImage? {
-        storage.object(forKey: itemID as NSString)
+    func image(for itemID: String, version: LibraryMediaVersion?) -> UIImage? {
+        guard let version,
+              let preview = storage.object(forKey: itemID as NSString),
+              preview.version == version else {
+            return nil
+        }
+        return preview.image
     }
 
-    func insert(_ image: UIImage, for itemID: String) {
-        storage.setObject(image, forKey: itemID as NSString)
+    func insert(_ image: UIImage, for itemID: String, version: LibraryMediaVersion?) {
+        guard let version else { return }
+        storage.setObject(CachedPreview(version: version, image: image), forKey: itemID as NSString)
     }
 }
 
 /// Lightweight visual identity used by the shared photo/video pager.
 /// Heavy media ownership remains with the committed current renderer.
-nonisolated struct TAPLibraryViewerPagingEntry: Identifiable, Equatable {
+nonisolated struct TAPLibraryViewerPagingEntry: Identifiable, Hashable {
     let id: String
     let destination: DepthAlbumRouteAdapter.Destination
     let expectsPairedVideo: Bool
+    let mediaVersion: LibraryMediaVersion?
 
     init(
         id: String,
         destination: DepthAlbumRouteAdapter.Destination,
-        expectsPairedVideo: Bool = false
+        expectsPairedVideo: Bool = false,
+        mediaVersion: LibraryMediaVersion? = nil
     ) {
         self.id = id
         self.destination = destination
         self.expectsPairedVideo = expectsPairedVideo
+        self.mediaVersion = mediaVersion
     }
 
     init(_ entry: DepthAlbumDeletionContext.Entry) {
         id = entry.id
         destination = entry.destination
         expectsPairedVideo = entry.expectsPairedVideo
+        mediaVersion = entry.mediaVersion
     }
 }
 
@@ -450,6 +470,7 @@ struct TAPLibraryAdjacentMediaPreview: View {
     let mediaFetcher: any LibraryMediaFetching
 
     @State private var image: UIImage?
+    @State private var imageItemID: String
     @State private var didFinishLoading = false
 
     init(
@@ -461,18 +482,21 @@ struct TAPLibraryAdjacentMediaPreview: View {
         self.viewportSize = viewportSize
         self.mediaFetcher = mediaFetcher
         _image = State(
-            initialValue: TAPLibraryPagingPreviewCache.shared.image(for: entry.id)
+            initialValue: TAPLibraryPagingPreviewCache.shared.image(
+                for: entry.id, version: entry.mediaVersion
+            )
         )
+        _imageItemID = State(initialValue: entry.id)
     }
 
     var body: some View {
         ZStack {
             Color.black
-            if let image {
+            if imageItemID == entry.id, let image {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFit()
-            } else if !didFinishLoading {
+            } else if imageItemID != entry.id || !didFinishLoading {
                 ProgressView()
                     .tint(.white.opacity(0.72))
             } else {
@@ -485,21 +509,32 @@ struct TAPLibraryAdjacentMediaPreview: View {
         .clipped()
         .allowsHitTesting(false)
         .accessibilityHidden(true)
-        .task(id: entry.id) {
+        .task(id: entry) {
             let itemID = entry.id
-            image = TAPLibraryPagingPreviewCache.shared.image(for: itemID)
-            didFinishLoading = image != nil
-            if image != nil {
+            if imageItemID != itemID {
+                image = nil
+            }
+            imageItemID = itemID
+            if let cachedImage = TAPLibraryPagingPreviewCache.shared.image(
+                for: itemID, version: entry.mediaVersion
+            ) {
+                image = cachedImage
+                didFinishLoading = true
                 return
             }
+            // A new revision of this item replaces its displayed preview only
+            // when ready. A cache miss or failed refresh must not blank it.
+            didFinishLoading = false
             let loadedImage = await loadPreview()
             guard !Task.isCancelled else {
                 return
             }
             if let loadedImage {
-                TAPLibraryPagingPreviewCache.shared.insert(loadedImage, for: itemID)
+                TAPLibraryPagingPreviewCache.shared.insert(
+                    loadedImage, for: itemID, version: entry.mediaVersion
+                )
+                image = loadedImage
             }
-            image = loadedImage
             didFinishLoading = true
         }
     }

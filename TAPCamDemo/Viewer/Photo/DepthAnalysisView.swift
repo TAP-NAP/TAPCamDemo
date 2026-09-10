@@ -386,7 +386,8 @@ private struct AnalysisNativePagingView: View {
                     )
                 ),
                 expectsPairedVideo: item.entry.albumEntry?.expectsPairedVideo
-                    ?? false
+                    ?? false,
+                mediaVersion: item.entry.albumEntry?.mediaVersion
             )
         }
     }

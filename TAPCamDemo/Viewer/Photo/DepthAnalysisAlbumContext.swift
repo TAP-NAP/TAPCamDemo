@@ -22,19 +22,22 @@ nonisolated struct DepthAnalysisAlbumContext: Equatable {
         /// legacy exported records whose optional local paired-video filename
         /// may be absent even though the Photos asset is a Live Photo.
         let expectsPairedVideo: Bool
+        let mediaVersion: LibraryMediaVersion?
 
         init(
             id: String,
             mediaID: LibraryMediaID,
             source: DepthAnalysisSource,
             routeAnchor: CameraRouteAlbumAnchor,
-            expectsPairedVideo: Bool = false
+            expectsPairedVideo: Bool = false,
+            mediaVersion: LibraryMediaVersion? = nil
         ) {
             self.id = id
             self.mediaID = mediaID
             self.source = source
             self.routeAnchor = routeAnchor
             self.expectsPairedVideo = expectsPairedVideo
+            self.mediaVersion = mediaVersion
         }
     }
 
@@ -120,7 +123,8 @@ private extension DepthAnalysisAlbumContext.Entry {
             mediaID: item.summary.id,
             source: source,
             routeAnchor: item.routeAnchor,
-            expectsPairedVideo: item.isLivePhoto
+            expectsPairedVideo: item.isLivePhoto,
+            mediaVersion: item.summary.version
         )
     }
 }

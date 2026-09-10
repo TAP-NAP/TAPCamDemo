@@ -97,15 +97,18 @@ nonisolated struct TAPVideoAlbumContext: Equatable {
         let id: String
         let source: TAPVideoPlaybackSource
         let routeAnchor: CameraRouteAlbumAnchor
+        let mediaVersion: LibraryMediaVersion?
 
         nonisolated init(
             id: String,
             source: TAPVideoPlaybackSource,
-            routeAnchor: CameraRouteAlbumAnchor
+            routeAnchor: CameraRouteAlbumAnchor,
+            mediaVersion: LibraryMediaVersion? = nil
         ) {
             self.id = id
             self.source = source
             self.routeAnchor = routeAnchor
+            self.mediaVersion = mediaVersion
         }
 
         nonisolated init?(item: TAPLibraryItem) {
@@ -115,6 +118,7 @@ nonisolated struct TAPVideoAlbumContext: Equatable {
             id = route.itemID
             source = route.source
             routeAnchor = item.routeAnchor
+            mediaVersion = item.summary.version
         }
     }
 
