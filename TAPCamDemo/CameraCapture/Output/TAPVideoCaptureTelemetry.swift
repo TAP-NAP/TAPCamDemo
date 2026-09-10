@@ -176,7 +176,8 @@ nonisolated enum TAPVideoCaptureTelemetryBox {
     }
 
     private static func normalizedNumberTokens(_ data: Data) throws -> String {
-        guard let text = String(data: data, encoding: .utf8) else {
+        guard !data.starts(with: [0xEF, 0xBB, 0xBF]),
+              let text = String(data: data, encoding: .utf8) else {
             throw TAPDepthCaptureError.invalidUTF8Manifest
         }
         let tokens = try NSRegularExpression(pattern: #""(?:[^"\\]|\\.)*"|-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?"#)

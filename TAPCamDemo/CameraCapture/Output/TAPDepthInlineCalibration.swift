@@ -70,7 +70,8 @@ nonisolated enum TAPDepthInlineCalibration {
     }
 
     private static func normalizedStructure(_ data: Data) throws -> String {
-        guard let text = String(data: data, encoding: .utf8) else { throw invalid("invalid CALD UTF-8") }
+        guard !data.starts(with: [0xEF, 0xBB, 0xBF]),
+              let text = String(data: data, encoding: .utf8) else { throw invalid("invalid CALD UTF-8") }
         let tokens = try NSRegularExpression(pattern: #""(?:[^"\\]|\\.)*"|-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?"#)
         let source = text as NSString
         var result = ""
