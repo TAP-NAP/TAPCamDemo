@@ -1694,21 +1694,6 @@ private struct AnalysisToolSlotLoadingView: View {
     }
 }
 
-private struct CredentialPendingPanel: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label("Generating credential", systemImage: "clock.badge.checkmark")
-                .font(.subheadline.weight(.semibold))
-
-            Text("This photo is still being processed in the TAPCam queue. Its credential will appear when processing finishes.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
 private extension CGImagePropertyOrientation {
     var uiImageOrientation: UIImage.Orientation {
         switch self {

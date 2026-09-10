@@ -508,10 +508,6 @@ final class DepthAnalysisCarouselStore: ObservableObject {
         }
     }
 
-    func canMove(offset: Int) -> Bool {
-        entry(offset: offset) != nil
-    }
-
     @discardableResult
     func move(
         offset: Int,

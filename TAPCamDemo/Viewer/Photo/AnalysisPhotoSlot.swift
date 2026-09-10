@@ -91,10 +91,6 @@ final class AnalysisPhotoSlot: ObservableObject, Identifiable {
     let originalResourceOwner = TAPPhotoOriginalResourceOwner()
     var pendingSignedOriginalRefreshID: UUID?
 
-    var isRefreshingPendingSignedOriginal: Bool {
-        pendingSignedOriginalRefreshID != nil
-    }
-
     var id: String { entry.id }
     var source: DepthAnalysisSource { entry.source }
 
