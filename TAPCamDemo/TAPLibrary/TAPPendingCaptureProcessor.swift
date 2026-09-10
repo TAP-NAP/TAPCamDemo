@@ -97,6 +97,8 @@ actor TAPPendingCaptureProcessor {
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.pendingCapture.info("worker reconcile complete workerID=\(workerID, privacy: .public)")
             #endif
+        } catch is CancellationError {
+            return
         } catch {
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.pendingCapture.error("worker reconcile failed workerID=\(workerID, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
@@ -104,18 +106,42 @@ actor TAPPendingCaptureProcessor {
         }
 
         var processedCaptureIDs = Set<String>()
-        while let candidate = await nextProcessingCandidate(store: store, excludingCaptureIDs: processedCaptureIDs) {
+        var ingestionGeneration: UInt64?
+        var candidates = Array<TAPPendingCaptureRecord>().makeIterator()
+        do {
+            while !Task.isCancelled {
+                let currentGeneration = await store.ingestionGeneration
+                if ingestionGeneration != currentGeneration {
+                    // Worker-owned status changes do not require another full
+                    // scan. New captures do: fresh work must still precede the
+                    // retry backlog even when it arrives during this run.
+                    candidates = try await store.processingCandidates().makeIterator()
+                    ingestionGeneration = currentGeneration
+                }
+                guard let snapshot = candidates.next() else { break }
+                guard !processedCaptureIDs.contains(snapshot.captureID),
+                      let candidate = try? await store.readRecord(captureID: snapshot.captureID),
+                      candidate.isProcessingCandidate else { continue }
+                try Task.checkCancellation()
+                processedCaptureIDs.insert(candidate.captureID)
+                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                TAPDiagnostics.pendingCapture.info("worker candidate workerID=\(workerID, privacy: .public) captureID=\(candidate.captureID, privacy: .private) status=\(candidate.status.rawValue, privacy: .public) artifactKind=\(candidate.artifactKind.rawValue, privacy: .public) retryCount=\(candidate.retryCount, privacy: .public) container=\(candidate.photoFileContainer.rawValue, privacy: .public) signedPhoto=\(candidate.signedPhotoFilename != nil, privacy: .public) videoState=\(candidate.videoArtifactState?.rawValue ?? "none", privacy: .public)")
+                #endif
+                try await process(
+                    candidate,
+                    store: store,
+                    signer: signer,
+                    exporter: exporter,
+                    readback: readback
+                )
+            }
+            try Task.checkCancellation()
+        } catch is CancellationError {
+            return
+        } catch {
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.pendingCapture.info("worker candidate workerID=\(workerID, privacy: .public) captureID=\(candidate.captureID, privacy: .private) status=\(candidate.status.rawValue, privacy: .public) artifactKind=\(candidate.artifactKind.rawValue, privacy: .public) retryCount=\(candidate.retryCount, privacy: .public) container=\(candidate.photoFileContainer.rawValue, privacy: .public) signedPhoto=\(candidate.signedPhotoFilename != nil, privacy: .public) videoState=\(candidate.videoArtifactState?.rawValue ?? "none", privacy: .public)")
+            TAPDiagnostics.pendingCapture.error("processingCandidates failed processedCount=\(processedCaptureIDs.count, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
             #endif
-            processedCaptureIDs.insert(candidate.captureID)
-            await process(
-                candidate,
-                store: store,
-                signer: signer,
-                exporter: exporter,
-                readback: readback
-            )
         }
 
         do {
@@ -128,20 +154,6 @@ actor TAPPendingCaptureProcessor {
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.pendingCapture.info("worker finish workerID=\(workerID, privacy: .public) processedCount=\(processedCaptureIDs.count, privacy: .public)")
         #endif
-    }
-
-    private func nextProcessingCandidate(
-        store: TAPPendingCaptureStore,
-        excludingCaptureIDs: Set<String>
-    ) async -> TAPPendingCaptureRecord? {
-        do {
-            return try await store.nextProcessingCandidate(excludingCaptureIDs: excludingCaptureIDs)
-        } catch {
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.pendingCapture.error("nextProcessingCandidate failed excludedCount=\(excludingCaptureIDs.count, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
-            #endif
-            return nil
-        }
     }
 
     func reconcile(
@@ -193,18 +205,21 @@ actor TAPPendingCaptureProcessor {
         signer: any TAPPendingCaptureSigning,
         exporter: any TAPPendingCaptureExporting,
         readback: any TAPPendingCaptureReadingBack
-    ) async {
+    ) async throws {
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.pendingCapture.info("process start captureID=\(record.captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public) retryCount=\(record.retryCount, privacy: .public)")
         #endif
         do {
+            try Task.checkCancellation()
             switch record.processingRoute {
             case .signThenExport:
                 #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
                 TAPDiagnostics.pendingCapture.info("process route signThenExport captureID=\(record.captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public)")
                 #endif
                 let signedRecord = try await signer.sign(record, store: store)
+                try Task.checkCancellation()
                 try await exporter.export(signedRecord, store: store)
+                try Task.checkCancellation()
                 try await readback.readBack(signedRecord, store: store)
 
             case .exportSigned:
@@ -220,6 +235,7 @@ actor TAPPendingCaptureProcessor {
                     #endif
                 }
                 try await exporter.export(record, store: store)
+                try Task.checkCancellation()
                 try await readback.readBack(record, store: store)
 
             case .skip:
@@ -231,7 +247,10 @@ actor TAPPendingCaptureProcessor {
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.pendingCapture.info("process success captureID=\(record.captureID, privacy: .private) previousStatus=\(record.status.rawValue, privacy: .public)")
             #endif
+        } catch let error as CancellationError {
+            throw error
         } catch {
+            try Task.checkCancellation()
             let persistedRecord = try? await store.readRecord(captureID: record.captureID)
             let failureRecord = persistedRecord ?? record
             if let terminalCode = failureRecord.terminalFailureCode(for: error) {

@@ -141,8 +141,7 @@ private struct TAPGalleryFixtureView: View {
         directoryURL: FileManager.default.temporaryDirectory.appendingPathComponent("TAPGalleryFixture")
     ))
     @State private var libraryStore = LibraryMediaStore(itemProvider: DepthAlbumItemProvider(
-        pendingRecordsLoader: { [] },
-        exportedRecordsLoader: { [] },
+        recordsLoader: { [] },
         photoCatalogLoader: { _ in
             DepthAlbumPhotoCatalogSnapshot(albumAssets: (0..<160).map { index in
                 DepthAlbumPhotoAsset(localIdentifier: "fixture-\(index)",

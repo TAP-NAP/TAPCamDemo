@@ -140,8 +140,7 @@ struct LibraryMediaTests {
         var catalogCallCount = 0
         var requestedExportedAssetIDs = Set<String>()
         let provider = DepthAlbumItemProvider(
-            pendingRecordsLoader: { [] },
-            exportedRecordsLoader: { [exported] },
+            recordsLoader: { [exported] },
             photoCatalogLoader: { exportedAssetIDs in
                 catalogCallCount += 1
                 requestedExportedAssetIDs = exportedAssetIDs
@@ -1000,8 +999,7 @@ struct LibraryMediaTests {
         )
         let loader = SequencedPendingLoader(first: [old], second: [newest])
         let provider = DepthAlbumItemProvider(
-            pendingRecordsLoader: { await loader.load() },
-            exportedRecordsLoader: { [] },
+            recordsLoader: { await loader.load() },
             photoCatalogLoader: { _ in .empty }
         )
         let store = LibraryMediaStore(itemProvider: provider, observesChanges: false)
@@ -1019,8 +1017,7 @@ struct LibraryMediaTests {
 
     @Test @MainActor func storePublishesFirstEmptySnapshotOnlyOnce() async {
         let provider = DepthAlbumItemProvider(
-            pendingRecordsLoader: { [] },
-            exportedRecordsLoader: { [] },
+            recordsLoader: { [] },
             photoCatalogLoader: { _ in .empty }
         )
         let store = LibraryMediaStore(itemProvider: provider, observesChanges: false)
@@ -1049,11 +1046,10 @@ struct LibraryMediaTests {
         let notificationCenter = NotificationCenter()
         var loadCount = 0
         let provider = DepthAlbumItemProvider(
-            pendingRecordsLoader: {
+            recordsLoader: {
                 loadCount += 1
                 return []
             },
-            exportedRecordsLoader: { [] },
             photoCatalogLoader: { _ in .empty }
         )
         var registrations = 0
@@ -1100,8 +1096,7 @@ struct LibraryMediaTests {
             )
         }
         let provider = DepthAlbumItemProvider(
-            pendingRecordsLoader: { records },
-            exportedRecordsLoader: { [] },
+            recordsLoader: { records },
             photoCatalogLoader: { _ in .empty }
         )
         let store = LibraryMediaStore(itemProvider: provider, observesChanges: false)
@@ -1136,8 +1131,7 @@ struct LibraryMediaTests {
         )
         let loader = SequencedPendingLoader(first: [firstRecord], second: [secondRecord])
         let provider = DepthAlbumItemProvider(
-            pendingRecordsLoader: { await loader.load() },
-            exportedRecordsLoader: { [] },
+            recordsLoader: { await loader.load() },
             photoCatalogLoader: { _ in .empty }
         )
         let store = LibraryMediaStore(itemProvider: provider, observesChanges: false)
@@ -1161,8 +1155,7 @@ struct LibraryMediaTests {
             capturedAt: Date(timeIntervalSince1970: 1)
         )
         let provider = DepthAlbumItemProvider(
-            pendingRecordsLoader: { [record] },
-            exportedRecordsLoader: { [] },
+            recordsLoader: { [record] },
             photoCatalogLoader: { _ in
                 throw NSError(domain: PHPhotosErrorDomain, code: 3)
             }

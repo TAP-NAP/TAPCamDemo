@@ -390,8 +390,7 @@ struct TAPLibraryRouteTests {
             capturedAt: Date(timeIntervalSince1970: 100)
         )
         let provider = DepthAlbumItemProvider(
-            pendingRecordsLoader: { [pendingRecord] },
-            exportedRecordsLoader: { [] },
+            recordsLoader: { [pendingRecord] },
             photoCatalogLoader: { _ in
                 throw DepthAlbumItemProviderTestError.photosUnavailable
             }
@@ -415,11 +414,10 @@ struct TAPLibraryRouteTests {
         )
         var loadCount = 0
         let provider = DepthAlbumItemProvider(
-            pendingRecordsLoader: {
+            recordsLoader: {
                 loadCount += 1
                 return [pendingRecord]
             },
-            exportedRecordsLoader: { [] },
             photoCatalogLoader: { _ in .empty }
         )
         let viewModel = DepthAlbumPickerViewModel(itemProvider: provider)
@@ -434,11 +432,10 @@ struct TAPLibraryRouteTests {
     @Test @MainActor func depthAlbumPickerPresentationRefreshesEmptySnapshot() async throws {
         var loadCount = 0
         let provider = DepthAlbumItemProvider(
-            pendingRecordsLoader: {
+            recordsLoader: {
                 loadCount += 1
                 return []
             },
-            exportedRecordsLoader: { [] },
             photoCatalogLoader: { _ in .empty }
         )
         let viewModel = DepthAlbumPickerViewModel(itemProvider: provider)
@@ -458,11 +455,10 @@ struct TAPLibraryRouteTests {
         )
         var loadCount = 0
         let provider = DepthAlbumItemProvider(
-            pendingRecordsLoader: {
+            recordsLoader: {
                 defer { loadCount += 1 }
                 return loadCount == 0 ? [] : [pendingRecord]
             },
-            exportedRecordsLoader: { [] },
             photoCatalogLoader: { _ in .empty }
         )
         let viewModel = DepthAlbumPickerViewModel(itemProvider: provider)
@@ -485,11 +481,10 @@ struct TAPLibraryRouteTests {
     @Test @MainActor func depthAlbumPickerPresentationRetriesFailedSnapshot() async throws {
         var loadCount = 0
         let provider = DepthAlbumItemProvider(
-            pendingRecordsLoader: {
+            recordsLoader: {
                 loadCount += 1
                 throw DepthAlbumItemProviderTestError.photosUnavailable
             },
-            exportedRecordsLoader: { [] },
             photoCatalogLoader: { _ in .empty }
         )
         let viewModel = DepthAlbumPickerViewModel(itemProvider: provider)
@@ -504,8 +499,7 @@ struct TAPLibraryRouteTests {
 
     @Test @MainActor func depthAlbumPickerShowsPhotosErrorOnlyWhenNoItemsSurvive() async throws {
         let provider = DepthAlbumItemProvider(
-            pendingRecordsLoader: { [] },
-            exportedRecordsLoader: { [] },
+            recordsLoader: { [] },
             photoCatalogLoader: { _ in
                 throw DepthAlbumItemProviderTestError.photosUnavailable
             }
@@ -571,8 +565,7 @@ struct TAPLibraryRouteTests {
     @Test @MainActor func depthAlbumPickerUsesFixedErrorWhenStoreLoadFails() async throws {
         let sensitivePath = "/private/var/mobile/Containers/Data/capture-private-id"
         let provider = DepthAlbumItemProvider(
-            pendingRecordsLoader: { throw DepthAlbumItemProviderTestError.sensitiveStoreFailure(sensitivePath) },
-            exportedRecordsLoader: { [] },
+            recordsLoader: { throw DepthAlbumItemProviderTestError.sensitiveStoreFailure(sensitivePath) },
             photoCatalogLoader: { _ in .empty }
         )
         let viewModel = DepthAlbumPickerViewModel(itemProvider: provider)

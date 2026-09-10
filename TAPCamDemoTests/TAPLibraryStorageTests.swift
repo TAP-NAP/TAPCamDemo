@@ -1244,48 +1244,6 @@ struct TAPLibraryStorageTests {
         #expect(candidates.map(\.status) == [.signed, .pending, .waitingNetwork])
     }
 
-    @Test func pendingCaptureStoreReturnsNextProcessingCandidateWithExclusions() async throws {
-        let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
-        let store = TAPPendingCaptureStore(rootURL: rootURL)
-
-        let pendingRecord = try await store.ingest(TAPCamDemoTestFixtures.samplePendingArtifact(
-            photoData: Data("pending".utf8),
-            captureID: "pending-capture",
-            capturedAt: Date(timeIntervalSince1970: 1)
-        ))
-
-        let signedRecord = try await store.ingest(TAPCamDemoTestFixtures.samplePendingArtifact(
-            photoData: Data("signed-source".utf8),
-            captureID: "signed-capture",
-            capturedAt: Date(timeIntervalSince1970: 2)
-        ))
-        _ = try await store.storeSignedPhoto(Data("signed".utf8), captureID: signedRecord.captureID)
-
-        let retryRecord = try await store.ingest(TAPCamDemoTestFixtures.samplePendingArtifact(
-            photoData: Data("retry".utf8),
-            captureID: "retry-capture",
-            capturedAt: Date(timeIntervalSince1970: 3)
-        ))
-        _ = try await store.updateStatus(
-            captureID: retryRecord.captureID,
-            status: .failedRetryable,
-            failureReason: .retryableProcessingFailure,
-            incrementsRetryCount: true
-        )
-
-        let firstCandidate = try await store.nextProcessingCandidate()
-        #expect(firstCandidate?.captureID == signedRecord.captureID)
-
-        let secondCandidate = try await store.nextProcessingCandidate(excludingCaptureIDs: [signedRecord.captureID])
-        #expect(secondCandidate?.captureID == pendingRecord.captureID)
-
-        let thirdCandidate = try await store.nextProcessingCandidate(excludingCaptureIDs: [
-            signedRecord.captureID,
-            pendingRecord.captureID
-        ])
-        #expect(thirdCandidate?.captureID == retryRecord.captureID)
-    }
-
     private static func writePendingVideoArtifact(
         to fileURL: URL,
         captureID: String,

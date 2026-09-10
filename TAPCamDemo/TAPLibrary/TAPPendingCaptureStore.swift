@@ -103,10 +103,12 @@ actor TAPPendingCaptureStore {
     private let shareSnapshotLinker: @Sendable (URL, URL) throws -> Void
     private let videoSigningRecordPreparationFault: @Sendable (TAPPendingCaptureRecord) throws -> Void
     private var activeVideoSigningAttempts: [String: UUID] = [:]
+    private(set) var ingestionGeneration: UInt64 = 0
 
     init(
         rootURL: URL = TAPPendingCaptureRoot.defaultURL,
         storagePolicy: TAPLocalArtifactStoragePolicy = .privatePhotoArtifact,
+        fileManager: FileManager = .default,
         shareSnapshotLinker: @escaping @Sendable (URL, URL) throws -> Void = { sourceURL, destinationURL in
             try FileManager.default.linkItem(at: sourceURL, to: destinationURL)
         },
@@ -114,7 +116,8 @@ actor TAPPendingCaptureStore {
     ) {
         let storage = TAPPendingCaptureBundleStorage(
             rootURL: rootURL,
-            storagePolicy: storagePolicy
+            storagePolicy: storagePolicy,
+            fileManager: fileManager
         )
         self.storage = storage
         self.videoWorkspaces = TAPPendingVideoWorkspaceCoordinator(storage: storage)
@@ -190,6 +193,7 @@ actor TAPPendingCaptureStore {
         try storage.writeRecord(record, in: temporaryURL)
 
         try storage.commitTemporaryBundle(at: temporaryURL, to: finalURL)
+        ingestionGeneration &+= 1
         TAPLibraryChangeNotifier.post()
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
         TAPDiagnostics.pendingCapture.info("store ingest created captureID=\(captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public) unsignedBytes=\(artifact.photoData.count, privacy: .public) hasThumbnail=\(thumbnailFilename != nil, privacy: .public) hasPairedVideo=\(pairedVideoFilename != nil, privacy: .public)")
@@ -249,6 +253,7 @@ actor TAPPendingCaptureStore {
         try storage.writeRecord(record, in: workspaceURL)
 
         try storage.commitTemporaryBundle(at: workspaceURL, to: finalURL)
+        ingestionGeneration &+= 1
         videoWorkspaces.didCommit(captureID: captureID)
         TAPLibraryChangeNotifier.post()
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
@@ -266,11 +271,14 @@ actor TAPPendingCaptureStore {
     }
 
     func allRecords() throws -> [TAPPendingCaptureRecord] {
+        try readRecords().sorted { $0.capturedAt > $1.capturedAt }
+    }
+
+    private func readRecords() throws -> [TAPPendingCaptureRecord] {
         try storage.ensureRootDirectoryExists()
         return try storage.bundleURLs().compactMap { url in
             try? storage.readNormalizedRecord(in: url, expectedCaptureID: url.lastPathComponent)
         }
-        .sorted { $0.capturedAt > $1.capturedAt }
     }
 
     /// Resolves the durable queue record for a Photos asset without silently
@@ -335,7 +343,7 @@ actor TAPPendingCaptureStore {
     }
 
     func processingCandidates() throws -> [TAPPendingCaptureRecord] {
-        try allRecords()
+        try readRecords()
             .filter(\.isProcessingCandidate)
             .sorted { lhs, rhs in
                 let lhsPriority = lhs.processingPriority ?? Int.max
@@ -345,12 +353,6 @@ actor TAPPendingCaptureStore {
                 }
                 return lhs.capturedAt < rhs.capturedAt
             }
-    }
-
-    func nextProcessingCandidate(excludingCaptureIDs excludedCaptureIDs: Set<String> = []) throws -> TAPPendingCaptureRecord? {
-        try processingCandidates().first { record in
-            !excludedCaptureIDs.contains(record.captureID)
-        }
     }
 
     func readRecord(captureID: String) throws -> TAPPendingCaptureRecord {

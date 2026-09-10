@@ -21,27 +21,22 @@ nonisolated struct DepthAlbumItemSnapshot {
 /// read. The view decides whether that partial failure should be surfaced.
 @MainActor
 struct DepthAlbumItemProvider {
-    typealias PendingRecordsLoader = () async throws -> [TAPPendingCaptureRecord]
-    typealias ExportedRecordsLoader = () async throws -> [TAPPendingCaptureRecord]
+    typealias RecordsLoader = () async throws -> [TAPPendingCaptureRecord]
     typealias PhotoCatalogLoader = (Set<String>) async throws -> DepthAlbumPhotoCatalogSnapshot
     typealias ExportedRecordRemover = (String) async throws -> Void
     typealias DateProvider = () -> Date
 
     nonisolated private static let missingExportedAssetGraceInterval: TimeInterval = 60
 
-    private let pendingRecordsLoader: PendingRecordsLoader
-    private let exportedRecordsLoader: ExportedRecordsLoader
+    private let recordsLoader: RecordsLoader
     private let photoCatalogLoader: PhotoCatalogLoader
     private let exportedRecordRemover: ExportedRecordRemover
     private let dateProvider: DateProvider
     private let missingExportedAssetGraceInterval: TimeInterval
 
     init(
-        pendingRecordsLoader: @escaping PendingRecordsLoader = {
-            try TAPPendingCaptureStore.shared.visiblePendingRecords()
-        },
-        exportedRecordsLoader: @escaping ExportedRecordsLoader = {
-            try TAPPendingCaptureStore.shared.exportedRecords()
+        recordsLoader: @escaping RecordsLoader = {
+            try TAPPendingCaptureStore.shared.allRecords()
         },
         photoCatalog: PhotoKitLibraryMediaFetcher = PhotoKitLibraryMediaFetcher(),
         exportedRecordRemover: @escaping ExportedRecordRemover = { captureID in
@@ -50,8 +45,7 @@ struct DepthAlbumItemProvider {
         dateProvider: @escaping DateProvider = Date.init,
         missingExportedAssetGraceInterval: TimeInterval = Self.missingExportedAssetGraceInterval
     ) {
-        self.pendingRecordsLoader = pendingRecordsLoader
-        self.exportedRecordsLoader = exportedRecordsLoader
+        self.recordsLoader = recordsLoader
         self.photoCatalogLoader = { exportedAssetLocalIdentifiers in
             try await photoCatalog.depthAlbumPhotoCatalogSnapshot(
                 exportedAssetLocalIdentifiers: exportedAssetLocalIdentifiers
@@ -65,15 +59,13 @@ struct DepthAlbumItemProvider {
     /// Closure-based catalog injection keeps deterministic tests lightweight
     /// without reintroducing PhotoKit objects or synchronous per-item lookup.
     init(
-        pendingRecordsLoader: @escaping PendingRecordsLoader,
-        exportedRecordsLoader: @escaping ExportedRecordsLoader,
+        recordsLoader: @escaping RecordsLoader,
         photoCatalogLoader: @escaping PhotoCatalogLoader,
         exportedRecordRemover: @escaping ExportedRecordRemover = { _ in },
         dateProvider: @escaping DateProvider = Date.init,
         missingExportedAssetGraceInterval: TimeInterval = Self.missingExportedAssetGraceInterval
     ) {
-        self.pendingRecordsLoader = pendingRecordsLoader
-        self.exportedRecordsLoader = exportedRecordsLoader
+        self.recordsLoader = recordsLoader
         self.photoCatalogLoader = photoCatalogLoader
         self.exportedRecordRemover = exportedRecordRemover
         self.dateProvider = dateProvider
@@ -81,8 +73,11 @@ struct DepthAlbumItemProvider {
     }
 
     func loadSnapshot() async throws -> DepthAlbumItemSnapshot {
-        let pendingRecords = try await pendingRecordsLoader()
-        let exportedRecords = try await exportedRecordsLoader()
+        let records = try await recordsLoader()
+        let pendingRecords = records.filter(\.isVisiblePendingItem)
+        let exportedRecords = records.filter {
+            $0.status == .exported && $0.assetLocalIdentifier != nil
+        }
 
         let photoCatalogSnapshot: DepthAlbumPhotoCatalogSnapshot
         let photoAssetsError: Error?
