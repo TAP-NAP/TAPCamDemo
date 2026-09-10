@@ -6,6 +6,17 @@ source, depth source, active format, and depth-safe raw zoom; stages one reviewe
 artifact in the private Pending Capture Queue; then signs, validates, exports,
 and reads it back without blocking foreground capture.
 
+## Video point-cloud experiment
+
+This branch explores a continuous RGB point-cloud scene from video: preserve
+observed regions outside the current camera view, refresh them on return, and
+allow paused inspection without clearing history on resume. Current frames
+should remain responsive while spatial alignment runs independently.
+
+The [experiment goals, design and device acceptance guide](https://github.com/TAP-NAP/TAPArtifactContracts/blob/codex/video-point-cloud-experiment/VideoPointCloudExperiment.md)
+define the scope and remaining validation. This is a visual playback experiment;
+derived geometry does not change signed evidence or establish measurement accuracy.
+
 ## Documentation
 
 [TAPCam documentation](https://github.com/TAP-NAP/TAPArtifactContracts/blob/main/README.md) covers the

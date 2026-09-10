@@ -714,17 +714,6 @@
         }
       }
     },
-    "Changes only the 3D display, never the recording." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "仅影响 3D 显示，不会更改录制内容。"
-          }
-        }
-      }
-    },
     "Checks that TAPCam can reach the service before first camera setup." : {
       "extractionState" : "manual",
       "localizations" : {
