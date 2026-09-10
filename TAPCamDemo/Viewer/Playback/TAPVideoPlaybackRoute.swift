@@ -57,11 +57,6 @@ nonisolated struct TAPVideoPlaybackRoute: Hashable {
     let itemID: String
     let source: TAPVideoPlaybackSource
 
-    nonisolated init(entry: TAPVideoAlbumContext.Entry) {
-        itemID = entry.id
-        source = entry.source
-    }
-
     nonisolated init(itemID: String, source: TAPVideoPlaybackSource) {
         self.itemID = itemID
         self.source = source
@@ -89,97 +84,5 @@ nonisolated struct TAPVideoPlaybackRoute: Hashable {
             }
             source = .photosAsset(asset.localIdentifier)
         }
-    }
-}
-
-nonisolated struct TAPVideoAlbumContext: Equatable {
-    nonisolated struct Entry: Identifiable, Equatable {
-        let id: String
-        let source: TAPVideoPlaybackSource
-        let routeAnchor: CameraRouteAlbumAnchor
-        let mediaVersion: LibraryMediaVersion?
-
-        nonisolated init(
-            id: String,
-            source: TAPVideoPlaybackSource,
-            routeAnchor: CameraRouteAlbumAnchor,
-            mediaVersion: LibraryMediaVersion? = nil
-        ) {
-            self.id = id
-            self.source = source
-            self.routeAnchor = routeAnchor
-            self.mediaVersion = mediaVersion
-        }
-
-        nonisolated init?(item: TAPLibraryItem) {
-            guard let route = TAPVideoPlaybackRoute(item: item) else {
-                return nil
-            }
-            id = route.itemID
-            source = route.source
-            routeAnchor = item.routeAnchor
-            mediaVersion = item.summary.version
-        }
-    }
-
-    let currentItemID: String
-    let entries: [Entry]
-
-    init(currentItemID: String, entries: [Entry]) {
-        self.currentItemID = currentItemID
-        self.entries = entries
-    }
-
-    init(currentItemID: String, items: [TAPLibraryItem]) {
-        guard let currentIndex = items.firstIndex(where: { $0.id == currentItemID }),
-              Entry(item: items[currentIndex]) != nil else {
-            self.init(currentItemID: currentItemID, entries: [])
-            return
-        }
-
-        // A video viewer may page through consecutive videos, but it must stop
-        // at a photo/Live Photo boundary. Cross-renderer movement is resolved
-        // by the canonical mixed-media context instead of compact-mapping the
-        // whole album and jumping over non-video items.
-        var lowerBound = currentIndex
-        while lowerBound > items.startIndex,
-              Entry(item: items[items.index(before: lowerBound)]) != nil {
-            lowerBound = items.index(before: lowerBound)
-        }
-        var upperBound = currentIndex
-        while upperBound < items.index(before: items.endIndex),
-              Entry(item: items[items.index(after: upperBound)]) != nil {
-            upperBound = items.index(after: upperBound)
-        }
-
-        self.init(
-            currentItemID: currentItemID,
-            entries: items[lowerBound...upperBound].compactMap(Entry.init(item:))
-        )
-    }
-
-    func adjacentEntry(offset: Int, excluding removedIDs: Set<String>) -> Entry? {
-        guard abs(offset) == 1 else {
-            return nil
-        }
-        let visibleEntries = entries.filter { !removedIDs.contains($0.id) }
-        guard let currentIndex = visibleEntries.firstIndex(where: {
-            $0.id == currentItemID
-        }) else {
-            return nil
-        }
-        let targetIndex = currentIndex + offset
-        return visibleEntries.indices.contains(targetIndex)
-            ? visibleEntries[targetIndex]
-            : nil
-    }
-
-    func entryAfterDeletingCurrent(excluding removedIDs: Set<String>) -> Entry? {
-        let deletedIndex = entries.firstIndex { $0.id == currentItemID } ?? 0
-        let remaining = entries.filter { !removedIDs.contains($0.id) }
-        guard !remaining.isEmpty else {
-            return nil
-        }
-        return remaining[min(deletedIndex, remaining.count - 1)]
     }
 }

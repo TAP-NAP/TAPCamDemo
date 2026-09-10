@@ -131,57 +131,30 @@ struct TAPDepthAnalysisPresentationTests {
         #expect(badgeSection.contains("PlaneRegionBadge"))
     }
 
-    @Test func videoAlbumContextKeepsSwipeAndDeleteOrdering() throws {
-        let entries = try ["a", "b", "c"].map { id in
-            TAPVideoAlbumContext.Entry(
-                id: id,
-                source: .photosAsset(id),
-                routeAnchor: try #require(CameraRouteAlbumAnchor(itemID: id))
-            )
+    @Test @MainActor func videoViewerKeepsWindowAndDeleteOrdering() {
+        let entries = ["a", "b", "c"].map { id in
+            TAPLibraryViewerPagingEntry(id: id,
+                destination: .video(TAPVideoPlaybackRoute(itemID: id, source: .photosAsset(id))))
         }
-        let context = TAPVideoAlbumContext(currentItemID: "b", entries: entries)
-
-        #expect(context.adjacentEntry(offset: -1, excluding: [])?.id == "a")
-        #expect(context.adjacentEntry(offset: 1, excluding: [])?.id == "c")
-        #expect(context.adjacentEntry(offset: 2, excluding: []) == nil)
-        #expect(
-            context.entryAfterDeletingCurrent(excluding: ["b"])?.id == "c"
-        )
-        #expect(
-            context.entryAfterDeletingCurrent(excluding: ["b", "c"])?.id == "a"
-        )
-        #expect(TAPVideoPlaybackSource.pendingCapture("p")
-            .requiresUnsavedDeleteConfirmation)
-        #expect(!TAPVideoPlaybackSource.photosAsset("p")
-            .requiresUnsavedDeleteConfirmation)
-    }
-
-    @Test func analysisAlbumContextMovesThroughAdjacentEntries() throws {
-        let first = try analysisAlbumEntry(id: "first", source: .photosAsset("asset-first"))
-        let second = try analysisAlbumEntry(id: "second", source: .pendingCapture("capture-second"))
-        let third = try analysisAlbumEntry(id: "third", source: .photosAsset("asset-third"))
-        let context = DepthAnalysisAlbumContext(
-            currentItemID: second.id,
-            entries: [first, second, third]
-        )
-
-        #expect(context.adjacentEntry(offset: -1) == first)
-        #expect(context.adjacentEntry(offset: 1) == third)
-        #expect(context.adjacentEntry(offset: 2) == nil)
-        #expect(context.selecting(third).currentItemID == third.id)
+        let store = TAPLibraryViewerStore(entries: entries, currentItemID: "b", loader: .noop)
+        #expect(store.windowPagingEntries.map(\.id) == ["a", "b", "c"])
+        #expect(store.removeCurrent()?.id == "c")
+        #expect(store.windowPagingEntries.map(\.id) == ["a", "c"])
+        #expect(store.removeCurrent()?.id == "a")
+        #expect(store.removeCurrent() == nil)
+        #expect(store.windowPagingEntries.isEmpty)
+        #expect(TAPVideoPlaybackSource.pendingCapture("p").requiresUnsavedDeleteConfirmation)
+        #expect(!TAPVideoPlaybackSource.photosAsset("p").requiresUnsavedDeleteConfirmation)
+        store.cancelViewerRequests()
     }
 
     @Test @MainActor func analysisCarouselStoreKeepsStableThreeSlotWindow() throws {
         let first = try analysisAlbumEntry(id: "first", source: .photosAsset("asset-first"))
         let second = try analysisAlbumEntry(id: "second", source: .pendingCapture("capture-second"))
         let third = try analysisAlbumEntry(id: "third", source: .photosAsset("asset-third"))
-        let context = DepthAnalysisAlbumContext(
-            currentItemID: second.id,
-            entries: [first, second, third]
-        )
         let store = TAPLibraryViewerStore(
-            entries: context.entries.map(viewerPagingEntry),
-            currentItemID: context.currentItemID,
+            entries: [first, second, third].map(viewerPagingEntry),
+            currentItemID: second.id,
             loader: .noop
         )
 
@@ -202,13 +175,9 @@ struct TAPDepthAnalysisPresentationTests {
     @Test @MainActor func analysisCarouselStoreMoveKeepsAlbumRouteContext() throws {
         let first = try analysisAlbumEntry(id: "first", source: .photosAsset("asset-first"))
         let second = try analysisAlbumEntry(id: "second", source: .photosAsset("asset-second"))
-        let context = DepthAnalysisAlbumContext(
-            currentItemID: first.id,
-            entries: [first, second]
-        )
         let store = TAPLibraryViewerStore(
-            entries: context.entries.map(viewerPagingEntry),
-            currentItemID: context.currentItemID,
+            entries: [first, second].map(viewerPagingEntry),
+            currentItemID: first.id,
             loader: .noop
         )
 
@@ -225,13 +194,9 @@ struct TAPDepthAnalysisPresentationTests {
         let first = try analysisAlbumEntry(id: "first", source: .photosAsset("asset-first"))
         let second = try analysisAlbumEntry(id: "second", source: .pendingCapture("capture-second"))
         let third = try analysisAlbumEntry(id: "third", source: .photosAsset("asset-third"))
-        let context = DepthAnalysisAlbumContext(
-            currentItemID: second.id,
-            entries: [first, second, third]
-        )
         let store = TAPLibraryViewerStore(
-            entries: context.entries.map(viewerPagingEntry),
-            currentItemID: context.currentItemID,
+            entries: [first, second, third].map(viewerPagingEntry),
+            currentItemID: second.id,
             loader: .noop
         )
 
@@ -248,13 +213,9 @@ struct TAPDepthAnalysisPresentationTests {
         let first = try analysisAlbumEntry(id: "first", source: .photosAsset("asset-first"))
         let second = try analysisAlbumEntry(id: "second", source: .photosAsset("asset-second"))
         let third = try analysisAlbumEntry(id: "third", source: .pendingCapture("capture-third"))
-        let context = DepthAnalysisAlbumContext(
-            currentItemID: third.id,
-            entries: [first, second, third]
-        )
         let store = TAPLibraryViewerStore(
-            entries: context.entries.map(viewerPagingEntry),
-            currentItemID: context.currentItemID,
+            entries: [first, second, third].map(viewerPagingEntry),
+            currentItemID: third.id,
             loader: .noop
         )
 
@@ -269,13 +230,9 @@ struct TAPDepthAnalysisPresentationTests {
 
     @Test @MainActor func analysisCarouselStoreReturnsNilAfterDeletingOnlyEntry() throws {
         let only = try analysisAlbumEntry(id: "only", source: .pendingCapture("capture-only"))
-        let context = DepthAnalysisAlbumContext(
-            currentItemID: only.id,
-            entries: [only]
-        )
         let store = TAPLibraryViewerStore(
-            entries: context.entries.map(viewerPagingEntry),
-            currentItemID: context.currentItemID,
+            entries: [only].map(viewerPagingEntry),
+            currentItemID: only.id,
             loader: .noop
         )
 
@@ -291,13 +248,9 @@ struct TAPDepthAnalysisPresentationTests {
         let second = try analysisAlbumEntry(id: "second", source: .pendingCapture("capture-second"))
         let third = try analysisAlbumEntry(id: "third", source: .photosAsset("asset-third"))
         let fourth = try analysisAlbumEntry(id: "fourth", source: .photosAsset("asset-fourth"))
-        let context = DepthAnalysisAlbumContext(
-            currentItemID: second.id,
-            entries: [first, second, third, fourth]
-        )
         let store = TAPLibraryViewerStore(
-            entries: context.entries.map(viewerPagingEntry),
-            currentItemID: context.currentItemID,
+            entries: [first, second, third, fourth].map(viewerPagingEntry),
+            currentItemID: second.id,
             loader: .noop
         )
         let firstEntry = DepthAnalysisCarouselEntry(albumEntry: first)
@@ -345,13 +298,9 @@ struct TAPDepthAnalysisPresentationTests {
                 return input
             }
         )
-        let context = DepthAnalysisAlbumContext(
-            currentItemID: second.id,
-            entries: [first, second, third, fourth]
-        )
         let store = TAPLibraryViewerStore(
-            entries: context.entries.map(viewerPagingEntry),
-            currentItemID: context.currentItemID,
+            entries: [first, second, third, fourth].map(viewerPagingEntry),
+            currentItemID: second.id,
             loader: loader
         )
 

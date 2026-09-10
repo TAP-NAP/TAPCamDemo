@@ -26,16 +26,6 @@ nonisolated enum DepthAlbumRouteAdapter {
         }
         return .analysis(DepthAlbumAnalysisRoute(item: item))
     }
-
-    static func analysisRoute(
-        for entry: DepthAnalysisAlbumContext.Entry
-    ) -> DepthAlbumAnalysisRoute {
-        DepthAlbumAnalysisRoute(entry: entry)
-    }
-
-    static func videoRoute(for entry: TAPVideoAlbumContext.Entry) -> TAPVideoPlaybackRoute {
-        TAPVideoPlaybackRoute(entry: entry)
-    }
 }
 
 /// Ordered mixed-media context shared by photo, Live Photo, and video viewers.
@@ -152,11 +142,6 @@ nonisolated struct DepthAlbumDeletionContext: Equatable {
 nonisolated struct DepthAlbumAnalysisRoute: Hashable {
     let itemID: String
     let source: DepthAnalysisSource
-
-    init(entry: DepthAnalysisAlbumContext.Entry) {
-        itemID = entry.id
-        source = entry.source
-    }
 
     init(item: TAPLibraryItem) {
         itemID = item.id

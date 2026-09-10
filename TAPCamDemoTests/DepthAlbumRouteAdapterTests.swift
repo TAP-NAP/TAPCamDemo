@@ -120,41 +120,26 @@ struct DepthAlbumRouteAdapterTests {
         )?.id == lastPhotoID)
     }
 
-    @Test func specializedContextsStopAtMediaTypeBoundariesWithoutSkipping() {
+    @Test @MainActor func mixedViewerCrossesEveryMediaTypeBoundaryWithoutSkipping() {
         let items = Self.mixedMediaItems()
-
-        let photoContext = DepthAnalysisAlbumContext(
-            currentItemID: "photos:live-b",
-            items: items
-        )
-        #expect(photoContext.entries.map(\.id) == ["photos:still-a", "photos:live-b"])
-        #expect(photoContext.adjacentEntry(offset: -1)?.id == "photos:still-a")
-        #expect(photoContext.adjacentEntry(offset: 1) == nil)
-
-        let firstVideoContext = TAPVideoAlbumContext(
-            currentItemID: "capture:video-c",
-            items: items
-        )
-        #expect(firstVideoContext.entries.map(\.id) == ["capture:video-c", "photos:video-d"])
-        #expect(firstVideoContext.adjacentEntry(offset: -1, excluding: []) == nil)
-        #expect(firstVideoContext.adjacentEntry(offset: 1, excluding: [])?.id == "photos:video-d")
-
-        let secondVideoContext = TAPVideoAlbumContext(
-            currentItemID: "photos:video-d",
-            items: items
-        )
-        #expect(secondVideoContext.adjacentEntry(offset: -1, excluding: [])?.id == "capture:video-c")
-        #expect(secondVideoContext.adjacentEntry(offset: 1, excluding: []) == nil)
-
-        let trailingPhotoContext = DepthAnalysisAlbumContext(
-            currentItemID: "photos:still-e",
-            items: items
-        )
-        #expect(trailingPhotoContext.entries.map(\.id) == ["photos:still-e"])
-        #expect(trailingPhotoContext.adjacentEntry(offset: -1) == nil)
+        let context = DepthAlbumDeletionContext(currentItemID: items[0].id, items: items)
+        let entries = context.entries.map(TAPLibraryViewerPagingEntry.init)
+        let loader = DepthAnalysisProgressivePhotoLoader(
+            thumbnailLoader: { _, _ in nil },
+            displayLoader: { _, _ in throw CancellationError() },
+            inputLoader: { _, _ in throw CancellationError() })
+        let store = TAPLibraryViewerStore(entries: entries, currentItemID: context.currentItemID, loader: loader)
+        for (index, entry) in entries.enumerated() {
+            store.select(entry, pixelLength: 80, prewarmCurrentPlaneGeometry: false)
+            #expect(store.currentItemID == items[index].id)
+            #expect(store.currentPagingEntry?.destination == DepthAlbumRouteAdapter.destination(for: items[index]))
+            let expectedIDs = items[max(0, index - 1)...min(items.count - 1, index + 1)].map(\.id)
+            #expect(store.windowPagingEntries.map(\.id) == expectedIDs)
+        }
+        store.cancelViewerRequests()
     }
 
-    @Test func legacyExportedLivePhotoRetainsPairRequirementInShareSubject() throws {
+    @Test @MainActor func legacyExportedLivePhotoRetainsPairRequirementInShareSubject() throws {
         let capturedAt = Date(timeIntervalSince1970: 600)
         let record = TAPCamDemoTestFixtures.samplePendingRecord(
             captureID: "legacy-live",
@@ -176,13 +161,13 @@ struct DepthAlbumRouteAdapterTests {
             ]
         )
         let item = try #require(items.first)
-        let context = DepthAnalysisAlbumContext(currentItemID: item.id, items: items)
-        let entry = try #require(context.entries.first)
+        let context = DepthAlbumDeletionContext(currentItemID: item.id, items: items)
+        let store = TAPLibraryViewerStore(entries: context.entries.map(TAPLibraryViewerPagingEntry.init),
+            currentItemID: item.id)
+        let entry = try #require(store.currentEntry)
 
         #expect(entry.expectsPairedVideo)
-        let subject = DepthAnalysisShareSubject(
-            entry: DepthAnalysisCarouselEntry(albumEntry: entry)
-        )
+        let subject = DepthAnalysisShareSubject(entry: entry)
         #expect(subject.expectsPairedVideo)
 
         let request = TAPNAPShareResourceRequest(

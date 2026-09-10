@@ -32,19 +32,12 @@ struct TAPLibraryViewerPagingTests {
         #expect(cache.image(for: itemID, version: first) == nil)
     }
 
-    @Test func pagingContextsPreserveTheExistingLibraryMediaVersion() throws {
+    @Test func mixedPagingContextPreservesTheExistingLibraryMediaVersion() {
         let items = Self.mixedMediaItems()
         let mixedContext = DepthAlbumDeletionContext(currentItemID: items[0].id, items: items)
         for (item, entry) in zip(items, mixedContext.entries) {
             #expect(TAPLibraryViewerPagingEntry(entry).mediaVersion == item.summary.version)
         }
-        let photoItem = try #require(items.first { !$0.isVideo })
-        let photoContext = DepthAnalysisAlbumContext(currentItemID: photoItem.id, items: items)
-        #expect(photoContext.entries.first { $0.id == photoItem.id }?.mediaVersion == photoItem.summary.version)
-
-        let videoItem = try #require(items.first { $0.isVideo })
-        let videoContext = TAPVideoAlbumContext(currentItemID: videoItem.id, items: items)
-        #expect(videoContext.entries.first { $0.id == videoItem.id }?.mediaVersion == videoItem.summary.version)
     }
 
     @Test @MainActor func nativePagerUpdatesSameIDPreviewWithoutReplacingItsHost() {
