@@ -3094,13 +3094,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Certification status was not changed. You can retry the same option."
+            "value" : "Please try again."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "没有改变认证状态。你可以重试同一选项。"
+            "value" : "请稍后重试。"
           }
         }
       }
@@ -3128,13 +3128,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Checking local integrity"
+            "value" : "Checking the file"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "正在检查本地完整性"
+            "value" : "正在检查文件"
           }
         }
       }
@@ -3179,13 +3179,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Members feature is not implemented yet."
+            "value" : "This feature is not available yet."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "会员功能尚未实现"
+            "value" : "此功能暂不可用。"
           }
         }
       }
@@ -3230,13 +3230,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Requires verified signature evidence."
+            "value" : "Available after the file passes verification."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "需要已验证的签名证据"
+            "value" : "文件验证通过后可用"
           }
         }
       }
@@ -3281,13 +3281,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Video transport package is not implemented yet."
+            "value" : "Use “Share Video”."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "视频传输外壳尚未实现"
+            "value" : "视频请用“分享视频”"
           }
         }
       }
@@ -3298,13 +3298,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Point-cloud paths and GIF export are not implemented yet."
+            "value" : "This feature is not available yet."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "点云轨迹与 GIF 尚未实现"
+            "value" : "此功能暂不可用。"
           }
         }
       }
@@ -3451,13 +3451,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Local integrity validation failed; this media may not remain verifiable."
+            "value" : "This file did not pass verification."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "本地完整性校验失败；此媒体可能无法继续验证。"
+            "value" : "此文件未通过验证。"
           }
         }
       }
