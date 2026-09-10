@@ -95,8 +95,15 @@ struct CameraViewLifecycleModifier: ViewModifier {
             let result = await lifecycleCoordinator.depthAlbumPresentationDidChange(
                 isPresented: isPresented,
                 preparesVideoMode: resumesVideoModeAfterLibrary,
-                viewModel: viewModel,
-                appAttestController: appAttestController
+                resumeAfterAnalysis: viewModel.resumeAfterAnalysis,
+                prepareVideoMode: viewModel.prepareVideoModeIfNeeded,
+                isCameraReady: { viewModel.activeSessionConfiguration != nil },
+                retryPendingCaptures: { [weak lifecycleCoordinator, viewModel, appAttestController] in
+                    await lifecycleCoordinator?.retryPendingCaptures(
+                        viewModel: viewModel,
+                        appAttestController: appAttestController
+                    )
+                }
             )
             onLibraryReturnCompleted(result)
         }
@@ -113,8 +120,8 @@ struct CameraViewLifecycleModifier: ViewModifier {
                 phase,
                 shouldReturnToCameraOnForeground: shouldReturnToCameraOnForeground,
                 routeStore: routeStore,
-                viewModel: viewModel,
-                appAttestController: appAttestController
+                refreshLibraryPreview: { viewModel.scheduleRecentTAPLibraryPreviewRefresh() },
+                retryPendingCaptures: retryPendingCaptures
             )
         }
     }
@@ -127,10 +134,16 @@ struct CameraViewLifecycleModifier: ViewModifier {
             await lifecycleCoordinator.credentialPreparationDidChange(
                 wasPreparing: wasPreparing,
                 isPreparing: isPreparing,
-                viewModel: viewModel,
-                appAttestController: appAttestController
+                retryPendingCaptures: retryPendingCaptures
             )
         }
+    }
+
+    private func retryPendingCaptures() async {
+        await lifecycleCoordinator.retryPendingCaptures(
+            viewModel: viewModel,
+            appAttestController: appAttestController
+        )
     }
 
     private func updateIdleTimerForCurrentPresentation() {

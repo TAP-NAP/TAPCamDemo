@@ -19,14 +19,6 @@ final class CaptureLifecycleCoordinator: ObservableObject {
     nonisolated static let startupCredentialWarmupDelayNanoseconds: UInt64 = 1_500_000_000
     nonisolated static let startupPendingRetryDelayNanoseconds: UInt64 = 1_500_000_000
 
-    nonisolated enum LifecycleAction: Equatable {
-        case retryPendingCaptures
-        case resumeAfterAnalysis
-        case prepareVideoMode
-        case restoreCameraRoute
-        case loadRecentTAPLibraryPreview
-    }
-
     private var didLeaveActiveScene = false
 
     nonisolated init() {}
@@ -79,46 +71,23 @@ final class CaptureLifecycleCoordinator: ObservableObject {
     func depthAlbumPresentationDidChange(
         isPresented: Bool,
         preparesVideoMode: Bool,
-        viewModel: CameraViewModel,
-        appAttestController: AppAttestRuntimeController
+        resumeAfterAnalysis: () async -> Void,
+        prepareVideoMode: () async -> Bool,
+        isCameraReady: () -> Bool,
+        retryPendingCaptures: @escaping @MainActor () async -> Void
     ) async -> LibraryReturnResult {
-        var didPrepareVideoMode = false
-        var shouldRetryPendingCaptures = false
-        for action in Self.depthAlbumPresentationActions(
-            isPresented: isPresented,
-            preparesVideoMode: preparesVideoMode
-        ) {
-            switch action {
-            case .resumeAfterAnalysis:
-                await viewModel.resumeAfterAnalysis()
-            case .prepareVideoMode:
-                didPrepareVideoMode = await viewModel.prepareVideoModeIfNeeded()
-            case .retryPendingCaptures:
-                shouldRetryPendingCaptures = true
-            default:
-                break
-            }
-        }
-        guard !isPresented else {
-            return .notApplicable
-        }
+        guard !isPresented else { return .notApplicable }
+        await resumeAfterAnalysis()
         let result: LibraryReturnResult
         if preparesVideoMode {
-            result = didPrepareVideoMode ? .videoReady : .failed
+            result = await prepareVideoMode() ? .videoReady : .failed
         } else {
-            result = viewModel.activeSessionConfiguration == nil
-                ? .failed : .cameraReady
+            result = isCameraReady() ? .cameraReady : .failed
         }
-        if shouldRetryPendingCaptures {
-            // Signing/export recovery is independent of camera graph readiness.
-            // Do not keep the viewfinder transition blocked on network-backed
-            // pending-capture work after the requested camera path is ready.
-            Task { @MainActor [weak self] in
-                await self?.retryPendingCaptures(
-                    viewModel: viewModel,
-                    appAttestController: appAttestController
-                )
-            }
+        // Recovery must not hold the viewfinder transition on network work.
+        Task { @MainActor [weak self] in
+            guard self != nil else { return }
+            await retryPendingCaptures()
         }
         return result
     }
@@ -128,27 +97,15 @@ final class CaptureLifecycleCoordinator: ObservableObject {
         _ phase: ScenePhase,
         shouldReturnToCameraOnForeground: Bool,
         routeStore: CameraRouteStore,
-        viewModel: CameraViewModel,
-        appAttestController: AppAttestRuntimeController
+        refreshLibraryPreview: () -> Void,
+        retryPendingCaptures: () async -> Void
     ) async {
-        for action in Self.scenePhaseActions(
-            for: phase,
-            shouldReturnToCameraOnForeground: shouldReturnToCameraOnForeground
-        ) {
-            switch action {
-            case .restoreCameraRoute:
-                restoreCameraRouteWithoutAnimation(routeStore: routeStore)
-            case .loadRecentTAPLibraryPreview:
-                viewModel.scheduleRecentTAPLibraryPreviewRefresh()
-            case .retryPendingCaptures:
-                await retryPendingCaptures(
-                    viewModel: viewModel,
-                    appAttestController: appAttestController
-                )
-            default:
-                break
-            }
+        guard phase == .active else { return }
+        if shouldReturnToCameraOnForeground {
+            restoreCameraRouteWithoutAnimation(routeStore: routeStore)
         }
+        refreshLibraryPreview()
+        await retryPendingCaptures()
     }
 
     @MainActor
@@ -165,18 +122,10 @@ final class CaptureLifecycleCoordinator: ObservableObject {
     func credentialPreparationDidChange(
         wasPreparing: Bool,
         isPreparing: Bool,
-        viewModel: CameraViewModel,
-        appAttestController: AppAttestRuntimeController
+        retryPendingCaptures: () async -> Void
     ) async {
-        for action in Self.credentialPreparationActions(
-            wasPreparing: wasPreparing,
-            isPreparing: isPreparing
-        ) where action == .retryPendingCaptures {
-            await retryPendingCaptures(
-                viewModel: viewModel,
-                appAttestController: appAttestController
-            )
-        }
+        guard wasPreparing && !isPreparing else { return }
+        await retryPendingCaptures()
     }
 
     @MainActor
@@ -185,10 +134,10 @@ final class CaptureLifecycleCoordinator: ObservableObject {
         appAttestController: AppAttestRuntimeController
     ) async {
         let isCameraBusy = viewModel.isBusyForNonCaptureStartupWork
-        guard Self.pendingCaptureRetryActions(
+        guard Self.shouldRetryPendingCaptures(
             isCredentialPreparationActive: appAttestController.isPreparingCredential,
             isCameraBusy: isCameraBusy
-        ).contains(.retryPendingCaptures) else {
+        ) else {
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.pendingCapture.info("retryPendingCaptures skipped credentialPreparing=\(appAttestController.isPreparingCredential, privacy: .public) cameraBusy=\(isCameraBusy, privacy: .public) configuring=\(viewModel.isConfiguringSession, privacy: .public) recording=\(viewModel.isVideoRecording, privacy: .public) paused=\(viewModel.isPausedForAnalysis, privacy: .public)")
             #endif
@@ -198,58 +147,6 @@ final class CaptureLifecycleCoordinator: ObservableObject {
         await viewModel.retryPendingCaptures(
             pendingCaptureWorkerClient: appAttestController.runtime.client
         )
-    }
-
-    nonisolated static func depthAlbumPresentationActions(
-        isPresented: Bool,
-        preparesVideoMode: Bool = false
-    ) -> [LifecycleAction] {
-        guard !isPresented else {
-            return []
-        }
-        return preparesVideoMode
-            ? [.resumeAfterAnalysis, .prepareVideoMode, .retryPendingCaptures]
-            : [.resumeAfterAnalysis, .retryPendingCaptures]
-    }
-
-    nonisolated static func scenePhaseActions(
-        for phase: ScenePhase,
-        shouldReturnToCameraOnForeground: Bool = false
-    ) -> [LifecycleAction] {
-        guard phase == .active else {
-            return []
-        }
-
-        var actions: [LifecycleAction] = []
-        if shouldReturnToCameraOnForeground {
-            actions.append(.restoreCameraRoute)
-        }
-        actions.append(contentsOf: [.loadRecentTAPLibraryPreview, .retryPendingCaptures])
-        return actions
-    }
-
-    nonisolated static func credentialPreparationActions(
-        wasPreparing: Bool,
-        isPreparing: Bool
-    ) -> [LifecycleAction] {
-        wasPreparing && !isPreparing ? [.retryPendingCaptures] : []
-    }
-
-    nonisolated static func pendingCaptureRetryActions(
-        isCredentialPreparationActive: Bool,
-        isCameraBusy: Bool = false
-    ) -> [LifecycleAction] {
-        isCredentialPreparationActive || isCameraBusy ? [] : [.retryPendingCaptures]
-    }
-
-    nonisolated static func shouldRestoreCamera(
-        for phase: ScenePhase,
-        shouldReturnToCameraOnForeground: Bool = false
-    ) -> Bool {
-        scenePhaseActions(
-            for: phase,
-            shouldReturnToCameraOnForeground: shouldReturnToCameraOnForeground
-        ).contains(.restoreCameraRoute)
     }
 
     @MainActor
@@ -271,29 +168,10 @@ final class CaptureLifecycleCoordinator: ObservableObject {
         }
     }
 
-    nonisolated static func shouldResumeCameraAfterDepthAlbumPresentationChange(
-        isPresented: Bool
-    ) -> Bool {
-        depthAlbumPresentationActions(isPresented: isPresented).contains(.resumeAfterAnalysis)
-    }
-
     nonisolated static func shouldRetryPendingCaptures(
         isCredentialPreparationActive: Bool,
         isCameraBusy: Bool = false
     ) -> Bool {
-        pendingCaptureRetryActions(
-            isCredentialPreparationActive: isCredentialPreparationActive,
-            isCameraBusy: isCameraBusy
-        ).contains(.retryPendingCaptures)
-    }
-
-    nonisolated static func shouldRetryPendingCapturesAfterCredentialPreparationChange(
-        wasPreparing: Bool,
-        isPreparing: Bool
-    ) -> Bool {
-        credentialPreparationActions(
-            wasPreparing: wasPreparing,
-            isPreparing: isPreparing
-        ).contains(.retryPendingCaptures)
+        !isCredentialPreparationActive && !isCameraBusy
     }
 }

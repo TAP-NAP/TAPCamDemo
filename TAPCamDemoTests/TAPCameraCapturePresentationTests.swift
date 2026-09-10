@@ -137,86 +137,89 @@ struct TAPCameraCapturePresentationTests {
         ])
     }
 
-    @Test func captureLifecycleCoordinatorKeepsPendingSigningWarmupAndRetryPoliciesExplicit() {
-        #expect(CaptureLifecycleCoordinator.depthAlbumPresentationActions(isPresented: false) == [
-            .resumeAfterAnalysis,
-            .retryPendingCaptures
-        ])
-        #expect(CaptureLifecycleCoordinator.depthAlbumPresentationActions(
-            isPresented: false,
-            preparesVideoMode: true
-        ) == [
-            .resumeAfterAnalysis,
-            .prepareVideoMode,
-            .retryPendingCaptures
-        ])
-        #expect(CaptureLifecycleCoordinator.depthAlbumPresentationActions(isPresented: true) == [])
+    @Test @MainActor func foregroundLifecycleRestoresRouteBeforeRefreshingAndRetrying() async throws {
+        let directory = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let route = CameraRouteStore(contextStore: CameraRouteFileContextStore(directoryURL: directory))
+        let coordinator = CaptureLifecycleCoordinator()
+        var events: [String] = []
+        for phase in [ScenePhase.inactive, .background, .active] {
+            route.presentDepthAlbum()
+            events.removeAll()
+            await coordinator.scenePhaseDidChange(
+                phase,
+                shouldReturnToCameraOnForeground: true,
+                routeStore: route,
+                refreshLibraryPreview: {
+                    #expect(!route.isDepthAlbumPresented)
+                    events.append("preview")
+                },
+                retryPendingCaptures: { events.append("retry") }
+            )
+            #expect(events == (phase == .active ? ["preview", "retry"] : []))
+            #expect(route.isDepthAlbumPresented == (phase != .active))
+        }
+        route.presentDepthAlbum()
+        await coordinator.scenePhaseDidChange(
+            .active, shouldReturnToCameraOnForeground: false, routeStore: route,
+            refreshLibraryPreview: {}, retryPendingCaptures: {}
+        )
+        #expect(route.isDepthAlbumPresented)
+    }
 
-        #expect(CaptureLifecycleCoordinator.scenePhaseActions(for: .active) == [
-            .loadRecentTAPLibraryPreview,
-            .retryPendingCaptures
-        ])
-        #expect(CaptureLifecycleCoordinator.scenePhaseActions(
-            for: .active,
-            shouldReturnToCameraOnForeground: true
-        ) == [
-            .restoreCameraRoute,
-            .loadRecentTAPLibraryPreview,
-            .retryPendingCaptures
-        ])
-        #expect(CaptureLifecycleCoordinator.scenePhaseActions(for: .inactive) == [])
-        #expect(CaptureLifecycleCoordinator.scenePhaseActions(for: .background) == [])
+    @Test @MainActor func credentialCompletionRetriesOnlyOnTheFallingEdge() async {
+        let coordinator = CaptureLifecycleCoordinator()
+        for wasPreparing in [false, true] {
+            for isPreparing in [false, true] {
+                var calls = 0
+                await coordinator.credentialPreparationDidChange(
+                    wasPreparing: wasPreparing, isPreparing: isPreparing,
+                    retryPendingCaptures: { calls += 1 }
+                )
+                #expect(calls == (wasPreparing && !isPreparing ? 1 : 0))
+                #expect(CaptureLifecycleCoordinator.shouldRetryPendingCaptures(
+                    isCredentialPreparationActive: wasPreparing, isCameraBusy: isPreparing
+                ) == (!wasPreparing && !isPreparing))
+            }
+        }
+    }
 
-        #expect(CaptureLifecycleCoordinator.credentialPreparationActions(
-            wasPreparing: true,
-            isPreparing: false
-        ) == [.retryPendingCaptures])
-        #expect(CaptureLifecycleCoordinator.credentialPreparationActions(
-            wasPreparing: false,
-            isPreparing: false
-        ) == [])
-        #expect(CaptureLifecycleCoordinator.credentialPreparationActions(
-            wasPreparing: true,
-            isPreparing: true
-        ) == [])
+    @Test(.timeLimit(.minutes(1))) @MainActor
+    func libraryReturnWaitsForCameraButNotPendingRecovery() async {
+        let coordinator = CaptureLifecycleCoordinator()
+        let hiddenResult = await coordinator.depthAlbumPresentationDidChange(
+            isPresented: true, preparesVideoMode: false,
+            resumeAfterAnalysis: { Issue.record("Opening the library must not resume the camera") },
+            prepareVideoMode: { Issue.record("Opening the library must not prepare video"); return false },
+            isCameraReady: { false },
+            retryPendingCaptures: { Issue.record("Opening the library must not retry pending captures") }
+        )
+        #expect(hiddenResult == .notApplicable)
 
-        #expect(CaptureLifecycleCoordinator.pendingCaptureRetryActions(isCredentialPreparationActive: false) == [.retryPendingCaptures])
-        #expect(CaptureLifecycleCoordinator.pendingCaptureRetryActions(isCredentialPreparationActive: true) == [])
-        #expect(CaptureLifecycleCoordinator.pendingCaptureRetryActions(
-            isCredentialPreparationActive: false,
-            isCameraBusy: true
-        ) == [])
-
-        #expect(!CaptureLifecycleCoordinator.shouldRestoreCamera(for: .active))
-        #expect(CaptureLifecycleCoordinator.shouldRestoreCamera(
-            for: .active,
-            shouldReturnToCameraOnForeground: true
-        ))
-        #expect(!CaptureLifecycleCoordinator.shouldRestoreCamera(for: .inactive))
-        #expect(!CaptureLifecycleCoordinator.shouldRestoreCamera(for: .background))
-
-        #expect(CaptureLifecycleCoordinator.shouldResumeCameraAfterDepthAlbumPresentationChange(isPresented: false))
-        #expect(!CaptureLifecycleCoordinator.shouldResumeCameraAfterDepthAlbumPresentationChange(isPresented: true))
-
-        #expect(CaptureLifecycleCoordinator.shouldRetryPendingCaptures(isCredentialPreparationActive: false))
-        #expect(!CaptureLifecycleCoordinator.shouldRetryPendingCaptures(isCredentialPreparationActive: true))
-        #expect(!CaptureLifecycleCoordinator.shouldRetryPendingCaptures(
-            isCredentialPreparationActive: false,
-            isCameraBusy: true
-        ))
-
-        #expect(CaptureLifecycleCoordinator.shouldRetryPendingCapturesAfterCredentialPreparationChange(
-            wasPreparing: true,
-            isPreparing: false
-        ))
-        #expect(!CaptureLifecycleCoordinator.shouldRetryPendingCapturesAfterCredentialPreparationChange(
-            wasPreparing: false,
-            isPreparing: false
-        ))
-        #expect(!CaptureLifecycleCoordinator.shouldRetryPendingCapturesAfterCredentialPreparationChange(
-            wasPreparing: true,
-            isPreparing: true
-        ))
+        for video in [false, true] {
+            for ready in [false, true] {
+                var events: [String] = []
+                let (started, startedContinuation) = AsyncStream<Void>.makeStream()
+                let (release, releaseContinuation) = AsyncStream<Void>.makeStream()
+                let result = await coordinator.depthAlbumPresentationDidChange(
+                    isPresented: false, preparesVideoMode: video,
+                    resumeAfterAnalysis: { events.append("resume") },
+                    prepareVideoMode: { events.append("video"); return ready },
+                    isCameraReady: { ready },
+                    retryPendingCaptures: {
+                        startedContinuation.yield(())
+                        startedContinuation.finish()
+                        for await _ in release {}
+                    }
+                )
+                #expect(events == (video ? ["resume", "video"] : ["resume"]))
+                #expect(result == (ready ? (video ? .videoReady : .cameraReady) : .failed))
+                // Reaching this point proves recovery did not hold the return.
+                var iterator = started.makeAsyncIterator()
+                #expect(await iterator.next() != nil)
+                releaseContinuation.finish()
+            }
+        }
     }
 
     @Test func shutterHapticsPreferenceDefaultsToEnabled() throws {
