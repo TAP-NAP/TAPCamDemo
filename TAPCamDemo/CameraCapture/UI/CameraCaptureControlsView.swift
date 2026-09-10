@@ -17,12 +17,21 @@ struct CameraCaptureControlsState {
     let isLibraryWriteInProgress: Bool
     let selectedMode: CameraCaptureModeOption
     let isRecordingMovie: Bool
-    let isPreparingMovie: Bool
+    let isPreparingCaptureMode: Bool
     let isPhotographerModeActive: Bool
     let isInteractionLocked: Bool
     let adjustmentControlState: CameraAdjustmentControlState?
     let basicEVControlState: CameraBasicEVControlState
     let contentRotation: Angle
+
+    var shutterDiameter: CGFloat {
+        isRecordingMovie ? 34 : (selectedMode == .video ? 58 : 62)
+    }
+
+    var shutterColor: Color {
+        if !isShutterEnabled && !isPreparingCaptureMode && !isRecordingMovie { return .gray }
+        return selectedMode == .video || isRecordingMovie ? .red : .white
+    }
 
     var canOpenTAPLibrary: Bool {
         !isLibraryWriteInProgress && !isRecordingMovie
@@ -186,7 +195,7 @@ struct CameraCaptureControlsView: View {
                         .frame(minWidth: 48, minHeight: 26)
                 }
                 .buttonStyle(.plain)
-                .disabled(state.isInteractionLocked)
+                .disabled(state.isInteractionLocked || state.isPreparingCaptureMode || state.isRecordingMovie)
                 .accessibilityLabel(Text(LocalizedStringKey(mode.accessibilityLabel)))
                 .accessibilityIdentifier("camera.mode.\(mode.rawValue)")
             }
@@ -219,26 +228,15 @@ struct CameraCaptureControlsView: View {
                 .strokeBorder(.white, lineWidth: 4)
                 .frame(width: 78, height: 78)
 
-            Circle()
-                .fill(state.isShutterEnabled ? Color.white : Color.gray)
-                .frame(width: 62, height: 62)
-                .opacity(state.selectedMode == .video ? 0 : 1)
-
-            if state.selectedMode == .video {
-                if state.isPreparingMovie {
-                    ProgressView()
-                        .controlSize(.regular)
-                        .tint(.white)
-                        .frame(width: 58, height: 58)
-                } else if state.isRecordingMovie {
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(Color.red)
-                        .frame(width: 34, height: 34)
-                } else {
-                    Circle()
-                        .fill(state.isShutterEnabled ? Color.red : Color.gray)
-                        .frame(width: 58, height: 58)
-                }
+            if state.isRecordingMovie {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(state.shutterColor)
+                    .frame(width: state.shutterDiameter, height: state.shutterDiameter)
+            } else {
+                Circle()
+                    .fill(state.shutterColor)
+                    .frame(width: state.shutterDiameter, height: state.shutterDiameter)
+                    .animation(.easeInOut(duration: 0.2), value: state.selectedMode)
             }
         }
         .frame(width: 78, height: 78)
@@ -262,7 +260,9 @@ struct CameraCaptureControlsView: View {
         .accessibilityLabel(shutterAccessibilityLabel)
         .accessibilityIdentifier("camera.capture.shutter")
         .accessibilityAddTraits(.isButton)
+        .disabled(!state.isShutterEnabled)
         .accessibilityAction {
+            guard state.isShutterEnabled, !state.isInteractionLocked else { return }
             onCapture()
         }
     }
@@ -272,7 +272,7 @@ struct CameraCaptureControlsView: View {
         case .photo:
             return "Capture depth photo"
         case .video:
-            if state.isPreparingMovie {
+            if state.isPreparingCaptureMode {
                 return "Preparing TAP video"
             }
             return state.isRecordingMovie ? "Stop TAP video recording" : "Start TAP video recording"

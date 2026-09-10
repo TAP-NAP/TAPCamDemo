@@ -8,6 +8,13 @@ import AppAttestKit
 import Foundation
 import OSLog
 
+nonisolated enum CameraVideoPreparationState: Equatable, Sendable {
+    case idle
+    case preparing
+    case ready
+    case needsPreparation
+}
+
 @MainActor
 extension CameraViewModel {
     func handleVideoRecordingWriterFailure(
@@ -34,8 +41,10 @@ extension CameraViewModel {
         guard activeVideoRecordingCaptureID == captureID else {
             return
         }
+        let generation = configurationGeneration
         cancelVideoRecordingStopTriggers()
         isVideoRecording = false
+        videoPreparationState = .preparing
         videoRecordingStartedAt = nil
         statusMessage = "Video recording failed · rebuilding video mode..."
 
@@ -44,6 +53,8 @@ extension CameraViewModel {
         activeVideoRecordingCaptureID = nil
         videoRecordingTemporaryDirectoryURL = nil
 
+        guard generation == configurationGeneration, !isPausedForAnalysis else { return }
+        videoPreparationState = .idle
         let didPrepare = await prepareVideoModeIfNeeded()
         statusMessage = didPrepare
             ? "TAP video ready · please record again."
@@ -60,6 +71,7 @@ extension CameraViewModel {
             return false
         }
         guard activeSessionConfiguration.depthDeliverySupported else {
+            videoPreparationState = .idle
             statusMessage = CameraCaptureStatusPresentation.message(
                 for: TAPDepthCaptureError.depthDeliveryUnsupported,
                 context: .capture
@@ -67,9 +79,6 @@ extension CameraViewModel {
             return false
         }
 
-        let generation = configurationGeneration
-        isPreparingVideoMode = true
-        statusMessage = "Preparing TAP video..."
         let recordsAudio = CameraCaptureDataUsePreferences.usesMicrophoneData()
             && AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
         let videoRotationAngle = Self.videoRotationAngleForHorizonLevelCapture(
@@ -77,7 +86,7 @@ extension CameraViewModel {
         )
         let isVideoMirrored = activeSessionConfiguration.device.position == .front
 
-        do {
+        let didPrepare = await prepareVideoMode {
             try await sessionController.prepareVideoRecording(
                 configuration: activeSessionConfiguration,
                 recordsAudio: recordsAudio,
@@ -85,14 +94,28 @@ extension CameraViewModel {
                 isVideoMirrored: isVideoMirrored,
                 depthFilteringEnabled: depthFilteringEnabled ?? DepthAnalyzerPreferences.appleDepthFilteringEnabled()
             )
+        }
+        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        if didPrepare {
+            TAPDiagnostics.cameraCapture.info("video mode warmup complete recordsAudio=\(recordsAudio, privacy: .public) depthDeliverySupported=\(activeSessionConfiguration.depthDeliverySupported, privacy: .public)")
+        }
+        #endif
+        return didPrepare
+    }
+
+    /// The session operation, rather than animation time, owns readiness.
+    @discardableResult
+    func prepareVideoMode(using operation: () async throws -> Void) async -> Bool {
+        let generation = configurationGeneration
+        videoPreparationState = .preparing
+        statusMessage = "Preparing TAP video..."
+        do {
+            try await operation()
             guard generation == configurationGeneration, !isPausedForAnalysis else {
                 return false
             }
             statusMessage = "TAP video ready."
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.cameraCapture.info("video mode warmup complete recordsAudio=\(recordsAudio, privacy: .public) depthDeliverySupported=\(activeSessionConfiguration.depthDeliverySupported, privacy: .public)")
-            #endif
-            isPreparingVideoMode = false
+            videoPreparationState = .ready
             return true
         } catch {
             guard generation == configurationGeneration, !isPausedForAnalysis else {
@@ -102,7 +125,7 @@ extension CameraViewModel {
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.cameraCapture.error("video mode warmup failed error=\(TAPDiagnostics.describe(error), privacy: .public)")
             #endif
-            isPreparingVideoMode = false
+            videoPreparationState = .idle
             return false
         }
     }
@@ -111,8 +134,11 @@ extension CameraViewModel {
         guard !isVideoRecording else {
             return
         }
-        isPreparingVideoMode = false
+        let generation = configurationGeneration
+        videoPreparationState = .preparing
         await sessionController.discardPreparedVideoRecording(reason: "mode-switch")
+        guard generation == configurationGeneration else { return }
+        videoPreparationState = .idle
     }
 
     func toggleVideoRecording(
@@ -197,6 +223,7 @@ extension CameraViewModel {
         generation: Int,
         pendingCaptureWorkerClient: (any AppAttestClient)?
     ) async {
+        videoPreparationState = .preparing
         let captureID = UUID().uuidString
         let capturedAt = Date()
         let recordsAudio = CameraCaptureDataUsePreferences.usesMicrophoneData()
@@ -235,6 +262,7 @@ extension CameraViewModel {
             videoRecordingTemporaryDirectoryURL = workspace.bundleURL
             activeVideoRecordingCaptureID = captureID
             isVideoRecording = true
+            videoPreparationState = .idle
             videoRecordingStartedAt = Date()
             statusMessage = "Recording TAP video..."
             installVideoRecordingLimitTask(pendingCaptureWorkerClient: pendingCaptureWorkerClient)
@@ -248,6 +276,7 @@ extension CameraViewModel {
                 return
             }
             isVideoRecording = false
+            videoPreparationState = .needsPreparation
             videoRecordingStartedAt = nil
             activeVideoRecordingCaptureID = nil
             videoRecordingTemporaryDirectoryURL = nil
@@ -258,7 +287,7 @@ extension CameraViewModel {
         }
     }
 
-    private func stopVideoRecording(
+    func stopVideoRecording(
         reason: TAPVideoManifest.StopReason,
         pendingCaptureWorkerClient: (any AppAttestClient)?
     ) async {
@@ -266,9 +295,11 @@ extension CameraViewModel {
             return
         }
 
+        let generation = configurationGeneration
         let captureID = activeVideoRecordingCaptureID
         cancelVideoRecordingStopTriggers()
         isVideoRecording = false
+        videoPreparationState = .preparing
         videoRecordingStartedAt = nil
         statusMessage = "Finishing TAP video..."
         #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
@@ -291,9 +322,6 @@ extension CameraViewModel {
             if let pendingCaptureWorkerClient {
                 await retryPendingCaptures(pendingCaptureWorkerClient: pendingCaptureWorkerClient)
             }
-            if reason == .userStop {
-                _ = await prepareVideoModeIfNeeded()
-            }
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.pendingCapture.info("video pending ingest complete captureID=\(record.captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public) depthSamples=\(artifact.manifest.payload.depthCoverage.sampleCount, privacy: .public)")
             #endif
@@ -304,13 +332,12 @@ extension CameraViewModel {
             }
             videoRecordingTemporaryDirectoryURL = nil
             statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .capture)
-            if reason == .userStop {
-                _ = await prepareVideoModeIfNeeded()
-            }
             #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
             TAPDiagnostics.cameraCapture.error("video recording stop failed captureID=\(captureID ?? "none", privacy: .private) error=\(TAPDiagnostics.describe(error), privacy: .public)")
             #endif
         }
+        guard generation == configurationGeneration, !isPausedForAnalysis else { return }
+        videoPreparationState = .needsPreparation
     }
 
     /// Poster generation is derivative-only and deliberately completes before

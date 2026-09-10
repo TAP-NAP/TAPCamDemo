@@ -12,6 +12,169 @@ import UIKit
 @testable import TAPCamDemo
 
 struct TAPCameraCapturePresentationTests {
+    @Test(.timeLimit(.minutes(1))) @MainActor
+    func captureModeChangeWaitsForBothGraphDirectionsAndCanRetry() async throws {
+        let coordinator = CaptureLifecycleCoordinator()
+        for (mode, ready) in [(CameraCaptureModeOption.photo, true), (.video, false), (.video, true)] {
+            let (started, startedContinuation) = AsyncStream<Void>.makeStream()
+            var release: CheckedContinuation<Void, Never>?
+            var completed: [Bool] = []
+            var calls: [CameraCaptureModeOption] = []
+            let operation: @MainActor (CameraCaptureModeOption) async -> Void = { operationMode in
+                calls.append(operationMode)
+                await withCheckedContinuation { continuation in
+                    release = continuation
+                    startedContinuation.yield(())
+                    startedContinuation.finish()
+                }
+            }
+            let requestedTask = coordinator.changeCaptureMode(to: mode,
+                prepareVideoMode: { await operation(.video); return ready },
+                restorePhotoMode: { await operation(.photo) },
+                completion: { completed.append($0) })
+            let task = try #require(requestedTask)
+            #expect(coordinator.isChangingCaptureMode, "Gate is set before the target mode is published")
+            #expect(coordinator.changeCaptureMode(to: mode,
+                prepareVideoMode: { Issue.record("Duplicate preparation"); return false },
+                restorePhotoMode: { Issue.record("Duplicate restoration") }, completion: { _ in }) == nil)
+            var iterator = started.makeAsyncIterator()
+            #expect(await iterator.next() != nil)
+            #expect(calls == [mode] && completed.isEmpty && coordinator.isChangingCaptureMode)
+            try #require(release).resume()
+            await task.value
+            #expect(completed == [ready])
+            #expect(!coordinator.isChangingCaptureMode)
+        }
+    }
+
+    @Test(.timeLimit(.minutes(1))) @MainActor
+    func cancelledCaptureModeChangeWaitsForTheStartedOperationAndDoesNotPublish() async throws {
+        let coordinator = CaptureLifecycleCoordinator()
+        let (started, startedContinuation) = AsyncStream<Void>.makeStream()
+        var release: CheckedContinuation<Void, Never>?
+        var completed = false
+        let requestedTask = coordinator.changeCaptureMode(to: .video,
+            prepareVideoMode: {
+                await withCheckedContinuation { continuation in
+                    release = continuation
+                    startedContinuation.yield(())
+                    startedContinuation.finish()
+                }
+                return true
+            }, restorePhotoMode: {}, completion: { _ in completed = true })
+        let task = try #require(requestedTask)
+        var iterator = started.makeAsyncIterator()
+        #expect(await iterator.next() != nil)
+        coordinator.cancelCaptureModeChange()
+        #expect(coordinator.isChangingCaptureMode && !completed)
+        try #require(release).resume()
+        await task.value
+        #expect(!coordinator.isChangingCaptureMode && !completed)
+        let requestedRetry = coordinator.changeCaptureMode(to: .video,
+            prepareVideoMode: { true }, restorePhotoMode: {}, completion: { completed = $0 })
+        let retry = try #require(requestedRetry)
+        await retry.value
+        #expect(completed && !coordinator.isChangingCaptureMode)
+
+        for mode in CameraCaptureModeOption.allCases {
+            var restoredPhoto = false
+            let requestedCancellation = coordinator.changeCaptureMode(to: mode,
+                prepareVideoMode: { Issue.record("Cancelled Video preparation started"); return true },
+                restorePhotoMode: { restoredPhoto = true },
+                completion: { _ in Issue.record("Cancelled mode published completion") })
+            let cancelledTask = try #require(requestedCancellation)
+            coordinator.cancelCaptureModeChange()
+            await cancelledTask.value
+            #expect(restoredPhoto == (mode == .photo))
+            #expect(!coordinator.isChangingCaptureMode)
+        }
+    }
+
+    @Test @MainActor func videoPreparationIsInvalidatedWithTheCameraConfiguration() {
+        let viewModel = CameraViewModel(capabilityMatrix: CapabilityMatrix(rgbSources: [], depthCandidates: []),
+            libraryStore: LibraryMediaStore())
+        viewModel.isDepthCaptureReady = true
+        #expect(viewModel.canCapture)
+        for state in [CameraVideoPreparationState.idle, .preparing, .ready, .needsPreparation] {
+            viewModel.videoPreparationState = state
+            #expect(viewModel.isPreparingVideoMode == (state == .preparing))
+            #expect(viewModel.canCapture == (state != .preparing))
+            #expect(!viewModel.canUseVideoShutter, "No active camera configuration means no video readiness")
+            viewModel.configurationGeneration += 1
+            #expect(viewModel.videoPreparationState == .idle)
+        }
+        viewModel.isVideoRecording = true
+        #expect(viewModel.canUseVideoShutter, "The stop control must remain available")
+    }
+
+    @Test(.timeLimit(.minutes(1))) @MainActor
+    func stoppedVideoRequestsPreparationAndRetryWaitsForTheSessionOperation() async throws {
+        let viewModel = CameraViewModel(capabilityMatrix: CapabilityMatrix(rgbSources: [], depthCandidates: []),
+            libraryStore: LibraryMediaStore())
+        var states: [CameraVideoPreparationState] = []
+        let subscription = viewModel.$videoPreparationState.sink { states.append($0) }
+        defer { subscription.cancel() }
+        for reason in [TAPVideoManifest.StopReason.userStop, .durationLimit, .thermalPressure,
+                       .systemPressure, .appLifecycle, .storageFailure, .captureFailure] {
+            viewModel.isVideoRecording = true
+            // No recorder is installed: exercise the real stop-failure cleanup
+            // without camera hardware or a persisted capture workspace.
+            await viewModel.stopVideoRecording(reason: reason, pendingCaptureWorkerClient: nil)
+            #expect(!viewModel.isVideoRecording)
+            #expect(Array(states.suffix(2)) == [.preparing, .needsPreparation])
+            #expect(!viewModel.canUseVideoShutter)
+        }
+
+        let (started, startedContinuation) = AsyncStream<Void>.makeStream()
+        var release: CheckedContinuation<Void, Never>?
+        let preparation = Task { @MainActor in
+            await viewModel.prepareVideoMode {
+                await withCheckedContinuation { continuation in
+                    release = continuation
+                    startedContinuation.yield(())
+                    startedContinuation.finish()
+                }
+            }
+        }
+        var iterator = started.makeAsyncIterator()
+        #expect(await iterator.next() != nil)
+        #expect(viewModel.videoPreparationState == .preparing)
+        #expect(!viewModel.canUseVideoShutter)
+        try #require(release).resume()
+        #expect(await preparation.value)
+        #expect(viewModel.videoPreparationState == .ready)
+
+        #expect(await viewModel.prepareVideoMode {
+            throw TAPDepthCaptureError.videoRecordingNotActive
+        } == false)
+        #expect(viewModel.videoPreparationState == .idle, "A failed recovery does not request another automatic attempt")
+        #expect(await viewModel.prepareVideoMode {})
+        #expect(viewModel.videoPreparationState == .ready)
+        #expect(await viewModel.prepareVideoMode {
+            viewModel.configurationGeneration += 1
+        } == false)
+        #expect(viewModel.videoPreparationState == .idle, "A retired configuration cannot publish readiness")
+    }
+
+    @Test func shutterKeepsTargetModeAppearanceWhilePreparingAndPreservesRecordingSquare() {
+        for mode in CameraCaptureModeOption.allCases {
+            for preparing in [false, true] {
+                for recording in [false, true] {
+                    let state = CameraCaptureControlsState(isShutterEnabled: !preparing,
+                        isLibraryWriteInProgress: false, selectedMode: mode,
+                        isRecordingMovie: recording, isPreparingCaptureMode: preparing,
+                        isPhotographerModeActive: false, isInteractionLocked: false,
+                        adjustmentControlState: nil,
+                        basicEVControlState: CameraBasicEVControlState(bias: 0, isStripVisible: false),
+                        contentRotation: .zero)
+                    #expect(state.shutterDiameter == (recording ? 34 : (mode == .video ? 58 : 62)))
+                    #expect(state.shutterColor == (mode == .video || recording ? Color.red : Color.white))
+                    #expect(state.canOpenTAPLibrary == !recording)
+                }
+            }
+        }
+    }
+
     @Test @MainActor func cameraChromeOrientationMapsNotificationsAndRetainsStableAngle() async throws {
         let fixture = CameraChromeOrientationTestFixture()
         fixture.orientation = .landscapeLeft
@@ -550,7 +713,7 @@ struct TAPCameraCapturePresentationTests {
             isLibraryWriteInProgress: false,
             selectedMode: isPreparingMovie ? .video : .photo,
             isRecordingMovie: false,
-            isPreparingMovie: isPreparingMovie,
+            isPreparingCaptureMode: isPreparingMovie,
             isPhotographerModeActive: false,
             isInteractionLocked: false,
             adjustmentControlState: nil,
@@ -567,7 +730,7 @@ struct TAPCameraCapturePresentationTests {
             isLibraryWriteInProgress: true,
             selectedMode: isPreparingMovie ? .video : .photo,
             isRecordingMovie: false,
-            isPreparingMovie: isPreparingMovie,
+            isPreparingCaptureMode: isPreparingMovie,
             isPhotographerModeActive: false,
             isInteractionLocked: false,
             adjustmentControlState: nil,
@@ -587,7 +750,7 @@ struct TAPCameraCapturePresentationTests {
             isLibraryWriteInProgress: false,
             selectedMode: .video,
             isRecordingMovie: true,
-            isPreparingMovie: isPreparingMovie,
+            isPreparingCaptureMode: isPreparingMovie,
             isPhotographerModeActive: false,
             isInteractionLocked: false,
             adjustmentControlState: nil,
@@ -606,7 +769,7 @@ struct TAPCameraCapturePresentationTests {
             isLibraryWriteInProgress: false,
             selectedMode: .photo,
             isRecordingMovie: false,
-            isPreparingMovie: false,
+            isPreparingCaptureMode: false,
             isPhotographerModeActive: false,
             isInteractionLocked: false,
             adjustmentControlState: nil,

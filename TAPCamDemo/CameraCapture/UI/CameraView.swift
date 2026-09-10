@@ -241,6 +241,7 @@ struct CameraView: View {
             applyPendingIntentHandoff()
         }
         .onDisappear {
+            lifecycleCoordinator.cancelCaptureModeChange()
             persistRememberedViewfinderControlStateIfNeeded()
             isBasicEVStripVisible = false
             activeAdjustmentControl = nil
@@ -312,6 +313,7 @@ struct CameraView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active {
+                lifecycleCoordinator.cancelCaptureModeChange()
                 resourceInitializationMarkerCommitTask?.cancel()
                 resourceInitializationMarkerCommitTask = nil
                 viewfinderInteractivePublicationTask?.cancel()
@@ -340,6 +342,17 @@ struct CameraView: View {
             } else {
                 hapticFeedbackController.prepareForCameraInteraction()
                 evaluateStartupReadiness()
+                prepareSelectedVideoModeIfNeeded()
+            }
+        }
+        .onChange(of: viewModel.videoPreparationState) { _, state in
+            if state == .needsPreparation {
+                prepareSelectedVideoModeIfNeeded()
+            }
+        }
+        .onChange(of: lifecycleCoordinator.isChangingCaptureMode) { _, isChanging in
+            if !isChanging {
+                prepareSelectedVideoModeIfNeeded()
             }
         }
     }
@@ -731,7 +744,9 @@ struct CameraView: View {
                 isLibraryWriteInProgress: viewModel.isCaptureWriteInProgress,
                 selectedMode: selectedMode,
                 isRecordingMovie: viewModel.isVideoRecording,
-                isPreparingMovie: viewModel.isPreparingVideoMode,
+                isPreparingCaptureMode: viewModel.isPreparingVideoMode
+                    || viewModel.videoPreparationState == .needsPreparation
+                    || lifecycleCoordinator.isChangingCaptureMode,
                 isPhotographerModeActive: viewModel.isPhotographerModeActive,
                 isInteractionLocked: isCameraPathTransitioning,
                 adjustmentControlState: adjustmentControlState,
@@ -765,6 +780,7 @@ struct CameraView: View {
 
     private var shutterIsEnabled: Bool {
         guard !isCameraPathTransitioning,
+              !lifecycleCoordinator.isChangingCaptureMode,
               manualFocusAssistToken == nil else {
             return false
         }
@@ -965,22 +981,30 @@ struct CameraView: View {
         )
     }
 
+    private func prepareSelectedVideoModeIfNeeded() {
+        guard scenePhase == .active, selectedMode == .video,
+              !viewModel.isPausedForAnalysis,
+              viewModel.videoPreparationState == .idle || viewModel.videoPreparationState == .needsPreparation else {
+            return
+        }
+        selectCaptureMode(.video)
+    }
+
     private func selectCaptureMode(_ mode: CameraCaptureModeOption) {
-        guard !isCameraPathTransitioning else {
+        guard mode != selectedMode || (mode == .video && viewModel.videoPreparationState != .ready),
+              !isCameraPathTransitioning else {
             return
         }
         guard !viewModel.isVideoRecording,
               !viewModel.isPreparingVideoMode else {
             return
         }
-        selectedMode = mode
-        Task { @MainActor in
-            switch mode {
-            case .photo:
-                await viewModel.teardownPreparedVideoModeIfNeeded()
-            case .video:
-                let generation = viewModel.configurationGeneration
-                let didPrepare = await viewModel.prepareVideoModeIfNeeded()
+        let generation = viewModel.configurationGeneration
+        guard lifecycleCoordinator.changeCaptureMode(
+            to: mode,
+            prepareVideoMode: { await viewModel.prepareVideoModeIfNeeded() },
+            restorePhotoMode: { await viewModel.teardownPreparedVideoModeIfNeeded() },
+            completion: { didPrepare in
                 guard generation == viewModel.configurationGeneration,
                       !viewModel.isPausedForAnalysis else { return }
                 if !didPrepare {
@@ -988,7 +1012,8 @@ struct CameraView: View {
                     showViewfinderHint("Video mode unavailable")
                 }
             }
-        }
+        ) != nil else { return }
+        selectedMode = mode
     }
 
     private func cycleFlashMode() {
@@ -1965,6 +1990,7 @@ struct CameraView: View {
         manualFocusDraftRevision &+= 1
         focusLoupePulseID = nil
 
+        lifecycleCoordinator.cancelCaptureModeChange()
         viewModel.pauseForAnalysis()
         routeStore.presentDepthAlbum()
     }

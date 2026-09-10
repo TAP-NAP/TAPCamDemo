@@ -20,8 +20,48 @@ final class CaptureLifecycleCoordinator: ObservableObject {
     nonisolated static let startupPendingRetryDelayNanoseconds: UInt64 = 1_500_000_000
 
     private var didLeaveActiveScene = false
+    @MainActor @Published private var captureModeChangeTask: Task<Void, Never>?
+
+    @MainActor var isChangingCaptureMode: Bool { captureModeChangeTask != nil }
 
     nonisolated init() {}
+
+    /// Lock the shutter before publishing the target appearance, then wait for
+    /// the actual graph operation. Animation duration never determines readiness.
+    @MainActor @discardableResult
+    func changeCaptureMode(
+        to mode: CameraCaptureModeOption,
+        prepareVideoMode: @escaping @MainActor () async -> Bool,
+        restorePhotoMode: @escaping @MainActor () async -> Void,
+        completion: @escaping @MainActor (Bool) -> Void
+    ) -> Task<Void, Never>? {
+        guard captureModeChangeTask == nil else { return nil }
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { captureModeChangeTask = nil }
+            let ready: Bool
+            switch mode {
+            case .photo:
+                // The published Photo mode still requires graph cleanup if
+                // the view leaves before this task starts.
+                await restorePhotoMode()
+                ready = true
+            case .video:
+                guard !Task.isCancelled else { return }
+                ready = await prepareVideoMode()
+            }
+            guard !Task.isCancelled else { return }
+            completion(ready)
+        }
+        captureModeChangeTask = task
+        return task
+    }
+
+    @MainActor
+    func cancelCaptureModeChange() {
+        // Keep the gate until any already-started session-queue operation returns.
+        captureModeChangeTask?.cancel()
+    }
 
     nonisolated enum LibraryReturnResult: Equatable, Sendable {
         case notApplicable

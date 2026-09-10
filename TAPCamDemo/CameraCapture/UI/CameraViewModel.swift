@@ -41,7 +41,7 @@ final class CameraViewModel: ObservableObject {
     @Published var exposureRuntimeEvent: CameraExposureRuntimeEvent?
     @Published var isVideoRecording = false
     @Published var videoRecordingStartedAt: Date?
-    @Published var isPreparingVideoMode = false
+    @Published var videoPreparationState = CameraVideoPreparationState.idle
     @Published var photographerModeState: PhotographerModeState
     @Published var suspendedRearModeIntent: PhotographerRearModeIntent = .standard
     @Published private(set) var isSessionControllerSuspectedWedged = false
@@ -69,7 +69,9 @@ final class CameraViewModel: ObservableObject {
     let videoPosterGenerator: any LibraryVideoPosterGenerating
     let pipeline: CapturePipeline
     var activeSessionConfiguration: SessionConfigurationResult?
-    var configurationGeneration = 0
+    var configurationGeneration = 0 {
+        didSet { videoPreparationState = .idle }
+    }
     var depthSelectionMode: DepthSelectionMode = .automatic
     var requestedGlobalAutoExposureBias = CameraEVPreferences.defaultGlobalBias
     var activeVideoRecordingCaptureID: String?
@@ -120,13 +122,16 @@ final class CameraViewModel: ObservableObject {
 
     var canCapture: Bool {
         !isPausedForAnalysis
+            && !isPreparingVideoMode
             && isDepthCaptureReady
             && pendingJobCount < CaptureJobQueue.defaultMaximumPendingJobs
     }
 
+    var isPreparingVideoMode: Bool { videoPreparationState == .preparing }
+
     var canUseVideoShutter: Bool {
         isVideoRecording
-            || (!isPreparingVideoMode
+            || (videoPreparationState == .ready
                 && !isPausedForAnalysis
                 && activeSessionConfiguration?.depthDeliverySupported == true
                 && pendingJobCount < CaptureJobQueue.defaultMaximumPendingJobs)
@@ -458,7 +463,6 @@ final class CameraViewModel: ObservableObject {
         isConfiguringSession = false
         reconcileInterruptedPhotographerModeTransition()
         isPausedForAnalysis = false
-        isPreparingVideoMode = false
         sessionController.stop()
     }
 
@@ -473,7 +477,6 @@ final class CameraViewModel: ObservableObject {
         configurationGeneration += 1
         isConfiguringSession = false
         reconcileInterruptedPhotographerModeTransition()
-        isPreparingVideoMode = false
         isPausedForAnalysis = true
         isDepthCaptureReady = false
         activeSessionConfiguration = nil
