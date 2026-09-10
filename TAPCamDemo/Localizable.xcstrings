@@ -937,6 +937,7 @@
       }
     },
     "Detected plane %lld percent confidence" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3863,6 +3864,9 @@
         }
       }
     },
+    "Try again from TAP Library." : {
+
+    },
     "Turn off Pro mode" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -3939,6 +3943,12 @@
           }
         }
       }
+    },
+    "Unable to delete photo" : {
+
+    },
+    "Unable to delete video" : {
+
     },
     "Unable to load album" : {
       "localizations" : {
