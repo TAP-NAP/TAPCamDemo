@@ -13,7 +13,6 @@ final class TAPVideoPlaybackFixtureUITests: XCTestCase {
     private static let elapsedIdentifier = "tap.video.playback.transport.elapsed"
     private static let shareIdentifier = "tap.viewer.share"
     private static let opacityIdentifier = "tap.viewer.opacity"
-    private static let edgeToastIdentifier = "tap.viewer.edgeToast"
     private static let selectedValueTokens = ["Selected", "已选中"]
     private static let selectedReadyValueTokens = [
         "Selected, Ready",

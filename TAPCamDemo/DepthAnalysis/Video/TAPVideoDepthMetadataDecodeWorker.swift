@@ -18,6 +18,7 @@ nonisolated enum TAPVideoDepthMetadataDecodeWorker {
         leadToleranceSeconds: Double,
         depthFormat: TAPVideoManifest.DepthFormat,
         displayOrientation: CGImagePropertyOrientation,
+        rendersHeatmap: Bool,
         decodeAdmission: TAPVideoDepthDecodeAdmission,
         token: TAPVideoDepthDecodeAdmission.Token
     ) async -> TAPVideoDepthPipelineEvent.Payload? {
@@ -30,6 +31,7 @@ nonisolated enum TAPVideoDepthMetadataDecodeWorker {
                 leadToleranceSeconds: leadToleranceSeconds,
                 depthFormat: depthFormat,
                 displayOrientation: displayOrientation,
+                rendersHeatmap: rendersHeatmap,
                 shouldContinue: {
                     !Task.isCancelled && decodeAdmission.isCurrent(token)
                 }
@@ -60,6 +62,7 @@ nonisolated enum TAPVideoDepthMetadataDecodeWorker {
         presentationTimeSeconds: Double,
         depthFormat: TAPVideoManifest.DepthFormat,
         displayOrientation: CGImagePropertyOrientation,
+        rendersHeatmap: Bool,
         decodeAdmission: TAPVideoDepthDecodeAdmission,
         token: TAPVideoDepthDecodeAdmission.Token
     ) async -> TAPVideoDepthPipelineEvent.Payload? {
@@ -84,6 +87,7 @@ nonisolated enum TAPVideoDepthMetadataDecodeWorker {
                 presentationTimeSeconds: presentationTimeSeconds,
                 depthFormat: depthFormat,
                 displayOrientation: displayOrientation,
+                rendersHeatmap: rendersHeatmap,
                 shouldContinue: { decodeAdmission.isCurrent(token) }
             ))
         } catch is CancellationError {

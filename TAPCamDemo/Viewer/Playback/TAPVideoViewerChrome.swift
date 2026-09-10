@@ -5,12 +5,6 @@
 
 import SwiftUI
 
-nonisolated enum TAPVideoViewerChromeLayout {
-    static func noticeTopPadding(topSafeArea: CGFloat) -> CGFloat {
-        max(topSafeArea + 66, 116)
-    }
-}
-
 nonisolated enum TAPVideoViewerModePolicy {
     static func items(
         availability: TAPVideoRegisteredDepthAvailability,
@@ -101,7 +95,6 @@ struct TAPVideoViewerChrome: View {
     @Binding var overlayOpacity: Double
     let shareSubject: DepthAnalysisShareSubject?
     let shareResourceAccess: DepthAnalysisShareResourceAccess?
-    let topSafeArea: CGFloat
     let bottomSafeArea: CGFloat
     let onModeTapped: (String) -> Void
     let onDeleteTapped: () -> Void

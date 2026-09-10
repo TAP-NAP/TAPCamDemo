@@ -17,6 +17,7 @@ final class TAPVideoDepthMetadataOutput: NSObject, AVPlayerItemMetadataOutputPus
     private nonisolated let displayOrientation: CGImagePropertyOrientation
     private nonisolated let depthFormat: TAPVideoManifest.DepthFormat
     private nonisolated let depthTrackID: CMPersistentTrackID?
+    private nonisolated let rendersHeatmap: Bool
     private nonisolated let decodeOwner: TAPVideoDepthDecodeAdmission.Owner
     private let metadataQueue = DispatchQueue(
         label: "com.tapnap.video-depth.metadata",
@@ -33,11 +34,13 @@ final class TAPVideoDepthMetadataOutput: NSObject, AVPlayerItemMetadataOutputPus
         displayOrientation: CGImagePropertyOrientation,
         depthFormat: TAPVideoManifest.DepthFormat,
         depthTrackID: CMPersistentTrackID?,
+        rendersHeatmap: Bool = true,
         onEvent: @escaping (TAPVideoDepthPipelineEvent) -> Void
     ) {
         self.displayOrientation = displayOrientation
         self.depthFormat = depthFormat
         self.depthTrackID = depthTrackID
+        self.rendersHeatmap = rendersHeatmap
         self.decodeOwner = Self.decodeAdmission.makeOwner()
         self.onEvent = onEvent
     }
@@ -105,7 +108,7 @@ final class TAPVideoDepthMetadataOutput: NSObject, AVPlayerItemMetadataOutputPus
         let expectedGeneration = activeGeneration
         probeTask = Task.detached(priority: .userInitiated) {
             [weak output = self, decodeAdmission, depthFormat = self.depthFormat,
-             displayOrientation = self.displayOrientation] in
+             displayOrientation = self.displayOrientation, rendersHeatmap = self.rendersHeatmap] in
             await Self.runProbe(
                 output: output,
                 fileURL: fileURL,
@@ -115,6 +118,7 @@ final class TAPVideoDepthMetadataOutput: NSObject, AVPlayerItemMetadataOutputPus
                 leadToleranceSeconds: leadToleranceSeconds,
                 depthFormat: depthFormat,
                 displayOrientation: displayOrientation,
+                rendersHeatmap: rendersHeatmap,
                 decodeAdmission: decodeAdmission,
                 decodeOwner: decodeOwner,
                 expectedGeneration: expectedGeneration,
@@ -132,6 +136,7 @@ final class TAPVideoDepthMetadataOutput: NSObject, AVPlayerItemMetadataOutputPus
         leadToleranceSeconds: Double,
         depthFormat: TAPVideoManifest.DepthFormat,
         displayOrientation: CGImagePropertyOrientation,
+        rendersHeatmap: Bool,
         decodeAdmission: TAPVideoDepthDecodeAdmission,
         decodeOwner: TAPVideoDepthDecodeAdmission.Owner,
         expectedGeneration: UInt64,
@@ -154,6 +159,7 @@ final class TAPVideoDepthMetadataOutput: NSObject, AVPlayerItemMetadataOutputPus
             leadToleranceSeconds: leadToleranceSeconds,
             depthFormat: depthFormat,
             displayOrientation: displayOrientation,
+            rendersHeatmap: rendersHeatmap,
             decodeAdmission: decodeAdmission,
             token: token
         ), decodeAdmission.isCurrent(token) else {
@@ -208,13 +214,15 @@ final class TAPVideoDepthMetadataOutput: NSObject, AVPlayerItemMetadataOutputPus
 
         let frameOrientation = displayOrientation
         Task.detached(priority: .userInitiated) {
-            [weak output = self, decodeAdmission, depthFormat = self.depthFormat] in
+            [weak output = self, decodeAdmission, depthFormat = self.depthFormat,
+             rendersHeatmap = self.rendersHeatmap] in
             await Self.runPushDecode(
                 output: output,
                 item: item,
                 presentationTimeSeconds: presentationTimeSeconds,
                 depthFormat: depthFormat,
                 displayOrientation: frameOrientation,
+                rendersHeatmap: rendersHeatmap,
                 decodeAdmission: decodeAdmission,
                 token: token
             )
@@ -247,6 +255,7 @@ final class TAPVideoDepthMetadataOutput: NSObject, AVPlayerItemMetadataOutputPus
         presentationTimeSeconds: Double,
         depthFormat: TAPVideoManifest.DepthFormat,
         displayOrientation: CGImagePropertyOrientation,
+        rendersHeatmap: Bool,
         decodeAdmission: TAPVideoDepthDecodeAdmission,
         token: TAPVideoDepthDecodeAdmission.Token
     ) async {
@@ -259,6 +268,7 @@ final class TAPVideoDepthMetadataOutput: NSObject, AVPlayerItemMetadataOutputPus
                   presentationTimeSeconds: presentationTimeSeconds,
                   depthFormat: depthFormat,
                   displayOrientation: displayOrientation,
+                  rendersHeatmap: rendersHeatmap,
                   decodeAdmission: decodeAdmission,
                   token: token
               ),

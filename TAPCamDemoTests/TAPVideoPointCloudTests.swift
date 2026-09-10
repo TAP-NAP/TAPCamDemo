@@ -220,7 +220,67 @@ struct TAPVideoPointCloudTests {
     }
 
     #if DEBUG
-    @Test @MainActor func pausedRGBFixturePreservesDisplayedPTSWhileSmoothingChangesAndClearsOnStop() async throws {
+    @Test @MainActor func metadataPushAndProbeRenderHeatmapsOnlyForTwoD() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let artifact = try await TAPVideoPlaybackFixtureGenerator.generate(scenario: .pointCloud, outputDirectoryURL: directory)
+        let format = try #require(artifact.manifest.payload.depthCoverage.format)
+        let trackID = try #require(artifact.manifest.payload.depthCoverage.trackID)
+        let pixelCount = Int(format.width) * Int(format.height)
+        let packed = Array(repeating: Float16(1), count: pixelCount).withUnsafeBytes { Data($0) }
+        let klv = TAPDepthKLVFrame(frameIndex: 0, timestampValue: 0, timestampTimescale: 600,
+            compressionCodec: .raw, uncompressedByteCount: packed.count, calibrationIndex: 0, payload: packed)
+        let item = AVMutableMetadataItem()
+        item.identifier = AVMetadataIdentifier(rawValue: "mdta/com.tapnap.depth.klv")
+        item.dataType = kCMMetadataBaseDataType_RawData as String
+        item.value = try klv.encodedData() as NSData
+        let group = AVTimedMetadataGroup(items: [item], timeRange: CMTimeRange(start: .zero, duration: CMTime(value: 1, timescale: 15)))
+
+        for rendersHeatmap in [false, true] {
+            var frames: [TAPDecodedDepthVideoFrame] = []
+            var pushWasBackpressured = false
+            let onEvent: (TAPVideoDepthPipelineEvent) -> Void = { event in
+                switch event.payload {
+                case .frame(let frame): frames.append(frame)
+                case .decodeFailed(reason: .backpressure, presentationTimeSeconds: _): pushWasBackpressured = true
+                default: Issue.record("Metadata push/probe did not produce a depth frame")
+                }
+            }
+            // The 2D caller keeps the default; 3D explicitly opts out.
+            let output = rendersHeatmap
+                ? TAPVideoDepthMetadataOutput(displayOrientation: .up, depthFormat: format, depthTrackID: trackID, onEvent: onEvent)
+                : TAPVideoDepthMetadataOutput(displayOrientation: .up, depthFormat: format, depthTrackID: trackID,
+                                              rendersHeatmap: false, onEvent: onEvent)
+            defer { output.detach() }
+            output.beginNewGeneration()
+            output.metadataOutput(AVPlayerItemMetadataOutput(identifiers: nil), didOutputTimedMetadataGroups: [group], from: nil)
+            var deadline = ContinuousClock.now.advanced(by: .seconds(8))
+            while frames.isEmpty, ContinuousClock.now < deadline {
+                try await Task.sleep(for: .milliseconds(10))
+                if pushWasBackpressured {
+                    pushWasBackpressured = false
+                    output.metadataOutput(AVPlayerItemMetadataOutput(identifiers: nil), didOutputTimedMetadataGroups: [group], from: nil)
+                }
+            }
+            try #require(frames.count == 1, "Metadata push failed to publish")
+            output.probe(fileURL: artifact.fileURL, playbackTimeSeconds: 0,
+                         staleToleranceSeconds: 0.2, leadToleranceSeconds: 0.05)
+            deadline = ContinuousClock.now.advanced(by: .seconds(8))
+            while frames.count < 2, ContinuousClock.now < deadline {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            try #require(frames.count == 2, "Metadata probe failed to publish")
+            for frame in frames {
+                #expect((frame.image.cgImage != nil) == rendersHeatmap)
+                #expect(frame.packedDepth.count == format.uncompressedFrameByteCount)
+                #expect(frame.calibrationIndex == 0)
+                #expect(frame.retainedByteCount == format.uncompressedFrameByteCount
+                    + (rendersHeatmap ? pixelCount * 4 : 0))
+            }
+        }
+    }
+
+    @Test @MainActor func pausedRGBFixtureReentersThreeDWithSmoothingAndClearsOnStop() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let artifact = try await TAPVideoPlaybackFixtureGenerator.generate(scenario: .pointCloud, outputDirectoryURL: directory)
@@ -234,17 +294,17 @@ struct TAPVideoPointCloudTests {
         try await waitForThreeD(session)
         let first = try #require(session.pointCloudStore.presentationTimeSeconds)
         #expect(first == 0)
-        session.setThreeDPlaybackSmoothingEnabled(true)
+        session.prepareThreeDPlaybackGate(smoothingEnabled: true)
         try await waitForThreeD(session)
         #expect(session.pointCloudStore.presentationTimeSeconds == first)
         #expect(session.currentPlaybackTimeSeconds == 0)
         let player = try #require(session.player)
         _ = await player.seek(to: CMTime(seconds: 0.8, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
-        session.setThreeDPlaybackSmoothingEnabled(false)
+        session.prepareThreeDPlaybackGate(smoothingEnabled: false)
         try await waitForThreeD(session, expectedTime: 0.8)
         let afterSeek = try #require(session.pointCloudStore.presentationTimeSeconds)
         #expect(abs(afterSeek - 0.8) < 0.001)
-        session.setThreeDPlaybackSmoothingEnabled(true)
+        session.prepareThreeDPlaybackGate(smoothingEnabled: true)
         try await waitForThreeD(session)
         #expect(session.pointCloudStore.presentationTimeSeconds == afterSeek)
         session.stopPlayback()

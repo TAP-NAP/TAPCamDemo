@@ -30,7 +30,6 @@ nonisolated struct TAPVideoDepthPipelineEvent {
 final class TAPVideoDepthPipeline {
     struct PresentationState: Equatable {
         let isReady: Bool
-        let gapNotice: String?
     }
 
     let overlayStore = TAPVideoDepthOverlayStore()
@@ -52,7 +51,6 @@ final class TAPVideoDepthPipeline {
     private var readinessTrace: OSSignpostIntervalState?
     private(set) var isPresentationRequested = false
     private(set) var isPreparing = false
-    private(set) var gapNotice: String?
 
     init(sourceLabel: String) {
         self.sourceLabel = sourceLabel
@@ -127,7 +125,6 @@ final class TAPVideoDepthPipeline {
         finishReadiness(outcome: "cancelled")
         isPresentationRequested = false
         isPreparing = false
-        gapNotice = nil
         if let metadataOutput {
             generation = metadataOutput.beginNewGeneration()
             metadataOutput.detach()
@@ -189,7 +186,6 @@ final class TAPVideoDepthPipeline {
         registrationDescriptor = nil
         frameCache.clear()
         overlayStore.clear()
-        gapNotice = nil
         currentPlaybackTimeSeconds = 0
         currentFrameTimeSeconds = nil
         isHoldingLastFrameAcrossGap = false
@@ -244,9 +240,6 @@ final class TAPVideoDepthPipeline {
             return
         }
         isPreparing = false
-        if gapNotice == nil {
-            gapNotice = Self.localizedGapNotice
-        }
         publishPresentationState()
         finishReadiness(outcome: outcome)
     }
@@ -276,7 +269,6 @@ final class TAPVideoDepthPipeline {
             return
         }
         isHoldingLastFrameAcrossGap = false
-        gapNotice = nil
         isPreparing = false
         guard currentFrameTimeSeconds != frame.presentationTimeSeconds else {
             publishPresentationState()
@@ -300,10 +292,6 @@ final class TAPVideoDepthPipeline {
     private func handleMissingFrame(at playbackTimeSeconds: Double) {
         logFrameSelectionMiss(playbackTimeSeconds: playbackTimeSeconds)
         holdOrClearDisplayedFrameAcrossGap()
-        if !isPreparing,
-           playbackTimeSeconds >= staleToleranceSeconds {
-            gapNotice = Self.localizedGapNotice
-        }
         publishPresentationState()
     }
 
@@ -380,15 +368,7 @@ final class TAPVideoDepthPipeline {
 
     private func publishPresentationState() {
         onPresentationStateChange?(PresentationState(
-            isReady: isReady,
-            gapNotice: gapNotice
+            isReady: isReady
         ))
-    }
-
-    private static var localizedGapNotice: String {
-        String(
-            localized: "video.depth.gap",
-            defaultValue: "Depth data is unavailable at this moment."
-        )
     }
 }

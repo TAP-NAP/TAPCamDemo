@@ -71,7 +71,7 @@ final class TAPVideoPointCloudPlayback {
         videoOutput = output
         let metadata = TAPVideoDepthMetadataOutput(
             displayOrientation: .up, depthFormat: configuration.format,
-            depthTrackID: configuration.trackID
+            depthTrackID: configuration.trackID, rendersHeatmap: false
         ) { [weak self, weak output] event in
             // Metadata generations restart for each attachment; a late callback
             // from a previous item or 3D visit must not populate this one.
@@ -96,12 +96,6 @@ final class TAPVideoPointCloudPlayback {
         item = nil
         isRequested = false
         clear()
-    }
-
-    func setSmoothing(_ enabled: Bool, at time: Double) {
-        guard smoothing != enabled else { return }
-        smoothing = enabled
-        reset(at: time)
     }
 
     func suspend() {

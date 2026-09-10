@@ -76,6 +76,7 @@ nonisolated enum TAPVideoDepthMetadataReader {
         leadToleranceSeconds: Double,
         depthFormat: TAPVideoManifest.DepthFormat,
         displayOrientation: CGImagePropertyOrientation,
+        rendersHeatmap: Bool = true,
         shouldContinue: @escaping @Sendable () -> Bool
     ) async throws -> TAPVideoDepthMetadataReaderResult {
         let context = try await readContext(
@@ -102,6 +103,7 @@ nonisolated enum TAPVideoDepthMetadataReader {
                 presentationTimeSeconds: candidate.timestamp,
                 depthFormat: depthFormat,
                 displayOrientation: displayOrientation,
+                rendersHeatmap: rendersHeatmap,
                 shouldContinue: shouldContinue
             ))
         } catch is CancellationError {

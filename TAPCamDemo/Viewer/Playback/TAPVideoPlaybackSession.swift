@@ -36,7 +36,6 @@ final class TAPVideoPlaybackSession {
     private(set) var isTwoDPlaybackReady = false
     private(set) var isThreeDPlaybackReady = false
     private(set) var isThreeDDepthAvailable = false
-    private(set) var depthGapNotice: String?
     private(set) var requestKey: MediaFetchRequestKey?
     private(set) var isOriginalResourceReady = false
     private(set) var pendingSignedOriginalRefreshID: UUID?
@@ -79,7 +78,6 @@ final class TAPVideoPlaybackSession {
         }
         depthPipeline.onPresentationStateChange = { [weak self] state in
             self?.isTwoDPlaybackReady = state.isReady
-            self?.depthGapNotice = state.gapNotice
         }
     }
 
@@ -321,10 +319,6 @@ final class TAPVideoPlaybackSession {
     }
 
     func cancelThreeDPlaybackGate() { pointCloudPlayback.cancel() }
-
-    func setThreeDPlaybackSmoothingEnabled(_ enabled: Bool) {
-        pointCloudPlayback.setSmoothing(enabled, at: currentPlaybackTimeSeconds)
-    }
 
     private func cancelCurrentFetch() {
         requestKey = nil

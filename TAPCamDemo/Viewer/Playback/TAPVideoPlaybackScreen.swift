@@ -65,7 +65,6 @@ struct TAPVideoPlaybackScreen: View {
                     selectedTool: selectedTool,
                     overlayOpacity: $depthOverlayOpacity,
                     shareSubject: shareSubject,
-                    topSafeArea: insets.top,
                     bottomSafeArea: insets.bottom,
                     onModeTapped: onModeTapped,
                     onDeleteTapped: onDeleteTapped
@@ -243,7 +242,6 @@ private struct TAPVideoPlaybackSessionChrome: View {
     let selectedTool: AnalysisViewerTool
     @Binding var overlayOpacity: Double
     let shareSubject: DepthAnalysisShareSubject?
-    let topSafeArea: CGFloat
     let bottomSafeArea: CGFloat
     let onModeTapped: (String) -> Void
     let onDeleteTapped: () -> Void
@@ -267,7 +265,6 @@ private struct TAPVideoPlaybackSessionChrome: View {
                     return .video(lease)
                 }
             ),
-            topSafeArea: topSafeArea,
             bottomSafeArea: bottomSafeArea,
             onModeTapped: onModeTapped,
             onDeleteTapped: onDeleteTapped
