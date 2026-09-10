@@ -111,9 +111,9 @@ struct CameraTickedSliderRow: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: Metrics.rowHeight)
-        .background(.black.opacity(0.58), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(.black.opacity(0.58), in: Capsule())
         .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            Capsule()
                 .stroke(.white.opacity(0.12), lineWidth: 1)
         }
         .accessibilityElement(children: .contain)
