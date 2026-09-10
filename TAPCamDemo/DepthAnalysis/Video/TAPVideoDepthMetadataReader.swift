@@ -13,6 +13,7 @@ nonisolated struct TAPVideoPlaybackPresentation {
     let depthTrackID: CMPersistentTrackID?
     var calibrationTable: [TAPVideoManifest.CameraCalibration] = []
     var depthGaps: [TAPVideoManifest.DepthGap] = []
+    var cameraMotion: TAPVideoPointCloudMotion?
 }
 
 nonisolated enum TAPVideoDepthMetadataReaderResult {
@@ -47,15 +48,22 @@ nonisolated enum TAPVideoDepthMetadataReader {
         await Task.detached(priority: .utility) {
             do {
                 let manifest = try TAPVideoManifestBox.decodedManifest(fromFileAt: fileURL)
+                let descriptor = registrationAdapter.registrationDescriptor(for: manifest)
+                let telemetry = try? TAPVideoCaptureTelemetryBox.read(from: fileURL, manifest: manifest)
+                let cameraMotion = manifest.payload.selectedCameraPlan.position == "back"
+                    ? descriptor?.projection.flatMap { projection in
+                        telemetry.flatMap { TAPVideoPointCloudMotion(motion: $0.motion, projection: projection) }
+                    } : nil
                 return TAPVideoPlaybackPresentation(
                     depthFrameOrientation: TAPVideoDepthDisplayOrientation.cgImageOrientation(
                         from: manifest.payload.rgbTrack.transform
                     ),
-                    registrationDescriptor: registrationAdapter.registrationDescriptor(for: manifest),
+                    registrationDescriptor: descriptor,
                     depthFormat: manifest.payload.depthCoverage.format,
                     depthTrackID: manifest.payload.depthCoverage.trackID,
                     calibrationTable: manifest.payload.spatialRegistration.calibrationTable,
-                    depthGaps: manifest.payload.depthCoverage.gaps
+                    depthGaps: manifest.payload.depthCoverage.gaps,
+                    cameraMotion: cameraMotion
                 )
             } catch {
                 return TAPVideoPlaybackPresentation(
@@ -109,57 +117,6 @@ nonisolated enum TAPVideoDepthMetadataReader {
         } catch {
             throw TAPVideoDepthMetadataReaderFailure(reason: .decode)
         }
-    }
-
-    /// Bounded frames strictly before the displayed frame for a paused 3D comparison.
-    /// The caller already owns that current frame; source bytes remain untouched.
-    static func readHistory(
-        fileURL: URL,
-        trackID: CMPersistentTrackID,
-        through time: Double,
-        depthFormat: TAPVideoManifest.DepthFormat,
-        maximumRetainedBytes: Int = TAPVideoDepthPlaybackBudget.maximumRetainedFrameBytes,
-        shouldContinue: @escaping @Sendable () -> Bool
-    ) async throws -> [TAPDecodedDepthVideoFrame] {
-        guard let context = try await readContext(
-            fileURL: fileURL, trackID: trackID, playbackTimeSeconds: time,
-            staleToleranceSeconds: TAPVideoPointCloudSmoothing.historySeconds,
-            leadToleranceSeconds: 0.000_001, shouldContinue: shouldContinue
-        ) else { return [] }
-        let reader = try makeReader(for: context)
-        let output = AVAssetReaderTrackOutput(track: context.track, outputSettings: nil)
-        guard reader.canAdd(output) else { return [] }
-        reader.add(output)
-        let adaptor = AVAssetReaderOutputMetadataAdaptor(assetReaderTrackOutput: output)
-        guard reader.startReading() else { return [] }
-        defer { reader.cancelReading() }
-        let budget = min(max(0, maximumRetainedBytes), TAPVideoDepthPlaybackBudget.maximumRetainedFrameBytes)
-        guard depthFormat.uncompressedFrameByteCount > 0 else { return [] }
-        let count = min(TAPVideoPointCloudSmoothing.maximumHistoryFrames, budget / depthFormat.uncompressedFrameByteCount)
-        guard count > 0 else { return [] }
-        let candidates = try collectCandidates(
-            from: adaptor, window: context.window, maximumCandidateCount: count,
-            latestTimestampExclusive: time, shouldContinue: shouldContinue
-        )
-        guard reader.status != .failed else {
-            throw TAPVideoDepthMetadataReaderFailure(reason: .metadataRead)
-        }
-        var frames: [TAPDecodedDepthVideoFrame] = []
-        var retainedBytes = 0
-        for index in candidates.items.indices.reversed() {
-            try checkCancellation(shouldContinue)
-            let data = try await loadData(from: candidates.items[index])
-            let frame = try TAPDepthFrameDecoder.decode(
-                data, presentationTimeSeconds: candidates.timestamps[index],
-                depthFormat: depthFormat, displayOrientation: .up, rendersHeatmap: false,
-                shouldContinue: shouldContinue
-            )
-            // CALD adds per-frame calibration storage beyond the raw-depth admission estimate.
-            guard frame.retainedByteCount <= budget - retainedBytes else { break }
-            frames.append(frame)
-            retainedBytes += frame.retainedByteCount
-        }
-        return frames.reversed()
     }
 
     private static func readContext(
@@ -247,8 +204,6 @@ nonisolated enum TAPVideoDepthMetadataReader {
     private static func collectCandidates(
         from adaptor: AVAssetReaderOutputMetadataAdaptor,
         window: TAPVideoDepthMetadataProbePolicy.Window,
-        maximumCandidateCount: Int = TAPVideoDepthMetadataProbePolicy.maximumMetadataGroupCount,
-        latestTimestampExclusive: Double = .infinity,
         shouldContinue: @escaping @Sendable () -> Bool
     ) throws -> Candidates {
         var candidates = Candidates()
@@ -265,16 +220,11 @@ nonisolated enum TAPVideoDepthMetadataReader {
             guard timestamp.isFinite,
                   timestamp >= window.startSeconds,
                   timestamp <= window.endSeconds,
-                  timestamp < latestTimestampExclusive,
                   let item = group.items.first(where: { $0.identifier == metadataIdentifier }) else {
                 continue
             }
             candidates.timestamps.append(timestamp)
             candidates.items.append(item)
-            if candidates.items.count > maximumCandidateCount {
-                candidates.items.removeFirst()
-                candidates.timestamps.removeFirst()
-            }
         }
         return candidates
     }

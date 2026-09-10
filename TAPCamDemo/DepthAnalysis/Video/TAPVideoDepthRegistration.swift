@@ -88,6 +88,25 @@ nonisolated enum TAPVideoDepthPipelineGenerationPolicy {
 }
 
 nonisolated enum TAPVideoDepthGapPolicy {
+    static func validatedGaps(_ gaps: [TAPVideoManifest.DepthGap]) -> [ClosedRange<Double>]? {
+        guard gaps.count <= TAPVideoManifest.DepthCoverage.maximumGapCount else { return nil }
+        var ranges: [ClosedRange<Double>] = []
+        for gap in gaps {
+            guard gap.startPTS.timescale > 0, gap.endPTS.timescale > 0 else { return nil }
+            let start = Double(gap.startPTS.value) / Double(gap.startPTS.timescale)
+            let end = Double(gap.endPTS.value) / Double(gap.endPTS.timescale)
+            guard start.isFinite, end.isFinite, start >= 0, end >= start else { return nil }
+            ranges.append(start...end)
+        }
+        return ranges
+    }
+
+    static func crossesGap(from start: Double, to end: Double, gaps: [ClosedRange<Double>]) -> Bool {
+        guard start.isFinite, end.isFinite else { return true }
+        let span = min(start, end)...max(start, end)
+        return gaps.contains { $0.overlaps(span) }
+    }
+
     static func staleToleranceSeconds(
         nominalDepthFrameIntervalSeconds: TimeInterval?
     ) -> TimeInterval {

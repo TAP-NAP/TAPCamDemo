@@ -27,6 +27,31 @@ The app additionally implements the optional
 filtering observations and bounded device motion under the existing content
 binding. This candidate is not yet part of the reviewed contract pin above.
 
+Video 3D estimates frame-to-frame camera motion from RGB correspondences and
+original depth using Apple's Vision and Accelerate frameworks. During a 3D
+playback visit, observations build a scene available to the existing gestures.
+Points outside the current capture view stay frozen at their original density
+and RGB. A successfully aligned revisit replaces a region with the current frame;
+repeat views do not stack. Current and frozen points share the same renderer.
+Photo and video point clouds can shrink to 10% of their initial size.
+Default playback stays centered on the current frame. Pausing freezes the
+displayed scene while gestures remain available; resuming continues updates.
+Usable RGB-D continues updating the current projection even when alignment
+fails. The accepted spatial map is preserved and unaligned points are not
+added to it; clipping old regions from the current view only affects display.
+Missing RGB/depth holds the geometry, sample timestamps and RGB. Available
+recorded Core Motion can still rotate the displayed camera with the playhead;
+translation stays at its last reliable value. This does not invent a full pose.
+Seeking, leaving 3D, changing the source or explicitly resetting the resource
+starts a new history. Pause/resume, delayed callbacks and
+player time-jump notifications alone do not clear it. Retention grows with
+newly observed regions rather than recording duration alone. This playback
+scene does not fill occluded regions or change signed capture data.
+
+3D playback projects each available frame directly, with no temporal smoothing,
+warmup or wait for neighboring frames. The Apple Depth Filtering control remains
+available in Debug.
+
 ## Runtime path
 
 ```mermaid

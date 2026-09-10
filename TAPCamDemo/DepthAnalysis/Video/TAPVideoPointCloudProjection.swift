@@ -4,76 +4,6 @@ import Foundation
 import ImageIO
 import simd
 
-nonisolated enum TAPVideoPointCloudSmoothing {
-    // ponytail: short causal depth-only history; moving edges reject history.
-    // Motion-compensated temporal fusion needs correspondence and is outside this display filter.
-    static let historySeconds = 0.12
-    static let maximumHistoryFrames = 6
-
-    static func validatedGaps(_ gaps: [TAPVideoManifest.DepthGap]) -> [ClosedRange<Double>]? {
-        guard gaps.count <= TAPVideoManifest.DepthCoverage.maximumGapCount else { return nil }
-        var ranges: [ClosedRange<Double>] = []
-        for gap in gaps {
-            guard gap.startPTS.timescale > 0, gap.endPTS.timescale > 0 else { return nil }
-            let start = Double(gap.startPTS.value) / Double(gap.startPTS.timescale)
-            let end = Double(gap.endPTS.value) / Double(gap.endPTS.timescale)
-            guard start.isFinite, end.isFinite, start >= 0, end >= start else { return nil }
-            ranges.append(start...end)
-        }
-        return ranges
-    }
-
-    static func crossesGap(from start: Double, to end: Double, gaps: [ClosedRange<Double>]) -> Bool {
-        guard start.isFinite, end.isFinite else { return true }
-        let span = min(start, end)...max(start, end)
-        return gaps.contains { $0.overlaps(span) }
-    }
-
-    /// Walk the consecutive suffix; filtering for a matching CALI would bridge A-B-A.
-    /// Both live cache and paused warmup use this exact selection.
-    static func history(
-        before current: TAPDecodedDepthVideoFrame,
-        candidates: [TAPDecodedDepthVideoFrame],
-        gaps: [ClosedRange<Double>],
-        after cutoff: Double?
-    ) -> [TAPDecodedDepthVideoFrame] {
-        let ordered = candidates.filter {
-            $0.presentationTimeSeconds < current.presentationTimeSeconds
-                && current.presentationTimeSeconds - $0.presentationTimeSeconds <= historySeconds
-        }.sorted { $0.presentationTimeSeconds > $1.presentationTimeSeconds }
-        var next = current
-        var result: [TAPDecodedDepthVideoFrame] = []
-        for frame in ordered.prefix(maximumHistoryFrames) {
-            guard frame.calibrationIndex == current.calibrationIndex,
-                  frame.inlineCalibration == current.inlineCalibration,
-                  frame.width == current.width, frame.height == current.height,
-                  frame.pixelFormat == current.pixelFormat,
-                  frame.frameIndex == next.frameIndex - 1,
-                  frame.presentationTimeSeconds > (cutoff ?? -.infinity),
-                  !crossesGap(from: frame.presentationTimeSeconds, to: next.presentationTimeSeconds, gaps: gaps) else { break }
-            result.append(frame)
-            next = frame
-        }
-        return Array(result.reversed())
-    }
-
-    static func depth(current: Float, history: [(depth: Float, age: Double)]) -> Float {
-        guard current.isFinite, current > 0 else { return .nan }
-        let threshold = max(0.02, current * 0.03)
-        var total = current
-        var weight: Float = 1
-        for sample in history {
-            guard sample.age > 0, sample.age <= historySeconds,
-                  sample.depth.isFinite, sample.depth > 0,
-                  abs(sample.depth - current) <= threshold else { continue }
-            let contribution = Float(1 - sample.age / historySeconds)
-            total += sample.depth * contribution
-            weight += contribution
-        }
-        return total / weight
-    }
-}
-
 nonisolated struct TAPVideoPointCloudCalibration {
     let value: TAPVideoManifest.CameraCalibration
     let inverseDistortion: [Float]
@@ -151,6 +81,10 @@ nonisolated struct TAPVideoPointCloudPayload: Sendable {
     let vertices: [SIMD3<Float>]
     let colors: [SIMD4<Float>]
     let cameraModel: TAPDepthProjectionCameraModel
+    // Raw samples are consumed by registration before the payload reaches the view.
+    var rawSamples: [TAPVideoPointCloudRegistrationFrame.Sample] = []
+    var cameraToAnchor = matrix_identity_float4x4
+    var historicalFrames: [TAPVideoPointCloudKeyframe] = []
 }
 
 nonisolated enum TAPVideoPointCloudProjection {
@@ -180,31 +114,24 @@ nonisolated enum TAPVideoPointCloudProjection {
 
     static func make(
         frame: TAPDecodedDepthVideoFrame,
-        history: [TAPDecodedDepthVideoFrame],
         calibration: TAPVideoPointCloudCalibration,
         descriptor: TAPVideoDepthRegistrationDescriptor,
-        image: CGImage,
-        gaps: [ClosedRange<Double>] = [],
-        historyCutoff: Double? = nil
+        image: CGImage
     ) throws -> TAPVideoPointCloudPayload? {
         guard let projection = descriptor.projection,
               let colors = RGBColors(image: image),
               let model = cameraModel(calibration.value, projection: projection) else { return nil }
         var vertices: [SIMD3<Float>] = []
         var rgb: [SIMD4<Float>] = []
+        var rawSamples: [TAPVideoPointCloudRegistrationFrame.Sample] = []
         let count = frame.width * frame.height
         let step = max(1, (count + maximumPointCount - 1) / maximumPointCount)
         vertices.reserveCapacity(min(count, maximumPointCount))
         rgb.reserveCapacity(min(count, maximumPointCount))
-        let eligibleHistory = TAPVideoPointCloudSmoothing.history(
-            before: frame, candidates: history, gaps: gaps, after: historyCutoff
-        )
+        rawSamples.reserveCapacity(min(count, maximumPointCount))
         for index in stride(from: 0, to: count, by: step) {
             if index.isMultiple(of: 128) { try Task.checkCancellation() }
-            let current = metricSample(frame, index: index)
-            let depth = TAPVideoPointCloudSmoothing.depth(current: current, history: eligibleHistory.map {
-                (metricSample($0, index: index), frame.presentationTimeSeconds - $0.presentationTimeSeconds)
-            })
+            let depth = metricSample(frame, index: index)
             guard depth.isFinite else { continue }
             let x = index % frame.width
             let y = index / frame.width
@@ -217,9 +144,14 @@ nonisolated enum TAPVideoPointCloudProjection {
             guard vertex.x.isFinite, vertex.y.isFinite, vertex.z.isFinite else { continue }
             vertices.append(vertex)
             rgb.append(color)
+            rawSamples.append(.init(position: vertex, imagePoint: SIMD2(
+                Float((projected.x + 0.5) / Double(descriptor.rgbPresentationWidth)),
+                Float((projected.y + 0.5) / Double(descriptor.rgbPresentationHeight))
+            )))
         }
         guard !vertices.isEmpty else { return nil }
-        return TAPVideoPointCloudPayload(presentationTimeSeconds: frame.presentationTimeSeconds, vertices: vertices, colors: rgb, cameraModel: model)
+        return TAPVideoPointCloudPayload(presentationTimeSeconds: frame.presentationTimeSeconds,
+            vertices: vertices, colors: rgb, cameraModel: model, rawSamples: rawSamples)
     }
 
     static func cameraModel(_ calibration: TAPVideoManifest.CameraCalibration, projection: TAPVideoRegistrationProjection) -> TAPDepthProjectionCameraModel? {
@@ -274,8 +206,8 @@ nonisolated enum TAPVideoPointCloudProjection {
         func color(at point: CGPoint, descriptor: TAPVideoDepthRegistrationDescriptor) -> SIMD4<Float>? {
             guard point.x >= 0, point.y >= 0,
                   point.x < Double(descriptor.rgbPresentationWidth), point.y < Double(descriptor.rgbPresentationHeight) else { return nil }
-            let x = min(width - 1, Int(point.x * Double(width) / Double(descriptor.rgbPresentationWidth)))
-            let y = min(height - 1, Int(point.y * Double(height) / Double(descriptor.rgbPresentationHeight)))
+            let x = min(width - 1, Int((point.x + 0.5) * Double(width) / Double(descriptor.rgbPresentationWidth)))
+            let y = min(height - 1, Int((point.y + 0.5) * Double(height) / Double(descriptor.rgbPresentationHeight)))
             let index = (y * width + x) * 4
             return SIMD4(Float(bytes[index]) / 255, Float(bytes[index + 1]) / 255, Float(bytes[index + 2]) / 255, 1)
         }

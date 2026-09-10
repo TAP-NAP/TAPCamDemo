@@ -22,7 +22,13 @@ nonisolated enum TAPVideoPlaybackTransportPolicy {
 @MainActor
 @Observable
 final class TAPVideoPlaybackIntentState {
-    private(set) var intendsPlayback = false
+    private(set) var intendsPlayback = false {
+        didSet {
+            if oldValue != intendsPlayback { onChange?(intendsPlayback) }
+        }
+    }
+    @ObservationIgnored var onChange: ((Bool) -> Void)?
+    @ObservationIgnored var onSeek: ((Double) -> Void)?
     @ObservationIgnored private var isSuspendedForPaging = false
 
     func setUserIntent(_ intendsPlayback: Bool) {
@@ -221,7 +227,10 @@ final class TAPVideoPlaybackTransportModel {
                 synchronizePlaybackIntent(from: player.timeControlStatus)
                 return
             }
-            updateConfirmedElapsedTime(player.currentTime())
+            let currentTime = player.currentTime()
+            updateConfirmedElapsedTime(currentTime)
+            let seconds = CMTimeGetSeconds(currentTime)
+            if seconds.isFinite { intentState.onSeek?(max(0, seconds)) }
             if resumeAfterSeek {
                 activatePlaybackAudioSessionIfNeeded()
                 player.cancelPendingPrerolls()

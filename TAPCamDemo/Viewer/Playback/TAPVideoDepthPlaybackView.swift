@@ -195,9 +195,7 @@ struct TAPVideoDepthPlaybackView: View {
         case .twoD:
             activeSession.prepareTwoDPlaybackGate()
         case .threeD:
-            activeSession.prepareThreeDPlaybackGate(
-                smoothingEnabled: DepthAnalyzerPreferences.playbackSmoothingEnabled()
-            )
+            activeSession.prepareThreeDPlaybackGate()
         }
     }
 

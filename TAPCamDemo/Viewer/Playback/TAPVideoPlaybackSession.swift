@@ -77,6 +77,13 @@ final class TAPVideoPlaybackSession {
         pointCloudPlayback.onStateChange = { [weak self] ready in
             self?.isThreeDPlaybackReady = ready
         }
+        playbackIntentState.onChange = { [weak self] intendsPlayback in
+            self?.pointCloudPlayback.setPlaybackPaused(!intendsPlayback)
+        }
+        playbackIntentState.onSeek = { [weak self] seconds in
+            self?.pointCloudPlayback.reset(at: seconds)
+        }
+        pointCloudPlayback.setPlaybackPaused(!playbackIntentState.intendsPlayback)
         depthPipeline.onPresentationStateChange = { [weak self] state in
             self?.isTwoDPlaybackReady = state.isReady
             self?.depthGapNotice = state.gapNotice
@@ -314,17 +321,15 @@ final class TAPVideoPlaybackSession {
         return time.isFinite ? max(0, time) : 0
     }
 
-    func prepareThreeDPlaybackGate(smoothingEnabled: Bool) {
+    func prepareThreeDPlaybackGate() {
         depthPipeline.cancelPresentation()
         guard state == .ready, isThreeDDepthAvailable, let item = player?.currentItem else { return }
-        pointCloudPlayback.begin(on: item, time: currentPlaybackTimeSeconds, smoothingEnabled: smoothingEnabled)
+        pointCloudPlayback.begin(on: item, time: currentPlaybackTimeSeconds)
+        pointCloudPlayback.setPlaybackPaused(!playbackIntentState.intendsPlayback)
     }
 
     func cancelThreeDPlaybackGate() { pointCloudPlayback.cancel() }
 
-    func setThreeDPlaybackSmoothingEnabled(_ enabled: Bool) {
-        pointCloudPlayback.setSmoothing(enabled, at: currentPlaybackTimeSeconds)
-    }
 
     private func cancelCurrentFetch() {
         requestKey = nil

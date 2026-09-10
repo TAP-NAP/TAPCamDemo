@@ -1,6 +1,6 @@
 import Foundation
 
-/// Optional signed capture facts. Display smoothing never writes this document.
+/// Optional signed capture facts. Playback never writes this document.
 nonisolated struct TAPVideoCaptureTelemetry: Codable, Equatable, Sendable {
     struct Schema: Codable, Equatable, Sendable {
         var id = "urn:tapnap:tapcam:video-capture-telemetry:v1"

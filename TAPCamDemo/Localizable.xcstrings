@@ -156,17 +156,6 @@
         }
       }
     },
-    "3D Playback Smoothing" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "3D 回放平滑"
-          }
-        }
-      }
-    },
     "3D projection" : {
       "extractionState" : "stale",
       "localizations" : {

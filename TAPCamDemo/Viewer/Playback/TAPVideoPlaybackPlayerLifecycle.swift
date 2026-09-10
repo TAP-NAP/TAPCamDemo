@@ -123,12 +123,7 @@ final class TAPVideoPlaybackPlayerLifecycle {
                 let seconds = player.map { CMTimeGetSeconds($0.currentTime()) }
                     .flatMap { $0.isFinite ? max(0, $0) : nil }
                     ?? currentTimeSeconds
-                currentTimeSeconds = seconds
-                pointCloudPlayback?.reset(at: seconds)
-                depthPipeline.handleDiscontinuity(
-                    playbackTimeSeconds: seconds,
-                    canRestartPresentation: canRestartDepthPresentation()
-                )
+                handleTimeJump(at: seconds)
             }
         }
         periodicTimeObserver = player.addPeriodicTimeObserver(
@@ -145,7 +140,6 @@ final class TAPVideoPlaybackPlayerLifecycle {
                 }
                 let seconds = max(0, rawSeconds)
                 if abs(seconds - currentTimeSeconds) > 1 {
-                    pointCloudPlayback?.reset(at: seconds)
                     depthPipeline.handleDiscontinuity(
                         playbackTimeSeconds: seconds,
                         canRestartPresentation: canRestartDepthPresentation()
@@ -156,6 +150,17 @@ final class TAPVideoPlaybackPlayerLifecycle {
                 pointCloudPlayback?.update(at: seconds)
             }
         }
+    }
+
+    func handleTimeJump(at seconds: Double) {
+        currentTimeSeconds = seconds
+        // AVPlayer clock discontinuities are not explicit user seeks. Preserve
+        // the accumulated scene and any validated result waiting behind pause.
+        pointCloudPlayback?.update(at: seconds)
+        depthPipeline.handleDiscontinuity(
+            playbackTimeSeconds: seconds,
+            canRestartPresentation: canRestartDepthPresentation()
+        )
     }
 
     #if DEBUG
@@ -177,11 +182,14 @@ final class TAPVideoPlaybackPlayerLifecycle {
                 guard let self, let player, !isInvalidated else {
                     return
                 }
-                _ = await player.seek(
+                let finished = await player.seek(
                     to: CMTime(seconds: seconds, preferredTimescale: 600),
                     toleranceBefore: .zero,
                     toleranceAfter: .zero
                 )
+                guard finished, !isInvalidated, !Task.isCancelled else { return }
+                let actualTime = CMTimeGetSeconds(player.currentTime())
+                if actualTime.isFinite { pointCloudPlayback?.reset(at: max(0, actualTime)) }
                 if autoPlay {
                     player.play()
                 }

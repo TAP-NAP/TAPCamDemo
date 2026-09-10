@@ -4,9 +4,80 @@ import CoreImage
 import CoreVideo
 import Testing
 import UIKit
+import simd
 @testable import TAPCamDemo
 
 struct TAPVideoPointCloudTests {
+    @Test @MainActor func pauseFreezesDisplayedSceneAndDefersTheCompletedProjectionUntilResume() {
+        let playback = TAPVideoPointCloudPlayback()
+        defer { playback.cancel() }
+        var published = 0
+        playback.onStateChange = { if $0 { published += 1 } }
+        playback.receiveProjection(pausePayload(at: 0))
+        playback.setPlaybackPaused(true)
+        playback.receiveProjection(pausePayload(at: 1))
+        #expect(playback.store.presentationTimeSeconds == 0 && published == 1)
+        playback.setPlaybackPaused(false)
+        #expect(playback.store.presentationTimeSeconds == 1 && published == 2)
+        playback.setPlaybackPaused(false)
+        #expect(published == 2)
+    }
+
+    @Test @MainActor func pausedFirstFrameAndSeekCanPublishButDiscardAnEarlierPendingProjection() {
+        let playback = TAPVideoPointCloudPlayback()
+        defer { playback.cancel() }
+        playback.setPlaybackPaused(true)
+        playback.receiveProjection(pausePayload(at: 0))
+        #expect(playback.store.presentationTimeSeconds == 0)
+        playback.receiveProjection(pausePayload(at: 1))
+        playback.reset(at: 2)
+        playback.setPlaybackPaused(false)
+        #expect(playback.store.presentationTimeSeconds == 0, "Seek must discard the old pending result")
+        playback.setPlaybackPaused(true)
+        playback.receiveProjection(pausePayload(at: 2))
+        #expect(playback.store.presentationTimeSeconds == 2, "A paused seek may replace the previous generation's scene once")
+        playback.receiveProjection(pausePayload(at: 3))
+        playback.cancel()
+        playback.setPlaybackPaused(false)
+        #expect(playback.store.presentationTimeSeconds == nil, "Leaving this video must discard its pending scene")
+    }
+
+    @Test @MainActor func currentGeometryAdvancesBeforeRegistrationAndLateAlignmentCannotRewindIt() {
+        let playback = TAPVideoPointCloudPlayback()
+        defer { playback.cancel() }
+        var map = TAPVideoPointCloudHistory()
+        let initial = map.accept(pausePayload(at: 0))
+        playback.acceptProjection(initial, spatialHistory: map)
+        playback.receiveProjection(pausePayload(at: 2))
+        #expect(playback.store.presentationTimeSeconds == 2)
+        playback.receiveProjection(pausePayload(at: 3))
+        #expect(playback.store.presentationTimeSeconds == 3)
+        #expect(playback.spatialHistory.latestTime == 0, "Current geometry must not wait for or overwrite the accepted map")
+
+        let late = map.accept(pausePayload(at: 1))
+        playback.acceptProjection(late, spatialHistory: map)
+        #expect(playback.spatialHistory.latestTime == 1)
+        #expect(playback.store.presentationTimeSeconds == 3, "A late registration can advance the map without rewinding current geometry")
+
+        playback.setPlaybackPaused(true)
+        playback.receiveProjection(pausePayload(at: 4))
+        let olderThanPending = map.accept(pausePayload(at: 3))
+        playback.acceptProjection(olderThanPending, spatialHistory: map)
+        #expect(playback.store.presentationTimeSeconds == 3)
+        playback.setPlaybackPaused(false)
+        #expect(playback.store.presentationTimeSeconds == 4, "Late alignment must not replace the newer paused pending frame")
+
+        playback.setPlaybackPaused(true)
+        playback.receiveProjection(pausePayload(at: 5))
+        let matchingPending = map.accept(pausePayload(at: 5))
+        playback.acceptProjection(matchingPending, spatialHistory: map)
+        #expect(playback.store.presentationTimeSeconds == 4)
+        playback.setPlaybackPaused(false)
+        #expect(playback.store.presentationTimeSeconds == 5)
+        playback.reset(at: 0)
+        #expect(playback.spatialHistory.frames.isEmpty, "An explicit seek starts a new spatial map")
+    }
+
     @Test func metricDecodePreservesCALIAndUsesReciprocalDisparity() throws {
         let packed = floatBytes([0.5, 0, .nan, 2])
         let klv = TAPDepthKLVFrame(frameIndex: 7, timestampValue: 600, timestampTimescale: 600,
@@ -23,15 +94,6 @@ struct TAPVideoPointCloudTests {
         #expect(TAPVideoPointCloudProjection.metricSample(frame, index: 3) == 0.5)
         #expect(TAPVideoPointCloudProjection.metricSample(frame, index: Int.max).isNaN)
         #expect(TAPVideoPointCloudProjection.metricSample(frame, index: Int.min).isNaN)
-    }
-
-    @Test func smoothingNeverFillsHolesOrBlendsAChangedSurface() {
-        #expect(TAPVideoPointCloudSmoothing.depth(current: .nan, history: [(1, 0.02)]).isNaN)
-        #expect(TAPVideoPointCloudSmoothing.depth(current: 2, history: [(1, 0.02)]) == 2)
-        #expect(TAPVideoPointCloudSmoothing.depth(current: 1, history: [(1.02, 0.2)]) == 1)
-        #expect(TAPVideoPointCloudSmoothing.depth(current: 1, history: [(1.02, -0.02)]) == 1)
-        let stable = TAPVideoPointCloudSmoothing.depth(current: 1, history: [(1.02, 0.03)])
-        #expect(stable > 1 && stable < 1.02)
     }
 
     @Test func inlineCalibrationKeepsProjectingAfterTheSixteenEntryTableFills() throws {
@@ -65,7 +127,7 @@ struct TAPVideoPointCloudTests {
             #expect(frame.retainedByteCount >= packed.count + (usesInline ? 16 : 0))
             let savedCalibration = try #require(configuration.calibration(for: frame))
             let usableCalibration = try #require(TAPVideoPointCloudCalibration(savedCalibration))
-            let payload = try #require(try TAPVideoPointCloudProjection.make(frame: frame, history: [],
+            let payload = try #require(try TAPVideoPointCloudProjection.make(frame: frame,
                 calibration: usableCalibration, descriptor: descriptor, image: image))
             #expect(payload.vertices.count == 4 && payload.colors.count == 4)
             #expect(abs(payload.vertices[0].x + 0.5 / calibrations[index].intrinsicMatrix[0]) < 0.000_001)
@@ -74,42 +136,11 @@ struct TAPVideoPointCloudTests {
                 "A legacy frame without CALI must not inherit the last saved calibration")
     }
 
-    @Test func smoothingStopsWhenInlineCalibrationChanges() {
-        let first = calibration(inverse: [0, 0])
-        let second = calibration(inverse: [0, 0], focalLength: 1.01)
-        var frames = (0..<4).map { historyFrame(index: $0, calibration: nil) }
-        for index in frames.indices { frames[index].inlineCalibration = index == 1 ? second : first }
-        #expect(TAPVideoPointCloudSmoothing.history(before: frames[3], candidates: Array(frames.prefix(3)), gaps: [], after: nil)
-            .map(\.frameIndex) == [2], "Equal nil CALI indices cannot bridge changing inline calibration")
-    }
-
-    @Test func smoothingKeepsOnlyTheContinuousCalibrationAndLayoutSuffix() {
-        let current = historyFrame(index: 3, calibration: 0)
-        let frames = [historyFrame(index: 0, calibration: 0),
-                      historyFrame(index: 1, calibration: 1),
-                      historyFrame(index: 2, calibration: 0)]
-        let selected = TAPVideoPointCloudSmoothing.history(before: current, candidates: frames, gaps: [], after: nil)
-        #expect(selected.map(\.frameIndex) == [2], "A-B-A must not recover the earlier A history")
-        var changedLayout = frames
-        changedLayout[1] = historyFrame(index: 1, calibration: 0, width: 2)
-        #expect(TAPVideoPointCloudSmoothing.history(before: current, candidates: changedLayout, gaps: [], after: nil)
-            .map(\.frameIndex) == [2])
-        #expect(TAPVideoPointCloudSmoothing.history(before: current, candidates: [frames[0], frames[2]], gaps: [], after: nil)
-            .map(\.frameIndex) == [2], "A missing intermediate frame ends continuity")
-    }
-
-    @Test func smoothingCannotBridgeShortDeclaredGapsOrRuntimeFailureCutoffs() {
-        let frames = (0..<3).map { historyFrame(index: $0, calibration: 0) }
-        let current = historyFrame(index: 3, calibration: 0)
-        let gap: ClosedRange<Double> = 0.04...0.05
-        #expect(TAPVideoPointCloudSmoothing.crossesGap(from: 0.03, to: 0.06, gaps: [gap]))
-        #expect(TAPVideoPointCloudSmoothing.crossesGap(from: 0.06, to: 0.03, gaps: [gap]))
-        #expect(!TAPVideoPointCloudSmoothing.crossesGap(from: 0.06, to: 0.07, gaps: [gap]))
-        let selected = TAPVideoPointCloudSmoothing.history(before: current, candidates: frames, gaps: [gap], after: nil)
-        #expect(selected.map(\.frameIndex) == [2])
-        #expect(TAPVideoPointCloudSmoothing.history(before: frames[2], candidates: Array(frames.prefix(2)), gaps: [gap], after: nil).isEmpty)
-        #expect(TAPVideoPointCloudSmoothing.history(before: current, candidates: frames, gaps: [], after: 0.075).isEmpty,
-                "A warmup read cannot reintroduce history before the runtime failure cutoff")
+    @Test func depthSelectionCannotCrossAShortDeclaredGap() {
+        let gap = 0.045...0.055
+        #expect(TAPVideoDepthGapPolicy.crossesGap(from: 0.03, to: 0.06, gaps: [gap]))
+        #expect(TAPVideoDepthGapPolicy.crossesGap(from: 0.06, to: 0.03, gaps: [gap]))
+        #expect(!TAPVideoDepthGapPolicy.crossesGap(from: 0.06, to: 0.07, gaps: [gap]))
     }
 
     @Test func distortionUsesInverseTableAndMissingCalibrationFailsClosed() throws {
@@ -173,7 +204,7 @@ struct TAPVideoPointCloudTests {
         let packed = floatBytes([1, 2, .nan, 4])
         let frame = TAPDecodedDepthVideoFrame(frameIndex: 0, presentationTimeSeconds: 0, width: 2, height: 2,
             pixelFormat: "fdep", image: UIImage(), retainedByteCount: packed.count, packedDepth: packed, calibrationIndex: 0)
-        let payload = try #require(try TAPVideoPointCloudProjection.make(frame: frame, history: [],
+        let payload = try #require(try TAPVideoPointCloudProjection.make(frame: frame,
             calibration: calibration, descriptor: descriptor, image: image))
         #expect(payload.vertices.count == 3)
         #expect(payload.vertices[0] == SIMD3<Float>(-0.5, 0.5, -1))
@@ -212,7 +243,7 @@ struct TAPVideoPointCloudTests {
         let frame = TAPDecodedDepthVideoFrame(frameIndex: 0, presentationTimeSeconds: 0, width: 2, height: 2,
             pixelFormat: "fdep", image: UIImage(), retainedByteCount: packed.count, packedDepth: packed, calibrationIndex: 0)
         let usableCalibration = try #require(TAPVideoPointCloudCalibration(rawCalibration))
-        let payload = try #require(try TAPVideoPointCloudProjection.make(frame: frame, history: [],
+        let payload = try #require(try TAPVideoPointCloudProjection.make(frame: frame,
             calibration: usableCalibration, descriptor: descriptor, image: image))
         #expect(payload.colors.count == 2)
         #expect(payload.colors[0].z > 0.95 && payload.colors[0].x < 0.05)
@@ -220,7 +251,7 @@ struct TAPVideoPointCloudTests {
     }
 
     #if DEBUG
-    @Test @MainActor func pausedRGBFixturePreservesDisplayedPTSWhileSmoothingChangesAndClearsOnStop() async throws {
+    @Test @MainActor func pausedRGBFixtureSeeksToRequestedPTSAndClearsOnStop() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let artifact = try await TAPVideoPlaybackFixtureGenerator.generate(scenario: .pointCloud, outputDirectoryURL: directory)
@@ -230,23 +261,17 @@ struct TAPVideoPointCloudTests {
         await session.startPlaybackSession()
         defer { session.stopPlayback() }
         try #require(session.isThreeDDepthAvailable)
-        session.prepareThreeDPlaybackGate(smoothingEnabled: false)
+        session.prepareThreeDPlaybackGate()
         try await waitForThreeD(session)
         let first = try #require(session.pointCloudStore.presentationTimeSeconds)
         #expect(first == 0)
-        session.setThreeDPlaybackSmoothingEnabled(true)
-        try await waitForThreeD(session)
-        #expect(session.pointCloudStore.presentationTimeSeconds == first)
         #expect(session.currentPlaybackTimeSeconds == 0)
         let player = try #require(session.player)
         _ = await player.seek(to: CMTime(seconds: 0.8, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
-        session.setThreeDPlaybackSmoothingEnabled(false)
+        session.playbackIntentState.onSeek?(session.currentPlaybackTimeSeconds)
         try await waitForThreeD(session, expectedTime: 0.8)
         let afterSeek = try #require(session.pointCloudStore.presentationTimeSeconds)
         #expect(abs(afterSeek - 0.8) < 0.001)
-        session.setThreeDPlaybackSmoothingEnabled(true)
-        try await waitForThreeD(session)
-        #expect(session.pointCloudStore.presentationTimeSeconds == afterSeek)
         session.stopPlayback()
         #expect(session.pointCloudStore.presentationTimeSeconds == nil)
     }
@@ -262,7 +287,7 @@ struct TAPVideoPointCloudTests {
         let playback = TAPVideoPointCloudPlayback()
         playback.configure(fileURL: artifact.fileURL, presentation: presentation)
         let item = AVPlayerItem(url: artifact.fileURL)
-        playback.begin(on: item, time: 0, smoothingEnabled: false)
+        playback.begin(on: item, time: 0)
         defer { playback.cancel() }
         var deadline = ContinuousClock.now.advanced(by: .seconds(8))
         while playback.store.presentationTimeSeconds == nil, ContinuousClock.now < deadline {
@@ -286,23 +311,6 @@ struct TAPVideoPointCloudTests {
         #expect(playback.store.presentationTimeSeconds == nil && !ready)
     }
 
-    @Test func warmupBudgetKeepsNearestWholeFrameWithoutOvershoot() async throws {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let artifact = try await TAPVideoPlaybackFixtureGenerator.generate(scenario: .pointCloud, outputDirectoryURL: directory)
-        let format = try #require(artifact.manifest.payload.depthCoverage.format)
-        let trackID = try #require(artifact.manifest.payload.depthCoverage.trackID)
-        let bytes = format.uncompressedFrameByteCount
-        let frames = try await TAPVideoDepthMetadataReader.readHistory(fileURL: artifact.fileURL, trackID: trackID,
-            through: 0.2, depthFormat: format, maximumRetainedBytes: bytes * 2 - 1, shouldContinue: { true })
-        #expect(frames.count == 1)
-        #expect(frames.reduce(0) { $0 + $1.retainedByteCount } == bytes)
-        #expect(abs((try #require(frames.first)).presentationTimeSeconds - (2.0 / 15.0)) < 0.001)
-        let empty = try await TAPVideoDepthMetadataReader.readHistory(fileURL: artifact.fileURL, trackID: trackID,
-            through: 0.2, depthFormat: format, maximumRetainedBytes: bytes - 1, shouldContinue: { true })
-        #expect(empty.isEmpty)
-    }
-
     @MainActor private func waitForThreeD(_ session: TAPVideoPlaybackSession, expectedTime: Double? = nil) async throws {
         let deadline = ContinuousClock.now.advanced(by: .seconds(8))
         while (!session.isThreeDPlaybackReady || expectedTime.map {
@@ -313,6 +321,11 @@ struct TAPVideoPointCloudTests {
         try #require(session.isThreeDPlaybackReady, "RGB/metric frame failed to become ready")
     }
     #endif
+
+    private func pausePayload(at time: Double) -> TAPVideoPointCloudPayload {
+        .init(presentationTimeSeconds: time, vertices: [SIMD3<Float>(0, 0, -2)], colors: [SIMD4<Float>(1, 0, 0, 1)],
+              cameraModel: .init(fx: 300, fy: 300, cx: 160, cy: 240, imageWidth: 320, imageHeight: 480))
+    }
 
     private func historyFrame(index: Int, calibration: UInt32?, width: Int = 1) -> TAPDecodedDepthVideoFrame {
         TAPDecodedDepthVideoFrame(frameIndex: index, presentationTimeSeconds: Double(index) / 30,

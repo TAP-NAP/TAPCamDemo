@@ -380,7 +380,7 @@ nonisolated enum TAPPlaneRegionHighlightMask {
 
 nonisolated enum TAPDepthProjectionInteractionPolicy {
     static let usesSceneKitDefaultCameraControl = false
-    static let minimumScale: Float = 0.6
+    static let minimumScale: Float = 0.1
     static let maximumScale: Float = 3.2
     static let motionParallaxPitchScale: Float = 0.06
     static let motionParallaxRollScale: Float = 0.08

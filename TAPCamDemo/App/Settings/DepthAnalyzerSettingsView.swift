@@ -15,8 +15,6 @@ import UIKit
 enum DepthAnalyzerPreferences {
     static let appleDepthFilteringEnabledKey = "TAPVideoAppleDepthFilteringEnabled"
     static let defaultAppleDepthFilteringEnabled = false
-    static let playbackSmoothingEnabledKey = "TAPVideoPlaybackSmoothingEnabled"
-    static let defaultPlaybackSmoothingEnabled = false
 
     static func appleDepthFilteringEnabled(defaults: UserDefaults = .standard) -> Bool {
         #if DEBUG
@@ -26,13 +24,6 @@ enum DepthAnalyzerPreferences {
         #endif
     }
 
-    static func playbackSmoothingEnabled(defaults: UserDefaults = .standard) -> Bool {
-        #if DEBUG
-        defaults.bool(forKey: playbackSmoothingEnabledKey)
-        #else
-        false
-        #endif
-    }
 
     static let planeGridAnimationEnabledKey = "DepthAnalyzerPlaneGridAnimationEnabled"
     static let defaultPlaneGridAnimationEnabled = true
@@ -71,8 +62,6 @@ struct DepthAnalyzerSettingsView: View {
     #if DEBUG
     @AppStorage(DepthAnalyzerPreferences.appleDepthFilteringEnabledKey)
     private var appleDepthFilteringEnabled = DepthAnalyzerPreferences.defaultAppleDepthFilteringEnabled
-    @AppStorage(DepthAnalyzerPreferences.playbackSmoothingEnabledKey)
-    private var playbackSmoothingEnabled = DepthAnalyzerPreferences.defaultPlaybackSmoothingEnabled
     @AppStorage(CameraPhotoQualityPreference.storageKey)
     private var photoQualityRawValue = CameraPhotoQualityPreference.defaultValue.rawValue
     @AppStorage(CameraDepthAvailabilityHintPreferences.showsHintsKey)
@@ -352,17 +341,6 @@ struct DepthAnalyzerSettingsView: View {
                 }
             }
             .accessibilityIdentifier("settings.apple-depth-filtering")
-            .listRowBackground(Self.debugOnlySettingsBackground)
-
-            Toggle(isOn: $playbackSmoothingEnabled) {
-                VStack(alignment: .leading) {
-                    Text("3D Playback Smoothing")
-                    Text("Changes only the 3D display, never the recording.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .accessibilityIdentifier("settings.3d-playback-smoothing")
             .listRowBackground(Self.debugOnlySettingsBackground)
 
             Picker("Capture Prioritization", selection: $photoQualityRawValue) {

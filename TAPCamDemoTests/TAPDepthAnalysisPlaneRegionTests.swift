@@ -70,7 +70,8 @@ struct TAPDepthAnalysisPlaneRegionTests {
     }
 
     @Test func depthProjectionInteractionClampsUserZoomScale() {
-        #expect(TAPDepthProjectionInteractionPolicy.clampedScale(0.1) == TAPDepthProjectionInteractionPolicy.minimumScale)
+        #expect(TAPDepthProjectionInteractionPolicy.clampedScale(0.01) == 0.1)
+        #expect(TAPDepthProjectionInteractionPolicy.clampedScale(0.3) == 0.3)
         #expect(TAPDepthProjectionInteractionPolicy.clampedScale(1.4) == 1.4)
         #expect(TAPDepthProjectionInteractionPolicy.clampedScale(9) == TAPDepthProjectionInteractionPolicy.maximumScale)
     }
