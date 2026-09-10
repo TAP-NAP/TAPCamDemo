@@ -279,7 +279,7 @@ nonisolated final class CameraManualFocusPreviewStream: NSObject,
             let now = Date()
             if now.timeIntervalSince(lastRendererFailureLogAt) >= 2 {
                 lastRendererFailureLogAt = now
-                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                #if DEBUG
                 if let error = renderer.error {
                     TAPDiagnostics.cameraCapture.error(
                         "manual focus loupe renderer failed error=\(TAPDiagnostics.describe(error), privacy: .public)"

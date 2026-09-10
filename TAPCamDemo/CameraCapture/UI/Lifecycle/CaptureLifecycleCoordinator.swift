@@ -4,7 +4,6 @@
 //
 
 import Combine
-import OSLog
 import SwiftUI
 
 /// Coordinates camera-screen lifecycle side effects.
@@ -87,9 +86,6 @@ final class CaptureLifecycleCoordinator: ObservableObject {
         try? await Task.sleep(nanoseconds: Self.startupCredentialWarmupDelayNanoseconds)
         guard !Task.isCancelled else { return }
         guard !viewModel.isBusyForNonCaptureStartupWork else {
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.pendingCapture.info("credential warmup skipped cameraBusy=true configuring=\(viewModel.isConfiguringSession, privacy: .public) recording=\(viewModel.isVideoRecording, privacy: .public) paused=\(viewModel.isPausedForAnalysis, privacy: .public)")
-            #endif
             return
         }
         await appAttestController.warmPendingCaptureSigningCredential()
@@ -214,9 +210,6 @@ final class CaptureLifecycleCoordinator: ObservableObject {
             isCredentialPreparationActive: appAttestController.isPreparingCredential,
             isCameraBusy: isCameraBusy
         ) else {
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.pendingCapture.info("retryPendingCaptures skipped credentialPreparing=\(appAttestController.isPreparingCredential, privacy: .public) cameraBusy=\(isCameraBusy, privacy: .public) configuring=\(viewModel.isConfiguringSession, privacy: .public) recording=\(viewModel.isVideoRecording, privacy: .public) paused=\(viewModel.isPausedForAnalysis, privacy: .public)")
-            #endif
             return
         }
 

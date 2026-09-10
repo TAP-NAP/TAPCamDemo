@@ -7,11 +7,8 @@ import Foundation
 import os
 import Darwin
 
-/// Stable signpost names used by the TAP Video release-performance harness.
-///
-/// Instruments consumes these intervals for latency and runtime checkpoints.
-/// ETTrace remains CPU-sampling evidence only, while heap and ownership
-/// evidence comes from memgraph captures.
+/// Stable signpost events and intervals for native Instruments profiling.
+/// Instruments uses them to correlate latency and runtime checkpoints.
 nonisolated enum TAPVideoPerformanceTrace {
     private static let recording = OSSignposter(
         subsystem: Bundle.main.bundleIdentifier ?? "TAPCamDemo",
@@ -231,6 +228,7 @@ nonisolated enum TAPVideoPerformanceTrace {
         depthMetadataDrops: Int = -1,
         depthEncodingDrops: Int = -1
     ) {
+        guard evidence.isEnabled else { return }
         let memory = processMemorySnapshot()
         let residentBytes = memory?.residentBytes ?? 0
         let physicalFootprintBytes = memory?.physicalFootprintBytes ?? 0

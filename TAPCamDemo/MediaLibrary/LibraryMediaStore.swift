@@ -5,7 +5,6 @@
 
 import Foundation
 import Observation
-import OSLog
 import Photos
 
 /// The one ordered Library snapshot consumed by the grid and camera cover.
@@ -177,24 +176,7 @@ final class LibraryMediaStore: NSObject, PHPhotoLibraryChangeObserver {
     }
 
     private func performRefresh(generation: UInt64) async -> DepthAlbumItemSnapshot? {
-        let refreshStartedAt = ProcessInfo.processInfo.systemUptime
-        var refreshOutcome = "cancelled"
-        var refreshedItemCount = snapshot.items.count
-        var didChangeSemantics = false
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.photoLibrary.info(
-            "tap_library_store_refresh_begin currentItemCount=\(refreshedItemCount, privacy: .public)"
-        )
-        #endif
         defer {
-            let durationMilliseconds = Int(
-                ((ProcessInfo.processInfo.systemUptime - refreshStartedAt) * 1_000).rounded()
-            )
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.photoLibrary.info(
-                "tap_library_store_refresh_end outcome=\(refreshOutcome, privacy: .public) durationMs=\(durationMilliseconds, privacy: .public) itemCount=\(refreshedItemCount, privacy: .public) semanticChanged=\(didChangeSemantics, privacy: .public)"
-            )
-            #endif
             if refreshGeneration == generation {
                 inFlightRefreshTask = nil
                 isRefreshing = false
@@ -204,24 +186,19 @@ final class LibraryMediaStore: NSObject, PHPhotoLibraryChangeObserver {
         do {
             let loaded = try await snapshotLoader()
             guard !Task.isCancelled, refreshGeneration == generation else {
-                refreshOutcome = "stale"
                 return nil
             }
 
             let loadedSummaries = loaded.summaries
-            refreshedItemCount = loadedSummaries.count
             let shouldPublish = snapshot.revision == 0
                 || snapshot.items != loadedSummaries
                 || Self.errorSignature(photoAssetsError)
                     != Self.errorSignature(loaded.photoAssetsError)
                 || loadError != nil
             guard shouldPublish else {
-                refreshOutcome = "unchanged"
                 return loaded
             }
 
-            refreshOutcome = "published"
-            didChangeSemantics = true
             items = loaded.items
             snapshot = LibraryMediaSnapshot(
                 revision: snapshot.revision &+ 1,
@@ -231,25 +208,19 @@ final class LibraryMediaStore: NSObject, PHPhotoLibraryChangeObserver {
             loadError = nil
             return loaded
         } catch is CancellationError {
-            refreshOutcome = "cancelled"
             return nil
         } catch {
             guard refreshGeneration == generation else {
-                refreshOutcome = "stale"
                 return nil
             }
-            refreshedItemCount = 0
             let shouldPublishFailure = snapshot.revision == 0
                 || !snapshot.items.isEmpty
                 || photoAssetsError != nil
                 || Self.errorSignature(loadError) != Self.errorSignature(error)
             guard shouldPublishFailure else {
-                refreshOutcome = "failedUnchanged"
                 return nil
             }
 
-            refreshOutcome = "failed"
-            didChangeSemantics = true
             items = []
             snapshot = LibraryMediaSnapshot(revision: snapshot.revision &+ 1, items: [])
             photoAssetsError = nil

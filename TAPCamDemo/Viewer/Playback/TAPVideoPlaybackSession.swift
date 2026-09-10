@@ -77,7 +77,7 @@ final class TAPVideoPlaybackSession {
         self.registrationAdapter = registrationAdapter
         self.mediaFetcher = mediaFetcher
         loadingPreviewImage = initialLoadingPreviewImage
-        depthPipeline = TAPVideoDepthPipeline(sourceLabel: source.diagnosticsLabel)
+        depthPipeline = TAPVideoDepthPipeline()
         requestKey = MediaFetchRequestKey(
             itemID: source.libraryMediaID,
             generation: requestGeneration,
@@ -620,9 +620,6 @@ final class TAPVideoPlaybackSession {
         transportModel = TAPVideoPlaybackTransportModel(player: loadedPlayer, intentState: playbackIntentState)
         state = .ready
         fetchState.finish()
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.depthAnalysis.info("tap_video_playback_loaded source=\(self.source.diagnosticsLabel, privacy: .public) autoPlay=false")
-        #endif
     }
 
     /// Publishes complete-original readiness as soon as the streamed resource
@@ -675,7 +672,7 @@ final class TAPVideoPlaybackSession {
             (error as? MediaFetchFailure) ?? .decode,
             hasPreview: hasLoadingPreview
         )
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        #if DEBUG
         TAPDiagnostics.depthAnalysis.error("tap_video_playback_load_failed source=\(self.source.diagnosticsLabel, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
         #endif
     }
@@ -707,7 +704,7 @@ final class TAPVideoPlaybackSession {
             DepthAnalysisErrorPresentation.albumLoadErrorMessage(for: error)
         )
         fetchState.finish()
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        #if DEBUG
         TAPDiagnostics.depthAnalysis.error("tap_video_playback_prepare_failed source=\(self.source.diagnosticsLabel, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public) originalReady=true")
         #endif
     }

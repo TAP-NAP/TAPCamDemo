@@ -141,7 +141,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                 code: error.code,
                 isMediaServicesReset: error.code == AVError.Code.mediaServicesWereReset.rawValue
             )
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            #if DEBUG
             TAPDiagnostics.cameraCapture.error("capture session runtime error domain=\(failure.domain, privacy: .public) code=\(failure.code, privacy: .public) mediaServicesReset=\(failure.isMediaServicesReset, privacy: .public)")
             #endif
             stopInterruptedMotionRecording()
@@ -154,7 +154,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             queue: nil
         ) { [weak self] notification in
             self?.stopInterruptedMotionRecording()
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            #if DEBUG
             let reason = (notification.userInfo?[AVCaptureSessionInterruptionReasonKey] as? NSNumber)?.intValue ?? -1
             TAPDiagnostics.cameraCapture.error("capture session interrupted reason=\(reason, privacy: .public)")
             #endif
@@ -165,9 +165,6 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             object: session,
             queue: nil
         ) { [weak self] _ in
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.cameraCapture.info("capture session interruption ended")
-            #endif
             self?.sessionQueue.async { [weak self] in
                 self?.startSessionIfNeeded()
             }
@@ -178,9 +175,6 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             object: session,
             queue: nil
         ) { [weak self] _ in
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.cameraCapture.info("capture session did stop running")
-            #endif
             self?.stopInterruptedMotionRecording()
         }
     }
@@ -205,16 +199,9 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     ///
     /// - Tag: ConfigureSingleCamSession
     func configure(_ request: SessionConfigurationRequest) async throws -> SessionConfigurationResult {
-        let traceID = UUID().uuidString
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.cameraCapture.info("capture session configure requested traceID=\(traceID, privacy: .public) deviceType=\(request.capturePlan.resolvedCaptureDevice.deviceType.rawValue, privacy: .public) deviceID=\(request.capturePlan.resolvedCaptureDevice.uniqueID, privacy: .private(mask: .hash))")
-        #endif
         return try await withCheckedThrowingContinuation { continuation in
             sessionQueue.async { [self, session, photoOutput, manualFocusPreviewStream] in
                 do {
-                    #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-                    TAPDiagnostics.cameraCapture.info("capture session configure dequeued traceID=\(traceID, privacy: .public) running=\(session.isRunning, privacy: .public)")
-                    #endif
                     discardPreparedVideoRecordingGraphLocked(
                         session: session,
                         reason: "configure"
@@ -232,19 +219,13 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                     }
                     observeRuntimeEvents(for: result.device)
 
-                    #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-                    TAPDiagnostics.cameraCapture.info("capture session graph configured traceID=\(traceID, privacy: .public) running=\(session.isRunning, privacy: .public)")
-                    #endif
                     shouldRunSession = true
                     startSessionIfNeeded()
 
-                    #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-                    TAPDiagnostics.cameraCapture.info("capture session configure completed traceID=\(traceID, privacy: .public)")
-                    #endif
                     continuation.resume(returning: result)
                 } catch {
-                    #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-                    TAPDiagnostics.cameraCapture.error("capture session configure failed traceID=\(traceID, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
+                    #if DEBUG
+                    TAPDiagnostics.cameraCapture.error("capture session configure failed error=\(TAPDiagnostics.describe(error), privacy: .public)")
                     #endif
                     continuation.resume(throwing: error)
                 }
@@ -320,13 +301,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     private func startSessionIfNeeded() {
         guard shouldRunSession, isSceneActive,
               !session.isInterrupted, !session.isRunning else { return }
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.cameraCapture.info("capture session startRunning begin")
-        #endif
         session.startRunning()
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.cameraCapture.info("capture session startRunning end running=\(self.session.isRunning, privacy: .public)")
-        #endif
     }
 
     func stop() {
@@ -361,15 +336,6 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                 }
             }
 
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            let captureConnection = photoOutput.connection(with: .video)
-            let captureDevice = (captureConnection?.inputPorts.first?.input as? AVCaptureDeviceInput)?.device
-            let activeFormat = captureDevice?.activeFormat
-            let supportedDimensions = activeFormat.map {
-                Self.dimensionsDescription($0.supportedMaxPhotoDimensions.map(CapturePhotoDimensions.init))
-            } ?? "none"
-            TAPDiagnostics.cameraCapture.notice("photo capture submit settingsID=\(settings.uniqueID, privacy: .public) deviceType=\(captureDevice?.deviceType.rawValue ?? "none", privacy: .public) position=\(captureDevice?.position.rawValue ?? -1, privacy: .public) format=\(Self.depthFormatDescription(activeFormat), privacy: .public) connectionActive=\(captureConnection?.isActive ?? false, privacy: .public) connectionEnabled=\(captureConnection?.isEnabled ?? false, privacy: .public) selectedDimensions=\(CapturePhotoDimensions(settings.maxPhotoDimensions).debugDescription, privacy: .public) configuredDimensions=\(CapturePhotoDimensions(photoOutput.maxPhotoDimensions).debugDescription, privacy: .public) supportedDimensions=\(supportedDimensions, privacy: .public) requestedQuality=\(settings.photoQualityPrioritization.rawValue, privacy: .public) maximumQuality=\(photoOutput.maxPhotoQualityPrioritization.rawValue, privacy: .public) flashMode=\(settings.flashMode.rawValue, privacy: .public) flashSupported=\(photoOutput.supportedFlashModes.contains(settings.flashMode), privacy: .public) livePhotoMovie=\(settings.livePhotoMovieFileURL != nil, privacy: .public) livePhotoEnabled=\(photoOutput.isLivePhotoCaptureEnabled, privacy: .public) livePhotoSuspended=\(photoOutput.isLivePhotoCaptureSuspended, privacy: .public) depthRequested=\(settings.isDepthDataDeliveryEnabled, privacy: .public) depthEnabled=\(photoOutput.isDepthDataDeliveryEnabled, privacy: .public)")
-            #endif
             photoOutput.capturePhoto(with: settings, delegate: delegate)
         }
     }
@@ -397,9 +363,6 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                         isVideoMirrored: isVideoMirrored,
                         depthFilteringEnabled: depthFilteringEnabled
                        ) {
-                        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-                        TAPDiagnostics.cameraCapture.info("video recording graph warmup reused recordsAudio=\(recordsAudio, privacy: .public) recordsDepth=true")
-                        #endif
                         continuation.resume()
                         return
                     }
@@ -476,9 +439,6 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                             outputRouter: outputRouter,
                             usesSharedManualFocusVideoOutput: usesSharedManualFocusVideoOutput
                         )
-                        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-                        TAPDiagnostics.cameraCapture.info("video recording graph warmup complete recordsAudio=\(actualRecordsAudio, privacy: .public) recordsDepth=true previewSizedVideo=\(Self.previewSizedDescription(videoOutput), privacy: .public)")
-                        #endif
                         continuation.resume()
                     } catch {
                         Self.clearVideoRecordingOutputDelegates(addedOutputs)
@@ -569,9 +529,6 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                         recorder: recorder,
                         preparedGraph: preparedGraph
                     )
-                    #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-                    TAPDiagnostics.cameraCapture.info("video recording graph started captureID=\(request.captureID, privacy: .private) warmupReused=true recordsAudio=\(preparedGraph.recordsAudio, privacy: .public) recordsDepth=true synchronizedDepth=true previewSizedVideo=\(Self.previewSizedDescription(preparedGraph.videoOutput), privacy: .public)")
-                    #endif
                     continuation.resume(returning: recorder)
                 } catch {
                     continuation.resume(throwing: error)
@@ -624,9 +581,6 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                 if !retainsPreparedGraph {
                     discardPreparedVideoRecordingGraphLocked(session: session, reason: "stop")
                 }
-                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-                TAPDiagnostics.cameraCapture.info("video recording graph stopped preparedForReuse=\(retainsPreparedGraph, privacy: .public)")
-                #endif
                 continuation.resume(returning: graph.recorder)
             }
         }
@@ -915,15 +869,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             shouldConfigureLivePhotoAudioInput: shouldConfigureLivePhotoAudioInput,
             auxiliaryPreviewPolicy: request.auxiliaryPreviewPolicy
         ) {
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.cameraCapture.info("capture session graph reuse deviceType=\(plan.resolvedCaptureDevice.deviceType.rawValue, privacy: .public)")
-            #endif
             try CameraControlService.applyZoom(zoom, to: plan.resolvedCaptureDevice)
-            let capabilities = CapturePhotoOutputCapabilitySnapshot(
-                photoOutput: photoOutput,
-                activeFormat: plan.resolvedCaptureDevice.activeFormat
-            )
-            logConfiguredOutput(resolvedOutput, capabilities: capabilities)
             return makeConfigurationResult(
                 plan: plan,
                 photoOutput: photoOutput,
@@ -933,9 +879,6 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             )
         }
 
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.cameraCapture.info("capture session graph rebuild begin deviceType=\(plan.resolvedCaptureDevice.deviceType.rawValue, privacy: .public)")
-        #endif
         let livePhotoAudioInputConfigured = try rebuildSessionGraph(
             session: session,
             photoOutput: photoOutput,
@@ -1056,7 +999,6 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                 photoOutput: photoOutput,
                 activeFormat: plan.resolvedCaptureDevice.activeFormat
             )
-            logAvailableOutput(resolvedOutput, capabilities: availableCapabilities)
             try resolvedOutput.validatePhotoOutputCapabilities(availableCapabilities)
             photoOutput.isDepthDataDeliveryEnabled = resolvedOutput.depthDataDeliveryEnabled
             if photoOutput.isLivePhotoCaptureSupported {
@@ -1066,21 +1008,14 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                 photoOutput: photoOutput,
                 activeFormat: plan.resolvedCaptureDevice.activeFormat
             )
-            logConfiguredOutput(resolvedOutput, capabilities: configuredCapabilities)
             try resolvedOutput.validatePhotoOutputCapabilities(
                 configuredCapabilities,
                 requireConfiguredState: true
             )
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.cameraCapture.info("capture session commitConfiguration begin deviceType=\(plan.resolvedCaptureDevice.deviceType.rawValue, privacy: .public)")
-            #endif
             session.commitConfiguration()
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.cameraCapture.info("capture session commitConfiguration end deviceType=\(plan.resolvedCaptureDevice.deviceType.rawValue, privacy: .public)")
-            #endif
             return livePhotoAudioInputConfigured
         } catch {
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            #if DEBUG
             TAPDiagnostics.cameraCapture.error("capture session graph rebuild failed before rollback commit deviceType=\(plan.resolvedCaptureDevice.deviceType.rawValue, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
             #endif
             let currentDeviceInputs = session.inputs.compactMap { $0 as? AVCaptureDeviceInput }
@@ -1099,40 +1034,6 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             session.commitConfiguration()
             throw error
         }
-    }
-
-    private static func logAvailableOutput(
-        _ resolvedOutput: ResolvedCaptureOutputProfile,
-        capabilities: CapturePhotoOutputCapabilitySnapshot
-    ) {
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.cameraCapture.info("capture output capabilities profile=\(resolvedOutput.profileID, privacy: .public) container=\(resolvedOutput.fileContainer.rawValue, privacy: .public) fileType=\(resolvedOutput.processedFileType.rawValue, privacy: .public) codec=\(resolvedOutput.requestedCodec.rawValue, privacy: .public) selectedDimensions=\(dimensionsDescription(resolvedOutput.maxPhotoDimensions), privacy: .public) availableFileTypes=\(fileTypesDescription(capabilities), privacy: .public) availableCodecs=\(codecsDescription(capabilities), privacy: .public) supportedDimensions=\(dimensionsDescription(capabilities.supportedMaxPhotoDimensions), privacy: .public)")
-        #endif
-    }
-
-    private static func logConfiguredOutput(
-        _ resolvedOutput: ResolvedCaptureOutputProfile,
-        capabilities: CapturePhotoOutputCapabilitySnapshot
-    ) {
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.cameraCapture.info("capture output configured profile=\(resolvedOutput.profileID, privacy: .public) container=\(resolvedOutput.fileContainer.rawValue, privacy: .public) fileType=\(resolvedOutput.processedFileType.rawValue, privacy: .public) codec=\(resolvedOutput.requestedCodec.rawValue, privacy: .public) selectedDimensions=\(dimensionsDescription(resolvedOutput.maxPhotoDimensions), privacy: .public) configuredDimensions=\(dimensionsDescription(capabilities.configuredMaxPhotoDimensions), privacy: .public)")
-        #endif
-    }
-
-    private static func fileTypesDescription(_ capabilities: CapturePhotoOutputCapabilitySnapshot) -> String {
-        capabilities.availablePhotoFileTypeIdentifiers.sorted().joined(separator: "|")
-    }
-
-    private static func codecsDescription(_ capabilities: CapturePhotoOutputCapabilitySnapshot) -> String {
-        capabilities.availablePhotoCodecTypes.map(\.rawValue).sorted().joined(separator: "|")
-    }
-
-    private static func dimensionsDescription(_ dimensions: [CapturePhotoDimensions]) -> String {
-        dimensions.map(\.debugDescription).sorted().joined(separator: "|")
-    }
-
-    private static func dimensionsDescription(_ dimensions: CapturePhotoDimensions?) -> String {
-        dimensions?.debugDescription ?? "none"
     }
 
     /// Returns true when the current SingleCam graph already represents the
@@ -1303,13 +1204,6 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         if let depthFormat = Self.videoRecordingDepthFormat(for: configuration) {
             try CameraControlService.applyActiveDepthDataFormat(depthFormat, to: configuration.device)
             didApplyVideoDepthDataFormat = true
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.cameraCapture.info("video depth format configured format=\(Self.depthFormatDescription(depthFormat), privacy: .public)")
-            #endif
-        } else {
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.cameraCapture.info("video depth format not configured reason=no-compatible-active-depth-format")
-            #endif
         }
         session.addOutput(depthOutput)
         addedOutputs.append(depthOutput)
@@ -1391,11 +1285,8 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                     previousActiveDepthDataFormat,
                     to: device
                 )
-                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-                TAPDiagnostics.cameraCapture.info("video depth format restored reason=\(reason, privacy: .public) previous=\(Self.depthFormatDescription(previousActiveDepthDataFormat), privacy: .public)")
-                #endif
             } catch {
-                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                #if DEBUG
                 TAPDiagnostics.cameraCapture.error("video depth format restore failed reason=\(reason, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
                 #endif
             }
@@ -1432,9 +1323,6 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             reason: reason
         )
         session.commitConfiguration()
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.cameraCapture.info("video recording graph warmup discarded reason=\(reason, privacy: .public)")
-        #endif
     }
 
     private static func fallbackVideoSettings(for device: AVCaptureDevice) -> [String: Any] {
@@ -1474,23 +1362,10 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             && lhsDimensions.height == rhsDimensions.height
     }
 
-    private static func depthFormatDescription(_ format: AVCaptureDevice.Format?) -> String {
-        guard let format else {
-            return "none"
-        }
-        let description = format.formatDescription
-        let dimensions = CMVideoFormatDescriptionGetDimensions(description)
-        return "\(TAPFourCharCode.string(from: CMFormatDescriptionGetMediaSubType(description)))@\(dimensions.width)x\(dimensions.height)"
-    }
-
     private static func activeFormatRejectsDepthDataOutput(_ format: AVCaptureDevice.Format) -> Bool {
         format.unsupportedCaptureOutputClasses.contains { outputClass in
             outputClass == AVCaptureDepthDataOutput.self
         }
-    }
-
-    private static func previewSizedDescription(_ output: AVCaptureVideoDataOutput) -> String {
-        output.deliversPreviewSizedOutputBuffers ? "yes" : "no"
     }
 
     private static func formatsHaveSamePhotoDepthPreviewSignature(

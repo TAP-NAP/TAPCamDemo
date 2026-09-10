@@ -182,7 +182,7 @@ nonisolated final class TAPVideoWriterSession: @unchecked Sendable {
         manifest: TAPVideoManifest,
         telemetry: TAPVideoCaptureTelemetry,
         to outputURL: URL
-    ) throws -> UInt64 {
+    ) throws {
         try TAPVideoCaptureTelemetryBox.append(telemetry, manifest: manifest, to: writerURL)
         try TAPVideoManifestBox.appendManifest(manifest, toFileAt: writerURL)
         TAPVideoPerformanceTrace.emitManifestAppended(
@@ -193,7 +193,7 @@ nonisolated final class TAPVideoWriterSession: @unchecked Sendable {
             try FileManager.default.removeItem(at: outputURL)
         }
         try FileManager.default.moveItem(at: writerURL, to: outputURL)
-        return try TAPBMFFStreamingFile.byteCount(of: outputURL)
+        try Task<Never, Never>.checkCancellation()
     }
 
     func cleanup() {

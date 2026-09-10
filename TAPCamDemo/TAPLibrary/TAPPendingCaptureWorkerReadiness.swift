@@ -21,13 +21,4 @@ nonisolated enum TAPPendingCaptureWorkerReadiness: Equatable, Sendable {
     var allowsPrivateArtifactAccess: Bool {
         self == .ready
     }
-
-    var diagnosticDescription: String {
-        switch self {
-        case .ready:
-            "Protected data is available; pending capture worker may read private artifacts."
-        case .protectedDataUnavailable:
-            "Protected data is unavailable; pending capture worker must wait without reading private artifacts."
-        }
-    }
 }

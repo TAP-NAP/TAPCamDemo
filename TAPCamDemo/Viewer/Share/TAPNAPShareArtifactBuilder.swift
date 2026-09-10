@@ -219,15 +219,10 @@ nonisolated enum TAPShareTemporaryDirectoryCleanup {
                 if FileManager.default.fileExists(atPath: directoryURL.path) {
                     try remover(directoryURL)
                 }
-                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-                TAPDiagnostics.sharePackaging.info(
-                    "tap_share_temp_cleanup_finished scope=\(scope, privacy: .public) attempt=\(attempt, privacy: .public)"
-                )
-                #endif
                 return true
             } catch {
+                #if DEBUG
                 let nsError = error as NSError
-                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
                 TAPDiagnostics.sharePackaging.error(
                     "tap_share_temp_cleanup_failed scope=\(scope, privacy: .public) domain=\(nsError.domain, privacy: .public) code=\(nsError.code, privacy: .public) attempt=\(attempt, privacy: .public) willRetry=\(attempt < removalAttemptLimit, privacy: .public)"
                 )
@@ -334,7 +329,6 @@ nonisolated struct TAPNAPShareArtifactBuilder: Sendable {
         request: TAPNAPShareResourceRequest,
         progress: @escaping ProgressHandler = { _ in }
     ) async throws -> TAPNAPShareArtifact {
-        let preparationStartedAt = ProcessInfo.processInfo.systemUptime
         guard request.hasSignatureEvidence,
               request.fileContainer != nil || request.originalResourceLease != nil else {
             throw TAPNAPShareArtifactError.packageRequiresSignatureEvidence
@@ -345,12 +339,6 @@ nonisolated struct TAPNAPShareArtifactBuilder: Sendable {
         let coalescedProgress: ProgressHandler = { value in
             progressCoalescer.submit(value)
         }
-
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.sharePackaging.info(
-            "tapnap prepare started livePhoto=\(expectsPairedVideo, privacy: .public) pendingRoute=\(request.captureID != nil, privacy: .public) photosRoute=\(request.assetLocalIdentifier != nil, privacy: .public) viewerLease=\(request.originalResourceLease != nil, privacy: .public) compression=none bufferBytes=\(Self.archiveBufferSize, privacy: .public)"
-        )
-        #endif
 
         let outputDirectoryURL = try temporaryDirectoryProvider()
         let resourcesDirectoryURL = outputDirectoryURL.appendingPathComponent(
@@ -363,7 +351,6 @@ nonisolated struct TAPNAPShareArtifactBuilder: Sendable {
                 withIntermediateDirectories: true
             )
             coalescedProgress(0)
-            let resourceLoadStartedAt = ProcessInfo.processInfo.systemUptime
             let resources = try await loadResources(
                 request: request,
                 requiresSignedPhoto: true,
@@ -379,13 +366,8 @@ nonisolated struct TAPNAPShareArtifactBuilder: Sendable {
                     )
                 }
             )
-            let photoBytes = try Self.checkedResourceSize(resources.photoURL)
-            let pairedVideoBytes = try resources.pairedVideoURL.map(Self.checkedResourceSize) ?? 0
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.sharePackaging.info(
-                "tapnap resources ready durationMs=\(Self.elapsedMilliseconds(since: resourceLoadStartedAt), privacy: .public) photoBytes=\(photoBytes, privacy: .public) pairedVideoBytes=\(pairedVideoBytes, privacy: .public)"
-            )
-            #endif
+            _ = try Self.checkedResourceSize(resources.photoURL)
+            _ = try resources.pairedVideoURL.map(Self.checkedResourceSize)
             try Task.checkCancellation()
             guard !expectsPairedVideo || resources.pairedVideoURL != nil else {
                 throw TAPNAPShareArtifactError.livePhotoPairedVideoMissing
@@ -403,11 +385,6 @@ nonisolated struct TAPNAPShareArtifactBuilder: Sendable {
             )
             coalescedProgress(1)
             await progressCoalescer.finish()
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.sharePackaging.info(
-                "tapnap prepare completed durationMs=\(Self.elapsedMilliseconds(since: preparationStartedAt), privacy: .public) packageBytes=\((try? Self.checkedResourceSize(artifact.fileURL)) ?? 0, privacy: .public)"
-            )
-            #endif
             return artifact
         } catch {
             progressCoalescer.cancel()
@@ -415,9 +392,9 @@ nonisolated struct TAPNAPShareArtifactBuilder: Sendable {
                 at: outputDirectoryURL,
                 scope: "tapnapFailure"
             )
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            #if DEBUG
             TAPDiagnostics.sharePackaging.error(
-                "tapnap prepare failed durationMs=\(Self.elapsedMilliseconds(since: preparationStartedAt), privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)"
+                "tapnap prepare failed error=\(TAPDiagnostics.describe(error), privacy: .public)"
             )
             #endif
             throw Self.publicError(from: error)
@@ -430,7 +407,6 @@ nonisolated struct TAPNAPShareArtifactBuilder: Sendable {
         requiresSignedPhoto: Bool,
         progress: @escaping ProgressHandler = { _ in }
     ) async throws -> TAPNAPShareArtifact {
-        let preparationStartedAt = ProcessInfo.processInfo.systemUptime
         if requiresSignedPhoto, !request.hasSignatureEvidence {
             throw TAPNAPShareArtifactError.packageRequiresSignatureEvidence
         }
@@ -438,12 +414,6 @@ nonisolated struct TAPNAPShareArtifactBuilder: Sendable {
         let coalescedProgress: ProgressHandler = { value in
             progressCoalescer.submit(value)
         }
-
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.sharePackaging.info(
-            "image share prepare started signedOnly=\(requiresSignedPhoto, privacy: .public) pendingRoute=\(request.captureID != nil, privacy: .public) photosRoute=\(request.assetLocalIdentifier != nil, privacy: .public)"
-        )
-        #endif
 
         let outputDirectoryURL = try temporaryDirectoryProvider()
         let resourcesDirectoryURL = outputDirectoryURL.appendingPathComponent(
@@ -456,7 +426,6 @@ nonisolated struct TAPNAPShareArtifactBuilder: Sendable {
                 withIntermediateDirectories: true
             )
             coalescedProgress(0)
-            let resourceLoadStartedAt = ProcessInfo.processInfo.systemUptime
             let resources = try await loadResources(
                 request: request,
                 requiresSignedPhoto: requiresSignedPhoto,
@@ -473,12 +442,7 @@ nonisolated struct TAPNAPShareArtifactBuilder: Sendable {
                 }
             )
             try Task.checkCancellation()
-            let photoBytes = try Self.checkedResourceSize(resources.photoURL)
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.sharePackaging.info(
-                "image share resources ready durationMs=\(Self.elapsedMilliseconds(since: resourceLoadStartedAt), privacy: .public) photoBytes=\(photoBytes, privacy: .public)"
-            )
-            #endif
+            _ = try Self.checkedResourceSize(resources.photoURL)
 
             let imageURL = outputDirectoryURL
                 .appendingPathComponent(Self.imageBasename)
@@ -501,11 +465,6 @@ nonisolated struct TAPNAPShareArtifactBuilder: Sendable {
                 )
             )
             await progressCoalescer.finish()
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.sharePackaging.info(
-                "image share prepare completed durationMs=\(Self.elapsedMilliseconds(since: preparationStartedAt), privacy: .public) imageBytes=\(photoBytes, privacy: .public)"
-            )
-            #endif
             return artifact
         } catch {
             progressCoalescer.cancel()
@@ -513,9 +472,9 @@ nonisolated struct TAPNAPShareArtifactBuilder: Sendable {
                 at: outputDirectoryURL,
                 scope: "imageFailure"
             )
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            #if DEBUG
             TAPDiagnostics.sharePackaging.error(
-                "image share prepare failed durationMs=\(Self.elapsedMilliseconds(since: preparationStartedAt), privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)"
+                "image share prepare failed error=\(TAPDiagnostics.describe(error), privacy: .public)"
             )
             #endif
             throw Self.publicError(from: error)
@@ -759,12 +718,6 @@ nonisolated struct TAPNAPShareArtifactBuilder: Sendable {
         progress(archiveProgressOffset)
         let archiveByteCount = entries.reduce(Int64(0)) { $0 + $1.uncompressedSize }
         let archiveProgress = Progress(totalUnitCount: archiveByteCount)
-        let archiveStartedAt = ProcessInfo.processInfo.systemUptime
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.sharePackaging.info(
-            "tapnap zip started entries=\(entries.count, privacy: .public) inputBytes=\(archiveByteCount, privacy: .public)"
-        )
-        #endif
         try await withTaskCancellationHandler {
             try Task.checkCancellation()
             try Self.writeArchive(
@@ -785,20 +738,8 @@ nonisolated struct TAPNAPShareArtifactBuilder: Sendable {
             archiveProgress.cancel()
         }
         progress(0.96)
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.sharePackaging.info(
-            "tapnap zip completed durationMs=\(Self.elapsedMilliseconds(since: archiveStartedAt), privacy: .public) outputBytes=\((try? Self.checkedResourceSize(partialPackageURL)) ?? 0, privacy: .public)"
-        )
-        #endif
-
-        let validationStartedAt = ProcessInfo.processInfo.systemUptime
         try Self.validateArchive(at: partialPackageURL, expectedEntries: entries)
         progress(0.99)
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.sharePackaging.info(
-            "tapnap zip validation completed durationMs=\(Self.elapsedMilliseconds(since: validationStartedAt), privacy: .public)"
-        )
-        #endif
         try Task.checkCancellation()
         try FileManager.default.moveItem(at: partialPackageURL, to: packageURL)
 
@@ -906,10 +847,6 @@ nonisolated struct TAPNAPShareArtifactBuilder: Sendable {
             return
         }
         handler(offset + min(max(value, 0), 1) * weight)
-    }
-
-    private static func elapsedMilliseconds(since start: TimeInterval) -> Double {
-        max(0, (ProcessInfo.processInfo.systemUptime - start) * 1_000)
     }
 
     private static func publicError(from error: any Error) -> any Error {

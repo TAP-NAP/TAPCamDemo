@@ -58,17 +58,11 @@ extension CameraViewModel {
 
         let queueEnteredAt = Date()
         let job = CaptureJob()
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.pendingCapture.info("capture requested jobID=\(job.id.uuidString, privacy: .public) suppressesShutterSound=\(suppressesShutterSound, privacy: .public)")
-        #endif
 
         do {
             let pendingCount = try await jobQueue.beginJob()
             pendingJobCount = pendingCount
             statusMessage = "Capture queued..."
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.pendingCapture.info("capture queued jobID=\(job.id.uuidString, privacy: .public) pendingJobCount=\(pendingCount, privacy: .public)")
-            #endif
 
             let usesLocationData = CameraCaptureDataUsePreferences.usesLocationData()
             let location = usesLocationData ? locationProvider.cachedCaptureLocation() : nil
@@ -98,9 +92,6 @@ extension CameraViewModel {
                     self.recentMetrics = metrics
                     switch result {
                     case .success(let writeResult):
-                        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-                        TAPDiagnostics.pendingCapture.info("capture pipeline success jobID=\(job.id.uuidString, privacy: .public) remainingJobs=\(remaining, privacy: .public)")
-                        #endif
                         self.statusMessage = writeResult.signatureStatus.captureStatusMessage
                         if let hint = writeResult.depthAvailability.viewfinderHint {
                             self.latestCaptureDepthHint = CameraCaptureDepthHint(message: hint)
@@ -112,7 +103,7 @@ extension CameraViewModel {
                             }
                         }
                     case .failure(let error):
-                        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                        #if DEBUG
                         TAPDiagnostics.pendingCapture.error("capture pipeline failed jobID=\(job.id.uuidString, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
                         #endif
                         self.statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .capture)
@@ -120,7 +111,7 @@ extension CameraViewModel {
                 }
             }
         } catch {
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            #if DEBUG
             TAPDiagnostics.pendingCapture.error("capture queue failed jobID=\(job.id.uuidString, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
             #endif
             statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .capture)
@@ -157,26 +148,14 @@ extension CameraViewModel {
             }
             await self?.loadRecentTAPLibraryPreviewIfIdle()
         }
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.pendingCapture.info("recent TAP Library preview refresh scheduled delayNs=\(delay, privacy: .public)")
-        #endif
     }
 
     private func loadRecentTAPLibraryPreviewIfIdle() async {
         guard !isBusyForNonCaptureStartupWork else {
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.pendingCapture.info("recent TAP Library preview refresh skipped cameraBusy=true configuring=\(self.isConfiguringSession, privacy: .public) recording=\(self.isVideoRecording, privacy: .public) paused=\(self.isPausedForAnalysis, privacy: .public)")
-            #endif
             return
         }
 
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.pendingCapture.info("recent TAP Library preview refresh start")
-        #endif
         await loadRecentTAPLibraryPreviewIfAvailable()
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.pendingCapture.info("recent TAP Library preview refresh finish")
-        #endif
     }
 
     func loadRecentLibraryCoverFromCanonicalSnapshot() async {
@@ -400,17 +379,11 @@ extension CameraViewModel {
     }
 
     func retryPendingCaptures(pendingCaptureWorkerClient: any AppAttestClient) async {
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.pendingCapture.info("viewModel retryPendingCaptures start")
-        #endif
         await pendingCaptureProcessor.processPendingCaptures(
             store: pendingCaptureStore,
             appAttestClient: pendingCaptureWorkerClient
         )
         scheduleRecentTAPLibraryPreviewRefresh(afterNanoseconds: 300_000_000)
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.pendingCapture.info("viewModel retryPendingCaptures finish")
-        #endif
     }
 }
 

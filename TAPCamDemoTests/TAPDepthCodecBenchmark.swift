@@ -3,7 +3,7 @@
 //  TAPCamDemoTests
 //
 
-#if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+#if DEBUG
 import Compression
 import Foundation
 @testable import TAPCamDemo

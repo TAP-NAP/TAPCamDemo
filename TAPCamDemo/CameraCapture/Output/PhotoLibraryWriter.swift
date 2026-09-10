@@ -62,13 +62,7 @@ nonisolated enum PhotoLibraryWriter {
         location: CLLocation?
     ) async throws -> String {
         let data = validatedPhoto.data
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.photoLibrary.info("saveDepthPhoto start container=\(validatedPhoto.fileContainer.rawValue, privacy: .public) bytes=\(data.count, privacy: .public) hasLocation=\(location != nil, privacy: .public)")
-        #endif
         let authorizationStatus = try requireReadWriteAccess()
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.photoLibrary.info("saveDepthPhoto authorization status=\(String(describing: authorizationStatus), privacy: .public)")
-        #endif
         let album: PHAssetCollection? = authorizationStatus == .authorized
             ? try await fetchOrCreateAlbum()
             : nil
@@ -79,9 +73,6 @@ nonisolated enum PhotoLibraryWriter {
             location: location,
             album: album
         )
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.photoLibrary.info("saveDepthPhoto success assetID=\(assetID, privacy: .private)")
-        #endif
         return assetID
     }
 
@@ -92,9 +83,6 @@ nonisolated enum PhotoLibraryWriter {
         location: CLLocation?
     ) async throws -> String {
         let data = validatedLivePhoto.photo.data
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.photoLibrary.info("saveDepthLivePhoto start container=\(validatedLivePhoto.photo.fileContainer.rawValue, privacy: .public) bytes=\(data.count, privacy: .public) hasLocation=\(location != nil, privacy: .public)")
-        #endif
         let authorizationStatus = try requireReadWriteAccess()
         let album: PHAssetCollection? = authorizationStatus == .authorized
             ? try await fetchOrCreateAlbum()
@@ -107,9 +95,6 @@ nonisolated enum PhotoLibraryWriter {
             album: album,
             pairedVideoURL: validatedLivePhoto.pairedVideoURL
         )
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.photoLibrary.info("saveDepthLivePhoto success assetID=\(assetID, privacy: .private)")
-        #endif
         return assetID
     }
 
@@ -118,15 +103,10 @@ nonisolated enum PhotoLibraryWriter {
     static func saveTAPVideoFile(
         at fileURL: URL,
         packageID: UUID,
-        manifest: TAPVideoManifest,
         capturedAt: Date,
         location: CLLocation?,
         commitWillBegin: @Sendable () async throws -> Void
     ) async throws -> String {
-        let byteCount = try fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.photoLibrary.info("saveTAPVideoFile start bytes=\(byteCount, privacy: .public) hasLocation=\(location != nil, privacy: .public) depthSamples=\(manifest.payload.depthCoverage.sampleCount, privacy: .public)")
-        #endif
         let authorizationStatus = try requireReadWriteAccess()
         let album: PHAssetCollection? = authorizationStatus == .authorized
             ? try await fetchOrCreateAlbum()
@@ -139,23 +119,17 @@ nonisolated enum PhotoLibraryWriter {
             album: album,
             commitWillBegin: commitWillBegin
         )
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.photoLibrary.info("saveTAPVideoFile success assetID=\(assetID, privacy: .private)")
-        #endif
         return assetID
     }
 
     private static func originalPhotoData(for asset: PHAsset) async throws -> Data {
         guard let resource = PHAssetResource.assetResources(for: asset).first(where: { $0.type == .photo }) else {
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            #if DEBUG
             TAPDiagnostics.photoLibrary.error("originalPhotoData missing photo resource assetID=\(asset.localIdentifier, privacy: .private)")
             #endif
             throw TAPDepthCaptureError.assetCreationFailed
         }
 
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.photoLibrary.info("originalPhotoData request start assetID=\(asset.localIdentifier, privacy: .private)")
-        #endif
         let request = PhotoKitResourceRequestBridge(
             sink: PhotoKitResourceDataSink(),
             allowsNetworkAccess: true,
@@ -169,12 +143,9 @@ nonisolated enum PhotoLibraryWriter {
                 request.cancel()
             }
             try Task.checkCancellation()
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.photoLibrary.info("originalPhotoData request success assetID=\(asset.localIdentifier, privacy: .private) bytes=\(result.count, privacy: .public)")
-            #endif
             return result
         } catch {
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            #if DEBUG
             TAPDiagnostics.photoLibrary.error("originalPhotoData request failed assetID=\(asset.localIdentifier, privacy: .private) error=\(TAPDiagnostics.describe(error), privacy: .public)")
             #endif
             throw error
@@ -481,9 +452,6 @@ nonisolated enum PhotoLibraryWriter {
 
     @concurrent
     static func depthAssetIdentifier(captureID: String) async throws -> String? {
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.photoLibrary.info("depthAssetIdentifier lookup start captureID=\(captureID, privacy: .private)")
-        #endif
         try Task.checkCancellation()
         try requireReadWriteAccess()
         guard let album = fetchAlbum() else {
@@ -512,15 +480,9 @@ nonisolated enum PhotoLibraryWriter {
             } catch {
                 continue
             }
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.photoLibrary.info("depthAssetIdentifier found captureID=\(captureID, privacy: .private) assetID=\(asset.localIdentifier, privacy: .private)")
-            #endif
             return asset.localIdentifier
         }
         try Task.checkCancellation()
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.photoLibrary.info("depthAssetIdentifier not found captureID=\(captureID, privacy: .private) scannedCount=\(result.count, privacy: .public)")
-        #endif
         return nil
     }
 
@@ -606,9 +568,6 @@ nonisolated enum PhotoLibraryWriter {
     /// system permission prompt.
     private static func requireReadWriteAccess() throws -> PHAuthorizationStatus {
         let current = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.photoLibrary.info("requireReadWriteAccess current=\(String(describing: current), privacy: .public)")
-        #endif
         switch current {
         case .authorized, .limited:
             return current
@@ -621,15 +580,9 @@ nonisolated enum PhotoLibraryWriter {
 
     private static func fetchOrCreateAlbum() async throws -> PHAssetCollection {
         if let existing = fetchAlbum() {
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.photoLibrary.info("fetchOrCreateAlbum existing name=\(albumName, privacy: .public)")
-            #endif
             return existing
         }
 
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.photoLibrary.info("fetchOrCreateAlbum create name=\(albumName, privacy: .public)")
-        #endif
         var placeholder: PHObjectPlaceholder?
         try await PHPhotoLibrary.shared().performChanges {
             let request = PHAssetCollectionChangeRequest.creationRequestForAssetCollection(withTitle: albumName)
@@ -645,9 +598,6 @@ nonisolated enum PhotoLibraryWriter {
             throw TAPDepthCaptureError.albumCreationFailed
         }
 
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.photoLibrary.info("fetchOrCreateAlbum created name=\(albumName, privacy: .public)")
-        #endif
         return album
     }
 
@@ -674,9 +624,6 @@ nonisolated enum PhotoLibraryWriter {
             try? FileManager.default.removeItem(at: resourceURL.deletingLastPathComponent())
         }
 
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.photoLibrary.info("createAsset start bytes=\(data.count, privacy: .public) album=\(album != nil, privacy: .public)")
-        #endif
         try await PHPhotoLibrary.shared().performChanges {
             let creationRequest = PHAssetCreationRequest.forAsset()
             creationRequest.creationDate = capturedAt
@@ -709,9 +656,6 @@ nonisolated enum PhotoLibraryWriter {
             throw TAPDepthCaptureError.assetCreationFailed
         }
 
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.photoLibrary.info("createAsset success assetID=\(localIdentifier, privacy: .private)")
-        #endif
         return localIdentifier
     }
 
@@ -729,10 +673,6 @@ nonisolated enum PhotoLibraryWriter {
         }
 
         var placeholder: PHObjectPlaceholder?
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        let byteCount = try fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-        TAPDiagnostics.photoLibrary.info("createVideoAsset file start bytes=\(byteCount, privacy: .public) album=\(album != nil, privacy: .public)")
-        #endif
         try Task.checkCancellation()
         try await commitWillBegin()
         try await PHPhotoLibrary.shared().performChanges {
@@ -757,9 +697,6 @@ nonisolated enum PhotoLibraryWriter {
         guard let localIdentifier = placeholder?.localIdentifier else {
             throw TAPDepthCaptureError.assetCreationFailed
         }
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.photoLibrary.info("createVideoAsset file success assetID=\(localIdentifier, privacy: .private)")
-        #endif
         return localIdentifier
     }
 

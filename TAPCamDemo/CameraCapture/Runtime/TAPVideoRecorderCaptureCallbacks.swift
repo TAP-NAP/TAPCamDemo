@@ -186,10 +186,6 @@ nonisolated extension TAPVideoRecorder {
         if depthData.depthDataWasDropped {
             metrics.depthOutputDropCount += 1
             recordDepthGap(reason: .outputDrop, at: depthData.timestamp)
-            diagnostics.logDepthDropIfNeeded(
-                reason: depthData.droppedReason,
-                dropCount: metrics.depthOutputDropCount
-            )
         } else {
             appendDepthSample(depthData.depthData, timestamp: depthData.timestamp)
         }

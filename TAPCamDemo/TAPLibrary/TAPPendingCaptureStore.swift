@@ -90,12 +90,6 @@ nonisolated enum TAPPendingCaptureShareResourceLinkPolicy: Equatable, Sendable {
 actor TAPPendingCaptureStore {
     static let shared = TAPPendingCaptureStore()
 
-    private enum ShareResourceRole: String {
-        case photo
-        case pairedVideo
-        case video
-    }
-
     private static let shareSnapshotCopyBufferSize = 512 * 1_024
 
     private let storage: TAPPendingCaptureBundleStorage
@@ -140,9 +134,6 @@ actor TAPPendingCaptureStore {
         let finalURL = try storage.bundleURL(captureID: captureID)
         if storage.bundleExists(at: finalURL),
            let existing = try? readRecord(captureID: captureID) {
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.pendingCapture.info("store ingest existing captureID=\(captureID, privacy: .private) status=\(existing.status.rawValue, privacy: .public) retryCount=\(existing.retryCount, privacy: .public)")
-            #endif
             return existing
         }
 
@@ -195,9 +186,6 @@ actor TAPPendingCaptureStore {
         try storage.commitTemporaryBundle(at: temporaryURL, to: finalURL)
         ingestionGeneration &+= 1
         TAPLibraryChangeNotifier.post()
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.pendingCapture.info("store ingest created captureID=\(captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public) unsignedBytes=\(artifact.photoData.count, privacy: .public) hasThumbnail=\(thumbnailFilename != nil, privacy: .public) hasPairedVideo=\(pairedVideoFilename != nil, privacy: .public)")
-        #endif
         return record
     }
 
@@ -216,13 +204,8 @@ actor TAPPendingCaptureStore {
         if storage.bundleExists(at: finalURL),
            let existing = try? readRecord(captureID: captureID) {
             videoWorkspaces.discard(captureID: captureID)
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.pendingCapture.info("store video ingest existing captureID=\(captureID, privacy: .private) status=\(existing.status.rawValue, privacy: .public) retryCount=\(existing.retryCount, privacy: .public)")
-            #endif
             return existing
         }
-
-        let byteCount = (try? artifact.videoURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
 
         let now = Date()
         let record = TAPPendingCaptureRecord(
@@ -256,9 +239,6 @@ actor TAPPendingCaptureStore {
         ingestionGeneration &+= 1
         videoWorkspaces.didCommit(captureID: captureID)
         TAPLibraryChangeNotifier.post()
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.pendingCapture.info("store video ingest created captureID=\(captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public) videoBytes=\(byteCount, privacy: .public)")
-        #endif
         return record
     }
 
@@ -488,11 +468,6 @@ actor TAPPendingCaptureStore {
         )
         activeVideoSigningAttempts[artifact.captureID] = nil
         TAPLibraryChangeNotifier.post(captureID: record.captureID)
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.pendingCapture.info(
-            "store video signed generation published captureID=\(artifact.captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public)"
-        )
-        #endif
         return record
     }
 
@@ -602,7 +577,6 @@ actor TAPPendingCaptureStore {
                 from: source.photoURL,
                 to: photoURL,
                 byteCount: photoByteCount,
-                role: .photo,
                 linkPolicy: linkPolicy,
                 progressHandler: { copiedByteCount in
                     progressHandler(
@@ -618,7 +592,6 @@ actor TAPPendingCaptureStore {
                     from: sourcePairedVideoURL,
                     to: destinationPairedVideoURL,
                     byteCount: pairedVideoByteCount,
-                    role: .pairedVideo,
                     linkPolicy: linkPolicy,
                     progressHandler: { copiedByteCount in
                         progressHandler(
@@ -762,7 +735,6 @@ actor TAPPendingCaptureStore {
                 from: sourceVideoURL,
                 to: destinationVideoURL,
                 byteCount: byteCount,
-                role: .video,
                 linkPolicy: .requireIndependentFile,
                 progressHandler: { copiedByteCount in
                     progressHandler(
@@ -828,7 +800,6 @@ actor TAPPendingCaptureStore {
                 from: sourceVideoURL,
                 to: destinationVideoURL,
                 byteCount: byteCount,
-                role: .video,
                 // A hard link survives unlinking but not in-place proof-slot
                 // writes. Pending signing can mutate the same inode, so
                 // playback needs an independent byte snapshot.
@@ -863,11 +834,9 @@ actor TAPPendingCaptureStore {
         from sourceURL: URL,
         to destinationURL: URL,
         byteCount: Int64,
-        role: ShareResourceRole,
         linkPolicy: TAPPendingCaptureShareResourceLinkPolicy,
         progressHandler: (Int64) -> Void
     ) throws {
-        let startedAt = ProcessInfo.processInfo.systemUptime
         try Task.checkCancellation()
 
         if linkPolicy == .allowReadOnlyHardLink {
@@ -875,15 +844,6 @@ actor TAPPendingCaptureStore {
                 try shareSnapshotLinker(sourceURL, destinationURL)
                 try Task.checkCancellation()
                 progressHandler(byteCount)
-                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-                let durationMilliseconds = max(
-                    0,
-                    (ProcessInfo.processInfo.systemUptime - startedAt) * 1_000
-                )
-                TAPDiagnostics.sharePackaging.info(
-                    "tapnap local snapshot completed role=\(role.rawValue, privacy: .public) strategy=hardLink durationMs=\(durationMilliseconds, privacy: .public) bytes=\(byteCount, privacy: .public)"
-                )
-                #endif
                 return
             } catch {
                 if error is CancellationError {
@@ -930,16 +890,6 @@ actor TAPPendingCaptureStore {
             try Task.checkCancellation()
             try sourceHandle.close()
             try destinationHandle.close()
-
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            let durationMilliseconds = max(
-                0,
-                (ProcessInfo.processInfo.systemUptime - startedAt) * 1_000
-            )
-            TAPDiagnostics.sharePackaging.info(
-                "tapnap local snapshot completed role=\(role.rawValue, privacy: .public) strategy=streamedCopy durationMs=\(durationMilliseconds, privacy: .public) bytes=\(byteCount, privacy: .public)"
-            )
-            #endif
         } catch {
             try? sourceHandle.close()
             try? destinationHandle.close()
@@ -990,9 +940,6 @@ actor TAPPendingCaptureStore {
         }
         try storage.writeRecord(record)
         TAPLibraryChangeNotifier.post(captureID: captureID)
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.pendingCapture.info("store status updated captureID=\(captureID, privacy: .private) status=\(status.rawValue, privacy: .public) retryCount=\(record.retryCount, privacy: .public) hasFailureReason=\(failureReason != nil, privacy: .public)")
-        #endif
         return record
     }
 
@@ -1005,9 +952,6 @@ actor TAPPendingCaptureStore {
         record.updatedAt = Date()
         try storage.writeRecord(record)
         TAPLibraryChangeNotifier.post(captureID: captureID)
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.pendingCapture.info("store signedPhoto stored captureID=\(captureID, privacy: .private) container=\(record.photoFileContainer.rawValue, privacy: .public) bytes=\(data.count, privacy: .public) status=\(record.status.rawValue, privacy: .public)")
-        #endif
         return record
     }
 
@@ -1114,16 +1058,13 @@ actor TAPPendingCaptureStore {
             // The authoritative Photos readback has already passed and the
             // exported state is persisted. Startup cleanup can retry local file
             // removal; cleanup failure must not roll back the export commit.
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            #if DEBUG
             TAPDiagnostics.pendingCapture.error(
                 "store exported cleanup deferred captureID=\(captureID, privacy: .private) error=\(TAPDiagnostics.describe(error), privacy: .public)"
             )
             #endif
         }
         TAPLibraryChangeNotifier.post()
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.pendingCapture.info("store exported marked captureID=\(captureID, privacy: .private) assetID=\(assetLocalIdentifier, privacy: .private)")
-        #endif
         return persistedRecord
     }
 

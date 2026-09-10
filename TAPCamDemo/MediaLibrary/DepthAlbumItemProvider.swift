@@ -113,11 +113,6 @@ struct DepthAlbumItemProvider {
             )
             return (items: items, summaries: items.map(\.summary))
         }.value
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.photoLibrary.info(
-            "tap_library_snapshot_loaded visiblePendingCount=\(pendingRecords.count, privacy: .public) exportedRecordCount=\(exportedRecords.count, privacy: .public) photoAssetCount=\(photoCatalogSnapshot.albumAssets.count, privacy: .public) itemCount=\(reconciled.items.count, privacy: .public) itemSources=\(Self.itemSourceCountsDescription(reconciled.items), privacy: .public) photoAssetsErrorPresent=\(photoAssetsError != nil, privacy: .public)"
-        )
-        #endif
         return DepthAlbumItemSnapshot(
             items: reconciled.items,
             summaries: reconciled.summaries,
@@ -148,7 +143,7 @@ struct DepthAlbumItemProvider {
             do {
                 try await exportedRecordRemover(record.captureID)
             } catch {
-                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                #if DEBUG
                 TAPDiagnostics.photoLibrary.error(
                     "tap_library_orphan_cleanup_failed error=\(TAPDiagnostics.describe(error), privacy: .public)"
                 )
@@ -156,23 +151,6 @@ struct DepthAlbumItemProvider {
             }
         }
         return retained
-    }
-
-    private static func itemSourceCountsDescription(_ items: [TAPLibraryItem]) -> String {
-        var pendingCount = 0
-        var ownedPhotoCount = 0
-        var photosCount = 0
-        for item in items {
-            switch item.source {
-            case .pending:
-                pendingCount += 1
-            case .ownedPhoto:
-                ownedPhotoCount += 1
-            case .photos:
-                photosCount += 1
-            }
-        }
-        return "pending:\(pendingCount)|owned:\(ownedPhotoCount)|photos:\(photosCount)"
     }
 }
 

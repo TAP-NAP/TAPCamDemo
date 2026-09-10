@@ -93,10 +93,6 @@ struct DepthViewerShareControl: View {
     }
 
     private func presentShare() {
-        coordinator.shareButtonTapped(
-            mediaKind: subject?.mediaKind,
-            resourceReady: resourceAccess?.isReady == true
-        )
         guard let subject,
               let resourceAccess else {
             return

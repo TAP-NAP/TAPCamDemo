@@ -4,7 +4,6 @@
 //
 
 import Foundation
-import OSLog
 @preconcurrency import Photos
 import UIKit
 
@@ -129,18 +128,4 @@ nonisolated final class LibraryLivePhoto: @unchecked Sendable {
     init(_ value: PHLivePhoto) {
         self.value = value
     }
-}
-
-/// Keeps the catalog diagnostic in the reviewed logging source while the
-/// PhotoKit fetcher implementation lives in its own compilation unit.
-nonisolated func logDepthAlbumPhotoCatalogSnapshot(
-    albumCount: Int,
-    requestedExportedCount: Int,
-    resolvedExportedCount: Int
-) {
-    #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-    TAPDiagnostics.photoLibrary.info(
-        "depth_album_catalog_snapshot albumCount=\(albumCount, privacy: .public) requestedExportedCount=\(requestedExportedCount, privacy: .public) resolvedExportedCount=\(resolvedExportedCount, privacy: .public)"
-    )
-    #endif
 }

@@ -106,7 +106,7 @@ final class CameraHapticFeedbackController: ObservableObject {
             try enableHapticsDuringAudioInput()
             didReportAudioInputAllowanceFailure = false
         } catch {
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            #if DEBUG
             if !didReportAudioInputAllowanceFailure {
                 TAPDiagnostics.cameraCapture.error(
                     "camera haptics audio-input allowance failed error=\(TAPDiagnostics.describe(error), privacy: .public)"

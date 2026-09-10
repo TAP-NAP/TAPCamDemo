@@ -40,24 +40,16 @@ nonisolated struct StartupBackendSecurityPreflight: StartupSecurityPreflightChec
 
     func performRequiredPreflight() async -> StartupGateRequirementStatus {
         guard let url = healthCheckURL() else {
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            #if DEBUG
             TAPDiagnostics.securityPreflight.error("security preflight denied missing backend URL")
             #endif
             return .denied
         }
 
         let deadline = policy.deadline(startedAt: now())
-        var attempt = 0
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.securityPreflight.info("security preflight start timeoutSeconds=\(self.policy.timeoutSeconds, privacy: .public)")
-        #endif
         while policy.canStartAttempt(now: now(), deadline: deadline) {
-            attempt += 1
             let requestSucceeded = await queryBackendHealth(url)
             if requestSucceeded {
-                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-                TAPDiagnostics.securityPreflight.info("security preflight granted attempt=\(attempt, privacy: .public)")
-                #endif
                 return .granted
             }
 
@@ -65,14 +57,11 @@ nonisolated struct StartupBackendSecurityPreflight: StartupSecurityPreflightChec
                 break
             }
 
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.securityPreflight.info("security preflight retry attempt=\(attempt, privacy: .public)")
-            #endif
             await sleep(policy.retryDelayNanoseconds)
         }
 
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.securityPreflight.error("security preflight denied after timeout attemptCount=\(attempt, privacy: .public)")
+        #if DEBUG
+        TAPDiagnostics.securityPreflight.error("security preflight denied after timeout")
         #endif
         return .denied
     }
@@ -82,23 +71,22 @@ nonisolated struct StartupBackendSecurityPreflight: StartupSecurityPreflightChec
         request.httpMethod = "GET"
 
         do {
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.securityPreflight.info("security preflight request endpoint=healthz")
-            #endif
             let (_, response) = try await URLSession.shared.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse else {
-                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                #if DEBUG
                 TAPDiagnostics.securityPreflight.error("security preflight failed nonHTTPResponse endpoint=healthz")
                 #endif
                 return false
             }
             let succeeded = (200..<300).contains(httpResponse.statusCode)
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.securityPreflight.info("security preflight response endpoint=healthz statusCode=\(httpResponse.statusCode, privacy: .public) succeeded=\(succeeded, privacy: .public)")
+            #if DEBUG
+            if !succeeded {
+                TAPDiagnostics.securityPreflight.error("security preflight failed endpoint=healthz statusCode=\(httpResponse.statusCode, privacy: .public)")
+            }
             #endif
             return succeeded
         } catch {
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            #if DEBUG
             TAPDiagnostics.securityPreflight.error("security preflight failed endpoint=healthz error=\(TAPDiagnostics.describe(error), privacy: .public)")
             #endif
             return false

@@ -1,7 +1,11 @@
 import Foundation
+
+#if DEBUG
 import OSLog
+#endif
 
 nonisolated enum TAPDiagnostics {
+    #if DEBUG
     private static let subsystem = Bundle.main.bundleIdentifier ?? "TAPCamDemo"
 
     static let appAttest = Logger(subsystem: subsystem, category: "AppAttest")
@@ -11,6 +15,7 @@ nonisolated enum TAPDiagnostics {
     static let photoLibrary = Logger(subsystem: subsystem, category: "PhotoLibrary")
     static let depthAnalysis = Logger(subsystem: subsystem, category: "DepthAnalysis")
     static let sharePackaging = Logger(subsystem: subsystem, category: "SharePackaging")
+    #endif
 
     /// Public log-safe error summary.
     ///

@@ -1123,7 +1123,7 @@ struct DepthProjectionSceneView: UIViewRepresentable {
             payloadData: TAPDepthProjectionScenePayloadData?
         ) -> SCNScene? {
             guard let payloadData else {
-                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                #if DEBUG
                 TAPDiagnostics.depthAnalysis.warning("projection payload missing label=payloadMissing")
                 #endif
                 return nil

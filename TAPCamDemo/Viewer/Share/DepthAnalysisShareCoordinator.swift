@@ -13,17 +13,6 @@ nonisolated enum DepthAnalysisShareOption: String, Equatable, Sendable {
     case video
 }
 
-private extension DepthAnalysisShareMediaKind {
-    var diagnosticValue: String {
-        switch self {
-        case .photo:
-            return "photo"
-        case .video:
-            return "video"
-        }
-    }
-}
-
 @MainActor
 enum DepthAnalysisSharePreparationState {
     case idle
@@ -242,28 +231,12 @@ class DepthAnalysisShareCoordinator: ObservableObject {
         pendingHandoffPresentation != nil || activityPresentation != nil
     }
 
-    func shareButtonTapped(
-        mediaKind: DepthAnalysisShareMediaKind?,
-        resourceReady: Bool
-    ) {
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.sharePackaging.info(
-            "tap_share_tapped media=\(mediaKind?.diagnosticValue ?? "none", privacy: .public) resourceReady=\(resourceReady, privacy: .public) activityActive=\(self.hasActiveActivityPresentation, privacy: .public)"
-        )
-        #endif
-    }
-
     func popoverDidAppear() {
         guard isPopoverPresented,
               !popoverHasAppeared else {
             return
         }
         popoverHasAppeared = true
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.sharePackaging.info(
-            "tap_share_popover_appeared media=\(self.subject?.mediaKind.diagnosticValue ?? "none", privacy: .public) pendingRoute=\(self.subject?.usesPendingCaptureResource == true, privacy: .public)"
-        )
-        #endif
         guard certificationState == nil,
               refreshTask == nil,
               let presentationID,
@@ -340,15 +313,9 @@ class DepthAnalysisShareCoordinator: ObservableObject {
             return
         }
         if let presentation = pendingHandoffPresentation {
-            let payload = presentation.artifact
             pendingHandoffPresentation = nil
             activityPresentation = presentation
             preparationState = .idle
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.sharePackaging.info(
-                "tap_share_activity_handoff_started kind=\(payload.kind.rawValue, privacy: .public)"
-            )
-            #endif
         } else {
             dismissPresentation()
         }
@@ -502,7 +469,6 @@ class DepthAnalysisShareCoordinator: ObservableObject {
                 try Task.checkCancellation()
                 guard let preparedPresentation = makeActivityPresentation(
                     artifact,
-                    option: option,
                     presentationID: presentationID,
                     preparationID: currentPreparationID
                 ) else {
@@ -580,12 +546,6 @@ class DepthAnalysisShareCoordinator: ObservableObject {
               endedPresentation.id == expectedArtifactID else {
             return
         }
-        let kind = endedPresentation.artifact.kind.rawValue
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.sharePackaging.info(
-            "tap_share_activity_sheet_dismissed kind=\(kind, privacy: .public)"
-        )
-        #endif
         activityPresentation = nil
         resetPresentationState()
         endedPresentation.scheduleTemporaryDirectoryCleanup()
@@ -771,28 +731,17 @@ class DepthAnalysisShareCoordinator: ObservableObject {
             }
         }
 
-        let validationStartedAt = ProcessInfo.processInfo.systemUptime
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.sharePackaging.info(
-            "tap_share_local_integrity_started media=\(subject.mediaKind.diagnosticValue, privacy: .public) route=\(subject.usesPendingCaptureResource ? "pending" : "photos", privacy: .public)"
-        )
-        #endif
         do {
             try await localIntegrityValidator.validate(
                 resource: originalResource,
                 expectedCaptureID: record?.captureID ?? subject.captureID,
                 expectedPackageID: subject.mediaKind == .video ? record?.packageID : nil
             )
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.sharePackaging.info(
-                "tap_share_local_integrity_finished media=\(subject.mediaKind.diagnosticValue, privacy: .public) outcome=localIntegrityPassed message=本地完整性检查通过 durationBucket=\(Self.durationBucket(since: validationStartedAt), privacy: .public)"
-            )
-            #endif
             return .localIntegrityPassed
         } catch {
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.sharePackaging.info(
-                "tap_share_local_integrity_finished media=\(subject.mediaKind.diagnosticValue, privacy: .public) outcome=failed durationBucket=\(Self.durationBucket(since: validationStartedAt), privacy: .public)"
+            #if DEBUG
+            TAPDiagnostics.sharePackaging.error(
+                "tap_share_local_integrity_failed error=\(TAPDiagnostics.describe(error), privacy: .public)"
             )
             #endif
             return .failed
@@ -879,7 +828,6 @@ class DepthAnalysisShareCoordinator: ObservableObject {
 
     private func makeActivityPresentation(
         _ artifact: TAPNAPShareArtifact,
-        option: DepthAnalysisShareOption,
         presentationID: UUID,
         preparationID: UUID
     ) -> TAPShareActivityPresentation? {
@@ -887,11 +835,6 @@ class DepthAnalysisShareCoordinator: ObservableObject {
               self.preparationID == preparationID else {
             return nil
         }
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.sharePackaging.info(
-            "tap_share_payload_ready kind=\(artifact.kind.rawValue, privacy: .public) option=\(option.rawValue, privacy: .public)"
-        )
-        #endif
 
         // Only create an attempt-scoped artifact owner here. UIKit construction
         // belongs to the later system-sheet presentation boundary; doing it in
@@ -979,25 +922,6 @@ class DepthAnalysisShareCoordinator: ObservableObject {
         pendingHandoffPresentation = nil
         activityPresentation = nil
         hasDeferredCertificationRefresh = false
-    }
-
-    nonisolated private static func durationBucket(
-        since startedAt: TimeInterval
-    ) -> String {
-        let milliseconds = max(
-            0,
-            Int(((ProcessInfo.processInfo.systemUptime - startedAt) * 1_000).rounded())
-        )
-        switch milliseconds {
-        case ..<50:
-            return "under50ms"
-        case ..<200:
-            return "50to199ms"
-        case ..<1_000:
-            return "200to999ms"
-        default:
-            return "over1s"
-        }
     }
 
     private func runDeferredCertificationRefreshIfNeeded() {

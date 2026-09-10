@@ -4,7 +4,6 @@
 //
 
 import Combine
-import OSLog
 import SwiftUI
 import UIKit
 
@@ -167,24 +166,12 @@ struct StartupGateView: View {
         }
         let worker = Task.detached(priority: .userInitiated) {
             try Task.checkCancellation()
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.cameraCapture.info("startup capabilities loading")
-            #endif
             let cache = CameraCapabilityCache()
             if let cached = cache.loadCached() {
-                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-                TAPDiagnostics.cameraCapture.info("startup capabilities restored")
-                #endif
                 return cached
             }
             try await beforeDiscovery()
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.cameraCapture.info("startup capabilities discovery started")
-            #endif
             let discovered = cache.discoverAndCache()
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.cameraCapture.info("startup capabilities discovery completed")
-            #endif
             return discovered
         }
         let capabilities = try? await withTaskCancellationHandler {

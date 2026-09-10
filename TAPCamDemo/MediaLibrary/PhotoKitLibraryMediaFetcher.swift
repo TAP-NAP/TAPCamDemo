@@ -48,11 +48,6 @@ actor PhotoKitLibraryMediaFetcher: LibraryMediaFetching {
             exportedAssets = values
         }
 
-        logDepthAlbumPhotoCatalogSnapshot(
-            albumCount: albumAssets.count,
-            requestedExportedCount: exportedAssetLocalIdentifiers.count,
-            resolvedExportedCount: exportedAssets.count
-        )
         return DepthAlbumPhotoCatalogSnapshot(
             albumAssets: albumAssets,
             resolvedAssets: exportedAssets

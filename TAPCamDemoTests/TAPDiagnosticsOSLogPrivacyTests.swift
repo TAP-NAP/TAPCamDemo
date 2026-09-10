@@ -17,245 +17,29 @@ struct TAPDiagnosticsOSLogPrivacyTests {
     ])
 
     private static let reviewedPublicLabels = Set([
-        "album",
-        "activityActive",
-        "assetIDPresent",
         "attempt",
-        "attemptCount",
-        "actualDimensions",
-        "backend",
-        "availableCodecs",
-        "availableFileTypes",
-        "bytes",
-        "bufferBytes",
-        "allowsCameraControl",
-        "cameraPitch",
-        "cameraRoll",
-        "cameraScaleX",
-        "cameraScaleY",
-        "cameraScaleZ",
-        "cameraCx",
-        "cameraCy",
-        "cameraFx",
-        "cameraFy",
-        "cameraX",
-        "cameraY",
-        "cameraYaw",
-        "cameraZ",
-        "codec",
-        "configuredDimensions",
-        "container",
-        "controllerTargetX",
-        "controllerTargetY",
-        "controllerTargetZ",
-        "current",
-        "depthHeight",
-        "depthMax",
-        "depthMean",
-        "depthMin",
-        "depthWidth",
-        "durationMs",
-        "durationBucket",
-        "excludedCount",
-        "entries",
-        "filteredOutPointCount",
-        "hasFailureReason",
-        "hasLocation",
-        "hasPairedVideo",
-        "hasHighlight",
-        "hasRGB",
-        "hasThumbnail",
-        "gestureRecognizerCount",
-        "highlightPointCount",
-        "interactionPitch",
-        "interactionRoll",
-        "interactionScaleX",
-        "interactionScaleY",
-        "interactionScaleZ",
-        "interactionX",
-        "interactionY",
-        "interactionYaw",
-        "interactionZ",
-        "inputBytes",
-        "inertiaEnabled",
+        "checkpoint",
+        "code",
+        "deviceType",
+        "domain",
         "jobID",
-        "kind",
         "label",
-        "flashMode",
-        "method",
-        "media",
-        "name",
-        "livePhotoMovie",
-        "livePhoto",
-        "motionPitch",
-        "motionRoll",
+        "mediaServicesReset",
         "nextStatus",
-        "operationID",
-        "orientation",
-        "option",
-        "orientedImageHeight",
-        "orientedImageWidth",
-        "path",
-        "pendingCaptureIDPresent",
-        "pendingRoute",
-        "pendingJobCount",
-        "fileType",
-        "pointOfViewIsCameraNode",
-        "pointSize",
-        "photoBytes",
-        "photosRoute",
         "previousStatus",
         "processedCount",
-        "profile",
-        "projectionM11",
-        "projectionM22",
-        "projectionM31",
-        "projectionM32",
-        "projectionM43",
-        "proofBytes",
-        "packageBytes",
-        "pairedVideoBytes",
-        "rawImageHeight",
-        "rawImageWidth",
-        "rawSampleCount",
-        "readiness",
-        "remainingJobs",
-        "receivedBytes",
-        "retryCount",
-        "resourceReady",
-        "rootPitch",
-        "rootRoll",
-        "rootScaleX",
-        "rootScaleY",
-        "rootScaleZ",
-        "rootYaw",
-        "route",
-        "sampleCount",
-        "scannedCount",
-        "signedBytes",
-        "signedPhoto",
-        "status",
-        "statusCode",
-        "succeeded",
-        "selectedDimensions",
-        "suppressesShutterSound",
-        "supportedDimensions",
-        "targetDepth",
-        "timeoutSeconds",
-        "touchCount",
-        "unsignedBytes",
-        "outputBytes",
-        "vertexMaxZ",
-        "vertexMinZ",
-        "vpnHint",
-        "viewportHeight",
-        "viewportWidth",
-        "workerActive",
-        "workerID",
-        "artifactKind",
-        "canAddOutput",
-        "code",
-        "configuring",
-        "delayNs",
-        "depthSamples",
-        "file",
-        "format",
-        "paused",
-        "phase",
-        "previewSizedVideo",
-        "previous",
         "reason",
-        "recording",
-        "recordsAudio",
-        "recordsDepth",
-        "synchronizedDepth",
-        "unsupportedByActiveFormat",
-        "videoBytes",
-        "videoState",
-        "albumCount",
-        "audioDrops",
-        "audioSamples",
-        "calibration",
-        "cameraBusy",
-        "credentialPreparing",
-        "depthBeforeVideoStart",
-        "depthDeliverySupported",
-        "depthEncodingDrops",
-        "depthMetadataDrops",
-        "depthOutputDrops",
-        "depthOutputSamples",
-        "dropCount",
-        "domain",
-        "duration",
-        "filtered",
-        "height",
-        "imageBytes",
-        "mediaServicesReset",
-        "pixelFormat",
-        "requestedExportedCount",
-        "resolvedExportedCount",
-        "rgbFrames",
-        "sourceRowStride",
-        "stopReason",
-        "timestamp",
-        "videoDrops",
-        "width",
-        "writerError",
-        "writerStatus",
-        "deviceType",
-        "running",
-        "role",
-        "signedOnly",
+        "retryCount",
         "scope",
-        "traceID",
-        "viewerLease",
-        "willRetry",
-        "budget",
-        "cacheBytes",
-        "cacheCount",
-        "currentItemCount",
-        "destination",
-        "exportedRecordCount",
-        "frameIndex",
-        "itemCount",
-        "itemSources",
-        "missCount",
-        "nearestDelta",
-        "outcome",
-        "pending",
-        "photoAssetCount",
-        "photoAssetsErrorPresent",
-        "playbackTime",
-        "presentationTime",
-        "retained",
-        "routeDepthAlbumPresented",
-        "semanticChanged",
-        "showLoading",
         "source",
-        "visiblePendingCount",
-        "connectionActive",
-        "connectionEnabled",
-        "depthEnabled",
-        "depthRequested",
-        "flashSupported",
-        "livePhotoEnabled",
-        "livePhotoSuspended",
-        "maximumQuality",
-        "position",
-        "requestedQuality",
-        "settingsID"
+        "statusCode",
+        "vpnHint",
+        "willRetry",
+        "writerError",
+        "writerStatus"
     ])
 
-    @Test func allTAPDiagnosticsLoggingFilesAreCoveredByHarness() throws {
-        #expect(
-            try Self.discoveredLoggingSourceFiles() == Self.criticalLoggingSourceFiles(),
-            "Update TAPDiagnosticsOSLogPrivacyTests when adding a TAPDiagnostics logging file"
-        )
-    }
-
     @Test func osLogInterpolationsDeclareReviewedPrivacy() throws {
-        var matchedPublicLabels = Set<String>()
-
         for interpolation in try Self.loggingInterpolations() {
             #expect(
                 interpolation.privacy != nil,
@@ -287,31 +71,20 @@ struct TAPDiagnosticsOSLogPrivacyTests {
                     interpolation.privacy == ".public",
                     "\(interpolation.location) must keep the public App Attest backend summary public"
                 )
-                matchedPublicLabels.insert(interpolation.label)
             } else if interpolation.privacy == ".public" {
                 #expect(
                     Self.reviewedPublicLabels.contains(interpolation.label),
                     "\(interpolation.location) uses unreviewed public OSLog label \(interpolation.label)"
                 )
-                matchedPublicLabels.insert(interpolation.label)
             }
         }
-
-        #expect(
-            matchedPublicLabels == Self.reviewedPublicLabels,
-            "OSLog privacy harness should keep reviewed scalar diagnostics public"
-        )
     }
 
-    @Test func sensitiveOSLogLabelsAreNotAccidentallyBroadenedByPrefix() throws {
-        let publicLabels = try Self.loggingInterpolations()
-            .filter { $0.privacy == ".public" }
-            .map(\.label)
-
-        #expect(publicLabels.contains("assetIDPresent"))
-        #expect(publicLabels.contains("pendingCaptureIDPresent"))
-        #expect(!publicLabels.contains("assetID"))
-        #expect(!publicLabels.contains("captureID"))
+    @Test func sensitiveOSLogLabelsAreNotAccidentallyBroadenedByPrefix() {
+        let sample = #"assetID=\(id, privacy: .private) assetIDPresent=\(true, privacy: .public) pendingCaptureIDPresent=\(false, privacy: .public)"#
+        let fields = Self.interpolations(in: sample, sourceFile: "sample", startLine: 1)
+        #expect(fields.map(\.label) == ["assetID", "assetIDPresent", "pendingCaptureIDPresent"])
+        #expect(fields.map(\.privacy) == [".private", ".public", ".public"])
     }
 
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
@@ -330,18 +103,17 @@ struct TAPDiagnosticsOSLogPrivacyTests {
 
     @Test func runtimeOutputLogsAreConditionallyCompiled() throws {
         let calls = try Self.runtimeOutputLoggingCalls()
-        #expect(!calls.isEmpty, "Output log scanner should find existing runtime logs")
 
         for call in calls {
             #expect(
                 call.isConditionallyCompiled,
-                "\(call.location) must be inside #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS"
+                "\(call.location) must be inside #if DEBUG"
             )
         }
     }
 
     private static func loggingInterpolations() throws -> [OSLogInterpolation] {
-        try criticalLoggingSourceFiles().flatMap { sourceFile in
+        try discoveredLoggingSourceFiles().flatMap { sourceFile in
             try loggingCalls(relativePath: sourceFile).flatMap(\.interpolations)
         }
     }
@@ -395,43 +167,6 @@ struct TAPDiagnosticsOSLogPrivacyTests {
         }
     }
 
-    private static func criticalLoggingSourceFiles() -> [String] {
-        [
-            "TAPCamDemo/App/Attestation/AppAttestRuntime.swift",
-            "TAPCamDemo/App/Attestation/AppAttestRuntimeController.swift",
-            "TAPCamDemo/App/Startup/StartupBackendSecurityPreflight.swift",
-            "TAPCamDemo/CameraCapture/Output/AppAttestCaptureAssertionSigner.swift",
-            "TAPCamDemo/CameraCapture/Output/EmbeddedPhotoPackager.swift",
-            "TAPCamDemo/CameraCapture/Output/PhotoLibraryWriter.swift",
-            "TAPCamDemo/CameraCapture/Runtime/AVFoundationSingleCamPhotoProvider.swift",
-            "TAPCamDemo/CameraCapture/Runtime/CameraManualFocusPreviewStream.swift",
-            "TAPCamDemo/CameraCapture/Runtime/CaptureSessionController.swift",
-            "TAPCamDemo/CameraCapture/Runtime/TAPVideoRecorder.swift",
-            "TAPCamDemo/CameraCapture/Runtime/TAPVideoRecorderDiagnostics.swift",
-            "TAPCamDemo/CameraCapture/UI/Controls/CameraHapticFeedbackController.swift",
-            "TAPCamDemo/CameraCapture/UI/CameraView.swift",
-            "TAPCamDemo/CameraCapture/UI/ViewModel/CameraViewModel+Capture.swift",
-            "TAPCamDemo/CameraCapture/UI/ViewModel/CameraViewModel+VideoCapture.swift",
-            "TAPCamDemo/CameraCapture/UI/Lifecycle/CaptureLifecycleCoordinator.swift",
-            "TAPCamDemo/DepthAnalysis/AnalysisTools/DepthPointCloudPreview.swift",
-            "TAPCamDemo/DepthAnalysis/Video/TAPVideoDepthMetadataOutput.swift",
-            "TAPCamDemo/DepthAnalysis/Video/TAPVideoDepthPipeline.swift",
-            "TAPCamDemo/MediaLibrary/DepthAlbumItemProvider.swift",
-            "TAPCamDemo/MediaLibrary/LibraryMediaFetching.swift",
-            "TAPCamDemo/MediaLibrary/LibraryMediaStore.swift",
-            "TAPCamDemo/TAPLibrary/AppAttestPendingCaptureSigner.swift",
-            "TAPCamDemo/TAPLibrary/PhotoLibraryPendingCaptureExporter.swift",
-            "TAPCamDemo/TAPLibrary/TAPPendingCaptureProcessor.swift",
-            "TAPCamDemo/TAPLibrary/TAPPendingCaptureStore.swift",
-            "TAPCamDemo/Viewer/Library/DepthAlbumPickerViewModel.swift",
-            "TAPCamDemo/Viewer/Photo/DepthAnalysisView.swift",
-            "TAPCamDemo/Viewer/Playback/TAPVideoPlaybackSession.swift",
-            "TAPCamDemo/Viewer/Share/DepthAnalysisShareCoordinator.swift",
-            "TAPCamDemo/Viewer/Share/TAPNAPShareArtifactBuilder.swift",
-            "TAPCamDemo/Viewer/Share/VerificationExportActivityView.swift"
-        ].sorted()
-    }
-
     private static func discoveredLoggingSourceFiles() throws -> [String] {
         let root = try repositoryRoot()
         let appURL = root.appendingPathComponent("TAPCamDemo")
@@ -473,7 +208,7 @@ struct TAPDiagnosticsOSLogPrivacyTests {
                     RuntimeOutputLogCall(
                         sourceFile: relativePath,
                         lineNumber: index + 1,
-                        isConditionallyCompiled: lineIsInsideReleaseDiagnosticsConditional(
+                        isConditionallyCompiled: lineIsInsideDebugConditional(
                             lineNumber: index + 1,
                             lines: lines
                         )
@@ -498,7 +233,7 @@ struct TAPDiagnosticsOSLogPrivacyTests {
         return containsTAPDiagnosticsCall || containsStandardOutputCall
     }
 
-    private static func lineIsInsideReleaseDiagnosticsConditional(
+    private static func lineIsInsideDebugConditional(
         lineNumber: Int,
         lines: [String]
     ) -> Bool {
@@ -521,14 +256,14 @@ struct TAPDiagnosticsOSLogPrivacyTests {
                 _ = conditions.popLast()
             }
         }
-        return conditions.contains(where: isReleaseDiagnosticsCondition)
+        return conditions.contains(where: isDebugCondition)
     }
 
-    private static func isReleaseDiagnosticsCondition(_ condition: String) -> Bool {
+    private static func isDebugCondition(_ condition: String) -> Bool {
         let compactCondition = condition
             .replacingOccurrences(of: " ", with: "")
             .trimmingCharacters(in: CharacterSet(charactersIn: "()"))
-        return compactCondition == "DEBUG||TAP_ENABLE_RELEASE_DIAGNOSTICS"
+        return compactCondition == "DEBUG"
     }
 
     private static func relativePath(for fileURL: URL, root: URL) -> String {

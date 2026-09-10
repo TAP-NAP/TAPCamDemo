@@ -1136,7 +1136,7 @@ struct TAPVideoStreamingTests {
         #expect(try frame.decodedPackedBytes() == raw)
     }
 
-    #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+    #if DEBUG
     @Test func codecBenchmarkComparesAllCandidatesAndAppliesLockedFallbackOrder() throws {
         let frames = (0..<8).map { frameIndex in
             Data(repeating: UInt8(frameIndex), count: 32 * 1024)

@@ -279,18 +279,14 @@ nonisolated final class TAPVideoRecorder: NSObject, @unchecked Sendable {
                     durationSeconds: manifest.payload.container.durationSeconds
                 )
             )
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.cameraCapture.info("video motion status=\(telemetry.motion.status.rawValue, privacy: .public) samples=\(telemetry.motion.samples.count, privacy: .public) drops=\(telemetry.motion.droppedSampleCount, privacy: .public) errors=\(telemetry.motion.errorCount, privacy: .public)")
-            #endif
-            let byteCount = try writerSession.publish(
+            try writerSession.publish(
                 manifest: manifest,
                 telemetry: telemetry,
                 to: request.outputURL
             )
             resumeFinishedRecording(
                 continuation: continuation,
-                manifest: manifest,
-                byteCount: byteCount
+                manifest: manifest
             )
         } catch {
             cleanupWriterFile()
@@ -305,12 +301,8 @@ nonisolated final class TAPVideoRecorder: NSObject, @unchecked Sendable {
 
     private func resumeFinishedRecording(
         continuation: CheckedContinuation<TAPVideoRecordingArtifact, any Error>,
-        manifest: TAPVideoManifest,
-        byteCount: UInt64
+        manifest: TAPVideoManifest
     ) {
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.cameraCapture.info("video recording finalized captureID=\(self.request.captureID, privacy: .private) bytes=\(byteCount, privacy: .public) duration=\(self.metrics.recordedDurationSeconds, privacy: .public) rgbFrames=\(self.metrics.videoFrameCount, privacy: .public) videoDrops=\(self.metrics.videoDropCount, privacy: .public) audioSamples=\(self.metrics.audioSampleCount, privacy: .public) audioDrops=\(self.metrics.audioDropCount, privacy: .public) depthOutputSamples=\(self.metrics.depthOutputSampleCount, privacy: .public) depthOutputDrops=\(self.metrics.depthOutputDropCount, privacy: .public) depthSamples=\(self.metrics.depthSampleCount, privacy: .public) depthBeforeVideoStart=\(self.metrics.depthSamplesBeforeVideoStart, privacy: .public) depthMetadataDrops=\(self.metrics.depthMetadataDropCount, privacy: .public) depthEncodingDrops=\(self.metrics.depthEncodingDropCount, privacy: .public) stopReason=\(self.metrics.stopReason.rawValue, privacy: .public)")
-        #endif
         diagnostics.emitRuntimeCheckpoint(
             stage: "recording-finalized",
             metrics: metrics
@@ -570,7 +562,7 @@ nonisolated final class TAPVideoRecorder: NSObject, @unchecked Sendable {
     }
 
     private func recordDepthEncodingFailure(_ error: Error, timestamp: CMTime) {
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        #if DEBUG
         TAPDiagnostics.cameraCapture.error("video depth sample encode failed captureID=\(self.request.captureID, privacy: .private) error=\(TAPDiagnostics.describe(error), privacy: .public)")
         #endif
         metrics.depthEncodingDropCount += 1

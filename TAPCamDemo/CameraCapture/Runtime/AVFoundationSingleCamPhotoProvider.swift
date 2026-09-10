@@ -8,7 +8,6 @@
 @preconcurrency import AVFoundation
 import CoreGraphics
 import Foundation
-import OSLog
 
 /// Default SingleCam provider backed by `AVCapturePhotoOutput`.
 ///
@@ -59,10 +58,6 @@ nonisolated final class AVFoundationSingleCamPhotoProvider: SingleCamPhotoCaptur
                         if captureResult.livePhotoMovie == nil {
                             livePhotoPlan?.removeTemporaryDirectory()
                         }
-                        let actualDimensions = CapturePhotoDimensions(captureResult.photo.resolvedSettings.photoDimensions)
-                        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-                        TAPDiagnostics.cameraCapture.info("photo capture processed profile=\(resolvedOutput.profileID, privacy: .public) container=\(resolvedOutput.fileContainer.rawValue, privacy: .public) actualDimensions=\(actualDimensions.debugDescription, privacy: .public) livePhotoMovie=\(captureResult.livePhotoMovie != nil, privacy: .public)")
-                        #endif
                         continuation.resume(returning: captureResult)
                     case .failure(let error):
                         livePhotoPlan?.removeTemporaryDirectory()
@@ -178,9 +173,6 @@ nonisolated enum SingleCamPhotoSettingsFactory {
         if photoOutput.supportedFlashModes.contains(requestedFlashMode) {
             settings.flashMode = requestedFlashMode
         }
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.cameraCapture.info("photo settings prepared profile=\(resolvedOutput.profileID, privacy: .public) container=\(resolvedOutput.fileContainer.rawValue, privacy: .public) fileType=\(resolvedOutput.processedFileType.rawValue, privacy: .public) codec=\(resolvedOutput.requestedCodec.rawValue, privacy: .public) selectedDimensions=\(resolvedOutput.maxPhotoDimensions?.debugDescription ?? "none", privacy: .public) flashMode=\(String(describing: requestedFlashMode), privacy: .public)")
-        #endif
         if suppressesShutterSound && photoOutput.isShutterSoundSuppressionSupported {
             settings.isShutterSoundSuppressionEnabled = true
         }

@@ -23,7 +23,7 @@ extension CameraViewModel {
               activeVideoRecordingCaptureID == failure.captureID else {
             return
         }
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        #if DEBUG
         TAPDiagnostics.cameraCapture.error(
             "video writer failed during recording captureID=\(failure.captureID, privacy: .private) domain=\(failure.domain, privacy: .public) code=\(failure.code, privacy: .public)"
         )
@@ -94,11 +94,6 @@ extension CameraViewModel {
                 depthFilteringEnabled: depthFilteringEnabled ?? DepthAnalyzerPreferences.appleDepthFilteringEnabled()
             )
         }
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        if didPrepare {
-            TAPDiagnostics.cameraCapture.info("video mode warmup complete recordsAudio=\(recordsAudio, privacy: .public) depthDeliverySupported=\(activeSessionConfiguration.depthDeliverySupported, privacy: .public)")
-        }
-        #endif
         return didPrepare
     }
 
@@ -121,7 +116,7 @@ extension CameraViewModel {
                 return false
             }
             statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .capture)
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            #if DEBUG
             TAPDiagnostics.cameraCapture.error("video mode warmup failed error=\(TAPDiagnostics.describe(error), privacy: .public)")
             #endif
             videoPreparationState = .idle
@@ -271,9 +266,6 @@ extension CameraViewModel {
             statusMessage = "Recording TAP video..."
             installVideoRecordingLimitTask(pendingCaptureWorkerClient: pendingCaptureWorkerClient)
             installVideoThermalObserver(pendingCaptureWorkerClient: pendingCaptureWorkerClient)
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.cameraCapture.info("video recording requested captureID=\(captureID, privacy: .private) recordsAudio=\(recordsAudio, privacy: .public) depthDeliverySupported=\(configuration.depthDeliverySupported, privacy: .public)")
-            #endif
         } catch {
             try? await pendingCaptureStore.abortVideoCaptureWorkspace(captureID: captureID)
             guard generation == configurationGeneration, !isPausedForAnalysis else {
@@ -285,7 +277,7 @@ extension CameraViewModel {
             activeVideoRecordingCaptureID = nil
             videoRecordingTemporaryDirectoryURL = nil
             statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .capture)
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            #if DEBUG
             TAPDiagnostics.cameraCapture.error("video recording start failed captureID=\(captureID, privacy: .private) error=\(TAPDiagnostics.describe(error), privacy: .public)")
             #endif
         }
@@ -322,9 +314,6 @@ extension CameraViewModel {
         videoPreparationState = .preparing
         videoRecordingStartedAt = nil
         statusMessage = "Finishing TAP video..."
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.cameraCapture.info("video recording stop requested captureID=\(captureID ?? "none", privacy: .private) reason=\(reason.rawValue, privacy: .public)")
-        #endif
 
         var ingestedRecord: TAPPendingCaptureRecord?
         do {
@@ -339,9 +328,6 @@ extension CameraViewModel {
                 : "TAP video queued for signing · Depth unavailable"
             activeVideoRecordingCaptureID = nil
             videoRecordingTemporaryDirectoryURL = nil
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.pendingCapture.info("video pending ingest complete captureID=\(record.captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public) depthSamples=\(artifact.manifest.payload.depthCoverage.sampleCount, privacy: .public)")
-            #endif
         } catch {
             activeVideoRecordingCaptureID = nil
             if let captureID {
@@ -349,7 +335,7 @@ extension CameraViewModel {
             }
             videoRecordingTemporaryDirectoryURL = nil
             statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .capture)
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            #if DEBUG
             TAPDiagnostics.cameraCapture.error("video recording stop failed captureID=\(captureID ?? "none", privacy: .private) error=\(TAPDiagnostics.describe(error), privacy: .public)")
             #endif
         }
@@ -394,7 +380,7 @@ extension CameraViewModel {
         } catch is CancellationError {
             return
         } catch {
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            #if DEBUG
             TAPDiagnostics.pendingCapture.error(
                 "video poster generation failed captureID=\(record.captureID, privacy: .private) error=\(TAPDiagnostics.describe(error), privacy: .public)"
             )

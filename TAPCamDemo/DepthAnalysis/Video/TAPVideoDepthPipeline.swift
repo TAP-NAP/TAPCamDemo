@@ -35,7 +35,6 @@ final class TAPVideoDepthPipeline {
     let overlayStore = TAPVideoDepthOverlayStore()
     var onPresentationStateChange: ((PresentationState) -> Void)?
 
-    private let sourceLabel: String
     private let frameCache = TAPVideoDepthFrameCache()
     private var metadataOutput: TAPVideoDepthMetadataOutput?
     private var resolvedFileURL: URL?
@@ -44,17 +43,11 @@ final class TAPVideoDepthPipeline {
     private var currentFrameTimeSeconds: Double?
     private var staleToleranceSeconds = TAPVideoDepthPlaybackBudget
         .failSafeFrameStaleToleranceSeconds
-    private var frameSelectionMissCount = 0
-    private var lastFrameMissLogTimeSeconds: Double?
     private var isHoldingLastFrameAcrossGap = false
     private var generation: UInt64 = 0
     private var readinessTrace: OSSignpostIntervalState?
     private(set) var isPresentationRequested = false
     private(set) var isPreparing = false
-
-    init(sourceLabel: String) {
-        self.sourceLabel = sourceLabel
-    }
 
     var isConfigured: Bool {
         metadataOutput != nil && resolvedFileURL != nil
@@ -191,8 +184,6 @@ final class TAPVideoDepthPipeline {
         isHoldingLastFrameAcrossGap = false
         staleToleranceSeconds = TAPVideoDepthPlaybackBudget
             .failSafeFrameStaleToleranceSeconds
-        frameSelectionMissCount = 0
-        lastFrameMissLogTimeSeconds = nil
         publishPresentationState()
     }
 
@@ -221,11 +212,6 @@ final class TAPVideoDepthPipeline {
         }
         switch event.payload {
         case .frame(let frame):
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            if frame.frameIndex == 0 {
-                TAPDiagnostics.depthAnalysis.info("tap_video_depth_playback_first_frame width=\(frame.width, privacy: .public) height=\(frame.height, privacy: .public) pixelFormat=\(frame.pixelFormat, privacy: .public) presentationTime=\(frame.presentationTimeSeconds, privacy: .public)")
-            }
-            #endif
             store(frame)
         case .noSample:
             finishUnavailable(outcome: "no-sample")
@@ -247,9 +233,6 @@ final class TAPVideoDepthPipeline {
     private func store(_ frame: TAPDecodedDepthVideoFrame) {
         guard isPresentationRequested,
               frameCache.insert(frame, around: currentPlaybackTimeSeconds) else {
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.depthAnalysis.info("tap_video_depth_cache_reject frameIndex=\(frame.frameIndex, privacy: .public) bytes=\(frame.retainedByteCount, privacy: .public) retained=\(self.frameCache.retainedByteCount, privacy: .public) budget=\(self.frameCache.maximumRetainedBytes, privacy: .public)")
-            #endif
             return
         }
         updateFrame(for: currentPlaybackTimeSeconds)
@@ -265,7 +248,7 @@ final class TAPVideoDepthPipeline {
             to: playbackTimeSeconds,
             staleToleranceSeconds: staleToleranceSeconds
         ) else {
-            handleMissingFrame(at: playbackTimeSeconds)
+            handleMissingFrame()
             return
         }
         isHoldingLastFrameAcrossGap = false
@@ -289,8 +272,7 @@ final class TAPVideoDepthPipeline {
         finishReadiness(outcome: "frame")
     }
 
-    private func handleMissingFrame(at playbackTimeSeconds: Double) {
-        logFrameSelectionMiss(playbackTimeSeconds: playbackTimeSeconds)
+    private func handleMissingFrame() {
         holdOrClearDisplayedFrameAcrossGap()
         publishPresentationState()
     }
@@ -337,23 +319,6 @@ final class TAPVideoDepthPipeline {
             return
         }
         isHoldingLastFrameAcrossGap = true
-    }
-
-    private func logFrameSelectionMiss(playbackTimeSeconds: Double) {
-        frameSelectionMissCount += 1
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        let shouldLog = lastFrameMissLogTimeSeconds.map {
-            playbackTimeSeconds - $0 >= 1
-        } ?? true
-        guard shouldLog else {
-            return
-        }
-        lastFrameMissLogTimeSeconds = playbackTimeSeconds
-        let nearestDelta = frameCache.frames
-            .map { abs($0.presentationTimeSeconds - playbackTimeSeconds) }
-            .min() ?? -1
-        TAPDiagnostics.depthAnalysis.info("tap_video_depth_pipeline_miss source=\(self.sourceLabel, privacy: .public) playbackTime=\(playbackTimeSeconds, privacy: .public) cacheCount=\(self.frameCache.frames.count, privacy: .public) cacheBytes=\(self.frameCache.retainedByteCount, privacy: .public) nearestDelta=\(nearestDelta, privacy: .public) missCount=\(self.frameSelectionMissCount, privacy: .public)")
-        #endif
     }
 
     private func setPresentationRequested(_ value: Bool) {

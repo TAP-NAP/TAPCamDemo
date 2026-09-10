@@ -4,7 +4,6 @@
 //
 
 import Dispatch
-import OSLog
 import SwiftUI
 import UIKit
 
@@ -33,19 +32,10 @@ final class TAPShareActivityPresentation: Identifiable {
     }
 
     func makeViewController() -> TAPShareActivityViewController {
-        let clock = ContinuousClock()
-        let startedAt = clock.now
-        let controller = TAPShareActivityViewController(
+        TAPShareActivityViewController(
             artifact: artifact,
             activityItems: Self.activityItems(for: artifact)
         )
-        let duration = startedAt.duration(to: clock.now)
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.sharePackaging.info(
-            "tap_share_activity_controller_created kind=\(self.artifact.kind.rawValue, privacy: .public) durationBucket=\(Self.durationBucket(duration), privacy: .public) transport=fileURL"
-        )
-        #endif
-        return controller
     }
 
     /// The item binding's dismissal is the app-owned lifetime boundary for
@@ -65,25 +55,11 @@ final class TAPShareActivityPresentation: Identifiable {
     static func activityItems(for artifact: TAPNAPShareArtifact) -> [Any] {
         [artifact.fileURL]
     }
-
-    nonisolated private static func durationBucket(_ duration: Duration) -> String {
-        switch duration {
-        case ..<Duration.milliseconds(50):
-            return "under50ms"
-        case ..<Duration.milliseconds(200):
-            return "50to199ms"
-        case ..<Duration.seconds(1):
-            return "200to999ms"
-        default:
-            return "over1s"
-        }
-    }
 }
 
 @MainActor
 final class TAPShareActivityViewController: UIActivityViewController {
     let artifact: TAPNAPShareArtifact
-    private var hasReportedAppearance = false
 
     init(
         artifact: TAPNAPShareArtifact,
@@ -101,28 +77,6 @@ final class TAPShareActivityViewController: UIActivityViewController {
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) is unavailable")
-    }
-
-    deinit {
-        let artifact = artifact
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.sharePackaging.info(
-            "tap_share_activity_controller_released kind=\(artifact.kind.rawValue, privacy: .public)"
-        )
-        #endif
-    }
-
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        guard !hasReportedAppearance else {
-            return
-        }
-        hasReportedAppearance = true
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.sharePackaging.info(
-            "tap_share_activity_sheet_appeared kind=\(self.artifact.kind.rawValue, privacy: .public)"
-        )
-        #endif
     }
 }
 

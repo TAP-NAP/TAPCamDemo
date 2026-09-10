@@ -5,7 +5,6 @@
 
 @preconcurrency import AVFoundation
 import Foundation
-import OSLog
 
 nonisolated struct PhotoLibraryPendingCaptureExportActions: Sendable {
     let existingAssetIdentifier: @Sendable (String) async throws -> String?
@@ -90,11 +89,10 @@ nonisolated struct PhotoLibraryPendingVideoExportActions: Sendable {
                     validatesDepthTrack: false
                 )
             },
-            saveVideoFile: { fileURL, record, manifest, commitWillBegin in
+            saveVideoFile: { fileURL, record, _, commitWillBegin in
                 try await PhotoLibraryWriter.saveTAPVideoFile(
                     at: fileURL,
                     packageID: record.packageID,
-                    manifest: manifest,
                     capturedAt: record.capturedAt,
                     location: record.location?.clLocation,
                     commitWillBegin: commitWillBegin
@@ -137,9 +135,6 @@ struct PhotoLibraryPendingCaptureExporter: TAPPendingCaptureExporting {
     }
 
     func export(_ record: TAPPendingCaptureRecord, store: TAPPendingCaptureStore) async throws {
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.pendingCapture.info("export start captureID=\(record.captureID, privacy: .private) status=\(record.status.rawValue, privacy: .public)")
-        #endif
         if record.shouldAttemptExistingAssetRecoveryBeforeExport {
             switch record.artifactKind {
             case .photoDepth:
@@ -170,13 +165,7 @@ struct PhotoLibraryPendingCaptureExporter: TAPPendingCaptureExporting {
         switch record.artifactKind {
         case .photoDepth:
             _ = try await store.updateStatus(captureID: record.captureID, status: .exporting)
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.pendingCapture.info("export status updated captureID=\(record.captureID, privacy: .private) status=\(TAPPendingCaptureStatus.exporting.rawValue, privacy: .public)")
-            #endif
             let signedData = try await store.signedPhotoData(captureID: record.captureID)
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.pendingCapture.info("export signed photo data loaded captureID=\(record.captureID, privacy: .private) bytes=\(signedData.count, privacy: .public)")
-            #endif
             let pairedVideoURL = try await store.pairedVideoURL(captureID: record.captureID)
             try Task.checkCancellation()
             let assetID = try await actions.saveValidatedSignedPhoto(signedData, record, pairedVideoURL)
@@ -184,14 +173,7 @@ struct PhotoLibraryPendingCaptureExporter: TAPPendingCaptureExporting {
 
         case .tapVideo:
             _ = try await store.markVideoPhotosExportIntent(captureID: record.captureID)
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            TAPDiagnostics.pendingCapture.info("video export intent persisted captureID=\(record.captureID, privacy: .private) phase=\(TAPPendingVideoPhotosExportPhase.preCommitIntent.rawValue, privacy: .public)")
-            #endif
             let videoFileURL = try await store.videoArtifactURL(captureID: record.captureID)
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            let byteCount = (try? videoFileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-            TAPDiagnostics.pendingCapture.info("export signed video file loaded captureID=\(record.captureID, privacy: .private) bytes=\(byteCount, privacy: .public)")
-            #endif
             let validatedVideo = try await videoActions.validateLocalFile(videoFileURL, record)
             let expectedFilename = PhotoLibraryWriter.tapVideoResourceFilename(packageID: record.packageID)
             guard record.exportResourceFilename == expectedFilename else {
@@ -211,9 +193,6 @@ struct PhotoLibraryPendingCaptureExporter: TAPPendingCaptureExporting {
                 assetLocalIdentifier: assetID
             )
         }
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.pendingCapture.info("export save passed captureID=\(record.captureID, privacy: .private)")
-        #endif
     }
 
     private func saveVideoWithTrace(

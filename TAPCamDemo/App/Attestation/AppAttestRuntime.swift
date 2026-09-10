@@ -106,7 +106,7 @@ enum AppAttestRuntimeFactory {
     }
 
     static func fallbackRuntime(error: Error) -> AppAttestRuntime {
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+        #if DEBUG
         TAPDiagnostics.appAttest.error("runtime configuration fallback error=\(TAPDiagnostics.describe(error), privacy: .public)")
         #endif
         return AppAttestRuntime(

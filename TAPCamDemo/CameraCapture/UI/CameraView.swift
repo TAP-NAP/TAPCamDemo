@@ -34,11 +34,6 @@ nonisolated enum CameraFeedbackPreferences {
 ///
 /// - Tag: CameraCaptureRootView
 struct CameraView: View {
-    private static let startupLifecycleLogger = Logger(
-        subsystem: Bundle.main.bundleIdentifier ?? "TAPCamDemo",
-        category: "StartupLifecycle"
-    )
-
     @Environment(\.scenePhase) private var scenePhase
     private let libraryStore: LibraryMediaStore
     private let initialReadinessGate: CameraInitialReadinessGate
@@ -56,10 +51,9 @@ struct CameraView: View {
     @State private var resourceInitializationMarkerCommitTask: Task<Void, Never>?
     @State private var didPublishViewfinderInteractive = false
     @State private var viewfinderInteractivePublicationTask: Task<Void, Never>?
-    @State private var didObserveStartupCameraReady = false
-    @State private var didObserveStartupCatalogReady = false
-    @State private var lastLoggedStartupCheckpoint: ResourceInitializationPendingCheckpoint?
+    #if DEBUG
     @State private var resourceInitializationDiagnosticTask: Task<Void, Never>?
+    #endif
     @State private var isShowingSettings = false
     @State private var selectedMode: CameraCaptureModeOption = .photo
     @State private var flashMode: CameraFlashControlMode
@@ -249,8 +243,10 @@ struct CameraView: View {
             manualFocusModeEntryToken = nil
             viewModel.cancelManualFocusRuntime()
             cancelCameraPathTransitionPresentation()
+            #if DEBUG
             resourceInitializationDiagnosticTask?.cancel()
             resourceInitializationDiagnosticTask = nil
+            #endif
             resourceInitializationMarkerCommitTask?.cancel()
             resourceInitializationMarkerCommitTask = nil
             viewfinderInteractivePublicationTask?.cancel()
@@ -509,22 +505,17 @@ struct CameraView: View {
         hapticFeedbackController.setEnabled(isShutterHapticsEnabled)
         hapticFeedbackController.prepareForCameraInteraction()
         applyPendingIntentHandoff()
+        #if DEBUG
         scheduleResourceInitializationDiagnosticIfNeeded()
+        #endif
         evaluateStartupReadiness()
     }
 
     private func evaluateStartupReadiness() {
-        recordStartupReadinessMilestones()
-
         if initialReadinessGate.isEnabled,
            !didCompleteInitialReadinessGate,
            resourceInitializationMarkerCommitTask == nil,
            resourceInitializationInputsState == .ready {
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            Self.startupLifecycleLogger.info(
-                "resource_initialization_marker_commit started"
-            )
-            #endif
             resourceInitializationMarkerCommitTask = Task { @MainActor in
                 let preparedCommit = await initialReadinessGate.prepareCommit()
                 guard !Task.isCancelled else {
@@ -544,17 +535,14 @@ struct CameraView: View {
                 if didCommit {
                     didFailInitialReadinessMarkerCommit = false
                     didCompleteInitialReadinessGate = true
+                    #if DEBUG
                     resourceInitializationDiagnosticTask?.cancel()
                     resourceInitializationDiagnosticTask = nil
-                    #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-                    Self.startupLifecycleLogger.info(
-                        "resource_initialization_marker_commit succeeded"
-                    )
                     #endif
                 } else {
                     didFailInitialReadinessMarkerCommit = true
-                    #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-                    Self.startupLifecycleLogger.error(
+                    #if DEBUG
+                    TAPDiagnostics.cameraCapture.error(
                         "resource_initialization_marker_commit failed"
                     )
                     #endif
@@ -590,36 +578,7 @@ struct CameraView: View {
         }
     }
 
-    private func recordStartupReadinessMilestones() {
-        if startupCameraInteractionIsReady, !didObserveStartupCameraReady {
-            didObserveStartupCameraReady = true
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            Self.startupLifecycleLogger.info(
-                "resource_initialization_camera_group ready"
-            )
-            #endif
-        }
-
-        if libraryStore.hasUsableSnapshot, !didObserveStartupCatalogReady {
-            didObserveStartupCatalogReady = true
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            Self.startupLifecycleLogger.info(
-                "resource_initialization_library_catalog ready"
-            )
-            #endif
-        }
-
-        let checkpoint = initialReadinessState.pendingCheckpoint
-        guard checkpoint != lastLoggedStartupCheckpoint else { return }
-        lastLoggedStartupCheckpoint = checkpoint
-        guard let checkpoint else { return }
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        Self.startupLifecycleLogger.info(
-            "resource_initialization_pending checkpoint=\(checkpoint.rawValue, privacy: .public)"
-        )
-        #endif
-    }
-
+    #if DEBUG
     private func scheduleResourceInitializationDiagnosticIfNeeded() {
         guard initialReadinessGate.isEnabled,
               resourceInitializationDiagnosticTask == nil else {
@@ -634,13 +593,12 @@ struct CameraView: View {
             guard !didCompleteInitialReadinessGate else { return }
             let checkpoint = initialReadinessState.pendingCheckpoint
                 ?? .markerCommit
-            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-            Self.startupLifecycleLogger.error(
+            TAPDiagnostics.cameraCapture.error(
                 "resource_initialization_incomplete checkpoint=\(checkpoint.rawValue, privacy: .public)"
             )
-            #endif
         }
     }
+    #endif
 
     private var viewfinderHighlightColor: Color {
         CameraViewfinderHighlightPreference.resolved(rawValue: viewfinderHighlightRawValue).color
@@ -810,11 +768,6 @@ struct CameraView: View {
         guard let handoff = intentHandoffStore.loadAndClearHandoff() else {
             return
         }
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.cameraCapture.info(
-            "app_intent_handoff_apply destination=\(handoff.destination.rawValue, privacy: .public) routeDepthAlbumPresented=\(routeStore.isDepthAlbumPresented, privacy: .public)"
-        )
-        #endif
 
         switch handoff.destination {
         case .camera:
@@ -1997,9 +1950,6 @@ struct CameraView: View {
             return
         }
 
-        #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
-        TAPDiagnostics.photoLibrary.info("tap_library_present")
-        #endif
         isBasicEVStripVisible = false
         activeAdjustmentControl = nil
         focusMode = .auto
