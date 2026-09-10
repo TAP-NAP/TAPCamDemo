@@ -233,7 +233,7 @@ struct TAPCameraCapturePresentationTests {
                     let state = CameraCaptureControlsState(isShutterEnabled: !preparing,
                         isLibraryWriteInProgress: false, selectedMode: mode,
                         isRecordingMovie: recording, isPreparingCaptureMode: preparing,
-                        isPhotographerModeActive: false, isInteractionLocked: false,
+                        showsProfessionalControls: false, isInteractionLocked: false,
                         adjustmentControlState: nil,
                         basicEVControlState: CameraBasicEVControlState(bias: 0, isStripVisible: false),
                         contentRotation: .zero)
@@ -714,7 +714,7 @@ struct TAPCameraCapturePresentationTests {
             relativePath: "TAPCamDemo/CameraCapture/UI/CameraUXPreferences.swift"
         )
         let videoViewModelSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/CameraCapture/UI/CameraViewModel+VideoCapture.swift"
+            relativePath: "TAPCamDemo/CameraCapture/UI/ViewModel/CameraViewModel+VideoCapture.swift"
         )
 
         #expect(!settingsSource.contains("PRO Video Graph Probe"))
@@ -960,7 +960,7 @@ struct TAPCameraCapturePresentationTests {
             selectedMode: isPreparingMovie ? .video : .photo,
             isRecordingMovie: false,
             isPreparingCaptureMode: isPreparingMovie,
-            isPhotographerModeActive: false,
+            showsProfessionalControls: false,
             isInteractionLocked: false,
             adjustmentControlState: nil,
             basicEVControlState: CameraBasicEVControlState(bias: 0, isStripVisible: false),
@@ -977,7 +977,7 @@ struct TAPCameraCapturePresentationTests {
             selectedMode: isPreparingMovie ? .video : .photo,
             isRecordingMovie: false,
             isPreparingCaptureMode: isPreparingMovie,
-            isPhotographerModeActive: false,
+            showsProfessionalControls: false,
             isInteractionLocked: false,
             adjustmentControlState: nil,
             basicEVControlState: CameraBasicEVControlState(bias: 0, isStripVisible: false),
@@ -997,7 +997,7 @@ struct TAPCameraCapturePresentationTests {
             selectedMode: .video,
             isRecordingMovie: true,
             isPreparingCaptureMode: isPreparingMovie,
-            isPhotographerModeActive: false,
+            showsProfessionalControls: false,
             isInteractionLocked: false,
             adjustmentControlState: nil,
             basicEVControlState: CameraBasicEVControlState(bias: 0, isStripVisible: false),
@@ -1029,7 +1029,7 @@ struct TAPCameraCapturePresentationTests {
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
     func videoRecordingTimecodeUsesLeafNativeUpdateBoundary() throws {
         let source = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/CameraCapture/UI/CameraVideoRecordingTimecodeView.swift"
+            relativePath: "TAPCamDemo/CameraCapture/UI/Controls/CameraVideoRecordingTimecodeView.swift"
         )
 
         #expect(source.contains("UIViewRepresentable"))

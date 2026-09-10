@@ -753,7 +753,7 @@ struct CameraView: View {
                 isPreparingCaptureMode: viewModel.isPreparingVideoMode
                     || viewModel.videoPreparationState == .needsPreparation
                     || lifecycleCoordinator.isChangingCaptureMode,
-                isPhotographerModeActive: viewModel.isPhotographerModeActive
+                showsProfessionalControls: viewModel.isPhotographerModeActive
                     && (cameraPathTransitionPresentation == .hidden
                         || cameraPathTransitionPresentation == .switchingCaptureMode),
                 isInteractionLocked: isCameraPathTransitioning,
@@ -836,7 +836,6 @@ struct CameraView: View {
             onPreviewingChanged: previewLayerPreviewingDidChange,
             onSelectFocalLengthOption: selectFocalLengthDisplayOption,
             onTapFocusPoint: handleFocusTapAtPreviewPoint,
-            onManualFocusTapAssist: handleFocusTapAtPreviewPoint,
             onAdjustTemporaryFocusEV: adjustTemporaryFocusEVOffset,
             onFinishTemporaryFocusEVAdjustment: finishTemporaryFocusEVAdjustment,
             onClearFocusSession: clearFocusSession,
@@ -873,7 +872,6 @@ struct CameraView: View {
             onPreviewingChanged: previewLayerPreviewingDidChange,
             onSelectFocalLengthOption: selectFocalLengthDisplayOption,
             onTapFocusPoint: handleFocusTapAtPreviewPoint,
-            onManualFocusTapAssist: handleFocusTapAtPreviewPoint,
             onAdjustTemporaryFocusEV: adjustTemporaryFocusEVOffset,
             onFinishTemporaryFocusEVAdjustment: finishTemporaryFocusEVAdjustment,
             onClearFocusSession: clearFocusSession,

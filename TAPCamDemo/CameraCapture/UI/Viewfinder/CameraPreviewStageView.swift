@@ -46,7 +46,6 @@ struct CameraPreviewStageView: View {
     let onPreviewingChanged: (Bool, Int) -> Void
     let onSelectFocalLengthOption: (CameraFocalLengthDisplayOption) -> Void
     let onTapFocusPoint: (CameraPreviewFocusPoint) -> Void
-    let onManualFocusTapAssist: (CameraPreviewFocusPoint) -> Void
     let onAdjustTemporaryFocusEV: (Double) -> Void
     let onFinishTemporaryFocusEVAdjustment: () -> Void
     let onClearFocusSession: () -> Void
@@ -190,19 +189,12 @@ struct CameraPreviewStageView: View {
                             from: value.location,
                             previewSize: previewSize
                         )
-                        guard state.focusMode == .auto else {
+                        if state.focusMode == .manual {
                             withAnimation(.easeInOut(duration: 0.14)) {
                                 focusLoupePoint = localPoint
                             }
                             showManualFocusTapMarker(at: localPoint)
                             showFocusLoupe()
-                            if let capturePoint = captureFocusPoint(
-                                from: localPoint,
-                                previewSize: previewSize
-                            ) {
-                                onManualFocusTapAssist(capturePoint)
-                            }
-                            return
                         }
                         guard let capturePoint = captureFocusPoint(
                             from: localPoint,
@@ -210,7 +202,9 @@ struct CameraPreviewStageView: View {
                         ) else {
                             return
                         }
-                        showFocusTargetOverlay(at: localPoint, isLocked: false)
+                        if state.focusMode == .auto {
+                            showFocusTargetOverlay(at: localPoint, isLocked: false)
+                        }
                         onTapFocusPoint(capturePoint)
                     }
             )

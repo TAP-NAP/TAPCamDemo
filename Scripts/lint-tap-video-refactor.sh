@@ -38,7 +38,7 @@ production_files=(
     "TAPCamDemo/CameraCapture/Runtime/TAPVideoRecordingMetrics.swift"
     "TAPCamDemo/CameraCapture/Runtime/TAPVideoSpatialRegistrationAssembler.swift"
     "TAPCamDemo/CameraCapture/Runtime/TAPVideoWriterSession.swift"
-    "TAPCamDemo/CameraCapture/UI/CameraViewModel+VideoCapture.swift"
+    "TAPCamDemo/CameraCapture/UI/ViewModel/CameraViewModel+VideoCapture.swift"
     "TAPCamDemo/Viewer/Photo/AnalysisPhotoSlot+Analysis.swift"
     "TAPCamDemo/Viewer/Photo/AnalysisPhotoSlot+DisplayFetch.swift"
     "TAPCamDemo/Viewer/Photo/AnalysisPhotoSlot+Selection.swift"

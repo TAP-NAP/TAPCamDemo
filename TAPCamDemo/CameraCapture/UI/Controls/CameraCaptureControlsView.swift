@@ -18,7 +18,7 @@ struct CameraCaptureControlsState {
     let selectedMode: CameraCaptureModeOption
     let isRecordingMovie: Bool
     let isPreparingCaptureMode: Bool
-    let isPhotographerModeActive: Bool
+    let showsProfessionalControls: Bool
     let isInteractionLocked: Bool
     let adjustmentControlState: CameraAdjustmentControlState?
     let basicEVControlState: CameraBasicEVControlState
@@ -100,16 +100,16 @@ struct CameraCaptureControlsView: View {
 
     private var professionalToolbarSlot: some View {
         ZStack {
-            if state.isPhotographerModeActive {
+            if state.showsProfessionalControls {
                 lowerToolbar
                     .transition(.opacity)
             }
         }
         .frame(maxWidth: .infinity)
         .frame(height: Metrics.professionalToolbarSlotHeight)
-        .allowsHitTesting(state.isPhotographerModeActive && !state.isInteractionLocked)
-        .accessibilityHidden(!state.isPhotographerModeActive || state.isInteractionLocked)
-        .animation(.easeInOut(duration: CameraViewfinderTransitionPresentation.duration), value: state.isPhotographerModeActive)
+        .allowsHitTesting(state.showsProfessionalControls && !state.isInteractionLocked)
+        .accessibilityHidden(!state.showsProfessionalControls || state.isInteractionLocked)
+        .animation(.easeInOut(duration: CameraViewfinderTransitionPresentation.duration), value: state.showsProfessionalControls)
     }
 
     private var bottomControls: some View {
@@ -152,7 +152,7 @@ struct CameraCaptureControlsView: View {
 
     private var modeSelectorSlot: some View {
         ZStack {
-            if state.isPhotographerModeActive,
+            if state.showsProfessionalControls,
                let adjustmentControlState = state.adjustmentControlState,
                adjustmentControlState.activeControl != nil {
                 CameraTickedAdjustmentStrip(
@@ -168,7 +168,7 @@ struct CameraCaptureControlsView: View {
                     onEndAdjustment: onEndAdjustment
                 )
                 .transition(.opacity)
-            } else if !state.isPhotographerModeActive,
+            } else if !state.showsProfessionalControls,
                       state.basicEVControlState.isStripVisible {
                 CameraBasicEVAdjustmentStrip(
                     state: state.basicEVControlState,
@@ -187,7 +187,7 @@ struct CameraCaptureControlsView: View {
         .accessibilityHidden(state.isInteractionLocked)
         .animation(.easeInOut(duration: 0.16), value: state.adjustmentControlState?.activeControl)
         .animation(.easeInOut(duration: 0.16), value: state.basicEVControlState.isStripVisible)
-        .animation(.easeInOut(duration: 0.16), value: state.isPhotographerModeActive)
+        .animation(.easeInOut(duration: 0.16), value: state.showsProfessionalControls)
     }
 
     private var modeStrip: some View {

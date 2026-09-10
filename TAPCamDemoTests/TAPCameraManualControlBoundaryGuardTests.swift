@@ -29,7 +29,7 @@ struct TAPCameraManualControlBoundaryGuardTests {
     }
 
     @Test func cameraCaptureUIFilesDoNotConstructManualCommandPlansOrReferenceDeviceWriters() throws {
-        let sources = try TAPCamDemoTestSourceInspection.swiftSourceRelativePaths(under: "TAPCamDemo/CameraCapture/UI")
+        let sources = try TAPCamDemoTestSourceInspection.swiftSourceRelativePathsRecursively(under: "TAPCamDemo/CameraCapture/UI")
             .map { try TAPCamDemoTestSourceInspection.source(relativePath: $0) }
             .joined(separator: "\n")
 
