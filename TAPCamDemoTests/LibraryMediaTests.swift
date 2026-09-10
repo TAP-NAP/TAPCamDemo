@@ -323,22 +323,18 @@ struct LibraryMediaTests {
         )
     }
 
-    @Test func fetchOverlayKeepsICloudAndFailureStatesDistinct() {
-        #expect(
-            LibraryMediaFetchOverlayState(
-                MediaFetchPhase<Bool, Bool>.downloadingFromICloud(true, progress: 0.42)
-            ) == .downloading(progress: 0.42)
-        )
-        #expect(
-            LibraryMediaFetchOverlayState(
-                MediaFetchPhase<Bool, Bool>.failed(
-                    true,
-                    reason: .permission,
-                    retryable: false
-                )
-            ) == .failed(reason: .permission, retryable: false)
-        )
-        #expect(LibraryMediaCopy.loadingFromICloud(progress: 0.42).hasSuffix("42%"))
+    @Test func fetchOverlayKeepsOneLoadingPresentationAcrossProgressUpdates() {
+        #expect(LibraryMediaFetchOverlayState(MediaFetchPhase<Bool, Bool>.resolving(true)) == .loading)
+        for progress in [nil, 0, 0.42, 1] as [Double?] {
+            #expect(LibraryMediaFetchOverlayState(
+                MediaFetchPhase<Bool, Bool>.downloadingFromICloud(true, progress: progress)
+            ) == .loading)
+        }
+        #expect(LibraryMediaFetchOverlayState(MediaFetchPhase<Bool, Bool>.ready(true)) == .hidden)
+        #expect(LibraryMediaFetchOverlayState(MediaFetchPhase<Bool, Bool>.cloudOnly(true)) == .cloudOnly)
+        #expect(LibraryMediaFetchOverlayState(
+            MediaFetchPhase<Bool, Bool>.failed(true, reason: .permission, retryable: false)
+        ) == .failed(reason: .permission, retryable: false))
     }
 
     @Test func posterRequestCacheKeyTracksPixelLength() throws {

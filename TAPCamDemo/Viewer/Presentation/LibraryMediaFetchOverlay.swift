@@ -8,141 +8,55 @@ import UIKit
 
 nonisolated enum LibraryMediaFetchOverlayState: Equatable, Sendable {
     case hidden
-    case preparing
+    case loading
     case cloudOnly
-    case downloading(progress: Double?)
     case failed(reason: MediaFetchFailure, retryable: Bool)
 
     init<Preview, Value>(_ phase: MediaFetchPhase<Preview, Value>) {
         switch phase {
         case .idle, .localPreview, .ready:
             self = .hidden
-        case .resolving:
-            self = .preparing
+        case .resolving, .downloadingFromICloud:
+            self = .loading
         case .cloudOnly:
             self = .cloudOnly
-        case .downloadingFromICloud(_, let progress):
-            self = .downloading(progress: progress)
         case .failed(_, let reason, let retryable):
             self = .failed(reason: reason, retryable: retryable)
         }
     }
 }
 
-/// Photo and video viewers share one active-loading treatment: keep any
-/// lightweight preview visible and place one circular original-download
-/// indicator above it. Cancellation remains owned by viewer navigation and
-/// lifecycle; only terminal states expose recovery actions here.
+/// Local preparation and cloud downloads use the same stable native spinner.
+/// The resource owner retains progress and cancellation; only terminal states
+/// expose recovery actions in the Viewer.
 struct LibraryMediaViewerFetchOverlay: View {
     let kind: LibraryMediaKind
     let state: LibraryMediaFetchOverlayState
     let onRetry: () -> Void
 
-    var body: some View {
-        switch state {
-        case .preparing:
-            LibraryMediaProgressBadge(kind: kind, progress: nil, isDownloading: false)
-        case .downloading(let progress):
-            LibraryMediaProgressBadge(kind: kind, progress: progress, isDownloading: true)
-        case .hidden:
-            EmptyView()
-        case .cloudOnly, .failed:
-            LibraryMediaFetchOverlay(
-                kind: kind,
-                state: state,
-                onCancel: {},
-                onRetry: onRetry
-            )
-        }
-    }
-}
-
-private struct LibraryMediaProgressBadge: View {
-    let kind: LibraryMediaKind
-    let progress: Double?
-    let isDownloading: Bool
-
-    var body: some View {
-        VStack(spacing: 8) {
-            progressRing
-            Text(isDownloading ? LibraryMediaCopy.loadingFromICloud(progress: progress) : LibraryMediaCopy.preparing(kind))
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(.black.opacity(0.44), in: Capsule())
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(accessibilityLabel)
-    }
-
-    private var progressRing: some View {
-        ZStack {
-            Circle()
-                .stroke(.white.opacity(0.22), lineWidth: 4)
-                .frame(width: 44, height: 44)
-
-            if let clampedProgress {
-                Circle()
-                    .trim(from: 0, to: clampedProgress)
-                    .stroke(.white, style: StrokeStyle(lineWidth: 4, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                    .frame(width: 44, height: 44)
-            } else {
-                ProgressView()
-                    .tint(.white)
-            }
-        }
-        .padding(10)
-        .background(.black.opacity(0.44), in: Circle())
-        .accessibilityLabel(accessibilityLabel)
-    }
-
-    private var clampedProgress: Double? {
-        guard let progress, progress.isFinite else {
-            return nil
-        }
-        return min(max(progress, 0), 1)
-    }
-
-    private var accessibilityLabel: String {
-        guard isDownloading else { return LibraryMediaCopy.preparing(kind) }
-        return switch kind {
-        case .tapVideo:
-            "Downloading video"
-        case .photo, .livePhoto:
-            "Downloading photo"
-        }
-    }
-}
-
-struct LibraryMediaFetchOverlay: View {
-    let kind: LibraryMediaKind
-    let state: LibraryMediaFetchOverlayState
-    let onCancel: () -> Void
-    let onRetry: () -> Void
-
     @Environment(\.openURL) private var openURL
 
     var body: some View {
-        if state != .hidden {
+        switch state {
+        case .loading:
+            ProgressView()
+                .controlSize(.large)
+                .tint(.white)
+                .frame(width: 64, height: 64)
+                .background(.black.opacity(0.44), in: Circle())
+                .accessibilityLabel(Text(LibraryMediaCopy.preparing(kind)))
+                .allowsHitTesting(false)
+        case .hidden:
+            EmptyView()
+        case .cloudOnly, .failed:
             VStack(spacing: 10) {
                 switch state {
-                case .hidden:
+                case .hidden, .loading:
                     EmptyView()
-                case .preparing:
-                    ProgressView()
-                        .tint(.white)
-                    Text(LibraryMediaCopy.preparing(kind))
                 case .cloudOnly:
                     Image(systemName: "icloud")
                     Text(LibraryMediaCopy.storedInICloud)
                     actionButton(LibraryMediaCopy.retry, action: onRetry)
-                case .downloading(let progress):
-                    ProgressView(value: progress)
-                        .tint(.white)
-                    Text(LibraryMediaCopy.loadingFromICloud(progress: progress))
-                    actionButton(LibraryMediaCopy.cancel, action: onCancel)
                 case .failed(let reason, let retryable):
                     Image(systemName: failureSystemImage(reason))
                     Text(LibraryMediaCopy.failureTitle(reason))

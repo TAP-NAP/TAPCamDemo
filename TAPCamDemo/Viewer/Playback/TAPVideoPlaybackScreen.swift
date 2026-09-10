@@ -38,9 +38,6 @@ struct TAPVideoPlaybackContentSurface: View {
             if selectedTool == .threeD {
                 TAPVideoPointCloudView(store: session.pointCloudStore)
                     .background(Color.black)
-                if !session.isThreeDPlaybackReady {
-                    ProgressView().tint(.white).accessibilityLabel("Preparing 3D")
-                }
             }
 
             // Keep the poster above the warming AVPlayerLayer. AVPlayer creation
@@ -56,12 +53,6 @@ struct TAPVideoPlaybackContentSurface: View {
                 }
 
             primaryStatusOverlay
-
-            if selectedTool == .twoD, session.state == .ready,
-               session.isRegisteredDepthAvailable, !session.isTwoDPlaybackReady {
-                ProgressView().tint(.white).accessibilityLabel("Preparing registered depth")
-            }
-
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
@@ -104,9 +95,12 @@ struct TAPVideoPlaybackContentSurface: View {
                 )
             }
         case .ready:
+            let isPreparingDepth = selectedTool == .twoD
+                ? session.isRegisteredDepthAvailable && !session.isTwoDPlaybackReady
+                : selectedTool == .threeD && !session.isThreeDPlaybackReady
             LibraryMediaViewerFetchOverlay(
                 kind: .tapVideo,
-                state: isPlayerFrameReady || session.isReusingOriginal ? .hidden : .preparing,
+                state: (!isPlayerFrameReady && !session.isReusingOriginal) || isPreparingDepth ? .loading : .hidden,
                 onRetry: onRetry
             )
         }

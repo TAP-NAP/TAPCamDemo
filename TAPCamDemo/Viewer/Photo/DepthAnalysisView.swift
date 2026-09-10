@@ -1355,7 +1355,6 @@ private struct AnalysisToolPhotoStage: View {
         } else {
             AnalysisToolSlotLoadingView(
                 slot: slot,
-                title: "Preparing 2D analysis",
                 size: size
             )
         }
@@ -1391,7 +1390,6 @@ private struct AnalysisToolPhotoStage: View {
         } else {
             AnalysisToolSlotLoadingView(
                 slot: slot,
-                title: "Preparing 3D projection",
                 size: size
             )
         }
@@ -1459,7 +1457,6 @@ private struct AnalysisToolPhotoStage: View {
 
 private struct AnalysisToolSlotLoadingView: View {
     @ObservedObject var slot: AnalysisPhotoSlot
-    let title: String
     let size: CGSize
 
     var body: some View {
@@ -1470,39 +1467,29 @@ private struct AnalysisToolSlotLoadingView: View {
                 Image(decorative: input.image, scale: 1, orientation: input.imageOrientation.swiftUIImageOrientation)
                     .resizable()
                     .scaledToFit()
-                    .opacity(0.54)
             } else if let displayPhoto = slot.displayPhoto {
                 Image(uiImage: displayPhoto.image)
                     .resizable()
                     .scaledToFit()
-                    .opacity(0.54)
             } else if let thumbnailImage = slot.thumbnailImage {
                 Image(uiImage: thumbnailImage)
                     .resizable()
                     .scaledToFit()
-                    .opacity(0.54)
             }
 
-            if slot.originalResourceOwner.isReady || !slot.isOriginalLoading || slot.errorMessage != nil {
+            if let errorMessage = slot.errorMessage {
                 VStack(spacing: 10) {
-                    if let errorMessage = slot.errorMessage {
-                        Image(systemName: slot.errorSystemImage)
-                            .font(.title2.weight(.semibold))
-                        Text(errorMessage)
-                            .font(.caption)
-                            .multilineTextAlignment(.center)
-                            .foregroundStyle(.white.opacity(0.78))
-                    } else {
-                        ProgressView()
-                            .tint(.white)
-                    }
-
-                    Text(title)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.white.opacity(0.8))
+                    Image(systemName: slot.errorSystemImage)
+                        .font(.title2.weight(.semibold))
+                    Text(errorMessage)
+                        .font(.caption)
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.white.opacity(0.78))
                 }
                 .padding(18)
                 .background(.black.opacity(0.48), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            } else if slot.originalResourceOwner.isReady || !slot.isOriginalLoading {
+                LibraryMediaViewerFetchOverlay(kind: .photo, state: .loading, onRetry: slot.retryLastMediaFetch)
             }
         }
         .frame(width: size.width, height: size.height)

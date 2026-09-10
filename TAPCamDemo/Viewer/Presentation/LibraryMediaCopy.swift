@@ -10,22 +10,6 @@ nonisolated enum LibraryMediaCopy {
         AppLanguage.resolved().locale
     }
 
-    static var loadingFromICloud: String {
-        String(
-            localized: "library.icloud.loading",
-            defaultValue: "Loading from iCloud…",
-            locale: preferredLocale
-        )
-    }
-
-    static func loadingFromICloud(progress: Double?) -> String {
-        guard let progress else {
-            return loadingFromICloud
-        }
-        let percent = Int((min(max(progress, 0), 1) * 100).rounded())
-        return "\(loadingFromICloud) \(percent)%"
-    }
-
     static var storedInICloud: String {
         String(
             localized: "library.icloud.stored",
@@ -49,14 +33,6 @@ nonisolated enum LibraryMediaCopy {
                 locale: preferredLocale
             )
         }
-    }
-
-    static var cancel: String {
-        String(
-            localized: "library.action.cancel",
-            defaultValue: "Cancel",
-            locale: preferredLocale
-        )
     }
 
     static var retry: String {
