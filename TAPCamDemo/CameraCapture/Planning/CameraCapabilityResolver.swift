@@ -25,22 +25,46 @@ nonisolated enum CameraCapabilityResolver {
     ///
     /// - Tag: DiscoverCameraCapabilities
     static func discover() -> CapabilityMatrix {
-        let allDevices = uniqueDevices(
-            discoverDevices(position: .back, deviceTypes: rgbDeviceTypes)
-            + discoverDevices(position: .front, deviceTypes: rgbDeviceTypes)
-        )
+        discover(devices: availableDevices())
+    }
 
-        let depthCandidates = depthCandidateDeviceTypes.compactMap { kind, deviceType, position -> DepthDeviceCandidate? in
-            discoverDevices(position: position, deviceTypes: [deviceType]).first.map { device in
-                DepthDeviceCandidate(
-                    kind: kind,
-                    device: device,
-                    formatSelection: bestDepthFormatSelection(for: device)
-                )
+    static func availableDevices() -> [AVCaptureDevice] {
+        guard !Task.isCancelled else { return [] }
+        let rear = discoverDevices(position: .back, deviceTypes: rgbDeviceTypes)
+        guard !Task.isCancelled else { return [] }
+        return uniqueDevices(rear + discoverDevices(position: .front, deviceTypes: rgbDeviceTypes))
+    }
+
+    static func discover(devices: [AVCaptureDevice]) -> CapabilityMatrix {
+        var depthCandidates: [DepthDeviceCandidate] = []
+        for (kind, device) in depthDevices(in: devices) {
+            guard !Task.isCancelled else {
+                return CapabilityMatrix(rgbSources: [], depthCandidates: [])
             }
+            depthCandidates.append(DepthDeviceCandidate(
+                kind: kind,
+                device: device,
+                formats: prepareDepthFormats(for: device)
+            ))
         }
+        return matrix(devices: devices, depthCandidates: depthCandidates)
+    }
 
-        let discoveredSources = allDevices
+    static func depthDevices(in devices: [AVCaptureDevice]) -> [(kind: DepthProfileKind, device: AVCaptureDevice)] {
+        depthCandidateDeviceTypes.compactMap { kind, deviceType, position in
+            devices.first { $0.deviceType == deviceType && $0.position == position }.map { (kind, $0) }
+        }
+    }
+
+    static func matrix(
+        devices: [AVCaptureDevice],
+        depthCandidates: [DepthDeviceCandidate],
+        photographerModeFacts: PhotographerModeCapabilityFacts? = nil
+    ) -> CapabilityMatrix {
+        guard !Task.isCancelled else {
+            return CapabilityMatrix(rgbSources: [], depthCandidates: [])
+        }
+        let discoveredSources = devices
             .map { makeCameraProfile(device: $0, depthCandidates: depthCandidates) }
             .sorted { lhs, rhs in
                 if lhs.fixedOrder == rhs.fixedOrder {
@@ -50,7 +74,11 @@ nonisolated enum CameraCapabilityResolver {
             }
         let rgbSources = releaseFilteredRGBSources(from: discoveredSources)
 
-        return CapabilityMatrix(rgbSources: rgbSources, depthCandidates: depthCandidates)
+        return CapabilityMatrix(
+            rgbSources: rgbSources,
+            depthCandidates: depthCandidates,
+            photographerModeFacts: photographerModeFacts
+        )
     }
 
     static func makeZoomProfiles(
@@ -187,56 +215,28 @@ nonisolated enum CameraCapabilityResolver {
         }
     }
 
-    static func depthFormatSelections(for device: AVCaptureDevice) -> [PhotoDepthFormatSelection] {
-        device.formats.compactMap { videoFormat -> PhotoDepthFormatSelection? in
-            guard let depthFormat = bestDepthFormat(in: videoFormat.supportedDepthDataFormats) else {
-                return nil
+    private static func prepareDepthFormats(for device: AVCaptureDevice) -> [DepthFormatCandidate] {
+        var candidates: [DepthFormatCandidate] = []
+        for (videoIndex, videoFormat) in device.formats.enumerated() {
+            guard !Task.isCancelled else { return [] }
+            let depthFormats = videoFormat.supportedDepthDataFormats
+            guard let depthFormat = bestDepthFormat(in: depthFormats),
+                  let depthIndex = depthFormats.firstIndex(of: depthFormat) else {
+                continue
             }
-            return PhotoDepthFormatSelection(videoFormat: videoFormat, depthFormat: depthFormat)
+            let selection = PhotoDepthFormatSelection(videoFormat: videoFormat, depthFormat: depthFormat)
+            candidates.append(DepthFormatCandidate(
+                selection: selection,
+                facts: DepthFormatFacts(
+                    videoFormatIndex: videoIndex,
+                    depthFormatIndex: depthIndex,
+                    score: depthFormatSelectionScore(selection),
+                    depthSafeZoomRanges: videoFormat.supportedVideoZoomRangesForDepthDataDelivery
+                        .map { Double($0.lowerBound)...Double($0.upperBound) }
+                )
+            ))
         }
-    }
-
-    static func bestDepthFormatSelection(
-        for device: AVCaptureDevice,
-        preferredZoomFactor: Double? = nil,
-        requiresPreferredZoomSupport: Bool = false
-    ) -> PhotoDepthFormatSelection? {
-        let selections = depthFormatSelections(for: device)
-        let zoomCompatibleSelections = preferredZoomFactor.map { zoom in
-            selections.filter { selection in
-                depthFormatSelection(selection, supportsDepthSafeZoom: zoom)
-            }
-        } ?? []
-
-        guard !zoomCompatibleSelections.isEmpty || !requiresPreferredZoomSupport else {
-            return nil
-        }
-
-        let selectable = zoomCompatibleSelections.isEmpty ? selections : zoomCompatibleSelections
-
-        /*
-         The previous implementation chose the largest video format. That made
-         still photo depth work, but it could pick a format whose depth-delivery
-         zoom range was only 1x; selecting 2x/3x then caused the preview to jump
-         briefly and settle back. Zoom support is format-specific, so Debug
-         override prefers formats with broader depth-safe zoom first, then uses
-         resolution/depth precision as tie breakers.
-         */
-        return selectable.max { lhs, rhs in
-            depthFormatSelectionScore(lhs) < depthFormatSelectionScore(rhs)
-        }
-    }
-
-    static func depthFormatSelection(
-        _ selection: PhotoDepthFormatSelection,
-        supportsDepthSafeZoom zoom: Double
-    ) -> Bool {
-        let ranges = selection.videoFormat.supportedVideoZoomRangesForDepthDataDelivery
-            .map { Double($0.lowerBound)...Double($0.upperBound) }
-        guard !ranges.isEmpty else {
-            return abs(zoom - 1.0) < 0.001
-        }
-        return ranges.contains { $0.contains(zoom) }
+        return candidates
     }
 
     private static func depthFormatSelectionScore(_ selection: PhotoDepthFormatSelection) -> Double {

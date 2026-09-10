@@ -13,12 +13,47 @@ import Foundation
 
 /// Complete capability surface consumed by `CameraViewModel`.
 ///
-/// The matrix is rebuilt from AVFoundation discovery at launch, then queried as
-/// value data when the selected RGB source, depth row, zoom, or crop metadata
-/// changes. SwiftUI never makes direct `AVCaptureDevice` decisions.
+/// Startup restores or discovers the format candidates and prepares the fixed
+/// FOV and PRO choices once. Selection changes query these prepared values;
+/// SwiftUI never discovers formats or makes direct device decisions.
 nonisolated struct CapabilityMatrix: @unchecked Sendable {
     let rgbSources: [CameraProfile]
     let depthCandidates: [DepthDeviceCandidate]
+    private var preparedFocalLengthOptions: [FocalLengthOption] = []
+    private var preparedDebugDepthDeviceOptions: [DebugDepthDeviceOption] = []
+    private var preparedPhotographerMode: (
+        facts: PhotographerModeCapabilityFacts,
+        rgbSource: CameraProfile?,
+        depthProfile: DepthProfile?
+    ) = (CapabilityMatrix.unavailablePhotographerModeFacts(), nil, nil)
+
+    init(
+        rgbSources: [CameraProfile],
+        depthCandidates: [DepthDeviceCandidate],
+        photographerModeFacts: PhotographerModeCapabilityFacts? = nil
+    ) {
+        self.rgbSources = rgbSources
+        self.depthCandidates = depthCandidates
+        preparedFocalLengthOptions = makeFocalLengthOptions()
+        preparedDebugDepthDeviceOptions = makeDebugDepthDeviceOptions()
+        preparedPhotographerMode = makePhotographerModeResolution(cachedFacts: photographerModeFacts)
+    }
+
+    var photographerModeFacts: PhotographerModeCapabilityFacts {
+        preparedPhotographerMode.facts
+    }
+
+    func bestDepthFormatSelection(
+        for device: AVCaptureDevice,
+        preferredZoomFactor: Double? = nil,
+        requiresPreferredZoomSupport: Bool = false
+    ) -> PhotoDepthFormatSelection? {
+        depthCandidates.first { $0.device.uniqueID == device.uniqueID }?
+            .bestFormatSelection(
+                preferredZoomFactor: preferredZoomFactor,
+                requiresPreferredZoomSupport: requiresPreferredZoomSupport
+            )
+    }
 
     var defaultRGBSource: CameraProfile? {
         rgbSources
@@ -112,7 +147,7 @@ nonisolated struct CapabilityMatrix: @unchecked Sendable {
     /// candidate instead of reusing the automatic 24mm FOV option, which may
     /// point at Triple or Dual Wide on the same phone.
     var photographerModeAvailability: PhotographerModeAvailability {
-        let resolution = photographerModeResolution()
+        let resolution = preparedPhotographerMode
         return PhotographerModeAvailability.resolve(resolution.facts)
     }
 
@@ -122,7 +157,7 @@ nonisolated struct CapabilityMatrix: @unchecked Sendable {
     func photographerModeCapturePlan(
         cropRectNormalized: CropRectNormalized = .fullFrame
     ) -> CaptureSourcePlan? {
-        let resolution = photographerModeResolution()
+        let resolution = preparedPhotographerMode
         guard PhotographerModeAvailability.resolve(resolution.facts).isAvailable,
               let rgbSource = resolution.rgbSource,
               let depthProfile = resolution.depthProfile else {
@@ -145,6 +180,10 @@ nonisolated struct CapabilityMatrix: @unchecked Sendable {
     }
 
     func debugDepthDeviceOptions() -> [DebugDepthDeviceOption] {
+        preparedDebugDepthDeviceOptions
+    }
+
+    private func makeDebugDepthDeviceOptions() -> [DebugDepthDeviceOption] {
         DepthProfileKind.allCases
             .map { kind in
             let candidate = depthCandidates.first(where: { $0.kind == kind })
@@ -182,6 +221,10 @@ nonisolated struct CapabilityMatrix: @unchecked Sendable {
     ///
     /// - Tag: BuildReleaseFOVOptions
     func focalLengthOptions() -> [FocalLengthOption] {
+        preparedFocalLengthOptions
+    }
+
+    private func makeFocalLengthOptions() -> [FocalLengthOption] {
         var bestBySlot: [String: FocalLengthOption] = [:]
 
         for rgbSource in rgbSources {
@@ -320,14 +363,14 @@ nonisolated struct CapabilityMatrix: @unchecked Sendable {
         }
     }
 
-    private func photographerModeResolution() -> (
+    private func makePhotographerModeResolution(cachedFacts: PhotographerModeCapabilityFacts?) -> (
         facts: PhotographerModeCapabilityFacts,
         rgbSource: CameraProfile?,
         depthProfile: DepthProfile?
     ) {
         guard let candidate = depthCandidates.first(where: { $0.kind == .lidarDepth }) else {
             return (
-                unavailablePhotographerModeFacts(),
+                Self.unavailablePhotographerModeFacts(),
                 nil,
                 nil
             )
@@ -336,8 +379,7 @@ nonisolated struct CapabilityMatrix: @unchecked Sendable {
         let device = candidate.device
         let isRearLiDARDevice = device.deviceType == .builtInLiDARDepthCamera
             && device.position == .back
-        let formatSelection = CameraCapabilityResolver.bestDepthFormatSelection(
-            for: device,
+        let formatSelection = candidate.bestFormatSelection(
             preferredZoomFactor: 1.0,
             requiresPreferredZoomSupport: true
         )
@@ -359,6 +401,9 @@ nonisolated struct CapabilityMatrix: @unchecked Sendable {
                 resolvedDevice: device,
                 formatSelection: selection
             )
+        }
+        if let cachedFacts {
+            return (cachedFacts, rgbSource, depthProfile)
         }
         let plan = depthProfile.map { profile in
             CaptureSourcePlan.make(
@@ -393,7 +438,7 @@ nonisolated struct CapabilityMatrix: @unchecked Sendable {
         )
     }
 
-    private func unavailablePhotographerModeFacts() -> PhotographerModeCapabilityFacts {
+    private static func unavailablePhotographerModeFacts() -> PhotographerModeCapabilityFacts {
         PhotographerModeCapabilityFacts(
             isRearLiDARDevice: false,
             hasOneXDepthFormat: false,

@@ -4,6 +4,7 @@
 //
 
 import Combine
+import OSLog
 import SwiftUI
 import UIKit
 
@@ -21,6 +22,7 @@ struct StartupGateView: View {
     @State private var didCompleteExplicitPhotosAction = false
     @State private var pendingSettingsRequirement: StartupGateRequirementKind?
     @State private var didCommitPostPermissionRoute = false
+    @State private var cameraCapabilities: CapabilityMatrix?
     @State private var didReleaseDeferredWork = false
 
     @Environment(\.openURL) private var openURL
@@ -95,6 +97,7 @@ struct StartupGateView: View {
                 // A later recovery must commit a fresh post-permission shell
                 // before constructing a replacement CameraView graph.
                 didCommitPostPermissionRoute = false
+                cameraCapabilities = nil
             }
         }
         .onChange(of: scenePhase) { _, phase in
@@ -124,9 +127,10 @@ struct StartupGateView: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            if didCommitPostPermissionRoute {
+            if didCommitPostPermissionRoute, let cameraCapabilities {
                 CameraView(
                     libraryStore: libraryStore,
+                    capabilityMatrix: cameraCapabilities,
                     libraryMediaFetcher: libraryMediaFetcher,
                     initialReadinessGate: route == .resourceInitialization
                         ? .resourceInitialization(
@@ -141,10 +145,55 @@ struct StartupGateView: View {
         }
         .task {
             guard !didCommitPostPermissionRoute else { return }
-            await Task.yield()
+            await CameraViewfinderFrameBarrier().waitForCommittedViewfinderFrame()
+            guard !Task.isCancelled else { return }
             didCommitPostPermissionRoute = true
+            await loadCameraCapabilities()
+            guard !Task.isCancelled else { return }
             await synchronizeLibraryObservationAndCatalog()
         }
+    }
+
+    private func loadCameraCapabilities() async {
+        let beforeDiscovery: @MainActor @Sendable () async throws -> Void = {
+            try Task.checkCancellation()
+            // A missing or stale capability snapshot must be rebuilt under the
+            // existing initialization surface, before constructing CameraView.
+            if initializationFact.isCurrent {
+                initializationFact = .invalid(.capabilitySnapshotUnavailable)
+                await CameraViewfinderFrameBarrier().waitForCommittedViewfinderFrame()
+            }
+            try Task.checkCancellation()
+        }
+        let worker = Task.detached(priority: .userInitiated) {
+            try Task.checkCancellation()
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.cameraCapture.info("startup capabilities loading")
+            #endif
+            let cache = CameraCapabilityCache()
+            if let cached = cache.loadCached() {
+                #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+                TAPDiagnostics.cameraCapture.info("startup capabilities restored")
+                #endif
+                return cached
+            }
+            try await beforeDiscovery()
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.cameraCapture.info("startup capabilities discovery started")
+            #endif
+            let discovered = cache.discoverAndCache()
+            #if DEBUG || TAP_ENABLE_RELEASE_DIAGNOSTICS
+            TAPDiagnostics.cameraCapture.info("startup capabilities discovery completed")
+            #endif
+            return discovered
+        }
+        let capabilities = try? await withTaskCancellationHandler {
+            try await worker.value
+        } onCancel: {
+            worker.cancel()
+        }
+        guard !Task.isCancelled, let capabilities else { return }
+        cameraCapabilities = capabilities
     }
 
     private func recordFrozenSetupCompletionIfReady() {

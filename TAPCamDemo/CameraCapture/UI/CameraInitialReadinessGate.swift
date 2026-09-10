@@ -7,10 +7,9 @@
 import SwiftUI
 import UIKit
 
-/// A two-tick display-link barrier for the `t4 -> t5` boundary. The first tick
-/// lets SwiftUI/Core Animation present the state change that removed Resource
-/// Initialization; the second tick observes that committed frame before local
-/// deferred work is released.
+/// A two-tick display-link barrier for startup route and `t4 -> t5` commits.
+/// The first tick lets SwiftUI/Core Animation present the current state change;
+/// the second observes that committed frame before the next startup phase.
 @MainActor
 final class CameraViewfinderFrameBarrier {
     nonisolated init() {}

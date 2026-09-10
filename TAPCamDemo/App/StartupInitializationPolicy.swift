@@ -65,6 +65,7 @@ nonisolated enum StartupInitializationInvalidReason: Equatable, Sendable {
     case deviceGenerationUnavailable
     case runtimeIdentityUnavailable
     case storageUnavailable
+    case capabilitySnapshotUnavailable
 }
 
 nonisolated enum StartupInitializationFact: Equatable, Sendable {

@@ -48,8 +48,7 @@ nonisolated enum RGBDepthCompatibilityMatrix {
 
         let formatSelection: PhotoDepthFormatSelection?
         if let preferredZoomFactor {
-            formatSelection = CameraCapabilityResolver.bestDepthFormatSelection(
-                for: candidate.device,
+            formatSelection = candidate.bestFormatSelection(
                 preferredZoomFactor: preferredZoomFactor,
                 requiresPreferredZoomSupport: true
             )

@@ -143,7 +143,7 @@ nonisolated enum PhotographerModeState: Equatable, Sendable {
 
 /// Value-only input used by both discovery preflight and post-configuration
 /// runtime validation.
-nonisolated struct PhotographerModeCapabilityFacts: Equatable, Sendable {
+nonisolated struct PhotographerModeCapabilityFacts: Codable, Equatable, Sendable {
     let isRearLiDARDevice: Bool
     let hasOneXDepthFormat: Bool
     let supportsPhotoDepthDelivery: Bool

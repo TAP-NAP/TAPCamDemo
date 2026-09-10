@@ -127,6 +127,7 @@ struct CameraView: View {
 
     init(
         libraryStore: LibraryMediaStore,
+        capabilityMatrix: CapabilityMatrix,
         libraryMediaFetcher: any LibraryMediaFetching = PhotoKitLibraryMediaFetcher(),
         viewModel: CameraViewModel? = nil,
         routeStore: CameraRouteStore? = nil,
@@ -159,6 +160,7 @@ struct CameraView: View {
             // capture-session graph.
             _viewModel = StateObject(wrappedValue: {
                 let created = CameraViewModel(
+                    capabilityMatrix: capabilityMatrix,
                     libraryStore: resolvedLibraryStore,
                     libraryMediaFetcher: libraryMediaFetcher
                 )

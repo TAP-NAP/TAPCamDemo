@@ -224,7 +224,7 @@ final class CameraViewModel: ObservableObject {
     }
 
     init(
-        capabilityMatrix: CapabilityMatrix = CameraCapabilityResolver.discover(),
+        capabilityMatrix: CapabilityMatrix,
         sessionController: CaptureSessionController = CaptureSessionController(),
         pendingCaptureStore: TAPPendingCaptureStore = .shared,
         pendingCaptureProcessor: TAPPendingCaptureProcessor = .shared,

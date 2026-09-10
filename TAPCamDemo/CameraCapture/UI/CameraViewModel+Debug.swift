@@ -54,7 +54,7 @@ extension CameraViewModel {
          before the override plan is built.
          */
         let initialZoomFactor = 1.0
-        let initialFormatSelection = CameraCapabilityResolver.bestDepthFormatSelection(
+        let initialFormatSelection = capabilityMatrix.bestDepthFormatSelection(
             for: device,
             preferredZoomFactor: initialZoomFactor
         ) ?? option.formatSelection
@@ -145,7 +145,7 @@ extension CameraViewModel {
          applying a zoom and then snapping back because the previously selected
          high-resolution format only supported depth at 1x.
          */
-        let formatSelection = CameraCapabilityResolver.bestDepthFormatSelection(
+        let formatSelection = capabilityMatrix.bestDepthFormatSelection(
             for: device,
             preferredZoomFactor: debugSelectedZoomFactor
         ) ?? option.formatSelection

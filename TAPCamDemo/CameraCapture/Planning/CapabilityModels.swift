@@ -145,7 +145,60 @@ nonisolated struct PhotoDepthFormatSelection: @unchecked Sendable {
 nonisolated struct DepthDeviceCandidate: @unchecked Sendable {
     let kind: DepthProfileKind
     let device: AVCaptureDevice
-    let formatSelection: PhotoDepthFormatSelection?
+    let formats: [DepthFormatCandidate]
+
+    var formatSelection: PhotoDepthFormatSelection? {
+        bestFormatSelection()
+    }
+
+    func bestFormatSelection(
+        preferredZoomFactor: Double? = nil,
+        requiresPreferredZoomSupport: Bool = false
+    ) -> PhotoDepthFormatSelection? {
+        guard let index = DepthFormatFacts.bestIndex(
+            in: formats.map(\.facts),
+            preferredZoomFactor: preferredZoomFactor,
+            requiresPreferredZoomSupport: requiresPreferredZoomSupport
+        ) else {
+            return nil
+        }
+        return formats[index].selection
+    }
+}
+
+/// Format scoring and depth-safe zoom facts prepared once, before camera UI.
+/// Indices locate this pair in the same device's native format arrays; the
+/// persistent cache validates their fingerprints before restoring references.
+nonisolated struct DepthFormatFacts: Codable, Equatable, Sendable {
+    let videoFormatIndex: Int
+    let depthFormatIndex: Int
+    let score: Double
+    let depthSafeZoomRanges: [ClosedRange<Double>]
+
+    static func bestIndex(
+        in formats: [DepthFormatFacts],
+        preferredZoomFactor: Double? = nil,
+        requiresPreferredZoomSupport: Bool = false
+    ) -> Int? {
+        let compatible = preferredZoomFactor.map { zoom in
+            formats.indices.filter { index in
+                let ranges = formats[index].depthSafeZoomRanges
+                return ranges.isEmpty
+                    ? abs(zoom - 1.0) < 0.001
+                    : ranges.contains { $0.contains(zoom) }
+            }
+        } ?? []
+        guard !compatible.isEmpty || !requiresPreferredZoomSupport else {
+            return nil
+        }
+        let selectable = compatible.isEmpty ? Array(formats.indices) : compatible
+        return selectable.max { formats[$0].score < formats[$1].score }
+    }
+}
+
+nonisolated struct DepthFormatCandidate: @unchecked Sendable {
+    let selection: PhotoDepthFormatSelection
+    let facts: DepthFormatFacts
 }
 
 /// UI-safe depth profile for the current selected RGB source.
