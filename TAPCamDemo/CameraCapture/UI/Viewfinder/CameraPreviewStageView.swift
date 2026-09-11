@@ -47,6 +47,7 @@ struct CameraPreviewStageView: View {
     let onPreviewingChanged: (Bool, Int) -> Void
     let onSelectFocalLengthOption: (CameraFocalLengthDisplayOption) -> Void
     let onTapFocusPoint: (CameraPreviewFocusPoint) -> Void
+    let onManualFocusAssist: (CameraPreviewFocusPoint) -> Void
     let onAdjustTemporaryFocusEV: (Double) -> Void
     let onFinishTemporaryFocusEVAdjustment: () -> Void
     let onClearFocusSession: () -> Void
@@ -188,10 +189,7 @@ struct CameraPreviewStageView: View {
                             previewSize: previewSize
                         )
                         if state.focusMode == .manual {
-                            withAnimation(.easeInOut(duration: 0.14)) {
-                                focusLoupePoint = localPoint
-                            }
-                            showFocusLoupe()
+                            showFocusLoupe(at: localPoint)
                         }
                         guard let capturePoint = captureFocusPoint(
                             from: localPoint,
@@ -203,6 +201,18 @@ struct CameraPreviewStageView: View {
                             showFocusTargetOverlay(at: localPoint, isLocked: false)
                         }
                         onTapFocusPoint(capturePoint)
+                    }
+            )
+            .simultaneousGesture(
+                SpatialTapGesture(count: 2, coordinateSpace: .local)
+                    .onEnded { value in
+                        guard state.focusMode == .manual else { return }
+                        let localPoint = previewFocusPoint(from: value.location, previewSize: previewSize)
+                        showFocusLoupe(at: localPoint)
+                        guard let capturePoint = captureFocusPoint(from: localPoint, previewSize: previewSize) else {
+                            return
+                        }
+                        onManualFocusAssist(capturePoint)
                     }
             )
             .simultaneousGesture(
@@ -396,9 +406,10 @@ struct CameraPreviewStageView: View {
         }
     }
 
-    private func showFocusLoupe() {
+    private func showFocusLoupe(at point: CameraPreviewFocusPoint? = nil) {
         guard state.focusMode == .manual else { return }
         withAnimation(.easeInOut(duration: 0.14)) {
+            if let point { focusLoupePoint = point }
             isFocusLoupeVisible = true
         }
     }

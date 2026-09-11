@@ -781,6 +781,7 @@ struct CameraView: View {
             onPreviewingChanged: previewLayerPreviewingDidChange,
             onSelectFocalLengthOption: selectFocalLengthDisplayOption,
             onTapFocusPoint: handleFocusTapAtPreviewPoint,
+            onManualFocusAssist: manualFocusTapAssistAtPreviewPoint,
             onAdjustTemporaryFocusEV: adjustTemporaryFocusEVOffset,
             onFinishTemporaryFocusEVAdjustment: finishTemporaryFocusEVAdjustment,
             onClearFocusSession: clearFocusSession,
@@ -819,6 +820,7 @@ struct CameraView: View {
             onPreviewingChanged: previewLayerPreviewingDidChange,
             onSelectFocalLengthOption: selectFocalLengthDisplayOption,
             onTapFocusPoint: handleFocusTapAtPreviewPoint,
+            onManualFocusAssist: manualFocusTapAssistAtPreviewPoint,
             onAdjustTemporaryFocusEV: adjustTemporaryFocusEVOffset,
             onFinishTemporaryFocusEVAdjustment: finishTemporaryFocusEVAdjustment,
             onClearFocusSession: clearFocusSession,
@@ -1742,16 +1744,11 @@ struct CameraView: View {
         }
     }
 
-    /// The preview stage can briefly render one frame behind the parent while
-    /// AF/MF state changes. Resolve the interaction from CameraView's current
-    /// state so the first tap after entering MF cannot be routed through the
-    /// stale AF callback.
+    /// Reject a stale AF callback after entering MF: single taps only select
+    /// the loupe region in manual mode, and must never change focus.
     private func handleFocusTapAtPreviewPoint(_ point: CameraPreviewFocusPoint) {
-        if viewModel.isPhotographerModeActive, focusMode == .manual {
-            manualFocusTapAssistAtPreviewPoint(point)
-        } else {
-            focusAtPreviewPoint(point)
-        }
+        guard focusMode == .auto else { return }
+        focusAtPreviewPoint(point)
     }
 
     private func manualFocusTapAssistAtPreviewPoint(_ point: CameraPreviewFocusPoint) {
