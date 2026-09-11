@@ -11,6 +11,8 @@ struct CameraTickedSliderRow: View {
     let highlightColor: Color
     let contentRotation: Angle
     let riskRanges: [ClosedRange<Double>]
+    var exposureDeltaForValue: (Double) -> Double? = { _ in nil }
+    var automaticValue: (() -> Double?)? = nil
     let isEVIntegerHapticsEnabled: Bool
     let onRestoreAuto: () -> Void
     let onEditingBegan: () async -> Double?
@@ -21,8 +23,11 @@ struct CameraTickedSliderRow: View {
     @State private var interactionTask: Task<Void, Never>?
     @State private var isEditing = false
     @State private var lastEmittedValue: Double?
-    @State private var lastHapticStepIndex: Int?
-    @State private var lastHapticTime = 0.0
+    @State private var lastTickPosition: Double?
+
+    private var tickIntervals: Int {
+        isEVIntegerHapticsEnabled ? max(Int(((range.upperBound - range.lowerBound) * 2).rounded()), 1) : 16
+    }
 
     private var isAutomatic: Bool {
         if let drag, interactionTask != nil || drag.applied != nil || drag.isAutomatic {
@@ -123,11 +128,13 @@ struct CameraTickedSliderRow: View {
 
     private var tickMarks: some View {
         GeometryReader { proxy in
-            ForEach(0..<17, id: \.self) { index in
+            ForEach(0...tickIntervals, id: \.self) { index in
+                let position = Double(index) / Double(tickIntervals)
+                let isZero = isEVIntegerHapticsEnabled && abs(position - normalizedPosition(for: 0)) < 0.000_001
                 Capsule()
                     .fill(.white.opacity(isEnabled ? 0.34 : 0.17))
-                    .frame(width: 1, height: 8)
-                    .position(x: CGFloat(index) / 16 * proxy.size.width, y: proxy.size.height / 2)
+                    .frame(width: 1, height: isZero ? 18 : 8)
+                    .position(x: position * proxy.size.width, y: proxy.size.height / 2)
             }
         }
         .allowsHitTesting(false)
@@ -149,22 +156,21 @@ struct CameraTickedSliderRow: View {
     }
 
     private var cursor: some View {
-        VStack(spacing: 1) {
-            Circle().frame(width: 5, height: 5)
-            Capsule().frame(width: 3, height: 18)
-        }
-        .foregroundStyle(isEnabled ? highlightColor : .white.opacity(0.36))
-        .shadow(color: .black.opacity(0.34), radius: 2)
-        .allowsHitTesting(false)
-        .accessibilityIdentifier("camera.tickedAdjustmentStrip.activeTick")
+        Capsule()
+            .frame(width: 3, height: 24)
+            .foregroundStyle(isEnabled ? highlightColor : .white.opacity(0.36))
+            .shadow(color: .black.opacity(0.34), radius: 2)
+            .allowsHitTesting(false)
+            .accessibilityIdentifier("camera.tickedAdjustmentStrip.activeTick")
     }
 
     private func updateDrag(_ event: DragGesture.Value, width: Double) {
         guard isEnabled else { return }
         let startsTouch = drag?.isTouching != true
         if startsTouch {
+            let startsAutomatic = isAutomatic
             cancelInteraction(committingReleasedValue: true)
-            drag = CameraSliderDrag(isAutomatic: automationState == .automatic)
+            drag = CameraSliderDrag(isAutomatic: startsAutomatic)
             hapticFeedbackController.prepareAdjustmentFeedback()
         }
         guard var next = drag else { return }
@@ -174,18 +180,19 @@ struct CameraTickedSliderRow: View {
             time: event.time.timeIntervalSinceReferenceDate, hasAuto: automationState != nil
         )
         drag = next
+        if startsTouch || wasAutomatic != next.isAutomatic { lastTickPosition = next.target }
         if next.isAutomatic, !wasAutomatic {
-            stopEditing()
-            onRestoreAuto()
             detentFeedback(.autoDetent)
+            beginAutomaticReturn()
         } else if !next.isAutomatic, wasAutomatic || startsTouch {
+            stopEditing()
             if wasAutomatic { detentFeedback(.autoRelease) }
-            beginManualDrag(id: next.id)
-        } else if !next.isAutomatic, next.allowsTickFeedback || automationState == nil {
-            tickFeedback(for: value(at: next.target))
+            continueAdjustment(id: next.id)
+        } else if !next.isAutomatic {
+            tickFeedback(at: next.target)
         }
         if !next.isAutomatic, next.applied != nil, interactionTask == nil, !next.hasReachedTarget {
-            beginManualDrag(id: next.id)
+            continueAdjustment(id: next.id)
         }
     }
 
@@ -195,14 +202,12 @@ struct CameraTickedSliderRow: View {
         guard var next = drag else { return }
         next.isTouching = false
         drag = next
-        if next.isAutomatic || interactionTask == nil {
+        if interactionTask == nil {
             cancelInteraction()
-        } else {
-            tickFeedback(for: value(at: next.target))
         }
     }
 
-    private func beginManualDrag(id: UUID) {
+    private func continueAdjustment(id: UUID) {
         isEditing = true
         interactionTask = Task { @MainActor in
             guard !Task.isCancelled, drag?.id == id else { return }
@@ -215,21 +220,22 @@ struct CameraTickedSliderRow: View {
                     return
                 }
                 lastEmittedValue = steppedClampedValue(startingValue)
-                lastHapticStepIndex = hapticStepIndex(for: startingValue)
                 drag?.beginManual(at: normalizedPosition(for: startingValue))
             }
             var lastTick = Date.timeIntervalSinceReferenceDate
             while !Task.isCancelled, var current = drag, current.id == id {
                 let now = Date.timeIntervalSinceReferenceDate
                 if let position = current.advance(
-                    at: now, elapsed: now - lastTick, smoothsChanges: automationState != nil
+                    at: now, elapsed: now - lastTick, smoothsChanges: automationState != nil,
+                    riskEV: increasingExposureRisk(for: current)
                 ) {
                     drag = current
                     emitValue(value(at: position))
                 }
                 lastTick = now
                 if current.hasReachedTarget {
-                    if current.isTouching { interactionTask = nil }
+                    if current.isAutomatic { finishAutomaticReturn() }
+                    else if current.isTouching { interactionTask = nil }
                     else { cancelInteraction() }
                     return
                 }
@@ -242,6 +248,37 @@ struct CameraTickedSliderRow: View {
         }
     }
 
+    private func increasingExposureRisk(for current: CameraSliderDrag) -> Double {
+        guard !current.isAutomatic, let applied = current.applied,
+              riskRanges.contains(where: { $0.contains(value(at: current.target)) }),
+              let targetDelta = exposureDeltaForValue(value(at: current.target)),
+              let currentDelta = exposureDeltaForValue(value(at: applied)),
+              currentDelta * targetDelta >= 0,
+              abs(targetDelta) > abs(currentDelta) else { return 0 }
+        return abs(targetDelta)
+    }
+
+    private func beginAutomaticReturn() {
+        interactionTask?.cancel()
+        interactionTask = nil
+        guard let target = automaticValue?(), target.isFinite, let id = drag?.id else {
+            finishAutomaticReturn()
+            return
+        }
+        drag?.approachAutomatic(
+            from: normalizedPosition(for: valueBinding.wrappedValue),
+            to: normalizedPosition(for: target)
+        )
+        continueAdjustment(id: id)
+    }
+
+    private func finishAutomaticReturn() {
+        stopEditing()
+        drag?.finishAutomatic()
+        onRestoreAuto()
+        if drag?.isTouching == false { drag = nil }
+    }
+
     private func stopEditing() {
         interactionTask?.cancel()
         interactionTask = nil
@@ -252,21 +289,26 @@ struct CameraTickedSliderRow: View {
     }
 
     private func cancelInteraction(committingReleasedValue: Bool = false) {
+        let completesAutomaticReturn = committingReleasedValue && drag?.isTouching == false
+            && drag?.isAutomatic == true && drag?.applied != nil
         if committingReleasedValue, let drag, !drag.isTouching,
-           !drag.isAutomatic, drag.applied != nil, !drag.hasReachedTarget {
+           drag.applied != nil, !drag.hasReachedTarget {
             emitValue(value(at: drag.target))
         }
         stopEditing()
         drag = nil
         lastEmittedValue = nil
-        lastHapticStepIndex = nil
+        lastTickPosition = nil
+        if completesAutomaticReturn { onRestoreAuto() }
     }
 
     private func restoreAuto() {
         guard isEnabled else { return }
         cancelInteraction()
-        onRestoreAuto()
         detentFeedback(.autoDetent)
+        drag = CameraSliderDrag(isAutomatic: true)
+        drag?.isTouching = false
+        beginAutomaticReturn()
     }
 
     private func adjustAccessibly(by delta: Double) {
@@ -283,11 +325,10 @@ struct CameraTickedSliderRow: View {
             let seed = await onEditingBegan()
             guard !Task.isCancelled else { return }
             if let seed {
-                lastHapticStepIndex = hapticStepIndex(for: seed)
                 let next = steppedClampedValue(seed + delta)
                 emitValue(next)
                 if wasAutomatic { detentFeedback(.autoRelease) }
-                else { tickFeedback(for: next) }
+                else { feedbackForTick(value: next) }
             }
             cancelInteraction()
         }
@@ -301,13 +342,19 @@ struct CameraTickedSliderRow: View {
 
     private func detentFeedback(_ style: CameraAdjustmentHapticStyle) {
         hapticFeedbackController.adjustmentChanged(style: style)
-        lastHapticTime = Date.timeIntervalSinceReferenceDate
     }
 
-    private func tickFeedback(for value: Double) {
-        let index = hapticStepIndex(for: value)
-        let now = Date.timeIntervalSinceReferenceDate
-        guard index != lastHapticStepIndex else { return }
+    private func tickFeedback(at position: Double) {
+        defer { lastTickPosition = position }
+        guard let previous = lastTickPosition,
+              let tick = CameraSliderDrag.crossedTick(
+                from: previous, to: position, intervals: tickIntervals,
+                zeroPosition: isEVIntegerHapticsEnabled ? normalizedPosition(for: 0) : nil
+              ) else { return }
+        feedbackForTick(value: range.lowerBound + tick * (range.upperBound - range.lowerBound))
+    }
+
+    private func feedbackForTick(value: Double) {
         let tolerance = max(resolvedStepSize / 10_000, 0.000_001)
         let style: CameraAdjustmentHapticStyle
         if isEVIntegerHapticsEnabled, abs(value) <= tolerance {
@@ -319,13 +366,7 @@ struct CameraTickedSliderRow: View {
         } else {
             style = .selection
         }
-        guard style == .zeroTick || style == .limit || now - lastHapticTime >= 0.07 else { return }
-        lastHapticStepIndex = index
         detentFeedback(style)
-    }
-
-    private func hapticStepIndex(for value: Double) -> Int {
-        Int(((value - range.lowerBound) / resolvedStepSize).rounded())
     }
 
     private func normalizedPosition(for value: Double) -> Double {

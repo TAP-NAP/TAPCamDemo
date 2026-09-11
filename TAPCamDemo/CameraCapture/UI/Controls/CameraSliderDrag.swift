@@ -20,6 +20,7 @@ nonisolated struct CameraSliderDrag {
     private var sampleTime = 0.0
     private var slowSince: Double?
     private var isCatchingUp = false
+    private var automaticTarget: Double?
 
     init(isAutomatic: Bool) {
         self.isAutomatic = isAutomatic
@@ -28,7 +29,7 @@ nonisolated struct CameraSliderDrag {
     mutating func move(x: Double, width: Double, velocity: Double, time: Double, hasAuto: Bool) {
         guard x.isFinite, width.isFinite, width > 0, time.isFinite else { return }
         pointerX = x
-        target = min(max(x / width, 0), 1)
+        let pointerTarget = min(max(x / width, 0), 1)
         speed = velocity.isFinite ? abs(velocity) : .infinity
         sampleTime = time
         if speed > Self.slowSpeed {
@@ -40,11 +41,13 @@ nonisolated struct CameraSliderDrag {
             if isAutomatic, x <= width + Self.autoExitDistance {
                 isAutomatic = false
                 applied = nil
+                automaticTarget = nil
             } else if !isAutomatic, x >= width + Self.autoEntryDistance {
                 isAutomatic = true
                 applied = nil
             }
         }
+        target = automaticTarget ?? pointerTarget
     }
 
     mutating func beginManual(at position: Double) {
@@ -53,21 +56,38 @@ nonisolated struct CameraSliderDrag {
         isCatchingUp = false
     }
 
+    mutating func approachAutomatic(from position: Double, to destination: Double) {
+        guard isAutomatic, position.isFinite, destination.isFinite else { return }
+        target = min(max(destination, 0), 1)
+        automaticTarget = target
+        beginManual(at: position)
+        isCatchingUp = true
+    }
+
+    mutating func finishAutomatic() {
+        automaticTarget = nil
+        applied = nil
+    }
+
     /// Fast sweeps only move the cursor. A quiet finger also counts as settled,
     /// since DragGesture produces no further events while it is stationary.
-    mutating func advance(at time: Double, elapsed: Double, smoothsChanges: Bool) -> Double? {
-        guard !isAutomatic, let applied else { return nil }
-        if smoothsChanges, isTouching {
-            let isQuiet = time - sampleTime >= Self.steadyInterval
+    mutating func advance(
+        at time: Double, elapsed: Double, smoothsChanges: Bool, riskEV: Double = 0
+    ) -> Double? {
+        guard !isAutomatic || automaticTarget != nil, let applied else { return nil }
+        let risk = riskEV.isFinite ? min(max(riskEV, 0), 4) : 0
+        let steadyInterval = Self.steadyInterval + risk * 0.04
+        if smoothsChanges, isTouching, !isAutomatic {
+            let isQuiet = time - sampleTime >= steadyInterval
             let isSlow = speed <= Self.slowSpeed
-                && slowSince.map { time - $0 >= Self.steadyInterval } == true
+                && slowSince.map { time - $0 >= steadyInterval } == true
             guard isQuiet || isSlow else { return nil }
         }
         let distance = target - applied
         guard distance != 0 else { return nil }
         let next: Double
-        if smoothsChanges, abs(distance) > Self.catchUpThreshold || isCatchingUp {
-            let travel = max(0, min(elapsed, 0.05)) * Self.catchUpRate
+        if smoothsChanges, abs(distance) > Self.catchUpThreshold || isCatchingUp || risk > 0 {
+            let travel = max(0, min(elapsed, 0.05)) * Self.catchUpRate / (1 + risk)
             guard travel > 0 else { return nil }
             next = abs(distance) <= travel ? target : applied + (distance > 0 ? travel : -travel)
             isCatchingUp = next != target
@@ -80,7 +100,23 @@ nonisolated struct CameraSliderDrag {
 
     var hasReachedTarget: Bool { applied == target }
 
-    var allowsTickFeedback: Bool { speed <= Self.slowSpeed && applied != nil }
+    static func crossedTick(
+        from previous: Double, to position: Double, intervals: Int, zeroPosition: Double? = nil
+    ) -> Double? {
+        guard intervals > 0, previous != position else { return nil }
+        if let zeroPosition,
+           (previous < zeroPosition && position >= zeroPosition)
+            || (previous > zeroPosition && position <= zeroPosition) {
+            return zeroPosition
+        }
+        let count = Double(intervals)
+        let index = position > previous ? floor(position * count) : ceil(position * count)
+        let tick = index / count
+        guard (position > previous && tick > previous) || (position < previous && tick < previous) else {
+            return nil
+        }
+        return tick
+    }
 
     func cursorX(width: Double) -> Double {
         guard pointerX > width else { return max(pointerX, 0) }

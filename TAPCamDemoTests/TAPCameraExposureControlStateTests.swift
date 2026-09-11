@@ -57,7 +57,7 @@ struct TAPCameraExposureControlStateTests {
         #expect(result.manualControlIntent?.exposure == .custom(iso: 200, shutterDurationSeconds: 0.01))
     }
 
-    @Test func manualModeMakesEVReadOnlyAndDisplaysMeterDelta() throws {
+    @Test func manualModeMakesEVReadOnlyAndDisplaysExposureDelta() throws {
         let capability = Self.capability()
         let baseline = Self.sample(capability: capability, iso: 100, shutter: 0.01, generation: 0)
         let manual = CameraExposureControlState(capability: capability)
@@ -72,7 +72,7 @@ struct TAPCameraExposureControlStateTests {
 
         #expect(result.nextState.mode == .manual)
         #expect(result.nextState.evBias == 0)
-        #expect(result.displayState.evTitle == "Meter")
+        #expect(result.displayState.evTitle == "EV")
         #expect(result.displayState.isEVReadOnly)
         #expect(result.displayState.evValue == "+2.0")
         #expect(result.manualControlIntent == nil)

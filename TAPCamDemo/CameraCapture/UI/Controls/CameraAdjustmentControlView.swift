@@ -79,6 +79,7 @@ nonisolated struct CameraAdjustmentControlState: Equatable, Sendable {
         let shutterDurationRangeSeconds: ClosedRange<Double>
         let isoRiskRanges: [ClosedRange<Double>]
         let shutterDurationRiskRanges: [ClosedRange<Double>]
+        let meterDeltaEV: Double?
         let iso: Double
         let shutterDurationSeconds: Double
 
@@ -92,10 +93,26 @@ nonisolated struct CameraAdjustmentControlState: Equatable, Sendable {
         }
 
         var evTitle: String {
-            mode.isEVReadOnly ? "Meter" : "EV"
+            "EV"
         }
 
         var evValue: String {
+            let isInRiskRange: Bool
+            switch mode {
+            case .isoPriority:
+                isInRiskRange = isoRiskRanges.contains { $0.contains(iso) }
+            case .shutterPriority:
+                isInRiskRange = shutterDurationRiskRanges.contains { $0.contains(shutterDurationSeconds) }
+            case .auto, .custom:
+                isInRiskRange = false
+            }
+            if isInRiskRange, let meterDeltaEV {
+                return Self.signedLabel(meterDeltaEV, zeroPrefix: "0.0")
+            }
+            return evAdjustmentValue
+        }
+
+        var evAdjustmentValue: String {
             switch mode {
             case .auto(let globalBias):
                 Self.signedLabel(globalBias, zeroPrefix: "0.0")
@@ -223,6 +240,7 @@ nonisolated struct CameraAdjustmentControlState: Equatable, Sendable {
         focusMode: CameraFocusControlMode,
         draft: CameraAdjustmentControlDraft,
         exposureRiskRanges: ExposureRiskRanges = .empty,
+        meterDeltaEV: Double? = nil,
         allowsManualFocusControl: Bool = true
     ) {
         let exposureRange = Self.closedRange(from: capability.exposure.shutterDurationRangeSeconds)
@@ -235,6 +253,7 @@ nonisolated struct CameraAdjustmentControlState: Equatable, Sendable {
             shutterDurationRangeSeconds: exposureRange,
             isoRiskRanges: exposureRiskRanges.iso,
             shutterDurationRiskRanges: exposureRiskRanges.shutterDurationSeconds,
+            meterDeltaEV: meterDeltaEV,
             iso: clamped(draft.iso, in: isoRange),
             shutterDurationSeconds: clamped(draft.shutterDurationSeconds, in: exposureRange)
         )
@@ -441,6 +460,8 @@ struct CameraTickedAdjustmentStrip: View {
     let onRestoreAutomaticMode: (CameraAdjustmentControl) -> Void
     let onBeginAdjustment: (CameraAdjustmentControl) async -> Double?
     let onEndAdjustment: (CameraAdjustmentControl) -> Void
+    let exposureDeltaForAdjustment: (CameraAdjustmentControl, Double) -> Double?
+    let automaticValueForAdjustment: (CameraAdjustmentControl) -> Double?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -481,7 +502,7 @@ struct CameraTickedAdjustmentStrip: View {
         return CameraTickedSliderRow(
             title: "EV",
             automationState: nil,
-            value: state.exposure.evValue,
+            value: state.exposure.evAdjustmentValue,
             valueBinding: Binding(
                 get: { bias },
                 set: { onAdjustEV(CameraEVPreferences.clampedBias($0)) }
@@ -515,6 +536,10 @@ struct CameraTickedAdjustmentStrip: View {
             highlightColor: highlightColor,
             contentRotation: contentRotation,
             riskRanges: scale.positionRanges(for: state.exposure.isoRiskRanges),
+            exposureDeltaForValue: { exposureDeltaForAdjustment(.iso, scale.value(at: $0)) },
+            automaticValue: {
+                automaticValueForAdjustment(.iso).map { scale.position(for: $0) }
+            },
             isEVIntegerHapticsEnabled: false,
             onRestoreAuto: { onRestoreAutomaticMode(.iso) },
             onEditingBegan: {
@@ -543,6 +568,10 @@ struct CameraTickedAdjustmentStrip: View {
             highlightColor: highlightColor,
             contentRotation: contentRotation,
             riskRanges: shutterRiskRangesForSlider,
+            exposureDeltaForValue: { exposureDeltaForAdjustment(.shutter, scale.value(at: $0)) },
+            automaticValue: {
+                automaticValueForAdjustment(.shutter).map { scale.position(for: $0) }
+            },
             isEVIntegerHapticsEnabled: false,
             onRestoreAuto: { onRestoreAutomaticMode(.shutter) },
             onEditingBegan: {

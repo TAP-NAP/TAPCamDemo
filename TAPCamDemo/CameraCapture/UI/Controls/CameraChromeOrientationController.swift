@@ -69,9 +69,7 @@ final class CameraChromeOrientationController: ObservableObject {
         guard let newAngle = orientation.cameraChromeAngle,
               newAngle != angle else { return }
 
-        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
-            angle = newAngle
-        }
+        angle = newAngle
     }
 }
 
@@ -102,6 +100,7 @@ struct CenterAnchoredChromeRotation<Content: View>: View {
         ZStack {
             content
                 .rotationEffect(rotation, anchor: .center)
+                .animation(.spring(response: 0.28, dampingFraction: 0.86), value: rotation)
         }
         .frame(width: width, height: height, alignment: .center)
     }

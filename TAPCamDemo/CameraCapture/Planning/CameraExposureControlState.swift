@@ -502,7 +502,7 @@ nonisolated struct CameraExposureControlState: Equatable, Sendable {
         return CameraExposureControlDisplayState(
             mode: mode,
             evBias: evBias,
-            evTitle: mode.isEVReadOnly ? "Meter" : "EV",
+            evTitle: "EV",
             evValue: mode.isEVReadOnly
                 ? Self.signedLabel(delta ?? 0, zeroPrefix: "0.0")
                 : Self.signedLabel(evBias, zeroPrefix: "0.0"),

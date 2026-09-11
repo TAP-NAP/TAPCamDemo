@@ -86,6 +86,8 @@ struct CameraCaptureControlsView: View {
     let onRestoreAutomaticMode: (CameraAdjustmentControl) -> Void
     let onBeginAdjustment: (CameraAdjustmentControl) async -> Double?
     let onEndAdjustment: (CameraAdjustmentControl) -> Void
+    let exposureDeltaForAdjustment: (CameraAdjustmentControl, Double) -> Double?
+    let automaticValueForAdjustment: (CameraAdjustmentControl) -> Double?
 
     @State private var isShutterTouchActive = false
 
@@ -165,7 +167,9 @@ struct CameraCaptureControlsView: View {
                     onAdjustLensPosition: onAdjustLensPosition,
                     onRestoreAutomaticMode: onRestoreAutomaticMode,
                     onBeginAdjustment: onBeginAdjustment,
-                    onEndAdjustment: onEndAdjustment
+                    onEndAdjustment: onEndAdjustment,
+                    exposureDeltaForAdjustment: exposureDeltaForAdjustment,
+                    automaticValueForAdjustment: automaticValueForAdjustment
                 )
                 .transition(.opacity)
             } else if !state.showsProfessionalControls,

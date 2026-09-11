@@ -723,7 +723,9 @@ struct CameraView: View {
             onAdjustLensPosition: adjustLensPosition,
             onRestoreAutomaticMode: restoreAutomaticMode,
             onBeginAdjustment: beginAdjustmentInteraction,
-            onEndAdjustment: endAdjustmentInteraction
+            onEndAdjustment: endAdjustmentInteraction,
+            exposureDeltaForAdjustment: exposureDeltaForAdjustment,
+            automaticValueForAdjustment: automaticValueForAdjustment
         )
     }
 
@@ -904,6 +906,7 @@ struct CameraView: View {
             focusMode: focusMode,
             draft: exposureDraft,
             exposureRiskRanges: exposureRiskRanges(from: exposureState),
+            meterDeltaEV: exposureDisplay.meterDeltaEV,
             allowsManualFocusControl: viewModel.isManualFocusControlAvailable
         )
     }
@@ -946,6 +949,52 @@ struct CameraView: View {
             iso: state.riskRangeForISO(),
             shutterDurationSeconds: state.riskRangeForShutterDuration()
         )
+    }
+
+    private func exposureDeltaForAdjustment(
+        _ control: CameraAdjustmentControl,
+        _ value: Double
+    ) -> Double? {
+        guard let capability = viewModel.activeControlCapabilities else {
+            return nil
+        }
+        let state = resolvedExposureControlState(for: capability)
+        switch control {
+        case .iso:
+            return state.setISO(value).displayState.meterDeltaEV
+        case .shutter:
+            return state.setShutterDuration(value).displayState.meterDeltaEV
+        case .ev, .focus:
+            return nil
+        }
+    }
+
+    private func automaticValueForAdjustment(_ control: CameraAdjustmentControl) -> Double? {
+        guard let capability = viewModel.activeControlCapabilities else {
+            return nil
+        }
+        let state = resolvedExposureControlState(for: capability)
+        let currentValue: Double
+        let result: CameraExposureControlResult
+        switch control {
+        case .iso:
+            currentValue = state.currentDisplayState.iso
+            result = state.makeISOAutomatic()
+        case .shutter:
+            currentValue = state.currentDisplayState.shutterDurationSeconds
+            result = state.makeShutterAutomatic()
+        case .ev, .focus:
+            return nil
+        }
+        if result.nextState.mode == .auto {
+            guard let delta = state.currentDisplayState.meterDeltaEV else {
+                return nil
+            }
+            return currentValue / pow(2, delta)
+        }
+        return control == .iso
+            ? result.displayState.iso
+            : result.displayState.shutterDurationSeconds
     }
 
     private func prepareSelectedVideoModeIfNeeded() {
@@ -1353,14 +1402,12 @@ struct CameraView: View {
                 return
             }
             applyExposureControlResult(exposureControlState.makeISOAutomatic())
-            activeAdjustmentControl = .iso
         case .shutter:
             guard let exposureControlState,
                   !exposureControlState.mode.isShutterAutomatic else {
                 return
             }
             applyExposureControlResult(exposureControlState.makeShutterAutomatic())
-            activeAdjustmentControl = .shutter
         case .focus:
             restoreAutoFocusFromStrip()
         case .ev:
@@ -1509,7 +1556,6 @@ struct CameraView: View {
         manualFocusModeEntryToken = nil
         viewModel.cancelManualFocusRuntime()
         focusMode = .auto
-        activeAdjustmentControl = .focus
         Task { @MainActor in
             guard focusMode == .auto,
                   manualFocusModeEntryToken == nil else {
@@ -1533,6 +1579,7 @@ struct CameraView: View {
             focusMode: focusMode,
             draft: fallback,
             exposureRiskRanges: exposureRiskRanges(from: currentExposureState),
+            meterDeltaEV: currentExposureState.currentDisplayState.meterDeltaEV,
             allowsManualFocusControl: viewModel.isManualFocusControlAvailable
         )
         adjustmentDraft = adjustmentDraftMemory.draft(
@@ -1916,7 +1963,7 @@ struct CameraView: View {
             let expectedGeneration = viewModel.configurationGeneration + 1
             await viewModel.selectFocalLengthOption(
                 sourceOption,
-                transitionDuration: CameraViewfinderTransitionPresentation.duration
+                transitionDuration: 0.07
             ) {
                 beginCameraPathTransition(.switchingFocalLength, token: transitionToken)
             }

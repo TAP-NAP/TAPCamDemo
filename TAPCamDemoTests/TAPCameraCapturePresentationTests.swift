@@ -1453,7 +1453,7 @@ struct TAPCameraCapturePresentationTests {
         #expect(state.focus.badge == "M")
     }
 
-    @Test func cameraAdjustmentControlStateShowsMeterForCustomExposure() throws {
+    @Test func cameraAdjustmentControlStateShowsEVForCustomExposure() throws {
         let capability = TAPCamDemoTestFixtures.sampleManualControlCapability()
         let state = CameraAdjustmentControlState(
             capability: capability,
@@ -1464,10 +1464,72 @@ struct TAPCameraCapturePresentationTests {
         )
 
         #expect(state.exposure.isCustom)
-        #expect(state.exposure.evTitle == "Meter")
+        #expect(state.exposure.evTitle == "EV")
         #expect(state.exposure.evValue == "-0.7")
         #expect(state.exposure.isoBadge == "M")
         #expect(state.exposure.shutterBadge == "M")
+    }
+
+    @Test(arguments: [false, true])
+    func priorityExposureShowsDeltaInRiskRangesAndBiasElsewhere(shutterPriority: Bool) {
+        let capability = TAPCamDemoTestFixtures.sampleManualControlCapability(
+            isoRange: .init(minimum: 25, maximum: 800),
+            shutterDurationRangeSeconds: .init(minimum: 0.001, maximum: 1)
+        )
+        let mode: CameraAdjustmentControlState.ExposureMode = shutterPriority
+            ? .shutterPriority(globalBias: 0.7)
+            : .isoPriority(globalBias: 0.7)
+        let samples: [(iso: Double, shutter: Double, delta: Double, label: String)] = [
+            (25, 0.001, -1.4, "-1.4"),
+            (100, 0.01, 0.1, "+0.7"),
+            (800, 1, 2.3, "+2.3")
+        ]
+        for sample in samples {
+            let state = CameraAdjustmentControlState(
+                capability: capability,
+                activeControl: shutterPriority ? .shutter : .iso,
+                exposureMode: mode,
+                focusMode: .auto,
+                draft: .init(iso: sample.iso, shutterDurationSeconds: sample.shutter, lensPosition: 0.5),
+                exposureRiskRanges: .init(
+                    iso: [25...64, 400...800],
+                    shutterDurationSeconds: [0.001...0.005, 0.02...1]
+                ),
+                meterDeltaEV: sample.delta
+            )
+
+            #expect(state.exposure.evTitle == "EV")
+            #expect(state.exposure.evValue == sample.label)
+            #expect(state.exposure.evAdjustmentValue == "+0.7")
+            #expect(state.exposure.mode == mode)
+            #expect(!state.exposure.mode.isEVReadOnly)
+            #expect(state.exposure.isoBadge == (shutterPriority ? "A" : "M"))
+            #expect(state.exposure.shutterBadge == (shutterPriority ? "M" : "A"))
+        }
+    }
+
+    @Test func exposureWithoutMeterDeltaKeepsBiasInRiskRange() {
+        let capability = TAPCamDemoTestFixtures.sampleManualControlCapability()
+        let draft = CameraAdjustmentControlState.defaultDraft(from: capability)
+        for mode in [
+            CameraAdjustmentControlState.ExposureMode.isoPriority(globalBias: 0.7),
+            .shutterPriority(globalBias: 0.7)
+        ] {
+            let state = CameraAdjustmentControlState(
+                capability: capability,
+                activeControl: nil,
+                exposureMode: mode,
+                focusMode: .auto,
+                draft: draft,
+                exposureRiskRanges: .init(
+                    iso: [draft.iso...draft.iso],
+                    shutterDurationSeconds: [draft.shutterDurationSeconds...draft.shutterDurationSeconds]
+                )
+            )
+
+            #expect(state.exposure.meterDeltaEV == nil)
+            #expect(state.exposure.evValue == "+0.7")
+        }
     }
 
     @Test func cameraAdjustmentControlStateDisablesUnsupportedRows() throws {
