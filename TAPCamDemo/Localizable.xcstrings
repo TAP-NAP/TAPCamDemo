@@ -3249,13 +3249,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Share the original TAP Video."
+            "value" : "Metadata may be lost."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
-            "state" : "translated",
-            "value" : "分享原始 TAP Video"
+            "state" : "needs_review",
+            "value" : "可能损失元数据"
           }
         }
       }

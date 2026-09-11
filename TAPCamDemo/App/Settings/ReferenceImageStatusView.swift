@@ -47,7 +47,7 @@ struct ReferenceImageStatusView: View {
 
             Spacer(minLength: 0)
 
-            Link(destination: URL(string: "https://verifier.tapnap.net/verify/")!) {
+            Link(destination: URL(string: "https://www.tapnap.net/verify/")!) {
                 HStack(spacing: 2) {
                     Text("Online Verifier")
                     Image(systemName: "arrow.up.right")
