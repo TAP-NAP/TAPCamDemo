@@ -49,21 +49,22 @@ nonisolated final class AVFoundationSingleCamPhotoProvider: SingleCamPhotoCaptur
         )
 
         return try await withCheckedThrowingContinuation { continuation in
-            let delegate = SingleCamPhotoCaptureDelegate(
-                completion: { [weak self] result in
-                    self?.removeDelegate(uniqueID: settings.uniqueID)
+            let complete: @Sendable (Result<SingleCamPhotoCaptureResult, Error>) -> Void = { [weak self] result in
+                self?.removeDelegate(uniqueID: settings.uniqueID)
 
-                    switch result {
-                    case .success(let captureResult):
-                        if captureResult.livePhotoMovie == nil {
-                            livePhotoPlan?.removeTemporaryDirectory()
-                        }
-                        continuation.resume(returning: captureResult)
-                    case .failure(let error):
+                switch result {
+                case .success(let captureResult):
+                    if captureResult.livePhotoMovie == nil {
                         livePhotoPlan?.removeTemporaryDirectory()
-                        continuation.resume(throwing: error)
                     }
-                },
+                    continuation.resume(returning: captureResult)
+                case .failure(let error):
+                    livePhotoPlan?.removeTemporaryDirectory()
+                    continuation.resume(throwing: error)
+                }
+            }
+            let delegate = SingleCamPhotoCaptureDelegate(
+                completion: complete,
                 expectsLivePhotoMovie: livePhotoPlan != nil,
                 livePhotoVideoCodec: livePhotoPlan?.codec?.rawValue,
                 capturesLivePhotoAudio: livePhotoPlan?.capturesAudio ?? false
@@ -72,9 +73,11 @@ nonisolated final class AVFoundationSingleCamPhotoProvider: SingleCamPhotoCaptur
             storeDelegate(delegate, uniqueID: settings.uniqueID)
             sessionController.capturePhoto(
                 settings: settings,
+                resolvedOutput: resolvedOutput,
                 delegate: delegate,
                 videoRotationAngle: videoRotationAngle,
-                isVideoMirrored: context.sessionConfiguration.device.position == .front
+                isVideoMirrored: context.sessionConfiguration.device.position == .front,
+                onFailure: { complete(.failure($0)) }
             )
         }
     }

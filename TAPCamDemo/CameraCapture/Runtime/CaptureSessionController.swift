@@ -543,11 +543,27 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
 
     func capturePhoto(
         settings: AVCapturePhotoSettings,
+        resolvedOutput: ResolvedCaptureOutputProfile,
         delegate: AVCapturePhotoCaptureDelegate,
         videoRotationAngle: CGFloat?,
-        isVideoMirrored: Bool
+        isVideoMirrored: Bool,
+        onFailure: @escaping @Sendable (Error) -> Void
     ) {
-        sessionQueue.async { [photoOutput] in
+        sessionQueue.async { [session, photoOutput] in
+            // A queued shutter request may outlive the configuration it used.
+            // Reject it before AVFoundation can raise an Objective-C exception.
+            let activeFormat = session.inputs.compactMap { ($0 as? AVCaptureDeviceInput)?.device }
+                .first { $0.hasMediaType(.video) }?.activeFormat
+            do {
+                try resolvedOutput.validatePhotoOutputCapabilities(
+                    CapturePhotoOutputCapabilitySnapshot(photoOutput: photoOutput, activeFormat: activeFormat),
+                    requireConfiguredState: true
+                )
+            } catch {
+                onFailure(error)
+                return
+            }
+
             if let connection = photoOutput.connection(with: .video) {
                 if connection.isVideoMirroringSupported {
                     connection.automaticallyAdjustsVideoMirroring = false
@@ -1151,6 +1167,15 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
          of the familiar UI shorthand of `2x`.
          */
         try CameraControlService.applyZoom(zoom, to: plan.resolvedCaptureDevice)
+
+        // Validate committed state before publishing this configuration as ready.
+        try resolvedOutput.validatePhotoOutputCapabilities(
+            CapturePhotoOutputCapabilitySnapshot(
+                photoOutput: photoOutput,
+                activeFormat: plan.resolvedCaptureDevice.activeFormat
+            ),
+            requireConfiguredState: true
+        )
 
         return makeConfigurationResult(
             plan: plan,

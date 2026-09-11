@@ -264,6 +264,82 @@ struct TAPCaptureOutputProfileTests {
         #expect(resolved.maxPhotoDimensions == CapturePhotoDimensions(width: 4032, height: 3024))
     }
 
+    @Test(arguments: [
+        CapturePhotoDimensions(width: 1920, height: 1440),
+        nil
+    ] as [CapturePhotoDimensions?])
+    func configuredOutputRejectsDimensionsThatChangedAfterResolution(
+        configuredDimensions: CapturePhotoDimensions?
+    ) throws {
+        let requestedDimensions = CapturePhotoDimensions(width: 4032, height: 3024)
+        func capabilities(_ configured: CapturePhotoDimensions?) -> CapturePhotoOutputCapabilitySnapshot {
+            CapturePhotoOutputCapabilitySnapshot(
+                availablePhotoFileTypeIdentifiers: [AVFileType.jpg.rawValue],
+                availablePhotoCodecTypes: [.jpeg],
+                supportedPhotoCodecTypesByFileTypeIdentifier: [AVFileType.jpg.rawValue: [.jpeg]],
+                supportedMaxPhotoDimensions: [requestedDimensions],
+                configuredMaxPhotoDimensions: configured,
+                isDepthDataDeliverySupported: true,
+                isDepthDataDeliveryEnabled: true,
+                maxPhotoQualityPrioritization: .quality
+            )
+        }
+        let resolved = try CaptureOutputProfile.releasePhotoDepthJPEG.resolvedPhotoOutput(
+            capabilities: capabilities(requestedDimensions)
+        )
+        try resolved.validatePhotoOutputCapabilities(
+            capabilities(requestedDimensions),
+            requireConfiguredState: true
+        )
+
+        // The format still supports the requested size; its current output
+        // ceiling changed after the original configuration was accepted.
+        let submissionCapabilities = capabilities(configuredDimensions)
+        try resolved.validatePhotoOutputCapabilities(submissionCapabilities)
+        do {
+            try resolved.validatePhotoOutputCapabilities(
+                submissionCapabilities,
+                requireConfiguredState: true
+            )
+            Issue.record("Submission must reject changed or missing output dimensions.")
+        } catch TAPDepthCaptureError.invalidCaptureOutputProfile(let reason) {
+            #expect(reason.contains("maximum dimensions"))
+        } catch {
+            Issue.record("Unexpected dimension validation error: \(error)")
+        }
+    }
+
+    @Test(.timeLimit(.minutes(1)))
+    func unconfiguredControllerRejectsCaptureThroughFailureCallback() async throws {
+        let controller = CaptureSessionController()
+        let resolved = try CaptureOutputProfile.releasePhotoDepthJPEG.resolvedPhotoOutput(
+            availablePhotoCodecTypes: [.jpeg]
+        )
+        let delegate = SingleCamPhotoCaptureDelegate(completion: { _ in
+            Issue.record("A rejected request must not enter native photo capture or complete through its delegate.")
+        })
+        let (failures, continuation) = AsyncStream<Error>.makeStream()
+        controller.capturePhoto(
+            settings: AVCapturePhotoSettings(),
+            resolvedOutput: resolved,
+            delegate: delegate,
+            videoRotationAngle: nil,
+            isVideoMirrored: false,
+            onFailure: { error in
+                continuation.yield(error)
+                continuation.finish()
+            }
+        )
+
+        var iterator = failures.makeAsyncIterator()
+        let failure = try #require(await iterator.next())
+        #expect(failure is TAPDepthCaptureError)
+        #expect(await iterator.next() == nil)
+        await controller.waitUntilSessionQueueIsResponsive()
+        #expect(!controller.session.isRunning)
+        #expect(controller.session.inputs.isEmpty)
+    }
+
     @Test func resolvedOutputValidatesPhotoOutputCapabilities() throws {
         let resolved = try CaptureOutputProfile.releasePhotoDepthHEIC.resolvedPhotoOutput(
             availablePhotoCodecTypes: [.hevc]
