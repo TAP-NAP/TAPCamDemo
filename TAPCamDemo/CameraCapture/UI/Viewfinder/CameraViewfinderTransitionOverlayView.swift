@@ -10,7 +10,7 @@ import SwiftUI
 /// Camera/session readiness remains owned by `CameraView`. The overlay only
 /// describes what is already happening and never advances a transition itself.
 nonisolated enum CameraViewfinderTransitionPresentation: Equatable, Sendable {
-    static let duration = 0.2
+    static let duration = 0.1
 
     case hidden
     case switchingCaptureMode
