@@ -139,20 +139,25 @@ struct LibraryMediaLoadingRing: View {
             Circle()
                 .trim(from: 0, to: 0.28)
                 .stroke(.white, style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                .rotationEffect(.degrees(animating && !reduceMotion ? 360 : 0))
-                .animation(
-                    animating && !reduceMotion
+                // Only the arc rotates; initial layout must not repeat with it.
+                .transaction { transaction in
+                    transaction.disablesAnimations = false
+                    transaction.animation = animating && !reduceMotion
                         ? .linear(duration: 0.9).repeatForever(autoreverses: false)
-                        : nil,
-                    value: animating && !reduceMotion
-                )
+                        : nil
+                } body: { arc in
+                    arc.rotationEffect(.degrees(animating && !reduceMotion ? 360 : 0))
+                }
         }
         .frame(width: 18, height: 18)
         .padding(4)
         .background(.black.opacity(0.32), in: Circle())
-        .opacity(animating ? 1 : 0)
-        .animation(.easeInOut(duration: 0.18), value: animating)
-        .transaction { $0.disablesAnimations = false }
+        .transaction { transaction in
+            transaction.disablesAnimations = false
+            transaction.animation = .easeInOut(duration: 0.18)
+        } body: { ring in
+            ring.opacity(animating ? 1 : 0)
+        }
         .onChange(of: isLoading, initial: true) { _, loading in animating = loading }
         .allowsHitTesting(false)
         .accessibilityHidden(!isLoading)
