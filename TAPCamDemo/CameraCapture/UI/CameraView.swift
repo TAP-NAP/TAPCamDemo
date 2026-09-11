@@ -837,7 +837,6 @@ struct CameraView: View {
             shouldShowFocalLengthSelector: viewModel.shouldShowFocalLengthSelector
                 && effectiveCameraPathTransitionPresentation.keepsFocalLengthSelector,
             guideOverlayPreference: CameraGuideOverlayPreference.resolved(rawValue: guideOverlayRawValue),
-            previewCropRectNormalized: viewModel.previewCropRectNormalized,
             temporaryFocusEVOffset: temporaryFocusEVOffset,
             focusMode: focusMode,
             focusRuntimeEvent: viewModel.focusRuntimeEvent,
@@ -1880,7 +1879,10 @@ struct CameraView: View {
         Task { @MainActor in
             let transitionToken = UUID()
             let expectedGeneration = viewModel.configurationGeneration + 1
-            await viewModel.selectFocalLengthOption(sourceOption) {
+            await viewModel.selectFocalLengthOption(
+                sourceOption,
+                transitionDuration: CameraViewfinderTransitionPresentation.duration
+            ) {
                 beginCameraPathTransition(.switchingFocalLength, token: transitionToken)
             }
             guard viewModel.configurationGeneration == expectedGeneration else { return }

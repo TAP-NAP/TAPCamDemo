@@ -202,11 +202,11 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     /// - Tag: ConfigureSingleCamSession
     func configure(
         _ request: SessionConfigurationRequest,
-        smoothZoom: Bool = false,
+        zoomDuration: TimeInterval? = nil,
         beforeImmediateZoom: (@MainActor @Sendable () async throws -> Void)? = nil
     ) async throws -> SessionConfigurationResult {
-        if smoothZoom {
-            return try await configureZoom(request, beforeImmediateZoom: beforeImmediateZoom)
+        if let zoomDuration {
+            return try await configureZoom(request, duration: zoomDuration, beforeImmediateZoom: beforeImmediateZoom)
         }
         return try await withCheckedThrowingContinuation { continuation in
             sessionQueue.async { [self] in
@@ -243,6 +243,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
 
     private func configureZoom(
         _ request: SessionConfigurationRequest,
+        duration: TimeInterval,
         beforeImmediateZoom: (@MainActor @Sendable () async throws -> Void)?
     ) async throws -> SessionConfigurationResult {
         let pending = PendingZoomConfiguration(request: request)
@@ -271,18 +272,18 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                             if CameraControlService.hasReachedZoom(target, actual: Double(result.device.videoZoomFactor)) {
                                 finishZoomIfSettled(pending)
                             } else {
-                                try CameraControlService.rampZoom(target, on: result.device)
+                                try CameraControlService.rampZoom(target, on: result.device, duration: duration)
                                 sessionQueue.asyncAfter(deadline: .now() + 3) { [weak self, weak pending] in
                                     guard let pending else { return }
                                     self?.finishZoomConfiguration(pending, result: .failure(ZoomConfigurationError.timedOut))
                                 }
                             }
-                        } else if let beforeImmediateZoom {
+                        } else {
                             // Preserve the old preview before discarding even a
                             // prepared video graph. Continue only on our queue.
                             pending.presentationTask = Task { @MainActor [weak self, weak pending] in
                                 do {
-                                    try await beforeImmediateZoom()
+                                    try await beforeImmediateZoom?()
                                     self?.sessionQueue.async { [weak self, weak pending] in
                                         guard let pending else { return }
                                         self?.configureImmediateZoom(pending)
@@ -294,8 +295,6 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                                     }
                                 }
                             }
-                        } else {
-                            configureImmediateZoom(pending)
                         }
                     } catch {
                         finishZoomConfiguration(pending, result: .failure(error))

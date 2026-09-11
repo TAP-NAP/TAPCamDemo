@@ -19,7 +19,6 @@ struct CameraPreviewStageState {
     let focalLengthOptions: [CameraFocalLengthDisplayOption]
     let shouldShowFocalLengthSelector: Bool
     let guideOverlayPreference: CameraGuideOverlayPreference
-    let previewCropRectNormalized: CropRectNormalized
     let temporaryFocusEVOffset: Double
     let focusMode: CameraFocusControlMode
     let focusRuntimeEvent: CameraFocusRuntimeEvent?

@@ -160,7 +160,7 @@ nonisolated enum CameraControlService {
         )
     }
 
-    static func rampZoom(_ zoomFactor: Double, on device: AVCaptureDevice) throws {
+    static func rampZoom(_ zoomFactor: Double, on device: AVCaptureDevice, duration: TimeInterval) throws {
         try requireSessionQueueAccess()
         try device.lockForConfiguration()
         defer { device.unlockForConfiguration() }
@@ -171,7 +171,7 @@ nonisolated enum CameraControlService {
             throw TAPDepthCaptureError.unsupportedZoomFactor
         }
         let distance = abs(log2(zoomFactor / Double(device.videoZoomFactor)))
-        device.ramp(toVideoZoomFactor: CGFloat(zoomFactor), withRate: Float(max(distance / 0.35, 1)))
+        device.ramp(toVideoZoomFactor: CGFloat(zoomFactor), withRate: Float(distance / duration))
     }
 
     static func applyActiveDepthDataFormat(

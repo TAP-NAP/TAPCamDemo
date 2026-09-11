@@ -1045,7 +1045,6 @@ struct TAPCameraCapturePresentationTests {
             focalLengthOptions: [],
             shouldShowFocalLengthSelector: false,
             guideOverlayPreference: .ruleOfThirds,
-            previewCropRectNormalized: CropRectNormalized(x: 0.1, y: 0.2, width: 0.8, height: 0.6),
             temporaryFocusEVOffset: 0.3,
             focusMode: .auto,
             focusRuntimeEvent: nil,
@@ -1080,15 +1079,9 @@ struct TAPCameraCapturePresentationTests {
         }
     }
 
-    @Test func cameraPreviewFocusPointMapsThroughVisibleCrop() throws {
-        let localPoint = CameraPreviewFocusPoint(x: 0.25, y: 0.75)
-        let mappedPoint = localPoint.mappedThroughVisibleCrop(
-            CropRectNormalized(x: 0.1, y: 0.2, width: 0.8, height: 0.6)
-        )
+    @Test func cameraPreviewFocusPointClampsInvalidCoordinates() {
         let nonFinitePoint = CameraPreviewFocusPoint(x: .nan, y: .infinity)
 
-        #expect(abs(mappedPoint.x - 0.3) < 0.0001)
-        #expect(abs(mappedPoint.y - 0.65) < 0.0001)
         #expect(CameraPreviewFocusPoint(x: -1, y: 2) == CameraPreviewFocusPoint(x: 0, y: 1))
         #expect(nonFinitePoint == CameraPreviewFocusPoint(x: 0.5, y: 0.5))
     }

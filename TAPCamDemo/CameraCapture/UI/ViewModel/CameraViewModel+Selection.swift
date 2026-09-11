@@ -22,6 +22,7 @@ extension CameraViewModel {
     /// - Tag: SelectReleaseFOV
     func selectFocalLengthOption(
         _ option: FocalLengthOption,
+        transitionDuration: TimeInterval,
         beforeImmediateZoom: (@MainActor @Sendable () async throws -> Void)? = nil
     ) async {
         guard !photographerModeState.isTransitioning, !isConfiguringSession,
@@ -43,7 +44,7 @@ extension CameraViewModel {
         selectedRGBSourceID = option.rgbSource.id
         selectedZoomID = option.zoom.id
         selectedFocalLengthOptionID = option.id
-        await configureCurrentSelection(smoothZoom: true, beforeImmediateZoom: beforeImmediateZoom)
+        await configureCurrentSelection(zoomDuration: transitionDuration, beforeImmediateZoom: beforeImmediateZoom)
     }
 
     func switchCameraPosition() async {
@@ -353,7 +354,7 @@ extension CameraViewModel {
     ///
     /// - Tag: ConfigureCurrentSelection
     func configureCurrentSelection(
-        smoothZoom: Bool = false,
+        zoomDuration: TimeInterval? = nil,
         beforeImmediateZoom: (@MainActor @Sendable () async throws -> Void)? = nil
     ) async {
         guard !isPausedForAnalysis else {
@@ -453,7 +454,7 @@ extension CameraViewModel {
             }
             let result = try await sessionController.configure(
                 request,
-                smoothZoom: smoothZoom,
+                zoomDuration: zoomDuration,
                 beforeImmediateZoom: {
                     guard generation == self.configurationGeneration, !self.isPausedForAnalysis else {
                         throw CancellationError()

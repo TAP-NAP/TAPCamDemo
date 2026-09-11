@@ -278,13 +278,6 @@ nonisolated struct CameraPreviewFocusPoint: Equatable, Sendable {
         self.y = Self.clampedUnitValue(y)
     }
 
-    func mappedThroughVisibleCrop(_ crop: CropRectNormalized) -> CameraPreviewFocusPoint {
-        CameraPreviewFocusPoint(
-            x: crop.x + x * crop.width,
-            y: crop.y + y * crop.height
-        )
-    }
-
     private static func clampedUnitValue(_ value: Double) -> Double {
         guard value.isFinite else {
             return 0.5
