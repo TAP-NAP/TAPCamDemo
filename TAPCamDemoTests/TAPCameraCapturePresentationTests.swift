@@ -1429,7 +1429,8 @@ struct TAPCameraCapturePresentationTests {
             activeControl: .iso,
             exposureMode: .auto(globalBias: 0.3),
             focusMode: .manual,
-            draft: .init(iso: 400.4, shutterDurationSeconds: 1.0 / 125.0, lensPosition: 0.456)
+            draft: .init(iso: 400.4, shutterDurationSeconds: 1.0 / 125.0, lensPosition: 0.456),
+            estimatedFocusDistanceMeters: 1.234
         )
         let shutterPosition = state.exposure.shutterPosition(for: 1.0 / 120.0)
         let resolvedShutter = state.exposure.shutterDuration(forPosition: shutterPosition)
@@ -1448,7 +1449,7 @@ struct TAPCameraCapturePresentationTests {
         #expect(state.exposure.isoAutomationState == .automatic)
         #expect(state.exposure.shutterAutomationState == .automatic)
         #expect(state.focus.lensPositionLabel(for: 0.456) == "0.46")
-        #expect(state.focus.lensPositionValue == "0.46")
+        #expect(state.focus.lensPositionValue == "≈ 1.2 m")
         #expect(state.focus.automationState == .manual)
         #expect(state.focus.badge == "M")
     }
@@ -1488,7 +1489,7 @@ struct TAPCameraCapturePresentationTests {
 
         #expect(!state.exposure.isAvailable)
         #expect(!state.focus.isAvailable)
-        #expect(state.focus.lensPositionValue == "0.50")
+        #expect(state.focus.lensPositionValue == "— m")
     }
 
     @Test func cameraAdjustmentControlStateCanDisableManualFocusDespiteCapabilitySupport() throws {

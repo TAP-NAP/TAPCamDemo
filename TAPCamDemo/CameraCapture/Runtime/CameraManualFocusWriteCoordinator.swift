@@ -188,7 +188,8 @@ enum CameraManualFocusTapAssistTransaction {
         through transport: CameraManualFocusTransportQueue,
         preflight: @escaping @MainActor () -> Bool,
         autoFocusAndWait: @escaping @MainActor () async throws -> Void,
-        lockCurrent: @escaping @MainActor () async throws -> Output
+        lockCurrent: @escaping @MainActor () async throws -> Output,
+        didFocusAndLock: @escaping @MainActor (Output) async -> Void = { _ in }
     ) async throws -> CameraManualFocusTapAssistTransactionCompletion<Output> {
         try await transport.perform(preflight: preflight) {
             do {
@@ -205,7 +206,14 @@ enum CameraManualFocusTapAssistTransaction {
             guard preflight() else {
                 throw CancellationError()
             }
-            return .focused(try await lockCurrent())
+            let output = try await lockCurrent()
+            // Keep target-depth observation behind the same hardware barrier:
+            // a queued slider value must not move the lens while we measure.
+            await didFocusAndLock(output)
+            guard preflight() else {
+                throw CancellationError()
+            }
+            return .focused(output)
         }
     }
 }

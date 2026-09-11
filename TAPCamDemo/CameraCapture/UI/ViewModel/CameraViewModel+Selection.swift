@@ -193,6 +193,103 @@ extension CameraViewModel {
         }
     }
 
+    /// Temporarily supplies the rear LiDAR camera for automatic focus-distance
+    /// sampling, then restores the caller's camera selection without taking photos.
+    func withFocusCalibrationCamera(
+        _ operation: @MainActor () async -> Void
+    ) async -> Bool {
+        guard !isVideoRecording, !isPreparingVideoMode,
+              !isConfiguringSession, !photographerModeState.isTransitioning,
+              !isPausedForAnalysis, !isSessionControllerSuspectedWedged,
+              !hasPendingSelectionReconfiguration,
+              photographerModeAvailability.isAvailable,
+              activeSessionConfiguration != nil else { return false }
+
+        let previous = runtimeSelectionSnapshot()
+        let previousState = photographerModeState
+        let previousRearIntent = suspendedRearModeIntent
+        let previousStandardRear = standardRearSelectionBeforePhotographerMode
+        let startingGeneration = configurationGeneration
+        let wasPhotographer = previous.photographerMode == .photographer
+        let wasVideoPrepared = await sessionController.isVideoRecordingPrepared()
+        guard startingGeneration == configurationGeneration,
+              !isPausedForAnalysis, !isVideoRecording, !isConfiguringSession else { return false }
+        if wasVideoPrepared {
+            await teardownPreparedVideoModeIfNeeded()
+        }
+        guard startingGeneration == configurationGeneration,
+              !isPausedForAnalysis, !isConfiguringSession else { return false }
+
+        var phaseGeneration = startingGeneration
+        let cameraReady: Bool
+        if wasPhotographer {
+            cameraReady = activeSessionConfiguration.map {
+                photographerModeRuntimeAvailability(for: $0).isAvailable
+            } ?? false
+        } else {
+            // The public PRO toggle is rear-only. This existing configuration
+            // operation also provides rollback when calibration starts on Front.
+            phaseGeneration += 1
+            cameraReady = await configurePhotographerMode(recovery: .previous(previous))
+            if !cameraReady, configurationGeneration == startingGeneration {
+                phaseGeneration = startingGeneration
+            }
+        }
+        guard phaseGeneration == configurationGeneration else { return false }
+
+        var didExecute = false
+        if cameraReady, !isPausedForAnalysis {
+            didExecute = true
+            await operation()
+        }
+
+        // Restore the original camera after sampling. The controller's scene
+        // gate prevents starting a background session; a newer configuration
+        // generation owns its own graph.
+        guard phaseGeneration == configurationGeneration,
+              !isPausedForAnalysis, !isConfiguringSession,
+              !isSessionControllerSuspectedWedged else { return didExecute }
+        cancelManualFocusRuntime()
+        if cameraReady {
+            // Restore the LiDAR device's focus policy before a Front/Standard
+            // selection can remove it from the graph.
+            await restoreAutoFocus()
+            guard phaseGeneration == configurationGeneration,
+                  !isPausedForAnalysis else { return didExecute }
+        }
+        let didRestore: Bool
+        if cameraReady && !wasPhotographer {
+            configurationGeneration += 1
+            phaseGeneration = configurationGeneration
+            isConfiguringSession = true
+            photographerModeState = .deactivating
+            armCameraPathConfigurationWatchdog(generation: phaseGeneration)
+            didRestore = await restoreRuntimeSelection(previous, generation: phaseGeneration)
+            guard phaseGeneration == configurationGeneration,
+                  !isPausedForAnalysis else { return didExecute }
+            finishSelectionConfiguration(generation: phaseGeneration)
+            if !didRestore {
+                photographerModeState = .failed(recoveredMode: .unconfigured, reason: .configurationFailed)
+            }
+        } else if cameraReady {
+            didRestore = true
+        } else {
+            didRestore = activeSessionConfiguration != nil
+                && photographerModeState.effectiveMode == previous.photographerMode
+        }
+        guard phaseGeneration == configurationGeneration,
+              !isPausedForAnalysis else { return didExecute }
+        if didRestore {
+            photographerModeState = previousState
+            suspendedRearModeIntent = previousRearIntent
+            standardRearSelectionBeforePhotographerMode = previousStandardRear
+            if wasVideoPrepared {
+                _ = await prepareVideoModeIfNeeded()
+            }
+        }
+        return didExecute
+    }
+
     private func reconfigureActivePhotographerMode() async {
         _ = await configurePhotographerMode(
             recovery: .previous(runtimeSelectionSnapshot())

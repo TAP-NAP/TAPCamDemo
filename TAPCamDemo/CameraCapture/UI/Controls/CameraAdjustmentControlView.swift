@@ -177,6 +177,7 @@ nonisolated struct CameraAdjustmentControlState: Equatable, Sendable {
         let mode: CameraFocusControlMode
         let lensPositionRange: ClosedRange<Double>
         let lensPosition: Double
+        let estimatedFocusDistanceMeters: Double?
 
         var title: String {
             mode.title
@@ -191,7 +192,11 @@ nonisolated struct CameraAdjustmentControlState: Equatable, Sendable {
         }
 
         var lensPositionValue: String {
-            lensPositionLabel(for: lensPosition)
+            guard let estimatedFocusDistanceMeters,
+                  let value = CameraFocusDistanceEstimate.formattedMeters(estimatedFocusDistanceMeters) else {
+                return "— m"
+            }
+            return "≈ \(value) m"
         }
 
         nonisolated func clampedLensPosition(_ value: Double) -> Double {
@@ -223,7 +228,8 @@ nonisolated struct CameraAdjustmentControlState: Equatable, Sendable {
         focusMode: CameraFocusControlMode,
         draft: CameraAdjustmentControlDraft,
         exposureRiskRanges: ExposureRiskRanges = .empty,
-        allowsManualFocusControl: Bool = true
+        allowsManualFocusControl: Bool = true,
+        estimatedFocusDistanceMeters: Double? = nil
     ) {
         let exposureRange = Self.closedRange(from: capability.exposure.shutterDurationRangeSeconds)
         let isoRange = Self.closedRange(from: capability.exposure.isoRange)
@@ -242,7 +248,8 @@ nonisolated struct CameraAdjustmentControlState: Equatable, Sendable {
             isAvailable: allowsManualFocusControl && capability.focus.supportsManualLensPosition,
             mode: focusMode,
             lensPositionRange: focusRange,
-            lensPosition: clamped(draft.lensPosition, in: focusRange)
+            lensPosition: clamped(draft.lensPosition, in: focusRange),
+            estimatedFocusDistanceMeters: estimatedFocusDistanceMeters
         )
         aperture = Aperture(fixedValue: capability.aperture.fixedLensAperture)
         self.activeControl = activeControl

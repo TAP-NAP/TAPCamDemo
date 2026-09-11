@@ -49,6 +49,7 @@ struct DepthAnalyzerSettingsView: View {
     @State private var authorizationSnapshot: DepthAnalyzerAuthorizationSnapshot
     private let shutterSoundSuppressionSupported: Bool
     @ObservedObject private var appAttestController: AppAttestRuntimeController
+    @ObservedObject private var cameraViewModel: CameraViewModel
     @AppStorage(AppLanguage.storageKey)
     private var appLanguageRawValue = AppLanguage.defaultValue.rawValue
     @AppStorage(DepthAnalyzerPreferences.depthOverlayOpacityKey)
@@ -97,10 +98,12 @@ struct DepthAnalyzerSettingsView: View {
     init(
         snapshot: DepthAnalyzerAuthorizationSnapshot = .current(),
         appAttestController: AppAttestRuntimeController,
+        cameraViewModel: CameraViewModel,
         shutterSoundSuppressionSupported: Bool = true
     ) {
         _authorizationSnapshot = State(initialValue: snapshot)
         self.appAttestController = appAttestController
+        self.cameraViewModel = cameraViewModel
         self.shutterSoundSuppressionSupported = shutterSoundSuppressionSupported
     }
 
@@ -109,6 +112,7 @@ struct DepthAnalyzerSettingsView: View {
             Form {
                 languageSettingsSection
                 cameraSettingsSection
+                focusCalibrationSection
                 interfaceSettingsSection
                 dataAndPermissionsSection
 
@@ -158,6 +162,35 @@ struct DepthAnalyzerSettingsView: View {
                         .tag(language.rawValue)
                 }
             }
+        }
+    }
+
+    private var focusCalibrationSection: some View {
+        Section {
+            Button {
+                cameraViewModel.startFocusDistanceCalibration()
+            } label: {
+                HStack {
+                    Text("Calibrate Focus Distance")
+                    Spacer()
+                    if cameraViewModel.isFocusDistanceCalibrating { ProgressView() }
+                }
+            }
+            .disabled(!cameraViewModel.canCalibrateFocusDistance)
+            .accessibilityIdentifier("settings.focusDistance.calibrate")
+
+            if cameraViewModel.isFocusDistanceCalibrating,
+               cameraViewModel.focusDistanceCalibrationStatus == nil {
+                Text("Calibrating focus distance…")
+                    .foregroundStyle(.secondary)
+            }
+            if let status = cameraViewModel.focusDistanceCalibrationStatus {
+                Text(status).foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("Focus Distance")
+        } footer: {
+            Text("Automatically samples the current scene and saves an approximate meter scale for the rear LiDAR camera. Unmeasured distances remain blank.")
         }
     }
 

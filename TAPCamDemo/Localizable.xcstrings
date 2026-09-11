@@ -1,6 +1,9 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "" : {
+
+    },
     "%.3f seconds, %d RGB points" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -351,7 +354,6 @@
       }
     },
     "Auto" : {
-      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -368,6 +370,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "自动对焦"
+          }
+        }
+      }
+    },
+    "Automatically samples the current scene and saves an approximate meter scale for the rear LiDAR camera. Unmeasured distances remain blank." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自动采样当前画面，为后置 LiDAR 相机保存大致的米制刻度。未测得的距离暂不显示。"
           }
         }
       }
@@ -411,6 +424,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在建立媒体目录"
+          }
+        }
+      }
+    },
+    "Calibrate Focus Distance" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "校准对焦距离"
+          }
+        }
+      }
+    },
+    "Calibrating focus distance…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在校准对焦距离…"
           }
         }
       }
@@ -1207,6 +1242,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "闪光灯不可用"
+          }
+        }
+      }
+    },
+    "Focus calibration timed out. The current scene or lighting may not be suitable. Please try again." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "对焦距离校准超时。当前场景或光线可能不适合校准，请稍后重试。"
+          }
+        }
+      }
+    },
+    "Focus calibration unavailable." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前无法校准对焦距离。"
+          }
+        }
+      }
+    },
+    "Focus Distance" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "对焦距离"
           }
         }
       }
@@ -2948,6 +3016,28 @@
         }
       }
     },
+    "Saved focus reference near %@ m." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已保存约 %@ 米处的对焦参考。"
+          }
+        }
+      }
+    },
+    "Saved focus references from %@ to %@ m." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已保存约 %1$@ 至 %2$@ 米的对焦参考。"
+          }
+        }
+      }
+    },
     "Score Detail" : {
       "localizations" : {
         "zh-Hans" : {
@@ -3883,6 +3973,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "无法将视频输出添加到拍摄会话。"
+          }
+        }
+      }
+    },
+    "Unable to calibrate focus distance. The current scene or lighting may not be suitable. Please try again." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未能校准对焦距离。当前场景或光线可能不适合校准，请稍后重试。"
           }
         }
       }

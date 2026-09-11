@@ -78,6 +78,11 @@ nonisolated final class CameraManualFocusOperationToken: @unchecked Sendable {
 nonisolated enum CameraControlService {
     private static let sessionQueueKey = DispatchSpecificKey<UUID>()
     private static let sessionQueueValue = UUID()
+    private static let faceDrivenAutoFocusLock = NSLock()
+    // Preserve the first state across all points in one manual-focus session.
+    // Access is protected by the lock, including across session controllers.
+    nonisolated(unsafe) private static var savedFaceDrivenAutoFocus:
+        [String: (automatic: Bool, enabled: Bool)] = [:]
 
     static func registerSessionQueue(_ queue: DispatchQueue) {
         queue.setSpecific(key: sessionQueueKey, value: sessionQueueValue)
@@ -117,6 +122,7 @@ nonisolated enum CameraControlService {
         }
 
         if device.isFocusModeSupported(.continuousAutoFocus) {
+            restoreFaceDrivenAutoFocus(on: device)
             device.focusMode = .continuousAutoFocus
         }
         device.isSubjectAreaChangeMonitoringEnabled = true
@@ -217,6 +223,7 @@ nonisolated enum CameraControlService {
         device.setExposureTargetBias(Float(clampedBias), completionHandler: nil)
 
         if device.isFocusModeSupported(.continuousAutoFocus) {
+            restoreFaceDrivenAutoFocus(on: device)
             device.focusMode = .continuousAutoFocus
         }
         device.isSubjectAreaChangeMonitoringEnabled = true
@@ -302,8 +309,36 @@ nonisolated enum CameraControlService {
         try device.lockForConfiguration()
         defer { device.unlockForConfiguration() }
         device.isSubjectAreaChangeMonitoringEnabled = false
+        disableFaceDrivenAutoFocusForTarget(on: device)
         device.focusPointOfInterest = CGPoint(x: point.x, y: point.y)
         device.focusMode = .autoFocus
+    }
+
+    /// Call only while holding the device configuration lock. Explicit target
+    /// AF must not let a face elsewhere select the lens position for this ROI.
+    private static func disableFaceDrivenAutoFocusForTarget(on device: AVCaptureDevice) {
+        faceDrivenAutoFocusLock.lock()
+        if savedFaceDrivenAutoFocus[device.uniqueID] == nil {
+            savedFaceDrivenAutoFocus[device.uniqueID] = (
+                automatic: device.automaticallyAdjustsFaceDrivenAutoFocusEnabled,
+                enabled: device.isFaceDrivenAutoFocusEnabled
+            )
+        }
+        faceDrivenAutoFocusLock.unlock()
+        device.automaticallyAdjustsFaceDrivenAutoFocusEnabled = false
+        device.isFaceDrivenAutoFocusEnabled = false
+    }
+
+    /// Call under the device lock immediately before returning to continuous
+    /// AF. Restore exact prior values, including an intentional non-default.
+    private static func restoreFaceDrivenAutoFocus(on device: AVCaptureDevice) {
+        faceDrivenAutoFocusLock.lock()
+        let previous = savedFaceDrivenAutoFocus.removeValue(forKey: device.uniqueID)
+        faceDrivenAutoFocusLock.unlock()
+        guard let previous else { return }
+        device.automaticallyAdjustsFaceDrivenAutoFocusEnabled = false
+        device.isFaceDrivenAutoFocusEnabled = previous.enabled
+        device.automaticallyAdjustsFaceDrivenAutoFocusEnabled = previous.automatic
     }
 
     static func validateManualControlCommandPlan(
@@ -409,6 +444,7 @@ nonisolated enum CameraControlService {
     ) {
         switch focus {
         case .continuousAuto:
+            restoreFaceDrivenAutoFocus(on: device)
             device.focusMode = .continuousAutoFocus
             device.isSubjectAreaChangeMonitoringEnabled = true
         case .autoFocus(let pointOfInterest):

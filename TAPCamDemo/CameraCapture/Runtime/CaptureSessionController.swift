@@ -43,6 +43,13 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     let session = AVCaptureSession()
     let photoOutput = AVCapturePhotoOutput()
     let manualFocusPreviewStream = CameraManualFocusPreviewStream()
+    private let focusDepthSampler = CameraFocusDepthSampler()
+    // Session-queue-owned Photo-only output and first-applied-lock timestamp.
+    private var focusDepthDevice: AVCaptureDevice?
+    private var focusDepthPreviousFormat: AVCaptureDevice.Format?
+    private var lastFocusLock: FocusDepthLock?
+    private var focusDepthRequestID: UUID?
+    private var focusDepthInvalidation: (CameraManualFocusOperationToken, UUID?)?
 
     private let sessionQueue = DispatchQueue(label: "tapcam.camera-capture.singlecam.session")
     // Session-queue-owned intent survives a system interruption. Explicit
@@ -187,6 +194,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     private func stopInterruptedMotionRecording() {
         sessionQueue.async { [weak self] in
             self?.cancelPendingZoomConfiguration()
+            self?.invalidateFocusDepthMeasurement()
             self?.activeVideoRecordingGraph?.recorder.stopMotionRecording(recordingError: true)
         }
     }
@@ -230,6 +238,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
 
     private func applySessionConfiguration(_ request: SessionConfigurationRequest) throws -> SessionConfigurationResult {
         canResumeSessionConfiguration = false
+        removeFocusDepthOutput()
         discardPreparedVideoRecordingGraphLocked(session: session, reason: "configure")
         let result = try Self.configureSession(
             session: session, photoOutput: photoOutput,
@@ -240,6 +249,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         } else {
             manualFocusPreviewStream.deactivate()
         }
+        installFocusDepthOutput(for: result)
         observeRuntimeEvents(for: result.device)
         canResumeSessionConfiguration = true
         shouldRunSession = true
@@ -258,6 +268,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             return try await withCheckedThrowingContinuation { continuation in
                 sessionQueue.async { [self] in
                     cancelPendingZoomConfiguration()
+                    invalidateFocusDepthMeasurement()
                     pending.continuation = continuation
                     pendingZoomConfiguration = pending
                     guard !pending.isCancelled, isSceneActive, !session.isInterrupted else {
@@ -481,7 +492,10 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     func setSceneActive(_ isActive: Bool) {
         sessionQueue.async { [self] in
             isSceneActive = isActive
-            if !isActive { cancelPendingZoomConfiguration() }
+            if !isActive {
+                cancelPendingZoomConfiguration()
+                invalidateFocusDepthMeasurement()
+            }
             startSessionIfNeeded()
         }
     }
@@ -497,6 +511,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             shouldRunSession = false
             canResumeSessionConfiguration = false
             cancelPendingZoomConfiguration()
+            removeFocusDepthOutput()
             manualFocusPreviewStream.deactivate()
             discardPreparedVideoRecordingGraphLocked(
                 session: session,
@@ -512,6 +527,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         sessionQueue.async { [self] in
             shouldRunSession = false
             cancelPendingZoomConfiguration()
+            invalidateFocusDepthMeasurement()
             if session.isRunning { session.stopRunning() }
         }
     }
@@ -579,6 +595,9 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                     guard activeVideoRecordingGraph == nil else {
                         throw TAPDepthCaptureError.videoRecordingAlreadyActive
                     }
+                    // Photo measurement never adds another output to the PRO
+                    // Video synchronizer or changes its filtering/recording path.
+                    removeFocusDepthOutput()
                     if let preparedVideoRecordingGraph,
                        preparedVideoRecordingGraph.matches(
                         configuration: configuration,
@@ -682,19 +701,29 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                         throw error
                     }
                 } catch {
+                    // A failed warmup has already rolled its graph back. Keep
+                    // Photo measurement available without waiting for a full
+                    // camera reconfiguration; a Video retry removes it again.
+                    installFocusDepthOutput(for: configuration)
                     continuation.resume(throwing: error)
                 }
             }
         }
     }
 
-    func discardPreparedVideoRecording(reason: String) async {
+    func discardPreparedVideoRecording(
+        reason: String,
+        restoringPhotoConfiguration configuration: SessionConfigurationResult? = nil
+    ) async {
         await withCheckedContinuation { continuation in
             sessionQueue.async { [self, session] in
                 discardPreparedVideoRecordingGraphLocked(
                     session: session,
                     reason: reason
                 )
+                if let configuration {
+                    installFocusDepthOutput(for: configuration)
+                }
                 continuation.resume()
             }
         }
@@ -853,8 +882,9 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         to device: AVCaptureDevice
     ) async throws {
         try await withCheckedThrowingContinuation { continuation in
-            sessionQueue.async {
+            sessionQueue.async { [self] in
                 do {
+                    invalidateFocusDepthMeasurement()
                     try CameraControlService.applyManualControlCommandPlan(plan, to: device)
                     continuation.resume()
                 } catch {
@@ -884,8 +914,9 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                 gate.resumeForTimeout()
             }
 
-            sessionQueue.async { [session] in
+            sessionQueue.async { [self, session] in
                 do {
+                    invalidateFocusDepthMeasurement()
                     guard operationToken.isValid else {
                         throw CancellationError()
                     }
@@ -945,8 +976,9 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                         expectedDeviceID: expectedDeviceID,
                         expectedControlSignature: expectedControlSignature
                     )
-                    try CameraControlService.setManualFocusLocked(target, on: device) { [self] _ in
-                        sessionQueue.async { [session] in
+                    invalidateFocusDepthMeasurement()
+                    try CameraControlService.setManualFocusLocked(target, on: device) { [self] appliedTime in
+                        sessionQueue.async { [self, session] in
                             do {
                                 guard operationToken.isValid else {
                                     throw CancellationError()
@@ -957,6 +989,26 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                                     expectedDeviceID: expectedDeviceID,
                                     expectedControlSignature: expectedControlSignature
                                 )
+                                if let sourceClock = session.inputs
+                                    .compactMap({ $0 as? AVCaptureDeviceInput })
+                                    .first(where: { $0.device.uniqueID == device.uniqueID })?
+                                    .ports.first(where: { $0.mediaType == .video })?.clock,
+                                   let captureClock = session.synchronizationClock {
+                                    let firstAppliedTime = CMSyncConvertTime(
+                                        appliedTime, from: sourceClock, to: captureClock
+                                    )
+                                    if firstAppliedTime.isNumeric {
+                                        self.lastFocusLock = FocusDepthLock(
+                                            tokenID: operationToken.id,
+                                            deviceID: device.uniqueID,
+                                            format: device.activeFormat,
+                                            depthFormat: device.activeDepthDataFormat,
+                                            zoom: device.videoZoomFactor,
+                                            lensPosition: device.lensPosition,
+                                            firstAppliedTime: firstAppliedTime
+                                        )
+                                    }
+                                }
                                 gate.resume(returning: Self.manualControlSnapshot(
                                     reason: .userInteractionEnded,
                                     generation: generation,
@@ -971,6 +1023,77 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                     gate.resume(throwing: error)
                 }
             }
+        }
+    }
+
+    /// Called immediately after successful target AF and `.current` locking.
+    /// A missing/ambiguous depth frame is optional information, never a capture error.
+    func measureFocusTarget(
+        at point: CameraManualControlIntent.NormalizedPoint,
+        expectedDeviceID: String,
+        expectedControlSignature: CameraManualControlCommandPlan.ControlSurfaceSignature,
+        operationToken: CameraManualFocusOperationToken,
+        on device: AVCaptureDevice
+    ) async -> CameraFocusTargetMeasurement? {
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                sessionQueue.async { [self] in
+                    guard operationToken.isValid, point.isInsideUnitRect,
+                          focusDepthRequestID == nil,
+                          session.isRunning, !session.isInterrupted, isSceneActive,
+                          preparedVideoRecordingGraph == nil, activeVideoRecordingGraph == nil,
+                          focusDepthDevice?.uniqueID == expectedDeviceID,
+                          let focusLock = lastFocusLock,
+                          focusLock.matches(device: device, tokenID: operationToken.id),
+                          let clock = session.synchronizationClock,
+                          let connection = focusDepthSampler.depthOutput.connection(with: .depthData),
+                          (try? Self.validateManualFocusTarget(
+                            session: session, device: device,
+                            expectedDeviceID: expectedDeviceID,
+                            expectedControlSignature: expectedControlSignature
+                          )) != nil else {
+                        continuation.resume(returning: nil)
+                        return
+                    }
+                    let requestID = UUID()
+                    focusDepthRequestID = requestID
+                    focusDepthSampler.request(
+                        id: requestID,
+                        point: point,
+                        earliestTime: focusLock.firstAppliedTime,
+                        clock: clock
+                    ) { [self] measurement in
+                        sessionQueue.async { [self] in
+                            let isCurrentRequest = focusDepthRequestID == requestID
+                            if isCurrentRequest {
+                                connection.isEnabled = false
+                                focusDepthRequestID = nil
+                                if let (token, handlerID) = focusDepthInvalidation {
+                                    token.removeInvalidationHandler(handlerID)
+                                    focusDepthInvalidation = nil
+                                }
+                            }
+                            let valid = isCurrentRequest && operationToken.isValid
+                                && session.isRunning && !session.isInterrupted && isSceneActive
+                                && lastFocusLock?.id == focusLock.id
+                                && focusLock.matches(device: device, tokenID: operationToken.id)
+                                && (try? Self.validateManualFocusTarget(
+                                    session: session, device: device,
+                                    expectedDeviceID: expectedDeviceID,
+                                    expectedControlSignature: expectedControlSignature
+                                )) != nil
+                            continuation.resume(returning: valid ? measurement : nil)
+                        }
+                    }
+                    let handlerID = operationToken.addInvalidationHandler { [focusDepthSampler] in
+                        focusDepthSampler.cancel(id: requestID)
+                    }
+                    focusDepthInvalidation = (operationToken, handlerID)
+                    connection.isEnabled = true
+                }
+            }
+        } onCancel: {
+            operationToken.invalidate()
         }
     }
 
@@ -1395,6 +1518,64 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         return depthOutput
     }
 
+    private func invalidateFocusDepthMeasurement() {
+        lastFocusLock = nil
+        focusDepthRequestID = nil
+        if let (token, handlerID) = focusDepthInvalidation {
+            token.removeInvalidationHandler(handlerID)
+            focusDepthInvalidation = nil
+        }
+        focusDepthSampler.depthOutput.connection(with: .depthData)?.isEnabled = false
+        focusDepthSampler.cancel()
+    }
+
+    /// This optional Photo output shares the existing LiDAR input and RGB
+    /// preview. Failure to attach it must leave ordinary photo capture usable.
+    private func installFocusDepthOutput(for configuration: SessionConfigurationResult) {
+        let device = configuration.device
+        let output = focusDepthSampler.depthOutput
+        guard activeVideoRecordingGraph == nil, preparedVideoRecordingGraph == nil,
+              focusDepthDevice == nil, !session.outputs.contains(output),
+              session.inputs.contains(where: { ($0 as? AVCaptureDeviceInput)?.device.uniqueID == device.uniqueID }),
+              configuration.auxiliaryPreviewPolicy == .manualFocusLoupe,
+              device.position == .back, device.deviceType == .builtInLiDARDepthCamera,
+              abs(device.videoZoomFactor - 1) < 0.001,
+              configuration.depthDeliverySupported,
+              !Self.activeFormatRejectsDepthDataOutput(device.activeFormat),
+              let depthFormat = Self.videoRecordingDepthFormat(for: configuration),
+              session.canAddOutput(output) else { return }
+        invalidateFocusDepthMeasurement()
+        let previousFormat = device.activeDepthDataFormat
+        session.beginConfiguration()
+        defer { session.commitConfiguration() }
+        do {
+            try CameraControlService.applyActiveDepthDataFormat(depthFormat, to: device)
+            session.addOutput(output)
+            guard Self.configureCanonicalVideoDepthConnection(output) else {
+                throw TAPDepthCaptureError.unableToAddDepthOutput
+            }
+            output.connection(with: .depthData)?.isEnabled = false
+            focusDepthDevice = device
+            focusDepthPreviousFormat = previousFormat
+        } catch {
+            if session.outputs.contains(output) { session.removeOutput(output) }
+            try? CameraControlService.applyActiveDepthDataFormat(previousFormat, to: device)
+        }
+    }
+
+    private func removeFocusDepthOutput() {
+        invalidateFocusDepthMeasurement()
+        guard let device = focusDepthDevice else { return }
+        focusDepthDevice = nil
+        session.beginConfiguration()
+        if session.outputs.contains(focusDepthSampler.depthOutput) {
+            session.removeOutput(focusDepthSampler.depthOutput)
+        }
+        try? CameraControlService.applyActiveDepthDataFormat(focusDepthPreviousFormat, to: device)
+        focusDepthPreviousFormat = nil
+        session.commitConfiguration()
+    }
+
     /// Installs RGB and depth outputs and returns whether optional audio was
     /// added. Each mutation updates the caller's rollback ledger immediately.
     private func installVideoRecordingOutputs(
@@ -1705,6 +1886,26 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         }
 
         return min(width, height) / max(width, height)
+    }
+}
+
+private nonisolated struct FocusDepthLock: @unchecked Sendable {
+    let id = UUID()
+    let tokenID: UUID
+    let deviceID: String
+    let format: AVCaptureDevice.Format
+    let depthFormat: AVCaptureDevice.Format?
+    let zoom: CGFloat
+    let lensPosition: Float
+    let firstAppliedTime: CMTime
+
+    func matches(device: AVCaptureDevice, tokenID: UUID) -> Bool {
+        self.tokenID == tokenID && deviceID == device.uniqueID
+            && format === device.activeFormat && depthFormat === device.activeDepthDataFormat
+            && abs(zoom - device.videoZoomFactor) < 0.001
+            && abs(device.videoZoomFactor - 1) < 0.001
+            && abs(lensPosition - device.lensPosition) < 0.002
+            && device.focusMode == .locked && !device.isAdjustingFocus
     }
 }
 

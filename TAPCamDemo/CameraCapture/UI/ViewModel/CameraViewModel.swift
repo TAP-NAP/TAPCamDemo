@@ -46,6 +46,9 @@ final class CameraViewModel: ObservableObject {
     @Published var suspendedRearModeIntent: PhotographerRearModeIntent = .standard
     @Published private(set) var isSessionControllerSuspectedWedged = false
     @Published var latestManualControlReadback: CameraManualControlReadbackSnapshot?
+    @Published var isFocusDistanceCalibrating = false
+    @Published private(set) var focusDistanceCalibrationStatus: String?
+    @Published private var focusDistanceModel = CameraFocusDistanceModel()
     #if DEBUG
     @Published var debugDepthDeviceOptions: [DebugDepthDeviceOption]
     @Published var debugSelectedDepthDeviceID: String?
@@ -68,7 +71,9 @@ final class CameraViewModel: ObservableObject {
     let libraryMediaFetcher: any LibraryMediaFetching
     let videoPosterGenerator: any LibraryVideoPosterGenerating
     let pipeline: CapturePipeline
-    var activeSessionConfiguration: SessionConfigurationResult?
+    var activeSessionConfiguration: SessionConfigurationResult? {
+        didSet { reloadFocusDistanceCalibration() }
+    }
     var configurationGeneration = 0
     var videoPreparationTask: Task<Bool, Never>?
     var depthSelectionMode: DepthSelectionMode = .automatic
@@ -530,6 +535,7 @@ final class CameraViewModel: ObservableObject {
                 guard !Task.isCancelled, generation == configurationGeneration,
                       isPausedForAnalysis else { return }
                 isPausedForAnalysis = false
+                reloadFocusDistanceCalibration()
                 isDepthCaptureReady = activeSessionConfiguration.depthDeliverySupported
                     && activeSessionConfiguration.capturePlan.canCapturePhotoDepth
                 statusMessage = statusText(for: activeSessionConfiguration.capturePlan)
@@ -768,6 +774,127 @@ final class CameraViewModel: ObservableObject {
         await applyEffectiveAutoExposureBiasToActiveConfiguration(requestedGlobalAutoExposureBias)
     }
 
+    var canCalibrateFocusDistance: Bool {
+        photographerModeAvailability.isAvailable && activeSessionConfiguration != nil
+            && !isFocusDistanceCalibrating && !isConfiguringSession
+            && !photographerModeState.isTransitioning && !isPausedForAnalysis
+            && !isVideoRecording && !isPreparingVideoMode
+            && !isSessionControllerSuspectedWedged
+    }
+
+    /// One settings action attempts AF/depth sampling for at most 15 seconds.
+    /// Only a completed, usable candidate replaces the saved distance scale.
+    func startFocusDistanceCalibration() {
+        guard canCalibrateFocusDistance else { return }
+        isFocusDistanceCalibrating = true
+        focusDistanceCalibrationStatus = nil
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let deadline = ContinuousClock.now.advanced(by: .seconds(15))
+            var didTimeOut = false
+            let timeoutTask = Task { @MainActor in
+                do {
+                    try await ContinuousClock().sleep(until: deadline)
+                } catch { return }
+                guard !Task.isCancelled else { return }
+                didTimeOut = true
+                self.focusDistanceCalibrationStatus = String(localized: "Focus calibration timed out. The current scene or lighting may not be suitable. Please try again.")
+                self.cancelManualFocusRuntime()
+            }
+            defer {
+                timeoutTask.cancel()
+                isFocusDistanceCalibrating = false
+            }
+            await Task.yield()
+            let ran = await withFocusCalibrationCamera {
+                // Camera restoration runs after sampling and is not part of
+                // its deadline. A slow restore must not overwrite success.
+                defer { timeoutTask.cancel() }
+                guard let context = self.currentFocusDistanceContext else { return }
+                var candidate = CameraFocusDistanceModel()
+                candidate.reset(context: context)
+                let points = [
+                    (0.5, 0.5), (0.25, 0.25), (0.75, 0.25),
+                    (0.25, 0.75), (0.75, 0.75), (0.5, 0.25),
+                    (0.25, 0.5), (0.75, 0.5), (0.5, 0.75)
+                ]
+                for point in points {
+                    guard ContinuousClock.now < deadline, !self.isPausedForAnalysis,
+                          self.currentFocusDistanceContext == context else { break }
+                    var meters: Double?
+                    let outcome = await self.performManualFocusTapAssist(
+                        at: CameraPreviewFocusPoint(x: point.0, y: point.1),
+                        didMeasureDistance: { meters = $0 }
+                    )
+                    guard ContinuousClock.now < deadline, !self.isPausedForAnalysis,
+                          self.currentFocusDistanceContext == context else { break }
+                    if case .focused(let snapshot) = outcome, let meters {
+                        candidate.recordAutofocusLock(
+                            lensPosition: snapshot.lensPosition,
+                            measuredTargetMeters: meters,
+                            context: context
+                        )
+                    }
+                    if outcome == .cancelled || outcome == .manualFocusLost || outcome == .unavailable { return }
+                }
+                if ContinuousClock.now >= deadline {
+                    didTimeOut = true
+                    self.focusDistanceCalibrationStatus = String(localized: "Focus calibration timed out. The current scene or lighting may not be suitable. Please try again.")
+                    return
+                }
+                guard !self.isPausedForAnalysis,
+                      self.currentFocusDistanceContext == context else { return }
+                let distances = candidate.calibration?.observations.compactMap {
+                    candidate.estimate(lensPosition: $0.lensPosition, context: context)?.meters
+                } ?? []
+                if let near = distances.min(), let far = distances.max(),
+                   let nearLabel = CameraFocusDistanceEstimate.formattedMeters(near),
+                   let farLabel = CameraFocusDistanceEstimate.formattedMeters(far),
+                   CameraFocusDistancePreferences.save(candidate) {
+                    self.focusDistanceModel = candidate
+                    self.focusDistanceCalibrationStatus = nearLabel == farLabel
+                        ? String(localized: "Saved focus reference near \(nearLabel) m.")
+                        : String(localized: "Saved focus references from \(nearLabel) to \(farLabel) m.")
+                }
+            }
+            if !didTimeOut, focusDistanceCalibrationStatus == nil {
+                focusDistanceCalibrationStatus = ran
+                    ? String(localized: "Unable to calibrate focus distance. The current scene or lighting may not be suitable. Please try again.")
+                    : String(localized: "Focus calibration unavailable.")
+            }
+        }
+    }
+
+    func estimatedFocusDistanceMeters(at lensPosition: Double) -> Double? {
+        guard let context = currentFocusDistanceContext else { return nil }
+        return focusDistanceModel.estimate(lensPosition: lensPosition, context: context)?.meters
+    }
+
+    private var currentFocusDistanceContext: CameraFocusDistanceModel.Context? {
+        guard let configuration = activeSessionConfiguration,
+              configuration.device.position == .back,
+              configuration.device.deviceType == .builtInLiDARDepthCamera,
+              abs((configuration.capturePlan.zoom?.rawVideoZoomFactor ?? 1) - 1) < 0.001 else { return nil }
+        return .init(
+            deviceID: configuration.device.uniqueID,
+            controlSurfaceSignature: .init(capability: configuration.controlCapabilities),
+            generation: configurationGeneration
+        )
+    }
+
+    private func reloadFocusDistanceCalibration() {
+        guard let context = currentFocusDistanceContext else {
+            focusDistanceModel.reset(context: nil)
+            return
+        }
+        if focusDistanceModel.context == context { return }
+        if let saved = CameraFocusDistancePreferences.load(context: context) {
+            focusDistanceModel = saved
+        } else {
+            focusDistanceModel.reset(context: context)
+        }
+    }
+
     /// Accepts slider values at UI cadence while allowing only one hardware
     /// focus operation in flight. During that operation, intermediate values
     /// collapse into one latest value, so the lens keeps moving without an
@@ -809,7 +936,8 @@ final class CameraViewModel: ObservableObject {
     /// transaction owns the MF transport tail, so slider values entered during
     /// assist wait behind the lock barrier and collapse to one latest value.
     func performManualFocusTapAssist(
-        at point: CameraPreviewFocusPoint
+        at point: CameraPreviewFocusPoint,
+        didMeasureDistance: ((Double) -> Void)? = nil
     ) async -> CameraManualFocusTapAssistOutcome {
         guard let activeSessionConfiguration,
               isEligiblePhotographerManualFocusConfiguration(activeSessionConfiguration) else {
@@ -837,6 +965,7 @@ final class CameraViewModel: ObservableObject {
         let controller = sessionController
         let device = activeSessionConfiguration.device
         let intentPoint = CameraManualControlIntent.NormalizedPoint(x: point.x, y: point.y)
+        var measurement: CameraFocusTargetMeasurement?
 
         do {
             let completion = try await CameraManualFocusTapAssistTransaction.perform(
@@ -870,6 +999,16 @@ final class CameraViewModel: ObservableObject {
                         throw TAPDepthCaptureError.cameraControlCommandPlanNotExecutable
                     }
                     return snapshot
+                },
+                didFocusAndLock: { _ in
+                    guard didMeasureDistance != nil else { return }
+                    measurement = await controller.measureFocusTarget(
+                        at: intentPoint,
+                        expectedDeviceID: context.deviceID,
+                        expectedControlSignature: context.controlSurfaceSignature,
+                        operationToken: operationToken,
+                        on: device
+                    )
                 }
             )
 
@@ -881,6 +1020,7 @@ final class CameraViewModel: ObservableObject {
             switch completion {
             case .focused(let snapshot):
                 latestManualControlReadback = snapshot
+                if let measurement { didMeasureDistance?(measurement.meters) }
                 startNextManualFocusWriteIfNeeded()
                 return .focused(snapshot)
             case .recovered(let snapshot):

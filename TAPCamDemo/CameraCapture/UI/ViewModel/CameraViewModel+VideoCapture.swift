@@ -165,7 +165,10 @@ extension CameraViewModel {
         _ = await videoPreparationTask?.value
         guard generation == configurationGeneration else { return }
         videoPreparationState = .preparing
-        await sessionController.discardPreparedVideoRecording(reason: "mode-switch")
+        await sessionController.discardPreparedVideoRecording(
+            reason: "mode-switch",
+            restoringPhotoConfiguration: activeSessionConfiguration
+        )
         guard generation == configurationGeneration else { return }
         videoPreparationState = .idle
     }

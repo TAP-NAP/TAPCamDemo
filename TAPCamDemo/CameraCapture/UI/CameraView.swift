@@ -186,6 +186,8 @@ struct CameraView: View {
     private var cameraRootView: some View {
         NavigationStack {
             cameraSurface
+                .allowsHitTesting(!viewModel.isFocusDistanceCalibrating)
+                .accessibilityHidden(viewModel.isFocusDistanceCalibrating)
                 .navigationTitle("Camera")
                 .environment(\.locale, AppLanguage.english.locale)
                 .toolbar(.hidden, for: .navigationBar)
@@ -204,6 +206,7 @@ struct CameraView: View {
         .sheet(isPresented: $isShowingSettings) {
             DepthAnalyzerSettingsView(
                 appAttestController: appAttestController,
+                cameraViewModel: viewModel,
                 shutterSoundSuppressionSupported: viewModel.isShutterSoundSuppressionSupported
             )
         }
@@ -380,15 +383,30 @@ struct CameraView: View {
         .onChange(of: viewModel.photographerModeState) { previousState, state in
             handlePhotographerModeStateChange(from: previousState, to: state)
         }
+        .onChange(of: viewModel.isFocusDistanceCalibrating) { _, isCalibrating in
+            if isCalibrating {
+                globalEVApplyTask?.cancel()
+                temporaryFocusEVApplyTask?.cancel()
+                exposureApplyTask?.cancel()
+                exposureReadbackTask?.cancel()
+                return
+            }
+            alignVisibleAdjustmentControlsIfNeeded()
+            if !isShowingSettings, !applyPendingSettingsSessionReconfiguration() {
+                prepareSelectedVideoModeIfNeeded()
+            }
+        }
         .onChange(of: viewModel.exposureRuntimeEvent) { _, event in
-            guard viewModel.isPhotographerModeActive,
+            guard !viewModel.isFocusDistanceCalibrating,
+                  viewModel.isPhotographerModeActive,
                   event?.kind == .exposureSettled else {
                 return
             }
             scheduleManualControlReadback(reason: .exposureSettled, delay: .milliseconds(0))
         }
         .onChange(of: viewModel.focusRuntimeEvent) { _, event in
-            guard viewModel.isPhotographerModeActive,
+            guard !viewModel.isFocusDistanceCalibrating,
+                  viewModel.isPhotographerModeActive,
                   event?.kind == .focusSettled else {
                 return
             }
@@ -736,6 +754,7 @@ struct CameraView: View {
 
     private var shutterIsEnabled: Bool {
         guard scenePhase == .active,
+              !viewModel.isFocusDistanceCalibrating,
               isPreviewLayerPreviewing || viewModel.isVideoRecording,
               !isCameraPathTransitioning,
               !lifecycleCoordinator.isChangingCaptureMode,
@@ -904,7 +923,8 @@ struct CameraView: View {
             focusMode: focusMode,
             draft: exposureDraft,
             exposureRiskRanges: exposureRiskRanges(from: exposureState),
-            allowsManualFocusControl: viewModel.isManualFocusControlAvailable
+            allowsManualFocusControl: viewModel.isManualFocusControlAvailable,
+            estimatedFocusDistanceMeters: viewModel.estimatedFocusDistanceMeters(at: displayedLensPosition)
         )
     }
 
@@ -950,6 +970,7 @@ struct CameraView: View {
 
     private func prepareSelectedVideoModeIfNeeded() {
         guard scenePhase == .active, selectedMode == .video,
+              !viewModel.isFocusDistanceCalibrating,
               !viewModel.isPausedForAnalysis,
               !isCameraPathTransitioning, !viewModel.isConfiguringSession,
               viewModel.videoPreparationState == .idle || viewModel.videoPreparationState == .needsPreparation else {
@@ -1079,6 +1100,7 @@ struct CameraView: View {
         from previousState: PhotographerModeState,
         to state: PhotographerModeState
     ) {
+        guard !viewModel.isFocusDistanceCalibrating else { return }
         switch state {
         case .active:
             if selectedMode != .video {
@@ -1197,18 +1219,21 @@ struct CameraView: View {
     /// sheet is open so dismissal performs at most one session reconfiguration.
     private func captureSessionPreferenceDidChange() {
         guard settingsSessionReconfigurationPolicy.capturePreferenceDidChange(
-            isSettingsPresented: isShowingSettings
+            isSettingsPresented: isShowingSettings || viewModel.isFocusDistanceCalibrating
         ) else {
             return
         }
         reconfigureSessionForCapturePreferenceChange()
     }
 
-    private func applyPendingSettingsSessionReconfiguration() {
-        guard settingsSessionReconfigurationPolicy.settingsDidDismiss() else {
-            return
+    @discardableResult
+    private func applyPendingSettingsSessionReconfiguration() -> Bool {
+        guard !viewModel.isFocusDistanceCalibrating,
+              settingsSessionReconfigurationPolicy.settingsDidDismiss() else {
+            return false
         }
         reconfigureSessionForCapturePreferenceChange()
+        return true
     }
 
     private func reconfigureSessionForCapturePreferenceChange() {
@@ -1520,6 +1545,7 @@ struct CameraView: View {
     }
 
     private func alignVisibleAdjustmentControlsIfNeeded() {
+        guard !viewModel.isFocusDistanceCalibrating else { return }
         guard let capability = viewModel.activeControlCapabilities else {
             return
         }
@@ -1641,7 +1667,8 @@ struct CameraView: View {
     }
 
     private func applyMeterSample(_ sample: CameraExposureMeterSample) {
-        guard let capability = viewModel.activeControlCapabilities else {
+        guard !viewModel.isFocusDistanceCalibrating,
+              let capability = viewModel.activeControlCapabilities else {
             return
         }
         let state = exposureControlState ?? CameraExposureControlState(

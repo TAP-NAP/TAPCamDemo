@@ -218,6 +218,48 @@ struct TAPCameraManualFocusRuntimeTests {
         #expect(peakInFlight == 1)
     }
 
+    @Test @MainActor func targetMeasurementFinishesBeforeTheNextLensWrite() async throws {
+        let transport = CameraManualFocusTransportQueue()
+        let writer = ControlledManualFocusWriter()
+        let assist = Task { @MainActor in
+            try await CameraManualFocusTapAssistTransaction.perform(
+                through: transport,
+                preflight: { true },
+                autoFocusAndWait: {},
+                lockCurrent: { 42 },
+                didFocusAndLock: { _ in _ = await writer.write(id: 1) }
+            )
+        }
+        try await writer.waitUntilStarted(count: 1)
+        let slider = Task { @MainActor in
+            try await transport.perform(
+                preflight: { true },
+                operation: { await writer.write(id: 2) }
+            )
+        }
+        await Task.yield()
+        #expect(await writer.startedIDs == [1])
+        await writer.finish(id: 1)
+        try await writer.waitUntilStarted(count: 2)
+        await writer.finish(id: 2)
+        #expect(try await assist.value == .focused(42))
+        #expect(try await slider.value == 2)
+        #expect(await writer.peakInFlight == 1)
+    }
+
+    @Test @MainActor func failedAutofocusCannotCreateADistanceObservation() async throws {
+        var observed = false
+        let result = try await CameraManualFocusTapAssistTransaction.perform(
+            through: CameraManualFocusTransportQueue(),
+            preflight: { true },
+            autoFocusAndWait: { throw NSError(domain: "AF did not settle", code: 1) },
+            lockCurrent: { 42 },
+            didFocusAndLock: { _ in observed = true }
+        )
+        #expect(result == .recovered(42))
+        #expect(!observed)
+    }
+
     @Test @MainActor func staleContextIsRejectedBeforeItsQueuedWriteStarts() async throws {
         let transport = CameraManualFocusTransportQueue()
         let writer = ControlledManualFocusWriter()
